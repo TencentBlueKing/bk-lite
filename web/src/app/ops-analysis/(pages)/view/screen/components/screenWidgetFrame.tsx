@@ -105,20 +105,10 @@ const ScreenWidgetFrame: React.FC<ScreenWidgetFrameProps> = ({
         </>
       )}
       {isBare && editMode && (
-        <>
-          <div
-            className="screen-widget-frame__bare-header screen-widget-frame__drag-handle"
-            aria-hidden="true"
-          >
-            <span className="screen-widget-frame__title">
-              {item.title || item.chartType}
-            </span>
-          </div>
-          <div
-            className="screen-widget-frame__drag-surface screen-widget-frame__drag-handle"
-            aria-hidden="true"
-          />
-        </>
+        <div
+          className="screen-widget-frame__drag-surface screen-widget-frame__drag-handle"
+          aria-hidden="true"
+        />
       )}
       {editMode && (
         <div className="screen-widget-frame__actions">

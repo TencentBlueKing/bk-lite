@@ -174,6 +174,19 @@ const run = async () => {
   assert.match(guidance, /commandCopyDialog/);
   assert.match(guidance, /handleCopy\(\{ value \}\)/);
 
+  const copyDialog = readWebSource(
+    "src/app/node-manager/hooks/useCommandCopyDialog.tsx",
+  );
+  assert.match(
+    copyDialog,
+    /import CodeSnippet from '@\/components\/code-snippet'/,
+  );
+  assert.match(
+    copyDialog,
+    /<CodeSnippet[\s\S]*?value=\{state\.content\}[\s\S]*?maxHeight=\{240\}/,
+  );
+  assert.doesNotMatch(copyDialog, /whitespace-pre(?:\s|["'])/);
+
   const sections = readWebSource(
     "src/app/node-manager/(pages)/cloudregion/node/controllerInstall/installing/operationGuidanceSections.tsx",
   );

@@ -17,6 +17,7 @@ export interface UserSyncSource {
   name: string;
   integration_instance: number;
   integration_instance_name: string;
+  integration_provider_key: string;
   enabled: boolean;
   description: string;
   root_group_name: string;

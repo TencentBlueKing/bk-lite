@@ -11,6 +11,10 @@ monitor_object_type:
   Tencent Cloud: Tencent Cloud
   Other: Other
 
+# Fallback display name when plugin i18n is missing: show TCP, not TCPPort
+monitor_object:
+  TCPPort: TCP
+
 flow_onboarding_ui:
   accessAsset: Access Asset
   accessGuide: Access Guide

@@ -532,7 +532,8 @@ class TestRiskViewApi:
         )
 
         assert resp.status_code == status.HTTP_400_BAD_REQUEST
-        assert "不是待重启状态" in str(resp.data)
+        assert resp.data["code"] == "targets_not_pending_reboot"
+        assert str(target.id) in resp.data["detail"]
         assert not GovernanceTask.objects.filter(task_type="reboot").exists()
 
     def test_risk_reboot_accepts_pending_reboot_host(self, su_client):
@@ -572,7 +573,8 @@ class TestRiskViewApi:
         )
 
         assert resp.status_code == status.HTTP_400_BAD_REQUEST
-        assert "不是待重启状态" in str(resp.data)
+        assert resp.data["code"] == "targets_not_pending_reboot"
+        assert str(normal_target.id) in resp.data["detail"]
         assert not GovernanceTask.objects.filter(task_type="reboot").exists()
 
 
@@ -742,7 +744,8 @@ class TestGovernanceTaskViewApi:
         )
 
         assert resp.status_code == status.HTTP_400_BAD_REQUEST
-        assert "没有尚未执行的主机可取消" in resp.data["detail"]
+        assert resp.data["code"] == "no_waiting_hosts_to_cancel"
+        assert resp.data["detail"]
 
     def test_cancel_terminal_task_is_rejected(self, su_client):
         from apps.patch_mgmt.constants import GovernanceTaskStatus
@@ -759,7 +762,8 @@ class TestGovernanceTaskViewApi:
         )
 
         assert resp.status_code == status.HTTP_400_BAD_REQUEST
-        assert resp.data["detail"] == "任务已结束，不可取消"
+        assert resp.data["code"] == "task_finished_not_cancellable"
+        assert resp.data["detail"]
 
     def test_task_detail_includes_baseline_requirements(self, su_client):
         from apps.patch_mgmt.models import (
@@ -818,6 +822,37 @@ BASELINE_URL = f"{_BASE}/api/baseline/"
 
 @pytest.mark.django_db
 class TestBaselineViewApi:
+    def test_requirements_api_returns_windows_version_and_arch(self, su_client):
+        from apps.patch_mgmt.models import (
+            BaselineRequirement,
+            PatchBaseline,
+            WindowsPatchDetail,
+        )
+
+        baseline = PatchBaseline.objects.create(
+            name="Windows Server 基线",
+            os_type=OSType.WINDOWS,
+            team=[1],
+        )
+        patch = Patch.objects.create(
+            title="KB6000010",
+            os_type=OSType.WINDOWS,
+            team=[1],
+        )
+        WindowsPatchDetail.objects.create(
+            patch=patch,
+            kb_number="KB6000010",
+            product_list=["Windows Server 2019", "Windows Server 2022"],
+            architectures=["x64", "arm64"],
+        )
+        BaselineRequirement.objects.create(baseline=baseline, patch=patch)
+
+        resp = su_client.get(f"{BASELINE_URL}{baseline.id}/requirements/")
+
+        assert resp.status_code == status.HTTP_200_OK
+        assert resp.data[0]["patch_version"] == "Windows Server 2019, Windows Server 2022"
+        assert resp.data[0]["patch_arch"] == "x64, arm64"
+
     def test_bind_hosts_to_baseline(self, su_client):
         from apps.patch_mgmt.models import PatchBaseline, HostBaselineBinding
 

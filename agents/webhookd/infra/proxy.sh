@@ -2,9 +2,9 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROXY_DIR="${SCRIPT_DIR}/proxy"
-CA_KEY="/etc/certs/ca.key"
-CA_CRT="/etc/certs/ca.crt"
+PROXY_DIR="${PROXY_TEMPLATE_DIR:-${SCRIPT_DIR}/proxy}"
+CA_KEY="${PROXY_CA_KEY_PATH:-/etc/certs/ca.key}"
+CA_CRT="${PROXY_CA_CERT_PATH:-/etc/certs/ca.crt}"
 
 die() { echo "{\"status\":\"error\",\"message\":\"$1\"}" >&2; exit 1; }
 
@@ -41,8 +41,24 @@ for p in node_id zone_id zone_name server_url nats_url nats_username nats_passwo
     [ -n "$(get $p)" ] || die "missing $p"
 done
 
-NATS_HOST=$(echo "$NATS_URL" | sed -E 's#^(tls|nats)://##' | cut -d: -f1)
-NATS_PORT=$(echo "$NATS_URL" | sed -E 's#^(tls|nats)://##' | cut -d: -f2)
+PROXY_SAN_VALUE="${PROXY_IP#[}"
+PROXY_SAN_VALUE="${PROXY_SAN_VALUE%]}"
+if [[ "$PROXY_SAN_VALUE" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ || "$PROXY_SAN_VALUE" == *:* ]]; then
+    PROXY_SAN="IP:${PROXY_SAN_VALUE}"
+else
+    PROXY_SAN="DNS:${PROXY_SAN_VALUE}"
+fi
+
+NATS_ENDPOINT="${NATS_URL#*://}"
+if [[ "$NATS_ENDPOINT" == \[* ]]; then
+    NATS_HOST="${NATS_ENDPOINT%%]*}]"
+    NATS_REMAINDER="${NATS_ENDPOINT#*]}"
+    NATS_PORT="${NATS_REMAINDER#:}"
+else
+    NATS_HOST="${NATS_ENDPOINT%%:*}"
+    NATS_PORT="${NATS_ENDPOINT#*:}"
+    [ "$NATS_PORT" = "$NATS_ENDPOINT" ] && NATS_PORT=""
+fi
 NATS_PORT="${NATS_PORT:-4222}"
 
 WORK=$(mktemp -d)
@@ -62,7 +78,7 @@ req_extensions=ext
 [dn]
 CN=${NODE_ID}
 [ext]
-subjectAltName=DNS:${NODE_ID},DNS:localhost,DNS:nats,DNS:traefik,IP:127.0.0.1,IP:${PROXY_IP}
+subjectAltName=DNS:${NODE_ID},DNS:localhost,DNS:nats,DNS:traefik,IP:127.0.0.1,${PROXY_SAN}
 EOF
 
 openssl req -new -key "$WORK/conf/certs/proxy.key" -out "$WORK/proxy.csr" -config "$WORK/proxy.cnf" 2>/dev/null
@@ -95,7 +111,7 @@ envsubst < "$WORK/conf/nats/nats.conf.template" > "$WORK/conf/nats/nats.conf"
 
 rm -f "$WORK/proxy.cnf" "$WORK/proxy.csr" "$WORK/env.template" "$WORK/conf/nats/nats.conf.template"
 
-ARCHIVE=$(tar -czf - -C "$WORK" . | base64 -w0)
+ARCHIVE=$(tar -czf - -C "$WORK" . | base64 | tr -d '\n')
 
 INSTALL_SCRIPT=$(cat << 'SCRIPT'
 #!/bin/bash

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
-import { Button, Input, Select, Switch, Modal, message, Form, Radio } from 'antd';
+import { Button, Input, Select, Switch, Modal, message, Form, Radio, Tag } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import OperateFormModal from '@/components/operate-form-modal';
 import StatusBadgeShell from '@/components/status-badge-shell';
@@ -19,6 +19,7 @@ import GroupTreeSelect from '@/components/group-tree-select';
 import { SearchFilters, FieldConfig } from '@/components/search-combination/types';
 import { AxiosRequestConfig } from 'axios';
 import JobListWorkspaceShell from '@/app/job/components/list-workspace-shell';
+import { useUserInfoContext } from '@/context/userInfo';
 
 export interface DangerousRuleApiMethods {
   getList: (
@@ -87,6 +88,7 @@ const JobDangerousRulePage: React.FC<JobDangerousRulePageProps> = ({
 }) => {
   const { t } = useTranslation();
   const { isLoading: isApiReady } = useApiClient();
+  const { isSuperUser } = useUserInfoContext();
 
   const [form] = Form.useForm();
   const [data, setData] = useState<DangerousRule[]>([]);
@@ -176,19 +178,12 @@ const JobDangerousRulePage: React.FC<JobDangerousRulePageProps> = ({
     }
   }, [fetchData, isApiReady]);
 
-  useEffect(() => {
-    if (!isApiReady) {
-      fetchData();
-    }
-  }, [fetchData, isApiReady, pagination.current, pagination.pageSize]);
-
   const handleSearchChange = useCallback(
     (filters: SearchFilters) => {
       setSearchFilters(filters);
       setPagination((prev) => ({ ...prev, current: 1 }));
-      fetchData({ filters, current: 1 });
     },
-    [fetchData],
+    [],
   );
 
   const fieldConfigs: FieldConfig[] = useMemo(
@@ -403,6 +398,17 @@ const JobDangerousRulePage: React.FC<JobDangerousRulePageProps> = ({
       },
     },
     {
+      title: t('job.source'),
+      dataIndex: 'is_builtin',
+      key: 'is_builtin',
+      width: 100,
+      render: (_: unknown, record: DangerousRule) => (
+        <Tag color={record.is_builtin ? 'blue' : 'default'}>
+          {record.is_builtin ? t('common.builtIn') : t('job.customRule')}
+        </Tag>
+      ),
+    },
+    {
       title: t('job.enableStatus'),
       dataIndex: 'is_enabled',
       key: 'is_enabled',
@@ -412,7 +418,7 @@ const JobDangerousRulePage: React.FC<JobDangerousRulePageProps> = ({
           size="small"
           checked={record.is_enabled}
           loading={togglingIds.has(record.id)}
-          disabled={togglingIds.has(record.id)}
+          disabled={togglingIds.has(record.id) || (record.is_builtin && !isSuperUser)}
           onChange={() => handleToggleEnabled(record)}
         />
       ),
@@ -439,45 +445,50 @@ const JobDangerousRulePage: React.FC<JobDangerousRulePageProps> = ({
       key: 'action',
       width: 120,
       render: (_: unknown, record: DangerousRule) => (
-        <div className="flex items-center gap-3">
-          <a
-            className="cursor-pointer text-(--color-primary)"
+        <div className="flex items-center gap-[10px]">
+          <Button
+            type="link"
+            className="px-0"
+            disabled={record.is_builtin && !isSuperUser}
             onClick={() => openEditModal(record)}
           >
             {t('job.editRule')}
-          </a>
-          <a
-            className="cursor-pointer text-(--color-primary)"
+          </Button>
+          <Button
+            type="link"
+            className="px-0"
+            disabled={record.is_builtin && !isSuperUser}
             onClick={() => handleDelete(record)}
           >
             {t('job.deleteRule')}
-          </a>
+          </Button>
         </div>
       ),
     },
   ];
 
   return (
-    <JobListWorkspaceShell
-      title={title}
-      description={description}
-      fieldConfigs={fieldConfigs}
-      onSearchChange={handleSearchChange}
-      actions={(
-        <Button type="primary" icon={<PlusOutlined />} onClick={openAddModal}>
-          {t('job.addRule')}
-        </Button>
-      )}
-      contentClassName="flex-1 overflow-hidden"
-      tableColumns={columns}
-      tableDataSource={data}
-      tableLoading={loading}
-      tableRowKey="id"
-      tablePagination={pagination}
-      tableProps={{
-        onChange: handleTableChange,
-      }}
-    >
+    <>
+      <JobListWorkspaceShell
+        title={title}
+        description={description}
+        fieldConfigs={fieldConfigs}
+        onSearchChange={handleSearchChange}
+        actions={(
+          <Button type="primary" icon={<PlusOutlined />} onClick={openAddModal}>
+            {t('job.addRule')}
+          </Button>
+        )}
+        contentClassName="flex-1 overflow-hidden"
+        tableColumns={columns}
+        tableDataSource={data}
+        tableLoading={loading}
+        tableRowKey="id"
+        tablePagination={pagination}
+        tableProps={{
+          onChange: handleTableChange,
+        }}
+      />
       <OperateFormModal
         title={modalType === 'add' ? addModalTitle : editModalTitle}
         open={modalOpen}
@@ -593,7 +604,7 @@ const JobDangerousRulePage: React.FC<JobDangerousRulePageProps> = ({
           </Form.Item>
         </Form>
       </OperateFormModal>
-    </JobListWorkspaceShell>
+    </>
   );
 };
 

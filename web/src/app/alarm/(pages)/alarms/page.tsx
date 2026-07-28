@@ -29,6 +29,19 @@ import {
   TimeSelectorDefaultValue,
 } from '@/app/alarm/types/types';
 
+interface TimeFilterValue {
+  timeRange: number[];
+  originValue: number | null;
+}
+
+const DEFAULT_TIME_RANGE_MINUTES = 10080;
+
+const getRelativeTimeRange = (minutes: number): number[] => {
+  const lastTime = dayjs();
+  const beginTime = lastTime.subtract(minutes, 'minute').valueOf();
+  return [beginTime, lastTime.valueOf()];
+};
+
 const getSettings = () => {
   try {
     return JSON.parse(localStorage.getItem('alarmSettings') || '{}');
@@ -52,8 +65,6 @@ const Alert: React.FC = () => {
   const abortControllerRef = useRef<AbortController | null>(null);
   const tableRequestIdRef = useRef(0);
   const chartRequestIdRef = useRef(0);
-  const beginTime: number = dayjs().subtract(10080, 'minute').valueOf();
-  const lastTime: number = dayjs().valueOf();
   const [searchCondition, setSearchCondition] =
     useState<SearchFilterCondition | null>(() => (
       initialResourceId
@@ -64,7 +75,10 @@ const Alert: React.FC = () => {
   const [chartLoading, setChartLoading] = useState<boolean>(false);
   const [tableData, setTableData] = useState<AlarmTableDataItem[]>([]);
   const [frequency, setFrequency] = useState<number>(0);
-  const [timeRange, setTimeRange] = useState<number[]>([beginTime, lastTime]);
+  const [timeFilter, setTimeFilter] = useState<TimeFilterValue>(() => ({
+    timeRange: getRelativeTimeRange(DEFAULT_TIME_RANGE_MINUTES),
+    originValue: DEFAULT_TIME_RANGE_MINUTES,
+  }));
   const [activeTab, setActiveTab] = useState<string>('activeAlarms');
   const [chartData, setChartData] = useState<Record<string, any>[]>([]);
   const [myAlarms, setMyAlarms] = useState<boolean>(() => {
@@ -109,7 +123,7 @@ const Alert: React.FC = () => {
 
   const timeDefaultValue =
     (useRef<TimeSelectorDefaultValue>({
-      selectValue: 10080,
+      selectValue: DEFAULT_TIME_RANGE_MINUTES,
       rangePickerVaule: null,
     })?.current || {}) as any;
 
@@ -161,7 +175,7 @@ const Alert: React.FC = () => {
     };
   }, [
     frequency,
-    timeRange,
+    timeFilter,
     activeTab,
     showChart,
     filters.level,
@@ -178,7 +192,7 @@ const Alert: React.FC = () => {
     getAlarmTableData('refresh');
   }, [
     isLoading,
-    timeRange,
+    timeFilter,
     activeTab,
     filters.level,
     filters.state,
@@ -193,7 +207,7 @@ const Alert: React.FC = () => {
     showChart && getChartData('refresh');
   }, [
     isLoading,
-    timeRange,
+    timeFilter,
     activeTab,
     filters.state,
     filters.level,
@@ -215,14 +229,21 @@ const Alert: React.FC = () => {
 
   const getParams = (condition = null) => {
     const conditionValue = condition || searchCondition;
+    const queryTimeRange = timeFilter.originValue
+      ? getRelativeTimeRange(timeFilter.originValue)
+      : timeFilter.timeRange;
     const params: any = {
       status: filters.state.join(','),
       level: filters.level.join(','),
       source_name: filters.alarm_source.join(','),
       page: pagination.current,
       page_size: pagination.pageSize,
-      created_at_after: dayjs(timeRange[0]).toISOString(),
-      created_at_before: dayjs(timeRange[1]).toISOString(),
+      created_at_after: queryTimeRange[0]
+        ? dayjs(queryTimeRange[0]).toISOString()
+        : '',
+      created_at_before: queryTimeRange[1]
+        ? dayjs(queryTimeRange[1]).toISOString()
+        : '',
       activate: initialActivate || (isActiveAlarms ? 1 : ''),
       my_alert: initialResourceId
         ? ''
@@ -310,9 +331,15 @@ const Alert: React.FC = () => {
     showChart && getChartData('refresh');
   };
 
-  const onTimeChange = useCallback((val: number[]) => {
-    setTimeRange(val);
-  }, []);
+  const onTimeChange = useCallback(
+    (val: number[], originValue: number | null) => {
+      setTimeFilter({
+        timeRange: val,
+        originValue,
+      });
+    },
+    []
+  );
 
   const onFilterChange = useCallback((
     checkedValues: string[],
@@ -411,7 +438,7 @@ const Alert: React.FC = () => {
                 <TimeSelector
                   defaultValue={timeDefaultValue}
                   onlyRefresh={isActiveAlarms}
-                  onChange={(value) => onTimeChange(value)}
+                  onChange={onTimeChange}
                   onFrequenceChange={onFrequencyChange}
                   onRefresh={onRefresh}
                 />

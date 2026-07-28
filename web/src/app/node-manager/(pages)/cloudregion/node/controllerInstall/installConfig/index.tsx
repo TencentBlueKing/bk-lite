@@ -51,19 +51,6 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
   const { installController } = useNodeManagerApi();
   const { manualInstallController, getControllerList } = useControllerApi();
   const commonContext = useUserInfoContext();
-  const INFO_ITEM = useMemo(
-    () => ({
-      key: uuidv4(),
-      ip: null,
-      organizations: [commonContext.selectedGroup?.id],
-      port: 22,
-      username: 'root',
-      auth_type: 'password',
-      password: null,
-      node_name: null
-    }),
-    [commonContext.selectedGroup?.id]
-  );
   const { getPackages } = useNodeManagerApi();
   const cloudId = useCloudId();
   const searchParams = useSearchParams();
@@ -93,6 +80,23 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
   const [tableData, setTableData] = useState<TableDataItem[]>([]);
   const { confirm } = Modal;
   const { renderTableColumn, renderActionColumn } = useTableRenderer();
+  const createInfoItem = useCallback(
+    (targetOS: string) => ({
+      key: uuidv4(),
+      ip: null,
+      organizations: [commonContext.selectedGroup?.id],
+      port: targetOS === 'windows' ? 5986 : 22,
+      username: targetOS === 'windows' ? 'Administrator' : 'root',
+      auth_type: 'password',
+      password: null,
+      winrm_scheme: 'https',
+      winrm_transport: 'ntlm',
+      winrm_cert_validation: true,
+      node_name: null
+    }),
+    [commonContext.selectedGroup?.id]
+  );
+  const INFO_ITEM = useMemo(() => createInfoItem(os), [createInfoItem, os]);
 
   useEffect(() => {
     if (tableData.length === 0) {
@@ -101,7 +105,7 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
   }, [INFO_ITEM]);
 
   // 获取表格配置
-  const tableConfig = useTableConfig(installMethod);
+  const tableConfig = useTableConfig(installMethod, os);
 
   // 添加行
   const addInfoItem = useCallback(
@@ -179,14 +183,6 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
       ) || null
     );
   }, [controllerPlatforms, cpuArchitecture, os]);
-
-  // Windows 系统只支持手动安装
-  const availableInstallWays = useMemo(() => {
-    if (os === 'windows') {
-      return installWays.filter((way) => way.value === 'manualInstall');
-    }
-    return installWays;
-  }, [os, installWays]);
 
   // 对当前查询结果做去重，接口已按操作系统和 CPU 架构精确过滤
   const filteredSidecarVersionList = useMemo(() => {
@@ -278,6 +274,8 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
 
     if (nextOs !== os) {
       setOs(nextOs);
+      setTableData([{ ...createInfoItem(nextOs), key: uuidv4() }]);
+      setSelectedRowKeys([]);
     }
 
     if (nextArchitecture !== cpuArchitecture) {
@@ -288,7 +286,7 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
       os: nextOs || undefined,
       cpu_architecture: nextArchitecture || undefined
     });
-  }, [availableOSOptions, controllerPlatforms, cpuArchitecture, form, os, platformLoading]);
+  }, [availableOSOptions, controllerPlatforms, cpuArchitecture, createInfoItem, form, os, platformLoading]);
 
   useEffect(() => {
     if (isLoading || hasFetchedPlatformsRef.current) {
@@ -306,14 +304,6 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
     }
     setSidecarVersionList([]);
   }, [isLoading, os, cpuArchitecture]);
-
-  useEffect(() => {
-    if (os === 'windows' && installMethod !== 'manualInstall') {
-      setInstallMethod('manualInstall');
-      setTableData([{ ...INFO_ITEM, key: uuidv4() }]);
-      setSelectedRowKeys([]);
-    }
-  }, [INFO_ITEM, installMethod, os]);
 
   useEffect(() => {
     form.setFieldValue('install', installMethod);
@@ -373,6 +363,7 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
 
   const handleImportSuccess = (importedData: any[]) => {
     const newRows = importedData.map((row) => ({
+      ...createInfoItem(os),
       ...row,
       key: uuidv4()
     }));
@@ -521,6 +512,9 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
           username: item.username,
           password: item.private_key ? '' : item.password,
           private_key: item.private_key || '',
+          winrm_scheme: item.winrm_scheme,
+          winrm_transport: item.winrm_transport,
+          winrm_cert_validation: item.winrm_cert_validation,
           node_name: item.node_name
         }));
       } else {
@@ -587,6 +581,8 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
             value={os}
             onChange={(value) => {
               setOs(value);
+              setTableData([{ ...createInfoItem(value), key: uuidv4() }]);
+              setSelectedRowKeys([]);
               form.setFieldValue('sidecar_package', null);
             }}
             disabled={platformLoading || availableOSOptions.length <= 1}
@@ -615,14 +611,18 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
         >
           <Form.Item name="install" noStyle>
             <Segmented
-              options={availableInstallWays}
+              options={installWays}
               value={installMethod}
               onChange={changeCollectType}
             />
           </Form.Item>
           <div className="mt-[8px] text-[12px] text-[var(--color-text-3)]">
             {isRemote
-              ? t('node-manager.cloudregion.node.installWayDes')
+              ? t(
+                os === 'windows'
+                  ? 'node-manager.cloudregion.node.windowsRemoteInstallDes'
+                  : 'node-manager.cloudregion.node.installWayDes'
+              )
               : t('node-manager.cloudregion.node.autoInstallDes')}
           </div>
         </Form.Item>

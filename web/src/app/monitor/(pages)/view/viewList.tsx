@@ -32,6 +32,7 @@ import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import { ListItem } from '@/types';
 import { OBJECT_DEFAULT_ICON } from '@/app/monitor/constants';
 import { getProfessionalDashboardUrl } from '@/app/monitor/dashboards/registry';
+import { withDashboardReturnContext } from '@/app/monitor/dashboards/shared/utils';
 import { getDerivativeObjectNames } from '@/app/monitor/utils/monitorObject';
 import { cloneDeep } from 'lodash';
 import { resolveViewColumns } from './viewColumnPreference';
@@ -616,7 +617,10 @@ const ViewList: React.FC<ViewListProps> = ({
         ? monitorItem.instance_id_keys.join(',')
         : 'instance_id'
     };
-    const params = new URLSearchParams(row);
+    const params = withDashboardReturnContext(new URLSearchParams(row), {
+      objectId: String(objectId || ''),
+      objectName: String(monitorItem?.display_name || monitorItem?.name || '')
+    });
     const professionalDashboardUrl = getProfessionalDashboardUrl(
       monitorItem?.name,
       monitorItem?.display_name,

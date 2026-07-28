@@ -12,8 +12,10 @@ import CustomTable from '@/components/custom-table';
 import OperateDrawer from '@/app/patch-manager/components/operate-drawer';
 import { useRouter } from 'next/navigation';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
+import { useTranslation } from '@/utils/i18n';
 
 export default function BaselineManagementPage() {
+  const { t } = useTranslation();
   const router = useRouter();
   const { convertToLocalizedTime } = useLocalizedTime();
   const api = usePatchManagerApi();
@@ -50,10 +52,10 @@ export default function BaselineManagementPage() {
 
   const confirmInvalidateAssessment = (baselineName: string) => new Promise<boolean>((resolve) => {
     Modal.confirm({
-      title: '当前评估将失效',
-      content: `“${baselineName}”正在评估中。修改补丁要求或绑定主机后，未开始的评估会取消，运行中的结果不会回写。是否继续？`,
-      okText: '继续修改',
-      cancelText: '取消',
+      title: t('patchManager.baseline.invalidateTitle'),
+      content: t('patchManager.baseline.invalidateContent', undefined, { name: baselineName }),
+      okText: t('patchManager.baseline.continueEditing'),
+      cancelText: t('patchManager.cancel'),
       onOk: () => resolve(true),
       onCancel: () => resolve(false),
     });
@@ -207,17 +209,17 @@ export default function BaselineManagementPage() {
   };
 
   const columns = [
-    { title: '基线名称', dataIndex: 'name', width: 170 },
-    { title: '操作系统', dataIndex: 'os_type_display', width: 100 },
-    { title: '绑定主机', dataIndex: 'bound_host_count', width: 90, render: (v: number) => `${v || 0} 台` },
+    { title: t('patchManager.baseline.name'), dataIndex: 'name', width: 170 },
+    { title: t('patchManager.osType'), dataIndex: 'os_type', width: 100, render: (v: string) => t(`patchManager.${v === 'windows' ? 'windows' : 'linux'}`) },
+    { title: t('patchManager.baseline.boundTargets'), dataIndex: 'bound_host_count', width: 90, render: (v: number) => t('patchManager.dashboard.targetCount', undefined, { count: v || 0 }) },
     {
-      title: '合规分布',
+      title: t('patchManager.baseline.complianceDistribution'),
       dataIndex: 'compliance_distribution',
       width: 280,
       render: (dist: any[], r: any) => {
         const items = dist || [];
         if (!items.length) {
-          return r.bound_host_count ? '—' : <span style={{ color: 'var(--color-text-4, #bfbfbf)' }}>未绑定</span>;
+          return r.bound_host_count ? '—' : <span style={{ color: 'var(--color-text-4, #bfbfbf)' }}>{t('patchManager.baseline.unbound')}</span>;
         }
         return (
           <Space size={6}>
@@ -228,22 +230,22 @@ export default function BaselineManagementPage() {
                 style={{ cursor: 'pointer' }}
                 onClick={() => router.push(`/patch-manager/target?baseline_id=${r.id}&compliance_status=${item.filter}`)}
               >
-                {item.label} {item.count}
+                {t(`patchManager.complianceStatus.${item.filter}`, item.label)} {item.count}
               </Tag>
             ))}
           </Space>
         );
       },
     },
-    { title: '更新时间', dataIndex: 'updated_at', width: 180, render: (v: string | null) => convertToLocalizedTime(v) || '—' },
+    { title: t('patchManager.updateTime'), dataIndex: 'updated_at', width: 180, render: (v: string | null) => convertToLocalizedTime(v) || '—' },
     {
-      title: '操作',
+      title: t('patchManager.operation'),
       dataIndex: 'op',
       width: 250,
       render: (_: unknown, r: any) => {
         const deleteBlocked = (r.bound_host_count || 0) > 0;
-        const deleteTip = deleteBlocked ? '该基线已绑定主机，不能删除' : '';
-        const editEl = <PermissionWrapper requiredPermissions={['Edit']}><Button type="link" size="small" onClick={() => { setEditing(r); setDraftOs(r.os_type === 'windows' ? 'win' : 'linux'); form.setFieldsValue({ name: r.name, description: r.description }); setEditOpen(true); }}>编辑</Button></PermissionWrapper>;
+        const deleteTip = deleteBlocked ? t('patchManager.baseline.deleteBlocked') : '';
+        const editEl = <PermissionWrapper requiredPermissions={['Edit']}><Button type="link" size="small" onClick={() => { setEditing(r); setDraftOs(r.os_type === 'windows' ? 'win' : 'linux'); form.setFieldsValue({ name: r.name, description: r.description }); setEditOpen(true); }}>{t('patchManager.edit')}</Button></PermissionWrapper>;
         const bindEl = <PermissionWrapper requiredPermissions={['Edit']}><Button type="link" size="small" onClick={async () => {
           setBindTarget(r);
           setSelectedHosts([]);
@@ -279,40 +281,35 @@ export default function BaselineManagementPage() {
           } finally {
             setBindDrawerLoading(false);
           }
-        }}>绑定主机</Button></PermissionWrapper>;
+        }}>{t('patchManager.baseline.bindTargets')}</Button></PermissionWrapper>;
         const deleteEl = deleteBlocked
-          ? <Button type="link" size="small" danger disabled>删除</Button>
-          : <PermissionWrapper requiredPermissions={['Delete']}><Popconfirm title="删除基线" description={`确定删除 ${r.name} 吗？`} onConfirm={async () => { await api.deleteBaseline(r.id); message.success('已删除'); loadData(); }} okText="删除" cancelText="取消">
-              <Button type="link" size="small" danger>删除</Button>
+          ? <Button type="link" size="small" danger disabled>{t('patchManager.delete')}</Button>
+          : <PermissionWrapper requiredPermissions={['Delete']}><Popconfirm title={t('patchManager.baseline.deleteTitle')} description={t('patchManager.baseline.deleteConfirm', undefined, { name: r.name })} onConfirm={async () => { await api.deleteBaseline(r.id); message.success(t('patchManager.baseline.deleted')); loadData(); }} okText={t('patchManager.delete')} cancelText={t('patchManager.cancel')}>
+              <Button type="link" size="small" danger>{t('patchManager.delete')}</Button>
             </Popconfirm></PermissionWrapper>;
         const assessEl = (
           <PermissionWrapper requiredPermissions={['Edit']}>
-            <Button
-              type="link"
-              size="small"
+            <Popconfirm
+              title={t('patchManager.baseline.assessTitle')}
+              description={t('patchManager.baseline.assessConfirm', undefined, { name: r.name, count: r.bound_host_count || 0 })}
+              okText={t('patchManager.baseline.confirmAssess')}
+              cancelText={t('patchManager.cancel')}
               disabled={!r.can_assess}
-              onClick={() => {
-                if (!r.can_assess) return;
-                Modal.confirm({
-                  title: '立即评估基线',
-                  content: `将评估“${r.name}”当前绑定的 ${r.bound_host_count || 0} 台主机，是否继续？`,
-                  okText: '确认评估',
-                  cancelText: '取消',
-                  async onOk() {
-                    const result = await api.assessBaseline(r.id);
-                    message.success(`评估任务已创建，共 ${result.host_count || 0} 台主机`);
-                    await loadData();
-                  },
-                });
+              onConfirm={async () => {
+                const result = await api.assessBaseline(r.id);
+                message.success(t('patchManager.baseline.assessCreated', undefined, { count: result.host_count || 0 }));
+                await loadData();
               }}
             >
-              立即评估
-            </Button>
+              <Button type="link" size="small" disabled={!r.can_assess}>
+                {t('patchManager.dashboard.assessNow')}
+              </Button>
+            </Popconfirm>
           </PermissionWrapper>
         );
         return (
           <Space size={12}>
-            {r.can_assess ? assessEl : <Tooltip title={r.assess_disabled_reason || '当前不可评估'}><span>{assessEl}</span></Tooltip>}
+            {r.can_assess ? assessEl : <Tooltip title={r.assess_disabled_reason || t('patchManager.baseline.cannotAssess')}><span>{assessEl}</span></Tooltip>}
             {editEl}
             {bindEl}
             {deleteBlocked ? <Tooltip title={deleteTip}><span>{deleteEl}</span></Tooltip> : deleteEl}
@@ -323,13 +320,13 @@ export default function BaselineManagementPage() {
   ];
 
   const reqColumns = [
-    { title: '要求', width: 120, render: (_: unknown, r: any) => r.patch_kb_number || r.patch_pkg_name || '' },
-    { title: '严重级别', dataIndex: 'patch_severity', width: 90, render: (v: string) => <SeverityTag severity={v} /> },
-    { title: '描述', dataIndex: 'patch_title', ellipsis: true },
-    { title: '适用版本', dataIndex: 'patch_version', width: 100 },
-    { title: '架构', dataIndex: 'patch_arch', width: 80 },
+    { title: t('patchManager.baseline.requirement'), width: 120, render: (_: unknown, r: any) => r.patch_kb_number || r.patch_pkg_name || '' },
+    { title: t('patchManager.severity'), dataIndex: 'patch_severity', width: 90, render: (v: string) => <SeverityTag severity={v} /> },
+    { title: t('patchManager.baseline.description'), dataIndex: 'patch_title', ellipsis: true },
+    { title: t('patchManager.baseline.applicableVersion'), dataIndex: 'patch_version', width: 100, render: (v: string) => v || '--' },
+    { title: t('patchManager.arch'), dataIndex: 'patch_arch', width: 80, render: (v: string) => v || '--' },
     {
-      title: '操作',
+      title: t('patchManager.operation'),
       width: 60,
       fixed: 'right' as const,
       render: (_: unknown, r: any) => (
@@ -341,7 +338,7 @@ export default function BaselineManagementPage() {
             setRequirements((prev) => prev.filter((item) => item.patch !== r.patch));
           }}
         >
-          移除
+          {t('patchManager.baseline.remove')}
         </Button>
       ),
     },
@@ -393,13 +390,13 @@ export default function BaselineManagementPage() {
     <div style={{ background: 'var(--color-bg-1, #fff)', border: '1px solid var(--color-border-1, #e8e8e8)', borderRadius: 10, padding: '16px', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10, marginBottom: 14 }}>
         <Input.Search
-          placeholder="基线名称"
+          placeholder={t('patchManager.baseline.name')}
           value={baselineSearch}
           onChange={(e) => setBaselineSearch(e.target.value)}
           onSearch={(v) => { setPagination((p) => ({ ...p, current: 1 })); loadData(1, pagination.pageSize, v); }}
           style={{ width: 220 }}
         />
-        <PermissionWrapper requiredPermissions={['Add']}><Button type="primary" icon={<PlusOutlined />} onClick={() => { setEditing(null); setDraftOs('win'); setRequirements([]); setOriginalRequirements([]); form.resetFields(); setEditOpen(true); }}>新建基线</Button></PermissionWrapper>
+        <PermissionWrapper requiredPermissions={['Add']}><Button type="primary" icon={<PlusOutlined />} onClick={() => { setEditing(null); setDraftOs('win'); setRequirements([]); setOriginalRequirements([]); form.resetFields(); setEditOpen(true); }}>{t('patchManager.baseline.create')}</Button></PermissionWrapper>
       </div>
       <div style={{ flex: 1, minHeight: 0 }}>
         <CustomTable
@@ -412,7 +409,7 @@ export default function BaselineManagementPage() {
             pageSize: pagination.pageSize,
             total: pagination.total,
             showSizeChanger: true,
-            showTotal: (t) => `共 ${t} 条`,
+            showTotal: (total) => t('patchManager.common.totalItems', undefined, { count: total }),
             style: { marginBottom: 0 },
             onChange: (page, pageSize) => loadData(page, pageSize),
           }}
@@ -420,14 +417,14 @@ export default function BaselineManagementPage() {
       </div>
 
       <OperateDrawer
-        title={editing ? '编辑基线' : '新建基线'}
+        title={editing ? t('patchManager.baseline.edit') : t('patchManager.baseline.create')}
         open={editOpen}
         onClose={() => setEditOpen(false)}
         width={880}
         footer={
           <Space>
-            <Button onClick={() => setEditOpen(false)}>取消</Button>
-            <Tooltip title={requirements.length === 0 ? '请至少添加一条补丁要求' : ''}>
+            <Button onClick={() => setEditOpen(false)}>{t('patchManager.cancel')}</Button>
+            <Tooltip title={requirements.length === 0 ? t('patchManager.baseline.requirementRequired') : ''}>
               <span>
                 <Button
                   type="primary"
@@ -459,12 +456,12 @@ export default function BaselineManagementPage() {
                       if (toAdd.length) await api.addBaselineRequirements(baselineId, { patch_ids: toAdd });
                       if (toRemoveIds.length) await api.removeBaselineRequirements(baselineId, toRemoveIds);
                       setOriginalRequirements(requirements);
-                      message.success('保存成功');
+                      message.success(t('patchManager.baseline.saved'));
                       setEditOpen(false); loadData();
                     } catch { } finally { setLoading(false); }
                   }}
                 >
-                  保存
+                  {t('patchManager.save')}
                 </Button>
               </span>
             </Tooltip>
@@ -474,23 +471,23 @@ export default function BaselineManagementPage() {
         <Spin spinning={reqLoading}>
         <Form layout="vertical" form={form} style={{ marginTop: 4 }}>
           <Space style={{ display: 'flex' }} align="start">
-            <Form.Item label="基线名称" name="name" rules={[{ required: true, message: '请输入基线名称' }]} style={{ flex: 1 }}><Input style={{ width: 300 }} /></Form.Item>
-            <Form.Item label="操作系统" required>
+            <Form.Item label={t('patchManager.baseline.name')} name="name" rules={[{ required: true, message: t('patchManager.baseline.nameRequired') }]} style={{ flex: 1 }}><Input style={{ width: 300 }} /></Form.Item>
+            <Form.Item label={t('patchManager.osType')} required>
               <Select value={draftOs} style={{ width: 130 }} disabled={!!editing} onChange={setDraftOs} options={[{ label: 'Windows', value: 'win' }, { label: 'Linux', value: 'linux' }]} />
             </Form.Item>
           </Space>
-          {editing && <Alert style={{ marginBottom: 12 }} type="info" showIcon message="操作系统创建后锁定，编辑时不可修改。确需其他操作系统请新建基线。" />}
-          <Form.Item label="说明" name="description"><Input.TextArea rows={2} placeholder="基线说明" /></Form.Item>
+          {editing && <Alert style={{ marginBottom: 12 }} type="info" showIcon message={t('patchManager.baseline.osLocked')} />}
+          <Form.Item label={t('patchManager.baseline.description')} name="description"><Input.TextArea rows={2} placeholder={t('patchManager.baseline.descriptionPlaceholder')} /></Form.Item>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '4px 0 8px' }}>
-            <span style={{ fontWeight: 500 }}>补丁要求清单</span>
-            <Tag color="warning">全部必装</Tag>
+            <span style={{ fontWeight: 500 }}>{t('patchManager.baseline.requirementList')}</span>
+            <Tag color="warning">{t('patchManager.baseline.allRequired')}</Tag>
           </div>
           <Table size="small" pagination={false} dataSource={requirements} rowKey={(r: any) => r.id ?? r.patch} columns={reqColumns as any} scroll={{ x: 780 }} />
           <div style={{ marginTop: 8 }}>
             {draftOs ? (
-              <Button type="link" size="small" icon={<PlusOutlined />} onClick={() => { setPatchPickerOpen(true); }}>从补丁库添加要求</Button>
+              <Button type="link" size="small" icon={<PlusOutlined />} onClick={() => { setPatchPickerOpen(true); }}>{t('patchManager.baseline.addFromLibrary')}</Button>
             ) : (
-              <span style={{ color: 'var(--color-text-4, #bfbfbf)', cursor: 'not-allowed' }}><PlusOutlined /> 从补丁库添加要求</span>
+              <span style={{ color: 'var(--color-text-4, #bfbfbf)', cursor: 'not-allowed' }}><PlusOutlined /> {t('patchManager.baseline.addFromLibrary')}</span>
             )}
           </div>
         </Form>
@@ -498,14 +495,14 @@ export default function BaselineManagementPage() {
       </OperateDrawer>
 
       <OperateDrawer
-        title={`绑定主机 - ${bindTarget?.name || ''}`}
+        title={t('patchManager.baseline.bindTitle', undefined, { name: bindTarget?.name || '' })}
         open={bindOpen}
         onClose={() => setBindOpen(false)}
         width={880}
         footer={
           <Space>
-            <Button onClick={() => setBindOpen(false)}>取消</Button>
-            <Tooltip title={selectedHosts.length === 0 ? '请至少选择一台主机' : ''}>
+            <Button onClick={() => setBindOpen(false)}>{t('patchManager.cancel')}</Button>
+            <Tooltip title={selectedHosts.length === 0 ? t('patchManager.baseline.targetRequired') : ''}>
               <Button
                 type="primary"
                 disabled={selectedHosts.length === 0 || bindDrawerLoading}
@@ -525,14 +522,14 @@ export default function BaselineManagementPage() {
                       && !(await confirmInvalidateAssessment(bindTarget.name))
                     ) return;
                     await api.bindHostsToBaseline(bindTarget.id, hostIds);
-                    message.success(`已将 ${hostIds.length} 台主机绑定到当前基线`);
+                    message.success(t('patchManager.baseline.targetsBound', undefined, { count: hostIds.length }));
                     setBindOpen(false);
                     loadData();
                   } catch {
                   }
                 }}
               >
-                确认绑定
+                {t('patchManager.baseline.confirmBind')}
               </Button>
             </Tooltip>
           </Space>
@@ -547,33 +544,33 @@ export default function BaselineManagementPage() {
             pageSize: bindHostPagination.pageSize,
             total: bindHostPagination.total,
             showSizeChanger: true,
-            showTotal: (t) => `共 ${t} 条`,
+            showTotal: (total) => t('patchManager.common.totalItems', undefined, { count: total }),
           }}
           onPageChange={(page, pageSize) => loadBindHosts(page, pageSize)}
           columns={[
-            { title: '主机', dataIndex: 'name', width: 110 },
+            { title: t('patchManager.baseline.target'), dataIndex: 'name', width: 110 },
             { title: 'IP', dataIndex: 'ip', width: 130 },
-            { title: '操作系统', dataIndex: 'os_type_display', width: 90 },
+            { title: t('patchManager.osType'), dataIndex: 'os_type_display', width: 90 },
           ]}
           selectedKeys={selectedHosts}
           onChange={setSelectedHosts}
           selectedRecordsData={selectedHostRecords}
           renderSelectedLabel={(r) => r.name}
-          leftTitle={<Input.Search placeholder="主机名 / IP" value={hostSearch} onSearch={(v) => { setBindHostPagination((p) => ({ ...p, current: 1 })); loadBindHosts(1, bindHostPagination.pageSize, v); }} onChange={(e) => setHostSearch(e.target.value)} allowClear style={{ width: 240, marginBottom: 12 }} />}
-          rightTitle={`已选 ${selectedHosts.length} 台`}
+          leftTitle={<Input.Search placeholder={t('patchManager.baseline.targetSearch')} value={hostSearch} onSearch={(v) => { setBindHostPagination((p) => ({ ...p, current: 1 })); loadBindHosts(1, bindHostPagination.pageSize, v); }} onChange={(e) => setHostSearch(e.target.value)} allowClear style={{ width: 240, marginBottom: 12 }} />}
+          rightTitle={t('patchManager.baseline.selectedTargets', undefined, { count: selectedHosts.length })}
           height="calc(100vh - 200px)"
         />
       </OperateDrawer>
 
       <OperateDrawer
-        title="从补丁库添加要求"
+        title={t('patchManager.baseline.addFromLibrary')}
         open={patchPickerOpen}
         onClose={() => setPatchPickerOpen(false)}
         width={960}
         footer={
           <Space>
-            <Button onClick={() => setPatchPickerOpen(false)}>取消</Button>
-            <Tooltip title={pickerSelected.length === 0 ? '请至少选择一条补丁' : ''}>
+            <Button onClick={() => setPatchPickerOpen(false)}>{t('patchManager.cancel')}</Button>
+            <Tooltip title={pickerSelected.length === 0 ? t('patchManager.baseline.patchRequired') : ''}>
               <span>
                 <Button
                   type="primary"
@@ -616,14 +613,14 @@ export default function BaselineManagementPage() {
                     setPatchPickerOpen(false);
                   }}
                 >
-                  确认添加
+                  {t('patchManager.baseline.confirmAdd')}
                 </Button>
               </span>
             </Tooltip>
           </Space>
         }
       >
-        <Alert style={{ marginBottom: 12 }} type="info" showIcon message="仅展示「就绪」状态的补丁；勾选加入当前基线清单，取消勾选移除。" />
+        <Alert style={{ marginBottom: 12 }} type="info" showIcon message={t('patchManager.baseline.libraryHelp')} />
         <DualSelector
           rowKey="id"
           dataSource={patchList}
@@ -633,15 +630,15 @@ export default function BaselineManagementPage() {
             pageSize: patchPickerPagination.pageSize,
             total: patchPickerPagination.total,
             showSizeChanger: true,
-            showTotal: (t) => `共 ${t} 条`,
+            showTotal: (total) => t('patchManager.common.totalItems', undefined, { count: total }),
           }}
           onPageChange={(page, pageSize) => loadPatches(page, pageSize)}
           columns={[
-            { title: draftOs === 'win' ? 'KB 号' : '包名', width: 120, render: (_: unknown, r: any) => r.windows_detail?.kb_number || r.linux_detail?.pkg_name || '' },
-            { title: '严重级别', dataIndex: 'severity', width: 90, render: (v: string) => <SeverityTag severity={v} /> },
-            { title: '描述', dataIndex: 'title', ellipsis: true },
-            { title: '适用版本', width: 100, render: (_: unknown, r: any) => r.windows_detail?.product_list?.join('、') || r.linux_detail?.os_version_range || r.linux_detail?.distro_name || '-' },
-            { title: '架构', width: 80, render: (_: unknown, r: any) => r.windows_detail?.architectures?.join('、') || r.linux_detail?.architectures?.join('、') || '-' },
+            { title: draftOs === 'win' ? t('patchManager.kbNumber') : t('patchManager.packageName'), width: 120, render: (_: unknown, r: any) => r.windows_detail?.kb_number || r.linux_detail?.pkg_name || '' },
+            { title: t('patchManager.severity'), dataIndex: 'severity', width: 90, render: (v: string) => <SeverityTag severity={v} /> },
+            { title: t('patchManager.baseline.description'), dataIndex: 'title', ellipsis: true },
+            { title: t('patchManager.baseline.applicableVersion'), width: 100, render: (_: unknown, r: any) => r.windows_detail?.product_list?.join('、') || r.linux_detail?.os_version_range || r.linux_detail?.distro_name || '--' },
+            { title: t('patchManager.arch'), width: 80, render: (_: unknown, r: any) => r.windows_detail?.architectures?.join('、') || r.linux_detail?.architectures?.join('、') || '--' },
           ]}
           selectedKeys={pickerSelected}
           onChange={setPickerSelected}
@@ -649,7 +646,7 @@ export default function BaselineManagementPage() {
           renderSelectedLabel={(r) => r.windows_detail?.kb_number || r.linux_detail?.pkg_name || r.title}
           leftTitle={
             <Input.Search
-              placeholder={draftOs === 'win' ? '搜索 KB 号' : '搜索包名'}
+              placeholder={draftOs === 'win' ? t('patchManager.baseline.searchKb') : t('patchManager.baseline.searchPackage')}
               value={patchSearch}
               onSearch={(v) => { setPatchPickerPagination((p) => ({ ...p, current: 1 })); loadPatches(1, patchPickerPagination.pageSize, v); }}
               onChange={(e) => setPatchSearch(e.target.value)}

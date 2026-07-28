@@ -13,6 +13,7 @@ import {
   hasSupportedChartTypeForSurface,
 } from "../src/app/ops-analysis/utils/chartTypeSurface";
 import { shouldWaitForInitialWidgetData } from "../src/app/ops-analysis/utils/widgetRequestVersion";
+import { shouldShowInitialWidgetLoading } from "../src/app/ops-analysis/utils/widgetDataTransform";
 import {
   getDefaultScreenWidgetAppearance,
   normalizeScreenWidgetAppearance,
@@ -242,7 +243,18 @@ assert.deepEqual(
     },
     { rackId: "rack-a", target: "door" },
   ),
-  { selectedRackId: "rack-a", openRackId: "", selectedDeviceId: "" },
+  { selectedRackId: "", openRackId: "", selectedDeviceId: "" },
+);
+assert.deepEqual(
+  resolveRoomObjectClickState(
+    {
+      selectedRackId: "",
+      openRackId: "",
+      selectedDeviceId: "",
+    },
+    { rackId: "rack-a", target: "door" },
+  ),
+  { selectedRackId: "rack-a", openRackId: "rack-a", selectedDeviceId: "" },
 );
 
 const emptyResult = validateRoom3DData({
@@ -296,7 +308,8 @@ assert.equal(getRoom3DColumnLabel(27), "AA");
 assert.equal(ROOM3D_COL_GAP > 1, true);
 assert.equal(ROOM3D_COL_GAP < 1.4, true);
 assert.equal(ROOM3D_ROW_GAP > ROOM3D_COL_GAP * 2.5, true);
-assert.equal(ROOM3D_DEVICE_PULL_OUT_DISTANCE <= 0.28, true);
+assert.equal(ROOM3D_DEVICE_PULL_OUT_DISTANCE >= 0.3, true);
+assert.equal(ROOM3D_DEVICE_PULL_OUT_DISTANCE <= 0.4, true);
 const columnDominantFloor = buildRoomFloorSize(3, 8);
 assert.equal(
   columnDominantFloor.floorDepth > columnDominantFloor.floorWidth,
@@ -411,6 +424,28 @@ assert.equal(
 assert.equal(
   shouldWaitForInitialWidgetData({
     isSceneWidget: false,
+    isTableLikeChart: true,
+    hasDataSourceId: true,
+    hasResolvedDataSource: true,
+    hasRawPayload: false,
+    hasDataValidation: false,
+    requestEnabled: true,
+    hasRequested: false,
+  }),
+  true,
+);
+assert.equal(
+  shouldShowInitialWidgetLoading({
+    loading: true,
+    isTableLikeChart: true,
+    hasRawPayload: false,
+    hasSettledRequest: false,
+  }),
+  true,
+);
+assert.equal(
+  shouldWaitForInitialWidgetData({
+    isSceneWidget: false,
     isTableLikeChart: false,
     hasDataSourceId: true,
     hasResolvedDataSource: true,
@@ -436,17 +471,15 @@ assert.deepEqual(getDefaultScreenWidgetAppearance("room3D"), { frame: "bare" });
 assert.deepEqual(getDefaultScreenWidgetAppearance("line"), { frame: "panel" });
 assert.deepEqual(getRoom3DDisplayOptions({ appearance: { frame: "bare" } }), {
   immersive: true,
-  transparentScene: true,
 });
 assert.deepEqual(getRoom3DDisplayOptions({ appearance: { frame: "panel" } }), {
   immersive: false,
-  transparentScene: false,
 });
 
 const room3DWidget = createScreenWidgetItem("room3D", []);
 assert.deepEqual(room3DWidget.valueConfig.appearance, { frame: "bare" });
 
-const screenWithBareLine = addConfiguredScreenWidget(
+const screenWithUnsupportedBareLine = addConfiguredScreenWidget(
   {
     viewport: { width: 1920, height: 1080 },
     decorations: {},
@@ -459,7 +492,7 @@ const screenWithBareLine = addConfiguredScreenWidget(
     appearance: { frame: "bare" },
   },
 );
-assert.equal(screenWithBareLine.items[0].chartType, "line");
-assert.deepEqual(screenWithBareLine.items[0].valueConfig.appearance, {
-  frame: "bare",
+assert.equal(screenWithUnsupportedBareLine.items[0].chartType, "line");
+assert.deepEqual(screenWithUnsupportedBareLine.items[0].valueConfig.appearance, {
+  frame: "panel",
 });

@@ -1,8 +1,8 @@
 import os
 import tempfile
 
-from django.http import JsonResponse
 from django.db.models import Q
+from django.http import JsonResponse
 from django_filters import filters
 from django_filters.rest_framework import FilterSet
 from redis.exceptions import RedisError
@@ -16,7 +16,6 @@ from apps.core.logger import opspilot_logger as logger
 from apps.core.mixinx import EncryptMixin
 from apps.core.utils.loader import LanguageLoader
 from apps.core.utils.ssrf_validator import SSRFError, SSRFValidator
-from apps.core.utils.team_utils import get_current_team
 from apps.core.utils.viewset_utils import AuthViewSet, LanguageViewSet
 from apps.opspilot.metis.llm.tools.elasticsearch.connection import normalize_es_instance, test_es_instance
 from apps.opspilot.metis.llm.tools.jenkins.connection import normalize_jenkins_instance, test_jenkins_instance
@@ -47,16 +46,18 @@ from apps.opspilot.services.builtin_tools import (
     build_builtin_oracle_tool,
     build_builtin_redis_tool,
 )
+from apps.opspilot.services.mcp_client import MCPClient
 from apps.opspilot.services.skill_package.importer import SkillPackageImporter
 from apps.opspilot.services.skill_package.runtime import build_skill_package_prompt, build_skill_package_strategy, hydrate_skill_packages
 from apps.opspilot.utils.agui_chat import stream_agui_chat
 from apps.opspilot.utils.mcp_cache import get_cached_mcp_tools, set_cached_mcp_tools
-from apps.opspilot.services.mcp_client import MCPClient
 from apps.opspilot.utils.pin_mixin import PinMixin
 from apps.opspilot.utils.skill_execution_params import resolve_request_tools
 from apps.opspilot.utils.sse_chat import stream_chat
 from apps.opspilot.utils.vendor_model_mixin import VendorModelMixin
+from apps.system_mgmt.utils.network_whitelist_error import build_network_whitelist_error_payload
 from apps.system_mgmt.utils.operation_log_utils import log_operation
+from config.drf.renderers import CustomRenderer, EventStreamRenderer
 
 
 class LLMFilter(FilterSet):
@@ -320,7 +321,11 @@ class LLMViewSet(PinMixin, AuthViewSet):
             logger.exception("Skill execute failed: skill_id=%s", params.get("skill_id"))
             return self.create_error_stream_response(str(e))
 
-    @action(methods=["POST"], detail=False)
+    @action(
+        methods=["POST"],
+        detail=False,
+        renderer_classes=[CustomRenderer, EventStreamRenderer],
+    )
     @HasPermission("skill_setting-View")
     def execute_agui(self, request):
         """
@@ -436,8 +441,8 @@ class ObjFilter(FilterSet):
         才 fetch 一次,减少不必要请求。SSRF 校验复用 _guard_kubeconfig。
         前端传 skill_id,后端按 skill_id → cluster_name 找 kubeconfig,不暴露给前端。
         """
-        from kubernetes import client
         import yaml as _yaml
+        from kubernetes import client
 
         namespace = (request.data.get("namespace") or "").strip()
         name = (request.data.get("name") or "").strip()
@@ -451,6 +456,7 @@ class ObjFilter(FilterSet):
         try:
             # 按 skill_id 查 LLMSkill 找匹配的 kubernetes_instances
             from apps.opspilot.models import LLMSkill
+
             skill = LLMSkill.objects.filter(id=skill_id).first()
             if not skill or not skill.tools:
                 return Response(
@@ -461,13 +467,14 @@ class ObjFilter(FilterSet):
             for tool in skill.tools:
                 if tool.get("name") != "kubernetes":
                     continue
-                for kw in (tool.get("kwargs") or []):
+                for kw in tool.get("kwargs") or []:
                     if kw.get("key") != "kubernetes_instances":
                         continue
                     instances = kw.get("value")
                     if not isinstance(instances, list):
                         try:
                             import json as _json
+
                             instances = _json.loads(instances)
                         except Exception:
                             continue
@@ -483,12 +490,9 @@ class ObjFilter(FilterSet):
                     status=status.HTTP_404_NOT_FOUND,
                 )
             self._guard_kubeconfig(kubeconfig_data)
-            from apps.opspilot.metis.llm.tools.kubernetes.connection import (
-                build_kubernetes_config_from_instance,
-            )
-            instance_cfg = build_kubernetes_config_from_instance(
-                {"kubeconfig_data": kubeconfig_data}
-            )
+            from apps.opspilot.metis.llm.tools.kubernetes.connection import build_kubernetes_config_from_instance
+
+            instance_cfg = build_kubernetes_config_from_instance({"kubeconfig_data": kubeconfig_data})
             configuration = client.Configuration()
             if instance_cfg.get("verify_ssl") is not None:
                 configuration.verify_ssl = instance_cfg["verify_ssl"]
@@ -707,7 +711,9 @@ class SkillPackageViewSet(AuthViewSet):
         try:
             import shutil
             from pathlib import Path
+
             from apps.opspilot.services.skill_package.importer import DEFAULT_SKILL_PACKAGE_ROOT
+
             target = Path(storage_path_text).resolve()
             root = DEFAULT_SKILL_PACKAGE_ROOT.resolve()
             if root in target.parents and target.exists():
@@ -735,10 +741,7 @@ class SkillPackageViewSet(AuthViewSet):
         keyword = (self.request.query_params.get("search") or "").strip()
         if keyword:
             queryset = queryset.filter(
-                Q(name__icontains=keyword)
-                | Q(package_id__icontains=keyword)
-                | Q(description__icontains=keyword)
-                | Q(category__icontains=keyword)
+                Q(name__icontains=keyword) | Q(package_id__icontains=keyword) | Q(description__icontains=keyword) | Q(category__icontains=keyword)
             )
         return queryset
 
@@ -888,9 +891,23 @@ class SkillToolsViewSet(AuthViewSet):
     permission_key = "tools"
 
     def _ssrf_error_response(self, error):
-        """统一的 SSRF 拦截响应（保持 {result, message} 形状）。"""
-        message = self.loader.get("error.connection_target_forbidden") if self.loader else "Connection target is not allowed"
-        return JsonResponse({"result": False, "message": f"{message}: {error}"}, status=status.HTTP_400_BAD_REQUEST)
+        """统一 SSRF 拦截响应，并为可通过白名单放行的目标提供稳定契约。"""
+        error_code = getattr(error, "code", "CONNECTION_TARGET_FORBIDDEN")
+        if error_code == "NETWORK_WHITELIST_REQUIRED":
+            return JsonResponse(
+                build_network_whitelist_error_payload(self.loader),
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        message = (
+            self.loader.get("error.connection_target_forbidden", "Connection target is not allowed")
+            if self.loader
+            else "Connection target is not allowed"
+        )
+        return JsonResponse(
+            {"result": False, "code": error_code, "message": message},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
 
     @staticmethod
     def _guard_connection_host(host, port=None):

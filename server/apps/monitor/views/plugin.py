@@ -197,18 +197,25 @@ class MonitorPluginViewSet(viewsets.ModelViewSet):
         :return: UI 模板内容（JSON 格式）。form_fields/table_columns 内
             的 label 字段已按 request.user.locale 自动选 label/label_en。
         """
-        from apps.monitor.services.ui_template_locale import localize_ui_template
+        from apps.monitor.services.ui_template_locale import (
+            enrich_ui_template_from_plugin_files,
+            localize_ui_template,
+            resolve_support_collect_detect,
+        )
 
         plugin = self.get_object()
         locale = getattr(request.user, "locale", "zh-Hans") or "zh-Hans"
 
         try:
             ui_template = MonitorPluginUITemplate.objects.get(plugin=plugin)
+            content = enrich_ui_template_from_plugin_files(ui_template.content, plugin)
             return WebUtils.response_success(
                 {
-                    "ui_template": localize_ui_template(ui_template.content, locale),
+                    "ui_template": localize_ui_template(content, locale),
                     "node_selector": plugin.node_selector or {},
-                    "support_collect_detect": plugin.support_collect_detect,
+                    "support_collect_detect": resolve_support_collect_detect(
+                        plugin, fallback=plugin.support_collect_detect
+                    ),
                 }
             )
         except MonitorPluginUITemplate.DoesNotExist:
@@ -216,18 +223,41 @@ class MonitorPluginViewSet(viewsets.ModelViewSet):
                 {
                     "ui_template": {},
                     "node_selector": plugin.node_selector or {},
-                    "support_collect_detect": plugin.support_collect_detect,
+                    "support_collect_detect": resolve_support_collect_detect(
+                        plugin, fallback=plugin.support_collect_detect
+                    ),
                 }
             )
 
     @action(methods=["get"], detail=False, url_path="ui_template_by_params")
     def get_ui_template_by_params(self, request):
         """根据采集器名称和采集类型以及监控对象获取插件的 UI 模板。"""
+        from apps.monitor.services.ui_template_locale import (
+            enrich_ui_template_from_plugin_files,
+            localize_ui_template,
+            resolve_support_collect_detect,
+        )
+
         collector = request.query_params.get("collector")
         collect_type = request.query_params.get("collect_type")
         monitor_object_id = request.query_params.get("monitor_object_id")
+        locale = getattr(request.user, "locale", "zh-Hans") or "zh-Hans"
 
         ui_template = MonitorPluginService.get_ui_template_by_params(collector, collect_type, monitor_object_id)
+        plugin = (
+            MonitorPlugin.objects.filter(
+                monitor_object__id=monitor_object_id,
+                collector=collector,
+                collect_type=collect_type,
+                template_type="builtin",
+            )
+            .first()
+        )
+        content = enrich_ui_template_from_plugin_files(ui_template.get("ui_template"), plugin)
+        ui_template["ui_template"] = localize_ui_template(content or {}, locale) if content else content
+        ui_template["support_collect_detect"] = resolve_support_collect_detect(
+            plugin, fallback=bool(ui_template.get("support_collect_detect"))
+        )
         return WebUtils.response_success(ui_template)
 
     @action(methods=["get", "put"], detail=True, url_path="collect_template")

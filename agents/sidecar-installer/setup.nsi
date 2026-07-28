@@ -139,15 +139,20 @@ Function OnFetchClick
 
     ${NSD_SetText} $ConfigInfoBox "Fetching..."
 
-    ; Create install dir first, extract worker there
-    CreateDirectory "$INSTDIR"
-    SetOutPath "$INSTDIR"
+    ; Keep the running worker outside $INSTDIR because the worker activates
+    ; Windows packages by atomically renaming the installation directory.
+    InitPluginsDir
+    SetOutPath "$PLUGINSDIR"
     File "setup-worker.exe"
+	FileOpen $R0 "$PLUGINSDIR\installer-session.url" w
+	FileWrite $R0 "$ConfigURL"
+	FileClose $R0
 
     ; Run fetch-only mode
-    nsExec::ExecToStack '"$INSTDIR\setup-worker.exe" --url "$ConfigURL" --fetch-only --skip-tls'
+    nsExec::ExecToStack '"$PLUGINSDIR\setup-worker.exe" --url-file "$PLUGINSDIR\installer-session.url" --fetch-only --skip-tls'
     Pop $0
     Pop $1
+	Delete "$PLUGINSDIR\installer-session.url"
 
     ${If} $0 != 0
         ${NSD_SetText} $ConfigInfoBox "Error: $1"
@@ -177,18 +182,22 @@ FunctionEnd
 ; ============================================================================
 
 Section "Install" SecInstall
-    SetOutPath $INSTDIR
-
-    ; Worker already extracted during config page
-    IfFileExists "$INSTDIR\setup-worker.exe" +2
+    ; Worker is isolated from the transactional installation directory.
+    InitPluginsDir
+    SetOutPath "$PLUGINSDIR"
+    IfFileExists "$PLUGINSDIR\setup-worker.exe" +2
         File "setup-worker.exe"
 
+    SetOutPath "$INSTDIR"
     DetailPrint "Install: $INSTDIR"
-    DetailPrint "URL: $ConfigURL"
     DetailPrint ""
+	FileOpen $R0 "$PLUGINSDIR\installer-session.url" w
+	FileWrite $R0 "$ConfigURL"
+	FileClose $R0
 
-    nsExec::ExecToLog '"$INSTDIR\setup-worker.exe" --url "$ConfigURL" --install-dir "$INSTDIR" --skip-tls'
+    nsExec::ExecToLog '"$PLUGINSDIR\setup-worker.exe" --url-file "$PLUGINSDIR\installer-session.url" --install-dir "$INSTDIR" --skip-tls'
     Pop $0
+	Delete "$PLUGINSDIR\installer-session.url"
 
     ${If} $0 != 0
         DetailPrint ""
@@ -198,14 +207,13 @@ Section "Install" SecInstall
     ${EndIf}
 
     ; Cleanup worker
-    Delete "$INSTDIR\setup-worker.exe"
+    Delete "$PLUGINSDIR\setup-worker.exe"
 
     DetailPrint ""
     DetailPrint "Done!"
 
     ; Registry
     WriteRegStr HKLM "Software\FusionCollectors\Sidecar" "InstallDir" "$INSTDIR"
-    WriteRegStr HKLM "Software\FusionCollectors\Sidecar" "ConfigURL" "$ConfigURL"
 
     WriteUninstaller "$INSTDIR\uninstall.exe"
 

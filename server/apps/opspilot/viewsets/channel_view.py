@@ -2,9 +2,12 @@ from django_filters import filters
 from django_filters.rest_framework import FilterSet
 from rest_framework import viewsets
 
+from apps.core.decorators.api_permission import HasRole
 from apps.opspilot.models import Channel
 from apps.opspilot.serializers import ChannelSerializer
 from apps.system_mgmt.utils.operation_log_utils import log_operation
+
+CHANNEL_ADMIN_ROLES = [*HasRole("admin").roles, "opspilot--admin"]
 
 
 class ObjFilter(FilterSet):
@@ -16,6 +19,15 @@ class ChannelViewSet(viewsets.ModelViewSet):
     serializer_class = ChannelSerializer
     filterset_class = ObjFilter
 
+    @HasRole(CHANNEL_ADMIN_ROLES)
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+
+    @HasRole(CHANNEL_ADMIN_ROLES)
+    def retrieve(self, request, *args, **kwargs):
+        return super().retrieve(request, *args, **kwargs)
+
+    @HasRole(CHANNEL_ADMIN_ROLES)
     def create(self, request, *args, **kwargs):
         response = super().create(request, *args, **kwargs)
         if response.status_code >= 200 and response.status_code < 300:
@@ -25,6 +37,7 @@ class ChannelViewSet(viewsets.ModelViewSet):
             log_operation(request, "create", "opspilot", f"新增渠道: {channel_name}")
         return response
 
+    @HasRole(CHANNEL_ADMIN_ROLES)
     def update(self, request, *args, **kwargs):
         response = super().update(request, *args, **kwargs)
         if response.status_code >= 200 and response.status_code < 300:
@@ -34,6 +47,11 @@ class ChannelViewSet(viewsets.ModelViewSet):
             log_operation(request, "update", "opspilot", f"编辑渠道: {channel_name}")
         return response
 
+    @HasRole(CHANNEL_ADMIN_ROLES)
+    def partial_update(self, request, *args, **kwargs):
+        return super().partial_update(request, *args, **kwargs)
+
+    @HasRole(CHANNEL_ADMIN_ROLES)
     def destroy(self, request, *args, **kwargs):
         obj = self.get_object()
         response = super().destroy(request, *args, **kwargs)

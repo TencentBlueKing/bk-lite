@@ -4,7 +4,9 @@ import os
 from copy import deepcopy
 
 from django.core.management import BaseCommand
+from django.db import transaction
 
+from apps.core.utils.permission_cache import clear_all_permission_cache
 from apps.system_mgmt.management.commands._install_apps import get_install_apps
 from apps.system_mgmt.models import App, Group, Menu, Role
 
@@ -33,25 +35,38 @@ class Command(BaseCommand):
                         logger.error(f"Error reading {file_path}: {e}")
 
         print(f"Read {len(MENUS)} menu files")
-        for app_obj in MENUS:
-            app_inst, _ = App.objects.update_or_create(
-                name=app_obj["client_id"],
-                defaults={
-                    "display_name": app_obj["name"],
-                    "description": app_obj["description"],
-                    "is_build_in": True,
-                    "url": app_obj["url"],
-                    "icon": app_obj.get("icon", app_obj["client_id"]),
-                    "tags": app_obj.get("tags", []),
-                },
-            )
-            print(f"create {app_obj['client_id']} success")
-            create_resource(app_inst, app_obj["menus"])
-            print(f"create {app_obj['client_id']} resource success")
-            create_default_roles(app_inst, app_obj["roles"])
-            print(f"create {app_obj['client_id']} roles success")
-        Group.objects.get_or_create(name="Default", parent_id=0, defaults={"description": "Default group"})
-        Group.objects.get_or_create(name="Guest", parent_id=0, defaults={"description": "Guest group"})
+        with transaction.atomic():
+            permission_signature_before = _permission_signature()
+            for app_obj in MENUS:
+                app_inst, _ = App.objects.update_or_create(
+                    name=app_obj["client_id"],
+                    defaults={
+                        "display_name": app_obj["name"],
+                        "description": app_obj["description"],
+                        "is_build_in": True,
+                        "url": app_obj["url"],
+                        "icon": app_obj.get("icon", app_obj["client_id"]),
+                        "tags": app_obj.get("tags", []),
+                    },
+                )
+                print(f"create {app_obj['client_id']} success")
+                create_resource(app_inst, app_obj["menus"])
+                print(f"create {app_obj['client_id']} resource success")
+                create_default_roles(app_inst, app_obj["roles"])
+                print(f"create {app_obj['client_id']} roles success")
+            Group.objects.get_or_create(name="Default", parent_id=0, defaults={"description": "Default group"})
+            Group.objects.get_or_create(name="Guest", parent_id=0, defaults={"description": "Guest group"})
+            if _permission_signature() != permission_signature_before:
+                clear_all_permission_cache()
+
+
+def _permission_signature():
+    """返回会影响鉴权结果的菜单/角色签名，避免 no-op 启动全量打冷缓存。"""
+    menus = tuple(Menu.objects.order_by("id").values_list("id", "app", "name"))
+    roles = tuple(
+        (role.id, role.app, role.name, tuple(role.menu_list or [])) for role in Role.objects.order_by("id").only("id", "app", "name", "menu_list")
+    )
+    return menus, roles
 
 
 def extend_menus_by_install_apps(menu_data: dict, install_apps: set[str]) -> dict:

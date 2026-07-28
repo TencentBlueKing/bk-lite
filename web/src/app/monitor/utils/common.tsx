@@ -551,7 +551,7 @@ export const getIconByObjectName = (objectName = '', objects: ObjectItem[]) => {
 // 品牌专属采集模板/实例（如思科交换机）的品牌识别：按名称匹配 → 提供品牌标签（及可选 logo 图标）。
 // icon 可选：未提供时集成卡片回退到监控对象默认图标，仪表盘头部仍展示品牌文字标签。
 const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
-  { match: /cisco/i, label: 'Cisco', icon: 'mm-cisco_思科' },
+  { match: /^(?!.*san_cisco).*cisco/i, label: 'Cisco', icon: 'mm-cisco_思科' },
   { match: /huawei/i, label: 'Huawei', icon: 'mm-huawei_华为' },
   { match: /aruba/i, label: 'Aruba', icon: 'mm-aruba_aruba' },
   { match: /juniper/i, label: 'Juniper', icon: 'mm-juniper_juniper' },
@@ -784,7 +784,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /infinera|coriant|groove/i, label: 'Infinera', icon: 'mm-infinera_infinera' },
   { match: /bridgewave|flexport|fe80/i, label: 'BridgeWave', icon: 'mm-bridgewave_bridgewave' },
   { match: /huber\s*\+?\s*suhner|cubo\s*mini|cube\s*optics/i, label: 'Huber+Suhner Cubo', icon: 'mm-hubersuhner_hubersuhner' },
-  { match: /fibrolan|falcon/i, label: 'Fibrolan', icon: 'mm-fibrolan_fibrolan' },
+  { match: /fibrolan|falcon(?!stor)/i, label: 'Fibrolan', icon: 'mm-fibrolan_fibrolan' },
   { match: /smartoptics/i, label: 'Smartoptics', icon: 'mm-smartoptics_smartoptics' },
   { match: /racom|\bray\b/i, label: 'RACOM', icon: 'mm-racom_racom' },
   { match: /ifotec/i, label: 'Ifotec', icon: 'mm-ifotec_ifotec' },

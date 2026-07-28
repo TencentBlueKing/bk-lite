@@ -144,7 +144,7 @@ export const NODE_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '读 IOPS',
       description: '每秒磁盘读操作次数。',
       unit: 'counts',
-      query: 'rate(diskio_reads{instance_type="k3s", __$labels__}[5m])',
+      query: 'rate(diskio_reads{instance_type="k3s", __$labels__}[__$window__])',
       color: '#9254de',
       dimensions: [{ name: 'name' }]
     },
@@ -153,7 +153,7 @@ export const NODE_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '写 IOPS',
       description: '每秒磁盘写操作次数。',
       unit: 'counts',
-      query: 'rate(diskio_writes{instance_type="k3s", __$labels__}[5m])',
+      query: 'rate(diskio_writes{instance_type="k3s", __$labels__}[__$window__])',
       color: '#f5a623',
       dimensions: [{ name: 'name' }]
     },
@@ -162,7 +162,7 @@ export const NODE_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '读吞吐',
       description: '每秒从磁盘读取的数据量。',
       unit: 'byteps',
-      query: 'rate(diskio_read_bytes{instance_type="k3s", __$labels__}[5m])',
+      query: 'rate(diskio_read_bytes{instance_type="k3s", __$labels__}[__$window__])',
       color: '#9254de',
       dimensions: [{ name: 'name' }]
     },
@@ -171,7 +171,7 @@ export const NODE_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '写吞吐',
       description: '每秒写入磁盘的数据量。',
       unit: 'byteps',
-      query: 'rate(diskio_write_bytes{instance_type="k3s", __$labels__}[5m])',
+      query: 'rate(diskio_write_bytes{instance_type="k3s", __$labels__}[__$window__])',
       color: '#f5a623',
       dimensions: [{ name: 'name' }]
     },
@@ -180,7 +180,7 @@ export const NODE_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '读延迟',
       description: '磁盘读操作平均延迟。',
       unit: 'ms',
-      query: 'rate(diskio_read_time{instance_type="k3s", __$labels__}[5m]) / clamp_min(rate(diskio_reads{instance_type="k3s", __$labels__}[5m]), 1e-9)',
+      query: 'rate(diskio_read_time{instance_type="k3s", __$labels__}[__$window__]) / clamp_min(rate(diskio_reads{instance_type="k3s", __$labels__}[__$window__]), 1e-9)',
       color: '#9254de',
       dimensions: [{ name: 'name' }]
     },
@@ -189,7 +189,7 @@ export const NODE_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '写延迟',
       description: '磁盘写操作平均延迟。',
       unit: 'ms',
-      query: 'rate(diskio_write_time{instance_type="k3s", __$labels__}[5m]) / clamp_min(rate(diskio_writes{instance_type="k3s", __$labels__}[5m]), 1e-9)',
+      query: 'rate(diskio_write_time{instance_type="k3s", __$labels__}[__$window__]) / clamp_min(rate(diskio_writes{instance_type="k3s", __$labels__}[__$window__]), 1e-9)',
       color: '#f5a623',
       dimensions: [{ name: 'name' }]
     },
@@ -198,7 +198,7 @@ export const NODE_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '接收吞吐',
       description: '网络接口每秒接收的数据量。',
       unit: 'byteps',
-      query: 'rate(net_bytes_recv{instance_type="k3s", __$labels__}[5m])',
+      query: 'rate(net_bytes_recv{instance_type="k3s", __$labels__}[__$window__])',
       color: '#13c2c2',
       dimensions: [{ name: 'interface' }]
     },
@@ -207,7 +207,7 @@ export const NODE_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '发送吞吐',
       description: '网络接口每秒发送的数据量。',
       unit: 'byteps',
-      query: 'rate(net_bytes_sent{instance_type="k3s", __$labels__}[5m])',
+      query: 'rate(net_bytes_sent{instance_type="k3s", __$labels__}[__$window__])',
       color: '#597ef7',
       dimensions: [{ name: 'interface' }]
     },
@@ -216,7 +216,7 @@ export const NODE_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '接收包速率',
       description: '网络接口每秒接收的数据包数。',
       unit: 'cps',
-      query: 'rate(net_packets_recv{instance_type="k3s", __$labels__}[5m])',
+      query: 'rate(net_packets_recv{instance_type="k3s", __$labels__}[__$window__])',
       color: '#36cfc9',
       dimensions: [{ name: 'interface' }]
     },
@@ -225,7 +225,7 @@ export const NODE_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '发送包速率',
       description: '网络接口每秒发送的数据包数。',
       unit: 'cps',
-      query: 'rate(net_packets_sent{instance_type="k3s", __$labels__}[5m])',
+      query: 'rate(net_packets_sent{instance_type="k3s", __$labels__}[__$window__])',
       color: '#9254de',
       dimensions: [{ name: 'interface' }]
     },

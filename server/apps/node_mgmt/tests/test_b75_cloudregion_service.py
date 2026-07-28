@@ -13,7 +13,7 @@ from apps.node_mgmt.constants.cloudregion_service import CloudRegionServiceConst
 from apps.node_mgmt.constants.database import CloudRegionConstants, EnvVariableConstants
 from apps.node_mgmt.constants.node import NodeConstants
 from apps.node_mgmt.models import SidecarEnv
-from apps.node_mgmt.models.cloud_region import CloudRegion
+from apps.node_mgmt.models.cloud_region import CloudRegion, CloudRegionService
 from apps.node_mgmt.services.cloudregion import RegionService
 
 
@@ -254,7 +254,9 @@ def test_init_env_vars_region_not_found_returns_zero():
 
 
 @pytest.mark.django_db
-def test_init_env_vars_copies_default_and_replaces_addresses():
+def test_init_env_vars_copies_default_and_replaces_addresses(
+    django_capture_on_commit_callbacks,
+):
     default_region = CloudRegion.objects.create(
         id=CloudRegionConstants.DEFAULT_CLOUD_REGION_ID, name="default-init"
     )
@@ -273,7 +275,9 @@ def test_init_env_vars_copies_default_and_replaces_addresses():
         is_pre=True,
     )
     new_region = CloudRegion.objects.create(name="new-init", proxy_address="9.9.9.9")
-    with patch("apps.node_mgmt.services.cloudregion.invalidate_sidecar_env_cache") as inv:
+    with patch(
+        "apps.node_mgmt.services.cloudregion.invalidate_sidecar_env_cache"
+    ) as inv, django_capture_on_commit_callbacks(execute=True):
         created = RegionService.init_env_vars(new_region.id)
     assert created >= 2
     inv.assert_called_once()
@@ -392,6 +396,341 @@ def test_get_deploy_script_success_calls_webhook_and_returns_script():
     assert script == "echo hello"
     called_url = post_mock.call_args.args[0]
     assert called_url == "https://webhook.local/infra/proxy"
+
+
+@pytest.mark.django_db
+def test_get_deploy_script_prefers_runtime_webhook_url():
+    region = CloudRegion.objects.create(
+        name="cr-deploy-runtime-webhook",
+        proxy_address="6.6.6.7",
+    )
+    _build_complete_env(region.id)
+
+    def fake_getenv(key, default=None):
+        return {
+            "WEBHOOK_SERVER_URL": "http://127.0.0.1:18080",
+            "NATS_ADMIN_USERNAME": "u",
+            "NATS_ADMIN_PASSWORD": "p",
+        }.get(key, default)
+
+    response = MagicMock()
+    response.status_code = 200
+    response.json.return_value = {"install_script": "echo hello"}
+
+    with patch(
+        "apps.node_mgmt.services.cloudregion.os.getenv",
+        side_effect=fake_getenv,
+    ), patch(
+        "apps.node_mgmt.services.cloudregion.requests.post",
+        return_value=response,
+    ) as post_mock, patch(
+        "apps.node_mgmt.services.cloudregion.generate_node_token",
+        return_value="tok",
+    ):
+        RegionService.get_deploy_script({"cloud_region_id": region.id})
+
+    called_url = post_mock.call_args.args[0]
+    assert called_url == "http://127.0.0.1:18080/infra/proxy"
+
+
+@pytest.mark.django_db
+def test_get_deploy_script_rejects_default_cloud_region():
+    region, _ = CloudRegion.objects.update_or_create(
+        id=CloudRegionConstants.DEFAULT_CLOUD_REGION_ID,
+        defaults={"name": "default", "proxy_address": "127.0.0.1"},
+    )
+
+    with pytest.raises(BaseAppException) as exc:
+        RegionService.get_deploy_script({"cloud_region_id": region.id})
+
+    assert "平台统一维护" in str(exc.value)
+
+
+@pytest.mark.django_db
+def test_get_deploy_script_uses_pending_address_without_mutating_current_config():
+    region = CloudRegion.objects.create(
+        name="cr-deploy-pending",
+        proxy_address="old.proxy.local",
+        pending_proxy_address="new.proxy.local",
+    )
+    _build_complete_env(region.id)
+    SidecarEnv.objects.filter(
+        cloud_region=region,
+        key="NODE_SERVER_URL",
+    ).update(value="https://old.proxy.local:443")
+    SidecarEnv.objects.filter(
+        cloud_region=region,
+        key="NATS_SERVERS",
+    ).update(value="nats://old.proxy.local:4222")
+
+    def fake_getenv(key, default=None):
+        return {"NATS_ADMIN_USERNAME": "u", "NATS_ADMIN_PASSWORD": "p"}.get(key, default)
+
+    response = MagicMock(status_code=200)
+    response.json.return_value = {"install_script": "echo pending"}
+
+    with patch("apps.node_mgmt.services.cloudregion.os.getenv", side_effect=fake_getenv), patch(
+        "apps.node_mgmt.services.cloudregion.requests.post", return_value=response
+    ) as post_mock, patch(
+        "apps.node_mgmt.services.cloudregion.generate_node_token", return_value="tok"
+    ):
+        RegionService.get_deploy_script({"cloud_region_id": region.id})
+
+    webhook_payload = post_mock.call_args.kwargs["json"]
+    assert webhook_payload["proxy_ip"] == "new.proxy.local"
+    assert webhook_payload["server_url"] == "https://new.proxy.local:443"
+    assert webhook_payload["nats_url"] == "nats://new.proxy.local:4222"
+    region.refresh_from_db()
+    assert region.proxy_address == "old.proxy.local"
+    assert SidecarEnv.objects.get(cloud_region=region, key="NODE_SERVER_URL").value == "https://old.proxy.local:443"
+
+
+@pytest.mark.django_db
+def test_pending_deploy_script_rejects_proxy_environment_drift():
+    region = CloudRegion.objects.create(
+        name="cr-pending-drift",
+        proxy_address="old.proxy.local",
+        pending_proxy_address="new.proxy.local",
+    )
+    _build_complete_env(region.id)
+    SidecarEnv.objects.filter(
+        cloud_region=region,
+        key=NodeConstants.SERVER_URL_KEY,
+    ).update(value="https://unexpected.proxy.local:443")
+    SidecarEnv.objects.filter(
+        cloud_region=region,
+        key=NodeConstants.NATS_SERVERS_KEY,
+    ).update(value="nats://unexpected.proxy.local:4222")
+
+    with patch(
+        "apps.node_mgmt.services.cloudregion.requests.post"
+    ) as post_mock, pytest.raises(BaseAppException, match="环境变量"):
+        RegionService.get_deploy_script({"cloud_region_id": region.id})
+
+    post_mock.assert_not_called()
+
+
+@pytest.mark.django_db
+def test_stage_and_cancel_proxy_address_do_not_change_current_address():
+    region = CloudRegion.objects.create(name="cr-stage", proxy_address="old.proxy.local")
+
+    RegionService.stage_proxy_address(region.id, "new.proxy.local")
+    region.refresh_from_db()
+    assert region.proxy_address == "old.proxy.local"
+    assert region.pending_proxy_address == "new.proxy.local"
+    assert region.pending_proxy_address_created_at is not None
+
+    RegionService.cancel_pending_proxy_address(region.id)
+    region.refresh_from_db()
+    assert region.proxy_address == "old.proxy.local"
+    assert region.pending_proxy_address is None
+    assert region.pending_proxy_address_created_at is None
+
+
+@pytest.mark.django_db
+def test_stage_proxy_address_normalizes_ipv6_for_url_substitution():
+    region = CloudRegion.objects.create(
+        name="cr-stage-ipv6",
+        proxy_address="old.proxy.local",
+    )
+
+    RegionService.stage_proxy_address(region.id, "2001:db8::8")
+
+    region.refresh_from_db()
+    assert region.pending_proxy_address == "[2001:db8::8]"
+
+
+@pytest.mark.django_db
+def test_activate_pending_proxy_address_requires_confirmation_and_healthy_services():
+    region = CloudRegion.objects.create(
+        name="cr-activate-guard",
+        proxy_address="old.proxy.local",
+        pending_proxy_address="new.proxy.local",
+    )
+    for service_name in CloudRegionServiceConstants.SERVICES:
+        CloudRegionService.objects.create(
+            cloud_region=region,
+            name=service_name,
+            status=CloudRegionServiceConstants.N_ERROR,
+            deployed_status=CloudRegionServiceConstants.DEPLOYED,
+        )
+
+    with pytest.raises(BaseAppException, match="确认"):
+        RegionService.activate_pending_proxy_address(region.id, confirmed=False)
+    unhealthy_checks = {
+        service_name: lambda _: (
+            CloudRegionServiceConstants.N_ERROR,
+            "unreachable",
+        )
+        for service_name in CloudRegionServiceConstants.SERVICES
+    }
+    with patch.dict(
+        "apps.node_mgmt.tasks.services.cloud_service_check_health.SERVICES_FUNC",
+        unhealthy_checks,
+        clear=True,
+    ), pytest.raises(BaseAppException, match="健康检查"):
+        RegionService.activate_pending_proxy_address(region.id, confirmed=True)
+
+    region.refresh_from_db()
+    assert region.proxy_address == "old.proxy.local"
+    assert region.pending_proxy_address == "new.proxy.local"
+
+
+@pytest.mark.django_db
+def test_activate_rechecks_live_health_instead_of_trusting_stored_status():
+    region = CloudRegion.objects.create(
+        name="cr-live-health",
+        proxy_address="old.proxy.local",
+        pending_proxy_address="new.proxy.local",
+    )
+    for service_name in CloudRegionServiceConstants.SERVICES:
+        CloudRegionService.objects.create(
+            cloud_region=region,
+            name=service_name,
+            status=CloudRegionServiceConstants.N_ERROR,
+            deployed_status=CloudRegionServiceConstants.NOT_DEPLOYED_STATUS,
+        )
+    SidecarEnv.objects.create(
+        cloud_region=region,
+        key=NodeConstants.SERVER_URL_KEY,
+        value="https://old.proxy.local:443",
+        type="str",
+    )
+    SidecarEnv.objects.create(
+        cloud_region=region,
+        key=NodeConstants.NATS_SERVERS_KEY,
+        value="nats://old.proxy.local:4222",
+        type="str",
+    )
+    live_checks = {
+        CloudRegionServiceConstants.STARGAZER_SERVICE_NAME: lambda _: (
+            CloudRegionServiceConstants.NORMAL,
+            "ok",
+        ),
+        CloudRegionServiceConstants.NATS_EXECUTOR_SERVICE_NAME: lambda _: (
+            CloudRegionServiceConstants.N_ERROR,
+            "unreachable",
+        ),
+    }
+
+    with patch.dict(
+        "apps.node_mgmt.tasks.services.cloud_service_check_health.SERVICES_FUNC",
+        live_checks,
+        clear=True,
+    ), pytest.raises(BaseAppException, match="健康检查"):
+        RegionService.activate_pending_proxy_address(region.id, confirmed=True)
+
+    region.refresh_from_db()
+    assert region.proxy_address == "old.proxy.local"
+    assert region.pending_proxy_address == "new.proxy.local"
+
+
+@pytest.mark.django_db
+def test_activate_rolls_back_when_proxy_related_environment_has_drifted():
+    region = CloudRegion.objects.create(
+        name="cr-env-drift",
+        proxy_address="old.proxy.local",
+        pending_proxy_address="new.proxy.local",
+    )
+    for service_name in CloudRegionServiceConstants.SERVICES:
+        CloudRegionService.objects.create(
+            cloud_region=region,
+            name=service_name,
+            status=CloudRegionServiceConstants.N_ERROR,
+            deployed_status=CloudRegionServiceConstants.NOT_DEPLOYED_STATUS,
+        )
+    SidecarEnv.objects.create(
+        cloud_region=region,
+        key=NodeConstants.SERVER_URL_KEY,
+        value="https://unexpected.proxy.local:443",
+        type="str",
+    )
+    SidecarEnv.objects.create(
+        cloud_region=region,
+        key=NodeConstants.NATS_SERVERS_KEY,
+        value="nats://unexpected.proxy.local:4222",
+        type="str",
+    )
+    healthy_checks = {
+        service_name: lambda _: (CloudRegionServiceConstants.NORMAL, "ok")
+        for service_name in CloudRegionServiceConstants.SERVICES
+    }
+
+    with patch.dict(
+        "apps.node_mgmt.tasks.services.cloud_service_check_health.SERVICES_FUNC",
+        healthy_checks,
+        clear=True,
+    ), pytest.raises(BaseAppException, match="环境变量"):
+        RegionService.activate_pending_proxy_address(region.id, confirmed=True)
+
+    region.refresh_from_db()
+    assert region.proxy_address == "old.proxy.local"
+    assert region.pending_proxy_address == "new.proxy.local"
+    assert (
+        SidecarEnv.objects.get(
+            cloud_region=region,
+            key=NodeConstants.SERVER_URL_KEY,
+        ).value
+        == "https://unexpected.proxy.local:443"
+    )
+
+
+@pytest.mark.django_db
+def test_activate_pending_proxy_address_updates_current_address_and_env_vars(
+    django_capture_on_commit_callbacks,
+):
+    region = CloudRegion.objects.create(
+        name="cr-activate",
+        proxy_address="old.proxy.local",
+        pending_proxy_address="new.proxy.local",
+    )
+    SidecarEnv.objects.create(
+        cloud_region=region,
+        key="NODE_SERVER_URL",
+        value="https://old.proxy.local:443",
+        type="str",
+    )
+    SidecarEnv.objects.create(
+        cloud_region=region,
+        key="NATS_SERVERS",
+        value="nats://old.proxy.local:4222",
+        type="str",
+    )
+    for service_name in CloudRegionServiceConstants.SERVICES:
+        CloudRegionService.objects.create(
+            cloud_region=region,
+            name=service_name,
+            status=CloudRegionServiceConstants.N_ERROR,
+            deployed_status=CloudRegionServiceConstants.NOT_DEPLOYED_STATUS,
+        )
+
+    healthy_checks = {
+        service_name: lambda _: (CloudRegionServiceConstants.NORMAL, "ok")
+        for service_name in CloudRegionServiceConstants.SERVICES
+    }
+    with patch.object(
+        RegionService,
+        "_get_default_proxy_address",
+        return_value="default.local",
+    ), patch.dict(
+        "apps.node_mgmt.tasks.services.cloud_service_check_health.SERVICES_FUNC",
+        healthy_checks,
+        clear=True,
+    ), patch(
+        "apps.node_mgmt.services.cloudregion.invalidate_sidecar_env_cache"
+    ) as invalidate_cache, django_capture_on_commit_callbacks(execute=True):
+        RegionService.activate_pending_proxy_address(region.id, confirmed=True)
+
+    region.refresh_from_db()
+    invalidate_cache.assert_called_once_with([region.id])
+    assert region.proxy_address == "new.proxy.local"
+    assert region.pending_proxy_address is None
+    assert not region.cloudregionservice_set.exclude(
+        status=CloudRegionServiceConstants.NORMAL,
+        deployed_status=CloudRegionServiceConstants.DEPLOYED,
+    ).exists()
+    assert SidecarEnv.objects.get(cloud_region=region, key="NODE_SERVER_URL").value == "https://new.proxy.local:443"
+    assert SidecarEnv.objects.get(cloud_region=region, key="NATS_SERVERS").value == "nats://new.proxy.local:4222"
 
 
 @pytest.mark.django_db

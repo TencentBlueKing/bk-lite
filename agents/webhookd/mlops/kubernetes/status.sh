@@ -77,8 +77,14 @@ query_resource_status() {
     
     # 尝试查询 Job（训练任务）
     set +e
-    JOB_JSON=$(kubectl get job "$k8s_name" -n "$namespace" -o json 2>/dev/null)
+    JOB_JSON=$(kubectl get job "$k8s_name" -n "$namespace" --ignore-not-found -o json 2>/dev/null)
+    JOB_GET_STATUS=$?
     set -e
+
+    if [ $JOB_GET_STATUS -ne 0 ]; then
+        echo "{\"status\":\"error\",\"id\":\"$resource_id\",\"state\":\"unknown\",\"port\":\"\",\"detail\":\"Failed to query Job\"}"
+        return
+    fi
     
     if [ -n "$JOB_JSON" ]; then
         # 检查是否正在删除中（有 deletionTimestamp）
@@ -177,8 +183,14 @@ query_resource_status() {
     
     # 尝试查询 Deployment（推理服务）
     set +e
-    DEPLOYMENT_JSON=$(kubectl get deployment "$k8s_name" -n "$namespace" -o json 2>/dev/null)
+    DEPLOYMENT_JSON=$(kubectl get deployment "$k8s_name" -n "$namespace" --ignore-not-found -o json 2>/dev/null)
+    DEPLOYMENT_GET_STATUS=$?
     set -e
+
+    if [ $DEPLOYMENT_GET_STATUS -ne 0 ]; then
+        echo "{\"status\":\"error\",\"id\":\"$resource_id\",\"state\":\"unknown\",\"port\":\"\",\"detail\":\"Failed to query Deployment\"}"
+        return
+    fi
     
     if [ -n "$DEPLOYMENT_JSON" ]; then
         # 检查是否正在删除中（有 deletionTimestamp）
@@ -229,8 +241,25 @@ query_resource_status() {
         return
     fi
     
-    # 资源不存在
-    echo "{\"status\":\"success\",\"id\":\"$resource_id\",\"state\":\"not_found\",\"port\":\"\",\"detail\":\"Resource does not exist\"}"
+    # Deployment/Job 不存在时仍需检查独立残留的 Service；只有三类资源都
+    # 明确不存在，not_found 才能作为清理完成的证明。
+    SERVICE_NAME="${k8s_name}-svc"
+    set +e
+    SERVICE_JSON=$(kubectl get service "$SERVICE_NAME" -n "$namespace" --ignore-not-found -o json 2>/dev/null)
+    SERVICE_GET_STATUS=$?
+    set -e
+
+    if [ $SERVICE_GET_STATUS -ne 0 ]; then
+        echo "{\"status\":\"error\",\"id\":\"$resource_id\",\"state\":\"unknown\",\"port\":\"\",\"detail\":\"Failed to query Service\"}"
+        return
+    fi
+
+    if [ -n "$SERVICE_JSON" ]; then
+        echo "{\"status\":\"success\",\"id\":\"$resource_id\",\"state\":\"orphaned\",\"port\":\"\",\"detail\":\"Service exists without Deployment or Job\"}"
+        return
+    fi
+
+    echo "{\"status\":\"success\",\"id\":\"$resource_id\",\"state\":\"not_found\",\"port\":\"\",\"detail\":\"Job, Deployment and Service do not exist\"}"
 }
 
 # 构建结果数组

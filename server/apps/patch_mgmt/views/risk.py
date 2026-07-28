@@ -10,6 +10,7 @@ from rest_framework.response import Response
 
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.utils.viewset_utils import AuthViewSet
+from apps.patch_mgmt.exceptions import PatchBusinessError
 from apps.patch_mgmt.models import GovernanceTask, Patch, PatchBaseline, PatchTarget
 from apps.patch_mgmt.serializers.governance import GovernanceTaskListSerializer
 from apps.patch_mgmt.services.risk_service import (
@@ -20,6 +21,7 @@ from apps.patch_mgmt.services.risk_service import (
     filter_risk_items,
 )
 from apps.patch_mgmt.utils.data_permissions import require_authorized_ids
+from apps.patch_mgmt.utils.i18n import patch_message, render_business_error
 
 
 def _paginate(data, params):
@@ -116,7 +118,7 @@ class RiskViewSet(AuthViewSet):
         for item in data:
             if str(item.get("key")) == str(pk):
                 return Response(item)
-        return Response({"detail": "未找到"}, status=404)
+        return Response({"detail": patch_message(request, "error.not_found", "Not found")}, status=404)
 
     @action(detail=False, methods=["get"])
     @HasPermission("patch_risk-View")
@@ -160,7 +162,7 @@ class RiskViewSet(AuthViewSet):
 
         items = request.data.get("items") or []
         if not isinstance(items, list) or not items:
-            return Response({"detail": "items 不能为空"}, status=400)
+            return Response({"detail": patch_message(request, "error.items_required", "items is required")}, status=400)
         require_authorized_ids(
             self,
             request,
@@ -179,11 +181,11 @@ class RiskViewSet(AuthViewSet):
             task = create_remediation_task(request, items, request.data)
         except HostBusyError as exc:
             return Response(
-                {"code": "host_busy", "detail": str(exc), "target_ids": exc.target_ids},
+                {"code": exc.code, "detail": render_business_error(request, exc), "target_ids": exc.target_ids},
                 status=409,
             )
-        except ValueError as exc:
-            return Response({"detail": str(exc)}, status=400)
+        except PatchBusinessError as exc:
+            return Response({"code": exc.code, "detail": render_business_error(request, exc)}, status=400)
         return Response({"task_id": task.id, "name": task.name, "status": task.status}, status=201)
 
     @action(detail=False, methods=["post"])
@@ -203,7 +205,7 @@ class RiskViewSet(AuthViewSet):
 
         target_ids = request.data.get("target_ids") or []
         if not isinstance(target_ids, list) or not target_ids:
-            return Response({"detail": "target_ids 不能为空"}, status=400)
+            return Response({"detail": patch_message(request, "error.target_ids_required", "target_ids is required")}, status=400)
         require_authorized_ids(
             self, request, PatchTarget.objects.all(), target_ids, "patch_target"
         )
@@ -211,9 +213,9 @@ class RiskViewSet(AuthViewSet):
             task = create_reboot_task(request, target_ids, request.data)
         except HostBusyError as exc:
             return Response(
-                {"code": "host_busy", "detail": str(exc), "target_ids": exc.target_ids},
+                {"code": exc.code, "detail": render_business_error(request, exc), "target_ids": exc.target_ids},
                 status=409,
             )
-        except ValueError as exc:
-            return Response({"detail": str(exc)}, status=400)
+        except PatchBusinessError as exc:
+            return Response({"code": exc.code, "detail": render_business_error(request, exc)}, status=400)
         return Response({"task_id": task.id, "name": task.name, "status": task.status}, status=201)

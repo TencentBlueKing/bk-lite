@@ -298,6 +298,9 @@ export interface ToolbarProps {
   isSelectMode: boolean;
   isEditMode?: boolean;
   isFullscreen?: boolean;
+  shareMode?: boolean;
+  shareLoading?: boolean;
+  onOpenShare?: () => void;
   selectedTopology?: DirItem | null;
   onZoomIn: () => void;
   onZoomOut: () => void;
@@ -388,6 +391,7 @@ export interface NodeConfigFormValues {
 // Topology 组件 Props 和 Ref 类型
 export interface TopologyProps {
   selectedTopology?: DirItem | null;
+  shareMode?: boolean;
 }
 
 export interface TopologyRef {

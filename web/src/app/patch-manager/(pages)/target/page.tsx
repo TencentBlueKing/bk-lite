@@ -16,6 +16,7 @@ import CustomTable from '@/components/custom-table';
 import OperateDrawer from '@/app/patch-manager/components/operate-drawer';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { buildTargetFilterSearch, parseBaselineFilter } from './filter-state';
+import { useTranslation } from '@/utils/i18n';
 
 interface HostRow {
   key: string;
@@ -35,16 +36,13 @@ interface HostRow {
   complianceFailureReason?: string;
 }
 
-const CONN_TAG: Record<HostRow['connectivity'], { text: string; color: string }> = {
-  undetected: { text: '未检测', color: 'default' },
-  detecting: { text: '检测中', color: 'processing' },
-  connected: { text: '连通', color: 'success' },
-  failed: { text: '失败', color: 'error' },
+const CONN_TAG: Record<HostRow['connectivity'], { color: string }> = {
+  undetected: { color: 'default' }, detecting: { color: 'processing' }, connected: { color: 'success' }, failed: { color: 'error' },
 };
 
 function ConnTag({ status }: { status: HostRow['connectivity'] }) {
-  const t = CONN_TAG[status];
-  return <Tag color={t.color}>{t.text}</Tag>;
+  const { t } = useTranslation();
+  return <Tag color={CONN_TAG[status].color}>{t(`patchManager.targetPage.connectivity.${status}`)}</Tag>;
 }
 
 type PatchTargetItem = PatchTarget & {
@@ -131,6 +129,7 @@ function targetConnectionSignature(
 }
 
 export default function TargetPage() {
+  const { t } = useTranslation();
   const router = useRouter();
   const searchParams = useSearchParams();
   const api = usePatchManagerApi();
@@ -350,7 +349,7 @@ export default function TargetPage() {
     setLoading(true);
     try {
       await api.deletePatchTarget(Number(id));
-      message.success('已删除');
+      message.success(t('patchManager.targetPage.deleted'));
       await loadData();
     } catch {
     } finally {
@@ -486,16 +485,16 @@ export default function TargetPage() {
           || testedSignature !== currentConnectionSignature(values)
         )
       ) {
-        message.error('连接参数或凭据已修改，请先完成连通性测试');
+        message.error(t('patchManager.targetPage.connectivityRetestRequired'));
         return;
       }
 
       if (editingTarget) {
         await api.updatePatchTarget(editingTarget.id, formData);
-        message.success('目标已更新');
+        message.success(t('patchManager.targetPage.updated'));
       } else {
         await api.createPatchTarget(formData);
-        message.success('目标已保存');
+        message.success(t('patchManager.targetPage.saved'));
       }
       setManualOpen(false);
       setEditingTarget(null);
@@ -510,14 +509,14 @@ export default function TargetPage() {
 
   const handleBind = async () => {
     if (!bindBaseline) {
-      message.error('请选择基线');
+      message.error(t('patchManager.targetPage.selectBaseline'));
       return;
     }
     const targetIds = selectedKeys.map((k) => Number(k)).filter((id) => !isNaN(id));
     setLoading(true);
     try {
       await api.bindHostsToBaseline(bindBaseline, targetIds);
-      message.success('已绑定基线');
+      message.success(t('patchManager.targetPage.baselineBound'));
       setScanOpen(false);
       setBindOpen(false);
       setBindBaseline(undefined);
@@ -531,7 +530,7 @@ export default function TargetPage() {
 
   const handleNodeSave = async () => {
     if (selectedNodes.length === 0) {
-      message.warning('请选择节点');
+      message.warning(t('patchManager.targetPage.selectNodes'));
       return;
     }
     setLoading(true);
@@ -558,7 +557,7 @@ export default function TargetPage() {
         })
         .filter(Boolean) as Partial<PatchTarget>[];
       await api.createPatchTargetBatch(targets);
-      message.success(`已纳入 ${targets.length} 台节点`);
+      message.success(t('patchManager.targetPage.nodesImported', undefined, { count: targets.length }));
       setNodeOpen(false);
       setSelectedNodes([]);
       await loadData(1);
@@ -569,18 +568,18 @@ export default function TargetPage() {
   };
 
   const columns = [
-    { title: '主机', dataIndex: 'name', width: 110 },
+    { title: t('patchManager.targetPage.host'), dataIndex: 'name', width: 110 },
     { title: 'IP', dataIndex: 'ip', width: 120, render: (v: string) => <span style={{ color: 'var(--color-text-3, #8c8c8c)' }}>{v}</span> },
-    { title: '操作系统', dataIndex: 'os', width: 120 },
+    { title: t('patchManager.osType'), dataIndex: 'os', width: 120 },
     {
-      title: '来源',
+      title: t('patchManager.targetPage.source'),
       dataIndex: 'source_type',
       width: 100,
-      render: (v: HostRow['source_type']) => (v === 'node_mgmt' ? '节点纳入' : '手动录入'),
+      render: (v: HostRow['source_type']) => t(`patchManager.targetPage.sourceType.${v === 'node_mgmt' ? 'node' : 'manual'}`),
     },
-    { title: '当前基线', dataIndex: 'baseline', render: (v: string | null) => (v ? v : <span style={{ color: '#d48806' }}>未绑定</span>) },
+    { title: t('patchManager.targetPage.currentBaseline'), dataIndex: 'baseline', render: (v: string | null) => (v ? v : <span style={{ color: '#d48806' }}>{t('patchManager.baseline.unbound')}</span>) },
     {
-      title: '合规状态',
+      title: t('patchManager.targetPage.complianceStatus'),
       dataIndex: 'compliance',
       width: 130,
       render: (_: unknown, r: HostRow) => {
@@ -600,24 +599,24 @@ export default function TargetPage() {
         ) : tag;
       },
     },
-    { title: '最后评估', dataIndex: 'lastEval', width: 170, render: (v: string | null) => convertToLocalizedTime(v) || '—' },
-    { title: '连通性', dataIndex: 'connectivity', width: 90, render: (v: HostRow['connectivity']) => <ConnTag status={v} /> },
-    { title: '最后检测', dataIndex: 'lastDetected', width: 170, render: (v: string | null) => convertToLocalizedTime(v) || '—' },
+    { title: t('patchManager.targetPage.lastAssessment'), dataIndex: 'lastEval', width: 170, render: (v: string | null) => convertToLocalizedTime(v) || '—' },
+    { title: t('patchManager.connectivity'), dataIndex: 'connectivity', width: 90, render: (v: HostRow['connectivity']) => <ConnTag status={v} /> },
+    { title: t('patchManager.targetPage.lastCheck'), dataIndex: 'lastDetected', width: 170, render: (v: string | null) => convertToLocalizedTime(v) || '—' },
     {
-      title: '操作',
+      title: t('patchManager.operation'),
       dataIndex: 'op',
       width: 300,
       fixed: 'right' as const,
       render: (_: unknown, r: HostRow) => {
         const blockChangeReason = r.hasActiveTask
-          ? '该主机有正在执行的任务，请等待完成或取消后再操作'
+          ? t('patchManager.targetPage.activeTaskBlocked')
           : r.hasPendingReboot
-            ? '该主机有待重启补丁，请先完成重启治理后再操作'
+            ? t('patchManager.targetPage.pendingRebootBlocked')
             : null;
         const evalDisabledReason = !r.baseline
-          ? '请先绑定基线'
+          ? t('patchManager.targetPage.bindFirst')
           : r.hasActiveTask
-            ? '该主机有正在执行的任务'
+            ? t('patchManager.targetPage.activeTask')
             : null;
         const isManual = r.source_type === 'manual';
         return (
@@ -627,61 +626,61 @@ export default function TargetPage() {
                 const target = data.find((t) => String(t.id) === r.key);
                 if (!target) return;
                 openManualTarget(target);
-              }}><EditOutlined /> 编辑</a></PermissionWrapper>
+              }}><EditOutlined /> {t('patchManager.edit')}</a></PermissionWrapper>
             ) : (
-              <Tooltip title="节点纳入目标请在节点管理编辑">
-                <span style={{ color: 'var(--color-text-4, #bfbfbf)', cursor: 'not-allowed' }}><EditOutlined /> 编辑</span>
+              <Tooltip title={t('patchManager.targetPage.editInNodeManagement')}>
+                <span style={{ color: 'var(--color-text-4, #bfbfbf)', cursor: 'not-allowed' }}><EditOutlined /> {t('patchManager.edit')}</span>
               </Tooltip>
             )}
             <PermissionWrapper requiredPermissions={['Edit']}><a style={{ color: 'var(--color-primary, #1677ff)' }} onClick={async () => {
               setLoading(true);
               try {
                 await api.checkPatchTargetConnectivity(Number(r.key));
-                message.success('连通性检测完成');
+                message.success(t('patchManager.targetPage.connectivityCompleted'));
                 await loadData();
               } catch {
               } finally {
                 setLoading(false);
               }
-            }}>测试连通性</a></PermissionWrapper>
+            }}>{t('patchManager.testConnection')}</a></PermissionWrapper>
             {blockChangeReason ? (
               <Tooltip title={blockChangeReason}>
-                <span style={{ color: 'var(--color-text-4, #bfbfbf)', cursor: 'not-allowed' }}>绑基线</span>
+                <span style={{ color: 'var(--color-text-4, #bfbfbf)', cursor: 'not-allowed' }}>{t('patchManager.targetPage.bindBaseline')}</span>
               </Tooltip>
             ) : (
               <PermissionWrapper requiredPermissions={['Edit']}><a style={{ color: 'var(--color-primary, #1677ff)' }} onClick={() => { setSelectedKeys([r.key]); setBindBaseline(r.baseline_id ?? undefined); setBindOpen(true); }}>
-                绑基线
+                {t('patchManager.targetPage.bindBaseline')}
               </a></PermissionWrapper>
             )}
             {evalDisabledReason ? (
               <Tooltip title={evalDisabledReason}>
-                <span style={{ color: 'var(--color-text-4, #bfbfbf)', cursor: 'not-allowed' }}>立即评估</span>
+                <span style={{ color: 'var(--color-text-4, #bfbfbf)', cursor: 'not-allowed' }}>{t('patchManager.dashboard.assessNow')}</span>
               </Tooltip>
             ) : (
               <PermissionWrapper requiredPermissions={['Add']}><a style={{ color: 'var(--color-primary, #1677ff)' }} onClick={async () => {
                 setLoading(true);
                 try {
                   await api.createGovernanceTask({
-                    name: `评估 - ${r.name}`,
+                    name: t('patchManager.targetPage.assessmentName', undefined, { name: r.name }),
                     task_type: 'assess',
                     target_list: [Number(r.key)],
                     execution_mode: 'now',
                   });
-                  message.success('已创建评估任务');
+                  message.success(t('patchManager.targetPage.assessmentCreated'));
                   await loadData();
                 } catch {
                 } finally {
                   setLoading(false);
                 }
-              }}>立即评估</a></PermissionWrapper>
+              }}>{t('patchManager.dashboard.assessNow')}</a></PermissionWrapper>
             )}
             {blockChangeReason ? (
               <Tooltip title={blockChangeReason}>
-                <span style={{ color: 'var(--color-text-4, #bfbfbf)', cursor: 'not-allowed' }}>删除</span>
+                <span style={{ color: 'var(--color-text-4, #bfbfbf)', cursor: 'not-allowed' }}>{t('patchManager.delete')}</span>
               </Tooltip>
             ) : (
-              <PermissionWrapper requiredPermissions={['Delete']}><Popconfirm title="确定删除该目标主机？" onConfirm={() => handleDelete(r.key)} okText="删除" cancelText="取消">
-                <a style={{ color: '#ff4d4f' }}>删除</a>
+              <PermissionWrapper requiredPermissions={['Delete']}><Popconfirm title={t('patchManager.targetPage.deleteConfirm')} onConfirm={() => handleDelete(r.key)} okText={t('patchManager.delete')} cancelText={t('patchManager.cancel')}>
+                <a style={{ color: '#ff4d4f' }}>{t('patchManager.delete')}</a>
               </Popconfirm></PermissionWrapper>
             )}
           </Space>
@@ -703,7 +702,7 @@ export default function TargetPage() {
             allowClear
           />
           <Select
-            placeholder="基线"
+            placeholder={t('patchManager.targetPage.baseline')}
             style={{ width: 200 }}
             value={baselineFilter}
             onChange={(value) => {
@@ -718,7 +717,7 @@ export default function TargetPage() {
             options={baselines.map((baseline) => ({ label: baseline.name, value: baseline.id }))}
           />
           <Select
-            placeholder="合规状态"
+            placeholder={t('patchManager.targetPage.complianceStatus')}
             style={{ width: 160 }}
             value={complianceFilter}
             onChange={(v) => {
@@ -728,12 +727,7 @@ export default function TargetPage() {
             }}
             allowClear
             options={[
-              { label: '合规', value: 'compliant' },
-              { label: '不合规', value: 'non_compliant' },
-              { label: '待评估', value: 'pending' },
-              { label: '评估中', value: 'evaluating' },
-              { label: '评估失败', value: 'failed' },
-              { label: '未配置', value: 'unconfigured' },
+              ...(['compliant', 'non_compliant', 'pending', 'evaluating', 'failed', 'unconfigured'] as const).map((value) => ({ label: t(`patchManager.complianceStatus.${value}`), value })),
             ]}
           />
         </Space>
@@ -741,16 +735,16 @@ export default function TargetPage() {
           <Tooltip
             title={
               bulkBindDisabled && selectedKeys.length > 0
-                ? '选中主机存在正在执行的任务或待重启状态，请先处理后再绑定基线'
+                ? t('patchManager.targetPage.bulkBindBlocked')
                 : ''
             }
           >
             <PermissionWrapper requiredPermissions={['Edit']}><Button icon={<LinkOutlined />} disabled={bulkBindDisabled} onClick={() => { setBindBaseline(undefined); setBindOpen(true); }}>
-              批量绑定基线{selectedKeys.length ? `(${selectedKeys.length})` : ''}
+              {t('patchManager.targetPage.bulkBind')}{selectedKeys.length ? `(${selectedKeys.length})` : ''}
             </Button></PermissionWrapper>
           </Tooltip>
-          <PermissionWrapper requiredPermissions={['Add']}><Button type="primary" icon={<PlusOutlined />} onClick={() => openManualTarget()}>手动录入</Button></PermissionWrapper>
-          <PermissionWrapper requiredPermissions={['Add']}><Button icon={<PlusOutlined />} onClick={() => setNodeOpen(true)}>节点纳入</Button></PermissionWrapper>
+          <PermissionWrapper requiredPermissions={['Add']}><Button type="primary" icon={<PlusOutlined />} onClick={() => openManualTarget()}>{t('patchManager.targetPage.manualEntry')}</Button></PermissionWrapper>
+          <PermissionWrapper requiredPermissions={['Add']}><Button icon={<PlusOutlined />} onClick={() => setNodeOpen(true)}>{t('patchManager.targetPage.nodeImport')}</Button></PermissionWrapper>
         </Space>
       </div>
 
@@ -767,18 +761,18 @@ export default function TargetPage() {
             pageSize: pagination.pageSize,
             total: pagination.total,
             showSizeChanger: true,
-            showTotal: (t) => `共 ${t} 条`,
+            showTotal: (total) => t('patchManager.common.totalItems', undefined, { count: total }),
             style: { marginBottom: 0 },
             onChange: (page, pageSize) => loadData(page, pageSize),
           }}
         />
       </div>
 
-      <Modal title="批量绑定基线" open={bindOpen} onCancel={() => setBindOpen(false)} onOk={handleBind} okText="确认" cancelText="取消" confirmLoading={loading}>
-        <p style={{ color: 'var(--color-text-2, #595959)' }}>已选 {selectedKeys.length} 台主机,选择要绑定的<strong>唯一基线</strong>:</p>
+      <Modal title={t('patchManager.targetPage.bulkBind')} open={bindOpen} onCancel={() => setBindOpen(false)} onOk={handleBind} okText={t('patchManager.confirm')} cancelText={t('patchManager.cancel')} confirmLoading={loading}>
+        <p style={{ color: 'var(--color-text-2, #595959)' }}>{t('patchManager.targetPage.bindSelection', undefined, { count: selectedKeys.length })}</p>
         <Select
           style={{ width: '100%' }}
-          placeholder="选择基线"
+          placeholder={t('patchManager.targetPage.selectBaseline')}
           virtual
           options={baselines.map((b) => ({ label: b.name, value: b.id }))}
           value={bindBaseline}
@@ -788,41 +782,41 @@ export default function TargetPage() {
           style={{ marginTop: 12 }}
           type="warning"
           showIcon
-          message="每台主机仅能绑定一个基线;已绑定的将被替换。绑定后主机进入「待评估」,可在首页点击「立即评估」或在全局周期自动评估。"
+          message={t('patchManager.targetPage.bindHelp')}
         />
       </Modal>
 
       <Modal
-        title="绑定确认 · 评估方式"
+        title={t('patchManager.targetPage.bindAssessmentTitle')}
         open={false}
         onCancel={() => setScanOpen(false)}
         onOk={handleBind}
-        okText="确认绑定并评估"
-        cancelText="返回"
+        okText={t('patchManager.targetPage.bindAndAssess')}
+        cancelText={t('patchManager.targetPage.back')}
       >
         <p style={{ color: 'var(--color-text-2, #595959)' }}>
-          将把 <strong>{selectedKeys.length}</strong> 台主机绑定到 <strong>{baselines.find((b) => b.id === bindBaseline)?.name || '所选基线'}</strong>,这些主机将进入「待评估」。选择评估方式:
+          {t('patchManager.targetPage.assessmentModePrompt', undefined, { count: selectedKeys.length, name: baselines.find((b) => b.id === bindBaseline)?.name || t('patchManager.targetPage.selectedBaseline') })}
         </p>
         <Radio.Group value={scanMethod} onChange={(e) => setScanMethod(e.target.value)} style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 6 }}>
           <Radio value="now">
-            <strong>立即扫描</strong>
-            <div style={{ fontSize: 12, color: 'var(--color-text-3, #8c8c8c)' }}>立即创建评估任务,马上看到合规变化</div>
+            <strong>{t('patchManager.targetPage.scanNow')}</strong>
+            <div style={{ fontSize: 12, color: 'var(--color-text-3, #8c8c8c)' }}>{t('patchManager.targetPage.scanNowHelp')}</div>
           </Radio>
           <Radio value="cycle">
-            <strong>按周期扫描</strong>
-            <div style={{ fontSize: 12, color: 'var(--color-text-3, #8c8c8c)' }}>按「设置·扫描设置」的全局周期评估,无需在此设时间</div>
+            <strong>{t('patchManager.targetPage.cycleScan')}</strong>
+            <div style={{ fontSize: 12, color: 'var(--color-text-3, #8c8c8c)' }}>{t('patchManager.targetPage.cycleScanHelp')}</div>
           </Radio>
         </Radio.Group>
         <Alert
           style={{ marginTop: 12 }}
           type="warning"
           showIcon
-          message="无论哪种方式,这些主机立即进入「待评估」,旧评估结果过期、不再计入合规率。"
+          message={t('patchManager.targetPage.assessmentResetHelp')}
         />
       </Modal>
 
       <OperateDrawer
-        title={editingTarget ? '编辑目标' : '手动录入'}
+        title={editingTarget ? t('patchManager.targetPage.editTarget') : t('patchManager.targetPage.manualEntry')}
         open={manualOpen}
         onClose={() => {
           setManualOpen(false);
@@ -839,67 +833,67 @@ export default function TargetPage() {
               form.resetFields();
               setCred('password');
               setConnectivityResult(undefined);
-            }}>取消</Button>
+            }}>{t('patchManager.cancel')}</Button>
             <PermissionWrapper requiredPermissions={[editingTarget ? 'Edit' : 'Add']}>
-              <Button loading={testingConnectivity} onClick={handleFormConnectivityTest}>测试连通性</Button>
+              <Button loading={testingConnectivity} onClick={handleFormConnectivityTest}>{t('patchManager.testConnection')}</Button>
             </PermissionWrapper>
             <PermissionWrapper requiredPermissions={[editingTarget ? 'Edit' : 'Add']}>
-              <Button type="primary" loading={loading} onClick={handleCreate}>{editingTarget ? '保存' : '创建'}</Button>
+              <Button type="primary" loading={loading} onClick={handleCreate}>{editingTarget ? t('patchManager.save') : t('patchManager.targetPage.create')}</Button>
             </PermissionWrapper>
           </Space>
         }
       >
         <Form layout="vertical" form={form} style={{ marginTop: 4 }}>
-          <Form.Item label="主机名" name="name" rules={[{ required: true, message: '请输入主机名' }]}><Input placeholder="如 web-03" /></Form.Item>
-          <Form.Item label="IP 地址" name="ip" rules={[{ required: true, message: '请输入 IP 地址' }]}><Input placeholder="如 10.0.1.30" /></Form.Item>
-          <Form.Item label="操作系统" required>
+          <Form.Item label={t('patchManager.targetPage.hostName')} name="name" rules={[{ required: true, message: t('patchManager.targetPage.hostNameRequired') }]}><Input placeholder={t('patchManager.targetPage.hostNamePlaceholder')} /></Form.Item>
+          <Form.Item label={t('patchManager.targetPage.ipAddress')} name="ip" rules={[{ required: true, message: t('patchManager.targetPage.ipRequired') }]}><Input placeholder={t('patchManager.targetPage.ipPlaceholder')} /></Form.Item>
+          <Form.Item label={t('patchManager.osType')} required>
             <Radio.Group value={os} onChange={(e) => setOs(e.target.value)}>
               <Radio value="linux">Linux</Radio>
               <Radio value="win">Windows</Radio>
             </Radio.Group>
           </Form.Item>
-          <Form.Item label="组织" name="team" rules={[{ required: true, message: '请选择组织' }]}>
-            <GroupTreeSelect placeholder="选择组织" />
+          <Form.Item label={t('patchManager.organization')} name="team" rules={[{ required: true, message: t('patchManager.targetPage.organizationRequired') }]}>
+            <GroupTreeSelect placeholder={t('patchManager.targetPage.selectOrganization')} />
           </Form.Item>
-          <Form.Item label="云区域" name="cloud_region_id" rules={[{ required: true, message: '请选择云区域' }]}>
+          <Form.Item label={t('patchManager.targetPage.cloudRegion')} name="cloud_region_id" rules={[{ required: true, message: t('patchManager.targetPage.cloudRegionRequired') }]}>
             <Select
-              placeholder="选择云区域"
+              placeholder={t('patchManager.targetPage.selectCloudRegion')}
               loading={cloudRegionLoading}
               virtual
               options={cloudRegions.map((r) => ({ label: r.display_name || r.name, value: r.id }))}
             />
           </Form.Item>
-          <Form.Item label="执行驱动"><Input value="Ansible" disabled /></Form.Item>
+          <Form.Item label={t('patchManager.executionDriver')}><Input value="Ansible" disabled /></Form.Item>
 
           {os === 'linux' && (
             <>
               <Space style={{ display: 'flex' }} align="start">
-                <Form.Item label="SSH 端口" name="ssh_port" initialValue={22}><InputNumber style={{ width: 120 }} /></Form.Item>
-                <Form.Item label="SSH 用户名" name="ssh_user" rules={[{ required: true, message: '请输入 SSH 用户名' }]} style={{ flex: 1 }}><Input placeholder="如 root" style={{ width: 240 }} /></Form.Item>
+                <Form.Item label={t('patchManager.targetPage.sshPort')} name="ssh_port" initialValue={22}><InputNumber style={{ width: 120 }} /></Form.Item>
+                <Form.Item label={t('patchManager.targetPage.sshUser')} name="ssh_user" rules={[{ required: true, message: t('patchManager.targetPage.sshUserRequired') }]} style={{ flex: 1 }}><Input placeholder={t('patchManager.targetPage.sshUserPlaceholder')} style={{ width: 240 }} /></Form.Item>
               </Space>
-              <Form.Item label="SSH 凭据">
+              <Form.Item label={t('patchManager.targetPage.sshCredential')}>
                 <Radio.Group value={cred} onChange={(e) => {
                   setCred(e.target.value);
                   setConnectivityResult(undefined);
                 }}>
-                  <Radio value="password">密码</Radio>
-                  <Radio value="key">密钥</Radio>
+                  <Radio value="password">{t('patchManager.password')}</Radio>
+                  <Radio value="key">{t('patchManager.credentialKey')}</Radio>
                 </Radio.Group>
               </Form.Item>
               {cred === 'password' ? (
                 <Form.Item
-                  label="SSH 密码"
+                  label={t('patchManager.targetPage.sshPassword')}
                   name="ssh_password"
                   rules={[{
                     required:
                       !editingTarget?.has_ssh_password
                       || editingTarget?.os_type !== 'linux'
                       || editingCredential !== 'password',
-                    message: '请输入 SSH 密码',
+                    message: t('patchManager.targetPage.sshPasswordRequired'),
                   }]}
                 >
                   <Password
-                    placeholder="请输入 SSH 密码"
+                    placeholder={t('patchManager.targetPage.sshPasswordRequired')}
                     clickToEdit={Boolean(editingTarget?.has_ssh_password)}
                   />
                 </Form.Item>
@@ -907,11 +901,11 @@ export default function TargetPage() {
                 <>
                   {keepExistingKey ? (
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, padding: '8px 12px', border: '1px solid var(--color-border-1, #e8e8e8)', borderRadius: 6 }}>
-                      <span>已上传私钥：{editingTarget?.ssh_key_file_name || '私钥文件'}</span>
+                      <span>{t('patchManager.targetPage.uploadedKey', undefined, { name: editingTarget?.ssh_key_file_name || t('patchManager.targetPage.privateKeyFile') })}</span>
                       <Button
                         type="text"
                         size="small"
-                        aria-label="替换私钥"
+                        aria-label={t('patchManager.targetPage.replaceKey')}
                         icon={<CloseOutlined />}
                         onClick={() => {
                           setKeepExistingKey(false);
@@ -922,13 +916,13 @@ export default function TargetPage() {
                     </div>
                   ) : (
                     <Form.Item
-                      label="SSH 私钥文件"
+                      label={t('patchManager.targetPage.sshKeyFile')}
                       name="ssh_key_file"
-                      rules={[{ required: true, message: '请上传 SSH 私钥文件' }]}
+                      rules={[{ required: true, message: t('patchManager.targetPage.sshKeyRequired') }]}
                     >
                       <Upload.Dragger maxCount={1} beforeUpload={() => false} accept=".pem,.key">
                         <p><InboxOutlined /></p>
-                        <p>点击或拖拽私钥文件到此处</p>
+                        <p>{t('patchManager.targetPage.sshKeyDrop')}</p>
                       </Upload.Dragger>
                     </Form.Item>
                   )}
@@ -940,18 +934,18 @@ export default function TargetPage() {
           {os === 'win' && (
             <>
               <Space style={{ display: 'flex' }} align="start">
-                <Form.Item label="WinRM 端口" name="winrm_port" rules={[{ required: true, message: '请输入 WinRM 端口' }]}><InputNumber style={{ width: 120 }} placeholder="5986" /></Form.Item>
-                <Form.Item label="WinRM 协议" name="winrm_scheme" rules={[{ required: true, message: '请选择 WinRM 协议' }]}>
-                  <Select style={{ width: 120 }} placeholder="请选择" options={[{ label: 'https', value: 'https' }, { label: 'http', value: 'http' }]} />
+                <Form.Item label={t('patchManager.winrmPort')} name="winrm_port" rules={[{ required: true, message: t('patchManager.targetPage.winrmPortRequired') }]}><InputNumber style={{ width: 120 }} placeholder="5986" /></Form.Item>
+                <Form.Item label={t('patchManager.winrmScheme')} name="winrm_scheme" rules={[{ required: true, message: t('patchManager.targetPage.winrmSchemeRequired') }]}>
+                  <Select style={{ width: 120 }} placeholder={t('patchManager.targetPage.select')} options={[{ label: 'https', value: 'https' }, { label: 'http', value: 'http' }]} />
                 </Form.Item>
               </Space>
-              <Form.Item label="WinRM 用户名" name="winrm_user" rules={[{ required: true, message: '请输入 WinRM 用户名' }]}><Input placeholder="如 Administrator" /></Form.Item>
-              <Form.Item label="WinRM 密码" name="winrm_password" rules={[{
+              <Form.Item label={t('patchManager.winrmUser')} name="winrm_user" rules={[{ required: true, message: t('patchManager.targetPage.winrmUserRequired') }]}><Input placeholder={t('patchManager.targetPage.winrmUserPlaceholder')} /></Form.Item>
+              <Form.Item label={t('patchManager.targetPage.winrmPassword')} name="winrm_password" rules={[{
                 required: !editingTarget?.has_winrm_password || editingTarget?.os_type !== 'windows',
-                message: '请输入 WinRM 密码',
+                message: t('patchManager.targetPage.winrmPasswordRequired'),
               }]}>
                 <Password
-                  placeholder="请输入 WinRM 密码"
+                  placeholder={t('patchManager.targetPage.winrmPasswordRequired')}
                   clickToEdit={Boolean(editingTarget?.has_winrm_password)}
                 />
               </Form.Item>
@@ -959,9 +953,11 @@ export default function TargetPage() {
           )}
           {connectivityResult && (
             <Alert
+              key={connectivityResult.checkedAt}
+              closable
               showIcon
               type={connectivityResult.status === 'connected' ? 'success' : 'error'}
-              message={connectivityResult.status === 'connected' ? '连通性测试通过' : '连通性测试失败'}
+              message={connectivityResult.status === 'connected' ? t('patchManager.settingsPage.connectivityPassed') : t('patchManager.settingsPage.connectivityFailed')}
               description={`${connectivityResult.detail} · ${convertToLocalizedTime(connectivityResult.checkedAt)}`}
             />
           )}
@@ -969,22 +965,22 @@ export default function TargetPage() {
       </OperateDrawer>
 
       <OperateDrawer
-        title="节点纳入"
+        title={t('patchManager.targetPage.nodeImport')}
         open={nodeOpen}
         onClose={() => setNodeOpen(false)}
         width={720}
         footer={
           <Space>
-            <Button onClick={() => setNodeOpen(false)}>取消</Button>
-            <Button type="primary" loading={loading} onClick={handleNodeSave}>保存</Button>
+            <Button onClick={() => setNodeOpen(false)}>{t('patchManager.cancel')}</Button>
+            <Button type="primary" loading={loading} onClick={handleNodeSave}>{t('patchManager.save')}</Button>
           </Space>
         }
       >
         <div style={{ fontSize: 12, color: 'var(--color-text-3, #8c8c8c)', marginBottom: 12 }}>
-          节点管理节点复用平台已有连接，执行驱动同为 Ansible，经 NATS/执行器治理。
+          {t('patchManager.targetPage.nodeImportHelp')}
         </div>
         <Input.Search
-          placeholder="搜索主机名 / IP"
+          placeholder={t('patchManager.targetPage.searchHost')}
           value={nodeSearch}
           onSearch={(v) => { setNodePagination((p) => ({ ...p, current: 1 })); loadNodeList(1, nodePagination.pageSize, v); }}
           onChange={(e) => setNodeSearch(e.target.value)}
@@ -1000,17 +996,17 @@ export default function TargetPage() {
             pageSize: nodePagination.pageSize,
             total: nodePagination.total,
             showSizeChanger: true,
-            showTotal: (t) => `共 ${t} 条`,
+            showTotal: (total) => t('patchManager.common.totalItems', undefined, { count: total }),
           }}
           onPageChange={(page, pageSize) => loadNodeList(page, pageSize)}
           getCheckboxProps={(record: any) => ({
             disabled: includedNodeIds.has(String(record.id)),
           })}
           columns={[
-            { title: '主机', dataIndex: 'name', width: 120 },
+            { title: t('patchManager.targetPage.host'), dataIndex: 'name', width: 120 },
             { title: 'IP', dataIndex: 'ip', width: 120 },
             { title: 'OS', dataIndex: 'os', width: 100 },
-            { title: '架构', dataIndex: 'arch', width: 90 },
+            { title: t('patchManager.arch'), dataIndex: 'arch', width: 90 },
           ]}
           selectedKeys={selectedNodes}
           onChange={setSelectedNodes}

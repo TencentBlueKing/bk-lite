@@ -15,6 +15,7 @@ import { useTranslation } from '@/utils/i18n';
 import { useUnitTransform } from '@/app/monitor/hooks/useUnitTransform';
 import { Dayjs } from 'dayjs';
 import Icon from '@/components/icon';
+import { areLazyMetricItemPropsEqual } from './lazyMetricItemMemo';
 
 interface LazyMetricItemProps {
   item: MetricItem;
@@ -28,6 +29,7 @@ interface LazyMetricItemProps {
   isCancelled: boolean;
   onVisibilityChange: (metricId: number, isVisible: boolean) => void;
   isInViewport: boolean;
+  xAxisDomain?: [number, number];
 }
 
 const LazyMetricItem: React.FC<LazyMetricItemProps> = ({
@@ -41,7 +43,8 @@ const LazyMetricItem: React.FC<LazyMetricItemProps> = ({
   isLoaded,
   isCancelled,
   onVisibilityChange,
-  isInViewport
+  isInViewport,
+  xAxisDomain
 }) => {
   const ref = useRef<HTMLDivElement>(null);
   const observerRef = useRef<IntersectionObserver | null>(null);
@@ -167,6 +170,7 @@ const LazyMetricItem: React.FC<LazyMetricItemProps> = ({
               }
               unit={item.displayUnit}
               onXRangeChange={onXRangeChange}
+              xAxisDomain={xAxisDomain}
             />
           </>
         )}
@@ -175,15 +179,4 @@ const LazyMetricItem: React.FC<LazyMetricItemProps> = ({
   );
 };
 
-export default React.memo(LazyMetricItem, (prevProps, nextProps) => {
-  // 只有以下情况才重新渲染：
-  return (
-    prevProps.item.id === nextProps.item.id &&
-    prevProps.item.viewData === nextProps.item.viewData &&
-    prevProps.isLoading === nextProps.isLoading &&
-    prevProps.resetKey === nextProps.resetKey &&
-    prevProps.isLoaded === nextProps.isLoaded &&
-    prevProps.isCancelled === nextProps.isCancelled &&
-    prevProps.isInViewport === nextProps.isInViewport
-  );
-});
+export default React.memo(LazyMetricItem, areLazyMetricItemPropsEqual);

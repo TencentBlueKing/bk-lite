@@ -8,6 +8,7 @@ const INVALID_CLASSIFICATIONS = new Set([
   'story-only-review',
   'unused',
   'invalid-reverse-dependency',
+  'shared-primitive-ghost',
 ]);
 
 const normalize = (value) => value.split(path.sep).join('/');
@@ -92,13 +93,25 @@ export const auditComponentOwnership = async ({ rootDir, primitiveAllowlist = {}
   const appRoot = path.join(sourceRoot, 'app');
   const storiesRoot = path.join(sourceRoot, 'stories');
   const componentEntries = await fs.readdir(componentsRoot, { withFileTypes: true });
-  const components = componentEntries.filter((entry) => entry.isDirectory()).map((entry) => entry.name).sort();
+  // A component is either a directory with index.tsx, or a single .tsx file at the top level.
+  const components = componentEntries
+    .filter((entry) => {
+      if (entry.isDirectory()) return true;
+      if (entry.isFile() && /\.(tsx|ts)$/.test(entry.name)) return true;
+      return false;
+    })
+    .map((entry) => entry.name.replace(/\.(tsx|ts)$/, ''))
+    .sort();
   const knownComponents = new Set(components);
   const allowlist = flattenAllowlist(primitiveAllowlist);
   const directApps = new Map(components.map((name) => [name, new Set()]));
   const stories = new Map(components.map((name) => [name, new Set()]));
+  const activeStories = new Map(components.map((name) => [name, new Set()]));
   const reverseApps = new Map(components.map((name) => [name, new Set()]));
   const componentEdges = new Map(components.map((name) => [name, new Set()]));
+
+  // Convert kebab-case to PascalCase for JSX tag matching (e.g. page-status -> PageStatus).
+  const toPascalCase = (s) => s.split('-').map((w) => w[0].toUpperCase() + w.slice(1)).join('');
 
   const files = await walkSourceFiles(sourceRoot);
   for (const file of files) {
@@ -120,10 +133,26 @@ export const auditComponentOwnership = async ({ rootDir, primitiveAllowlist = {}
         if (targetApp) reverseApps.get(ownerComponent).add(targetApp);
       }
     }
+
+    // Detect active JSX renders in story files (vs phantom imports).
+    if (isStory && ownerComponent === null) {
+      // The file is a story file; check which components it actually renders.
+      for (const comp of components) {
+        const pascal = toPascalCase(comp);
+        // Match <ComponentName, <ComponentName., </ComponentName (JSX usage).
+        // Also match any symbol that starts with the component's PascalCase
+        // prefix to catch nested exports (e.g. AppViewFullscreenExit for app-view-fullscreen).
+        const jsxRegex = new RegExp(`<\\s*${pascal}[\\s/>.]|\\b${pascal}[A-Z]\\w*\\b`);
+        if (jsxRegex.test(source)) {
+          activeStories.get(comp).add(normalize(path.relative(storiesRoot, file)));
+        }
+      }
+    }
   }
 
   const transitiveApps = new Map([...directApps].map(([name, apps]) => [name, new Set(apps)]));
   const transitiveStories = new Map([...stories].map(([name, files]) => [name, new Set(files)]));
+  const transitiveActiveStories = new Map([...activeStories].map(([name, files]) => [name, new Set(files)]));
   let changed = true;
   while (changed) {
     changed = false;
@@ -141,6 +170,12 @@ export const auditComponentOwnership = async ({ rootDir, primitiveAllowlist = {}
             changed = true;
           }
         }
+        for (const story of transitiveActiveStories.get(consumer)) {
+          if (!transitiveActiveStories.get(dependency).has(story)) {
+            transitiveActiveStories.get(dependency).add(story);
+            changed = true;
+          }
+        }
       }
     }
   }
@@ -149,6 +184,7 @@ export const auditComponentOwnership = async ({ rootDir, primitiveAllowlist = {}
     const direct = [...directApps.get(component)].sort();
     const transitive = [...transitiveApps.get(component)].sort();
     const storyFiles = [...transitiveStories.get(component)].sort();
+    const activeStoryFiles = [...transitiveActiveStories.get(component)].sort();
     const reverse = [...reverseApps.get(component)].sort();
     let classification;
     let reason;
@@ -158,20 +194,26 @@ export const auditComponentOwnership = async ({ rootDir, primitiveAllowlist = {}
     } else if (transitive.length >= 2) {
       classification = 'shared-cross-app';
       reason = `consumed transitively by ${transitive.length} apps`;
-    } else if (allowlist.has(component)) {
-      classification = 'shared-primitive';
-      reason = `primitive allowlist: ${allowlist.get(component).reason}`;
     } else if (transitive.length === 1) {
       classification = 'app-local';
       reason = `consumed by only ${transitive[0]}`;
+    } else if (allowlist.has(component) && activeStoryFiles.length > 0) {
+      // shared-primitive requires at least 1 active story JSX render (a real contract).
+      // Without active renders, the allowlist entry is effectively a ghost contract.
+      classification = 'shared-primitive';
+      reason = `primitive allowlist: ${allowlist.get(component).reason}`;
+    } else if (allowlist.has(component)) {
+      // Allowlisted but no active story render and no app consumer — ghost contract.
+      classification = 'shared-primitive-ghost';
+      reason = `allowlisted primitive with no active story render or app consumers: ${allowlist.get(component).reason}`;
     } else if (storyFiles.length) {
       classification = 'story-only-review';
-      reason = 'consumed only by Storybook stories';
+      reason = 'consumed only by Storybook stories (not in allowlist)';
     } else {
       classification = 'unused';
       reason = 'no app or Storybook consumers';
     }
-    return {
+    const record = {
       component,
       directApps: direct,
       transitiveApps: transitive,
@@ -180,6 +222,13 @@ export const auditComponentOwnership = async ({ rootDir, primitiveAllowlist = {}
       classification,
       reason,
     };
+    // Only expose activeStories for primitives — it's the signal that distinguishes
+    // a real contract from a ghost. Omitting it elsewhere keeps the public record
+    // shape stable for downstream consumers.
+    if (activeStoryFiles.length > 0) {
+      record.activeStories = activeStoryFiles;
+    }
+    return record;
   });
 };
 

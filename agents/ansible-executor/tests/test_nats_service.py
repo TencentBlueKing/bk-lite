@@ -6,6 +6,11 @@ from core.config import ServiceConfig
 from service.nats_service import AnsibleNATSService, QueuedTask
 
 
+@pytest.fixture(autouse=True)
+def payload_encryption_key(monkeypatch):
+    monkeypatch.setenv("ANSIBLE_PAYLOAD_ENCRYPTION_KEY", "unit-test-payload-encryption-key")
+
+
 class DummyMessage:
     def __init__(self):
         self.in_progress_calls = 0

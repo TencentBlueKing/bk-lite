@@ -5,7 +5,9 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from apps.core.decorators.api_permission import HasPermission
+from apps.core.utils import viewset_utils
 from apps.core.utils.time_util import get_crontab_next_runs
+from apps.core.utils.user_group import normalize_user_group_ids
 from apps.core.utils.viewset_utils import AuthViewSet
 from apps.job_mgmt.constants import ExecutionStatus, JobType
 from apps.job_mgmt.filters.scheduled_task import ScheduledTaskFilter
@@ -201,9 +203,66 @@ class ScheduledTaskViewSet(AuthViewSet):
             }
         )
 
+    def _get_delete_queryset(self, request, ids):
+        tasks = self.filter_queryset(self.get_queryset()).filter(id__in=ids)
+        if request.user.is_superuser:
+            return tasks
+
+        current_team = self._validate_current_team_permission(request)
+        include_children = request.COOKIES.get("include_children", "0") == "1"
+        scope_team_ids = {current_team}
+        if include_children:
+            subtree_ids = self.extract_child_group_ids(getattr(request.user, "group_tree", []), current_team)
+            if subtree_ids:
+                scope_team_ids = set(normalize_user_group_ids(subtree_ids))
+
+        scope_query = viewset_utils.build_json_membership_query(tasks, self.ORGANIZATION_FIELD, scope_team_ids)
+        tasks = tasks.filter(scope_query)
+        if not tasks.exists():
+            return tasks
+
+        permission_rules = viewset_utils.get_permission_rules(
+            request.user,
+            current_team,
+            self._get_app_name(),
+            self.permission_key,
+            include_children,
+        )
+        if not isinstance(permission_rules, dict):
+            return tasks.none()
+
+        permission_teams = permission_rules.get("team", [])
+        permission_team_ids = set(normalize_user_group_ids(permission_teams if isinstance(permission_teams, list) else []))
+        if include_children and current_team in permission_team_ids:
+            granted_team_ids = scope_team_ids
+        else:
+            granted_team_ids = permission_team_ids & scope_team_ids
+
+        operate_instance_ids = set()
+        instance_rules = permission_rules.get("instance", [])
+        for rule in instance_rules if isinstance(instance_rules, list) else []:
+            if not isinstance(rule, dict) or "Operate" not in rule.get("permission", []):
+                continue
+            try:
+                operate_instance_ids.add(int(rule["id"]))
+            except (KeyError, TypeError, ValueError):
+                continue
+
+        authorized_ids = []
+        for task in tasks:
+            task_team_ids = set(normalize_user_group_ids(task.team))
+            if not task_team_ids & scope_team_ids:
+                continue
+            if task_team_ids & granted_team_ids or task.id in operate_instance_ids:
+                authorized_ids.append(task.id)
+        return tasks.filter(id__in=authorized_ids)
+
     @HasPermission("cron_task-Delete")
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
+        if not self._get_delete_queryset(request, [instance.id]).exists():
+            message = self.loader.get("error.no_permission_delete") if self.loader else "User does not have permission to delete this instance"
+            return self.value_error(message)
 
         # 删除关联的 celery-beat PeriodicTask
         ScheduledTaskService.delete_periodic_task(instance.id)
@@ -222,7 +281,7 @@ class ScheduledTaskViewSet(AuthViewSet):
         serializer.is_valid(raise_exception=True)
 
         ids = serializer.validated_data["ids"]
-        tasks = ScheduledTask.objects.filter(id__in=ids)
+        tasks = self._get_delete_queryset(request, ids)
 
         # 删除关联的 PeriodicTask
         for task in tasks:

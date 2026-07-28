@@ -1,8 +1,8 @@
-import uuid
 import importlib
 import json
 import os
 import types
+import uuid
 from datetime import timedelta
 from unittest.mock import patch
 
@@ -90,7 +90,6 @@ def test_system_mgmt_urls_loads_enterprise_urlpatterns_indirectly_without_hardco
     assert "apps.system_mgmt.enterprise.urls" in imported_modules
     assert "SensitiveInfoAuthorizationViewSet" not in reloaded_urls.__dict__
     assert "enterprise_urls" in reloaded_urls.__dict__
-
 
 
 @pytest.mark.django_db
@@ -304,6 +303,7 @@ def test_user_viewset_update_user_keeps_existing_sensitive_fields_when_omitted()
 
 @pytest.mark.django_db
 def test_user_viewset_delete_user_allows_manual_user():
+    from apps.core.utils.permission_cache import get_user_permission_version
     from apps.system_mgmt.viewset.user_viewset import UserViewSet
 
     group = Group.objects.create(name="group-for-delete-manual")
@@ -315,6 +315,7 @@ def test_user_viewset_delete_user_allows_manual_user():
         group_list=[group.id],
     )
     UserRule.objects.create(username=user.username, domain=user.domain, group_rule_id=1)
+    initial_version = get_user_permission_version(user.username, user.domain)
 
     factory = APIRequestFactory()
     view = UserViewSet.as_view({"post": "delete_user"})
@@ -339,6 +340,7 @@ def test_user_viewset_delete_user_allows_manual_user():
     assert response.status_code == 200
     assert payload == {"result": True}
     assert User.objects.filter(id=user.id).exists() is False
+    assert get_user_permission_version(user.username, user.domain) > initial_version
 
 
 @pytest.mark.django_db
@@ -652,6 +654,7 @@ def test_user_viewset_search_user_list_includes_sync_source_identifier():
 
 
 @pytest.mark.django_db
+@requires_enterprise_mask
 # 验证用户详情查询会按授权粒度只放行对应敏感类型的明文，其他类型继续脱敏。
 def test_user_viewset_get_user_detail_only_reveals_authorized_sensitive_type():
     from apps.system_mgmt.models import Group

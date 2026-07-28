@@ -374,7 +374,7 @@ export const InsightSection = ({
   return (
     <section className={styles.dashboardSection}>
       <div className={styles.sectionGrid}>
-        {rings.map(({ panel, data, centerValue, isEmpty }, index) => (
+        {rings.map(({ panel, data, centerValue, isEmpty, emptyDescription }, index) => (
           <RingChartPanel
             key={panel.title}
             title={panel.title}
@@ -384,17 +384,20 @@ export const InsightSection = ({
             centerValue={centerValue}
             centerCaption={panel.centerCaption}
             isEmpty={isEmpty}
+            emptyDescription={emptyDescription}
             className={`${styles.panel} ${ringSpanClass ? ringSpanClass(index, rings.length) : defaultSpan}`}
             styles={styles}
           />
         ))}
-        {bars.map(({ panel, items }, index) => (
+        {bars.map(({ panel, items, isEmpty, emptyDescription }, index) => (
           <HorizontalBarPanel
             key={panel.title}
             title={panel.title}
             subtitle={panel.subtitle}
             guide={panel.guide}
             items={items}
+            isEmpty={isEmpty}
+            emptyDescription={emptyDescription}
             className={`${styles.panel} ${barSpanClass ? barSpanClass(index, bars.length) : defaultSpan}`}
             styles={styles}
           />
@@ -617,7 +620,6 @@ export const DashboardShell = ({
           onTimeChange={dashboard.onTimeChange}
           onFrequenceChange={dashboard.setFrequence}
           onRefresh={dashboard.onRefresh}
-          onBack={dashboard.onBack}
           showTimeSelector={false}
           styles={styles}
         />
