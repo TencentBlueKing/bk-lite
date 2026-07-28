@@ -19,7 +19,9 @@
       "fullPermission": "Full Permission",
       "allData": "All Data",
       "pleaseInputGroupName": "Please input group name",
-      "dataPermissionRule": "Data Permission Rule"
+      "dataPermissionRule": "Data Permission Rule",
+      "items": "items",
+      "total": "Total"
     },
     "zoneinfo": {
       "AmericaNewYork": "America/New_York (UTC-05:00)",
@@ -545,7 +547,13 @@
       "permanent": "Permanent",
       "exportTitle": "Export Login Logs",
       "threeMonths": "3 Months",
-      "seconds": "seconds"
+      "seconds": "seconds",
+      "targetType": "Object Type",
+      "targetId": "Object ID",
+      "scenario": "Scenario",
+      "modelObject": "Model",
+      "operatorObject": "Operator Object",
+      "beforeAfter": "Before vs. After Comparison"
     },
     "settings": {
       "tabs": {
@@ -791,7 +799,7 @@
         "variablePhone": "Phone",
         "variableDate": "Date",
         "preview": "Preview",
-        "previewTitle": "Welcome to {{portalName}} Console",
+        "previewTitle": "Welcome to {portalName} Console",
         "previewDescription": "The preview reuses the console homepage structure so you can verify the portal name, watermark, and branding in a real content layout.",
         "previewDate": "Date",
         "previewCustomSettings": "Custom Settings",
@@ -1051,7 +1059,12 @@
       "english": "English",
       "copyFailed": "Copy failed",
       "fetchFailed": "Failed to fetch data",
-      "saveFailed": "Save failed"
+      "saveFailed": "Save failed",
+      "createFailed": "Failed to create",
+      "day": "Day(s)",
+      "delFail": "Failed to delete",
+      "failed": "Failed",
+      "operateConfirm": "Confirm this operation?"
     },
     "integrationCenter": {
       "pageTitle": "Integration Center",

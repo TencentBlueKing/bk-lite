@@ -19,7 +19,9 @@
       "fullPermission": "全权限",
       "allData": "所有数据",
       "pleaseInputGroupName": "请输入分组名称",
-      "dataPermissionRule": "数据权限规则"
+      "dataPermissionRule": "数据权限规则",
+      "items": "条",
+      "total": "共"
     },
     "zoneinfo": {
       "AmericaNewYork": "美国/纽约 (UTC-05:00)",
@@ -545,7 +547,13 @@
       "permanent": "永久",
       "exportTitle": "导出登录日志",
       "threeMonths": "三个月",
-      "seconds": "秒"
+      "seconds": "秒",
+      "targetType": "对象类型",
+      "targetId": "对象ID",
+      "scenario": "场景",
+      "modelObject": "模型",
+      "operatorObject": "操作对象",
+      "beforeAfter": "变更前后对比"
     },
     "settings": {
       "tabs": {
@@ -791,7 +799,7 @@
         "variablePhone": "手机号",
         "variableDate": "日期",
         "preview": "效果预览",
-        "previewTitle": "欢迎使用{{portalName}}控制台",
+        "previewTitle": "欢迎使用{portalName}控制台",
         "previewDescription": "预览区域直接复用控制台首页的内容结构，用于验证门户名称、水印和品牌风格在真实场景下的呈现效果。",
         "previewDate": "日期",
         "previewCustomSettings": "个性化设置",
@@ -824,7 +832,7 @@
         "request_method": "请求方法",
         "headers": "请求头",
         "body_template": "请求体",
-        "bodyTemplateHint": "在自定义请求体中，{{content}} 为通知内容占位参数，系统会自动替换为实际通知内容。",
+        "bodyTemplateHint": "在自定义请求体中，{content} 为通知内容占位参数，系统会自动替换为实际通知内容。",
         "subTypeEnterpriseWechat": "企业微信",
         "subTypeFeishu": "飞书",
         "subTypeDingtalk": "钉钉",
@@ -1051,7 +1059,12 @@
       "english": "英文",
       "copyFailed": "复制失败",
       "fetchFailed": "获取数据失败",
-      "saveFailed": "保存失败"
+      "saveFailed": "保存失败",
+      "createFailed": "创建失败",
+      "day": "天",
+      "delFail": "删除失败",
+      "failed": "失败",
+      "operateConfirm": "确认此操作？"
     },
     "integrationCenter": {
       "pageTitle": "集成中心",

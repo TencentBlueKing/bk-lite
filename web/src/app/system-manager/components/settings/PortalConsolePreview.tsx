@@ -77,8 +77,8 @@ const PortalConsolePreview: React.FC<PortalConsolePreviewProps> = ({
   }), [watermarkText, portalName, username, displayName, today, t]);
   const previewTitleTemplate = t('system.settings.portal.previewTitle') as string;
   const previewDescriptionTemplate = t('system.settings.portal.previewDescription') as string;
-  const previewTitle = (previewTitleTemplate || '欢迎使用{{portalName}}控制台').replace('{{portalName}}', portalName);
-  const previewDescription = (previewDescriptionTemplate || '').replace('{{portalName}}', portalName);
+  const previewTitle = (previewTitleTemplate || '欢迎使用{portalName}控制台').replace('{portalName}', portalName);
+  const previewDescription = (previewDescriptionTemplate || '').replace('{portalName}', portalName);
   const previewApps = displayApps.slice(0, 6);
   const portalInitials = useMemo(() => getInitials(portalName), [portalName]);
   const hasFavicon = Boolean(portalFaviconUrl?.trim());
