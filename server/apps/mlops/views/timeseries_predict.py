@@ -932,6 +932,18 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
         container_state = container_info.get("state")
         container_port = container_info.get("port")
 
+        # 需要重启时先校验预算，避免因系统配置错误先删掉仍在运行的旧容器。
+        predict_budget_seconds = None
+        if container_state == "running" and (model_version_changed or train_job_changed or port_changed):
+            try:
+                predict_budget_seconds = get_timeseries_predict_budget_seconds()
+            except ValueError as e:
+                logger.error(f"时序预测超时预算配置无效: {e}")
+                return Response(
+                    {"error": f"系统配置错误: {str(e)}"},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                )
+
         # 更新数据库
         response = super().update(request, *args, **kwargs)
         instance.refresh_from_db()
@@ -986,7 +998,7 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
                     model_uri,
                     port=instance.port,
                     train_image=get_image_by_prefix(self.MLFLOW_PREFIX, instance.train_job.algorithm),
-                    timeseries_predict_timeout_seconds=get_timeseries_predict_budget_seconds(),
+                    timeseries_predict_timeout_seconds=predict_budget_seconds,
                 )
 
                 # 更新容器信息（status 由用户控制，不修改）
