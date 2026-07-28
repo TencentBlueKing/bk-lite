@@ -103,19 +103,100 @@ class TestGetPermissionRules:
 
 
 class TestGetPermissionsRules:
-    def test_maps_app_and_calls_rpc(self, mocker):
+    def test_cache_hit_returns_cached_without_rpc(self, mocker):
+        cached = {"result": True, "data": {"9": {"team": [3]}}, "team": [3]}
+        mock_get = mocker.patch.object(pu, "get_cached_permission_rules", return_value=cached)
+        mock_client = mocker.patch.object(pu, "SystemMgmt")
+
+        result = pu.get_permissions_rules(_user(username="bob"), "3", "operation_analysis", "dash")
+
+        assert result == cached
+        mock_get.assert_called_once_with(
+            username="bob",
+            domain="domain.com",
+            current_team=3,
+            app_name="operation_analysis",
+            permission_key="dash",
+            include_children=False,
+            permission_version=0,
+            query_scope="module",
+        )
+        mock_client.assert_not_called()
+
+    def test_cache_miss_maps_app_calls_rpc_and_caches(self, mocker):
+        mocker.patch.object(pu, "get_cached_permission_rules", return_value=None)
+        mock_set = mocker.patch.object(pu, "set_cached_permission_rules")
         client = mocker.MagicMock()
         client.get_user_rules_by_module.return_value = {"team": [9]}
         mocker.patch.object(pu, "SystemMgmt", return_value=client)
         result = pu.get_permissions_rules(_user(username="bob"), "3", "operation_analysis", "dash", include_children=False)
         assert result == {"team": [9]}
         client.get_user_rules_by_module.assert_called_once_with(3, "bob", "ops-analysis", "dash", "domain.com", False)
+        mock_set.assert_called_once_with(
+            username="bob",
+            domain="domain.com",
+            current_team=3,
+            app_name="operation_analysis",
+            permission_key="dash",
+            permission_data={"team": [9]},
+            include_children=False,
+            permission_version=0,
+            query_scope="module",
+        )
+
+    def test_cache_read_failure_falls_back_to_rpc(self, mocker):
+        mocker.patch.object(pu, "get_cached_permission_rules", side_effect=RuntimeError("redis down"))
+        mocker.patch.object(pu, "set_cached_permission_rules")
+        mock_log = mocker.patch.object(pu.logger, "exception")
+        client = mocker.MagicMock()
+        client.get_user_rules_by_module.return_value = {"result": True, "data": {}, "team": [3]}
+        mocker.patch.object(pu, "SystemMgmt", return_value=client)
+
+        assert pu.get_permissions_rules(_user(), "3", "log", "policy") == {
+            "result": True,
+            "data": {},
+            "team": [3],
+        }
+        mock_log.assert_called_once_with("Failed to read module permission cache")
+
+    def test_cache_write_failure_keeps_rpc_result(self, mocker):
+        mocker.patch.object(pu, "get_cached_permission_rules", return_value=None)
+        mocker.patch.object(pu, "set_cached_permission_rules", side_effect=RuntimeError("redis down"))
+        mock_log = mocker.patch.object(pu.logger, "exception")
+        client = mocker.MagicMock()
+        client.get_user_rules_by_module.return_value = {"result": True, "data": {}, "team": [3]}
+        mocker.patch.object(pu, "SystemMgmt", return_value=client)
+
+        assert pu.get_permissions_rules(_user(), "3", "log", "policy") == {
+            "result": True,
+            "data": {},
+            "team": [3],
+        }
+        mock_log.assert_called_once_with("Failed to write module permission cache")
+
+    def test_permission_version_change_retries_rpc_before_caching(self, mocker):
+        mocker.patch.object(pu, "get_user_permission_version", side_effect=[0, 1])
+        mock_get = mocker.patch.object(pu, "get_cached_permission_rules", side_effect=[None, None])
+        mock_set = mocker.patch.object(pu, "set_cached_permission_rules", side_effect=[False, True])
+        client = mocker.MagicMock()
+        stale = {"result": True, "data": {"old": {}}, "team": [3]}
+        fresh = {"result": True, "data": {"new": {}}, "team": [3]}
+        client.get_user_rules_by_module.side_effect = [stale, fresh]
+        mocker.patch.object(pu, "SystemMgmt", return_value=client)
+
+        assert pu.get_permissions_rules(_user(), "3", "log", "policy") == fresh
+        assert client.get_user_rules_by_module.call_count == 2
+        assert [call.kwargs["permission_version"] for call in mock_get.call_args_list] == [0, 1]
+        assert [call.kwargs["permission_version"] for call in mock_set.call_args_list] == [0, 1]
 
     def test_exception_returns_empty(self, mocker):
+        mocker.patch.object(pu, "get_cached_permission_rules", return_value=None)
+        mock_set = mocker.patch.object(pu, "set_cached_permission_rules")
         client = mocker.MagicMock()
         client.get_user_rules_by_module.side_effect = ValueError("boom")
         mocker.patch.object(pu, "SystemMgmt", return_value=client)
         assert pu.get_permissions_rules(_user(), "3", "cmdb", "x") == {}
+        mock_set.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
