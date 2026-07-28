@@ -7,9 +7,10 @@ import {
   isDepartmentSelectMode,
   isManualInputMode,
   mergeUserSyncBusinessConfigWithDefaults,
+  resolveUserSyncTemplate,
   shouldFetchDepartmentOptions,
 } from '../src/app/system-manager/utils/userSyncUtils';
-import type { BusinessTemplate } from '../src/app/system-manager/types/integration-center';
+import type { BusinessTemplate, ProviderManifest } from '../src/app/system-manager/types/integration-center';
 
 const departmentSelectTemplate: BusinessTemplate = {
   title: 'User Sync',
@@ -104,6 +105,22 @@ const adManualInputTemplate: BusinessTemplate = {
   ],
 };
 
+const adProvider: ProviderManifest = {
+  key: 'ad',
+  name: 'Active Directory',
+  description: '',
+  instance_template: [],
+  instance_templates: {},
+  business_templates: { user_sync_form: adManualInputTemplate },
+  capabilities: [{
+    key: 'user_sync',
+    name: 'User Sync',
+    description: '',
+    connection_template: [],
+    business_template: 'user_sync_form',
+  }],
+};
+
 assert.equal(getRootDepartmentInputMode(null), 'department_select');
 assert.equal(getRootDepartmentInputMode(departmentSelectTemplate), 'department_select');
 assert.equal(getRootDepartmentInputMode(manualInputTemplate), 'manual_input');
@@ -123,6 +140,10 @@ assert.equal(isManualInputMode(manualInputTemplate), true);
 assert.equal(shouldFetchDepartmentOptions({ selectedInstanceId: 1, template: departmentSelectTemplate }), true);
 assert.equal(shouldFetchDepartmentOptions({ selectedInstanceId: 1, template: adManualInputTemplate }), false);
 assert.equal(shouldFetchDepartmentOptions({ selectedInstanceId: undefined, template: adManualInputTemplate }), false);
+assert.equal(
+  resolveUserSyncTemplate(1, [], [adProvider], 'ad'),
+  adManualInputTemplate,
+);
 assert.deepEqual(
   getUserSyncBusinessConfigDefaults(adManualInputTemplate, { excludeRootScope: true }),
   {
