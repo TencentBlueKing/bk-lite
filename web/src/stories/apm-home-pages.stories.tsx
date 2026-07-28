@@ -2,19 +2,15 @@ import type { Meta, StoryObj } from '@storybook/nextjs';
 import React, { useState } from 'react';
 import {
   Alert,
-  Badge,
   Button,
   Collapse,
   Col,
   Layout,
   List,
-  Progress,
   Row,
   Segmented,
   Space,
   Table,
-  Tag,
-  Tooltip,
   Typography,
 } from 'antd';
 import {
@@ -25,7 +21,6 @@ import {
   ClockCircleOutlined,
   CompassOutlined,
   FireOutlined,
-  HistoryOutlined,
   RadarChartOutlined,
   ReloadOutlined,
   RocketOutlined,
@@ -40,43 +35,51 @@ const { Title, Paragraph, Text } = Typography;
  *
  * 5 张汇总卡(全局健康度 / 活跃服务 / SLO 违约 / 最近错误 / 最近部署),
  * 首页是只读汇总,卡片内容来源于其他菜单的近窗数据(spec §3 / §4)。
+ * 视觉风格:Linear 风格(白底、细线、克制色、大数字、SVG 自绘 sparkline)。
  * ============================================================ */
 
 const TOKENS = {
-  bg: '#f5f7fa',
+  bg: '#fafbfc',
   surface: '#ffffff',
-  border: '#e6ebf2',
-  borderStrong: '#dbe2ec',
-  text: '#1f2937',
+  border: '#ececec',
+  borderStrong: '#e0e0e0',
+  text: '#0f172a',
   textSecondary: '#64748b',
   textTertiary: '#94a3b8',
-  primary: '#155aef',
-  primarySoft: '#eaf2ff',
-  success: '#27c274',
-  danger: '#f43b2c',
+  primary: '#5e6ad2',
+  primarySoft: '#eeeefd',
+  success: '#10b981',
+  danger: '#f43f5e',
   warning: '#f59e0b',
   neutral: '#94a3b8',
+  // 5 个健康度等级色(从危险到健康)
+  h1: '#f43f5e', // 严重
+  h2: '#f59e0b', // 警告
+  h3: '#94a3b8', // 待定
+  h4: '#64748b', // 陈旧/失联
+  h5: '#10b981', // 健康
 };
 
 const HEALTH_COLORS: Record<1 | 2 | 3 | 4 | 5, string> = {
-  1: TOKENS.danger,
-  2: TOKENS.warning,
-  3: '#facc15',
-  4: '#10b981',
-  5: TOKENS.success,
+  1: TOKENS.h1,
+  2: TOKENS.h2,
+  3: TOKENS.h3,
+  4: TOKENS.h4,
+  5: TOKENS.h5,
 };
 
 const shellStyle: React.CSSProperties = {
   minHeight: '100vh',
   background: TOKENS.bg,
   fontFamily:
-    'system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+    '-apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+  color: TOKENS.text,
 };
 
 const surfaceCardStyle: React.CSSProperties = {
   background: TOKENS.surface,
   border: `1px solid ${TOKENS.border}`,
-  borderRadius: 12,
+  borderRadius: 6,
 };
 
 const tabularNumStyle: React.CSSProperties = {
@@ -93,6 +96,148 @@ const STORY_URLS = {
   events: '?path=/story/apm-events-pages--alerts-list',
   integration: '?path=/story/apm-integration-pages-添加接入--integration-catalog-story',
 };
+
+/* ============================================================
+ * Sparkline(SVG 自绘,不引 echarts/recharts;spec §3 字段保持不变,仅呈现方式)
+ * - line: 折线
+ * - area: 折线 + 渐变面积
+ * - bar:  柱状
+ * ============================================================ */
+type SparklineKind = 'line' | 'area' | 'bar';
+function Sparkline({
+  data,
+  width = 100,
+  height = 28,
+  color = TOKENS.primary,
+  kind = 'line',
+  fillOpacity = 0.12,
+}: {
+  data: number[];
+  width?: number;
+  height?: number;
+  color?: string;
+  kind?: SparklineKind;
+  fillOpacity?: number;
+}) {
+  if (data.length === 0) return null;
+  const pad = 1;
+  const min = Math.min(...data);
+  const max = Math.max(...data);
+  const range = max - min || 1;
+  const xStep = (width - pad * 2) / Math.max(data.length - 1, 1);
+
+  if (kind === 'bar') {
+    const barW = (width - pad * 2) / data.length;
+    return (
+      <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`}>
+        {data.map((v, i) => {
+          const h = ((v - min) / range) * (height - pad * 2);
+          return (
+            <rect
+              key={i}
+              x={pad + i * barW + barW * 0.15}
+              y={height - pad - h}
+              width={barW * 0.7}
+              height={h}
+              fill={color}
+              opacity={0.85}
+              rx={1}
+            />
+          );
+        })}
+      </svg>
+    );
+  }
+
+  const points = data.map((v, i) => {
+    const x = pad + i * xStep;
+    const y = pad + (height - pad * 2) * (1 - (v - min) / range);
+    return [x, y] as const;
+  });
+  const linePath = points
+    .map(([x, y], i) => (i === 0 ? `M ${x} ${y}` : `L ${x} ${y}`))
+    .join(' ');
+  const areaPath = `${linePath} L ${points[points.length - 1][0]} ${height - pad} L ${points[0][0]} ${height - pad} Z`;
+
+  if (kind === 'area') {
+    return (
+      <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`}>
+        <defs>
+          <linearGradient id={`spark-area-${color.replace('#', '')}`} x1="0" x2="0" y1="0" y2="1">
+            <stop offset="0%" stopColor={color} stopOpacity={fillOpacity} />
+            <stop offset="100%" stopColor={color} stopOpacity={0} />
+          </linearGradient>
+        </defs>
+        <path d={areaPath} fill={`url(#spark-area-${color.replace('#', '')})`} />
+        <path d={linePath} fill="none" stroke={color} strokeWidth={1.5} strokeLinejoin="round" strokeLinecap="round" />
+      </svg>
+    );
+  }
+
+  return (
+    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`}>
+      <path d={linePath} fill="none" stroke={color} strokeWidth={1.5} strokeLinejoin="round" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+/* ---------- 多线 sparkline(用于 hero 健康度 5 状态趋势) ---------- */
+function MultiLineSparkline({
+  series,
+  width = 320,
+  height = 80,
+}: {
+  series: { data: number[]; color: string }[];
+  width?: number;
+  height?: number;
+}) {
+  const pad = 2;
+  if (series.every((s) => s.data.length === 0)) return null;
+  const allValues = series.flatMap((s) => s.data);
+  const max = Math.max(...allValues);
+  const min = Math.min(...allValues, 0);
+  const range = max - min || 1;
+  const len = series[0]?.data.length || 0;
+  const xStep = (width - pad * 2) / Math.max(len - 1, 1);
+
+  return (
+    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`}>
+      {[0.25, 0.5, 0.75].map((p) => (
+        <line
+          key={p}
+          x1={pad}
+          y1={pad + (height - pad * 2) * p}
+          x2={width - pad}
+          y2={pad + (height - pad * 2) * p}
+          stroke={TOKENS.border}
+          strokeWidth={0.5}
+        />
+      ))}
+      {series.map((s, i) => {
+        const points = s.data.map((v, idx) => {
+          const x = pad + idx * xStep;
+          const y = pad + (height - pad * 2) * (1 - (v - min) / range);
+          return [x, y] as const;
+        });
+        const d = points
+          .map(([x, y], idx) => (idx === 0 ? `M ${x} ${y}` : `L ${x} ${y}`))
+          .join(' ');
+        return (
+          <path
+            key={i}
+            d={d}
+            fill="none"
+            stroke={s.color}
+            strokeWidth={1.2}
+            strokeLinejoin="round"
+            strokeLinecap="round"
+            opacity={0.85}
+          />
+        );
+      })}
+    </svg>
+  );
+}
 
 /* ============================================================
  * 顶导(全局一级菜单):首页 / 服务 / 探索 / 事件 / 集成
@@ -171,31 +316,32 @@ function HomeToolbar({ onRefresh }: { onRefresh?: () => void }) {
   return (
     <div
       style={{
-        ...surfaceCardStyle,
-        padding: '12px 16px',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
-        marginBottom: 16,
+        padding: '0 4px 20px 4px',
       }}
     >
-      <Space size={8} align="center">
-        <Title level={4} style={{ margin: 0 }}>
-          APM 看板
+      <Space size={12} align="baseline">
+        <Title level={3} style={{ margin: 0, fontWeight: 600, letterSpacing: -0.3 }}>
+          平台总览
         </Title>
-        <Text type="secondary" style={{ fontSize: 12 }}>
-          全局汇总 · 各域近窗数据 · Group 隔离
+        <Text style={{ fontSize: 13, color: TOKENS.textSecondary }}>
+          各域近窗数据 · Group 隔离 · 首页时间窗不可自定义
         </Text>
       </Space>
-      <Space size={8}>
-        <Tooltip title="所有卡片使用统一近窗数据,首页时间窗不可自定义(15m 活跃 / 1h SLO与错误 / 7d 部署)">
-          <Text type="secondary" style={{ fontSize: 12 }}>
-            <ClockCircleOutlined style={{ marginRight: 4 }} />
-            汇总于 {new Date().toLocaleString('zh-CN', { hour12: false })}
-          </Text>
-        </Tooltip>
-        <Button icon={<ReloadOutlined />} onClick={onRefresh}>
-          重新自检
+      <Space size={12}>
+        <Text style={{ fontSize: 12, color: TOKENS.textTertiary }}>
+          <ClockCircleOutlined style={{ marginRight: 4 }} />
+          {new Date().toLocaleString('zh-CN', { hour12: false })}
+        </Text>
+        <Button
+          size="small"
+          icon={<ReloadOutlined />}
+          onClick={onRefresh}
+          style={{ borderRadius: 4 }}
+        >
+          刷新
         </Button>
       </Space>
     </div>
@@ -203,11 +349,10 @@ function HomeToolbar({ onRefresh }: { onRefresh?: () => void }) {
 }
 
 /* ============================================================
- * 全局健康度大卡(顶部 1 张,横跨 5 个等级 + 总数)
- * 字段:严重/警告/待定/陈旧/健康/总数
+ * 全局健康度大卡(顶部 hero,左 60% 大数字 + 5 状态分布,右 40% 24h multisparkline)
+ * 字段:严重/警告/待定/陈旧/失联/健康/总数 (spec §3.1)
  * ============================================================ */
 function GlobalHealthCard() {
-  // 模拟数据:基于"服务"菜单中各服务的健康分级统计(spec §3.1 5 状态:健康/警告/严重/待定/陈旧/失联)
   const buckets = [
     { level: 1 as const, label: '严重', count: 2 },
     { level: 2 as const, label: '警告', count: 3 },
@@ -216,114 +361,199 @@ function GlobalHealthCard() {
     { level: 5 as const, label: '健康', count: 22 },
   ];
   const total = buckets.reduce((a, b) => a + b.count, 0);
+  const healthy = buckets[buckets.length - 1].count;
   const danger = buckets[0].count + buckets[1].count;
 
+  // 24h mock 趋势(5 状态,24 个点,基于健康数稳定 + 严重数后段升)
+  const trend = {
+    h1: [0, 0, 1, 0, 0, 1, 1, 0, 1, 0, 1, 1, 2, 1, 1, 2, 2, 1, 2, 2, 2, 1, 2, 2],
+    h2: [2, 2, 2, 3, 2, 2, 3, 3, 2, 3, 3, 3, 2, 3, 3, 3, 3, 2, 3, 3, 3, 3, 3, 3],
+    h3: [5, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4],
+    h4: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+    h5: [22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22],
+  };
+
   return (
-    <div style={{ ...surfaceCardStyle, padding: '20px 24px', marginBottom: 16 }}>
+    <div
+      style={{
+        ...surfaceCardStyle,
+        padding: '28px 32px',
+        marginBottom: 16,
+      }}
+    >
+      {/* 顶部行 */}
       <div
         style={{
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          marginBottom: 16,
+          marginBottom: 24,
         }}
       >
-        <Space size={8} align="center">
+        <Space size={10} align="center">
           <ThunderboltOutlined style={{ color: TOKENS.primary, fontSize: 16 }} />
-          <Title level={5} style={{ margin: 0 }}>
+          <Title level={5} style={{ margin: 0, fontWeight: 600 }}>
             全局健康度
           </Title>
-          <Text type="secondary" style={{ fontSize: 12 }}>
-            汇总本 Group 内 {total} 个服务的健康分级
+          <Text style={{ fontSize: 12, color: TOKENS.textSecondary }}>
+            汇总本 Group 内 {total} 个服务 · 健康分级
           </Text>
         </Space>
         <a
           href={STORY_URLS.service}
-          style={{ color: TOKENS.primary, fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 2 }}
+          style={{
+            color: TOKENS.primary,
+            fontSize: 13,
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 2,
+          }}
         >
           按健康严重度排序 <CaretRightOutlined />
         </a>
       </div>
-      <Row gutter={[12, 12]}>
-        {buckets.map((b) => {
-          const c = HEALTH_COLORS[b.level];
-          const isDanger = b.level <= 2;
-          return (
-            <Col span={4} key={b.level}>
-              <div
-                style={{
-                  background: isDanger ? '#fef2f0' : TOKENS.surface,
-                  border: `1px solid ${isDanger ? c : TOKENS.border}`,
-                  borderRadius: 10,
-                  padding: '14px 16px',
-                  textAlign: 'center',
-                  position: 'relative',
-                }}
-              >
-                {isDanger && b.count > 0 && (
-                  <Badge
-                    count={b.count}
-                    style={{
-                      position: 'absolute',
-                      top: -6,
-                      right: -6,
-                      background: c,
-                    }}
-                  />
-                )}
+
+      {/* 主区:左数字 + 分布,右 24h 趋势 */}
+      <div style={{ display: 'grid', gridTemplateColumns: '3fr 2fr', gap: 32, alignItems: 'center' }}>
+        {/* 左:大数字 + 5 段分布条 + 5 chip */}
+        <div>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 6 }}>
+            <span
+              style={{
+                fontSize: 56,
+                fontWeight: 600,
+                color: TOKENS.text,
+                lineHeight: 1,
+                letterSpacing: -1.5,
+                ...tabularNumStyle,
+              }}
+            >
+              {healthy}
+            </span>
+            <span style={{ fontSize: 16, color: TOKENS.textSecondary, fontWeight: 500 }}>
+              个服务健康
+            </span>
+            <span style={{ fontSize: 13, color: TOKENS.textTertiary, ...tabularNumStyle }}>
+              / {total} 总数
+            </span>
+          </div>
+
+          {/* 5 段 stacked bar */}
+          <div
+            style={{
+              display: 'flex',
+              height: 6,
+              borderRadius: 3,
+              overflow: 'hidden',
+              background: TOKENS.bg,
+              marginBottom: 16,
+            }}
+          >
+            {buckets.map((b) => {
+              const widthPct = (b.count / total) * 100;
+              if (widthPct === 0) return null;
+              return (
                 <div
+                  key={b.level}
                   style={{
-                    fontSize: 26,
-                    fontWeight: 700,
-                    color: c,
-                    lineHeight: 1.1,
+                    width: `${widthPct}%`,
+                    background: HEALTH_COLORS[b.level],
+                    transition: 'width 0.2s',
+                  }}
+                />
+              );
+            })}
+          </div>
+
+          {/* 5 chip */}
+          <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+            {buckets.map((b) => (
+              <div key={b.level} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span
+                  style={{
+                    width: 8,
+                    height: 8,
+                    borderRadius: 2,
+                    background: HEALTH_COLORS[b.level],
+                    display: 'inline-block',
+                    flexShrink: 0,
+                  }}
+                />
+                <span
+                  style={{
+                    fontSize: 13,
+                    color: TOKENS.text,
+                    fontWeight: 600,
                     ...tabularNumStyle,
                   }}
                 >
                   {b.count}
-                </div>
-                <div style={{ fontSize: 12, color: TOKENS.textSecondary, marginTop: 4 }}>
-                  {b.label}
-                </div>
+                </span>
+                <span style={{ fontSize: 12, color: TOKENS.textSecondary }}>{b.label}</span>
               </div>
-            </Col>
-          );
-        })}
-        <Col span={4}>
+            ))}
+          </div>
+        </div>
+
+        {/* 右:24h 趋势 + 图例 */}
+        <div>
           <div
             style={{
-              background: TOKENS.primarySoft,
-              border: `1px solid ${TOKENS.primary}`,
-              borderRadius: 10,
-              padding: '14px 16px',
-              textAlign: 'center',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              marginBottom: 8,
             }}
           >
-            <div
-              style={{
-                fontSize: 26,
-                fontWeight: 700,
-                color: TOKENS.primary,
-                lineHeight: 1.1,
-                ...tabularNumStyle,
-              }}
-            >
-              {total}
-            </div>
-            <div style={{ fontSize: 12, color: TOKENS.textSecondary, marginTop: 4 }}>
-              总服务数
-            </div>
+            <span style={{ fontSize: 12, color: TOKENS.textSecondary }}>近 24 小时趋势</span>
+            <span style={{ fontSize: 11, color: TOKENS.textTertiary }}>5 状态曲线</span>
           </div>
-        </Col>
-      </Row>
+          <MultiLineSparkline
+            width={360}
+            height={80}
+            series={[
+              { data: trend.h1, color: TOKENS.h1 },
+              { data: trend.h2, color: TOKENS.h2 },
+              { data: trend.h3, color: TOKENS.h3 },
+              { data: trend.h4, color: TOKENS.h4 },
+              { data: trend.h5, color: TOKENS.h5 },
+            ]}
+          />
+          <div
+            style={{
+              display: 'flex',
+              gap: 10,
+              flexWrap: 'wrap',
+              marginTop: 6,
+            }}
+          >
+            {buckets.map((b) => (
+              <div key={b.level} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                <span
+                  style={{
+                    width: 6,
+                    height: 6,
+                    borderRadius: 1,
+                    background: HEALTH_COLORS[b.level],
+                    display: 'inline-block',
+                  }}
+                />
+                <span style={{ fontSize: 11, color: TOKENS.textTertiary }}>{b.label}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
       {danger > 0 && (
         <Alert
           showIcon
           type="error"
-          style={{ marginTop: 12, borderRadius: 6 }}
+          icon={<BellOutlined />}
+          style={{ marginTop: 20, borderRadius: 4, border: `1px solid ${TOKENS.danger}40`, background: `${TOKENS.danger}08` }}
           message={
-            <span>
-              当前有 <b style={{ color: TOKENS.danger }}>{danger}</b> 个服务处于严重/警告状态,建议立即排查。
+            <span style={{ fontSize: 13 }}>
+              当前有 <b style={{ color: TOKENS.danger }}>{danger}</b> 个服务处于严重 / 警告状态,建议立即排查。
             </span>
           }
         />
@@ -338,18 +568,50 @@ function GlobalHealthCard() {
  * ============================================================ */
 const ACTIVE_SERVICES = {
   prod: [
-    { name: 'payment-svc', version: 'v5.3.0', throughput: '342/s', errorRate: '20%', p99: '265ms', health: 1 as 1 | 2 | 3 | 4 | 5 },
-    { name: 'checkout-api', version: 'v3.1.3', throughput: '124/s', errorRate: '2.9%', p99: '358ms', health: 2 as 1 | 2 | 3 | 4 | 5 },
-    { name: 'api-gateway', version: 'v2.8.0', throughput: '2.1k/s', errorRate: '0%', p99: '473ms', health: 4 as 1 | 2 | 3 | 4 | 5 },
-    { name: 'catalog-api', version: 'v1.9.2', throughput: '1.4k/s', errorRate: '0.08%', p99: '64ms', health: 5 as 1 | 2 | 3 | 4 | 5 },
-    { name: 'auth-svc', version: 'v3.0.2', throughput: '1.2k/s', errorRate: '0.05%', p99: '38ms', health: 5 as 1 | 2 | 3 | 4 | 5 },
+    {
+      name: 'payment-svc', version: 'v5.3.0', throughput: '342/s', errorRate: '20%', p99: '265ms',
+      health: 1 as 1 | 2 | 3 | 4 | 5,
+      errTrend: [2, 3, 4, 3, 5, 6, 7, 8, 9, 11, 12, 14, 15, 17, 18, 20],
+    },
+    {
+      name: 'checkout-api', version: 'v3.1.3', throughput: '124/s', errorRate: '2.9%', p99: '358ms',
+      health: 2 as 1 | 2 | 3 | 4 | 5,
+      errTrend: [0.5, 0.8, 1.2, 1.5, 2.0, 2.3, 2.1, 1.8, 2.5, 2.6, 2.7, 2.9, 2.8, 2.9, 3.0, 2.9],
+    },
+    {
+      name: 'api-gateway', version: 'v2.8.0', throughput: '2.1k/s', errorRate: '0.12%', p99: '473ms',
+      health: 4 as 1 | 2 | 3 | 4 | 5,
+      errTrend: [0.05, 0.08, 0.06, 0.09, 0.10, 0.08, 0.11, 0.10, 0.09, 0.11, 0.12, 0.10, 0.11, 0.12, 0.10, 0.12],
+    },
+    {
+      name: 'catalog-api', version: 'v1.9.2', throughput: '1.4k/s', errorRate: '0.08%', p99: '64ms',
+      health: 5 as 1 | 2 | 3 | 4 | 5,
+      errTrend: [0.10, 0.09, 0.08, 0.09, 0.08, 0.07, 0.08, 0.08, 0.07, 0.08, 0.08, 0.07, 0.08, 0.08, 0.07, 0.08],
+    },
+    {
+      name: 'auth-svc', version: 'v3.0.2', throughput: '1.2k/s', errorRate: '0.05%', p99: '38ms',
+      health: 5 as 1 | 2 | 3 | 4 | 5,
+      errTrend: [0.06, 0.05, 0.05, 0.04, 0.05, 0.06, 0.05, 0.04, 0.05, 0.05, 0.04, 0.05, 0.05, 0.05, 0.04, 0.05],
+    },
   ],
   staging: [
-    { name: 'payment-svc', version: 'v5.4.0-rc1', throughput: '46/s', errorRate: '0.3%', p99: '124ms', health: 5 as 1 | 2 | 3 | 4 | 5 },
-    { name: 'notification-worker', version: 'v1.3.0-beta', throughput: '12/s', errorRate: '0%', p99: '88ms', health: 5 as 1 | 2 | 3 | 4 | 5 },
+    {
+      name: 'payment-svc', version: 'v5.4.0-rc1', throughput: '46/s', errorRate: '0.3%', p99: '124ms',
+      health: 5 as 1 | 2 | 3 | 4 | 5,
+      errTrend: [0.4, 0.3, 0.3, 0.2, 0.3, 0.3, 0.4, 0.3, 0.2, 0.3, 0.3, 0.2, 0.3, 0.3, 0.3, 0.3],
+    },
+    {
+      name: 'notification-worker', version: 'v1.3.0-beta', throughput: '12/s', errorRate: '0%', p99: '88ms',
+      health: 5 as 1 | 2 | 3 | 4 | 5,
+      errTrend: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    },
   ],
   dev: [
-    { name: 'payment-svc', version: 'v5.5.0-dev', throughput: '4/s', errorRate: '0%', p99: '92ms', health: 5 as 1 | 2 | 3 | 4 | 5 },
+    {
+      name: 'payment-svc', version: 'v5.5.0-dev', throughput: '4/s', errorRate: '0%', p99: '92ms',
+      health: 5 as 1 | 2 | 3 | 4 | 5,
+      errTrend: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    },
   ],
 };
 
@@ -357,8 +619,8 @@ function HealthDot({ level }: { level: 1 | 2 | 3 | 4 | 5 }) {
   return (
     <span
       style={{
-        width: 8,
-        height: 8,
+        width: 6,
+        height: 6,
         borderRadius: '50%',
         background: HEALTH_COLORS[level],
         display: 'inline-block',
@@ -373,25 +635,23 @@ function ActiveServicesCard() {
   const rows = ACTIVE_SERVICES[env];
 
   return (
-    <div style={{ ...surfaceCardStyle, padding: '16px 18px', height: '100%' }}>
+    <div style={{ ...surfaceCardStyle, padding: '20px 24px', height: '100%' }}>
       <div
         style={{
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          marginBottom: 12,
+          marginBottom: 16,
         }}
       >
         <Space size={8} align="center">
-          <AppstoreOutlined style={{ color: TOKENS.primary }} />
-          <Title level={5} style={{ margin: 0 }}>
+          <AppstoreOutlined style={{ color: TOKENS.primary, fontSize: 15 }} />
+          <Title level={5} style={{ margin: 0, fontWeight: 600 }}>
             活跃服务
           </Title>
-          <Text type="secondary" style={{ fontSize: 12 }}>
-            近窗 15 分钟
-          </Text>
+          <Text style={{ fontSize: 12, color: TOKENS.textSecondary }}>近窗 15 分钟</Text>
         </Space>
-        <a href={STORY_URLS.service} style={{ color: TOKENS.primary, fontSize: 12 }}>
+        <a href={STORY_URLS.service} style={{ color: TOKENS.primary, fontSize: 13 }}>
           进入服务 →
         </a>
       </div>
@@ -411,6 +671,8 @@ function ActiveServicesCard() {
         rowKey="name"
         pagination={false}
         dataSource={rows}
+        showHeader={false}
+        style={{ marginTop: 4 }}
         columns={[
           {
             title: '服务',
@@ -418,43 +680,58 @@ function ActiveServicesCard() {
             render: (v, r) => (
               <Space size={6} align="center">
                 <HealthDot level={r.health} />
-                <a style={{ color: TOKENS.primary }}>{v}</a>
+                <a style={{ color: TOKENS.text, fontWeight: 500, fontSize: 13 }}>{v}</a>
               </Space>
             ),
           },
-          { title: '版本', dataIndex: 'version', width: 100, render: (v) => <Tag style={{ margin: 0, fontFamily: 'monospace', fontSize: 11 }}>{v}</Tag> },
+          {
+            title: '版本',
+            dataIndex: 'version',
+            width: 110,
+            render: (v) => (
+              <span style={{ fontFamily: 'ui-monospace, "SF Mono", monospace', fontSize: 11, color: TOKENS.textSecondary }}>
+                {v}
+              </span>
+            ),
+          },
           {
             title: '吞吐',
             dataIndex: 'throughput',
             width: 70,
             align: 'right' as const,
-            render: (v) => <span style={tabularNumStyle}>{v}</span>,
+            render: (v) => (
+              <span style={{ ...tabularNumStyle, fontSize: 13, color: TOKENS.text }}>{v}</span>
+            ),
           },
           {
             title: '错误率',
             dataIndex: 'errorRate',
-            width: 70,
+            width: 80,
             align: 'right' as const,
-            render: (v) => {
+            render: (v, r) => {
               const n = parseFloat(v);
               const danger = !isNaN(n) && n >= 1;
               return (
-                <span
-                  style={{
-                    ...tabularNumStyle,
-                    color: danger ? TOKENS.danger : TOKENS.text,
-                    fontWeight: danger ? 600 : 400,
-                  }}
-                >
-                  {v}
-                </span>
+                <Space size={6} align="center" style={{ justifyContent: 'flex-end' }}>
+                  <span
+                    style={{
+                      ...tabularNumStyle,
+                      fontSize: 13,
+                      color: danger ? TOKENS.danger : TOKENS.text,
+                      fontWeight: danger ? 600 : 400,
+                    }}
+                  >
+                    {v}
+                  </span>
+                  <Sparkline data={r.errTrend} width={48} height={16} color={danger ? TOKENS.danger : TOKENS.success} kind="line" />
+                </Space>
               );
             },
           },
           {
             title: 'P99',
             dataIndex: 'p99',
-            width: 70,
+            width: 64,
             align: 'right' as const,
             render: (v, r) => {
               const num = parseInt(v, 10);
@@ -463,6 +740,7 @@ function ActiveServicesCard() {
                 <span
                   style={{
                     ...tabularNumStyle,
+                    fontSize: 13,
                     color: danger ? TOKENS.danger : TOKENS.text,
                     fontWeight: danger ? 600 : 400,
                   }}
@@ -491,6 +769,7 @@ const SLO_BREACH = [
     burn: 8.4,
     state: 'breach' as const,
     evaluated: '5 分钟前',
+    budgetTrend: [82, 78, 74, 70, 65, 58, 52, 48, 44, 40, 36, 32, 28],
   },
   {
     key: '2',
@@ -500,6 +779,7 @@ const SLO_BREACH = [
     burn: 4.1,
     state: 'risk' as const,
     evaluated: '5 分钟前',
+    budgetTrend: [88, 84, 80, 76, 72, 68, 66, 64, 62, 60, 58, 57, 56],
   },
   {
     key: '3',
@@ -509,30 +789,29 @@ const SLO_BREACH = [
     burn: 1.3,
     state: 'ok' as const,
     evaluated: '5 分钟前',
+    budgetTrend: [92, 90, 88, 87, 86, 85, 84, 84, 83, 83, 82, 82, 82],
   },
 ];
 
 function SloBreachCard() {
   return (
-    <div style={{ ...surfaceCardStyle, padding: '16px 18px', height: '100%' }}>
+    <div style={{ ...surfaceCardStyle, padding: '20px 24px', height: '100%' }}>
       <div
         style={{
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          marginBottom: 12,
+          marginBottom: 16,
         }}
       >
         <Space size={8} align="center">
-          <FireOutlined style={{ color: TOKENS.warning }} />
-          <Title level={5} style={{ margin: 0 }}>
+          <FireOutlined style={{ color: TOKENS.warning, fontSize: 15 }} />
+          <Title level={5} style={{ margin: 0, fontWeight: 600 }}>
             SLO 违约摘要
           </Title>
-          <Text type="secondary" style={{ fontSize: 12 }}>
-            近窗 1 小时
-          </Text>
+          <Text style={{ fontSize: 12, color: TOKENS.textSecondary }}>近窗 1 小时</Text>
         </Space>
-        <a href={STORY_URLS.slo} style={{ color: TOKENS.primary, fontSize: 12 }}>
+        <a href={STORY_URLS.slo} style={{ color: TOKENS.primary, fontSize: 13 }}>
           进入 SLO →
         </a>
       </div>
@@ -541,34 +820,47 @@ function SloBreachCard() {
         rowKey="key"
         pagination={false}
         dataSource={SLO_BREACH}
+        showHeader={false}
         columns={[
           {
             title: '服务',
             dataIndex: 'service',
-            render: (v) => <a style={{ color: TOKENS.primary }}>{v}</a>,
+            render: (v) => <a style={{ color: TOKENS.text, fontWeight: 500, fontSize: 13 }}>{v}</a>,
           },
-          { title: 'SLO', dataIndex: 'slo', width: 140 },
+          { title: 'SLO', dataIndex: 'slo', width: 140, render: (v) => <span style={{ fontSize: 12, color: TOKENS.textSecondary }}>{v}</span> },
           {
             title: '剩余预算',
             dataIndex: 'budget',
-            width: 110,
-            render: (v) => {
+            width: 180,
+            render: (v, r) => {
               const danger = v <= 30;
+              const warn = v <= 60;
+              const color = danger ? TOKENS.danger : warn ? TOKENS.warning : TOKENS.success;
               return (
-                <Progress
-                  percent={v}
-                  size="small"
-                  showInfo
-                  strokeColor={danger ? TOKENS.danger : v <= 60 ? TOKENS.warning : TOKENS.success}
-                  format={(p) => <span style={tabularNumStyle}>{p}%</span>}
-                />
+                <Space size={8} align="center">
+                  <div style={{ width: 80, height: 4, background: TOKENS.bg, borderRadius: 2, overflow: 'hidden', flexShrink: 0 }}>
+                    <div style={{ width: `${v}%`, height: '100%', background: color }} />
+                  </div>
+                  <span
+                    style={{
+                      ...tabularNumStyle,
+                      fontSize: 13,
+                      color,
+                      fontWeight: 600,
+                      minWidth: 30,
+                    }}
+                  >
+                    {v}%
+                  </span>
+                  <Sparkline data={r.budgetTrend} width={48} height={16} color={color} kind="line" />
+                </Space>
               );
             },
           },
           {
             title: '燃尽率',
             dataIndex: 'burn',
-            width: 80,
+            width: 60,
             align: 'right' as const,
             render: (v) => {
               const danger = v >= 5;
@@ -577,8 +869,9 @@ function SloBreachCard() {
                 <span
                   style={{
                     ...tabularNumStyle,
+                    fontSize: 13,
                     color: danger ? TOKENS.danger : warn ? TOKENS.warning : TOKENS.text,
-                    fontWeight: danger || warn ? 600 : 400,
+                    fontWeight: 600,
                   }}
                 >
                   {v.toFixed(1)}x
@@ -589,11 +882,29 @@ function SloBreachCard() {
           {
             title: '状态',
             dataIndex: 'state',
-            width: 80,
+            width: 70,
             render: (v) => {
-              if (v === 'breach') return <Tag color="error" style={{ margin: 0 }}>违约</Tag>;
-              if (v === 'risk') return <Tag color="warning" style={{ margin: 0 }}>高风险</Tag>;
-              return <Tag color="success" style={{ margin: 0 }}>健康</Tag>;
+              const map: Record<string, { color: string; bg: string; label: string }> = {
+                breach: { color: TOKENS.danger, bg: `${TOKENS.danger}10`, label: '违约' },
+                risk: { color: TOKENS.warning, bg: `${TOKENS.warning}10`, label: '高风险' },
+                ok: { color: TOKENS.success, bg: `${TOKENS.success}10`, label: '健康' },
+              };
+              const s = map[v] || map.ok;
+              return (
+                <span
+                  style={{
+                    fontSize: 11,
+                    fontWeight: 500,
+                    color: s.color,
+                    background: s.bg,
+                    padding: '2px 8px',
+                    borderRadius: 3,
+                    display: 'inline-block',
+                  }}
+                >
+                  {s.label}
+                </span>
+              );
             },
           },
         ]}
@@ -614,6 +925,7 @@ const RECENT_ISSUES = [
     count: 142,
     spiking: true,
     state: '待分诊' as '待分诊' | '已分诊' | '已解决' | '已排除',
+    countTrend: [2, 3, 5, 8, 12, 18, 25, 32, 45, 58, 78, 102, 142],
   },
   {
     key: '2',
@@ -623,6 +935,7 @@ const RECENT_ISSUES = [
     count: 24,
     spiking: false,
     state: '已分诊' as '待分诊' | '已分诊' | '已解决' | '已排除',
+    countTrend: [0, 0, 1, 2, 3, 5, 8, 10, 14, 17, 20, 22, 24],
   },
   {
     key: '3',
@@ -633,6 +946,7 @@ const RECENT_ISSUES = [
     spiking: false,
     state: '已解决' as '待分诊' | '已分诊' | '已解决' | '已排除',
     regression: true,
+    countTrend: [8, 8, 7, 6, 4, 2, 1, 0, 0, 0, 0, 0, 0],
   },
   {
     key: '4',
@@ -642,37 +956,59 @@ const RECENT_ISSUES = [
     count: 3,
     spiking: false,
     state: '已排除' as '待分诊' | '已分诊' | '已解决' | '已排除',
+    countTrend: [3, 3, 3, 3, 3, 2, 1, 0, 0, 0, 0, 0, 0],
   },
 ];
 
+const STATE_STYLE: Record<string, { color: string; bg: string }> = {
+  待分诊: { color: TOKENS.danger, bg: `${TOKENS.danger}10` },
+  已分诊: { color: TOKENS.primary, bg: `${TOKENS.primary}10` },
+  已解决: { color: TOKENS.success, bg: `${TOKENS.success}10` },
+  已排除: { color: TOKENS.textSecondary, bg: TOKENS.bg },
+};
+
 function RecentIssuesCard() {
   return (
-    <div style={{ ...surfaceCardStyle, padding: '16px 18px', height: '100%' }}>
+    <div style={{ ...surfaceCardStyle, padding: '20px 24px', height: '100%' }}>
       <div
         style={{
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          marginBottom: 12,
+          marginBottom: 16,
         }}
       >
         <Space size={8} align="center">
-          <BugOutlined style={{ color: TOKENS.danger }} />
-          <Title level={5} style={{ margin: 0 }}>
+          <BugOutlined style={{ color: TOKENS.danger, fontSize: 15 }} />
+          <Title level={5} style={{ margin: 0, fontWeight: 600 }}>
             最近错误
           </Title>
-          <Text type="secondary" style={{ fontSize: 12 }}>
-            近窗 1 小时
-          </Text>
+          <Text style={{ fontSize: 12, color: TOKENS.textSecondary }}>近窗 1 小时</Text>
         </Space>
         <Space size={4}>
-          <Tag color="error" style={{ margin: 0 }}>
+          <span
+            style={{
+              fontSize: 11,
+              color: TOKENS.danger,
+              background: `${TOKENS.danger}10`,
+              padding: '2px 8px',
+              borderRadius: 3,
+            }}
+          >
             激增 1
-          </Tag>
-          <Tag color="warning" style={{ margin: 0 }}>
+          </span>
+          <span
+            style={{
+              fontSize: 11,
+              color: TOKENS.warning,
+              background: `${TOKENS.warning}10`,
+              padding: '2px 8px',
+              borderRadius: 3,
+            }}
+          >
             回归 1
-          </Tag>
-          <a href={STORY_URLS.explore} style={{ color: TOKENS.primary, fontSize: 12 }}>
+          </span>
+          <a href={STORY_URLS.explore} style={{ color: TOKENS.primary, fontSize: 13, marginLeft: 6 }}>
             进入错误 →
           </a>
         </Space>
@@ -680,56 +1016,63 @@ function RecentIssuesCard() {
       <List
         size="small"
         dataSource={RECENT_ISSUES}
-        renderItem={(it) => (
-          <List.Item style={{ padding: '10px 0' }}>
-            <Space direction="vertical" size={4} style={{ flex: 1 }}>
-              <Space size={6} align="center">
-                {it.spiking && (
-                  <Tag color="error" style={{ margin: 0 }}>
-                    <FireOutlined /> 激增
-                  </Tag>
-                )}
-                {it.regression && (
-                  <Tag color="warning" style={{ margin: 0 }}>
-                    <HistoryOutlined /> 回归
-                  </Tag>
-                )}
-                <a style={{ color: TOKENS.text, fontSize: 13, fontWeight: 500 }}>{it.title}</a>
-              </Space>
-              <Space size={12} style={{ fontSize: 12, color: TOKENS.textTertiary }}>
-                <span>服务 {it.service}</span>
-                <span>·</span>
-                <span>首现 {it.firstSeen}</span>
-                <span>·</span>
-                <span style={tabularNumStyle}>累计 {it.count} 次</span>
-              </Space>
-            </Space>
-            <Tag
+        split={false}
+        renderItem={(it) => {
+          const s = STATE_STYLE[it.state];
+          return (
+            <List.Item
               style={{
-                margin: 0,
-                background:
-                  it.state === '待分诊'
-                    ? '#fef2f0'
-                    : it.state === '已分诊'
-                      ? TOKENS.primarySoft
-                      : it.state === '已解决'
-                        ? '#dcfce7'
-                        : TOKENS.bg,
-                color:
-                  it.state === '待分诊'
-                    ? TOKENS.danger
-                    : it.state === '已分诊'
-                      ? TOKENS.primary
-                      : it.state === '已解决'
-                        ? TOKENS.success
-                        : TOKENS.textSecondary,
-                border: 'none',
+                padding: '12px 0',
+                borderBottom: `1px solid ${TOKENS.border}`,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 12,
               }}
             >
-              {it.state}
-            </Tag>
-          </List.Item>
-        )}
+              <span
+                style={{
+                  ...tabularNumStyle,
+                  fontSize: 18,
+                  fontWeight: 600,
+                  color: it.state === '已解决' || it.state === '已排除' ? TOKENS.textSecondary : TOKENS.text,
+                  minWidth: 44,
+                  textAlign: 'right',
+                }}
+              >
+                {it.count}
+              </span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <Space size={6} align="center" wrap>
+                  {it.spiking && (
+                    <span style={{ fontSize: 11, color: TOKENS.danger, fontWeight: 500 }}>激增</span>
+                  )}
+                  {it.regression && (
+                    <span style={{ fontSize: 11, color: TOKENS.warning, fontWeight: 500 }}>回归</span>
+                  )}
+                  <a style={{ color: TOKENS.text, fontSize: 13, fontWeight: 500 }}>{it.title}</a>
+                </Space>
+                <div style={{ fontSize: 11, color: TOKENS.textTertiary, marginTop: 3 }}>
+                  {it.service} · 首现 {it.firstSeen}
+                </div>
+              </div>
+              <Sparkline data={it.countTrend} width={64} height={20} color={s.color} kind="area" />
+              <span
+                style={{
+                  fontSize: 11,
+                  fontWeight: 500,
+                  color: s.color,
+                  background: s.bg,
+                  padding: '2px 8px',
+                  borderRadius: 3,
+                  minWidth: 50,
+                  textAlign: 'center',
+                }}
+              >
+                {it.state}
+              </span>
+            </List.Item>
+          );
+        }}
       />
     </div>
   );
@@ -761,29 +1104,34 @@ const RECENT_DEPLOYS = [
   },
 ];
 
+// 7 天部署频次(bar sparkline,1-3 次/天)
+const DEPLOY_FREQ = [0, 1, 0, 2, 1, 0, 3];
+
 function RecentDeploysCard() {
   return (
-    <div style={{ ...surfaceCardStyle, padding: '16px 18px', height: '100%' }}>
+    <div style={{ ...surfaceCardStyle, padding: '20px 24px', height: '100%' }}>
       <div
         style={{
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          marginBottom: 12,
+          marginBottom: 16,
         }}
       >
         <Space size={8} align="center">
-          <RocketOutlined style={{ color: TOKENS.success }} />
-          <Title level={5} style={{ margin: 0 }}>
+          <RocketOutlined style={{ color: TOKENS.success, fontSize: 15 }} />
+          <Title level={5} style={{ margin: 0, fontWeight: 600 }}>
             最近部署
           </Title>
-          <Text type="secondary" style={{ fontSize: 12 }}>
-            近窗 7 天 · 按服务分组
-          </Text>
+          <Text style={{ fontSize: 12, color: TOKENS.textSecondary }}>近窗 7 天 · 按服务分组</Text>
         </Space>
-        <a href={STORY_URLS.service} style={{ color: TOKENS.primary, fontSize: 12 }}>
-          进入服务 →
-        </a>
+        <Space size={8} align="center">
+          <Text style={{ fontSize: 11, color: TOKENS.textTertiary }}>7d 频次</Text>
+          <Sparkline data={DEPLOY_FREQ} width={56} height={20} color={TOKENS.success} kind="bar" />
+          <a href={STORY_URLS.service} style={{ color: TOKENS.primary, fontSize: 13 }}>
+            进入服务 →
+          </a>
+        </Space>
       </div>
       <Collapse
         defaultActiveKey={RECENT_DEPLOYS.map((g) => g.service)}
@@ -792,13 +1140,23 @@ function RecentDeploysCard() {
         items={RECENT_DEPLOYS.map((grp) => ({
           key: grp.service,
           label: (
-            <Space size={6} align="center">
-              <Text strong style={{ fontSize: 13 }}>{grp.service}</Text>
-              <Tag style={{ margin: 0, fontSize: 11 }}>{grp.items.length} 次</Tag>
+            <Space size={8} align="center">
+              <Text strong style={{ fontSize: 13, color: TOKENS.text }}>{grp.service}</Text>
+              <span
+                style={{
+                  fontSize: 11,
+                  color: TOKENS.textSecondary,
+                  background: TOKENS.bg,
+                  padding: '1px 8px',
+                  borderRadius: 3,
+                }}
+              >
+                {grp.items.length} 次
+              </span>
             </Space>
           ),
           children: (
-            <div style={{ padding: '0 0 4px 4px' }}>
+            <div style={{ padding: '4px 0 8px 4px' }}>
               {grp.items.map((d, idx) => (
                 <div
                   key={idx}
@@ -806,29 +1164,29 @@ function RecentDeploysCard() {
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'space-between',
-                    padding: '6px 0',
-                    borderBottom: idx < grp.items.length - 1 ? `1px dashed ${TOKENS.border}` : 'none',
+                    padding: '8px 0',
+                    borderBottom: idx < grp.items.length - 1 ? `1px solid ${TOKENS.border}` : 'none',
                   }}
                 >
-                  <Space size={8} align="center">
-                    <Tag
+                  <Space size={10} align="center">
+                    <span
                       style={{
-                        margin: 0,
-                        fontFamily: 'monospace',
-                        fontSize: 11,
-                        background: d.source === 'CI' ? TOKENS.primarySoft : TOKENS.bg,
+                        fontFamily: 'ui-monospace, "SF Mono", monospace',
+                        fontSize: 12,
                         color: d.source === 'CI' ? TOKENS.primary : TOKENS.textSecondary,
-                        border: 'none',
+                        background: d.source === 'CI' ? TOKENS.primarySoft : TOKENS.bg,
+                        padding: '2px 6px',
+                        borderRadius: 3,
                       }}
                     >
                       {d.version}
-                    </Tag>
-                    <Text style={{ fontSize: 12, color: TOKENS.textSecondary }}>{d.time}</Text>
-                    <Text style={{ fontSize: 12, color: TOKENS.textTertiary }}>
+                    </span>
+                    <span style={{ fontSize: 12, color: TOKENS.textSecondary }}>{d.time}</span>
+                    <span style={{ fontSize: 11, color: TOKENS.textTertiary }}>
                       {d.source === 'CI' ? 'CI 上报' : '推断'}
-                    </Text>
+                    </span>
                   </Space>
-                  <Text style={{ fontSize: 12, color: TOKENS.textTertiary }}>{d.by}</Text>
+                  <span style={{ fontSize: 12, color: TOKENS.textTertiary }}>{d.by}</span>
                 </div>
               ))}
             </div>
@@ -847,23 +1205,38 @@ function HomeEmptyState() {
     <div
       style={{
         ...surfaceCardStyle,
-        padding: '60px 24px',
+        padding: '80px 32px',
         textAlign: 'center',
-        marginTop: 24,
+        marginTop: 16,
       }}
     >
-      <RocketOutlined style={{ fontSize: 48, color: TOKENS.textTertiary, marginBottom: 16 }} />
-      <Title level={4} style={{ marginBottom: 8 }}>
+      <div
+        style={{
+          width: 56,
+          height: 56,
+          borderRadius: 12,
+          background: TOKENS.primarySoft,
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          marginBottom: 20,
+        }}
+      >
+        <RocketOutlined style={{ fontSize: 24, color: TOKENS.primary }} />
+      </div>
+      <Title level={4} style={{ marginBottom: 8, fontWeight: 600 }}>
         还没有接入任何应用
       </Title>
-      <Paragraph type="secondary" style={{ marginBottom: 20 }}>
+      <Paragraph type="secondary" style={{ marginBottom: 24, fontSize: 13 }}>
         前往集成菜单完成首次接入,数分钟内即可在首页看到全局健康度与活跃服务。
       </Paragraph>
-      <Space>
-        <Button type="primary" icon={<RocketOutlined />} href={STORY_URLS.integration}>
+      <Space size={8}>
+        <Button type="primary" href={STORY_URLS.integration} style={{ borderRadius: 4 }}>
           前往集成菜单
         </Button>
-        <Button href={STORY_URLS.explore}>查看调用链示例</Button>
+        <Button href={STORY_URLS.explore} style={{ borderRadius: 4 }}>
+          查看调用链示例
+        </Button>
       </Space>
     </div>
   );
@@ -871,20 +1244,22 @@ function HomeEmptyState() {
 
 /* ============================================================
  * HomeDashboard · 完整首页
+ * 布局:TopMenuBar + HomeToolbar + Hero GlobalHealthCard(全宽)
+ *       + 2x2 网格(活跃服务 / SLO 违约 / 最近错误 / 最近部署)
  * ============================================================ */
 function HomeDashboard() {
   const [empty, setEmpty] = useState(false);
   return (
     <div style={shellStyle}>
       <TopMenuBar active="home" />
-      <Content style={{ padding: 24 }}>
+      <Content style={{ padding: '24px 32px 40px' }}>
         <HomeToolbar onRefresh={() => undefined} />
         {empty ? (
           <HomeEmptyState />
         ) : (
           <>
             <GlobalHealthCard />
-            <Row gutter={[16, 16]}>
+            <Row gutter={[20, 20]}>
               <Col xs={24} lg={12}>
                 <ActiveServicesCard />
               </Col>
@@ -898,12 +1273,19 @@ function HomeDashboard() {
                 <RecentDeploysCard />
               </Col>
             </Row>
-            <div style={{ marginTop: 16, textAlign: 'center' }}>
+            <div
+              style={{
+                marginTop: 24,
+                paddingTop: 16,
+                borderTop: `1px solid ${TOKENS.border}`,
+                textAlign: 'center',
+              }}
+            >
               <Button
-                type="link"
+                type="text"
                 size="small"
                 onClick={() => setEmpty(true)}
-                style={{ color: TOKENS.textTertiary }}
+                style={{ color: TOKENS.textTertiary, fontSize: 12 }}
               >
                 预览空状态
               </Button>
