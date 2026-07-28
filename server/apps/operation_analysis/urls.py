@@ -11,6 +11,7 @@ from apps.operation_analysis.views.network_topology_view import NetworkTopologyV
 from apps.operation_analysis.views.openapi_import_export_view import OpenImportExportViewSet
 from apps.operation_analysis.views.scene_widget_view import SceneWidgetViewSet
 from apps.operation_analysis.views.share_view import DashboardShareAccessViewSet
+from apps.operation_analysis.views.subscription_view import DashboardReportSubscriptionViewSet
 from apps.operation_analysis.views.view import (
     ArchitectureModelViewSet,
     DashboardModelViewSet,
@@ -24,6 +25,11 @@ router = routers.DefaultRouter()
 router.register(r"api/data_source", DataSourceAPIModelViewSet, basename="data_source")
 router.register(r"api/dashboard", DashboardModelViewSet, basename="dashboard")
 router.register(r"api/dashboard_share", DashboardShareAccessViewSet, basename="dashboard_share")
+router.register(
+    r"api/dashboard_subscription",
+    DashboardReportSubscriptionViewSet,
+    basename="dashboard_subscription",
+)
 router.register(r"api/directory", DirectoryModelViewSet, basename="directory")
 router.register(r"api/topology", TopologyModelViewSet, basename="topology")
 router.register(r"api/architecture", ArchitectureModelViewSet, basename="architecture")

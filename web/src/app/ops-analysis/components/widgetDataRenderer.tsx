@@ -52,6 +52,10 @@ import { useWidgetHeaderRuntimeSlot } from "@/app/ops-analysis/components/widget
 import ComponentParamSwitchControl from "@/app/ops-analysis/components/componentParamSwitchControl";
 import { getDateRangeTimezone } from "@/app/ops-analysis/utils/dateRange";
 import { validateMultiValueData } from "@/app/ops-analysis/utils/multiValueData";
+import {
+  hasRenderableWidgetData,
+  type DashboardWidgetRenderResult,
+} from "@/app/ops-analysis/renderContract";
 
 const validateTopNData = (
   data: unknown,
@@ -227,6 +231,7 @@ export interface WidgetWrapperProps {
   reloadVersion?: string;
   builtinNamespaceId?: number;
   screenRenderContext?: ScreenRenderContext;
+  onRenderStatus?: (result: DashboardWidgetRenderResult) => void;
 }
 
 const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
@@ -242,6 +247,8 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
   reloadVersion = "0:0",
   builtinNamespaceId,
   screenRenderContext,
+  widgetId,
+  onRenderStatus,
 }) => {
   const { t } = useTranslation();
   const headerRuntimeSlot = useWidgetHeaderRuntimeSlot();
@@ -837,6 +844,38 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
   const renderError = (message: string) => (
     <WidgetErrorState message={message} />
   );
+  const handleRendererReady = useCallback(
+    (hasData?: boolean) => {
+      onReady?.(hasData);
+      if (isTableLikeChart ? tableLoading : loading) {
+        onRenderStatus?.({ widgetId, status: "loading" });
+        return;
+      }
+      if (requestEnabled && !hasSettledRequest) {
+        onRenderStatus?.({ widgetId, status: "loading" });
+        return;
+      }
+      if (!hasData && hasRenderableWidgetData(rawData)) {
+        onRenderStatus?.({ widgetId, status: "loading" });
+        return;
+      }
+      onRenderStatus?.({
+        widgetId,
+        status: hasData ? "ready" : "empty",
+      });
+    },
+    [
+      hasSettledRequest,
+      isTableLikeChart,
+      loading,
+      onReady,
+      onRenderStatus,
+      rawData,
+      requestEnabled,
+      tableLoading,
+      widgetId,
+    ],
+  );
   const hasRawPayload = rawData !== null && rawData !== undefined;
   const hasActiveRuntimeControl =
     hasActiveWidgetRuntimeParams(chartType, runtimeParams);
@@ -850,6 +889,37 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     requestEnabled,
     hasRequested: previousRequestRef.current.hasRequested,
   });
+  const isInitialNonTableLoading =
+    shouldShowInitialWidgetLoading({
+      loading,
+      isTableLikeChart,
+      hasRawPayload,
+      hasSettledRequest,
+    });
+
+  useEffect(() => {
+    if (isInitialNonTableLoading || isWaitingForInitialData) {
+      onRenderStatus?.({ widgetId, status: "loading" });
+      return;
+    }
+
+    if (dataValidation && !dataValidation.isValid && !hasActiveRuntimeControl) {
+      onRenderStatus?.({
+        widgetId,
+        status: "failed",
+        error:
+          dataValidation.message || t("dashboard.dataCannotRenderAsChart"),
+      });
+    }
+  }, [
+    dataValidation,
+    hasActiveRuntimeControl,
+    isInitialNonTableLoading,
+    isWaitingForInitialData,
+    onRenderStatus,
+    t,
+    widgetId,
+  ]);
 
   if (isSceneWidget) {
     return (
@@ -863,7 +933,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
             config={config}
             refreshKey={reloadVersion}
             screenRenderContext={screenRenderContext}
-            onReady={onReady}
+            onReady={handleRendererReady}
             fallback={renderError(
               `${t("dashboard.unknownComponentType")}: ${chartType}`,
             )}
@@ -873,13 +943,6 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     );
   }
 
-  const isInitialNonTableLoading =
-    shouldShowInitialWidgetLoading({
-      loading,
-      isTableLikeChart,
-      hasRawPayload,
-      hasSettledRequest,
-    });
   if (isInitialNonTableLoading || isWaitingForInitialData) {
     return (
       <>
@@ -920,7 +983,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
           refreshKey={reloadVersion}
           dataSource={dataSource}
           screenRenderContext={screenRenderContext}
-          onReady={onReady}
+          onReady={handleRendererReady}
           onQueryChange={isTableLikeChart ? handleTableQueryChange : undefined}
           componentSwitchControl={headerRuntimeSlot ? null : componentSwitchControl}
           errorMessage={
