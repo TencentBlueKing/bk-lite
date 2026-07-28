@@ -22,6 +22,7 @@ import { useTopologyLifecycle } from './hooks/useTopologyLifecycle';
 import { useNodeConfigFlow } from './hooks/useNodeConfigFlow';
 import { useDataSourceManager } from '@/app/ops-analysis/hooks/useDataSource';
 import { useUnifiedFilter } from '@/app/ops-analysis/hooks/useUnifiedFilter';
+import { useCanvasShareAction } from '@/app/ops-analysis/hooks/useCanvasShareAction';
 import {
   TopologyProps,
   TopologyRef,
@@ -52,10 +53,11 @@ import {
 } from '@/app/ops-analysis/components/appFullscreen';
 
 const Topology = forwardRef<TopologyRef, TopologyProps>(
-  ({ selectedTopology }, ref) => {
+  ({ selectedTopology, shareMode = false }, ref) => {
     const themeName = resolveOpsChartThemeName();
     const chartTheme = getOpsChartTheme(themeName);
     const isDarkTheme = themeName === 'dark';
+    const { shareLoading, openShare } = useCanvasShareAction('topology');
     const containerRef = useRef<HTMLDivElement>(null);
     const canvasContainerRef = useRef<HTMLDivElement>(null);
     const canvasHostRef = useRef<HTMLDivElement>(null);
@@ -381,6 +383,15 @@ const Topology = forwardRef<TopologyRef, TopologyProps>(
     const topologyToolbar = (
       <TopologyToolbar
         selectedTopology={selectedTopology}
+        shareMode={shareMode}
+        shareLoading={shareLoading}
+        onOpenShare={
+          !shareMode && selectedTopology?.data_id
+            ? () => {
+                void openShare(selectedTopology.data_id);
+              }
+            : undefined
+        }
         onEdit={handleEnterEditMode}
         onSave={handleSave}
         onCancel={handleCancelEdit}

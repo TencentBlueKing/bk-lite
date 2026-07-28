@@ -1,9 +1,14 @@
 import useApiClient from '@/utils/request';
+import { useShareCanvasDetailOverride } from '@/app/ops-analysis/context/shareCanvasDetail';
 
 export const useArchitectureApi = () => {
   const { get, put, post, del } = useApiClient();
+  const shareDetailOverride = useShareCanvasDetailOverride();
 
   const getArchitectureDetail = async (id: string | number) => {
+    if (shareDetailOverride) {
+      return shareDetailOverride();
+    }
     return get(`/operation_analysis/api/architecture/${id}/`);
   };
 

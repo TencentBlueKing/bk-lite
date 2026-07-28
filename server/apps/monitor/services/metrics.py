@@ -79,6 +79,8 @@ class Metrics:
                 gaps = Metrics.detect_gap_intervals(
                     detection_resp.get("data", {}).get("result", []),
                     collection_interval,
+                    range_start=start,
+                    range_end=end,
                 )
                 data["gaps"] = gaps
                 data["gap_detection"] = {"status": "ok", "limited": False}
@@ -132,7 +134,12 @@ class Metrics:
         return value * multiplier_map[matched.group("unit")]
 
     @staticmethod
-    def detect_gap_intervals(data_list, collection_interval_seconds):
+    def detect_gap_intervals(
+        data_list,
+        collection_interval_seconds,
+        range_end=None,
+        range_start=None,
+    ):
         try:
             collection_interval = int(collection_interval_seconds)
         except (TypeError, ValueError):
@@ -141,6 +148,14 @@ class Metrics:
             return []
 
         tolerance_seconds = max(collection_interval * 2, 60)
+        try:
+            normalized_range_end = float(range_end) if range_end is not None else None
+        except (TypeError, ValueError):
+            normalized_range_end = None
+        try:
+            normalized_range_start = float(range_start) if range_start is not None else None
+        except (TypeError, ValueError):
+            normalized_range_start = None
         gaps = []
 
         for item in data_list:
@@ -149,6 +164,24 @@ class Metrics:
                 for timestamp, value in item.get("values", [])
                 if value is not None
             )
+            if real_points and normalized_range_start is not None:
+                first_timestamp = real_points[0]
+                missing_duration = first_timestamp - normalized_range_start
+                if missing_duration >= tolerance_seconds:
+                    gaps.append(
+                        {
+                            "start": normalized_range_start,
+                            "end": first_timestamp - collection_interval,
+                            "duration": missing_duration,
+                            "series": [
+                                {
+                                    "metric": item.get("metric", {}),
+                                    "missing_points": int(missing_duration / collection_interval),
+                                }
+                            ],
+                        }
+                    )
+
             for prev_timestamp, next_timestamp in zip(real_points, real_points[1:]):
                 missing_duration = next_timestamp - prev_timestamp - collection_interval
                 if missing_duration < tolerance_seconds:
@@ -167,22 +200,56 @@ class Metrics:
                     }
                 )
 
+            if real_points and normalized_range_end is not None:
+                last_timestamp = real_points[-1]
+                missing_duration = normalized_range_end - last_timestamp
+                if missing_duration >= tolerance_seconds:
+                    gaps.append(
+                        {
+                            "start": last_timestamp + collection_interval,
+                            "end": normalized_range_end,
+                            "duration": missing_duration,
+                            "series": [
+                                {
+                                    "metric": item.get("metric", {}),
+                                    "missing_points": int(missing_duration / collection_interval),
+                                }
+                            ],
+                        }
+                    )
+
         return Metrics.merge_gap_intervals(gaps, collection_interval)
 
     @staticmethod
     def merge_gap_intervals(gaps, collection_interval_seconds):
+        gaps_by_series = {}
+        for gap in gaps:
+            series_key = tuple(
+                sorted(
+                    tuple(sorted((str(key), str(value)) for key, value in item.get("metric", {}).items()))
+                    for item in gap.get("series", [])
+                )
+            )
+            gaps_by_series.setdefault(series_key, []).append(gap)
+
         merged = []
-        for gap in sorted(gaps, key=lambda item: (item["start"], item["end"])):
-            if not merged or gap["start"] > merged[-1]["end"] + collection_interval_seconds:
-                merged.append({**gap, "series": list(gap.get("series", []))})
-                continue
+        for series_gaps in gaps_by_series.values():
+            current_series_gaps = []
+            for gap in sorted(series_gaps, key=lambda item: (item["start"], item["end"])):
+                if not current_series_gaps or gap["start"] > current_series_gaps[-1]["end"] + collection_interval_seconds:
+                    current_series_gaps.append({**gap, "series": list(gap.get("series", []))})
+                    continue
 
-            current = merged[-1]
-            current["end"] = max(current["end"], gap["end"])
-            current["duration"] = current["end"] - current["start"] + collection_interval_seconds
-            current["series"].extend(gap.get("series", []))
+                current = current_series_gaps[-1]
+                current["end"] = max(current["end"], gap["end"])
+                current["duration"] = current["end"] - current["start"] + collection_interval_seconds
+                for series_item in current["series"]:
+                    if "missing_points" in series_item:
+                        series_item["missing_points"] = int(current["duration"] / collection_interval_seconds)
 
-        return merged
+            merged.extend(current_series_gaps)
+
+        return sorted(merged, key=lambda item: (item["start"], item["end"]))
 
     @staticmethod
     def fill_missing_points(start, end, step, data_list):

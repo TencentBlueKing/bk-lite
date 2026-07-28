@@ -7,7 +7,7 @@ import type { Session } from 'next-auth';
 import { useRouter, usePathname } from 'next/navigation';
 import { Spin, message } from 'antd';
 import { useLocale } from '@/context/locale';
-import { useTheme } from '@/context/theme';
+import { useThemeMode } from '@/theme';
 import { useTranslation } from '@/utils/i18n';
 import { saveAuthToken } from '@/utils/crossDomainAuth';
 import SigninClient from '@/app/(core)/auth/signin/SigninClient';
@@ -60,7 +60,7 @@ export const useAuth = () => {
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { data: session, status } = useSession();
   const extendedSession = session as unknown as ExtendedSession | null;
-  const { themeName } = useTheme();
+  const { mode } = useThemeMode();
   const [token, setToken] = useState<string | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [isCheckingAuth, setIsCheckingAuth] = useState<boolean>(true);
@@ -411,9 +411,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             className="relative w-full overflow-hidden rounded-[16px] border"
             style={{
               maxWidth: 420,
-              borderColor: themeName === 'dark' ? 'var(--color-border-1)' : '#DBE3EC',
-              background: themeName === 'dark' ? 'var(--bg-color-2)' : '#FFFFFF',
-              boxShadow: themeName === 'dark' ? '0 18px 42px rgba(0,0,0,0.42)' : '0 10px 28px rgba(15,23,42,0.10)',
+              borderColor: mode === 'dark' ? 'var(--color-border-1)' : '#DBE3EC',
+              background: mode === 'dark' ? 'var(--bg-color-2)' : '#FFFFFF',
+              boxShadow: mode === 'dark' ? '0 18px 42px rgba(0,0,0,0.42)' : '0 10px 28px rgba(15,23,42,0.10)',
             }}
           >
             <div className="relative px-6 pb-5 pt-6">

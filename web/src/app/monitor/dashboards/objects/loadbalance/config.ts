@@ -88,7 +88,7 @@ export const LOADBALANCE_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       description: '设备所有接口入向流量速率之和（字节/秒）。',
       unit: 'byteps',
       query:
-        '(sum(rate(interface_ifHCInOctets{__$labels__}[5m])) by (instance_id)) or (sum(rate(interface_ifInOctets{__$labels__}[5m])) by (instance_id))',
+        '(sum(rate(interface_ifHCInOctets{__$labels__}[__$window__])) by (instance_id)) or (sum(rate(interface_ifInOctets{__$labels__}[__$window__])) by (instance_id))',
       color: '#27c274'
     },
     {
@@ -97,7 +97,7 @@ export const LOADBALANCE_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       description: '设备所有接口出向流量速率之和（字节/秒）。',
       unit: 'byteps',
       query:
-        '(sum(rate(interface_ifHCOutOctets{__$labels__}[5m])) by (instance_id)) or (sum(rate(interface_ifOutOctets{__$labels__}[5m])) by (instance_id))',
+        '(sum(rate(interface_ifHCOutOctets{__$labels__}[__$window__])) by (instance_id)) or (sum(rate(interface_ifOutOctets{__$labels__}[__$window__])) by (instance_id))',
       color: '#2f6bff'
     }
   ],
@@ -160,7 +160,7 @@ export const LOADBALANCE_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       unit: 'byteps',
       color: '#27c274',
       icon: 'api',
-      guide: [{ label: '入向总流量', detail: '设备所有接口入向流量速率之和。' }],
+      guide: [{ label: '入向总流量', detail: '全部接口入向字节速率；突增优先查广播风暴、异常主机与上联拥塞。' }],
       footer: [{ label: '出向', metric: 'device_total_outgoing_traffic', unit: 'byteps' }]
     }
   ],
@@ -179,7 +179,7 @@ export const LOADBALANCE_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       title: '设备收发流量趋势',
       subtitle: '入向、出向',
       metric: 'device_total_incoming_traffic',
-      guide: [{ label: '收发流量', detail: '对比设备入向与出向总流量速率，识别流量突增或异常。' }],
+      guide: [{ label: '收发流量', detail: '对比入/出向总流量；突增查风暴与上联，持续高水位结合接口错误计数排查。' }],
       series: [
         { metric: 'device_total_incoming_traffic', label: '入向', color: '#27c274', unit: 'byteps' },
         { metric: 'device_total_outgoing_traffic', label: '出向', color: '#2f6bff', unit: 'byteps' }

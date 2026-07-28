@@ -19,11 +19,9 @@ from apps.node_mgmt.serializers.installer import (
 from apps.node_mgmt.serializers.node import TaskNodesQuerySerializer
 from apps.node_mgmt.services.installer import InstallerService
 from apps.node_mgmt.tasks.installer import (
-    CONTROLLER_INSTALL_TASK_TIMEOUT_SECONDS,
     install_collector,
     install_controller,
     retry_controller,
-    timeout_controller_install_task,
     uninstall_controller,
 )
 from apps.node_mgmt.utils.permission import authorize_node_ids, get_authorized_node_queryset
@@ -82,10 +80,6 @@ class InstallerViewSet(ViewSet):
             getattr(request.user, "domain", "domain.com"),
         )
         install_controller.delay(task_id)
-        timeout_controller_install_task.apply_async(
-            args=[task_id],
-            countdown=CONTROLLER_INSTALL_TASK_TIMEOUT_SECONDS,
-        )
         return WebUtils.response_success(dict(task_id=task_id))
 
     @action(detail=False, methods=["post"], url_path="controller/uninstall")
@@ -110,22 +104,34 @@ class InstallerViewSet(ViewSet):
     @HasPermission("cloud_region_node-Edit")
     def controller_retry(self, request):
         scope = resolve_current_team_data_scope(request)
-        authorized_nodes = get_authorized_node_queryset(request)
-        authorized_task_nodes = InstallerService.get_authorized_controller_task_nodes(
+        task_node_ids = request.data["task_node_ids"]
+        if not isinstance(task_node_ids, list):
+            task_node_ids = [task_node_ids]
+
+        authorized_task_nodes = InstallerService.get_authorized_controller_task_node_queryset(
             request.data["task_id"],
-            authorized_nodes=authorized_nodes,
+            authorized_nodes=get_authorized_node_queryset(request),
             scope=scope,
+            request_user=request.user,
         )
-        requested_task_node_ids = request.data["task_node_ids"]
-        if not isinstance(requested_task_node_ids, list):
-            requested_task_node_ids = [requested_task_node_ids]
-        authorized_task_node_ids = {str(task_node.id) for task_node in authorized_task_nodes}
-        if not requested_task_node_ids or any(str(task_node_id) not in authorized_task_node_ids for task_node_id in requested_task_node_ids):
-            return WebUtils.response_403("User does not have permission to retry this task node")
+        selected_task_nodes = list(authorized_task_nodes.filter(id__in=task_node_ids))
+        requested_ids = {str(task_node_id) for task_node_id in task_node_ids}
+        authorized_ids = {str(task_node.id) for task_node in selected_task_nodes}
+        if not requested_ids or authorized_ids != requested_ids:
+            return WebUtils.response_403("User does not have permission to retry this controller installation")
+
+        node_ids = [task_node.node_id for task_node in selected_task_nodes if task_node.node_id]
+        if node_ids:
+            _, error_response = authorize_node_ids(request, node_ids, required_permission="Operate")
+            if error_response:
+                return error_response
+
+        if any(InstallerService.requires_manual_recovery(task_node.result) for task_node in selected_task_nodes):
+            return WebUtils.response_error(error_message="Manual recovery is required before this node can be retried")
 
         retry_controller.delay(
             request.data["task_id"],
-            requested_task_node_ids,
+            task_node_ids,
             password=request.data.get("password"),
             private_key=request.data.get("private_key"),
             passphrase=request.data.get("passphrase"),

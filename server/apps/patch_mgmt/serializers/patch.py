@@ -5,7 +5,9 @@ import re
 from rest_framework import serializers
 
 from apps.core.utils.serializers import TeamSerializer
+from apps.patch_mgmt.constants import PackageManagerType
 from apps.patch_mgmt.models import LinuxPatchDetail, Patch, WindowsPatchDetail
+from apps.patch_mgmt.utils.i18n import serializer_message
 
 
 class WindowsPatchDetailSerializer(serializers.ModelSerializer):
@@ -14,10 +16,20 @@ class WindowsPatchDetailSerializer(serializers.ModelSerializer):
     class Meta:
         model = WindowsPatchDetail
         fields = ["kb_number", "product_list", "architectures", "ms_bulletin"]
+        extra_kwargs = {"kb_number": {"validators": []}}
 
 
 class LinuxPatchDetailSerializer(serializers.ModelSerializer):
     """Linux 补丁详情序列化器（支持读写）"""
+
+    repo_type = serializers.CharField(required=False, allow_blank=True)
+
+    def validate_repo_type(self, value):
+        repo_type = PackageManagerType.normalize(value)
+        valid_values = {choice[0] for choice in PackageManagerType.CHOICES}
+        if repo_type not in valid_values:
+            raise serializers.ValidationError(serializer_message(self, "error.invalid_choice", "Not a valid choice."))
+        return repo_type
 
     class Meta:
         model = LinuxPatchDetail
@@ -108,7 +120,7 @@ class PatchListSerializer(TeamSerializer):
         match = re.fullmatch(r"(?i:KB)(\d+)", raw_kb)
         if not match:
             raise serializers.ValidationError(
-                {"windows_detail": {"kb_number": "KB 编号必须为 KB 加数字"}}
+                {"windows_detail": {"kb_number": serializer_message(self, "error.invalid_kb_number", "KB number must start with KB followed by digits")}}
             )
 
         kb_number = f"KB{match.group(1)}"
@@ -117,7 +129,7 @@ class PatchListSerializer(TeamSerializer):
             duplicate = duplicate.exclude(patch=self.instance)
         if duplicate.exists():
             raise serializers.ValidationError(
-                {"windows_detail": {"kb_number": f"{kb_number} 已存在，不允许重复创建"}}
+                {"windows_detail": {"kb_number": serializer_message(self, "error.duplicate_kb", "{kb} already exists and cannot be created again", kb=kb_number)}}
             )
         windows_detail["kb_number"] = kb_number
         return attrs

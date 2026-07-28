@@ -18,6 +18,7 @@ from apps.node_mgmt.models import Node, NodeOrganization, PackageVersion
 from apps.node_mgmt.models.cloud_region import CloudRegion, SidecarEnv
 from apps.node_mgmt.models.installer import CollectorTask, CollectorTaskNode, ControllerTask, ControllerTaskNode
 from apps.node_mgmt.services.installer import InstallerService
+from apps.node_mgmt.services.installer_session import InstallerSessionService
 
 
 # --------------------------------------------------------------------------- #
@@ -720,3 +721,12 @@ def test_download_linux_installer_calls_s3():
     with patch("apps.node_mgmt.services.installer.download_file_by_s3", download):
         result = InstallerService.download_linux_installer("arm64")
     assert result == b"linux-bytes"
+# Windows 远程安装使用独立的无交互 bootstrap，避免把 GUI 安装器当作远程命令执行。
+def test_windows_bootstrap_artifact_uses_architecture_specific_path():
+    artifact = InstallerSessionService.windows_bootstrap_artifact("amd64")
+
+    assert artifact == {
+        "filename": "bklite-controller-bootstrap.exe",
+        "object_key": "installer/windows/x86_64/bklite-controller-bootstrap.exe",
+        "architecture": "x86_64",
+    }

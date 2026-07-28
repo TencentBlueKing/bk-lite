@@ -524,9 +524,13 @@ const OperationProgress: React.FC<OperationProgressProps> = ({
         const isManualInstall = installMethod === 'manualInstall';
         const isWindows = row.os === 'windows';
         const nodeId = row.node_id || row.id;
+        const requiresManualRecovery =
+          row.result?.failure?.type === 'manual_recovery_required';
         // 卸载控制器不显示重试按钮
         const showRetry =
-          ['error', 'timeout'].includes(row.status) && !isUninstallController;
+          ['error', 'timeout'].includes(row.status) &&
+          !isUninstallController &&
+          !requiresManualRecovery;
 
         // 只有安装控制器才显示手动安装相关操作
         if (isInstallController && isManualInstall) {

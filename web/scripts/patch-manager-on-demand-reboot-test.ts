@@ -20,7 +20,7 @@ assertPresent(
   '聚合行所有主机必须可重启',
 );
 assertPresent(page, /selectedRows\.length\s*>\s*0\s*&&\s*selectedRows\.every\(\(r\)\s*=>\s*canReboot\(r\.items\s*\|\|\s*\[\]\)\)/, '批量重启全选校验');
-assertPresent(page, /所选范围包含非待重启主机/, '批量重启禁用原因');
+assertPresent(page, /patchManager\.risk\.rebootSelectionBlocked/, '批量重启禁用原因');
 const dropdownZIndex = Number(globalStyles.match(/\.ant-dropdown\s*\{[^}]*z-index:\s*(\d+)/)?.[1]);
 const rebootTooltipZIndex = Number(
   page.match(/<Tooltip[^>]*title=\{!batchCanReboot[\s\S]{0,180}zIndex=\{(\d+)\}/)?.[1],
@@ -31,16 +31,34 @@ if (!Number.isFinite(dropdownZIndex) || !Number.isFinite(rebootTooltipZIndex)) {
 if (rebootTooltipZIndex <= dropdownZIndex) {
   throw new Error(`一键重启 Tooltip 层级 ${rebootTooltipZIndex} 未高于 Dropdown 层级 ${dropdownZIndex}`);
 }
-assertPresent(page, /rebootable\s*&&\s*\([\s\S]{0,300}>重启<\//, '行内重启按钮按需显示');
-assertAbsent(page, /该条目无主机[\s\S]{0,150}>重启<\//, '行内废弃的置灰重启按钮');
+assertPresent(page, /rebootable\s*&&\s*\([\s\S]{0,400}patchManager\.risk\.reboot/, '行内重启按钮按需显示');
+assertAbsent(page, /patchManager\.risk\.noRebootableHosts[\s\S]{0,150}patchManager\.risk\.reboot/, '行内废弃的置灰重启按钮');
 assertPresent(
   page,
   /filter\(\(i:\s*RiskItem\)\s*=>\s*i\.remediation\s*===\s*'pending_reboot'\)[\s\S]{0,120}i\.host_id/,
   '重启请求仅携带待重启主机',
 );
-assertPresent(page, /仅自动重启明确需要重启的主机/, '自动重启精确范围提示');
-assertPresent(page, /无需重启的主机将跳过重启/, '无需重启分支提示');
-assertPresent(page, /无法确认的主机将进入待重启并等待人工处理/, '未知分支提示');
-assertPresent(page, /仅自动重启检测为需要重启的主机/, '提交确认提示');
+assertPresent(page, /patchManager\.risk\.autoRebootTitle/, '自动重启精确范围提示');
+assertPresent(page, /patchManager\.risk\.autoRebootHelp/, '自动重启分支提示');
+assertPresent(page, /patchManager\.risk\.onlyRequiredReboot/, '提交确认提示');
+assertPresent(
+  page,
+  /patchManager\.risk\.autoReboot'\)\}[\s\S]{0,200}<Alert[\s\S]{0,200}type="warning"[\s\S]{0,200}showIcon[\s\S]{0,200}patchManager\.risk\.autoRebootTitle[\s\S]{0,600}<Switch[\s\S]{0,120}aria-label=\{t\('patchManager\.risk\.autoReboot'\)\}/,
+  '自动重启标题、常驻 Alert 与开关按三行排列',
+);
+assertPresent(page, /<div style=\{\{ width: '100%', flex: 1, overflowY: 'auto' \}\}>/, '执行设置区域占满抽屉内容宽度');
+assertPresent(page, /<Alert\s+style=\{\{ width: '100%', marginBottom: 12 \}\}/, '自动重启 Alert 占满内容宽度');
+assertPresent(
+  page,
+  /const payload: Parameters<typeof api\.remediateRisk>\[0\][\s\S]{0,180}auto_reboot: autoReboot/,
+  '治理请求复用 API 入参类型',
+);
+assertPresent(
+  page,
+  /checked=\{autoReboot\}[\s\S]{0,160}onChange=\{\(checked: boolean\) => setAutoReboot\(checked\)\}/,
+  '自动重启开关传递明确的布尔值',
+);
+assertAbsent(page, /checkedChildren=|unCheckedChildren=/, '自动重启开关不应显示状态文字');
+assertAbsent(page, /\{autoReboot\s*&&\s*\(\s*<Alert/, '自动重启提示不应随开关隐藏');
 
 console.log('补丁治理按需重启前端约束通过');

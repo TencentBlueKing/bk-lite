@@ -26,7 +26,7 @@ export const DASHBOARD_METRICS: MongoMetricConfig[] = [
     description: '当前仍可使用的连接槽位数量。',
     unit: 'counts',
     query: 'mongodb_connections_available{__$labels__}',
-    color: '#9aa9bf'
+    color: '#8a5cff'
   },
   {
     name: 'mongodb_open_connections',
@@ -41,7 +41,7 @@ export const DASHBOARD_METRICS: MongoMetricConfig[] = [
     display_name: '命令吞吐',
     description: 'MongoDB 每秒处理命令的速率。',
     unit: 'cps',
-    query: 'rate(mongodb_commands{__$labels__}[5m])',
+    query: 'rate(mongodb_commands{__$labels__}[__$window__])',
     color: '#2f6bff'
   },
   {
@@ -49,7 +49,7 @@ export const DASHBOARD_METRICS: MongoMetricConfig[] = [
     display_name: '查询吞吐',
     description: 'MongoDB 每秒查询请求的速率。',
     unit: 'cps',
-    query: 'rate(mongodb_queries{__$labels__}[5m])',
+    query: 'rate(mongodb_queries{__$labels__}[__$window__])',
     color: '#13c2c2'
   },
   {
@@ -58,31 +58,31 @@ export const DASHBOARD_METRICS: MongoMetricConfig[] = [
     description: 'MongoDB 每秒插入、更新、删除操作的总速率。',
     unit: 'cps',
     query:
-      'rate(mongodb_inserts{__$labels__}[5m]) + rate(mongodb_updates{__$labels__}[5m]) + rate(mongodb_deletes{__$labels__}[5m])',
+      'rate(mongodb_inserts{__$labels__}[__$window__]) + rate(mongodb_updates{__$labels__}[__$window__]) + rate(mongodb_deletes{__$labels__}[__$window__])',
     color: '#ff9f43'
   },
   {
     name: 'mongodb_latency_reads_avg',
     display_name: '读延迟',
     description: 'MongoDB 读请求的平均响应延迟。',
-    unit: 'ns',
-    query: 'rate(mongodb_latency_reads{__$labels__}[5m])/clamp_min(rate(mongodb_latency_reads_count{__$labels__}[5m]), 1e-6)',
+    unit: 'ms',
+    query: 'rate(mongodb_latency_reads{__$labels__}[__$window__])/clamp_min(rate(mongodb_latency_reads_count{__$labels__}[__$window__]), 1e-6) / 1e6',
     color: '#27c274'
   },
   {
     name: 'mongodb_latency_commands_avg',
     display_name: '命令延迟',
     description: 'MongoDB 命令请求的平均响应延迟。',
-    unit: 'ns',
-    query: 'rate(mongodb_latency_commands{__$labels__}[5m])/clamp_min(rate(mongodb_latency_commands_count{__$labels__}[5m]), 1e-6)',
-    color: '#faad14'
+    unit: 'ms',
+    query: 'rate(mongodb_latency_commands{__$labels__}[__$window__])/clamp_min(rate(mongodb_latency_commands_count{__$labels__}[__$window__]), 1e-6) / 1e6',
+    color: '#8a5cff'
   },
   {
     name: 'mongodb_page_faults_rate',
     display_name: '缺页频率',
     description: '缺页中断的发生速率，通常反映内存压力或工作集不匹配。',
     unit: 'cps',
-    query: 'rate(mongodb_page_faults{__$labels__}[5m])',
+    query: 'rate(mongodb_page_faults{__$labels__}[__$window__])',
     color: '#ff4d4f'
   },
   {
@@ -188,7 +188,7 @@ export const DASHBOARD_METRICS: MongoMetricConfig[] = [
     display_name: '网络入流量',
     description: 'MongoDB 接收网络数据的速率。',
     unit: 'byteps',
-    query: 'rate(mongodb_net_in_bytes_count{__$labels__}[5m])',
+    query: 'rate(mongodb_net_in_bytes_count{__$labels__}[__$window__])',
     color: '#2f6bff'
   },
   {
@@ -196,7 +196,7 @@ export const DASHBOARD_METRICS: MongoMetricConfig[] = [
     display_name: '网络出流量',
     description: 'MongoDB 返回网络数据的速率。',
     unit: 'byteps',
-    query: 'rate(mongodb_net_out_bytes_count{__$labels__}[5m])',
+    query: 'rate(mongodb_net_out_bytes_count{__$labels__}[__$window__])',
     color: '#27c274'
   },
   {
@@ -236,7 +236,7 @@ export const TREND_LEGENDS: Record<string, TrendLegendItem[]> = {
   ],
   latency: [
     { label: '读延迟', color: '#27c274', primary: true },
-    { label: '命令延迟', color: '#faad14' }
+    { label: '命令延迟', color: '#8a5cff' }
   ],
   queue: [
     { label: '活跃读', color: '#2f6bff', primary: true },

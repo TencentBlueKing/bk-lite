@@ -3,6 +3,7 @@ import { Spin, Empty } from 'antd';
 import {
   getOpsChartColorsByMode,
   getOpsChartThemeByMode,
+  isScreenChartThemeMode,
   resolveOpsChartThemeName,
 } from '@/app/ops-analysis/utils/chartTheme';
 import {
@@ -81,9 +82,7 @@ const TopN: React.FC<TopNProps> = ({
 }) => {
   const themeName = resolveOpsChartThemeName();
   const isDark = themeName === 'dark';
-  const usesScreenChartTheme =
-    config?.chartThemeMode === 'screen-dark' ||
-    config?.chartThemeMode === 'screen-light';
+  const usesScreenChartTheme = isScreenChartThemeMode(config?.chartThemeMode);
   const chartTheme = getOpsChartThemeByMode(config?.chartThemeMode);
   const barColors = getOpsChartColorsByMode(config?.chartThemeMode, themeName);
   const widgetScale = getScreenWidgetScale(screenRenderContext);

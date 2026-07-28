@@ -685,6 +685,7 @@ def test_run_missing_target_marks_host_and_task_failed():
 
 @pytest.mark.django_db
 def test_retry_deleted_target_is_rejected_without_consuming_retry(monkeypatch):
+    from apps.patch_mgmt.exceptions import PatchBusinessError
     from apps.patch_mgmt.services import governance_service
 
     target = _make_node_mgmt_target()
@@ -701,12 +702,13 @@ def test_retry_deleted_target_is_rejected_without_consuming_retry(monkeypatch):
     target.delete()
     monkeypatch.setattr(governance_service, '_trigger_async', lambda task_id: None)
 
-    with pytest.raises(ValueError, match='目标不存在或已删除'):
+    with pytest.raises(PatchBusinessError) as exc_info:
         governance_service.create_retry_task(
             RequestFactory().post('/'),
             original_task,
             target_id,
         )
+    assert exc_info.value.code == 'target_deleted'
 
     original_host.refresh_from_db()
     assert original_host.can_retry is True

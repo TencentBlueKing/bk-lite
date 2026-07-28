@@ -95,7 +95,7 @@ export const SWITCH_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       name: 'device_optical_rx_power',
       display_name: 'SFP 接收光功率',
       description: '设备各光口中最弱的接收光功率（dBm，取最小值=最易劣化的光口）。已过滤无模块哨兵值。RX 持续下降是光模块/光纤劣化或脏污的最早信号；逼近接收灵敏度下限会出现链路误码。仅暴露 DDM 的品牌有值。',
-      unit: 'counts',
+      unit: 'none',
       query: 'min((device_optical_rx_power{__$labels__} != -10000 != -2147483648) / 100) by (instance_id)',
       color: '#08979c'
     },
@@ -103,7 +103,7 @@ export const SWITCH_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       name: 'device_optical_tx_power',
       display_name: 'SFP 发送光功率',
       description: '设备各光口中最弱的发送光功率（dBm，取最小值）。已过滤无模块哨兵值。TX 异常偏低表示激光器/光模块即将失效并断链。仅暴露 DDM 的品牌有值。',
-      unit: 'counts',
+      unit: 'none',
       query: 'min((device_optical_tx_power{__$labels__} != -10000 != -2147483648) / 100) by (instance_id)',
       color: '#13c2c2'
     },
@@ -112,7 +112,7 @@ export const SWITCH_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '入向总流量',
       description: '设备所有接口入向流量速率之和（字节/秒）。',
       unit: 'byteps',
-      query: '(sum(rate(interface_ifHCInOctets{__$labels__}[5m])) by (instance_id)) or (sum(rate(interface_ifInOctets{__$labels__}[5m])) by (instance_id))',
+      query: '(sum(rate(interface_ifHCInOctets{__$labels__}[__$window__])) by (instance_id)) or (sum(rate(interface_ifInOctets{__$labels__}[__$window__])) by (instance_id))',
       color: '#27c274'
     },
     {
@@ -120,7 +120,7 @@ export const SWITCH_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '出向总流量',
       description: '设备所有接口出向流量速率之和（字节/秒）。',
       unit: 'byteps',
-      query: '(sum(rate(interface_ifHCOutOctets{__$labels__}[5m])) by (instance_id)) or (sum(rate(interface_ifOutOctets{__$labels__}[5m])) by (instance_id))',
+      query: '(sum(rate(interface_ifHCOutOctets{__$labels__}[__$window__])) by (instance_id)) or (sum(rate(interface_ifOutOctets{__$labels__}[__$window__])) by (instance_id))',
       color: '#2f6bff'
     },
     {
@@ -128,7 +128,7 @@ export const SWITCH_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '入向错包速率',
       description: '设备所有接口入向错误包速率之和（包/秒，IF-MIB ifInErrors）。持续非零通常意味物理层/线路质量问题（CRC、坏线、双工不匹配）。',
       unit: 'cps',
-      query: 'sum(rate(interface_ifInErrors{__$labels__}[5m])) by (instance_id)',
+      query: 'sum(rate(interface_ifInErrors{__$labels__}[__$window__])) by (instance_id)',
       color: '#f5222d'
     },
     {
@@ -136,7 +136,7 @@ export const SWITCH_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '出向错包速率',
       description: '设备所有接口出向错误包速率之和（包/秒，IF-MIB ifOutErrors）。持续非零多与发送侧拥塞或硬件故障相关。',
       unit: 'cps',
-      query: 'sum(rate(interface_ifOutErrors{__$labels__}[5m])) by (instance_id)',
+      query: 'sum(rate(interface_ifOutErrors{__$labels__}[__$window__])) by (instance_id)',
       color: '#fa8c16'
     },
     {
@@ -144,7 +144,7 @@ export const SWITCH_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '入向丢包速率',
       description: '设备所有接口入向丢弃包速率之和（包/秒，IF-MIB ifInDiscards）。多由入向缓冲不足或拥塞导致，是丢包定位的关键信号。',
       unit: 'cps',
-      query: 'sum(rate(interface_ifInDiscards{__$labels__}[5m])) by (instance_id)',
+      query: 'sum(rate(interface_ifInDiscards{__$labels__}[__$window__])) by (instance_id)',
       color: '#eb2f96'
     },
     {
@@ -152,7 +152,7 @@ export const SWITCH_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '出向丢包速率',
       description: '设备所有接口出向丢弃包速率之和（包/秒，IF-MIB ifOutDiscards）。通常对应出口队列拥塞或限速丢弃。',
       unit: 'cps',
-      query: 'sum(rate(interface_ifOutDiscards{__$labels__}[5m])) by (instance_id)',
+      query: 'sum(rate(interface_ifOutDiscards{__$labels__}[__$window__])) by (instance_id)',
       color: '#722ed1'
     }
   ],
@@ -205,7 +205,7 @@ export const SWITCH_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       unit: 'byteps',
       color: '#27c274',
       icon: 'api',
-      guide: [{ label: '入向总流量', detail: '设备所有接口入向流量速率之和。' }],
+      guide: [{ label: '入向总流量', detail: '全部接口入向字节速率；突增优先查广播风暴、异常主机与上联拥塞。' }],
       footer: [{ label: '出向', metric: 'device_total_outgoing_traffic', unit: 'byteps' }]
     },
     {
@@ -214,7 +214,7 @@ export const SWITCH_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       unit: 'byteps',
       color: '#2f6bff',
       icon: 'api',
-      guide: [{ label: '出向总流量', detail: '设备所有接口出向流量速率之和。' }]
+      guide: [{ label: '出向总流量', detail: '全部接口出向字节速率；与入向长期严重不对称时排查路由环路或镜像口。' }]
     }
   ],
   charts: [
@@ -232,7 +232,7 @@ export const SWITCH_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       title: '设备收发流量趋势',
       subtitle: '入向、出向',
       metric: 'device_total_incoming_traffic',
-      guide: [{ label: '收发流量', detail: '对比设备入向与出向总流量速率，识别流量突增或异常。' }],
+      guide: [{ label: '收发流量', detail: '对比入/出向总流量；突增查风暴与上联，持续高水位结合接口错误计数排查。' }],
       series: [
         { metric: 'device_total_incoming_traffic', label: '入向', color: '#27c274', unit: 'byteps' },
         { metric: 'device_total_outgoing_traffic', label: '出向', color: '#2f6bff', unit: 'byteps' }

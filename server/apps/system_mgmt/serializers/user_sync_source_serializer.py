@@ -87,6 +87,7 @@ class UserSyncRunSerializer(serializers.ModelSerializer):
 
 class UserSyncSourceSerializer(UsernameSerializer):
     integration_instance_name = serializers.SerializerMethodField()
+    integration_provider_key = serializers.SerializerMethodField()
     latest_run = serializers.SerializerMethodField()
     root_scope_field = serializers.SerializerMethodField()
 
@@ -96,6 +97,9 @@ class UserSyncSourceSerializer(UsernameSerializer):
 
     def get_integration_instance_name(self, obj):
         return obj.integration_instance.name if obj.integration_instance_id else ""
+
+    def get_integration_provider_key(self, obj):
+        return obj.integration_instance.provider_key if obj.integration_instance_id else ""
 
     def get_latest_run(self, obj):
         latest_run = getattr(obj, "_prefetched_latest_run", None)

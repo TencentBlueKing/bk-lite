@@ -15,10 +15,14 @@ import {
   renderRequestErrorPresentation,
   type RequestErrorPresentation,
 } from '@/utils/requestErrorPresentation';
+import {
+  getProxyTimeoutHeaderValue,
+  PROXY_TIMEOUT_HEADER,
+} from '@/utils/proxyTimeout';
 
 const apiClient = axios.create({
   baseURL: '/api/proxy',
-  timeout: 300000,
+  timeout: 60000,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -62,6 +66,12 @@ apiClient.interceptors.request.use(
     }
 
     config.headers.Authorization = `Bearer ${tokenRef.current}`;
+    const proxyTimeoutHeaderValue = getProxyTimeoutHeaderValue(config.timeout);
+    if (proxyTimeoutHeaderValue) {
+      config.headers.set(PROXY_TIMEOUT_HEADER, proxyTimeoutHeaderValue);
+    } else {
+      config.headers.delete(PROXY_TIMEOUT_HEADER);
+    }
     return config;
   },
   (error) => {

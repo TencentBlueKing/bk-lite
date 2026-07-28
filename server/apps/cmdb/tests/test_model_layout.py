@@ -60,6 +60,38 @@ class TestSearchModelVisibility:
         assert kwargs.get("order") == "order_id"
         assert kwargs.get("order_type") == "ASC"
 
+    def test_default_filters_models_in_hidden_classification(self, fake_graph):
+        fake_graph.query_entity.side_effect = [
+            (
+                [
+                    {
+                        "model_id": "host",
+                        "model_name": "Host",
+                        "classification_id": "infra",
+                        "is_visible": True,
+                    },
+                    {
+                        "model_id": "docker",
+                        "model_name": "Docker",
+                        "classification_id": "container",
+                        "is_visible": True,
+                    },
+                ],
+                2,
+            ),
+            (
+                [
+                    {"classification_id": "infra", "is_visible": True},
+                    {"classification_id": "container", "is_visible": False},
+                ],
+                2,
+            ),
+        ]
+
+        result = ModelManage.search_model(language="en")
+
+        assert [item["model_id"] for item in result] == ["host"]
+
 
 class TestUpdateModelOrders:
     def test_writes_order_and_visibility(self, fake_graph):

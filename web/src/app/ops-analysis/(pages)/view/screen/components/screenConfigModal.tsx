@@ -8,6 +8,7 @@ import {
   Input,
   InputNumber,
   Modal,
+  Segmented,
   message,
 } from "antd";
 import { useTranslation } from "@/utils/i18n";
@@ -19,6 +20,11 @@ import {
   SCREEN_VIEWPORT_PRESETS,
   isValidViewportSize,
 } from "../utils/viewport";
+import {
+  SCREEN_THEME_OPTIONS,
+  resolveScreenThemeId,
+} from "../utils/screenTheme";
+import type { ScreenThemeId } from "@/app/ops-analysis/types/screen";
 
 interface ScreenConfigModalProps {
   open: boolean;
@@ -40,6 +46,7 @@ interface ScreenConfigFormValues {
   title: string;
   showTitle: boolean;
   showClock: boolean;
+  theme: ScreenThemeId;
 }
 
 const getPresetKey = (viewport: ScreenViewportConfig) =>
@@ -59,6 +66,7 @@ const ScreenConfigModal: React.FC<ScreenConfigModalProps> = ({
   const { t } = useTranslation();
   const [form] = Form.useForm<ScreenConfigFormValues>();
   const activePresetKey = Form.useWatch("preset", form);
+  const showTitle = Form.useWatch("showTitle", form);
 
   useEffect(() => {
     if (!open) return;
@@ -67,6 +75,7 @@ const ScreenConfigModal: React.FC<ScreenConfigModalProps> = ({
       preset: getPresetKey(viewport),
       width: viewport.width,
       height: viewport.height,
+      theme: resolveScreenThemeId(viewport.theme),
       title: decorations.title || "",
       showTitle: decorations.showTitle !== false,
       showClock: decorations.showClock !== false,
@@ -91,7 +100,11 @@ const ScreenConfigModal: React.FC<ScreenConfigModalProps> = ({
 
   const handleOk = async () => {
     const values = await form.validateFields();
-    const nextViewport = { width: values.width, height: values.height };
+    const nextViewport = {
+      width: values.width,
+      height: values.height,
+      theme: resolveScreenThemeId(values.theme),
+    };
     if (canSaveViewport && !canSaveViewport(nextViewport)) {
       message.error(t("opsAnalysis.screen.viewportContainsOverflow"));
       return;
@@ -120,100 +133,125 @@ const ScreenConfigModal: React.FC<ScreenConfigModalProps> = ({
         onOk={handleOk}
         okText={t("common.confirm")}
         cancelText={t("common.cancel")}
+        styles={{
+          body: { maxHeight: "calc(100vh - 220px)", overflowY: "auto" },
+        }}
       >
         <div className="screen-config-modal__stack">
-          <Form form={form} layout="vertical" className="m-0">
+          <Form form={form} layout="vertical" className="screen-config-form m-0">
             <Form.Item name="preset" hidden>
               <input />
             </Form.Item>
             <div className="screen-config-section">
-              <div className="screen-config-section__title">
-                {t("opsAnalysis.screen.resolutionPreset")}
-              </div>
-              <div className="flex flex-wrap gap-2.5">
-                {SCREEN_VIEWPORT_PRESETS.map((preset) => (
-                  <Button
-                    key={preset.key}
-                    type={
-                      activePresetKey === preset.key ? "primary" : "default"
-                    }
-                    onClick={() => handlePresetSelect(preset)}
-                    className="h-8 rounded-full! px-4"
-                  >
-                    {preset.label}
-                  </Button>
-                ))}
-                <Button
-                  type={activePresetKey === "custom" ? "primary" : "default"}
-                  onClick={markCustom}
-                  className="h-8 rounded-full! px-4"
-                >
-                  {t("opsAnalysis.screen.customResolution")}
-                </Button>
-              </div>
-              <div className="screen-config-section__grid">
-                <Form.Item
-                  name="width"
-                  label={t("opsAnalysis.screen.width")}
-                  className="mb-0"
-                  rules={[
-                    {
-                      validator: (_, value) =>
-                        isValidViewportSize(value)
-                          ? Promise.resolve()
-                          : Promise.reject(
-                            new Error(t("opsAnalysis.screen.sizeInvalid")),
-                          ),
-                    },
-                  ]}
-                >
-                  <InputNumber
-                    precision={0}
-                    controls={false}
-                    placeholder="1920"
-                    className="w-full"
-                    onChange={markCustom}
-                  />
-                </Form.Item>
-                <Form.Item
-                  name="height"
-                  label={t("opsAnalysis.screen.height")}
-                  className="mb-0"
-                  rules={[
-                    {
-                      validator: (_, value) =>
-                        isValidViewportSize(value)
-                          ? Promise.resolve()
-                          : Promise.reject(
-                            new Error(t("opsAnalysis.screen.sizeInvalid")),
-                          ),
-                    },
-                  ]}
-                >
-                  <InputNumber
-                    precision={0}
-                    controls={false}
-                    placeholder="1080"
-                    className="w-full"
-                    onChange={markCustom}
-                  />
-                </Form.Item>
-              </div>
-            </div>
-          </Form>
-
-          <Form form={form} layout="vertical" className="m-0">
-            <div className="screen-config-section">
               <Form.Item
-                name="title"
-                label={t("opsAnalysis.screen.screenTitle")}
-                className="mb-4"
+                name="theme"
+                label={t("opsAnalysis.screen.canvasTheme")}
+                className="mb-0"
               >
-                <Input
-                  maxLength={64}
-                  placeholder={t("opsAnalysis.screen.defaultTitle")}
+                <Segmented
+                  block
+                  className="w-60 max-w-full"
+                  options={SCREEN_THEME_OPTIONS.map((theme) => ({
+                    label: (
+                      <span className="screen-config-theme-option">
+                        <span
+                          className="screen-config-theme-option__swatch"
+                          style={{
+                            background: theme.preview.background,
+                            borderColor: theme.preview.borderColor,
+                            "--screen-config-theme-accent":
+                              theme.preview.accentColor,
+                          } as React.CSSProperties}
+                          aria-hidden="true"
+                        />
+                        <span>{t(theme.labelKey)}</span>
+                      </span>
+                    ),
+                    value: theme.id,
+                  }))}
                 />
               </Form.Item>
+              <div className="screen-config-section__subsection">
+                <div className="screen-config-section__title">
+                  {t("opsAnalysis.screen.resolutionPreset")}
+                </div>
+                <div className="flex flex-wrap gap-2.5">
+                  {SCREEN_VIEWPORT_PRESETS.map((preset) => (
+                    <Button
+                      key={preset.key}
+                      type={
+                        activePresetKey === preset.key ? "primary" : "default"
+                      }
+                      onClick={() => handlePresetSelect(preset)}
+                      className="h-8 rounded-full! px-4"
+                    >
+                      {preset.label}
+                    </Button>
+                  ))}
+                  <Button
+                    type={
+                      activePresetKey === "custom" ? "primary" : "default"
+                    }
+                    onClick={markCustom}
+                    className="h-8 rounded-full! px-4"
+                  >
+                    {t("opsAnalysis.screen.customResolution")}
+                  </Button>
+                </div>
+                <div className="screen-config-section__grid">
+                  <Form.Item
+                    name="width"
+                    label={t("opsAnalysis.screen.width")}
+                    className="mb-0"
+                    rules={[
+                      {
+                        validator: (_, value) =>
+                          isValidViewportSize(value)
+                            ? Promise.resolve()
+                            : Promise.reject(
+                              new Error(t("opsAnalysis.screen.sizeInvalid")),
+                            ),
+                      },
+                    ]}
+                  >
+                    <InputNumber
+                      precision={0}
+                      controls={false}
+                      placeholder="1920"
+                      className="w-full"
+                      onChange={markCustom}
+                    />
+                  </Form.Item>
+                  <Form.Item
+                    name="height"
+                    label={t("opsAnalysis.screen.height")}
+                    className="mb-0"
+                    rules={[
+                      {
+                        validator: (_, value) =>
+                          isValidViewportSize(value)
+                            ? Promise.resolve()
+                            : Promise.reject(
+                              new Error(t("opsAnalysis.screen.sizeInvalid")),
+                            ),
+                      },
+                    ]}
+                  >
+                    <InputNumber
+                      precision={0}
+                      controls={false}
+                      placeholder="1080"
+                      className="w-full"
+                      onChange={markCustom}
+                    />
+                  </Form.Item>
+                </div>
+              </div>
+            </div>
+            <div className="screen-config-section">
+              <div className="screen-config-section__title">
+                {t("opsAnalysis.screen.screenSettings")}
+              </div>
               <div className="flex flex-wrap gap-x-8 gap-y-3">
                 <Form.Item
                   name="showTitle"
@@ -230,6 +268,27 @@ const ScreenConfigModal: React.FC<ScreenConfigModalProps> = ({
                   <Checkbox>{t("opsAnalysis.screen.showClock")}</Checkbox>
                 </Form.Item>
               </div>
+              {showTitle && (
+                <Form.Item
+                  name="title"
+                  label={t("opsAnalysis.screen.screenTitle")}
+                  className="mt-4 mb-0"
+                  rules={[
+                    {
+                      required: true,
+                      whitespace: true,
+                      message: t("opsAnalysis.screen.screenTitlePlaceholder"),
+                    },
+                  ]}
+                >
+                  <Input
+                    maxLength={64}
+                    placeholder={t(
+                      "opsAnalysis.screen.screenTitlePlaceholder",
+                    )}
+                  />
+                </Form.Item>
+              )}
             </div>
           </Form>
         </div>
@@ -248,10 +307,13 @@ const ScreenConfigModal: React.FC<ScreenConfigModalProps> = ({
         }
 
         .screen-config-modal__stack {
+          padding-top: 4px;
+        }
+
+        .screen-config-form {
           display: flex;
           flex-direction: column;
           gap: 18px;
-          padding-top: 4px;
         }
 
         .screen-config-section {
@@ -273,7 +335,11 @@ const ScreenConfigModal: React.FC<ScreenConfigModalProps> = ({
           display: grid;
           grid-template-columns: repeat(2, minmax(0, 1fr));
           gap: 20px;
-          margin-top: 18px;
+          margin-top: 12px;
+        }
+
+        .screen-config-section__subsection {
+          margin-top: 16px;
           border-top: 1px solid var(--color-border-1);
           padding-top: 16px;
         }
@@ -291,6 +357,37 @@ const ScreenConfigModal: React.FC<ScreenConfigModalProps> = ({
         .screen-config-modal .ant-input,
         .screen-config-modal .ant-input-number {
           border-radius: 8px;
+        }
+
+        .screen-config-theme-option {
+          display: inline-flex;
+          min-width: 0;
+          align-items: center;
+          justify-content: center;
+          gap: 8px;
+          line-height: 24px;
+        }
+
+        .screen-config-theme-option__swatch {
+          position: relative;
+          display: inline-block;
+          width: 20px;
+          height: 14px;
+          flex-shrink: 0;
+          border: 1px solid;
+          border-radius: 4px;
+          overflow: hidden;
+        }
+
+        .screen-config-theme-option__swatch::after {
+          content: '';
+          position: absolute;
+          left: 5px;
+          right: 5px;
+          bottom: 3px;
+          height: 2px;
+          border-radius: 999px;
+          background: var(--screen-config-theme-accent);
         }
       `}</style>
     </>

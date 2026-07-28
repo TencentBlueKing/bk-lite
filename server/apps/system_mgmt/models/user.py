@@ -1,4 +1,4 @@
-from django.db import models
+from django.db import models, transaction
 from django.utils import timezone as django_timezone
 
 from apps.core.utils.permission_cache import clear_user_permission_cache
@@ -41,8 +41,9 @@ class User(models.Model):
                     self.account_locked_until = None  # 解除锁定
             except User.DoesNotExist:
                 pass
-        super().save(*args, **kwargs)
-        clear_user_permission_cache(self.username, self.domain)
+        with transaction.atomic():
+            super().save(*args, **kwargs)
+            clear_user_permission_cache(self.username, self.domain)
 
     @staticmethod
     def display_fields():
@@ -63,6 +64,17 @@ class User(models.Model):
             "password_error_count",
             "account_locked_until",
         ]
+
+
+class UserPermissionVersion(models.Model):
+    """独立于用户生命周期保存的单调权限代际。"""
+
+    username = models.CharField(max_length=100)
+    domain = models.CharField(max_length=100, default="domain.com")
+    version = models.PositiveBigIntegerField(default=0)
+
+    class Meta:
+        unique_together = ("username", "domain")
 
 
 class Group(models.Model):

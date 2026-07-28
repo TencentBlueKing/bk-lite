@@ -24,6 +24,7 @@ def dashboard():
 
 def make_link(dashboard, **overrides):
     values = {
+        "resource_type": DashboardShareLink.ResourceType.DASHBOARD,
         "dashboard": dashboard,
         "dashboard_instance_id": dashboard.pk,
         "tenant_domain": "domain.com",
@@ -37,11 +38,26 @@ def make_link(dashboard, **overrides):
 
 
 @pytest.mark.django_db
-def test_active_share_is_unique_per_dashboard_and_sharer(dashboard):
+def test_active_share_is_unique_per_resource_type_and_sharer(dashboard):
     make_link(dashboard)
 
     with pytest.raises(IntegrityError), transaction.atomic():
         make_link(dashboard)
+
+
+@pytest.mark.django_db
+def test_same_instance_id_allows_different_resource_types(dashboard):
+    make_link(dashboard, resource_type=DashboardShareLink.ResourceType.DASHBOARD)
+    screen_link = DashboardShareLink.objects.create(
+        resource_type=DashboardShareLink.ResourceType.SCREEN,
+        dashboard_instance_id=dashboard.pk,
+        tenant_domain="domain.com",
+        space_id=1,
+        sharer_username="alice",
+        sharer_domain="domain.com",
+        public_id=uuid.uuid4(),
+    )
+    assert screen_link.resource_type == DashboardShareLink.ResourceType.SCREEN
 
 
 @pytest.mark.django_db

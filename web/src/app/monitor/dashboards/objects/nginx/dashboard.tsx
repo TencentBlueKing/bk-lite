@@ -7,34 +7,28 @@ import {
   DetailSection,
   FlexiblePanelSection,
   KpiSection,
-  useFilteredBarPanels,
   useFilteredChartPanels,
   useFilteredRingPanels,
   useFilteredSummaryCards
 } from '../common/dashboard-components';
 import {
-  HorizontalBarPanel,
   RingChartPanel,
   TrendChartPanel
 } from '../../shared/widgets';
 import { NGINX_DASHBOARD_CONFIG } from './config';
 import styles from './index.module.scss';
 
-const SUMMARY_TITLES = ['活跃连接数', '请求速率', '繁忙连接占比', '连接处理完成率', '连接接受速率'];
+const SUMMARY_TITLES = ['活跃连接数', '请求速率', '繁忙连接占比', '连接处理完成率'];
 const CHART_TITLES = ['连接状态趋势', '连接接受/处理速率', '连接占比趋势'];
 const RING_TITLES = ['连接状态分布'];
-const BAR_TITLES = ['连接压力'];
-
 export default function NginxDashboardPage() {
   const dashboard = useSimpleDashboardData(NGINX_DASHBOARD_CONFIG);
 
   const summaryCards = useFilteredSummaryCards(dashboard.summaryCards, SUMMARY_TITLES);
   const charts = useFilteredChartPanels(dashboard.chartPanels, CHART_TITLES);
   const rings = useFilteredRingPanels(dashboard.ringPanels, RING_TITLES);
-  const bars = useFilteredBarPanels(dashboard.barPanels, BAR_TITLES);
   const [connectionTrendChart, rateTrendChart, connectionRatioChart] = charts;
   const [connectionRing] = rings;
-  const [connectionPressureBar] = bars;
 
   return (
     <DashboardShell
@@ -78,7 +72,7 @@ export default function NginxDashboardPage() {
                 styles={styles}
               />
             ) : null}
-            {/* R2: 占比折线 span6 + 连接压力信号条 span6 = 12 —— 信号条不再独占整行 */}
+            {/* R2: 占比折线 + 连接状态趋势并排 */}
             {connectionRatioChart ? (
               <TrendChartPanel
                 key={connectionRatioChart.chart.title}
@@ -96,18 +90,6 @@ export default function NginxDashboardPage() {
                 styles={styles}
               />
             ) : null}
-            {connectionPressureBar ? (
-              <HorizontalBarPanel
-                key={connectionPressureBar.panel.title}
-                title={connectionPressureBar.panel.title}
-                subtitle={connectionPressureBar.panel.subtitle}
-                guide={connectionPressureBar.panel.guide}
-                items={connectionPressureBar.items}
-                className={styles.span6}
-                styles={styles}
-              />
-            ) : null}
-            {/* R3: 连接状态趋势 span12 —— 折线天然撑满整行 */}
             {connectionTrendChart ? (
               <TrendChartPanel
                 key={connectionTrendChart.chart.title}
@@ -121,7 +103,7 @@ export default function NginxDashboardPage() {
                 loading={dashboard.loading}
                 seriesStyles={connectionTrendChart.seriesStyles}
                 onXRangeChange={dashboard.onXRangeChange}
-                className={`${styles.span12} ${styles.compactTrend}`}
+                className={`${styles.span6} ${styles.compactTrend}`}
                 styles={styles}
               />
             ) : null}

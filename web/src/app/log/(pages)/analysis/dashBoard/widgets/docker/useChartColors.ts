@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { useTheme } from '@/context/theme';
+import { useThemeMode, useThemeTokens } from '@/theme';
 
 export interface ChartColors {
   axisLine: string;
@@ -59,11 +59,28 @@ const darkColors: ChartColors = {
 };
 
 const useChartColors = (): ChartColors => {
-  const { themeName } = useTheme();
-  return useMemo(
-    () => (themeName === 'dark' ? darkColors : lightColors),
-    [themeName]
-  );
+  const { mode } = useThemeMode();
+  const tokens = useThemeTokens();
+  return useMemo(() => {
+    const modeColors = mode === 'dark' ? darkColors : lightColors;
+    return {
+      ...modeColors,
+      axisLine: tokens.chartAxisLine,
+      splitLine: tokens.chartSplitLine,
+      axisLabel: tokens.chartAxisLabel,
+      background: tokens.chartBackground,
+      tooltipBg: tokens.chartTooltipBackground,
+      tooltipBorder: tokens.chartTooltipBorder,
+      textPrimary: tokens.chartTextPrimary,
+      textSecondary: tokens.chartTextSecondary,
+      textTertiary: tokens.chartTextTertiary,
+      primary: tokens.chartPrimary,
+      success: tokens.chartSuccess,
+      warning: tokens.chartWarning,
+      danger: tokens.chartError,
+      series: [tokens.chartPrimary, ...modeColors.series.slice(1)],
+    };
+  }, [mode, tokens]);
 };
 
 export default useChartColors;

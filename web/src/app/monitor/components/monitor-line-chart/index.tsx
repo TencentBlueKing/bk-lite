@@ -37,6 +37,7 @@ import { useMonitorLevelOptions } from '@/app/monitor/components/monitor-shared'
 import { resolveMonitorUnitLabel } from '@/app/monitor/components/monitor-shared';
 import {
   GAP_INTERVAL_AREA_STYLE,
+  GAP_INTERVAL_BOUNDARY_STYLE,
   getChartDataWithGapBreaks,
   getRenderedGapIntervals
 } from '@/app/monitor/components/monitor-chart-runtime/gap-intervals';
@@ -63,6 +64,7 @@ interface LineChartProps {
   xAxisTimeFormat?: string;
   leftAxisWidthOverride?: number;
   resolveUnitLabel?: (value: unknown, displayUnit?: string) => string;
+  xAxisDomain?: [number, number];
 }
 
 interface ResolvedSeriesStyle {
@@ -152,6 +154,7 @@ const LineChart: React.FC<LineChartProps> = memo(
     xAxisTimeFormat,
     leftAxisWidthOverride,
     resolveUnitLabel,
+    xAxisDomain,
   }) => {
     const { t } = useTranslation();
     const { formatTime } = useMonitorChartTimeFormatter();
@@ -220,13 +223,13 @@ const LineChart: React.FC<LineChartProps> = memo(
     );
 
     const renderedGapIntervals = useMemo(
-      () => getRenderedGapIntervals(data, data[0]?.gapIntervals || []),
-      [data]
+      () => getRenderedGapIntervals(data, data[0]?.gapIntervals || [], xAxisDomain),
+      [data, xAxisDomain]
     );
 
     const chartDataWithGapBreaks = useMemo(
-      () => getChartDataWithGapBreaks(data, data[0]?.gapIntervals || []),
-      [data]
+      () => getChartDataWithGapBreaks(data, data[0]?.gapIntervals || [], xAxisDomain),
+      [data, xAxisDomain]
     );
 
     const yAxisTickCount = useMemo(() => {
@@ -291,12 +294,27 @@ const LineChart: React.FC<LineChartProps> = memo(
     }, []);
 
     const { minTime, maxTime } = useMemo(() => {
+      if (xAxisDomain) {
+        return {
+          minTime: xAxisDomain[0],
+          maxTime: xAxisDomain[1]
+        };
+      }
       const times = data.map((d) => d.time);
       return {
         minTime: +new Date(Math.min(...times)),
         maxTime: +new Date(Math.max(...times))
       };
-    }, [data]);
+    }, [data, xAxisDomain]);
+
+    const gapBoundaryTimes = useMemo(
+      () => Array.from(new Set(
+        renderedGapIntervals
+          .flatMap((gap) => [gap.start, gap.end])
+          .filter((time) => time > minTime && time < maxTime)
+      )),
+      [maxTime, minTime, renderedGapIntervals]
+    );
 
     // 计算 Y 轴范围，确保阈值线能显示
     const yAxisDomain = useMemo((): [number | 'auto', number | 'auto'] => {
@@ -600,16 +618,29 @@ const LineChart: React.FC<LineChartProps> = memo(
                 bottom: 6
               }}
               onXRangeChange={onXRangeChange}
-              overlaysBeforeTooltip={renderedGapIntervals.map((gap) => (
-                <ReferenceArea
-                  key={`gap-${gap.start}-${gap.end}`}
-                  x1={gap.start}
-                  x2={gap.end}
-                  yAxisId="left"
-                  {...GAP_INTERVAL_AREA_STYLE}
-                  ifOverflow="extendDomain"
-                />
-              ))}
+              overlaysBeforeTooltip={(
+                <>
+                  {renderedGapIntervals.map((gap) => (
+                    <ReferenceArea
+                      key={`gap-${gap.start}-${gap.end}`}
+                      x1={gap.start}
+                      x2={gap.end}
+                      yAxisId="left"
+                      {...GAP_INTERVAL_AREA_STYLE}
+                      ifOverflow="hidden"
+                    />
+                  ))}
+                  {gapBoundaryTimes.map((time) => (
+                    <ReferenceLine
+                      key={`gap-boundary-${time}`}
+                      x={time}
+                      yAxisId="left"
+                      {...GAP_INTERVAL_BOUNDARY_STYLE}
+                      ifOverflow="hidden"
+                    />
+                  ))}
+                </>
+              )}
               overlaysAfterSeries={
                 <>
                   {validThresholds.map((item, index) => {
@@ -792,7 +823,8 @@ const LineChart: React.FC<LineChartProps> = memo(
               syncId={syncId}
               toRangeValue={(label) => dayjs(label * 1000)}
               xAxisDataKey="time"
-              xAxisDomain={['dataMin', 'dataMax']}
+              xAxisDomain={xAxisDomain || ['dataMin', 'dataMax']}
+              xAxisAllowDataOverflow={!!xAxisDomain}
               xAxisDy={8}
               xAxisMinTickGap={36}
               xAxisTickCount={xAxisTickCount}

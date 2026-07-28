@@ -49,8 +49,13 @@ const UserSyncConfigModal: React.FC<UserSyncConfigModalProps> = ({
   const [mappingError, setMappingError] = useState('');
 
   const resolvedTemplate = useMemo(
-    () => resolveUserSyncTemplate(source?.integration_instance, availableInstances, providers),
-    [source?.integration_instance, availableInstances, providers],
+    () => resolveUserSyncTemplate(
+      source?.integration_instance,
+      availableInstances,
+      providers,
+      source?.integration_provider_key,
+    ),
+    [source?.integration_instance, source?.integration_provider_key, availableInstances, providers],
   );
   const rootScopeFieldKey = useMemo(
     () => getEffectiveRootDepartmentFieldKey(source, resolvedTemplate),

@@ -46,8 +46,12 @@ class LoginAuthBindingSerializer(UsernameSerializer):
         if instance.provider_key == "":
             raise serializers.ValidationError({"integration_instance": "Integration instance provider is invalid"})
 
-        if instance.status != IntegrationInstanceStatusChoices.READY or instance.capability_status.get("login_auth") != IntegrationInstanceStatusChoices.READY:
-            raise serializers.ValidationError({"integration_instance": "Integration instance login_auth capability is not ready"})
+        if instance.status != IntegrationInstanceStatusChoices.READY or instance.capability_status.get(
+            "login_auth"
+        ) != IntegrationInstanceStatusChoices.READY:
+            raise serializers.ValidationError(
+                {"integration_instance": "Integration instance login_auth capability is not ready"}
+            )
 
         # 用 `in` 区分 "未提交" 与 "显式空字符串",避免 attrs.get(...) or getattr(...)
         # 把显式空字符串误回退为旧值、导致非 WeChat create 在 update 场景绕过校验。
@@ -66,6 +70,20 @@ class LoginAuthBindingSerializer(UsernameSerializer):
             # WeChat provider 允许 default_group_name 为空,运行时由后端 fallback 到 OpsPilotGuest
             if instance.provider_key != "wechat":
                 raise serializers.ValidationError({"default_group_name": "Default group name is required when unmatched user action is create"})
+
+        if instance.provider_key == "wecom":
+            errors = {}
+            # WeCom OAuth adapter 只返回 userid,external_field 必须限制为 userid,
+            # 防止运营误填 name/email/mobile 后回退到不存在的字段导致匹配静默失败。
+            external_field = attrs.get("external_field", getattr(self.instance, "external_field", ""))
+            if external_field != "userid":
+                errors["external_field"] = "WeCom login only supports external_field=userid"
+            # WeCom 必须"先同步、后登录",登录阶段不允许自动创建平台账号;
+            # 创建用户语义只保留给 wechat provider。
+            if unmatched_action == LoginAuthBindingUnmatchedActionChoices.CREATE:
+                errors["unmatched_user_action"] = "WeCom login does not allow unmatched user creation, use deny"
+            if errors:
+                raise serializers.ValidationError(errors)
 
         return attrs
 

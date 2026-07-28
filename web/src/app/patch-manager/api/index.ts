@@ -90,6 +90,23 @@ const usePatchManagerApi = () => {
   const createPatch = async (data: Partial<Patch>): Promise<Patch> =>
     post(`${BASE}/patch/`, data);
 
+  const saveManualWindowsPatch = async (
+    data: Partial<Patch>,
+    file?: File,
+    id?: number,
+  ): Promise<Patch> => {
+    const body = new FormData();
+    body.append('metadata', JSON.stringify(data));
+    if (file) body.append('file', file);
+    const config = {
+      headers: { 'Content-Type': undefined },
+      timeout: 0,
+    };
+    return id
+      ? put(`${BASE}/patch/${id}/`, body, config)
+      : post(`${BASE}/patch/`, body, config);
+  };
+
   const uploadWindowsPatchPackage = async (id: number, file: File, replace = false): Promise<Patch> => {
     const body = new FormData();
     body.append('file', file);
@@ -318,6 +335,7 @@ const usePatchManagerApi = () => {
     getPatchList,
     getPatchDetail,
     createPatch,
+    saveManualWindowsPatch,
     uploadWindowsPatchPackage,
     updatePatch,
     deletePatch,

@@ -563,6 +563,7 @@ const CreateCronTaskPage = () => {
       <HostSelectionModal
         open={hostModalOpen}
         selectedKeys={selectedHostKeys}
+        selectedHosts={selectedHosts}
         source={targetSource}
         onConfirm={handleHostConfirm}
         onCancel={() => setHostModalOpen(false)}

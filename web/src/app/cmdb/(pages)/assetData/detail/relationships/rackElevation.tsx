@@ -4,7 +4,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Spin, Empty, Alert } from 'antd';
 import { useRouter } from 'next/navigation';
 import { useTranslation } from '@/utils/i18n';
-import { useTheme } from '@/context/theme';
+import { useThemeMode } from '@/theme';
 import { useInstanceApi } from '@/app/cmdb/api/instance';
 import type { RackLayoutData, RackDevice } from '@/app/cmdb/types/rackRoom';
 import { RACK_TOP, deviceColor, deviceTypeName, TECH } from '@/app/cmdb/utils/rackRoomLayout';
@@ -28,14 +28,14 @@ const MAX_U = 26;  // 每 U 最大像素（避免太空旷）
 
 const RackElevation: React.FC<Props> = ({ modelId, instId, embedded, onDeviceClick }) => {
   const { t } = useTranslation();
-  const { themeName } = useTheme();
+  const { mode } = useThemeMode();
   const router = useRouter();
   const { getRackLayout } = useInstanceApi();
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<RackLayoutData | null>(null);
   const [uPx, setUPx] = useState(16);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const isDark = themeName === 'dark';
+  const isDark = mode === 'dark';
 
   useEffect(() => {
     if (!modelId || !instId) return;

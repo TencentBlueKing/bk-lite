@@ -1120,12 +1120,11 @@ def delete_user_sync_source(source: UserSyncSource):
     with transaction.atomic():
         if users_to_delete:
             User.objects.filter(id__in=users_to_delete).delete()
+        if affected_usernames:
+            clear_users_permission_cache(affected_usernames)
         if subtree_ids:
             Group.objects.filter(id__in=subtree_ids).delete()
         source.delete()
-
-    if affected_usernames:
-        clear_users_permission_cache(affected_usernames)
 
     return {
         "result": True,

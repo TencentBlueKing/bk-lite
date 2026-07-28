@@ -42,11 +42,25 @@ export const normalizeScreenWidgetAppearance = (
   frame: appearance?.frame === "bare" ? "bare" : "panel",
 });
 
+export const canConfigureScreenWidgetFrame = (
+  chartType?: ScreenWidgetChartType | string,
+) => chartType === "room3D";
+
 export const getDefaultScreenWidgetAppearance = (
   chartType?: ScreenWidgetChartType | string,
 ): Required<ScreenWidgetAppearance> => ({
-  frame: chartType === "room3D" ? "bare" : "panel",
+  frame: canConfigureScreenWidgetFrame(chartType) ? "bare" : "panel",
 });
+
+export const resolveScreenWidgetAppearance = (
+  chartType?: ScreenWidgetChartType | string,
+  appearance?: ScreenWidgetAppearance,
+): Required<ScreenWidgetAppearance> =>
+  canConfigureScreenWidgetFrame(chartType)
+    ? appearance
+      ? normalizeScreenWidgetAppearance(appearance)
+      : getDefaultScreenWidgetAppearance(chartType)
+    : getDefaultScreenWidgetAppearance(chartType);
 
 export const isScreenItemInsideViewport = (
   item: ScreenItem,
@@ -254,7 +268,6 @@ export const createScreenWidgetItem = (
     zIndex: getNextZIndex(existingItems),
     valueConfig: {
       chartType,
-      chartThemeMode: "screen-dark",
       appearance: getDefaultScreenWidgetAppearance(chartType),
       ...(chartType === "networkStatusTopology"
         ? { sceneWidgetType: "networkStatusTopology" as const }
@@ -295,9 +308,10 @@ export const addConfiguredScreenWidget = (
           ...item.valueConfig,
           ...values,
           chartType,
-          chartThemeMode: "screen-dark",
-          appearance:
-            values.appearance || getDefaultScreenWidgetAppearance(chartType),
+          appearance: resolveScreenWidgetAppearance(
+            chartType,
+            values.appearance,
+          ),
           ...(chartType === "networkStatusTopology"
             ? { sceneWidgetType: "networkStatusTopology" as const }
             : {}),
