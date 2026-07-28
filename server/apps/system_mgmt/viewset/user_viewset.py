@@ -21,7 +21,7 @@ from apps.core.logger import system_mgmt_logger as logger
 from apps.core.utils.loader import LanguageLoader
 from apps.core.utils.permission_cache import clear_user_permission_cache, clear_users_permission_cache
 from apps.rpc.cmdb import CMDB
-from apps.system_mgmt.models import Group, Role, User, UserRule
+from apps.system_mgmt.models import Group, Role, SystemSettings, User, UserRule
 from apps.system_mgmt.serializers.user_serializer import UserSerializer
 from apps.system_mgmt.utils.group_filter_mixin import (
     filter_queryset_by_group_ids,
@@ -364,6 +364,17 @@ class UserViewSet(ViewSetUtils):
         is_superuser = kwargs.pop("is_superuser", False)
         if is_superuser:
             roles = [Role.objects.get(name="admin", app="").id]
+
+        initial_password_settings = dict(
+            SystemSettings.objects.filter(
+                key__in=["user_create_initial_password_enabled", "user_create_initial_password_hash"]
+            ).values_list("key", "value")
+        )
+        initial_password_enabled = initial_password_settings.get("user_create_initial_password_enabled") == "1"
+        initial_password_hash = initial_password_settings.get("user_create_initial_password_hash", "")
+        if initial_password_enabled and not initial_password_hash:
+            return JsonResponse({"result": False, "message": "本地用户初始密码未配置"}, status=400)
+
         with transaction.atomic():
             User.objects.create(
                 user_id=str(uuid.uuid4()),
@@ -376,8 +387,8 @@ class UserViewSet(ViewSetUtils):
                 timezone=kwargs["timezone"],
                 group_list=groups,
                 role_list=roles,
-                temporary_pwd=kwargs.get("temporary_pwd", False),
-                password=make_password(None),
+                temporary_pwd=initial_password_enabled,
+                password=initial_password_hash if initial_password_enabled else make_password(None),
             )
             if rules:
                 add_rule = [UserRule(username=kwargs["username"], group_rule_id=i) for i in rules]
