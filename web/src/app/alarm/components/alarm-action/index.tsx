@@ -97,8 +97,8 @@ const AlarmAction: React.FC<AlarmActionProps> = ({
     Modal.confirm({
       title: `${t(`alarms.${type}`)}${fromLabel}`,
       content: `${t('common.confirm')}${t(`alarms.${type}`)}${fromLabel}？`,
-      okText: t('confirm'),
-      cancelText: t('cancel'),
+      okText: t('common.confirm'),
+      cancelText: t('common.cancel'),
       centered: true,
       onOk: async () => {
         try {

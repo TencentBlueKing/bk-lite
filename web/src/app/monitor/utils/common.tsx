@@ -26,7 +26,7 @@ import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import dayjs from 'dayjs';
 
 // EE 端运行时注入的 BRANDS:由 web/scripts/prepare-enterprise.mjs 生成
-// /public/__enterprise-brands.js,next layout.tsx <Script> 加载后挂到这里。
+// /public/__enterprise-brands.js 由 next layout.tsx 的 defer script 加载后挂到这里。
 // 类型契约:每条 brand 的 match/label/icon 字段与下方 BRANDS 项同型。
 declare global {
   // eslint-disable-next-line @typescript-eslint/no-empty-object-type

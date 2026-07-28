@@ -334,26 +334,26 @@ export default function TaskTable({
     <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded border border-[var(--color-border)] bg-[var(--color-bg)] p-[16px]">
       <div className="mb-[16px] grid shrink-0 grid-cols-3 gap-[12px]">
         <div className="rounded border border-[var(--color-border)] p-[16px]">
-          <div className="text-[13px] text-[var(--color-text-3)]">
+          <div className="text-xs text-[var(--color-text-3)]">
             {t('CustomReporting.statTotal')}
           </div>
-          <div className="mt-[4px] text-[24px] font-[600]">
+          <div className="mt-[4px] text-sm font-[600] tabular-nums">
             {stats.total}
           </div>
         </div>
         <div className="rounded border border-[var(--color-border)] p-[16px]">
-          <div className="text-[13px] text-[var(--color-text-3)]">
+          <div className="text-xs text-[var(--color-text-3)]">
             {t('CustomReporting.statReceiving')}
           </div>
-          <div className="mt-[4px] text-[24px] font-[600] text-[var(--color-success)]">
+          <div className="mt-[4px] text-sm font-[600] tabular-nums text-[var(--color-success)]">
             {stats.receiving}
           </div>
         </div>
         <div className="rounded border border-[var(--color-border)] p-[16px]">
-          <div className="text-[13px] text-[var(--color-text-3)]">
+          <div className="text-xs text-[var(--color-text-3)]">
             {t('CustomReporting.statPendingReview')}
           </div>
-          <div className="mt-[4px] text-[24px] font-[600] text-[var(--color-warning)]">
+          <div className="mt-[4px] text-sm font-[600] tabular-nums text-[var(--color-warning)]">
             {stats.pending_review}
           </div>
         </div>
