@@ -1,9 +1,10 @@
 name: Server Import Check
 
+# pull_request 不做 paths 过滤：本 check 计划设为 required status check，
+# 带 paths 的 workflow 在未命中的 PR 上不会报告状态，required 会永远
+# 卡在 Expected 导致无法合并。sqlite + pip 缓存下全量跑成本约 2-3 分钟。
 on:
   pull_request:
-    paths:
-      - 'server/**'
   push:
     branches: [master]
     paths:
