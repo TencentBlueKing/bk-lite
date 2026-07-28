@@ -873,14 +873,14 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     );
   }
 
-  const isInitialNonTableLoading =
+  const isInitialWidgetLoading =
     shouldShowInitialWidgetLoading({
-      loading,
+      loading: isTableLikeChart ? tableLoading : loading,
       isTableLikeChart,
       hasRawPayload,
       hasSettledRequest,
     });
-  if (isInitialNonTableLoading || isWaitingForInitialData) {
+  if (isInitialWidgetLoading || isWaitingForInitialData) {
     return (
       <>
         {runtimeHeaderControl}
