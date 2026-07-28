@@ -46,6 +46,7 @@ class ClassificationTrainData(TrainDataFileCleanupMixin, MaintainerInfo, TimeInf
         help_text="存储在MinIO中的CSV训练数据文件",
         blank=True,
         null=True,
+        db_index=True,
     )
 
     metadata = S3JSONField(

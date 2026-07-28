@@ -139,6 +139,9 @@ def _register_train_data_cleanup(
     """注册训练数据文件清理信号"""
 
     def cleanup_train_data_files(sender, instance, **kwargs):
+        instance_pk = instance.pk
+        using = kwargs.get("using", "default")
+        train_data_path = instance.train_data.name if instance.train_data else None
         has_metadata = hasattr(instance, "metadata") and bool(instance.metadata)
         logger.info(
             f"[Signal] post_delete 触发: {prefix}TrainData, "
@@ -150,11 +153,24 @@ def _register_train_data_cleanup(
         def delete_files():
             try:
                 # 删除训练数据文件
-                if instance.train_data:
-                    instance.train_data.delete(save=False)
+                if train_data_path:
+                    from apps.mlops.services.train_data_file_cleanup import (
+                        delete_train_data_file_with_retry,
+                    )
+
+                    result = delete_train_data_file_with_retry(
+                        model_label=sender._meta.label,
+                        instance_pk=instance_pk,
+                        file_field_name="train_data",
+                        old_path=train_data_path,
+                        using=using,
+                    )
                     logger.info(
-                        f"成功删除训练数据文件: {instance.train_data.name}, "
-                        f"train_data_id={instance.id}, name={instance.name}"
+                        "训练数据文件清理结果: %s, path=%s, train_data_id=%s, name=%s",
+                        result,
+                        train_data_path,
+                        instance_pk,
+                        instance.name,
                     )
 
                 # 根据策略删除元数据
@@ -196,7 +212,7 @@ def _register_train_data_cleanup(
                     f"train_data_id={instance.id}, name={instance.name}"
                 )
 
-        transaction.on_commit(delete_files)
+        transaction.on_commit(delete_files, using=using)
 
     post_delete.connect(
         cleanup_train_data_files,
