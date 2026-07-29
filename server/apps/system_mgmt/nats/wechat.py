@@ -6,7 +6,6 @@ from .common import _build_jwt_payload
 from .users import set_opspilot_guest_group_default_rule
 
 
-@nats_client.register
 def wechat_user_register(user_id, nick_name):
     with transaction.atomic():
         user, is_first_login = User.objects.select_for_update().get_or_create(

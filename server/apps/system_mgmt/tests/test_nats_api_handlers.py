@@ -15,7 +15,7 @@ from apps.system_mgmt import nats_api
 from apps.system_mgmt.models import App, Channel, Group, GroupDataRule, Menu, Role, User
 from apps.system_mgmt.models.channel import ChannelChoices
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.integration]
 
 
 def test_nats_api_compat_exports_local_and_nats_entrypoints():
@@ -69,6 +69,7 @@ def test_nats_api_compat_exports_local_and_nats_entrypoints():
         "_list_opspilot_nats_channels",
         "create_default_rule",
         "bk_lite_user_login",
+        "wechat_user_register",
         "get_group_users",
         "get_group_users_scoped",
         "get_all_users",
