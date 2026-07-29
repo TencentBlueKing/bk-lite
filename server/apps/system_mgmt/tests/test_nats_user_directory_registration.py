@@ -10,14 +10,20 @@ LOCAL_ONLY_USER_DIRECTORY_ENTRYPOINTS = {
     "search_users",
 }
 
+LOCAL_ONLY_IDENTITY_SCOPED_ENTRYPOINTS = {
+    "get_authorized_groups_scoped",
+    "search_channel_list_scoped",
+}
 
-def test_user_directory_entrypoints_are_local_only():
+
+def test_identity_sensitive_entrypoints_are_local_only():
+    local_only_entrypoints = LOCAL_ONLY_USER_DIRECTORY_ENTRYPOINTS | LOCAL_ONLY_IDENTITY_SCOPED_ENTRYPOINTS
     exported_entrypoints = {
-        name for name in LOCAL_ONLY_USER_DIRECTORY_ENTRYPOINTS if callable(getattr(nats_api, name, None))
+        name for name in local_only_entrypoints if callable(getattr(nats_api, name, None))
     }
     registered_entrypoints = {
         item["name"] for item in nats_client.registry.default_registry.registry.values()
     }
 
-    assert exported_entrypoints == LOCAL_ONLY_USER_DIRECTORY_ENTRYPOINTS
-    assert LOCAL_ONLY_USER_DIRECTORY_ENTRYPOINTS.isdisjoint(registered_entrypoints)
+    assert exported_entrypoints == local_only_entrypoints
+    assert local_only_entrypoints.isdisjoint(registered_entrypoints)
