@@ -63,3 +63,20 @@ class CustomRenderer(JSONRenderer):
             }
         # 返回JSON数据
         return super(CustomRenderer, self).render(ret, accepted_media_type, renderer_context)
+
+
+class EventStreamRenderer(CustomRenderer):
+    """为 DRF 流式端点提供 text/event-stream 内容协商能力。
+
+    成功的流式响应由视图直接返回 StreamingHttpResponse，不经过本 Renderer；
+    action 执行前产生的认证、权限等 DRF 错误则包装为合法的 SSE data 帧。
+    """
+
+    media_type = "text/event-stream"
+    format = "event-stream"
+
+    def render(self, data, accepted_media_type=None, renderer_context=None):
+        payload = super().render(data, accepted_media_type, renderer_context)
+        if not payload:
+            return payload
+        return b"data: " + payload + b"\n\n"
