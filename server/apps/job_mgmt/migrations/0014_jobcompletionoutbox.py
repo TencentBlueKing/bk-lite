@@ -15,7 +15,19 @@ class Migration(migrations.Migration):
                 choices=[("ansible_callback", "Ansible 真实回调"), ("cancel_timeout", "取消超时兜底")],
                 default="",
                 max_length=32,
+                null=True,
                 verbose_name="终态写入来源",
+            ),
+        ),
+        migrations.AddField(
+            model_name="jobexecution",
+            name="playbook_temp_file_key",
+            field=models.CharField(
+                blank=True,
+                default="",
+                max_length=512,
+                null=True,
+                verbose_name="Playbook NATS 临时文件 Key",
             ),
         ),
         migrations.CreateModel(

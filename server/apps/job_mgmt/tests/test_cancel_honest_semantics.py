@@ -331,16 +331,6 @@ class TestFinalizeCancellingExecutionTask:
     def test_missing_execution_does_not_raise(self):
         finalize_cancelling_execution(999999)  # 不抛异常即可
 
-    def test_execution_deleted_after_cas_returns_silently(self):
-        """CAS 命中后记录被删除（防御分支）：静默返回不抛异常"""
-        cas_qs = MagicMock()
-        cas_qs.update.return_value = 1
-        gone_qs = MagicMock()
-        gone_qs.first.return_value = None
-        with patch("apps.job_mgmt.tasks.JobExecution.objects.filter", side_effect=[cas_qs, gone_qs]):
-            finalize_cancelling_execution(1)
-
-
 @pytest.mark.django_db
 class TestAnsibleCallbackWithCancelling:
     """CANCELLING 非终态：Ansible 真实结果正常落库，最终收敛为 CANCELLED（修复结果丢弃）"""

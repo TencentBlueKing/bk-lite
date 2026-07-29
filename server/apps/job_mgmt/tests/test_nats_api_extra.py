@@ -72,6 +72,10 @@ class TestAnsibleCallback:
     def test_missing_task_id(self):
         assert nats_api.ansible_task_callback({})["success"] is False
 
+    @pytest.mark.parametrize("task_id", [True, "1", -1, 0])
+    def test_invalid_task_id(self, task_id):
+        assert nats_api.ansible_task_callback({"task_id": task_id})["success"] is False
+
     def test_not_found(self):
         assert nats_api.ansible_task_callback({"task_id": 999999})["success"] is False
 

@@ -96,6 +96,8 @@ class TestExecutePlaybookViaAnsibleFileTransfer:
             timeout=60,
             params="{}",
             playbook=pb_proxy,
+            playbook_temp_file_key="",
+            save=MagicMock(),
         )
         return ex_proxy, fake_file
 
@@ -118,6 +120,8 @@ class TestExecutePlaybookViaAnsibleFileTransfer:
         called_files = executor.playbook.call_args.kwargs["files"]
         assert called_files[0]["name"] == "p.zip"
         assert called_files[0]["file_key"] == f"job-playbooks/{ex.id}/p.zip"
+        assert ex.playbook_temp_file_key == f"job-playbooks/{ex.id}/p.zip"
+        ex.save.assert_called_once_with(update_fields=["playbook_temp_file_key", "updated_at"])
         mupload.assert_called_once()
         fake_file.close.assert_called_once()
 
@@ -137,18 +141,12 @@ class TestExecutePlaybookViaAnsibleFileTransfer:
 
 
 class TestRunViaAnsibleCleanup:
-    """_run_via_ansible 提交失败的落库与清理行为。
+    """_run_via_ansible 提交失败时使用已持久化 Key 清理中转文件。"""
 
-    BUG（锁定当前行为）：playbook_execution.py 中 ``nats_file_key`` 仅在
-    ``nats_file_key = self._execute_playbook_via_ansible(...)`` 成功返回时被赋值。
-    当 ``_execute_playbook_via_ansible`` 在已把 ZIP 中转到 NATS OS *之后* 抛出异常
-    （如 executor.playbook 失败），外层 ``nats_file_key`` 仍为 None，
-    导致 75-79 的清理分支永不执行 → NATS OS 残留孤儿文件。
-    此处断言当前行为：异常时落 FAILED，且 delete_s3_file 不被调用。
-    """
-
-    def test_exception_marks_failed_and_skips_cleanup(self):
+    def test_exception_marks_failed_and_cleans_persisted_file_key(self):
         ex = _execution()
+        ex.playbook_temp_file_key = f"job-playbooks/{ex.id}/p.zip"
+        ex.save(update_fields=["playbook_temp_file_key", "updated_at"])
         runner = PlaybookExecution(ex.id)
         with patch.object(PlaybookExecution, "_execute_playbook_via_ansible", side_effect=RuntimeError("boom")), patch(
             f"{MOD}.delete_s3_file"
@@ -156,6 +154,5 @@ class TestRunViaAnsibleCleanup:
             runner._run_via_ansible(ex, [{"target_id": 1}])
         ex.refresh_from_db()
         assert ex.status == ExecutionStatus.FAILED
-        # nats_file_key 为 None（见类 docstring 的 BUG），不触发清理
-        mdel.assert_not_called()
+        mdel.assert_called_once_with(f"job-playbooks/{ex.id}/p.zip")
         assert ex.execution_results and ex.execution_results[0]["status"] == ExecutionStatus.FAILED

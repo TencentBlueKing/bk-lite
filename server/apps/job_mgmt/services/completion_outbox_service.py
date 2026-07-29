@@ -2,7 +2,8 @@
 
 数据库事务只负责写终态与不可变投递意图；外部 I/O 由 worker 执行。Celery 入队只是
 快速路径，Beat 会重扫待投递及租约过期记录，因此 broker 抖动或 worker 崩溃不会丢失
-终态副作用。投递语义为 at-least-once，接收方使用 payload.delivery_id 去重。
+终态副作用。HTTP/NATS 发布调用可能重放，接收方使用 payload.delivery_id 去重；
+Core NATS 仍保留既有 fire-and-forget 契约，不承诺离线消费者补发。
 """
 
 import hashlib
@@ -74,8 +75,11 @@ def _build_terminal_intents(execution) -> list[tuple[str, str, dict]]:
         )
         intents.append((JobCompletionOutbox.Kind.DONE_SENTINEL, delivery_id, payload))
 
-    if execution.playbook_id and execution.playbook:
+    file_key = execution.playbook_temp_file_key
+    if not file_key and execution.playbook_id and execution.playbook:
+        # 兼容迁移前已启动、尚未持久化临时 Key 的执行。
         file_key = f"job-playbooks/{execution.id}/{execution.playbook.file_name}"
+    if file_key:
         delivery_id, payload = _intent(
             JobCompletionOutbox.Kind.PLAYBOOK_CLEANUP,
             execution,

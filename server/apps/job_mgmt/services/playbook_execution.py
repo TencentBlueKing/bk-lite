@@ -71,12 +71,13 @@ class PlaybookExecution(ExecutionTaskBaseService):
             execution.execution_results = [self.build_target_failed_result(t, error_msg) for t in target_list]
             execution.save(update_fields=["execution_results", "updated_at"])
             # 提交失败时立即清理 NATS OS 中转文件
-            if nats_file_key:
+            cleanup_key = nats_file_key or execution.playbook_temp_file_key
+            if cleanup_key:
                 try:
-                    async_to_sync(delete_s3_file)(nats_file_key)
-                    logger.info(f"[{self.task_name}] 已清理 NATS OS 中转文件: {nats_file_key}")
+                    async_to_sync(delete_s3_file)(cleanup_key)
+                    logger.info(f"[{self.task_name}] 已清理 NATS OS 中转文件: {cleanup_key}")
                 except Exception as cleanup_err:
-                    logger.warning(f"[{self.task_name}] 清理 NATS OS 中转文件失败: {nats_file_key}, error={cleanup_err}")
+                    logger.warning(f"[{self.task_name}] 清理 NATS OS 中转文件失败: {cleanup_key}, error={cleanup_err}")
 
     @classmethod
     def _execute_playbook_via_ansible(cls, execution, target_list: list) -> str | None:
@@ -152,6 +153,8 @@ class PlaybookExecution(ExecutionTaskBaseService):
                 logger.info(f"[{task_name}] 从 MinIO 校验成功: size={archive_info.raw_size} bytes")
                 async_to_sync(upload_file_to_s3)(minio_file, nats_file_key)
                 logger.info(f"[{task_name}] 上传到 NATS OS 成功: key={nats_file_key}")
+                execution.playbook_temp_file_key = nats_file_key
+                execution.save(update_fields=["playbook_temp_file_key", "updated_at"])
             except Exception as e:
                 raise ValueError(f"Playbook 文件中转失败: {e}") from e
             finally:

@@ -149,6 +149,28 @@ def test_timeout_finalizer_first_is_reconciled_by_one_real_callback():
     schedule.assert_called_once_with((record_id,))
 
 
+def test_legacy_timeout_placeholder_is_reconciled_after_rolling_upgrade():
+    execution = _execution(status=ExecutionStatus.CANCELLED)
+    execution.terminal_source = None
+    execution.execution_results = [
+        {
+            "target_key": "target-1",
+            "status": ExecutionStatus.CANCELLED,
+            "error_message": "任务已取消，远端结果未知",
+        }
+    ]
+    execution.save(update_fields=["terminal_source", "execution_results", "updated_at"])
+
+    with patch("apps.job_mgmt.services.completion_outbox_service._schedule_deliveries"):
+        result = ansible_task_callback(_callback(execution.id, stdout="late-real-result"))
+
+    execution.refresh_from_db()
+    assert result == {"success": True, "message": "回调处理成功"}
+    assert execution.terminal_source == JobExecution.TerminalSource.ANSIBLE_CALLBACK
+    assert execution.execution_results[0]["stdout"] == "late-real-result"
+    assert JobCompletionOutbox.objects.filter(execution_id=execution.id).count() == 1
+
+
 def test_invalid_callback_observes_current_cancelling_state():
     execution = _execution()
     JobExecution.objects.filter(id=execution.id).update(status=ExecutionStatus.CANCELLING)

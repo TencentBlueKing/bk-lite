@@ -30,6 +30,7 @@ class JobExecution(TimeInfo, MaintainerInfo):
         choices=TerminalSource.choices,
         blank=True,
         default="",
+        null=True,
         verbose_name="终态写入来源",
     )
 
@@ -37,6 +38,13 @@ class JobExecution(TimeInfo, MaintainerInfo):
     script = models.ForeignKey(Script, on_delete=models.SET_NULL, null=True, blank=True, verbose_name="关联脚本")
     playbook = models.ForeignKey(Playbook, on_delete=models.SET_NULL, null=True, blank=True, verbose_name="关联Playbook")
     playbook_version = models.CharField(max_length=32, blank=True, default="", verbose_name="执行时Playbook版本")
+    playbook_temp_file_key = models.CharField(
+        max_length=512,
+        blank=True,
+        default="",
+        null=True,
+        verbose_name="Playbook NATS 临时文件 Key",
+    )
 
     # 关联的定时任务（定时触发时设置，用于并发策略判断）
     scheduled_task = models.ForeignKey("job_mgmt.ScheduledTask", on_delete=models.SET_NULL, null=True, blank=True, verbose_name="关联定时任务")

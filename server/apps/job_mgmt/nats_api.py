@@ -288,14 +288,27 @@ def _write_ansible_terminal(execution, data: dict, *, reconcile_cancel_timeout: 
     return validation_error
 
 
+def _is_legacy_cancel_timeout(execution) -> bool:
+    """识别 0014 前取消兜底写入的占位结果，兼容滚动期间的旧 worker。"""
+    if execution.status != ExecutionStatus.CANCELLED or execution.terminal_source:
+        return False
+    return any(
+        result.get("status") == ExecutionStatus.CANCELLED and result.get("error_message") == "任务已取消，远端结果未知"
+        for result in execution.execution_results or []
+    )
+
+
 @nats_client.register
 def ansible_task_callback(data: dict):
     """持久化首个 Ansible 终态回调及其可恢复副作用。"""
     logger.info("[ansible_task_callback] %s", summarize_ansible_callback(data))
     task_id = data.get("task_id")
-    if not task_id:
+    if task_id is None:
         logger.warning("[ansible_task_callback] 缺少 task_id")
         return {"success": False, "message": "缺少 task_id"}
+    if isinstance(task_id, bool) or not isinstance(task_id, int) or task_id <= 0:
+        logger.warning("[ansible_task_callback] task_id 非法: type=%s", type(task_id).__name__)
+        return {"success": False, "message": "task_id 必须为正整数"}
 
     with transaction.atomic():
         execution = JobExecution.objects.select_for_update().filter(id=task_id).first()
@@ -305,7 +318,7 @@ def ansible_task_callback(data: dict):
         reconcile_cancel_timeout = (
             execution.status == ExecutionStatus.CANCELLED
             and execution.terminal_source == JobExecution.TerminalSource.CANCEL_TIMEOUT
-        )
+        ) or _is_legacy_cancel_timeout(execution)
         if execution.status in ExecutionStatus.TERMINAL_STATES and not reconcile_cancel_timeout:
             logger.info(
                 "[ansible_task_callback] 任务已处于终态: task_id=%s, status=%s",

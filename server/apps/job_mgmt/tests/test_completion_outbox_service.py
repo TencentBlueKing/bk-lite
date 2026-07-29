@@ -4,7 +4,8 @@ from datetime import timedelta
 from unittest.mock import MagicMock, patch
 
 import pytest
-from django.db import transaction
+from django.db import connection, transaction
+from django.db.migrations.loader import MigrationLoader
 from django.utils import timezone
 from nats.js.errors import ObjectNotFoundError
 
@@ -39,6 +40,19 @@ def _terminal_execution(callback_type=CallbackType.BOTH):
         created_by="testuser",
         updated_by="testuser",
     )
+
+
+@pytest.mark.django_db
+def test_0014_schema_allows_0013_worker_to_insert_execution():
+    """先迁移 schema、后滚动 worker 时，旧模型 INSERT 不能被新增字段阻断。"""
+    old_apps = MigrationLoader(connection).project_state([("job_mgmt", "0013_dangerous_builtin_metadata")]).apps
+    OldJobExecution = old_apps.get_model("job_mgmt", "JobExecution")
+
+    old_execution = OldJobExecution.objects.create(name="old-worker", job_type=JobType.SCRIPT)
+
+    current_execution = JobExecution.objects.get(pk=old_execution.pk)
+    assert current_execution.terminal_source is None
+    assert current_execution.playbook_temp_file_key is None
 
 
 @pytest.mark.django_db(transaction=True)
@@ -259,3 +273,20 @@ def test_cleanup_replay_treats_already_deleted_object_as_success():
 
     record.refresh_from_db()
     assert record.status == JobCompletionOutbox.Status.DELIVERED
+
+
+@pytest.mark.django_db
+def test_cleanup_uses_file_key_persisted_when_playbook_was_uploaded():
+    execution = _terminal_execution(callback_type=CallbackType.WEB)
+    execution.callback_url = None
+    execution.playbook_temp_file_key = f"job-playbooks/{execution.id}/original.zip"
+    execution.save(update_fields=["callback_url", "playbook_temp_file_key", "updated_at"])
+
+    with transaction.atomic():
+        enqueue_terminal_effects(execution)
+
+    cleanup = JobCompletionOutbox.objects.get(
+        execution_id=execution.id,
+        kind=JobCompletionOutbox.Kind.PLAYBOOK_CLEANUP,
+    )
+    assert cleanup.payload["file_key"] == f"job-playbooks/{execution.id}/original.zip"
