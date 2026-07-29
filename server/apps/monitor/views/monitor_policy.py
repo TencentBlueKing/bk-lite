@@ -167,15 +167,16 @@ class MonitorPolicyViewSet(viewsets.ModelViewSet):
     def create(self, request, *args, **kwargs):
         self._ensure_target_organizations(request.data.get("organizations", []))
         request.data["created_by"] = request.user.username
-        response = super().create(request, *args, **kwargs)
-        policy_id = response.data["id"]
-        policy = MonitorPolicy.objects.filter(id=policy_id).first()
-        schedule = request.data.get("schedule")
-        organizations = request.data.get("organizations", [])
-        self.update_or_create_task(policy_id, schedule)
-        self.update_policy_organizations(policy_id, organizations)
-        if self.is_no_data_alert_enabled(policy):
-            self.update_policy_baselines(policy_id, policy.enable_alerts)
+        with transaction.atomic():
+            response = super().create(request, *args, **kwargs)
+            policy_id = response.data["id"]
+            policy = MonitorPolicy.objects.filter(id=policy_id).first()
+            schedule = request.data.get("schedule")
+            organizations = request.data.get("organizations", [])
+            self.update_or_create_task(policy_id, schedule)
+            self.update_policy_organizations(policy_id, organizations)
+            if self.is_no_data_alert_enabled(policy):
+                self.update_policy_baselines(policy_id, policy.enable_alerts)
         return response
 
     def update(self, request, *args, **kwargs):
