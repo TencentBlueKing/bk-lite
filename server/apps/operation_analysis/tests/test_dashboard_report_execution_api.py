@@ -12,6 +12,9 @@ from apps.operation_analysis.models.subscription_models import (
 from apps.operation_analysis.services.execution_service import (
     DashboardReportExecutionService,
 )
+from apps.operation_analysis.services.execution_orchestrator import (
+    ExecutionOrchestrator,
+)
 
 
 pytestmark = pytest.mark.django_db
@@ -68,6 +71,11 @@ def grant_dashboard_view(monkeypatch, allowed=True):
         "DashboardSubscriptionService.can_view_dashboard",
         lambda request, dashboard: allowed,
     )
+    monkeypatch.setattr(
+        "apps.operation_analysis.views.view."
+        "DashboardModelViewSet.get_has_permission",
+        lambda self, user, dashboard, team_id, **kwargs: allowed,
+    )
 
 
 def test_creator_with_dashboard_view_can_execute_and_retrieve(
@@ -90,9 +98,9 @@ def test_creator_with_dashboard_view_can_execute_and_retrieve(
     assert create_response.data["dashboard"] == subscription.dashboard_id
     assert create_response.data["creator"] == authenticated_user.username
     assert create_response.data["trigger_type"] == "manual"
-    assert create_response.data["status"] == "pending"
-    assert create_response.data["started_at"] is None
-    assert create_response.data["finished_at"] is None
+    assert create_response.data["status"] == "succeeded"
+    assert create_response.data["started_at"] is not None
+    assert create_response.data["finished_at"] is not None
     assert create_response.data["failure_stage"] == ""
     assert create_response.data["error_message"] == ""
     assert create_response.data["snapshot"] == {
@@ -252,17 +260,13 @@ def test_execution_snapshot_cannot_be_updated(
 
 
 def test_execution_service_enforces_status_transitions(
-    api_client,
     subscription,
-    subscription_url,
-    monkeypatch,
 ):
-    grant_dashboard_view(monkeypatch)
-    response = api_client.post(
-        f"{subscription_url}{subscription.id}/execute/",
-        format="json",
+    execution = DashboardReportExecution.objects.create(
+        subscription=subscription,
+        dashboard=subscription.dashboard,
+        creator=subscription.creator,
     )
-    execution = DashboardReportExecution.objects.get(id=response.data["id"])
 
     DashboardReportExecutionService.transition(
         execution,
@@ -283,6 +287,35 @@ def test_execution_service_enforces_status_transitions(
             execution,
             DashboardReportExecution.Status.FAILED,
         )
+
+
+def test_manual_execute_delegates_to_orchestrator(
+    api_client,
+    subscription,
+    subscription_url,
+    monkeypatch,
+):
+    grant_dashboard_view(monkeypatch)
+    calls = []
+    execute = ExecutionOrchestrator.execute.__func__
+
+    def tracked_execute(cls, execution_id):
+        calls.append(execution_id)
+        return execute(cls, execution_id)
+
+    monkeypatch.setattr(
+        ExecutionOrchestrator,
+        "execute",
+        classmethod(tracked_execute),
+    )
+
+    response = api_client.post(
+        f"{subscription_url}{subscription.id}/execute/",
+        format="json",
+    )
+
+    assert response.status_code == 201, response.data
+    assert calls == [response.data["id"]]
 
 
 def test_user_cannot_execute_another_users_subscription(

@@ -15,6 +15,9 @@ from apps.operation_analysis.serializers.execution_serializers import (
 from apps.operation_analysis.services.execution_service import (
     DashboardReportExecutionService,
 )
+from apps.operation_analysis.services.execution_orchestrator import (
+    ExecutionOrchestrator,
+)
 from apps.operation_analysis.services.subscription_service import (
     DashboardSubscriptionService,
 )
@@ -72,6 +75,8 @@ class DashboardReportSubscriptionViewSet(viewsets.ModelViewSet):
             request,
             self.get_object(),
         )
+        if execution.status == execution.Status.PENDING:
+            execution = ExecutionOrchestrator.execute(execution.id)
         return Response(
             DashboardReportExecutionSerializer(execution).data,
             status=status.HTTP_201_CREATED,

@@ -65,6 +65,37 @@ Widget/DataSource 配置分别留待后续 Subscription 输入和 Render Snapsho
 阶段。本阶段仍未接入 Celery、Chromium、PDF、Email、Retry、Render Token、
 完整权限 Snapshot 或 DataSource Runtime Snapshot。
 
+## Phase 1C 实现状态（2026-07-29）
+
+已实现且验证：
+
+- `ExecutionOrchestrator.execute(execution_id)` 作为手工执行与未来计划执行
+  共用的唯一编排入口；
+- 固定步骤顺序：
+  `PermissionStep → SnapshotStep → RenderStep → DeliveryStep`；
+- Orchestrator 只通过 `DashboardReportExecutionService.transition()` 推进
+  `pending → running → succeeded/failed`；
+- PermissionStep 使用创建者当前有效账号及当前组织列表，逐组织复用
+  Dashboard 实例 View 权限检查，失败记录
+  `failure_stage=permission_check`；
+- SnapshotStep 校验 Snapshot 存在，且 Dashboard、Subscription、创建者
+  标识及筛选 JSON 与 Execution 一致，失败记录
+  `failure_stage=snapshot`；
+- Manual Execute API 创建 Execution/Snapshot 后委托 Orchestrator，View
+  不直接修改状态；
+- RenderStep 与 DeliveryStep 仅返回 `placeholder`，不调用 Chromium、不生成
+  PDF、不发送邮件。本阶段正常流程的 `succeeded` 仅表示基础编排步骤按顺序
+  完成，不表示报告已生成或投递。
+
+当前 Execution 只保存 username，尚未冻结 creator domain 和执行组织。
+PermissionStep 对同 username 存在多个有效账号的情况 fail closed，并在创建者
+当前组织中逐一校验 Dashboard 权限。正式 Scheduler 接入前应把稳定用户身份和
+组织引用补入 Execution Input Snapshot；这不是完整权限 Snapshot。
+
+Phase 1C 未新增 operation_analysis Celery Task，也未实现 Scheduler、Celery
+Beat、Chromium、PDF、Email、SMTP、Retry、Render Token、Share Token 或
+DataSource Runtime Snapshot。
+
 ## Problem Statement
 
 运营分析仪表盘已经支持用户在浏览器中手工导出 PDF，但现有实现依赖当前页面 DOM、`html-to-image`、`jsPDF.save()` 和用户登录会话，只能下载到用户本机，不能由后台周期任务无会话生成并作为邮件附件发送。
