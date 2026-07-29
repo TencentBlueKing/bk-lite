@@ -1,12 +1,16 @@
 import ipaddress
+import hashlib
+import uuid
+from datetime import timedelta
 from urllib.parse import urlencode, urlsplit
 
 from django.conf import settings
-from django.db import transaction
+from django.db import OperationalError, connection, transaction
+from django.db.models import Q
 from django.utils import timezone
 
 from apps.alerts.constants.constants import IncidentStatus
-from apps.alerts.models import IncidentIMGroup, IncidentIMMember
+from apps.alerts.models import AlertOutbox, IncidentIMGroup, IncidentIMMember
 from apps.alerts.service.incident_im.constants import OUTBOX_ADD_MEMBERS, OUTBOX_CREATE, OUTBOX_SEND_SUMMARY
 from apps.alerts.service.incident_im.groups import record_group_audit
 from apps.alerts.service.incident_im.members import get_desired_operator_usernames, get_desired_usernames
@@ -14,6 +18,7 @@ from apps.alerts.service.outbox import enqueue_outbox
 from apps.system_mgmt.services.im_group_service import IMGroupRuntimeService
 
 MEMBER_BATCH_SIZE = 50
+GROUP_DELIVERY_LEASE_SECONDS = 75
 
 
 class IncidentIMRetryableError(RuntimeError):
@@ -119,7 +124,7 @@ def deliver_create_group(group_id) -> None:
     _enqueue_add_members(group_id)
 
 
-def deliver_add_members(group_id) -> None:
+def deliver_add_members(group_id, *, member_pks=None, delivery_claim=None) -> None:
     group = _get_group(group_id)
     if group is None or _is_group_delivery_paused(group):
         return
@@ -129,36 +134,41 @@ def deliver_add_members(group_id) -> None:
         )
         return
 
-    with transaction.atomic():
-        locked = _lock_group(group_id)
-        if locked is None or _is_group_delivery_paused(locked):
-            return
-        locked.current_stage = IncidentIMGroup.Stage.ADDING_MEMBERS
-        locked.save(update_fields=["current_stage"])
-        group = locked
+    lease_token = _acquire_group_delivery_lease(group_id)
+    if lease_token is None:
+        return
+    if not lease_token:
+        raise IncidentIMRetryableError("同一飞书群成员正在处理，请稍后重试")
 
-    processed_member_ids: set[int] = set()
-    while True:
+    try:
         with transaction.atomic():
             locked = _lock_group(group_id)
-            if locked is None or _is_group_delivery_paused(locked):
+            if locked is None or locked.delivery_lock_token != lease_token or _is_group_delivery_paused(locked):
                 return
+            locked.current_stage = IncidentIMGroup.Stage.ADDING_MEMBERS
+            locked.save(update_fields=["current_stage"])
             group = locked
             desired_usernames = get_desired_usernames(locked.incident)
-        batch = list(
-            IncidentIMMember.objects.filter(
+            batch_query = IncidentIMMember.objects.filter(
                 group_id=group_id,
                 username__in=desired_usernames,
                 mapping_status=IncidentIMMember.MappingStatus.MAPPED,
                 sync_status=IncidentIMMember.SyncStatus.PENDING,
-            )
-            .exclude(pk__in=processed_member_ids)
-            .exclude(external_id="")
-            .order_by("id")[:MEMBER_BATCH_SIZE]
-        )
+            ).exclude(external_id="")
+            if member_pks is not None:
+                batch_query = batch_query.filter(pk__in=member_pks)
+            batch = list(batch_query.order_by("id")[:MEMBER_BATCH_SIZE])
         if not batch:
-            break
-        processed_member_ids.update(member.pk for member in batch)
+            with transaction.atomic():
+                locked = _lock_group(group_id)
+                if locked is not None and locked.delivery_lock_token == lease_token and not _is_group_delivery_paused(locked):
+                    _enqueue_next_add_batch_or_summary(locked)
+                    _clear_group_delivery_lease(locked)
+            return
+
+        if not _delivery_claim_is_current(delivery_claim, group_id, lease_token):
+            return
+
         member_ids = list(dict.fromkeys(member.external_id for member in batch))
         result = IMGroupRuntimeService.execute(
             group.channel, operation="add_members", chat_id=group.external_chat_id, member_ids=member_ids, member_id_type=group.member_id_type,
@@ -177,7 +187,7 @@ def deliver_add_members(group_id) -> None:
             error_message = "外部用户标识无效"
         with transaction.atomic():
             locked = _lock_group(group_id)
-            if locked is None or locked.status == IncidentIMGroup.Status.UNLINKED:
+            if locked is None or locked.status == IncidentIMGroup.Status.UNLINKED or locked.delivery_lock_token != lease_token:
                 return
             joined_count, failed_count = _save_member_result(
                 locked,
@@ -191,15 +201,15 @@ def deliver_add_members(group_id) -> None:
                 locked, locked.updated_by or locked.created_by or "system", f"补拉飞书群成员结果：成功 {joined_count} 人，失败 {failed_count} 人",
             )
 
-    with transaction.atomic():
-        locked = _lock_group(group_id)
-        if locked is None or _is_group_delivery_paused(locked):
-            return
-        locked.current_stage = IncidentIMGroup.Stage.SENDING_SUMMARY
-        locked.save(update_fields=["current_stage"])
-    enqueue_outbox(
-        OUTBOX_SEND_SUMMARY, {"group_id": str(group_id)}, f"incident-im-group:{group_id}:send-summary",
-    )
+        with transaction.atomic():
+            locked = _lock_group(group_id)
+            if locked is None or locked.status == IncidentIMGroup.Status.UNLINKED or locked.delivery_lock_token != lease_token:
+                return
+            if not _is_group_delivery_paused(locked):
+                _enqueue_next_add_batch_or_summary(locked)
+            _clear_group_delivery_lease(locked)
+    finally:
+        IncidentIMGroup.objects.filter(pk=group_id, delivery_lock_token=lease_token).update(delivery_lock_token="", delivery_lock_expires_at=None)
 
 
 def deliver_summary(group_id) -> None:
@@ -297,9 +307,156 @@ def handle_delivery_exhausted(kind: str, payload: dict, error: str) -> None:
 
 
 def _enqueue_add_members(group_id) -> None:
-    enqueue_outbox(
-        OUTBOX_ADD_MEMBERS, {"group_id": str(group_id)}, f"incident-im-group:{group_id}:add-members",
+    with transaction.atomic():
+        group = _lock_group(group_id)
+        if group is None or _is_group_delivery_paused(group):
+            return
+        if AlertOutbox.objects.filter(
+            kind=OUTBOX_ADD_MEMBERS,
+            payload__group_id=str(group.id),
+            status__in=(AlertOutbox.Status.PENDING, AlertOutbox.Status.DELIVERING),
+        ).exists():
+            return
+        _enqueue_next_add_batch_or_summary(group)
+
+
+def enqueue_add_members_batch(group, *, allow_failed_retry=False) -> bool:
+    desired_usernames = get_desired_usernames(group.incident)
+    members = list(
+        group.members.filter(
+            username__in=desired_usernames, mapping_status=IncidentIMMember.MappingStatus.MAPPED, sync_status=IncidentIMMember.SyncStatus.PENDING,
+        )
+        .exclude(external_id="")
+        .order_by("pk")[:MEMBER_BATCH_SIZE]
     )
+    if not members:
+        return False
+    signature = "\0".join(
+        f"{member.pk}:{member.external_id_type}:{member.external_id}:{member.attempt_count}"
+        for member in members
+    )
+    digest = hashlib.sha256(signature.encode("utf-8")).hexdigest()
+    base_key = f"incident-im-group:{group.id}:add-members:{digest}"
+    previous = (
+        AlertOutbox.objects.filter(kind=OUTBOX_ADD_MEMBERS)
+        .filter(Q(idempotency_key=base_key) | Q(idempotency_key__startswith=f"{base_key}:resume:"))
+        .order_by("-pk")
+        .first()
+    )
+    if previous is not None:
+        if previous.status in (AlertOutbox.Status.PENDING, AlertOutbox.Status.DELIVERING):
+            return True
+        if previous.status == AlertOutbox.Status.FAILED and not allow_failed_retry:
+            return False
+        idempotency_key = f"{base_key}:resume:{previous.pk}"
+    else:
+        idempotency_key = base_key
+    payload = {
+        "group_id": str(group.id),
+        "member_pks": [member.pk for member in members],
+        "batch_digest": digest,
+    }
+    enqueue_outbox(
+        OUTBOX_ADD_MEMBERS, payload, idempotency_key,
+    )
+    return True
+
+
+def _enqueue_next_add_batch_or_summary(group) -> None:
+    if enqueue_add_members_batch(group):
+        return
+    if group.last_sync_at is not None:
+        desired_usernames = get_desired_usernames(group.incident)
+        has_member_gaps = group.members.filter(username__in=desired_usernames).exclude(
+            sync_status=IncidentIMMember.SyncStatus.JOINED
+        ).exists()
+        group.current_stage = IncidentIMGroup.Stage.COMPLETED
+        group.status = IncidentIMGroup.Status.ACTIVE_PARTIAL if has_member_gaps else IncidentIMGroup.Status.ACTIVE
+        group.last_sync_at = timezone.now()
+        group.last_error_code = ""
+        group.last_error_message = ""
+        group.save(
+            update_fields=[
+                "current_stage",
+                "status",
+                "last_sync_at",
+                "last_error_code",
+                "last_error_message",
+            ]
+        )
+        return
+    group.current_stage = IncidentIMGroup.Stage.SENDING_SUMMARY
+    group.save(update_fields=["current_stage"])
+    enqueue_outbox(
+        OUTBOX_SEND_SUMMARY, {"group_id": str(group.id)}, f"incident-im-group:{group.id}:send-summary",
+    )
+
+
+def _acquire_group_delivery_lease(group_id):
+    now = timezone.now()
+    token = str(uuid.uuid4())
+    eligible = (
+        IncidentIMGroup.objects.filter(
+            pk=group_id,
+            pause_reason="",
+            status__in=(
+                IncidentIMGroup.Status.PENDING_CREATE,
+                IncidentIMGroup.Status.CREATING,
+                IncidentIMGroup.Status.ACTIVE,
+                IncidentIMGroup.Status.ACTIVE_PARTIAL,
+            ),
+        )
+        .filter(
+            Q(delivery_lock_token="")
+            | Q(delivery_lock_expires_at__isnull=True)
+            | Q(delivery_lock_expires_at__lte=now)
+        )
+    )
+    try:
+        acquired = eligible.update(
+            delivery_lock_token=token,
+            delivery_lock_expires_at=now + timedelta(seconds=GROUP_DELIVERY_LEASE_SECONDS),
+        )
+    except OperationalError as exc:
+        if _is_sqlite_lock_error(exc):
+            return ""
+        raise
+    if acquired:
+        group = _get_group(group_id)
+        if group is not None and group.delivery_lock_token == token:
+            return token
+    group = _get_group(group_id)
+    if group is None or _is_group_delivery_paused(group):
+        return None
+    return ""
+
+
+def _clear_group_delivery_lease(group):
+    group.delivery_lock_token = ""
+    group.delivery_lock_expires_at = None
+    group.save(update_fields=["delivery_lock_token", "delivery_lock_expires_at"])
+
+
+def _delivery_claim_is_current(delivery_claim, group_id, lease_token):
+    if delivery_claim and not AlertOutbox.objects.filter(
+        pk=delivery_claim["record_id"],
+        status=AlertOutbox.Status.DELIVERING,
+        attempts=delivery_claim["generation"],
+    ).exists():
+        return False
+    return IncidentIMGroup.objects.filter(
+        pk=group_id,
+        delivery_lock_token=lease_token,
+        delivery_lock_expires_at__gt=timezone.now(),
+        pause_reason="",
+        status__in=(
+            IncidentIMGroup.Status.PENDING_CREATE,
+            IncidentIMGroup.Status.CREATING,
+            IncidentIMGroup.Status.ACTIVE,
+            IncidentIMGroup.Status.ACTIVE_PARTIAL,
+        ),
+        incident__status__in=IncidentStatus.ACTIVATE_STATUS,
+    ).exists()
 
 
 def _get_group(group_id):
@@ -317,6 +474,15 @@ def _is_group_delivery_paused(group):
         group.status in (IncidentIMGroup.Status.PAUSED, IncidentIMGroup.Status.UNLINKED)
         or bool(group.pause_reason)
         or group.incident.status not in IncidentStatus.ACTIVATE_STATUS
+    )
+
+
+def _is_sqlite_lock_error(exc):
+    message = str(exc).lower()
+    return connection.vendor == "sqlite" and (
+        "database is locked" in message
+        or "database table is locked" in message
+        or "database is busy" in message
     )
 
 

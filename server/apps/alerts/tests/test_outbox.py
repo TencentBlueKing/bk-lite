@@ -36,6 +36,23 @@ def test_broker_failure_keeps_pending_outbox(django_capture_on_commit_callbacks)
     assert record.attempts == 0
 
 
+@pytest.mark.django_db(transaction=True)
+def test_add_members_outbox_uses_dedicated_limited_task(django_capture_on_commit_callbacks):
+    with mock.patch("apps.alerts.tasks.deliver_incident_im_add_members_outbox.delay") as dedicated, mock.patch(
+        "apps.alerts.tasks.deliver_alert_outbox.delay"
+    ) as shared:
+        with django_capture_on_commit_callbacks(execute=True):
+            record, created = enqueue_outbox(
+                "incident_im_group.add_members",
+                {"group_id": "group-1", "member_pks": [1]},
+                "dedicated-add-key",
+            )
+
+    assert created is True
+    dedicated.assert_called_once_with(record.pk)
+    shared.assert_not_called()
+
+
 @pytest.mark.django_db
 def test_duplicate_idempotency_key_reuses_single_outbox():
     first, first_created = enqueue_outbox("action", {"alert_id": "A1"}, "same-key")
@@ -212,6 +229,24 @@ def test_dispatcher_recovers_only_expired_delivering_lease_after_hard_crash():
     record.refresh_from_db()
     assert record.status == AlertOutbox.Status.DELIVERED
     assert record.attempts == 2
+
+
+@pytest.mark.django_db(transaction=True)
+def test_dispatcher_routes_add_members_to_dedicated_task():
+    record = AlertOutbox.objects.create(
+        kind="incident_im_group.add_members",
+        payload={"group_id": "group-1", "member_pks": [1]},
+        idempotency_key="dispatcher-dedicated-add",
+    )
+    with mock.patch(
+        "apps.alerts.tasks.tasks.deliver_incident_im_add_members_outbox.delay"
+    ) as dedicated, mock.patch(
+        "apps.alerts.tasks.tasks.deliver_alert_outbox.delay"
+    ) as shared:
+        assert dispatch_pending_alert_outbox() == {"scheduled": 1}
+
+    dedicated.assert_called_once_with(record.pk)
+    shared.assert_not_called()
 
 
 @pytest.mark.django_db(transaction=True)

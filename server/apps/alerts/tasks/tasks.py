@@ -41,13 +41,26 @@ def deliver_alert_outbox(record_id):
     return deliver_outbox_record(record_id)
 
 
+@shared_task(
+    autoretry_for=(Exception,),
+    retry_backoff=True,
+    retry_kwargs={"max_retries": 5},
+    soft_time_limit=45,
+    time_limit=60,
+)
+def deliver_incident_im_add_members_outbox(record_id):
+    from apps.alerts.service.outbox import deliver_outbox_record
+
+    return deliver_outbox_record(record_id)
+
+
 @shared_task
 def dispatch_pending_alert_outbox():
     from apps.alerts.models.outbox import AlertOutbox
     from apps.alerts.service.outbox import OUTBOX_LEASE_TIMEOUT
 
     now = timezone.now()
-    ids = list(
+    records = list(
         AlertOutbox.objects.filter(
             (
                 Q(status=AlertOutbox.Status.PENDING)
@@ -59,14 +72,15 @@ def dispatch_pending_alert_outbox():
             )
         )
         .order_by("pk")
-        .values_list("pk", flat=True)[:OUTBOX_DISPATCH_BATCH_SIZE]
+        .values_list("pk", "kind")[:OUTBOX_DISPATCH_BATCH_SIZE]
     )
-    for record_id in ids:
+    for record_id, kind in records:
         try:
-            deliver_alert_outbox.delay(record_id)
+            task = deliver_incident_im_add_members_outbox if kind == "incident_im_group.add_members" else deliver_alert_outbox
+            task.delay(record_id)
         except Exception:
             logger.exception("alert outbox reschedule failed: outbox_id=%s", record_id)
-    return {"scheduled": len(ids)}
+    return {"scheduled": len(records)}
 
 
 @shared_task

@@ -1,5 +1,3 @@
-import hashlib
-
 from django.db import transaction
 from django.utils import timezone
 
@@ -20,7 +18,12 @@ def reconcile_incident_im_group(incident_id, force_delivery=False, resume_create
             return None
 
         terminal_status = _terminal_status_from_delivery_facts(group)
-        if terminal_status is not None:
+        retrying_exhausted_add = (
+            force_delivery
+            and group.external_chat_id
+            and group.last_error_code == "IM_DELIVERY_EXHAUSTED"
+        )
+        if terminal_status is not None and not retrying_exhausted_add:
             if group.status != terminal_status:
                 group.status = terminal_status
                 group.save(update_fields=["status"])
@@ -61,9 +64,9 @@ def reconcile_incident_im_group(incident_id, force_delivery=False, resume_create
             .order_by("pk")
         )
         if pending and not _has_unfinished_add_members(group.id):
-            signature = "\0".join(f"{member.pk}:{member.updated_at.isoformat(timespec='microseconds')}" for member in pending)
-            digest = hashlib.sha256(signature.encode("utf-8")).hexdigest()
-            enqueue_outbox(OUTBOX_ADD_MEMBERS, {"group_id": str(group.id)}, f"incident-im-group:{group.id}:add-members:{digest}")
+            from apps.alerts.service.incident_im.delivery import enqueue_add_members_batch
+
+            enqueue_add_members_batch(group, allow_failed_retry=force_delivery)
         elif not pending and group.current_stage in (IncidentIMGroup.Stage.ADDING_MEMBERS, IncidentIMGroup.Stage.SENDING_SUMMARY):
             _enqueue_recovered_summary(group)
         return group
@@ -103,8 +106,9 @@ def retry_incident_im_member(*, incident_id, actor_username, username):
         member.last_error_message = ""
         member.save(update_fields=["sync_status", "last_error_code", "last_error_message", "updated_at"])
         if not _has_unfinished_add_members(group.id):
-            digest = hashlib.sha256(f"{member.pk}:{member.updated_at.isoformat(timespec='microseconds')}".encode("utf-8")).hexdigest()
-            enqueue_outbox(OUTBOX_ADD_MEMBERS, {"group_id": str(group.id)}, f"incident-im-group:{group.id}:add-members:{digest}")
+            from apps.alerts.service.incident_im.delivery import enqueue_add_members_batch
+
+            enqueue_add_members_batch(group, allow_failed_retry=True)
         return group
 
 
@@ -201,7 +205,9 @@ def _can_deliver(group, force_delivery, resume_create=False):
 
 def _has_unfinished_add_members(group_id):
     return AlertOutbox.objects.filter(
-        kind=OUTBOX_ADD_MEMBERS, payload={"group_id": str(group_id)}, status__in=(AlertOutbox.Status.PENDING, AlertOutbox.Status.DELIVERING)
+        kind=OUTBOX_ADD_MEMBERS,
+        payload__group_id=str(group_id),
+        status__in=(AlertOutbox.Status.PENDING, AlertOutbox.Status.DELIVERING),
     ).exists()
 
 

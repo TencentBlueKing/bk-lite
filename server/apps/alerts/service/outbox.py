@@ -22,14 +22,16 @@ def enqueue_outbox(kind: str, payload: dict, idempotency_key: str):
 
 def _schedule_delivery(record_id: int) -> None:
     try:
-        from apps.alerts.tasks import deliver_alert_outbox
+        from apps.alerts.tasks import deliver_alert_outbox, deliver_incident_im_add_members_outbox
 
-        deliver_alert_outbox.delay(record_id)
+        kind = AlertOutbox.objects.filter(pk=record_id).values_list("kind", flat=True).first()
+        task = deliver_incident_im_add_members_outbox if kind == "incident_im_group.add_members" else deliver_alert_outbox
+        task.delay(record_id)
     except Exception:
         logger.exception("alert outbox broker enqueue failed: outbox_id=%s", record_id)
 
 
-def _deliver_payload(kind: str, payload: dict) -> None:
+def _deliver_payload(kind: str, payload: dict, *, delivery_claim=None) -> None:
     if kind.startswith("incident_im_group."):
         from apps.alerts.service.incident_im.delivery import (
             OUTBOX_ADD_MEMBERS,
@@ -58,6 +60,13 @@ def _deliver_payload(kind: str, payload: dict) -> None:
                 payload["incident_id"],
                 resume_create=bool(payload.get("resume_create")),
             )
+        elif kind == OUTBOX_ADD_MEMBERS:
+            kwargs = {}
+            if "member_pks" in payload:
+                kwargs["member_pks"] = payload["member_pks"]
+            if delivery_claim is not None:
+                kwargs["delivery_claim"] = delivery_claim
+            handler(payload["group_id"], **kwargs)
         else:
             handler(payload["group_id"])
         return
@@ -135,7 +144,17 @@ def deliver_outbox_record(record_id: int) -> bool:
         return False
 
     try:
-        _deliver_payload(kind, payload)
+        if kind == "incident_im_group.add_members":
+            _deliver_payload(
+                kind,
+                payload,
+                delivery_claim={
+                    "record_id": record_id,
+                    "generation": claim_generation,
+                },
+            )
+        else:
+            _deliver_payload(kind, payload)
     except Exception as exc:
         next_status = (
             AlertOutbox.Status.FAILED

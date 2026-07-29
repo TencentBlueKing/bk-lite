@@ -203,7 +203,7 @@ def test_create_retry_with_existing_chat_id_never_calls_create(group):
         deliver_create_group(group.id)
 
     execute.assert_not_called()
-    assert enqueue.call_args.args[0] == "incident_im_group.add_members"
+    assert enqueue.call_args.args[0] == "incident_im_group.send_summary"
 
 
 @pytest.mark.django_db

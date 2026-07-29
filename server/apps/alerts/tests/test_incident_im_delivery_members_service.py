@@ -77,8 +77,8 @@ def test_old_add_members_outbox_skips_pending_member_removed_from_incident(group
 
 
 @pytest.mark.django_db
-def test_add_members_commits_successful_batch_before_next_batch_retry(group):
-    from apps.alerts.service.incident_im.delivery import IncidentIMRetryableError, deliver_add_members
+def test_add_members_commits_one_successful_batch_and_enqueues_next_batch(group):
+    from apps.alerts.service.incident_im.delivery import deliver_add_members
 
     group.external_chat_id = "oc_1"
     group.save(update_fields=["external_chat_id"])
@@ -99,15 +99,14 @@ def test_add_members_commits_successful_batch_before_next_batch_retry(group):
         ]
     )
     success = CapabilityExecutionResult.success_result("added", payload={"invalid_member_ids": []})
-    limited = CapabilityExecutionResult.failed_result("rate limited", code="provider.rate_limited", retryable=True)
-    with mock.patch(
-        "apps.alerts.service.incident_im.delivery.IMGroupRuntimeService.execute", side_effect=[success, limited],
-    ):
-        with pytest.raises(IncidentIMRetryableError, match="rate limited"):
-            deliver_add_members(group.id)
+    with mock.patch("apps.alerts.service.incident_im.delivery.IMGroupRuntimeService.execute", return_value=success,) as execute:
+        deliver_add_members(group.id)
 
+    assert execute.call_count == 1
     assert group.members.filter(sync_status="joined").count() == 50
     assert group.members.filter(sync_status="pending").count() == 1
+    next_batch = AlertOutbox.objects.get(kind="incident_im_group.add_members", status=AlertOutbox.Status.PENDING)
+    assert len(next_batch.payload["member_pks"]) == 1
 
 
 @pytest.mark.django_db

@@ -2,11 +2,13 @@ import uuid
 from unittest import mock
 
 import pytest
+from django.utils import timezone
 
 from apps.alerts.constants.constants import IncidentStatus
 from apps.alerts.models import AlertOutbox, IncidentIMGroup, IncidentIMMember
 from apps.alerts.service.incident_im.delivery import deliver_add_members
 from apps.alerts.service.incident_im.reconcile import reconcile_incident_im_group
+from apps.alerts.service.outbox import deliver_outbox_record
 from apps.alerts.tests.incident_im_reconcile_fixtures import map_user as _map_user
 from apps.system_mgmt.models import IMNotificationUserMapping, User
 from apps.system_mgmt.providers.runtime import CapabilityExecutionResult
@@ -55,7 +57,40 @@ def test_new_collaborator_enqueues_add_when_continuous_sync_enabled(group, chann
     group.refresh_from_db()
     assert group.status == IncidentIMGroup.Status.ACTIVE_PARTIAL
     outbox = AlertOutbox.objects.get(kind="incident_im_group.add_members")
-    assert outbox.payload == {"group_id": str(group.id)}
+    assert outbox.payload["group_id"] == str(group.id)
+    assert outbox.payload["member_pks"] == list(
+        group.members.filter(mapping_status=IncidentIMMember.MappingStatus.MAPPED, sync_status=IncidentIMMember.SyncStatus.PENDING,)
+        .order_by("pk")
+        .values_list("pk", flat=True)
+    )
+    assert len(outbox.payload["batch_digest"]) == 64
+
+
+@pytest.mark.django_db
+def test_new_payload_pending_add_prevents_reconcile_from_enqueuing_duplicate(group, channel):
+    _map_user(channel, "bob")
+    group.incident.collaborators = ["bob"]
+    group.incident.save(update_fields=["collaborators"])
+    member = IncidentIMMember.objects.create(
+        group=group,
+        username="bob",
+        role=IncidentIMMember.Role.COLLABORATOR,
+        external_id="ou_bob",
+        external_id_type="open_id",
+        mapping_status=IncidentIMMember.MappingStatus.MAPPED,
+        sync_status=IncidentIMMember.SyncStatus.PENDING,
+    )
+    AlertOutbox.objects.create(
+        kind="incident_im_group.add_members",
+        payload={"group_id": str(group.id), "member_pks": [member.pk], "batch_digest": "existing",},
+        idempotency_key=f"existing-new-add-{uuid.uuid4().hex}",
+    )
+
+    reconcile_incident_im_group(group.incident_id)
+
+    assert AlertOutbox.objects.filter(
+        kind="incident_im_group.add_members", payload__group_id=str(group.id),
+    ).count() == 1
 
 
 @pytest.mark.django_db
@@ -185,6 +220,79 @@ def test_force_delivery_promotes_mapped_failed_member_and_enqueues(group, channe
     assert member.sync_status == IncidentIMMember.SyncStatus.PENDING
     assert member.last_error_code == ""
     assert AlertOutbox.objects.filter(kind="incident_im_group.add_members").exists()
+
+
+@pytest.mark.django_db
+def test_group_force_retries_exhausted_add_delivery_with_stable_resume_event(group, channel):
+    from apps.alerts.service.incident_im.delivery import enqueue_add_members_batch
+
+    _map_user(channel, "bob")
+    group.incident.operator = []
+    group.incident.collaborators = ["bob"]
+    group.incident.save(update_fields=["operator", "collaborators"])
+    member = IncidentIMMember.objects.create(
+        group=group,
+        username="bob",
+        role=IncidentIMMember.Role.COLLABORATOR,
+        external_id="ou_bob",
+        external_id_type="open_id",
+        mapping_status=IncidentIMMember.MappingStatus.MAPPED,
+        sync_status=IncidentIMMember.SyncStatus.PENDING,
+    )
+    assert enqueue_add_members_batch(group) is True
+    exhausted = AlertOutbox.objects.get(kind="incident_im_group.add_members")
+    exhausted.status = AlertOutbox.Status.FAILED
+    exhausted.save(update_fields=["status"])
+    group.status = IncidentIMGroup.Status.ACTIVE_PARTIAL
+    group.current_stage = IncidentIMGroup.Stage.COMPLETED
+    group.last_sync_at = timezone.now()
+    group.last_error_code = "IM_DELIVERY_EXHAUSTED"
+    group.last_error_message = "投递重试已耗尽"
+    group.save(update_fields=["status", "current_stage", "last_sync_at", "last_error_code", "last_error_message"])
+
+    reconcile_incident_im_group(group.incident_id, force_delivery=True)
+
+    retry = AlertOutbox.objects.exclude(pk=exhausted.pk).get(kind="incident_im_group.add_members")
+    assert retry.idempotency_key == f"{exhausted.idempotency_key}:resume:{exhausted.pk}"
+    assert retry.payload["member_pks"] == [member.pk]
+
+    success = CapabilityExecutionResult.success_result("added", payload={"invalid_member_ids": []})
+    with mock.patch("apps.alerts.service.incident_im.delivery.IMGroupRuntimeService.execute", return_value=success,):
+        assert deliver_outbox_record(retry.pk) is True
+
+    group.refresh_from_db()
+    assert group.status == IncidentIMGroup.Status.ACTIVE
+    assert group.last_error_code == ""
+    assert group.last_error_message == ""
+
+
+@pytest.mark.django_db
+def test_new_payload_pending_add_prevents_force_retry_from_enqueuing_duplicate(group, channel):
+    _map_user(channel, "bob")
+    group.incident.collaborators = ["bob"]
+    group.incident.save(update_fields=["collaborators"])
+    member = IncidentIMMember.objects.create(
+        group=group,
+        username="bob",
+        role=IncidentIMMember.Role.COLLABORATOR,
+        external_id="ou_bob",
+        external_id_type="open_id",
+        mapping_status=IncidentIMMember.MappingStatus.MAPPED,
+        sync_status=IncidentIMMember.SyncStatus.FAILED,
+    )
+    AlertOutbox.objects.create(
+        kind="incident_im_group.add_members",
+        payload={"group_id": str(group.id), "member_pks": [member.pk],},
+        idempotency_key=f"existing-force-add-{uuid.uuid4().hex}",
+    )
+
+    reconcile_incident_im_group(group.incident_id, force_delivery=True)
+
+    member.refresh_from_db()
+    assert member.sync_status == IncidentIMMember.SyncStatus.PENDING
+    assert AlertOutbox.objects.filter(
+        kind="incident_im_group.add_members", payload__group_id=str(group.id),
+    ).count() == 1
 
 
 @pytest.mark.django_db

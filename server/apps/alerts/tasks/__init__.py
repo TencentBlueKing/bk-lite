@@ -13,6 +13,7 @@ from apps.alerts.tasks.tasks import (
     check_and_send_reminders,
     cleanup_reminder_tasks,
     deliver_alert_outbox,
+    deliver_incident_im_add_members_outbox,
     dispatch_pending_alert_outbox,
     event_aggregation_alert,
     reconcile_waiting_incident_im_groups,
