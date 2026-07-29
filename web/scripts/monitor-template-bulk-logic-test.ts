@@ -4,6 +4,8 @@ import {
   buildBulkApplyPayload,
   buildPolicyPreview,
   clearTemplateSelection,
+  canDeleteTemplates,
+  containsBuiltinTemplate,
   getAssetCollectionTemplateLabels,
   getAssetOrganizationText,
   getPrimaryNoticeType,
@@ -59,6 +61,22 @@ assert.deepEqual(selectedOne, ['host-remote:0']);
 const selectedGroup = selectTemplateGroup(selectedOne, groups[0].templates, true);
 assert.deepEqual(selectedGroup, ['host-remote:0', 'host-remote:1']);
 assert.deepEqual(clearTemplateSelection(), []);
+assert.equal(canDeleteTemplates([]), false);
+assert.equal(canDeleteTemplates([{ template_type: 'custom', deletable: true }]), true);
+assert.equal(
+  containsBuiltinTemplate([
+    { template_type: 'custom', deletable: true },
+    { template_type: 'builtin', deletable: false },
+  ]),
+  true
+);
+assert.equal(
+  canDeleteTemplates([
+    { template_type: 'custom', deletable: true },
+    { template_type: 'builtin', deletable: false },
+  ]),
+  false
+);
 
 const selectedTemplates = templates.filter((item) => selectedGroup.includes(item.template_key));
 const assets = [
@@ -105,7 +123,7 @@ const payload = buildBulkApplyPayload({
 });
 assert.equal(payload.monitor_object, 3);
 assert.deepEqual(payload.asset_ids, ["('host-a',)", "('host-b',)"]);
-assert.deepEqual(payload.templates.map((item) => item.collect_type), [11, 11]);
+assert.deepEqual(payload.template_keys, ['host-remote:0', 'host-remote:1']);
 assert.deepEqual(payload.config.notice_type_ids, [1, 2]);
 assert.equal(payload.config.notice_type, 'email');
 assert.equal(payload.config.trigger_count, 2);
