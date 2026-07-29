@@ -1,7 +1,7 @@
 'use client';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Button, Checkbox, Empty, Input, message, Spin, Tag } from 'antd';
-import { SearchOutlined } from '@ant-design/icons';
+import { Button, Checkbox, Dropdown, Empty, Input, message, Modal, Spin, Tag, Upload } from 'antd';
+import { DeleteOutlined, DownloadOutlined, DownOutlined, SearchOutlined, UploadOutlined } from '@ant-design/icons';
 import useApiClient from '@/utils/request';
 import useMonitorApi from '@/app/monitor/api';
 import useEventApi from '@/app/monitor/api/event';
@@ -16,6 +16,7 @@ import { cloneDeep } from 'lodash';
 import BulkApplyModal from './bulkApplyModal';
 import {
   clearTemplateSelection,
+  containsBuiltinTemplate,
   getTemplateKey,
   groupPolicyTemplates,
   PolicyTemplateItem,
@@ -28,7 +29,13 @@ const MAX_VISIBLE_SELECTED_TEMPLATE_TAGS = 4;
 const Template: React.FC = () => {
   const { isLoading } = useApiClient();
   const { getMonitorObject } = useMonitorApi();
-  const { getPolicyTemplate, getTemplateObjects } = useEventApi();
+  const {
+    getPolicyTemplate,
+    getTemplateObjects,
+    importPolicyTemplates,
+    exportPolicyTemplates,
+    bulkDeletePolicyTemplates,
+  } = useEventApi();
   const searchParams = useSearchParams();
   const objId = searchParams.get('objId');
   const templateAbortControllerRef = useRef<AbortController | null>(null);
@@ -43,6 +50,8 @@ const Template: React.FC = () => {
   const [selectedTemplateKeys, setSelectedTemplateKeys] = useState<string[]>([]);
   const [searchKeyword, setSearchKeyword] = useState('');
   const [bulkModalVisible, setBulkModalVisible] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [batchOperating, setBatchOperating] = useState(false);
 
   const filteredTableData = useMemo(() => {
     const keyword = searchKeyword.trim().toLowerCase();
@@ -200,6 +209,72 @@ const Template: React.FC = () => {
     setBulkModalVisible(true);
   };
 
+  const refreshTemplates = () => {
+    if (objectId) void getAssetInsts(objectId);
+  };
+
+  const handleImport = async (file: File, overwrite = false) => {
+    try {
+      setImporting(true);
+      const result = await importPolicyTemplates(file, overwrite);
+      if (result.requires_overwrite) {
+        Modal.confirm({
+          title: '覆盖重复模版？',
+          content: `检测到 ${result.conflicts.length} 个重复的自定义模版，继续导入将覆盖当前项目中的配置，内置模版不会受影响。`,
+          okText: '覆盖导入',
+          cancelText: '取消',
+          onOk: () => handleImport(file, true),
+        });
+        return;
+      }
+      message.success(`成功导入 ${result.imported_count} 个模版`);
+      setSelectedTemplateKeys(clearTemplateSelection());
+      refreshTemplates();
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  const handleExport = async () => {
+    if (!selectedTemplateKeys.length) return;
+    try {
+      setBatchOperating(true);
+      const blob = await exportPolicyTemplates(selectedTemplateKeys);
+      const url = URL.createObjectURL(blob as Blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'monitor-policy-templates.zip';
+      link.click();
+      URL.revokeObjectURL(url);
+    } finally {
+      setBatchOperating(false);
+    }
+  };
+
+  const containsBuiltin = containsBuiltinTemplate(selectedTemplates);
+
+  const handleDelete = () => {
+    if (!selectedTemplateKeys.length || containsBuiltin) return;
+    Modal.confirm({
+      title: `删除选中的 ${selectedTemplateKeys.length} 个模版？`,
+      content: '删除后无法恢复。',
+      okText: '删除',
+      okButtonProps: { danger: true },
+      cancelText: '取消',
+      onOk: async () => {
+        try {
+          setBatchOperating(true);
+          await bulkDeletePolicyTemplates(selectedTemplateKeys);
+          message.success('模版删除成功');
+          setSelectedTemplateKeys(clearTemplateSelection());
+          refreshTemplates();
+        } finally {
+          setBatchOperating(false);
+        }
+      },
+    });
+  };
+
   const renderTemplateCard = (item: PolicyTemplateItem) => {
     const key = getTemplateKey(item);
     const selected = selectedTemplateKeys.includes(key);
@@ -232,6 +307,9 @@ const Template: React.FC = () => {
           <Tag className={templateStyle.cardTag}>
             {item.template_group || item.plugin_display_name || item.plugin_name || '--'}
           </Tag>
+          <Tag color={item.template_type === 'custom' ? 'blue' : 'default'}>
+            {item.template_type === 'custom' ? '自定义' : '内置'}
+          </Tag>
           <div className={templateStyle.cardDescription} title={item.description || '--'}>
             {item.description || '--'}
           </div>
@@ -254,7 +332,7 @@ const Template: React.FC = () => {
       </ResizableSidebar>
 
       <div className={templateStyle.table}>
-        <div className={templateStyle.toolbar}>
+        <div className={`${templateStyle.toolbar} gap-4`}>
           <Input
             allowClear
             suffix={<SearchOutlined />}
@@ -262,6 +340,41 @@ const Template: React.FC = () => {
             value={searchKeyword}
             onChange={(event) => setSearchKeyword(event.target.value)}
           />
+          <div className={`${templateStyle.toolbarActions} gap-2`}>
+            <Upload
+              accept=".zip,application/zip"
+              showUploadList={false}
+              beforeUpload={(file) => {
+                void handleImport(file as File);
+                return Upload.LIST_IGNORE;
+              }}
+            >
+              <Button icon={<UploadOutlined />} loading={importing}>导入</Button>
+            </Upload>
+            <Dropdown
+              menu={{
+                items: [
+                  {
+                    key: 'export',
+                    label: '批量导出',
+                    icon: <DownloadOutlined />,
+                    disabled: !selectedTemplateKeys.length,
+                    onClick: () => void handleExport(),
+                  },
+                  {
+                    key: 'delete',
+                    label: containsBuiltin ? '批量删除（内置模版不可删除）' : '批量删除',
+                    icon: <DeleteOutlined />,
+                    danger: true,
+                    disabled: !selectedTemplateKeys.length || containsBuiltin,
+                    onClick: handleDelete,
+                  },
+                ],
+              }}
+            >
+              <Button loading={batchOperating}>批量操作 <DownOutlined /></Button>
+            </Dropdown>
+          </div>
         </div>
 
         <Spin spinning={tableLoading}>

@@ -167,7 +167,9 @@ class InstanceSearch:
 
     @staticmethod
     def _project_instance_identity(qs):
-        return qs.only("id", "name", "interval", "cloud_region_id", "ip", "fallback_sampling_rate")
+        return qs.only(
+            "id", "name", "interval", "cloud_region_id", "ip", "summary_facts", "fallback_sampling_rate",
+        )
 
     def search(self):
         """特殊搜索接口，特殊对象不通用的查询条件"""
@@ -190,6 +192,8 @@ class InstanceSearch:
                 instance_id_values=list(parse_instance_id(instance_id)),
                 instance_name=obj.name or obj.id,
                 interval=obj.interval,
+                ip=obj.ip,
+                summary_facts=obj.summary_facts,
                 time=metric["value"][0],
                 value=metric["value"][1],
             )
@@ -438,6 +442,7 @@ class InstanceSearch:
                     "interval": obj.interval,
                     "cloud_region_id": obj.cloud_region_id,
                     "ip": obj.ip,
+                    "summary_facts": obj.summary_facts,
                     "fallback_sampling_rate": obj.fallback_sampling_rate,
                     "organizations": list(org_map.get(obj.id, [])),
                 }

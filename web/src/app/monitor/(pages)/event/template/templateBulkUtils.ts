@@ -8,6 +8,8 @@ export interface PolicyTemplateItem {
   plugin_id?: string | number;
   plugin_display_name?: string;
   plugin_name?: string;
+  template_type?: 'builtin' | 'custom';
+  deletable?: boolean;
   [key: string]: any;
 }
 
@@ -113,6 +115,16 @@ export const selectTemplateGroup = (
 };
 
 export const clearTemplateSelection = (): string[] => [];
+
+export const containsBuiltinTemplate = (
+  templates: PolicyTemplateItem[]
+): boolean => templates.some(
+  (item) => item.template_type === 'builtin' || item.deletable === false
+);
+
+export const canDeleteTemplates = (
+  templates: PolicyTemplateItem[]
+): boolean => templates.length > 0 && !containsBuiltinTemplate(templates);
 
 export const buildPolicyPreview = (
   templates: PolicyTemplateItem[],
@@ -249,10 +261,7 @@ export const buildBulkApplyPayload = ({
   config: BulkConfig;
 }) => ({
   monitor_object: monitorObjectId,
-  templates: templates.map((template) => ({
-    ...template,
-    collect_type: template.plugin_id ?? template.collect_type,
-  })),
+  template_keys: templates.map((template) => template.template_key),
   asset_ids: assets.map((asset) => asset.instance_id),
   config,
 });

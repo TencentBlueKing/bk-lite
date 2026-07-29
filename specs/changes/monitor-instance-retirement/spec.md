@@ -37,6 +37,7 @@ MonitorInstanceRemovalService.remove(instance_ids)
 本变更包括：
 
 - 用户删除监控实例时物理删除；
+- 资产列表支持勾选多个有操作权限的实例后批量删除，提交前展示选中数量和不可恢复提示；
 - 删除流程的权限、锁、NodeMgmt 配置清理、本地引用清理和 Flow 刷新；
 - 创建流程的全局 ID 查重、请求内去重和业务错误转换；
 - 创建时按需回收历史软删除墓碑；
@@ -182,5 +183,6 @@ uv run python manage.py purge_deleted_monitor_instances --execute --batch-size 5
 - 其他对象的有效实例返回业务冲突；
 - 请求内重复 ID 和并发唯一键竞争不暴露数据库错误；
 - 删除数量超过批量上限时在调用 NodeMgmt 前拒绝整批请求；
+- 批量删除成功后清空列表选择并刷新资产数量；删除分页末尾数据时回到有效页；
 - Flow 只在数据库提交后刷新；
 - 自动发现既有同步行为不受影响。

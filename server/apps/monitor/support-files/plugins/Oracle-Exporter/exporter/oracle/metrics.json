@@ -2,6 +2,8 @@
   "plugin": "Oracle-Exporter",
   "plugin_desc": "It is used to collect metrics on Oracle's uptime, operation counts, transaction commits/rollbacks, and various wait times in real-time via the exporter method, assisting users in health checks and performance tuning.",
   "status_query": "any({instance_type='oracle', collect_type='exporter'}) by (instance_id)",
+  "instance_fact_bindings": [{"fact":"asset.ip","value_type":"ip","resolver":"input","options":{"field":"ENV_HOST"}}],
+  "instance_summary_columns": [{"fact":"asset.ip","title":"monitor.views.assetIp","order":10}],
   "name": "Oracle",
   "icon": "mm-oracle_Oracle",
   "type": "Database",

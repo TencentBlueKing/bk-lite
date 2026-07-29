@@ -42,7 +42,8 @@
 
 .toolbar {
     display: flex;
-    justify-content: flex-end;
+    align-items: center;
+    justify-content: space-between;
     margin-bottom: 18px;
 
     :global(.ant-input-affix-wrapper) {
@@ -50,6 +51,11 @@
         height: 34px;
         border-radius: 3px;
     }
+}
+
+.toolbarActions {
+    display: flex;
+    align-items: center;
 }
 
 .groupList {

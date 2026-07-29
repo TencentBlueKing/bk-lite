@@ -509,6 +509,8 @@ class NodeService:
         return [
             {
                 "id": node.id,
+                "name": node.name,
+                "ip": node.ip,
                 "node_type": node.node_type,
                 "organization_ids": [rel.organization for rel in node.nodeorganization_set.all()],
             }
@@ -534,6 +536,7 @@ class NodeService:
             {
                 "id": node.id,
                 "name": node.name,
+                "ip": node.ip,
                 "cloud_region_id": node.cloud_region_id,
                 "cloud_region_name": getattr(node.cloud_region, "name", ""),
                 "node_type": node.node_type,

@@ -77,6 +77,33 @@ class TestValidateNodesAgainstSelector:
         assert SVC._validate_nodes_against_selector(nodes, {"is_container": True}) is None
 
 
+class TestSanitizeInstancesForOnboarding:
+    def test_keeps_only_authorized_node_data_as_trusted_context(self, monkeypatch):
+        class NodeClient:
+            @staticmethod
+            def get_authorized_nodes_by_ids(node_ids, permission_data):
+                assert node_ids == ["node-a"]
+                return [{
+                    "id": "node-a",
+                    "name": "北京节点",
+                    "ip": "10.0.0.1",
+                    "organization_ids": [1],
+                }]
+
+        monkeypatch.setattr("apps.monitor.services.node_mgmt.NodeMgmt", NodeClient)
+        result = SVC._sanitize_instances_for_onboarding(
+            [{"instance_name": "probe", "node_ids": ["node-a"], "probe_nodes": ["伪造节点"]}],
+            _actor_context(),
+        )
+
+        assert result[0]["_trusted_nodes"] == [{
+            "id": "node-a",
+            "name": "北京节点",
+            "ip": "10.0.0.1",
+            "organization_ids": [1],
+        }]
+
+
 class TestGetDefaultGroupMetric:
     def test_prefers_configured_metric(self):
         obj = MonitorObject.objects.create(name="Pod", level="derivative")
@@ -116,6 +143,27 @@ class TestSyncExistingInstanceAttrs:
         assert inst.auto is False
         assert inst.is_active is True
         assert inst.is_deleted is False
+
+    def test_merges_summary_facts(self):
+        obj = MonitorObject.objects.create(name="ProbeSyncObj", level="base")
+        MonitorInstance.objects.create(id="('probe-1',)", name="old", monitor_object=obj)
+
+        SVC._sync_existing_instance_attrs(
+            [{
+                "instance_id": "('probe-1',)",
+                "instance_name": "friendly-name",
+                "summary_facts": {
+                    "asset.ip": "2001:db8::1",
+                    "probe.target": "[2001:db8::1]:443",
+                },
+            }],
+        )
+
+        inst = MonitorInstance.objects.get(id="('probe-1',)")
+        assert inst.summary_facts == {
+            "asset.ip": "2001:db8::1",
+            "probe.target": "[2001:db8::1]:443",
+        }
 
 
 class TestGetConfigContent:

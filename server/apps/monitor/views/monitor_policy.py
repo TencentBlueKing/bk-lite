@@ -3,6 +3,7 @@ import json
 from datetime import datetime, timezone
 
 from django.db import transaction
+from django.http import HttpResponse
 from django_celery_beat.models import CrontabSchedule, PeriodicTask
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
@@ -18,7 +19,7 @@ from apps.monitor.constants.alert_policy import AlertConstants
 from apps.monitor.constants.database import DatabaseConstants
 from apps.monitor.constants.permission import PermissionConstants
 from apps.monitor.filters.monitor_policy import MonitorPolicyFilter
-from apps.monitor.models import MonitorAlert, PolicyOrganization
+from apps.monitor.models import MonitorAlert, MonitorObject, PolicyOrganization, PolicyTemplate
 from apps.monitor.models.monitor_policy import MonitorPolicy
 from apps.monitor.serializers.monitor_policy import MonitorPolicySerializer
 from apps.monitor.services.alert_lifecycle_notify import NOTIFY_SCOPE_ALERT_CENTER_ONLY, NOTIFY_SCOPE_ALL_CONFIGURED, AlertLifecycleNotifier
@@ -132,6 +133,14 @@ class MonitorPolicyViewSet(viewsets.ModelViewSet):
 
     def _ensure_target_organizations(self, organizations, actor_context=None):
         validate_assignable_organizations(self.request, organizations)
+
+    def _ensure_template_operate_permission(self, monitor_object_id):
+        if self.request.user.is_superuser:
+            return
+        permission = self._get_effective_permission(monitor_object_id)
+        current_team = str(self._get_data_scope().current_team)
+        if current_team not in {str(item) for item in permission.get("team", [])}:
+            raise BaseAppException("当前项目无策略模板操作权限")
 
     def list(self, request, *args, **kwargs):
         permission = self._get_effective_permission(request.query_params.get("monitor_object_id", None))
@@ -541,26 +550,108 @@ class MonitorPolicyViewSet(viewsets.ModelViewSet):
 
     @action(methods=["post"], detail=False, url_path="template")
     def template(self, request):
-        data = PolicyService.get_policy_templates(request.data["monitor_object_name"])
+        data = PolicyService.get_policy_templates(
+            request.data["monitor_object_name"],
+            organization=self._get_data_scope().current_team,
+        )
         return WebUtils.response_success(data)
 
     @action(methods=["get"], detail=False, url_path="template/monitor_object")
     def template_monitor_object(self, request):
-        data = PolicyService.get_policy_templates_monitor_object()
+        data = PolicyService.get_policy_templates_monitor_object(
+            organization=self._get_data_scope().current_team
+        )
         return WebUtils.response_success(data)
+
+    @action(methods=["post"], detail=False, url_path="template/save")
+    def save_template(self, request):
+        monitor_object_id = request.data.get("monitor_object")
+        plugin_id = request.data.get("plugin")
+        name = str(request.data.get("name") or "").strip()
+        config = request.data.get("config")
+        if not monitor_object_id or not plugin_id or not name or not isinstance(config, dict):
+            raise BaseAppException("monitor_object、plugin、name 和 config 不能为空")
+        organization = self._get_data_scope().current_team
+        self._ensure_target_organizations([organization])
+        self._ensure_template_operate_permission(monitor_object_id)
+        template = PolicyService.create_custom_template(
+            organization=organization,
+            monitor_object_id=monitor_object_id,
+            plugin_id=plugin_id,
+            name=name,
+            description=request.data.get("description") or "",
+            config=config,
+            user=request.user,
+        )
+        return WebUtils.response_success(PolicyService.serialize_template(template))
+
+    @action(methods=["post"], detail=False, url_path="template/import")
+    def import_templates(self, request):
+        upload = request.FILES.get("file")
+        if upload is None:
+            raise BaseAppException("请选择 ZIP 文件")
+        if not str(upload.name).lower().endswith(".zip"):
+            raise BaseAppException("只支持 ZIP 文件")
+        organization = self._get_data_scope().current_team
+        self._ensure_target_organizations([organization])
+        result = PolicyService.import_archive(
+            upload,
+            organization=organization,
+            user=request.user,
+            overwrite=str(request.data.get("overwrite", "false")).lower() == "true",
+            authorize_monitor_object=self._ensure_template_operate_permission,
+        )
+        return WebUtils.response_success(result)
+
+    @action(methods=["post"], detail=False, url_path="template/export")
+    def export_templates(self, request):
+        keys = request.data.get("keys") or []
+        if not keys:
+            raise BaseAppException("请选择要导出的模板")
+        archive = PolicyService.export_archive(keys, self._get_data_scope().current_team)
+        response = HttpResponse(archive.getvalue(), content_type="application/zip")
+        response["Content-Disposition"] = 'attachment; filename="monitor-policy-templates.zip"'
+        return response
+
+    @action(methods=["post"], detail=False, url_path="template/bulk_delete")
+    def bulk_delete_templates(self, request):
+        keys = request.data.get("keys") or []
+        if not keys:
+            raise BaseAppException("请选择要删除的模板")
+        organization = self._get_data_scope().current_team
+        self._ensure_target_organizations([organization])
+        templates = PolicyService.get_selected_templates(keys, organization)
+        if any(item.template_type == PolicyTemplate.TYPE_BUILTIN for item in templates):
+            raise BaseAppException("内置模版不可删除")
+        for monitor_object_id in {item.monitor_object_id for item in templates}:
+            self._ensure_template_operate_permission(monitor_object_id)
+        deleted_count, _ = PolicyTemplate.objects.filter(
+            id__in=[item.id for item in templates],
+            template_type=PolicyTemplate.TYPE_CUSTOM,
+            organization=organization,
+        ).delete()
+        return WebUtils.response_success({"deleted_count": deleted_count})
 
     @action(methods=["post"], detail=False, url_path="bulk_create_from_templates")
     def bulk_create_from_templates(self, request):
         monitor_object_id = request.data.get("monitor_object")
+        template_keys = request.data.get("template_keys") or []
         templates = request.data.get("templates") or []
         asset_ids = request.data.get("asset_ids") or []
         config = request.data.get("config") or {}
         if not monitor_object_id:
             raise BaseAppException("monitor_object 不能为空")
-        if not templates:
-            raise BaseAppException("templates 不能为空")
+        if not template_keys and not templates:
+            raise BaseAppException("template_keys 不能为空")
         if not asset_ids:
             raise BaseAppException("asset_ids 不能为空")
+
+        if template_keys:
+            organization = self._get_data_scope().current_team
+            selected = PolicyService.get_selected_templates(template_keys, organization)
+            if any(item.monitor_object_id != int(monitor_object_id) for item in selected):
+                raise BaseAppException("模板与监控对象不匹配")
+            templates = [PolicyService.serialize_template(item) for item in selected]
 
         permission_error = self.get_bulk_policy_asset_permission_error(monitor_object_id, asset_ids)
         if permission_error:
@@ -692,6 +783,18 @@ class MonitorPolicyViewSet(viewsets.ModelViewSet):
 
         enriched = []
         for template in templates:
+            if template.get("query_condition"):
+                enriched.append(
+                    {
+                        **template,
+                        "query_condition": PolicyService._runtime_query_condition(
+                            template["query_condition"],
+                            MonitorObject.objects.get(id=monitor_object_id),
+                        ),
+                        "collect_type": template.get("collect_type") or template.get("plugin_id"),
+                    }
+                )
+                continue
             metric_name = template.get("metric_name")
             if not metric_name:
                 raise BaseAppException("模板 metric_name 不能为空")
