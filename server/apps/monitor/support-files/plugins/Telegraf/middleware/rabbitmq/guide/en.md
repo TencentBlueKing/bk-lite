@@ -1,84 +1,65 @@
 # RabbitMQ Monitoring Guide
 
-This plugin uses Telegraf `inputs.rabbitmq` to periodically call the RabbitMQ Management Plugin HTTP API and collect overview, node, queue, exchange, and federation metrics. The default Management port is `15672` — distinct from the AMQP port (`5672`).
+This capability uses Telegraf `inputs.rabbitmq` to access the RabbitMQ Management Plugin HTTP API. The management port is separate from the AMQP port.
 
 ## Prerequisites
 
-- The target RabbitMQ is running with the Management Plugin enabled:
-
-  ```bash
-  rabbitmq-plugins enable rabbitmq_management
-  ```
-
-- The default Management port is `15672`. The default account is `guest / guest`, restricted to local logins.
-- The collector node can reach the RabbitMQ host (security groups / firewalls opened).
-- If LDAP or internal accounts are used, prepare a read-only account.
-
-> Telegraf emits five main measurements — `rabbitmq_overview`, `rabbitmq_node`, `rabbitmq_queue`, `rabbitmq_exchange`, `rabbitmq_federation` — tagged with `url`, `node`, `queue`, `vhost`, etc.
-
-## Recommended Permissions
-
-Management users are controlled by built-in tags (`administrator`, `monitoring`, `management`, `policymaker`). Grant the monitor account the `monitoring` tag — read-only on the Management API:
-
-```bash
-rabbitmqctl add_user monitor monitor-pwd
-rabbitmqctl set_user_tags monitor monitoring
-rabbitmqctl set_permissions -p / monitor "^$" "^$" "^$"   # monitoring only needs HTTP API read
-```
-
-The `monitoring` tag already provides Management HTTP API read access; no AMQP permissions are required.
+- The target RabbitMQ enables the Management Plugin and exposes an HTTP(S) management address reachable from the collector node.
+- Prepare an account that can read the Management API. Do not use the default localhost-only `guest` account for remote collection.
+- Username and password are both required on the current page.
+- The current page and template have no queue include/exclude filters and do not manage the Management Plugin lifecycle.
+- Use actual Management API reachability as the readiness signal.
 
 ## Setup Steps
 
-1. Verify the Management API is reachable:
+1. From the actual collector node, validate the Management API address and monitoring account.
+2. Enter the URL, username, password, and interval (default `60` seconds).
+3. In the monitored objects table, select the node and enter the URL, instance name, and optional group.
+4. Save the configuration and wait for at least one collection interval.
 
-   ```bash
-   curl -u monitor:monitor-pwd http://<host>:15672/api/overview
-   ```
+## Pre-checks
 
-2. On the configure page, fill in the URL (default `http://<host>:15672`), username, password, and interval (default `60s`).
-3. Add rows in the monitored objects table for node, URL, instance name, and group.
-4. Click Confirm and wait for at least one collection interval.
-5. Check the asset or metrics page to confirm data is reporting.
-
-## Pre-check Commands
-
-Management API reachability:
+This command prompts for the password and preserves HTTP failures:
 
 ```bash
-curl -u <user>:<pwd> http://<host>:15672/api/nodes
+curl --fail --silent --show-error --user monitor "http://rabbitmq.example.com:15672/api/overview"
 ```
 
-HTTP 200 with a JSON array indicates the endpoint is healthy.
+The request must return `200` and JSON. Validate the same full base address that will be entered on the page; do not use the AMQP port.
 
 ## Field Reference
 
 | Field | Required | Description |
 | --- | --- | --- |
-| URL | Yes | RabbitMQ Management API address, e.g. `http://10.0.0.5:15672` |
-| Username | Yes | Management login account; prefer a `monitoring`-tagged read-only account |
-| Password | Yes | Password for that account |
-| Interval | Yes | Collection interval in seconds, default `60` |
-| Node | Yes | Collector node used for this instance |
-| Instance Name | Yes | Display name in the platform; defaults to the URL |
-| Group | No | Organization group for ownership/permission |
+| URL | Yes | RabbitMQ Management HTTP(S) API base address. |
+| Username | Yes | Account that can read the Management API. |
+| Password | Yes | Password for the account. |
+| Interval | Yes | Collection interval in seconds; default `60`. |
+| Node | Yes | Collector node that can reach the Management API. |
+| Instance Name | Yes | Display name in the platform. |
+| Group | No | Optional instance group. |
+
+## Post-setup Verification
+
+After saving and waiting for one interval, confirm that these metrics are queryable in the platform:
+
+- `rabbitmq_node_running`
+- `rabbitmq_overview_connections`
+- `rabbitmq_overview_messages`
+- `rabbitmq_node_mem_used`
 
 ## Troubleshooting
 
-### 1. No data after saving
+### The API returns `401` or `403`
 
-- Confirm the Management Plugin is enabled and RabbitMQ has been restarted (or wait for the next node start).
-- Confirm port `15672` is reachable — different from AMQP `5672`.
-- Run `curl /api/overview` directly from the collector node.
+- Confirm that the account has monitoring read access to the Management API.
+- The `guest` account cannot log in remotely by default; use a dedicated collection account.
 
-### 2. Authentication failures
+### The port is reachable but no data appears
 
-- The `guest` account only allows localhost logins; create a new account for remote collection.
-- Check that `set_user_tags` includes `monitoring` or `management`; `set_permissions` alone is not enough.
-- Special characters in the password do not need escaping — Telegraf sends the credentials via the `Authorization` header.
+- Confirm that the URL targets the Management HTTP(S) API, not the AMQP service port.
+- Inspect the Telegraf log for the exact API, HTTP status, and response-parsing error.
 
-### 3. Partial missing metrics
+### Queue filtering is required
 
-- `rabbitmq_node` reports only the currently reachable nodes; if a cluster node is down, wait for it to recover or inspect the cluster status.
-- Some fields (`gc_num`, `io_read_bytes`, etc.) require RabbitMQ 3.6+ statistics; older versions may miss them.
-- `queue_name_include` / `queue_name_exclude` accept globs; an empty list means "all" (the default).
+- The current UI and template have no queue-filter fields. This guide does not promise or ask users to configure that capability.

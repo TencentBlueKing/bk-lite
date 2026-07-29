@@ -1,84 +1,65 @@
 # ActiveMQ 监控接入指南
 
-本插件通过 Telegraf `inputs.activemq` 周期性调用 ActiveMQ WebConsole 的 Console API，采集队列 / 主题 / 订阅者的状态指标，底层走 HTTP Basic Auth。请确认 ActiveMQ 已开启 WebConsole（默认 `http://<host>:8161`），并准备好只读监控账号。
+本能力通过 Telegraf `inputs.activemq` 使用页面提供的 URL、用户名和密码访问 ActiveMQ HTTP 管理端点。
 
 ## 前置要求
 
-- 目标 ActiveMQ 服务已启动，WebConsole 默认端口 `8161`。
-- 采集节点到 ActiveMQ 主机网络可达（含安全组 / 防火墙放通对应端口）。
-- 已准备好具有 WebConsole 登录权限的监控账号（默认管理员 `admin/admin`，生产建议改为只读账号）。
-- ActiveMQ 启动时已开启 WebConsole 的 `admin` webadmin 根路径（`webadmin = "admin"`，插件默认）。
-
-> Telegraf 采集 `activemq_queues`、`activemq_topics`、`activemq_subscribers` 三张指标表，分别带 `name`、`source`、`port`、`client_id` 等维度。
-
-## 推荐账号权限
-
-ActiveMQ WebConsole 自身使用基础认证（`users`/`groups`/`login.config` 中的角色）。监控账号只需可登录 WebConsole、无需管理权限：
-
-```text
-# $ACTIVEMQ_HOME/conf/credentials.properties 或 users.properties
-monitor=monitor_pwd
-```
-
-```text
-# $ACTIVEMQ_HOME/conf/groups.properties
-monitor=readonly
-```
-
-`readonly` 角色通常只能浏览页面与触发 Console API，已能满足采集需求；不要把 `admin` 角色下放给监控账号。
+- 目标 ActiveMQ 已启用与 Telegraf `inputs.activemq` 兼容的 HTTP 管理端点。
+- 采集节点能够访问所填完整 URL。
+- 准备能通过该 HTTP 端点认证并读取监控数据的账号；具体角色名称与权限由目标 ActiveMQ 的实际安全配置决定。
+- 当前页面只提供 URL、用户名、密码和间隔，不提供管理路径、队列过滤器或其他插件参数。
 
 ## 接入步骤
 
-1. 在浏览器或命令行验证 WebConsole 可访问：
-
-   ```bash
-   curl -u monitor:monitor_pwd http://<host>:8161/admin/
-   ```
-
-2. 在监控接入页填写 URL（默认 `http://<host>:8161`）、用户名、密码、采集间隔（默认 `60s`）。
-3. 在「监控对象」表格中填写节点、URL、实例名称和所属组。
-4. 点击「确认」保存配置，等待至少一个采集周期。
-5. 到资产或指标页确认实例已上报数据。
+1. 从实际采集节点验证完整 URL 和监控账号。
+2. 填写 URL、用户名、密码和采集间隔（默认 `60` 秒）。
+3. 在监控对象表格中选择节点，填写 URL、实例名称和可选分组。
+4. 保存后等待至少一个采集周期。
 
 ## 接入前校验
 
-WebConsole HTTP 可达性：
+下列命令会交互式询问密码，并保留 HTTP 失败状态：
 
 ```bash
-curl -u <user>:<pwd> http://<host>:8161/admin/xml/queues.jsp
+curl --fail --silent --show-error --location --user monitor "http://activemq.example.com:8161"
 ```
 
-返回 200 + ActiveMQ XML 即视为可达。
+请求应完成且不能返回认证或访问拒绝。最终是否兼容采集接口，以保存后的 Telegraf 日志和指标为准。
 
 ## 页面字段说明
 
 | 页面字段 | 是否必填 | 说明 |
 | --- | --- | --- |
-| URL | 是 | ActiveMQ WebConsole 地址，例如 `http://10.0.0.5:8161` |
-| 用户名 | 是 | WebConsole 登录账号 |
-| 密码 | 是 | 对应账号密码，注意不要带入首尾空格 |
-| 间隔 | 是 | 采集周期，单位秒，默认 `60` |
-| 节点 | 是 | 负责采集的探针节点 |
-| 实例名称 | 是 | 平台内展示的实例名，默认由 URL 自动填充 |
-| 组 | 否 | 组织分组，便于权限与资产归属 |
+| URL | 是 | ActiveMQ HTTP 管理端点的完整基地址。 |
+| 用户名 | 是 | 目标端点接受的登录账号。 |
+| 密码 | 是 | 对应账号密码。 |
+| 间隔 | 是 | 采集周期，单位秒，默认 `60`。 |
+| 节点 | 是 | 能够访问该 URL 的采集节点。 |
+| 实例名称 | 是 | 平台内展示的实例名称。 |
+| 组 | 否 | 实例所属分组。 |
+
+## 接入后验证
+
+保存并等待一个采集周期后，在平台确认以下指标可查询：
+
+- `activemq_topics_consumer_count`
+- `activemq_topics_dequeue_count`
+- `activemq_topics_enqueue_count`
+- `activemq_topics_size`
 
 ## 常见问题
 
-### 1. 保存后长时间无数据
+### 认证或访问被拒绝
 
-- 确认 ActiveMQ 服务和 WebConsole 已启动，端口 `8161` 可达。
-- 在采集节点用 `curl` + 账号密码直接访问 `/admin/` 验证。
-- 等待至少一个采集间隔后再查看。
-- 检查节点上 Telegraf / 采集任务是否正常运行。
+- 核对 URL、账号和目标 ActiveMQ 当前实际权限配置。
+- 使用交互式密码提示复核，不要把密码写入命令行。
 
-### 2. 认证失败
+### 自定义管理路径或过滤需求
 
-- 核对用户名密码首尾是否带空格、是否在 `credentials.properties` 同步生效（ActiveMQ 默认缓存用户配置，修改后必须重启）。
-- 确认账号已在 `groups.properties` 中授权可登录 `admin`。
-- 若启用了 JAAS，账号要同时在 `login.config` 注册。
+- 当前页面和模板没有管理路径或队列过滤字段，不能通过页面配置这些能力。
+- 超出当前字段范围的目标需先实现对应能力，不能依靠接入文档补充未暴露参数。
 
-### 3. 部分指标缺失
+### 保存后无数据
 
-- `activemq_subscribers` 依赖 `client_id`，若客户端使用匿名连接将不会上报该指标。
-- `activemq_queues` 维度 `name` 与队列同名，队列被删除后该标签会消失，属正常现象。
-- WebConsole 的 `webadmin` 根路径非默认 `admin` 时，请修改 Telegraf 配置的 `webadmin` 字段。
+- 查看 Telegraf 日志中的实际 HTTP 状态、响应解析或认证错误。
+- 浏览器能登录管理页面不一定代表其响应与 `inputs.activemq` 采集接口兼容。

@@ -1,103 +1,80 @@
 # Oracle Monitoring Guide
 
+This capability runs Oracle-Exporter on the selected node, and Telegraf scrapes its local `/metrics` endpoint.
+
 ## Prerequisites
 
-- The target Oracle database is running and reachable; the default listener port is `1521`.
-- The collector node can reach the Oracle database (security groups / firewalls opened).
-- A username and password with the required SELECT privileges on Oracle dynamic performance views are ready.
-- This plugin collects metrics through a locally running Oracle-Exporter (Prometheus exporter); Telegraf's `inputs.prometheus` then scrapes `http://127.0.0.1:<listen_port>/metrics`. Make sure Oracle-Exporter is deployed or can be started on the collector node.
-
-## Recommended Permissions
-
-The monitoring account should at least have `SELECT` privileges on these dynamic performance views:
-
-- `v$session`
-- `v$sysstat`
-- `v$database`
-
-Grant the corresponding privileges in Oracle, for example:
-
-```sql
-GRANT SELECT ANY DICTIONARY TO <monitor_user>;
-```
-
-Or grant precisely (more secure):
-
-```sql
-GRANT SELECT ON v_$session TO <monitor_user>;
-GRANT SELECT ON v_$sysstat TO <monitor_user>;
-GRANT SELECT ON v_$database TO <monitor_user>;
-```
-
-Prefer a dedicated read-only monitoring account instead of `SYS` or `SYSTEM`.
+- The collector node can reach the Oracle database host and actual listener port.
+- Prepare a dedicated monitoring account that can log in to the specified `service_name` and read the dynamic performance views queried by the exporter, such as `v$session`, `v$sysstat`, and `v$database`.
+- The page requires an Oracle `service_name`, not a SID.
+- Reserve an unused exporter listen port on the collector node. It is separate from the Oracle database port.
+- The current page has no fields for a SID, TCPS, Wallet, or a custom connection string.
 
 ## Setup Steps
 
-1. Verify connectivity from the collector node to the Oracle database using `sqlplus`.
-2. Verify that Oracle-Exporter is running and exposes metrics at `http://127.0.0.1:<listen_port>/metrics`.
-3. Fill in username, password, service name, listen port, host, port, and interval (default `60s`) on the configure page.
-4. Add rows in the monitored objects table for node, listen port, host, port, instance name, and group.
-5. Click Confirm and wait for at least one collection interval.
-6. Check the asset or metrics page to confirm data is reporting.
+1. From the actual collector node, validate the database host, port, `service_name`, and monitoring account.
+2. Enter the username, password, service name, database host, and database port.
+3. Enter an unused exporter listen port and the interval (default `60` seconds).
+4. In the monitored objects table, select the node and enter the listen port, host, port, instance name, and optional group.
+5. Save the configuration and wait for at least one collection interval.
 
-## Pre-check Commands
+## Pre-checks
 
-Verify Oracle connectivity from the collector node:
-
-```bash
-sqlplus <user>/<pass>@//<host>:<port>/<service_name>
-```
-
-Verify the Oracle-Exporter is listening locally and exposing `/metrics` (this is the exporter's local port, NOT the Oracle port):
+Use `sqlplus` to connect to the service. The command prompts for the password, so no password is placed on the command line:
 
 ```bash
-curl -sS "http://127.0.0.1:<listen_port>/metrics" | head
+sqlplus monitor@//db.example.com:1521/ORCLPDB1
 ```
 
-The integration is basically healthy when:
+After login, confirm that the account can query the required dynamic performance views. You can also check the TCP port first:
 
-- `sqlplus` can log in to the target Oracle instance
-- `curl http://127.0.0.1:<listen_port>/metrics` returns `200` and contains `oracledb_*` metric lines
+```bash
+nc -vz db.example.com 1521
+```
 
 ## Field Reference
 
 | Field | Required | Description |
 | --- | --- | --- |
-| Username | Yes | Oracle monitoring account |
-| Password | Yes | Password for that account |
-| Service Name | Yes | Oracle `service_name`; must match the running service |
-| Listen Port | Yes | Local port on which Oracle-Exporter exposes `/metrics` (NOT the Oracle port) |
-| Host | Yes | Oracle database host address |
-| Port | Yes | Oracle database listener port, default `1521` |
-| Interval | Yes | Collection interval in seconds, default `60` |
-| Node | Yes | Collector node used for this instance |
-| Instance Name | Yes | Display name in the platform |
-| Group | No | Organization group for ownership/permission |
+| Username | Yes | Oracle monitoring account. |
+| Password | Yes | Password for the account. |
+| Service Name | Yes | Oracle `service_name`, not a SID. |
+| Listen Port | Yes | Local port where Oracle-Exporter exposes `/metrics`. |
+| Host | Yes | Oracle database host. |
+| Port | Yes | Actual Oracle database listener port. |
+| Interval | Yes | Collection interval in seconds; default `60`. |
+| Node | Yes | Collector node that runs Oracle-Exporter. |
+| Instance Name | Yes | Display name in the platform. |
+| Group | No | Optional instance group. |
+
+## Post-setup Verification
+
+After saving and waiting for one interval, check the local endpoint with the configured listen port, for example:
+
+```bash
+curl --fail --silent --show-error "http://127.0.0.1:9161/metrics"
+```
+
+Then confirm that these metrics are queryable in the platform:
+
+- `oracledb_up_gauge`
+- `oracledb_uptime_seconds_gauge`
+- `oracledb_sessions_value_gauge`
+- `oracledb_tablespace_used_percent_gauge`
 
 ## Troubleshooting
 
-### 1. No data after saving
+### Login fails
 
-- Re-run `sqlplus` and `curl http://127.0.0.1:<listen_port>/metrics` from the collector node to confirm both the database and the exporter are reachable.
-- Check whether the Oracle-Exporter process is running (`ps`, `docker ps`, or `systemctl status`).
-- Wait for at least one collection interval (default 60 seconds).
-- Confirm Telegraf / Oracle-Exporter collection tasks are healthy on the node.
+- Distinguish `service_name` from SID, and check the host, database port, and account state.
+- Validate through the interactive password prompt to avoid a false result caused by shell escaping.
 
-### 2. Authentication failures (ORA-01017 / ORA-28000)
+### The exporter's local endpoint is unavailable
 
-- Check username, password, and service name for accidental spaces; Oracle usernames are usually upper-cased automatically.
-- Make sure the account is not locked (`ALTER USER <user> ACCOUNT UNLOCK;`) and the password has not expired.
-- Confirm the account has `SELECT` privileges on `v$session`, `v$sysstat`, `v$database`, and the other required views.
+- Do not enter the database port in the Listen Port field.
+- Check for a local port conflict and inspect the Oracle-Exporter process arguments and logs.
 
-### 3. Exporter not listening / port conflict
+### Only some metrics are present
 
-- In this plugin, "Listen Port" is the local port on which Oracle-Exporter exposes `/metrics` on the collector node, distinct from "Port" (the Oracle database itself, default `1521`). Do not confuse them.
-- Run `curl -v http://127.0.0.1:<listen_port>/metrics` on the collector node; it should return `200` and contain `oracledb_*` metric lines.
-- If the port is already in use, change the Oracle-Exporter listen port and update "Listen Port" in this plugin configuration accordingly.
-- Inspect Oracle-Exporter logs to identify startup failures (for example, an incorrect connection string or insufficient account privileges).
-
-### 4. Partial missing metrics or insufficient privileges
-
-- Metrics depend on `v$session`, `v$sysstat`, `v$database`, and other dynamic performance views; missing privileges may cause only some metrics to be empty.
-- Use `GRANT SELECT ANY DICTIONARY` first to confirm whether the issue is permission-related, then narrow the grants as needed.
-- If only `tablespace`-related metrics are missing, confirm the account has access to query the relevant tablespaces.
+- A successful login does not prove access to every dynamic performance view. Use the actual query error in the exporter log to grant the minimum required read access.
+- Tablespace, session, and resource metrics depend on different views; verify both privileges and whether the target instance provides the data.
