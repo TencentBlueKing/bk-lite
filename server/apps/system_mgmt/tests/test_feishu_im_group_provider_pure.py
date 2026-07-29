@@ -565,23 +565,40 @@ def test_group_request_timeout_is_retryable():
     assert result.errors[0].code == "provider.timeout"
 
 
-def test_group_member_validation_rejects_unsupported_id_type_and_batches_over_fifty():
-    invalid_type = FeishuIMGroupAdapter.add_members(
-        config={}, provider_key="feishu", capability_key="im_group", chat_id="oc_1", member_ids=["ou_user"], member_id_type="union_id",
+def test_group_member_validation_rejects_unsupported_id_type_and_batches_over_fifty(monkeypatch):
+    events = []
+    monkeypatch.setattr(
+        "apps.system_mgmt.providers.adapters.feishu.logger.warning",
+        lambda message, *args, **kwargs: events.append(kwargs["extra"]),
     )
-    oversized_batch = FeishuIMGroupAdapter.add_members(
-        config={},
-        provider_key="feishu",
-        capability_key="im_group",
-        chat_id="oc_1",
-        member_ids=[f"ou_{index}" for index in range(51)],
-        member_id_type="open_id",
-    )
+    with mock.patch("apps.system_mgmt.providers.adapters.feishu.requests.post") as post:
+        invalid_type = FeishuIMGroupAdapter.add_members(
+            config={}, provider_key="feishu", capability_key="im_group", chat_id="oc_1", member_ids=["ou_user"], member_id_type="union_id",
+        )
+        oversized_batch = FeishuIMGroupAdapter.add_members(
+            config={},
+            provider_key="feishu",
+            capability_key="im_group",
+            chat_id="oc_1",
+            member_ids=[f"ou_{index}" for index in range(51)],
+            member_id_type="open_id",
+        )
 
     assert invalid_type.errors[0].code == "provider.invalid_config"
     assert invalid_type.errors[0].field == "member_id_type"
     assert oversized_batch.errors[0].code == "provider.invalid_config"
     assert oversized_batch.errors[0].field == "member_ids"
+    post.assert_not_called()
+    assert [event["operation"] for event in events] == ["add_members", "add_members"]
+    assert [event["member_count"] for event in events] == [1, 51]
+    assert all(
+        event["result"] == "failed"
+        and event["error_code"] == "provider.invalid_config"
+        and event["request_id"] == ""
+        and event["retryable"] is False
+        and event["duration_ms"] >= 0
+        for event in events
+    )
 
 
 def test_group_request_logs_no_authorization_header(caplog):
@@ -632,3 +649,130 @@ def test_group_request_exception_logs_only_whitelisted_fields(caplog):
     assert "error_code=provider.request_failed" in caplog.text
     assert "request_id=" in caplog.text
     assert "member_count=1" in caplog.text
+
+
+def test_group_request_emits_safe_structured_observability_fields(monkeypatch):
+    events = []
+    monkeypatch.setattr(
+        "apps.system_mgmt.providers.adapters.feishu.time.monotonic",
+        mock.Mock(side_effect=[10.0, 10.125]),
+    )
+    monkeypatch.setattr(
+        "apps.system_mgmt.providers.adapters.feishu.logger.info",
+        lambda message, *args, **kwargs: events.append((message, kwargs.get("extra"))),
+    )
+    with mock.patch(
+        "apps.system_mgmt.providers.adapters.feishu._fetch_tenant_access_token",
+        return_value=("tenant-secret", None),
+    ), mock.patch(
+        "apps.system_mgmt.providers.adapters.feishu.requests.post",
+        return_value=FakeResponse(
+            {"code": 0, "data": {"chat_id": "oc_secret"}},
+            request_id="req-safe",
+        ),
+    ):
+        result = FeishuIMGroupAdapter.create_group(
+            config={"app_secret": "do-not-log"},
+            provider_key="feishu",
+            capability_key="im_group",
+            group_name="secret title",
+            owner_id="ou_secret_owner",
+            member_ids=["ou_secret_owner", "ou_secret_member"],
+            member_id_type="open_id",
+            idempotency_key="secret-idempotency-key",
+        )
+
+    assert result.success is True
+    assert [extra for _, extra in events] == [
+        {
+            "event": "feishu_im_group_provider_request",
+            "operation": "create_group",
+            "duration_ms": 125,
+            "result": "success",
+            "error_code": "ok",
+            "request_id": "req-safe",
+            "member_count": 2,
+            "retryable": False,
+        }
+    ]
+    rendered = repr(events)
+    for secret in (
+        "tenant-secret",
+        "do-not-log",
+        "oc_secret",
+        "ou_secret",
+        "secret title",
+        "secret-idempotency-key",
+    ):
+        assert secret not in rendered
+
+
+def test_group_request_logging_failure_does_not_change_provider_result(monkeypatch):
+    monkeypatch.setattr(
+        "apps.system_mgmt.providers.adapters.feishu.logger.warning",
+        mock.Mock(side_effect=RuntimeError("logger unavailable")),
+    )
+    with mock.patch(
+        "apps.system_mgmt.providers.adapters.feishu._fetch_tenant_access_token",
+        return_value=("tenant-token", None),
+    ), mock.patch(
+        "apps.system_mgmt.providers.adapters.feishu.requests.post",
+        side_effect=requests.Timeout,
+    ):
+        result = FeishuIMGroupAdapter.add_members(
+            config={},
+            provider_key="feishu",
+            capability_key="im_group",
+            chat_id="oc_secret",
+            member_ids=["ou_secret"],
+            member_id_type="open_id",
+        )
+
+    assert result.success is False
+    assert result.retryable is True
+    assert result.errors[0].code == "provider.timeout"
+
+
+def test_readiness_permission_failure_emits_structured_result(monkeypatch):
+    events = []
+    monkeypatch.setattr(
+        "apps.system_mgmt.providers.adapters.feishu.logger.warning",
+        lambda message, *args, **kwargs: events.append(kwargs.get("extra")),
+    )
+    with mock.patch(
+        "apps.system_mgmt.providers.adapters.feishu._fetch_tenant_access_token",
+        return_value=("tenant-token", None),
+    ), mock.patch(
+        "apps.system_mgmt.providers.adapters.feishu.requests.get",
+        return_value=FakeResponse(
+            {
+                "code": 0,
+                "data": {
+                    "app": {
+                        "scopes": ["application:application:self_manage"],
+                    }
+                },
+            },
+            request_id="req-permission",
+        ),
+    ):
+        result = FeishuIMGroupAdapter.test_connection(
+            config={},
+            provider_key="feishu",
+            capability_key="im_group",
+        )
+
+    assert result.success is False
+    assert events == [
+        {
+            "event": "feishu_im_group_provider_request",
+            "operation": "test_connection",
+            "duration_ms": mock.ANY,
+            "result": "failed",
+            "error_code": "provider.permission_unverified",
+            "request_id": "req-permission",
+            "member_count": 0,
+            "retryable": False,
+        }
+    ]
+    assert events[0]["duration_ms"] >= 0

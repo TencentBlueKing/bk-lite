@@ -17,6 +17,44 @@ pytestmark = [pytest.mark.integration, pytest.mark.django_db]
 pytest_plugins = ["apps.alerts.tests.incident_im_delivery_fixtures"]
 
 
+def test_retryable_create_emits_safe_business_event_before_outbox_retry(
+    group, pending_members,
+):
+    from apps.alerts.service.incident_im.delivery import (
+        IncidentIMRetryableError,
+        deliver_create_group,
+    )
+
+    limited = CapabilityExecutionResult.failed_result(
+        "rate limited", code="provider.rate_limited", retryable=True
+    )
+    events = []
+    with mock.patch(
+        "apps.alerts.service.incident_im.delivery.IMGroupRuntimeService.execute",
+        return_value=limited,
+    ), mock.patch(
+        "apps.alerts.service.incident_im.delivery.emit_incident_im_event",
+        side_effect=lambda event, **fields: events.append((event, fields)),
+    ):
+        with pytest.raises(IncidentIMRetryableError, match="rate limited"):
+            deliver_create_group(group.id)
+
+    assert events == [
+        (
+            "incident_im_group_delivery",
+            {
+                "group_id": str(group.id),
+                "incident_id": group.incident_id,
+                "operation": "create_group",
+                "result": "retrying",
+                "error_code": "provider.rate_limited",
+                "retryable": True,
+                "member_count": len(pending_members),
+            },
+        )
+    ]
+
+
 @pytest.mark.django_db
 def test_chat_id_is_saved_before_followup_events(group, pending_members):
     from apps.alerts.service.incident_im.delivery import deliver_create_group

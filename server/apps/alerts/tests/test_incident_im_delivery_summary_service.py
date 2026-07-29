@@ -94,11 +94,29 @@ def test_retryable_summary_result_raises_for_outbox_retry(group):
     group.external_chat_id = "oc_1"
     group.save(update_fields=["external_chat_id"])
     limited = CapabilityExecutionResult.failed_result("rate limited", code="provider.rate_limited", retryable=True)
+    events = []
     with mock.patch(
         "apps.alerts.service.incident_im.delivery.IMGroupRuntimeService.execute", return_value=limited,
+    ), mock.patch(
+        "apps.alerts.service.incident_im.delivery.emit_incident_im_event",
+        side_effect=lambda event, **fields: events.append((event, fields)),
     ):
         with pytest.raises(IncidentIMRetryableError, match="rate limited"):
             deliver_summary(group.id)
+    assert events == [
+        (
+            "incident_im_group_delivery",
+            {
+                "group_id": str(group.id),
+                "incident_id": group.incident_id,
+                "operation": "send_summary",
+                "result": "retrying",
+                "error_code": "provider.rate_limited",
+                "retryable": True,
+                "member_count": 0,
+            },
+        )
+    ]
 
 
 @pytest.mark.django_db

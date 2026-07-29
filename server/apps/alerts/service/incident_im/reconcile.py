@@ -6,6 +6,7 @@ from apps.alerts.models import AlertOutbox, IncidentIMGroup, IncidentIMMember
 from apps.alerts.service.incident_im.constants import OUTBOX_ADD_MEMBERS, OUTBOX_CREATE, OUTBOX_RECONCILE, OUTBOX_SEND_SUMMARY
 from apps.alerts.service.incident_im.errors import IncidentIMError
 from apps.alerts.service.incident_im.members import get_desired_usernames, reconcile_member_snapshots
+from apps.alerts.service.incident_im.observability import emit_incident_im_event
 from apps.alerts.service.outbox import enqueue_outbox
 
 SYNCABLE_GROUP_STATUSES = (IncidentIMGroup.Status.ACTIVE, IncidentIMGroup.Status.ACTIVE_PARTIAL)
@@ -15,6 +16,12 @@ def reconcile_incident_im_group(incident_id, force_delivery=False, resume_create
     with transaction.atomic():
         group = _lock_active_group_for_incident(incident_id)
         if group is None:
+            emit_incident_im_event(
+                "incident_im_reconcile",
+                incident_id=incident_id,
+                result="skipped",
+                skip_reason="group_not_found",
+            )
             return None
 
         terminal_status = _terminal_status_from_delivery_facts(group)
@@ -27,9 +34,26 @@ def reconcile_incident_im_group(incident_id, force_delivery=False, resume_create
             if group.status != terminal_status:
                 group.status = terminal_status
                 group.save(update_fields=["status"])
+            emit_incident_im_event(
+                "incident_im_reconcile",
+                group_id=str(group.id),
+                incident_id=group.incident_id,
+                result="skipped",
+                skip_reason="terminal_delivery",
+                status=group.status,
+            )
             return group
 
         if force_delivery and not _can_deliver(group, force_delivery=True):
+            emit_incident_im_event(
+                "incident_im_reconcile",
+                group_id=str(group.id),
+                incident_id=group.incident_id,
+                result="skipped",
+                skip_reason="group_not_deliverable",
+                status=group.status,
+                pause_reason=group.pause_reason,
+            )
             return group
 
         if resume_create and not group.external_chat_id:
@@ -54,6 +78,20 @@ def reconcile_incident_im_group(incident_id, force_delivery=False, resume_create
             group.status = IncidentIMGroup.Status.ACTIVE_PARTIAL
             group.save(update_fields=["status"])
         if not _can_deliver(group, force_delivery=force_delivery, resume_create=resume_create):
+            waiting_mapping_count = group.members.filter(
+                username__in=desired_usernames,
+                sync_status=IncidentIMMember.SyncStatus.WAITING,
+            ).count()
+            emit_incident_im_event(
+                "incident_im_reconcile",
+                group_id=str(group.id),
+                incident_id=group.incident_id,
+                result="skipped",
+                skip_reason="group_not_deliverable",
+                waiting_mapping_count=waiting_mapping_count,
+                status=group.status,
+                pause_reason=group.pause_reason,
+            )
             return group
 
         pending = list(
@@ -69,6 +107,20 @@ def reconcile_incident_im_group(incident_id, force_delivery=False, resume_create
             enqueue_add_members_batch(group, allow_failed_retry=force_delivery)
         elif not pending and group.current_stage in (IncidentIMGroup.Stage.ADDING_MEMBERS, IncidentIMGroup.Stage.SENDING_SUMMARY):
             _enqueue_recovered_summary(group)
+        waiting_mapping_count = group.members.filter(
+            username__in=desired_usernames,
+            sync_status=IncidentIMMember.SyncStatus.WAITING,
+        ).count()
+        emit_incident_im_event(
+            "incident_im_reconcile",
+            group_id=str(group.id),
+            incident_id=group.incident_id,
+            result="scheduled" if pending else "complete",
+            member_count=len(desired_usernames),
+            pending_count=len(pending),
+            waiting_mapping_count=waiting_mapping_count,
+            status=group.status,
+        )
         return group
 
 
@@ -135,6 +187,15 @@ def pause_group_for_closed_incident(incident_id):
         group.status = IncidentIMGroup.Status.PAUSED
         group.pause_reason = IncidentIMGroup.PauseReason.INCIDENT_CLOSED
         group.save(update_fields=["resume_after_reopen", "status", "pause_reason"])
+        emit_incident_im_event(
+            "incident_im_lifecycle",
+            group_id=str(group.id),
+            incident_id=group.incident_id,
+            operation="pause",
+            result="success",
+            status=group.status,
+            pause_reason=group.pause_reason,
+        )
         return group
 
 
@@ -150,6 +211,14 @@ def resume_group_for_reopened_incident(incident_id):
             group.pause_reason = ""
             group.resume_after_reopen = False
             group.save(update_fields=["status", "pause_reason", "resume_after_reopen"])
+            emit_incident_im_event(
+                "incident_im_lifecycle",
+                group_id=str(group.id),
+                incident_id=group.incident_id,
+                operation="resume",
+                result="terminal",
+                status=group.status,
+            )
             return group
 
         should_resume = group.resume_after_reopen or group.current_stage == IncidentIMGroup.Stage.SENDING_SUMMARY
@@ -164,6 +233,14 @@ def resume_group_for_reopened_incident(incident_id):
                 {"group_id": str(group.id)},
                 "incident-im-group:" f"{group.id}:create:reopen:" f"{group.incident.updated_at.isoformat(timespec='microseconds')}",
             )
+            emit_incident_im_event(
+                "incident_im_lifecycle",
+                group_id=str(group.id),
+                incident_id=group.incident_id,
+                operation="resume",
+                result="scheduled",
+                status=group.status,
+            )
             return group
 
         desired_usernames = get_desired_usernames(group.incident)
@@ -174,6 +251,14 @@ def resume_group_for_reopened_incident(incident_id):
         group.save(update_fields=["status", "pause_reason", "resume_after_reopen"])
         if should_resume:
             enqueue_reconcile(group.incident, resume_create=True)
+        emit_incident_im_event(
+            "incident_im_lifecycle",
+            group_id=str(group.id),
+            incident_id=group.incident_id,
+            operation="resume",
+            result="scheduled" if should_resume else "success",
+            status=group.status,
+        )
         return group
 
 

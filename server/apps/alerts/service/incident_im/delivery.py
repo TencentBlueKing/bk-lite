@@ -14,6 +14,7 @@ from apps.alerts.models import AlertOutbox, IncidentIMGroup, IncidentIMMember
 from apps.alerts.service.incident_im.constants import OUTBOX_ADD_MEMBERS, OUTBOX_CREATE, OUTBOX_SEND_SUMMARY
 from apps.alerts.service.incident_im.groups import record_group_audit
 from apps.alerts.service.incident_im.members import get_desired_operator_usernames, get_desired_usernames
+from apps.alerts.service.incident_im.observability import emit_incident_im_event
 from apps.alerts.service.outbox import enqueue_outbox
 from apps.system_mgmt.services.im_group_service import IMGroupRuntimeService
 
@@ -66,6 +67,15 @@ def deliver_create_group(group_id) -> None:
                 group.save(
                     update_fields=["status", "current_stage", "last_error_code", "last_error_message",]
                 )
+                emit_incident_im_event(
+                    "incident_im_group_delivery",
+                    group_id=str(group.id),
+                    incident_id=group.incident_id,
+                    operation="create_group",
+                    result="failed",
+                    error_code=group.last_error_code,
+                    member_count=len(members),
+                )
                 return
             group.status = IncidentIMGroup.Status.CREATING
             group.current_stage = IncidentIMGroup.Stage.CREATING_CHAT
@@ -85,7 +95,12 @@ def deliver_create_group(group_id) -> None:
         member_id_type=group.member_id_type,
         idempotency_key=group.idempotency_key,
     )
-    if _raise_if_retryable(result):
+    if _raise_if_retryable(
+        result,
+        group=group,
+        operation="create_group",
+        member_count=len(member_ids),
+    ):
         return
     if not result.success:
         _finish_create_failure(group_id, result)
@@ -113,10 +128,21 @@ def deliver_create_group(group_id) -> None:
         locked.save(
             update_fields=["external_chat_id", "current_stage", "last_error_code", "last_error_message",]
         )
-        _save_member_result(
+        joined_count, failed_count = _save_member_result(
             locked, member_ids, invalid_ids, now=now, error_code="IM_MEMBER_INVALID", error_message="外部用户标识无效",
         )
         delivery_paused = _is_group_delivery_paused(locked)
+        emit_incident_im_event(
+            "incident_im_group_delivery",
+            group_id=str(locked.id),
+            incident_id=locked.incident_id,
+            operation="create_group",
+            result="partial" if failed_count else "success",
+            member_count=len(member_ids),
+            joined_count=joined_count,
+            failed_count=failed_count,
+            invalid_count=len(invalid_ids),
+        )
 
     # chat_id 与首批成员事实已独立提交；此处崩溃时重放绝不会再次建群。
     if delivery_paused:
@@ -173,7 +199,12 @@ def deliver_add_members(group_id, *, member_pks=None, delivery_claim=None) -> No
         result = IMGroupRuntimeService.execute(
             group.channel, operation="add_members", chat_id=group.external_chat_id, member_ids=member_ids, member_id_type=group.member_id_type,
         )
-        if _raise_if_retryable(result):
+        if _raise_if_retryable(
+            result,
+            group=group,
+            operation="add_members",
+            member_count=len(member_ids),
+        ):
             return
         error_code, error_message = _result_error(result)
         if not result.success and error_code == "provider.group_not_found":
@@ -199,6 +230,18 @@ def deliver_add_members(group_id, *, member_pks=None, delivery_claim=None) -> No
             )
             record_group_audit(
                 locked, locked.updated_by or locked.created_by or "system", f"补拉飞书群成员结果：成功 {joined_count} 人，失败 {failed_count} 人",
+            )
+            emit_incident_im_event(
+                "incident_im_member_batch",
+                group_id=str(locked.id),
+                incident_id=locked.incident_id,
+                operation="add_members",
+                result="partial" if failed_count else "success",
+                member_count=len(member_ids),
+                joined_count=joined_count,
+                failed_count=failed_count,
+                invalid_count=len(invalid_ids),
+                error_code=error_code if failed_count else "",
             )
 
         with transaction.atomic():
@@ -238,7 +281,12 @@ def deliver_summary(group_id) -> None:
             content=content,
             idempotency_key=f"bklite-summary-{group.id.hex}",
         )
-    if _raise_if_retryable(result):
+    if _raise_if_retryable(
+        result,
+        group=group,
+        operation="send_summary",
+        member_count=0,
+    ):
         return
     error_code, error_message = _result_error(result)
 
@@ -276,6 +324,15 @@ def deliver_summary(group_id) -> None:
         record_group_audit(
             locked, locked.updated_by or locked.created_by or "system", f"{event}：{'成功' if result.success else '失败'}",
         )
+        emit_incident_im_event(
+            "incident_im_group_delivery",
+            group_id=str(locked.id),
+            incident_id=locked.incident_id,
+            operation="send_summary",
+            result="success" if result.success else "failed",
+            error_code="" if result.success else error_code,
+            status=locked.status,
+        )
 
 
 def handle_delivery_exhausted(kind: str, payload: dict, error: str) -> None:
@@ -303,6 +360,16 @@ def handle_delivery_exhausted(kind: str, payload: dict, error: str) -> None:
             overview = "飞书群摘要发送结果：失败"
         record_group_audit(
             group, group.updated_by or group.created_by or "system", overview,
+        )
+        emit_incident_im_event(
+            "incident_im_group_delivery",
+            group_id=str(group.id),
+            incident_id=group.incident_id,
+            operation=kind.removeprefix("incident_im_group."),
+            result="failed",
+            error_code="IM_DELIVERY_EXHAUSTED",
+            failed_count=failed_count,
+            status=group.status,
         )
 
 
@@ -527,10 +594,25 @@ def _save_member_result(group, member_ids, invalid_ids, *, now, error_code, erro
     return len(members) - failed_count, failed_count
 
 
-def _raise_if_retryable(result) -> bool:
+def _raise_if_retryable(result, *, group, operation, member_count) -> bool:
     if result.success:
         return False
     if result.retryable or any(error.retryable for error in result.errors):
+        error_code, _ = _result_error(result)
+        emit_incident_im_event(
+            (
+                "incident_im_member_batch"
+                if operation == "add_members"
+                else "incident_im_group_delivery"
+            ),
+            group_id=str(group.id),
+            incident_id=group.incident_id,
+            operation=operation,
+            result="retrying",
+            error_code=error_code,
+            retryable=True,
+            member_count=member_count,
+        )
         raise IncidentIMRetryableError(result.summary)
     return False
 
@@ -559,6 +641,16 @@ def _finish_create_failure(group_id, result) -> None:
         record_group_audit(
             group, group.created_by or "system", f"创建飞书群最终结果：失败，成功 0 人，失败 {failed_count} 人",
         )
+        emit_incident_im_event(
+            "incident_im_group_delivery",
+            group_id=str(group.id),
+            incident_id=group.incident_id,
+            operation="create_group",
+            result="failed",
+            error_code=error_code,
+            failed_count=failed_count,
+            status=group.status,
+        )
 
 
 def _mark_degraded(group_id, error_code, error_message) -> None:
@@ -574,6 +666,15 @@ def _mark_degraded(group_id, error_code, error_message) -> None:
             group.status = IncidentIMGroup.Status.DEGRADED
             update_fields.append("status")
         group.save(update_fields=update_fields)
+        emit_incident_im_event(
+            "incident_im_group_delivery",
+            group_id=str(group.id),
+            incident_id=group.incident_id,
+            operation="add_members",
+            result="failed",
+            error_code=error_code,
+            status=group.status,
+        )
 
 
 def _build_incident_summary(group) -> str:

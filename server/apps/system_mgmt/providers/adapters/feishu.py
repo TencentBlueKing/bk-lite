@@ -413,22 +413,79 @@ def _fetch_feishu_bot_info(config: dict, tenant_access_token: str):
     return bot, request_id, None
 
 
-def _log_feishu_group_request(*, error_code: str, request_id: str, member_count: int):
-    log = logger.info if error_code == "ok" else logger.warning
-    log(
-        "stage=group_request error_code=%s request_id=%s member_count=%s",
-        error_code,
-        request_id,
-        member_count,
+def _log_feishu_group_request(
+    *,
+    operation: str,
+    started_at: float,
+    result: CapabilityExecutionResult,
+    request_id: str,
+    member_count: int,
+):
+    error_code = result.errors[0].code if result.errors else "ok"
+    outcome = (
+        "partial"
+        if result.partial_success
+        else ("success" if result.success else "failed")
     )
+    retryable = bool(
+        result.retryable or any(error.retryable for error in result.errors)
+    )
+    duration_ms = max(0, round((time.monotonic() - started_at) * 1000))
+    log = logger.info if result.success else logger.warning
+    try:
+        log(
+            "feishu im group provider request "
+            "stage=group_request operation=%s result=%s error_code=%s "
+            "request_id=%s member_count=%s duration_ms=%s retryable=%s",
+            operation,
+            outcome,
+            error_code,
+            request_id,
+            member_count,
+            duration_ms,
+            retryable,
+            extra={
+                "event": "feishu_im_group_provider_request",
+                "operation": operation,
+                "duration_ms": duration_ms,
+                "result": outcome,
+                "error_code": error_code,
+                "request_id": request_id,
+                "member_count": member_count,
+                "retryable": retryable,
+            },
+        )
+    except Exception:
+        # 可观测性不得改变外部能力调用的业务结果。
+        pass
 
 
 def _execute_feishu_group_request(
-    *, config: dict, method: str, url: str, params: dict, payload: dict | None, success_payload, member_count: int
+    *,
+    config: dict,
+    operation: str,
+    method: str,
+    url: str,
+    params: dict,
+    payload: dict | None,
+    success_payload,
+    member_count: int,
 ):
+    started_at = time.monotonic()
+
+    def finish(result, request_id=""):
+        _log_feishu_group_request(
+            operation=operation,
+            started_at=started_at,
+            result=result,
+            request_id=request_id,
+            member_count=member_count,
+        )
+        return result
+
     tenant_access_token, error = _fetch_tenant_access_token(config)
     if error:
-        return error
+        return finish(error)
 
     try:
         request_kwargs = {
@@ -445,70 +502,79 @@ def _execute_feishu_group_request(
         response = request(url, **request_kwargs)
         data = response.json()
     except requests.Timeout:
-        _log_feishu_group_request(error_code="provider.timeout", request_id="", member_count=member_count)
-        return CapabilityExecutionResult.failed_result(
-            "Feishu IM group request timed out",
-            code="provider.timeout",
-            retryable=True,
+        return finish(
+            CapabilityExecutionResult.failed_result(
+                "Feishu IM group request timed out",
+                code="provider.timeout",
+                retryable=True,
+            )
         )
     except requests.RequestException:
-        _log_feishu_group_request(error_code="provider.request_failed", request_id="", member_count=member_count)
-        return CapabilityExecutionResult.failed_result(
-            "Feishu IM group request failed",
-            code="provider.request_failed",
-            retryable=True,
+        return finish(
+            CapabilityExecutionResult.failed_result(
+                "Feishu IM group request failed",
+                code="provider.request_failed",
+                retryable=True,
+            )
         )
     except ValueError:
-        _log_feishu_group_request(error_code="provider.invalid_response", request_id="", member_count=member_count)
-        return CapabilityExecutionResult.failed_result(
-            "Feishu IM group response returned invalid JSON",
-            code="provider.invalid_response",
+        return finish(
+            CapabilityExecutionResult.failed_result(
+                "Feishu IM group response returned invalid JSON",
+                code="provider.invalid_response",
+            )
         )
 
     request_id = response.headers.get("X-Tt-Logid", "")
     if response.status_code == 404:
-        _log_feishu_group_request(
-            error_code="provider.group_not_found", request_id=request_id, member_count=member_count
-        )
-        return CapabilityExecutionResult.failed_result(
-            (data or {}).get("msg") or "Feishu group was not found",
-            code="provider.group_not_found",
-            external_code=str((data or {}).get("code") or response.status_code),
-            external_request_id=request_id,
+        return finish(
+            CapabilityExecutionResult.failed_result(
+                (data or {}).get("msg") or "Feishu group was not found",
+                code="provider.group_not_found",
+                external_code=str((data or {}).get("code") or response.status_code),
+                external_request_id=request_id,
+            ),
+            request_id,
         )
     if response.status_code in (401, 403):
-        _log_feishu_group_request(error_code="provider.auth_failed", request_id=request_id, member_count=member_count)
-        return CapabilityExecutionResult.failed_result(
-            (data or {}).get("msg") or "Feishu group request is unauthorized",
-            code="provider.auth_failed",
-            external_code=str((data or {}).get("code") or response.status_code),
-            external_request_id=request_id,
+        return finish(
+            CapabilityExecutionResult.failed_result(
+                (data or {}).get("msg") or "Feishu group request is unauthorized",
+                code="provider.auth_failed",
+                external_code=str((data or {}).get("code") or response.status_code),
+                external_request_id=request_id,
+            ),
+            request_id,
         )
     if response.status_code == 429 or response.status_code >= 500:
-        _log_feishu_group_request(
-            error_code="provider.request_failed", request_id=request_id, member_count=member_count
-        )
-        return CapabilityExecutionResult.failed_result(
-            (data or {}).get("msg") or "Feishu group request failed",
-            code="provider.request_failed",
-            retryable=True,
-            external_code=str((data or {}).get("code") or response.status_code),
-            external_request_id=request_id,
+        return finish(
+            CapabilityExecutionResult.failed_result(
+                (data or {}).get("msg") or "Feishu group request failed",
+                code="provider.request_failed",
+                retryable=True,
+                external_code=str((data or {}).get("code") or response.status_code),
+                external_request_id=request_id,
+            ),
+            request_id,
         )
     if response.status_code != 200 or (data or {}).get("code") not in (0, None):
-        _log_feishu_group_request(error_code="provider.request_failed", request_id=request_id, member_count=member_count)
-        return CapabilityExecutionResult.failed_result(
-            (data or {}).get("msg") or "Feishu group request failed",
-            code="provider.request_failed",
-            external_code=str((data or {}).get("code") or response.status_code),
-            external_request_id=request_id,
+        return finish(
+            CapabilityExecutionResult.failed_result(
+                (data or {}).get("msg") or "Feishu group request failed",
+                code="provider.request_failed",
+                external_code=str((data or {}).get("code") or response.status_code),
+                external_request_id=request_id,
+            ),
+            request_id,
         )
 
-    _log_feishu_group_request(error_code="ok", request_id=request_id, member_count=member_count)
-    return CapabilityExecutionResult.success_result(
+    result = CapabilityExecutionResult.success_result(
         "Feishu IM group request succeeded",
         payload=success_payload(data or {}, request_id),
     )
+    if (result.payload or {}).get("invalid_member_ids"):
+        result.partial_success = True
+    return finish(result, request_id)
 
 
 def _feishu_get_paginated(url: str, token: str, *, params: dict | None = None, config: dict | None = None):
@@ -967,45 +1033,66 @@ class FeishuIMGroupAdapter(BaseIMGroupAdapter):
 
     @classmethod
     def test_connection(cls, config: dict, provider_key: str, capability_key: str, **kwargs):
+        started_at = time.monotonic()
+
+        def finish(result, request_id=""):
+            _log_feishu_group_request(
+                operation="test_connection",
+                started_at=started_at,
+                result=result,
+                request_id=request_id,
+                member_count=0,
+            )
+            return result
+
         tenant_access_token, token_error = _fetch_tenant_access_token(config)
         if token_error:
-            return token_error
+            return finish(token_error)
 
         application, request_id, application_error = _fetch_feishu_application_info(config, tenant_access_token)
         if application_error:
-            return application_error
+            return finish(application_error, request_id)
 
         missing_requirements = _missing_feishu_im_group_scope_requirements(application.get("scopes"))
         if missing_requirements:
-            return CapabilityExecutionResult.failed_result(
-                "Feishu IM group permissions are not verified; "
-                "application:application:self_manage is required for diagnostics; "
-                f"missing requirements: {', '.join(missing_requirements)}",
-                code="provider.permission_unverified",
-                external_request_id=request_id,
-                payload={
-                    "missing_requirements": missing_requirements,
-                    "external_request_id": request_id,
-                },
+            return finish(
+                CapabilityExecutionResult.failed_result(
+                    "Feishu IM group permissions are not verified; "
+                    "application:application:self_manage is required for diagnostics; "
+                    f"missing requirements: {', '.join(missing_requirements)}",
+                    code="provider.permission_unverified",
+                    external_request_id=request_id,
+                    payload={
+                        "missing_requirements": missing_requirements,
+                        "external_request_id": request_id,
+                    },
+                ),
+                request_id,
             )
 
         bot, request_id, bot_error = _fetch_feishu_bot_info(config, tenant_access_token)
         if bot_error:
-            return bot_error
+            return finish(bot_error, request_id)
         if str(bot.get("activate_status") or "") != "2" or not bot.get("open_id"):
-            return CapabilityExecutionResult.failed_result(
-                "Feishu bot capability is not enabled for this tenant",
-                code="provider.bot_not_enabled",
-                external_request_id=request_id,
-                payload={
-                    "missing_requirements": ["bot_enabled"],
-                    "external_request_id": request_id,
-                },
+            return finish(
+                CapabilityExecutionResult.failed_result(
+                    "Feishu bot capability is not enabled for this tenant",
+                    code="provider.bot_not_enabled",
+                    external_request_id=request_id,
+                    payload={
+                        "missing_requirements": ["bot_enabled"],
+                        "external_request_id": request_id,
+                    },
+                ),
+                request_id,
             )
 
-        return CapabilityExecutionResult.success_result(
-            "Feishu IM group capability is ready",
-            payload={"external_request_id": request_id},
+        return finish(
+            CapabilityExecutionResult.success_result(
+                "Feishu IM group capability is ready",
+                payload={"external_request_id": request_id},
+            ),
+            request_id,
         )
 
     @classmethod
@@ -1014,9 +1101,17 @@ class FeishuIMGroupAdapter(BaseIMGroupAdapter):
         member_ids = list(dict.fromkeys(kwargs.get("member_ids") or []))
         validation_error = _validate_group_members(member_id_type, member_ids)
         if validation_error:
+            _log_feishu_group_request(
+                operation="create_group",
+                started_at=time.monotonic(),
+                result=validation_error,
+                request_id="",
+                member_count=len(member_ids),
+            )
             return validation_error
         result = _execute_feishu_group_request(
             config=config,
+            operation="create_group",
             method="post",
             url=_get_config_value(config, "im_group_create_chat_url", FEISHU_CREATE_CHAT_URL),
             params={"user_id_type": member_id_type},
@@ -1047,6 +1142,7 @@ class FeishuIMGroupAdapter(BaseIMGroupAdapter):
         chat_id = kwargs["chat_id"]
         return _execute_feishu_group_request(
             config=config,
+            operation="get_group",
             method="get",
             url=_get_config_value(config, "im_group_chat_url", FEISHU_CHAT_URL).format(chat_id=chat_id),
             params={},
@@ -1064,9 +1160,17 @@ class FeishuIMGroupAdapter(BaseIMGroupAdapter):
         member_ids = list(dict.fromkeys(kwargs.get("member_ids") or []))
         validation_error = _validate_group_members(member_id_type, member_ids)
         if validation_error:
+            _log_feishu_group_request(
+                operation="add_members",
+                started_at=time.monotonic(),
+                result=validation_error,
+                request_id="",
+                member_count=len(member_ids),
+            )
             return validation_error
         result = _execute_feishu_group_request(
             config=config,
+            operation="add_members",
             method="post",
             url=_get_config_value(config, "im_group_members_url", FEISHU_CHAT_MEMBERS_URL).format(chat_id=kwargs["chat_id"]),
             params={"member_id_type": member_id_type},
@@ -1086,6 +1190,7 @@ class FeishuIMGroupAdapter(BaseIMGroupAdapter):
         chat_id = kwargs["chat_id"]
         return _execute_feishu_group_request(
             config=config,
+            operation="send_group_message",
             method="post",
             url=_get_config_value(config, "im_group_send_message_url", FEISHU_SEND_MESSAGE_URL),
             params={"receive_id_type": "chat_id"},

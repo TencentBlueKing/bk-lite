@@ -17,6 +17,53 @@ pytestmark = [pytest.mark.integration, pytest.mark.django_db]
 pytest_plugins = ["apps.alerts.tests.incident_im_reconcile_fixtures"]
 
 
+def test_retryable_add_members_emits_safe_business_event_before_outbox_retry(
+    group, channel,
+):
+    from apps.alerts.service.incident_im.delivery import IncidentIMRetryableError
+
+    _map_user(channel, "alice")
+    member = IncidentIMMember.objects.create(
+        group=group,
+        username="alice",
+        role=IncidentIMMember.Role.OPERATOR,
+        external_id="ou_alice",
+        external_id_type="open_id",
+        mapping_status=IncidentIMMember.MappingStatus.MAPPED,
+        sync_status=IncidentIMMember.SyncStatus.PENDING,
+    )
+    limited = CapabilityExecutionResult.failed_result(
+        "rate limited", code="provider.rate_limited", retryable=True
+    )
+    events = []
+    with mock.patch(
+        "apps.alerts.service.incident_im.delivery.IMGroupRuntimeService.execute",
+        return_value=limited,
+    ), mock.patch(
+        "apps.alerts.service.incident_im.delivery.emit_incident_im_event",
+        side_effect=lambda event, **fields: events.append((event, fields)),
+    ):
+        with pytest.raises(IncidentIMRetryableError, match="rate limited"):
+            deliver_add_members(group.id)
+
+    assert events == [
+        (
+            "incident_im_member_batch",
+            {
+                "group_id": str(group.id),
+                "incident_id": group.incident_id,
+                "operation": "add_members",
+                "result": "retrying",
+                "error_code": "provider.rate_limited",
+                "retryable": True,
+                "member_count": 1,
+            },
+        )
+    ]
+    member.refresh_from_db()
+    assert member.sync_status == IncidentIMMember.SyncStatus.PENDING
+
+
 @pytest.mark.django_db
 def test_manual_resume_create_seam_requeues_initial_create(incident, channel):
     group = IncidentIMGroup.objects.create(

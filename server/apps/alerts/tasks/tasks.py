@@ -8,7 +8,7 @@ from typing import Iterable, List
 
 from celery import shared_task
 from django.core.cache import cache
-from django.db.models import F, Q
+from django.db.models import Count, F, Min, Q
 from django.utils import timezone
 
 from apps.alerts.common.notify.notify import Notify
@@ -57,9 +57,40 @@ def deliver_incident_im_add_members_outbox(record_id):
 @shared_task
 def dispatch_pending_alert_outbox():
     from apps.alerts.models.outbox import AlertOutbox
+    from apps.alerts.service.incident_im.observability import emit_incident_im_event
     from apps.alerts.service.outbox import OUTBOX_LEASE_TIMEOUT
 
     now = timezone.now()
+    backlog = AlertOutbox.objects.filter(
+        kind__startswith="incident_im_group.",
+        status__in=(
+            AlertOutbox.Status.PENDING,
+            AlertOutbox.Status.DELIVERING,
+            AlertOutbox.Status.FAILED,
+        ),
+    ).aggregate(
+        pending_count=Count(
+            "pk", filter=Q(status=AlertOutbox.Status.PENDING)
+        ),
+        delivering_count=Count(
+            "pk", filter=Q(status=AlertOutbox.Status.DELIVERING)
+        ),
+        failed_count=Count("pk", filter=Q(status=AlertOutbox.Status.FAILED)),
+        oldest_pending_at=Min(
+            "created_at", filter=Q(status=AlertOutbox.Status.PENDING)
+        ),
+    )
+    oldest_pending_at = backlog.pop("oldest_pending_at")
+    oldest_pending_age_seconds = (
+        max(0, int((now - oldest_pending_at).total_seconds()))
+        if oldest_pending_at
+        else 0
+    )
+    emit_incident_im_event(
+        "incident_im_outbox_backlog",
+        **backlog,
+        oldest_pending_age_seconds=oldest_pending_age_seconds,
+    )
     records = list(
         AlertOutbox.objects.filter(
             (
