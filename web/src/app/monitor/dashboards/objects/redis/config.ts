@@ -203,7 +203,6 @@ export const REDIS_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       icon: 'node',
       guide: [{ label: '客户端连接', detail: '当前活跃的客户端连接数量。阻塞非零常见于 BLPOP/BRPOP 等待；连接拒绝非零说明触及 maxclients。' }],
       footer: [
-        { label: '阻塞客户端', metric: 'redis_blocked_clients', unit: 'counts' },
         { label: '连接拒绝', metric: 'redis_rejected_connections_rate', unit: 'cps' }
       ]
     }
