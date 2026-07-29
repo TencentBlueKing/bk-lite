@@ -57,8 +57,6 @@ if (typeof window !== 'undefined') {
 
   // 添加 unmountComponentAtNode 方法（兼容旧版 API）
   if (!ReactDOMExt.unmountComponentAtNode) {
-    console.log('[Polyfill] Adding unmountComponentAtNode for antd-mobile compatibility');
-
     ReactDOMExt.unmountComponentAtNode = function(container: Container | null): boolean {
       if (!container) return false;
 

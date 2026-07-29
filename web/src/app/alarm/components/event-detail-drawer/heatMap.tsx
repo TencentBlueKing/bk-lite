@@ -238,15 +238,15 @@ const EventHeatMap: React.FC<EventHeatMapProps> = ({
           optionType="button"
           buttonStyle="solid"
         >
-          <Radio.Button value="month">{t('common.month')}</Radio.Button>
-          <Radio.Button value="day">{t('common.day')}</Radio.Button>
+          <Radio.Button value="month">{t('alarmCommon.heatMap.month')}</Radio.Button>
+          <Radio.Button value="day">{t('alarmCommon.heatMap.day')}</Radio.Button>
         </Radio.Group>
 
         <div className="flex items-center gap-2">
           <Button
             icon={<LeftOutlined />}
             onClick={() => navigate('prev')}
-            aria-label={t('common.previous')}
+            aria-label={t('alarmCommon.heatMap.previous')}
           />
           <DatePicker
             picker={viewMode === 'month' ? 'month' : undefined}
@@ -313,7 +313,7 @@ const EventHeatMap: React.FC<EventHeatMapProps> = ({
       )}
 
       <div className="mt-4 flex items-center gap-3 text-xs text-[var(--color-text-3)]">
-        <span>{t('common.level')}</span>
+        <span>{t('alarmCommon.heatMap.level')}</span>
         {legendConfig.map((legend) => (
           <div key={legend.label} className="flex items-center gap-1">
             <span

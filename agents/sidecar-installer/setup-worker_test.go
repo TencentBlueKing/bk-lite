@@ -22,6 +22,32 @@ type recordingProgressPublisher struct {
 	flushes  int
 }
 
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (fn roundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) {
+	return fn(request)
+}
+
+type timedResponseBody struct {
+	payload     []byte
+	deliveredAt time.Time
+}
+
+func (body *timedResponseBody) Read(buffer []byte) (int, error) {
+	if body.payload == nil {
+		return 0, io.EOF
+	}
+	time.Sleep(10 * time.Millisecond)
+	n := copy(buffer, body.payload)
+	body.payload = nil
+	body.deliveredAt = time.Now()
+	return n, io.EOF
+}
+
+func (body *timedResponseBody) Close() error {
+	return nil
+}
+
 func (publisher *recordingProgressPublisher) Publish(subject string, payload []byte) error {
 	publisher.subjects = append(publisher.subjects, subject)
 	publisher.payloads = append(publisher.payloads, append([]byte(nil), payload...))
@@ -158,6 +184,115 @@ func TestInstallerEventReporterFlushesTerminalEventBeforeProcessExit(t *testing.
 	reporter.Emit(InstallerEvent{Step: "download_package", Status: "failed", Error: "object missing"})
 	if publisher.flushes != 1 {
 		t.Fatalf("terminal event must be flushed before fatal can exit, got %d flushes", publisher.flushes)
+	}
+}
+
+func TestValidateClockSkewAllowsBoundaryAndBothDirections(t *testing.T) {
+	serverTime := time.Date(2026, 7, 29, 2, 0, 0, 0, time.UTC)
+	tests := []struct {
+		name       string
+		offset     time.Duration
+		wantAhead  bool
+		wantBehind bool
+	}{
+		{name: "same time"},
+		{name: "ahead within boundary", offset: 300 * time.Second, wantAhead: true},
+		{name: "behind within boundary", offset: -300 * time.Second, wantBehind: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			midpoint := serverTime.Add(tt.offset)
+			cfg := &Config{
+				ClockValidation: &ClockValidationConfig{
+					ServerTimeUnixMS: serverTime.UnixMilli(),
+					MaxSkewSeconds:   300,
+				},
+				sessionRequestStartedAt:  midpoint.Add(-50 * time.Millisecond),
+				sessionRequestFinishedAt: midpoint.Add(50 * time.Millisecond),
+			}
+
+			result, err := validateClockSkew(cfg)
+			if err != nil {
+				t.Fatalf("expected clock skew to pass: %v", err)
+			}
+			if result == nil {
+				t.Fatal("expected clock skew details")
+			}
+			if tt.wantAhead && result.OffsetSeconds <= 0 {
+				t.Fatalf("expected node clock ahead, got %f", result.OffsetSeconds)
+			}
+			if tt.wantBehind && result.OffsetSeconds >= 0 {
+				t.Fatalf("expected node clock behind, got %f", result.OffsetSeconds)
+			}
+		})
+	}
+}
+
+func TestValidateClockSkewRejectsAheadAndBehindBeyondBoundary(t *testing.T) {
+	serverTime := time.Date(2026, 7, 29, 2, 0, 0, 0, time.UTC)
+	for _, offset := range []time.Duration{300*time.Second + 2*time.Millisecond, -300*time.Second - 2*time.Millisecond} {
+		midpoint := serverTime.Add(offset)
+		cfg := &Config{
+			ClockValidation: &ClockValidationConfig{
+				ServerTimeUnixMS: serverTime.UnixMilli(),
+				MaxSkewSeconds:   300,
+			},
+			sessionRequestStartedAt:  midpoint.Add(-50 * time.Millisecond),
+			sessionRequestFinishedAt: midpoint.Add(50 * time.Millisecond),
+		}
+
+		result, err := validateClockSkew(cfg)
+		if err == nil || !strings.Contains(err.Error(), "maximum allowed skew is 300 seconds") {
+			t.Fatalf("expected clock skew rejection for %v, got result=%#v err=%v", offset, result, err)
+		}
+	}
+}
+
+func TestValidateClockSkewRejectsInvalidContractAndAllowsMissingLegacyContract(t *testing.T) {
+	if result, err := validateClockSkew(&Config{}); err != nil || result != nil {
+		t.Fatalf("legacy session without clock contract must remain compatible: result=%#v err=%v", result, err)
+	}
+
+	invalid := &Config{
+		ClockValidation:          &ClockValidationConfig{},
+		sessionRequestStartedAt:  time.Now(),
+		sessionRequestFinishedAt: time.Now(),
+	}
+	if _, err := validateClockSkew(invalid); err == nil {
+		t.Fatal("invalid clock validation contract must fail")
+	}
+}
+
+func TestConfigRejectsExplicitNullClockValidation(t *testing.T) {
+	var cfg Config
+	if err := json.Unmarshal([]byte(`{"clock_validation":null}`), &cfg); err == nil {
+		t.Fatal("explicit null clock validation must fail")
+	}
+	if err := json.Unmarshal([]byte(`{}`), &cfg); err != nil {
+		t.Fatalf("legacy session without clock validation must remain valid: %v", err)
+	}
+}
+
+func TestFetchConfigRecordsFinishAfterReadingAndParsingResponse(t *testing.T) {
+	body := &timedResponseBody{payload: []byte(`{"node_id":"node-1"}`)}
+	client := &http.Client{Transport: roundTripFunc(func(_ *http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: http.StatusOK, Body: body}, nil
+	})}
+
+	cfg, err := fetchConfig(client, "https://server.example/session")
+	if err != nil {
+		t.Fatalf("fetch config: %v", err)
+	}
+	if cfg.sessionRequestFinishedAt.Before(body.deliveredAt) {
+		t.Fatalf("request finished at %s before response body was delivered at %s", cfg.sessionRequestFinishedAt, body.deliveredAt)
+	}
+}
+
+func TestInstallerStepPositionUsesNewEightStepProtocol(t *testing.T) {
+	index, total := installerStepPosition("download_package")
+	if index != 4 || total != 8 {
+		t.Fatalf("expected download step 4/8, got %d/%d", index, total)
 	}
 }
 

@@ -29,17 +29,12 @@ export const useSpeechRecognition = (
                 recognition.interimResults = true;
                 recognition.maxAlternatives = 1;
 
-                recognition.onstart = () => {
-                    console.log('🎤 语音识别已启动');
-                };
-
                 recognition.onresult = (event: any) => {
                     let allText = '';
                     for (let i = 0; i < event.results.length; i++) {
                         allText += event.results[i][0].transcript;
                     }
                     setRecognizedText(allText);
-                    console.log('📝 识别结果:', allText);
                 };
 
                 recognition.onerror = (event: any) => {
@@ -51,7 +46,6 @@ export const useSpeechRecognition = (
                             errorMessage = '请允许浏览器访问麦克风权限';
                             break;
                         case 'no-speech':
-                            console.log('⏸️ 未检测到语音（静音中）');
                             return;
                         case 'audio-capture':
                             errorMessage = '未找到麦克风设备';
@@ -60,7 +54,6 @@ export const useSpeechRecognition = (
                             errorMessage = '网络错误，请检查网络连接';
                             break;
                         case 'aborted':
-                            console.log('🛑 语音识别已取消');
                             return;
                         default:
                             errorMessage = '语音识别失败';
@@ -72,10 +65,7 @@ export const useSpeechRecognition = (
                 };
 
                 recognition.onend = () => {
-                    console.log('⏹️ 语音识别已结束');
-
                     if (isLongPressRef.current && isRecordingRef.current) {
-                        console.log('🔄 用户仍在录音，自动重启识别...');
                         try {
                             recognition.start();
                         } catch (error) {
@@ -95,7 +85,6 @@ export const useSpeechRecognition = (
     const checkMicrophonePermission = async (): Promise<boolean> => {
         try {
             if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-                console.log('浏览器不支持 MediaDevices API');
                 return false;
             }
 
@@ -115,7 +104,6 @@ export const useSpeechRecognition = (
             if (navigator.permissions && navigator.permissions.query) {
                 try {
                     const result = await navigator.permissions.query({ name: 'microphone' as PermissionName });
-                    console.log('Permissions API 查询结果:', result.state);
                     if (result.state === 'granted') {
                         return true;
                     }
@@ -123,8 +111,7 @@ export const useSpeechRecognition = (
                         return false;
                     }
                     // state === 'prompt' 时继续检测
-                } catch (err) {
-                    console.log(err, 'Permissions API 不支持 microphone 查询');
+                } catch {
                 }
             }
 
@@ -136,16 +123,13 @@ export const useSpeechRecognition = (
                     // 如果能获取到设备标签，说明已有权限
                     const hasLabels = audioInputs.some(device => device.label !== '');
                     if (hasLabels) {
-                        console.log('通过设备枚举检测到已授权');
                         return true;
                     }
-                } catch (err) {
-                    console.log('设备枚举失败:', err);
+                } catch {
                 }
             }
 
             // 如果所有检测都不确定，返回 false，让用户主动触发权限
-            console.log('无法确定权限状态，需要用户主动触发');
             return false;
         } catch (error) {
             console.error('静默权限检查失败:', error);
@@ -167,7 +151,6 @@ export const useSpeechRecognition = (
 
         const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
         if (!SpeechRecognition) {
-            console.log('浏览器不支持语音识别');
             Toast.show({
                 content: '当前浏览器不支持语音识别',
                 icon: 'fail',
@@ -177,7 +160,6 @@ export const useSpeechRecognition = (
         }
 
         const hasPermission = await checkMicrophonePermission();
-        console.log('麦克风权限:', hasPermission);
         if (!hasPermission) {
             Toast.show({
                 content: '无法访问麦克风，请检查权限设置',

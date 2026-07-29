@@ -372,7 +372,7 @@ const PublicEnumLibraryModal = forwardRef<PublicEnumLibraryModalRef, PublicEnumL
         <div className="flex-1 pl-4 flex flex-col">
           <div className="mb-2 flex items-start justify-between">
             <div>
-              <h3 className="text-lg font-medium mb-1">
+              <h3 className="text-sm font-semibold mb-1">
                 {selectedLibrary.name}
               </h3>
               <div className="text-sm text-[var(--color-text-quaternary)]">

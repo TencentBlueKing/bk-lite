@@ -1,3 +1,5 @@
+import time
+
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.logger import node_logger as logger
 from apps.core.utils.crypto.aes_crypto import AESCryptor
@@ -160,4 +162,11 @@ class InstallerSessionService:
             token_data["os"],
             resolved_arch,
         )
+        max_clock_skew_seconds = InstallerConstants.CONTROLLER_INSTALL_MAX_CLOCK_SKEW_SECONDS
+        if max_clock_skew_seconds <= 0:
+            raise BaseAppException("CONTROLLER_INSTALL_MAX_CLOCK_SKEW_SECONDS must be a positive integer")
+        config["clock_validation"] = {
+            "server_time_unix_ms": time.time_ns() // 1_000_000,
+            "max_skew_seconds": max_clock_skew_seconds,
+        }
         return config

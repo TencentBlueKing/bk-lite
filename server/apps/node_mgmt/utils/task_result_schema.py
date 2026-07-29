@@ -13,6 +13,8 @@ EXPECTED_INSTALLER_STEPS = [
     "install",
 ]
 
+OPTIONAL_INSTALLER_STEPS = {"clock_check"}
+
 
 def project_task_status_from_summary(summary):
     total = summary.get("total") or 0
@@ -101,6 +103,11 @@ def _build_installer_summary(steps, overall_status=None):
     installer_steps = [step for step in steps if isinstance(step, dict) and _is_installer_event_step(step)]
     deduped_steps = _dedupe_installer_events(installer_steps)
     deduped_core_steps = [step for step in deduped_steps if step.get("action") in EXPECTED_INSTALLER_STEPS]
+    deduped_display_steps = [
+        step
+        for step in deduped_steps
+        if step.get("action") in EXPECTED_INSTALLER_STEPS or step.get("action") in OPTIONAL_INSTALLER_STEPS
+    ]
     observed_count = len(installer_steps)
     duplicate_count = max(observed_count - len(deduped_steps), 0)
     completed_steps = [
@@ -110,7 +117,7 @@ def _build_installer_summary(steps, overall_status=None):
     ]
     observed_actions = {step.get("action") for step in deduped_core_steps}
     missing_steps = [step for step in EXPECTED_INSTALLER_STEPS if step not in observed_actions] if installer_steps else []
-    last_step = deduped_core_steps[-1] if deduped_core_steps else None
+    last_step = deduped_display_steps[-1] if deduped_display_steps else None
     connectivity_step = next(
         (
             step
@@ -158,7 +165,7 @@ def _build_installer_summary(steps, overall_status=None):
         "last_step": last_step.get("action") if last_step else None,
         "last_status": last_step.get("status") if last_step else None,
         "anomalies": anomalies,
-        "steps": deduped_core_steps,
+        "steps": deduped_display_steps,
     }
 
 

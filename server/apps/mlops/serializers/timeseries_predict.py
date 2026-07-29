@@ -183,6 +183,10 @@ class TimeSeriesPredictServingSerializer(AuthSerializer):
     class Meta:
         model = TimeSeriesPredictServing
         fields = "__all__"
+        extra_kwargs = {
+            # 运行时状态和内部 generation 只能由持有运行时锁的服务端流程写入。
+            "container_info": {"read_only": True},
+        }
 
     def validate_train_job(self, value):
         request = self.context["request"]

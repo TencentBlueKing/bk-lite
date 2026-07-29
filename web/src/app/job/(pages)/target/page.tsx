@@ -6,7 +6,7 @@ import {
   Input,
   Select,
   Tag,
-  Modal,
+  Popconfirm,
   message,
   Form,
   Radio,
@@ -14,7 +14,7 @@ import {
   Upload,
   InputNumber,
 } from 'antd';
-import { PlusOutlined, InboxOutlined } from '@ant-design/icons';
+import { PlusOutlined, InboxOutlined, CloseOutlined } from '@ant-design/icons';
 import CustomTable from '@/components/custom-table';
 import OperateModal from '@/components/operate-modal';
 import { useTranslation } from '@/utils/i18n';
@@ -25,12 +25,15 @@ import { Target, WinRMScheme } from '@/app/job/types';
 import { ColumnItem } from '@/types';
 import GroupTreeSelect from '@/components/group-tree-select';
 import SearchCombination from '@/components/search-combination';
+import Password from '@/components/password';
 import { SearchFilters, FieldConfig } from '@/components/search-combination/types';
+import OrganizationTags, { getOrganizationColumnWidth } from '@/app/job/components/organization-tags';
 
 const { Dragger } = Upload;
 const TARGET_DATA_COLUMN_COUNT = 7;
 const MIN_TARGET_DATA_COLUMN_WIDTH = 120;
 const TARGET_ACTION_COLUMN_WIDTH = 120;
+const SAVED_SECRET = '********';
 
 const TargetPage = () => {
   const { t } = useTranslation();
@@ -41,6 +44,7 @@ const TargetPage = () => {
     updateTarget,
     deleteTarget,
     testTargetConnection,
+    testSavedTargetConnection,
   } = useJobApi();
   const { getCloudList } = useCloudRegionApi();
 
@@ -66,7 +70,11 @@ const TargetPage = () => {
 
   // Form field watchers
   const [sshCredentialType, setSshCredentialType] = useState<'key' | 'password'>('password');
+  const [keepExistingKey, setKeepExistingKey] = useState(false);
+  const [sshPasswordVersion, setSshPasswordVersion] = useState(0);
+  const [winrmPasswordVersion, setWinrmPasswordVersion] = useState(0);
   const osType = Form.useWatch('os_type', form) || 'linux';
+  const editingCredential = editingTarget?.ssh_credential_type;
 
   const winrmSchemeOptions = useMemo(
     () => ([
@@ -254,19 +262,10 @@ const TargetPage = () => {
     return options;
   };
 
-  const handleDelete = (record: Target) => {
-    Modal.confirm({
-      title: t('job.deleteTarget'),
-      content: t('job.deleteTargetConfirm'),
-      okText: t('job.confirm'),
-      cancelText: t('job.cancel'),
-      centered: true,
-      onOk: async () => {
-        await deleteTarget(record.id);
-        message.success(t('job.deleteTarget'));
-        fetchData();
-      },
-    });
+  const handleDelete = async (record: Target) => {
+    await deleteTarget(record.id);
+    message.success(t('job.deleteTarget'));
+    fetchData();
   };
 
   const openAddModal = () => {
@@ -285,6 +284,9 @@ const TargetPage = () => {
       winrm_cert_validation: true,
     });
     setSshCredentialType('password');
+    setKeepExistingKey(false);
+    setSshPasswordVersion((version) => version + 1);
+    setWinrmPasswordVersion((version) => version + 1);
     setModalOpen(true);
   };
 
@@ -301,15 +303,34 @@ const TargetPage = () => {
       driver: record.driver,
       ssh_port: record.ssh_port || 22,
       ssh_user: record.ssh_user || 'root',
-      ssh_credential_type: 'password',
+      ssh_credential_type: record.ssh_credential_type || 'password',
+      ssh_password: record.has_ssh_password ? SAVED_SECRET : undefined,
       winrm_port: record.winrm_port || 5985,
       winrm_scheme: (record.winrm_scheme as WinRMScheme) || 'http',
       winrm_user: record.winrm_user || '',
+      winrm_password: record.has_winrm_password ? SAVED_SECRET : undefined,
       winrm_cert_validation: record.winrm_cert_validation ?? true,
     });
-    setSshCredentialType('password');
+    const credentialType = (record.ssh_credential_type || 'password') as 'key' | 'password';
+    setSshCredentialType(credentialType);
+    setKeepExistingKey(credentialType === 'key' && record.has_ssh_key);
+    setSshPasswordVersion((version) => version + 1);
+    setWinrmPasswordVersion((version) => version + 1);
     setModalOpen(true);
   };
+
+  const selectedKeyFile = (values: Record<string, any>): File | undefined => {
+    const upload = values.ssh_key_file;
+    return upload?.fileList?.[0]?.originFileObj
+      || upload?.file?.originFileObj
+      || upload?.file;
+  };
+
+  const resolveWinrmCertValidation = (values: Record<string, any>): boolean => (
+    values.winrm_cert_validation
+    ?? editingTarget?.winrm_cert_validation
+    ?? true
+  );
 
   const handleSubmit = async () => {
     try {
@@ -329,18 +350,19 @@ const TargetPage = () => {
         formData.append('winrm_port', String(values.winrm_port));
         formData.append('winrm_scheme', values.winrm_scheme || 'http');
         formData.append('winrm_user', values.winrm_user || '');
-        formData.append('winrm_password', values.winrm_password || '');
-        formData.append('winrm_cert_validation', String(values.winrm_cert_validation ?? true));
+        if (values.winrm_password && values.winrm_password !== SAVED_SECRET) {
+          formData.append('winrm_password', values.winrm_password);
+        }
+        formData.append('winrm_cert_validation', String(resolveWinrmCertValidation(values)));
       } else {
         formData.append('ssh_port', String(values.ssh_port));
         formData.append('ssh_user', values.ssh_user || '');
         formData.append('ssh_credential_type', values.ssh_credential_type || 'password');
-        if (values.ssh_credential_type === 'password') {
-          formData.append('ssh_password', values.ssh_password || '');
-        } else if (values.ssh_key_file?.fileList?.[0]?.originFileObj) {
-          formData.append('ssh_key_file', values.ssh_key_file.fileList[0].originFileObj);
-        } else if (values.ssh_key_file?.file) {
-          formData.append('ssh_key_file', values.ssh_key_file.file);
+        if (values.ssh_credential_type === 'password' && values.ssh_password && values.ssh_password !== SAVED_SECRET) {
+          formData.append('ssh_password', values.ssh_password);
+        } else if (values.ssh_credential_type === 'key') {
+          const keyFile = selectedKeyFile(values);
+          if (keyFile) formData.append('ssh_key_file', keyFile);
         }
       }
       if (Array.isArray(values.team) && values.team.length > 0) {
@@ -367,27 +389,36 @@ const TargetPage = () => {
     try {
       const values = await form.validateFields();
       setTestLoading(true);
-      const res = await testTargetConnection({
-        ip: values.ip,
-        driver: values.driver,
-        cloud_region_id: values.cloud_region_id,
-        os_type: values.os_type,
-        credential_source: 'manual',
-        credential_id: '',
-        ...(values.os_type === 'windows'
-          ? {
-            winrm_port: values.winrm_port,
-            winrm_scheme: values.winrm_scheme,
-            winrm_user: values.winrm_user,
-            winrm_password: values.winrm_password,
-            winrm_cert_validation: values.winrm_cert_validation,
+      const keyFile = selectedKeyFile(values);
+      const formData = new FormData();
+      formData.append('ip', values.ip);
+      formData.append('driver', values.driver);
+      formData.append('cloud_region_id', String(values.cloud_region_id));
+      formData.append('os_type', values.os_type);
+      formData.append('credential_source', 'manual');
+      if (values.os_type === 'windows') {
+        formData.append('winrm_port', String(values.winrm_port));
+        formData.append('winrm_scheme', values.winrm_scheme);
+        formData.append('winrm_user', values.winrm_user);
+        if (values.winrm_password !== SAVED_SECRET) {
+          formData.append('winrm_password', values.winrm_password);
+        }
+        formData.append('winrm_cert_validation', String(resolveWinrmCertValidation(values)));
+      } else {
+        formData.append('ssh_port', String(values.ssh_port));
+        formData.append('ssh_user', values.ssh_user);
+        formData.append('ssh_credential_type', values.ssh_credential_type);
+        if (values.ssh_credential_type === 'password') {
+          if (values.ssh_password !== SAVED_SECRET) {
+            formData.append('ssh_password', values.ssh_password);
           }
-          : {
-            ssh_port: values.ssh_port,
-            ssh_user: values.ssh_user,
-            ssh_password: values.ssh_password,
-          }),
-      });
+        } else if (keyFile) {
+          formData.append('ssh_key_file', keyFile);
+        }
+      }
+      const res = editingTarget
+        ? await testSavedTargetConnection(editingTarget.id, formData)
+        : await testTargetConnection(formData);
       if (res.success) {
         message.success(res.message || t('job.testConnectionSuccess'));
       } else {
@@ -419,6 +450,8 @@ const TargetPage = () => {
         return undefined;
     }
   };
+
+  const organizationColumnWidth = getOrganizationColumnWidth(data, targetDataColumnWidth);
 
   const columns: ColumnItem[] = [
     {
@@ -477,10 +510,8 @@ const TargetPage = () => {
       title: t('job.organization'),
       dataIndex: 'team_name',
       key: 'team_name',
-      width: targetDataColumnWidth,
-      render: (_: unknown, record: Target) => (
-        <span>{Array.isArray(record.team_name) ? record.team_name.join(', ') : '-'}</span>
-      ),
+      width: organizationColumnWidth,
+      render: (_: unknown, record: Target) => <OrganizationTags names={record.team_name} />,
     },
     {
       title: t('job.operation'),
@@ -496,12 +527,18 @@ const TargetPage = () => {
           >
             {t('job.editRule')}
           </a>
-          <a
-            className="text-(--color-primary) cursor-pointer"
-            onClick={() => handleDelete(record)}
+          <Popconfirm
+            title={t('job.deleteTarget')}
+            description={t('job.deleteTargetConfirm')}
+            okText={t('job.confirm')}
+            cancelText={t('job.cancel')}
+            okButtonProps={{ danger: true }}
+            onConfirm={() => handleDelete(record)}
           >
-            {t('job.deleteTarget')}
-          </a>
+            <a className="text-(--color-primary) cursor-pointer">
+              {t('job.deleteTarget')}
+            </a>
+          </Popconfirm>
         </div>
       ),
     },
@@ -698,7 +735,11 @@ const TargetPage = () => {
                 label={t('job.password')}
                 rules={[{ required: true, message: t('job.passwordPlaceholder') }]}
               >
-                <Input.Password placeholder={t('job.passwordPlaceholder')} />
+                <Password
+                  key={`winrm-password-${winrmPasswordVersion}`}
+                  placeholder={t('job.passwordPlaceholder')}
+                  clickToEdit={Boolean(editingTarget?.has_winrm_password && editingTarget.os_type === 'windows')}
+                />
               </Form.Item>
 
               <Alert
@@ -740,7 +781,11 @@ const TargetPage = () => {
                 required
               >
                 <Radio.Group
-                  onChange={(e) => setSshCredentialType(e.target.value)}
+                  onChange={(e) => {
+                    const nextType = e.target.value as 'key' | 'password';
+                    setSshCredentialType(nextType);
+                    setKeepExistingKey(nextType === 'key' && Boolean(editingTarget?.has_ssh_key));
+                  }}
                 >
                   <Radio value="key">{t('job.sshKey')}</Radio>
                   <Radio value="password">{t('job.sshPassword')}</Radio>
@@ -752,26 +797,54 @@ const TargetPage = () => {
                   name="ssh_password"
                   rules={[{ required: true, message: t('job.sshPasswordPlaceholder') }]}
                 >
-                  <Input.Password placeholder={t('job.sshPasswordPlaceholder')} />
+                  <Password
+                    key={`ssh-password-${sshPasswordVersion}`}
+                    placeholder={t('job.sshPasswordPlaceholder')}
+                    clickToEdit={Boolean(
+                      editingTarget?.has_ssh_password
+                      && editingTarget.os_type === 'linux'
+                      && editingCredential === 'password'
+                    )}
+                  />
                 </Form.Item>
               ) : (
-                <Form.Item
-                  name="ssh_key_file"
-                  rules={[{ required: true, message: t('job.selectKeyFile') }]}
-                >
-                  <Dragger
-                    maxCount={1}
-                    beforeUpload={() => false}
-                    accept=".pem,.key,.pub"
+                keepExistingKey ? (
+                  <div
+                    className="mb-4 flex items-center justify-between rounded-md px-3 py-2"
+                    style={{ border: '1px solid var(--color-border-1)' }}
                   >
-                    <p className="ant-upload-drag-icon">
-                      <InboxOutlined />
-                    </p>
-                    <p className="ant-upload-text text-sm">
-                      {t('job.selectKeyFile')}
-                    </p>
-                  </Dragger>
-                </Form.Item>
+                    <span>{t('job.uploadedKey', undefined, { name: editingTarget?.ssh_key_file_name || t('job.privateKeyFile') })}</span>
+                    <Button
+                      type="text"
+                      size="small"
+                      aria-label={t('job.replaceKey')}
+                      icon={<CloseOutlined />}
+                      onClick={() => {
+                        setKeepExistingKey(false);
+                        form.setFieldValue('ssh_key_file', undefined);
+                      }}
+                    />
+                  </div>
+                ) : (
+                  <Form.Item
+                    name="ssh_key_file"
+                    label={t('job.privateKeyFile')}
+                    rules={[{ required: true, message: t('job.selectKeyFile') }]}
+                  >
+                    <Dragger
+                      maxCount={1}
+                      beforeUpload={() => false}
+                      accept=".pem,.key,.pub"
+                    >
+                      <p className="ant-upload-drag-icon">
+                        <InboxOutlined />
+                      </p>
+                      <p className="ant-upload-text text-sm">
+                        {t('job.selectKeyFile')}
+                      </p>
+                    </Dragger>
+                  </Form.Item>
+                )
               )}
 
               <Alert

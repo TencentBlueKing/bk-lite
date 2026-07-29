@@ -31,3 +31,9 @@ class NetworkWhiteList(MaintainerInfo, TimeInfo):
         verbose_name = "Network White List"
         db_table = "system_mgmt_network_white_list"
         ordering = ["-id"]
+        constraints = [
+            models.CheckConstraint(
+                check=~models.Q(network__in=("0.0.0.0/0", "::/0")),
+                name="network_whitelist_forbid_universal_cidr",
+            )
+        ]

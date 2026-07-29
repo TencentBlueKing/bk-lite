@@ -4,7 +4,7 @@ import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import {
   Button,
   Tag,
-  Modal,
+  Popconfirm,
   message,
   Form,
   Input,
@@ -23,6 +23,7 @@ import GroupTreeSelect from '@/components/group-tree-select';
 import SearchCombination from '@/components/search-combination';
 import { SearchFilters, FieldConfig } from '@/components/search-combination/types';
 import ScriptEditor from '@/app/job/components/script-editor';
+import OrganizationTags, { getOrganizationColumnWidth } from '@/app/job/components/organization-tags';
 import { useRouter } from 'next/navigation';
 import styles from './page.module.scss';
 
@@ -253,19 +254,10 @@ const ScriptLibraryPage = () => {
     })();
   };
 
-  const handleDelete = (record: Script) => {
-    Modal.confirm({
-      title: t('job.deleteScript'),
-      content: t('job.deleteScriptConfirm'),
-      okText: t('job.confirm'),
-      cancelText: t('job.cancel'),
-      centered: true,
-      onOk: async () => {
-        await deleteScript(record.id);
-        message.success(t('job.deleteScript'));
-        fetchData();
-      },
-    });
+  const handleDelete = async (record: Script) => {
+    await deleteScript(record.id);
+    message.success(t('job.deleteScript'));
+    fetchData();
   };
 
   const handleSubmit = async () => {
@@ -389,16 +381,23 @@ const ScriptLibraryPage = () => {
           >
             {t('job.editRule')}
           </a>
-          <a
-            className="text-red-500 cursor-pointer"
-            onClick={() => handleDeleteParam(index)}
+          <Popconfirm
+            title={t('common.deleteConfirm')}
+            okText={t('job.confirm')}
+            cancelText={t('job.cancel')}
+            okButtonProps={{ danger: true }}
+            onConfirm={() => handleDeleteParam(index)}
           >
-            <DeleteOutlined />
-          </a>
+            <a className="text-red-500 cursor-pointer">
+              <DeleteOutlined />
+            </a>
+          </Popconfirm>
         </div>
       ),
     },
   ];
+
+  const organizationColumnWidth = getOrganizationColumnWidth(data);
 
   const columns: ColumnItem[] = [
     {
@@ -422,16 +421,8 @@ const ScriptLibraryPage = () => {
       title: t('job.organization'),
       dataIndex: 'team_name',
       key: 'team_name',
-      width: 120,
-      render: (_: unknown, record: Script) => (
-        <div className="flex flex-wrap gap-1">
-          {(record.team_name && record.team_name.length > 0)
-            ? record.team_name.map((name: string, idx: number) => (
-              <Tag key={idx}>{name}</Tag>
-            ))
-            : '-'}
-        </div>
-      ),
+      width: organizationColumnWidth,
+      render: (_: unknown, record: Script) => <OrganizationTags names={record.team_name} />,
     },
     {
       title: t('job.creator'),
@@ -458,6 +449,7 @@ const ScriptLibraryPage = () => {
       dataIndex: 'action',
       key: 'action',
       width: 220,
+      fixed: 'right',
       render: (_: unknown, record: Script) => (
         <div className="flex items-center gap-3">
           <a
@@ -478,12 +470,18 @@ const ScriptLibraryPage = () => {
           >
             {t('job.executeScript')}
           </a>
-          <a
-            className="text-[var(--color-primary)] cursor-pointer"
-            onClick={() => handleDelete(record)}
+          <Popconfirm
+            title={t('job.deleteScript')}
+            description={t('job.deleteScriptConfirm')}
+            okText={t('job.confirm')}
+            cancelText={t('job.cancel')}
+            okButtonProps={{ danger: true }}
+            onConfirm={() => handleDelete(record)}
           >
-            {t('job.deleteScript')}
-          </a>
+            <a className="text-[var(--color-primary)] cursor-pointer">
+              {t('job.deleteScript')}
+            </a>
+          </Popconfirm>
         </div>
       ),
     },

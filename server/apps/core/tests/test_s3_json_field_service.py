@@ -218,6 +218,20 @@ class TestPreSave:
         with pytest.raises(RuntimeError):
             field.pre_save(inst, add=True)
 
+    def test_previous_path_is_loaded_through_model_manager(self, mocker):
+        field = S3JSONField(bucket_name="b1", delete_previous_on_update=True)
+        field.set_attributes_from_name("data")
+        manager = mocker.MagicMock()
+        manager.using.return_value.filter.return_value.values_list.return_value.first.return_value = "old/path.json.gz"
+        mocker.patch.object(_Instance, "_base_manager", manager, create=True)
+        inst = _Instance(pk=42)
+        inst._state.db = "replica"
+
+        assert field._get_raw_db_value(inst) == "old/path.json.gz"
+        manager.using.assert_called_once_with("replica")
+        manager.using.return_value.filter.assert_called_once_with(pk=42)
+        manager.using.return_value.filter.return_value.values_list.assert_called_once_with("data", flat=True)
+
 
 class TestDescriptor:
     def test_get_on_class_returns_descriptor(self):

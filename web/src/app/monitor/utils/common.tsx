@@ -26,7 +26,7 @@ import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import dayjs from 'dayjs';
 
 // EE 端运行时注入的 BRANDS:由 web/scripts/prepare-enterprise.mjs 生成
-// /public/__enterprise-brands.js,next layout.tsx <Script> 加载后挂到这里。
+// /public/__enterprise-brands.js 由 next layout.tsx 的 defer script 加载后挂到这里。
 // 类型契约:每条 brand 的 match/label/icon 字段与下方 BRANDS 项同型。
 declare global {
   // eslint-disable-next-line @typescript-eslint/no-empty-object-type
@@ -784,7 +784,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /infinera|coriant|groove/i, label: 'Infinera', icon: 'mm-infinera_infinera' },
   { match: /bridgewave|flexport|fe80/i, label: 'BridgeWave', icon: 'mm-bridgewave_bridgewave' },
   { match: /huber\s*\+?\s*suhner|cubo\s*mini|cube\s*optics/i, label: 'Huber+Suhner Cubo', icon: 'mm-hubersuhner_hubersuhner' },
-  { match: /fibrolan|falcon/i, label: 'Fibrolan', icon: 'mm-fibrolan_fibrolan' },
+  { match: /fibrolan|falcon(?!stor)/i, label: 'Fibrolan', icon: 'mm-fibrolan_fibrolan' },
   { match: /smartoptics/i, label: 'Smartoptics', icon: 'mm-smartoptics_smartoptics' },
   { match: /racom|\bray\b/i, label: 'RACOM', icon: 'mm-racom_racom' },
   { match: /ifotec/i, label: 'Ifotec', icon: 'mm-ifotec_ifotec' },

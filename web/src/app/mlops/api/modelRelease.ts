@@ -1,6 +1,6 @@
 import useApiClient from '@/utils/request';
 import { TRAINJOB_MAP, SERVING_MAP } from '@/app/mlops/constants';
-import type { 
+import type {
   DatasetType,
   AnomalyDetectionReasonParams,
   TimeseriesPredictReasonParams,
@@ -9,6 +9,7 @@ import type {
   ImageClassificationReasonParams,
   ObjectDetectionReasonParams
 } from '@/app/mlops/types';
+import { buildTimeseriesPredictRequest } from '@/app/mlops/api/timeseriesPredictRequest';
 
 
 const useMlopsModelReleaseApi = () => {
@@ -129,7 +130,8 @@ const useMlopsModelReleaseApi = () => {
 
   // 时序预测推理
   const timeseriesPredictReason = async (servingId: number, params: TimeseriesPredictReasonParams) => {
-    return await post(`/mlops/timeseries_predict_servings/${servingId}/predict/`, params);
+    const request = buildTimeseriesPredictRequest(servingId, params);
+    return await post(request.url, request.data, request.config);
   };
 
   // 日志聚类推理

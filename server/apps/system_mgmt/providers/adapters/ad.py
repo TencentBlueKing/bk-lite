@@ -28,6 +28,13 @@ AD_LOGIN_ATTRIBUTES = [
 ]
 
 
+def _get_sync_user_attributes(source) -> list[str]:
+    """仅查询当前同步源映射字段及构建组织关系必需的 DN。"""
+    field_mapping = getattr(source, "field_mapping", None) or {}
+    mapped_attributes = [str(attribute).strip() for attribute in field_mapping.values() if str(attribute or "").strip()]
+    return list(dict.fromkeys([*mapped_attributes, "distinguishedName"]))
+
+
 def _get_ldap_result_code(error: Exception) -> str:
     """Extract an LDAP result code without exposing the raw server response."""
     match = re.search(r"(?:ldap\s+)?result\s+(\d+)|-\s*(\d+)\s*-", str(error), re.IGNORECASE)
@@ -251,7 +258,7 @@ class ADUserSyncAdapter(BaseUserSyncAdapter):
                 connection_config,
                 root_dn,
                 cls._build_object_search_filter(user_object_class, user_filter),
-                AD_LOGIN_ATTRIBUTES,
+                _get_sync_user_attributes(source),
                 paged_size=100,
             )
             organization_entries = search_entries(

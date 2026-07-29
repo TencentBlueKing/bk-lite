@@ -28,6 +28,16 @@ class TrainDataFileCleanupMixin:
 
     # Subclasses can override this to use a different file field name
     _file_field_name = "train_data"
+    _loaded_file_path_missing = object()
+
+    @classmethod
+    def from_db(cls, db, field_names, values):
+        instance = super().from_db(db, field_names, values)
+        file_field_name = cls._file_field_name
+        if file_field_name in field_names:
+            file_value = getattr(instance, file_field_name)
+            instance._loaded_file_path = file_value.name if file_value else None
+        return instance
 
     def save(self, *args, **kwargs):
         """
@@ -36,48 +46,131 @@ class TrainDataFileCleanupMixin:
         This method:
         1. Detects if we're updating an existing record (pk exists)
         2. Compares old and new file paths
-        3. Deletes the old file from storage if path changed
-        4. Calls the parent save() method
+        3. Saves the database record while holding a row lock
+        4. Deletes the old file after the surrounding transaction commits
         """
-        from django.db import transaction
-        from apps.core.logger import mlops_logger as logger
+        from django.db import router, transaction
+        from apps.mlops.services.train_data_file_cleanup import (
+            _assert_file_reference_available,
+            _lock_file_reference_guards,
+            _mark_file_reference_active,
+        )
 
         file_field_name = self._file_field_name
+        file_field = self._meta.get_field(file_field_name)
+        update_fields = kwargs.get("update_fields")
+        using = kwargs.get("using") or router.db_for_write(
+            self.__class__, instance=self
+        )
 
-        # Only perform cleanup on updates (not on new records)
-        if self.pk:
-            with transaction.atomic():
-                try:
-                    # Use select_for_update to prevent race conditions
-                    old_instance = self.__class__.objects.select_for_update().get(
-                        pk=self.pk
+        # New records and partial saves that exclude the file keep normal Model.save semantics.
+        if not self.pk:
+            with transaction.atomic(using=using):
+                file_value = getattr(self, file_field_name)
+                candidate_path = self._file_reference_lock_path(
+                    file_field,
+                    file_value,
+                )
+                guards = _lock_file_reference_guards(
+                    paths=[candidate_path],
+                    using=using,
+                )
+                _assert_file_reference_available(
+                    field_file=file_value,
+                    guard=guards.get(candidate_path),
+                    using=using,
+                )
+                super().save(*args, **kwargs)
+                file_value = getattr(self, file_field_name)
+                actual_path = file_value.name if file_value else None
+                _mark_file_reference_active(
+                    path=actual_path,
+                    using=using,
+                    guards=guards,
+                )
+                self._loaded_file_path = actual_path
+            return
+        if update_fields is not None and file_field_name not in update_fields:
+            super().save(*args, **kwargs)
+            return
+
+        with transaction.atomic(using=using):
+            try:
+                old_instance = (
+                    self.__class__.objects.using(using)
+                    .select_for_update()
+                    .get(pk=self.pk)
+                )
+                old_file = getattr(old_instance, file_field_name)
+                old_path = old_file.name if old_file else None
+            except self.__class__.DoesNotExist:
+                old_file = None
+                old_path = None
+
+            new_file = getattr(self, file_field_name)
+            new_path = new_file.name if new_file else None
+            loaded_path = getattr(
+                self, "_loaded_file_path", self._loaded_file_path_missing
+            )
+
+            # A stale instance that did not change the file must not overwrite a
+            # replacement committed by another request.
+            if (
+                loaded_path is not self._loaded_file_path_missing
+                and new_path == loaded_path
+                and old_path != loaded_path
+            ):
+                setattr(self, file_field_name, old_file)
+                new_file = getattr(self, file_field_name)
+                new_path = old_path
+
+            candidate_path = self._file_reference_lock_path(
+                file_field,
+                new_file,
+            )
+            guards = _lock_file_reference_guards(
+                paths=[old_path, candidate_path],
+                using=using,
+            )
+            _assert_file_reference_available(
+                field_file=new_file,
+                guard=guards.get(candidate_path),
+                using=using,
+            )
+            super().save(*args, **kwargs)
+            new_file = getattr(self, file_field_name)
+            new_path = new_file.name if new_file else None
+            _mark_file_reference_active(
+                path=new_path,
+                using=using,
+                guards=guards,
+            )
+            self._loaded_file_path = new_path
+
+            if old_path and old_path != new_path:
+                cleanup_kwargs = {
+                    "model_label": self.__class__._meta.label,
+                    "instance_pk": self.pk,
+                    "file_field_name": file_field_name,
+                    "old_path": old_path,
+                    "using": using,
+                }
+
+                def delete_old_file():
+                    from apps.mlops.services.train_data_file_cleanup import (
+                        delete_train_data_file_with_retry,
                     )
-                    old_file = getattr(old_instance, file_field_name)
-                    new_file = getattr(self, file_field_name)
 
-                    # Extract file paths (handle FieldFile objects and None)
-                    old_path = old_file.name if old_file else None
-                    new_path = new_file.name if new_file else None
+                    delete_train_data_file_with_retry(**cleanup_kwargs)
 
-                    # Delete old file if it exists and path has changed (including when cleared)
-                    if old_path and old_path != new_path:
-                        try:
-                            old_file.delete(save=False)
-                            logger.info(
-                                f"Deleted old {file_field_name} file for {self.__class__.__name__} {self.pk}: "
-                                f"old={old_path}, new={new_path or 'None'}"
-                            )
-                        except Exception as delete_err:
-                            logger.warning(
-                                f"Failed to delete old file '{old_path}': {delete_err}"
-                            )
+                transaction.on_commit(delete_old_file, using=using)
 
-                except self.__class__.DoesNotExist:
-                    pass
-                except Exception as e:
-                    logger.warning(f"Failed to check old {file_field_name} file: {e}")
-
-        super().save(*args, **kwargs)
+    def _file_reference_lock_path(self, file_field, field_file):
+        if not field_file:
+            return None
+        if field_file._committed:
+            return field_file.name
+        return file_field.generate_filename(self, field_file.name)
 
 
 class TrainJobConfigSyncMixin:

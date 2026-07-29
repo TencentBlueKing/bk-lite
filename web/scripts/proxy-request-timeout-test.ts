@@ -10,6 +10,10 @@ import {
   scheduleProxyAbort,
   SSE_TIMEOUT_MS,
 } from '../src/utils/proxyTimeout.ts';
+import {
+  buildTimeseriesPredictRequest,
+  TIMESERIES_PREDICT_REQUEST_TIMEOUT_MS,
+} from '../src/app/mlops/api/timeseriesPredictRequest.ts';
 
 assert.equal(getInitialProxyTimeoutMs(null), DEFAULT_TIMEOUT_MS);
 assert.equal(getInitialProxyTimeoutMs('*/*'), DEFAULT_TIMEOUT_MS);
@@ -66,6 +70,23 @@ assert.match(
   requestSource,
   /getProxyTimeoutHeaderValue\(config\.timeout\)/,
   'explicit client timeouts must be mapped to the proxy compatibility header'
+);
+
+const timeseriesPayload = { data: [], config: { steps: 1000 } };
+const timeseriesRequest = buildTimeseriesPredictRequest(42, timeseriesPayload);
+assert.equal(
+  timeseriesRequest.url,
+  '/mlops/timeseries_predict_servings/42/predict/'
+);
+assert.equal(timeseriesRequest.data, timeseriesPayload);
+assert.equal(
+  timeseriesRequest.config.timeout,
+  TIMESERIES_PREDICT_REQUEST_TIMEOUT_MS
+);
+assert.equal(
+  getProxyTimeoutHeaderValue(timeseriesRequest.config.timeout),
+  String(TIMESERIES_PREDICT_REQUEST_TIMEOUT_MS),
+  'timeseries prediction must forward its Axios timeout into the proxy contract'
 );
 
 function readSource(file: string): string {

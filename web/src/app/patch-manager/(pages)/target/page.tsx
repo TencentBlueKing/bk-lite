@@ -863,8 +863,6 @@ export default function TargetPage() {
               options={cloudRegions.map((r) => ({ label: r.display_name || r.name, value: r.id }))}
             />
           </Form.Item>
-          <Form.Item label={t('patchManager.executionDriver')}><Input value="Ansible" disabled /></Form.Item>
-
           {os === 'linux' && (
             <>
               <Space style={{ display: 'flex' }} align="start">

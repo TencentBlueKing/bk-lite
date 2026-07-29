@@ -6,16 +6,15 @@ import {
   DashboardShell,
   KpiSection,
   TrendSection,
-  useFilteredBarPanels,
   useFilteredChartPanels,
   useFilteredSummaryCards
 } from '../common/dashboard-components';
-import { TrendChartPanel, HorizontalBarPanel } from '../../shared/widgets';
+import { TrendChartPanel } from '../../shared/widgets';
 import { REDIS_DASHBOARD_CONFIG } from './config';
 import styles from './index.module.scss';
 
 const SUMMARY_TITLES = ['运行时长', '内存使用率', '缓存命中率', '键驱逐频率', '客户端连接数'];
-const TREND_TITLES = ['内存压力趋势', '命中未命中趋势', '命令吞吐趋势'];
+const TREND_TITLES = ['内存压力趋势', '缓存命中趋势', '命令吞吐趋势'];
 // 键生命周期 + 网络流量 两张折线图占满一行(各 span6)。
 const LIFECYCLE_TITLES = ['键生命周期', '网络流量'];
 
@@ -26,7 +25,7 @@ export default function RedisDashboardPage() {
   const trendCharts = useFilteredChartPanels(dashboard.chartPanels, TREND_TITLES);
   const lifecycleCharts = useFilteredChartPanels(dashboard.chartPanels, LIFECYCLE_TITLES);
   const fragChart = useFilteredChartPanels(dashboard.chartPanels, ['内存碎片'])[0];
-  const clientBar = useFilteredBarPanels(dashboard.barPanels, ['客户端状态'])[0];
+  const clientChart = useFilteredChartPanels(dashboard.chartPanels, ['客户端连接趋势'])[0];
 
   return (
     <DashboardShell
@@ -59,12 +58,18 @@ export default function RedisDashboardPage() {
                   styles={styles}
                 />
               )}
-              {clientBar && (
-                <HorizontalBarPanel
-                  title={clientBar.panel.title}
-                  subtitle={clientBar.panel.subtitle}
-                  guide={clientBar.panel.guide}
-                  items={clientBar.items}
+              {clientChart && (
+                <TrendChartPanel
+                  title={clientChart.chart.title}
+                  subtitle={clientChart.chart.subtitle}
+                  guide={clientChart.chart.guide}
+                  legends={clientChart.legends}
+                  data={clientChart.data}
+                  metric={clientChart.metric}
+                  unit={clientChart.unit}
+                  loading={dashboard.loading}
+                  seriesStyles={clientChart.seriesStyles}
+                  onXRangeChange={dashboard.onXRangeChange}
                   className={`${styles.panel} ${styles.span6}`}
                   styles={styles}
                 />
