@@ -626,7 +626,10 @@
             "passphraseTip": "私钥有密码短语时填写",
             "testNeedsTarget": "请先填写 IP 范围或选择资产",
             "testSuccess": "连接成功",
-            "testFailed": "连接测试失败"
+            "testFailed": "连接测试失败",
+            "syncLatestResult": "同步最新结果",
+            "syncingLatestResult": "同步中",
+            "syncLatestSuccess": "已开始同步最新上报结果"
         },
         "IPMITask": {
             "privilege": "权限级别",

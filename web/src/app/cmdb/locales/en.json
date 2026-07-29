@@ -626,7 +626,10 @@
             "passphraseTip": "Required when the private key has a passphrase",
             "testNeedsTarget": "Please enter an IP range or select assets first",
             "testSuccess": "Connection succeeded",
-            "testFailed": "Connection test failed"
+            "testFailed": "Connection test failed",
+            "syncLatestResult": "Sync Latest Result",
+            "syncingLatestResult": "Syncing",
+            "syncLatestSuccess": "Started syncing the latest reported result"
         },
         "IPMITask": {
             "privilege": "Privilege",

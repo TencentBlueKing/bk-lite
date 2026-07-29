@@ -247,6 +247,10 @@ assert.ok(
   pcTaskSource.includes('credentialHelp={buildPCCredentialHelp(osType, t)}'),
   'PCTask 应按当前操作系统展示 WinRM 或 macOS SSH 凭据字段说明',
 );
+assert.ok(
+  pageSource.includes('Collection.PCTask.syncLatestResult'),
+  'PC 手工动作应明确表示同步已上报的最新结果'
+);
 const editorSource = readSrc('src/app/cmdb/(pages)/assetManage/autoDiscovery/collection/profess/components/credentialPoolEditor.tsx');
 assert.ok(editorSource.includes("'winrm'"), 'CredentialPoolEditor 应支持 winrm 形态');
 assert.ok(editorSource.includes("'macos_ssh'"), 'CredentialPoolEditor 应支持 macos_ssh 形态');
@@ -264,5 +268,6 @@ assert.ok(enLocale.Collection?.PCTask?.osType, 'en.json 应包含 Collection.PCT
 assert.ok(zhLocale.Collection?.PCTask?.winrmHttpWarning, 'zh.json 应包含 WinRM HTTP 安全警告文案');
 assert.ok(zhLocale.Collection?.credentialHelp?.fields?.winrmUsername);
 assert.ok(enLocale.Collection?.credentialHelp?.fields?.macPrivateKey);
+assert.equal(zhLocale.Collection?.PCTask?.syncLatestResult, '同步最新结果');
 
 console.log('cmdb-pc-discovery-form-test passed');

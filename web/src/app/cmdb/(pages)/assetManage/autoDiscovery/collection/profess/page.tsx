@@ -572,7 +572,13 @@ const ProfessionalCollection: React.FC = () => {
       try {
         setExecutingTaskIds((prev) => [...prev, record.id]);
         await collectApi.executeCollect(record.id.toString());
-        message.success(t('Collection.executeSuccess'));
+        message.success(
+          t(
+            record.model_id === 'pc'
+              ? 'Collection.PCTask.syncLatestSuccess'
+              : 'Collection.executeSuccess'
+          )
+        );
         fetchData();
       } catch (error) {
         console.error('Failed to execute task:', error);
@@ -750,9 +756,17 @@ const ProfessionalCollection: React.FC = () => {
               loading={loadingExec}
               onClick={() => handleExecuteNow(record)}
             >
-              {loadingExec
-                ? t('Collection.table.syncing')
-                : t('Collection.table.sync')}
+              {record.model_id === 'pc'
+                ? t(
+                  loadingExec
+                    ? 'Collection.PCTask.syncingLatestResult'
+                    : 'Collection.PCTask.syncLatestResult'
+                )
+                : t(
+                  loadingExec
+                    ? 'Collection.table.syncing'
+                    : 'Collection.table.sync'
+                )}
             </Button>
           </PermissionWrapper>
           <PermissionWrapper
