@@ -4,9 +4,8 @@ from apps.system_mgmt.providers.manifests.wechat import PROVIDER_MANIFEST as WEC
 from apps.system_mgmt.providers.manifests.wecom import PROVIDER_MANIFEST as WECOM_PROVIDER_MANIFEST
 
 
-def test_ad_login_auth_manifest_exposes_mobile_and_mobile_phone_external_fields():
-    """AD 域里手机号常见存在 mobile / mobilePhone（不是 telephoneNumber），
-    白名单必须包含这三种才能让 field_mapping.phone 自由选择。"""
+def test_ad_external_field_manifests_expose_both_phone_variants():
+    """AD 表单暴露两个可映射的手机号字段。"""
     login_template = AD_PROVIDER_MANIFEST.business_templates["login_auth_form"]
     sync_template = AD_PROVIDER_MANIFEST.business_templates["user_sync_form"]
 
