@@ -16,6 +16,9 @@ def _installer_alias_path(target_os: str, architecture: str = "generic") -> str:
 class InstallerConstants:
     REQUEST_TIMEOUT = 30
     CONTROLLER_INSTALL_MAX_PARALLEL = 3
+    CONTROLLER_INSTALL_MAX_CLOCK_SKEW_SECONDS = int(
+        os.getenv("CONTROLLER_INSTALL_MAX_CLOCK_SKEW_SECONDS", "300")
+    )
 
     EXECUTION_PHASE_KEY = "execution_phase"
     EXECUTION_ATTEMPT_KEY = "execution_attempt"
@@ -48,6 +51,7 @@ class InstallerConstants:
 
     INSTALLER_EVENT_STEP_MAP = {
         "fetch_session": "fetch_session",
+        "clock_check": "clock_check",
         "prepare_directories": "prepare_dirs",
         "download_package": "download",
         "extract_package": "extract",
@@ -56,8 +60,19 @@ class InstallerConstants:
         "complete": "install_complete",
     }
 
+    LEGACY_INSTALLER_STEP_SEQUENCE = [
+        "fetch_session",
+        "prepare_dirs",
+        "download",
+        "extract",
+        "write_config",
+        "install",
+        "install_complete",
+    ]
+
     INSTALLER_STEP_SEQUENCE = [
         "fetch_session",
+        "clock_check",
         "prepare_dirs",
         "download",
         "extract",
