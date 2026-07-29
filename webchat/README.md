@@ -174,7 +174,8 @@ npm run dev
 ```typescript
 interface WebChatConfig {
   sseUrl?: string;                  // SSE 服务端点 URL（必填）
-  customData?: Record<string, any>; // 自定义元数据（如用户ID、来源等）
+  customData?: Record<string, unknown>; // 随请求发送的自定义元数据
+  extensions?: Record<string, unknown>; // 集成方自用扩展，不随请求发送
   title?: string;                   // 聊天窗口标题，默认：'Chat'
   subtitle?: string;                // 聊天窗口副标题
   placeholder?: string;             // 输入框占位符，默认：'Type a message...'
@@ -197,10 +198,29 @@ interface WebChatConfig {
 }
 ```
 
+### 旧配置迁移
+
+`socketUrl` 仅为 `sseUrl` 的兼容别名；两者同时提供时以 `sseUrl` 为准。`socketPath`、`enableSSE`、`reconnectAttempts`
+和 `reconnectDelay` 不再控制当前基于单次 fetch 流的 UI，类型中只为旧调用保留并标记为 deprecated。
+
+自定义集成配置请放到 `extensions`，需要随聊天请求发送的数据仍放到 `customData`：
+
+```typescript
+const config: WebChatConfig = {
+  sseUrl: 'https://example.com/api/chat',
+  extensions: {
+    pluginMode: 'compact',
+  },
+  customData: {
+    source: 'website',
+  },
+};
+```
+
 ### 浮动按钮额外配置
 
 ```typescript
-interface FloatingButtonProps extends WebChatConfig {
+interface FloatingButtonProps extends ChatProps {
   buttonText?: string;              // 按钮文字，默认：'聊天'
   position?: 'bottom-right' | 'bottom-left' | 'top-right' | 'top-left';
   // 默认：'bottom-right'

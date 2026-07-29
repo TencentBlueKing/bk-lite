@@ -190,6 +190,24 @@ export default {
 
 ## 5. Advanced Configuration
 
+### Configuration Extensions and Legacy Options
+
+Use `extensions` for integration-specific options. The namespace is preserved for wrappers but is not sent to the chat endpoint;
+use `customData` for request metadata.
+
+```tsx
+<FloatingButton
+  sseUrl="https://example.com/api/chat"
+  extensions={{ pluginMode: 'compact' }}
+  customData={{ source: 'website' }}
+/>
+```
+
+Legacy `socketUrl` remains a compatibility alias for `sseUrl`, with `sseUrl` taking precedence when both are present.
+`socketPath`, `enableSSE`, `reconnectAttempts`, and `reconnectDelay` no longer control the fetch-based UI and are retained only
+as deprecated source-compatible fields. Move the complete endpoint to `sseUrl`; move arbitrary top-level options under
+`extensions`.
+
 ### Custom Styling
 
 ```tsx
