@@ -31,6 +31,11 @@ export type DashboardExecutionStatus =
   | 'failed'
   | 'unknown';
 
+export interface DashboardExecutionCreated {
+  execution_id: number;
+  status: DashboardExecutionStatus;
+}
+
 export interface DashboardReportExecutionSnapshot {
   dashboard_id: number;
   creator_id: string;

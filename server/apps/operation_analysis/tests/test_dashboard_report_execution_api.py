@@ -94,16 +94,26 @@ def test_creator_with_dashboard_view_can_execute_and_retrieve(
     )
 
     assert create_response.status_code == 201, create_response.data
-    assert create_response.data["subscription"] == subscription.id
-    assert create_response.data["dashboard"] == subscription.dashboard_id
-    assert create_response.data["creator"] == authenticated_user.username
-    assert create_response.data["trigger_type"] == "manual"
-    assert create_response.data["status"] == "succeeded"
-    assert create_response.data["started_at"] is not None
-    assert create_response.data["finished_at"] is not None
-    assert create_response.data["failure_stage"] == ""
-    assert create_response.data["error_message"] == ""
-    assert create_response.data["snapshot"] == {
+    assert create_response.data == {
+        "execution_id": create_response.data["execution_id"],
+        "status": "pending",
+    }
+
+    retrieve_response = api_client.get(
+        f"{execution_url}{create_response.data['execution_id']}/"
+    )
+
+    assert retrieve_response.status_code == 200
+    assert retrieve_response.data["subscription"] == subscription.id
+    assert retrieve_response.data["dashboard"] == subscription.dashboard_id
+    assert retrieve_response.data["creator"] == authenticated_user.username
+    assert retrieve_response.data["trigger_type"] == "manual"
+    assert retrieve_response.data["status"] == "pending"
+    assert retrieve_response.data["started_at"] is None
+    assert retrieve_response.data["finished_at"] is None
+    assert retrieve_response.data["failure_stage"] == ""
+    assert retrieve_response.data["error_message"] == ""
+    assert retrieve_response.data["snapshot"] == {
         "dashboard_id": subscription.dashboard_id,
         "creator_id": authenticated_user.username,
         "subscription_id": subscription.id,
@@ -111,15 +121,8 @@ def test_creator_with_dashboard_view_can_execute_and_retrieve(
             "environment": "production",
             "time_range": "last_7_days",
         },
-        "created_at": create_response.data["snapshot"]["created_at"],
+        "created_at": retrieve_response.data["snapshot"]["created_at"],
     }
-
-    retrieve_response = api_client.get(
-        f"{execution_url}{create_response.data['id']}/"
-    )
-
-    assert retrieve_response.status_code == 200
-    assert retrieve_response.data == create_response.data
 
 
 def test_user_without_dashboard_view_cannot_execute(
@@ -150,7 +153,7 @@ def test_subscription_changes_do_not_affect_existing_snapshot(
         f"{subscription_url}{subscription.id}/execute/",
         format="json",
     )
-    execution_id = create_response.data["id"]
+    execution_id = create_response.data["execution_id"]
 
     subscription.config = {
         "filter_values": {
@@ -186,13 +189,14 @@ def test_snapshot_creation_failure_marks_execution_failed(
 
     assert response.status_code == 201, response.data
     assert response.data["status"] == "failed"
-    assert response.data["failure_stage"] == "snapshot"
-    assert response.data["error_message"] == (
-        "Execution Input Snapshot 创建失败"
+    execution = DashboardReportExecution.objects.get(
+        id=response.data["execution_id"]
     )
-    assert response.data["started_at"] is None
-    assert response.data["finished_at"] is not None
-    assert response.data["snapshot"] is None
+    assert execution.failure_stage == "snapshot"
+    assert execution.error_message == "Execution Input Snapshot 创建失败"
+    assert execution.started_at is None
+    assert execution.finished_at is not None
+    assert not hasattr(execution, "snapshot")
 
 
 def test_unexpected_snapshot_creation_failure_marks_execution_failed(
@@ -218,7 +222,9 @@ def test_unexpected_snapshot_creation_failure_marks_execution_failed(
     )
 
     assert response.status_code == 201, response.data
-    execution = DashboardReportExecution.objects.get(id=response.data["id"])
+    execution = DashboardReportExecution.objects.get(
+        id=response.data["execution_id"]
+    )
     assert execution.status == DashboardReportExecution.Status.FAILED
     assert execution.failure_stage == "snapshot"
     assert execution.error_message == "Execution Input Snapshot 创建失败"
@@ -239,7 +245,7 @@ def test_execution_snapshot_cannot_be_updated(
         format="json",
     )
     snapshot = DashboardReportExecutionSnapshot.objects.get(
-        execution_id=response.data["id"]
+        execution_id=response.data["execution_id"]
     )
 
     snapshot.filter_values = {"environment": "staging"}
@@ -268,6 +274,15 @@ def test_execution_service_enforces_status_transitions(
         creator=subscription.creator,
     )
 
+    with pytest.raises(
+        ValidationError,
+        match="不允许从 pending 转换到 succeeded",
+    ):
+        DashboardReportExecutionService.transition(
+            execution,
+            DashboardReportExecution.Status.SUCCEEDED,
+        )
+
     DashboardReportExecutionService.transition(
         execution,
         DashboardReportExecution.Status.RUNNING,
@@ -289,24 +304,21 @@ def test_execution_service_enforces_status_transitions(
         )
 
 
-def test_manual_execute_delegates_to_orchestrator(
+def test_manual_execute_does_not_run_orchestrator_in_request(
     api_client,
     subscription,
     subscription_url,
     monkeypatch,
 ):
     grant_dashboard_view(monkeypatch)
-    calls = []
-    execute = ExecutionOrchestrator.execute.__func__
-
-    def tracked_execute(cls, execution_id):
-        calls.append(execution_id)
-        return execute(cls, execution_id)
-
     monkeypatch.setattr(
         ExecutionOrchestrator,
         "execute",
-        classmethod(tracked_execute),
+        classmethod(
+            lambda cls, execution_id: pytest.fail(
+                "execute API must not run the orchestrator"
+            )
+        ),
     )
 
     response = api_client.post(
@@ -315,7 +327,8 @@ def test_manual_execute_delegates_to_orchestrator(
     )
 
     assert response.status_code == 201, response.data
-    assert calls == [response.data["id"]]
+    assert response.status_code == 201
+    assert response.data["status"] == "pending"
 
 
 def test_user_cannot_execute_another_users_subscription(

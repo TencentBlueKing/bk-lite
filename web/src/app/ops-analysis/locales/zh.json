@@ -807,7 +807,15 @@
     "subscriptionDeleteConfirm": "确认删除该报告订阅？",
     "subscriptionExecute": "立即测试",
     "subscriptionExecuteCreated": "测试执行已创建",
-    "subscriptionExecuteFailed": "测试执行创建失败"
+    "subscriptionExecuteFailed": "测试执行创建失败",
+    "subscriptionExecutionStatus": "状态",
+    "subscriptionExecutionRefresh": "刷新状态",
+    "subscriptionExecutionQueryFailed": "查询执行状态失败",
+    "executionStatusPending": "等待执行",
+    "executionStatusRunning": "执行中",
+    "executionStatusSucceeded": "执行成功",
+    "executionStatusFailed": "执行失败",
+    "executionStatusUnknown": "状态未知"
   },
   "opsAnalysisSidebar": {
     "addArch": "添加架构图",

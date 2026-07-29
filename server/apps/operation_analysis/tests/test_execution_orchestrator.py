@@ -9,6 +9,7 @@ from apps.operation_analysis.models.subscription_models import (
 from apps.operation_analysis.services.execution_orchestrator import (
     DeliveryStep,
     ExecutionOrchestrator,
+    ExecutionStepResult,
     PermissionStep,
     RenderStep,
     SnapshotStep,
@@ -56,7 +57,7 @@ def execution(authenticated_user):
     return execution
 
 
-def test_orchestrator_completes_pending_execution(
+def test_orchestrator_does_not_succeed_before_render_is_implemented(
     execution,
     monkeypatch,
 ):
@@ -66,9 +67,9 @@ def test_orchestrator_completes_pending_execution(
 
     execution.refresh_from_db()
     assert result.id == execution.id
-    assert execution.status == DashboardReportExecution.Status.SUCCEEDED
+    assert execution.status == DashboardReportExecution.Status.RUNNING
     assert execution.started_at is not None
-    assert execution.finished_at is not None
+    assert execution.finished_at is None
     assert execution.failure_stage == ""
     assert execution.error_message == ""
 
@@ -82,7 +83,10 @@ def test_orchestrator_runs_steps_in_order(
     monkeypatch.setattr(
         PermissionStep,
         "execute",
-        lambda current: calls.append("permission"),
+        lambda current: (
+            calls.append("permission"),
+            ExecutionStepResult.COMPLETED,
+        )[1],
     )
 
     def snapshot_step(current):
@@ -93,7 +97,10 @@ def test_orchestrator_runs_steps_in_order(
     monkeypatch.setattr(
         RenderStep,
         "execute",
-        lambda current, snapshot: calls.append("render"),
+        lambda current, snapshot: (
+            calls.append("render"),
+            ExecutionStepResult.NOT_READY,
+        )[1],
     )
     monkeypatch.setattr(
         DeliveryStep,
@@ -103,7 +110,26 @@ def test_orchestrator_runs_steps_in_order(
 
     ExecutionOrchestrator.execute(execution.id)
 
-    assert calls == ["permission", "snapshot", "render", "delivery"]
+    assert calls == ["permission", "snapshot", "render"]
+
+
+def test_orchestrator_does_not_succeed_before_delivery_is_implemented(
+    execution,
+    monkeypatch,
+):
+    set_dashboard_view_permission(monkeypatch, True)
+    monkeypatch.setattr(
+        RenderStep,
+        "execute",
+        lambda current, snapshot: ExecutionStepResult.COMPLETED,
+    )
+
+    result = ExecutionOrchestrator.execute(execution.id)
+
+    execution.refresh_from_db()
+    assert result.id == execution.id
+    assert execution.status == DashboardReportExecution.Status.RUNNING
+    assert execution.finished_at is None
 
 
 def test_orchestrator_fails_when_creator_loses_dashboard_view(

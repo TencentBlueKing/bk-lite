@@ -96,6 +96,28 @@ Phase 1C 未新增 operation_analysis Celery Task，也未实现 Scheduler、Cel
 Beat、Chromium、PDF、Email、SMTP、Retry、Render Token、Share Token 或
 DataSource Runtime Snapshot。
 
+## Phase 1C.1 实现状态（2026-07-29）
+
+Phase 1C.1 已修正上述占位步骤导致的假成功语义：
+
+- `POST /dashboard_subscription/{id}/execute/` 只同步创建 Execution 与
+  Execution Input Snapshot，立即返回 `{execution_id, status}`；
+- 正常创建结果为 `pending`，HTTP View 不调用 Orchestrator，不等待未来 Render
+  或 Delivery 长流程；
+- Execution 详情继续通过 `GET /dashboard_execution/{id}/` 查询；
+- `pending → succeeded` 继续由状态机禁止；
+- Orchestrator 启动时仍通过 Service 推进 `pending → running`，但
+  `RenderStep`/`DeliveryStep` 在未实现时返回 `not_ready`；
+- 任一步骤为 `not_ready` 时 Orchestrator 停止后续步骤并保持 `running`，
+  只有 Render 与 Delivery 都明确返回 `completed` 后才允许进入
+  `succeeded`；
+- Dashboard Subscription Modal 展示新建 Execution 的 `pending` 状态，并允许
+  用户刷新单条 Execution 状态；查询失败显示明确错误。
+
+本阶段没有异步派发任务，因此由 API 创建的 Execution 会保持 `pending`，直到
+后续 Render Vertical Slice 引入真实消费者。Phase 1C.1 不实现 Chromium、
+PDF、Email、Scheduler、Retry、Render Token 或 Render Snapshot。
+
 ## Problem Statement
 
 运营分析仪表盘已经支持用户在浏览器中手工导出 PDF，但现有实现依赖当前页面 DOM、`html-to-image`、`jsPDF.save()` 和用户登录会话，只能下载到用户本机，不能由后台周期任务无会话生成并作为邮件附件发送。

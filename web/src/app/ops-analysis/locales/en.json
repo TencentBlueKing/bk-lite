@@ -807,7 +807,15 @@
     "subscriptionDeleteConfirm": "Delete this report subscription?",
     "subscriptionExecute": "Test now",
     "subscriptionExecuteCreated": "Test execution created",
-    "subscriptionExecuteFailed": "Failed to create test execution"
+    "subscriptionExecuteFailed": "Failed to create test execution",
+    "subscriptionExecutionStatus": "Status",
+    "subscriptionExecutionRefresh": "Refresh status",
+    "subscriptionExecutionQueryFailed": "Failed to query execution status",
+    "executionStatusPending": "Pending",
+    "executionStatusRunning": "Running",
+    "executionStatusSucceeded": "Succeeded",
+    "executionStatusFailed": "Failed",
+    "executionStatusUnknown": "Unknown"
   },
   "opsAnalysisSidebar": {
     "addArch": "Add Architecture",

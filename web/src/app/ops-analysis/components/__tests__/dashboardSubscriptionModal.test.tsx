@@ -12,6 +12,7 @@ const api = {
   updateSubscription: vi.fn(),
   deleteSubscription: vi.fn(),
   executeSubscription: vi.fn(),
+  getExecution: vi.fn(),
 };
 
 const makeSubscription = (
@@ -49,6 +50,11 @@ const translate = (key: string) =>
     'dashboard.subscriptionExecute': '立即测试',
     'dashboard.subscriptionExecuteCreated': '测试执行已创建',
     'dashboard.subscriptionExecuteFailed': '测试执行创建失败',
+    'dashboard.subscriptionExecutionStatus': '状态',
+    'dashboard.executionStatusPending': '等待执行',
+    'dashboard.executionStatusFailed': '执行失败',
+    'dashboard.subscriptionExecutionRefresh': '刷新状态',
+    'dashboard.subscriptionExecutionQueryFailed': '查询执行状态失败',
     'common.edit': '编辑',
     'common.delete': '删除',
     'common.cancel': '取消',
@@ -64,17 +70,21 @@ beforeEach(() => {
   api.listSubscriptions.mockResolvedValue([]);
   api.createSubscription.mockResolvedValue(makeSubscription());
   api.executeSubscription.mockResolvedValue({
+    execution_id: 10,
+    status: 'pending',
+  });
+  api.getExecution.mockResolvedValue({
     id: 10,
     subscription: 1,
     dashboard: 8,
     creator: 'test',
-    status: 'succeeded',
+    status: 'pending',
     trigger_type: 'manual',
     failure_stage: '',
     error_message: '',
     created_at: '2026-07-28T00:00:00Z',
-    started_at: '2026-07-28T00:00:00Z',
-    finished_at: '2026-07-28T00:00:01Z',
+    started_at: null,
+    finished_at: null,
     snapshot: {
       dashboard_id: 8,
       creator_id: 'test',
@@ -212,7 +222,7 @@ describe('DashboardSubscriptionModal', () => {
     });
   });
 
-  it('creates a manual test execution and shows success', async () => {
+  it('creates a pending manual test execution and displays its status', async () => {
     api.listSubscriptions.mockResolvedValue([makeSubscription()]);
     const user = userEvent.setup();
     render(
@@ -230,7 +240,64 @@ describe('DashboardSubscriptionModal', () => {
     await waitFor(() => {
       expect(api.executeSubscription).toHaveBeenCalledWith(1);
     });
-    expect(await screen.findByText('测试执行已创建')).not.toBeNull();
+    expect(
+      await screen.findByText('测试执行已创建 · 状态：等待执行'),
+    ).not.toBeNull();
+  });
+
+  it('shows an error when querying execution status fails', async () => {
+    api.listSubscriptions.mockResolvedValue([makeSubscription()]);
+    api.getExecution.mockRejectedValueOnce(new Error('boom'));
+    const user = userEvent.setup();
+    render(
+      <DashboardSubscriptionModal
+        open
+        dashboardId={8}
+        onClose={vi.fn()}
+      />,
+    );
+
+    await user.click(
+      await screen.findByRole('button', { name: '立即测试' }),
+    );
+    await user.click(
+      await screen.findByRole('button', { name: '刷新状态' }),
+    );
+
+    await waitFor(() => {
+      expect(api.getExecution).toHaveBeenCalledWith(10);
+    });
+    expect(await screen.findByText('查询执行状态失败')).not.toBeNull();
+  });
+
+  it('shows a failed execution with error semantics', async () => {
+    api.listSubscriptions.mockResolvedValue([makeSubscription()]);
+    api.getExecution.mockResolvedValueOnce({
+      id: 10,
+      status: 'failed',
+    });
+    const user = userEvent.setup();
+    render(
+      <DashboardSubscriptionModal
+        open
+        dashboardId={8}
+        onClose={vi.fn()}
+      />,
+    );
+
+    await user.click(
+      await screen.findByRole('button', { name: '立即测试' }),
+    );
+    await user.click(
+      await screen.findByRole('button', { name: '刷新状态' }),
+    );
+
+    const executionAlert = await screen.findByText(
+      '测试执行已创建 · 状态：执行失败',
+    );
+    expect(executionAlert.closest('[role="alert"]')?.className).toContain(
+      'ant-alert-error',
+    );
   });
 
   it('shows an error when manual execution creation fails', async () => {

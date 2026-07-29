@@ -20,6 +20,8 @@ import { PlusOutlined } from '@ant-design/icons';
 
 import { useDashboardSubscriptionApi } from '@/app/ops-analysis/api/dashboardSubscription';
 import type {
+  DashboardExecutionCreated,
+  DashboardExecutionStatus,
   DashboardSubscription,
   DashboardSubscriptionStatus,
 } from '@/app/ops-analysis/types/dashboardSubscription';
@@ -49,6 +51,7 @@ const DashboardSubscriptionModal = ({
     updateSubscription,
     deleteSubscription,
     executeSubscription,
+    getExecution,
   } = useDashboardSubscriptionApi();
   const [form] = Form.useForm<SubscriptionFormValues>();
   const [subscriptions, setSubscriptions] = useState<
@@ -60,17 +63,21 @@ const DashboardSubscriptionModal = ({
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [executingId, setExecutingId] = useState<number | null>(null);
+  const [queryingExecution, setQueryingExecution] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
   const [executionNotice, setExecutionNotice] = useState<string | null>(
     null,
   );
+  const [executionResult, setExecutionResult] =
+    useState<DashboardExecutionCreated | null>(null);
 
   const loadSubscriptions = useCallback(async () => {
     setLoading(true);
     setError(null);
     setLoadFailed(false);
     setExecutionNotice(null);
+    setExecutionResult(null);
     try {
       setSubscriptions(await listSubscriptions(dashboardId));
     } catch {
@@ -160,14 +167,45 @@ const DashboardSubscriptionModal = ({
     setError(null);
     setLoadFailed(false);
     setExecutionNotice(null);
+    setExecutionResult(null);
     try {
-      await executeSubscription(id);
+      const result = await executeSubscription(id);
+      setExecutionResult(result);
       setExecutionNotice(t('dashboard.subscriptionExecuteCreated'));
     } catch {
       setError(t('dashboard.subscriptionExecuteFailed'));
     } finally {
       setExecutingId(null);
     }
+  };
+
+  const refreshExecutionStatus = async () => {
+    if (!executionResult) return;
+    setQueryingExecution(true);
+    setError(null);
+    try {
+      const execution = await getExecution(executionResult.execution_id);
+      setExecutionResult({
+        execution_id: execution.id,
+        status: execution.status,
+      });
+    } catch {
+      setError(t('dashboard.subscriptionExecutionQueryFailed'));
+    } finally {
+      setQueryingExecution(false);
+    }
+  };
+
+  const executionStatusLabel = (status: DashboardExecutionStatus) =>
+    t(`dashboard.executionStatus${status[0].toUpperCase()}${status.slice(1)}`);
+
+  const executionAlertType = (
+    status: DashboardExecutionStatus,
+  ): 'success' | 'info' | 'warning' | 'error' => {
+    if (status === 'succeeded') return 'success';
+    if (status === 'failed') return 'error';
+    if (status === 'unknown') return 'warning';
+    return 'info';
   };
 
   return (
@@ -206,9 +244,28 @@ const DashboardSubscriptionModal = ({
       {executionNotice && (
         <Alert
           className="mb-4"
-          type="success"
+          type={
+            executionResult
+              ? executionAlertType(executionResult.status)
+              : 'info'
+          }
           showIcon
-          message={executionNotice}
+          message={
+            executionResult
+              ? `${executionNotice} · ${t('dashboard.subscriptionExecutionStatus')}：${executionStatusLabel(executionResult.status)}`
+              : executionNotice
+          }
+          action={
+            executionResult ? (
+              <Button
+                size="small"
+                loading={queryingExecution}
+                onClick={() => void refreshExecutionStatus()}
+              >
+                {t('dashboard.subscriptionExecutionRefresh')}
+              </Button>
+            ) : undefined
+          }
         />
       )}
 

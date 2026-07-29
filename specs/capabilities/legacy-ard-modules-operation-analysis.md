@@ -32,7 +32,7 @@
 - `scene_widgets/network_status_topology`（POST）：按 `model_id`、`inst_id`、`depth` 构建网络状态拓扑场景数据，是网络状态拓扑组件的专用后端入口；复用 CMDB network_topology/实例权限并汇总 Alerts 活跃告警，权限动作 `view`（证据：`urls.py:23`、`views/scene_widget_view.py:10-23,10,12`、`services/network_status_topology.py:5,65,87`）。
 - `screen` / `report`【已实现/已存在】：通过 `CanvasModelViewSet` 复用画布类 CRUD、权限与内置对象保护逻辑，新增 `directory.screen` 与 `directory.report` 两类权限域（`views/view.py:347-423`）。
 - `dashboard_subscription`【Phase 1A 已实现】：提供当前用户 Dashboard 报告订阅的 GET/POST/PATCH/DELETE。创建与更新要求当前用户仍可查看目标 Dashboard；删除允许创建者在 Dashboard 查看权限丢失后清理；`terminated` 暂不对 API 开放（证据：`views/subscription_view.py`、`services/subscription_service.py`、`serializers/subscription_serializers.py`）。
-- `dashboard_subscription/{id}/execute` 与 `dashboard_execution/{id}`【Phase 1C 已实现】：前者为已保存订阅创建一次 manual Execution、冻结一对一 Input Snapshot，并委托 `ExecutionOrchestrator.execute(execution_id)` 顺序执行权限复核、Snapshot 校验及无副作用的 Render/Delivery placeholder；状态统一通过 `DashboardReportExecutionService.transition()` 转换。后者只读返回当前用户自己的执行及 Snapshot。本阶段的 `succeeded` 只表示基础编排完成，不表示 PDF 已生成或邮件已投递（证据：`views/{subscription_view,execution_view}.py`、`services/{execution_service,execution_orchestrator}.py`、`serializers/execution_serializers.py`）。
+- `dashboard_subscription/{id}/execute` 与 `dashboard_execution/{id}`【Phase 1C.1 已实现】：前者只为已保存订阅创建 manual Execution、冻结一对一 Input Snapshot，并立即返回 `pending` Execution ID；请求线程不调用 Orchestrator。后者只读返回当前用户自己的执行及 Snapshot。`ExecutionOrchestrator` 遇到尚未实现的 Render/Delivery `not_ready` 结果时保持 `running`，只有两个步骤均明确完成后才允许进入 `succeeded`（证据：`views/{subscription_view,execution_view}.py`、`services/{execution_service,execution_orchestrator}.py`、`serializers/execution_serializers.py`）。
 - `open_api/import_export`：开放导入导出 API 通过 `api_pass`/API Token 校验，支持 `export`、`precheck_import`、`submit_import` 三类动作；授权服务解析组织、计算导入导出权限矩阵，并在实例/组织维度过滤对象（证据：`views/openapi_import_export_view.py:34,48,118,190,280`、`services/import_export/authorization_service.py:24,71,87,180`）。
 
 安全说明【已实现/已存在】：`NameSpace` 密码使用 AES（`PasswordCrypto`）加解密，密钥取自 `constants.constants.SECRET_KEY`；该密钥已移除源码内置硬编码值，仅从环境变量 `SECRET_KEY` 读取，未配置时为空串（`constants/constants.py:51-53`）。命名空间编辑时前端只回显掩码占位符；若用户未修改密码，提交时会省略 `password` 字段并以 PATCH 保留原密文，避免因重复提交掩码值而覆盖真实密码（`web/src/app/ops-analysis/(pages)/settings/namespace/operateModal.tsx:10-18,30-49,74-83`、`web/src/app/ops-analysis/api/namespace.ts:22-27`）。
@@ -98,6 +98,7 @@
 ## 2026-07-29 Phase 1C 校准
 
 - `[operation_analysis#20260729-004]` 新增统一 Execution Orchestrator 和 Permission/Snapshot/Render/Delivery 步骤边界。Manual Execute API 委托同一 Orchestrator；权限或 Snapshot 校验失败分别记录 `permission_check` / `snapshot`。Render 与 Delivery 仍为无副作用 placeholder，未接入异步任务、Chromium、PDF 或邮件。
+- `[operation_analysis#20260729-005]` 修正 Manual Execute 异步边界与成功语义：POST 只创建并返回 `pending` Execution；View 不再同步调用 Orchestrator；未实现的 Render/Delivery 返回 `not_ready`，不得产生 `succeeded`。Subscription Modal 可查询并展示单条 Execution 状态。
 
 ## 6. 证据来源
 `server/apps/operation_analysis/{urls.py,models/*,views/datasource_view.py,views/view.py,nats/nats.py,common/get_nats_source_data.py,constants/constants.py,tasks/tasks.py,management/commands/*,services/*}`、`apps/operation_analysis/migrations/0010_remove_namespace_groups.py`、`apps/rpc/base.py:OperationAnalysisRpc`、`web/src/app/ops-analysis/{utils/widgetRequestCache.ts,components/widgetDataRenderer.tsx,api/namespace.ts,(pages)/settings/namespace/operateModal.tsx}`。

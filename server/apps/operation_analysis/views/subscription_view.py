@@ -9,14 +9,8 @@ from apps.operation_analysis.models.subscription_models import (
 from apps.operation_analysis.serializers.subscription_serializers import (
     DashboardReportSubscriptionSerializer,
 )
-from apps.operation_analysis.serializers.execution_serializers import (
-    DashboardReportExecutionSerializer,
-)
 from apps.operation_analysis.services.execution_service import (
     DashboardReportExecutionService,
-)
-from apps.operation_analysis.services.execution_orchestrator import (
-    ExecutionOrchestrator,
 )
 from apps.operation_analysis.services.subscription_service import (
     DashboardSubscriptionService,
@@ -75,9 +69,10 @@ class DashboardReportSubscriptionViewSet(viewsets.ModelViewSet):
             request,
             self.get_object(),
         )
-        if execution.status == execution.Status.PENDING:
-            execution = ExecutionOrchestrator.execute(execution.id)
         return Response(
-            DashboardReportExecutionSerializer(execution).data,
+            {
+                "execution_id": execution.id,
+                "status": execution.status,
+            },
             status=status.HTTP_201_CREATED,
         )

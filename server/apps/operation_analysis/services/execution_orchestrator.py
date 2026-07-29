@@ -13,7 +13,7 @@ from apps.operation_analysis.services.execution_service import (
 
 class ExecutionStepResult(StrEnum):
     COMPLETED = "completed"
-    PLACEHOLDER = "placeholder"
+    NOT_READY = "not_ready"
 
 
 @dataclass
@@ -111,7 +111,7 @@ class RenderStep:
         execution: DashboardReportExecution,
         snapshot: DashboardReportExecutionSnapshot,
     ) -> ExecutionStepResult:
-        return ExecutionStepResult.PLACEHOLDER
+        return ExecutionStepResult.NOT_READY
 
 
 class DeliveryStep:
@@ -120,7 +120,7 @@ class DeliveryStep:
         execution: DashboardReportExecution,
         snapshot: DashboardReportExecutionSnapshot,
     ) -> ExecutionStepResult:
-        return ExecutionStepResult.PLACEHOLDER
+        return ExecutionStepResult.NOT_READY
 
 
 class ExecutionOrchestrator:
@@ -139,8 +139,12 @@ class ExecutionOrchestrator:
         try:
             PermissionStep.execute(execution)
             snapshot = SnapshotStep.execute(execution)
-            RenderStep.execute(execution, snapshot)
-            DeliveryStep.execute(execution, snapshot)
+            render_result = RenderStep.execute(execution, snapshot)
+            if render_result != ExecutionStepResult.COMPLETED:
+                return execution
+            delivery_result = DeliveryStep.execute(execution, snapshot)
+            if delivery_result != ExecutionStepResult.COMPLETED:
+                return execution
         except ExecutionStepError as exc:
             return DashboardReportExecutionService.transition(
                 execution,
