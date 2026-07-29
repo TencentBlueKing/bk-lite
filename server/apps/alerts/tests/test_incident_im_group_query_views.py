@@ -53,6 +53,50 @@ def test_options_read_only_operator_with_channel_id_returns_empty_safe_payload_w
 
 
 @pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("permissions", "expected"),
+    (
+        (
+            {"Incidents-View"},
+            {
+                "can_manage": False,
+                "can_retry": False,
+                "can_pause": False,
+                "can_resume": False,
+                "can_unlink": False,
+            },
+        ),
+        (
+            {"Incidents-View", "Incidents-Edit"},
+            {
+                "can_manage": True,
+                "can_retry": True,
+                "can_pause": True,
+                "can_resume": False,
+                "can_unlink": True,
+            },
+        ),
+    ),
+)
+def test_group_permissions_follow_operator_and_incident_edit_contract(
+    api_client,
+    operator,
+    incident,
+    channel,
+    permissions,
+    expected,
+):
+    create_active_group(incident, channel)
+    operator.permission = {"alarm": permissions}
+    api_client.force_authenticate(operator)
+
+    response = api_client.get(group_url(incident))
+
+    assert response.status_code == 200
+    assert response.json()["data"]["permissions"] == expected
+
+
+@pytest.mark.django_db
 def test_collaborator_group_response_exposes_safe_ui_contract_without_guessing_chat_url(api_client, collaborator, incident, channel):
     group = create_active_group(
         incident,
@@ -234,6 +278,72 @@ def test_create_snapshots_partially_mapped_members_and_enqueues_outbox(api_clien
     create_log = OperatorLog.objects.get(target_id=incident.incident_id, overview__contains="创建飞书群请求",)
     assert "成员 2 人" in create_log.overview
     assert "ou_operator" not in create_log.overview
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("username_length", (33, 100))
+def test_create_accepts_owner_username_up_to_im_mapping_user_model_limit(
+    api_client,
+    operator,
+    incident,
+    channel,
+    username_length,
+):
+    owner_username = "a" * username_length
+    operator.username = owner_username
+    operator.save(update_fields=["username"])
+    incident.operator = [owner_username]
+    incident.save(update_fields=["operator"])
+    mapped_user = IMUser.objects.create(
+        username=owner_username,
+        display_name="Long Username Operator",
+        email="long-username@example.com",
+        password="test-pass",
+    )
+    IMNotificationUserMapping.objects.create(
+        channel=channel,
+        user=mapped_user,
+        external_identity_key="open_id",
+        external_identity_value=owner_username,
+        external_receive_key="open_id",
+        external_snapshot={"open_id": "ou_long_username"},
+    )
+    api_client.force_authenticate(operator)
+
+    response = api_client.post(
+        group_url(incident),
+        create_payload(channel, owner_username=owner_username),
+        format="json",
+    )
+
+    assert response.status_code == 202
+    assert IncidentIMGroup.objects.get(incident=incident).created_by == owner_username
+
+
+@pytest.mark.django_db
+def test_create_rejects_owner_username_above_im_mapping_user_model_limit(
+    api_client,
+    operator,
+    incident,
+    channel,
+):
+    owner_username = "a" * 101
+    operator.username = owner_username
+    operator.save(update_fields=["username"])
+    incident.operator = [owner_username]
+    incident.save(update_fields=["operator"])
+    api_client.force_authenticate(operator)
+
+    response = api_client.post(
+        group_url(incident),
+        create_payload(channel, owner_username=owner_username),
+        format="json",
+    )
+
+    assert response.status_code == 400
+    assert response.json()["code"] == "40000"
+    assert response.json()["message"].startswith("owner_username:")
+    assert not IncidentIMGroup.objects.filter(incident=incident).exists()
 
 
 @pytest.mark.django_db(transaction=True)

@@ -80,6 +80,12 @@ def test_group_has_independent_nullable_reconcile_attempt_cursor():
     assert field.blank is True
 
 
+def test_group_actor_audit_fields_accept_authenticated_username_limit():
+    assert IncidentIMGroup._meta.get_field("created_by").max_length == 150
+    assert IncidentIMGroup._meta.get_field("updated_by").max_length == 150
+    assert IncidentIMGroup._meta.get_field("unlinked_by").max_length == 150
+
+
 @pytest.mark.django_db
 def test_member_identity_is_snapshot_not_mapping_foreign_key(group):
     field_names = {field.name for field in IncidentIMMember._meta.fields}

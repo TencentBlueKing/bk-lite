@@ -177,6 +177,8 @@ export const IMGroupMemberDrawer = ({
               type="link"
               size="small"
               className="p-0"
+              loading={retryLoading}
+              disabled={retryLoading}
               onClick={() => void onRetry(member.username)}
             >
               {t('incidents.imGroup.retryMember')}

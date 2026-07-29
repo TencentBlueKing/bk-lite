@@ -123,7 +123,7 @@ class IncidentIMGroupViewSet(ModelViewSet):
         for item in rows:
             sync_counts[item["sync_status"]] = sync_counts.get(item["sync_status"], 0) + item["count"]
         non_joined_rows = [item for item in rows if item["sync_status"] != IncidentIMMember.SyncStatus.JOINED]
-        can_manage = self.request.user.username in (incident.operator or [])
+        can_manage = self._can_manage_incident(incident)
         member_summary = {
             "total": sum(item["count"] for item in rows),
             "joined": sync_counts.get(IncidentIMMember.SyncStatus.JOINED, 0),

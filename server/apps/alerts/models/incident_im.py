@@ -2,6 +2,7 @@ import uuid
 
 from django.db import models
 
+from apps.base.models import User as AuthUser
 from apps.core.models.maintainer_info import MaintainerInfo
 from apps.core.models.time_info import TimeInfo
 
@@ -28,6 +29,17 @@ class IncidentIMGroup(MaintainerInfo, TimeInfo):
         MANUAL = "manual", "手工暂停"
         INCIDENT_CLOSED = "incident_closed", "Incident 已关闭"
 
+    # 群主来自 IM 映射，但审计操作者来自认证用户，需覆盖 MaintainerInfo 的全局 32 字符默认值。
+    created_by = models.CharField(
+        "Creator",
+        max_length=AuthUser._meta.get_field("username").max_length,
+        default="",
+    )
+    updated_by = models.CharField(
+        "Updater",
+        max_length=AuthUser._meta.get_field("username").max_length,
+        default="",
+    )
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     incident = models.ForeignKey("alerts.Incident", on_delete=models.CASCADE, related_name="im_groups")
     channel = models.ForeignKey(
@@ -55,7 +67,11 @@ class IncidentIMGroup(MaintainerInfo, TimeInfo):
     last_sync_at = models.DateTimeField(null=True, blank=True)
     last_reconcile_attempt_at = models.DateTimeField(null=True, blank=True)
     unlinked_at = models.DateTimeField(null=True, blank=True)
-    unlinked_by = models.CharField(max_length=32, blank=True, default="")
+    unlinked_by = models.CharField(
+        max_length=AuthUser._meta.get_field("username").max_length,
+        blank=True,
+        default="",
+    )
 
     class Meta:
         constraints = [

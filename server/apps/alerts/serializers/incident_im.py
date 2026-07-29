@@ -7,7 +7,7 @@ from apps.system_mgmt.models import User
 class IncidentIMGroupCreateSerializer(serializers.Serializer):
     channel_id = serializers.IntegerField(min_value=1)
     group_name = serializers.CharField(min_length=1, max_length=255, trim_whitespace=True)
-    owner_username = serializers.CharField(max_length=32)
+    owner_username = serializers.CharField(max_length=User._meta.get_field("username").max_length)
     continuous_sync_enabled = serializers.BooleanField(default=True)
 
 

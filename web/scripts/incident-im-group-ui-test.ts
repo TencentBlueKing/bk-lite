@@ -684,6 +684,11 @@ assert.match(memberDrawerText, /pageSize:\s*20/);
 assert.match(memberDrawerText, /min\(720px,\s*100vw\)/);
 assert.match(memberDrawerText, /onRetry\(member\.username\)/);
 assert.match(memberDrawerText, /onRetry\(\)/);
+assert.match(
+  memberDrawerText,
+  /loading=\{retryLoading\}\s+disabled=\{retryLoading\}\s+onClick=\{\(\) => void onRetry\(member\.username\)\}/,
+  'single-member retry must be loading and disabled while a retry request is in flight',
+);
 
 const hookPath = task10Files.find(filePath => filePath.endsWith('/useIncidentIMGroup.ts'));
 assert.ok(hookPath);

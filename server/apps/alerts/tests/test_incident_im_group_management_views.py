@@ -8,10 +8,62 @@ from apps.alerts.constants.constants import IncidentStatus
 from apps.alerts.models import AlertOutbox, Incident, IncidentIMGroup, IncidentIMMember, OperatorLog
 from apps.alerts.service.incident_im.errors import IncidentIMError
 from apps.alerts.service.incident_im.groups import IncidentIMGroupService
-from apps.alerts.tests.incident_im_group_fixtures import create_active_group, group_url
+from apps.alerts.tests.incident_im_group_fixtures import create_active_group, create_payload, group_url
 
 pytestmark = [pytest.mark.integration, pytest.mark.django_db]
 pytest_plugins = ["apps.alerts.tests.incident_im_group_fixtures"]
+
+
+@pytest.mark.django_db
+def test_long_authenticated_operator_is_preserved_across_group_audit_lifecycle(
+    api_client,
+    operator,
+    incident,
+    channel,
+    operator_mapping,
+):
+    actor_username = "a" * 150
+    operator.username = actor_username
+    operator.save(update_fields=["username"])
+    incident.operator = [actor_username, "operator"]
+    incident.save(update_fields=["operator"])
+    api_client.force_authenticate(operator)
+
+    created = api_client.post(
+        group_url(incident),
+        create_payload(channel, owner_username="operator"),
+        format="json",
+    )
+
+    assert created.status_code == 202
+    group = IncidentIMGroup.objects.get(incident=incident)
+    assert group.created_by == actor_username
+
+    group.status = IncidentIMGroup.Status.ACTIVE
+    group.current_stage = IncidentIMGroup.Stage.COMPLETED
+    group.save(update_fields=["status", "current_stage"])
+    settings_response = api_client.patch(
+        group_url(incident),
+        {"continuous_sync_enabled": False},
+        format="json",
+    )
+    paused = api_client.post(f"{group_url(incident)}pause/")
+
+    assert settings_response.status_code == 200
+    assert paused.status_code == 200
+    group.refresh_from_db()
+    assert group.updated_by == actor_username
+
+    unlinked = api_client.delete(
+        group_url(incident),
+        {"group_name": group.group_name},
+        format="json",
+    )
+
+    assert unlinked.status_code == 200
+    group.refresh_from_db()
+    assert group.updated_by == actor_username
+    assert group.unlinked_by == actor_username
 
 
 @pytest.mark.django_db
