@@ -666,6 +666,64 @@ assert.ok(
 );
 assert.match(collaborationText, /refreshVersion=\{imGroupRefreshVersion\}/);
 assert.match(collaborationText, /removeCollaboratorWarning/);
+assert.match(
+  collaborationText,
+  /import MoreActionsDropdown from ['"]@\/components\/more-actions-dropdown['"]/,
+  'collaboration timeline actions must be a second real MoreActionsDropdown consumer',
+);
+assert.doesNotMatch(
+  collaborationText,
+  /<Dropdown[\s\S]*?<MoreOutlined/,
+  'collaboration timeline must not compose Dropdown and MoreOutlined directly',
+);
+
+const imGroupPanelPath = task10Files.find(filePath => filePath.endsWith('/imGroup/index.tsx'));
+assert.ok(imGroupPanelPath);
+const imGroupPanelText = parseSource(imGroupPanelPath).getFullText();
+assert.match(
+  imGroupPanelText,
+  /import MoreActionsDropdown from ['"]@\/components\/more-actions-dropdown['"]/,
+  'IM group actions must reuse the shared MoreActionsDropdown primitive',
+);
+
+const moreActionsDropdownText = parseSource(
+  'src/components/more-actions-dropdown/index.tsx',
+).getFullText();
+assert.match(
+  moreActionsDropdownText,
+  /const \[open,\s*setOpen\] = React\.useState\(false\)/,
+  'MoreActionsDropdown must control its overlay state',
+);
+assert.match(
+  moreActionsDropdownText,
+  /<Dropdown[\s\S]*?open=\{open\}[\s\S]*?onOpenChange=\{setOpen\}/,
+  'MoreActionsDropdown must wire controlled open state to Dropdown',
+);
+assert.equal(
+  moreActionsDropdownText.match(/<Button\b/g)?.length,
+  1,
+  'MoreActionsDropdown labels must be non-interactive; only the trigger may be a Button',
+);
+assert.match(
+  moreActionsDropdownText,
+  /const \{ hasPermission \} = usePermissions\(\)/,
+  'MoreActionsDropdown must resolve item permissions through usePermissions',
+);
+assert.match(
+  moreActionsDropdownText,
+  /disabled,\s*danger:\s*item\.danger,\s*icon:\s*item\.icon,\s*onClick:/,
+  'Ant menu items must own disabled, danger, icon, and click behavior',
+);
+assert.match(
+  moreActionsDropdownText,
+  /info\.domEvent\.stopPropagation\(\);\s*setOpen\(false\);\s*runItem\(item\);/,
+  'an enabled Ant menu item must stop propagation, close the overlay, then run the action',
+);
+assert.match(
+  moreActionsDropdownText,
+  /const disabled = Boolean\(item\.disabled\) \|\| !hasItemPermission;/,
+  'disabled and unauthorized menu items must remain non-actionable',
+);
 
 const createModalPath = task10Files.find(filePath => filePath.endsWith('/createModal.tsx'));
 assert.ok(createModalPath);

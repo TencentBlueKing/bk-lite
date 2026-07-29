@@ -432,6 +432,7 @@ def _log_feishu_group_request(
     )
     duration_ms = max(0, round((time.monotonic() - started_at) * 1000))
     log = logger.info if result.success else logger.warning
+    safe_request_id = _sanitize_external_log_value(request_id)
     try:
         log(
             "feishu im group provider request "
@@ -440,7 +441,7 @@ def _log_feishu_group_request(
             operation,
             outcome,
             error_code,
-            request_id,
+            safe_request_id,
             member_count,
             duration_ms,
             retryable,
@@ -450,7 +451,7 @@ def _log_feishu_group_request(
                 "duration_ms": duration_ms,
                 "result": outcome,
                 "error_code": error_code,
-                "request_id": request_id,
+                "request_id": safe_request_id,
                 "member_count": member_count,
                 "retryable": retryable,
             },
@@ -458,6 +459,16 @@ def _log_feishu_group_request(
     except Exception:
         # 可观测性不得改变外部能力调用的业务结果。
         pass
+
+
+def _sanitize_external_log_value(value, *, max_length=200):
+    return (
+        str(value)
+        .replace("\\", "\\\\")
+        .replace("\r", "\\r")
+        .replace("\n", "\\n")
+        .replace("\t", "\\t")[:max_length]
+    )
 
 
 def _execute_feishu_group_request(

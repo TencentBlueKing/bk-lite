@@ -707,6 +707,59 @@ def test_group_request_emits_safe_structured_observability_fields(monkeypatch):
         assert secret not in rendered
 
 
+def test_group_request_sanitizes_untrusted_response_request_id_in_message_and_extra(caplog):
+    forged_request_id = "ok\r\nforged="
+    with caplog.at_level(logging.INFO), mock.patch(
+        "apps.system_mgmt.providers.adapters.feishu._fetch_tenant_access_token",
+        return_value=("tenant-token", None),
+    ), mock.patch(
+        "apps.system_mgmt.providers.adapters.feishu.requests.post",
+        side_effect=[
+            FakeResponse(
+                {"code": 0, "data": {"invalid_id_list": []}},
+                request_id=forged_request_id,
+            ),
+            FakeResponse(
+                {"code": 0, "data": {"invalid_id_list": []}},
+                request_id="req-searchable-123",
+            ),
+            FakeResponse(
+                {"code": 0, "data": {"invalid_id_list": []}},
+                request_id="req-" + ("x" * 500),
+            ),
+        ],
+    ):
+        for member_id in ("ou_first", "ou_second", "ou_third"):
+            result = FeishuIMGroupAdapter.add_members(
+                config={},
+                provider_key="feishu",
+                capability_key="im_group",
+                chat_id="oc_1",
+                member_ids=[member_id],
+                member_id_type="open_id",
+            )
+            assert result.success is True
+
+    records = [
+        record
+        for record in caplog.records
+        if getattr(record, "event", "") == "feishu_im_group_provider_request"
+    ]
+    assert len(records) == 3
+    forged_message = records[0].getMessage()
+    forged_extra = records[0].request_id
+    for rendered in (forged_message, forged_extra):
+        assert "\r" not in rendered
+        assert "\n" not in rendered
+        assert "ok\\r\\nforged=" in rendered
+    assert records[1].request_id == "req-searchable-123"
+    assert "request_id=req-searchable-123" in records[1].getMessage()
+    assert len(records[2].request_id) == 200
+    assert "\r" not in records[2].request_id
+    assert "\n" not in records[2].request_id
+    assert ("x" * 201) not in records[2].getMessage()
+
+
 def test_group_request_logging_failure_does_not_change_provider_result(monkeypatch):
     monkeypatch.setattr(
         "apps.system_mgmt.providers.adapters.feishu.logger.warning",

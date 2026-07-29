@@ -4,26 +4,25 @@ import { useMemo, useState } from 'react';
 import {
   Alert,
   Button,
-  Dropdown,
   message,
   Modal,
   Skeleton,
   Tag,
   Tooltip,
 } from 'antd';
-import type { MenuProps } from 'antd';
 import {
   CheckCircleOutlined,
   ClockCircleOutlined,
   ExclamationCircleOutlined,
   LinkOutlined,
-  MoreOutlined,
   PauseCircleOutlined,
   TeamOutlined,
 } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import PermissionWrapper from '@/components/permission';
+import MoreActionsDropdown from '@/components/more-actions-dropdown';
+import type { MoreActionsDropdownItem } from '@/components/more-actions-dropdown';
 import { isSilentRequestError } from '@/utils/request';
 import type {
   CreateIncidentIMGroupParams,
@@ -203,7 +202,7 @@ export const IncidentIMGroupPanel = ({
       : t('incidents.imGroup.copyChatId');
   };
 
-  const moreItems: MenuProps['items'] = group ? [
+  const moreItems: MoreActionsDropdownItem[] = group ? [
     {
       key: 'copy',
       label: t('incidents.imGroup.copyChatId'),
@@ -406,14 +405,11 @@ export const IncidentIMGroupPanel = ({
             )}
           {group.permissions.can_manage && (
             <PermissionWrapper requiredPermissions={['Edit']}>
-              <Dropdown menu={{ items: moreItems }} trigger={['click']} placement="bottomRight">
-                <Button
-                  size="small"
-                  type="text"
-                  icon={<MoreOutlined aria-hidden="true" />}
-                  aria-label={t('common.more')}
-                />
-              </Dropdown>
+              <MoreActionsDropdown
+                items={moreItems}
+                ariaLabel={t('common.more')}
+                placement="bottomRight"
+              />
             </PermissionWrapper>
           )}
         </div>

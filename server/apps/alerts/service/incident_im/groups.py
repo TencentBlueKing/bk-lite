@@ -10,10 +10,41 @@ from apps.alerts.constants.constants import IncidentStatus, LogAction, LogTarget
 from apps.alerts.models import Incident, IncidentIMGroup, IncidentIMMember
 from apps.alerts.service.incident_im.errors import IncidentIMError
 from apps.alerts.service.incident_im.members import get_desired_usernames, resolve_incident_members
+from apps.alerts.service.incident_im.observability import emit_incident_im_event
 from apps.alerts.service.outbox import enqueue_outbox
 from apps.alerts.utils.operator_log import record_operator_log_deferred_mirror
 from apps.core.logger import alert_logger as logger
 from apps.system_mgmt.services.im_group_service import IMGroupChannelError, IMGroupRuntimeService
+
+
+def _emit_manual_lifecycle_after_commit(
+    *, group_id, incident_id, operation, status, pause_reason=None,
+):
+    safe_group_id = str(group_id)
+    safe_incident_id = incident_id
+    safe_operation = str(operation)
+    safe_status = str(status)
+    safe_pause_reason = None if pause_reason is None else str(pause_reason)
+
+    def emit(
+        group_id=safe_group_id,
+        incident_id=safe_incident_id,
+        operation=safe_operation,
+        status=safe_status,
+        pause_reason=safe_pause_reason,
+    ):
+        fields = {
+            "group_id": group_id,
+            "incident_id": incident_id,
+            "operation": operation,
+            "result": "success",
+            "status": status,
+        }
+        if pause_reason is not None:
+            fields["pause_reason"] = pause_reason
+        emit_incident_im_event("incident_im_lifecycle", **fields)
+
+    transaction.on_commit(emit)
 
 
 class IncidentIMGroupService:
@@ -150,6 +181,13 @@ class IncidentIMGroupService:
                 update_fields=["status", "pause_reason", "resume_after_reopen", "updated_by", "updated_at",]
             )
             record_group_audit(group, actor_username, "暂停飞书群同步")
+            _emit_manual_lifecycle_after_commit(
+                group_id=str(group.id),
+                incident_id=group.incident_id,
+                operation="pause",
+                status=group.status,
+                pause_reason=group.pause_reason,
+            )
             return group
 
     @classmethod
@@ -177,6 +215,12 @@ class IncidentIMGroupService:
                 update_fields=["status", "pause_reason", "resume_after_reopen", "updated_by", "updated_at",]
             )
             record_group_audit(group, actor_username, "恢复飞书群同步")
+            _emit_manual_lifecycle_after_commit(
+                group_id=str(group.id),
+                incident_id=group.incident_id,
+                operation="resume",
+                status=group.status,
+            )
             return group
 
     @classmethod

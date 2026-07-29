@@ -4,6 +4,7 @@ from io import StringIO
 from unittest import mock
 
 import pytest
+from django.db import transaction
 from django.utils import timezone
 
 from apps.alerts.models import AlertOutbox
@@ -11,6 +12,7 @@ from apps.alerts.tasks.tasks import dispatch_pending_alert_outbox
 
 
 pytestmark = pytest.mark.django_db
+pytest_plugins = ["apps.alerts.tests.incident_im_group_fixtures"]
 
 
 def _outbox(*, kind, status, created_at=None, updated_at=None):
@@ -146,3 +148,130 @@ def test_incident_im_event_is_visible_with_message_only_formatter(monkeypatch):
     assert "failed_count=1" in rendered
     assert "forbidden_payload" not in rendered
     assert "ou_secret" not in rendered
+
+
+def test_manual_pause_and_resume_emit_structured_lifecycle_events(
+    monkeypatch, incident, channel, django_capture_on_commit_callbacks,
+):
+    from apps.alerts.service.incident_im.groups import IncidentIMGroupService
+    from apps.alerts.tests.incident_im_group_fixtures import create_active_group
+
+    group = create_active_group(incident, channel)
+    actor_username = incident.operator[0]
+    events = []
+    monkeypatch.setattr(
+        "apps.alerts.service.incident_im.observability.logger.info",
+        lambda message, *args, **kwargs: events.append(kwargs["extra"]),
+    )
+
+    with django_capture_on_commit_callbacks(execute=True):
+        IncidentIMGroupService.pause(
+            incident_id=incident.id,
+            actor_username=actor_username,
+        )
+        IncidentIMGroupService.resume(
+            incident_id=incident.id,
+            actor_username=actor_username,
+        )
+
+    lifecycle = [
+        event for event in events if event["event"] == "incident_im_lifecycle"
+    ]
+    assert lifecycle == [
+        {
+            "event": "incident_im_lifecycle",
+            "group_id": str(group.id),
+            "incident_id": incident.id,
+            "operation": "pause",
+            "result": "success",
+            "status": "paused",
+            "pause_reason": "manual",
+        },
+        {
+            "event": "incident_im_lifecycle",
+            "group_id": str(group.id),
+            "incident_id": incident.id,
+            "operation": "resume",
+            "result": "success",
+            "status": "active",
+        },
+    ]
+
+
+def test_manual_lifecycle_logging_failure_does_not_block_pause_or_resume(
+    monkeypatch, incident, channel, django_capture_on_commit_callbacks,
+):
+    from apps.alerts.models import IncidentIMGroup
+    from apps.alerts.service.incident_im.groups import IncidentIMGroupService
+    from apps.alerts.tests.incident_im_group_fixtures import create_active_group
+
+    group = create_active_group(incident, channel)
+    actor_username = incident.operator[0]
+    failing_logger = mock.Mock(side_effect=RuntimeError("logger unavailable"))
+    monkeypatch.setattr(
+        "apps.alerts.service.incident_im.observability.logger.info",
+        failing_logger,
+    )
+
+    with django_capture_on_commit_callbacks(execute=True):
+        IncidentIMGroupService.pause(
+            incident_id=incident.id,
+            actor_username=actor_username,
+        )
+        group.refresh_from_db()
+        assert group.status == IncidentIMGroup.Status.PAUSED
+        assert group.pause_reason == IncidentIMGroup.PauseReason.MANUAL
+
+        IncidentIMGroupService.resume(
+            incident_id=incident.id,
+            actor_username=actor_username,
+        )
+    group.refresh_from_db()
+    assert group.status == IncidentIMGroup.Status.ACTIVE
+    assert group.pause_reason == ""
+    assert failing_logger.call_count == 2
+
+
+def test_rolled_back_manual_pause_or_resume_emits_no_success_lifecycle_event(
+    monkeypatch, incident, channel,
+):
+    from apps.alerts.models import IncidentIMGroup
+    from apps.alerts.service.incident_im.groups import IncidentIMGroupService
+    from apps.alerts.tests.incident_im_group_fixtures import create_active_group
+
+    group = create_active_group(incident, channel)
+    actor_username = incident.operator[0]
+    events = []
+    monkeypatch.setattr(
+        "apps.alerts.service.incident_im.observability.logger.info",
+        lambda message, *args, **kwargs: events.append(kwargs["extra"]),
+    )
+
+    with pytest.raises(RuntimeError, match="rollback pause"):
+        with transaction.atomic():
+            IncidentIMGroupService.pause(
+                incident_id=incident.id,
+                actor_username=actor_username,
+            )
+            raise RuntimeError("rollback pause")
+
+    group.refresh_from_db()
+    assert group.status == IncidentIMGroup.Status.ACTIVE
+    assert events == []
+
+    IncidentIMGroup.objects.filter(pk=group.pk).update(
+        status=IncidentIMGroup.Status.PAUSED,
+        pause_reason=IncidentIMGroup.PauseReason.MANUAL,
+    )
+    with pytest.raises(RuntimeError, match="rollback resume"):
+        with transaction.atomic():
+            IncidentIMGroupService.resume(
+                incident_id=incident.id,
+                actor_username=actor_username,
+            )
+            raise RuntimeError("rollback resume")
+
+    group.refresh_from_db()
+    assert group.status == IncidentIMGroup.Status.PAUSED
+    assert group.pause_reason == IncidentIMGroup.PauseReason.MANUAL
+    assert events == []
