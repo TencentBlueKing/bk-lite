@@ -7,6 +7,8 @@
 - 目标 RabbitMQ 已启用 Management Plugin，并暴露采集节点可访问的 HTTP(S) 管理地址。
 - 准备可读取 Management API 的账号；远程采集不要使用默认仅限本机的 `guest` 账号。
 - 用户名和密码在当前页面均为必填。
+- 带认证的 Management API 应优先使用 HTTPS，并部署证书链受采集节点信任的服务端证书。
+- 若目标只能使用 HTTP，仅可部署在隔离且可信的链路中；Basic Auth 凭据只是可逆编码，会在网络中以未加密形式传输。
 - 当前页面和模板没有队列包含/排除过滤字段，也不提供 Management Plugin 启停操作。
 - 以 Management API 的实际可访问状态作为接入前提。
 
@@ -19,10 +21,10 @@
 
 ## 接入前校验
 
-下列命令会交互式询问密码，并保留 HTTP 失败状态：
+下列 HTTPS 命令会交互式询问密码，并保留 HTTP 失败状态。交互提示只避免密码进入命令行参数或历史记录，不能保护网络传输；证书链必须受采集节点信任。不要将 `-k` 或 `--insecure` 作为常规方案：
 
 ```bash
-curl --fail --silent --show-error --user monitor "http://rabbitmq.example.com:15672/api/overview"
+curl --fail --silent --show-error --user monitor "https://rabbitmq.example.com:15671/api/overview"
 ```
 
 请求应返回 `200` 和 JSON。使用页面要填写的同一完整基地址验证，不要混用 AMQP 端口。

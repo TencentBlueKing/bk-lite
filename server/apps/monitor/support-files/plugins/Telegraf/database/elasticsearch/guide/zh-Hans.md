@@ -6,9 +6,11 @@
 
 - 采集节点能够访问 Elasticsearch 的完整 HTTP(S) 地址。
 - 准备可读取集群健康与节点统计接口的用户名和密码；当前页面两项均为必填。
+- 带认证的端点应优先使用 HTTPS，并部署证书链受采集节点信任的服务端证书。
+- 若目标只能使用 HTTP，仅可部署在隔离且可信的链路中；Basic Auth 凭据只是可逆编码，会在网络中以未加密形式传输。
 - 账号至少能访问 `/_cluster/health` 与 `/_nodes/stats`。
 - 当前模板固定启用集群健康，并采集 JVM、文件系统、进程、断路器、HTTP 和线程池节点统计。
-- HTTPS 连接在当前模板中固定跳过服务端证书校验，页面不提供 CA 或校验开关。
+- HTTPS 连接在当前模板中固定跳过服务端证书校验，页面不提供 CA 或校验开关；不要因此把不可信证书作为常规方案。
 
 ## 接入步骤
 
@@ -19,11 +21,11 @@
 
 ## 接入前校验
 
-以下命令会交互式询问密码，不会把密码写入命令行：
+以下 HTTPS 命令会交互式询问密码，不会把密码写入命令行参数或历史记录。交互提示不能保护网络传输；安全性仍依赖 TLS，证书链必须受采集节点信任。不要将 `-k` 或 `--insecure` 作为常规方案：
 
 ```bash
-curl --fail --silent --show-error --user monitor "http://es.example.com:9200/_cluster/health"
-curl --fail --silent --show-error --user monitor "http://es.example.com:9200/_nodes/stats"
+curl --fail --silent --show-error --user monitor "https://es.example.com:9200/_cluster/health"
+curl --fail --silent --show-error --user monitor "https://es.example.com:9200/_nodes/stats"
 ```
 
 两个请求都应返回 `200`；`--fail` 会保留 `4xx/5xx` 失败状态。
@@ -32,7 +34,7 @@ curl --fail --silent --show-error --user monitor "http://es.example.com:9200/_no
 
 | 页面字段 | 是否必填 | 说明 |
 | --- | --- | --- |
-| 服务器地址 | 是 | 完整 HTTP(S) URL，例如 `http://es.example.com:9200`。 |
+| 服务器地址 | 是 | 完整 HTTP(S) URL，带认证时优先使用 `https://es.example.com:9200`。 |
 | 用户名 | 是 | 可读取集群健康和节点统计接口的账号。 |
 | 密码 | 是 | 对应账号密码。 |
 | 间隔 | 是 | 采集周期，单位秒，默认 `60`。 |

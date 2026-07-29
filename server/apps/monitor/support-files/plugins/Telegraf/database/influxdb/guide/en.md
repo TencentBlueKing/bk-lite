@@ -7,6 +7,8 @@ This capability uses Telegraf `inputs.influxdb` to read runtime statistics from 
 - The target is an InfluxDB v1 instance that exposes `/debug/vars`, and the collector node can reach its full HTTP(S) URL.
 - The server address includes the scheme, port, and `/debug/vars` path.
 - If Basic Auth is enabled, prepare a username and password; otherwise leave both fields empty.
+- Authenticated endpoints should use HTTPS and a server certificate whose chain is trusted by the collector node.
+- If the target supports only HTTP, use it only over an isolated, trusted path. Basic Auth credentials are merely reversibly encoded and cross the network without transport encryption.
 - HTTPS can use CA, client-certificate, and client-key paths. These files must exist on the actual collector node.
 
 ## Setup Steps
@@ -19,19 +21,21 @@ This capability uses Telegraf `inputs.influxdb` to read runtime statistics from 
 
 ## Pre-checks
 
+The following examples prefer HTTPS. The certificate chain must be trusted by the collector node. Do not use `-k` or `--insecure` as a routine workaround.
+
 For an endpoint without authentication:
 
 ```bash
-curl --fail --silent --show-error "http://influxdb.example.com:8086/debug/vars"
+curl --fail --silent --show-error "https://influxdb.example.com:8086/debug/vars"
 ```
 
 For Basic Auth, the following command prompts for the password:
 
 ```bash
-curl --fail --silent --show-error --user monitor "http://influxdb.example.com:8086/debug/vars"
+curl --fail --silent --show-error --user monitor "https://influxdb.example.com:8086/debug/vars"
 ```
 
-The request must return `200` and JSON; `--fail` preserves `4xx/5xx` failures.
+The request must return `200` and JSON; `--fail` preserves `4xx/5xx` failures. Prompting only keeps the password out of command arguments and shell history; it does not replace TLS protection for network transport.
 
 ## Field Reference
 
@@ -68,7 +72,7 @@ After saving and waiting for one interval, confirm that these metrics are querya
 ### HTTPS fails
 
 - Certificate paths are read on the collector node; do not enter paths that exist only on another host.
-- Enable Skip Certificate Verification only when the risk is explicitly accepted.
+- Enable Skip Certificate Verification only for temporary troubleshooting in an isolated test environment when the risk is explicitly accepted; do not use it as a routine configuration.
 
 ### Only some data is present
 

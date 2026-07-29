@@ -6,9 +6,11 @@ This capability uses Telegraf `inputs.elasticsearch` to access the Elasticsearch
 
 - The collector node can reach the full Elasticsearch HTTP(S) address.
 - Prepare a username and password that can read cluster health and node statistics. Both fields are required on the current page.
+- Authenticated endpoints should use HTTPS and a server certificate whose chain is trusted by the collector node.
+- If the target supports only HTTP, use it only over an isolated, trusted path. Basic Auth credentials are merely reversibly encoded and cross the network without transport encryption.
 - The account can access at least `/_cluster/health` and `/_nodes/stats`.
 - The current template always enables cluster health and collects JVM, filesystem, process, breaker, HTTP, and thread-pool node statistics.
-- The current template always skips server-certificate verification for HTTPS. The page has no CA or verification switch.
+- The current template always skips server-certificate verification for HTTPS, and the page has no CA or verification switch. Do not treat this as a routine reason to deploy an untrusted certificate.
 
 ## Setup Steps
 
@@ -19,11 +21,11 @@ This capability uses Telegraf `inputs.elasticsearch` to access the Elasticsearch
 
 ## Pre-checks
 
-These commands prompt for the password instead of placing it on the command line:
+These HTTPS commands prompt for the password instead of placing it in command arguments and shell history. Prompting does not protect network transport; security still depends on TLS, and the certificate chain must be trusted by the collector node. Do not use `-k` or `--insecure` as a routine workaround:
 
 ```bash
-curl --fail --silent --show-error --user monitor "http://es.example.com:9200/_cluster/health"
-curl --fail --silent --show-error --user monitor "http://es.example.com:9200/_nodes/stats"
+curl --fail --silent --show-error --user monitor "https://es.example.com:9200/_cluster/health"
+curl --fail --silent --show-error --user monitor "https://es.example.com:9200/_nodes/stats"
 ```
 
 Both requests must return `200`; `--fail` preserves `4xx/5xx` failures.
@@ -32,7 +34,7 @@ Both requests must return `200`; `--fail` preserves `4xx/5xx` failures.
 
 | Field | Required | Description |
 | --- | --- | --- |
-| Server Address | Yes | Full HTTP(S) URL, such as `http://es.example.com:9200`. |
+| Server Address | Yes | Full HTTP(S) URL; prefer `https://es.example.com:9200` when authentication is used. |
 | Username | Yes | Account that can read cluster health and node statistics. |
 | Password | Yes | Password for the account. |
 | Interval | Yes | Collection interval in seconds; default `60`. |

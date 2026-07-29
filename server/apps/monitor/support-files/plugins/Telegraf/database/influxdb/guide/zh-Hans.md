@@ -7,6 +7,8 @@
 - 目标是能够提供 `/debug/vars` 的 InfluxDB v1 实例，采集节点可访问其完整 HTTP(S) URL。
 - 服务器地址必须包含协议、端口和 `/debug/vars` 路径。
 - 若端点启用 Basic Auth，准备用户名和密码；未启用时两项均留空。
+- 带认证的端点应优先使用 HTTPS，并使用证书链受采集节点信任的服务端证书。
+- 若目标只能使用 HTTP，仅可部署在隔离且可信的链路中；Basic Auth 凭据只是可逆编码，会在网络中以未加密形式传输。
 - HTTPS 可填写 CA、客户端证书和客户端密钥路径；这些路径必须存在于实际采集节点。
 
 ## 接入步骤
@@ -19,19 +21,21 @@
 
 ## 接入前校验
 
+以下示例优先使用 HTTPS，证书链必须受采集节点信任；不要将 `-k` 或 `--insecure` 作为常规方案。
+
 无认证端点：
 
 ```bash
-curl --fail --silent --show-error "http://influxdb.example.com:8086/debug/vars"
+curl --fail --silent --show-error "https://influxdb.example.com:8086/debug/vars"
 ```
 
 Basic Auth 端点可使用下列命令，由 `curl` 交互式询问密码：
 
 ```bash
-curl --fail --silent --show-error --user monitor "http://influxdb.example.com:8086/debug/vars"
+curl --fail --silent --show-error --user monitor "https://influxdb.example.com:8086/debug/vars"
 ```
 
-请求应返回 `200` 和 JSON；`--fail` 会保留 `4xx/5xx` 失败状态。
+请求应返回 `200` 和 JSON；`--fail` 会保留 `4xx/5xx` 失败状态。交互提示只避免密码进入命令行参数或历史记录，不能替代 TLS 对网络传输的保护。
 
 ## 页面字段说明
 
@@ -68,7 +72,7 @@ curl --fail --silent --show-error --user monitor "http://influxdb.example.com:80
 ### HTTPS 失败
 
 - 证书路径由采集节点读取，不能填写只存在于其他主机的路径。
-- 仅在明确接受风险时使用跳过证书校验开关。
+- 仅在隔离测试环境临时排障且明确接受风险时使用跳过证书校验开关，不要将其作为常规方案。
 
 ### 只有部分数据
 

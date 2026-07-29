@@ -7,6 +7,8 @@ This capability uses Telegraf `inputs.rabbitmq` to access the RabbitMQ Managemen
 - The target RabbitMQ enables the Management Plugin and exposes an HTTP(S) management address reachable from the collector node.
 - Prepare an account that can read the Management API. Do not use the default localhost-only `guest` account for remote collection.
 - Username and password are both required on the current page.
+- An authenticated Management API should use HTTPS and a server certificate whose chain is trusted by the collector node.
+- If the target supports only HTTP, use it only over an isolated, trusted path. Basic Auth credentials are merely reversibly encoded and cross the network without transport encryption.
 - The current page and template have no queue include/exclude filters and do not manage the Management Plugin lifecycle.
 - Use actual Management API reachability as the readiness signal.
 
@@ -19,10 +21,10 @@ This capability uses Telegraf `inputs.rabbitmq` to access the RabbitMQ Managemen
 
 ## Pre-checks
 
-This command prompts for the password and preserves HTTP failures:
+This HTTPS command prompts for the password and preserves HTTP failures. Prompting only keeps the password out of command arguments and shell history; it does not protect network transport. The certificate chain must be trusted by the collector node. Do not use `-k` or `--insecure` as a routine workaround:
 
 ```bash
-curl --fail --silent --show-error --user monitor "http://rabbitmq.example.com:15672/api/overview"
+curl --fail --silent --show-error --user monitor "https://rabbitmq.example.com:15671/api/overview"
 ```
 
 The request must return `200` and JSON. Validate the same full base address that will be entered on the page; do not use the AMQP port.
