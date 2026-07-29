@@ -435,6 +435,7 @@ const JobDangerousRulePage: React.FC<JobDangerousRulePageProps> = ({
       dataIndex: 'action',
       key: 'action',
       width: 120,
+      fixed: 'right',
       render: (_: unknown, record: DangerousRule) => (
         <div className="flex items-center gap-[10px]">
           <Button

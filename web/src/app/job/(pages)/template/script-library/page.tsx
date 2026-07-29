@@ -23,6 +23,7 @@ import GroupTreeSelect from '@/components/group-tree-select';
 import SearchCombination from '@/components/search-combination';
 import { SearchFilters, FieldConfig } from '@/components/search-combination/types';
 import ScriptEditor from '@/app/job/components/script-editor';
+import OrganizationTags, { getOrganizationColumnWidth } from '@/app/job/components/organization-tags';
 import { useRouter } from 'next/navigation';
 import styles from './page.module.scss';
 
@@ -396,6 +397,8 @@ const ScriptLibraryPage = () => {
     },
   ];
 
+  const organizationColumnWidth = getOrganizationColumnWidth(data);
+
   const columns: ColumnItem[] = [
     {
       title: t('job.scriptName'),
@@ -418,16 +421,8 @@ const ScriptLibraryPage = () => {
       title: t('job.organization'),
       dataIndex: 'team_name',
       key: 'team_name',
-      width: 120,
-      render: (_: unknown, record: Script) => (
-        <div className="flex flex-wrap gap-1">
-          {(record.team_name && record.team_name.length > 0)
-            ? record.team_name.map((name: string, idx: number) => (
-              <Tag key={idx}>{name}</Tag>
-            ))
-            : '-'}
-        </div>
-      ),
+      width: organizationColumnWidth,
+      render: (_: unknown, record: Script) => <OrganizationTags names={record.team_name} />,
     },
     {
       title: t('job.creator'),
@@ -454,6 +449,7 @@ const ScriptLibraryPage = () => {
       dataIndex: 'action',
       key: 'action',
       width: 220,
+      fixed: 'right',
       render: (_: unknown, record: Script) => (
         <div className="flex items-center gap-3">
           <a

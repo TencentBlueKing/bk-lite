@@ -36,6 +36,7 @@ import SearchCombination from '@/components/search-combination';
 import { SearchFilters, FieldConfig } from '@/components/search-combination/types';
 import { useRouter } from 'next/navigation';
 import MarkdownRenderer from '@/components/markdown';
+import OrganizationTags, { getOrganizationColumnWidth } from '@/app/job/components/organization-tags';
 
 const { Dragger } = Upload;
 
@@ -520,6 +521,8 @@ const PlaybookLibraryPage = () => {
     ];
   }, [viewingPlaybook, t]);
 
+  const organizationColumnWidth = getOrganizationColumnWidth(data);
+
   const columns: ColumnItem[] = [
     {
       title: t('job.playbookName'),
@@ -540,16 +543,8 @@ const PlaybookLibraryPage = () => {
       title: t('job.organization'),
       dataIndex: 'team_name',
       key: 'team_name',
-      width: 120,
-      render: (_: unknown, record: Playbook) => (
-        <div className="flex flex-wrap gap-1">
-          {(record.team_name && record.team_name.length > 0)
-            ? record.team_name.map((name: string, idx: number) => (
-              <Tag key={idx}>{name}</Tag>
-            ))
-            : '-'}
-        </div>
-      ),
+      width: organizationColumnWidth,
+      render: (_: unknown, record: Playbook) => <OrganizationTags names={record.team_name} />,
     },
     {
       title: t('job.creator'),
@@ -576,6 +571,7 @@ const PlaybookLibraryPage = () => {
       dataIndex: 'action',
       key: 'action',
       width: 200,
+      fixed: 'right',
       render: (_: unknown, record: Playbook) => (
         <div className="flex items-center gap-3">
           <a

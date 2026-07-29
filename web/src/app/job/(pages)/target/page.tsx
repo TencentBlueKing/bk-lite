@@ -27,6 +27,7 @@ import GroupTreeSelect from '@/components/group-tree-select';
 import SearchCombination from '@/components/search-combination';
 import Password from '@/components/password';
 import { SearchFilters, FieldConfig } from '@/components/search-combination/types';
+import OrganizationTags, { getOrganizationColumnWidth } from '@/app/job/components/organization-tags';
 
 const { Dragger } = Upload;
 const TARGET_DATA_COLUMN_COUNT = 7;
@@ -450,6 +451,8 @@ const TargetPage = () => {
     }
   };
 
+  const organizationColumnWidth = getOrganizationColumnWidth(data, targetDataColumnWidth);
+
   const columns: ColumnItem[] = [
     {
       title: t('job.targetName'),
@@ -507,10 +510,8 @@ const TargetPage = () => {
       title: t('job.organization'),
       dataIndex: 'team_name',
       key: 'team_name',
-      width: targetDataColumnWidth,
-      render: (_: unknown, record: Target) => (
-        <span>{Array.isArray(record.team_name) ? record.team_name.join(', ') : '-'}</span>
-      ),
+      width: organizationColumnWidth,
+      render: (_: unknown, record: Target) => <OrganizationTags names={record.team_name} />,
     },
     {
       title: t('job.operation'),
