@@ -19,7 +19,7 @@ type RecoveryFetch = (
 export const fetchRecoveredAuth = async (
   request: RecoveryFetch = fetch,
 ): Promise<RecoveredAuthUser | null> => {
-  const response = await request('/api/auth/session', {
+  const response = await request('/api/auth/recovery-check', {
     method: 'GET',
     headers: {
       'Cache-Control': 'no-cache, no-store, must-revalidate',
@@ -34,7 +34,7 @@ export const fetchRecoveredAuth = async (
   }
 
   const payload = await response.json();
-  const user = payload?.user;
+  const user = payload?.authenticated ? payload.user : null;
   if (!user?.token || (!user.id && !user.username)) {
     return null;
   }

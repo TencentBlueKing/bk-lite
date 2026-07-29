@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 
+import { fetchRecoveredAuth } from '../src/utils/authRecovery';
+import { validateRecoverySession } from '../src/utils/authRecoveryServer';
 import { shouldTriggerSessionExpiry } from '../src/utils/sessionExpiry';
 
 const triggerSessionExpiry = shouldTriggerSessionExpiry as unknown as (
@@ -70,4 +72,76 @@ try {
   }
 }
 
-console.log('session expiry trigger tests passed');
+const testExpiredRecovery = async () => {
+  const recoveryRequests: Array<RequestInfo | URL> = [];
+  const expiredRecovery = await fetchRecoveredAuth(async (input) => {
+    recoveryRequests.push(input);
+    return Response.json(
+      { authenticated: false },
+      { status: 401 },
+    );
+  });
+
+  assert.deepEqual(
+    recoveryRequests,
+    ['/api/auth/recovery-check'],
+    'recovery must use a backend-validated authentication probe instead of trusting the longer-lived NextAuth session',
+  );
+  assert.equal(
+    expiredRecovery,
+    null,
+    'an expired backend token must keep the login overlay open',
+  );
+
+  const staleSession = await validateRecoverySession(
+    {
+      id: '1',
+      username: 'admin',
+      token: 'expired-token',
+    },
+    async () => Response.json(
+      { result: false },
+      { status: 401 },
+    ),
+    'http://bk-lite-server:8000',
+  );
+  assert.equal(
+    staleSession,
+    null,
+    'a longer-lived NextAuth session must not revive an expired backend token',
+  );
+
+  let validationAuthorization = '';
+  const validSession = await validateRecoverySession(
+    {
+      id: '1',
+      username: 'admin',
+      token: 'fresh-token',
+      locale: 'zh-Hans',
+      timezone: 'Asia/Shanghai',
+    },
+    async (_input, init) => {
+      validationAuthorization = new Headers(init?.headers).get('Authorization') || '';
+      return Response.json({
+        result: true,
+        data: { username: 'admin' },
+      });
+    },
+    'http://bk-lite-server:8000',
+  );
+  assert.equal(validationAuthorization, 'Bearer fresh-token');
+  assert.deepEqual(validSession, {
+    id: '1',
+    username: 'admin',
+    token: 'fresh-token',
+    locale: 'zh-Hans',
+    timezone: 'Asia/Shanghai',
+  });
+};
+
+testExpiredRecovery()
+  .then(() => console.log('session expiry trigger tests passed'))
+  .catch((error) => {
+    console.error(error);
+    process.exitCode = 1;
+  });
