@@ -160,6 +160,9 @@
       "addMetric": "添加指标"
     },
     "views": {
+      "assetIp": "IP信息",
+      "probeNodes": "拨测节点",
+      "probeTarget": "目标",
       "vmware_esxi_count": "ESXI数量",
       "vmware_datastore_count": "数据存储数量",
       "vmware_vm_count": "虚拟机数量",

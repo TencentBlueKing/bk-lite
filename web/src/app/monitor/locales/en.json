@@ -160,6 +160,9 @@
       "addMetric": "Add Metric"
     },
     "views": {
+      "assetIp": "IP Address",
+      "probeNodes": "Probe Nodes",
+      "probeTarget": "Target",
       "vmware_esxi_count": "Number of ESXi",
       "vmware_datastore_count": "Number of Datastores",
       "vmware_vm_count": "Number of VM",

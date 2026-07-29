@@ -486,6 +486,23 @@ export const getBaseInstanceColumn = (config: {
     .find((item) => item.level === 'base');
   const title = baseTarget?.display_name || config.t('monitor.source');
   const isDerivative = isDerivativeObject(config.row, config.objects);
+  const renderAssetText = (value: unknown) => (
+    <EllipsisWithTooltip
+      text={value == null || value === '' ? '--' : String(value)}
+      className="w-full overflow-hidden text-ellipsis whitespace-nowrap"
+    ></EllipsisWithTooltip>
+  );
+  const formatSummaryFact = (value: unknown) => {
+    if (!Array.isArray(value)) return value;
+    return value
+      .map((item) => {
+        if (item == null || typeof item !== 'object') return String(item);
+        const node = item as { id?: string; name?: string; ip?: string };
+        if (node.name && node.ip) return `${node.name} (${node.ip})`;
+        return node.name || node.ip || node.id || JSON.stringify(node);
+      })
+      .join(', ');
+  };
   const columnItems: any = [
     {
       title: config.t('common.name'),
@@ -507,6 +524,19 @@ export const getBaseInstanceColumn = (config: {
       }
     }
   ];
+  const summaryColumns = [...(config.row.instance_summary_columns || [])].sort(
+    (left, right) => (left.order || 0) - (right.order || 0)
+  );
+  summaryColumns.forEach((column) => {
+    columnItems.push({
+      title: config.t(column.title),
+      dataIndex: ['summary_facts', column.fact],
+      key: `summary_fact:${column.fact}`,
+      onCell: () => ({ style: { minWidth: 150 } }),
+      render: (_: unknown, record: TableDataItem) =>
+        renderAssetText(formatSummaryFact(record.summary_facts?.[column.fact]))
+    });
+  });
   if (isDerivative) {
     columnItems.unshift({
       title: title,
