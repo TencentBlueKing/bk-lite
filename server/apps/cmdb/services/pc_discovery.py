@@ -1,17 +1,14 @@
 # -- coding: utf-8 --
-"""PC 发现采集的 Server 侧服务：VM 快照解析、权威状态机与逐 PC 对账。
+"""PC 发现采集的 Server 侧服务：VM 快照解析与逐 PC 对账。
 
 - parse_pc_vm_rows：把 pc_info / pc_software_info 指标行解析为逐 PC 的不可变快照，
   任何完整性条件不满足都降级 partial（绝不伪装 complete）；
-- PCAuthorityService：一台 PC 同一时间只由一个权威任务写入和删除（设计 §11）；
 - PCSnapshotReconciler：严格白名单写入 PC 资产，人工字段绝不被采集覆盖；
 - apply_pc_snapshots：逐 PC 独立对账，单台失败不影响其他目标。
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timezone
-
-from django.db import transaction
 
 from apps.cmdb.constants.constants import INSTANCE, INSTANCE_ASSOCIATION, DataCleanupStrategy, OPERATOR_INSTANCE
 from apps.cmdb.graph.drivers.graph_client import GraphClient
@@ -27,7 +24,8 @@ PC_SOFTWARE_METRIC_NAME = "pc_software_info"
 PC_COLLECTED_FIELDS = frozenset({
     "inst_name", "host_name", "ip_addr", "os_type", "os_name", "os_version",
     "os_build", "architecture", "hardware_uuid", "serial_number",
-    "device_model", "logged_in_user", "last_collect_time",
+    "brand", "device_model", "cpu", "men", "disk",
+    "logged_in_user", "last_collect_time",
 })
 
 # 采集允许写入的软件字段（与 attr-pc_software 一致）。
@@ -153,130 +151,8 @@ def parse_pc_vm_rows(rows):
     return list(snapshots_by_pc.values())
 
 
-@dataclass(frozen=True)
-class PCAuthorityDecision:
-    """authorize() 的结论：mode 决定本任务对该 PC 的写/删权限。"""
-
-    mode: str  # owner / conflict / pending_handover / stale
-    allow_delete: bool
-    error_code: str = ""
-    authority: object = None
-
-
-class PCAuthorityService:
-    """PC 权威采集任务状态机（设计 §11）。
-
-    - 首个识别 inst_name 的任务绑定为权威任务（唯一约束解决并发首绑）；
-    - 其他任务命中返回 conflict(SOURCE_TASK_CONFLICT)，不读写；
-    - 待移交任务可写新增/更新但 allow_delete=False，
-      只有完整快照落地后 complete_handover 才切换权威并清空 pending；
-    - 旧于或等于最近已应用时间的快照按幂等忽略（stale）。
-    所有写路径都在 transaction.atomic + select_for_update 内完成。
-    """
-
-    @staticmethod
-    def authorize(task, pc_inst_name, snapshot_id, collected_at):
-        from apps.cmdb.models.pc_discovery import PCDiscoveryAuthority
-
-        with transaction.atomic():
-            authority, created = PCDiscoveryAuthority.objects.select_for_update().get_or_create(
-                pc_inst_name=pc_inst_name,
-                defaults={"authoritative_task": task},
-            )
-            if created:
-                return PCAuthorityDecision(mode="owner", allow_delete=True, authority=authority)
-            if authority.authoritative_task_id == task.id:
-                if authority.last_snapshot_time is not None and collected_at <= authority.last_snapshot_time:
-                    return PCAuthorityDecision(mode="stale", allow_delete=False, authority=authority)
-                return PCAuthorityDecision(mode="owner", allow_delete=True, authority=authority)
-            if authority.pending_task_id == task.id:
-                return PCAuthorityDecision(mode="pending_handover", allow_delete=False, authority=authority)
-            return PCAuthorityDecision(
-                mode="conflict",
-                allow_delete=False,
-                error_code="SOURCE_TASK_CONFLICT",
-                authority=authority,
-            )
-
-    @staticmethod
-    def request_handover(pc_inst_name, new_task):
-        """管理员授权新任务接管；authority 不存在时抛 DoesNotExist。"""
-        from apps.cmdb.models.pc_discovery import PCDiscoveryAuthority
-
-        with transaction.atomic():
-            authority = PCDiscoveryAuthority.objects.select_for_update().get(pc_inst_name=pc_inst_name)
-            if authority.authoritative_task_id != new_task.id:
-                authority.pending_task = new_task
-                authority.save(update_fields=["pending_task", "updated_at"])
-            return authority
-
-    @staticmethod
-    def request_handovers(task, pc_inst_names):
-        """批量移交入口（视图层调用）。
-
-        先全量校验再统一写入：任一 PC 无权威记录整体拒绝（ValidationAppException），
-        不产生部分移交；当前 owner 重复发起为幂等成功（already_owner，不写 pending）。
-        """
-        from apps.cmdb.models.pc_discovery import PCDiscoveryAuthority
-        from apps.core.exceptions.base_app_exception import ValidationAppException
-
-        names = list(pc_inst_names or [])
-        existing = {
-            authority.pc_inst_name: authority
-            for authority in PCDiscoveryAuthority.objects.filter(pc_inst_name__in=names)
-        }
-        missing = [name for name in names if name not in existing]
-        if missing:
-            raise ValidationAppException(f"PC 不存在或未建立权威来源: {', '.join(missing)}")
-
-        results = []
-        for name in names:
-            authority = existing[name]
-            if authority.authoritative_task_id == task.id:
-                # owner 重复发起移交：幂等成功，同时取消进行中的待移交
-                if authority.pending_task_id is not None:
-                    with transaction.atomic():
-                        locked = PCDiscoveryAuthority.objects.select_for_update().get(pk=authority.pk)
-                        locked.pending_task = None
-                        locked.save(update_fields=["pending_task", "updated_at"])
-                results.append({"pc_inst_name": name, "status": "already_owner"})
-                continue
-            with transaction.atomic():
-                locked = PCDiscoveryAuthority.objects.select_for_update().get(pk=authority.pk)
-                locked.pending_task = task
-                locked.save(update_fields=["pending_task", "updated_at"])
-            results.append({"pc_inst_name": name, "status": "pending"})
-        return {"task_id": task.id, "results": results}
-
-    @staticmethod
-    def complete_handover(authority, task, snapshot_status):
-        """完整快照落地后切换权威；部分快照或非待移交任务一律不切换。"""
-        if snapshot_status != "complete":
-            return False
-        with transaction.atomic():
-            locked = type(authority).objects.select_for_update().get(pk=authority.pk)
-            if locked.pending_task_id != task.id:
-                return False
-            locked.authoritative_task = task
-            locked.pending_task = None
-            locked.save(update_fields=["authoritative_task", "pending_task", "updated_at"])
-        authority.refresh_from_db()
-        return True
-
-    @staticmethod
-    def mark_applied(authority, snapshot_id, collected_at):
-        """快照完整应用后记录最近应用水位，供 stale 判定。"""
-        authority.last_snapshot_id = snapshot_id
-        authority.last_snapshot_time = collected_at
-        authority.save(update_fields=["last_snapshot_id", "last_snapshot_time", "updated_at"])
-
-
 class PCSnapshotReconciler:
-    """单台 PC 的快照对账：权威校验 → 白名单写入（创建/更新）。
-
-    软件 upsert 与安全差集删除在 Task 9/10 扩展本类；
-    当前 apply() 只负责 PC 实体本身，allow_delete 透传权威决策与快照完整性。
-    """
+    """单台 PC 的快照对账：白名单写入、软件 upsert 与安全差集删除。"""
 
     def __init__(self, task):
         self.task = task
@@ -301,21 +177,13 @@ class PCSnapshotReconciler:
             result.update(pc_failed=1, error_code="PC_IDENTITY_INVALID")
             return result
 
-        decision = PCAuthorityService.authorize(
-            self.task, payload["inst_name"], snapshot.snapshot_id, snapshot.collected_at
-        )
-        if decision.mode == "conflict":
-            result.update(pc_failed=1, error_code=decision.error_code)
-            return result
-        if decision.mode == "stale":
-            result["pc_status"] = "stale"
-            return result
-
         params = [
             {"field": "model_id", "type": "str=", "value": "pc"},
             {"field": "inst_name", "type": "str=", "value": payload["inst_name"]},
         ]
-        runtime = {"collect_time": snapshot.collected_at.isoformat()}
+        collect_time = snapshot.collected_at.isoformat()
+        payload["last_collect_time"] = collect_time
+        runtime = {"collect_time": collect_time}
         with GraphClient() as ag:
             existing, _ = ag.query_entity(INSTANCE, params)
             if existing:
@@ -336,20 +204,13 @@ class PCSnapshotReconciler:
             sw_counts = self._upsert_software(ag, snapshot, result["pc_entity"])
 
         result.update(sw_counts)
-        allow_delete = (
-            decision.mode == "owner"
-            and snapshot.can_delete
-            and sw_counts["software_failed"] == 0
-        )
+        allow_delete = snapshot.can_delete and sw_counts["software_failed"] == 0
         delete_counts = {"software_deleted": 0, "delete_failed": 0}
         if allow_delete and getattr(self.task, "data_cleanup_strategy", "") == DataCleanupStrategy.IMMEDIATELY:
             with GraphClient() as ag:
                 delete_counts = self._delete_missing_software(ag, snapshot, result["pc_entity"])
         result.update(delete_counts)
         result["allow_delete"] = allow_delete
-        if decision.mode == "owner" and delete_counts["delete_failed"] == 0:
-            # 删除未完整落地时不推进水位，下一轮按同水位重试
-            PCAuthorityService.mark_applied(decision.authority, snapshot.snapshot_id, snapshot.collected_at)
         if sw_counts["software_failed"] or delete_counts["delete_failed"]:
             result["error_code"] = "CMDB_WRITE_PARTIAL"
         return result
@@ -430,6 +291,9 @@ class PCSnapshotReconciler:
         collect_time = snapshot.collected_at.isoformat()
         for row in snapshot.software:
             payload = filter_software_payload(row)
+            payload["last_collect_time"] = collect_time
+            sw_entity = None
+            created_this_round = False
             try:
                 params = [
                     {"field": "model_id", "type": "str=", "value": "pc_software"},
@@ -439,8 +303,7 @@ class PCSnapshotReconciler:
                 if existing:
                     ag.set_entity_properties(INSTANCE, [existing[0]["_id"]], dict(payload, collect_time=collect_time), {}, [])
                     sw_entity = dict(existing[0], **payload)
-                    counts["software_updated"] += 1
-                    counts["outcomes"].append((payload["inst_name"], "success"))
+                    outcome_key = "software_updated"
                 else:
                     create_payload = dict(payload)
                     create_payload.update(
@@ -451,8 +314,8 @@ class PCSnapshotReconciler:
                         collect_time=collect_time,
                     )
                     sw_entity = ag.create_entity(INSTANCE, create_payload, {}, [])
-                    counts["software_added"] += 1
-                    counts["outcomes"].append((payload["inst_name"], "success"))
+                    created_this_round = True
+                    outcome_key = "software_added"
                 asso_info = {
                     "model_asst_id": "pc_software_install_on_pc",
                     "src_model_id": "pc_software",
@@ -469,7 +332,19 @@ class PCSnapshotReconciler:
                 except Exception as exc:  # noqa: BLE001 - 边已存在即目标状态，幂等视为成功
                     if str(exc) != "edge already exists":
                         raise
+                counts[outcome_key] += 1
+                counts["outcomes"].append((payload["inst_name"], "success"))
             except Exception as exc:  # noqa: BLE001 - 单条软件失败不影响其余软件
+                if created_this_round and sw_entity:
+                    try:
+                        ag.detach_delete_entity(INSTANCE, sw_entity["_id"])
+                    except Exception as cleanup_exc:  # noqa: BLE001 - 补偿失败保留，下轮继续治理
+                        logger.warning(
+                            "[PC] orphan software compensation failed: task=%s sw=%s err=%s",
+                            getattr(self.task, "id", None),
+                            payload.get("inst_name"),
+                            type(cleanup_exc).__name__,
+                        )
                 logger.warning(
                     "[PC] software upsert failed: task=%s sw=%s err=%s",
                     getattr(self.task, "id", None), payload.get("inst_name"), type(exc).__name__,
@@ -489,7 +364,7 @@ def apply_pc_snapshots(task, snapshots):
     format_data = {"add": [], "update": [], "delete": [], "association": []}
     pc_summary = {
         "pc_total": 0, "pc_complete": 0, "pc_partial": 0, "pc_failed": 0,
-        "source_conflict": 0, "software_added": 0, "software_updated": 0, "software_deleted": 0,
+        "software_added": 0, "software_updated": 0, "software_deleted": 0,
     }
     rows = []
     for snapshot in snapshots or []:
@@ -504,16 +379,26 @@ def apply_pc_snapshots(task, snapshots):
                 "error_code": "CMDB_WRITE_PARTIAL",
                 "error_detail": str(exc)[:_MAX_ERROR_DETAIL],
             }
-        failed = bool(result.get("pc_failed") or result.get("software_failed") or result.get("delete_failed"))
-        status = "failed" if failed else "success"
-        pc_row = {"inst_name": inst_name, "model_id": "pc", "_status": status, "_error": result.get("error_code", "")}
+        pc_failed = bool(result.get("pc_failed"))
+        software_partial = bool(result.get("software_failed") or result.get("delete_failed"))
+        target_partial = software_partial or snapshot.status != "complete"
+        pc_row = {
+            "inst_name": inst_name,
+            "model_id": "pc",
+            "_status": "failed" if pc_failed else "success",
+            "_error": result.get("error_code", "") if pc_failed else "",
+        }
         if result.get("error_detail"):
             pc_row["_error_detail"] = result["error_detail"][:_MAX_ERROR_DETAIL]
         if result.get("pc_status") == "added":
             format_data["add"].append(pc_row)
         else:
             format_data["update"].append(pc_row)
-        result_row = {"inst_name": inst_name, "_status": status, "_error": result.get("error_code", "")}
+        result_row = {
+            "inst_name": inst_name,
+            "_status": "failed" if pc_failed or software_partial else "success",
+            "_error": result.get("error_code", ""),
+        }
         if result.get("error_detail"):
             result_row["_error_detail"] = result["error_detail"][:_MAX_ERROR_DETAIL]
         rows.append(result_row)
@@ -529,14 +414,12 @@ def apply_pc_snapshots(task, snapshots):
             format_data["delete"].append({"inst_name": name, "model_id": "pc_software", "_status": "failed", "_error": "CMDB_WRITE_PARTIAL"})
 
         pc_summary["pc_total"] += 1
-        if result.get("error_code") == "SOURCE_TASK_CONFLICT":
-            pc_summary["source_conflict"] += 1
-        if failed:
+        if pc_failed:
             pc_summary["pc_failed"] += 1
-        elif snapshot.status == "complete":
-            pc_summary["pc_complete"] += 1
-        else:
+        elif target_partial:
             pc_summary["pc_partial"] += 1
+        else:
+            pc_summary["pc_complete"] += 1
         pc_summary["software_added"] += result.get("software_added", 0)
         pc_summary["software_updated"] += result.get("software_updated", 0)
         pc_summary["software_deleted"] += result.get("software_deleted", 0)

@@ -12,7 +12,7 @@
 import json
 import sys
 from pathlib import Path
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 
@@ -66,6 +66,32 @@ def pc_inventory():
     from enterprise.plugins.inputs.pc import pc_inventory as module
 
     return module
+
+
+def test_script_path_is_limited_to_builtin_pc_scripts(pc_inventory):
+    collector = pc_inventory.PCInventoryCollector(
+        _windows_params(script_path="../../../../etc/passwd")
+    )
+
+    with pytest.raises(pc_inventory.PCInventoryError, match="SCRIPT_OUTPUT_INVALID"):
+        collector._read_script()
+
+
+@pytest.mark.asyncio
+async def test_macos_rejects_non_builtin_script_before_ssh_execution(
+    pc_inventory,
+    monkeypatch,
+):
+    ssh_plugin = Mock()
+    monkeypatch.setattr(pc_inventory, "SSHPlugin", ssh_plugin)
+
+    result = await pc_inventory.PCInventoryCollector(
+        _macos_params(script_path="/etc/passwd")
+    ).list_all_resources()
+
+    assert result["success"] is False
+    assert result["result"]["cmdb_collect_error"].startswith("SCRIPT_OUTPUT_INVALID")
+    ssh_plugin.assert_not_called()
 
 
 # ---------------------------------------------------------------- 路由
@@ -135,7 +161,16 @@ def test_build_pc_inst_name_uuid_priority(pc_inventory):
     )
 
 
-@pytest.mark.parametrize("bad_uuid", ["", "00000000-0000-0000-0000-000000000000", "FFFFFFFF-FFFF-FFFF-FFFF-FFFFFFFFFFFF", "To Be Filled By O.E.M."])
+@pytest.mark.parametrize(
+    "bad_uuid",
+    [
+        "",
+        "00000000-0000-0000-0000-000000000000",
+        "FFFFFFFF-FFFF-FFFF-FFFF-FFFFFFFFFFFF",
+        "4C4C4544-00385-910-8058-C4C04F433632",
+        "To Be Filled By O.E.M.",
+    ],
+)
 def test_build_pc_inst_name_falls_back_to_serial(pc_inventory, bad_uuid):
     assert pc_inventory.build_pc_inst_name("windows", bad_uuid, "sn-abc 123") == "WIN-SN-SN-ABC 123"
 

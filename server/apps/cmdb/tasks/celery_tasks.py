@@ -307,6 +307,17 @@ def _decide_collect_exec_status(collect_digest, raw_data, pc_summary=None):
     )
     collect_success = collect_digest.get("collect_success", 0)
     collect_failed = collect_digest.get("collect_failed", 0)
+    if isinstance(pc_summary, dict):
+        pc_failed = int(pc_summary.get("pc_failed", 0) or 0)
+        pc_partial = int(pc_summary.get("pc_partial", 0) or 0)
+        pc_complete = int(pc_summary.get("pc_complete", 0) or 0)
+        pc_total = int(pc_summary.get("pc_total", 0) or 0) or pc_complete + pc_partial + pc_failed
+        if pc_total == 0:
+            return CollectRunStatusType.ERROR
+        if pc_total > 0 and pc_failed >= pc_total:
+            return CollectRunStatusType.ERROR
+        if pc_partial > 0 or pc_failed > 0:
+            return CollectRunStatusType.PARTIAL_SUCCESS
     if collect_success == 0 and collect_failed > 0:
         return CollectRunStatusType.ERROR
     if data_total > 0 and data_success == 0:
@@ -573,7 +584,9 @@ def sync_collect_task(self, instance_id, execution_id=None, node_config_id=None,
             )
             if decided == CollectRunStatusType.ERROR:
                 instance.exec_status = CollectRunStatusType.ERROR
-                if collect_success == 0 and collect_failed > 0:
+                if isinstance(pc_summary, dict) and int(pc_summary.get("pc_total", 0) or 0) == 0:
+                    collect_digest["message"] = "未发现 PC 最新上报结果，请检查目标采集是否已完成及数据上报时间"
+                elif collect_success == 0 and collect_failed > 0:
                     collect_digest["message"] = "本轮采集结果全部失败，请检查原始数据中的采集错误"
                 else:
                     collect_digest["message"] = "实例数据写入全部失败，请检查 add/update/delete 错误数"

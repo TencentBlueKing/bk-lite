@@ -26,7 +26,7 @@ from apps.cmdb.constants.constants import CollectDriverTypes, CollectPluginTypes
 from apps.cmdb.models.change_record import DELETE_INST, ChangeRecord
 from apps.cmdb.models.collect_model import CollectModels
 from apps.cmdb.node_configs.config_factory import NodeParamsFactory
-from apps.cmdb.tests.test_pc_reconcile import InMemoryGraph
+from apps.cmdb.tests.test_pc_reconcile_service import InMemoryGraph
 from apps.cmdb_enterprise.collect.pc import PCCollectionPlugin
 
 BASE_TS = 1753200000

@@ -24,7 +24,11 @@ PC_COLLECTED = {
     "architecture": "str",
     "hardware_uuid": "str",
     "serial_number": "str",
+    "brand": "str",
     "device_model": "str",
+    "cpu": "str",
+    "men": "str",
+    "disk": "str",
     "logged_in_user": "str",
     "last_collect_time": "time",
 }

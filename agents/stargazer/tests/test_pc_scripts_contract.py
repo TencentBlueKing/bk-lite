@@ -18,6 +18,8 @@ ROOT = Path(__file__).resolve().parents[1]
 PC_PLUGIN_DIR = ROOT / "enterprise" / "plugins" / "inputs" / "pc"
 WINDOWS_SCRIPT = PC_PLUGIN_DIR / "pc_windows_discover.ps1"
 MACOS_SCRIPT = PC_PLUGIN_DIR / "pc_macos_discover.sh"
+WINDOWS_IDENTITY_SCRIPT = PC_PLUGIN_DIR / "pc_windows_identity.ps1"
+MACOS_IDENTITY_SCRIPT = PC_PLUGIN_DIR / "pc_macos_identity.sh"
 FIXTURE_DIR = Path(__file__).resolve().parent / "fixtures" / "pc"
 
 
@@ -54,6 +56,15 @@ def test_windows_script_exclusion_contract():
     # 系统组件、KB 补丁、驱动排除条件必须存在
     assert "SystemComponent" in source
     assert "KB" in source
+    assert "Win32_LogicalDisk" in source
+    # BIOS 序列号不是 UUID 失败后的兜底字段，所有 Windows 主机都必须采集。
+    assert source.index("Win32_BIOS") < source.index("if (-not (Test-InvalidUuid $uuid))")
+
+
+def test_windows_identity_always_collects_bios_serial():
+    source = WINDOWS_IDENTITY_SCRIPT.read_text(encoding="utf-8")
+    assert source.index("Win32_BIOS") < source.index("if (-not (Test-InvalidUuid $uuid))")
+    assert "serial_number = $serialNumber" in source
 
 
 def test_macos_script_scope_and_safety():
@@ -63,8 +74,24 @@ def test_macos_script_scope_and_safety():
     assert "/System/Applications" not in source
     assert "pkgutil --pkgs" not in source
     assert "/Users/" not in source
+    assert "df -k /" in source
     for forbidden in ("rm ", "sudo ", "installer ", "brew install", "mv ", "defaults write"):
         assert forbidden not in source, forbidden
+
+
+@pytest.mark.parametrize(
+    "script_path",
+    [
+        WINDOWS_SCRIPT,
+        MACOS_SCRIPT,
+        WINDOWS_IDENTITY_SCRIPT,
+        MACOS_IDENTITY_SCRIPT,
+    ],
+)
+def test_all_pc_scripts_require_canonical_uuid_format(script_path):
+    source = script_path.read_text(encoding="utf-8")
+    assert "^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$" in source
+    assert "FFFFFFFF-FFFF-FFFF-FFFF-FFFFFFFFFFFF" in source
 
 
 # ---------------------------------------------------------------- fixture 结构合同

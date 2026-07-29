@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""PC 任务状态聚合合同测试。
+"""PC 任务状态聚合服务层合同测试。
 
 锁定：
 - merge_task_format_data 把 pc_summary 与逐 PC 行合并进 format_data；
@@ -17,7 +17,7 @@ from apps.cmdb.tasks.celery_tasks import (
     _apply_pc_digest,
     _decide_collect_exec_status,
 )
-from apps.cmdb.tests.test_pc_reconcile import _snapshot, _software, _task
+from apps.cmdb.tests.test_pc_reconcile_service import InMemoryGraph, _snapshot, _software, _task
 from apps.cmdb.services.pc_discovery import apply_pc_snapshots
 
 T1 = datetime(2026, 7, 22, 10, 0, 0, tzinfo=timezone.utc)
@@ -42,10 +42,10 @@ def test_merge_task_format_data_copies_pc_summary_and_rows():
 
 def test_apply_pc_digest_copies_summary():
     digest = {"add": 0, "update": 1}
-    summary = _apply_pc_digest(digest, {"pc_summary": {"pc_failed": 1, "source_conflict": 0}})
+    summary = _apply_pc_digest(digest, {"pc_summary": {"pc_failed": 1, "pc_partial": 0}})
 
-    assert summary == {"pc_failed": 1, "source_conflict": 0}
-    assert digest["pc_summary"] == {"pc_failed": 1, "source_conflict": 0}
+    assert summary == {"pc_failed": 1, "pc_partial": 0}
+    assert digest["pc_summary"] == {"pc_failed": 1, "pc_partial": 0}
     assert _apply_pc_digest({}, {}) is None
 
 
@@ -70,6 +70,16 @@ def test_all_failed_targets_marked_error():
     assert status == CollectRunStatusType.ERROR
 
 
+def test_partial_snapshot_marks_task_partial_success():
+    status = _decide_collect_exec_status(
+        {"update": 1, "update_error": 0, "add": 0, "add_error": 0, "delete": 0, "delete_error": 0,
+         "association": 0, "association_error": 0, "collect_success": 1, "collect_failed": 0},
+        raw_data=[{"__time__": "t"}],
+        pc_summary={"pc_complete": 0, "pc_partial": 1, "pc_failed": 0},
+    )
+    assert status == CollectRunStatusType.PARTIAL_SUCCESS
+
+
 def test_mixed_targets_marked_partial():
     status = _decide_collect_exec_status(
         {"update": 2, "update_error": 1, "add": 0, "add_error": 0, "delete": 0, "delete_error": 0,
@@ -86,6 +96,16 @@ def test_empty_raw_data_without_pc_summary_still_error():
          "association": 0, "association_error": 0, "collect_success": 0, "collect_failed": 0},
         raw_data=[],
         pc_summary=None,
+    )
+    assert status == CollectRunStatusType.ERROR
+
+
+def test_pc_task_without_snapshot_is_error():
+    status = _decide_collect_exec_status(
+        {"update": 0, "update_error": 0, "add": 0, "add_error": 0, "delete": 0, "delete_error": 0,
+         "association": 0, "association_error": 0, "collect_success": 0, "collect_failed": 0},
+        raw_data=[],
+        pc_summary={"pc_total": 0, "pc_complete": 0, "pc_partial": 0, "pc_failed": 0},
     )
     assert status == CollectRunStatusType.ERROR
 
@@ -109,9 +129,45 @@ def test_apply_pc_snapshots_format_data_rows_drive_digest(graph_and_task):
     assert summary["software_added"] == 1
 
 
+@pytest.mark.django_db
+def test_software_write_failure_marks_pc_and_task_partial_success(monkeypatch):
+    """PC 本体写入成功、软件关联失败时，不能把整台 PC 误判为失败。"""
+    graph = InMemoryGraph(fail_edges=True)
+    monkeypatch.setattr("apps.cmdb.services.pc_discovery.GraphClient", lambda *a, **k: graph)
+    outcome = apply_pc_snapshots(
+        _task("pc-software-partial"),
+        [_snapshot(software=[_software()])],
+    )
+
+    format_data = outcome["format_data"]
+    summary = format_data["pc_summary"]
+    assert summary["pc_complete"] == 0
+    assert summary["pc_partial"] == 1
+    assert summary["pc_failed"] == 0
+    assert (format_data["add"] + format_data["update"])[0]["_status"] == "success"
+
+    status = _decide_collect_exec_status(
+        {
+            "add": len(format_data["add"]),
+            "add_error": 0,
+            "update": len(format_data["update"]),
+            "update_error": 0,
+            "delete": len(format_data["delete"]),
+            "delete_error": 0,
+            "association": len(format_data["association"]),
+            "association_error": 1,
+            "collect_success": 1,
+            "collect_failed": 0,
+        },
+        raw_data=[{"__time__": "t"}],
+        pc_summary=summary,
+    )
+    assert status == CollectRunStatusType.PARTIAL_SUCCESS
+
+
 @pytest.fixture
 def graph_and_task(db, monkeypatch):
-    from apps.cmdb.tests.test_pc_reconcile import InMemoryGraph
+    from apps.cmdb.tests.test_pc_reconcile_service import InMemoryGraph
     fake = InMemoryGraph()
     monkeypatch.setattr("apps.cmdb.services.pc_discovery.GraphClient", lambda *a, **k: fake)
     return _task("pc-digest-task")

@@ -3,7 +3,9 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-    dependencies = [("cmdb", "0043_pcdiscoveryauthority")]
+    dependencies = [
+        ("cmdb", "0042_collectmodels_system_code_unique"),
+    ]
 
     operations = [
         migrations.AddField(

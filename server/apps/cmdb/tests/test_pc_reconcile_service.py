@@ -1,12 +1,11 @@
 # -*- coding: utf-8 -*-
-"""PC 白名单写入与多目标隔离合同测试。
+"""PC 白名单写入与多目标隔离服务层合同测试。
 
 锁定：
 - 更新只写采集白名单字段，人工资产字段（asset_code/user/location 等）不被覆盖；
 - IP/主机名变化不新建 PC（inst_name 是唯一身份）；
 - 无效身份零写入；
 - 同任务多台 PC 独立对账，一台失败不回滚另一台；
-- 非权威任务命中零写入（SOURCE_TASK_CONFLICT）；
 - 组织只在创建时写入，更新 payload 不出现 organization。
 """
 from datetime import datetime, timezone
@@ -16,7 +15,6 @@ import pytest
 from apps.cmdb.constants.constants import CollectDriverTypes, CollectPluginTypes, DataCleanupStrategy
 from apps.cmdb.models.change_record import COLLECT_AUTOMATION_CHANGE, DELETE_INST, ChangeRecord
 from apps.cmdb.models.collect_model import CollectModels
-from apps.cmdb.models.pc_discovery import PCDiscoveryAuthority
 from apps.cmdb.services.pc_discovery import (
     PC_COLLECTED_FIELDS,
     PCSnapshot,
@@ -164,6 +162,26 @@ def test_filter_pc_payload_drops_unknown_fields():
 
 
 @pytest.mark.django_db
+def test_filter_pc_payload_keeps_collected_hardware_fields():
+    payload = filter_pc_payload({
+        "inst_name": "WIN-A",
+        "brand": "Dell",
+        "cpu": "Intel Core i7",
+        "men": "17179869184",
+        "disk": "512110190592",
+        "asset_code": "A-1",
+    })
+
+    assert payload == {
+        "inst_name": "WIN-A",
+        "brand": "Dell",
+        "cpu": "Intel Core i7",
+        "men": "17179869184",
+        "disk": "512110190592",
+    }
+
+
+@pytest.mark.django_db
 def test_pc_update_only_writes_collected_whitelist(graph):
     task = _task()
     graph.store["WIN-ABC"] = {
@@ -211,7 +229,12 @@ def test_ip_or_hostname_change_does_not_create_new_pc(graph):
 def test_create_writes_organization_and_runtime_fields(graph):
     task = _task()
 
-    result = PCSnapshotReconciler(task).apply(_snapshot())
+    result = PCSnapshotReconciler(task).apply(
+        _snapshot(
+            software=[_software(last_collect_time="outdated")],
+            last_collect_time="outdated",
+        )
+    )
 
     assert result["pc_status"] == "added"
     created = graph.store["WIN-ABC"]
@@ -219,6 +242,10 @@ def test_create_writes_organization_and_runtime_fields(graph):
     assert created["model_id"] == "pc"
     assert created["auto_collect"] is True
     assert created["collect_task"] == task.id
+    assert created["last_collect_time"] == T1.isoformat()
+    assert created["collect_time"] == T1.isoformat()
+    assert graph.store["SW-AAA"]["last_collect_time"] == T1.isoformat()
+    assert graph.store["SW-AAA"]["collect_time"] == T1.isoformat()
 
 
 @pytest.mark.django_db
@@ -255,19 +282,6 @@ def test_multi_target_one_failure_does_not_rollback_other(monkeypatch):
     assert rows["WIN-BAD"]["_status"] == "failed"
     assert rows["WIN-BAD"]["_error"] == "CMDB_WRITE_PARTIAL"
     assert len(rows["WIN-BAD"]["_error_detail"]) <= 500
-
-
-@pytest.mark.django_db
-def test_source_conflict_zero_writes(graph):
-    owner = _task("owner")
-    other = _task("other")
-    PCSnapshotReconciler(owner).apply(_snapshot())
-
-    result = PCSnapshotReconciler(other).apply(_snapshot(snapshot_id="s2", collected_at=datetime(2026, 7, 22, 11, tzinfo=timezone.utc)))
-
-    assert result["pc_failed"] == 1
-    assert result["error_code"] == "SOURCE_TASK_CONFLICT"
-    assert graph.set_payloads == {}
 
 
 # ---- Task 9: 软件 upsert 与 install_on 关联 ----
@@ -359,10 +373,12 @@ def test_association_failure_blocks_delete(monkeypatch):
 
     assert result["allow_delete"] is False
     assert result["software_failed"] == 1
+    assert result["software_added"] == 0
+    assert result["outcomes"] == [("SW-AAA", "failed")]
     assert result["error_code"] == "CMDB_WRITE_PARTIAL"
-    # PC 与软件实体已写入，仅关联失败，不回滚
+    # PC 已写入；本轮新建软件未形成关联时必须补偿删除，避免孤立实体。
     assert "WIN-ABC" in fake.store
-    assert "SW-AAA" in fake.store
+    assert "SW-AAA" not in fake.store
 
 
 @pytest.mark.django_db
@@ -451,21 +467,13 @@ def test_delete_failure_keeps_entity_and_retries_next_round(graph):
 
     assert "SW-OLD" in graph.store
     assert result["delete_failed"] == 1
-    # 删除未完整落地：不推进权威水位，下一轮可重试
-    authority = PCDiscoveryAuthority.objects.get(pc_inst_name="WIN-ABC")
-    assert authority.last_snapshot_id == ""
+    graph.fail_on_inst.remove("SW-OLD")
 
+    retry = PCSnapshotReconciler(task).apply(_snapshot(software=[], snapshot_id="s2"))
 
-@pytest.mark.django_db
-def test_stale_snapshot_never_deletes(graph):
-    task = _task(strategy=DataCleanupStrategy.IMMEDIATELY)
-    PCSnapshotReconciler(task).apply(_snapshot(software=[_software()], snapshot_id="s1"))
-    _seed_pc_with_software(graph, "WIN-ABC", ["SW-LATER"])
-    # 旧于已应用水位的延迟快照到达
-    result = PCSnapshotReconciler(task).apply(_snapshot(software=[], snapshot_id="s0", collected_at=T1))
-
-    assert result["pc_status"] == "stale"
-    assert "SW-LATER" in graph.store
+    assert retry["delete_failed"] == 0
+    assert retry["software_deleted"] == 1
+    assert "SW-OLD" not in graph.store
 
 
 @pytest.mark.django_db

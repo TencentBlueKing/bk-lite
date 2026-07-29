@@ -12,7 +12,7 @@ import pytest
 from apps.cmdb.constants.constants import DataCleanupStrategy
 from apps.cmdb.models.change_record import DELETE_INST, ChangeRecord
 from apps.cmdb.services.data_cleanup_service import DataCleanupService
-from apps.cmdb.tests.test_pc_reconcile import InMemoryGraph, _task
+from apps.cmdb.tests.test_pc_reconcile_service import InMemoryGraph, _task
 
 OLD = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
 FRESH = datetime.now(timezone.utc).isoformat()
