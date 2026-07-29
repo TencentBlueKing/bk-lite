@@ -71,8 +71,10 @@ def test_nats_api_compat_exports_local_and_nats_entrypoints():
         "bk_lite_user_login",
         "get_group_users",
         "get_group_users_scoped",
+        "get_authorized_groups_scoped",
         "get_all_users",
         "search_users",
+        "search_channel_list_scoped",
     }
     registered_entrypoints = expected_entrypoints - local_only_entrypoints
 

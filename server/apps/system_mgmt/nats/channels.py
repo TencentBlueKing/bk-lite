@@ -68,7 +68,6 @@ def search_channel_list(channel_type="", teams=None, include_children=False):
     }
 
 
-@nats_client.register
 def search_channel_list_scoped(actor_context, channel_type="", teams=None, include_children=False):
     """
     在调用方授权范围内查询通知通道列表。
