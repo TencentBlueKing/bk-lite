@@ -35,6 +35,396 @@ def test_feishu_manifest_declares_im_group_capability():
     }
 
 
+def test_connection_rejects_token_only_when_application_lacks_group_scopes():
+    with mock.patch(
+        "apps.system_mgmt.providers.adapters.feishu._fetch_tenant_access_token",
+        return_value=("tenant-token", None),
+    ), mock.patch(
+        "apps.system_mgmt.providers.adapters.feishu.requests.get",
+        return_value=FakeResponse(
+            {
+                "code": 0,
+                "data": {
+                    "app": {
+                        "scopes": ["application:application:self_manage"],
+                        "bot": {"enabled": True},
+                    }
+                },
+            }
+        ),
+    ) as get:
+        result = FeishuIMGroupAdapter.test_connection(
+            config={
+                "im_group_application_info_url": "https://attacker.example/application/me",
+                "im_group_bot_info_url": "https://attacker.example/bot/info",
+            },
+            provider_key="feishu",
+            capability_key="im_group",
+        )
+
+    assert result.success is False
+    assert result.retryable is False
+    assert result.errors[0].code == "provider.permission_unverified"
+    assert result.payload["missing_requirements"] == [
+        "chat_create",
+        "chat_read",
+        "member_write",
+        "message_send",
+        "operate_as_owner",
+    ]
+    assert result.payload["external_request_id"] == "req-1"
+    assert get.call_args.args == (
+        "https://open.feishu.cn/open-apis/application/v6/applications/me",
+    )
+    assert get.call_args.kwargs["headers"]["Authorization"] == "Bearer tenant-token"
+
+
+def test_connection_keeps_existing_invalid_config_contract():
+    result = FeishuIMGroupAdapter.test_connection(
+        config={},
+        provider_key="feishu",
+        capability_key="im_group",
+    )
+
+    assert result.success is False
+    assert result.errors[0].code == "provider.invalid_config"
+    assert result.errors[0].field == "app_id"
+
+
+def test_connection_rejects_disabled_bot_after_accepting_object_scopes():
+    granted_scopes = [
+        {"scope_name": scope}
+        for scope in (
+            "application:application:self_manage",
+            "im:chat:create",
+            "im:chat:read",
+            "im:chat.members:write_only",
+            "im:message:send_as_bot",
+            "im:chat:operate_as_owner",
+        )
+    ]
+    with mock.patch(
+        "apps.system_mgmt.providers.adapters.feishu._fetch_tenant_access_token",
+        return_value=("tenant-token", None),
+    ), mock.patch(
+        "apps.system_mgmt.providers.adapters.feishu.requests.get",
+        side_effect=[
+            FakeResponse({"code": 0, "data": {"app": {"scopes": granted_scopes}}}, request_id="req-app"),
+            FakeResponse(
+                {"code": 0, "bot": {"activate_status": 1, "open_id": "ou_bot"}},
+                request_id="req-bot",
+            ),
+        ],
+    ) as get:
+        result = FeishuIMGroupAdapter.test_connection(
+            config={
+                "im_group_application_info_url": "https://provider.example/application/me",
+                "im_group_bot_info_url": "https://provider.example/bot/info",
+            },
+            provider_key="feishu",
+            capability_key="im_group",
+        )
+
+    assert result.success is False
+    assert result.retryable is False
+    assert result.errors[0].code == "provider.bot_not_enabled"
+    assert result.payload == {
+        "missing_requirements": ["bot_enabled"],
+        "external_request_id": "req-bot",
+    }
+    assert get.call_count == 2
+    assert get.call_args.args == (
+        "https://open.feishu.cn/open-apis/bot/v3/info",
+    )
+
+
+def test_connection_does_not_accept_explicitly_ungranted_scope_objects():
+    scopes = [
+        {"scope_name": "application:application:self_manage", "grant_status": 1},
+        {"scope_name": "im:chat:create", "grant_status": 0},
+        {"scope_name": "im:chat:read", "grant_status": 1},
+        {"scope_name": "im:chat.members:write_only", "grant_status": 1},
+        {"scope_name": "im:message:send_as_bot", "grant_status": 1},
+        {"scope_name": "im:chat:operate_as_owner", "grant_status": 1},
+    ]
+    with mock.patch(
+        "apps.system_mgmt.providers.adapters.feishu._fetch_tenant_access_token",
+        return_value=("tenant-token", None),
+    ), mock.patch(
+        "apps.system_mgmt.providers.adapters.feishu.requests.get",
+        return_value=FakeResponse({"code": 0, "data": {"app": {"scopes": scopes}}}),
+    ):
+        result = FeishuIMGroupAdapter.test_connection(
+            config={},
+            provider_key="feishu",
+            capability_key="im_group",
+        )
+
+    assert result.success is False
+    assert result.errors[0].code == "provider.permission_unverified"
+    assert result.payload["missing_requirements"] == ["chat_create"]
+
+
+def test_connection_is_ready_only_after_scope_and_bot_verification():
+    with mock.patch(
+        "apps.system_mgmt.providers.adapters.feishu._fetch_tenant_access_token",
+        return_value=("tenant-token", None),
+    ), mock.patch(
+        "apps.system_mgmt.providers.adapters.feishu.requests.get",
+        side_effect=[
+            FakeResponse(
+                {
+                    "code": 0,
+                    "data": {
+                        "app": {
+                            "scopes": [
+                                "application:application:self_manage",
+                                "im:chat:create",
+                                "im:chat",
+                                "im:message",
+                                "im:chat:operate_as_owner",
+                            ]
+                        }
+                    },
+                },
+                request_id="req-app",
+            ),
+            FakeResponse(
+                {"code": 0, "bot": {"activate_status": 2, "open_id": "ou_bot"}},
+                request_id="req-bot",
+            ),
+        ],
+    ):
+        result = FeishuIMGroupAdapter.test_connection(
+            config={},
+            provider_key="feishu",
+            capability_key="im_group",
+        )
+
+    assert result.success is True
+    assert result.payload == {"external_request_id": "req-bot"}
+
+
+def test_connection_treats_application_server_error_as_retryable():
+    with mock.patch(
+        "apps.system_mgmt.providers.adapters.feishu._fetch_tenant_access_token",
+        return_value=("tenant-token", None),
+    ), mock.patch(
+        "apps.system_mgmt.providers.adapters.feishu.requests.get",
+        return_value=FakeResponse({"code": 50001, "msg": "server error"}, status_code=500),
+    ):
+        result = FeishuIMGroupAdapter.test_connection(
+            config={},
+            provider_key="feishu",
+            capability_key="im_group",
+        )
+
+    assert result.success is False
+    assert result.retryable is True
+    assert result.errors[0].code == "provider.request_failed"
+
+
+def test_connection_treats_bot_rate_limit_as_retryable():
+    scopes = [
+        "application:application:self_manage",
+        "im:chat:create",
+        "im:chat",
+        "im:message",
+        "im:chat:operate_as_owner",
+    ]
+    with mock.patch(
+        "apps.system_mgmt.providers.adapters.feishu._fetch_tenant_access_token",
+        return_value=("tenant-token", None),
+    ), mock.patch(
+        "apps.system_mgmt.providers.adapters.feishu.requests.get",
+        side_effect=[
+            FakeResponse({"code": 0, "data": {"app": {"scopes": scopes}}}),
+            FakeResponse({"code": 42901, "msg": "rate limited"}, status_code=429),
+        ],
+    ):
+        result = FeishuIMGroupAdapter.test_connection(
+            config={},
+            provider_key="feishu",
+            capability_key="im_group",
+        )
+
+    assert result.success is False
+    assert result.retryable is True
+    assert result.errors[0].code == "provider.request_failed"
+
+
+@pytest.mark.parametrize(
+    ("phase", "invalid_payload"),
+    [
+        (
+            "application",
+            requests.exceptions.JSONDecodeError("invalid json", "not-json", 0),
+        ),
+        ("application", []),
+        (
+            "bot",
+            requests.exceptions.JSONDecodeError("invalid json", "not-json", 0),
+        ),
+        ("bot", []),
+    ],
+)
+def test_connection_rejects_invalid_json_and_non_object_responses(
+    phase,
+    invalid_payload,
+):
+    valid_application = FakeResponse(
+        {
+            "code": 0,
+            "data": {
+                "app": {
+                    "scopes": [
+                        "application:application:self_manage",
+                        "im:chat:create",
+                        "im:chat",
+                        "im:message",
+                        "im:chat:operate_as_owner",
+                    ]
+                }
+            },
+        }
+    )
+    invalid_response = FakeResponse(invalid_payload)
+    responses = (
+        [invalid_response]
+        if phase == "application"
+        else [valid_application, invalid_response]
+    )
+    with mock.patch(
+        "apps.system_mgmt.providers.adapters.feishu._fetch_tenant_access_token",
+        return_value=("tenant-token", None),
+    ), mock.patch(
+        "apps.system_mgmt.providers.adapters.feishu.requests.get",
+        side_effect=responses,
+    ):
+        result = FeishuIMGroupAdapter.test_connection(
+            config={},
+            provider_key="feishu",
+            capability_key="im_group",
+        )
+
+    assert result.success is False
+    assert result.retryable is False
+    assert result.errors[0].code == "provider.invalid_response"
+
+
+@pytest.mark.parametrize(
+    ("phase", "status_code", "expected_code"),
+    [
+        ("application", 401, "provider.auth_failed"),
+        ("application", 403, "provider.permission_unverified"),
+        ("application", 400, "provider.invalid_response"),
+        ("application", 404, "provider.invalid_response"),
+        ("bot", 401, "provider.auth_failed"),
+        ("bot", 403, "provider.auth_failed"),
+        ("bot", 400, "provider.invalid_response"),
+        ("bot", 404, "provider.invalid_response"),
+    ],
+)
+def test_connection_classifies_non_retryable_http_errors(
+    phase,
+    status_code,
+    expected_code,
+):
+    valid_application = FakeResponse(
+        {
+            "code": 0,
+            "data": {
+                "app": {
+                    "scopes": [
+                        "application:application:self_manage",
+                        "im:chat:create",
+                        "im:chat",
+                        "im:message",
+                        "im:chat:operate_as_owner",
+                    ]
+                }
+            },
+        }
+    )
+    error_response = FakeResponse(
+        {"code": status_code, "msg": "request rejected"},
+        status_code=status_code,
+    )
+    responses = (
+        [error_response]
+        if phase == "application"
+        else [valid_application, error_response]
+    )
+    with mock.patch(
+        "apps.system_mgmt.providers.adapters.feishu._fetch_tenant_access_token",
+        return_value=("tenant-token", None),
+    ), mock.patch(
+        "apps.system_mgmt.providers.adapters.feishu.requests.get",
+        side_effect=responses,
+    ):
+        result = FeishuIMGroupAdapter.test_connection(
+            config={},
+            provider_key="feishu",
+            capability_key="im_group",
+        )
+
+    assert result.success is False
+    assert result.retryable is False
+    assert result.errors[0].code == expected_code
+
+
+@pytest.mark.parametrize(
+    ("phase", "invalid_payload"),
+    [
+        ("application", {"code": 0, "data": ["invalid"]}),
+        ("application", {"code": 0, "data": {"app": ["invalid"]}}),
+        ("bot", {"code": 0, "bot": ["invalid"]}),
+    ],
+)
+def test_connection_rejects_invalid_nested_response_shapes(
+    phase,
+    invalid_payload,
+):
+    valid_application = FakeResponse(
+        {
+            "code": 0,
+            "data": {
+                "app": {
+                    "scopes": [
+                        "application:application:self_manage",
+                        "im:chat:create",
+                        "im:chat",
+                        "im:message",
+                        "im:chat:operate_as_owner",
+                    ]
+                }
+            },
+        }
+    )
+    invalid_response = FakeResponse(invalid_payload)
+    responses = (
+        [invalid_response]
+        if phase == "application"
+        else [valid_application, invalid_response]
+    )
+    with mock.patch(
+        "apps.system_mgmt.providers.adapters.feishu._fetch_tenant_access_token",
+        return_value=("tenant-token", None),
+    ), mock.patch(
+        "apps.system_mgmt.providers.adapters.feishu.requests.get",
+        side_effect=responses,
+    ):
+        result = FeishuIMGroupAdapter.test_connection(
+            config={},
+            provider_key="feishu",
+            capability_key="im_group",
+        )
+
+    assert result.success is False
+    assert result.retryable is False
+    assert result.errors[0].code == "provider.invalid_response"
+
+
 def test_create_group_sends_fixed_member_id_type_and_uuid():
     with mock.patch("apps.system_mgmt.providers.adapters.feishu._fetch_tenant_access_token", return_value=("tenant-token", None),), mock.patch(
         "apps.system_mgmt.providers.adapters.feishu.requests.post", return_value=FakeResponse({"code": 0, "data": {"chat_id": "oc_1"}}),

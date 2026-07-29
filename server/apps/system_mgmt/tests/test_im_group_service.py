@@ -3,6 +3,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from apps.system_mgmt.models import IMNotificationChannel, IntegrationInstance, User
+from apps.system_mgmt.providers import RuntimeApplicationService
 from apps.system_mgmt.services.im_channel_access import can_access_im_channel, filter_accessible_im_channels
 from apps.system_mgmt.services.im_group_service import IMGroupChannelError, IMGroupRuntimeService
 
@@ -52,6 +53,42 @@ def test_channel_with_mapping_ready_but_group_unverified_is_hidden(user, channel
     user.group_list = [{"id": channel.team[0]}]
     channel.integration_instance.capability_status = {"im_notification": "ready"}
     channel.integration_instance.save(update_fields=["capability_status"])
+
+    assert list(IMGroupRuntimeService.list_ready_channels(user)) == []
+
+
+@pytest.mark.django_db
+def test_token_only_verification_cannot_make_channel_ready(user, channel):
+    user.group_list = [{"id": channel.team[0]}]
+    application_response = MagicMock()
+    application_response.status_code = 200
+    application_response.headers = {"X-Tt-Logid": "req-app"}
+    application_response.json.return_value = {
+        "code": 0,
+        "data": {
+            "app": {
+                "scopes": ["application:application:self_manage"],
+            }
+        },
+    }
+
+    with patch(
+        "apps.system_mgmt.providers.adapters.feishu._fetch_tenant_access_token",
+        return_value=("tenant-token", None),
+    ), patch(
+        "apps.system_mgmt.providers.adapters.feishu.requests.get",
+        return_value=application_response,
+    ):
+        result = RuntimeApplicationService().test_connection(
+            channel.integration_instance,
+            capability_key="im_group",
+        )
+
+    assert result.success is False
+    assert result.payload["capability_status"] == {"im_group": "verification_failed"}
+    channel.integration_instance.capability_status.update(result.payload["capability_status"])
+    channel.integration_instance.status = result.payload["instance_status"]
+    channel.integration_instance.save(update_fields=["capability_status", "status"])
 
     assert list(IMGroupRuntimeService.list_ready_channels(user)) == []
 

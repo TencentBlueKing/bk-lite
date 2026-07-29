@@ -20,13 +20,28 @@ FEISHU_SEND_MESSAGE_URL = "https://open.feishu.cn/open-apis/im/v1/messages"
 FEISHU_CREATE_CHAT_URL = "https://open.feishu.cn/open-apis/im/v1/chats"
 FEISHU_CHAT_URL = "https://open.feishu.cn/open-apis/im/v1/chats/{chat_id}"
 FEISHU_CHAT_MEMBERS_URL = "https://open.feishu.cn/open-apis/im/v1/chats/{chat_id}/members"
+FEISHU_APPLICATION_INFO_URL = "https://open.feishu.cn/open-apis/application/v6/applications/me"
+FEISHU_BOT_INFO_URL = "https://open.feishu.cn/open-apis/bot/v3/info"
 FEISHU_TOKEN_REFRESH_WINDOW = 300
 _FEISHU_TENANT_TOKEN_CACHE = {}
 _FEISHU_TENANT_TOKEN_CACHE_LOCK = Lock()
 
+_FEISHU_IM_GROUP_SCOPE_REQUIREMENTS = {
+    "application_self_manage": frozenset({"application:application:self_manage"}),
+    "chat_create": frozenset({"im:chat:create"}),
+    "chat_read": frozenset({"im:chat", "im:chat:read"}),
+    "member_write": frozenset({"im:chat", "im:chat.members:write_only"}),
+    "message_send": frozenset({"im:message", "im:message:send_as_bot"}),
+    "operate_as_owner": frozenset({"im:chat:operate_as_owner"}),
+}
+
 
 def _get_config_value(config: dict, key: str, default: str):
     return (config or {}).get(key) or default
+
+
+def _is_retryable_http_status(status_code: int) -> bool:
+    return status_code == 429 or status_code >= 500
 
 
 def _get_feishu_department_identifier(item: dict, department_id_type: str | None):
@@ -217,6 +232,185 @@ def _validate_group_members(member_id_type: str, member_ids: list[str]):
             field="member_ids",
         )
     return None
+
+
+def _extract_feishu_scope_names(scopes) -> set[str]:
+    names = set()
+    for scope in scopes or []:
+        if isinstance(scope, str):
+            name = scope
+        elif isinstance(scope, dict):
+            if "grant_status" in scope and str(scope.get("grant_status")).lower() not in {
+                "1",
+                "true",
+                "granted",
+            }:
+                continue
+            if scope.get("granted") is False:
+                continue
+            name = scope.get("scope_name") or scope.get("name") or scope.get("key")
+        else:
+            continue
+        if name:
+            names.add(str(name))
+    return names
+
+
+def _fetch_feishu_application_info(config: dict, tenant_access_token: str):
+    try:
+        response = requests.get(
+            FEISHU_APPLICATION_INFO_URL,
+            headers={"Authorization": f"Bearer {tenant_access_token}"},
+            timeout=FEISHU_TIMEOUT,
+        )
+        data = response.json()
+    except requests.Timeout:
+        return None, "", CapabilityExecutionResult.failed_result(
+            "Feishu application capability verification timed out",
+            code="provider.timeout",
+            retryable=True,
+        )
+    except ValueError:
+        return None, "", CapabilityExecutionResult.failed_result(
+            "Feishu application capability verification returned invalid JSON",
+            code="provider.invalid_response",
+        )
+    except requests.RequestException:
+        return None, "", CapabilityExecutionResult.failed_result(
+            "Feishu application capability verification request failed",
+            code="provider.request_failed",
+            retryable=True,
+        )
+
+    request_id = response.headers.get("X-Tt-Logid", "")
+    if not isinstance(data, dict):
+        return None, request_id, CapabilityExecutionResult.failed_result(
+            "Feishu application capability verification returned an invalid response",
+            code="provider.invalid_response",
+            external_request_id=request_id,
+        )
+    if response.status_code != 200 or data.get("code") not in (0, None):
+        if _is_retryable_http_status(response.status_code):
+            return None, request_id, CapabilityExecutionResult.failed_result(
+                "Feishu application capability verification request failed",
+                code="provider.request_failed",
+                retryable=True,
+                external_code=str(data.get("code") or response.status_code),
+                external_request_id=request_id,
+            )
+        if response.status_code == 401:
+            return None, request_id, CapabilityExecutionResult.failed_result(
+                "Feishu application capability verification authentication failed",
+                code="provider.auth_failed",
+                external_code=str(data.get("code") or response.status_code),
+                external_request_id=request_id,
+            )
+        if response.status_code != 403:
+            return None, request_id, CapabilityExecutionResult.failed_result(
+                "Feishu application capability verification returned an invalid response",
+                code="provider.invalid_response",
+                external_code=str(data.get("code") or response.status_code),
+                external_request_id=request_id,
+            )
+        return None, request_id, CapabilityExecutionResult.failed_result(
+            "Feishu application self-management permission is required to verify IM group capabilities",
+            code="provider.permission_unverified",
+            external_code=str(data.get("code") or response.status_code),
+            external_request_id=request_id,
+            payload={
+                "missing_requirements": ["application_self_manage"],
+                "external_request_id": request_id,
+            },
+        )
+    application_data = data.get("data") or {}
+    if not isinstance(application_data, dict):
+        return None, request_id, CapabilityExecutionResult.failed_result(
+            "Feishu application capability verification returned an invalid response",
+            code="provider.invalid_response",
+            external_request_id=request_id,
+        )
+    application = application_data.get("app") or {}
+    if not isinstance(application, dict):
+        return None, request_id, CapabilityExecutionResult.failed_result(
+            "Feishu application capability verification returned an invalid response",
+            code="provider.invalid_response",
+            external_request_id=request_id,
+        )
+    return application, request_id, None
+
+
+def _missing_feishu_im_group_scope_requirements(scopes) -> list[str]:
+    granted_scopes = _extract_feishu_scope_names(scopes)
+    return [
+        requirement
+        for requirement, accepted_scopes in _FEISHU_IM_GROUP_SCOPE_REQUIREMENTS.items()
+        if granted_scopes.isdisjoint(accepted_scopes)
+    ]
+
+
+def _fetch_feishu_bot_info(config: dict, tenant_access_token: str):
+    try:
+        response = requests.get(
+            FEISHU_BOT_INFO_URL,
+            headers={"Authorization": f"Bearer {tenant_access_token}"},
+            timeout=FEISHU_TIMEOUT,
+        )
+        data = response.json()
+    except requests.Timeout:
+        return None, "", CapabilityExecutionResult.failed_result(
+            "Feishu bot capability verification timed out",
+            code="provider.timeout",
+            retryable=True,
+        )
+    except ValueError:
+        return None, "", CapabilityExecutionResult.failed_result(
+            "Feishu bot capability verification returned invalid JSON",
+            code="provider.invalid_response",
+        )
+    except requests.RequestException:
+        return None, "", CapabilityExecutionResult.failed_result(
+            "Feishu bot capability verification request failed",
+            code="provider.request_failed",
+            retryable=True,
+        )
+
+    request_id = response.headers.get("X-Tt-Logid", "")
+    if not isinstance(data, dict):
+        return None, request_id, CapabilityExecutionResult.failed_result(
+            "Feishu bot capability verification returned an invalid response",
+            code="provider.invalid_response",
+            external_request_id=request_id,
+        )
+    if response.status_code != 200 or data.get("code") not in (0, None):
+        if _is_retryable_http_status(response.status_code):
+            return None, request_id, CapabilityExecutionResult.failed_result(
+                "Feishu bot capability verification request failed",
+                code="provider.request_failed",
+                retryable=True,
+                external_code=str(data.get("code") or response.status_code),
+                external_request_id=request_id,
+            )
+        if response.status_code in {401, 403}:
+            return None, request_id, CapabilityExecutionResult.failed_result(
+                "Feishu bot capability verification authentication failed",
+                code="provider.auth_failed",
+                external_code=str(data.get("code") or response.status_code),
+                external_request_id=request_id,
+            )
+        return None, request_id, CapabilityExecutionResult.failed_result(
+            "Feishu bot capability verification returned an invalid response",
+            code="provider.invalid_response",
+            external_code=str(data.get("code") or response.status_code),
+            external_request_id=request_id,
+        )
+    bot = data.get("bot") or {}
+    if not isinstance(bot, dict):
+        return None, request_id, CapabilityExecutionResult.failed_result(
+            "Feishu bot capability verification returned an invalid response",
+            code="provider.invalid_response",
+            external_request_id=request_id,
+        )
+    return bot, request_id, None
 
 
 def _log_feishu_group_request(*, error_code: str, request_id: str, member_count: int):
@@ -773,7 +967,46 @@ class FeishuIMGroupAdapter(BaseIMGroupAdapter):
 
     @classmethod
     def test_connection(cls, config: dict, provider_key: str, capability_key: str, **kwargs):
-        return _request_tenant_access_token(config, capability_key)
+        tenant_access_token, token_error = _fetch_tenant_access_token(config)
+        if token_error:
+            return token_error
+
+        application, request_id, application_error = _fetch_feishu_application_info(config, tenant_access_token)
+        if application_error:
+            return application_error
+
+        missing_requirements = _missing_feishu_im_group_scope_requirements(application.get("scopes"))
+        if missing_requirements:
+            return CapabilityExecutionResult.failed_result(
+                "Feishu IM group permissions are not verified; "
+                "application:application:self_manage is required for diagnostics; "
+                f"missing requirements: {', '.join(missing_requirements)}",
+                code="provider.permission_unverified",
+                external_request_id=request_id,
+                payload={
+                    "missing_requirements": missing_requirements,
+                    "external_request_id": request_id,
+                },
+            )
+
+        bot, request_id, bot_error = _fetch_feishu_bot_info(config, tenant_access_token)
+        if bot_error:
+            return bot_error
+        if str(bot.get("activate_status") or "") != "2" or not bot.get("open_id"):
+            return CapabilityExecutionResult.failed_result(
+                "Feishu bot capability is not enabled for this tenant",
+                code="provider.bot_not_enabled",
+                external_request_id=request_id,
+                payload={
+                    "missing_requirements": ["bot_enabled"],
+                    "external_request_id": request_id,
+                },
+            )
+
+        return CapabilityExecutionResult.success_result(
+            "Feishu IM group capability is ready",
+            payload={"external_request_id": request_id},
+        )
 
     @classmethod
     def create_group(cls, config: dict, provider_key: str, capability_key: str, **kwargs):
