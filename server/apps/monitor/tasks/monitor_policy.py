@@ -99,7 +99,7 @@ def scan_policy_task(policy_id):
 @shared_task(base=Singleton, raise_on_duplicate=False)
 def retry_alert_center_lifecycle_notify_task():
     """补偿任务：重试推送到告警中心失败的告警通知（每5分钟执行，每次最多处理200条）"""
-    from apps.monitor.models import MonitorAlert
+    from apps.monitor.models import MonitorAlert, MonitorPolicy
     from apps.monitor.services.alert_lifecycle_notify import AlertLifecycleNotifier
 
     alerts = list(
@@ -114,15 +114,28 @@ def retry_alert_center_lifecycle_notify_task():
 
     logger.info(f"告警中心补偿任务：发现 {len(alerts)} 条待重试告警")
 
+    new_policy_ids = {
+        alert.policy_id
+        for alert in alerts
+        if alert.status == "new" and alert.policy_id
+    }
+    policies_by_id = MonitorPolicy.objects.in_bulk(new_policy_ids)
+
     groups = defaultdict(list)
     for alert in alerts:
-        groups[alert.status].append(alert)
+        policy_id = alert.policy_id if alert.status == "new" else None
+        groups[(alert.status, policy_id)].append(alert)
 
-    notifier = AlertLifecycleNotifier()
+    notifiers = {}
     success_ids = []
     fail_ids = []
 
-    for status, group_alerts in groups.items():
+    for (status, policy_id), group_alerts in groups.items():
+        if policy_id not in notifiers:
+            notifiers[policy_id] = AlertLifecycleNotifier(
+                policies_by_id.get(policy_id)
+            )
+        notifier = notifiers[policy_id]
         # 单组异常隔离：一组毒数据不应崩溃整个任务，否则该批次会被反复取回永久楔死
         try:
             action = "created" if status == "new" else status
