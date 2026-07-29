@@ -4,12 +4,11 @@
 # @Author: windyzhao
 import hashlib
 import time
-from datetime import timedelta
 from typing import Iterable, List
 
 from celery import shared_task
 from django.core.cache import cache
-from django.db.models import Q
+from django.db.models import Count, F, Min, Q
 from django.utils import timezone
 
 from apps.alerts.common.notify.notify import Notify
@@ -23,7 +22,7 @@ AUTO_ASSIGNMENT_CHUNK_SIZE = 200
 OUTBOX_DISPATCH_BATCH_SIZE = 200
 # DELIVERING 去重窗口(与 deliver_outbox_record 一致):超过该窗口仍未推进的行
 # 视为投递中断(worker 崩溃/重启),由兜底节拍重新调度,避免永久失联。
-OUTBOX_DELIVERING_STALE_MINUTES = 5
+INCIDENT_IM_RECONCILE_BATCH_SIZE = 200
 
 # D1：聚合 beat 单例锁。串行化聚合运行，防止并发聚合对同一 fingerprint 重复建警
 # （create_or_update_alert 的 select_for_update 对"建新"路径无效、Alert.fingerprint 无唯一约束）。
@@ -44,30 +43,118 @@ def deliver_alert_outbox(record_id):
     return deliver_outbox_record(record_id)
 
 
+@shared_task(
+    autoretry_for=(Exception,),
+    retry_backoff=True,
+    retry_kwargs={"max_retries": 5},
+    soft_time_limit=45,
+    time_limit=60,
+)
+def deliver_incident_im_add_members_outbox(record_id):
+    from apps.alerts.service.outbox import deliver_outbox_record
+
+    return deliver_outbox_record(record_id)
+
+
 @shared_task
 def dispatch_pending_alert_outbox():
     from apps.alerts.models.outbox import AlertOutbox
+    from apps.alerts.service.incident_im.observability import emit_incident_im_event
+    from apps.alerts.service.outbox import OUTBOX_LEASE_TIMEOUT
 
     now = timezone.now()
-    stale_delivering_before = now - timedelta(minutes=OUTBOX_DELIVERING_STALE_MINUTES)
-    ids = list(
+    backlog = AlertOutbox.objects.filter(
+        kind__startswith="incident_im_group.",
+        status__in=(
+            AlertOutbox.Status.PENDING,
+            AlertOutbox.Status.DELIVERING,
+            AlertOutbox.Status.FAILED,
+        ),
+    ).aggregate(
+        pending_count=Count(
+            "pk", filter=Q(status=AlertOutbox.Status.PENDING)
+        ),
+        delivering_count=Count(
+            "pk", filter=Q(status=AlertOutbox.Status.DELIVERING)
+        ),
+        failed_count=Count("pk", filter=Q(status=AlertOutbox.Status.FAILED)),
+        oldest_pending_at=Min(
+            "created_at", filter=Q(status=AlertOutbox.Status.PENDING)
+        ),
+    )
+    oldest_pending_at = backlog.pop("oldest_pending_at")
+    oldest_pending_age_seconds = (
+        max(0, int((now - oldest_pending_at).total_seconds()))
+        if oldest_pending_at
+        else 0
+    )
+    emit_incident_im_event(
+        "incident_im_outbox_backlog",
+        **backlog,
+        oldest_pending_age_seconds=oldest_pending_age_seconds,
+    )
+    stale_delivering_before = now - OUTBOX_LEASE_TIMEOUT
+    records = list(
         AlertOutbox.objects.filter(
-            Q(status=AlertOutbox.Status.PENDING)
-            | Q(
-                status=AlertOutbox.Status.DELIVERING,
-                updated_at__lte=stale_delivering_before,
+            (
+                Q(status=AlertOutbox.Status.PENDING)
+                | Q(
+                    status=AlertOutbox.Status.DELIVERING,
+                    updated_at__lte=stale_delivering_before,
+                )
             ),
             Q(next_retry_at__isnull=True) | Q(next_retry_at__lte=now),
         )
         .order_by("pk")
-        .values_list("pk", flat=True)[:OUTBOX_DISPATCH_BATCH_SIZE]
+        .values_list("pk", "kind")[:OUTBOX_DISPATCH_BATCH_SIZE]
     )
-    for record_id in ids:
+    for record_id, kind in records:
         try:
-            deliver_alert_outbox.delay(record_id)
+            task = deliver_incident_im_add_members_outbox if kind == "incident_im_group.add_members" else deliver_alert_outbox
+            task.delay(record_id)
         except Exception:
             logger.exception("alert outbox reschedule failed: outbox_id=%s", record_id)
-    return {"scheduled": len(ids)}
+    return {"scheduled": len(records)}
+
+
+@shared_task
+def reconcile_waiting_incident_im_groups():
+    from apps.alerts.models import IncidentIMGroup
+    from apps.alerts.service.incident_im.reconcile import (
+        reconcile_incident_im_group_by_group_id,
+    )
+
+    group_ids = list(
+        IncidentIMGroup.objects.filter(
+            continuous_sync_enabled=True,
+            pause_reason="",
+            active_slot=1,
+            status__in=(
+                IncidentIMGroup.Status.ACTIVE,
+                IncidentIMGroup.Status.ACTIVE_PARTIAL,
+            ),
+        )
+        .order_by(F("last_reconcile_attempt_at").asc(nulls_first=True), "pk")
+        .values_list("pk", flat=True)[:INCIDENT_IM_RECONCILE_BATCH_SIZE]
+    )
+    failed = 0
+    for group_id in group_ids:
+        group_failed = False
+        try:
+            reconcile_incident_im_group_by_group_id(group_id)
+        except Exception:
+            group_failed = True
+            logger.exception("incident im reconcile failed: group_id=%s", group_id)
+        try:
+            IncidentIMGroup.objects.filter(pk=group_id, active_slot=1).update(
+                last_reconcile_attempt_at=timezone.now()
+            )
+        except Exception:
+            group_failed = True
+            logger.exception("incident im reconcile cursor update failed: group_id=%s", group_id)
+        if group_failed:
+            failed += 1
+    return {"scheduled": len(group_ids), "failed": failed}
 
 
 @shared_task

@@ -1,10 +1,12 @@
 # -- coding: utf-8 --
+from django.db import transaction
 from django.utils import timezone
 from rest_framework import serializers
 
 from apps.alerts.constants import PERMISSION_INCIDENT
 from apps.alerts.constants.constants import IncidentStatus
 from apps.alerts.models.models import Alert, Incident
+from apps.alerts.service.incident_im.reconcile import enqueue_reconcile
 from apps.alerts.utils.operator_scope import normalize_usernames, validate_incident_operators
 from apps.alerts.utils.permission_scope import get_authorized_group_ids, normalize_team_ids
 from apps.core.utils.serializers import AuthSerializer
@@ -96,12 +98,20 @@ class IncidentModelSerializer(AuthSerializer):
         重写update方法来处理多对多关系
         """
         alerts = validated_data.pop("alert", None)
-        for attr, value in validated_data.items():
-            setattr(instance, attr, value)
-        instance.save()
+        member_fields = {"operator", "collaborators"}.intersection(validated_data)
+        member_changed = any(
+            getattr(instance, field) != validated_data[field]
+            for field in member_fields
+        )
+        with transaction.atomic():
+            for attr, value in validated_data.items():
+                setattr(instance, attr, value)
+            instance.save()
 
-        if alerts is not None:
-            instance.alert.set(alerts)
+            if alerts is not None:
+                instance.alert.set(alerts)
+            if member_changed:
+                enqueue_reconcile(instance)
         return instance
 
     def _get_operator_scope_alerts(self):

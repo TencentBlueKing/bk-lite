@@ -148,6 +148,7 @@ class IMGroupProvider(Protocol):
 | `external_chat_id` | 飞书 `chat_id`，创建成功后立即落库 |
 | `external_owner_id` | 建群负责人外部 ID 快照 |
 | `status` | 群绑定状态，见状态机 |
+| `active_slot` | 有效绑定固定为 `1`，已解绑历史为 `NULL`，用于跨数据库唯一约束 |
 | `current_stage` | `queued/creating_chat/adding_members/sending_summary/completed`，用于展示服务端确认的异步阶段 |
 | `continuous_sync_enabled` | 用户配置的持续同步开关 |
 | `resume_after_reopen` | Incident 关闭前是否应在重开后恢复 |
@@ -155,10 +156,11 @@ class IMGroupProvider(Protocol):
 | `idempotency_key` | 稳定创建键，长度满足飞书限制 |
 | `last_error_code/message` | 脱敏、截断后的最近错误 |
 | `last_sync_at` | 最近一次同步完成时间 |
+| `last_reconcile_attempt_at` | 周期对账最近尝试时间，仅作公平扫描游标；失败不得覆盖 `last_sync_at` |
 | `created_by`、时间字段 | 创建和变更审计 |
 | `unlinked_at/by` | 解绑记录 |
 
-数据库使用条件唯一约束保证一个 Incident 至多一个未解绑绑定。渠道删除前，服务层应阻止删除仍被有效绑定引用的渠道；历史绑定允许保留快照并将外键置空。
+数据库以普通唯一约束 `(incident, active_slot)` 保证一个 Incident 至多一个有效绑定：非 `unlinked` 绑定固定写入 `active_slot=1`，解绑历史写入 `active_slot=NULL`。该方案不依赖条件唯一索引，适用于 PostgreSQL、MySQL 和 SQLite；服务层的批量 `QuerySet.update()` 必须同步更新 `status` 与 `active_slot`。渠道删除前，服务层应阻止删除仍被有效绑定引用的渠道；历史绑定允许保留快照并将外键置空。
 
 #### `IncidentIMMember`
 
@@ -210,7 +212,7 @@ stateDiagram-v2
 
 | 方法与路径 | 用途 | 权限 |
 |---|---|---|
-| `GET /api/v1/alerts/incidents/{id}/im-group/options/` | 可用飞书渠道、默认群名、成员映射预览 | Incident 负责人 |
+| `GET /api/v1/alerts/incidents/{id}/im-group/options/` | 安全探测建群权限；负责人可继续获取飞书渠道、默认群名和成员映射预览 | 可查看 Incident |
 | `GET /api/v1/alerts/incidents/{id}/im-group/` | 当前绑定、状态和成员汇总 | 可查看 Incident |
 | `GET /api/v1/alerts/incidents/{id}/im-group/members/` | 分页成员映射与入群明细 | 可查看 Incident |
 | `POST /api/v1/alerts/incidents/{id}/im-group/` | 创建绑定并异步建群，返回 `202` | Incident 负责人 |
@@ -233,7 +235,24 @@ stateDiagram-v2
 
 创建接口在事务内完成权限与状态校验、绑定/成员快照创建和 Outbox 入队，返回绑定状态而不等待飞书。
 
-`options` 响应至少包含渠道就绪状态、固定的成员 ID 类型、负责人候选和成员映射预览；群状态响应作为前端唯一合同，例如：
+`options` 是方案 A 未建群空状态的服务端权限合同。可查看 Incident 的用户调用时均返回 `200`；只有同时属于 `operator` 且具备 `Incidents-Edit` 权限的用户得到 `can_create=true`。非负责人或缺少 Edit 权限时返回 `can_create=false`，并且 `channels`、`members`、`owner_candidates` 必须为空，`preferred_owner_username` 必须为 `null`，不得泄露渠道和账号映射。创建和所有管理 API 仍严格返回 `403`。
+
+`options` 响应至少包含 `can_create`、渠道就绪状态、负责人候选、优选负责人（`preferred_owner_username`）和成员映射预览，例如：
+
+```json
+{
+  "can_create": true,
+  "channels": [{"id": 12, "name": "生产环境飞书应用"}],
+  "default_group_name": "[INC-20260721-001] 数据库连接异常",
+  "members": [],
+  "owner_candidates": [
+    {"username": "zhangsan", "display_name": "张三"}
+  ],
+  "preferred_owner_username": "zhangsan"
+}
+```
+
+群状态响应作为前端唯一合同，例如：
 
 ```json
 {
@@ -285,7 +304,7 @@ stateDiagram-v2
 - `IM_MEMBER_MAPPING_CONFLICT`：成员身份冲突。
 - `FEISHU_PERMISSION_DENIED`、`FEISHU_RATE_LIMITED`、`FEISHU_GROUP_NOT_FOUND`：可行动的平台错误。
 
-HTTP 语义：校验错误 `400`，权限错误 `403`，当前状态冲突 `409`，异步受理 `202`。平台原始响应、凭据和 token 不返回前端。
+HTTP 语义：`options` 权限探测对可查看 Incident 的用户返回 `200`，并以 `can_create` 表达建群资格；创建和管理接口的权限错误仍为 `403`。其他校验错误为 `400`，当前状态冲突为 `409`，异步受理为 `202`。平台原始响应、凭据和 token 不返回前端。
 
 建群任务处于 `pending_create/creating` 时不接受解绑，返回 `409 IM_GROUP_CREATING`。原因是外部建群请求可能已发出但结果尚未落库，此时取消会产生无法判断归属的外部群；任务收敛为成功、部分成功或创建失败后才允许解绑。
 
@@ -323,11 +342,16 @@ Outbox 投递器需要为 Incident IM 事件提供“重试耗尽”收口：尚
 ### 7.6 持续同步
 
 - Incident 的 `operator` 或 `collaborators` 更新提交后，事务 `on_commit` 触发该 Incident 的成员对账。
-- 对账只计算“当前期望成员 - 已成功入群成员”，不生成移除动作。
+- 对账只计算“当前期望成员 - 已成功入群成员”，不生成移除动作；从 Incident 移除的已入群历史成员保留，但尚未入群的历史 pending/failed 不再邀请。
 - 开关开启且群为可同步状态时，新成员立即进入映射解析和增员 Outbox。
-- 为避免 `system_mgmt` 反向依赖 Alerts，由 Alerts 周期任务扫描持续同步群中的 `unmapped/conflict/failed` 成员并重新解析；映射补齐后自动补拉。
-- 开关关闭时仍更新页面上的待映射/待同步状态，但不自动调用飞书；负责人点击“重试拉人”后执行一次对账。
-- Incident 关闭时写入 `paused + incident_closed`，保存 `resume_after_reopen`；重新打开后仅当该值为真时恢复并立即对账。
+- 为避免 `system_mgmt` 反向依赖 Alerts，由 Alerts 周期任务重新解析持续同步群的当前期望成员；映射补齐后自动补拉，failed 仅在外部身份变化或负责人显式重试时恢复。
+- 周期任务按独立的 nullable `last_reconcile_attempt_at` NULL-first 公平扫描，成功或失败都推进尝试游标；用户可见的 `last_sync_at` 只表示真实同步完成。
+- 开关关闭时仍更新页面上的待映射/待同步状态，但不自动调用飞书；负责人点击“重试拉人”时先完整校验群和 Incident 可投递状态，再只提升当前期望成员中的 mapped failed。
+- Incident 关闭时，非手工暂停的 `pending_create/creating/active/active_partial` 统一写入 `paused + incident_closed`；`create_failed/degraded` 等权威终态保持不变。关闭和重开操作均幂等。
+- 建群 Outbox 外呼前和成功响应落库前都在群锁内复核 Incident 与暂停状态，外部调用不持有数据库锁。外呼前已关闭时不调用 Provider，Outbox 可按幂等空操作完成；外呼在途时关闭则允许本次响应落库 `chat_id` 与首批成员事实，但保持 `paused + incident_closed`，且不继续入队增员或摘要。
+- 已排队的摘要同样在外呼前与响应落库前使用统一暂停判定复核 `unlinked/manual/incident_closed/Incident active`。调用前已暂停时不外呼；调用在途发生暂停时允许消息完成并记录 `last_sync_at` 与脱敏错误事实，但不得覆盖 `status/pause_reason/resume_after_reopen`。
+- Outbox 重试耗尽回调必须 fail-safe：解绑历史不再改写；手工暂停或 Incident 关闭暂停仅更新必要阶段和脱敏耗尽错误，保持权威暂停字段。只有可投递群才能收敛为 `create_failed/active_partial`，Outbox 自身始终以 `failed` 为权威投递终态。
+- Incident 重开时，无 `external_chat_id` 的关闭暂停群恢复为 `pending_create` 并可靠入队 create；已有 `external_chat_id` 的群按当前期望成员缺口恢复为 `active/active_partial`，并继续完成首次成员对账，即使持续同步开关关闭也不丢失建群流程。
 - 手工暂停不会因 Incident 重开而自动恢复。
 
 ### 7.7 外部漂移与降级
@@ -405,7 +429,7 @@ flowchart LR
 - 群状态使用局部 `Skeleton`，不能让整个协作页进入全屏 loading。
 - 状态接口失败时保留处置动态和协作者功能，群区域显示“飞书群状态加载失败”和“重新加载”。
 - 负责人看见可执行操作；协作人及其他只读用户仅看状态、成员详情和打开群聊入口。
-- 无有效绑定时，负责人看见“一键拉群”；只读用户只看“尚未创建飞书协作群”，不显示空按钮占位。
+- 无有效绑定时，页面并行调用安全的 `options` 权限探测；`can_create=true` 才显示“一键拉群”，`can_create=false` 只显示“尚未创建飞书协作群”，不显示空按钮占位。
 
 ### 8.3 未建群卡片
 
@@ -419,8 +443,8 @@ flowchart LR
 ```
 
 - 标题固定为“飞书协作群”，不暴露通用 Provider 术语。
-- 主按钮只对 `permissions.can_manage=true` 的用户显示。
-- 点击按钮后加载 `options`。加载成功再打开 Modal，避免先展示空表单后跳动。
+- 未建群时没有群状态权限矩阵，主按钮以 `options.can_create=true` 为唯一服务端依据；不能用本地 `operator` 数组或 `permissions.can_manage` 推断。
+- 首次安全探测成功后才渲染空状态；点击按钮时可复用该响应，并在打开 Modal 前按需刷新 `options`，避免先展示空表单后跳动。
 - 没有可用渠道时仍打开 Modal，但展示明确空状态：“没有可用于建群的飞书渠道”，并提供“前往系统管理配置”入口；不显示不可提交的空表单。
 
 ### 8.4 创建群 Modal
@@ -699,6 +723,8 @@ flowchart TD
 
 Provider 将平台响应归一化为：成功结果、无效成员列表、可重试错误、终态配置错误和外部对象不存在。Alerts 不解析飞书原始响应格式。
 
+服务端必须显式配置可从飞书客户端访问的 `http/https` 绝对 `WEB_BASE_URL`。相对地址、非 HTTP(S) 协议、localhost、回环/私网/未指定 IP 均视为无效，不得发送摘要消息；缺失时以 `IM_WEB_BASE_URL_MISSING`、无效时以 `IM_WEB_BASE_URL_INVALID` 失败关闭，群绑定进入 `degraded`。管理员修复配置后通过现有重试入口先复核外部群，再以稳定幂等键重新投递摘要，不得重新建群。
+
 ## 10. 安全、可靠性与可观测性
 
 - 飞书密钥只保存在系统管理集成实例中，通过运行时服务读取；Alerts 数据库和日志不得复制密钥。
@@ -759,7 +785,7 @@ Provider 将平台响应归一化为：成功结果、无效成员列表、可�
 
 - Incident 负责人能在协作区选择可用飞书渠道并异步创建群。
 - 至少一名负责人映射时允许部分成功建群；未映射人员清晰可见。
-- 负责人和协作人按映射加入群，群内收到 Incident 摘要。
+- 负责人和协作人按映射加入群，群内收到 Incident 摘要；摘要详情链接是基于 `WEB_BASE_URL` 的可访问绝对地址。
 - 持续同步开启时，新加入 Incident 或后续补齐映射的成员最终入群。
 - 从 Incident 移除人员不会自动退群。
 - 创建、增员和重试具备幂等性，不产生重复外部群。

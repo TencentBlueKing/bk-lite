@@ -37,14 +37,14 @@
 - Create `server/apps/system_mgmt/services/im_channel_access.py`：统一渠道 team 可见性规则。
 - Create `server/apps/system_mgmt/services/im_group_service.py`：就绪渠道查询和 Provider 运行时门面。
 - Modify `server/apps/system_mgmt/viewset/im_notification_channel_viewset.py`：复用公共渠道权限函数，消除两套规则。
-- Create `server/apps/system_mgmt/tests/test_feishu_im_group_provider.py`：飞书 HTTP 合同和错误归一化测试。
+- Create `server/apps/system_mgmt/tests/test_feishu_im_group_provider_pure.py`：飞书 HTTP 合同和错误归一化测试。
 - Create `server/apps/system_mgmt/tests/test_im_group_service.py`：渠道访问、就绪校验和运行时测试。
 
 ### Alerts backend
 
 - Create `server/apps/alerts/models/incident_im.py`：群绑定和成员模型及状态枚举。
 - Modify `server/apps/alerts/models/__init__.py`：导出新模型。
-- Create `server/apps/alerts/migrations/0022_incident_im_group.py`：同时依赖两个现有 `0021` 叶子迁移并创建表。
+- Create `server/apps/alerts/migrations/0022_incident_im_group.py`：依赖目标分支已合并两个 `0021` 叶子的 `0022_merge_20260717_0921`，并创建表。
 - Create `server/apps/alerts/service/incident_im/errors.py`：稳定业务错误码和异常。
 - Create `server/apps/alerts/service/incident_im/members.py`：成员去重、映射解析和只增不减对账。
 - Create `server/apps/alerts/service/incident_im/groups.py`：创建、读取、设置、暂停、恢复、重试和解绑领域服务。
@@ -59,11 +59,11 @@
 - Modify `server/apps/alerts/tasks/tasks.py`、`server/apps/alerts/tasks/__init__.py`、`server/apps/alerts/config.py`：增加异步对账与周期扫描。
 - Modify `server/apps/alerts/serializers/incident.py`：Incident 人员变化提交后触发对账。
 - Modify `server/apps/alerts/service/incident_operator.py`：关闭/重开后触发群暂停/恢复。
-- Create `server/apps/alerts/tests/test_incident_im_models.py`。
-- Create `server/apps/alerts/tests/test_incident_im_members.py`。
-- Create `server/apps/alerts/tests/test_incident_im_group_views.py`。
-- Create `server/apps/alerts/tests/test_incident_im_delivery.py`。
-- Create `server/apps/alerts/tests/test_incident_im_reconcile.py`。
+- Create `server/apps/alerts/tests/test_incident_im_models_service.py`。
+- Create `server/apps/alerts/tests/test_incident_im_members_service.py`。
+- Create `server/apps/alerts/tests/test_incident_im_group_*_views.py server/apps/alerts/tests/test_incident_im_group_create_service.py`。
+- Create `server/apps/alerts/tests/test_incident_im_delivery_*_service.py`。
+- Create `server/apps/alerts/tests/test_incident_im_reconcile_service.py server/apps/alerts/tests/test_incident_im_lifecycle_service.py`。
 
 ### Web
 
@@ -92,7 +92,7 @@
 - Modify: `server/apps/system_mgmt/providers/adapters/base.py`
 - Modify: `server/apps/system_mgmt/providers/adapters/feishu.py`
 - Modify: `server/apps/system_mgmt/providers/manifests/feishu.py`
-- Create: `server/apps/system_mgmt/tests/test_feishu_im_group_provider.py`
+- Create: `server/apps/system_mgmt/tests/test_feishu_im_group_provider_pure.py`
 
 **Interfaces:**
 - Consumes: `RuntimeApplicationService.execute(...)`、现有 `_fetch_tenant_access_token()` 和 `CapabilityExecutionResult`。
@@ -168,7 +168,7 @@ def test_add_members_returns_invalid_ids_without_losing_successes():
 Run:
 
 ```bash
-cd server && MINIO_ENDPOINT=localhost:9000 MINIO_ACCESS_KEY=test MINIO_SECRET_KEY=test MINIO_USE_HTTPS=false INSTALL_APPS=system_mgmt DB_ENGINE=sqlite DB_NAME=:memory: uv run pytest -o addopts='' --nomigrations apps/system_mgmt/tests/test_feishu_im_group_provider.py -q
+cd server && MINIO_ENDPOINT=localhost:9000 MINIO_ACCESS_KEY=test MINIO_SECRET_KEY=test MINIO_USE_HTTPS=false INSTALL_APPS=system_mgmt DB_ENGINE=sqlite DB_NAME=:memory: uv run pytest -o addopts='' --nomigrations apps/system_mgmt/tests/test_feishu_im_group_provider_pure.py -q
 ```
 
 Expected: FAIL，提示 `BaseIMGroupAdapter`、`FeishuIMGroupAdapter` 或 `im_group` capability 不存在。
@@ -250,7 +250,7 @@ class FeishuIMGroupAdapter(BaseIMGroupAdapter):
 Run:
 
 ```bash
-cd server && MINIO_ENDPOINT=localhost:9000 MINIO_ACCESS_KEY=test MINIO_SECRET_KEY=test MINIO_USE_HTTPS=false INSTALL_APPS=system_mgmt DB_ENGINE=sqlite DB_NAME=:memory: uv run pytest -o addopts='' --nomigrations apps/system_mgmt/tests/test_feishu_im_group_provider.py apps/system_mgmt/tests/test_provider_manifest.py apps/system_mgmt/tests/test_im_notification_manifest.py -q
+cd server && MINIO_ENDPOINT=localhost:9000 MINIO_ACCESS_KEY=test MINIO_SECRET_KEY=test MINIO_USE_HTTPS=false INSTALL_APPS=system_mgmt DB_ENGINE=sqlite DB_NAME=:memory: uv run pytest -o addopts='' --nomigrations apps/system_mgmt/tests/test_feishu_im_group_provider_pure.py apps/system_mgmt/tests/test_provider_manifest.py apps/system_mgmt/tests/test_im_notification_manifest.py -q
 ```
 
 Expected: PASS；新增测试覆盖成功、invalid ID、限流、权限不足、404、超时和敏感日志。
@@ -258,7 +258,7 @@ Expected: PASS；新增测试覆盖成功、invalid ID、限流、权限不足�
 - [ ] **Step 5: 提交**
 
 ```bash
-git add server/apps/system_mgmt/providers/adapters/base.py server/apps/system_mgmt/providers/adapters/feishu.py server/apps/system_mgmt/providers/manifests/feishu.py server/apps/system_mgmt/tests/test_feishu_im_group_provider.py
+git add server/apps/system_mgmt/providers/adapters/base.py server/apps/system_mgmt/providers/adapters/feishu.py server/apps/system_mgmt/providers/manifests/feishu.py server/apps/system_mgmt/tests/test_feishu_im_group_provider_pure.py
 git commit -m "feat(system-mgmt): 增加飞书群协作能力"
 ```
 
@@ -358,7 +358,7 @@ git commit -m "feat(system-mgmt): 提供群协作渠道运行时"
 - Create: `server/apps/alerts/models/incident_im.py`
 - Modify: `server/apps/alerts/models/__init__.py`
 - Create: `server/apps/alerts/migrations/0022_incident_im_group.py`
-- Create: `server/apps/alerts/tests/test_incident_im_models.py`
+- Create: `server/apps/alerts/tests/test_incident_im_models_service.py`
 
 **Interfaces:**
 - Consumes: `Incident`、`IMNotificationChannel`、`MaintainerInfo`、`TimeInfo`。
@@ -408,7 +408,7 @@ def test_member_identity_is_snapshot_not_mapping_foreign_key(group):
 - [ ] **Step 2: 运行 RED**
 
 ```bash
-cd server && MINIO_ENDPOINT=localhost:9000 MINIO_ACCESS_KEY=test MINIO_SECRET_KEY=test MINIO_USE_HTTPS=false INSTALL_APPS=system_mgmt,alerts DB_ENGINE=sqlite DB_NAME=:memory: uv run pytest -o addopts='' --nomigrations apps/alerts/tests/test_incident_im_models.py -q
+cd server && MINIO_ENDPOINT=localhost:9000 MINIO_ACCESS_KEY=test MINIO_SECRET_KEY=test MINIO_USE_HTTPS=false INSTALL_APPS=system_mgmt,alerts DB_ENGINE=sqlite DB_NAME=:memory: uv run pytest -o addopts='' --nomigrations apps/alerts/tests/test_incident_im_models_service.py -q
 # Expected: FAIL，模型不存在。
 ```
 
@@ -445,6 +445,7 @@ class IncidentIMGroup(MaintainerInfo, TimeInfo):
     external_chat_id = models.CharField(max_length=255, blank=True, default="", db_index=True)
     external_owner_id = models.CharField(max_length=255, blank=True, default="")
     status = models.CharField(max_length=32, choices=Status.choices, default=Status.PENDING_CREATE, db_index=True)
+    active_slot = models.PositiveSmallIntegerField(null=True, default=1, editable=False)
     current_stage = models.CharField(max_length=32, choices=Stage.choices, default=Stage.QUEUED)
     continuous_sync_enabled = models.BooleanField(default=True)
     resume_after_reopen = models.BooleanField(default=False)
@@ -457,7 +458,7 @@ class IncidentIMGroup(MaintainerInfo, TimeInfo):
     unlinked_by = models.CharField(max_length=32, blank=True, default="")
 ```
 
-`IncidentIMMember` 定义角色、映射和同步枚举，唯一约束 `(group, username)`；为 `(group, sync_status)` 和 `(group, mapping_status)` 建索引。群模型增加条件唯一约束：`fields=["incident"]`、`condition=~Q(status="unlinked")`。文件显式导入 `uuid`，保证后续 `group.id.hex` 可用于飞书幂等键。
+`IncidentIMMember` 定义角色、映射和同步枚举，唯一约束 `(group, username)`；为 `(group, sync_status)` 和 `(group, mapping_status)` 建索引。群模型以普通唯一约束 `fields=["incident", "active_slot"]` 跨数据库保证单一有效绑定：非 `unlinked` 绑定的 `active_slot=1`，解绑历史的 `active_slot=NULL`，因此允许多个历史解绑记录；模型 `save()` 按 `status` 派生槽位，后续服务如使用 `QuerySet.update()` 必须同时更新 `active_slot`。文件显式导入 `uuid`，保证后续 `group.id.hex` 可用于飞书幂等键。
 
 - [ ] **Step 4: 生成并检查迁移**
 
@@ -465,12 +466,11 @@ class IncidentIMGroup(MaintainerInfo, TimeInfo):
 cd server && INSTALL_APPS=system_mgmt,alerts DB_ENGINE=sqlite DB_NAME=:memory: uv run python manage.py makemigrations alerts --name incident_im_group
 ```
 
-Expected: 生成 `0022_incident_im_group.py`，dependencies 同时包含：
+Expected: 生成 `0022_incident_im_group.py`。合并到 `feature_windyzhao` 后，Alerts 依赖指向已经收口两个 `0021` 叶子的合并迁移：
 
 ```python
 dependencies = [
-    ("alerts", "0021_activealertfingerprint"),
-    ("alerts", "0021_notifyresult_failure_reason"),
+    ("alerts", "0022_merge_20260717_0921"),
     ("system_mgmt", "0038_imnotificationchannel_imnotificationusermapping"),
 ]
 ```
@@ -480,9 +480,9 @@ dependencies = [
 - [ ] **Step 5: 运行 GREEN、迁移检查和提交**
 
 ```bash
-cd server && MINIO_ENDPOINT=localhost:9000 MINIO_ACCESS_KEY=test MINIO_SECRET_KEY=test MINIO_USE_HTTPS=false INSTALL_APPS=system_mgmt,alerts DB_ENGINE=sqlite DB_NAME=:memory: uv run pytest -o addopts='' --nomigrations apps/alerts/tests/test_incident_im_models.py -q
+cd server && MINIO_ENDPOINT=localhost:9000 MINIO_ACCESS_KEY=test MINIO_SECRET_KEY=test MINIO_USE_HTTPS=false INSTALL_APPS=system_mgmt,alerts DB_ENGINE=sqlite DB_NAME=:memory: uv run pytest -o addopts='' --nomigrations apps/alerts/tests/test_incident_im_models_service.py -q
 cd server && INSTALL_APPS=system_mgmt,alerts DB_ENGINE=sqlite DB_NAME=:memory: uv run python manage.py makemigrations --check --dry-run
-git add server/apps/alerts/models/incident_im.py server/apps/alerts/models/__init__.py server/apps/alerts/migrations/0022_incident_im_group.py server/apps/alerts/tests/test_incident_im_models.py
+git add server/apps/alerts/models/incident_im.py server/apps/alerts/models/__init__.py server/apps/alerts/migrations/0022_incident_im_group.py server/apps/alerts/tests/test_incident_im_models_service.py
 git commit -m "feat(alerts): 增加 Incident 群绑定模型"
 ```
 
@@ -494,7 +494,7 @@ Expected: 测试 PASS，`makemigrations --check` 输出 `No changes detected`。
 - Create: `server/apps/alerts/service/incident_im/__init__.py`
 - Create: `server/apps/alerts/service/incident_im/errors.py`
 - Create: `server/apps/alerts/service/incident_im/members.py`
-- Create: `server/apps/alerts/tests/test_incident_im_members.py`
+- Create: `server/apps/alerts/tests/test_incident_im_members_service.py`
 
 **Interfaces:**
 - Consumes: Task 3 模型、`IMNotificationUserMapping`、最近一次 `IMNotificationSyncRun.payload.conflict_issues`。
@@ -536,7 +536,7 @@ def test_reconcile_never_deletes_member_removed_from_incident(group, joined_memb
 - [ ] **Step 2: 运行 RED**
 
 ```bash
-cd server && MINIO_ENDPOINT=localhost:9000 MINIO_ACCESS_KEY=test MINIO_SECRET_KEY=test MINIO_USE_HTTPS=false INSTALL_APPS=system_mgmt,alerts DB_ENGINE=sqlite DB_NAME=:memory: uv run pytest -o addopts='' --nomigrations apps/alerts/tests/test_incident_im_members.py -q
+cd server && MINIO_ENDPOINT=localhost:9000 MINIO_ACCESS_KEY=test MINIO_SECRET_KEY=test MINIO_USE_HTTPS=false INSTALL_APPS=system_mgmt,alerts DB_ENGINE=sqlite DB_NAME=:memory: uv run pytest -o addopts='' --nomigrations apps/alerts/tests/test_incident_im_members_service.py -q
 # Expected: FAIL，resolver 不存在。
 ```
 
@@ -570,7 +570,7 @@ class IncidentIMError(Exception):
 - [ ] **Step 4: 运行 GREEN 和覆盖率**
 
 ```bash
-cd server && MINIO_ENDPOINT=localhost:9000 MINIO_ACCESS_KEY=test MINIO_SECRET_KEY=test MINIO_USE_HTTPS=false INSTALL_APPS=system_mgmt,alerts DB_ENGINE=sqlite DB_NAME=:memory: uv run pytest -o addopts='' --nomigrations apps/alerts/tests/test_incident_im_members.py --cov=apps.alerts.service.incident_im.members --cov-report=term-missing --cov-fail-under=75 -q
+cd server && MINIO_ENDPOINT=localhost:9000 MINIO_ACCESS_KEY=test MINIO_SECRET_KEY=test MINIO_USE_HTTPS=false INSTALL_APPS=system_mgmt,alerts DB_ENGINE=sqlite DB_NAME=:memory: uv run pytest -o addopts='' --nomigrations apps/alerts/tests/test_incident_im_members_service.py --cov=apps.alerts.service.incident_im.members --cov-report=term-missing --cov-fail-under=75 -q
 ```
 
 Expected: PASS，目标模块覆盖率 ≥75%。
@@ -578,7 +578,7 @@ Expected: PASS，目标模块覆盖率 ≥75%。
 - [ ] **Step 5: 提交**
 
 ```bash
-git add server/apps/alerts/service/incident_im server/apps/alerts/tests/test_incident_im_members.py
+git add server/apps/alerts/service/incident_im server/apps/alerts/tests/test_incident_im_members_service.py
 git commit -m "feat(alerts): 解析 Incident 飞书成员映射"
 ```
 
@@ -591,7 +591,7 @@ git commit -m "feat(alerts): 解析 Incident 飞书成员映射"
 - Create: `server/apps/alerts/views/incident_im.py`
 - Modify: `server/apps/alerts/views/__init__.py`
 - Modify: `server/apps/alerts/urls.py`
-- Create: `server/apps/alerts/tests/test_incident_im_group_views.py`
+- Create: `server/apps/alerts/tests/test_incident_im_group_*_views.py server/apps/alerts/tests/test_incident_im_group_create_service.py`
 
 **Interfaces:**
 - Consumes: Task 2 的渠道门面、Task 3 模型、Task 4 resolver、`enqueue_outbox`。
@@ -636,7 +636,7 @@ def test_duplicate_create_returns_conflict_and_one_binding(api_client, operator,
 - [ ] **Step 2: 运行 RED**
 
 ```bash
-cd server && MINIO_ENDPOINT=localhost:9000 MINIO_ACCESS_KEY=test MINIO_SECRET_KEY=test MINIO_USE_HTTPS=false INSTALL_APPS=system_mgmt,alerts DB_ENGINE=sqlite DB_NAME=:memory: uv run pytest -o addopts='' --nomigrations apps/alerts/tests/test_incident_im_group_views.py -q
+cd server && MINIO_ENDPOINT=localhost:9000 MINIO_ACCESS_KEY=test MINIO_SECRET_KEY=test MINIO_USE_HTTPS=false INSTALL_APPS=system_mgmt,alerts DB_ENGINE=sqlite DB_NAME=:memory: uv run pytest -o addopts='' --nomigrations apps/alerts/tests/test_incident_im_group_*_views.py apps/alerts/tests/test_incident_im_group_create_service.py -q
 # Expected: FAIL，路由 404。
 ```
 
@@ -685,7 +685,7 @@ ViewSet 的 `list` 返回当前群对象或 `null`，`create` 返回 202，`part
 - [ ] **Step 5: 运行 GREEN 和 API 回归**
 
 ```bash
-cd server && MINIO_ENDPOINT=localhost:9000 MINIO_ACCESS_KEY=test MINIO_SECRET_KEY=test MINIO_USE_HTTPS=false INSTALL_APPS=system_mgmt,alerts DB_ENGINE=sqlite DB_NAME=:memory: uv run pytest -o addopts='' --nomigrations apps/alerts/tests/test_incident_im_group_views.py apps/alerts/tests/test_incident_update_views.py apps/alerts/tests/test_incident_serializer_methods.py -q
+cd server && MINIO_ENDPOINT=localhost:9000 MINIO_ACCESS_KEY=test MINIO_SECRET_KEY=test MINIO_USE_HTTPS=false INSTALL_APPS=system_mgmt,alerts DB_ENGINE=sqlite DB_NAME=:memory: uv run pytest -o addopts='' --nomigrations apps/alerts/tests/test_incident_im_group_*_views.py apps/alerts/tests/test_incident_im_group_create_service.py apps/alerts/tests/test_incident_update_views.py apps/alerts/tests/test_incident_serializer_methods.py -q
 ```
 
 Expected: PASS；覆盖 owner、collaborator、无关用户、超级管理员、跨组织渠道、无映射、部分映射、重复创建和已关闭 Incident。
@@ -693,7 +693,7 @@ Expected: PASS；覆盖 owner、collaborator、无关用户、超级管理员、
 - [ ] **Step 6: 提交**
 
 ```bash
-git add server/apps/alerts/service/incident_im/groups.py server/apps/alerts/serializers/incident_im.py server/apps/alerts/serializers/__init__.py server/apps/alerts/views/incident_im.py server/apps/alerts/views/__init__.py server/apps/alerts/urls.py server/apps/alerts/tests/test_incident_im_group_views.py
+git add server/apps/alerts/service/incident_im/groups.py server/apps/alerts/serializers/incident_im.py server/apps/alerts/serializers/__init__.py server/apps/alerts/views/incident_im.py server/apps/alerts/views/__init__.py server/apps/alerts/urls.py server/apps/alerts/tests/test_incident_im_group_*_views.py server/apps/alerts/tests/test_incident_im_group_create_service.py
 git commit -m "feat(alerts): 提供 Incident 飞书群 API"
 ```
 
@@ -702,7 +702,7 @@ git commit -m "feat(alerts): 提供 Incident 飞书群 API"
 **Files:**
 - Create: `server/apps/alerts/service/incident_im/delivery.py`
 - Modify: `server/apps/alerts/service/outbox.py`
-- Create: `server/apps/alerts/tests/test_incident_im_delivery.py`
+- Create: `server/apps/alerts/tests/test_incident_im_delivery_*_service.py`
 - Modify: `server/apps/alerts/tests/test_outbox.py`
 
 **Interfaces:**
@@ -753,7 +753,7 @@ def test_add_members_marks_only_invalid_ids_failed(group, pending_members):
 - [ ] **Step 2: 运行 RED**
 
 ```bash
-cd server && MINIO_ENDPOINT=localhost:9000 MINIO_ACCESS_KEY=test MINIO_SECRET_KEY=test MINIO_USE_HTTPS=false INSTALL_APPS=system_mgmt,alerts DB_ENGINE=sqlite DB_NAME=:memory: uv run pytest -o addopts='' --nomigrations apps/alerts/tests/test_incident_im_delivery.py -q
+cd server && MINIO_ENDPOINT=localhost:9000 MINIO_ACCESS_KEY=test MINIO_SECRET_KEY=test MINIO_USE_HTTPS=false INSTALL_APPS=system_mgmt,alerts DB_ENGINE=sqlite DB_NAME=:memory: uv run pytest -o addopts='' --nomigrations apps/alerts/tests/test_incident_im_delivery_*_service.py -q
 # Expected: FAIL，delivery 不存在。
 ```
 
@@ -791,7 +791,7 @@ Provider `retryable=True` 时抛出 `IncidentIMRetryableError` 让 Outbox 重试
 - [ ] **Step 5: 运行 GREEN、Outbox 回归和覆盖率**
 
 ```bash
-cd server && MINIO_ENDPOINT=localhost:9000 MINIO_ACCESS_KEY=test MINIO_SECRET_KEY=test MINIO_USE_HTTPS=false INSTALL_APPS=system_mgmt,alerts DB_ENGINE=sqlite DB_NAME=:memory: uv run pytest -o addopts='' --nomigrations apps/alerts/tests/test_incident_im_delivery.py apps/alerts/tests/test_outbox.py --cov=apps.alerts.service.incident_im.delivery --cov=apps.alerts.service.outbox --cov-report=term-missing --cov-fail-under=75 -q
+cd server && MINIO_ENDPOINT=localhost:9000 MINIO_ACCESS_KEY=test MINIO_SECRET_KEY=test MINIO_USE_HTTPS=false INSTALL_APPS=system_mgmt,alerts DB_ENGINE=sqlite DB_NAME=:memory: uv run pytest -o addopts='' --nomigrations apps/alerts/tests/test_incident_im_delivery_*_service.py apps/alerts/tests/test_outbox.py --cov=apps.alerts.service.incident_im.delivery --cov=apps.alerts.service.outbox --cov-report=term-missing --cov-fail-under=75 -q
 ```
 
 Expected: PASS；覆盖创建 ACK 丢失、部分成员失败、摘要失败、限流重试、重试耗尽和外部群不存在。
@@ -799,7 +799,7 @@ Expected: PASS；覆盖创建 ACK 丢失、部分成员失败、摘要失败、�
 - [ ] **Step 6: 提交**
 
 ```bash
-git add server/apps/alerts/service/incident_im/delivery.py server/apps/alerts/service/outbox.py server/apps/alerts/tests/test_incident_im_delivery.py server/apps/alerts/tests/test_outbox.py
+git add server/apps/alerts/service/incident_im/delivery.py server/apps/alerts/service/outbox.py server/apps/alerts/tests/test_incident_im_delivery_*_service.py server/apps/alerts/tests/test_outbox.py
 git commit -m "feat(alerts): 异步投递 Incident 飞书群"
 ```
 
@@ -812,7 +812,7 @@ git commit -m "feat(alerts): 异步投递 Incident 飞书群"
 - Modify: `server/apps/alerts/tasks/tasks.py`
 - Modify: `server/apps/alerts/tasks/__init__.py`
 - Modify: `server/apps/alerts/config.py`
-- Create: `server/apps/alerts/tests/test_incident_im_reconcile.py`
+- Create: `server/apps/alerts/tests/test_incident_im_reconcile_service.py server/apps/alerts/tests/test_incident_im_lifecycle_service.py`
 - Modify: `server/apps/alerts/tests/test_incident_operator.py`
 
 **Interfaces:**
@@ -853,7 +853,7 @@ def test_reopen_preserves_manual_pause_but_resumes_closed_pause(manual_paused_gr
 - [ ] **Step 2: 运行 RED**
 
 ```bash
-cd server && MINIO_ENDPOINT=localhost:9000 MINIO_ACCESS_KEY=test MINIO_SECRET_KEY=test MINIO_USE_HTTPS=false INSTALL_APPS=system_mgmt,alerts DB_ENGINE=sqlite DB_NAME=:memory: uv run pytest -o addopts='' --nomigrations apps/alerts/tests/test_incident_im_reconcile.py -q
+cd server && MINIO_ENDPOINT=localhost:9000 MINIO_ACCESS_KEY=test MINIO_SECRET_KEY=test MINIO_USE_HTTPS=false INSTALL_APPS=system_mgmt,alerts DB_ENGINE=sqlite DB_NAME=:memory: uv run pytest -o addopts='' --nomigrations apps/alerts/tests/test_incident_im_reconcile_service.py apps/alerts/tests/test_incident_im_lifecycle_service.py -q
 # Expected: FAIL，reconcile 不存在。
 ```
 
@@ -888,7 +888,7 @@ def reconcile_waiting_incident_im_groups():
 - [ ] **Step 5: 运行 GREEN 和 Incident 回归**
 
 ```bash
-cd server && MINIO_ENDPOINT=localhost:9000 MINIO_ACCESS_KEY=test MINIO_SECRET_KEY=test MINIO_USE_HTTPS=false INSTALL_APPS=system_mgmt,alerts DB_ENGINE=sqlite DB_NAME=:memory: uv run pytest -o addopts='' --nomigrations apps/alerts/tests/test_incident_im_reconcile.py apps/alerts/tests/test_incident_operator.py apps/alerts/tests/test_incident_update_views.py -q
+cd server && MINIO_ENDPOINT=localhost:9000 MINIO_ACCESS_KEY=test MINIO_SECRET_KEY=test MINIO_USE_HTTPS=false INSTALL_APPS=system_mgmt,alerts DB_ENGINE=sqlite DB_NAME=:memory: uv run pytest -o addopts='' --nomigrations apps/alerts/tests/test_incident_im_reconcile_service.py apps/alerts/tests/test_incident_im_lifecycle_service.py apps/alerts/tests/test_incident_operator.py apps/alerts/tests/test_incident_update_views.py -q
 ```
 
 Expected: PASS；显式证明新增自动拉、关闭同步只等待、删除不踢、映射补齐自动拉、关闭暂停、重开恢复和手工暂停保持。
@@ -896,7 +896,7 @@ Expected: PASS；显式证明新增自动拉、关闭同步只等待、删除不
 - [ ] **Step 6: 提交**
 
 ```bash
-git add server/apps/alerts/service/incident_im/reconcile.py server/apps/alerts/serializers/incident.py server/apps/alerts/service/incident_operator.py server/apps/alerts/tasks/tasks.py server/apps/alerts/tasks/__init__.py server/apps/alerts/config.py server/apps/alerts/tests/test_incident_im_reconcile.py server/apps/alerts/tests/test_incident_operator.py
+git add server/apps/alerts/service/incident_im/reconcile.py server/apps/alerts/serializers/incident.py server/apps/alerts/service/incident_operator.py server/apps/alerts/tasks/tasks.py server/apps/alerts/tasks/__init__.py server/apps/alerts/config.py server/apps/alerts/tests/test_incident_im_reconcile_service.py server/apps/alerts/tests/test_incident_im_lifecycle_service.py server/apps/alerts/tests/test_incident_operator.py
 git commit -m "feat(alerts): 持续同步 Incident 飞书成员"
 ```
 
@@ -906,8 +906,8 @@ git commit -m "feat(alerts): 持续同步 Incident 飞书成员"
 - Modify: `server/apps/alerts/service/incident_im/groups.py`
 - Modify: `server/apps/alerts/views/incident_im.py`
 - Modify: `server/apps/alerts/serializers/incident_im.py`
-- Modify: `server/apps/alerts/tests/test_incident_im_group_views.py`
-- Modify: `server/apps/alerts/tests/test_incident_im_delivery.py`
+- Modify: `server/apps/alerts/tests/test_incident_im_group_*_views.py server/apps/alerts/tests/test_incident_im_group_create_service.py`
+- Modify: `server/apps/alerts/tests/test_incident_im_delivery_*_service.py`
 
 **Interfaces:**
 - Consumes: 前述完整状态机。
@@ -956,20 +956,20 @@ def test_group_not_found_marks_degraded_without_recreating(group):
 - [ ] **Step 2: 运行 RED**
 
 ```bash
-cd server && MINIO_ENDPOINT=localhost:9000 MINIO_ACCESS_KEY=test MINIO_SECRET_KEY=test MINIO_USE_HTTPS=false INSTALL_APPS=system_mgmt,alerts DB_ENGINE=sqlite DB_NAME=:memory: uv run pytest -o addopts='' --nomigrations apps/alerts/tests/test_incident_im_group_views.py apps/alerts/tests/test_incident_im_delivery.py -q
+cd server && MINIO_ENDPOINT=localhost:9000 MINIO_ACCESS_KEY=test MINIO_SECRET_KEY=test MINIO_USE_HTTPS=false INSTALL_APPS=system_mgmt,alerts DB_ENGINE=sqlite DB_NAME=:memory: uv run pytest -o addopts='' --nomigrations apps/alerts/tests/test_incident_im_group_*_views.py apps/alerts/tests/test_incident_im_group_create_service.py apps/alerts/tests/test_incident_im_delivery_*_service.py -q
 # Expected: 新管理行为 FAIL。
 ```
 
 - [ ] **Step 3: 实现操作和审计**
 
-`set_continuous_sync` 开启后立即对账，关闭只改变配置；`pause` 仅允许 active/active_partial；`resume` 仅允许 manual pause，并立即对账；`retry` 对 degraded 先调用 get_group，对正常/部分成功重新解析待处理成员；`unlink` 拒绝 pending/creating、非 completed stage 或存在 adding 成员，返回 `IM_GROUP_BUSY`，严格比对群名后置 unlinked。Outbox handler 遇到 unlinked 必须无外部调用直接成功，因此不删除、不伪造已投递状态，也不调用任何飞书删除 API。
+`set_continuous_sync` 开启后立即对账，关闭只改变配置；`pause` 仅允许 active/active_partial；`resume` 仅允许 manual pause，并立即对账；`retry` 对 degraded 先调用 get_group，对正常/部分成功重新解析待处理成员；`unlink` 拒绝 pending/creating、非 completed stage 或存在 adding 成员，返回 `IM_GROUP_BUSY`，严格比对群名后必须在同一事务写入 `status=unlinked` 和 `active_slot=NULL`。新建有效绑定默认 `active_slot=1`。Outbox handler 遇到 unlinked 必须无外部调用直接成功，因此不删除、不伪造已投递状态，也不调用任何飞书删除 API。
 
 每个动作调用 `record_operator_log`，`target_type=LogTargetType.INCIDENT`，overview 分别为创建、创建结果、持续同步设置、暂停、恢复、重试、补拉结果、解绑。成员结果审计只写成功/失败数量，不写外部 ID 列表。
 
 - [ ] **Step 4: 运行 GREEN 和后端功能组合**
 
 ```bash
-cd server && MINIO_ENDPOINT=localhost:9000 MINIO_ACCESS_KEY=test MINIO_SECRET_KEY=test MINIO_USE_HTTPS=false INSTALL_APPS=system_mgmt,alerts DB_ENGINE=sqlite DB_NAME=:memory: uv run pytest -o addopts='' --nomigrations apps/alerts/tests/test_incident_im_models.py apps/alerts/tests/test_incident_im_members.py apps/alerts/tests/test_incident_im_group_views.py apps/alerts/tests/test_incident_im_delivery.py apps/alerts/tests/test_incident_im_reconcile.py apps/alerts/tests/test_outbox.py -q
+cd server && MINIO_ENDPOINT=localhost:9000 MINIO_ACCESS_KEY=test MINIO_SECRET_KEY=test MINIO_USE_HTTPS=false INSTALL_APPS=system_mgmt,alerts DB_ENGINE=sqlite DB_NAME=:memory: uv run pytest -o addopts='' --nomigrations apps/alerts/tests/test_incident_im_models_service.py apps/alerts/tests/test_incident_im_members_service.py apps/alerts/tests/test_incident_im_group_*_views.py apps/alerts/tests/test_incident_im_group_create_service.py apps/alerts/tests/test_incident_im_delivery_*_service.py apps/alerts/tests/test_incident_im_reconcile_service.py apps/alerts/tests/test_incident_im_lifecycle_service.py apps/alerts/tests/test_outbox.py -q
 ```
 
 Expected: 全部 PASS。
@@ -977,7 +977,7 @@ Expected: 全部 PASS。
 - [ ] **Step 5: 提交**
 
 ```bash
-git add server/apps/alerts/service/incident_im/groups.py server/apps/alerts/views/incident_im.py server/apps/alerts/serializers/incident_im.py server/apps/alerts/tests/test_incident_im_group_views.py server/apps/alerts/tests/test_incident_im_delivery.py
+git add server/apps/alerts/service/incident_im/groups.py server/apps/alerts/views/incident_im.py server/apps/alerts/serializers/incident_im.py server/apps/alerts/tests/test_incident_im_group_*_views.py server/apps/alerts/tests/test_incident_im_group_create_service.py server/apps/alerts/tests/test_incident_im_delivery_*_service.py
 git commit -m "feat(alerts): 管理 Incident 飞书群状态"
 ```
 
@@ -1180,7 +1180,7 @@ Runbook 必须写明：使用专用测试租户和测试应用；凭据只在系
 - [ ] **Step 2: 运行后端完整门禁**
 
 ```bash
-cd server && MINIO_ENDPOINT=localhost:9000 MINIO_ACCESS_KEY=test MINIO_SECRET_KEY=test MINIO_USE_HTTPS=false INSTALL_APPS=system_mgmt,alerts DB_ENGINE=sqlite DB_NAME=:memory: uv run pytest -o addopts='' --nomigrations apps/system_mgmt/tests/test_feishu_im_group_provider.py apps/system_mgmt/tests/test_im_group_service.py apps/system_mgmt/tests/test_im_notification_viewset.py apps/alerts/tests/test_incident_im_models.py apps/alerts/tests/test_incident_im_members.py apps/alerts/tests/test_incident_im_group_views.py apps/alerts/tests/test_incident_im_delivery.py apps/alerts/tests/test_incident_im_reconcile.py apps/alerts/tests/test_outbox.py apps/alerts/tests/test_incident_operator.py -q
+cd server && MINIO_ENDPOINT=localhost:9000 MINIO_ACCESS_KEY=test MINIO_SECRET_KEY=test MINIO_USE_HTTPS=false INSTALL_APPS=system_mgmt,alerts DB_ENGINE=sqlite DB_NAME=:memory: uv run pytest -o addopts='' --nomigrations apps/system_mgmt/tests/test_feishu_im_group_provider_pure.py apps/system_mgmt/tests/test_im_group_service.py apps/system_mgmt/tests/test_im_notification_viewset.py apps/alerts/tests/test_incident_im_models_service.py apps/alerts/tests/test_incident_im_members_service.py apps/alerts/tests/test_incident_im_group_*_views.py apps/alerts/tests/test_incident_im_group_create_service.py apps/alerts/tests/test_incident_im_delivery_*_service.py apps/alerts/tests/test_incident_im_reconcile_service.py apps/alerts/tests/test_incident_im_lifecycle_service.py apps/alerts/tests/test_outbox.py apps/alerts/tests/test_incident_operator.py -q
 cd server && INSTALL_APPS=system_mgmt,alerts DB_ENGINE=sqlite DB_NAME=:memory: uv run python manage.py makemigrations --check --dry-run
 ```
 
@@ -1235,7 +1235,7 @@ git commit -m "test(alerts): 验证 Incident 飞书群闭环"
 
 - [ ] 确认 `git diff --check` 无输出。
 - [ ] 确认 `git status --short` 只包含本计划产生且已明确处理的文件。
-- [ ] 确认两个现有 Alerts `0021` 迁移都被 `0022_incident_im_group` 依赖，迁移图无冲突叶子。
+- [ ] 确认 `0022_incident_im_group` 依赖目标分支的 `0022_merge_20260717_0921`，且 0022–0025 只有一个 Alerts 迁移叶子。
 - [ ] 确认新 Provider/Alerts 服务覆盖率均达到 75%。
 - [ ] 确认系统管理既有单人 IM 通知、用户同步和渠道权限测试保持通过。
 - [ ] 确认 Incident 既有创建、更新、关闭、重开和协作人交互保持通过。

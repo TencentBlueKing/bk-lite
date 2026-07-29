@@ -1,8 +1,9 @@
 import React from 'react';
-import { Button, Dropdown, Modal } from 'antd';
+import { Button, Dropdown, Modal, Tooltip } from 'antd';
+import type { MenuProps } from 'antd';
 import { MoreOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
-import PermissionWrapper from '@/components/permission';
+import usePermissions from '@/hooks/usePermissions';
 
 export interface MoreActionsDropdownItem {
   key: string;
@@ -46,7 +47,9 @@ const MoreActionsDropdown: React.FC<MoreActionsDropdownProps> = ({
   iconStyle,
 }) => {
   const { t } = useTranslation();
+  const { hasPermission } = usePermissions();
   const label = ariaLabel ?? t('common.more');
+  const [open, setOpen] = React.useState(false);
 
   const runItem = (item: MoreActionsDropdownItem) => {
     if (item.disabled) return;
@@ -64,46 +67,44 @@ const MoreActionsDropdown: React.FC<MoreActionsDropdownProps> = ({
     Promise.resolve(item.onClick?.()).catch(() => undefined);
   };
 
+  const menuItems: MenuProps['items'] = items.map((item) => {
+    const requiredPermissions = item.permission
+      ? Array.isArray(item.permission)
+        ? item.permission
+        : [item.permission]
+      : null;
+    const hasItemPermission = requiredPermissions
+      ? hasPermission(requiredPermissions)
+      : true;
+    const disabled = Boolean(item.disabled) || !hasItemPermission;
+
+    return {
+      key: item.key,
+      label: hasItemPermission ? item.label : (
+        <Tooltip title={t('common.noAuth')}>
+          <span>{item.label}</span>
+        </Tooltip>
+      ),
+      disabled,
+      danger: item.danger,
+      icon: item.icon,
+      onClick: (info) => {
+        if (disabled) return;
+        info.domEvent.stopPropagation();
+        setOpen(false);
+        runItem(item);
+      },
+    };
+  });
+
   return (
     <Dropdown
-      menu={{
-        items: items.map((item) => {
-          const requiredPermissions = item.permission
-            ? Array.isArray(item.permission)
-              ? item.permission
-              : [item.permission]
-            : null;
-          const buttonNode = (
-            <Button
-              type="text"
-              size="small"
-              danger={item.danger}
-              disabled={item.disabled}
-              icon={item.icon}
-              className="w-full text-left"
-              onClick={(e) => {
-                e.stopPropagation();
-                runItem(item);
-              }}
-            >
-              {item.label}
-            </Button>
-          );
-          return {
-            key: item.key,
-            label: requiredPermissions ? (
-              <PermissionWrapper requiredPermissions={requiredPermissions}>
-                {buttonNode}
-              </PermissionWrapper>
-            ) : (
-              buttonNode
-            ),
-          };
-        }),
-      }}
+      menu={{ items: menuItems }}
       trigger={trigger}
       placement={placement}
       overlayClassName={overlayClassName}
+      open={open}
+      onOpenChange={setOpen}
     >
       <Button
         type={buttonType}

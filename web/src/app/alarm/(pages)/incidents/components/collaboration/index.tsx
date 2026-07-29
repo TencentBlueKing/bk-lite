@@ -27,6 +27,8 @@ import type {
   IncidentUpdateReply,
 } from '@/app/alarm/types/incidents';
 import type { UserItem } from '@/app/alarm/types/types';
+import IncidentIMGroupPanel from './imGroup';
+import { PANEL_SIDEBAR_WIDTH_CLASS } from './imGroup/viewModel';
 
 /** Avatar background colors, cycled by first char of username */
 const AVATAR_COLORS = [
@@ -77,6 +79,7 @@ const CollaborationTab: React.FC<CollaborationTabProps> = ({
 
   const [inviteUsers, setInviteUsers] = useState<string[]>([]);
   const [inviteLoading, setInviteLoading] = useState(false);
+  const [imGroupRefreshVersion, setImGroupRefreshVersion] = useState(0);
 
   const [filterType, setFilterType] = useState<string | undefined>(undefined);
   const [searchKeyword, setSearchKeyword] = useState('');
@@ -210,6 +213,7 @@ const CollaborationTab: React.FC<CollaborationTabProps> = ({
       setInviteVisible(false);
       setInviteUsers([]);
       onRefresh();
+      setImGroupRefreshVersion(value => value + 1);
     } catch {
       message.error(t('common.saveFailed'));
     } finally {
@@ -217,15 +221,25 @@ const CollaborationTab: React.FC<CollaborationTabProps> = ({
     }
   };
 
-  const handleRemoveCollaborator = async (username: string) => {
-    try {
-      const newCollaborators = collaborators.filter((u: string) => u !== username);
-      await modifyIncidentDetail(incidentPk, { collaborators: newCollaborators });
-      message.success(t('common.saveSuccess'));
-      onRefresh();
-    } catch {
-      message.error(t('common.saveFailed'));
-    }
+  const handleRemoveCollaborator = (username: string) => {
+    Modal.confirm({
+      title: t('incidents.removeCollaborator'),
+      content: t('incidents.imGroup.removeCollaboratorWarning'),
+      okText: t('common.confirm'),
+      cancelText: t('common.cancel'),
+      centered: true,
+      onOk: async () => {
+        try {
+          const newCollaborators = collaborators.filter((u: string) => u !== username);
+          await modifyIncidentDetail(incidentPk, { collaborators: newCollaborators });
+          message.success(t('common.saveSuccess'));
+          onRefresh();
+          setImGroupRefreshVersion(value => value + 1);
+        } catch {
+          message.error(t('common.saveFailed'));
+        }
+      },
+    });
   };
 
   const toggleRepliesExpanded = (updateId: number) => {
@@ -397,7 +411,13 @@ const CollaborationTab: React.FC<CollaborationTabProps> = ({
               </Button>
             </PermissionWrapper>
             <PermissionWrapper requiredPermissions={['Edit']}>
-              <MoreActionsDropdown items={moreMenuItems} placement="bottomRight" />
+              <MoreActionsDropdown
+                items={moreMenuItems}
+                ariaLabel={t('common.more')}
+                placement="bottomRight"
+                buttonClassName="px-1"
+                iconStyle={{ fontSize: 14 }}
+              />
             </PermissionWrapper>
           </div>
         </div>
@@ -463,9 +483,9 @@ const CollaborationTab: React.FC<CollaborationTabProps> = ({
   /* ── Main render ────────────────────────────────── */
 
   return (
-    <div className="flex gap-0 h-full">
+    <div className="flex flex-col gap-0 h-full lg:flex-row">
       {/* Left: Updates list */}
-      <div className="flex-1 min-w-0 overflow-auto pr-4">
+      <div className="flex-1 min-w-0 overflow-auto lg:pr-4">
         <Spin spinning={loading}>
           {/* Header */}
           <div className="flex justify-between items-center mb-3">
@@ -517,7 +537,12 @@ const CollaborationTab: React.FC<CollaborationTabProps> = ({
       </div>
 
       {/* Right: Collaborator panel */}
-      <div className="w-[220px] shrink-0 border-l border-gray-200 pl-4">
+      <div className={`${PANEL_SIDEBAR_WIDTH_CLASS} min-w-0 shrink-0 border-t border-gray-200 pt-4 lg:border-l lg:border-t-0 lg:pl-4 lg:pt-0`}>
+        <IncidentIMGroupPanel
+          incidentPk={incidentPk}
+          incidentDetail={incidentDetail}
+          refreshVersion={imGroupRefreshVersion}
+        />
         <div className="flex justify-between items-center mb-4">
           <h4 className="text-sm font-semibold m-0">{t('incidents.collaborators')}</h4>
           <PermissionWrapper requiredPermissions={['Edit']}>

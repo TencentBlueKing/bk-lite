@@ -28,6 +28,12 @@ from .incident import IncidentModelSerializer
 
 # 事故协作更新
 from .incident_update import IncidentUpdateSerializer
+from .incident_im import (
+    IncidentIMGroupCreateSerializer,
+    IncidentIMGroupSettingsSerializer,
+    IncidentIMGroupUnlinkSerializer,
+    IncidentIMMemberSerializer,
+)
 
 # 系统设置
 from .system_setting import SystemSettingModelSerializer
@@ -56,6 +62,10 @@ __all__ = [
     # 事故
     "IncidentModelSerializer",
     "IncidentUpdateSerializer",
+    "IncidentIMGroupCreateSerializer",
+    "IncidentIMGroupSettingsSerializer",
+    "IncidentIMGroupUnlinkSerializer",
+    "IncidentIMMemberSerializer",
     # 系统设置
     "SystemSettingModelSerializer",
     # 操作日志

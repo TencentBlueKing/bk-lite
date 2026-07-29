@@ -6,30 +6,25 @@ from django.urls import path
 from rest_framework import routers
 
 from apps.alerts.views import (
-    AlertSourceModelViewSet,
+    AlarmStrategyModelViewSet,
+    AlertAssignmentModelViewSet,
     AlertModelViewSet,
+    AlertShieldModelViewSet,
+    AlertSourceModelViewSet,
+    EnrichmentRuleModelViewSet,
     EventModelViewSet,
-    K8sOpenAPIViewSet,
-    LevelModelViewSet,
+    IncidentIMGroupViewSet,
     IncidentModelViewSet,
     IncidentUpdateViewSet,
-    SystemSettingModelViewSet,
+    K8sOpenAPIViewSet,
+    LevelModelViewSet,
     SystemLogModelViewSet,
-    AlertAssignmentModelViewSet,
-    AlertShieldModelViewSet,
-    AlarmStrategyModelViewSet,
-    EnrichmentRuleModelViewSet,
+    SystemSettingModelViewSet,
     receiver_data,
     receiver_source_data,
     request_test,
 )
-from apps.alerts.views.action import (
-    ActionCallbackView,
-    ActionExecutionViewSet,
-    ActionJobScriptDetailView,
-    ActionJobScriptListView,
-    ActionRuleViewSet,
-)
+from apps.alerts.views.action import ActionCallbackView, ActionExecutionViewSet, ActionJobScriptDetailView, ActionJobScriptListView, ActionRuleViewSet
 
 router = routers.DefaultRouter()
 router.register(r"api/alert_source", AlertSourceModelViewSet, basename="alert_source")
@@ -42,19 +37,24 @@ router.register(r"api/shield", AlertShieldModelViewSet, basename="shield")
 router.register(r"api/enrichment", EnrichmentRuleModelViewSet, basename="enrichment")
 router.register(r"api/incident", IncidentModelViewSet, basename="incident")
 router.register(
-    r"api/incident/(?P<incident_pk>\d+)/updates",
-    IncidentUpdateViewSet,
-    basename="incident-updates",
+    r"api/incident/(?P<incident_pk>\d+)/updates", IncidentUpdateViewSet, basename="incident-updates",
 )
-router.register(
-    r"api/alarm_strategy", AlarmStrategyModelViewSet, basename="alarm_strategy"
-)
+router.register(r"api/alarm_strategy", AlarmStrategyModelViewSet, basename="alarm_strategy")
 router.register(r"api/log", SystemLogModelViewSet, basename="log")
 router.register(r"open_api/k8s", K8sOpenAPIViewSet, basename="alerts_k8s_open_api")
 router.register(r"api/action_rule", ActionRuleViewSet, basename="action_rule")
 router.register(r"api/action_execution", ActionExecutionViewSet, basename="action_execution")
 
 urlpatterns = [
+    path(
+        "api/incident/<int:incident_pk>/im-group/",
+        IncidentIMGroupViewSet.as_view({"get": "list", "post": "create", "patch": "partial_update", "delete": "destroy"}),
+    ),
+    path("api/incident/<int:incident_pk>/im-group/options/", IncidentIMGroupViewSet.as_view({"get": "group_options"}),),
+    path("api/incident/<int:incident_pk>/im-group/members/", IncidentIMGroupViewSet.as_view({"get": "members"}),),
+    path("api/incident/<int:incident_pk>/im-group/retry/", IncidentIMGroupViewSet.as_view({"post": "retry"}),),
+    path("api/incident/<int:incident_pk>/im-group/pause/", IncidentIMGroupViewSet.as_view({"post": "pause"}),),
+    path("api/incident/<int:incident_pk>/im-group/resume/", IncidentIMGroupViewSet.as_view({"post": "resume"}),),
     path("api/test/", request_test),
     path("api/receiver_data/", receiver_data),
     path("api/source/<str:source_id>/webhook/", receiver_source_data),

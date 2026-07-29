@@ -1,7 +1,9 @@
 import useApiClient from '@/utils/request';
+import { createIncidentIMGroupApi } from '@/app/alarm/api/incidentIMGroup';
 
 export const useIncidentsApi = () => {
   const { get, post, patch, del } = useApiClient();
+  const incidentIMGroupApi = createIncidentIMGroupApi({ get, post, patch, del });
 
   const getIncidentList = async (params: any) => {
     return get('/alerts/api/incident/', { params });
@@ -73,5 +75,6 @@ export const useIncidentsApi = () => {
     getDiagnosis,
     addAlertsToIncident,
     removeAlertsFromIncident,
+    ...incidentIMGroupApi,
   };
 };

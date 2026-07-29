@@ -33,4 +33,8 @@ CELERY_BEAT_SCHEDULE = {
         "task": "apps.alerts.tasks.tasks.beat_retry_unassigned_assignment",
         "schedule": crontab(minute="*/5"),
     },
+    "reconcile_waiting_incident_im_groups": {
+        "task": "apps.alerts.tasks.tasks.reconcile_waiting_incident_im_groups",
+        "schedule": crontab(minute="*"),
+    },
 }
