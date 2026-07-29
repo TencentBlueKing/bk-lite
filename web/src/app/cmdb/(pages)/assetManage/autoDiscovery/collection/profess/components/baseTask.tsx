@@ -96,8 +96,6 @@ interface TableItem {
 
 interface BaseTaskFormProps {
   children?: React.ReactNode;
-  /** 注入到任务名称之后、扫描周期之前的扩展字段（如 PC 的操作系统选择） */
-  afterTaskName?: React.ReactNode;
   nodeId?: string;
   showAdvanced?: boolean;
   modelItem: ModelItem;
@@ -112,6 +110,7 @@ interface BaseTaskFormProps {
   onClose: () => void;
   onTest?: () => void;
   submitText?: string;
+  singleInstanceOnly?: boolean;
 }
 
 export interface BaseTaskRef {
@@ -128,7 +127,6 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
   (
     {
       children,
-      afterTaskName,
       showAdvanced = true,
       nodeId,
       submitLoading,
@@ -143,6 +141,7 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
       onClose,
       onTest,
       submitText,
+      singleInstanceOnly = false,
     },
     ref
   ) => {
@@ -211,16 +210,15 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
       return current.every((item, index) => item === next[index]);
     };
 
-    const supportsIpSelection = IP_SELECTION_TASK_TYPES.includes(
+    const supportsIpSelection = !singleInstanceOnly && IP_SELECTION_TASK_TYPES.includes(
       normalizedTaskType
     );
     const supportsAssetOnlySelection = ASSET_ONLY_SELECTION_TASK_TYPES.includes(
       normalizedTaskType
     );
 
-    const requiresSingleInstanceSelect = SINGLE_INSTANCE_SELECT_TASK_TYPES.includes(
-      normalizedTaskType
-    );
+    const requiresSingleInstanceSelect = singleInstanceOnly
+      || SINGLE_INSTANCE_SELECT_TASK_TYPES.includes(normalizedTaskType);
     const requiresAccessPointSelect = ACCESS_POINT_TASK_TYPES.includes(
       normalizedTaskType
     );
@@ -673,8 +671,6 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
               <Input placeholder={t('common.inputTip')} />
             </Form.Item>
 
-            {afterTaskName}
-
             {/* 扫描周期 */}
             <Form.Item
               label={t('Collection.cycle')}
@@ -845,7 +841,7 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
                 {supportsIpSelection ? (
                   <Radio.Group
                     value={collectionType}
-                    className="mb-6"
+                    className="ml-8 mb-6"
                     onChange={(e) => handleCollectionTypeChange(e.target.value)}
                   >
                     <Radio value="ip">{t('Collection.chooseIp')}</Radio>

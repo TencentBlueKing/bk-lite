@@ -8,6 +8,8 @@ import VMTask from './components/vmTask';
 import WinSphereTask from './components/winsphereTask';
 import SNMPTask from './components/snmpTask';
 import SQLTask from './components/sqlTask';
+import InfluxdbTask from './components/influxdbTask';
+import PlatformApiTask from './components/platformApiTask';
 import CloudTask from './components/cloudTask';
 import HostTask from './components/hostTask';
 import IPMITask from './components/ipmiTask';
@@ -19,6 +21,10 @@ import PluginCard from './components/pluginCard';
 import TaskDetail from './components/taskDetail';
 import NodeMgmtSyncDetail from './components/nodeMgmtSyncDetail';
 import CollectionStats from './components/collectionStats';
+import {
+  getCredentialDescriptor,
+  type CredentialFormKind,
+} from './components/credentialDescriptors';
 import MarkdownRenderer from '@/components/markdown';
 import CustomTable from '@/components/custom-table';
 import PermissionWrapper from '@/components/permission';
@@ -29,7 +35,7 @@ import type { ColumnType } from 'antd/es/table';
 import type { FilterValue } from 'antd/es/table/interface';
 import { Modal } from 'antd';
 import { useTranslation } from '@/utils/i18n';
-import { Input, Button, Spin, Tag, Drawer, message, Tabs, Tooltip } from 'antd';
+import { Alert, Input, Button, Spin, Tag, Drawer, message, Tabs, Tooltip } from 'antd';
 import {
   getExecStatusConfig,
   EXEC_STATUS,
@@ -48,6 +54,37 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 type ExtendedColumnItem = ColumnType<CollectTask> & {
   key: string;
   dataIndex?: string;
+};
+
+interface TaskFormProps {
+  onClose: () => void;
+  onSuccess: () => Promise<void>;
+  selectedNode: TreeNode;
+  modelItem: ModelItem;
+  editId: number | null;
+}
+
+const CREDENTIAL_TASK_TYPES = new Set([
+  'cloud',
+  'host',
+  'db',
+  'middleware',
+  'snmp',
+  'protocol',
+]);
+
+const CREDENTIAL_TASK_COMPONENTS: Partial<Record<
+  CredentialFormKind,
+  React.ComponentType<TaskFormProps>
+>> = {
+  ssh: HostTask,
+  sql: SQLTask,
+  snmp: SNMPTask,
+  influxdb: InfluxdbTask,
+  cloud: CloudTask,
+  platform_api: PlatformApiTask,
+  winrm: PCTask,
+  macos_ssh: PCTask,
 };
 
 const getCollectToolProtocol = (pluginId?: string | null) => {
@@ -607,19 +644,6 @@ const ProfessionalCollection: React.FC = () => {
       return <WinSphereTask {...taskProps} />;
     }
 
-      const taskMap: Record<string, React.ComponentType<any>> = {
-        k8s: K8sTask,
-        vm: VMTask,
-        cloud: CloudTask,
-        host: HostTask,
-        db: HostTask,
-        middleware: HostTask,
-        config_file: ConfigFileTask,
-        snmp: SNMPTask,
-        protocol: SQLTask,
-        ip: IpTask,
-      };
-
     if (currentPlugin.id === 'physcial_server_ipmi') {
       return <IPMITask {...taskProps} />;
     }
@@ -629,6 +653,41 @@ const ProfessionalCollection: React.FC = () => {
     }
 
     const taskTypeKey = currentPlugin.task_type || currentPlugin.type || actualCategory.id;
+    if (currentPlugin.model_id === 'vmware_vc' || taskTypeKey === 'vm') {
+      return <VMTask {...taskProps} />;
+    }
+
+    if (currentPlugin.model_id === 'config_file') {
+      return <ConfigFileTask {...taskProps} />;
+    }
+
+    const credentialDescriptor = getCredentialDescriptor(currentPlugin);
+    if (credentialDescriptor) {
+      const CredentialTask = CREDENTIAL_TASK_COMPONENTS[
+        credentialDescriptor.formKind
+      ];
+      if (CredentialTask) {
+        return <CredentialTask {...taskProps} />;
+      }
+    }
+
+    if (CREDENTIAL_TASK_TYPES.has(taskTypeKey)) {
+      return (
+        <Alert
+          type="warning"
+          showIcon
+          message={t('Collection.credentialHelp.unsupportedTitle')}
+          description={t('Collection.credentialHelp.unsupportedDescription')}
+        />
+      );
+    }
+
+    const taskMap: Record<string, React.ComponentType<TaskFormProps>> = {
+      k8s: K8sTask,
+      vm: VMTask,
+      config_file: ConfigFileTask,
+      ip: IpTask,
+    };
     const TaskComponent = taskMap[taskTypeKey] || K8sTask;
 
     return <TaskComponent {...taskProps} />;

@@ -3,6 +3,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import BaseTaskForm, { BaseTaskRef } from './baseTask';
 import { useTranslation } from '@/utils/i18n';
+import { useCollectionFormLayout } from '../hooks/useCollectionFormLayout';
 import { useTaskForm } from '../hooks/useTaskForm';
 import { getCleanupFormValues } from '../hooks/useTaskForm';
 import { TreeNode, ModelItem } from '@/app/cmdb/types/autoDiscovery';
@@ -19,6 +20,7 @@ import { Form, message, Select, Spin } from 'antd';
 import useAssetManageStore from '@/app/cmdb/store/useAssetManage';
 import CredentialPoolEditor from './credentialPoolEditor';
 import { useCollectApi } from '@/app/cmdb/api';
+import { buildPCCredentialHelp } from './credentialHelp';
 
 interface PCTaskFormProps {
   onClose: () => void;
@@ -36,6 +38,7 @@ const PCTask: React.FC<PCTaskFormProps> = ({
   editId,
 }) => {
   const { t } = useTranslation();
+  const collectionFormLayout = useCollectionFormLayout();
   const baseRef = useRef<BaseTaskRef>(null as any);
   const { copyTaskData, setCopyTaskData } = useAssetManageStore();
   const { model_id: modelId } = modelItem;
@@ -206,8 +209,8 @@ const PCTask: React.FC<PCTaskFormProps> = ({
   return (
     <Spin spinning={loading || testLoading}>
       <Form
+        {...collectionFormLayout}
         form={form}
-        layout="vertical"
         onFinish={onFinish}
         initialValues={{ ...PC_FORM_INITIAL_VALUES, ...getPCDefaults('windows') }}
       >
@@ -224,27 +227,26 @@ const PCTask: React.FC<PCTaskFormProps> = ({
             defaultValue: 120,
             addonAfter: t('Collection.k8sTask.second'),
           }}
-          afterTaskName={
-            <Form.Item
-              name="osType"
-              label={t('Collection.PCTask.osType')}
-              rules={[{ required: true, message: t('common.selectTip') }]}
-            >
-              <Select
-                disabled={Boolean(editId)}
-                onChange={handleOSChange}
-                options={[
-                  { label: 'Windows', value: 'windows' },
-                  { label: 'macOS', value: 'macos' },
-                ]}
-              />
-            </Form.Item>
-          }
         >
+          <Form.Item
+            name="osType"
+            label={t('Collection.PCTask.osType')}
+            rules={[{ required: true, message: t('common.selectTip') }]}
+          >
+            <Select
+              disabled={Boolean(editId)}
+              onChange={handleOSChange}
+              options={[
+                { label: 'Windows', value: 'windows' },
+                { label: 'macOS', value: 'macos' },
+              ]}
+            />
+          </Form.Item>
           <Form.Item name="credentialPool">
             <CredentialPoolEditor
               credentialShape={getPCCredentialShape(osType)}
               editMode={Boolean(editId)}
+              credentialHelp={buildPCCredentialHelp(osType, t)}
             />
           </Form.Item>
         </BaseTaskForm>

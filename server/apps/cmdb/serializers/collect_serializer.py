@@ -17,6 +17,12 @@ from apps.cmdb.models.collect_model import (
     normalize_topology_contract,
 )
 from apps.cmdb.services.collect_credential_pool_service import CollectCredentialPoolService
+from apps.cmdb.services.collect_object_tree import get_collect_object_meta
+from apps.cmdb.services.collect_credential_contract import (
+    CredentialContractError,
+    get_collect_credential_contract,
+    validate_collect_credential,
+)
 from apps.cmdb.services.encrypt_collect_password import get_collect_model_passwords
 from apps.cmdb.services.network_config_file_policy import (
     normalize_network_config_instance,
@@ -24,6 +30,9 @@ from apps.cmdb.services.network_config_file_policy import (
     validate_network_config_instance,
 )
 from apps.cmdb.services.pc_collect_policy import validate_pc_collect_task
+from apps.cmdb.services.winsphere_endpoint import (
+    normalize_winsphere_management_address,
+)
 from apps.cmdb.utils.config_file_path import validate_absolute_path
 from apps.core.utils.serializers import UsernameSerializer, AuthSerializer
 
@@ -119,9 +128,90 @@ class CollectModelSerializer(AuthSerializer):
         params.update(normalize_topology_contract(params))
         return params
 
+    def _validate_registered_credential(self, attrs, model_id):
+        raw_credential = self._get_attr_or_instance_value(attrs, "credential")
+        existing_credential = (
+            getattr(self.instance, "credential", None)
+            if self.instance is not None
+            else None
+        )
+        try:
+            attrs["credential"] = validate_collect_credential(
+                model_id,
+                raw_credential,
+                existing_credential=existing_credential,
+            )
+        except CredentialContractError as err:
+            raise serializers.ValidationError(
+                {"credential": err.errors}
+            ) from err
+
+    def _normalize_winsphere_instances(self, attrs):
+        credential = attrs["credential"][0]
+        https_port = credential["https_port"]
+        if self._get_attr_or_instance_value(attrs, "ip_range"):
+            raise serializers.ValidationError(
+                {"ip_range": "WinSphere 任务不支持 IP 范围"}
+            )
+        instances = self._get_attr_or_instance_value(attrs, "instances")
+        if not isinstance(instances, list) or len(instances) != 1:
+            raise serializers.ValidationError(
+                {"instances": "WinSphere 任务必须选择一个管理平台"}
+            )
+        instance = copy.deepcopy(instances[0])
+        if not isinstance(instance, dict):
+            raise serializers.ValidationError(
+                {"instances": "WinSphere 管理平台格式错误"}
+            )
+        try:
+            management_address = normalize_winsphere_management_address(
+                instance.get("management_address")
+            )
+        except ValueError as err:
+            raise serializers.ValidationError(
+                {"instances": str(err)}
+            ) from err
+        instance["management_address"] = management_address
+        instance["endpoint"] = (
+            f"https://{management_address}:{https_port}"
+        )
+        attrs["instances"] = [instance]
+
     def validate(self, attrs):
         task_type = self._get_attr_or_instance_value(attrs, "task_type")
         model_id = self._get_attr_or_instance_value(attrs, "model_id")
+
+        credential_contract = get_collect_credential_contract(model_id)
+        if credential_contract:
+            expected_task_type = credential_contract.get("task_type")
+            expected_driver_type = credential_contract.get("driver_type")
+            driver_type = self._get_attr_or_instance_value(
+                attrs,
+                "driver_type",
+            )
+            contract_errors = {}
+            if expected_task_type and task_type != expected_task_type:
+                contract_errors["task_type"] = "采集任务类型不符合能力契约"
+            if expected_driver_type and driver_type != expected_driver_type:
+                contract_errors["driver_type"] = "采集驱动类型不符合能力契约"
+            if contract_errors:
+                raise serializers.ValidationError(contract_errors)
+        if (
+            credential_contract
+            and credential_contract.get("requires_enabled_collect_object")
+            and not get_collect_object_meta(
+                model_id,
+                self._get_attr_or_instance_value(attrs, "driver_type"),
+            )
+        ):
+            raise serializers.ValidationError(
+                {"model_id": "当前版本未启用该采集能力"}
+            )
+        if credential_contract:
+            self._validate_registered_credential(attrs, model_id)
+
+        if model_id == "winsphere":
+            self._normalize_winsphere_instances(attrs)
 
         if model_id == "pc":
             params = self._get_effective_params(attrs)

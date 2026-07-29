@@ -319,39 +319,43 @@ class CollectModelService(object):
         task_type = getattr(instance, "task_type", "")
         if not credential and not instance.is_k8s and task_type != CollectPluginTypes.IP:
             raise BaseAppException("采集凭据不能为空！")
-        if credential and "regions" in credential:
-            regions = credential.pop("regions")
-            if not credential:
-                # 说明之修改了regions
-                data["credential"] = instance.decrypt_credentials
-                data["credential"]["regions"] = regions
-            else:
-                data["credential"]["regions"] = regions
-        else:
-            old_credential = instance.decrypt_credentials
-            if credential is None:
-                data["credential"] = old_credential
-                return
-            if isinstance(credential, list):
-                old_pool = old_credential if isinstance(old_credential, list) else []
-                old_pool_map = {item.get("credential_id"): dict(item) for item in old_pool if isinstance(item, dict) and item.get("credential_id")}
-                merged_pool = []
-                for item in credential:
-                    if not isinstance(item, dict):
-                        raise BaseAppException("采集凭据格式错误！")
-                    credential_id = item.get("credential_id")
-                    merged = dict(old_pool_map.get(credential_id, {}))
-                    merged.update(item)
-                    merged_pool.append(merged)
-                data["credential"] = merged_pool
-                return
-
-            if not isinstance(old_credential, dict):
-                old_credential = {}
-            if not isinstance(credential, dict):
-                raise BaseAppException("采集凭据格式错误！")
-            old_credential.update(credential)
+        old_credential = instance.decrypt_credentials
+        if credential is None:
             data["credential"] = old_credential
+            return
+        if isinstance(credential, list):
+            old_pool = old_credential if isinstance(old_credential, list) else []
+            legacy_single_credential = (
+                dict(old_credential)
+                if isinstance(old_credential, dict) and len(credential) == 1
+                else {}
+            )
+            legacy_single_credential.pop("credential_id", None)
+            old_pool_map = {
+                item.get("credential_id"): dict(item)
+                for item in old_pool
+                if isinstance(item, dict) and item.get("credential_id")
+            }
+            merged_pool = []
+            for item in credential:
+                if not isinstance(item, dict):
+                    raise BaseAppException("采集凭据格式错误！")
+                credential_id = item.get("credential_id")
+                merged = dict(
+                    old_pool_map.get(credential_id)
+                    or legacy_single_credential
+                )
+                merged.update(item)
+                merged_pool.append(merged)
+            data["credential"] = merged_pool
+            return
+
+        if not isinstance(old_credential, dict):
+            old_credential = {}
+        if not isinstance(credential, dict):
+            raise BaseAppException("采集凭据格式错误！")
+        old_credential.update(credential)
+        data["credential"] = old_credential
 
     @classmethod
     def schedule_first_collection_if_needed(

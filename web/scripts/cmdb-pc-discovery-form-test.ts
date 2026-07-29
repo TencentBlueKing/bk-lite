@@ -8,7 +8,7 @@
  * - 掩码秘密（******）绝不出现在提交负载；
  * - 静态接线：page.tsx 以 model_id === 'pc' 路由 PCTask；PCTask 只含一个 BaseTaskForm；
  *   CredentialPoolEditor 支持 winrm/macos_ssh；collect API 暴露 pcTestConnection；
- *   BaseTaskForm 提供 afterTaskName 注入点；中英文案包含 PCTask。
+ *   PC 专属字段通过通用 children 区域放在基础配置之后；中英文案包含 PCTask。
  *
  * Run: pnpm exec tsx scripts/cmdb-pc-discovery-form-test.ts
  */
@@ -21,8 +21,26 @@ import {
   getPCCredentialShape,
   getPCDefaults,
 } from '../src/app/cmdb/(pages)/assetManage/autoDiscovery/collection/profess/utils/pcTask';
+import { buildPCCredentialHelp } from '../src/app/cmdb/(pages)/assetManage/autoDiscovery/collection/profess/components/credentialHelp';
 
 const MASK = '******';
+const helpMessages = JSON.parse(
+  readFileSync(
+    resolve(process.cwd(), 'src/app/cmdb/locales/zh.json'),
+    'utf8',
+  ),
+);
+const helpT = (key: string) => {
+  const value = key.split('.').reduce<unknown>(
+    (current, part) => (
+      current && typeof current === 'object'
+        ? (current as Record<string, unknown>)[part]
+        : undefined
+    ),
+    helpMessages,
+  );
+  return typeof value === 'string' ? value : key;
+};
 
 // ------------------------------------------------------------ 凭据形态
 assert.equal(getPCCredentialShape('windows'), 'winrm');
@@ -41,6 +59,34 @@ assert.deepEqual(getPCDefaults('macos'), {
   cleanupStrategy: 'immediately',
   credentialPool: [{ port: 22, authType: 'password' }],
 });
+
+// ------------------------------------------------------------ 凭据字段说明
+const windowsHelp = buildPCCredentialHelp('windows', helpT);
+assert.equal(windowsHelp.protocol, 'WinRM（HTTPS / HTTP）');
+assert.equal(windowsHelp.defaultPort, 'HTTPS 5986 / HTTP 5985');
+assert.deepEqual(
+  windowsHelp.fields?.map((field) => field.name),
+  ['用户', '密码', '协议', '端口', '认证方式', '证书校验'],
+);
+assert.equal(
+  windowsHelp.fields?.find((field) => field.name === '协议')?.recommendedValue,
+  'HTTPS',
+);
+assert.equal(
+  windowsHelp.fields?.find((field) => field.name === '证书校验')?.recommendedValue,
+  '开启',
+);
+
+const macosHelp = buildPCCredentialHelp('macos', helpT);
+assert.equal(macosHelp.protocol, 'SSH');
+assert.deepEqual(
+  macosHelp.fields?.map((field) => field.name),
+  ['用户', '端口', '认证方式', '密码', '私钥', '密码短语'],
+);
+assert.equal(
+  macosHelp.fields?.find((field) => field.name === '认证方式')?.recommendedValue,
+  'PEM 私钥',
+);
 
 // ------------------------------------------------------------ Windows 提交负载
 const windowsPayload = buildPCSubmitPayload({
@@ -189,15 +235,24 @@ assert.ok(
 const pcTaskSource = readSrc('src/app/cmdb/(pages)/assetManage/autoDiscovery/collection/profess/components/pcTask.tsx');
 assert.equal(pcTaskSource.match(/<BaseTaskForm/g)?.length, 1, 'PCTask 应包含且只包含一个 BaseTaskForm');
 assert.ok(!pcTaskSource.includes('<Drawer'), 'PCTask 不得另造抽屉');
-assert.ok(pcTaskSource.includes('afterTaskName'), 'PCTask 应把 OS 选择注入任务名称之后');
+assert.ok(pcTaskSource.includes('useCollectionFormLayout'), 'PC 表单应复用通用横向布局');
+assert.ok(!pcTaskSource.includes('layout="vertical"'), 'PC 表单不得使用纵向标签布局');
+assert.ok(!pcTaskSource.includes('afterTaskName='), 'PCTask 不应打断通用基础配置字段顺序');
+assert.ok(
+  pcTaskSource.indexOf('name="osType"') < pcTaskSource.indexOf('name="credentialPool"'),
+  '操作系统应位于基础配置之后、凭据配置之前'
+);
 assert.ok(pcTaskSource.includes('pcTestConnection'), 'PCTask 测试按钮应调用连接测试 API');
-
+assert.ok(
+  pcTaskSource.includes('credentialHelp={buildPCCredentialHelp(osType, t)}'),
+  'PCTask 应按当前操作系统展示 WinRM 或 macOS SSH 凭据字段说明',
+);
 const editorSource = readSrc('src/app/cmdb/(pages)/assetManage/autoDiscovery/collection/profess/components/credentialPoolEditor.tsx');
 assert.ok(editorSource.includes("'winrm'"), 'CredentialPoolEditor 应支持 winrm 形态');
 assert.ok(editorSource.includes("'macos_ssh'"), 'CredentialPoolEditor 应支持 macos_ssh 形态');
 
 const baseTaskSource = readSrc('src/app/cmdb/(pages)/assetManage/autoDiscovery/collection/profess/components/baseTask.tsx');
-assert.ok(baseTaskSource.includes('afterTaskName'), 'BaseTaskForm 应提供 afterTaskName 注入点');
+assert.ok(!baseTaskSource.includes('afterTaskName'), 'BaseTaskForm 不应保留仅供 PC 使用的任务名称插槽');
 
 const apiSource = readSrc('src/app/cmdb/api/collect.ts');
 assert.ok(apiSource.includes('pc_test_connection'), 'collect API 应暴露 PC 连接测试端点');
@@ -207,5 +262,7 @@ const enLocale = JSON.parse(readSrc('src/app/cmdb/locales/en.json'));
 assert.ok(zhLocale.Collection?.PCTask?.osType, 'zh.json 应包含 Collection.PCTask.osType');
 assert.ok(enLocale.Collection?.PCTask?.osType, 'en.json 应包含 Collection.PCTask.osType');
 assert.ok(zhLocale.Collection?.PCTask?.winrmHttpWarning, 'zh.json 应包含 WinRM HTTP 安全警告文案');
+assert.ok(zhLocale.Collection?.credentialHelp?.fields?.winrmUsername);
+assert.ok(enLocale.Collection?.credentialHelp?.fields?.macPrivateKey);
 
 console.log('cmdb-pc-discovery-form-test passed');

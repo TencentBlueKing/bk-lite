@@ -347,6 +347,32 @@ class TestFormatUpdateCredential:
         assert data["credential"]["user"] == "admin"
         assert data["credential"]["regions"] == ["cn-north"]
 
+    def test_华为云编辑project与region时保留掩码AKSK(self):
+        inst = fake_instance(
+            is_k8s=False,
+            decrypt_credentials={
+                "accessKey": "AK-old",
+                "accessSecret": "SK-old",
+                "project_id": "project-old",
+                "regions": {"resource_id": "cn-north-4"},
+            },
+        )
+        data = {
+            "credential": {
+                "project_id": "project-new",
+                "regions": {"resource_id": "cn-east-3"},
+            }
+        }
+
+        CollectModelService.format_update_credential(inst, data)
+
+        assert data["credential"] == {
+            "accessKey": "AK-old",
+            "accessSecret": "SK-old",
+            "project_id": "project-new",
+            "regions": {"resource_id": "cn-east-3"},
+        }
+
     def test_regions与其他字段共存(self):
         inst = fake_instance(is_k8s=False, decrypt_credentials={"user": "old"})
         data = {"credential": {"user": "new", "regions": ["r1"]}}
@@ -376,6 +402,38 @@ class TestFormatUpdateCredential:
         merged = data["credential"][0]
         assert merged["user"] == "u1-new"
         assert merged["pwd"] == "secret"
+
+    def test_旧单凭据dict升级为单项凭据池时保留掩码密钥(self):
+        inst = fake_instance(
+            is_k8s=False,
+            decrypt_credentials={
+                "token": "legacy-secret",
+                "scheme": "http",
+                "port": 8086,
+            },
+        )
+        data = {
+            "credential": [
+                {
+                    "credential_id": "cred-from-detail",
+                    "scheme": "https",
+                    "port": 8443,
+                    "verify_tls": True,
+                }
+            ]
+        }
+
+        CollectModelService.format_update_credential(inst, data)
+
+        assert data["credential"] == [
+            {
+                "credential_id": "cred-from-detail",
+                "token": "legacy-secret",
+                "scheme": "https",
+                "port": 8443,
+                "verify_tls": True,
+            }
+        ]
 
     def test_list池含非dict项_报错(self):
         inst = fake_instance(is_k8s=False, decrypt_credentials=[])

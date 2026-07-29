@@ -7,6 +7,21 @@ export interface WinSphereCredential {
   verify_tls?: boolean;
 }
 
+const trim = (value: unknown) => String(value ?? '').trim();
+const toBoolean = (value: unknown) => {
+  if (typeof value === 'boolean') return value;
+  return ['1', 'true', 'yes', 'on'].includes(trim(value).toLowerCase());
+};
+
+const getCredentialItem = (
+  value: WinSphereCredential | WinSphereCredential[] | undefined,
+): WinSphereCredential => {
+  if (Array.isArray(value)) {
+    return value.length === 1 && value[0] ? value[0] : {};
+  }
+  return value || {};
+};
+
 export const createWinSphereCredential = (): Required<WinSphereCredential> => ({
   user: '',
   password: '',
@@ -14,15 +29,13 @@ export const createWinSphereCredential = (): Required<WinSphereCredential> => ({
   verify_tls: false,
 });
 
-const trim = (value: unknown) => String(value ?? '').trim();
-
 export const buildWinSphereCredential = (
   value: WinSphereCredential,
 ): WinSphereCredential => {
   const credential: WinSphereCredential = {
     user: trim(value.user),
-    https_port: Number(value.https_port || 443),
-    verify_tls: Boolean(value.verify_tls),
+    https_port: Number(value.https_port ?? 443),
+    verify_tls: toBoolean(value.verify_tls),
   };
   const password = trim(value.password);
   if (password && password !== PASSWORD_PLACEHOLDER) {
@@ -32,14 +45,17 @@ export const buildWinSphereCredential = (
 };
 
 export const restoreWinSphereCredential = (
-  value: WinSphereCredential | undefined,
+  value: WinSphereCredential | WinSphereCredential[] | undefined,
   isCopy: boolean,
-): Required<WinSphereCredential> => ({
-  user: trim(value?.user),
-  password: isCopy ? '' : PASSWORD_PLACEHOLDER,
-  https_port: Number(value?.https_port || 443),
-  verify_tls: Boolean(value?.verify_tls),
-});
+): Required<WinSphereCredential> => {
+  const item = getCredentialItem(value);
+  return {
+    user: trim(item.user),
+    password: isCopy ? '' : PASSWORD_PLACEHOLDER,
+    https_port: Number(item.https_port ?? 443),
+    verify_tls: toBoolean(item.verify_tls),
+  };
+};
 
 export const validateWinSphereCredential = (
   value: WinSphereCredential,
@@ -50,5 +66,6 @@ export const validateWinSphereCredential = (
   if (!Number.isInteger(port) || port < 1 || port > 65535) {
     return 'https_port';
   }
+  if (typeof value.verify_tls !== 'boolean') return 'verify_tls';
   return null;
 };

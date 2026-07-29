@@ -60,6 +60,7 @@ export interface CredentialPoolItem {
   authkey?: string;
   privkey?: string;
   snmp_port?: number | string;
+  https_port?: number | string;
   [key: string]: any;
 }
 
@@ -90,6 +91,10 @@ export interface TreeNode {
   name: string;
   type?: string;
   task_type?: string;
+  credential_protocol?: string;
+  credential_kind?: string;
+  credential_default_port?: number;
+  credential_tip_key?: string;
   encrypted_fields?: string[];
   tag?: string[];
   desc?: string;
@@ -105,6 +110,10 @@ export interface ModelItem {
   name: string;
   type?: string;
   task_type?: string;
+  credential_protocol?: string;
+  credential_kind?: string;
+  credential_default_port?: number;
+  credential_tip_key?: string;
   encrypted_fields?: string[];
   tag?: string[];
   desc?: string;

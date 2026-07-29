@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import { Form, Spin } from 'antd';
 
 import {
@@ -10,6 +10,7 @@ import {
 import { ModelItem, TreeNode } from '@/app/cmdb/types/autoDiscovery';
 import useAssetManageStore from '@/app/cmdb/store/useAssetManage';
 import { useTranslation } from '@/utils/i18n';
+import { useCollectionFormLayout } from '../hooks/useCollectionFormLayout';
 
 import BaseTaskForm, { BaseTaskRef } from './baseTask';
 import CredentialPoolEditor from './credentialPoolEditor';
@@ -24,6 +25,7 @@ import {
   restoreWinSphereCredential,
   validateWinSphereCredential,
 } from './winsphereCredential';
+import { resolveCredentialHelp } from './credentialHelp';
 
 interface WinSphereTaskProps {
   onClose: () => void;
@@ -33,7 +35,7 @@ interface WinSphereTaskProps {
   editId?: number | null;
 }
 
-const INITIAL_VALUES = {
+const BASE_INITIAL_VALUES = {
   instId: undefined,
   cycle: CYCLE_OPTIONS.INTERVAL,
   intervalValue: 30,
@@ -41,7 +43,6 @@ const INITIAL_VALUES = {
   timeout: 600,
   cleanupStrategy: 'no_cleanup',
   cleanupDays: 3,
-  credentialPool: [createWinSphereCredential()],
 };
 
 const WinSphereTask: React.FC<WinSphereTaskProps> = ({
@@ -52,9 +53,17 @@ const WinSphereTask: React.FC<WinSphereTaskProps> = ({
   editId,
 }) => {
   const { t } = useTranslation();
+  const collectionFormLayout = useCollectionFormLayout();
   const baseRef = useRef<BaseTaskRef>(null as any);
   const { copyTaskData, setCopyTaskData } = useAssetManageStore();
   const modelId = modelItem.model_id;
+  const initialValues = useMemo(
+    () => ({
+      ...BASE_INITIAL_VALUES,
+      credentialPool: [createWinSphereCredential()],
+    }),
+    [],
+  );
 
   const {
     form,
@@ -66,7 +75,7 @@ const WinSphereTask: React.FC<WinSphereTaskProps> = ({
   } = useTaskForm({
     modelId,
     editId,
-    initialValues: INITIAL_VALUES,
+    initialValues,
     onSuccess,
     onClose,
     formatValues: (values) => {
@@ -115,7 +124,7 @@ const WinSphereTask: React.FC<WinSphereTaskProps> = ({
         const values = await fetchTaskDetail(editId);
         form.setFieldsValue(buildFormValues(values, false));
       } else {
-        form.setFieldsValue(INITIAL_VALUES);
+        form.setFieldsValue(initialValues);
       }
     };
     initialize();
@@ -123,27 +132,29 @@ const WinSphereTask: React.FC<WinSphereTaskProps> = ({
 
   const validateCredential = (_: unknown, value?: any[]) => {
     const credential =
-      normalizeCredentialPool(value)[0] || createWinSphereCredential();
+      normalizeCredentialPool(value)[0]
+      || createWinSphereCredential();
     const invalidField = validateWinSphereCredential(credential);
     if (!invalidField) return Promise.resolve();
-    const labels = {
+    const fieldLabels = {
       user: t('Collection.WinSphereTask.user', 'WinSphere账号'),
-      password: t('Collection.WinSphereTask.password', '密码'),
+      password: t('password', '密码'),
       https_port: t('Collection.WinSphereTask.httpsPort', 'HTTPS端口'),
       verify_tls: t('Collection.WinSphereTask.verifyTls', 'TLS证书校验'),
     };
+    const label = fieldLabels[invalidField] || invalidField;
     return Promise.reject(
-      new Error(`${t('common.inputMsg')}${labels[invalidField]}`),
+      new Error(`${t('common.inputMsg')}${label}`),
     );
   };
 
   return (
     <Spin spinning={loading}>
       <Form
+        {...collectionFormLayout}
         form={form}
-        layout="vertical"
         onFinish={onFinish}
-        initialValues={INITIAL_VALUES}
+        initialValues={initialValues}
       >
         <BaseTaskForm
           ref={baseRef}
@@ -168,6 +179,7 @@ const WinSphereTask: React.FC<WinSphereTaskProps> = ({
           >
             <CredentialPoolEditor
               credentialShape="winsphere"
+              credentialHelp={resolveCredentialHelp(modelItem, t)}
               editMode={Boolean(editId)}
               maxCount={1}
               allowAdd={false}

@@ -836,6 +836,17 @@
             "loadbalance": "负载均衡"
         },
         "credentialPoolTip": "最多配置 3 个凭据，系统按顺序试探，命中后优先复用。",
+        "WinSphereTask": {
+            "platform": "WinSphere管理平台",
+            "user": "WinSphere账号",
+            "userHelp": "用于登录 WinSphere 管理 API 的只读账号。",
+            "passwordHelp": "登录密码；服务端加密存储，接口只返回掩码。",
+            "httpsPort": "HTTPS端口",
+            "httpsPortHelp": "WinSphere 管理 API 的 HTTPS 端口。",
+            "verifyTls": "TLS证书校验",
+            "verifyTlsHelp": "建议在生产环境启用；关闭时仅用于受信网络中的自签名证书。",
+            "tlsWarning": "关闭证书校验会增加中间人攻击风险，仅应临时用于受信任网络中的自签名证书。"
+        },
         "configFilePath": "配置文件绝对路径",
         "configFilePathPlaceholder": "/etc/nginx/nginx.conf 或 C:\\Windows\\System32\\drivers\\etc\\hosts",
         "IPTask": {

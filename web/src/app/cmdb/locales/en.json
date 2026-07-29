@@ -834,6 +834,17 @@
         "configFilePathPlaceholder": "/etc/nginx/nginx.conf or C:\\Windows\\System32\\drivers\\etc\\hosts",
         "creator": "Creator",
         "credentialPoolTip": "Configure up to 3 credentials. The system tries them in order and reuses the first match.",
+        "WinSphereTask": {
+            "platform": "WinSphere management platform",
+            "user": "WinSphere account",
+            "userHelp": "Read-only account used to sign in to the WinSphere management API.",
+            "passwordHelp": "Login password. It is encrypted at rest and only a mask is returned by the API.",
+            "httpsPort": "HTTPS port",
+            "httpsPortHelp": "HTTPS port of the WinSphere management API.",
+            "verifyTls": "TLS certificate verification",
+            "verifyTlsHelp": "Enable in production. Disable only for self-signed certificates on a trusted network.",
+            "tlsWarning": "Disabling certificate verification increases man-in-the-middle risk. Use it only temporarily for self-signed certificates on trusted networks."
+        },
         "executeNow": "Run now",
         "executeStatus": "Run status",
         "executeTime": "Run time",

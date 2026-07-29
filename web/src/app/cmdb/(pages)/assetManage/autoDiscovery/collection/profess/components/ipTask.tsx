@@ -3,6 +3,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import BaseTaskForm, { BaseTaskRef } from './baseTask';
 import { useTranslation } from '@/utils/i18n';
+import { useCollectionFormLayout } from '../hooks/useCollectionFormLayout';
 import {
   useTaskForm,
   getCleanupFormValues,
@@ -107,6 +108,7 @@ const IpTask: React.FC<IpTaskFormProps> = ({
   editId,
 }) => {
   const { t } = useTranslation();
+  const collectionFormLayout = useCollectionFormLayout();
   const baseRef = useRef<BaseTaskRef>(null as any);
   const instanceApi = useInstanceApi();
   const instanceApiRef = useRef(instanceApi);
@@ -272,8 +274,8 @@ const IpTask: React.FC<IpTaskFormProps> = ({
   return (
     <Spin spinning={loading}>
       <Form
+        {...collectionFormLayout}
         form={form}
-        layout="vertical"
         onFinish={handleFinish}
         initialValues={IP_TASK_INITIAL_VALUES}
       >
