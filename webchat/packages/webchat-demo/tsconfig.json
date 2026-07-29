@@ -18,8 +18,8 @@
     "isolatedModules": true,
     "baseUrl": ".",
     "paths": {
-      "@webchat/ui": ["../webchat-ui/dist/index.js"],
-      "@webchat/core": ["../webchat-core/dist/index.js"]
+      "@webchat/ui": ["../webchat-ui"],
+      "@webchat/core": ["../webchat-core"]
     }
   },
   "include": [

@@ -6,15 +6,18 @@
 import './styles/chat.css';
 import './styles/floating-button.css';
 import { Chat } from './Chat';
-import { FloatingButton } from './FloatingButton';
+import { FloatingButton, type FloatingButtonProps } from './FloatingButton';
 import React from 'react';
 import ReactDOM from 'react-dom/client';
+
+/** Configuration accepted by the browser-global WebChat initializer. */
+export type WebChatInitConfig = FloatingButtonProps;
 
 // Create global WebChat namespace
 declare global {
   interface Window {
     WebChat: {
-      default: (config: any, elementId: string | null) => void;
+      default: (config: WebChatInitConfig, elementId: string | null) => void;
       Chat: typeof Chat;
       FloatingButton: typeof FloatingButton;
     };
@@ -26,7 +29,7 @@ declare global {
  * Usage: window.WebChat.default(config, elementId)
  */
 const WebChatInit = (
-  config: any,
+  config: WebChatInitConfig,
   elementId?: string | null
 ) => {
   // If no elementId provided, create floating button mode
