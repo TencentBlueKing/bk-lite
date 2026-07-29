@@ -6,6 +6,7 @@ from rest_framework import serializers
 from apps.job_mgmt.constants import TargetSource
 from apps.job_mgmt.models import ScheduledTask
 from apps.job_mgmt.serializers.validators import validate_scheduled_task_payload
+from apps.job_mgmt.services.scheduled_task_authz import ScheduledTaskTeamBoundaryError, resolve_single_task_team
 from apps.job_mgmt.services.scheduled_task_service import ScheduledTaskService
 
 
@@ -132,7 +133,12 @@ class ScheduledTaskCreateSerializer(serializers.ModelSerializer):
 
     def validate(self, attrs):
         """验证定时任务配置（共用校验见 :mod:`serializers.validators`）"""
-        return validate_scheduled_task_payload(attrs, instance=None)
+        attrs = validate_scheduled_task_payload(attrs, instance=None)
+        try:
+            resolve_single_task_team(attrs, instance=None)
+        except ScheduledTaskTeamBoundaryError as exc:
+            raise serializers.ValidationError({exc.field: exc.message}) from exc
+        return attrs
 
     def create(self, validated_data):
         request = self.context.get("request")
@@ -198,7 +204,14 @@ class ScheduledTaskUpdateSerializer(serializers.ModelSerializer):
 
     def validate(self, attrs):
         """验证定时任务配置（共用校验见 :mod:`serializers.validators`）"""
-        return validate_scheduled_task_payload(attrs, instance=self.instance)
+        attrs = validate_scheduled_task_payload(attrs, instance=self.instance)
+        if attrs.get("is_enabled") is False and set(attrs) == {"is_enabled"}:
+            return attrs
+        try:
+            resolve_single_task_team(attrs, instance=self.instance)
+        except ScheduledTaskTeamBoundaryError as exc:
+            raise serializers.ValidationError({exc.field: exc.message}) from exc
+        return attrs
 
     def update(self, instance, validated_data):
         request = self.context.get("request")
