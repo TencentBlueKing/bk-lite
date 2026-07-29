@@ -301,6 +301,9 @@ def _is_legacy_cancel_timeout(execution) -> bool:
 @nats_client.register
 def ansible_task_callback(data: dict):
     """持久化首个 Ansible 终态回调及其可恢复副作用。"""
+    if not isinstance(data, dict):
+        logger.warning("[ansible_task_callback] 回调数据必须为对象: type=%s", type(data).__name__)
+        return {"success": False, "message": "回调数据必须为对象"}
     logger.info("[ansible_task_callback] %s", summarize_ansible_callback(data))
     task_id = data.get("task_id")
     if task_id is None:

@@ -24,7 +24,7 @@ DRF 路由前缀均带 `api/` 段；结合 app 注册前缀 `api/v1/job_mgmt/`�
 
 ## 4. 执行机制【已实现/已存在】
 - 脚本：危险命令校验 → Ansible（Windows 手动目标）或 nats-executor（sidecar）；日志发布到 JetStream。
-- playbook：上传 ZIP 到 MinIO → 提交 `apps.rpc.ansible.AnsibleExecutor` → 异步回调。
+- playbook：上传 ZIP 到 MinIO → 在上传 NATS OS 前按 execution 预留延迟清理 outbox → 提交 `apps.rpc.ansible.AnsibleExecutor` → 异步回调；正常终态刷新并立即投递同一幂等清理意图，worker 硬退出或即时删除失败则由 Beat 重扫。
 - 文件分发：上传 NATS JetStream Object Store（前缀 `job-files/`，经 `node_mgmt.upload_file_to_s3`，非 MinIO）→ nats-executor 或 Ansible 推送。
 - 回调：`nats_api.py:ansible_task_callback` 与 `tasks.py:finalize_cancelling_execution` 对同一 JobExecution 行加锁，终态和每个 SSE done、Playbook 临时文件清理、web/nats 完成通知的 outbox 意图在同一事务写入。取消兜底先提交时，副作用在协调窗口后投递；窗口内唯一真实回调可用 `terminal_source` 纠正占位结果并刷新同一 outbox。HTTP/NATS 发布调用允许以稳定 `delivery_id` 重放，web 签名覆盖该增量字段；Core NATS 保留既有 fire-and-forget publish 契约，不承诺离线消费者补发，也不要求存量消费者回复。`callback_type=both` 的两个通道使用独立记录，单通道失败不阻塞另一通道。
 - Celery：`execute_script_task`/`execute_playbook_task`/`distribute_files_task`/`execute_scheduled_task`；另有 `cleanup_expired_distribution_files_task`（每天 00:00 由 celery-beat 清理过期分发文件）、`deliver_job_completion_outbox` 与每分钟执行的 `dispatch_pending_job_completion_outbox`。完成 outbox 的即时入队失败不影响已提交意图；Beat 重扫 pending、冷却到期 failed 和租约过期 delivering，失败周期会自动冷却并重启，不依赖人工复位。旧入口 `do_callback_task`/`do_nats_callback_task` 仍服务其余回调路径。
@@ -45,7 +45,7 @@ DRF 路由前缀均带 `api/` 段；结合 app 注册前缀 `api/v1/job_mgmt/`�
 - `[job_mgmt#20260728-020]` Ansible 回调与取消兜底统一为“执行行锁 + 同事务完成 outbox”；补录取消兜底协调窗口、稳定 `delivery_id`、web/nats 独立投递、NATS publish 兼容、租约 token fencing 及 Beat 自动恢复语义。
 
 ### 升级与回滚
-- 升级先应用 migration 0014，再滚动启动新版本 worker/beat；新增内部字段允许 `NULL`，使仍运行 0013 模型的旧 worker 可继续 INSERT，存量 `JobExecution` 的公开字段、默认行为和失败响应不变。新 worker 会识别旧 worker 写入的“远端结果未知”取消占位并允许一个真实回调纠正。新执行会持久化 Playbook NATS 临时文件 Key；迁移前已启动的执行继续按关联 Playbook 文件名兼容清理。
+- 升级先应用 migration 0014，再滚动启动新版本 worker/beat；新增内部字段允许 `NULL`，使仍运行 0013 模型的旧 worker 可继续 INSERT，存量 `JobExecution` 的公开字段、默认行为和失败响应不变。迁移会按当时的 Playbook 文件名回填非终态执行的 NATS 临时文件 Key；滚动窗口内旧 worker 后建且未写 Key 的执行，由新版终态逻辑按独占的 `job-playbooks/<execution-id>/` 前缀清理，即使关联 Playbook 后续更新或删除也不改变资源边界。新 worker 会识别旧 worker 写入的“远端结果未知”取消占位并允许一个真实回调纠正；新执行在外部上传前持久化 Key 并预留延迟清理意图。
 - `delivery_id` 仅为回调 payload 的增量字段；旧 web/NATS 消费者可忽略，`callback_subject` 继续使用 publish，无新增 reply 要求。
 - 回滚进入维护窗口后同时暂停新作业/取消请求与 Ansible 完成回调入口，并停止 beat；分别运行 `celery -A apps.core.celery inspect active`、`celery -A apps.core.celery inspect scheduled`、`celery -A apps.core.celery inspect reserved` 查出 `finalize_cancelling_execution`，必要时执行 `celery -A apps.core.celery control revoke <task-id>`，避免 drain 期间继续产生 outbox。
 - 保留一个新版本 worker，用 `python manage.py shell -c "from apps.job_mgmt.tasks import dispatch_pending_job_completion_outbox as d; print(d())"` 重扫；再用 `python manage.py shell -c "from apps.job_mgmt.models import JobCompletionOutbox as O; print(O.objects.exclude(status=O.Status.DELIVERED).count())"` 查零。随后再次检查 Celery 三类队列和 outbox 均为空，才停止 worker、回退代码并逆向迁移 0014。任一检查非空时继续保留新 worker；直接逆向迁移会丢弃未投递意图，禁止执行。

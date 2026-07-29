@@ -112,6 +112,8 @@ class TestExecutePlaybookViaAnsibleFileTransfer:
         ), patch(f"{MOD}.enforce_archive_limits", return_value=SimpleNamespace(raw_size=1234)), patch(
             f"{MOD}.upload_file_to_s3"
         ) as mupload, patch(
+            "apps.job_mgmt.services.completion_outbox_service.reserve_playbook_cleanup"
+        ) as reserve_cleanup, patch(
             f"{MOD}.AnsibleExecutor", return_value=executor
         ):
             out = PlaybookExecution._execute_playbook_via_ansible(ex, [{"target_id": t.id}])
@@ -122,6 +124,7 @@ class TestExecutePlaybookViaAnsibleFileTransfer:
         assert called_files[0]["file_key"] == f"job-playbooks/{ex.id}/p.zip"
         assert ex.playbook_temp_file_key == f"job-playbooks/{ex.id}/p.zip"
         ex.save.assert_called_once_with(update_fields=["playbook_temp_file_key", "updated_at"])
+        reserve_cleanup.assert_called_once_with(ex, f"job-playbooks/{ex.id}/p.zip")
         mupload.assert_called_once()
         fake_file.close.assert_called_once()
 
@@ -134,6 +137,8 @@ class TestExecutePlaybookViaAnsibleFileTransfer:
             PlaybookExecution, "is_cancelled", return_value=False
         ), patch(f"{MOD}.enforce_archive_limits", return_value=SimpleNamespace(raw_size=1)), patch(
             f"{MOD}.upload_file_to_s3", side_effect=RuntimeError("os down")
+        ), patch(
+            "apps.job_mgmt.services.completion_outbox_service.reserve_playbook_cleanup"
         ):
             with pytest.raises(ValueError, match="Playbook 文件中转失败"):
                 PlaybookExecution._execute_playbook_via_ansible(ex, [{"target_id": t.id}])

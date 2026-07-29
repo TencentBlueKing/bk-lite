@@ -3,6 +3,28 @@
 from django.db import migrations, models
 
 
+def backfill_active_playbook_temp_file_keys(apps, schema_editor):
+    """固定升级时仍在执行的 Playbook 临时对象 Key。
+
+    终态记录不再需要清理；滚动窗口内由旧 worker 新建的执行则由新版终态逻辑按
+    execution 前缀兜底，避免继续依赖可变的 Playbook 外键。
+    """
+    JobExecution = apps.get_model("job_mgmt", "JobExecution")
+    terminal_statuses = ["success", "failed", "timeout", "cancelled"]
+    executions = (
+        JobExecution.objects.filter(job_type="playbook", playbook_id__isnull=False)
+        .exclude(status__in=terminal_statuses)
+        .filter(models.Q(playbook_temp_file_key__isnull=True) | models.Q(playbook_temp_file_key=""))
+        .values_list("id", "playbook__file")
+    )
+    for execution_id, playbook_file in executions.iterator(chunk_size=500):
+        file_name = str(playbook_file or "").rsplit("/", 1)[-1]
+        if file_name:
+            JobExecution.objects.filter(pk=execution_id).update(
+                playbook_temp_file_key=f"job-playbooks/{execution_id}/{file_name}"
+            )
+
+
 class Migration(migrations.Migration):
     dependencies = [("job_mgmt", "0013_dangerous_builtin_metadata")]
 
@@ -29,6 +51,10 @@ class Migration(migrations.Migration):
                 null=True,
                 verbose_name="Playbook NATS 临时文件 Key",
             ),
+        ),
+        migrations.RunPython(
+            backfill_active_playbook_temp_file_keys,
+            reverse_code=migrations.RunPython.noop,
         ),
         migrations.CreateModel(
             name="JobCompletionOutbox",

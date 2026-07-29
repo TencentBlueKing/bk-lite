@@ -19,12 +19,13 @@ from nats.js.errors import NotFoundError, ObjectNotFoundError
 from apps.core.logger import job_logger as logger
 from apps.core.utils.safe_requests import safe_post
 from apps.core.utils.ssrf_validator import SSRFValidator
-from apps.job_mgmt.constants import CallbackType, ExecutionStatus
+from apps.job_mgmt.config import CALLBACK_CANCEL_RECONCILE_GRACE_SECONDS
+from apps.job_mgmt.constants import CallbackType, ExecutionStatus, JobType
 from apps.job_mgmt.models import JobCompletionOutbox
 from apps.job_mgmt.services.callback_service import build_callback_payload, publish_job_result_to_subject
 from apps.job_mgmt.services.execution_stream_service import publish_done_sentinel
 from apps.job_mgmt.utils.callback_signer import get_signed_headers
-from apps.node_mgmt.utils.s3 import delete_s3_file
+from apps.node_mgmt.utils.s3 import delete_s3_file, list_s3_files
 from apps.rpc.sensitive import sanitize_sensitive_data
 
 OUTBOX_DISPATCH_BATCH_SIZE = 200
@@ -36,6 +37,13 @@ def _stable_key(execution_id: int, terminal_status: str, kind: str, discriminato
     raw = f"{execution_id}\0{terminal_status}\0{kind}\0{discriminator}".encode()
     digest = hashlib.sha256(raw).hexdigest()
     return f"job:{execution_id}:terminal:{kind}:{digest}"
+
+
+def _cleanup_delivery_id(execution_id: int, discriminator: str) -> str:
+    """清理意图在上传预留与终态刷新之间保持同一个幂等键。"""
+    raw = f"{execution_id}\0{JobCompletionOutbox.Kind.PLAYBOOK_CLEANUP}\0{discriminator}".encode()
+    digest = hashlib.sha256(raw).hexdigest()
+    return f"job:{execution_id}:cleanup:{digest}"
 
 
 def _web_callback_payload(execution, delivery_id: str) -> dict:
@@ -76,17 +84,27 @@ def _build_terminal_intents(execution) -> list[tuple[str, str, dict]]:
         intents.append((JobCompletionOutbox.Kind.DONE_SENTINEL, delivery_id, payload))
 
     file_key = execution.playbook_temp_file_key
-    if not file_key and execution.playbook_id and execution.playbook:
-        # 兼容迁移前已启动、尚未持久化临时 Key 的执行。
-        file_key = f"job-playbooks/{execution.id}/{execution.playbook.file_name}"
     if file_key:
-        delivery_id, payload = _intent(
-            JobCompletionOutbox.Kind.PLAYBOOK_CLEANUP,
-            execution,
-            {"file_key": file_key},
-            file_key,
+        delivery_id = _cleanup_delivery_id(execution.id, file_key)
+        intents.append(
+            (
+                JobCompletionOutbox.Kind.PLAYBOOK_CLEANUP,
+                delivery_id,
+                {"file_key": file_key, "delivery_id": delivery_id},
+            )
         )
-        intents.append((JobCompletionOutbox.Kind.PLAYBOOK_CLEANUP, delivery_id, payload))
+    elif execution.job_type == JobType.PLAYBOOK:
+        # 兼容迁移后仍由旧 worker 上传、或 Playbook 已被删除的在途执行；execution
+        # 前缀是本次执行独占的资源边界，不再依赖可变外键与文件名。
+        file_prefix = f"job-playbooks/{execution.id}/"
+        delivery_id = _cleanup_delivery_id(execution.id, file_prefix)
+        intents.append(
+            (
+                JobCompletionOutbox.Kind.PLAYBOOK_CLEANUP,
+                delivery_id,
+                {"file_prefix": file_prefix, "delivery_id": delivery_id},
+            )
+        )
 
     callback_type = execution.callback_type or CallbackType.WEB
     if CallbackType.use_web(callback_type) and execution.callback_url:
@@ -107,6 +125,26 @@ def _build_terminal_intents(execution) -> list[tuple[str, str, dict]]:
             )
         )
     return intents
+
+
+def reserve_playbook_cleanup(execution, file_key: str) -> JobCompletionOutbox:
+    """在上传前预留延迟清理，覆盖 worker 在上传或 RPC 提交后硬退出的场景。"""
+    try:
+        timeout_seconds = max(0, int(execution.timeout))
+    except (TypeError, ValueError):
+        timeout_seconds = 0
+    delivery_id = _cleanup_delivery_id(execution.id, file_key)
+    record, _ = JobCompletionOutbox.objects.get_or_create(
+        idempotency_key=delivery_id,
+        defaults={
+            "execution_id": execution.id,
+            "kind": JobCompletionOutbox.Kind.PLAYBOOK_CLEANUP,
+            "payload": {"file_key": file_key, "delivery_id": delivery_id},
+            "next_retry_at": timezone.now()
+            + timedelta(seconds=timeout_seconds + CALLBACK_CANCEL_RECONCILE_GRACE_SECONDS),
+        },
+    )
+    return record
 
 
 def enqueue_terminal_effects(
@@ -137,7 +175,7 @@ def enqueue_terminal_effects(
         records.append(record)
         if created and schedule_now:
             schedule_ids.append(record.pk)
-        elif refresh_undelivered and record.status in (
+        elif (refresh_undelivered or kind == JobCompletionOutbox.Kind.PLAYBOOK_CLEANUP) and record.status in (
             JobCompletionOutbox.Status.PENDING,
             JobCompletionOutbox.Status.FAILED,
         ):
@@ -237,11 +275,26 @@ def _deliver_payload(kind: str, payload: dict) -> None:
         publish_done_sentinel(payload["execution_id"], payload["target_key"], payload["status"])
         return
     if kind == JobCompletionOutbox.Kind.PLAYBOOK_CLEANUP:
-        try:
-            async_to_sync(delete_s3_file)(payload["file_key"])
-        except (NotFoundError, ObjectNotFoundError):
-            # 外部删除成功、worker 尚未回写 delivered 就崩溃时，重投仍视为成功。
-            pass
+        file_keys = []
+        if payload.get("file_key"):
+            file_keys.append(payload["file_key"])
+        elif payload.get("file_prefix"):
+            prefix = payload["file_prefix"]
+            for entry in async_to_sync(list_s3_files)():
+                if isinstance(entry, dict):
+                    object_name = str(entry.get("name", ""))
+                else:
+                    object_name = str(getattr(entry, "name", entry if isinstance(entry, str) else ""))
+                if object_name.startswith(prefix):
+                    file_keys.append(object_name)
+        else:
+            raise ValueError("Playbook 清理载荷缺少 file_key/file_prefix")
+        for file_key in file_keys:
+            try:
+                async_to_sync(delete_s3_file)(file_key)
+            except (NotFoundError, ObjectNotFoundError):
+                # 外部删除成功、worker 尚未回写 delivered 就崩溃时，重投仍视为成功。
+                pass
         return
     if kind == JobCompletionOutbox.Kind.WEB_CALLBACK:
         url = payload["url"]

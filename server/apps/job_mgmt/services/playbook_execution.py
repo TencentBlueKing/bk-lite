@@ -147,18 +147,24 @@ class PlaybookExecution(ExecutionTaskBaseService):
             nats_file_key = f"job-playbooks/{execution.id}/{playbook.file_name}"
             logger.info(f"[{task_name}] 中转 Playbook ZIP: MinIO({playbook.bucket_name}/{playbook.file_key}) -> NATS OS({nats_file_key})")
             try:
+                # 先固定资源边界并预留超时清理，再执行外部上传。这样 worker 在上传后
+                # 任一点硬退出，Beat 都能按持久化意图完成幂等清理。
+                execution.playbook_temp_file_key = nats_file_key
+                execution.save(update_fields=["playbook_temp_file_key", "updated_at"])
+                from apps.job_mgmt.services.completion_outbox_service import reserve_playbook_cleanup
+
+                reserve_playbook_cleanup(execution, nats_file_key)
                 minio_file = playbook.file
                 minio_file.open("rb")
                 archive_info = enforce_archive_limits(minio_file)
                 logger.info(f"[{task_name}] 从 MinIO 校验成功: size={archive_info.raw_size} bytes")
                 async_to_sync(upload_file_to_s3)(minio_file, nats_file_key)
                 logger.info(f"[{task_name}] 上传到 NATS OS 成功: key={nats_file_key}")
-                execution.playbook_temp_file_key = nats_file_key
-                execution.save(update_fields=["playbook_temp_file_key", "updated_at"])
             except Exception as e:
                 raise ValueError(f"Playbook 文件中转失败: {e}") from e
             finally:
-                minio_file.close()
+                if "minio_file" in locals():
+                    minio_file.close()
 
             files.append(
                 {

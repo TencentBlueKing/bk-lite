@@ -69,6 +69,11 @@ def _exec(**over):
 
 
 class TestAnsibleCallback:
+    @pytest.mark.parametrize("data", [None, [], "invalid"])
+    def test_rejects_non_object_payload(self, data):
+        out = nats_api.ansible_task_callback(data)
+        assert out == {"success": False, "message": "回调数据必须为对象"}
+
     def test_missing_task_id(self):
         assert nats_api.ansible_task_callback({})["success"] is False
 

@@ -1,22 +1,26 @@
 """作业完成 outbox 的恢复、租约和幂等投递测试。"""
 
 from datetime import timedelta
-from unittest.mock import MagicMock, patch
+from importlib import import_module
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from django.apps import apps as django_apps
 from django.db import connection, transaction
 from django.db.migrations.loader import MigrationLoader
 from django.utils import timezone
 from nats.js.errors import ObjectNotFoundError
 
 from apps.job_mgmt.constants import CallbackType, ExecutionStatus, JobType, TargetSource
-from apps.job_mgmt.models import JobCompletionOutbox, JobExecution
+from apps.job_mgmt.models import JobCompletionOutbox, JobExecution, Playbook
 from apps.job_mgmt.services.completion_outbox_service import (
     _claim_delivery,
     _mark_delivery_succeeded,
     deliver_outbox_record,
     due_outbox_ids,
     enqueue_terminal_effects,
+    reserve_playbook_cleanup,
 )
 
 pytestmark = pytest.mark.integration
@@ -53,6 +57,29 @@ def test_0014_schema_allows_0013_worker_to_insert_execution():
     current_execution = JobExecution.objects.get(pk=old_execution.pk)
     assert current_execution.terminal_source is None
     assert current_execution.playbook_temp_file_key is None
+
+
+@pytest.mark.django_db
+def test_0014_backfills_active_playbook_cleanup_key():
+    playbook = Playbook.objects.create(
+        name="legacy-playbook",
+        file="playbooks/2026/07/legacy.zip",
+        team=[1],
+    )
+    execution = JobExecution.objects.create(
+        name="legacy-running",
+        job_type=JobType.PLAYBOOK,
+        status=ExecutionStatus.RUNNING,
+        playbook=playbook,
+        playbook_temp_file_key=None,
+        team=[1],
+    )
+
+    migration = import_module("apps.job_mgmt.migrations.0014_jobcompletionoutbox")
+    migration.backfill_active_playbook_temp_file_keys(django_apps, None)
+
+    execution.refresh_from_db()
+    assert execution.playbook_temp_file_key == f"job-playbooks/{execution.id}/legacy.zip"
 
 
 @pytest.mark.django_db(transaction=True)
@@ -290,3 +317,75 @@ def test_cleanup_uses_file_key_persisted_when_playbook_was_uploaded():
         kind=JobCompletionOutbox.Kind.PLAYBOOK_CLEANUP,
     )
     assert cleanup.payload["file_key"] == f"job-playbooks/{execution.id}/original.zip"
+
+
+@pytest.mark.django_db
+def test_preupload_cleanup_reservation_is_refreshed_by_terminal_transaction():
+    execution = _terminal_execution(callback_type=CallbackType.WEB)
+    execution.job_type = JobType.PLAYBOOK
+    execution.status = ExecutionStatus.RUNNING
+    execution.timeout = 60
+    execution.callback_url = None
+    execution.playbook_temp_file_key = f"job-playbooks/{execution.id}/original.zip"
+    execution.save(
+        update_fields=[
+            "job_type",
+            "status",
+            "timeout",
+            "callback_url",
+            "playbook_temp_file_key",
+            "updated_at",
+        ]
+    )
+
+    reserved = reserve_playbook_cleanup(execution, execution.playbook_temp_file_key)
+    assert reserved.next_retry_at > timezone.now()
+
+    execution.status = ExecutionStatus.SUCCESS
+    with patch("apps.job_mgmt.services.completion_outbox_service._schedule_deliveries"):
+        with transaction.atomic():
+            records = enqueue_terminal_effects(execution)
+
+    cleanup = next(record for record in records if record.kind == JobCompletionOutbox.Kind.PLAYBOOK_CLEANUP)
+    cleanup.refresh_from_db()
+    assert cleanup.pk == reserved.pk
+    assert cleanup.status == JobCompletionOutbox.Status.PENDING
+    assert cleanup.next_retry_at is None
+
+
+@pytest.mark.django_db
+def test_legacy_playbook_cleanup_lists_execution_prefix_without_mutable_fk():
+    execution = _terminal_execution(callback_type=CallbackType.WEB)
+    execution.job_type = JobType.PLAYBOOK
+    execution.callback_url = None
+    execution.playbook_temp_file_key = None
+    execution.playbook = None
+    execution.save(
+        update_fields=["job_type", "callback_url", "playbook_temp_file_key", "playbook", "updated_at"]
+    )
+    with transaction.atomic():
+        enqueue_terminal_effects(execution)
+    cleanup = JobCompletionOutbox.objects.get(
+        execution_id=execution.id,
+        kind=JobCompletionOutbox.Kind.PLAYBOOK_CLEANUP,
+    )
+    prefix = f"job-playbooks/{execution.id}/"
+    assert cleanup.payload["file_prefix"] == prefix
+
+    list_objects = AsyncMock(
+        return_value=[
+            SimpleNamespace(name=f"{prefix}legacy.zip"),
+            SimpleNamespace(name="job-playbooks/another/object.zip"),
+        ]
+    )
+    delete_object = AsyncMock()
+    with patch(
+        "apps.job_mgmt.services.completion_outbox_service.list_s3_files",
+        list_objects,
+    ), patch(
+        "apps.job_mgmt.services.completion_outbox_service.delete_s3_file",
+        delete_object,
+    ):
+        assert deliver_outbox_record(cleanup.pk) is True
+    list_objects.assert_awaited_once()
+    delete_object.assert_awaited_once_with(f"{prefix}legacy.zip")
