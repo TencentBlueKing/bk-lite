@@ -5,7 +5,7 @@ import {
   Button,
   Switch,
   message,
-  Modal,
+  Popconfirm,
   Tag,
 } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
@@ -149,19 +149,10 @@ const CronTaskPage = () => {
     }
   };
 
-  const handleDelete = (record: ScheduledTask) => {
-    Modal.confirm({
-      title: t('job.scheduledTask'),
-      content: t('job.deleteTaskConfirm'),
-      okText: t('job.confirm'),
-      cancelText: t('job.cancel'),
-      centered: true,
-      onOk: async () => {
-        await deleteScheduledTask(record.id);
-        message.success(t('job.scheduledTask'));
-        fetchData();
-      },
-    });
+  const handleDelete = async (record: ScheduledTask) => {
+    await deleteScheduledTask(record.id);
+    message.success(t('job.scheduledTask'));
+    fetchData();
   };
 
   const handleRunNow = async (id: number) => {
@@ -266,12 +257,18 @@ const CronTaskPage = () => {
               {t('job.runNow')}
             </a>
           )}
-          <a
-            className="text-red-500 cursor-pointer"
-            onClick={() => handleDelete(record)}
+          <Popconfirm
+            title={t('job.scheduledTask')}
+            description={t('job.deleteTaskConfirm')}
+            okText={t('job.confirm')}
+            cancelText={t('job.cancel')}
+            okButtonProps={{ danger: true }}
+            onConfirm={() => handleDelete(record)}
           >
-            {t('job.deleteRule')}
-          </a>
+            <a className="text-red-500 cursor-pointer">
+              {t('job.deleteRule')}
+            </a>
+          </Popconfirm>
         </div>
       ),
     },

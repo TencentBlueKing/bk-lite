@@ -4,7 +4,7 @@ import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import {
   Button,
   Tag,
-  Modal,
+  Popconfirm,
   message,
   Form,
   Input,
@@ -253,19 +253,10 @@ const ScriptLibraryPage = () => {
     })();
   };
 
-  const handleDelete = (record: Script) => {
-    Modal.confirm({
-      title: t('job.deleteScript'),
-      content: t('job.deleteScriptConfirm'),
-      okText: t('job.confirm'),
-      cancelText: t('job.cancel'),
-      centered: true,
-      onOk: async () => {
-        await deleteScript(record.id);
-        message.success(t('job.deleteScript'));
-        fetchData();
-      },
-    });
+  const handleDelete = async (record: Script) => {
+    await deleteScript(record.id);
+    message.success(t('job.deleteScript'));
+    fetchData();
   };
 
   const handleSubmit = async () => {
@@ -389,12 +380,17 @@ const ScriptLibraryPage = () => {
           >
             {t('job.editRule')}
           </a>
-          <a
-            className="text-red-500 cursor-pointer"
-            onClick={() => handleDeleteParam(index)}
+          <Popconfirm
+            title={t('common.deleteConfirm')}
+            okText={t('job.confirm')}
+            cancelText={t('job.cancel')}
+            okButtonProps={{ danger: true }}
+            onConfirm={() => handleDeleteParam(index)}
           >
-            <DeleteOutlined />
-          </a>
+            <a className="text-red-500 cursor-pointer">
+              <DeleteOutlined />
+            </a>
+          </Popconfirm>
         </div>
       ),
     },
@@ -478,12 +474,18 @@ const ScriptLibraryPage = () => {
           >
             {t('job.executeScript')}
           </a>
-          <a
-            className="text-[var(--color-primary)] cursor-pointer"
-            onClick={() => handleDelete(record)}
+          <Popconfirm
+            title={t('job.deleteScript')}
+            description={t('job.deleteScriptConfirm')}
+            okText={t('job.confirm')}
+            cancelText={t('job.cancel')}
+            okButtonProps={{ danger: true }}
+            onConfirm={() => handleDelete(record)}
           >
-            {t('job.deleteScript')}
-          </a>
+            <a className="text-[var(--color-primary)] cursor-pointer">
+              {t('job.deleteScript')}
+            </a>
+          </Popconfirm>
         </div>
       ),
     },

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
-import { Button, Input, Select, Switch, Modal, message, Form, Radio, Tag } from 'antd';
+import { Button, Input, Select, Switch, Popconfirm, message, Form, Radio, Tag } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import OperateFormModal from '@/components/operate-form-modal';
 import StatusBadgeShell from '@/components/status-badge-shell';
@@ -265,19 +265,10 @@ const JobDangerousRulePage: React.FC<JobDangerousRulePageProps> = ({
     }
   };
 
-  const handleDelete = (record: DangerousRule) => {
-    Modal.confirm({
-      title: t('job.deleteRule'),
-      content: t('job.deleteRuleConfirm'),
-      okText: t('job.confirm'),
-      cancelText: t('job.cancel'),
-      centered: true,
-      onOk: async () => {
-        await api.remove(record.id);
-        message.success(t('job.deleteRule'));
-        fetchData();
-      },
-    });
+  const handleDelete = async (record: DangerousRule) => {
+    await api.remove(record.id);
+    message.success(t('job.deleteRule'));
+    fetchData();
   };
 
   const openAddModal = () => {
@@ -454,14 +445,23 @@ const JobDangerousRulePage: React.FC<JobDangerousRulePageProps> = ({
           >
             {t('job.editRule')}
           </Button>
-          <Button
-            type="link"
-            className="px-0"
+          <Popconfirm
+            title={t('job.deleteRule')}
+            description={t('job.deleteRuleConfirm')}
+            okText={t('job.confirm')}
+            cancelText={t('job.cancel')}
+            okButtonProps={{ danger: true }}
             disabled={record.is_builtin && !isSuperUser}
-            onClick={() => handleDelete(record)}
+            onConfirm={() => handleDelete(record)}
           >
-            {t('job.deleteRule')}
-          </Button>
+            <Button
+              type="link"
+              className="px-0"
+              disabled={record.is_builtin && !isSuperUser}
+            >
+              {t('job.deleteRule')}
+            </Button>
+          </Popconfirm>
         </div>
       ),
     },
