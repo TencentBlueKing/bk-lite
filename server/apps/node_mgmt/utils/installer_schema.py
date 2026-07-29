@@ -324,10 +324,25 @@ def normalize_failure(message=None, error=None, details=None) -> dict | None:
     }
 
 
-def installer_step_index(action: str) -> int | None:
-    if action not in InstallerConstants.INSTALLER_STEP_SEQUENCE:
+def installer_step_index(action: str, sequence: list[str] | None = None) -> int | None:
+    selected_sequence = sequence or InstallerConstants.LEGACY_INSTALLER_STEP_SEQUENCE
+    if action not in selected_sequence:
         return None
-    return InstallerConstants.INSTALLER_STEP_SEQUENCE.index(action) + 1
+    return selected_sequence.index(action) + 1
+
+
+def _installer_event_position(event: dict[str, Any], action: str) -> tuple[int | None, int]:
+    step_index = event.get("step_index")
+    step_total = event.get("step_total")
+    if type(step_index) is int and type(step_total) is int and 0 < step_index <= step_total:
+        return step_index, step_total
+
+    sequence = (
+        InstallerConstants.INSTALLER_STEP_SEQUENCE
+        if action == "clock_check"
+        else InstallerConstants.LEGACY_INSTALLER_STEP_SEQUENCE
+    )
+    return installer_step_index(action, sequence), len(sequence)
 
 
 def build_installer_event_details(event: dict[str, Any]) -> dict:
@@ -343,12 +358,13 @@ def build_installer_event_details(event: dict[str, Any]) -> dict:
         error=event.get("error"),
         details=event,
     )
+    step_index, step_total = _installer_event_position(event, action)
     details = {
         "installer_event": True,
         "raw_step": _clean_text(event.get("step")),
         "raw_status": _clean_text(event.get("status")),
-        "step_index": installer_step_index(action),
-        "step_total": len(InstallerConstants.INSTALLER_STEP_SEQUENCE),
+        "step_index": step_index,
+        "step_total": step_total,
         "progress": progress,
         "timestamp": _clean_text(event.get("timestamp")) or now_iso(),
         "error": _clean_text(event.get("error")),
@@ -426,6 +442,11 @@ def summarize_installer_progress(result: dict | None) -> dict | None:
     progress = cast(dict[str, Any], progress)
 
     action = latest.get("action") or normalize_installer_action(details.get("raw_step"))
+    sequence = (
+        InstallerConstants.INSTALLER_STEP_SEQUENCE
+        if any(step.get("action") == "clock_check" for step in installer_steps)
+        else InstallerConstants.LEGACY_INSTALLER_STEP_SEQUENCE
+    )
 
     return {
         "current_step": action,
@@ -437,6 +458,6 @@ def summarize_installer_progress(result: dict | None) -> dict | None:
             total=progress.get("total"),
             unit=progress.get("unit") or "bytes",
         ),
-        "step_index": details.get("step_index") or installer_step_index(action),
-        "step_total": details.get("step_total") or len(InstallerConstants.INSTALLER_STEP_SEQUENCE),
+        "step_index": details.get("step_index") or installer_step_index(action, sequence),
+        "step_total": details.get("step_total") or len(sequence),
     }

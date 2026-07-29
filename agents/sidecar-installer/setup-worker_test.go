@@ -22,6 +22,32 @@ type recordingProgressPublisher struct {
 	flushes  int
 }
 
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (fn roundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) {
+	return fn(request)
+}
+
+type timedResponseBody struct {
+	payload     []byte
+	deliveredAt time.Time
+}
+
+func (body *timedResponseBody) Read(buffer []byte) (int, error) {
+	if body.payload == nil {
+		return 0, io.EOF
+	}
+	time.Sleep(10 * time.Millisecond)
+	n := copy(buffer, body.payload)
+	body.payload = nil
+	body.deliveredAt = time.Now()
+	return n, io.EOF
+}
+
+func (body *timedResponseBody) Close() error {
+	return nil
+}
+
 func (publisher *recordingProgressPublisher) Publish(subject string, payload []byte) error {
 	publisher.subjects = append(publisher.subjects, subject)
 	publisher.payloads = append(publisher.payloads, append([]byte(nil), payload...))
@@ -235,6 +261,38 @@ func TestValidateClockSkewRejectsInvalidContractAndAllowsMissingLegacyContract(t
 	}
 	if _, err := validateClockSkew(invalid); err == nil {
 		t.Fatal("invalid clock validation contract must fail")
+	}
+}
+
+func TestConfigRejectsExplicitNullClockValidation(t *testing.T) {
+	var cfg Config
+	if err := json.Unmarshal([]byte(`{"clock_validation":null}`), &cfg); err == nil {
+		t.Fatal("explicit null clock validation must fail")
+	}
+	if err := json.Unmarshal([]byte(`{}`), &cfg); err != nil {
+		t.Fatalf("legacy session without clock validation must remain valid: %v", err)
+	}
+}
+
+func TestFetchConfigRecordsFinishAfterReadingAndParsingResponse(t *testing.T) {
+	body := &timedResponseBody{payload: []byte(`{"node_id":"node-1"}`)}
+	client := &http.Client{Transport: roundTripFunc(func(_ *http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: http.StatusOK, Body: body}, nil
+	})}
+
+	cfg, err := fetchConfig(client, "https://server.example/session")
+	if err != nil {
+		t.Fatalf("fetch config: %v", err)
+	}
+	if cfg.sessionRequestFinishedAt.Before(body.deliveredAt) {
+		t.Fatalf("request finished at %s before response body was delivered at %s", cfg.sessionRequestFinishedAt, body.deliveredAt)
+	}
+}
+
+func TestInstallerStepPositionUsesNewEightStepProtocol(t *testing.T) {
+	index, total := installerStepPosition("download_package")
+	if index != 4 || total != 8 {
+		t.Fatalf("expected download step 4/8, got %d/%d", index, total)
 	}
 }
 

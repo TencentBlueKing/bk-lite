@@ -2,6 +2,7 @@ package main
 
 import (
 	"archive/zip"
+	"bytes"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
@@ -55,6 +56,25 @@ type Config struct {
 	sessionRequestFinishedAt time.Time
 }
 
+func (cfg *Config) UnmarshalJSON(data []byte) error {
+	type configAlias Config
+	var decoded configAlias
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(data, &fields); err != nil {
+		return err
+	}
+	if raw, exists := fields["clock_validation"]; exists && string(bytes.TrimSpace(raw)) == "null" {
+		return fmt.Errorf("clock_validation must not be null")
+	}
+
+	*cfg = Config(decoded)
+	return nil
+}
+
 type ClockValidationConfig struct {
 	ServerTimeUnixMS int64 `json:"server_time_unix_ms"`
 	MaxSkewSeconds   int64 `json:"max_skew_seconds"`
@@ -97,6 +117,8 @@ type InstallerEvent struct {
 	Downloaded          int64   `json:"downloaded_bytes,omitempty"`
 	Total               int64   `json:"total_bytes,omitempty"`
 	Timestamp           string  `json:"timestamp"`
+	StepIndex           int     `json:"step_index,omitempty"`
+	StepTotal           int     `json:"step_total,omitempty"`
 	Error               string  `json:"error,omitempty"`
 	ErrorType           string  `json:"error_type,omitempty"`
 	Bucket              string  `json:"bucket,omitempty"`
@@ -112,6 +134,26 @@ type InstallerEvent struct {
 	ClockOffsetSeconds  float64 `json:"clock_offset_seconds,omitempty"`
 	ClockSkewSeconds    float64 `json:"clock_skew_seconds,omitempty"`
 	MaxClockSkewSeconds int64   `json:"max_clock_skew_seconds,omitempty"`
+}
+
+var installerStepSequence = []string{
+	"fetch_session",
+	"clock_check",
+	"prepare_directories",
+	"download_package",
+	"extract_package",
+	"configure_runtime",
+	"run_package_installer",
+	"complete",
+}
+
+func installerStepPosition(step string) (int, int) {
+	for index, candidate := range installerStepSequence {
+		if step == candidate {
+			return index + 1, len(installerStepSequence)
+		}
+	}
+	return 0, 0
 }
 
 type EventOptions struct {
@@ -480,6 +522,7 @@ func emitEvent(step, status, message string, progress *int, downloaded, total in
 }
 
 func emitEventWithOptions(step, status, message string, progress *int, downloaded, total int64, errMsg string, options *EventOptions) {
+	stepIndex, stepTotal := installerStepPosition(step)
 	event := InstallerEvent{
 		Step:       step,
 		Status:     status,
@@ -488,6 +531,8 @@ func emitEventWithOptions(step, status, message string, progress *int, downloade
 		Downloaded: downloaded,
 		Total:      total,
 		Timestamp:  time.Now().UTC().Format(time.RFC3339),
+		StepIndex:  stepIndex,
+		StepTotal:  stepTotal,
 		Error:      errMsg,
 	}
 	if options != nil {
@@ -712,7 +757,6 @@ func newHTTPClient(skipTLS bool) *http.Client {
 func fetchConfig(client *http.Client, url string) (*Config, error) {
 	requestStartedAt := time.Now()
 	resp, err := client.Get(url)
-	requestFinishedAt := time.Now()
 	if err != nil {
 		return nil, err
 	}
@@ -723,10 +767,16 @@ func fetchConfig(client *http.Client, url string) (*Config, error) {
 		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(body))
 	}
 
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read response: %v", err)
+	}
+
 	var cfg Config
-	if err := json.NewDecoder(resp.Body).Decode(&cfg); err != nil {
+	if err := json.Unmarshal(body, &cfg); err != nil {
 		return nil, fmt.Errorf("invalid JSON: %v", err)
 	}
+	requestFinishedAt := time.Now()
 
 	if cfg.ZoneID == "" {
 		cfg.ZoneID = "1"

@@ -60,6 +60,16 @@ class InstallerConstants:
         "complete": "install_complete",
     }
 
+    LEGACY_INSTALLER_STEP_SEQUENCE = [
+        "fetch_session",
+        "prepare_dirs",
+        "download",
+        "extract",
+        "write_config",
+        "install",
+        "install_complete",
+    ]
+
     INSTALLER_STEP_SEQUENCE = [
         "fetch_session",
         "clock_check",

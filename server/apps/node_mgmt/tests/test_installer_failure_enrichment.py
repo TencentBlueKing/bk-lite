@@ -234,6 +234,23 @@ def test_build_installer_event_record_attaches_typed_failure_metadata():
     assert event["details"]["failure"]["context"]["file_key"] == "linux/arm64/Controller/3.1.22/fusion-collectors-arm64.tar.gz"
 
 
+def test_installer_event_step_position_keeps_legacy_and_new_protocols_separate():
+    legacy_event = build_installer_event_record({"step": "download_package", "status": "running"})
+    assert legacy_event["details"]["step_index"] == 3
+    assert legacy_event["details"]["step_total"] == 7
+
+    new_event = build_installer_event_record(
+        {
+            "step": "download_package",
+            "status": "running",
+            "step_index": 4,
+            "step_total": 8,
+        }
+    )
+    assert new_event["details"]["step_index"] == 4
+    assert new_event["details"]["step_total"] == 8
+
+
 def test_handle_step_exception_carries_forward_installer_context():
     node = _DummyNode(
         result={
