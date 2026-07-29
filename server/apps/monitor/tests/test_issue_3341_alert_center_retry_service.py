@@ -176,31 +176,39 @@ class _RetryObjects:
 
 
 def test_retry_task_selects_pending_lifecycle_actions(monkeypatch):
+    policy = types.SimpleNamespace(id=301, name="策略 A", organizations=[7])
     alerts = [
         types.SimpleNamespace(
             id=201, status="new",
+            policy_id=policy.id,
             alert_center_notified=False, alert_center_retry_count=0,
         ),
         types.SimpleNamespace(
             id=202, status="recovered",
+            policy_id=302,
             alert_center_notified=False, alert_center_retry_count=0,
         ),
         types.SimpleNamespace(
             id=203, status="closed",
+            policy_id=302,
             alert_center_notified=False, alert_center_retry_count=9,
         ),
         types.SimpleNamespace(
             id=204, status="new",
+            policy_id=policy.id,
             alert_center_notified=True, alert_center_retry_count=0,
         ),
         types.SimpleNamespace(
             id=205, status="new",
+            policy_id=policy.id,
             alert_center_notified=False, alert_center_retry_count=10,
         ),
     ]
     objects = _RetryObjects(alerts)
+    loaded_policy_ids = []
     pushes = []
     marked = []
+    notifier_policies = []
     notifier = types.SimpleNamespace(
         push_to_alert_center_only=lambda grouped, action: (
             pushes.append((action, [alert.id for alert in grouped]))
@@ -210,10 +218,22 @@ def test_retry_task_selects_pending_lifecycle_actions(monkeypatch):
     )
     models = types.ModuleType("apps.monitor.models")
     models.MonitorAlert = types.SimpleNamespace(objects=objects)
+    models.MonitorPolicy = types.SimpleNamespace(
+        objects=types.SimpleNamespace(
+            in_bulk=lambda policy_ids: (
+                loaded_policy_ids.append(set(policy_ids)) or {policy.id: policy}
+            )
+        )
+    )
     notify_module = types.ModuleType(
         "apps.monitor.services.alert_lifecycle_notify"
     )
-    notify_module.AlertLifecycleNotifier = lambda: notifier
+
+    def build_notifier(notifier_policy=None):
+        notifier_policies.append(notifier_policy)
+        return notifier
+
+    notify_module.AlertLifecycleNotifier = build_notifier
     monkeypatch.setitem(sys.modules, "apps.monitor.models", models)
     monkeypatch.setitem(
         sys.modules,
@@ -246,6 +266,8 @@ def test_retry_task_selects_pending_lifecycle_actions(monkeypatch):
         ("recovered", [202]),
         ("closed", [203]),
     ]
+    assert loaded_policy_ids == [{policy.id}]
+    assert notifier_policies == [policy, None]
     assert marked == [[201, 202, 203]]
     assert result == {
         "success": True,
