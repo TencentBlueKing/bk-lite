@@ -111,6 +111,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = () => {
         cloud_region_id: 0,
         page: 1,
         page_size: -1,
+        os: configsInfo.nodeOperatingSystem,
         is_active: true
       });
       setNodeList(data.nodes || []);
