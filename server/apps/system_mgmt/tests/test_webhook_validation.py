@@ -20,11 +20,14 @@ Test seam:
   run without a database round-trip.
 """
 
+import socket
 from unittest import mock
 
 import pytest
 
+from apps.system_mgmt.models import NetworkWhiteList
 from apps.system_mgmt.utils.channel_utils import is_valid_webhook_url, send_by_custom_webhook
+from apps.system_mgmt.viewset.network_white_list_viewset import NetworkWhiteListViewSet
 
 # 官方域名 fixture — 模拟 data migration 初始化后的 NetworkWhiteList.domain 集合
 BUILTIN_DOMAINS = {
@@ -475,8 +478,6 @@ class TestWebhookNetworkWhitelistCIDRMatch:
 
     def test_dns_resolution_failure_rejected(self):
         """DNS 解析失败 → 拒绝"""
-        import socket
-
         with (
             mock.patch(
                 "apps.system_mgmt.utils.channel_utils.get_network_whitelist_cidrs",
@@ -589,9 +590,6 @@ class TestWebhookBuiltinDomainsProtection:
 
     def test_builtin_row_cannot_be_deleted_via_viewset(self, rf):
         """is_build_in=True 行 DELETE → 403"""
-        from apps.system_mgmt.models import NetworkWhiteList
-        from apps.system_mgmt.viewset.network_white_list_viewset import NetworkWhiteListViewSet
-
         builtin = NetworkWhiteList(network="", domain_name="qyapi.weixin.qq.com", is_build_in=True, enabled=True)
         with mock.patch.object(NetworkWhiteListViewSet, "get_object", return_value=builtin):
             view = NetworkWhiteListViewSet.as_view({"delete": "destroy"})
@@ -602,9 +600,6 @@ class TestWebhookBuiltinDomainsProtection:
 
     def test_builtin_row_cannot_be_updated_via_viewset(self, rf):
         """is_build_in=True 行 PUT/PATCH → 403"""
-        from apps.system_mgmt.models import NetworkWhiteList
-        from apps.system_mgmt.viewset.network_white_list_viewset import NetworkWhiteListViewSet
-
         builtin = NetworkWhiteList(network="", domain_name="qyapi.weixin.qq.com", is_build_in=True, enabled=True)
         with mock.patch.object(NetworkWhiteListViewSet, "get_object", return_value=builtin):
             view = NetworkWhiteListViewSet.as_view({"put": "update"})
