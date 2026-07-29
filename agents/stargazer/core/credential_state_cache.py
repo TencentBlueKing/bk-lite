@@ -1,7 +1,9 @@
+import asyncio
 import json
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Optional
+from weakref import WeakKeyDictionary
 
 from arq import create_pool
 from arq.connections import RedisSettings
@@ -12,6 +14,9 @@ from core.redis_config import REDIS_CONFIG
 class CredentialStateCache:
     """基于 Redis 的 host-credential 运行态缓存。"""
 
+    _pools = WeakKeyDictionary()
+    _pool_locks = WeakKeyDictionary()
+
     SUCCESS_TTL_SECONDS = 7 * 24 * 3600
     FAILURE_TTL_SECONDS = 24 * 3600
     EVENT_RETENTION_SECONDS = 7 * 24 * 3600
@@ -19,38 +24,29 @@ class CredentialStateCache:
 
     @classmethod
     async def get_success_credential(cls, collect_task_id: Any, host: str) -> str:
-        pool = await cls._create_pool()
-        try:
-            value = await pool.get(cls._success_key(collect_task_id, host))
-            if isinstance(value, (bytes, bytearray)):
-                return value.decode()
-            return str(value or "")
-        finally:
-            await pool.close()
+        pool = await cls._get_or_create_pool()
+        value = await pool.get(cls._success_key(collect_task_id, host))
+        if isinstance(value, (bytes, bytearray)):
+            return value.decode()
+        return str(value or "")
 
     @classmethod
     async def get_failure_state(cls, collect_task_id: Any, host: str, credential_id: str) -> dict:
-        pool = await cls._create_pool()
-        try:
-            value = await pool.get(cls._failure_key(collect_task_id, host, credential_id))
-            if not value:
-                return {}
-            if isinstance(value, (bytes, bytearray)):
-                value = value.decode()
-            return json.loads(value)
-        finally:
-            await pool.close()
+        pool = await cls._get_or_create_pool()
+        value = await pool.get(cls._failure_key(collect_task_id, host, credential_id))
+        if not value:
+            return {}
+        if isinstance(value, (bytes, bytearray)):
+            value = value.decode()
+        return json.loads(value)
 
     @classmethod
     async def mark_success(cls, collect_task_id: Any, host: str, credential_id: str) -> None:
-        pool = await cls._create_pool()
-        try:
-            await pool.set(cls._success_key(collect_task_id, host), credential_id, ex=cls.SUCCESS_TTL_SECONDS)
-            pattern = cls._failure_pattern(collect_task_id, host)
-            async for key in cls._scan_keys(pool, pattern):
-                await pool.delete(key)
-        finally:
-            await pool.close()
+        pool = await cls._get_or_create_pool()
+        await pool.set(cls._success_key(collect_task_id, host), credential_id, ex=cls.SUCCESS_TTL_SECONDS)
+        pattern = cls._failure_pattern(collect_task_id, host)
+        async for key in cls._scan_keys(pool, pattern):
+            await pool.delete(key)
 
     @classmethod
     async def mark_failure(
@@ -63,69 +59,91 @@ class CredentialStateCache:
         consecutive_failures: int,
         next_retry_at: str,
     ) -> None:
-        pool = await cls._create_pool()
-        try:
-            payload = {
-                "is_cooled": True,
-                "error_message": error_message or "",
-                "cooldown_level": cooldown_level,
-                "consecutive_failures": consecutive_failures,
-                "next_retry_at": next_retry_at,
-            }
-            await pool.set(
-                cls._failure_key(collect_task_id, host, credential_id),
-                json.dumps(payload),
-                ex=cls.cooldown_seconds_for(cooldown_level),
-            )
-        finally:
-            await pool.close()
+        pool = await cls._get_or_create_pool()
+        payload = {
+            "is_cooled": True,
+            "error_message": error_message or "",
+            "cooldown_level": cooldown_level,
+            "consecutive_failures": consecutive_failures,
+            "next_retry_at": next_retry_at,
+        }
+        await pool.set(
+            cls._failure_key(collect_task_id, host, credential_id),
+            json.dumps(payload),
+            ex=cls.cooldown_seconds_for(cooldown_level),
+        )
 
     @classmethod
     async def clear_success(cls, collect_task_id: Any, host: str) -> None:
-        pool = await cls._create_pool()
-        try:
-            await pool.delete(cls._success_key(collect_task_id, host))
-        finally:
-            await pool.close()
+        pool = await cls._get_or_create_pool()
+        await pool.delete(cls._success_key(collect_task_id, host))
 
     @classmethod
     async def append_result_event(cls, event: dict) -> None:
-        pool = await cls._create_pool()
-        try:
-            finished_at = str(event.get("finished_at") or datetime.now(timezone.utc).isoformat())
-            score = cls._event_score(finished_at)
-            payload = {**dict(event or {}), "event_id": uuid.uuid4().hex, "finished_at": finished_at}
-            await pool.zadd(cls._event_stream_key(), {json.dumps(payload, ensure_ascii=False): score})
-            await pool.zremrangebyscore(cls._event_stream_key(), 0, score - cls.EVENT_RETENTION_SECONDS * 1000)
-        finally:
-            await pool.close()
+        pool = await cls._get_or_create_pool()
+        finished_at = str(event.get("finished_at") or datetime.now(timezone.utc).isoformat())
+        score = cls._event_score(finished_at)
+        payload = {**dict(event or {}), "event_id": uuid.uuid4().hex, "finished_at": finished_at}
+        await pool.zadd(cls._event_stream_key(), {json.dumps(payload, ensure_ascii=False): score})
+        await pool.zremrangebyscore(cls._event_stream_key(), 0, score - cls.EVENT_RETENTION_SECONDS * 1000)
 
     @classmethod
     async def list_result_events(cls, since: str | None = None, limit: int = 500) -> list[dict]:
-        pool = await cls._create_pool()
-        try:
-            min_score = "-inf"
-            if since:
-                min_score = f"({cls._event_score(since)}"
-            raw_items = await pool.zrangebyscore(cls._event_stream_key(), min=min_score, max="+inf", start=0, num=limit)
-            events = []
-            for item in raw_items or []:
-                if isinstance(item, (bytes, bytearray)):
-                    item = item.decode()
-                events.append(json.loads(item))
-            return events
-        finally:
-            await pool.close()
+        pool = await cls._get_or_create_pool()
+        min_score = "-inf"
+        if since:
+            min_score = f"({cls._event_score(since)}"
+        raw_items = await pool.zrangebyscore(cls._event_stream_key(), min=min_score, max="+inf", start=0, num=limit)
+        events = []
+        for item in raw_items or []:
+            if isinstance(item, (bytes, bytearray)):
+                item = item.decode()
+            events.append(json.loads(item))
+        return events
 
     @classmethod
-    async def _create_pool(cls):
+    async def _get_or_create_pool(cls):
+        loop = asyncio.get_running_loop()
+        pool = cls._pools.get(loop)
+        if pool is not None:
+            return pool
+
+        lock = cls._pool_locks.get(loop)
+        if lock is None:
+            lock = asyncio.Lock()
+            cls._pool_locks[loop] = lock
+
+        async with lock:
+            pool = cls._pools.get(loop)
+            if pool is not None:
+                return pool
+
+            pool = await create_pool(cls._redis_settings())
+            cls._pools[loop] = pool
+            return pool
+
+    @classmethod
+    async def close_pool(cls) -> None:
+        loop = asyncio.get_running_loop()
+        lock = cls._pool_locks.get(loop)
+        if lock is None:
+            lock = asyncio.Lock()
+            cls._pool_locks[loop] = lock
+
+        async with lock:
+            pool = cls._pools.pop(loop, None)
+            if pool is not None:
+                await pool.close()
+
+    @staticmethod
+    def _redis_settings() -> RedisSettings:
         redis_settings = RedisSettings(
             host=REDIS_CONFIG["host"],
             port=REDIS_CONFIG["port"],
             password=REDIS_CONFIG["password"],
             database=REDIS_CONFIG["database"],
         )
-        return await create_pool(redis_settings)
+        return redis_settings
 
     @staticmethod
     async def _scan_keys(pool, pattern: str):
@@ -159,24 +177,18 @@ class CredentialStateCache:
 
     @classmethod
     async def get_push_cursor(cls) -> str:
-        pool = await cls._create_pool()
-        try:
-            value = await pool.get(cls._push_cursor_key())
-            if isinstance(value, (bytes, bytearray)):
-                return value.decode()
-            return str(value or "")
-        finally:
-            await pool.close()
+        pool = await cls._get_or_create_pool()
+        value = await pool.get(cls._push_cursor_key())
+        if isinstance(value, (bytes, bytearray)):
+            return value.decode()
+        return str(value or "")
 
     @classmethod
     async def set_push_cursor(cls, since: str) -> None:
         if not since:
             return
-        pool = await cls._create_pool()
-        try:
-            await pool.set(cls._push_cursor_key(), since)
-        finally:
-            await pool.close()
+        pool = await cls._get_or_create_pool()
+        await pool.set(cls._push_cursor_key(), since)
 
     @staticmethod
     def _event_score(value: str) -> int:
@@ -195,3 +207,13 @@ class CredentialStateCache:
     @classmethod
     def cooldown_seconds_for(cls, cooldown_level: int) -> int:
         return cls.cooldown_hours_for(cooldown_level) * 3600
+
+
+async def close_credential_state_cache_pool(_context=None) -> None:
+    await CredentialStateCache.close_pool()
+
+
+def register_credential_state_cache_lifecycle(app) -> None:
+    @app.listener("after_server_stop")
+    async def stop_credential_state_cache(_app, _loop):
+        await close_credential_state_cache_pool()
