@@ -6,7 +6,7 @@ import {
   Input,
   Select,
   Tag,
-  Modal,
+  Popconfirm,
   message,
   Form,
   Radio,
@@ -261,19 +261,10 @@ const TargetPage = () => {
     return options;
   };
 
-  const handleDelete = (record: Target) => {
-    Modal.confirm({
-      title: t('job.deleteTarget'),
-      content: t('job.deleteTargetConfirm'),
-      okText: t('job.confirm'),
-      cancelText: t('job.cancel'),
-      centered: true,
-      onOk: async () => {
-        await deleteTarget(record.id);
-        message.success(t('job.deleteTarget'));
-        fetchData();
-      },
-    });
+  const handleDelete = async (record: Target) => {
+    await deleteTarget(record.id);
+    message.success(t('job.deleteTarget'));
+    fetchData();
   };
 
   const openAddModal = () => {
@@ -535,12 +526,18 @@ const TargetPage = () => {
           >
             {t('job.editRule')}
           </a>
-          <a
-            className="text-(--color-primary) cursor-pointer"
-            onClick={() => handleDelete(record)}
+          <Popconfirm
+            title={t('job.deleteTarget')}
+            description={t('job.deleteTargetConfirm')}
+            okText={t('job.confirm')}
+            cancelText={t('job.cancel')}
+            okButtonProps={{ danger: true }}
+            onConfirm={() => handleDelete(record)}
           >
-            {t('job.deleteTarget')}
-          </a>
+            <a className="text-(--color-primary) cursor-pointer">
+              {t('job.deleteTarget')}
+            </a>
+          </Popconfirm>
         </div>
       ),
     },

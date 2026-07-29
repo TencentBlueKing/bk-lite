@@ -15,6 +15,7 @@ import {
   Alert,
   Spin,
   Drawer,
+  Popconfirm,
 } from 'antd';
 import {
   CloudUploadOutlined,
@@ -349,19 +350,10 @@ const PlaybookLibraryPage = () => {
   };
 
   // Delete
-  const handleDelete = (record: Playbook) => {
-    Modal.confirm({
-      title: t('job.deletePlaybook'),
-      content: t('job.deletePlaybookConfirm'),
-      okText: t('job.confirm'),
-      cancelText: t('job.cancel'),
-      centered: true,
-      onOk: async () => {
-        await deletePlaybook(record.id);
-        message.success(t('job.deletePlaybook'));
-        fetchData();
-      },
-    });
+  const handleDelete = async (record: Playbook) => {
+    await deletePlaybook(record.id);
+    message.success(t('job.deletePlaybook'));
+    fetchData();
   };
 
   // File preview handler
@@ -604,12 +596,18 @@ const PlaybookLibraryPage = () => {
           >
             {t('job.executeScript')}
           </a>
-          <a
-            className="text-red-500 cursor-pointer"
-            onClick={() => handleDelete(record)}
+          <Popconfirm
+            title={t('job.deletePlaybook')}
+            description={t('job.deletePlaybookConfirm')}
+            okText={t('job.confirm')}
+            cancelText={t('job.cancel')}
+            okButtonProps={{ danger: true }}
+            onConfirm={() => handleDelete(record)}
           >
-            {t('job.deletePlaybook')}
-          </a>
+            <a className="text-red-500 cursor-pointer">
+              {t('job.deletePlaybook')}
+            </a>
+          </Popconfirm>
         </div>
       ),
     },
