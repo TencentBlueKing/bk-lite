@@ -685,6 +685,15 @@ auto 模式下可选择，edit 模式下仅显示（不可编辑）：
 "instance_id": "{{cloud_region}}_{{instance_type}}_snmp_{{ip}}"
 ```
 
+若每一行代表独立任务、不应按业务字段去重，可声明 UUID 策略：
+
+```json
+"instance_id": "{{uuid}}"
+```
+
+auto 模式会复用当前行稳定的 UUID v4 `key`，输出去掉连字符后的 32 位小写
+`instance_id`。同一行提交失败后重试时 ID 不变；新增、复制或导入的每一行使用不同 ID。
+
 #### 变量来源（按优先级）
 
 1. **当前行字段**（来自 table_columns）
