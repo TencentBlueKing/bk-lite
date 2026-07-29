@@ -4,6 +4,7 @@
 
 import base64
 import json
+import os
 from typing import Any, Dict
 
 import requests
@@ -43,7 +44,8 @@ def optimize_email_content_with_llm(*, model_id: int, title: str, content: str, 
         user_message=f"邮件标题：{title or '无'}\n\n原始正文：\n{content}",
         extra_config={"show_think": False},
     )
-    llm = LLMClientFactory.create_client(request, disable_stream=True, isolated=True)
+    timeout = int(os.getenv("AGENT_EXECUTE_TIMEOUT") or "300")
+    llm = LLMClientFactory.create_client(request, disable_stream=True, isolated=True, timeout=timeout)
     response = llm.invoke(
         [
             SystemMessage(content=request.system_message_prompt),
