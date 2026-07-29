@@ -1179,13 +1179,25 @@ class ModelManage(object):
             with GraphClient() as ag:
                 instances, _ = ag.query_entity(INSTANCE, [{"field": "model_id", "type": "str=", "value": model_id}])
 
+                property_values = []
                 for instance in instances:
                     # 仅处理含该文件字段值的实例
                     if attr_id in instance and instance[attr_id]:
                         new_display_value = DisplayFieldConverter.convert_file(instance[attr_id])
-                        update_data = {display_field_id: new_display_value}
-                        ag.batch_update_node_properties(INSTANCE, [instance["_id"]], update_data)
-                        updated_count += 1
+                        property_values.append(
+                            {
+                                "id": instance["_id"],
+                                "value": new_display_value,
+                            }
+                        )
+
+                if property_values:
+                    ag.batch_update_node_property_values(
+                        INSTANCE,
+                        display_field_id,
+                        property_values,
+                    )
+                    updated_count = len(property_values)
 
                 if updated_count > 0:
                     logger.info(

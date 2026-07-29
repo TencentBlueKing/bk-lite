@@ -373,6 +373,45 @@ def test_batch_update_node_properties_empty_props_raises():
         c.batch_update_node_properties("instance", [1], {})
 
 
+def test_batch_update_node_property_values_uses_one_parameterized_query():
+    c = _client(_entity_result([]))
+    property_values = [
+        {"id": 1, "value": "report"},
+        {"id": 2, "value": "photo"},
+    ]
+
+    c.batch_update_node_property_values(
+        "instance",
+        "doc_display",
+        property_values,
+    )
+
+    assert len(c._graph.calls) == 1
+    assert "UNWIND $property_values AS row" in c._graph.last_query
+    assert "ID(n) = row.id" in c._graph.last_query
+    assert "SET n.doc_display = row.value" in c._graph.last_query
+    assert c._graph.last_params == {"property_values": property_values}
+
+
+def test_batch_update_node_property_values_empty_list_skips_query():
+    c = _client(_entity_result([]))
+
+    assert c.batch_update_node_property_values("instance", "doc_display", []) == []
+    assert c._graph.calls == []
+
+
+def test_batch_update_node_property_values_rejects_invalid_field():
+    c = _client(_entity_result([]))
+
+    with pytest.raises(BaseAppException):
+        c.batch_update_node_property_values(
+            "instance",
+            "doc_display) DELETE n",
+            [{"id": 1, "value": "report"}],
+        )
+    assert c._graph.calls == []
+
+
 def test_batch_create_entity_mixed_results():
     created = FakeNode(1, ["instance"], {"inst_name": "ok"})
     c = _client(_entity_result([created]))

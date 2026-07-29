@@ -8,6 +8,7 @@ from neo4j.graph import Path
 
 from apps.cmdb.constants.constants import INSTANCE, ModelConstraintKey
 from apps.cmdb.graph.format_type import FORMAT_TYPE_PARAMS, ParameterCollector
+from apps.cmdb.graph.validators import CQLValidator
 from apps.cmdb.services.unique_rule import raise_unique_rule_conflict_if_needed
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.logger import cmdb_logger as logger
@@ -551,6 +552,36 @@ class Neo4jClient:
             raise BaseAppException("properties is empty")
         nodes = self.session.run(f"MATCH (n{label_str}) WHERE id(n) IN {node_ids} SET {properties_str} RETURN n")
         return nodes
+
+    def batch_update_node_property_values(self, label: str, field: str, property_values: list[dict]):
+        """在一次图查询中为不同节点写入同一字段的不同值。"""
+        validated_label = CQLValidator.validate_label(label)
+        validated_field = CQLValidator.validate_field(field)
+        if not isinstance(property_values, list):
+            raise BaseAppException("property_values must be a list")
+        if not property_values:
+            return []
+
+        validated_property_values = []
+        for item in property_values:
+            if not isinstance(item, dict) or "id" not in item or "value" not in item:
+                raise BaseAppException("property_values items must contain id and value")
+            validated_property_values.append(
+                {
+                    "id": CQLValidator.validate_id(item["id"]),
+                    "value": item["value"],
+                }
+            )
+
+        query = (
+            f"UNWIND $property_values AS row "
+            f"MATCH (n:{validated_label}) WHERE id(n) = row.id "
+            f"SET n.{validated_field} = row.value RETURN n"
+        )
+        return self.session.run(
+            query,
+            property_values=validated_property_values,
+        )
 
     def format_properties_remove(self, attrs: list):
         """格式化properties的remove数据"""

@@ -311,6 +311,45 @@ def test_delete_edge():
     assert "DELETE" in c.session.last_query.upper()
 
 
+def test_batch_update_node_property_values_uses_one_parameterized_query():
+    c = _client()
+    property_values = [
+        {"id": 1, "value": "report"},
+        {"id": 2, "value": "photo"},
+    ]
+
+    c.batch_update_node_property_values(
+        "instance",
+        "doc_display",
+        property_values,
+    )
+
+    assert len(c.session.calls) == 1
+    assert "UNWIND $property_values AS row" in c.session.last_query
+    assert "id(n) = row.id" in c.session.last_query
+    assert "SET n.doc_display = row.value" in c.session.last_query
+    assert c.session.last_params == {"property_values": property_values}
+
+
+def test_batch_update_node_property_values_empty_list_skips_query():
+    c = _client()
+
+    assert c.batch_update_node_property_values("instance", "doc_display", []) == []
+    assert c.session.calls == []
+
+
+def test_batch_update_node_property_values_rejects_invalid_field():
+    c = _client()
+
+    with pytest.raises(BaseAppException):
+        c.batch_update_node_property_values(
+            "instance",
+            "doc_display) DELETE n",
+            [{"id": 1, "value": "report"}],
+        )
+    assert c.session.calls == []
+
+
 def test_query_edge():
     src = FakeNode(1, ["instance"], {"inst_name": "h", "model_id": "host"})
     dst = FakeNode(2, ["instance"], {"inst_name": "s", "model_id": "sw"})

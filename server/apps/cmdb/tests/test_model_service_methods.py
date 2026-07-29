@@ -327,14 +327,76 @@ def test_rebuild_file_instances_display_backfills_stem(fake_graph):
     count = ModelManage.rebuild_file_instances_display("host", "doc")
     # 只有实例 1 含 doc → 回填 1 个
     assert count == 1
-    update_calls = [c for c in fg.calls if c[0] == "batch_update_node_properties"]
+    update_calls = [
+        c for c in fg.calls if c[0] == "batch_update_node_property_values"
+    ]
     assert len(update_calls) == 1
     # 写入的是文件名词干（去扩展名），而非原始元数据 JSON
-    assert update_calls[0][1][2] == {"doc_display": "report"}
+    assert update_calls[0][1] == (
+        "instance",
+        "doc_display",
+        [{"id": 1, "value": "report"}],
+    )
+
+
+def test_rebuild_file_instances_display_batches_1000_distinct_values_once(
+    fake_graph,
+):
+    instances = [
+        {"_id": index, "doc": [{"name": f"report-{index}.pdf"}]}
+        for index in range(1, 1001)
+    ]
+    instances.extend([{"_id": 1001}, {"_id": 1002, "doc": []}])
+    fg = fake_graph(
+        MODULE,
+        query_entity=(instances, len(instances)),
+    )
+
+    count = ModelManage.rebuild_file_instances_display("host", "doc")
+
+    assert count == 1000
+    update_calls = [
+        call
+        for call in fg.calls
+        if call[0] == "batch_update_node_property_values"
+    ]
+    assert len(update_calls) == 1
+    assert update_calls[0][1][0:2] == ("instance", "doc_display")
+    assert update_calls[0][1][2] == [
+        {"id": index, "value": f"report-{index}"}
+        for index in range(1, 1001)
+    ]
+    assert not any(
+        call[0] == "batch_update_node_properties" for call in fg.calls
+    )
 
 
 def test_rebuild_file_instances_display_no_instances(fake_graph):
     fg = fake_graph(MODULE, query_entity=([], 0))
     count = ModelManage.rebuild_file_instances_display("host", "doc")
     assert count == 0
-    assert not any(c[0] == "batch_update_node_properties" for c in fg.calls)
+    assert not any(
+        c[0] in {"batch_update_node_properties", "batch_update_node_property_values"}
+        for c in fg.calls
+    )
+
+
+def test_rebuild_file_instances_display_backend_failure_is_non_blocking(
+    fake_graph,
+):
+    def _raise(*args, **kwargs):
+        raise RuntimeError("graph unavailable")
+
+    fake_graph(
+        MODULE,
+        query_entity=(
+            [
+                {"_id": 1, "doc": [{"name": "report.pdf"}]},
+                {"_id": 2, "doc": [{"name": "photo.png"}]},
+            ],
+            2,
+        ),
+        batch_update_node_property_values=_raise,
+    )
+
+    assert ModelManage.rebuild_file_instances_display("host", "doc") == 0
