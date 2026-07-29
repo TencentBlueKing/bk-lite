@@ -9,7 +9,7 @@ from apps.core.logger import logger
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.utils.viewset_utils import MaintainerViewSet
 from apps.system_mgmt.providers import RuntimeApplicationService
-from apps.system_mgmt.models import IntegrationInstance, IntegrationInstanceStatusChoices, UserSyncRun, UserSyncSource
+from apps.system_mgmt.models import Group, IntegrationInstance, IntegrationInstanceStatusChoices, UserSyncRun, UserSyncSource
 from apps.system_mgmt.serializers.user_sync_source_serializer import UserSyncRunSerializer, UserSyncSourceSerializer
 from apps.system_mgmt.services.user_sync_service import (
     ALL_DEPARTMENT_SELECTION_ID,
@@ -63,6 +63,17 @@ class UserSyncSourceViewSet(MaintainerViewSet):
         result = delete_user_sync_source(obj)
         log_operation(request, "delete", "system-manager", f"删除用户同步源: {source_name}")
         return JsonResponse(result)
+
+    @action(methods=["GET"], detail=False, url_path="root_group_name_available")
+    @HasPermission("user_sync-Add")
+    def root_group_name_available(self, request, *args, **kwargs):
+        root_group_name = str(request.query_params.get("root_group_name") or "").strip()
+        if not root_group_name:
+            return Response({"available": True})
+
+        source_reserved = UserSyncSource.objects.filter(root_group_name=root_group_name, enabled=True).exists()
+        group_reserved = Group.objects.filter(parent_id=0, name=root_group_name).exists()
+        return Response({"available": not source_reserved and not group_reserved})
 
     @action(methods=["GET"], detail=False, url_path="department_options")
     @HasPermission("user_sync-View")
@@ -173,6 +184,32 @@ class UserSyncSourceViewSet(MaintainerViewSet):
         source = self.get_object()
         serializer = UserSyncRunSerializer(source.runs.all()[:20], many=True)
         return Response(serializer.data)
+
+    @action(methods=["GET"], detail=False, url_path=r"runs/(?P<run_id>\d+)")
+    @HasPermission("user_sync-View")
+    def run_detail(self, request, run_id=None, *args, **kwargs):
+        """按 run_id 取单条同步运行详情(供 UserSyncRunProgressDrawer 使用)。
+
+        - 不存在返回 404
+        - 源不可见返回 403
+        - 正常返回 UserSyncRunSerializer 完整数据(含 payload 全部阶段/错误/计数器)
+        """
+        run = UserSyncRun.objects.select_related("source").filter(id=run_id).first()
+        if not run:
+            return JsonResponse({"result": False, "message": "Run not found"}, status=404)
+
+        source = run.source
+        if source is None:
+            return JsonResponse({"result": False, "message": "Source not found"}, status=404)
+
+        # 沿用 records 端点的源可见性判定
+        visible_sources = self.get_queryset_by_permission(
+            request, UserSyncSource.objects.filter(id=source.id)
+        )
+        if not visible_sources.exists():
+            return JsonResponse({"result": False, "message": "Permission denied"}, status=403)
+
+        return Response(UserSyncRunSerializer(run).data)
 
     @action(methods=["POST"], detail=False)
     @HasPermission("user_sync-View")

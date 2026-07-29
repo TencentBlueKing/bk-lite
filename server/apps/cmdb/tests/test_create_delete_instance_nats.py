@@ -6,7 +6,10 @@
 
 from unittest.mock import patch
 
+import django
 import pytest
+
+django.setup()
 
 from apps.cmdb.nats import nats as N
 
@@ -21,7 +24,7 @@ def test_create_instance_ok(mock_im):
     mock_im.instance_create.return_value = {"_id": 7, "inst_name": "host-01"}
 
     result = N.create_instance(
-        {"model_id": "host", "instance_info": {"ip": "1.2.3.4"}, "operator": "admin"}
+        {"model_id": "host", "instance_info": {"ip": "1.2.3.4"}, "operator": "admin", "allowed_org_ids": [3]}
     )
 
     assert result == {"_id": 7, "inst_name": "host-01"}
@@ -29,21 +32,19 @@ def test_create_instance_ok(mock_im):
         model_id="host",
         instance_info={"ip": "1.2.3.4"},
         operator="admin",
-        allowed_org_ids=None,
+        allowed_org_ids=[3],
     )
 
 
 @patch("apps.cmdb.nats.nats.InstanceManage")
-def test_create_instance_org_scope_defaults_to_payload(mock_im):
-    """带 organization 时默认放行其自身（机器接口无范围限制）。"""
+def test_create_instance_missing_auth_context_rejects(mock_im):
+    """缺少 user_info / allowed_org_ids / service_scope 时拒绝写入。"""
     mock_im.instance_create.return_value = {"_id": 1}
 
-    N.create_instance(
-        {"model_id": "host", "instance_info": {"organization": [3, 5]}}
-    )
+    with pytest.raises(ValueError, match="authorization scope"):
+        N.create_instance({"model_id": "host", "instance_info": {"organization": [3, 5]}})
 
-    _, kwargs = mock_im.instance_create.call_args
-    assert kwargs["allowed_org_ids"] == [3, 5]
+    mock_im.instance_create.assert_not_called()
 
 
 @patch("apps.cmdb.nats.nats.InstanceManage")
@@ -60,10 +61,20 @@ def test_create_instance_explicit_allowed_org_ids(mock_im):
 
 
 @patch("apps.cmdb.nats.nats.InstanceManage")
+def test_create_instance_organization_outside_scope_rejects(mock_im):
+    mock_im.instance_create.return_value = {"_id": 1}
+
+    with pytest.raises(ValueError, match="organization .*授权范围"):
+        N.create_instance({"model_id": "host", "instance_info": {"organization": [9]}, "allowed_org_ids": [3]})
+
+    mock_im.instance_create.assert_not_called()
+
+
+@patch("apps.cmdb.nats.nats.InstanceManage")
 def test_create_instance_default_operator(mock_im):
     mock_im.instance_create.return_value = {"_id": 1}
 
-    N.create_instance({"model_id": "host", "instance_info": {"k": "v"}})
+    N.create_instance({"model_id": "host", "instance_info": {"k": "v"}, "allowed_org_ids": [1]})
 
     _, kwargs = mock_im.instance_create.call_args
     assert kwargs["operator"] == ""
@@ -90,12 +101,12 @@ def test_create_instance_empty_info_raises(mock_im):
 
 @patch("apps.cmdb.nats.nats.InstanceManage")
 def test_delete_instance_by_ids(mock_im):
-    result = N.delete_instance({"inst_ids": [1, 2], "operator": "admin"})
+    result = N.delete_instance({"inst_ids": [1, 2], "operator": "admin", "allowed_org_ids": [3]})
 
     assert result == {"result": True, "deleted": [1, 2]}
     mock_im.search_inst.assert_not_called()
     mock_im.instance_batch_delete.assert_called_once_with(
-        user_groups=[],
+        user_groups=[{"id": 3}],
         roles=[],
         inst_ids=[1, 2],
         operator="admin",
@@ -104,7 +115,7 @@ def test_delete_instance_by_ids(mock_im):
 
 @patch("apps.cmdb.nats.nats.InstanceManage")
 def test_delete_instance_by_single_id(mock_im):
-    result = N.delete_instance({"inst_id": 9})
+    result = N.delete_instance({"inst_id": 9, "allowed_org_ids": [1]})
 
     assert result == {"result": True, "deleted": [9]}
     _, kwargs = mock_im.instance_batch_delete.call_args
@@ -114,7 +125,7 @@ def test_delete_instance_by_single_id(mock_im):
 
 @patch("apps.cmdb.nats.nats.InstanceManage")
 def test_delete_instance_by_underscore_id(mock_im):
-    N.delete_instance({"_id": 5})
+    N.delete_instance({"_id": 5, "allowed_org_ids": [1]})
     _, kwargs = mock_im.instance_batch_delete.call_args
     assert kwargs["inst_ids"] == [5]
 
@@ -123,7 +134,7 @@ def test_delete_instance_by_underscore_id(mock_im):
 def test_delete_instance_by_model_and_name(mock_im):
     mock_im.search_inst.return_value = ([{"_id": 55, "inst_name": "host-01"}], 1)
 
-    result = N.delete_instance({"model_id": "host", "inst_name": "host-01"})
+    result = N.delete_instance({"model_id": "host", "inst_name": "host-01", "allowed_org_ids": [1]})
 
     assert result == {"result": True, "deleted": [55]}
     mock_im.search_inst.assert_called_once_with(model_id="host", inst_name="host-01")
@@ -132,9 +143,16 @@ def test_delete_instance_by_model_and_name(mock_im):
 
 
 @patch("apps.cmdb.nats.nats.InstanceManage")
+def test_delete_instance_missing_auth_context_rejects(mock_im):
+    with pytest.raises(ValueError, match="authorization scope"):
+        N.delete_instance({"inst_id": 1})
+    mock_im.instance_batch_delete.assert_not_called()
+
+
+@patch("apps.cmdb.nats.nats.InstanceManage")
 def test_delete_instance_missing_locator_raises(mock_im):
     with pytest.raises(ValueError, match="inst_ids, inst_id or"):
-        N.delete_instance({"operator": "admin"})
+        N.delete_instance({"operator": "admin", "allowed_org_ids": [1]})
     mock_im.instance_batch_delete.assert_not_called()
 
 
@@ -142,5 +160,5 @@ def test_delete_instance_missing_locator_raises(mock_im):
 def test_delete_instance_not_found_raises(mock_im):
     mock_im.search_inst.return_value = ([], 0)
     with pytest.raises(ValueError, match="实例不存在"):
-        N.delete_instance({"model_id": "host", "inst_name": "ghost"})
+        N.delete_instance({"model_id": "host", "inst_name": "ghost", "allowed_org_ids": [1]})
     mock_im.instance_batch_delete.assert_not_called()

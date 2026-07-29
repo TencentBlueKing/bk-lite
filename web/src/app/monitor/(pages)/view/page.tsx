@@ -1,6 +1,7 @@
 'use client';
 import React, { useEffect, useMemo, useState } from 'react';
 import { Segmented } from 'antd';
+import { useRouter, useSearchParams } from 'next/navigation';
 import useApiClient from '@/utils/request';
 import useMonitorApi from '@/app/monitor/api';
 import { TreeItem, ObjectItem } from '@/app/monitor/types';
@@ -11,9 +12,13 @@ import ViewList from './viewList';
 import ViewHive from './viewHive';
 import ResizableSidebar from '@/app/monitor/components/resizableSidebar';
 import { cloneDeep } from 'lodash';
+import { getMonitorViewObjectUrl } from '@/app/monitor/dashboards/shared/utils';
+import { getProfessionalObjectDisplayName } from '@/app/monitor/dashboards/registry';
 
 const Integration = () => {
   const { isLoading } = useApiClient();
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const { getMonitorObject } = useMonitorApi();
   const [treeData, setTreeData] = useState<TreeItem[]>([]);
   const [objects, setObjects] = useState<ObjectItem[]>([]);
@@ -36,6 +41,9 @@ const Integration = () => {
   const handleObjectChange = async (id: string) => {
     setObjectId(id);
     setDisplayType('list');
+    if (searchParams.get('object_id') !== String(id)) {
+      router.replace(getMonitorViewObjectUrl(id));
+    }
   };
 
   const onDisplayTypeChange = async (value: string) => {
@@ -52,11 +60,18 @@ const Integration = () => {
       setTreeData(_treeData);
       if (type === 'update') return;
       setObjects(data);
-      setDefaultSelectObj(data[0]?.id);
     } finally {
       setTreeLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (!objects.length) return;
+    const requestedObjectId = searchParams.get('object_id');
+    const selectedObject = objects.find((item) => String(item.id) === requestedObjectId) || objects[0];
+    setObjectId(selectedObject?.id || '');
+    setDefaultSelectObj(selectedObject?.id || '');
+  }, [objects, searchParams]);
 
   const getTreeData = (data: ObjectItem[]): TreeItem[] => {
     const groupedData = data.reduce((acc, item) => {
@@ -68,7 +83,7 @@ const Integration = () => {
         };
       }
       acc[item.type].children.push({
-        title: item.display_name || '--',
+        title: getProfessionalObjectDisplayName(item.name, item.display_name) || '--',
         label: item.name || '--',
         key: item.id,
         icon: item.icon,

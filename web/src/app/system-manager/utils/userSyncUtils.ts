@@ -4,6 +4,7 @@ import type {
 } from '@/app/system-manager/types/integration-center';
 import type {
   AvailableInstance,
+  PlatformConfig,
   UserSyncSource,
   UserSyncSourceBasicFormValues,
   UserSyncSourceCreateFormValues,
@@ -63,11 +64,13 @@ export function resolveUserSyncTemplate(
   instanceId: number | undefined,
   availableInstances: AvailableInstance[],
   providers: ProviderManifest[],
+  providerKey?: string,
 ): BusinessTemplate | null {
   if (!instanceId) return null;
   const instance = availableInstances.find((item) => item.id === instanceId);
-  if (!instance) return null;
-  const provider = providers.find((item) => item.key === instance.provider_key);
+  const resolvedProviderKey = instance?.provider_key || providerKey;
+  if (!resolvedProviderKey) return null;
+  const provider = providers.find((item) => item.key === resolvedProviderKey);
   if (!provider) return null;
   const capability = provider.capabilities.find((item) => item.key === 'user_sync');
   if (!capability?.business_template) return null;
@@ -203,6 +206,7 @@ function buildExistingSourcePayload(source: UserSyncSource): Partial<UserSyncSou
     field_mapping: { ...(source.field_mapping || {}) },
     schedule_config: source.schedule_config ? { ...source.schedule_config } : { mode: 'disabled', timezone: 'Asia/Shanghai' },
     business_config: { ...(source.business_config || {}) },
+    platform_config: { ...(source.platform_config || {}) },
   };
 }
 
@@ -235,6 +239,7 @@ export function buildCreateSyncSourcePayload(
     business_config: {
       ...(values.business_config || {}),
     },
+    platform_config: { ...(values.platform_config || {}) },
   };
 }
 
@@ -252,13 +257,18 @@ export function buildBasicUpdatePayload(
 export function buildConfigUpdatePayload(
   source: UserSyncSource,
   businessConfig: Record<string, unknown> | undefined,
-  fieldMapping: Record<string, string>
+  fieldMapping: Record<string, string>,
+  platformConfig?: Partial<PlatformConfig>
 ): Partial<UserSyncSource> {
   return {
     ...buildExistingSourcePayload(source),
     field_mapping: fieldMapping,
     business_config: {
       ...(businessConfig || {}),
+    },
+    platform_config: {
+      ...(source.platform_config || {}),
+      ...(platformConfig || {}),
     },
   };
 }
@@ -278,9 +288,15 @@ export function buildConfigPreviewPayload(
   source: UserSyncSource,
   businessConfig: Record<string, unknown> | undefined,
   fieldMapping: Record<string, string>,
-  writeOnlyKeys: Set<string>
+  writeOnlyKeys: Set<string>,
+  platformConfig?: Partial<PlatformConfig>
 ): Record<string, unknown> {
-  const payload = buildConfigUpdatePayload(source, businessConfig, fieldMapping);
+  const payload = buildConfigUpdatePayload(
+    source,
+    businessConfig,
+    fieldMapping,
+    platformConfig
+  );
   return {
     source_id: source.id,
     ...payload,

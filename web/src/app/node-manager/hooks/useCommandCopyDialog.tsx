@@ -6,6 +6,7 @@ import {
   CheckCircleFilled,
   CloseCircleFilled,
 } from '@ant-design/icons';
+import CodeSnippet from '@/components/code-snippet';
 import { useTranslation } from '@/utils/i18n';
 import {
   ClipboardCopyError,
@@ -165,9 +166,11 @@ const useCommandCopyDialog = () => {
           <div className="mt-[16px] text-[12px] text-[var(--color-text-3)]">
             {t('node-manager.cloudregion.node.copiedOriginal')}
           </div>
-          <pre className="mt-[8px] max-h-[240px] overflow-auto whitespace-pre rounded-[6px] bg-[var(--color-fill-1)] p-[12px] font-mono text-[12px] text-[var(--color-text-1)]">
-            {state.content}
-          </pre>
+          <CodeSnippet
+            className="mt-[8px]"
+            value={state.content}
+            maxHeight={240}
+          />
         </>
       )}
     </Modal>

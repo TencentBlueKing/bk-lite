@@ -301,6 +301,14 @@ class DataSourceTagModelViewSet(viewsets.ReadOnlyModelViewSet):
     filterset_class = DataSourceTagModelFilter
     pagination_class = CustomPageNumberPagination
 
+    @HasPermission("data_source-View")
+    def retrieve(self, request, *args, **kwargs):
+        return super().retrieve(request, *args, **kwargs)
+
+    @HasPermission("data_source-View")
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+
 
 class NameSpaceModelViewSet(ModelViewSet):
     """
@@ -481,7 +489,7 @@ class DataSourceAPIModelViewSet(AuthViewSet):
 
         return Response(result.get("data"))
 
-    @HasPermission("data_source-View")
+    @HasPermission("data_source-Add,data_source-Edit")
     @action(detail=False, methods=["post"], url_path="preview")
     def preview_config(self, request, *args, **kwargs):
         source_type = request.data.get("source_type") or DataSourceAPIModel.SOURCE_TYPE_NATS
@@ -504,7 +512,7 @@ class DataSourceAPIModelViewSet(AuthViewSet):
 
         return Response(payload)
 
-    @HasPermission("data_source-View")
+    @HasPermission("data_source-Edit")
     @action(detail=True, methods=["post"], url_path="preview")
     def preview(self, request, *args, **kwargs):
         try:
@@ -512,7 +520,7 @@ class DataSourceAPIModelViewSet(AuthViewSet):
         except Http404:
             return _build_error_response("数据源不存在或已删除", status.HTTP_404_NOT_FOUND)
 
-        current_team = self._parse_current_team_cookie(request)
+        current_team = self._validate_current_team_permission(request)
         if current_team not in (instance.groups or []):
             return _build_error_response("无权访问当前数据源", status.HTTP_403_FORBIDDEN)
 

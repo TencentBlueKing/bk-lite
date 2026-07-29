@@ -3,6 +3,7 @@ import type { UnifiedFilterDefinition, ValueConfig } from './dashBoard';
 
 export type ScreenWidgetChartType =
   | 'single'
+  | 'multiValue'
   | 'gauge'
   | 'line'
   | 'bar'
@@ -20,8 +21,10 @@ export interface ScreenViewportConfig {
     type?: string;
     key?: string;
   };
-  theme?: 'screen-tech-blue';
+  theme?: ScreenThemeId;
 }
+
+export type ScreenThemeId = 'screen-dark' | 'screen-light';
 
 export interface ScreenDecorationsConfig {
   showTitle?: boolean;
@@ -53,4 +56,5 @@ export interface ScreenViewSets {
 
 export interface ScreenProps {
   selectedScreen?: DirItem | null;
+  shareMode?: boolean;
 }

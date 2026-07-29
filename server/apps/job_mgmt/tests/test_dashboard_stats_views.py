@@ -11,15 +11,15 @@ from django.utils import timezone
 from apps.job_mgmt.constants import ExecutionStatus, JobType
 from apps.job_mgmt.models import JobExecution, Playbook, ScheduledTask, Script, Target
 
-pytestmark = [pytest.mark.unit, pytest.mark.django_db]
+pytestmark = [pytest.mark.integration, pytest.mark.django_db]
 
 STATS_URL = "/api/v1/job_mgmt/api/dashboard/stats/"
 JOB_TYPE_URL = "/api/v1/job_mgmt/api/dashboard/job_type_distribution/"
 STATUS_URL = "/api/v1/job_mgmt/api/dashboard/execution_status_distribution/"
 
 
-def _make(status, job_type=JobType.SCRIPT):
-    return JobExecution.objects.create(name="e", job_type=job_type, status=status, team=[1])
+def _make(status, job_type=JobType.SCRIPT, team=None):
+    return JobExecution.objects.create(name="e", job_type=job_type, status=status, team=team or [1])
 
 
 def _find(items, key_field, value):
@@ -27,7 +27,7 @@ def _find(items, key_field, value):
 
 
 class TestDashboardStats:
-    def test_stats_aggregates_assets_and_executions(self, api_client):
+    def test_stats_aggregates_assets_and_executions(self, su_client):
         Script.objects.create(name="s", content="echo", team=[1])
         Playbook.objects.create(name="p", version="v1.0.0", team=[1])
         Target.objects.create(name="h1", ip="10.0.0.1", os_type="linux", team=[1])
@@ -39,7 +39,7 @@ class TestDashboardStats:
         _make(ExecutionStatus.RUNNING)
         _make(ExecutionStatus.PENDING)
 
-        resp = api_client.get(STATS_URL)
+        resp = su_client.get(STATS_URL)
 
         assert resp.status_code == 200
         data = resp.data
@@ -54,8 +54,8 @@ class TestDashboardStats:
         assert data["execution_running"] == 1
         assert data["execution_pending"] == 1
 
-    def test_stats_empty_returns_zeros(self, api_client):
-        resp = api_client.get(STATS_URL)
+    def test_stats_empty_returns_zeros(self, su_client):
+        resp = su_client.get(STATS_URL)
         assert resp.status_code == 200
         for key in (
             "target_total",
@@ -72,24 +72,24 @@ class TestDashboardStats:
         ):
             assert resp.data[key] == 0
 
-    def test_stats_avg_duration_seconds(self, api_client):
+    def test_stats_avg_duration_seconds(self, su_client):
         execution = _make(ExecutionStatus.SUCCESS)
         started = timezone.now()
         JobExecution.objects.filter(id=execution.id).update(started_at=started, finished_at=started + timedelta(seconds=10))
 
-        resp = api_client.get(STATS_URL)
+        resp = su_client.get(STATS_URL)
 
         assert resp.status_code == 200
         assert resp.data["avg_duration_seconds"] == 10.0
 
 
 class TestJobTypeDistribution:
-    def test_distribution_counts_by_type_desc(self, api_client):
+    def test_distribution_counts_by_type_desc(self, su_client):
         _make(ExecutionStatus.SUCCESS, job_type=JobType.SCRIPT)
         _make(ExecutionStatus.FAILED, job_type=JobType.SCRIPT)
         _make(ExecutionStatus.SUCCESS, job_type=JobType.FILE_DISTRIBUTION)
 
-        resp = api_client.get(JOB_TYPE_URL)
+        resp = su_client.get(JOB_TYPE_URL)
 
         assert resp.status_code == 200
         script = _find(resp.data, "job_type", JobType.SCRIPT)
@@ -99,19 +99,19 @@ class TestJobTypeDistribution:
         assert file_dist["count"] == 1
         assert resp.data[0]["count"] >= resp.data[-1]["count"]
 
-    def test_distribution_empty(self, api_client):
-        resp = api_client.get(JOB_TYPE_URL)
+    def test_distribution_empty(self, su_client):
+        resp = su_client.get(JOB_TYPE_URL)
         assert resp.status_code == 200
         assert resp.data == []
 
 
 class TestExecutionStatusDistribution:
-    def test_distribution_counts_by_status(self, api_client):
+    def test_distribution_counts_by_status(self, su_client):
         _make(ExecutionStatus.SUCCESS)
         _make(ExecutionStatus.SUCCESS)
         _make(ExecutionStatus.FAILED)
 
-        resp = api_client.get(STATUS_URL)
+        resp = su_client.get(STATUS_URL)
 
         assert resp.status_code == 200
         success = _find(resp.data, "status", ExecutionStatus.SUCCESS)
@@ -120,7 +120,69 @@ class TestExecutionStatusDistribution:
         assert success["status_display"]
         assert failed["count"] == 1
 
-    def test_distribution_empty(self, api_client):
-        resp = api_client.get(STATUS_URL)
+    def test_distribution_empty(self, su_client):
+        resp = su_client.get(STATUS_URL)
         assert resp.status_code == 200
         assert resp.data == []
+
+
+class TestDashboardAggregateAccessControl:
+    @pytest.mark.parametrize("url", [STATS_URL, JOB_TYPE_URL, STATUS_URL])
+    def test_requires_job_record_view_permission(self, api_client, authenticated_user, url):
+        authenticated_user.permission = {"job": set()}
+        api_client.cookies["current_team"] = "1"
+
+        resp = api_client.get(url)
+
+        assert resp.status_code == 403
+
+
+class TestDashboardAggregateTeamIsolation:
+    def _authorize_team_one(self, api_client, authenticated_user):
+        authenticated_user.permission = {"job": {"job_record-View"}}
+        api_client.cookies["current_team"] = "1"
+
+    def test_stats_only_aggregates_current_team(self, api_client, authenticated_user):
+        self._authorize_team_one(api_client, authenticated_user)
+        Script.objects.create(name="s1", content="echo", team=[1])
+        Script.objects.create(name="s2", content="echo", team=[2])
+        Playbook.objects.create(name="p1", version="v1.0.0", team=[1])
+        Playbook.objects.create(name="p2", version="v1.0.0", team=[2])
+        Target.objects.create(name="h1", ip="10.0.0.1", os_type="linux", team=[1])
+        Target.objects.create(name="h2", ip="10.0.0.2", os_type="linux", team=[2])
+        ScheduledTask.objects.create(name="c1", job_type=JobType.SCRIPT, is_enabled=True, team=[1])
+        ScheduledTask.objects.create(name="c2", job_type=JobType.SCRIPT, is_enabled=True, team=[2])
+        _make(ExecutionStatus.SUCCESS, team=[1])
+        _make(ExecutionStatus.FAILED, team=[2])
+
+        resp = api_client.get(STATS_URL)
+
+        assert resp.status_code == 200
+        assert resp.data["script_total"] == 1
+        assert resp.data["playbook_total"] == 1
+        assert resp.data["target_total"] == 1
+        assert resp.data["scheduled_task_total"] == 1
+        assert resp.data["scheduled_task_enabled"] == 1
+        assert resp.data["execution_total"] == 1
+        assert resp.data["execution_success"] == 1
+        assert resp.data["execution_failed"] == 0
+
+    def test_job_type_distribution_only_aggregates_current_team(self, api_client, authenticated_user):
+        self._authorize_team_one(api_client, authenticated_user)
+        _make(ExecutionStatus.SUCCESS, job_type=JobType.SCRIPT, team=[1])
+        _make(ExecutionStatus.FAILED, job_type=JobType.FILE_DISTRIBUTION, team=[2])
+
+        resp = api_client.get(JOB_TYPE_URL)
+
+        assert resp.status_code == 200
+        assert [(item["job_type"], item["count"]) for item in resp.data] == [(JobType.SCRIPT, 1)]
+
+    def test_status_distribution_only_aggregates_current_team(self, api_client, authenticated_user):
+        self._authorize_team_one(api_client, authenticated_user)
+        _make(ExecutionStatus.SUCCESS, team=[1])
+        _make(ExecutionStatus.FAILED, team=[2])
+
+        resp = api_client.get(STATUS_URL)
+
+        assert resp.status_code == 200
+        assert [(item["status"], item["count"]) for item in resp.data] == [(ExecutionStatus.SUCCESS, 1)]

@@ -1,6 +1,6 @@
 """告警自动分派 BDD（中文 Gherkin）。
 
-对照 spec/prd/告警中心·配置·自动分派：
+对照 specs/capabilities/legacy-prd-告警中心-配置.md：
 - AlertAssignmentOperator + execute_auto_assignment_for_alerts；
 - match_type = all / filter 双路径；
 - 无人员、无策略、空告警、未命中、不存在告警 ID 的拒绝路径。

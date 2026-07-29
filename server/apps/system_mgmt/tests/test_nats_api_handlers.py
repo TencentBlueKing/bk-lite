@@ -3,27 +3,22 @@
 nats handler 直接可调用（@nats_client.register 返回原函数）。
 只 mock 真实外部边界（cache、send_msg、jwt token 验证等），断言真实 DB 行为与返回结构。
 """
+
 import types
 
-import nats_client
 import pytest
+from nats_client.registry import default_registry
 
+import nats_client
+from apps.rpc.system_mgmt import SystemMgmt
 from apps.system_mgmt import nats_api
-from apps.system_mgmt.models import (
-    App,
-    Channel,
-    Group,
-    GroupDataRule,
-    Menu,
-    Role,
-    User,
-)
+from apps.system_mgmt.models import App, Channel, Group, GroupDataRule, Menu, Role, User
 from apps.system_mgmt.models.channel import ChannelChoices
 
 pytestmark = pytest.mark.django_db
 
 
-def test_nats_api_compat_exports_all_nats_entrypoints():
+def test_nats_api_compat_exports_local_and_nats_entrypoints():
     expected_entrypoints = {
         "get_pilot_permission_by_token",
         "verify_token",
@@ -70,13 +65,46 @@ def test_nats_api_compat_exports_all_nats_entrypoints():
         "save_error_log",
         "save_operation_log",
     }
-    registered_entrypoints = expected_entrypoints - {"_list_opspilot_nats_channels"}
+    local_only_entrypoints = {
+        "_list_opspilot_nats_channels",
+        "create_default_rule",
+        "bk_lite_user_login",
+        "get_group_users",
+        "get_group_users_scoped",
+        "get_all_users",
+        "search_users",
+    }
+    registered_entrypoints = expected_entrypoints - local_only_entrypoints
 
     exported_entrypoints = {name for name in expected_entrypoints if callable(getattr(nats_api, name, None))}
-    actual_registered_entrypoints = {item["name"] for item in nats_client.default_registry.registry.values()}
+    actual_registered_entrypoints = {item["name"] for item in default_registry.registry.values()}
 
     assert exported_entrypoints == expected_entrypoints
     assert registered_entrypoints <= actual_registered_entrypoints
+    assert local_only_entrypoints.isdisjoint(actual_registered_entrypoints)
+
+
+def test_bk_lite_user_login_keeps_local_app_client_path(monkeypatch):
+    user = User.objects.create(
+        username="cross_domain_user",
+        password="x",
+        display_name="Cross Domain User",
+        email="cross-domain@example.com",
+        domain="corp.example.com",
+    )
+    issued = {}
+
+    def fake_get_user_login_token(actual_user, username):
+        issued.update(user=actual_user, username=username)
+        return {"result": True, "data": {"token": "local-only"}}
+
+    monkeypatch.setattr(nats_api._login, "get_user_login_token", fake_get_user_login_token)
+
+    result = SystemMgmt().bk_lite_user_login(user.username, user.domain)
+
+    assert result == {"result": True, "data": {"token": "local-only"}}
+    assert issued == {"user": user, "username": user.username}
+    assert "bk_lite_user_login" not in {item["name"] for item in default_registry.registry.values()}
 
 
 # ---------------------------------------------------------------------------
@@ -105,8 +133,12 @@ def test_get_user_all_roles_personal_and_group_inherit():
     child.roles.add(role_group)
 
     user = User.objects.create(
-        username="ru", password="x", display_name="ru", email="r@x.com",
-        role_list=[role_personal.id], group_list=[child.id],
+        username="ru",
+        password="x",
+        display_name="ru",
+        email="r@x.com",
+        role_list=[role_personal.id],
+        group_list=[child.id],
     )
     roles = set(nats_api.get_user_all_roles(user))
     # 个人角色 + 子组角色 + 继承的父组角色（父 allow_inherit_roles=True）
@@ -132,8 +164,13 @@ def test_verify_token_regular_user_resolves_underscore_import(monkeypatch):
 
     parent = Group.objects.create(name="VT_Parent", parent_id=0)
     user = User.objects.create(
-        username="vt_regular", password="x", display_name="vt", email="vt@x.com",
-        domain="domain.com", role_list=[], group_list=[parent.id],
+        username="vt_regular",
+        password="x",
+        display_name="vt",
+        email="vt@x.com",
+        domain="domain.com",
+        role_list=[],
+        group_list=[parent.id],
     )
     # 避免 get_cached_token_info 命中旧数据
     clear_token_info_cache(user.username, user.domain)
@@ -190,8 +227,13 @@ def test_get_client_superuser_sees_all():
     App.objects.create(name="app1", display_name="1", url="/1")
     admin_role = Role.objects.create(name="admin", app="")
     User.objects.create(
-        username="super", password="x", display_name="s", email="s@x.com",
-        domain="domain.com", role_list=[admin_role.id], group_list=[],
+        username="super",
+        password="x",
+        display_name="s",
+        email="s@x.com",
+        domain="domain.com",
+        role_list=[admin_role.id],
+        group_list=[],
     )
     result = nats_api.get_client(username="super")
     assert result["result"] is True
@@ -289,7 +331,15 @@ def test_actor_scope_missing_username_returns_empty():
 
 def test_actor_scope_superuser():
     g = Group.objects.create(name="SG", parent_id=0)
-    User.objects.create(username="sa", password="x", display_name="sa", email="sa@x.com", domain="domain.com")
+    admin_role, _ = Role.objects.get_or_create(name="admin", app="")
+    User.objects.create(
+        username="sa",
+        password="x",
+        display_name="sa",
+        email="sa@x.com",
+        domain="domain.com",
+        role_list=[admin_role.id],
+    )
     ctx = {"username": "sa", "domain": "domain.com", "current_team": g.id, "is_superuser": True}
     user_obj, groups = nats_api._get_actor_user_scope(ctx)
     assert user_obj is not None
@@ -298,7 +348,15 @@ def test_actor_scope_superuser():
 
 def test_get_authorized_groups_scoped():
     g = Group.objects.create(name="AG", parent_id=0)
-    User.objects.create(username="au", password="x", display_name="au", email="au@x.com", domain="domain.com")
+    admin_role, _ = Role.objects.get_or_create(name="admin", app="")
+    User.objects.create(
+        username="au",
+        password="x",
+        display_name="au",
+        email="au@x.com",
+        domain="domain.com",
+        role_list=[admin_role.id],
+    )
     ctx = {"username": "au", "domain": "domain.com", "current_team": g.id, "is_superuser": True}
     result = nats_api.get_authorized_groups_scoped(ctx)
     assert result["result"] is True
@@ -339,8 +397,11 @@ def test_create_default_rule_creates_rule():
 # ---------------------------------------------------------------------------
 def test_get_channel_detail_found_and_missing():
     ch = Channel.objects.create(
-        name="mychan", channel_type=ChannelChoices.EMAIL, config={"k": "v"},
-        description="d", team=[1, 2],
+        name="mychan",
+        channel_type=ChannelChoices.EMAIL,
+        config={"k": "v"},
+        description="d",
+        team=[1, 2],
     )
     ok = nats_api.get_channel_detail(ch.id)
     assert ok["result"] is True

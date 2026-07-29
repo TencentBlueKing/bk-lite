@@ -44,6 +44,7 @@ export interface IMNotificationUserMapping {
   channel: number;
   user: number;
   username: string;
+  display_name: string;
   external_identity_key: string;
   external_identity_value: string;
   external_receive_key: string;

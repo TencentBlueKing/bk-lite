@@ -1,8 +1,11 @@
+import type { DateRangeValue } from '@/app/ops-analysis/types/dateRange';
+
 export type ChartType =
   | 'line'
   | 'bar'
   | 'pie'
   | 'single'
+  | 'multiValue'
   | 'table'
   | 'eventTable'
   | 'topN'
@@ -51,7 +54,8 @@ export interface DatasourceItem {
   updated_by_domain: string;
   name: string;
   source_type?: DataSourceSourceType;
-  rest_api: string;
+  /** 普通列表接口返回；分享元数据刻意不返回，避免暴露内部执行路径 */
+  rest_api?: string;
   connection_config?: Record<string, any>;
   query_config?: Record<string, any>;
   desc: string;
@@ -63,7 +67,7 @@ export interface DatasourceItem {
     id: number;
     name: string;
   }>;
-  tag: number[];
+  tag?: number[];
   groups?: number[];
   hasAuth?: boolean;
   field_schema?: ResponseFieldDefinition[];
@@ -124,7 +128,7 @@ export type InputControlConfig =
 export interface ParamItem {
   id?: string;
   name: string;
-  value: string | number | boolean | [number, number] | null;
+  value: string | number | boolean | [number, number] | DateRangeValue | null;
   alias_name: string;
   type?: string;
   filterType?: DataSourceParamFilterType;

@@ -16,6 +16,7 @@
       "visible_in": "edit",
       "editable": false,
       "description": "InfluxDB v1 debug 接口地址，通常为 http://host:8086/debug/vars",
+      "guide_short": "填写完整 URL 且以 /debug/vars 结尾，例如 http://10.0.0.10:8086/debug/vars；保存前可在采集节点用 curl 验证连通性。",
       "widget_props": {
         "placeholder": "http://localhost:8086/debug/vars"
       },
@@ -31,6 +32,7 @@
       "required": false,
       "editable": false,
       "description": "如接口启用 Basic Auth 可填写用户名",
+      "guide_short": "仅当 /debug/vars 接口启用 Basic Auth 时填写；未启用请留空，建议用只读账号。",
       "widget_props": {
         "placeholder": "用户名",
         "placeholder_en": "Username"
@@ -47,6 +49,7 @@
       "required": false,
       "editable": false,
       "description": "如接口启用 Basic Auth 可填写密码",
+      "guide_short": "与用户名对应，仅在启用 Basic Auth 时填写；注意不要带入首尾空格。",
       "widget_props": {
         "placeholder": "密码",
         "placeholder_en": "Password"
@@ -63,6 +66,7 @@
       "required": true,
       "default_value": 60,
       "description": "监控数据的采集时间间隔（单位：秒）",
+      "guide_short": "默认 60 秒；过低会增加 InfluxDB 压力，过高会延误告警。",
       "widget_props": {
         "min": 1,
         "precision": 0,
@@ -89,6 +93,7 @@
       "required": true,
       "default_value": 30,
       "description": "单次请求 `debug/vars` 接口的超时时间（单位：秒）",
+      "guide_short": "默认 30 秒；建议小于采集间隔，接口响应慢时可适当调大。",
       "widget_props": {
         "min": 1,
         "precision": 0,
@@ -114,6 +119,7 @@
       "required": false,
       "editable": false,
       "description": "HTTPS 场景下使用的 CA 证书路径",
+      "guide_short": "仅 HTTPS 场景需要，填写采集节点上可读的 CA 证书绝对路径，例如 /etc/ssl/ca.pem。",
       "widget_props": {
         "placeholder": "/etc/ssl/ca.pem"
       },
@@ -129,6 +135,7 @@
       "required": false,
       "editable": false,
       "description": "HTTPS 双向认证时使用的客户端证书路径",
+      "guide_short": "仅 HTTPS 双向认证需要，填写采集节点上的客户端证书绝对路径，需与密钥配套。",
       "widget_props": {
         "placeholder": "/etc/ssl/client.pem"
       },
@@ -144,6 +151,7 @@
       "required": false,
       "editable": false,
       "description": "HTTPS 双向认证时使用的客户端密钥路径",
+      "guide_short": "仅 HTTPS 双向认证需要，填写与客户端证书配套的密钥绝对路径。",
       "widget_props": {
         "placeholder": "/etc/ssl/client-key.pem"
       },
@@ -159,6 +167,7 @@
       "required": false,
       "default_value": false,
       "description": "HTTPS 场景下是否跳过服务端证书校验",
+      "guide_short": "开启后跳过服务端证书校验，仅建议在自签证书的测试环境临时使用，生产环境请关闭。",
       "widget_props": {},
       "transform_on_edit": {
         "origin_path": "child.content.config.insecure_skip_verify"

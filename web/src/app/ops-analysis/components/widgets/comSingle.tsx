@@ -20,6 +20,7 @@ import {
 } from '@/app/ops-analysis/types/dashBoard';
 import {
   getOpsChartThemeByMode,
+  isScreenChartThemeMode,
 } from '@/app/ops-analysis/utils/chartTheme';
 import {
   extractComparableValue,
@@ -198,7 +199,7 @@ const ComSingle: React.FC<ComSingleProps> = ({
 }) => {
   const { t } = useTranslation();
   const chartTheme = getOpsChartThemeByMode(config?.chartThemeMode);
-  const usesScreenDarkTheme = config?.chartThemeMode === 'screen-dark';
+  const usesScreenTheme = isScreenChartThemeMode(config?.chartThemeMode);
   const widgetScale = getScreenWidgetScale(screenRenderContext);
   const contentAreaRef = useRef<HTMLDivElement>(null);
   const valueAreaRef = useRef<HTMLDivElement>(null);
@@ -219,6 +220,10 @@ const ComSingle: React.FC<ComSingleProps> = ({
   const baselineNumericValue = toComparableNumber(baselineRawValue);
   const changePercent = config?.compare
     ? getChangePercent(toComparableNumber(rawValue), baselineNumericValue)
+    : null;
+  const currentNumericValue = toComparableNumber(rawValue);
+  const changeValue = config?.compare && currentNumericValue !== null && baselineNumericValue !== null
+    ? currentNumericValue - baselineNumericValue
     : null;
 
   const thresholds: ThresholdColorConfig[] =
@@ -292,15 +297,15 @@ const ComSingle: React.FC<ComSingleProps> = ({
 
       const availableHeight = contentAreaRef.current?.clientHeight ?? 0;
       let nextFontSize = Math.min(
-        getBaseFontSizeByWidth(availableWidth, usesScreenDarkTheme) *
+        getBaseFontSizeByWidth(availableWidth, usesScreenTheme) *
           widgetScale,
         getBaseFontSizeByHeight(
           availableHeight,
           Boolean(config?.compare),
-          usesScreenDarkTheme,
+          usesScreenTheme,
         ) * widgetScale,
       );
-      if (usesScreenDarkTheme && screenRenderContext?.enabled) {
+      if (usesScreenTheme && screenRenderContext?.enabled) {
         const minScreenFontSize = scaleScreenMetric(18, screenRenderContext);
         const maxScreenFontSize = scaleScreenMetric(
           config?.compare ? 22 : 24,
@@ -345,7 +350,7 @@ const ComSingle: React.FC<ComSingleProps> = ({
     displayUnit,
     showSparkline,
     unitText,
-    usesScreenDarkTheme,
+    usesScreenTheme,
     widgetScale,
   ]);
 
@@ -390,18 +395,21 @@ const ComSingle: React.FC<ComSingleProps> = ({
   const valueMappingResult = applyValueMapping(rawValue, config?.valueMappings);
   const metricColor =
     valueMappingResult?.color || color || chartTheme.singleValueColor;
+  const compareUnitLabel =
+    valueMappingResult?.text !== undefined ? '' : displayUnit || unitText;
+  const compareAmount = config?.compareMode === 'value' ? changeValue : changePercent;
   const compareTextColor =
-    changePercent === null
+    compareAmount === null
       ? chartTheme.singleValueMetaColor
-      : changePercent > 0
+      : compareAmount > 0
         ? '#ff4d4f'
-        : changePercent < 0
+        : compareAmount < 0
           ? '#52c41a'
           : chartTheme.singleValueMetaColor;
   const compareDisplayText =
-    changePercent === null
+    compareAmount === null
       ? '--'
-      : `${changePercent > 0 ? '↑' : changePercent < 0 ? '↓' : ''}${Math.abs(changePercent).toFixed(1)}%`;
+      : `${compareAmount > 0 ? '↑' : compareAmount < 0 ? '↓' : ''}${Math.abs(compareAmount).toFixed(config?.compareMode === 'value' ? (config.decimalPlaces ?? 0) : 1)}${config?.compareMode === 'value' ? compareUnitLabel : '%'}`;
   const heightDrivenCompareSize = Math.max(
     scaleScreenMetric(12, screenRenderContext),
     Math.min(
@@ -429,8 +437,7 @@ const ComSingle: React.FC<ComSingleProps> = ({
     valueMappingResult?.text !== undefined
       ? valueMappingResult.text
       : displayMainValue;
-  const unitLabel =
-    valueMappingResult?.text !== undefined ? '' : displayUnit || unitText;
+  const unitLabel = compareUnitLabel;
   const valueGap = unitLabel
     ? Math.min(
       MAX_UNIT_GAP * widgetScale,
@@ -518,10 +525,10 @@ const ComSingle: React.FC<ComSingleProps> = ({
   return (
     <div
       className={`flex h-full w-full flex-col overflow-hidden ${
-        usesScreenDarkTheme ? 'px-7 py-4' : 'px-2'
+        usesScreenTheme ? 'px-7 py-4' : 'px-2'
       }`}
       style={
-        usesScreenDarkTheme
+        usesScreenTheme
           ? {
             padding: `${scaleScreenMetric(8, screenRenderContext)}px ${scaleScreenMetric(12, screenRenderContext)}px`,
           }

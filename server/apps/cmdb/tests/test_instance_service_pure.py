@@ -1,6 +1,6 @@
 """CMDB InstanceManage 纯逻辑方法覆盖测试（不触图数据库）。
 
-对照 spec/prd/CMDB·视图/资产：拓扑节点权限裁剪、校验属性映射、权限过滤参数、导入结果消息。
+对照 specs/capabilities/legacy-prd-cmdb-视图.md：拓扑节点权限裁剪、校验属性映射、权限过滤参数、导入结果消息。
 """
 
 from types import SimpleNamespace

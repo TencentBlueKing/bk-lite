@@ -36,6 +36,14 @@ _SENSITIVE_INVENTORY_PATTERNS = (
 )
 
 
+def _redact_cli_command(args: list[str]) -> list[str]:
+    redacted = [str(arg) for arg in args]
+    for index, arg in enumerate(redacted[:-1]):
+        if arg == "--extra-vars":
+            redacted[index + 1] = "***"
+    return redacted
+
+
 def _looks_like_utf16le(output: bytes) -> bool:
     if b"\x00" not in output:
         return False
@@ -82,6 +90,7 @@ class AdhocRequest:
     module: str = "ping"
     module_args: str = ""
     extra_vars: dict[str, Any] | None = None
+    extra_vars_file: str | None = None
     execute_timeout: int = 60
     task_id: str | None = None
     callback: dict[str, Any] | None = None
@@ -97,6 +106,7 @@ class PlaybookRequest:
     inventory: str = ""
     inventory_content: str | None = None
     extra_vars: dict[str, Any] | None = None
+    extra_vars_file: str | None = None
     execute_timeout: int = 600
     task_id: str | None = None
     callback: dict[str, Any] | None = None
@@ -381,13 +391,29 @@ def _materialize_private_key(workspace: Path, key_content: str) -> str:
     return str(key_file)
 
 
+def _materialize_extra_vars(workspace: Path, extra_vars: dict[str, Any]) -> str | None:
+    if not extra_vars:
+        return None
+    extra_vars_file = workspace / "extra-vars.json"
+    descriptor = os.open(extra_vars_file, os.O_WRONLY | os.O_CREAT | os.O_EXCL, stat.S_IRUSR | stat.S_IWUSR)
+    with os.fdopen(descriptor, "w", encoding="utf-8") as file_obj:
+        json.dump(extra_vars, file_obj, ensure_ascii=False)
+    return str(extra_vars_file)
+
+
+def _write_restricted_text(path: Path, content: str) -> None:
+    descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, stat.S_IRUSR | stat.S_IWUSR)
+    with os.fdopen(descriptor, "w", encoding="utf-8") as file_obj:
+        file_obj.write(content)
+
+
 def _quote_inventory_value(value: Any) -> str:
     text = str(value)
     escaped = text.replace("\\", "\\\\").replace('"', '\\"')
     # ansible 的 ini inventory 用 shlex.split(comments=True) 解析主机行：
     # 未加引号的 '#' 会被当行内注释，'#' 及其后内容（含其它连接参数）被丢弃，
     # 导致带 '#' 的密码被静默截断。含空格、'#'、';' 或引号时一律加引号包裹。
-    needs_quote = any(ch.isspace() for ch in text) or any(ch in text for ch in '#;"\'')
+    needs_quote = any(ch.isspace() for ch in text) or any(ch in text for ch in "#;\"'")
     if needs_quote:
         return f'"{escaped}"'
     return escaped
@@ -723,9 +749,10 @@ def prepare_adhoc_execution(payload: AdhocRequest) -> tuple[list[str], Path]:
             parts.append(payload.inventory_content.rstrip("\n"))
         if payload.host_credentials:
             parts.append(_build_host_credentials_inventory(workspace, payload.host_credentials).rstrip("\n"))
-        inventory_file.write_text("\n".join([p for p in parts if p]) + "\n", encoding="utf-8")
+        _write_restricted_text(inventory_file, "\n".join([p for p in parts if p]) + "\n")
         inventory_value = str(inventory_file)
 
+    extra_vars_file = _materialize_extra_vars(workspace, extra_vars)
     cmd = build_adhoc_command(
         AdhocRequest(
             inventory=inventory_value,
@@ -734,6 +761,7 @@ def prepare_adhoc_execution(payload: AdhocRequest) -> tuple[list[str], Path]:
             module=payload.module,
             module_args=payload.module_args,
             extra_vars=extra_vars,
+            extra_vars_file=extra_vars_file,
             execute_timeout=payload.execute_timeout,
             task_id=payload.task_id,
             callback=payload.callback,
@@ -842,7 +870,7 @@ async def prepare_playbook_execution(
         if payload.host_credentials:
             logger.info("[prepare_playbook] 构建 host_credentials inventory: %d 个主机", len(payload.host_credentials))
             parts.append(_build_host_credentials_inventory(workspace, payload.host_credentials).rstrip("\n"))
-        inventory_file.write_text("\n".join([p for p in parts if p]) + "\n", encoding="utf-8")
+        _write_restricted_text(inventory_file, "\n".join([p for p in parts if p]) + "\n")
         inventory_value = str(inventory_file)
         logger.info("[prepare_playbook] inventory 已写入: %s", inventory_file)
 
@@ -852,6 +880,7 @@ async def prepare_playbook_execution(
         inventory=inventory_value,
         inventory_content=None,
         extra_vars=extra_vars,
+        extra_vars_file=_materialize_extra_vars(workspace, extra_vars),
         execute_timeout=payload.execute_timeout,
         task_id=payload.task_id,
         callback=payload.callback,
@@ -862,7 +891,7 @@ async def prepare_playbook_execution(
         file_distribution=None,
     )
     cmd = build_playbook_command(prepared_payload)
-    logger.info("[prepare_playbook] 最终命令: %s", " ".join(cmd))
+    logger.info("[prepare_playbook] 最终命令: %s", " ".join(_redact_cli_command(cmd)))
     logger.info(
         "[prepare_playbook] 最终参数: playbook_path=%s inventory=%s extra_vars_keys=%s",
         prepared_payload.playbook_path,
@@ -889,7 +918,9 @@ def build_adhoc_command(payload: AdhocRequest) -> list[str]:
     ]
     if payload.module_args:
         cli_args.extend(["-a", payload.module_args])
-    if extra_vars:
+    if payload.extra_vars_file:
+        cli_args.extend(["--extra-vars", f"@{payload.extra_vars_file}"])
+    elif extra_vars:
         cli_args.extend(["--extra-vars", json.dumps(extra_vars, ensure_ascii=False)])
     return [
         *current_entrypoint_command(),
@@ -907,7 +938,9 @@ def build_playbook_command(payload: PlaybookRequest) -> list[str]:
         payload.inventory,
         "-vvv",
     ]
-    if payload.extra_vars:
+    if payload.extra_vars_file:
+        cli_args.extend(["--extra-vars", f"@{payload.extra_vars_file}"])
+    elif payload.extra_vars:
         cli_args.extend(["--extra-vars", json.dumps(payload.extra_vars, ensure_ascii=False)])
     return [
         *current_entrypoint_command(),
@@ -926,7 +959,9 @@ def build_playbook_list_hosts_command(payload: PlaybookRequest) -> list[str]:
         "--list-hosts",
         "-vvv",
     ]
-    if payload.extra_vars:
+    if payload.extra_vars_file:
+        cli_args.extend(["--extra-vars", f"@{payload.extra_vars_file}"])
+    elif payload.extra_vars:
         cli_args.extend(["--extra-vars", json.dumps(payload.extra_vars, ensure_ascii=False)])
     return [
         *current_entrypoint_command(),
@@ -945,7 +980,9 @@ def build_playbook_winrm_preflight_command(payload: PlaybookRequest) -> list[str
         "-m",
         "ansible.windows.win_ping",
     ]
-    if payload.extra_vars:
+    if payload.extra_vars_file:
+        cli_args.extend(["--extra-vars", f"@{payload.extra_vars_file}"])
+    elif payload.extra_vars:
         cli_args.extend(["--extra-vars", json.dumps(payload.extra_vars, ensure_ascii=False)])
     return [
         *current_entrypoint_command(),

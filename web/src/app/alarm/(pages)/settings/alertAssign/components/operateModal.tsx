@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import './operateModal.scss';
 import MatchRule from '@/app/alarm/(pages)/settings/components/matchRule';
+import { isEmptyMatchRuleValue } from '@/app/alarm/(pages)/settings/components/matchRuleValue';
 import { ruleList } from '@/app/alarm/constants/settings';
 import EffectiveTime, {
   defaultEffectiveTime,
@@ -12,13 +13,17 @@ import { useTranslation } from '@/utils/i18n';
 import { CaretRightOutlined } from '@ant-design/icons';
 import { useSettingApi } from '@/app/alarm/api/settings';
 import EscalationChain from './escalationChain';
+import NotificationTargetFields from './notificationTargetFields';
+import {
+  buildNotificationTarget,
+  getNotificationTargetFormValue,
+} from './notificationTarget';
 import LevelIcon from '@/app/alarm/components/levelIcon';
 import { ChannelItem, NotifyOption } from '@/app/alarm/types/settings';
 import {
   Tag,
   Form,
   Input,
-  Select,
   Checkbox,
   Button,
   Drawer,
@@ -96,8 +101,13 @@ const OperateModalPage: React.FC<OperateModalProps> = ({
           (ch: any) => ch.id.toString(),
         );
 
+        const targetFormValue = getNotificationTargetFormValue(
+          currentRow.config?.notification_target,
+          currentRow.personnel,
+        );
         form.setFieldsValue({
           ...currentRow,
+          ...targetFormValue,
           notify_channels: notifyChannelIds,
           notification_frequency: currentRow.notification_frequency,
           match_rules:
@@ -115,6 +125,10 @@ const OperateModalPage: React.FC<OperateModalProps> = ({
               layers: (currentRow.config.escalation.layers || []).map(
                 (l: any) => ({
                   ...l,
+                  ...getNotificationTargetFormValue(
+                    l.notification_target,
+                    l.personnel,
+                  ),
                   notify_channels: (l.notify_channels || []).map((ch: any) =>
                     ch.id.toString()
                   ),
@@ -125,7 +139,10 @@ const OperateModalPage: React.FC<OperateModalProps> = ({
         });
       } else {
         form.resetFields();
-        form.setFieldsValue({ config: defaultEffectiveTime });
+        form.setFieldsValue({
+          config: defaultEffectiveTime,
+          target_type: 'user',
+        });
       }
     }
   }, [open, currentRow, form]);
@@ -161,12 +178,19 @@ const OperateModalPage: React.FC<OperateModalProps> = ({
       .map((id: string) => channelList.find((ch) => ch.id.toString() === id))
       .filter(Boolean);
 
+    const notificationTarget = buildNotificationTarget(values);
     const params: any = {
       name: values.name,
       match_type: values.match_type,
       notify_channels: notifyChannels,
-      personnel: values.personnel,
-      config: values.config || defaultEffectiveTime,
+      personnel:
+        notificationTarget.type === 'user'
+          ? notificationTarget.usernames
+          : [],
+      config: {
+        ...(values.config || defaultEffectiveTime),
+        notification_target: notificationTarget,
+      },
       match_rules: values.match_type === 'filter' ? values.match_rules : [],
     };
 
@@ -188,7 +212,9 @@ const OperateModalPage: React.FC<OperateModalProps> = ({
     const esc = values.escalation;
     if (esc?.enabled) {
       const layers = (esc.layers || []).map((l: any) => ({
-        personnel: l.personnel || [],
+        personnel:
+          l.target_type === 'organization' ? [] : l.personnel || [],
+        notification_target: buildNotificationTarget(l),
         wait_minutes: l.wait_minutes || 0,
         notify_channels: (l.notify_channels || [])
           .map((id: string) => channelList.find((ch) => ch.id.toString() === id))
@@ -286,7 +312,7 @@ const OperateModalPage: React.FC<OperateModalProps> = ({
                       if (
                         !item.key ||
                         !item.operator ||
-                        (!item.value && item.value !== 0)
+                        isEmptyMatchRuleValue(item.value)
                       ) {
                         return Promise.reject(new Error(t('common.inputTip')));
                       }
@@ -303,6 +329,7 @@ const OperateModalPage: React.FC<OperateModalProps> = ({
                 完整 ruleList，跟此处无关。 */}
             <MatchRule
               levelType="alert"
+              enableLevelMultiSelect
               ruleOptions={ruleList.filter(
                 (item) => item.name !== 'location' && item.name !== 'service'
               )}
@@ -310,27 +337,10 @@ const OperateModalPage: React.FC<OperateModalProps> = ({
           </Form.Item>
         )}
 
-        <Form.Item
-          name="personnel"
-          label={t('settings.assignStrategy.formPersonnelSelect')}
-          rules={[
-            {
-              required: true,
-              message: t('common.selectTip'),
-            },
-          ]}
-        >
-          <Select
-            mode="multiple"
-            options={personnelOptions}
-            placeholder={`${t('common.selectTip')}`}
-            filterOption={(input, option) =>
-              (option?.label as string)
-                ?.toLowerCase()
-                .includes(input.toLowerCase())
-            }
-          />
-        </Form.Item>
+        <NotificationTargetFields
+          personnelOptions={personnelOptions}
+          typeLabel={t('settings.assignStrategy.formTargetSelect')}
+        />
         <Form.Item
           name="notify_channels"
           label={t('settings.assignStrategy.formNotifyMethod')}

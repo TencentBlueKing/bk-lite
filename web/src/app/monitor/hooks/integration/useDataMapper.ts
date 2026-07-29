@@ -1,3 +1,9 @@
+import {
+  buildWebsiteRequestUrl,
+  normalizeWebsiteRequestEntries,
+  validateWebsiteRequestHeaders,
+} from './http-request-config';
+
 /**
  * 数据映射和转换处理器
  * 负责在 JSON 配置和 API 请求之间进行数据转换
@@ -95,6 +101,15 @@ export class DataMapper {
                   ? JSON.stringify(processedValue, null, 2)
                   : '';
               break;
+            case 'key_value_list':
+              processedValue =
+                processedValue && typeof processedValue === 'object'
+                  ? Object.entries(processedValue).map(([key, itemValue]) => ({
+                    key,
+                    value: String(itemValue ?? '')
+                  }))
+                  : [];
+              break;
           }
         }
       }
@@ -149,6 +164,15 @@ export class DataMapper {
             ) {
               throw new Error('自定义请求头不能包含保留字段 X-BK-Auth-Type');
             }
+            break;
+          case 'key_value_map':
+            processedValue = Array.isArray(processedValue)
+              ? Object.fromEntries(
+                processedValue
+                  .filter((item: any) => String(item?.key || '').trim())
+                  .map((item: any) => [String(item.key).trim(), String(item.value ?? '')])
+              )
+              : {};
             break;
         }
       }
@@ -293,6 +317,16 @@ export class DataMapper {
       // 没有 formFields 配置时，直接使用原始 formData
       Object.assign(processedFormData, formData);
     }
+    if (context.instance_type === 'web') {
+      processedFormData.request_params = normalizeWebsiteRequestEntries(
+        processedFormData.request_params || [],
+        '请求参数',
+      );
+      processedFormData.request_headers = validateWebsiteRequestHeaders(
+        processedFormData.request_headers || []
+      );
+    }
+
     // 构建configs数组：每个config_type生成一个config
     const configs = configTypes.map((type: string) => ({
       ...processedFormData,
@@ -321,15 +355,19 @@ export class DataMapper {
       const firstNodeId = nodeIds[0];
       const matchedNode = firstNodeId
         ? context.nodeList?.find(
-            (n: any) => n?.value === firstNodeId || n?.id === firstNodeId
-          )
+          (n: any) => n?.value === firstNodeId || n?.id === firstNodeId
+        )
         : undefined;
-      // 生成 instance_id（如果有模板）,使用 SHA256 哈希编码
+      // 生成 instance_id：UUID 策略复用当前行稳定的 UUID key；
+      // 普通模板继续使用既有哈希编码。
       let instance_id = row.instance_id;
       if (!instance_id && context.instance_id) {
-        instance_id = this.hashInstanceId(
-          this.applyTemplate(context.instance_id, row, context)
-        );
+        instance_id =
+          context.instance_id === '{{uuid}}'
+            ? String(row.key).replaceAll('-', '').toLowerCase()
+            : this.hashInstanceId(
+              this.applyTemplate(context.instance_id, row, context)
+            );
       }
       // 过滤掉 key 字段和所有 _error 字段，并处理加密字段
       const cleanedInstanceData = Object.keys(row)
@@ -351,6 +389,14 @@ export class DataMapper {
 
       return {
         ...cleanedInstanceData,
+        ...(context.instance_type === 'web'
+          ? {
+            request_url: buildWebsiteRequestUrl(
+              String(row.url || ''),
+              processedFormData.request_params || []
+            )
+          }
+          : {}),
         instance_id,
         node_ids: nodeIds,
         instance_type: context.instance_type,

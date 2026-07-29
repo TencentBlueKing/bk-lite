@@ -190,29 +190,30 @@ def _bulk_build_instant_alerts(hits: List[InstantHit]) -> List[str]:
     created_alert_ids: List[str] = []
     for sid, evt_list in by_sid.items():
         strategy = strategies[sid]
-        # 1) 计算本桶所有目标指纹，并过滤已存在的活跃指纹（幂等保证）
-        all_fps = [_build_fingerprint(sid, evt.event_id) for evt in evt_list]
-        existing_fps = set(
-            Alert.objects.filter(
-                fingerprint__in=all_fps,
-                status__in=AlertStatus.ACTIVATE_STATUS,
-            ).values_list("fingerprint", flat=True)
-        )
-        new_events_with_fp = [
-            (evt, fp) for evt, fp in zip(evt_list, all_fps) if fp not in existing_fps
-        ]
-        if not new_events_with_fp:
-            continue
-
-        alerts_to_create: List[Alert] = []
-        fp_to_event: dict = {}
-        for evt, fp in new_events_with_fp:
-            alerts_to_create.append(_build_alert_row(strategy, evt, fp))
-            fp_to_event[fp] = evt
-
         try:
             with transaction.atomic():
-                Alert.objects.bulk_create(alerts_to_create, ignore_conflicts=True)
+                from apps.alerts.service.active_fingerprint import (
+                    bind_active_fingerprint,
+                    claim_active_fingerprint,
+                )
+
+                alerts_to_create: List[Alert] = []
+                fp_to_event: dict = {}
+                fp_to_lease: dict = {}
+                unique_events = {
+                    _build_fingerprint(sid, evt.event_id): evt for evt in evt_list
+                }
+                for fp, evt in unique_events.items():
+                    lease, active_alert = claim_active_fingerprint(fp)
+                    if active_alert:
+                        continue
+                    alerts_to_create.append(_build_alert_row(strategy, evt, fp))
+                    fp_to_event[fp] = evt
+                    fp_to_lease[fp] = lease
+                if not alerts_to_create:
+                    continue
+
+                Alert.objects.bulk_create(alerts_to_create)
                 # 回查实际入库的 Alert（兼容 MySQL bulk_create 不回填 pk 的情况）
                 wanted_alert_ids = {a.alert_id for a in alerts_to_create}
                 created = list(
@@ -225,6 +226,7 @@ def _bulk_build_instant_alerts(hits: List[InstantHit]) -> List[str]:
                     evt = fp_to_event.get(fp)
                     if evt is None:
                         continue
+                    bind_active_fingerprint(fp_to_lease[fp], Alert(pk=alert_pk))
                     m2m_rows.append(
                         Alert.events.through(alert_id=alert_pk, event_id=evt.id)
                     )
@@ -244,16 +246,9 @@ def _bulk_build_instant_alerts(hits: List[InstantHit]) -> List[str]:
 def _trigger_dispatch_async(alert_ids: List[str]) -> None:
     if not alert_ids:
         return
-    try:
-        # 用符号引用任务名，避免硬编码字符串在重命名/挪模块时静默失效
-        from apps.alerts.tasks import async_auto_assignment_for_alerts
+    from apps.alerts.service.alert_lifecycle import dispatch_alert_lifecycle
 
-        current_app.send_task(
-            async_auto_assignment_for_alerts.name,
-            args=[alert_ids],
-        )
-    except Exception:
-        logger.exception("instant dispatch trigger send_task failed: count=%s", len(alert_ids))
+    dispatch_alert_lifecycle(alert_ids, "created", auto_assign=True)
 
 
 class InstantAlertDispatcher:

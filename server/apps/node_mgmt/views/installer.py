@@ -1,11 +1,15 @@
-from rest_framework.decorators import action
-from rest_framework.viewsets import ViewSet
 from typing import Any, cast
 
+from rest_framework.decorators import action
+from rest_framework.viewsets import ViewSet
+
 from apps.core.decorators.api_permission import HasPermission
+from apps.core.exceptions.base_app_exception import BaseAppException
+from apps.core.utils.current_team_scope import resolve_current_team_data_scope, validate_assignable_organizations
 from apps.core.utils.web_utils import WebUtils
 from apps.node_mgmt.constants.installer import InstallerConstants
-from apps.node_mgmt.models.installer import CollectorTask, CollectorTaskNode
+from apps.node_mgmt.models.installer import CollectorTaskNode
+from apps.node_mgmt.models.sidecar import Node
 from apps.node_mgmt.serializers.installer import (
     ControllerInstallRequestSerializer,
     ControllerManualInstallRequestSerializer,
@@ -15,15 +19,40 @@ from apps.node_mgmt.serializers.installer import (
 from apps.node_mgmt.serializers.node import TaskNodesQuerySerializer
 from apps.node_mgmt.services.installer import InstallerService
 from apps.node_mgmt.tasks.installer import (
-    install_controller,
     install_collector,
-    uninstall_controller,
+    install_controller,
     retry_controller,
-    timeout_controller_install_task,
-    CONTROLLER_INSTALL_TASK_TIMEOUT_SECONDS,
+    uninstall_controller,
 )
 from apps.node_mgmt.utils.permission import authorize_node_ids, get_authorized_node_queryset
-from apps.node_mgmt.utils.task_result_schema import normalize_task_result_for_read
+from apps.node_mgmt.utils.task_result_schema import normalize_task_result_for_read, project_task_status_from_summary
+
+
+def _validate_install_target_organizations(request, nodes):
+    organizations = []
+    for node in nodes:
+        node_organizations = node.get("organizations")
+        if not node_organizations:
+            return WebUtils.response_403("User does not have permission to assign nodes to these organizations")
+        organizations.extend(node_organizations)
+
+    try:
+        validate_assignable_organizations(request, organizations)
+    except BaseAppException:
+        return WebUtils.response_403("User does not have permission to assign nodes to these organizations")
+    return None
+
+
+def _authorize_existing_install_nodes(request, node_ids):
+    existing_node_ids = list(Node.objects.filter(id__in=node_ids).values_list("id", flat=True))
+    if not existing_node_ids:
+        return None
+    _, error_response = authorize_node_ids(
+        request,
+        existing_node_ids,
+        required_permission="Operate",
+    )
+    return error_response
 
 
 class InstallerViewSet(ViewSet):
@@ -33,9 +62,12 @@ class InstallerViewSet(ViewSet):
         serializer = ControllerInstallRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = cast(dict[str, Any], serializer.validated_data)
+        organization_error = _validate_install_target_organizations(request, data["nodes"])
+        if organization_error:
+            return organization_error
         node_ids = [node["node_id"] for node in data["nodes"] if node.get("node_id")]
         if node_ids:
-            _, error_response = authorize_node_ids(request, node_ids)
+            error_response = _authorize_existing_install_nodes(request, node_ids)
             if error_response:
                 return error_response
         task_id = InstallerService.install_controller(
@@ -48,10 +80,6 @@ class InstallerViewSet(ViewSet):
             getattr(request.user, "domain", "domain.com"),
         )
         install_controller.delay(task_id)
-        timeout_controller_install_task.apply_async(
-            args=[task_id],
-            countdown=CONTROLLER_INSTALL_TASK_TIMEOUT_SECONDS,
-        )
         return WebUtils.response_success(dict(task_id=task_id))
 
     @action(detail=False, methods=["post"], url_path="controller/uninstall")
@@ -75,9 +103,35 @@ class InstallerViewSet(ViewSet):
     @action(detail=False, methods=["post"], url_path="controller/retry")
     @HasPermission("cloud_region_node-Edit")
     def controller_retry(self, request):
+        scope = resolve_current_team_data_scope(request)
+        task_node_ids = request.data["task_node_ids"]
+        if not isinstance(task_node_ids, list):
+            task_node_ids = [task_node_ids]
+
+        authorized_task_nodes = InstallerService.get_authorized_controller_task_node_queryset(
+            request.data["task_id"],
+            authorized_nodes=get_authorized_node_queryset(request),
+            scope=scope,
+            request_user=request.user,
+        )
+        selected_task_nodes = list(authorized_task_nodes.filter(id__in=task_node_ids))
+        requested_ids = {str(task_node_id) for task_node_id in task_node_ids}
+        authorized_ids = {str(task_node.id) for task_node in selected_task_nodes}
+        if not requested_ids or authorized_ids != requested_ids:
+            return WebUtils.response_403("User does not have permission to retry this controller installation")
+
+        node_ids = [task_node.node_id for task_node in selected_task_nodes if task_node.node_id]
+        if node_ids:
+            _, error_response = authorize_node_ids(request, node_ids, required_permission="Operate")
+            if error_response:
+                return error_response
+
+        if any(InstallerService.requires_manual_recovery(task_node.result) for task_node in selected_task_nodes):
+            return WebUtils.response_error(error_message="Manual recovery is required before this node can be retried")
+
         retry_controller.delay(
             request.data["task_id"],
-            request.data["task_node_ids"],
+            task_node_ids,
             password=request.data.get("password"),
             private_key=request.data.get("private_key"),
             passphrase=request.data.get("passphrase"),
@@ -91,6 +145,9 @@ class InstallerViewSet(ViewSet):
         serializer = ControllerManualInstallRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = cast(dict[str, Any], serializer.validated_data)
+        organization_error = _validate_install_target_organizations(request, data["nodes"])
+        if organization_error:
+            return organization_error
         cpu_architecture = data["cpu_architecture"]
         result = []
         for node in data["nodes"]:
@@ -112,6 +169,11 @@ class InstallerViewSet(ViewSet):
     @HasPermission("cloud_region_node-Edit")
     def controller_manual_install_status(self, request):
         node_ids = request.data.get("node_ids", [])
+        if not isinstance(node_ids, list) or any(type(node_id) is not str or not node_id.strip() for node_id in node_ids):
+            return WebUtils.response_error(error_message="node_ids must be a list of non-empty strings")
+        error_response = _authorize_existing_install_nodes(request, node_ids)
+        if error_response:
+            return error_response
         data = InstallerService.get_manual_install_status(node_ids)
         return WebUtils.response_success(data)
 
@@ -127,11 +189,12 @@ class InstallerViewSet(ViewSet):
     )
     @HasPermission("cloud_region_node-Edit")
     def controller_install_nodes(self, request, task_id):
+        scope = resolve_current_team_data_scope(request)
         authorized_nodes = get_authorized_node_queryset(request)
         data = InstallerService.install_controller_nodes(
             task_id,
             authorized_nodes=authorized_nodes,
-            request_user=request.user,
+            scope=scope,
         )
         return WebUtils.response_success(data)
 
@@ -201,13 +264,10 @@ class InstallerViewSet(ViewSet):
             "cancelled": summary_queryset.filter(result__overall_status="cancelled").count(),
         }
 
-        task_obj = CollectorTask.objects.filter(id=task_id).first()
-        task_status = task_obj.status if task_obj else "waiting"
-
         return WebUtils.response_success(
             {
                 "task_id": task_id,
-                "status": task_status,
+                "status": project_task_status_from_summary(summary),
                 "summary": summary,
                 "items": data,
                 "count": total,
@@ -223,6 +283,12 @@ class InstallerViewSet(ViewSet):
         serializer = InstallCommandRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = cast(dict[str, Any], serializer.validated_data)
+        organization_error = _validate_install_target_organizations(request, [data])
+        if organization_error:
+            return organization_error
+        node_error = _authorize_existing_install_nodes(request, [data["node_id"]])
+        if node_error:
+            return node_error
         data = InstallerService.get_install_command(
             request.user.username,
             data["ip"],

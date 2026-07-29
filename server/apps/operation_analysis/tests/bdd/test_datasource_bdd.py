@@ -1,6 +1,6 @@
 """运营分析数据源 BDD（中文 Gherkin）。
 
-对照 spec/prd/运营分析·数据源：
+对照 specs/capabilities/legacy-prd-运营分析-管理.md：
 - NameSpace 凭据加解密 + name 唯一；
 - DataSourceAPIModel (name, rest_api) 联合唯一 + 团队过滤；
 - DataSourceTag name 唯一；

@@ -1,4 +1,5 @@
 from dataclasses import replace
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
@@ -136,6 +137,49 @@ def test_ad_login_auth_invalid_credentials_are_treated_as_auth_failure_without_e
     assert result.success is False
     assert result.errors[0].code == "provider.auth_failed"
     mock_logger.exception.assert_not_called()
+    mock_logger.warning.assert_not_called()
+
+
+@patch("apps.system_mgmt.providers.adapters.ad.logger")
+@patch("apps.system_mgmt.providers.adapters.ad.search_single_user")
+def test_ad_authenticate_logs_unexpected_failure_without_raw_exception(mock_search_single_user, mock_logger):
+    mock_search_single_user.side_effect = RuntimeError(
+        "ldap://private.example?bind_password=private-secret"
+    )
+
+    result = ADLoginAuthAdapter.authenticate(
+        config=_base_config(),
+        provider_key="ad",
+        capability_key="login_auth",
+        username="alice",
+        password="secret",
+    )
+
+    assert result.success is False
+    mock_logger.exception.assert_not_called()
+    assert "private-secret" not in str(mock_logger.method_calls)
+    assert "RuntimeError" in str(mock_logger.debug.call_args_list)
+
+
+@patch("apps.system_mgmt.providers.adapters.ad.logger")
+@patch("apps.system_mgmt.providers.adapters.ad.search_entries")
+def test_ad_user_sync_logs_failure_without_raw_exception(mock_search_entries, mock_logger):
+    mock_search_entries.side_effect = RuntimeError(
+        "ldap://private.example?bind_password=private-secret"
+    )
+    source = SimpleNamespace(business_config={"root_dn": "DC=corp,DC=example,DC=com"})
+
+    result = ADUserSyncAdapter.sync_users(
+        config=_base_config(),
+        provider_key="ad",
+        capability_key="user_sync",
+        source=source,
+    )
+
+    assert result.success is False
+    mock_logger.exception.assert_not_called()
+    assert "private-secret" not in str(mock_logger.method_calls)
+    assert "RuntimeError" in str(mock_logger.debug.call_args_list)
 
 
 @patch("apps.system_mgmt.providers.adapters.ad.search_entries")
@@ -234,6 +278,44 @@ def test_ad_connection_tests_use_root_dse_probe(mock_probe_root_dse):
     assert login_result.success is True
     assert sync_result.success is True
     assert mock_probe_root_dse.call_count == 2
+
+
+@patch("apps.system_mgmt.providers.adapters.ad.logger")
+@patch("apps.system_mgmt.providers.adapters.ad.probe_root_dse")
+def test_ad_connection_test_returns_failure_without_adapter_error_log(mock_probe_root_dse, mock_logger):
+    mock_probe_root_dse.side_effect = RuntimeError("connection refused")
+
+    login_result = ADLoginAuthAdapter.test_connection(
+        config=_base_config(),
+        provider_key="ad",
+        capability_key="login_auth",
+    )
+    sync_result = ADUserSyncAdapter.test_connection(
+        config=_base_config(),
+        provider_key="ad",
+        capability_key="user_sync",
+    )
+
+    assert login_result.success is False
+    assert sync_result.success is False
+    mock_logger.exception.assert_not_called()
+
+
+@patch("apps.system_mgmt.providers.adapters.ad.probe_root_dse")
+def test_ad_connection_test_exposes_sanitized_ldap_bind_diagnostics(mock_probe_root_dse):
+    mock_probe_root_dse.side_effect = LDAPBindError("LDAP result 49: invalidCredentials")
+
+    result = ADLoginAuthAdapter.test_connection(
+        config=_base_config(),
+        provider_key="ad",
+        capability_key="login_auth",
+    )
+
+    assert result.success is False
+    assert result.errors[0].code == "provider.auth_failed"
+    assert result.errors[0].field == ""
+    assert result.errors[0].external_code == "49"
+    assert result.errors[0].detail == "LDAP bind rejected the configured credentials"
 
 
 @patch("apps.system_mgmt.providers.adapters.ad.probe_root_dse")
@@ -335,3 +417,148 @@ def test_ad_authenticate_returns_invalid_config_when_base_dn_missing():
     assert result.success is False
     assert result.errors[0].code == "provider.invalid_config"
     assert "base_dn" in result.errors[0].message.lower()
+
+
+# ---------------------------------------------------------------------------
+# Phone field variants (mobile / mobilePhone) — regression for AD 域里手机号
+# 实际保存在 mobile / mobilePhone 而非 telephoneNumber 的场景。
+# 2026-07-28：白名单放开 + 适配器多源读取。
+# ---------------------------------------------------------------------------
+
+
+@patch("apps.system_mgmt.providers.adapters.ad.search_entries")
+def test_ad_user_sync_normalizes_mobile_and_mobile_phone_fields(mock_search_entries):
+    """sync_users 必须把 LDAP mobile / mobilePhone 都抽到 user_list 顶层字段，
+    让 user_sync_form 的 field_mapping.phone 能配 mobile 或 mobilePhone。"""
+    mock_search_entries.side_effect = [
+        [
+            {
+                "sAMAccountName": "alice",
+                "displayName": "Alice",
+                "distinguishedName": "CN=Alice,OU=PAAS,DC=corp,DC=example,DC=com",
+                "mobile": "13800000001",
+                "mobilePhone": "13800000001-mobilePhone",
+            },
+            {
+                "sAMAccountName": "bob",
+                "displayName": "Bob",
+                "distinguishedName": "CN=Bob,OU=PAAS,DC=corp,DC=example,DC=com",
+                "telephoneNumber": "13800000002",
+            },
+        ],
+        [],
+    ]
+
+    result = ADUserSyncAdapter.sync_users(
+        config=_base_config(),
+        provider_key="ad",
+        capability_key="user_sync",
+        source=type(
+            "Source",
+            (),
+            {
+                "business_config": {
+                    "root_dn": "OU=PAAS,DC=corp,DC=example,DC=com",
+                    "user_object_class": "user",
+                    "user_filter": "(&(objectCategory=Person)(sAMAccountName=*))",
+                    "organization_object_class": "organizationalUnit",
+                }
+            },
+        )(),
+    )
+
+    assert result.success is True
+    users_by_name = {u["sAMAccountName"]: u for u in result.payload["user_list"]}
+    # AD 实际用 mobile 字段保存手机号 → 必须抽出
+    assert users_by_name["alice"]["mobile"] == "13800000001"
+    assert users_by_name["alice"]["mobilePhone"] == "13800000001-mobilePhone"
+    # 没填 mobile 的用户，输出空串而不是抛错
+    assert users_by_name["bob"]["mobile"] == ""
+    assert users_by_name["bob"]["mobilePhone"] == ""
+    # 兼容性：telephoneNumber 仍可读
+    assert users_by_name["bob"]["telephoneNumber"] == "13800000002"
+    # 关键：AD_LOGIN_ATTRIBUTES 必须把 mobile / mobilePhone 都带上
+    attributes_arg = mock_search_entries.call_args_list[0].args[3]
+    assert "mobile" in attributes_arg
+    assert "mobilePhone" in attributes_arg
+    assert "telephoneNumber" in attributes_arg
+
+
+@patch("apps.system_mgmt.providers.adapters.ad.bind_user_dn")
+@patch("apps.system_mgmt.providers.adapters.ad.search_single_user")
+def test_ad_login_auth_returns_mobile_with_priority_mobile_over_telephone(
+    mock_search_single_user, mock_bind_user_dn
+):
+    """authenticate 返回的 mobile 优先取 LDAP 的 mobile 字段；
+    mobile 为空时回落到 telephoneNumber；再回落 mobilePhone。"""
+    # 场景 1：mobile 有值，优先取 mobile
+    mock_search_single_user.return_value = {
+        "sAMAccountName": "alice",
+        "displayName": "Alice",
+        "mail": "alice@example.com",
+        "mobile": "13800000001",
+        "telephoneNumber": "021-12345678",
+        "distinguishedName": "CN=Alice,OU=PAAS,DC=corp,DC=example,DC=com",
+    }
+    result = ADLoginAuthAdapter.authenticate(
+        config=_base_config(),
+        provider_key="ad",
+        capability_key="login_auth",
+        username="alice",
+        password="secret",
+    )
+    assert result.success is True
+    assert result.payload["external_user"]["mobile"] == "13800000001"
+
+    # 场景 2：mobile 为空，回落 telephoneNumber
+    mock_search_single_user.return_value = {
+        "sAMAccountName": "bob",
+        "displayName": "Bob",
+        "mail": "bob@example.com",
+        "mobile": "",
+        "telephoneNumber": "13800000002",
+        "distinguishedName": "CN=Bob,OU=PAAS,DC=corp,DC=example,DC=com",
+    }
+    result = ADLoginAuthAdapter.authenticate(
+        config=_base_config(),
+        provider_key="ad",
+        capability_key="login_auth",
+        username="bob",
+        password="secret",
+    )
+    assert result.payload["external_user"]["mobile"] == "13800000002"
+
+    # 场景 3：mobile 和 telephoneNumber 都为空，回落 mobilePhone
+    mock_search_single_user.return_value = {
+        "sAMAccountName": "carol",
+        "displayName": "Carol",
+        "mail": "carol@example.com",
+        "mobile": None,
+        "telephoneNumber": None,
+        "mobilePhone": "13800000003",
+        "distinguishedName": "CN=Carol,OU=PAAS,DC=corp,DC=example,DC=com",
+    }
+    result = ADLoginAuthAdapter.authenticate(
+        config=_base_config(),
+        provider_key="ad",
+        capability_key="login_auth",
+        username="carol",
+        password="secret",
+    )
+    assert result.payload["external_user"]["mobile"] == "13800000003"
+
+    # 场景 4：三个都为空，输出空串（不抛错）
+    mock_search_single_user.return_value = {
+        "sAMAccountName": "dave",
+        "displayName": "Dave",
+        "mail": "dave@example.com",
+        "distinguishedName": "CN=Dave,OU=PAAS,DC=corp,DC=example,DC=com",
+    }
+    result = ADLoginAuthAdapter.authenticate(
+        config=_base_config(),
+        provider_key="ad",
+        capability_key="login_auth",
+        username="dave",
+        password="secret",
+    )
+    assert result.payload["external_user"]["mobile"] == ""

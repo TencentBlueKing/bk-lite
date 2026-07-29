@@ -4,9 +4,10 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import useApiClient from '@/utils/request';
 import useMonitorApi from '@/app/monitor/api';
-import { getProfessionalDashboardKey, getProfessionalDashboardUrl } from '../registry';
+import { getProfessionalDashboardKey, getProfessionalDashboardUrl, getProfessionalObjectDisplayName } from '../registry';
 import { normalizeDashboardKey } from '../shared/utils';
 import { preserveDashboardDisplayMode } from '../shared/utils/display-mode-route';
+import { preserveDashboardReturnContext } from '../shared/utils';
 import ResizableSidebar from '@/app/monitor/components/resizableSidebar';
 import TreeSelector from '@/app/monitor/components/treeSelector';
 import { ObjectItem, TreeItem } from '@/app/monitor/types';
@@ -26,7 +27,7 @@ const buildMonitorObjectTree = (objects: ObjectItem[]): TreeItem[] => {
       };
     }
     acc[item.type].children.push({
-      title: item.display_name || '--',
+      title: getProfessionalObjectDisplayName(item.name, item.display_name) || '--',
       label: item.name || '--',
       key: item.id,
       icon: item.icon,
@@ -89,15 +90,16 @@ export const DashboardSidebar = ({ currentObjectKey }: DashboardSidebarProps) =>
     if (String(key) === String(selectedObjectId || '')) return;
 
     const monitorItem = objects.find((item) => String(item.id) === String(key));
-    const params = preserveDashboardDisplayMode(new URLSearchParams({
+    const displayName = getProfessionalObjectDisplayName(monitorItem?.name, monitorItem?.display_name);
+    const params = preserveDashboardReturnContext(preserveDashboardDisplayMode(new URLSearchParams({
       monitorObjId: String(monitorItem?.id || key),
       name: monitorItem?.name || '',
-      monitorObjDisplayName: monitorItem?.display_name || '',
+      monitorObjDisplayName: displayName || '',
       icon: monitorItem?.icon || '',
       instance_id_keys: Array.isArray(monitorItem?.instance_id_keys)
         ? monitorItem.instance_id_keys.join(',')
         : 'instance_id'
-    }), new URLSearchParams(searchParams.toString()));
+    }), new URLSearchParams(searchParams.toString())), searchParams);
     const dashboardUrl = getProfessionalDashboardUrl(
       monitorItem?.name,
       monitorItem?.display_name,

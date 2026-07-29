@@ -1,6 +1,6 @@
 """数据源过滤器、序列化器校验与 schema 校验的覆盖测试。
 
-对照 spec/prd/运营分析·管理：数据源支持按名称/REST/标签/图表类型搜索，
+对照 specs/capabilities/legacy-prd-运营分析-管理.md：数据源支持按名称/REST/标签/图表类型搜索，
 field_schema 列定义需 key 非空且不重复。
 """
 

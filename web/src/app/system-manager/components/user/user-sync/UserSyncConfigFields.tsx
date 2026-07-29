@@ -11,11 +11,13 @@ import {
 } from 'antd';
 
 import { useUserSyncApi } from '@/app/system-manager/api/user-sync';
+import { useChannelApi } from '@/app/system-manager/api/channel';
 import type {
   BusinessTemplate,
   TemplateField,
 } from '@/app/system-manager/types/integration-center';
 import type { UserSyncDepartmentNode } from '@/app/system-manager/types/user-sync';
+import PasswordInitSection from '@/app/system-manager/components/user/user-sync/PasswordInitSection';
 import {
   getEffectiveRootDepartmentFieldKey,
   getRootDepartmentInputMode,
@@ -34,6 +36,7 @@ interface UserSyncConfigFieldsProps {
   mappingRows: MappingRow[];
   t: (key: string, fallback?: string) => string;
   onMappingRowsChange: React.Dispatch<React.SetStateAction<MappingRow[]>>;
+  mappingError?: string;
   hideRootDepartmentField?: boolean;
   rootScopeField?: string;
 }
@@ -42,6 +45,8 @@ interface MappingInputRowProps {
   row: MappingRow;
   index: number;
   placeholder: string;
+  required?: boolean;
+  invalid?: boolean;
   onChange: (index: number, value: string) => void;
 }
 
@@ -67,20 +72,26 @@ const MappingInputRow = memo(({
   row,
   index,
   placeholder,
+  required = false,
+  invalid = false,
   onChange,
 }: MappingInputRowProps) => (
   <div className="grid grid-cols-[minmax(0,1fr)_24px_minmax(0,1fr)] gap-x-4">
     <div className="rounded-sm border border-[var(--color-border)] bg-white p-2">
       <div className="text-[var(--color-text)]">
         {PLATFORM_FIELD_META[row.platformField as keyof typeof PLATFORM_FIELD_META]?.label || row.platformField}
+        {required ? <span className="ml-1 text-[var(--color-error)]">*</span> : null}
       </div>
     </div>
     <div className="flex items-center justify-center text-[var(--color-primary)]">→</div>
-    <Input
-      value={row.externalField}
-      onChange={(event) => onChange(index, event.target.value)}
-      placeholder={placeholder}
-    />
+    <div>
+      <Input
+        value={row.externalField}
+        onChange={(event) => onChange(index, event.target.value)}
+        placeholder={placeholder}
+        status={invalid ? 'error' : undefined}
+      />
+    </div>
   </div>
 ));
 
@@ -93,11 +104,54 @@ const UserSyncConfigFields: React.FC<UserSyncConfigFieldsProps> = ({
   mappingRows,
   t,
   onMappingRowsChange,
+  mappingError,
   hideRootDepartmentField = false,
   rootScopeField,
 }) => {
   const form = Form.useFormInstance();
   const { getDepartmentOptions } = useUserSyncApi();
+  const { getChannelData } = useChannelApi();
+  const [emailChannels, setEmailChannels] = useState<
+    { id: number; name: string }[]
+  >([]);
+  const fetchedRef = useRef(false);
+
+  // 整个 UserSyncConfigFields 生命周期内仅 fetch 一次邮件 channel 列表。
+  // 用 ref 锁住 (而非 deps) 避免 useChannelApi 每次返回新引用触发无限循环。
+  useEffect(() => {
+    if (fetchedRef.current) return;
+    fetchedRef.current = true;
+    (async () => {
+      try {
+        const resp = await getChannelData({});
+        const items: any[] = Array.isArray(resp)
+          ? resp
+          : Array.isArray((resp as any)?.items)
+            ? (resp as any).items
+            : Array.isArray((resp as any)?.results)
+              ? (resp as any).results
+              : [];
+        const opts = items
+          .filter((c: any) => c?.channel_type === 'email')
+          .map((c: any) => ({
+            id: typeof c.id === 'number' ? c.id : Number(c.id),
+            name: c.name ?? '(未命名)',
+          }))
+          .filter((o) => !Number.isNaN(o.id));
+        // 注释：React 18 dev strict mode 会 mount → cleanup → mount,cleanup 中设 cancelled=true 会让 async 跳过 setState.
+        // 取消 cleanup 不再设取消标志,直接在 setEmailChannels 后判断 Unmounted.
+        // 但更好做法是 setEmailChannels 总是执行,这样重复 mount 时会重置。fetchedRef 已是 ref,无法重置。
+        if (typeof window !== 'undefined') {
+          setEmailChannels((prev) => (prev.length === 0 ? opts : prev));
+        }
+      } catch {
+        setEmailChannels([]);
+      }
+    })();
+    // 空 cleanup:React 18 dev 双调用由 fetchedRef 锁住
+    return undefined;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const externalFieldPlaceholder = t('system.user.userSyncPage.externalFieldPlaceholder');
   const watchedDepartmentIdType = Form.useWatch(['business_config', 'department_id_type'], form);
   const departmentIdType = typeof watchedDepartmentIdType === 'string' ? watchedDepartmentIdType : '';
@@ -396,6 +450,8 @@ const UserSyncConfigFields: React.FC<UserSyncConfigFieldsProps> = ({
           />
         )
       ) : null}
+      {/* 本地密码初始化(每个同步源独立配置;与 manifest 字段并列) */}
+      <PasswordInitSection emailChannels={emailChannels ?? []} t={t} />
       <div className="mt-6 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-4 py-4">
         <div className="mb-4 font-semibold">{t('system.user.userSyncPage.fieldMappingTitle')}</div>
         <div className="grid grid-cols-[minmax(0,1fr)_24px_minmax(0,1fr)] gap-x-4 gap-y-3 text-[13px] text-[var(--color-text-3)]">
@@ -410,6 +466,8 @@ const UserSyncConfigFields: React.FC<UserSyncConfigFieldsProps> = ({
               row={row}
               index={index}
               placeholder={externalFieldPlaceholder}
+              required={row.platformField === 'username'}
+              invalid={row.platformField === 'username' && Boolean(mappingError)}
               onChange={handleMappingRowChange}
             />
           ))}

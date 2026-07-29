@@ -3,6 +3,8 @@
 聚焦 TOML 转义/内联表、模板上下文归一化、Jinja 模板渲染、模板按采集器分组。
 """
 
+from pathlib import Path
+
 import pytest
 
 from apps.core.exceptions.base_app_exception import BaseAppException
@@ -102,6 +104,26 @@ class TestRenderTemplate:
         )
         assert isinstance(out, str)
         assert out.startswith("expect = ")
+
+    def test_host_os_disk_template_uses_defaults_when_fstype_config_is_missing(self):
+        """回归：Host/OS 磁盘模板缺省文件系统过滤配置时仍可通过 default 渲染。"""
+        template_path = (
+            Path(__file__).resolve().parents[1]
+            / "support-files/plugins/Telegraf/host/os/disk.child.toml.j2"
+        )
+        template_content = template_path.read_text()
+
+        out = Controller({}).render_template(
+            template_content,
+            {
+                "instance_id": "('host-1',)",
+                "instance_type": "host",
+                "interval": "60",
+            },
+        )
+
+        assert 'disk_include_fstypes = ""' in out
+        assert 'disk_exclude_fstypes = "tmpfs,devtmpfs,devfs,iso9660,overlay,aufs,squashfs,vfat,exfat,fat,fat32"' in out
 
 
 @pytest.mark.django_db

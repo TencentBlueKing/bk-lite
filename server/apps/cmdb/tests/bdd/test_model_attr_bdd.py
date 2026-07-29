@@ -1,6 +1,6 @@
 """CMDB 模型属性 BDD（中文 Gherkin）。
 
-对照 spec/prd/CMDB·模型管理·属性：
+对照 specs/capabilities/legacy-prd-cmdb-模型管理.md·属性：
 - create / update / delete model_attr 流程；
 - enum 字段 enum_rule_type / enum_select_mode 不可变约束；
 - enum 属性默认值规范化；

@@ -50,6 +50,8 @@ import WidgetRenderer from "@/app/ops-analysis/components/widgetRenderer";
 import WidgetErrorState from "@/app/ops-analysis/components/widgetErrorState";
 import { useWidgetHeaderRuntimeSlot } from "@/app/ops-analysis/components/widgetHeaderRuntimeSlot";
 import ComponentParamSwitchControl from "@/app/ops-analysis/components/componentParamSwitchControl";
+import { getDateRangeTimezone } from "@/app/ops-analysis/utils/dateRange";
+import { validateMultiValueData } from "@/app/ops-analysis/utils/multiValueData";
 
 const validateTopNData = (
   data: unknown,
@@ -436,6 +438,40 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
       widgetUsesNamespace,
     ],
   );
+  const dateRangeResolutionInputKey = useMemo(
+    () => JSON.stringify({
+      dataSource: normalizedDataSourceId,
+      dataSourceParams: config?.dataSourceParams ?? dataSource?.params,
+      requestExtraParams,
+      unifiedFilterValues,
+      filterBindings: config?.filterBindings,
+      filterDefinitions,
+      compare: config?.compare,
+    }),
+    [
+      normalizedDataSourceId,
+      config?.dataSourceParams,
+      dataSource?.params,
+      requestExtraParams,
+      unifiedFilterValues,
+      config?.filterBindings,
+      filterDefinitions,
+      config?.compare,
+    ],
+  );
+  const dateRangeResolutionContext = useMemo(
+    () => ({
+      referenceNow: Date.now(),
+      timezone: getDateRangeTimezone(),
+    }),
+    [
+      dateRangeResolutionInputKey,
+      reloadVersion,
+      filterSearchVersion,
+      namespaceSearchVersion,
+      tableQueryKey,
+    ],
+  );
 
   const requestParams = useMemo(() => {
     if (!requestEnabled) {
@@ -449,6 +485,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
       unifiedFilterValues,
       filterBindings: config?.filterBindings,
       filterDefinitions,
+      resolutionContext: dateRangeResolutionContext,
     });
   }, [
     requestEnabled,
@@ -457,6 +494,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     requestExtraParams,
     unifiedFilterValues,
     filterDefinitions,
+    dateRangeResolutionContext,
   ]);
 
   const requestSignatureParams = useMemo(() => {
@@ -471,6 +509,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
       unifiedFilterValues,
       filterBindings: config?.filterBindings,
       filterDefinitions,
+      resolutionContext: dateRangeResolutionContext,
     });
   }, [
     requestEnabled,
@@ -479,6 +518,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     requestExtraParams,
     unifiedFilterValues,
     filterDefinitions,
+    dateRangeResolutionContext,
   ]);
 
   const requestSignature = useMemo(() => {
@@ -565,6 +605,9 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
           return validateGaugeData(data, config);
         case "eventTable":
           return validateEventTableData(data);
+        case "multiValue":
+          const result = validateMultiValueData(data, errorMessage);
+          return { isValid: result.isValid, message: result.errorMessage };
         case "table":
           return { isValid: true };
         default:
@@ -600,6 +643,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
           unifiedFilterValues,
           filterBindings: config?.filterBindings,
           filterDefinitions,
+          resolutionContext: dateRangeResolutionContext,
         }),
       );
 
@@ -829,14 +873,14 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     );
   }
 
-  const isInitialNonTableLoading =
+  const isInitialWidgetLoading =
     shouldShowInitialWidgetLoading({
-      loading,
+      loading: isTableLikeChart ? tableLoading : loading,
       isTableLikeChart,
       hasRawPayload,
       hasSettledRequest,
     });
-  if (isInitialNonTableLoading || isWaitingForInitialData) {
+  if (isInitialWidgetLoading || isWaitingForInitialData) {
     return (
       <>
         {runtimeHeaderControl}

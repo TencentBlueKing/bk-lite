@@ -58,6 +58,13 @@ def test_strip_removes_pipe_separated_phantom_call():
     assert "完毕" in cleaned
 
 
+def test_strip_removes_leading_pipe_phantom_call_from_screenshot():
+    """模型也会输出只有左侧 pipe 的 <|tool_call> 变体。"""
+    text = '<|tool_call>call:analyze_deployment_configurations{namespace:<|">default<|">}<|tool_call>'
+    cleaned = strip_phantom_tool_calls(text)
+    assert cleaned == ""
+
+
 def test_strip_handles_multi_line_content():
     """phantom call 里 args 含换行也得能整段抹掉(re.DOTALL)。"""
     text = (
@@ -249,6 +256,43 @@ def test_cross_chunk_phantom_call_strip_via_buffer():
     assert "<tool_call>" not in full_emitted
     assert "analyze_deployment" not in full_emitted
     assert "msg-1" not in buffers, "buffer 应该在完整 strip 后清空"
+
+
+def test_cross_chunk_leading_pipe_phantom_call_strip_via_buffer():
+    """截图中的 <|tool_call> 变体跨 chunk 时也不能提前泄漏到正文。"""
+    from ag_ui.encoder import EventEncoder
+
+    graph = _make_basic_graph()
+    encoder = EventEncoder()
+    buffers: dict = {}
+
+    events1, _, _, _ = graph._handle_chat_model_stream_content(
+        chunk=_chunk_with_content("<|tool_call>call:analyze_deployment_"),
+        encoder=encoder,
+        run_id="t1",
+        current_message_id="msg-1",
+        message_started=False,
+        show_think=True,
+        thinking_started=False,
+        text_strip_buffers=buffers,
+    )
+    assert _extract_text_deltas(events1) == []
+    assert buffers["msg-1"].startswith("<|tool_call>")
+
+    events2, _, _, _ = graph._handle_chat_model_stream_content(
+        chunk=_chunk_with_content('configurations{namespace:<|">default<|">}<|tool_call>'),
+        encoder=encoder,
+        run_id="t1",
+        current_message_id="msg-1",
+        message_started=True,
+        show_think=True,
+        thinking_started=False,
+        text_strip_buffers=buffers,
+    )
+    full_emitted = "".join(_extract_text_deltas(events2))
+    assert "<|tool_call>" not in full_emitted
+    assert "analyze_deployment" not in full_emitted
+    assert "msg-1" not in buffers
 
 
 def test_single_chunk_phantom_call_still_works_with_buffer():

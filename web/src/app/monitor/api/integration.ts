@@ -9,6 +9,8 @@ import {
   FlowDetectParams,
   FlowGuideParams,
   FlowIntegrationApi,
+  K3sCommandData,
+  K3sVerificationResult,
   PluginGuideDoc,
   SnmpCollectTemplateDoc,
 } from '@/app/monitor/types/integration';
@@ -220,6 +222,33 @@ const useIntegrationApi = () => {
           `/monitor/api/manual_collect/check_collect_status/`,
           params
         );
+      },
+      createK3sInstance: async (params: {
+        organizations: React.Key[];
+        instance_id: string;
+        name: string;
+        monitor_object_id: React.Key;
+      }): Promise<{ instance_id: string }> => {
+        return await post(
+          '/monitor/api/k3s_onboarding/create_instance/',
+          params
+        );
+      },
+      getK3sCommands: async (params: {
+        instance_id: string;
+        cloud_region_id: React.Key;
+      }): Promise<Omit<K3sCommandData, 'monitor_object_id' | 'instance_id' | 'cloud_region_id'>> => {
+        return await post(
+          '/monitor/api/k3s_onboarding/install_command/',
+          params
+        );
+      },
+      verifyK3sReporting: async (
+        instanceId: string
+      ): Promise<K3sVerificationResult> => {
+        return await get('/monitor/api/k3s_onboarding/verify/', {
+          params: { instance_id: instanceId },
+        });
       },
       createFlowAsset: async (data: FlowAssetPayload) => {
         return await post('/monitor/api/manual_collect/flow_asset/', data);

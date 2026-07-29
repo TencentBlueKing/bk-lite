@@ -97,6 +97,7 @@ class ImportService:
         # 导入过程中的映射表：YAML key -> DB ID
         self.namespace_key_to_id: dict[str, int] = {}
         self.datasource_key_to_id: dict[str, int] = {}
+        self.tag_name_to_id: dict[str, int] = {}
 
         # 导入结果统计
         self.results: list[dict] = []
@@ -171,10 +172,19 @@ class ImportService:
 
         规则：{original_name}_copy，若仍冲突则继续追加_copy
         """
-        new_name = f"{original_name}{RENAME_SUFFIX}"
-        while model.objects.filter(name=new_name).exists():
-            new_name = f"{new_name}{RENAME_SUFFIX}"
-        return new_name
+        name_max_length = model._meta.get_field("name").max_length
+        max_suffixes = (name_max_length - len(original_name)) // len(RENAME_SUFFIX)
+        candidates = [
+            f"{original_name}{RENAME_SUFFIX * count}"
+            for count in range(1, max_suffixes + 1)
+        ]
+        existing_names = set(model.objects.filter(name__in=candidates).values_list("name", flat=True))
+
+        for candidate in candidates:
+            if candidate not in existing_names:
+                return candidate
+
+        raise ValueError(f"名称 {original_name} 已无可用的重命名空间")
 
     def _record_result(
         self,
@@ -323,23 +333,14 @@ class ImportService:
         action = self._get_conflict_action(ds_item.key)
 
         # 解析关联的命名空间ID
-        namespace_ids = []
-        for ns_key in ds_item.namespace_keys:
-            ns_id = self.namespace_key_to_id.get(ns_key)
-            if ns_id:
-                namespace_ids.append(ns_id)
-            else:
-                # 尝试从数据库查找
-                ns = NameSpace.objects.filter(name=ns_key).first()
-                if ns:
-                    namespace_ids.append(ns.id)
+        namespace_ids = [
+            self.namespace_key_to_id[ns_key]
+            for ns_key in ds_item.namespace_keys
+            if ns_key in self.namespace_key_to_id
+        ]
 
         # 解析tags
-        tag_ids = []
-        for tag_name in ds_item.tags:
-            tag = DataSourceTag.objects.filter(name=tag_name).first()
-            if tag:
-                tag_ids.append(tag.id)
+        tag_ids = [self.tag_name_to_id[tag_name] for tag_name in ds_item.tags if tag_name in self.tag_name_to_id]
 
         if existing:
             if action == ConflictAction.SKIP.value:
@@ -606,6 +607,19 @@ class ImportService:
                 return rollback_result
 
             # Step 2: 导入数据源
+            namespace_keys = {
+                ns_key
+                for ds_item in self.doc.datasources
+                for ns_key in ds_item.namespace_keys
+                if ns_key not in self.namespace_key_to_id
+            }
+            self.namespace_key_to_id.update(
+                NameSpace.objects.filter(name__in=namespace_keys).values_list("name", "id")
+            )
+            tag_names = {tag_name for ds_item in self.doc.datasources for tag_name in ds_item.tags}
+            self.tag_name_to_id.update(
+                DataSourceTag.objects.filter(name__in=tag_names).values_list("name", "id")
+            )
             for ds_item in self.doc.datasources:
                 ds_id = self._import_datasource(ds_item)
                 if ds_id:

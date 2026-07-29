@@ -1,6 +1,7 @@
 """目标管理序列化器"""
 
 from functools import cached_property
+from pathlib import PurePosixPath
 
 from rest_framework import serializers
 
@@ -25,7 +26,16 @@ class TargetSerializer(TeamSerializer):
     ssh_password = serializers.CharField(write_only=True, required=False, allow_blank=True)
     ssh_key_passphrase = serializers.CharField(write_only=True, required=False, allow_blank=True)
     winrm_password = serializers.CharField(write_only=True, required=False, allow_blank=True)
-    ssh_key_file = serializers.FileField(write_only=True, required=False, allow_null=True)
+    ssh_key_file = serializers.FileField(
+        write_only=True,
+        required=False,
+        allow_null=True,
+        use_url=False,
+    )
+    has_ssh_password = serializers.SerializerMethodField()
+    has_winrm_password = serializers.SerializerMethodField()
+    has_ssh_key = serializers.SerializerMethodField()
+    ssh_key_file_name = serializers.SerializerMethodField()
 
     @cached_property
     def cloud_region_map(self):
@@ -42,10 +52,39 @@ class TargetSerializer(TeamSerializer):
             return self.cloud_region_map.get(instance.cloud_region_id)
         return None
 
+    def get_has_ssh_password(self, instance):
+        return bool(instance.ssh_password)
+
+    def get_has_winrm_password(self, instance):
+        return bool(instance.winrm_password)
+
+    def get_has_ssh_key(self, instance):
+        return bool(instance.ssh_key_file)
+
+    def get_ssh_key_file_name(self, instance):
+        if not instance.ssh_key_file:
+            return ""
+        return PurePosixPath(instance.ssh_key_file.name).name
+
     def validate(self, attrs):
         """验证凭据字段"""
-        # 更新时跳过凭据验证（如果没有提供相关字段）
         if self.instance:
+            effective_attrs = dict(attrs)
+            for field in (
+                "os_type",
+                "credential_source",
+                "credential_id",
+                "ssh_user",
+                "ssh_credential_type",
+                "ssh_password",
+                "ssh_key_file",
+                "winrm_user",
+                "winrm_password",
+                "cloud_region_id",
+            ):
+                if not effective_attrs.get(field):
+                    effective_attrs[field] = getattr(self.instance, field, None)
+            validate_manual_credentials(effective_attrs, require_cloud_region=True)
             return attrs
         return validate_manual_credentials(attrs, require_cloud_region=True)
 
@@ -64,14 +103,25 @@ class TargetSerializer(TeamSerializer):
         EncryptMixin.encrypt_field("ssh_password", validated_data)
         EncryptMixin.encrypt_field("ssh_key_passphrase", validated_data)
         EncryptMixin.encrypt_field("winrm_password", validated_data)
-        validated_data["winrm_cert_validation"] = False
+        validated_data.setdefault("winrm_cert_validation", False)
         return super().create(validated_data)
 
     def update(self, instance, validated_data):
-        """更新时加密密码字段"""
-        EncryptMixin.encrypt_field("ssh_password", validated_data)
-        EncryptMixin.encrypt_field("ssh_key_passphrase", validated_data)
-        EncryptMixin.encrypt_field("winrm_password", validated_data)
+        """只替换显式提交的新凭据，空值表示继续使用已保存凭据。"""
+        for field in ("ssh_password", "ssh_key_passphrase", "winrm_password"):
+            if field in validated_data and not validated_data[field]:
+                validated_data.pop(field)
+            else:
+                EncryptMixin.encrypt_field(field, validated_data)
+
+        next_credential_type = validated_data.get("ssh_credential_type", instance.ssh_credential_type)
+        if next_credential_type == "password" and validated_data.get("ssh_password"):
+            if instance.ssh_key_file:
+                instance.ssh_key_file.delete(save=False)
+            validated_data["ssh_key_file"] = None
+            validated_data["ssh_key_passphrase"] = ""
+        elif next_credential_type == "key" and validated_data.get("ssh_key_file"):
+            validated_data["ssh_password"] = ""
         return super().update(instance, validated_data)
 
     class Meta:
@@ -97,12 +147,16 @@ class TargetSerializer(TeamSerializer):
             "ssh_password",
             "ssh_key_passphrase",
             "ssh_key_file",
+            "has_ssh_password",
+            "has_ssh_key",
+            "ssh_key_file_name",
             "winrm_port",
             "winrm_scheme",
             "winrm_scheme_display",
             "winrm_transport",
             "winrm_user",
             "winrm_password",
+            "has_winrm_password",
             "winrm_cert_validation",
             "team",
             "team_name",
@@ -146,5 +200,23 @@ class TargetTestConnectionSerializer(serializers.Serializer):
 
     def validate(self, attrs):
         """验证测试连接参数"""
-        # cloud_region_id 已通过字段 required=True 校验，这里不再重复
-        return validate_manual_credentials(attrs, require_cloud_region=False)
+        saved_target = self.context.get("saved_target")
+        if not saved_target:
+            # cloud_region_id 已通过字段 required=True 校验，这里不再重复
+            return validate_manual_credentials(attrs, require_cloud_region=False)
+
+        effective_attrs = dict(attrs)
+        for field in (
+            "credential_source",
+            "credential_id",
+            "ssh_user",
+            "ssh_credential_type",
+            "ssh_password",
+            "ssh_key_file",
+            "winrm_user",
+            "winrm_password",
+        ):
+            if not effective_attrs.get(field):
+                effective_attrs[field] = getattr(saved_target, field, None)
+        validate_manual_credentials(effective_attrs, require_cloud_region=False)
+        return attrs

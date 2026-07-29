@@ -1,6 +1,6 @@
 """CMDB 采集对象树覆盖测试。
 
-对照 spec/prd/CMDB·自动采集：内置采集对象树合并企业版扩展、按 model_id 查询采集元数据。
+对照 specs/capabilities/legacy-prd-cmdb-资产.md·自动采集：内置采集对象树合并企业版扩展、按 model_id 查询采集元数据。
 """
 
 import pytest

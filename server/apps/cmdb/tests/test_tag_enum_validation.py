@@ -1,6 +1,6 @@
 """CMDB 标签/枚举字段归一与校验覆盖测试。
 
-对照 spec/prd/CMDB·模型管理：tag 字段 free/strict 模式校验，enum 单选/多选校验。
+对照 specs/capabilities/legacy-prd-cmdb-模型管理.md：tag 字段 free/strict 模式校验，enum 单选/多选校验。
 """
 
 import pytest

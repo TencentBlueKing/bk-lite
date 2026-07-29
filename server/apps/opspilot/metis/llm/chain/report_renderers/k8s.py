@@ -47,16 +47,20 @@ def build_post_tool_directives(
                 parsed = None
 
             if isinstance(parsed, dict) and (parsed.get("issues_detail") or _should_emit_parsed(parsed)):
+                repair_choice_rule = ""
+                if enable_repair_diff_report:
+                    repair_choice_rule = (
+                        "如果检查结果存在问题项，不要调用 request_user_choice 或任何修复报告生成工具。"
+                        "后端会根据报告可用维度自动展示修复方式选择，并在用户提交后推送修复对比。"
+                        "如果检查结果没有问题，则直接用一句话结束，不要追加修复交互。"
+                    )
                 directives.append(
                     SystemMessage(
                         content=(
                             "【配置检查输出规则】结构化配置检查报告已经通过 AG-UI 的 config_analysis_report 事件展示给用户。"
                             "不要再用 Markdown、标题、列表或表格重复输出“配置检查报告”“问题分组”“修复建议”等完整报告内容。"
                             "最终文本最多只允许一句简短说明，例如“配置检查报告已展示，请查看上方卡片”。"
-                            "如果检查结果存在问题项，必须主动调用 request_user_choice，"
-                            "通过 AG-UI 交互卡片让用户选择修复展示方式（按问题类别聚合 / 按工作负载聚合 / 全部一次性展示）。"
-                            "不要主动调用 generate_repair_report，必须等待用户完成选择后再生成修复对比。"
-                            "如果检查结果没有问题，则直接用一句话结束，不要追加修复交互。"
+                            f"{repair_choice_rule}"
                         )
                     )
                 )
@@ -482,60 +486,96 @@ def build_config_diff_report_payload(
 
 
 def build_repair_mode_choice_args(parsed: Dict[str, Any]) -> Dict[str, Any]:
-    issues_detail = parsed.get("issues_detail") if isinstance(parsed, dict) else None
+    parsed = parsed if isinstance(parsed, dict) else {}
+    issues_detail = parsed.get("issues_detail")
     issues = [item for item in issues_detail if isinstance(item, dict)] if isinstance(issues_detail, list) else []
-    problematic = parsed.get("problematic") if isinstance(parsed, dict) else None
+    problematic = parsed.get("problematic")
     problematic_count = problematic if isinstance(problematic, int) else 0
 
-    issue_types = {str(item.get("issue", "")).strip() for item in issues if str(item.get("issue", "")).strip()}
-    workloads = {
-        str(workload).strip()
+    risk_levels = {
+        str(item.get("severity", "")).strip().lower()
         for item in issues
-        for workload in (item.get("workloads") or [])
-        if str(workload).strip()
+        if str(item.get("severity", "")).strip()
     }
     high_impact_count = sum(
         int(item.get("count", 0))
         for item in issues
-        if item.get("severity") in {"critical", "high"} and isinstance(item.get("count", 0), int)
+        if str(item.get("severity", "")).strip().lower() in {"critical", "high"}
+        and isinstance(item.get("count", 0), int)
     )
 
+    spaces = set()
+    deployments = parsed.get("_deployments_full")
+    if isinstance(deployments, list):
+        spaces.update(
+            str(item.get("namespace", "")).strip()
+            for item in deployments
+            if isinstance(item, dict) and str(item.get("namespace", "")).strip()
+        )
+    scope = parsed.get("scope")
+    if isinstance(scope, dict):
+        for key in ("namespace", "namespaces", "scope", "scopes", "schema", "schemas"):
+            value = scope.get(key)
+            if isinstance(value, list):
+                spaces.update(str(item).strip() for item in value if str(item).strip())
+            elif value is not None and str(value).strip():
+                spaces.add(str(value).strip())
+    for item in issues:
+        for workload in item.get("workloads") or []:
+            workload_text = str(workload).strip()
+            if "(" in workload_text and workload_text.endswith(")"):
+                spaces.add(workload_text.rsplit("(", 1)[1][:-1].strip())
+
+    declared_modes = parsed.get("_repair_grouping_modes")
+    if isinstance(declared_modes, list):
+        available_modes = {mode for mode in declared_modes if mode in {"all", "scope", "severity"}}
+    else:
+        available_modes = {"all"}
+        if spaces:
+            available_modes.add("scope")
+        if risk_levels:
+            available_modes.add("severity")
+
     options: List[str] = []
-    if len(issue_types) >= 2 and problematic_count >= 8:
-        if high_impact_count >= 10 or len(issue_types) >= 3:
-            options.append("按问题类别聚合（推荐：多类问题覆盖面广）")
+    if "severity" in available_modes and len(risk_levels) >= 2 and problematic_count >= 8:
+        if high_impact_count >= 10 or len(risk_levels) >= 3:
+            options.append("按风险等级聚合（推荐：高风险问题优先）")
         else:
-            options.append("按问题类别聚合")
+            options.append("按风险等级聚合")
 
-    if len(workloads) >= 2:
+    if "scope" in available_modes and len(spaces) >= 2:
         if problematic_count <= 10:
-            options.append("按工作负载聚合（推荐：目标数量较少）")
+            options.append("按空间聚合（推荐：涉及多个空间）")
         else:
-            options.append("按工作负载聚合")
+            options.append("按空间聚合")
 
-    if problematic_count <= 10 or len(issues) <= 2:
-        options.append("全部一次性展示" if problematic_count > 1 else "直接展示单个修复对比（推荐）")
+    if "all" in available_modes:
+        if problematic_count <= 10 or len(issues) <= 2:
+            options.append("全部一次性展示" if problematic_count > 1 else "直接展示单个修复对比（推荐）")
+        else:
+            options.append("全部一次性展示（内容可能较长）")
 
-    # issues_detail/workloads may be summarized or truncated. For large scans,
-    # keep the grouped display modes available even when the summary only lists
-    # one issue/workload exemplar.
+    # 明细可能被压缩为单个样例；大规模扫描仍保留报告已声明/已检测到的分组维度。
     if problematic_count > 10:
         existing_prefixes = {option.split("（", 1)[0] for option in options}
-        if "按问题类别聚合" not in existing_prefixes:
-            options.insert(0, "按问题类别聚合")
-        if "按工作负载聚合" not in existing_prefixes:
-            insert_at = 1 if options and options[0].startswith("按问题类别聚合") else len(options)
-            options.insert(insert_at, "按工作负载聚合")
+        if "severity" in available_modes and "按风险等级聚合" not in existing_prefixes:
+            options.insert(0, "按风险等级聚合")
+        if "scope" in available_modes and "按空间聚合" not in existing_prefixes:
+            insert_at = 1 if options and options[0].startswith("按风险等级聚合") else len(options)
+            options.insert(insert_at, "按空间聚合")
 
     if not options:
-        options.append("按问题类别聚合（推荐：先处理共性问题）")
-        options.append("按工作负载聚合")
+        if "severity" in available_modes:
+            options.append("按风险等级聚合（推荐：先处理高风险问题）")
+        if "scope" in available_modes:
+            options.append("按空间聚合")
+        if not options:
+            options.append("全部一次性展示")
 
-    deduped_options = list(dict.fromkeys(options))[:4]
     return {
         "question": "请选择修复展示方式",
         "question_type": "single_select",
-        "options": deduped_options,
+        "options": list(dict.fromkeys(options))[:4],
     }
 
 
@@ -567,6 +607,39 @@ def find_pending_k8s_analysis_choice(messages: List[BaseMessage]) -> Optional[Di
                 return None
 
     return latest_payload
+
+
+def find_completed_k8s_analysis_choice(
+    messages: List[BaseMessage],
+) -> Optional[tuple[Dict[str, Any], str]]:
+    """查找“分析和用户选择已完成，但修复报告尚未生成”的状态。"""
+    latest_analysis: Optional[Dict[str, Any]] = None
+    completed_choice = ""
+
+    for message in messages:
+        message_type = getattr(message, "type", "")
+        message_name = getattr(message, "name", "")
+        if message_type == "tool" and message_name == "analyze_deployment_configurations":
+            content = getattr(message, "content", "")
+            try:
+                parsed = json.loads(content) if isinstance(content, str) else content
+            except Exception:
+                continue
+            if isinstance(parsed, dict) and parsed.get("issues_detail"):
+                latest_analysis = parsed
+                completed_choice = ""
+            continue
+
+        if latest_analysis is None:
+            continue
+        if message_type == "tool" and message_name == "generate_repair_report":
+            return None
+        if message_type == "tool" and message_name == "request_user_choice":
+            completed_choice = str(getattr(message, "content", "") or "").strip()
+
+    if latest_analysis is None or not completed_choice:
+        return None
+    return latest_analysis, completed_choice
 
 
 # ---------------------------------------------------------------------------
@@ -858,3 +931,4 @@ register_renderer("repair_diff_report", render_repair_diff_report)
 # analyze_deployment_configurations 跑完后,deepagent 把 JSON 放进 ToolMessage,
 # 后处理器扫到这个 tool name 就调 config_analysis_report 渲染器。
 register_tool_result_capability("analyze_deployment_configurations", "config_analysis_report")
+register_tool_result_capability("generate_repair_report", "repair_diff_report")

@@ -95,6 +95,32 @@ class TestLoadPluginLanguage:
         result = lo._load_plugin_language("en")
         assert result == {}
 
+    def test_复合模板不创建空监控对象指标翻译(self, tmp_path, monkeypatch):
+        """顶层没有 name 的复合模板不应写入 monitor_object_metric[None]。"""
+        plugins_root = tmp_path / "plugins"
+        plugin_dir = plugins_root / "CollectorA" / "cat1" / "compound"
+        plugin_dir.mkdir(parents=True)
+        (plugin_dir / "metrics.json").write_text(
+            '{"plugin": "Compound", "objects": [{"name": "Object-A"}], '
+            '"metrics": [{"name": "metric_a", "metric_en_name": "Metric A"}]}',
+            encoding="utf-8",
+        )
+        (plugin_dir / "language").mkdir()
+        (plugin_dir / "language" / "en.yaml").write_text(
+            "Compound:\n  name: Compound\n", encoding="utf-8"
+        )
+
+        from apps.monitor.constants import plugin as plugin_constants
+
+        monkeypatch.setattr(plugin_constants.PluginConstants, "DIRECTORY", str(plugins_root))
+        monkeypatch.setattr(plugin_constants.PluginConstants, "ENTERPRISE_DIRECTORY", str(tmp_path / "no_enterprise"))
+        clear_language_cache()
+
+        lo = LanguageLoader(app="__no_such_app__", default_lang="en")
+        result = lo._load_plugin_language("en")
+
+        assert None not in result.get("monitor_object_metric", {})
+
     def test_文件内key与plugin字段不一致报错但继续(self, tmp_path, monkeypatch, caplog):
         """language/en.yaml 顶层 key 与 metrics.json plugin 字段不一致:plugin 自身描述被丢,
         但 4 段翻译(monitor_object_metric 等)仍会被合并(因为合并是按整个 yaml 整体 deep_merge)。

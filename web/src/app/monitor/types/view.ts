@@ -13,6 +13,10 @@ export interface ViewPluginOption {
   value: string;
 }
 
+export interface ViewColumnPreference {
+  field_keys: string[];
+}
+
 export interface ViewModalProps {
   monitorObject: React.Key;
   monitorName: string;

@@ -10,15 +10,11 @@ d) update_baseline=True vs False 两条路径都覆盖
 """
 
 import pytest
-
 from django.db import IntegrityError, transaction
 
-from apps.monitor.models import (
-    MonitorAlert,
-    PolicyInstanceBaseline,
-)
+from apps.monitor.models import MonitorAlert, PolicyInstanceBaseline
 from apps.monitor.models.monitor_object import MonitorObject
-from apps.monitor.models.monitor_policy import MonitorPolicy
+from apps.monitor.models.monitor_policy import MonitorPolicy, PolicyOrganization
 
 pytestmark = pytest.mark.django_db
 
@@ -31,11 +27,11 @@ def grant_all(mocker):
     """放行权限检查,绕过 RPC 权限校验"""
     mocker.patch(
         "apps.monitor.views.monitor_alert.get_permissions_rules",
-        return_value={"data": {"all": True}, "team": [1]},
+        return_value={"data": {"all": {"team": [1]}}, "team": [1]},
     )
     mocker.patch(
-        "apps.monitor.views.monitor_alert.check_instance_permission",
-        return_value=True,
+        "apps.core.utils.current_team_scope.SystemMgmt.get_authorized_groups_scoped",
+        return_value={"result": True, "data": [1]},
     )
 
 
@@ -53,14 +49,17 @@ def stub_refresh(mocker):
 
 def _make_policy():
     obj = MonitorObject.objects.create(name="AlertCloseObj", level="base")
-    return MonitorPolicy.objects.create(
+    policy = MonitorPolicy.objects.create(
         monitor_object=obj,
         name="p_4041",
+        organizations=[1],
         algorithm="max",
         query_condition={},
         source={},
         group_by=[],
     )
+    PolicyOrganization.objects.create(policy=policy, organization=1)
+    return policy
 
 
 class TestCloseNoDataAlertTransaction:

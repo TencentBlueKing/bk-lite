@@ -11,8 +11,23 @@ from apps.core.utils.loader import LanguageLoader
 from apps.core.utils.viewset_utils import MaintainerViewSet
 from apps.system_mgmt.models import IntegrationInstance, IntegrationInstanceStatusChoices
 from apps.system_mgmt.providers import RuntimeApplicationService, get_provider_registry
+from apps.system_mgmt.providers.runtime import CapabilityExecutionResult
 from apps.system_mgmt.serializers import IntegrationInstanceSerializer
 from apps.system_mgmt.utils.operation_log_utils import log_operation
+
+
+def build_test_connection_response(result):
+    """Keep the HTTP/API transport successful when a connection validation fails."""
+    return Response({"result": True, "data": {"result": result.success, "data": result.to_dict()}})
+
+
+def build_pending_capability_status(instance):
+    manifest = get_provider_registry().get(instance.provider_key)
+    capability_keys = [capability.key for capability in manifest.capabilities] if manifest else (instance.capability_status or {}).keys()
+    return {
+        capability_key: IntegrationInstanceStatusChoices.PENDING_VERIFICATION
+        for capability_key in capability_keys
+    }
 
 
 class IntegrationInstanceFilter(FilterSet):
@@ -180,9 +195,17 @@ class IntegrationInstanceViewSet(MaintainerViewSet):
         logger.info(
             f"IntegrationInstanceViewSet.test_connection: invoked, "
             f"instance_id={obj.id}, instance_name={obj.name!r}, "
-            f"provider_key={obj.provider_key}, capability_key={capability_key or '(all)'}, "
+            f"provider_key={obj.provider_key}, capability_key={capability_key or '(base)'}, "
             f"invoked_by={getattr(request.user, 'username', 'anonymous')}"
         )
+        if capability_key and obj.status != IntegrationInstanceStatusChoices.READY:
+            return build_test_connection_response(
+                CapabilityExecutionResult.failed_result(
+                    "Base connection must be verified before testing capabilities",
+                    code="provider.base_connection_required",
+                )
+            )
+
         runtime_service = RuntimeApplicationService()
         result = runtime_service.test_connection(obj, capability_key=capability_key or None)
         payload = result.payload
@@ -190,27 +213,25 @@ class IntegrationInstanceViewSet(MaintainerViewSet):
             capability_status = dict(obj.capability_status or {})
             capability_status.update(payload.get("capability_status") or {})
             obj.capability_status = capability_status
-            if capability_status and all(status == IntegrationInstanceStatusChoices.READY for status in capability_status.values()):
-                obj.status = IntegrationInstanceStatusChoices.READY
-            elif any(status == IntegrationInstanceStatusChoices.VERIFICATION_FAILED for status in capability_status.values()):
-                obj.status = IntegrationInstanceStatusChoices.VERIFICATION_FAILED
-            else:
-                obj.status = IntegrationInstanceStatusChoices.PENDING_VERIFICATION
         else:
             obj.status = payload.get("instance_status", IntegrationInstanceStatusChoices.VERIFICATION_FAILED)
-            obj.capability_status = payload.get("capability_status", obj.capability_status)
+            obj.capability_status = (
+                build_pending_capability_status(obj)
+                if not result.success
+                else payload.get("capability_status", obj.capability_status)
+            )
         obj.save(update_fields=["status", "capability_status", "updated_at"])
 
         log_operation(request, "execute", "system-manager", f"测试集成实例连接: {obj.name}")
         if not result.success:
-            # 详细失败信息已由 runtime.py warning 记录；viewset 层只记请求 context
-            logger.warning(
+            # Runtime 负责唯一的失败告警；此处仅保留状态落库后的调试上下文。
+            logger.debug(
                 f"IntegrationInstanceViewSet.test_connection: failed, "
                 f"instance_id={obj.id}, provider_key={obj.provider_key}, "
-                f"capability_key={capability_key or '(all)'}, "
+                f"capability_key={capability_key or '(base)'}, "
                 f"instance_status={obj.status}, capability_status={dict(obj.capability_status or {})}"
             )
-        return Response({"result": result.success, "data": result.to_dict()})
+        return build_test_connection_response(result)
 
     @action(methods=["GET"], detail=False)
     @HasPermission("integration_center-View")

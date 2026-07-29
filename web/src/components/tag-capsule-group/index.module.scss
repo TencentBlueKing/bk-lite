@@ -1,0 +1,49 @@
+.tagCapsuleGroup {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  max-width: 100%;
+  line-height: 1;
+}
+
+.tagItem {
+  margin: 0 !important;
+  max-width: 180px;
+  height: 22px;
+  line-height: 20px;
+  padding-inline: 8px;
+  display: inline-flex;
+  align-items: center;
+  vertical-align: middle;
+}
+
+.compact .tagItem {
+  max-width: 140px;
+}
+
+.tagText {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 1;
+}
+
+.moreTag {
+  margin: 0 !important;
+  cursor: default;
+}
+
+.moreTooltip {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-width: 320px;
+}
+
+.moreTooltipItem {
+  line-height: 18px;
+  word-break: break-all;
+}

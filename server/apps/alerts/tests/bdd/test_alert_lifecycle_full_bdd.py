@@ -1,6 +1,6 @@
 """告警中心 BDD：转派 / 关闭 / 解决 三段状态迁移。
 
-对照 spec/prd/告警中心·告警·状态机：
+对照 specs/capabilities/legacy-prd-告警中心-告警.md：
 - 处理中 → 待响应（转派）
 - 处理中 → 已关闭（关闭，带 reason）
 - 处理中 → 已处理（解决，带 note）

@@ -5,12 +5,14 @@ from typing import Any, Dict, List, Optional
 from django.db import connection, transaction
 from django.utils import timezone
 
-from apps.alerts.constants.constants import AlertStatus, SessionStatus
-from apps.alerts.models.alert_operator import (
-    AlertAssignment,
-    AlertEscalationTask,
-    AlertReminderTask,
+from apps.alerts.common.notification_target import (
+    ORGANIZATION_TARGET,
+    normalize_notification_target,
+    read_notification_target,
+    resolve_notification_target,
 )
+from apps.alerts.constants.constants import AlertStatus, SessionStatus
+from apps.alerts.models.alert_operator import AlertAssignment, AlertEscalationTask, AlertReminderTask
 from apps.alerts.models.models import Alert
 from apps.core.logger import alert_logger as logger
 
@@ -37,9 +39,22 @@ class EscalationService:
             return None
         layers: List[dict] = []
         for idx, layer in enumerate(raw_layers):
-            personnel = layer.get("personnel") or []
-            if not isinstance(personnel, list) or len(personnel) == 0:
-                logger.warning("升级链第 %s 层缺少处理人", idx)
+            if not isinstance(layer, dict):
+                return None
+            has_structured_target = "notification_target" in layer
+            raw_target = read_notification_target(layer)
+            target = normalize_notification_target(
+                raw_target,
+                layer.get("personnel"),
+            )
+            if target["type"] == ORGANIZATION_TARGET:
+                has_target = bool(target["organization_ids"])
+                personnel = []
+            else:
+                has_target = bool(target["usernames"])
+                personnel = target["usernames"]
+            if not has_target:
+                logger.warning("升级链第 %s 层缺少处理对象", idx)
                 return None
             try:
                 wait_minutes = int(layer.get("wait_minutes", 0) or 0)
@@ -48,11 +63,14 @@ class EscalationService:
             if wait_minutes <= 0:
                 logger.warning("升级链第 %s 层等待时长非法: %s", idx, layer.get("wait_minutes"))
                 return None
-            layers.append({
-                "personnel": list(dict.fromkeys(personnel)),
+            normalized_layer = {
+                "personnel": personnel,
                 "wait_minutes": wait_minutes,
                 "notify_channels": layer.get("notify_channels") or [],
-            })
+            }
+            if has_structured_target:
+                normalized_layer["notification_target"] = target
+            layers.append(normalized_layer)
         return {"mode": mode, "layers": layers}
 
     @staticmethod
@@ -65,6 +83,29 @@ class EscalationService:
             for layer in layers[: current_index + 1]:
                 source.extend(layer.get("personnel", []))
         return list(dict.fromkeys(source))
+
+    @staticmethod
+    def resolve_layer_roster(layer: dict) -> List[str]:
+        """按层内结构化目标动态解析当前通知成员，兼容历史 personnel。"""
+        return resolve_notification_target(
+            layer.get("notification_target"),
+            layer.get("personnel"),
+        )
+
+    @classmethod
+    def resolve_roster(
+        cls, layers: List[dict], current_index: int, mode: str
+    ) -> List[str]:
+        """动态解析当前在岗集合；append 合并截至当前层的全部目标。"""
+        active_layers = (
+            [layers[current_index]]
+            if mode == "replace"
+            else layers[: current_index + 1]
+        )
+        roster: List[str] = []
+        for layer in active_layers:
+            roster.extend(cls.resolve_layer_roster(layer))
+        return list(dict.fromkeys(roster))
 
     @classmethod
     def _union_into_operator(cls, alert: Alert, personnel: List[str]) -> None:
@@ -89,24 +130,41 @@ class EscalationService:
           - 通知渠道：初始分派人用分派规则渠道；其余棒用各自 UI 层渠道。
         如此推进/扫描/终止逻辑无需改动，只是链头多了初始分派人这一棒。
         """
-        initial_personnel = list(assignment.personnel or [])
+        assignment_config = (
+            assignment.config if isinstance(assignment.config, dict) else {}
+        )
+        has_structured_initial_target = "notification_target" in assignment_config
+        raw_initial_target = read_notification_target(assignment_config)
+        initial_target = normalize_notification_target(
+            raw_initial_target,
+            assignment.personnel,
+        )
+        initial_personnel = initial_target["usernames"]
         chain: List[dict] = []
-        if initial_personnel:
-            chain.append({
+        if initial_personnel or initial_target["organization_ids"]:
+            initial_layer = {
                 "personnel": initial_personnel,
                 "wait_minutes": ui_layers[0]["wait_minutes"],
                 "notify_channels": assignment.notify_channels or [],
-            })
+            }
+            if has_structured_initial_target:
+                initial_layer["notification_target"] = initial_target
+            chain.append(initial_layer)
         for k in range(len(ui_layers)):
             # 第 k 个 UI 层的处理人，其窗口 = 下一个 UI 层的等待时长（末棒终止 = 0）
             nxt_wait = (
                 ui_layers[k + 1]["wait_minutes"] if k + 1 < len(ui_layers) else 0
             )
-            chain.append({
+            effective_layer = {
                 "personnel": ui_layers[k]["personnel"],
                 "wait_minutes": nxt_wait,
                 "notify_channels": ui_layers[k].get("notify_channels") or [],
-            })
+            }
+            if "notification_target" in ui_layers[k]:
+                effective_layer["notification_target"] = ui_layers[k][
+                    "notification_target"
+                ]
+            chain.append(effective_layer)
         return chain
 
     @classmethod
@@ -118,6 +176,14 @@ class EscalationService:
         if not normalized:
             return None
         effective = cls.build_effective_chain(assignment, normalized["layers"])
+        if not effective:
+            return None
+        # 组织目标保留初始分派时已解析的成员快照；历史/用户目标继续沿用 personnel。
+        if (
+            effective[0].get("notification_target", {}).get("type")
+            == ORGANIZATION_TARGET
+        ):
+            effective[0]["personnel"] = list(alert.operator or [])
         now = timezone.now()
         task, _ = AlertEscalationTask.objects.update_or_create(
             alert=alert,
@@ -176,13 +242,10 @@ class EscalationService:
     @classmethod
     def _send_escalation_notification(
         cls, alert: Alert, assignment: AlertAssignment,
-        roster: List[str], layer_channels: List[dict],
+        roster: List[str], layer_channels: List[dict], idempotency_key: str = None,
     ) -> bool:
         """升级通知：走统一通知出口(build_channel_params + enqueue_notifications)。"""
-        from apps.alerts.common.notify.dispatcher import (
-            build_channel_params,
-            enqueue_notifications,
-        )
+        from apps.alerts.common.notify.dispatcher import build_channel_params, enqueue_notifications
 
         if alert.is_session_alert and alert.session_status != SessionStatus.CONFIRMED:
             logger.info("升级跳过会话观察期告警: alert_id=%s", alert.alert_id)
@@ -195,13 +258,39 @@ class EscalationService:
             return False
 
         params = build_channel_params(roster, channels, [alert], alert.alert_id)
-        return enqueue_notifications(params)
+        return enqueue_notifications(params, idempotency_key=idempotency_key)
 
     @classmethod
     def _advance_layer(cls, task: AlertEscalationTask) -> bool:
         """推进到下一层并通知；返回是否真正升级了一层。"""
         alert = task.alert
         next_index = task.current_layer_index + 1
+        next_layer = task.layers[next_index]
+        next_personnel = cls.resolve_layer_roster(next_layer)
+        next_target = normalize_notification_target(
+            next_layer.get("notification_target"),
+            next_layer.get("personnel"),
+        )
+        logger.info(
+            "告警升级目标解析: assignment_id=%s, alert_id=%s, layer=%s, type=%s, "
+            "organization_ids=%s, resolved_count=%s",
+            task.assignment_id,
+            alert.alert_id,
+            next_index,
+            next_target["type"],
+            next_target["organization_ids"],
+            len(next_personnel),
+        )
+        if not next_personnel:
+            logger.warning(
+                "告警升级层当前无有效处理人，停留重试: assignment_id=%s, "
+                "alert_id=%s, layer=%s, reason=no_active_recipient",
+                task.assignment_id,
+                alert.alert_id,
+                next_index,
+            )
+            return False
+
         now = timezone.now()
         task.current_layer_index = next_index
         task.layer_started_at = now
@@ -211,11 +300,15 @@ class EscalationService:
         # transaction.atomic() 内，构建异常会连同推进一起回滚。
         task.save(update_fields=["current_layer_index", "layer_started_at", "updated_at"])
 
-        roster = cls.compute_roster(task.layers, next_index, task.mode)
-        cls._union_into_operator(alert, task.layers[next_index]["personnel"])
+        roster = cls.resolve_roster(task.layers, next_index, task.mode)
+        cls._union_into_operator(alert, next_personnel)
         cls._reset_reminder_for_new_roster(alert)
         cls._send_escalation_notification(
-            alert, task.assignment, roster, task.layers[next_index].get("notify_channels") or []
+            alert,
+            task.assignment,
+            roster,
+            task.layers[next_index].get("notify_channels") or [],
+            idempotency_key=f"escalation:{alert.alert_id}:{next_index}",
         )
         logger.info("告警升级到第 %s 层: alert_id=%s, roster=%s",
                     next_index, alert.alert_id, roster)
@@ -281,10 +374,12 @@ class EscalationService:
     def active_roster_for_reminder(cls, alert: Alert):
         """供提醒发送复用：返回 (在岗集合, 当前层渠道)。
         无活跃升级任务时返回 (None, None)，调用方沿用分派规则原值。"""
-        task = AlertEscalationTask.objects.filter(alert=alert, is_active=True).first()
+        task = AlertEscalationTask.objects.filter(alert=alert).first()
         if not task:
             return None, None
-        roster = cls.compute_roster(task.layers, task.current_layer_index, task.mode)
+        roster = cls.resolve_roster(
+            task.layers, task.current_layer_index, task.mode
+        )
         channels = task.layers[task.current_layer_index].get("notify_channels") or None
         return roster, channels
 

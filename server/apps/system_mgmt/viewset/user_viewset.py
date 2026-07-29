@@ -443,24 +443,22 @@ class UserViewSet(ViewSetUtils):
         # 收集需要删除的用户信息（id, username和domain）
         user_info_list = list(users.values("id", "username", "domain"))
 
-        # 直接构造用户菜单缓存键删除（缓存键格式为 menus-user:{user_id}）
         menu_cache_keys = [f"menus-user:{user['id']}" for user in user_info_list]
-        if menu_cache_keys:
-            cache.delete_many(menu_cache_keys)
+        with transaction.atomic():
+            # 批量删除用户相关的 UserRule（避免 N+1）
+            if user_info_list:
+                user_rule_filter = Q()
+                for user_info in user_info_list:
+                    user_rule_filter |= Q(username=user_info["username"], domain=user_info["domain"])
+                UserRule.objects.filter(user_rule_filter).delete()
 
-        # 批量删除用户相关的UserRule（避免N+1：使用Q对象组合条件）
-        if user_info_list:
-            user_rule_filter = Q()
-            for user_info in user_info_list:
-                user_rule_filter |= Q(username=user_info["username"], domain=user_info["domain"])
-            UserRule.objects.filter(user_rule_filter).delete()
+            users.delete()
 
-        # 删除用户
-        users.delete()
-
-        # 清除权限缓存（批量清除）
-        if user_info_list:
-            clear_users_permission_cache(user_info_list)
+            # 独立权限代际不会随 User 删除，必须与删除事务一并推进。
+            if user_info_list:
+                clear_users_permission_cache(user_info_list)
+            if menu_cache_keys:
+                transaction.on_commit(lambda: cache.delete_many(menu_cache_keys), robust=True)
 
         # 记录操作日志
         log_operation(request, "delete", "system-manager", f"批量删除用户: {', '.join(usernames)} (共{len(usernames)}个)")
@@ -490,7 +488,6 @@ class UserViewSet(ViewSetUtils):
         user_map = {user.id: user for user in users}
         success_ids = []
         skipped = []
-        affected_user_info = []
 
         with transaction.atomic():
             for user_id in normalized_user_ids:
@@ -523,9 +520,7 @@ class UserViewSet(ViewSetUtils):
                     update_fields = ["account_locked_until", "password_error_count"]
 
                 user.save(update_fields=update_fields)
-                cache.delete(f"menus-user:{user.id}")
-                clear_user_permission_cache(user.username, user.domain)
-                affected_user_info.append({"username": user.username, "domain": user.domain})
+                transaction.on_commit(lambda user_id=user.id: cache.delete(f"menus-user:{user_id}"), robust=True)
                 success_ids.append(user.id)
 
         if success_ids:
@@ -584,10 +579,20 @@ class UserViewSet(ViewSetUtils):
             params["roles"] = [role_id for role_id in role_ids if role_id != admin_role_id]
         with transaction.atomic():
             # 删除旧的规则
-            UserRule.objects.filter(username=params["username"]).delete()
+            UserRule.objects.filter(
+                username=target_user.username,
+                domain=target_user.domain,
+            ).delete()
             # 更新用户信息
             if rules:
-                add_rule = [UserRule(username=params["username"], group_rule_id=i) for i in rules]
+                add_rule = [
+                    UserRule(
+                        username=target_user.username,
+                        domain=target_user.domain,
+                        group_rule_id=i,
+                    )
+                    for i in rules
+                ]
                 UserRule.objects.bulk_create(add_rule, batch_size=100)
             update_fields = {
                 "display_name": params.get("lastName"),
@@ -614,6 +619,6 @@ class UserViewSet(ViewSetUtils):
             log_operation(request, "update", "system-manager", f"编辑用户: {params['username']}")
 
             # 清除权限缓存
-            clear_user_permission_cache(params["username"], params.get("domain", "domain.com"))
+            clear_user_permission_cache(target_user.username, target_user.domain)
 
         return JsonResponse({"result": True})

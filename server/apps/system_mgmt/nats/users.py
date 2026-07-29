@@ -1,9 +1,22 @@
 # flake8: noqa
+from apps.core.exceptions.base_app_exception import BaseAppException
+from apps.core.utils.current_team_scope import _normalize_organization_ids
+from apps.core.utils.permission_cache import clear_all_permission_cache
+
 from .common import *  # noqa: F401,F403
 from .common import _collect_ancestor_group_ids
 
 
-@nats_client.register
+def _is_persisted_superuser(user_obj):
+    """仅从持久化用户角色解析超管身份。"""
+    explicit_flag = getattr(user_obj, "is_superuser", None)
+    if explicit_flag is not None:
+        return bool(explicit_flag)
+
+    role_ids = get_user_all_roles(user_obj)
+    return Role.objects.filter(id__in=role_ids, name="admin").filter(Q(app="") | Q(app="system-manager")).exists()
+
+
 def get_group_users(group=None, include_children=False):
     """
     获取组织下的用户列表
@@ -35,9 +48,6 @@ def _get_actor_user_scope(actor_context, include_children=False):
     username = (actor_context or {}).get("username")
     domain = (actor_context or {}).get("domain", "domain.com")
     current_team = (actor_context or {}).get("current_team")
-    is_superuser = (actor_context or {}).get("is_superuser", False)
-    actor_group_list = (actor_context or {}).get("group_list")
-
     if not username or current_team in (None, ""):
         return None, []
 
@@ -45,9 +55,12 @@ def _get_actor_user_scope(actor_context, include_children=False):
     if not user_obj:
         return None, []
 
+    # 超管身份只能来自持久化用户，RPC 调用方声明不得提升权限。
+    is_superuser = _is_persisted_superuser(user_obj)
+
     try:
-        current_team = int(current_team)
-    except (TypeError, ValueError):
+        current_team = next(iter(_normalize_organization_ids([current_team])))
+    except BaseAppException:
         return user_obj, []
 
     if is_superuser:
@@ -55,16 +68,14 @@ def _get_actor_user_scope(actor_context, include_children=False):
             return user_obj, GroupUtils.get_group_with_descendants(current_team)
         return user_obj, [current_team]
 
-    user_group_list = actor_group_list if actor_group_list else user_obj.group_list
     authorized_groups = GroupUtils.get_user_authorized_child_groups(
-        user_group_list,
+        user_obj.group_list,
         current_team,
         include_children=include_children,
     )
     return user_obj, authorized_groups
 
 
-@nats_client.register
 def get_group_users_scoped(actor_context, group=None, include_children=False):
     """
     在调用方授权范围内查询组织用户列表。
@@ -106,11 +117,37 @@ def get_group_users_scoped(actor_context, group=None, include_children=False):
 @nats_client.register
 def get_authorized_groups_scoped(actor_context, include_children=False):
     """返回调用方在当前组织上下文下可访问的组织范围。"""
-    _user_obj, authorized_groups = _get_actor_user_scope(actor_context, include_children=include_children)
-    return {"result": True, "data": authorized_groups}
+    user_obj, authorized_groups = _get_actor_user_scope(actor_context, include_children=include_children)
+    return {
+        "result": True,
+        "data": authorized_groups,
+        "is_superuser": bool(user_obj and _is_persisted_superuser(user_obj)),
+    }
 
 
 @nats_client.register
+def get_assignable_groups(actor_context):
+    """返回调用方可作为组织分配目标的真实组织范围。"""
+    username = (actor_context or {}).get("username")
+    domain = (actor_context or {}).get("domain", "domain.com")
+    if not username:
+        return {"result": True, "data": []}
+
+    user_obj = User.objects.filter(username=username, domain=domain).first()
+    if not user_obj:
+        return {"result": True, "data": []}
+
+    if _is_persisted_superuser(user_obj):
+        return {"result": True, "data": list(Group.objects.values_list("id", flat=True))}
+
+    user_group_list = list(user_obj.group_list or [])
+    if not user_group_list:
+        return {"result": True, "data": []}
+
+    groups = GroupUtils.get_group_with_descendants(user_group_list)
+    return {"result": True, "data": groups}
+
+
 def get_all_users():
     data = User.objects.all().values(*User.display_fields())
     return {"result": True, "data": list(data)}
@@ -122,7 +159,6 @@ def search_groups(query_params):
     return {"result": True, "data": list(groups)}
 
 
-@nats_client.register
 def search_users(query_params):
     page = int(query_params.get("page", 1))
     page_size = int(query_params.get("page_size", 10))
@@ -140,7 +176,7 @@ def search_users(query_params):
 def init_user_default_attributes(user_id, group_name, default_group_id):
     try:
         role_ids = list(
-            Role.objects.filter(name="guest", app__in=["opspilot", "cmdb", "monitor", "alarm", "log", "node", "mlops", "job"]).values_list(
+            Role.objects.filter(name="guest", app__in=["opspilot", "cmdb", "monitor", "alarm", "log", "node", "mlops", "job", "patch"]).values_list(
                 "id", flat=True
             )
         )
@@ -182,16 +218,29 @@ def create_guest_role():
         "cmdb": CMDB_MENUS[:],
         "monitor": MONITOR_MENUS[:],
     }
-    guest_group, _ = Group.objects.get_or_create(name="Guest", parent_id=0, defaults={"description": "Guest group"})
-    app_guest_group, _ = Group.objects.get_or_create(name="OpsPilotGuest", parent_id=0)
-    for app, app_menus in app_map.items():
-        menus = dict(Menu.objects.filter(app=app).values_list("id", "name"))
-        menu_list = [k for k, v in menus.items() if v in app_menus]
-        Role.objects.update_or_create(name="guest", app=app, defaults={"menu_list": menu_list})
+    with transaction.atomic():
+        guest_group, _ = Group.objects.get_or_create(name="Guest", parent_id=0, defaults={"description": "Guest group"})
+        app_guest_group, _ = Group.objects.get_or_create(name="OpsPilotGuest", parent_id=0)
+        permissions_changed = False
+        for app, app_menus in app_map.items():
+            menus = dict(Menu.objects.filter(app=app).values_list("id", "name"))
+            menu_list = [k for k, v in menus.items() if v in app_menus]
+            role = Role.objects.filter(name="guest", app=app).first()
+            if role is None:
+                Role.objects.create(name="guest", app=app, menu_list=menu_list)
+                permissions_changed = True
+            elif role.menu_list != menu_list:
+                role.menu_list = menu_list
+                role.save(update_fields=["menu_list"])
+                permissions_changed = True
+        if permissions_changed:
+            clear_all_permission_cache()
     return {"result": True, "data": {"group_id": app_guest_group.id}}
 
 
-@nats_client.register
+# This initializer is intentionally local-only: console_mgmt calls it through
+# AppClient, while exposing it on NATS would let unauthenticated publishers
+# create the built-in OpsPilot data rule when it is missing.
 def create_default_rule(llm_model, ocr_model, embed_model, rerank_model):
     guest_group = Group.objects.get(name="OpsPilotGuest", parent_id=0)
     GroupDataRule.objects.get_or_create(
@@ -250,11 +299,12 @@ def set_opspilot_guest_group_default_rule(default_group, user):
     cmdb_rule = GroupDataRule.objects.get(name="游客数据权限", app="cmdb", group_id=default_group.id)
     log_rule = GroupDataRule.objects.get(name="log内置规则", app="log", group_id=default_group.id)
     node_rule = GroupDataRule.objects.get(name="节点管理内置数据权限", app="node", group_id=default_group.id)
-    UserRule.objects.get_or_create(username=user.username, group_rule_id=cmdb_rule.id)
-    UserRule.objects.get_or_create(username=user.username, group_rule_id=default_rule.id)
-    UserRule.objects.get_or_create(username=user.username, group_rule_id=monitor_rule.id)
-    UserRule.objects.get_or_create(username=user.username, group_rule_id=log_rule.id)
-    UserRule.objects.get_or_create(username=user.username, group_rule_id=node_rule.id)
+    identity = {"username": user.username, "domain": user.domain}
+    UserRule.objects.get_or_create(**identity, group_rule_id=cmdb_rule.id)
+    UserRule.objects.get_or_create(**identity, group_rule_id=default_rule.id)
+    UserRule.objects.get_or_create(**identity, group_rule_id=monitor_rule.id)
+    UserRule.objects.get_or_create(**identity, group_rule_id=log_rule.id)
+    UserRule.objects.get_or_create(**identity, group_rule_id=node_rule.id)
 
 
 @nats_client.register

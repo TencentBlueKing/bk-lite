@@ -1,0 +1,998 @@
+from datetime import timedelta
+from types import SimpleNamespace
+from unittest.mock import patch
+
+import pytest
+from django.utils import timezone
+
+from apps.cmdb.models.collect_model import CollectModels
+from apps.cmdb.models.node_mgmt_sync import NodeMgmtSyncConfig, NodeMgmtSyncRegionState, NodeMgmtSyncRun
+from apps.cmdb.services.collect_service import CollectModelService
+from apps.cmdb.services.node_mgmt_sync_reconciler import NodeMgmtSyncReconciler
+from apps.cmdb.services.node_mgmt_sync_service import NodeMgmtSyncService
+
+pytestmark = pytest.mark.django_db
+
+
+@pytest.fixture
+def config():
+    return NodeMgmtSyncConfig.objects.create(
+        auto_sync_enabled=True, auto_collect_enabled=True, schedule_status="healthy", node_config_status="unknown",
+    )
+
+
+@pytest.fixture
+def region_task():
+    return _create_region_task(7)
+
+
+def _create_region_task(region_id, *, system_code=None):
+    return CollectModels.objects.create(
+        name=f"区域采集-{region_id}",
+        task_type="host",
+        driver_type="job",
+        model_id="host",
+        cycle_value_type="cycle",
+        cycle_value="30",
+        scan_cycle="*/30 * * * *",
+        instances=[],
+        access_point=[],
+        credential=[],
+        params={},
+        team=[],
+        is_interval=True,
+        is_system=True,
+        is_visible=False,
+        system_code=system_code or f"{NodeMgmtSyncService.SYSTEM_TASK_PREFIX}{region_id}",
+    )
+
+
+def _reconcile(config):
+    with patch.object(NodeMgmtSyncReconciler, "_reconcile_periodic_task"):
+        return NodeMgmtSyncReconciler.reconcile(config, reconcile_node_configs=True,)
+
+
+def _state(config, region_id=7):
+    return NodeMgmtSyncRegionState.objects.get(config=config, scope_key=f"node-config:region:{region_id}")
+
+
+def test_disable_collect_only_deletes_node_params(config, region_task):
+    config.auto_collect_enabled = False
+    config.save(update_fields=["auto_collect_enabled", "updated_at"])
+
+    with patch.object(CollectModelService, "delete_butch_node_params") as delete:
+        with patch.object(CollectModelService, "push_butch_node_params") as push:
+            result = _reconcile(config)
+
+    delete.assert_called_once_with(region_task)
+    push.assert_not_called()
+    config.refresh_from_db()
+    state = _state(config)
+    assert result.node_config_status == "disabled"
+    assert config.node_config_status == "disabled"
+    assert state.node_config_status == "disabled"
+    assert state.scope_key == "node-config:region:7"
+
+
+def test_retired_region_is_excluded_from_dispatch_and_records_delete_intent(config):
+    active_task = _create_region_task(8)
+    retired_task = _create_region_task(9)
+
+    NodeMgmtSyncService._retire_missing_region_collect_tasks(
+        config,
+        desired_region_ids={7, 8},
+    )
+
+    retired_task.refresh_from_db()
+    assert retired_task.is_interval is False
+    assert [task.id for task in NodeMgmtSyncService._list_region_collect_tasks()] == [active_task.id]
+    state = _state(config, 9)
+    assert state.collect_task_id == retired_task.id
+    assert state.node_config_status == "delete_pending"
+
+
+def test_retirement_rolls_back_when_delivery_intent_cannot_be_recorded(config, region_task, mocker):
+    mark = mocker.patch.object(
+        NodeMgmtSyncReconciler,
+        "mark_region_delivery_pending",
+        side_effect=RuntimeError("intent-failed"),
+    )
+
+    with pytest.raises(RuntimeError, match="intent-failed"):
+        NodeMgmtSyncService._retire_missing_region_collect_tasks(config, desired_region_ids=set())
+
+    region_task.refresh_from_db()
+    assert region_task.is_interval is True
+    mocker.stop(mark)
+    NodeMgmtSyncService._retire_missing_region_collect_tasks(config, desired_region_ids=set())
+    region_task.refresh_from_db()
+    assert region_task.is_interval is False
+    assert _state(config).node_config_status == "delete_pending"
+
+
+def test_manual_sync_mode_deletes_retired_task_but_does_not_push_active_task(config):
+    config.auto_sync_enabled = False
+    config.save(update_fields=["auto_sync_enabled", "updated_at"])
+    _create_region_task(7)
+    retired_task = _create_region_task(8)
+    retired_task.is_interval = False
+    retired_task.save(update_fields=["is_interval", "updated_at"])
+    NodeMgmtSyncReconciler.mark_region_delivery_pending(
+        config,
+        cloud_region_id=8,
+        collect_task=retired_task,
+    )
+
+    with patch.object(CollectModelService, "delete_butch_node_params") as delete:
+        with patch.object(CollectModelService, "push_butch_node_params") as push:
+            result = _reconcile(config)
+
+    delete.assert_called_once_with(retired_task)
+    push.assert_not_called()
+    assert _state(config, 8).node_config_status == "disabled"
+    assert result.node_config_status == "waiting_sync"
+
+
+def test_manual_sync_mode_with_only_retired_tasks_stays_waiting_sync(config):
+    config.auto_sync_enabled = False
+    config.save(update_fields=["auto_sync_enabled", "updated_at"])
+    retired_task = _create_region_task(8)
+    retired_task.is_interval = False
+    retired_task.save(update_fields=["is_interval", "updated_at"])
+    NodeMgmtSyncReconciler.mark_region_delivery_pending(
+        config,
+        cloud_region_id=8,
+        collect_task=retired_task,
+    )
+
+    with patch.object(CollectModelService, "delete_butch_node_params") as delete:
+        result = _reconcile(config)
+
+    delete.assert_called_once_with(retired_task)
+    assert _state(config, 8).node_config_status == "disabled"
+    assert result.node_config_status == "waiting_sync"
+
+
+def test_interval_only_update_reconciles_existing_retirement_intent(config):
+    config.auto_sync_enabled = False
+    config.save(update_fields=["auto_sync_enabled", "updated_at"])
+    retired_task = _create_region_task(8)
+    retired_task.is_interval = False
+    retired_task.save(update_fields=["is_interval", "updated_at"])
+    NodeMgmtSyncReconciler.mark_region_delivery_pending(
+        config,
+        cloud_region_id=8,
+        collect_task=retired_task,
+    )
+
+    with patch.object(CollectModelService, "delete_butch_node_params") as delete:
+        updated = NodeMgmtSyncService.update_task({"collect_interval_minutes": 31})
+
+    delete.assert_called_once_with(retired_task)
+    assert _state(updated, 8).node_config_status == "disabled"
+    assert updated.node_config_status == "waiting_sync"
+
+
+def test_foreign_config_region_state_cannot_suppress_current_delete_intent(config):
+    retired_task = _create_region_task(9)
+    foreign_config = NodeMgmtSyncConfig.objects.create(singleton_key="legacy")
+    foreign_state = NodeMgmtSyncRegionState.objects.create(
+        config=foreign_config,
+        config_version=foreign_config.version,
+        cloud_region_id="9",
+        collect_task=retired_task,
+        scope_key="node-config:region:9",
+        node_config_status="disabled",
+    )
+
+    NodeMgmtSyncService._retire_missing_region_collect_tasks(config, desired_region_ids=set())
+
+    foreign_state.refresh_from_db()
+    assert foreign_state.config_id == config.id
+    assert foreign_state.config_version == config.version
+    assert foreign_state.node_config_status == "delete_pending"
+
+
+def test_retired_legacy_region_without_state_is_deleted_and_failure_is_retryable(config, region_task):
+    region_task.is_interval = False
+    region_task.save(update_fields=["is_interval", "updated_at"])
+
+    with patch.object(
+        CollectModelService,
+        "delete_butch_node_params",
+        side_effect=[RuntimeError("delete-secret"), None],
+    ) as delete:
+        with patch.object(CollectModelService, "push_butch_node_params") as push:
+            first = _reconcile(config)
+            pending = _state(config)
+            second = _reconcile(config)
+
+    assert first.node_config_status == "degraded"
+    assert pending.node_config_status == "delete_pending"
+    assert pending.reason_code == "NODE_CONFIG_DELETE_FAILED"
+    assert delete.call_count == 2
+    push.assert_not_called()
+    assert second.node_config_status == "healthy"
+    assert _state(config).node_config_status == "disabled"
+
+
+def test_retired_region_reactivation_reuses_task_and_pushes_again(config, region_task, mocker):
+    region_task.is_interval = False
+    region_task.access_point = [{"id": "ap-7"}]
+    region_task.save(update_fields=["is_interval", "access_point", "updated_at"])
+    NodeMgmtSyncRegionState.objects.create(
+        config=config,
+        config_version=config.version,
+        cloud_region_id="7",
+        collect_task=region_task,
+        scope_key="node-config:region:7",
+        node_config_status="disabled",
+    )
+    mocker.patch.object(NodeMgmtSyncService, "get_task", return_value=config)
+    mocker.patch.object(NodeMgmtSyncService, "heartbeat_run")
+
+    restored = NodeMgmtSyncService._ensure_region_collect_task(
+        cloud_region_id=7,
+        cloud_region_name="区域 7",
+        access_point={"id": "ap-7"},
+        team=[],
+        instances=[],
+        interval_minutes=30,
+    )
+
+    with patch.object(CollectModelService, "delete_butch_node_params") as delete:
+        with patch.object(CollectModelService, "push_butch_node_params") as push:
+            result = _reconcile(config)
+
+    assert restored.id == region_task.id
+    assert restored.is_interval is True
+    delete.assert_called_once_with(restored)
+    push.assert_called_once_with(restored)
+    assert result.node_config_status == "healthy"
+
+
+def test_region_task_create_unique_race_reloads_and_reuses_winner(config, region_task, mocker):
+    original_filter = CollectModels.objects.filter
+    stale_read = mocker.MagicMock()
+    stale_read.first.return_value = None
+    filter_calls = 0
+
+    def filter_after_stale_read(*args, **kwargs):
+        nonlocal filter_calls
+        if kwargs == {"system_code": NodeMgmtSyncService._system_code(7)} and filter_calls == 0:
+            filter_calls += 1
+            return stale_read
+        return original_filter(*args, **kwargs)
+
+    mocker.patch.object(CollectModels.objects, "filter", side_effect=filter_after_stale_read)
+    mocker.patch.object(NodeMgmtSyncService, "get_task", return_value=config)
+
+    winner = NodeMgmtSyncService._ensure_region_collect_task(
+        cloud_region_id=7,
+        cloud_region_name="区域 7",
+        access_point={"id": "ap-7"},
+        team=[],
+        instances=[],
+        interval_minutes=30,
+    )
+
+    assert winner.id == region_task.id
+    assert CollectModels.objects.filter(system_code=NodeMgmtSyncService._system_code(7)).count() == 1
+
+
+def test_config_versions_share_region_claim_and_new_disable_deletes_after_old_push(config, region_task):
+    effects = []
+
+    def push(_task):
+        effects.append("push_start")
+        NodeMgmtSyncConfig.objects.filter(pk=config.pk).update(
+            version=config.version + 1,
+            auto_collect_enabled=False,
+        )
+        newer = NodeMgmtSyncConfig.objects.get(pk=config.pk)
+        nested = _reconcile(newer)
+        assert nested.node_config_status in ("unknown", "reconciling")
+        effects.append("push_finish")
+
+    with patch.object(
+        CollectModelService,
+        "delete_butch_node_params",
+        side_effect=lambda _task: effects.append("delete"),
+    ):
+        with patch.object(CollectModelService, "push_butch_node_params", side_effect=push):
+            _reconcile(config)
+            newer = NodeMgmtSyncConfig.objects.get(pk=config.pk)
+            result = _reconcile(newer)
+
+    assert effects == ["delete", "push_start", "push_finish", "delete"]
+    assert result.node_config_status == "disabled"
+    assert NodeMgmtSyncRegionState.objects.filter(config=config, cloud_region_id="7").count() == 1
+    state = _state(newer)
+    assert state.scope_key == "node-config:region:7"
+    assert state.config_version == newer.version
+    assert state.node_config_status == "disabled"
+
+
+def test_disable_collect_restarts_old_push_pending_from_delete(config, region_task):
+    config.auto_collect_enabled = False
+    config.save(update_fields=["auto_collect_enabled", "updated_at"])
+    NodeMgmtSyncRegionState.objects.create(
+        config=config,
+        config_version=config.version,
+        cloud_region_id="7",
+        collect_task=region_task,
+        scope_key=f"config:{config.version}:region:7",
+        node_config_status="push_pending",
+    )
+
+    with patch.object(CollectModelService, "delete_butch_node_params") as delete:
+        with patch.object(CollectModelService, "push_butch_node_params") as push:
+            result = _reconcile(config)
+
+    delete.assert_called_once_with(region_task)
+    push.assert_not_called()
+    assert result.node_config_status == "disabled"
+    assert _state(config).node_config_status == "disabled"
+
+
+def test_disable_collect_old_push_pending_delete_failure_is_retryable(config, region_task):
+    config.auto_collect_enabled = False
+    config.save(update_fields=["auto_collect_enabled", "updated_at"])
+    NodeMgmtSyncRegionState.objects.create(
+        config=config,
+        config_version=config.version,
+        cloud_region_id="7",
+        collect_task=region_task,
+        scope_key=f"config:{config.version}:region:7",
+        node_config_status="push_pending",
+    )
+
+    with patch.object(CollectModelService, "delete_butch_node_params", side_effect=[RuntimeError("delete-secret"), None],) as delete:
+        with patch.object(CollectModelService, "push_butch_node_params") as push:
+            first = _reconcile(config)
+            pending_state = _state(config)
+            second = _reconcile(config)
+
+    assert first.node_config_status == "degraded"
+    assert pending_state.node_config_status == "delete_pending"
+    assert pending_state.reason_code == "NODE_CONFIG_DELETE_FAILED"
+    assert "delete-secret" not in pending_state.error_message
+    assert delete.call_count == 2
+    push.assert_not_called()
+    assert second.node_config_status == "disabled"
+    assert _state(config).node_config_status == "disabled"
+
+
+def test_enable_collect_deletes_then_pushes(config, region_task):
+    calls = []
+    with patch.object(
+        CollectModelService, "delete_butch_node_params", side_effect=lambda task: calls.append(("delete", task.id)),
+    ):
+        with patch.object(
+            CollectModelService, "push_butch_node_params", side_effect=lambda task: calls.append(("push", task.id)),
+        ):
+            result = _reconcile(config)
+
+    assert calls == [("delete", region_task.id), ("push", region_task.id)]
+    config.refresh_from_db()
+    assert result.node_config_status == "healthy"
+    assert config.node_config_status == "healthy"
+    assert _state(config).node_config_status == "healthy"
+
+
+def test_node_config_scope_does_not_reuse_collect_run_region_history(config, region_task):
+    run = NodeMgmtSyncRun.objects.create(
+        task=config,
+        run_type=NodeMgmtSyncRun.RUN_TYPE_COLLECT,
+        status=NodeMgmtSyncRun.STATUS_SUCCESS,
+    )
+    history = NodeMgmtSyncRegionState.objects.create(
+        config=config,
+        run=run,
+        config_version=config.version,
+        cloud_region_id="7",
+        collect_task=region_task,
+        scope_key=f"collect-run:{run.pk}:region:7",
+        status="success",
+    )
+
+    with patch.object(CollectModelService, "delete_butch_node_params"):
+        with patch.object(CollectModelService, "push_butch_node_params"):
+            _reconcile(config)
+
+    history.refresh_from_db()
+    assert history.scope_key == f"collect-run:{run.pk}:region:7"
+    assert NodeMgmtSyncRegionState.objects.filter(config=config, cloud_region_id="7").count() == 2
+    assert _state(config).node_config_status == "healthy"
+
+
+def test_delete_failure_stays_delete_pending_and_is_retryable(config, region_task):
+    delete_calls = []
+    with patch.object(CollectModelService, "delete_butch_node_params", side_effect=[RuntimeError("delete-secret"), None],) as delete:
+        with patch.object(CollectModelService, "push_butch_node_params") as push:
+            first = _reconcile(config)
+            delete_calls.append(delete.call_count)
+            second = _reconcile(config)
+
+    assert first.node_config_status == "degraded"
+    assert delete_calls == [1]
+    assert delete.call_count == 2
+    push.assert_called_once_with(region_task)
+    assert second.node_config_status == "healthy"
+    assert _state(config).node_config_status == "healthy"
+
+
+def test_push_failure_stays_push_pending_and_retries_from_push(config, region_task):
+    with patch.object(CollectModelService, "delete_butch_node_params") as delete:
+        with patch.object(CollectModelService, "push_butch_node_params", side_effect=[RuntimeError("push-secret"), None],) as push:
+            first = _reconcile(config)
+            pending_state = _state(config)
+            second = _reconcile(config)
+
+    assert first.node_config_status == "degraded"
+    assert pending_state.node_config_status == "push_pending"
+    assert pending_state.reason_code == "NODE_CONFIG_PUSH_FAILED"
+    assert "push-secret" not in pending_state.error_message
+    delete.assert_called_once_with(region_task)
+    assert push.call_count == 2
+    assert second.node_config_status == "healthy"
+    assert _state(config).node_config_status == "healthy"
+
+
+def test_sync_task_update_push_failure_is_retried_by_reconciler(config, region_task):
+    NodeMgmtSyncRegionState.objects.create(
+        config=config,
+        config_version=config.version,
+        cloud_region_id="7",
+        collect_task=region_task,
+        scope_key="node-config:region:7",
+        node_config_status="healthy",
+    )
+
+    with patch.object(NodeMgmtSyncService, "get_task", return_value=config):
+        with patch.object(NodeMgmtSyncService, "_should_repush_collect_task_node_params", return_value=True):
+            with patch.object(CollectModelService, "delete_butch_node_params") as delete:
+                with patch.object(
+                    CollectModelService,
+                    "push_butch_node_params",
+                    side_effect=[RuntimeError("push-secret"), None],
+                ) as push:
+                    NodeMgmtSyncService._ensure_region_collect_task(
+                        cloud_region_id=7,
+                        cloud_region_name="region-7",
+                        access_point={"id": 1},
+                        team=[1],
+                        instances=[{"_id": 1}],
+                        interval_minutes=30,
+                    )
+                    delete.assert_not_called()
+                    push.assert_not_called()
+
+                    first = _reconcile(config)
+                    assert first.node_config_status == "degraded"
+                    assert _state(config).node_config_status == "push_pending"
+                    second = _reconcile(config)
+
+    delete.assert_called_once()
+    assert push.call_count == 2
+    assert second.node_config_status == "healthy"
+    assert _state(config).node_config_status == "healthy"
+
+
+def test_delivery_intent_arriving_during_claim_preserves_token_and_stays_pending(config, region_task):
+    state = NodeMgmtSyncRegionState.objects.create(
+        config=config,
+        config_version=config.version,
+        cloud_region_id="7",
+        collect_task=region_task,
+        scope_key="node-config:region:7",
+        node_config_status="push_in_progress",
+        reason_code="NODE_CONFIG_CLAIM:worker-a",
+    )
+    config.version += 1
+    config.save(update_fields=["version", "updated_at"])
+
+    NodeMgmtSyncReconciler.mark_region_delivery_pending(
+        config, cloud_region_id=7, collect_task=region_task,
+    )
+
+    state.refresh_from_db()
+    assert state.node_config_status == "push_in_progress"
+    assert state.reason_code == "NODE_CONFIG_CLAIM:worker-a"
+    assert state.config_version == config.version
+    assert NodeMgmtSyncReconciler._finish_node_config_claim(
+        state,
+        stage="push",
+        claim_token="NODE_CONFIG_CLAIM:worker-a",
+        next_status="healthy",
+    )
+    state.refresh_from_db()
+    assert state.node_config_status == "delete_pending"
+
+
+def test_delivery_intent_cas_does_not_overwrite_claim_started_after_read(config, region_task):
+    state = NodeMgmtSyncRegionState.objects.create(
+        config=config,
+        config_version=config.version,
+        cloud_region_id="7",
+        collect_task=region_task,
+        scope_key="node-config:region:7",
+        node_config_status="healthy",
+    )
+    original_get = NodeMgmtSyncReconciler._get_or_create_region_state
+
+    def claim_after_read(*args, **kwargs):
+        loaded, created = original_get(*args, **kwargs)
+        NodeMgmtSyncRegionState.objects.filter(pk=loaded.pk).update(
+            node_config_status="push_in_progress",
+            reason_code="NODE_CONFIG_CLAIM:worker-b",
+        )
+        return loaded, created
+
+    with patch.object(
+        NodeMgmtSyncReconciler,
+        "_get_or_create_region_state",
+        side_effect=claim_after_read,
+    ):
+        NodeMgmtSyncReconciler.mark_region_delivery_pending(
+            config, cloud_region_id=7, collect_task=region_task,
+        )
+
+    state.refresh_from_db()
+    assert state.node_config_status == "push_in_progress"
+    assert state.reason_code == "NODE_CONFIG_CLAIM:worker-b"
+    assert NodeMgmtSyncReconciler._finish_node_config_claim(
+        state,
+        stage="push",
+        claim_token="NODE_CONFIG_CLAIM:worker-b",
+        next_status="healthy",
+    )
+    state.refresh_from_db()
+    assert state.node_config_status == "delete_pending"
+
+
+def test_multiple_legacy_rows_wait_for_active_claim_then_consolidate(config, region_task):
+    stable = NodeMgmtSyncRegionState.objects.create(
+        config=config,
+        config_version=3,
+        cloud_region_id="7",
+        collect_task=region_task,
+        scope_key="node-config:region:7",
+        node_config_status="healthy",
+    )
+    historical = NodeMgmtSyncRegionState.objects.create(
+        config=config,
+        config_version=1,
+        cloud_region_id="7",
+        collect_task=region_task,
+        scope_key="config:1:region:7",
+        node_config_status="healthy",
+    )
+    active = NodeMgmtSyncRegionState.objects.create(
+        config=config,
+        config_version=2,
+        cloud_region_id="7",
+        collect_task=region_task,
+        scope_key="config:2:region:7",
+        node_config_status="push_in_progress",
+        reason_code="NODE_CONFIG_CLAIM:legacy-worker",
+    )
+
+    selected, _ = NodeMgmtSyncReconciler._get_or_create_region_state(config, "7", region_task)
+    assert selected.pk == active.pk
+    stable.refresh_from_db()
+    assert stable.scope_key == "node-config:region:7"
+
+    NodeMgmtSyncRegionState.objects.filter(pk=active.pk).update(
+        node_config_status="healthy", reason_code="",
+    )
+    selected, _ = NodeMgmtSyncReconciler._get_or_create_region_state(config, "7", region_task)
+
+    assert selected.scope_key == "node-config:region:7"
+    assert NodeMgmtSyncRegionState.objects.filter(
+        config=config, cloud_region_id="7", scope_key__startswith="config:",
+    ).count() == 0
+    assert not NodeMgmtSyncRegionState.objects.filter(pk=historical.pk).exists()
+
+
+@pytest.mark.parametrize("legacy_status", ["delete_pending", "push_in_progress"])
+def test_fresh_stable_claim_blocks_legacy_merge(config, region_task, legacy_status):
+    stable = NodeMgmtSyncRegionState.objects.create(
+        config=config,
+        config_version=3,
+        cloud_region_id="7",
+        collect_task=region_task,
+        scope_key="node-config:region:7",
+        node_config_status="delete_in_progress",
+        reason_code="NODE_CONFIG_CLAIM:stable-worker",
+    )
+    legacy = NodeMgmtSyncRegionState.objects.create(
+        config=config,
+        config_version=2,
+        cloud_region_id="7",
+        collect_task=region_task,
+        scope_key="config:2:region:7",
+        node_config_status=legacy_status,
+        reason_code=("NODE_CONFIG_CLAIM:stale-legacy" if legacy_status.endswith("_in_progress") else ""),
+    )
+    if legacy_status.endswith("_in_progress"):
+        NodeMgmtSyncRegionState.objects.filter(pk=legacy.pk).update(
+            updated_at=timezone.now() - timedelta(minutes=6),
+        )
+
+    selected, _ = NodeMgmtSyncReconciler._get_or_create_region_state(config, "7", region_task)
+
+    assert selected.pk == stable.pk
+    stable.refresh_from_db()
+    assert stable.node_config_status == "delete_in_progress"
+    assert stable.reason_code == "NODE_CONFIG_CLAIM:stable-worker"
+    assert stable.config_version == 3
+    assert NodeMgmtSyncRegionState.objects.filter(pk=legacy.pk).exists()
+
+
+def test_concurrent_degraded_recovery_claims_region_side_effect_once(config, region_task):
+    state = NodeMgmtSyncRegionState.objects.create(
+        config=config,
+        config_version=config.version,
+        cloud_region_id="7",
+        collect_task=region_task,
+        scope_key=f"config:{config.version}:region:7",
+        node_config_status="delete_pending",
+    )
+    config.node_config_status = "degraded"
+    config.save(update_fields=["node_config_status", "updated_at"])
+    calls = []
+
+    def delete(task):
+        calls.append(task.pk)
+        if len(calls) == 1:
+            _reconcile(NodeMgmtSyncConfig.objects.get(pk=config.pk))
+
+    with patch.object(CollectModelService, "delete_butch_node_params", side_effect=delete):
+        with patch.object(CollectModelService, "push_butch_node_params") as push:
+            _reconcile(config)
+
+    assert calls == [region_task.pk]
+    push.assert_called_once_with(region_task)
+    state.refresh_from_db()
+    assert state.node_config_status == "healthy"
+
+
+def test_stale_node_config_claim_can_be_recovered(config, region_task):
+    state = NodeMgmtSyncRegionState.objects.create(
+        config=config,
+        config_version=config.version,
+        cloud_region_id="7",
+        collect_task=region_task,
+        scope_key=f"config:{config.version}:region:7",
+        node_config_status="delete_in_progress",
+        reason_code="NODE_CONFIG_CLAIM:stale-token",
+    )
+    NodeMgmtSyncRegionState.objects.filter(pk=state.pk).update(updated_at=timezone.now() - timedelta(minutes=6))
+
+    with patch.object(CollectModelService, "delete_butch_node_params") as delete:
+        with patch.object(CollectModelService, "push_butch_node_params") as push:
+            result = _reconcile(config)
+
+    assert result.node_config_status == "healthy"
+    delete.assert_called_once_with(region_task)
+    push.assert_called_once_with(region_task)
+    assert _state(config).node_config_status == "healthy"
+
+
+def test_old_node_config_claim_cannot_overwrite_new_claim(config, region_task):
+    state = NodeMgmtSyncRegionState.objects.create(
+        config=config,
+        config_version=config.version,
+        cloud_region_id="7",
+        collect_task=region_task,
+        scope_key=f"config:{config.version}:region:7",
+        node_config_status="delete_pending",
+    )
+
+    def replace_claim(_task):
+        NodeMgmtSyncRegionState.objects.filter(pk=state.pk).update(
+            node_config_status="delete_in_progress", reason_code="NODE_CONFIG_CLAIM:new-worker",
+        )
+
+    with patch.object(CollectModelService, "delete_butch_node_params", side_effect=replace_claim):
+        with patch.object(CollectModelService, "push_butch_node_params") as push:
+            result = _reconcile(config)
+
+    state.refresh_from_db()
+    assert result.node_config_status == "unknown"
+    push.assert_not_called()
+    assert state.node_config_status == "delete_in_progress"
+    assert state.reason_code == "NODE_CONFIG_CLAIM:new-worker"
+
+
+def test_contended_reconciler_cannot_reverse_later_healthy_health(config, region_task):
+    NodeMgmtSyncRegionState.objects.create(
+        config=config,
+        config_version=config.version,
+        cloud_region_id="7",
+        collect_task=region_task,
+        scope_key=f"config:{config.version}:region:7",
+        node_config_status="delete_in_progress",
+        reason_code="NODE_CONFIG_CLAIM:worker-a",
+    )
+    config.node_config_status = "degraded"
+    config.save(update_fields=["node_config_status", "updated_at"])
+    original_claim = NodeMgmtSyncReconciler._claim_node_config_state
+
+    def finish_a_after_b_observes_contention(state, *, auto_collect_enabled):
+        outcome = original_claim(state, auto_collect_enabled=auto_collect_enabled)
+        NodeMgmtSyncConfig.objects.filter(pk=config.pk).update(node_config_status="healthy")
+        return outcome
+
+    with patch.object(
+        NodeMgmtSyncReconciler, "_claim_node_config_state", side_effect=finish_a_after_b_observes_contention,
+    ):
+        result = _reconcile(config)
+
+    config.refresh_from_db()
+    assert config.node_config_status == "healthy"
+    assert result.node_config_status == "healthy"
+
+
+def test_degraded_retry_skips_healthy_region_and_only_retries_failed_region(config, region_task):
+    failed_task = _create_region_task(8)
+    NodeMgmtSyncRegionState.objects.create(
+        config=config,
+        config_version=config.version,
+        cloud_region_id="7",
+        collect_task=region_task,
+        scope_key=f"config:{config.version}:region:7",
+        node_config_status="healthy",
+    )
+    NodeMgmtSyncRegionState.objects.create(
+        config=config,
+        config_version=config.version,
+        cloud_region_id="8",
+        collect_task=failed_task,
+        scope_key=f"config:{config.version}:region:8",
+        node_config_status="delete_pending",
+    )
+    config.node_config_status = "degraded"
+    config.save(update_fields=["node_config_status", "updated_at"])
+
+    with patch.object(CollectModelService, "delete_butch_node_params", side_effect=RuntimeError("still-failing"),) as delete:
+        with patch.object(CollectModelService, "push_butch_node_params") as push:
+            result = _reconcile(config)
+
+    assert result.node_config_status == "degraded"
+    delete.assert_called_once_with(failed_task)
+    push.assert_not_called()
+    assert _state(config, 7).node_config_status == "healthy"
+
+
+def test_disabled_region_is_successful_skip_while_collect_remains_disabled(config, region_task):
+    config.auto_collect_enabled = False
+    config.node_config_status = "degraded"
+    config.save(update_fields=["auto_collect_enabled", "node_config_status", "updated_at"])
+    state = NodeMgmtSyncRegionState.objects.create(
+        config=config,
+        config_version=config.version,
+        cloud_region_id="7",
+        collect_task=region_task,
+        scope_key=f"config:{config.version}:region:7",
+        node_config_status="disabled",
+    )
+
+    with patch.object(CollectModelService, "delete_butch_node_params") as delete:
+        with patch.object(CollectModelService, "push_butch_node_params") as push:
+            result = _reconcile(config)
+
+    assert result.node_config_status == "disabled"
+    delete.assert_not_called()
+    push.assert_not_called()
+    state.refresh_from_db()
+    assert state.node_config_status == "disabled"
+
+
+@pytest.mark.parametrize(
+    ("status", "auto_collect_enabled", "expected_outcome"),
+    [("delete_pending", True, "acquired"), ("healthy", True, "skip"), ("disabled", False, "skip"), ("delete_in_progress", True, "contended"),],
+)
+def test_node_config_claim_has_explicit_outcomes(
+    config, region_task, status, auto_collect_enabled, expected_outcome,
+):
+    state = NodeMgmtSyncRegionState.objects.create(
+        config=config,
+        config_version=config.version,
+        cloud_region_id="7",
+        collect_task=region_task,
+        scope_key=f"config:{config.version}:region:7",
+        node_config_status=status,
+        reason_code=("NODE_CONFIG_CLAIM:worker-a" if status.endswith("_in_progress") else ""),
+    )
+
+    claim = NodeMgmtSyncReconciler._claim_node_config_state(state, auto_collect_enabled=auto_collect_enabled,)
+
+    assert claim.outcome == expected_outcome
+
+
+def test_real_rpc_failure_still_degrades_when_other_region_is_contended(config, region_task):
+    failed_task = _create_region_task(8)
+    NodeMgmtSyncRegionState.objects.create(
+        config=config,
+        config_version=config.version,
+        cloud_region_id="7",
+        collect_task=region_task,
+        scope_key=f"config:{config.version}:region:7",
+        node_config_status="delete_in_progress",
+        reason_code="NODE_CONFIG_CLAIM:worker-a",
+    )
+    NodeMgmtSyncRegionState.objects.create(
+        config=config,
+        config_version=config.version,
+        cloud_region_id="8",
+        collect_task=failed_task,
+        scope_key=f"config:{config.version}:region:8",
+        node_config_status="delete_pending",
+    )
+    config.node_config_status = "healthy"
+    config.save(update_fields=["node_config_status", "updated_at"])
+
+    with patch.object(
+        CollectModelService, "delete_butch_node_params", side_effect=RuntimeError("rpc-failed"),
+    ):
+        result = _reconcile(config)
+
+    config.refresh_from_db()
+    assert result.node_config_status == "degraded"
+    assert config.node_config_status == "degraded"
+
+
+def test_invalid_region_still_degrades_when_valid_region_is_contended(config, region_task):
+    _create_region_task(
+        "invalid", system_code=f"{NodeMgmtSyncService.SYSTEM_TASK_PREFIX}bad-id",
+    )
+    NodeMgmtSyncRegionState.objects.create(
+        config=config,
+        config_version=config.version,
+        cloud_region_id="7",
+        collect_task=region_task,
+        scope_key=f"config:{config.version}:region:7",
+        node_config_status="delete_in_progress",
+        reason_code="NODE_CONFIG_CLAIM:worker-a",
+    )
+    config.node_config_status = "healthy"
+    config.save(update_fields=["node_config_status", "updated_at"])
+
+    result = _reconcile(config)
+
+    config.refresh_from_db()
+    assert result.node_config_status == "degraded"
+    assert config.node_config_status == "degraded"
+
+
+@pytest.mark.parametrize("failure_mode", ["finish", "rpc_failure"])
+def test_old_owner_claim_lost_cannot_pollute_new_owner_health(
+    config, region_task, failure_mode,
+):
+    state = NodeMgmtSyncRegionState.objects.create(
+        config=config,
+        config_version=config.version,
+        cloud_region_id="7",
+        collect_task=region_task,
+        scope_key=f"config:{config.version}:region:7",
+        node_config_status="delete_pending",
+    )
+    config.node_config_status = "degraded"
+    config.save(update_fields=["node_config_status", "updated_at"])
+
+    def new_owner_finishes(_task):
+        NodeMgmtSyncRegionState.objects.filter(pk=state.pk).update(
+            node_config_status="healthy", reason_code="", error_message="",
+        )
+        NodeMgmtSyncConfig.objects.filter(pk=config.pk).update(node_config_status="healthy")
+        if failure_mode == "rpc_failure":
+            raise RuntimeError("old-owner-rpc-failure")
+
+    with patch.object(
+        CollectModelService, "delete_butch_node_params", side_effect=new_owner_finishes,
+    ):
+        result = _reconcile(config)
+
+    config.refresh_from_db()
+    state.refresh_from_db()
+    assert result.node_config_status == "healthy"
+    assert config.node_config_status == "healthy"
+    assert state.node_config_status == "healthy"
+
+
+def test_collect_enabled_without_sync_waits_and_does_not_dispatch(config, region_task):
+    config.auto_sync_enabled = False
+    config.save(update_fields=["auto_sync_enabled", "updated_at"])
+
+    with patch.object(CollectModelService, "delete_butch_node_params") as delete:
+        with patch.object(CollectModelService, "push_butch_node_params") as push:
+            result = _reconcile(config)
+
+    assert result.node_config_status == "waiting_sync"
+    delete.assert_not_called()
+    push.assert_not_called()
+    config.refresh_from_db()
+    assert config.node_config_status == "waiting_sync"
+    assert NodeMgmtSyncRegionState.objects.count() == 0
+
+
+def test_no_region_task_reports_unknown_instead_of_healthy(config):
+    result = _reconcile(config)
+
+    config.refresh_from_db()
+    assert result.node_config_status == "unknown"
+    assert config.node_config_status == "unknown"
+    assert NodeMgmtSyncRegionState.objects.count() == 0
+
+
+def test_invalid_region_system_code_degrades_without_guessing_or_leaking(config, caplog):
+    _create_region_task("invalid", system_code=f"{NodeMgmtSyncService.SYSTEM_TASK_PREFIX}bad-id")
+
+    with patch.object(CollectModelService, "delete_butch_node_params") as delete:
+        with patch.object(CollectModelService, "push_butch_node_params") as push:
+            result = _reconcile(config)
+
+    assert result.node_config_status == "degraded"
+    assert result.error_code == "NODE_CONFIG_RECONCILE_FAILED"
+    assert "bad-id" not in result.error_message
+    assert "bad-id" not in caplog.text
+    delete.assert_not_called()
+    push.assert_not_called()
+    assert NodeMgmtSyncRegionState.objects.count() == 0
+
+
+def test_one_region_failure_degrades_aggregate_but_keeps_other_region_healthy(config, region_task):
+    other_task = _create_region_task(8)
+
+    def push(task):
+        if task.pk == other_task.pk:
+            raise TimeoutError("credential-secret")
+
+    with patch.object(CollectModelService, "delete_butch_node_params"):
+        with patch.object(CollectModelService, "push_butch_node_params", side_effect=push):
+            result = _reconcile(config)
+
+    assert result.node_config_status == "degraded"
+    assert _state(config, 7).node_config_status == "healthy"
+    failed = _state(config, 8)
+    assert failed.node_config_status == "push_pending"
+    assert "credential-secret" not in failed.error_message
+
+
+def test_stale_config_version_cannot_overwrite_current_health(config, region_task):
+    stale_config = NodeMgmtSyncConfig.objects.get(pk=config.pk)
+    NodeMgmtSyncConfig.objects.filter(pk=config.pk).update(
+        version=config.version + 1, node_config_status="waiting_sync",
+    )
+
+    with patch.object(CollectModelService, "delete_butch_node_params") as delete:
+        with patch.object(CollectModelService, "push_butch_node_params") as push:
+            _reconcile(stale_config)
+
+    config.refresh_from_db()
+    assert config.version == stale_config.version + 1
+    assert config.node_config_status == "waiting_sync"
+    assert not NodeMgmtSyncRegionState.objects.filter(config=stale_config).exists()
+    delete.assert_not_called()
+    push.assert_not_called()
+
+
+def test_collect_service_logs_do_not_include_node_payload_or_rpc_result(region_task):
+    node = SimpleNamespace(main=lambda **kwargs: {"credential": "node-secret"})
+    client = SimpleNamespace(
+        batch_add_node_child_config=lambda payload: {"raw": "push-secret"}, delete_child_configs=lambda payload: {"raw": "delete-secret"},
+    )
+    with patch(
+        "apps.cmdb.services.collect_service.NodeParamsFactory.get_node_params", return_value=node,
+    ):
+        with patch("apps.cmdb.services.collect_service.NodeMgmt", return_value=client):
+            with patch("apps.cmdb.services.collect_service.logger.debug") as debug:
+                CollectModelService.push_butch_node_params(region_task)
+                CollectModelService.delete_butch_node_params(region_task)
+
+    rendered = " ".join(str(value) for call in debug.call_args_list for value in call.args)
+    assert "node-secret" not in rendered
+    assert "push-secret" not in rendered
+    assert "delete-secret" not in rendered

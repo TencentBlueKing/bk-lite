@@ -15,7 +15,7 @@ import uuid
 from typing import Any, Optional
 
 from django.core.files.base import ContentFile
-from django.db import connections, models, transaction
+from django.db import models, transaction
 from django.db.models.signals import post_save
 from django_minio_backend import MinioBackend
 
@@ -182,20 +182,13 @@ class S3JSONField(models.CharField):
         if not self.delete_previous_on_update or not getattr(instance, "pk", None):
             return ""
 
-        meta = instance._meta
         db_alias = self._get_db_alias(instance)
-        connection = connections[db_alias]
-        quote_name = connection.ops.quote_name
-        query = f"SELECT {quote_name(self.column)} FROM {quote_name(meta.db_table)} WHERE {quote_name(meta.pk.column)} = %s"
-
-        with connection.cursor() as cursor:
-            cursor.execute(query, [instance.pk])
-            row = cursor.fetchone()
-
-        if not row:
-            return ""
-
-        value = row[0]
+        value = (
+            instance.__class__._base_manager.using(db_alias)
+            .filter(pk=instance.pk)
+            .values_list(self.attname, flat=True)
+            .first()
+        )
         return value if isinstance(value, str) else ""
 
     def _register_cleanup_task(self, instance, previous_path, current_path):

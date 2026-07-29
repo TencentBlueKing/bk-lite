@@ -385,7 +385,7 @@ def get_resource_events_timeline(resource_type, resource_name, namespace, hours=
 
 
 @tool()
-def analyze_pod_restart_pattern(namespace=None, min_restarts=3, config: RunnableConfig = None):
+def analyze_pod_restart_pattern(namespace=None, min_restarts: int = 3, config: RunnableConfig = None):
     """
     深度分析Pod重启模式，定位根本原因
 

@@ -8,7 +8,7 @@ import { isSilentRequestError } from '@/utils/request';
 import ModelItemModal from '@/app/opspilot/components/provider/modelItemModal';
 import { CONFIG_MAP, MODEL_TABS } from '@/app/opspilot/constants/provider';
 import type { Model, ModelVendor, ProviderResourceType } from '@/app/opspilot/types/provider';
-import { useTheme } from '@/context/theme';
+import { useThemeMode } from '@/theme';
 import { useTranslation } from '@/utils/i18n';
 
 const { Search } = Input;
@@ -26,8 +26,8 @@ const SECTION_TITLE_MAP: Record<ProviderResourceType, string> = {
   ocr_provider: '图像模型',
 };
 
-const getSectionStyleMap = (themeName: string): Record<ProviderResourceType, { topGlow: string; panelGlow: string; headerBg: string; sectionBg: string; tableBg: string; borderColor: string; shadow: string }> => {
-  const isDark = themeName === 'dark';
+const getSectionStyleMap = (mode: string): Record<ProviderResourceType, { topGlow: string; panelGlow: string; headerBg: string; sectionBg: string; tableBg: string; borderColor: string; shadow: string }> => {
+  const isDark = mode === 'dark';
 
   const shared = {
     topGlow: isDark
@@ -62,7 +62,7 @@ const EMPTY_MODELS: ModelSectionState = {
 
 const ProviderModelManagement: React.FC<ProviderModelManagementProps> = ({ vendorId }) => {
   const { t } = useTranslation();
-  const { themeName } = useTheme();
+  const { mode } = useThemeMode();
   const { fetchModelsByVendor, fetchModelDetail, addProvider, updateProvider, deleteProvider, fetchVendorDetail } = useProviderApi();
   const [loading, setLoading] = useState(false);
   const [searchValue, setSearchValue] = useState('');
@@ -116,7 +116,7 @@ const ProviderModelManagement: React.FC<ProviderModelManagementProps> = ({ vendo
     }, { ...EMPTY_MODELS });
   }, [modelsByType, searchValue]);
 
-  const sectionStyleMap = useMemo(() => getSectionStyleMap(themeName), [themeName]);
+  const sectionStyleMap = useMemo(() => getSectionStyleMap(mode), [mode]);
 
   const openAddModal = (type: ProviderResourceType) => {
     setModalType(type);

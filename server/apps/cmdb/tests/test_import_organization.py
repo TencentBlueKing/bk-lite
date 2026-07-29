@@ -1,6 +1,6 @@
 """CMDB Import _resolve_organization_ids + _process_cell_value + format_excel_data 关联分支。
 
-对照 spec/prd/CMDB·实例导入：组织字段（名称/路径）解析与范围校验、单元格值统一路由、
+对照 specs/capabilities/legacy-prd-cmdb-资产.md·实例导入：组织字段（名称/路径）解析与范围校验、单元格值统一路由、
 导入流程中关联字段的 sheet 解析。
 """
 

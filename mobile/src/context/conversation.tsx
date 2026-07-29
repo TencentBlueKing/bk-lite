@@ -22,7 +22,6 @@ export interface SessionState {
  */
 interface StreamController {
     abort: () => void;
-    isRunning: boolean;
 }
 
 /**
@@ -309,6 +308,22 @@ class ConversationManager {
         // 先取消正在进行的流式请求
         this.abortStream(sessionId);
         this.sessions.delete(sessionId);
+        const orderIndex = this.accessOrder.indexOf(sessionId);
+        if (orderIndex > -1) {
+            this.accessOrder.splice(orderIndex, 1);
+        }
+        this.notifyListeners();
+    }
+
+    /**
+     * 清理当前账号的全部会话状态，用于登出、401 与账号切换。
+     */
+    clearAll(): void {
+        this.streamControllers.forEach((controller) => controller.abort());
+        this.streamControllers.clear();
+        this.sessions.clear();
+        this.accessOrder = [];
+        this._runningSessionIdsCache = [];
         this.notifyListeners();
     }
 
@@ -414,28 +429,32 @@ class ConversationManager {
             ]);
         }
 
-        // 创建取消控制器
-        let aborted = false;
+        // 同一会话只保留一条活跃流，并将取消传递到底层请求。
+        this.abortStream(sessionId);
+        const abortController = new AbortController();
         const controller: StreamController = {
-            abort: () => { aborted = true; },
-            isRunning: true,
+            abort: () => abortController.abort(),
         };
         this.streamControllers.set(sessionId, controller);
 
-        // 启动流式处理
-        await this.handleAGUIEventStream(
-            sessionId,
-            bot,
-            nodeId,
-            userMessage,
-            aiMsgId,
-            renderMarkdown,
-            errorMessage,
-            () => aborted
-        );
-
-        // 清理控制器
-        this.streamControllers.delete(sessionId);
+        try {
+            await this.handleAGUIEventStream(
+                sessionId,
+                bot,
+                nodeId,
+                userMessage,
+                aiMsgId,
+                renderMarkdown,
+                errorMessage,
+                abortController.signal,
+            );
+        } finally {
+            // 仅允许当前流收尾，避免旧流结束时覆盖同一会话的新请求状态。
+            if (this.streamControllers.get(sessionId) === controller) {
+                this.streamControllers.delete(sessionId);
+                this.setAIRunning(sessionId, false);
+            }
+        }
     }
 
     /**
@@ -449,7 +468,7 @@ class ConversationManager {
         aiMsgId: string,
         renderMarkdown: RenderMarkdownFn,
         errorMessage: string,
-        isAborted: () => boolean
+        signal: AbortSignal,
     ): Promise<void> {
         let thinkingAccumulated = '';
         let currentTextSegmentIndex = 0;
@@ -458,11 +477,11 @@ class ConversationManager {
         const toolArgsAccumulated: Record<string, string> = {};
 
         try {
-            const eventStream = aiChatStream(bot, nodeId, userMessage, sessionId);
+            const eventStream = aiChatStream(bot, nodeId, userMessage, sessionId, { signal });
 
             for await (const event of eventStream) {
                 // 检查是否已取消
-                if (isAborted()) {
+                if (signal.aborted) {
                     return;
                 }
 
@@ -695,10 +714,17 @@ class ConversationManager {
                             })
                         );
                         this.setAIRunning(sessionId, false);
-                        break;
+                        return;
                 }
             }
+
+            if (!signal.aborted) {
+                throw new Error('AI response stream ended before RUN_FINISHED');
+            }
         } catch (error) {
+            if (signal.aborted || (error instanceof Error && error.name === 'AbortError')) {
+                return;
+            }
             console.error('API 事件流处理错误:', error);
             this.setAIRunning(sessionId, false);
 
@@ -710,7 +736,8 @@ class ConversationManager {
                             ? {
                                 ...msg,
                                 message: errorMessage,
-                                status: 'ended' as const,
+                                status: 'interrupted' as const,
+                                streamError: errorMessage,
                             }
                             : msg
                     );
@@ -720,7 +747,8 @@ class ConversationManager {
                         {
                             id: aiMsgId,
                             message: errorMessage,
-                            status: 'ended' as const,
+                            status: 'interrupted' as const,
+                            streamError: errorMessage,
                             timestamp: Date.now(),
                         }
                     ];

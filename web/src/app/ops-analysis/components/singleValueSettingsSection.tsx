@@ -213,6 +213,24 @@ export const SingleValueSettingsSection: React.FC<
         />
       </Form.Item>
 
+      <Form.Item
+        noStyle
+        shouldUpdate={(prev, current) => prev.compare !== current.compare}
+      >
+        {({ getFieldValue }) => getFieldValue('compare') ? (
+          <Form.Item label={t('dashboard.compareMode')} name="compareMode">
+            <Select
+              disabled={readonly}
+              style={{ width: '200px' }}
+              options={[
+                { value: 'percent', label: t('dashboard.compareModePercent') },
+                { value: 'value', label: t('dashboard.compareModeValue') },
+              ]}
+            />
+          </Form.Item>
+        ) : null}
+      </Form.Item>
+
       <Form.Item label={t('topology.nodeConfig.unit')} name="unitId">
         <Select
           allowClear

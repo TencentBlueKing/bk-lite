@@ -1,6 +1,6 @@
 """CMDB 字段分组视图覆盖测试（patch FieldGroupService/ModelManage + 真实 FieldGroup DB）。
 
-对照 spec/prd/CMDB·模型管理：字段分组的增删改查、移动排序、批量调整归组、模型完整信息。
+对照 specs/capabilities/legacy-prd-cmdb-模型管理.md：字段分组的增删改查、移动排序、批量调整归组、模型完整信息。
 """
 
 import json

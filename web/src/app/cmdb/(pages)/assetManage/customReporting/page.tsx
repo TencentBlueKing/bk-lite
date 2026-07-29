@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import Introduction from '@/app/cmdb/components/introduction';
+import Introduction from '@/components/introduction';
 import { useTranslation } from '@/utils/i18n';
 import TaskTable from './components/taskTable';
 import TaskWizard from './components/taskWizard';

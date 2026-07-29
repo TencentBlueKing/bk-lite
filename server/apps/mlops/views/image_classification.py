@@ -554,19 +554,15 @@ class ImageClassificationTrainJobViewSet(TeamModelViewSet):
             logger.info(f"开始下载模型: run_id={run_id}")
 
             # 下载模型并打包为 ZIP
-            zip_buffer = mlflow_service.download_model_artifact(run_id=run_id, artifact_path="model")
+            zip_stream = mlflow_service.download_model_artifact(run_id=run_id, artifact_path="model")
 
             # 构造文件名
             filename = f"model_{run_id}.zip"
 
             # 返回文件响应
-            from django.http import HttpResponse
+            response = mlflow_service.build_model_download_response(zip_stream, filename)
 
-            response = HttpResponse(zip_buffer.getvalue(), content_type="application/zip")
-            response["Content-Disposition"] = f'attachment; filename="{filename}"'
-            response["Content-Length"] = len(zip_buffer.getvalue())
-
-            logger.info(f"模型下载成功: run_id={run_id}, size={len(zip_buffer.getvalue())} bytes")
+            logger.info(f"模型下载成功: run_id={run_id}, size={response['Content-Length']} bytes")
             return response
 
         except Exception as e:
@@ -580,13 +576,10 @@ class ImageClassificationTrainJobViewSet(TeamModelViewSet):
     @HasPermission("image_classification-View")
     def get_run_data_list(self, request, pk=None):
         try:
-            # 获取分页参数
-            page = int(request.GET.get("page", 1))
-            page_size = request.GET.get("page_size")
-            # page_size 为 None、0、-1 时不分页
-            use_pagination = page_size is not None and page_size not in ["0", "-1"]
-            if use_pagination:
-                page_size = int(page_size)
+            pagination = self.parse_run_list_pagination(request)
+            if pagination is None:
+                return Response({"error": "分页参数必须为正整数"}, status=status.HTTP_400_BAD_REQUEST)
+            page, page_size, use_pagination = pagination
 
             # 获取训练任务
             train_job = self.get_object()

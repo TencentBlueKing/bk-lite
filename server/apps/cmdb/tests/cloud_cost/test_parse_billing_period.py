@@ -5,7 +5,7 @@
 - 纯 date / naive ISO datetime / Z 后缀 / 带偏移量 / 反向 swap / 跨日 / 失败路径
 - 与 transaction_log.billing_date 的存储层语义对齐(UTC 日历日)
 
-TDD 用例:见 openspec/changes/fix-cloud-cost-billing-period-parsing/design.md §6。
+TDD 用例：本文件直接锁定账期解析的外部行为。
 """
 from datetime import date
 

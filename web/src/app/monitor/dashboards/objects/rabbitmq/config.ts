@@ -50,8 +50,8 @@ export const RABBITMQ_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       name: 'rabbitmq_overview_messages_published_rate',
       display_name: '消息发布速率',
       description: 'RabbitMQ 消息发布速率，反映生产侧写入压力。',
-      unit: 'counts',
-      query: 'rate(rabbitmq_overview_messages_published{__$labels__}[5m])',
+      unit: 'cps',
+      query: 'rate(rabbitmq_overview_messages_published{__$labels__}[__$window__])',
       color: '#27c274'
     },
     // ── Diagnostics (phase 2) ──
@@ -155,8 +155,8 @@ export const RABBITMQ_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       name: 'rabbitmq_node_mnesia_disk_tx_count_rate',
       display_name: 'Mnesia 磁盘事务速率',
       description: 'RabbitMQ Mnesia 数据库磁盘事务速率。',
-      unit: 'counts',
-      query: 'rate(rabbitmq_node_mnesia_disk_tx_count{__$labels__}[5m])',
+      unit: 'cps',
+      query: 'rate(rabbitmq_node_mnesia_disk_tx_count{__$labels__}[__$window__])',
       color: '#13c2c2'
     },
     {
@@ -246,7 +246,7 @@ export const RABBITMQ_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       compareFavorableDirection: 'down',
       guide: [{ label: '消息积压', detail: '等待消费的 ready 消息。持续上升说明生产快于消费，需扩消费者或排查消费阻塞。' }],
       footer: [
-        { label: '发布速率', metric: 'rabbitmq_overview_messages_published_rate', unit: 'counts' },
+        { label: '发布速率', metric: 'rabbitmq_overview_messages_published_rate', unit: 'cps' },
         { label: '消费者', metric: 'rabbitmq_overview_consumers', unit: 'counts' }
       ]
     }
@@ -269,9 +269,9 @@ export const RABBITMQ_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       guide: [{ label: '消息流转', detail: '对比总消息、ready、未确认与发布速率，识别积压结构是堆积未消费还是确认滞后。' }],
       series: [
         { metric: 'rabbitmq_overview_messages', label: '总消息', color: '#2f6bff', unit: 'counts' },
-        { metric: 'rabbitmq_overview_messages_ready', label: 'Ready', color: '#ff8a1f', unit: 'counts' },
-        { metric: 'rabbitmq_overview_messages_unacked', label: '未确认', color: '#faad14', unit: 'counts' },
-        { metric: 'rabbitmq_overview_messages_published_rate', label: '发布速率', color: '#27c274', unit: 'counts' }
+        { metric: 'rabbitmq_overview_messages_ready', label: '待消费', color: '#ff8a1f', unit: 'counts' },
+        { metric: 'rabbitmq_overview_messages_unacked', label: '未确认', color: '#8a5cff', unit: 'counts' },
+        { metric: 'rabbitmq_overview_messages_published_rate', label: '发布速率', color: '#27c274', unit: 'cps' }
       ]
     },
     {
@@ -292,7 +292,7 @@ export const RABBITMQ_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       guide: [{ label: '节点负载', detail: '运行队列反映 CPU 排队压力，Mnesia 事务速率反映元数据写盘压力。' }],
       series: [
         { metric: 'rabbitmq_node_run_queue', label: '运行队列', color: '#ff8a1f', unit: 'counts' },
-        { metric: 'rabbitmq_node_mnesia_disk_tx_count_rate', label: 'Mnesia 事务', color: '#13c2c2', unit: 'counts' }
+        { metric: 'rabbitmq_node_mnesia_disk_tx_count_rate', label: 'Mnesia 事务', color: '#13c2c2', unit: 'cps' }
       ]
     }
   ],

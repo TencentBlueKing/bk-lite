@@ -7,6 +7,7 @@ external boundaries: ``mlflow_service`` (MLflow tracking server),
 ``WebhookClient`` (webhookd / docker), ``requests`` (predict HTTP call) and the
 config helpers (env vars).
 """
+import asyncio
 import importlib
 import types
 from io import BytesIO
@@ -25,6 +26,10 @@ from apps.mlops.utils.webhook_client import WebhookError
 pytestmark = [pytest.mark.django_db, pytest.mark.integration]
 
 factory = APIRequestFactory()
+
+
+async def _consume_streaming_response(response):
+    return b"".join([chunk async for chunk in response])
 
 
 # Each tuple: (module suffix, MLflow prefix, model module, class basename)
@@ -595,17 +600,25 @@ def test_download_model_run_not_found(monkeypatch, superuser, suffix, prefix, mo
 def test_download_model_success(monkeypatch, superuser, suffix, prefix, model_module, basename):
     tj = _make_train_job(model_module, basename)
     mod = _view_module(suffix)
+    archive = BytesIO(b"zipdata")
     _patch_mlflow(
         monkeypatch, suffix,
         get_experiment_by_name=lambda name: types.SimpleNamespace(experiment_id="1"),
         get_experiment_runs=lambda eid, **kw: _runs_frame([{"run_id": "r1"}]),
-        download_model_artifact=lambda run_id, artifact_path=None: BytesIO(b"zipdata"),
+        download_model_artifact=lambda run_id, artifact_path=None: archive,
     )
     view = getattr(mod, f"{basename}TrainJobViewSet").as_view({"get": "download_model"})
     request = factory.get(f"/{suffix}_train_jobs/x/runs/r1/download_model/")
     resp = _call(view, request, superuser, pk=tj.id, run_id="r1")
     assert resp.status_code == status.HTTP_200_OK
     assert resp["Content-Type"] == "application/zip"
+    assert resp["Content-Length"] == "7"
+    assert ".zip" in resp["Content-Disposition"]
+    assert resp.streaming
+    assert resp.is_async
+    assert asyncio.run(_consume_streaming_response(resp)) == b"zipdata"
+    resp.close()
+    assert archive.closed
 
 
 # =========================================================================

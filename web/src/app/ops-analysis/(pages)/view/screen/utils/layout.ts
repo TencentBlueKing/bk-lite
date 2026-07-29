@@ -16,12 +16,15 @@ import type {
   ScreenWidgetChartType,
   ScreenWidgetItem,
 } from "@/app/ops-analysis/types/screen";
+import type { DateRangeValue } from "@/app/ops-analysis/types/dateRange";
 import { buildRelativeTimeRangeFilterValue } from "@/app/ops-analysis/utils/filterValue";
 import {
+  type BindableParamType,
   buildDefaultFilterBindings,
   getBindableFilterParams,
   getFilterDefinitionId,
 } from "@/app/ops-analysis/utils/widgetDataTransform";
+import { validateDateRangeValue } from "@/app/ops-analysis/utils/dateRange";
 import { getScreenWidgetDefinition } from "../constants/widgets";
 
 const DEFAULT_INSERT_X = 48;
@@ -39,11 +42,25 @@ export const normalizeScreenWidgetAppearance = (
   frame: appearance?.frame === "bare" ? "bare" : "panel",
 });
 
+export const canConfigureScreenWidgetFrame = (
+  chartType?: ScreenWidgetChartType | string,
+) => chartType === "room3D";
+
 export const getDefaultScreenWidgetAppearance = (
   chartType?: ScreenWidgetChartType | string,
 ): Required<ScreenWidgetAppearance> => ({
-  frame: chartType === "room3D" ? "bare" : "panel",
+  frame: canConfigureScreenWidgetFrame(chartType) ? "bare" : "panel",
 });
+
+export const resolveScreenWidgetAppearance = (
+  chartType?: ScreenWidgetChartType | string,
+  appearance?: ScreenWidgetAppearance,
+): Required<ScreenWidgetAppearance> =>
+  canConfigureScreenWidgetFrame(chartType)
+    ? appearance
+      ? normalizeScreenWidgetAppearance(appearance)
+      : getDefaultScreenWidgetAppearance(chartType)
+    : getDefaultScreenWidgetAppearance(chartType);
 
 export const isScreenItemInsideViewport = (
   item: ScreenItem,
@@ -96,7 +113,7 @@ export const buildFiltersFromScreenItems = ({
 }): UnifiedFilterDefinition[] => {
   const discoveredParams = new Map<
     string,
-    ParamItem & { type: "string" | "timeRange" }
+    ParamItem & { type: BindableParamType }
   >();
 
   viewSets.items.forEach((item) => {
@@ -136,6 +153,13 @@ export const buildFiltersFromScreenItems = ({
           param.type === "timeRange" && typeof param.value === "number"
             ? buildRelativeTimeRangeFilterValue(param.value)
             : (param.value as UnifiedFilterDefinition["defaultValue"]);
+      }
+
+      if (param.type === "dateRange") {
+        defaultValue = validateDateRangeValue(defaultValue).valid
+          && defaultValue !== null
+          ? { ...(defaultValue as DateRangeValue) }
+          : null;
       }
 
       return {
@@ -244,7 +268,6 @@ export const createScreenWidgetItem = (
     zIndex: getNextZIndex(existingItems),
     valueConfig: {
       chartType,
-      chartThemeMode: "screen-dark",
       appearance: getDefaultScreenWidgetAppearance(chartType),
       ...(chartType === "networkStatusTopology"
         ? { sceneWidgetType: "networkStatusTopology" as const }
@@ -285,9 +308,10 @@ export const addConfiguredScreenWidget = (
           ...item.valueConfig,
           ...values,
           chartType,
-          chartThemeMode: "screen-dark",
-          appearance:
-            values.appearance || getDefaultScreenWidgetAppearance(chartType),
+          appearance: resolveScreenWidgetAppearance(
+            chartType,
+            values.appearance,
+          ),
           ...(chartType === "networkStatusTopology"
             ? { sceneWidgetType: "networkStatusTopology" as const }
             : {}),

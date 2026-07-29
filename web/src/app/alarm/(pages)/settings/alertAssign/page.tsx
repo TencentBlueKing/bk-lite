@@ -6,18 +6,25 @@ import OperateModal from './components/operateModal';
 import CustomTable from '@/components/custom-table';
 import PermissionWrapper from '@/components/permission';
 import UserAvatar from '@/components/user-avatar';
-import Introduction from '@/app/alarm/components/introduction';
+import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
+import Introduction from '@/components/introduction';
 import { STATUS_TEXT } from '@/app/alarm/constants/colors';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import { AlertAssignListItem } from '@/app/alarm/types/settings';
 import { useSettingApi } from '@/app/alarm/api/settings';
-import { Button, Input, Switch } from 'antd';
+import { Button, Input, Switch, Tag } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import { typeLabel, weekMap } from '@/app/alarm/constants/settings';
 import { useSettingsTable } from '@/app/alarm/hooks/useSettingsTable';
+import { useUserInfoContext } from '@/context/userInfo';
+import {
+  getNotificationTargetFormValue,
+  getOrganizationTargetLabels,
+} from './components/notificationTarget';
 
 const AlertAssign: React.FC = () => {
   const { t } = useTranslation();
+  const { groupTree } = useUserInfoContext();
   const { getAssignmentList, deleteAssignment, patchAssignment } = useSettingApi();
   const { convertToLocalizedTime } = useLocalizedTime();
 
@@ -59,9 +66,46 @@ const AlertAssign: React.FC = () => {
       shouldCellUpdate: (
         prev: AlertAssignListItem,
         next: AlertAssignListItem
-      ) => prev?.personnel?.join(',') !== next?.personnel?.join(','),
-      render: (_: unknown, { personnel }: AlertAssignListItem) =>
-        personnel ? <UserAvatar userName={personnel.join(',')} /> : '--',
+      ) =>
+        prev?.personnel?.join(',') !== next?.personnel?.join(',') ||
+        JSON.stringify(prev.config?.notification_target) !==
+          JSON.stringify(next.config?.notification_target),
+      render: (_: unknown, row: AlertAssignListItem) => {
+        const target = getNotificationTargetFormValue(
+          row.config?.notification_target,
+          row.personnel,
+        );
+        if (target.target_type === 'user') {
+          return target.personnel.length > 0 ? (
+            <UserAvatar userName={target.personnel.join(',')} />
+          ) : '--';
+        }
+        const labels = getOrganizationTargetLabels(
+          groupTree,
+          target.organization_ids,
+          (id) =>
+            t('settings.assignStrategy.invalidOrganization', undefined, {
+              id: String(id),
+            }),
+        );
+        return (
+          <div className="flex flex-wrap gap-1">
+            {labels.map((label) => (
+              <Tag key={label}>
+                <EllipsisWithTooltip
+                  text={label}
+                  className="max-w-[140px] overflow-hidden text-ellipsis whitespace-nowrap"
+                />
+              </Tag>
+            ))}
+            {target.include_children ? (
+              <Tag>
+                {t('settings.assignStrategy.includesChildren')}
+              </Tag>
+            ) : null}
+          </div>
+        );
+      },
     },
     {
       title: t('settings.assignTime'),
@@ -154,7 +198,7 @@ const AlertAssign: React.FC = () => {
         </div>
       ),
     },
-  ], [t, loadingIds, handleStatusToggle, handleEdit, handleDelete, convertToLocalizedTime]);
+  ], [t, groupTree, loadingIds, handleStatusToggle, handleEdit, handleDelete, convertToLocalizedTime]);
 
   return (
     <>

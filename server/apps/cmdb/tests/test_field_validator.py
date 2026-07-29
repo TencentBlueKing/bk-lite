@@ -1,6 +1,6 @@
 """CMDB 字段校验器覆盖测试。
 
-对照 spec/prd/CMDB·模型管理/资产：实例字段按类型(str/int/float/table/org/user/time/enum)校验。
+对照 specs/capabilities/legacy-prd-cmdb-模型管理.md：实例字段按类型(str/int/float/table/org/user/time/enum)校验。
 """
 
 import pytest

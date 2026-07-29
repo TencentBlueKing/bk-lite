@@ -7,6 +7,7 @@ import {
   FullscreenOutlined,
   FullscreenExitOutlined,
   EditOutlined,
+  ShareAltOutlined,
 } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import TimeSelector from '@/components/time-selector';
@@ -15,6 +16,9 @@ export interface NetworkToolbarProps {
   editMode: boolean;
   dirty: boolean;
   saving: boolean;
+  shareMode?: boolean;
+  shareLoading?: boolean;
+  onOpenShare?: () => void;
   /** 节点缩放 / 自适应。 */
   onZoomIn?: () => void;
   onZoomOut?: () => void;
@@ -50,6 +54,9 @@ const NetworkToolbar: React.FC<NetworkToolbarProps> = ({
   editMode,
   dirty,
   saving,
+  shareMode = false,
+  shareLoading = false,
+  onOpenShare,
   onZoomIn,
   onZoomOut,
   onFit,
@@ -122,46 +129,65 @@ const NetworkToolbar: React.FC<NetworkToolbarProps> = ({
         )}
       </div>
 
-      <TimeSelector
-        onlyRefresh
-        onRefresh={onRefresh}
-        onFrequenceChange={onFrequencyChange}
-        className="network-topology-refresh"
-      />
+      {!shareMode && (
+        <TimeSelector
+          onlyRefresh
+          onRefresh={onRefresh}
+          onFrequenceChange={onFrequencyChange}
+          className="network-topology-refresh"
+        />
+      )}
 
-      <div className="ml-2">
-        {editMode ? (
-          <div className="flex items-center gap-2">
-            <Button
-              onClick={onCancelEdit}
-              className="rounded-full!"
-              data-testid="network-toolbar-cancel-edit"
-            >
-              {t('opsAnalysis.networkTopology.actions.cancel')}
-            </Button>
-            <Button
-              type="primary"
-              onClick={onSave}
-              loading={saving}
-              disabled={!dirty}
-              className="rounded-full!"
-              data-testid="network-toolbar-save"
-            >
-              {t('opsAnalysis.networkTopology.actions.save')}
-            </Button>
-          </div>
-        ) : (
-          <Tooltip title={t('opsAnalysis.networkTopology.toolbar.edit')}>
-            <Button
-              type="text"
-              icon={<EditOutlined style={{ fontSize: 16 }} />}
-              onClick={onEnterEdit}
-              className="rounded-full!"
-              data-testid="network-toolbar-enter-edit"
-            />
-          </Tooltip>
-        )}
-      </div>
+      {!shareMode && !editMode && onOpenShare && (
+        <Tooltip title={t('dashboard.share')}>
+          <Button
+            type="text"
+            icon={<ShareAltOutlined style={{ fontSize: 16 }} />}
+            loading={shareLoading}
+            disabled={shareLoading}
+            aria-label={t('dashboard.share')}
+            onClick={onOpenShare}
+            className={iconButtonClassName}
+            data-testid="network-toolbar-share"
+          />
+        </Tooltip>
+      )}
+
+      {!shareMode && (
+        <div className="ml-2">
+          {editMode ? (
+            <div className="flex items-center gap-2">
+              <Button
+                onClick={onCancelEdit}
+                className="rounded-full!"
+                data-testid="network-toolbar-cancel-edit"
+              >
+                {t('opsAnalysis.networkTopology.actions.cancel')}
+              </Button>
+              <Button
+                type="primary"
+                onClick={onSave}
+                loading={saving}
+                disabled={!dirty}
+                className="rounded-full!"
+                data-testid="network-toolbar-save"
+              >
+                {t('opsAnalysis.networkTopology.actions.save')}
+              </Button>
+            </div>
+          ) : (
+            <Tooltip title={t('opsAnalysis.networkTopology.toolbar.edit')}>
+              <Button
+                type="text"
+                icon={<EditOutlined style={{ fontSize: 16 }} />}
+                onClick={onEnterEdit}
+                className="rounded-full!"
+                data-testid="network-toolbar-enter-edit"
+              />
+            </Tooltip>
+          )}
+        </div>
+      )}
     </div>
   );
 };

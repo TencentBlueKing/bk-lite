@@ -1,0 +1,10 @@
+.header {
+  flex: 0 0 auto;
+  padding-top: var(--safe-area-inset-top);
+  background: var(--color-page-header-bg);
+  border-bottom: 1px solid var(--color-border-1);
+}
+
+.content {
+  min-height: var(--mobile-header-height);
+}

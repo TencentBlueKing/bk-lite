@@ -7,6 +7,11 @@
 import { execSync } from 'child_process';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import nextEnv from '@next/env';
+
+import { resolveBuildSettings } from './mobile-build-config.mjs';
+
+const { loadEnvConfig } = nextEnv;
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -26,8 +31,18 @@ const command = isWindows
     : `bash ${script} ${args}`;
 
 try {
+    loadEnvConfig(process.cwd(), false);
+    const settings = resolveBuildSettings({ target: 'tauri', env: process.env });
+
     // 执行构建脚本
-    execSync(command, { stdio: 'inherit', cwd: process.cwd() });
+    execSync(command, {
+        stdio: 'inherit',
+        cwd: process.cwd(),
+        env: settings.env,
+    });
 } catch (error) {
+    if (error instanceof Error && !('status' in error)) {
+        console.error(error.message);
+    }
     process.exit(error.status || 1);
 }

@@ -3,6 +3,7 @@ import json
 import uuid
 
 import nats_client
+from django.db import transaction
 from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.models import Bot, BotConversationHistory, BotWorkFlow, EmbedProvider, LLMModel, LLMSkill, OCRProvider, RerankProvider, SkillTools
 from apps.opspilot.models.bot_mgmt import BotWebChatSession
@@ -123,6 +124,16 @@ def _normalize_nats_trigger_input(message, team, user_ids, bot_id, node_id):
     }, None
 
 
+def _grant_provider_team_access(model, name, group_id):
+    provider = model.objects.select_for_update().get(name=name, is_build_in=True)
+    team = list(provider.team or [])
+    if group_id not in team:
+        team.append(group_id)
+        provider.team = team
+        provider.save(update_fields=["team"])
+    return provider
+
+
 @nats_client.register
 def get_opspilot_module_list():
     return [
@@ -180,37 +191,16 @@ def get_opspilot_module_data(module, child_module, page, page_size, group_id):
 
 @nats_client.register
 def get_guest_provider(group_id):
-    default_llm_model = LLMModel.objects.get(name="GPT-4o", is_build_in=True)
-    if group_id not in default_llm_model.team:
-        default_llm_model.team.append(group_id)
-        default_llm_model.save()
-    rerank_model = RerankProvider.objects.get(name="bce-reranker-base_v1", is_build_in=True)
-    if group_id not in rerank_model.team:
-        rerank_model.team.append(group_id)
-        rerank_model.save()
-
-    embed_model_1 = EmbedProvider.objects.get(name="bce-embedding-base_v1", is_build_in=True)
-    if group_id not in embed_model_1.team:
-        embed_model_1.team.append(group_id)
-        embed_model_1.save()
-    embed_model_2 = EmbedProvider.objects.get(name="FastEmbed(BAAI/bge-small-zh-v1.5)", is_build_in=True)
-    if group_id not in embed_model_2.team:
-        embed_model_2.team.append(group_id)
-        embed_model_2.save()
-
-    paddle_ocr = OCRProvider.objects.get(name="PaddleOCR", is_build_in=True)
-    if group_id not in paddle_ocr.team:
-        paddle_ocr.team.append(group_id)
-        paddle_ocr.save()
-
-    azure_ocr = OCRProvider.objects.get(name="AzureOCR", is_build_in=True)
-    if group_id not in azure_ocr.team:
-        azure_ocr.team.append(group_id)
-        azure_ocr.save()
-    olm_ocr = OCRProvider.objects.get(name="OlmOCR", is_build_in=True)
-    if group_id not in olm_ocr.team:
-        olm_ocr.team.append(group_id)
-        olm_ocr.save()
+    with transaction.atomic():
+        default_llm_model = _grant_provider_team_access(LLMModel, "GPT-4o", group_id)
+        rerank_model = _grant_provider_team_access(RerankProvider, "bce-reranker-base_v1", group_id)
+        embed_model_1 = _grant_provider_team_access(EmbedProvider, "bce-embedding-base_v1", group_id)
+        embed_model_2 = _grant_provider_team_access(
+            EmbedProvider, "FastEmbed(BAAI/bge-small-zh-v1.5)", group_id
+        )
+        paddle_ocr = _grant_provider_team_access(OCRProvider, "PaddleOCR", group_id)
+        azure_ocr = _grant_provider_team_access(OCRProvider, "AzureOCR", group_id)
+        olm_ocr = _grant_provider_team_access(OCRProvider, "OlmOCR", group_id)
     return {
         "result": True,
         "data": {

@@ -14,6 +14,7 @@
       "type": "input",
       "required": true,
       "description": "用于访问接口的用户名",
+      "guide_short": "建议使用只读监控账号，至少具备 v$session、v$sysstat、v$database 等动态性能视图的 SELECT 权限。",
       "widget_props": {
         "placeholder": "用户名",
         "placeholder_en": "Username"
@@ -30,6 +31,7 @@
       "type": "password",
       "required": true,
       "description": "对应的登录密码",
+      "guide_short": "填写与用户名对应的登录密码，注意不要带入首尾空格；特殊字符无需额外转义。",
       "widget_props": {
         "placeholder": "密码",
         "placeholder_en": "Password"
@@ -46,6 +48,7 @@
       "type": "input",
       "required": true,
       "description": "要监控的服务名称，确保其与实际运行的服务一致",
+      "guide_short": "填写 Oracle 的 service_name（不是 SID），可用 sqlplus <user>/<pass>@//<host>:<port>/<service_name> 验证。",
       "widget_props": {
         "placeholder": "服务名称",
         "placeholder_en": "Service Name"
@@ -62,6 +65,7 @@
       "required": true,
       "visible_in": "edit",
       "description": "指定程序运行时应监听的端口号，用于接受外部请求和连接",
+      "guide_short": "Oracle-Exporter 在采集节点本地暴露 /metrics 的端口，不是 Oracle 数据库端口（默认 1521）；确认未被占用，可通过 curl http://127.0.0.1:<监听端口>/metrics 验证。",
       "widget_props": {
         "min": 1,
         "precision": 0,
@@ -80,6 +84,7 @@
       "required": true,
       "visible_in": "edit",
       "description": "与设备进行通信的主机",
+      "guide_short": "填写 Oracle 数据库所在的主机 IP 或域名，需确保采集节点可通过 sqlplus 访问。",
       "widget_props": {
         "placeholder": "主机地址"
       },
@@ -95,6 +100,7 @@
       "required": true,
       "visible_in": "edit",
       "description": "与设备进行通信的端口",
+      "guide_short": "Oracle 数据库监听端口，默认 1521；与 Oracle-Exporter 本地监听端口不同，勿混淆。",
       "widget_props": {
         "min": 1,
         "precision": 0,
@@ -113,6 +119,7 @@
       "required": true,
       "default_value": 60,
       "description": "监控数据的采集时间间隔（单位：秒）",
+      "guide_short": "默认 60 秒；过低会增加 Oracle 数据库与 exporter 压力，过高会延误告警。",
       "widget_props": {
         "min": 1,
         "precision": 0,

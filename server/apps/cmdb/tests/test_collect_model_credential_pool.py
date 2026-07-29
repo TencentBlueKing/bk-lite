@@ -4,7 +4,7 @@ import pytest
 
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.cmdb.models.collect_model import CollectModels
-from apps.cmdb.serializers.collect_serializer import CollectModelSerializer
+from apps.cmdb.serializers.collect_serializer import CollectModelLIstSerializer, CollectModelSerializer
 from apps.cmdb.services.collect_credential_pool_service import CollectCredentialPoolService
 from apps.cmdb.services.collect_service import CollectModelService
 
@@ -38,6 +38,7 @@ def test_collect_model_serializer_masks_each_credential_password(monkeypatch):
     instance = CollectModels(
         model_id="host",
         driver_type="job",
+        execution_claim_token="must-not-leak",
         credential=[
             {"credential_id": "cred-1", "password": "enc:first", "username": "admin"},
             {"credential_id": "cred-2", "password": "enc:second", "username": "ops"},
@@ -62,6 +63,10 @@ def test_collect_model_serializer_masks_each_credential_password(monkeypatch):
 
     assert data["credential"][0]["password"] == "******"
     assert data["credential"][1]["password"] == "******"
+    assert "execution_claim_token" not in data
+
+    list_data = CollectModelLIstSerializer(instance=instance, context={"request": request}).data
+    assert "execution_claim_token" not in list_data
 
 
 def test_collect_model_service_format_update_credential_supports_pool():

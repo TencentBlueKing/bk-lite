@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import styles from './index.module.scss';
 import OperateOid from './components/operateOid';
 import CustomTable from '@/components/custom-table';
-import Introduction from '@/app/cmdb/components/introduction';
+import Introduction from '@/components/introduction';
 import PermissionWrapper from '@/components/permission';
 import { getNetworkDeviceOptions } from '@/app/cmdb/constants/professCollection';
 import { Button, Input, Select, Modal, message, Space } from 'antd';

@@ -1,6 +1,6 @@
 """CMDB 显示字段处理器覆盖测试（build_display_fields + _to_display 私有方法 + InstanceTaskPermission）。
 
-对照 spec/prd/CMDB·资产：实例创建/更新时自动维护 _display 冗余字段、按类型转换、降级路径。
+对照 specs/capabilities/legacy-prd-cmdb-资产.md：实例创建/更新时自动维护 _display 冗余字段、按类型转换、降级路径。
 """
 
 from types import SimpleNamespace

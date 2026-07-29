@@ -1,4 +1,3 @@
-from django.db import connection
 from django.db.models import Q
 from rest_framework.exceptions import PermissionDenied
 
@@ -6,6 +5,7 @@ from apps.alerts.constants.constants import LogTargetType
 from apps.alerts.models.models import Alert, Incident
 from apps.system_mgmt.utils.group_utils import GroupUtils
 from apps.core.utils.team_utils import get_current_team
+from apps.core.utils.viewset_utils import build_json_membership_query
 
 
 def get_current_team_from_request(request, required=False):
@@ -87,12 +87,9 @@ def extract_child_group_ids(group_tree, current_team_id):
 def apply_team_scope_with_group_ids(queryset, group_ids, field_name="team"):
     if not group_ids:
         return queryset.none()
-    if connection.features.supports_json_field_contains:
-        team_query = _build_team_query(field_name, group_ids)
-        if not team_query.children:
-            return queryset.none()
-        return queryset.filter(team_query).distinct()
-    return _filter_json_membership_fallback(queryset, field_name, group_ids).distinct()
+    return queryset.filter(
+        build_json_membership_query(queryset, field_name, group_ids)
+    ).distinct()
 
 
 def apply_team_scope_for_request(queryset, request, field_name="team"):
@@ -110,27 +107,9 @@ def _build_team_query(field_name, group_ids):
 
 
 def _filter_json_membership_fallback(queryset, field_name, expected_values):
-    expected_set = {value for value in expected_values if value not in (None, "")}
-    if not expected_set:
-        return queryset.none()
-
-    matched_ids = []
-    for item in queryset.only("id", field_name):
-        current_values = getattr(item, field_name, []) or []
-        if isinstance(current_values, str):
-            current_values = [current_values]
-        current_values_normalized = set()
-        for v in current_values:
-            current_values_normalized.add(v)
-            try:
-                current_values_normalized.add(int(v))
-            except (TypeError, ValueError):
-                pass
-            current_values_normalized.add(str(v))
-
-        if expected_set.intersection(current_values_normalized):
-            matched_ids.append(item.pk)
-    return queryset.filter(pk__in=matched_ids)
+    return queryset.filter(
+        build_json_membership_query(queryset, field_name, expected_values)
+    )
 
 
 def filter_alert_queryset_for_request(queryset, request):

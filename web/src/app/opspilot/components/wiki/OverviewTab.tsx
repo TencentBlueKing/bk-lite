@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useCallback, useEffect, useState } from 'react';
-import { Card, Col, Empty, List, Row, Space, Spin, Statistic, Tag } from 'antd';
+import { Card, Empty, List, Skeleton, Space, Spin, Statistic, Tag } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import { useWikiApi } from '@/app/opspilot/api/wiki';
 import { WikiOverview } from '@/app/opspilot/types/wiki';
@@ -18,7 +18,16 @@ const MAT_STATUS_META: Record<string, { color: string; key: string }> = {
   failed: { color: 'red', key: 'wiki.statusFailed' },
 };
 
-// 概览工作区(spec 4.1):健康摘要 + 处理/异常 + 最近知识/构建 + 风险 + 使用的智能体 + 问答试用
+// check_type → i18n key(只翻译 overview_service.py:13-18 里 4 个 open 决策型,
+// 与后端 DB CheckConstraint 范围一致;其它取值回退显示原 key)
+const CHECK_TYPE_LABEL: Record<string, string> = {
+  conflict: 'wiki.checkConflict',
+  duplicate: 'wiki.checkDuplicate',
+  cannot_merge: 'wiki.checkCannotMerge',
+  material_update: 'wiki.checkMaterialUpdate',
+};
+
+// 概览工作区(主内容 + 右半常驻问答栏)
 const OverviewTab: React.FC<{ kbId: number }> = ({ kbId }) => {
   const { t } = useTranslation();
   const { fetchOverview } = useWikiApi();
@@ -42,135 +51,160 @@ const OverviewTab: React.FC<{ kbId: number }> = ({ kbId }) => {
   }, [kbId]);
 
   const counts = data?.counts || {};
-  const health = (data?.health || {}) as Record<string, number>;
   const matStatus = data?.material_status || {};
   const checks = data?.checks_by_type || {};
   const recentBuilds = (data?.recent_builds || []) as Array<Record<string, unknown>>;
   const recentPages = (data?.recent_pages || []) as Array<Record<string, unknown>>;
   const agents = data?.agents || [];
-  const coverage = Number(health.source_coverage || 0);
 
   return (
-    <Spin spinning={loading}>
-      {!data ? (
-        <Empty />
-      ) : (
-        <>
-          <Row gutter={16} className="mb-4">
-            <Col span={5}>
-              <Card size="small">
-                <Statistic title={t('wiki.material')} value={counts.materials || 0} />
-              </Card>
-            </Col>
-            <Col span={5}>
-              <Card size="small">
-                <Statistic title={t('wiki.page')} value={counts.pages || 0} />
-              </Card>
-            </Col>
-            <Col span={5}>
-              <Card size="small">
-                <Statistic title={t('wiki.sourceCoverage')} value={coverage} suffix="%" />
-              </Card>
-            </Col>
-            <Col span={5}>
-              <Card size="small">
-                <Statistic title={t('wiki.relations')} value={counts.relations || 0} />
-              </Card>
-            </Col>
-            <Col span={4}>
-              <Card size="small">
-                <Statistic
-                  title={t('wiki.check')}
-                  value={counts.open_checks || 0}
-                  valueStyle={counts.open_checks ? { color: 'var(--color-fail)' } : undefined}
-                />
-              </Card>
-            </Col>
-          </Row>
+    <div className="flex h-full min-h-0 flex-col gap-4 lg:flex-row">
+      {/* ── 主内容(左 1fr,内部独立滚动) ── */}
+      <section className="min-h-0 min-w-0 flex-1 overflow-y-auto pr-1">
+        <Spin spinning={loading}>
+          {!data && !loading ? (
+            <Empty className="py-12" />
+          ) : !data ? (
+            <OverviewSkeleton />
+          ) : (
+            <div className="flex flex-col gap-4">
+              <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+                <Card size="small">
+                  <Statistic title={t('wiki.materialCount')} value={counts.materials || 0} />
+                </Card>
+                <Card size="small">
+                  <Statistic title={t('wiki.pageCount')} value={counts.pages || 0} />
+                </Card>
+                <Card size="small">
+                  <Statistic title={t('wiki.relations')} value={counts.relations || 0} />
+                </Card>
+                <Card size="small">
+                  <Statistic
+                    title={t('wiki.pendingReview')}
+                    value={counts.open_checks || 0}
+                    valueStyle={
+                      counts.open_checks ? { color: 'var(--color-fail)' } : undefined
+                    }
+                  />
+                </Card>
+              </div>
 
-          <Card size="small" title={t('wiki.processing')} className="mb-4">
-            <Space wrap>
-              {Object.keys(matStatus).length === 0 && <span className="text-[var(--color-text-3)]">--</span>}
-              {Object.entries(matStatus).map(([s, c]) => {
-                const meta = MAT_STATUS_META[s];
-                return (
-                  <Tag key={s} color={meta?.color || 'default'}>
-                    {(meta ? t(meta.key) : s)}: {c}
-                  </Tag>
-                );
-              })}
-            </Space>
-          </Card>
-
-          <Row gutter={16} className="mb-4">
-            <Col span={12}>
-              <Card size="small" title={t('wiki.recentPages')}>
-                <List
-                  size="small"
-                  dataSource={recentPages}
-                  renderItem={(p) => (
-                    <List.Item>
-                      <span className="truncate mr-2">{String(p.title)}</span>
-                      <ContributionTag value={String(p.contribution)} />
-                    </List.Item>
+              <Card size="small" title={t('wiki.processing')}>
+                <Space wrap>
+                  {Object.keys(matStatus).length === 0 && (
+                    <span className="text-[var(--color-text-3)]">--</span>
                   )}
-                />
-              </Card>
-            </Col>
-            <Col span={12}>
-              <Card size="small" title={t('wiki.recentBuilds')}>
-                <List
-                  size="small"
-                  dataSource={recentBuilds}
-                  renderItem={(b) => (
-                    <List.Item>
-                      <span className="mr-2">
-                        {formatWikiTime(b.created_at as string)} · {labelOf(TRIGGER_LABEL, String(b.trigger))}
-                      </span>
-                      <Tag color={b.status === 'success' ? 'green' : b.status === 'failed' ? 'red' : 'blue'}>
-                        {labelOf(BUILD_STATUS_LABEL, String(b.status))}
+                  {Object.entries(matStatus).map(([s, c]) => {
+                    const meta = MAT_STATUS_META[s];
+                    return (
+                      <Tag key={s} color={meta?.color || 'default'}>
+                        {(meta ? t(meta.key) : s)}: {c}
                       </Tag>
-                    </List.Item>
-                  )}
-                />
+                    );
+                  })}
+                </Space>
               </Card>
-            </Col>
-          </Row>
 
-          <Row gutter={16} className="mb-4">
-            <Col span={12}>
-              <Card size="small" title={t('wiki.risks')}>
-                <Space wrap>
-                  {Object.keys(checks).length === 0 && (
-                    <span className="text-[var(--color-text-3)]">{t('wiki.noRisks')}</span>
-                  )}
-                  {Object.entries(checks).map(([type, c]) => (
-                    <Tag color="gold" key={type}>
-                      {type}: {c}
-                    </Tag>
-                  ))}
-                </Space>
-              </Card>
-            </Col>
-            <Col span={12}>
-              <Card size="small" title={t('wiki.agents')}>
-                <Space wrap>
-                  {agents.length === 0 && <span className="text-[var(--color-text-3)]">{t('wiki.noAgents')}</span>}
-                  {agents.map((a) => (
-                    <Tag color="blue" key={a.id}>
-                      {a.name}
-                    </Tag>
-                  ))}
-                </Space>
-              </Card>
-            </Col>
-          </Row>
-        </>
-      )}
-      {/* 问答试用:改为右下悬浮智能助手,默认不展示,点击展开对话弹窗(更省版面、样式更统一) */}
-      <WikiQaAssistant kbId={kbId} />
-    </Spin>
+              <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                <Card size="small" title={t('wiki.recentPages')}>
+                  <List
+                    size="small"
+                    dataSource={recentPages}
+                    renderItem={(p) => (
+                      <List.Item>
+                        <span className="mr-2 truncate">{String(p.title)}</span>
+                        <ContributionTag value={String(p.contribution)} />
+                      </List.Item>
+                    )}
+                  />
+                </Card>
+                <Card size="small" title={t('wiki.recentBuilds')}>
+                  <List
+                    size="small"
+                    dataSource={recentBuilds}
+                    renderItem={(b) => (
+                      <List.Item>
+                        <span className="mr-2 truncate">
+                          {formatWikiTime(b.created_at as string)} ·{' '}
+                          {labelOf(TRIGGER_LABEL, String(b.trigger))}
+                        </span>
+                        <Tag
+                          color={
+                            b.status === 'success'
+                              ? 'green'
+                              : b.status === 'failed'
+                                ? 'red'
+                                : 'blue'
+                          }
+                        >
+                          {labelOf(BUILD_STATUS_LABEL, String(b.status))}
+                        </Tag>
+                      </List.Item>
+                    )}
+                  />
+                </Card>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                <Card size="small" title={t('wiki.risks')}>
+                  <Space wrap>
+                    {Object.keys(checks).length === 0 && (
+                      <span className="text-[var(--color-text-3)]">{t('wiki.noRisks')}</span>
+                    )}
+                    {Object.entries(checks).map(([type, c]) => (
+                      <Tag color="gold" key={type}>
+                        {t(CHECK_TYPE_LABEL[type] || type)}: {c}
+                      </Tag>
+                    ))}
+                  </Space>
+                </Card>
+                <Card size="small" title={t('wiki.agents')}>
+                  <Space wrap>
+                    {agents.length === 0 && (
+                      <span className="text-[var(--color-text-3)]">{t('wiki.noAgents')}</span>
+                    )}
+                    {agents.map((a) => (
+                      <Tag color="blue" key={a.id}>
+                        {a.name}
+                      </Tag>
+                    ))}
+                  </Space>
+                </Card>
+              </div>
+            </div>
+          )}
+        </Spin>
+      </section>
+
+      {/* ── 右半常驻问答栏 ── */}
+      <aside className="h-full w-full shrink-0 lg:w-[400px]">
+        <WikiQaAssistant kbId={kbId} mode="embedded" />
+      </aside>
+    </div>
   );
 };
+
+const OverviewSkeleton: React.FC = () => (
+  <div className="flex flex-col gap-4">
+    <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+      {Array.from({ length: 4 }).map((_, i) => (
+        <Card size="small" key={i}>
+          <Skeleton active paragraph={{ rows: 1 }} title={false} />
+        </Card>
+      ))}
+    </div>
+    <Card size="small">
+      <Skeleton active paragraph={{ rows: 2 }} title={false} />
+    </Card>
+    <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+      <Card size="small">
+        <Skeleton active paragraph={{ rows: 4 }} title={false} />
+      </Card>
+      <Card size="small">
+        <Skeleton active paragraph={{ rows: 4 }} title={false} />
+      </Card>
+    </div>
+  </div>
+);
 
 export default OverviewTab;

@@ -11,7 +11,6 @@ import { useSession } from 'next-auth/react';
 import { useAuth } from '@/context/auth';
 import {
   AssoFieldType,
-  ModelItem,
   AssoTypeItem,
   ColumnItem,
 } from '@/app/cmdb/types/assetManage';
@@ -23,7 +22,7 @@ import {
 } from '@/app/cmdb/types/assetData';
 
 const ExportModal = forwardRef<ExportModalRef, ExportModalProps>(
-  ({ models, assoTypes }, ref) => {
+  ({ assoTypes }, ref) => {
     const { t } = useTranslation();
     const { getModelAssociations } = useModelApi();
     const { data: session } = useSession();
@@ -94,10 +93,10 @@ const ExportModal = forwardRef<ExportModalRef, ExportModalProps>(
         const formattedRelations: RelationItem[] = associations.map(
           (item: AssoFieldType) => ({
             ...item,
-            name: `${showModelName(item.src_model_id)}-${showConnectType(
+            name: `${item.src_model_name || item.src_model_id}-${showConnectType(
               item.asst_id,
               'asst_name'
-            )}-${showModelName(item.dst_model_id)}`,
+            )}-${item.dst_model_name || item.dst_model_id}`,
             relation_key: `${item.src_model_id}_${item.asst_id}_${item.dst_model_id}`,
           })
         );
@@ -109,13 +108,6 @@ const ExportModal = forwardRef<ExportModalRef, ExportModalProps>(
       } finally {
         setLoading(false);
       }
-    };
-
-    const showModelName = (id: string) => {
-      return (
-        models.find((item: ModelItem) => item.model_id === id)?.model_name ||
-        '--'
-      );
     };
 
     const showConnectType = (id: string, key: string) => {

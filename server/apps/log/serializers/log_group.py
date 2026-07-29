@@ -1,12 +1,39 @@
 import uuid
+
 from rest_framework import serializers
+
+from apps.core.exceptions.base_app_exception import BaseAppException
+from apps.core.utils.current_team_scope import _normalize_organization_ids
 from apps.log.models.log_group import LogGroup, LogGroupOrganization, SearchCondition
 from apps.log.services.access_scope import LogAccessScopeService
 
 
+class CanonicalOrganizationIdField(serializers.Field):
+    default_error_messages = {
+        "invalid": "组织ID必须是规范正整数",
+    }
+
+    def to_internal_value(self, data):
+        try:
+            organization_ids = _normalize_organization_ids([data])
+        except BaseAppException:
+            self.fail("invalid")
+        if len(organization_ids) != 1:
+            self.fail("invalid")
+        return next(iter(organization_ids))
+
+    def to_representation(self, value):
+        return value
+
+
 class LogGroupSerializer(serializers.ModelSerializer):
     # 使用 ListField 处理输入，SerializerMethodField 处理输出
-    organizations = serializers.ListField(child=serializers.IntegerField(), required=False, allow_empty=True, help_text="关联的组织ID列表")
+    organizations = serializers.ListField(
+        child=CanonicalOrganizationIdField(),
+        required=False,
+        allow_empty=False,
+        help_text="关联的组织ID列表",
+    )
 
     # ID字段改为可选，支持自动生成UUID
     id = serializers.CharField(required=False, allow_blank=False, max_length=200, help_text="日志分组ID，如不提供将自动生成UUID")
@@ -19,8 +46,15 @@ class LogGroupSerializer(serializers.ModelSerializer):
     def to_representation(self, instance):
         """自定义输出格式，在输出时获取组织信息"""
         data = super().to_representation(instance)
-        # 获取关联的组织ID列表
-        data["organizations"] = list(LogGroupOrganization.objects.filter(log_group=instance).values_list("organization", flat=True))
+        organization_queryset = LogGroupOrganization.objects.filter(log_group=instance)
+        request = self.context.get("request") if hasattr(self, "context") else None
+        if request is not None:
+            try:
+                visible_organizations = LogAccessScopeService.get_data_scope(request).data_team_ids
+            except ValueError:
+                visible_organizations = frozenset()
+            organization_queryset = organization_queryset.filter(organization__in=list(visible_organizations))
+        data["organizations"] = list(organization_queryset.values_list("organization", flat=True))
         return data
 
     def create(self, validated_data):
@@ -70,6 +104,11 @@ class LogGroupSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError(str(exc))
 
         return value
+
+    def validate(self, attrs):
+        if self.instance is None and "organizations" not in attrs:
+            raise serializers.ValidationError({"organizations": "至少需要一个组织"})
+        return attrs
 
 
 class SearchConditionSerializer(serializers.ModelSerializer):

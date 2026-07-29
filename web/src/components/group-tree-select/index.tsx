@@ -169,7 +169,7 @@ const GroupTreeSelect: React.FC<GroupTreeSelectProps> = ({
 
   const dropdownContent = (
     <div
-      className="rounded shadow-lg"
+      className="rounded shadow-lg bg-[var(--color-bg)] overflow-hidden"
       onClick={(e) => e.stopPropagation()}
     >
       <MultiCascadePanel

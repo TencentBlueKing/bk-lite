@@ -507,8 +507,6 @@ export default function MongoDashboardPage() {
   };
 
   const onFrequenceChange = (val: number) => setFrequence(val);
-  const goBack = () => router.push('/monitor/view');
-
   const onInstanceChange = (value: string) => {
     const target = instanceOptions.find((item) => item.value === value);
     const params = new URLSearchParams(searchParams.toString());
@@ -587,7 +585,6 @@ export default function MongoDashboardPage() {
             onTimeChange={onTimeChange}
             onFrequenceChange={onFrequenceChange}
             onRefresh={() => (isDashboardMode ? loadMetrics() : setMetricsRefreshSignal((value) => value + 1))}
-            onBack={goBack}
             showTimeSelector={false}
             styles={styles}
           />
@@ -725,8 +722,8 @@ export default function MongoDashboardPage() {
                   metric={buildMetricItem(metricMap.mongodb_latency_reads_avg || { ...DASHBOARD_METRICS[7], viewData: [], loadState: 'success' })}
                   unit="ns"
                   seriesStyles={[
-                    { color: TREND_LEGENDS.latency[0].color, unit: 'ns' },
-                    { color: TREND_LEGENDS.latency[1].color, unit: 'ns' }
+                    { color: TREND_LEGENDS.latency[0].color, unit: 'ms' },
+                    { color: TREND_LEGENDS.latency[1].color, unit: 'ms' }
                   ]}
                   onXRangeChange={onXRangeChange}
                 />

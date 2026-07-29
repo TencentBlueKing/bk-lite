@@ -102,6 +102,7 @@ export const useSSEStream = ({
 
       try {
         const headers: Record<string, string> = {
+          Accept: 'text/event-stream',
           'Content-Type': 'application/json',
         };
 

@@ -14,7 +14,13 @@
         "advanced": "高级",
         "partialFailure": "部分失败",
         "successOperate": "操作成功",
-        "all": "全部"
+        "all": "全部",
+        "heatMap": {
+            "month": "按月",
+            "day": "按日",
+            "previous": "上一个时间段",
+            "level": "级别"
+        }
     },
     "incidents": {
         "table": "表格",
@@ -345,7 +351,7 @@
         "alertAssign": "告警分派",
         "shieldStrategy": "屏蔽策略",
         "correlationRules": "相关性规则",
-        "assignStrategyMessage": "您可以配置自动分派策略，让符合筛选条件的告警，分派给指定人员，并可选择通知方式。",
+        "assignStrategyMessage": "您可以配置自动分派策略，将符合条件的告警分派给指定用户或组织，并选择通知方式。",
         "shieldStrategyMessage": "通过屏蔽策略，您可以更加高效地管理告警信息的发送，提高告警系统的效率和用户体验。",
         "shieldStrategyForm": {
             "editTitle": "编辑屏蔽策略",
@@ -362,7 +368,7 @@
         "alertAssignTableActions": "操作",
         "name": "名称",
         "assignName": "策略名称",
-        "assignPersonnel": "分派人员",
+        "assignPersonnel": "分派对象",
         "assignTime": "生效时间",
         "assignStatus": "状态",
         "assignCreateTime": "创建时间",
@@ -537,6 +543,16 @@
             "addTitle": "新增分派策略",
             "formMatchingRules": "匹配规则",
             "formPersonnelSelect": "分派人员",
+            "formTargetSelect": "分派对象",
+            "targetUser": "用户",
+            "targetOrganization": "组织",
+            "userSelect": "选择用户",
+            "userRequired": "请选择至少一个用户",
+            "organizationSelect": "选择组织",
+            "organizationRequired": "请选择至少一个组织",
+            "includeChildOrganizations": "包含子组织",
+            "includesChildren": "包含子组织",
+            "invalidOrganization": "组织 #{id}（已失效或不可见）",
             "formNotifyMethod": "通知方式",
             "submit": "提交",
             "effectiveTime": "生效时间",
@@ -554,6 +570,7 @@
             "escalationModeAppend": "累加",
             "escalationModeReplace": "替换",
             "escalationLayer": "升级层级",
+            "escalationTarget": "处理对象",
             "escalationAddLayer": "添加层级",
             "escalationWaitMinutes": "未认领等待时长",
             "escalationWaitTip": "上一棒责任人在该时长内未认领（第一层对应初始分派人员），则升级到本层并通知本层处理人；末层不再升级。计时以告警停留在「待处理」的时长为准，与提醒次数无关。",

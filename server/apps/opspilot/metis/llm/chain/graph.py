@@ -28,7 +28,10 @@ from langgraph.constants import START
 
 from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.metis.llm.chain.entity import BasicLLMRequest, BasicLLMResponse
-from apps.opspilot.metis.llm.chain.report_renderers import strip_phantom_tool_calls
+from apps.opspilot.metis.llm.chain.report_renderers import (
+    find_unclosed_phantom_tool_call_start,
+    strip_phantom_tool_calls,
+)
 from apps.opspilot.utils.execution_interrupt import is_interrupt_requested_async
 
 # deepagents 引擎内置工具（规划/虚拟文件系统/子代理）。这些是 agent 的内部
@@ -441,15 +444,11 @@ class BasicGraph(ABC):
             tail = text_strip_buffers.get(current_message_id, "")
             buffered = tail + content_delta
             cleaned = strip_phantom_tool_calls(buffered)
-            # 找未闭合 phantom call 起始位置:右 <tool_call> 出现在右 </tool_call> 之后
-            # (说明最近这个 <tool_call> 没对应闭合)。<|tool_call|> 同 tag 双向,这里只
-            # 处理 <tool_call>X</tool_call> 这种最常见形式。
-            last_open = cleaned.rfind("<tool_call>")
-            last_close = cleaned.rfind("</tool_call>")
-            if last_open > last_close:
-                # 末尾有未闭合 phantom,从 last_open 开始 hold
-                content_delta = cleaned[:last_open]
-                text_strip_buffers[current_message_id] = cleaned[last_open:]
+            unclosed_start = find_unclosed_phantom_tool_call_start(cleaned)
+            if unclosed_start is not None:
+                # 末尾有未闭合 phantom,从起点开始 hold
+                content_delta = cleaned[:unclosed_start]
+                text_strip_buffers[current_message_id] = cleaned[unclosed_start:]
             else:
                 # 全部闭合(phantom 被完整 strip 或本来就没有),emit 全部
                 content_delta = cleaned

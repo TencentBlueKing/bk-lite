@@ -1,6 +1,6 @@
 """CMDB 唯一规则显示增强与导入/导出辅助覆盖测试（无 DB）。
 
-对照 spec/prd/CMDB·模型管理：属性列表的 unique_display_type 标记、
+对照 specs/capabilities/legacy-prd-cmdb-模型管理.md：属性列表的 unique_display_type 标记、
 attr 导出补 unique_rule_order 列、validate_unique_rule_payload 边界、
 _collect_existing_instance_conflicts 多场景。
 """

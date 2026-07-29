@@ -1,6 +1,6 @@
 """会话窗口超时检查覆盖测试。
 
-对照 spec/prd/告警中心·告警：会话窗口告警超时未恢复后转为已确认；策略变更/删除批量处理观察中告警。
+对照 specs/capabilities/legacy-prd-告警中心-告警.md：会话窗口告警超时未恢复后转为已确认；策略变更/删除批量处理观察中告警。
 """
 
 from datetime import timedelta

@@ -10,7 +10,7 @@ import {
 } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import GroupSelect from '@/components/group-tree-select';
-import OperateModal from '@/app/monitor/components/operate-drawer';
+import OperateModal from '@/components/operate-drawer';
 
 interface ModalRef {
   showModal: (config: {

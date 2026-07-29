@@ -1,4 +1,5 @@
 interface:
-  display_name: "BK-Lite 运维产品设计"
-  short_description: "审阅 BK-Lite 运维产品 MVP 规格与产品边界"
-  default_prompt: "使用 $bklite-ops-product-design 审阅这份 BK-Lite 运维产品 MVP 设计并指出需确认的边界。"
+  display_name: "BK-Lite Ops Product Design"
+  short_description: "Design and review BK-Lite operations product capabilities"
+policy:
+  allow_implicit_invocation: false

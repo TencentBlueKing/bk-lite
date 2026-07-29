@@ -13,6 +13,25 @@ interface PaginatedResponse<T> {
   items: T[];
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object';
+}
+
+export function normalizeTestConnectionResponse(response: unknown): TestConnectionResult {
+  let current: unknown = response;
+  for (let depth = 0; depth < 4; depth += 1) {
+    if (!isRecord(current)) {
+      break;
+    }
+    if (typeof current.success === 'boolean') {
+      return { result: current.success, data: current as TestConnectionResult['data'] };
+    }
+    current = current.data;
+  }
+
+  throw new Error('Invalid test connection response');
+}
+
 export const useIntegrationCenterApi = () => {
   const { get, post, put, del } = useApiClient();
 
@@ -49,7 +68,11 @@ export const useIntegrationCenterApi = () => {
   }
 
   async function testConnection(id: number, capability_key?: string): Promise<TestConnectionResult> {
-    return await post(`/system_mgmt/integration_instance/${id}/test_connection/`, capability_key ? { capability_key } : {});
+    const response = await post(
+      `/system_mgmt/integration_instance/${id}/test_connection/`,
+      capability_key ? { capability_key } : {},
+    );
+    return normalizeTestConnectionResponse(response);
   }
 
   async function getAvailableInstances(capability: string): Promise<AvailableInstance[]> {

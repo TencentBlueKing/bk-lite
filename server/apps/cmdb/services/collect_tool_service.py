@@ -58,7 +58,9 @@ class CollectToolService:
         from apps.cmdb.permissions.inst_task_permission import InstanceTaskPermission
 
         try:
-            instance = CollectModels.objects.get(id=task_id)
+            # 系统采集任务只能由各自的专用编排器维护，不能借采集工具读取快照、
+            # 恢复脱敏凭据或发起脱离配置版本 fencing 的调试执行。
+            instance = CollectModels.objects.filter(is_system=False).get(id=task_id)
         except CollectModels.DoesNotExist:
             raise ValidationError(f"task_id={task_id} 对应任务不存在")
 

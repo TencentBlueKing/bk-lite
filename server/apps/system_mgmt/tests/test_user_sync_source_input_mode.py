@@ -173,8 +173,8 @@ def test_manual_input_accepts_raw_scope_and_skips_list_departments(manual_input_
             "business_config": {
                 "root_department_id": "ou=paas,dc=bktest,dc=com",
             },
-            "field_mapping": {},
-            "schedule_config": {},
+            "field_mapping": {"username": "user_id"},
+            "schedule_config": {"mode": "disabled"},
         }
     )
 
@@ -196,8 +196,8 @@ def test_manual_input_ignores_department_id_type(manual_input_instance):
                 "root_department_id": "ou=paas,dc=bktest,dc=com",
                 "department_id_type": "department_id",
             },
-            "field_mapping": {},
-            "schedule_config": {},
+            "field_mapping": {"username": "user_id"},
+            "schedule_config": {"mode": "disabled"},
         }
     )
 
@@ -218,8 +218,8 @@ def test_manual_input_rejects_empty_root_department(manual_input_instance):
             "business_config": {
                 "root_department_id": "",
             },
-            "field_mapping": {},
-            "schedule_config": {},
+            "field_mapping": {"username": "user_id"},
+            "schedule_config": {"mode": "disabled"},
         }
     )
 
@@ -237,8 +237,8 @@ def test_ad_manual_input_accepts_root_dn_and_skips_department_listing(ready_ad_i
             "business_config": {
                 "root_dn": "OU=PAAS,DC=corp,DC=example,DC=com",
             },
-            "field_mapping": {},
-            "schedule_config": {},
+            "field_mapping": {"username": "sAMAccountName"},
+            "schedule_config": {"mode": "disabled"},
         }
     )
 
@@ -259,8 +259,8 @@ def test_ad_manual_input_accepts_root_dn_equal_to_base_dn(ready_ad_integration_i
             "business_config": {
                 "root_dn": "DC=corp,DC=example,DC=com",
             },
-            "field_mapping": {},
-            "schedule_config": {},
+            "field_mapping": {"username": "sAMAccountName"},
+            "schedule_config": {"mode": "disabled"},
         }
     )
 
@@ -277,8 +277,8 @@ def test_ad_manual_input_accepts_root_dn_within_base_dn(ready_ad_integration_ins
             "business_config": {
                 "root_dn": "OU=PAAS,DC=corp,DC=example,DC=com",
             },
-            "field_mapping": {},
-            "schedule_config": {},
+            "field_mapping": {"username": "sAMAccountName"},
+            "schedule_config": {"mode": "disabled"},
         }
     )
 
@@ -286,7 +286,7 @@ def test_ad_manual_input_accepts_root_dn_within_base_dn(ready_ad_integration_ins
 
 
 @pytest.mark.django_db
-def test_ad_manual_input_rejects_root_dn_outside_base_dn(ready_ad_integration_instance):
+def test_ad_manual_input_accepts_root_dn_outside_base_dn(ready_ad_integration_instance):
     serializer = UserSyncSourceSerializer(
         data={
             "name": "ad-source",
@@ -295,13 +295,12 @@ def test_ad_manual_input_rejects_root_dn_outside_base_dn(ready_ad_integration_in
             "business_config": {
                 "root_dn": "OU=PAAS,DC=other,DC=example,DC=com",
             },
-            "field_mapping": {},
-            "schedule_config": {},
+            "field_mapping": {"username": "sAMAccountName"},
+            "schedule_config": {"mode": "disabled"},
         }
     )
 
-    assert serializer.is_valid() is False
-    assert "business_config" in serializer.errors
+    assert serializer.is_valid(), serializer.errors
 
 
 @pytest.mark.django_db
@@ -329,8 +328,8 @@ def test_department_select_still_calls_list_departments_and_normalizes_all(ready
                 "root_department_id": "__all__",
                 "department_id_type": "department_id",
             },
-            "field_mapping": {},
-            "schedule_config": {},
+            "field_mapping": {"username": "user_id"},
+            "schedule_config": {"mode": "disabled"},
         }
     )
 
@@ -361,8 +360,8 @@ def test_department_select_rejects_invalid_department(ready_integration_instance
             "business_config": {
                 "root_department_id": "stale-dept",
             },
-            "field_mapping": {},
-            "schedule_config": {},
+            "field_mapping": {"username": "user_id"},
+            "schedule_config": {"mode": "disabled"},
         }
     )
 

@@ -5,7 +5,7 @@ import { TIMEOUT_UNITS } from '@/app/monitor/constants/integration';
 import { useSearchParams } from 'next/navigation';
 import useApiClient from '@/utils/request';
 import useIntegrationApi from '@/app/monitor/api/integration';
-import CodeEditor from '@/app/monitor/components/codeEditor';
+import CodeEditor from '@/components/code-editor';
 import { TableDataItem } from '@/app/monitor/types';
 const { Option } = Select;
 import Permission from '@/components/permission';

@@ -37,6 +37,7 @@ import {
 
 type SingleValueFormValues = NodeConfigFormValues & {
   params?: Record<string, unknown>;
+  compareMode?: 'percent' | 'value';
 };
 
 const SingleValueNodePanel: React.FC<NodeConfPanelProps> = ({
@@ -80,6 +81,7 @@ const SingleValueNodePanel: React.FC<NodeConfPanelProps> = ({
     const defaultValues: SingleValueFormValues = {
       dataSource: undefined,
       compare: false,
+      compareMode: 'percent',
       params: {},
       selectedFields: [],
       name: '',
@@ -111,6 +113,7 @@ const SingleValueNodePanel: React.FC<NodeConfPanelProps> = ({
         name: editingNodeData.name,
         dataSource: valueConfig.dataSource,
         compare: valueConfig.compare,
+        compareMode: valueConfig.compareMode || 'percent',
         selectedFields: valueConfig.selectedFields,
         fontSize: styleConfig.fontSize,
         textColor: normalizeColorForForm(styleConfig.textColor),
@@ -263,6 +266,7 @@ const SingleValueNodePanel: React.FC<NodeConfPanelProps> = ({
 
       values.thresholdColors = singleValueConfig.thresholdColors;
       values.compare = !!values.compare;
+      values.compareMode = values.compareMode || 'percent';
 
       onConfirm?.(values);
     } catch (error) {

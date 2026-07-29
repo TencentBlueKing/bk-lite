@@ -21,6 +21,12 @@ pnpm dev
 
 ### Tauri 桌面开发（测试原生功能）
 
+先在 `.env.local` 中配置 Tauri 后端地址：
+
+```bash
+NEXT_PUBLIC_API_URL=https://bklite.example.com
+```
+
 ```bash
 pnpm dev:tauri
 ```
@@ -28,6 +34,28 @@ pnpm dev:tauri
 > 注意：会同时打开浏览器和 Tauri 窗口，使用 Tauri 窗口测试（无地址栏）
 
 ## 构建
+
+### H5
+
+```bash
+pnpm build:h5
+```
+
+H5 固定部署在 `/mobile/h5`，使用同源 `/api/proxy` 和 `/api/auth`，不需要配置 API 地址或 basePath。
+
+### Tauri 前端产物
+
+```bash
+pnpm build:tauri
+```
+
+完整桌面安装包使用：
+
+```bash
+pnpm package:tauri
+```
+
+Tauri 开发和打包须在 `.env.local` 或 CI 环境中配置 `NEXT_PUBLIC_API_URL`。外部地址必须使用 HTTPS；仅 localhost 和 loopback 开发地址允许 HTTP。配置缺失或不合法时，命令会直接失败。
 
 ### Android APK
 
@@ -74,7 +102,7 @@ pnpm build:aab              # AAB 格式（Google Play 上架）
 ```
 
 > **说明**：
-> - 构建脚本会自动执行 `pnpm build` 来构建 Next.js（通过 `tauri.conf.json` 的 `beforeBuildCommand`）
+> - 构建脚本会自动执行 `pnpm build:tauri` 来构建 Next.js（通过 `tauri.conf.json` 的 `beforeBuildCommand`）
 > - 无需手动先运行 `pnpm build`
 > - 构建命令已自动配置 Android NDK 路径，无需手动设置环境变量
 
@@ -90,6 +118,24 @@ pnpm build:aab              # AAB 格式（Google Play 上架）
 > - Release APK 会自动使用 `keystore.properties` 中的签名配置
 > - 构建前确保已关闭所有开发服务器（`pnpm dev` 等）
 > - Tauri 会通过 `tauri.conf.json` 的 `beforeBuildCommand` 自动构建 Next.js
+
+## 环境配置
+
+| 变量 | 使用阶段 | 是否必填 | 说明 |
+|---|---|---:|---|
+| `NEXT_PUBLIC_API_URL` | Tauri 本地开发、桌面与 Android 打包 | 是 | Web/Nginx 网关绝对地址；外部地址须为 HTTPS，loopback 开发地址可用 HTTP；构建期写入产物，修改后必须重新构建 |
+| `TAURI_ALLOWED_HOSTS` | Tauri 本地开发与打包 | 否 | 多后端 host 白名单；默认从 API URL 派生，打包时固化到二进制 |
+| `BK_SERVER_DEV_URL` | 浏览器本地开发 | 否 | `/api/proxy` 的本地代理目标，默认 `http://127.0.0.1:8011` |
+| `BK_WEB_DEV_URL` | 浏览器本地开发 | 否 | `/api/auth` 的本地代理目标，默认 `http://127.0.0.1:3000` |
+
+以下变量由工具自动注入，不应写入 `.env.local`：
+
+- `BK_MOBILE_BUILD_TARGET`：由 `build:h5` 或 `build:tauri` 注入。
+- `NEXT_PUBLIC_BASE_PATH`：H5 固定为 `/mobile/h5`，Tauri 固定为空。
+- `TAURI_DEV_HOST`：由 Tauri CLI 在设备开发场景注入。
+- `NODE_ENV`：由 Next.js 注入。
+
+Android SDK/NDK、签名密钥以及 Docker 镜像源属于工具链或 CI 配置，不属于 Mobile 应用环境变量。
 
 ## 核心特性
 

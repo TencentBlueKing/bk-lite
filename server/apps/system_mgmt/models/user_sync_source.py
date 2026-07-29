@@ -30,6 +30,7 @@ class UserSyncSource(MaintainerInfo, TimeInfo, PeriodicTaskUtils):
     field_mapping = models.JSONField(default=dict, blank=True)
     schedule_config = models.JSONField(default=dict, blank=True)
     business_config = models.JSONField(default=dict, blank=True)
+    platform_config = models.JSONField(default=dict, blank=True)
 
     class Meta:
         ordering = ("name", "id")

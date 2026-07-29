@@ -1,13 +1,23 @@
 'use client';
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Tabs, Swiper, ErrorBlock, SpinLoading } from 'antd-mobile';
-import { SearchOutline, LeftOutline } from 'antd-mobile-icons';
+import { Tabs, ErrorBlock, SpinLoading } from 'antd-mobile';
+import { MessageOutline } from 'antd-mobile-icons';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { useTranslation } from '@/utils/i18n';
-import { getApplication } from '@/api/bot';
+import {
+    ChatApplicationItem,
+    GetApplicationsParams,
+    getApplication,
+    getApplicationItems,
+} from '@/api/bot';
 import { getAvatar } from '@/utils/avatar';
+import { getAppTagColor, getAppTagLabel } from '@/constants/workbenchTags';
+import MobileTabShell from '@/components/mobile-tab-shell';
+import MobilePageHeader from '@/components/mobile-page-header';
+import MobilePullToRefresh from '@/components/mobile-pull-to-refresh';
+import { buildConversationHref } from '@/utils/conversationRoute';
 
 type TabKey =
     | 'all'
@@ -22,9 +32,9 @@ export default function WorkbenchPage() {
     const { t } = useTranslation();
     const router = useRouter();
     const [activeTab, setActiveTab] = useState<TabKey>('all');
-    const [botList, setBotList] = useState<any[]>([]);
+    const [botList, setBotList] = useState<ChatApplicationItem[]>([]);
     const [loading, setLoading] = useState(false);
-    const swiperRef = useRef<any>(null);
+    const [loadFailed, setLoadFailed] = useState(false);
 
     // 用于取消请求的 AbortController
     const abortControllerRef = useRef<AbortController | null>(null);
@@ -41,7 +51,11 @@ export default function WorkbenchPage() {
     ];
 
     // 获取应用列表
-    const fetchApplications = useCallback(async (tabKey: TabKey, params?: any) => {
+    const fetchApplications = useCallback(async (
+        tabKey: TabKey,
+        options: Pick<GetApplicationsParams, 'page' | 'page_size'> & { preserveContent?: boolean } = {},
+    ) => {
+        const { preserveContent = false, ...params } = options;
         // 取消上一个请求
         if (abortControllerRef.current) {
             abortControllerRef.current.abort();
@@ -51,10 +65,13 @@ export default function WorkbenchPage() {
         const controller = new AbortController();
         abortControllerRef.current = controller;
 
-        setLoading(true);
+        if (!preserveContent) {
+            setLoading(true);
+            setLoadFailed(false);
+        }
 
         try {
-            const requestParams: any = {
+            const requestParams: GetApplicationsParams = {
                 page: params?.page || 1,
                 page_size: params?.page_size || 20,
             };
@@ -71,20 +88,24 @@ export default function WorkbenchPage() {
                 return;
             }
             if (!response.result) {
-                setBotList([]);
-                return;
+                throw new Error(response.message || 'Failed to fetch applications');
             }
-            setBotList(response?.data.items || []);
-        } catch (error: any) {
+            setBotList(getApplicationItems(response));
+            setLoadFailed(false);
+        } catch (error: unknown) {
             // 忽略取消的请求错误
-            if (error?.name === 'AbortError') {
+            if (error instanceof DOMException && error.name === 'AbortError') {
                 return;
             }
             console.error('Failed to fetch applications:', error);
+            if (preserveContent) {
+                throw error;
+            }
             setBotList([]);
+            setLoadFailed(true);
         } finally {
             // 只在非取消情况下更新 loading 状态
-            if (!controller.signal.aborted) {
+            if (!preserveContent && !controller.signal.aborted) {
                 setLoading(false);
             }
         }
@@ -102,44 +123,18 @@ export default function WorkbenchPage() {
         };
     }, [activeTab, fetchApplications]);
 
-    // 当 activeTab 改变时，同步 Swiper
-    useEffect(() => {
-        const index = tabItems.findIndex((item) => item.key === activeTab);
-        if (index !== -1 && swiperRef.current) {
-            swiperRef.current.swipeTo(index);
-        }
-    }, [activeTab]);
-
-    // app_tags 映射
-    const appTagsMap: { [key: string]: string } = {
-        'routine_ops': t('workbench.routineOps'),
-        'monitor_alarm': t('workbench.monitorAlarm'),
-        'automation': t('workbench.automation'),
-        'security_audit': t('workbench.securityAudit'),
-        'performance_analysis': t('workbench.performanceAnalysis'),
-        'ops_plan': t('workbench.opsPlan'),
-    };
-
-    const appTagColors: { [key: string]: { bg: string; text: string } } = {
-        'routine_ops': { bg: '#E5F4FF', text: '#4A9EFF' },
-        'monitor_alarm': { bg: '#FFE5E5', text: '#FF6B9D' },
-        'automation': { bg: '#FFF4E5', text: '#FFB84D' },
-        'security_audit': { bg: '#E5FFE5', text: '#52C41A' },
-        'performance_analysis': { bg: '#F0E5FF', text: '#9B59B6' },
-        'ops_plan': { bg: '#E5F0FF', text: '#3498DB' },
-    };
-
     const handleTabChange = (key: string) => {
         setActiveTab(key as TabKey);
     };
 
     // 渲染列表项
-    const renderListItem = (item: any) => (
-        <div
+    const renderListItem = (item: ChatApplicationItem) => (
+        <button
+            type="button"
             key={item.id}
-            className="bg-[var(--color-bg)] mx-3 mt-3 rounded-lg shadow-sm border border-[var(--color-border)] p-4 active:bg-[var(--color-bg-hover)] cursor-pointer relative overflow-hidden"
+            className="block w-[calc(100%_-_1.5rem)] bg-[var(--color-bg)] mx-3 mt-3 rounded-lg shadow-sm border border-[var(--color-border)] p-4 text-left active:bg-[var(--color-bg-hover)] cursor-pointer relative overflow-hidden"
             onClick={() => {
-                router.push(`/workbench/detail?bot_id=${item.bot}`);
+                router.push(buildConversationHref({ botId: item.bot, nodeId: item.node_id }));
             }}
         >
             {/* 右上角状态 - 默认在线 */}
@@ -147,14 +142,14 @@ export default function WorkbenchPage() {
                 className="absolute top-0 right-0 w-6 h-6"
                 style={{
                     clipPath: 'polygon(100% 0, 100% 100%, 0 0)',
-                    backgroundColor: '#52C41A',
+                    backgroundColor: 'var(--color-success)',
                 }}
             ></div>
 
             <div className="flex items-start space-x-3">
                 {/* 缩略图 */}
                 <div className="flex-shrink-0 relative">
-                    <div className="w-16 h-16 bg-gradient-to-br from-blue-400 to-blue-600 rounded-full overflow-hidden">
+                    <div className="w-16 h-16 bg-[var(--color-fill-2)] rounded-full overflow-hidden">
                         <Image
                             src={getAvatar(item.id)}
                             alt={item.app_name}
@@ -182,23 +177,26 @@ export default function WorkbenchPage() {
                     {/* 标签按钮 */}
                     {item.app_tags && item.app_tags.length > 0 && (
                         <div className="flex flex-wrap gap-1 justify-end">
-                            {item.app_tags.map((tag: string) => (
-                                <span
-                                    key={tag}
-                                    className="px-2 py-0.5 text-xs font-medium rounded"
-                                    style={{
-                                        backgroundColor: appTagColors[tag]?.bg || '#F0F0F0',
-                                        color: appTagColors[tag]?.text || '#666666',
-                                    }}
-                                >
-                                    {appTagsMap[tag] || tag}
-                                </span>
-                            ))}
+                            {item.app_tags.map((tag: string) => {
+                                const tagColor = getAppTagColor(tag);
+                                return (
+                                    <span
+                                        key={tag}
+                                        className="px-2 py-0.5 text-xs font-medium rounded"
+                                        style={{
+                                            backgroundColor: tagColor.bg,
+                                            color: tagColor.text,
+                                        }}
+                                    >
+                                        {getAppTagLabel(tag, t)}
+                                    </span>
+                                );
+                            })}
                         </div>
                     )}
                 </div>
             </div>
-        </div>
+        </button>
     );
 
     // 渲染空状态
@@ -216,8 +214,26 @@ export default function WorkbenchPage() {
 
     // 渲染加载状态
     const renderLoading = () => (
-        <div className="h-full flex flex-col items-center justify-center">
+        <div className="flex min-h-32 items-center justify-center">
             <SpinLoading color="primary" />
+        </div>
+    );
+
+    const renderLoadFailed = () => (
+        <div className="flex h-full flex-col items-center justify-center px-6 text-center">
+            <ErrorBlock
+                status="disconnected"
+                title={t('workbench.loadFailed')}
+                description={t('workbench.loadFailedDescription')}
+            >
+                <button
+                    type="button"
+                    className="min-h-11 rounded-lg px-4 text-[var(--color-primary)] active:bg-[var(--color-fill-2)]"
+                    onClick={() => void fetchApplications(activeTab)}
+                >
+                    {t('common.retry')}
+                </button>
+            </ErrorBlock>
         </div>
     );
 
@@ -226,6 +242,9 @@ export default function WorkbenchPage() {
         if (loading) {
             return renderLoading();
         }
+        if (loadFailed) {
+            return renderLoadFailed();
+        }
         if (botList.length > 0) {
             return botList.map((item) => renderListItem(item));
         }
@@ -233,15 +252,20 @@ export default function WorkbenchPage() {
     };
 
     return (
-        <div className="flex flex-col h-screen bg-[var(--color-background-body)]">
-            {/* 标签栏和搜索图标 */}
-            <div className="bg-[var(--color-bg)] flex items-center">
-                <div className="pl-2 py-3 flex-shrink-0 ">
-                    <LeftOutline
-                        className="text-2xl text-[var(--color-text-2)]"
-                        onClick={() => router.back()}
-                    />
-                </div>
+        <MobileTabShell activeTab="apps">
+        <div className="flex flex-col h-full bg-[var(--color-background-body)]">
+            <MobilePageHeader
+                title={t('navigation.apps')}
+                searchType="WorkbenchPage"
+                actions={[{
+                    href: '/conversations',
+                    icon: <MessageOutline aria-hidden="true" />,
+                    label: t('navigation.conversations'),
+                }]}
+            />
+
+            {/* 应用分类 */}
+            <div className="bg-[var(--color-bg)] flex items-center border-b border-[var(--color-border-1)]">
                 <div className="flex-1 overflow-hidden">
                     <style dangerouslySetInnerHTML={{
                         __html: `
@@ -272,37 +296,18 @@ export default function WorkbenchPage() {
                         ))}
                     </Tabs>
                 </div>
-                <div className="pl-1 pr-2 py-3 flex-shrink-0 ">
-                    <SearchOutline
-                        className="text-2xl text-[var(--color-text-2)]"
-                        onClick={() => router.push('/search?type=WorkbenchPage')}
-                    />
-                </div>
             </div>
 
-            {/* Swiper 滑动切换 */}
-            <Swiper
-                direction="horizontal"
-                loop={false}
-                indicator={() => null}
-                ref={swiperRef}
-                defaultIndex={0}
-                onIndexChange={(index) => {
-                    const key = tabItems[index].key;
-                    setActiveTab(key);
-                }}
-                style={{ flex: 1 }}
-            >
-                {tabItems.map((tab) => {
-                    return (
-                        <Swiper.Item key={tab.key}>
-                            <div className="h-full overflow-auto pb-20">
-                                {renderContent()}
-                            </div>
-                        </Swiper.Item>
-                    );
-                })}
-            </Swiper>
+            <div className="flex-1 min-h-0 overflow-y-auto pb-4">
+                <MobilePullToRefresh
+                    onRefresh={() => fetchApplications(activeTab, { preserveContent: true })}
+                >
+                    <div className="min-h-full">
+                        {renderContent()}
+                    </div>
+                </MobilePullToRefresh>
+            </div>
         </div>
+        </MobileTabShell>
     );
 }

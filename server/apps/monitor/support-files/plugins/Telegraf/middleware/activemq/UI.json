@@ -16,6 +16,7 @@
       "visible_in": "edit",
       "editable": false,
       "description": "监控的目标网址链接，以检测其可用性和性能",
+      "guide_short": "ActiveMQ WebConsole 根地址，例如 http://10.0.0.5:8161（Telegraf 默认拼接 /admin/xml/queues.jsp 等 Console API）。",
       "widget_props": {
         "placeholder": "http://example.com:8161"
       },
@@ -31,6 +32,7 @@
       "required": true,
       "editable": false,
       "description": "用于访问接口的用户名",
+      "guide_short": "WebConsole 登录账号（credentials.properties），生产建议使用只读角色 readonly，避免授予 admin。",
       "widget_props": {
         "placeholder": "用户名",
         "placeholder_en": "Username"
@@ -48,6 +50,7 @@
       "required": true,
       "editable": false,
       "description": "对应的登录密码",
+      "guide_short": "WebConsole 登录密码；修改 credentials.properties 后必须重启 ActiveMQ 才生效；不要在两侧留空格。",
       "widget_props": {
         "placeholder": "密码",
         "placeholder_en": "Password"
@@ -65,6 +68,7 @@
       "required": true,
       "default_value": 60,
       "description": "监控数据的采集时间间隔（单位：秒）",
+      "guide_short": "Telegraf inputs.activemq 采集周期，单位秒，默认 60；过短会加重 Console API 压力。",
       "widget_props": {
         "min": 1,
         "precision": 0,

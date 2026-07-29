@@ -12,6 +12,7 @@ import type {
   SceneWidgetType,
 } from './sceneWidget';
 import type { OpsAnalysisWidgetSurface } from '@/app/ops-analysis/utils/chartTypeSurface';
+import type { DateRangeValue } from './dateRange';
 
 export type FilterType = 'selector' | 'fixed';
 
@@ -97,6 +98,7 @@ export interface ValueConfig {
   chartThemeMode?: OpsChartThemeMode;
   dataSource?: string | number;
   compare?: boolean;
+  compareMode?: 'percent' | 'value';
   params?: Record<string, string | number | boolean | [number, number] | null>;
   dataSourceParams?: ParamItem[];
   tableConfig?: TableConfig;
@@ -243,7 +245,7 @@ export interface TimeRangeValue {
 }
 
 /** 筛选值类型 */
-export type FilterValue = string | number | TimeRangeValue | null;
+export type FilterValue = string | number | TimeRangeValue | DateRangeValue | null;
 
 /** 筛选选项（用于下拉选择） */
 export interface FilterOption {
@@ -256,7 +258,7 @@ export interface UnifiedFilterDefinition {
   id: string;
   key: string; // 参数 key（如 "time_range", "env", "namespace"）
   name: string; // 显示名称（用户可编辑）
-  type: 'timeRange' | 'string'; // 参数类型，用于绑定匹配
+  type: 'timeRange' | 'dateRange' | 'string'; // 参数类型，用于绑定匹配
   defaultValue?: FilterValue; // 默认值
   order: number; // 显示顺序
   enabled: boolean; // 是否启用
@@ -286,7 +288,7 @@ export interface FilterBindings {
 /** 扫描结果结构（用于配置弹窗） */
 export interface ScannedFilterParam {
   key: string;
-  type: 'string' | 'timeRange';
+  type: 'string' | 'timeRange' | 'dateRange';
   componentCount: number;
   sampleAlias: string;
   sampleDefaultValue: FilterValue;

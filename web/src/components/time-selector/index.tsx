@@ -91,11 +91,11 @@ const TimeSelector = forwardRef((props: TimeSelectorProps, ref) => {
   }, [defaultValue.rangePickerVaule, defaultValue.selectValue]);
 
   const getRecentTimeRange = () => {
-    const beginTime: number = dayjs()
+    const lastTime = dayjs();
+    const beginTime: number = lastTime
       .subtract(selectValueRef.current as number, 'minute')
       .valueOf();
-    const lastTime: number = dayjs().valueOf();
-    return [beginTime, lastTime];
+    return [beginTime, lastTime.valueOf()];
   };
 
   const labelRender: LabelRender = (props) => {

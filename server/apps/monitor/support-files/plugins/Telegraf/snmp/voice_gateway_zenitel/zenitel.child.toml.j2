@@ -50,7 +50,6 @@
 
     # ---- Zenitel VS-DEVICE-MIB temperature sensors (tempCurrentValue, Celsius) ----
     [[inputs.snmp.table]]
-        oid = "1.3.6.1.4.1.26122.3.2.2"
         name = "device_temperature"
         inherit_tags = ["source"]
     [[inputs.snmp.table.field]]
@@ -63,7 +62,6 @@
 
     # ---- Zenitel VS-DEVICE-MIB powerStatus: unknown(1), notConnected(2), connected(3) ----
     [[inputs.snmp.table]]
-        oid = "1.3.6.1.4.1.26122.3.5.1"
         name = "device_psu"
         inherit_tags = ["source"]
     [[inputs.snmp.table.field]]

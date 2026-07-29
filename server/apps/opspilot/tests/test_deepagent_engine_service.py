@@ -7,6 +7,8 @@ tools/MCP、knowledge_retrieve 工具、SKILL.md 技能（MinIO backend）、人
 
 import asyncio
 import os
+import subprocess
+import sys
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
@@ -143,6 +145,23 @@ class TestSkillBackendSources:
         n._cleanup_sandbox(d)
         assert not os.path.exists(d)
         n._cleanup_sandbox(None)  # None 安全
+
+    def test_sandbox_prefers_runtime_python_when_parent_path_only_has_system_python(self):
+        n = ToolsNodes()
+
+        with patch.dict(os.environ, {"PATH": "/usr/bin:/bin"}):
+            env = n._sandbox_env("/tmp/run-python-path")
+
+        path_entries = env["PATH"].split(":")
+        assert path_entries[0] == os.path.dirname(sys.executable)
+        completed = subprocess.run(
+            ["python3", "-c", "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')"],
+            env=env,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        assert completed.stdout.strip() == f"{sys.version_info.major}.{sys.version_info.minor}"
 
 
 class _FakeGraphBuilder:

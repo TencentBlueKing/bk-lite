@@ -1,6 +1,6 @@
 """NotifyResultService 通知结果落库覆盖测试。
 
-对照 spec/prd/告警中心·通知：下游通知系统返回不归一化，约定仅 result=False 记失败，
+对照 specs/capabilities/legacy-prd-告警中心-告警.md：下游通知系统返回不归一化，约定仅 result=False 记失败，
 缺省视为成功；通知结果需落库到 NotifyResult。
 """
 

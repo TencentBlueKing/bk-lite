@@ -82,7 +82,7 @@ const UserSyncSourceList = <T extends UserSyncSourceCardItem>({
       },
       {
         key: 'config',
-        label: t('system.user.userSyncPage.accessConfig'),
+        label: t('system.user.userSyncPage.accessConfigMenu'),
         onClick: () => onConfig(item),
       },
       {
@@ -122,7 +122,7 @@ const UserSyncSourceList = <T extends UserSyncSourceCardItem>({
           {filteredItems.map((item) => (
             <div
               key={item.id}
-              className={`${styles.card} flex min-h-[168px] w-full max-w-[400px] flex-col gap-1.5 rounded-xl p-3`}
+              className={`${styles.card} shadow-md flex min-h-[168px] w-full max-w-[400px] flex-col gap-1.5 rounded-xl p-3`}
             >
               <div className="flex items-start justify-between gap-2">
                 <div className="flex min-w-0 items-start gap-2">

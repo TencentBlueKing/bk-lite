@@ -30,7 +30,13 @@ from apps.operation_analysis.constants.import_export import (
 )
 from apps.operation_analysis.models.datasource_models import DataSourceAPIModel, NameSpace
 from apps.operation_analysis.models.models import Architecture, Dashboard, NetworkTopology, Report, Screen, Topology
-from apps.operation_analysis.schemas.import_export_schema import ImportExportValidationError, YAMLDocument, count_objects, detect_db_id_references
+from apps.operation_analysis.schemas.import_export_schema import (
+    ImportExportValidationError,
+    YAMLDocument,
+    count_objects,
+    detect_db_id_references,
+    validate_date_range_params,
+)
 
 
 class PrecheckService:
@@ -343,8 +349,11 @@ class PrecheckService:
         all_actions = [ConflictAction.SKIP.value, ConflictAction.OVERWRITE.value, ConflictAction.RENAME.value]
         rename_only = [ConflictAction.RENAME.value]
 
+        existing_namespace_names = set(
+            NameSpace.objects.filter(name__in=[ns.name for ns in doc.namespaces]).values_list("name", flat=True)
+        )
         for ns in doc.namespaces:
-            if NameSpace.objects.filter(name=ns.name).exists():
+            if ns.name in existing_namespace_names:
                 conflicts.append(
                     {
                         "object_key": ns.key,
@@ -354,8 +363,14 @@ class PrecheckService:
                     }
                 )
 
+        datasource_keys = {(ds.name, ds.rest_api) for ds in doc.datasources}
+        existing_datasources = {
+            (datasource.name, datasource.rest_api): datasource
+            for datasource in DataSourceAPIModel.objects.filter(name__in={name for name, _ in datasource_keys})
+            if (datasource.name, datasource.rest_api) in datasource_keys
+        }
         for ds in doc.datasources:
-            existing = DataSourceAPIModel.objects.filter(name=ds.name, rest_api=ds.rest_api).first()
+            existing = existing_datasources.get((ds.name, ds.rest_api))
             if existing:
                 has_permission = cls._check_group_permission(existing, current_team)
                 conflicts.append(
@@ -377,8 +392,11 @@ class PrecheckService:
         ]
 
         for canvas_list, obj_type, model in canvas_checks:
+            existing_canvases = {
+                canvas.name: canvas for canvas in model.objects.filter(name__in=[item.name for item in canvas_list])
+            }
             for canvas in canvas_list:
-                existing = model.objects.filter(name=canvas.name).first()
+                existing = existing_canvases.get(canvas.name)
                 if existing:
                     has_permission = cls._check_group_permission(existing, current_team)
                     conflicts.append(
@@ -445,6 +463,17 @@ class PrecheckService:
         all_errors.extend(schema_errors)
         if all_errors:
             return cls._build_precheck_result(False, None, conflicts, all_warnings, all_errors)
+
+        for violation in validate_date_range_params(doc):
+            all_errors.append(
+                {
+                    "code": ImportExportErrorCode.YAML_SCHEMA_INVALID,
+                    "message": f"dateRange parameter validation failed at {violation['path']}: {violation['message']}",
+                    "details": violation,
+                }
+            )
+        if all_errors:
+            return cls._build_precheck_result(False, doc, conflicts, all_warnings, all_errors)
 
         # Step 4: 对象数量检查
         all_errors.extend(cls.check_object_counts_consistency(doc))

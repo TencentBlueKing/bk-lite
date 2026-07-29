@@ -57,14 +57,15 @@ export const ParamInputControl: React.FC<ParamInputControlProps> = ({
 
   if (!inputConfig || inputConfig.control === 'input') return <>{renderFallback()}</>;
   if (state.status === 'loading') return <Spin size="small" />;
-  if (state.status !== 'success' || state.options.length === 0) return <>{renderFallback()}</>;
+
+  const options = state.status === 'success' ? state.options : [];
 
   if (inputConfig.control === 'radio') {
     return (
       <Radio.Group
         value={value}
         disabled={disabled}
-        options={state.options}
+        options={options}
         optionType="button"
         buttonStyle="outline"
         onChange={(event) => onChange?.(event.target.value ?? null)}
@@ -79,7 +80,7 @@ export const ParamInputControl: React.FC<ParamInputControlProps> = ({
       placeholder={placeholder}
       allowClear={allowClear}
       style={{ width: '100%', ...style }}
-      options={state.options}
+      options={options}
       onChange={(nextValue) => onChange?.(nextValue ?? null)}
     />
   );

@@ -1,14 +1,25 @@
 from rest_framework import serializers
 
 from apps.node_mgmt.models.cloud_region import CloudRegion
-from apps.node_mgmt.models.sidecar import CollectorConfiguration, Node, Collector
+from apps.node_mgmt.models.sidecar import Collector, CollectorConfiguration
+from apps.node_mgmt.utils.permission import get_authorized_node_queryset
 
 
 class CollectorConfigurationSerializer(serializers.ModelSerializer):
     collector = serializers.CharField(source='collector.id')
     collector_name = serializers.CharField(source='collector.name')
-    nodes = serializers.PrimaryKeyRelatedField(queryset=Node.objects.all(), many=True)
+    nodes = serializers.SerializerMethodField()
     operating_system = serializers.CharField(source='collector.node_operating_system')
+
+    def get_nodes(self, instance):
+        authorized_node_ids = self.context.get("authorized_node_ids")
+        if authorized_node_ids is None:
+            request = self.context.get("request")
+            authorized_node_ids = (
+                frozenset(get_authorized_node_queryset(request).values_list("id", flat=True)) if request is not None else frozenset()
+            )
+            self.context["authorized_node_ids"] = authorized_node_ids
+        return [node.id for node in instance.nodes.all() if node.id in authorized_node_ids]
 
     class Meta:
         model = CollectorConfiguration

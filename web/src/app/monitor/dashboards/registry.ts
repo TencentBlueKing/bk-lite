@@ -12,6 +12,7 @@ import ConsulDashboard from './objects/consul';
 import RabbitMQDashboard from './objects/rabbitmq';
 import TomcatDashboard from './objects/tomcat';
 import ZookeeperDashboard from './objects/zookeeper';
+import KafkaDashboard from './objects/kafka';
 import PingDashboard from './objects/ping';
 import TcpDashboard from './objects/tcp';
 import PostgresqlDashboard from './objects/postgresql';
@@ -20,6 +21,9 @@ import WebsiteDashboard from './objects/website';
 import K8sClusterDashboard from './objects/k8s-cluster';
 import K8sNodeDashboard from './objects/k8s-node';
 import K8sPodDashboard from './objects/k8s-pod';
+import K3sClusterDashboard from './objects/k3s-cluster';
+import K3sNodeDashboard from './objects/k3s-node';
+import K3sPodDashboard from './objects/k3s-pod';
 import SwitchDashboard from './objects/switch';
 import FirewallDashboard from './objects/firewall';
 import LoadbalanceDashboard from './objects/loadbalance';
@@ -30,6 +34,7 @@ import AccessDashboard from './objects/access';
 import NetworkServiceDashboard from './objects/network_service';
 import ConsoleServerDashboard from './objects/console_server';
 import VoiceGatewayDashboard from './objects/voice_gateway';
+import JvmDashboard from './objects/jvm';
 import { ENTERPRISE_PROFESSIONAL_DASHBOARDS } from './objects/(enterprise)-registry';
 import { normalizeDashboardKey } from './shared/utils';
 
@@ -43,6 +48,7 @@ export const PROFESSIONAL_DASHBOARD_GROUPS = {
 } as const;
 
 const COMMUNITY_DASHBOARDS: ProfessionalDashboardRegistryItem[] = [
+  { key: 'jvm', groupKey: 'middleware', objectName: 'JVM', objectDisplayName: 'JVM', inheritedPermissionPath: '/monitor/view', component: JvmDashboard },
   {
     key: 'mysql',
     groupKey: 'database',
@@ -141,6 +147,14 @@ const COMMUNITY_DASHBOARDS: ProfessionalDashboardRegistryItem[] = [
     objectDisplayName: 'Zookeeper',
     inheritedPermissionPath: '/monitor/view',
     component: ZookeeperDashboard
+  },
+  {
+    key: 'kafka',
+    groupKey: 'middleware',
+    objectName: 'Kafka',
+    objectDisplayName: 'Kafka',
+    inheritedPermissionPath: '/monitor/view',
+    component: KafkaDashboard
   },
   {
     key: 'postgres',
@@ -310,6 +324,30 @@ const COMMUNITY_DASHBOARDS: ProfessionalDashboardRegistryItem[] = [
     objectDisplayName: 'Pod',
     inheritedPermissionPath: '/monitor/view',
     component: K8sPodDashboard
+  },
+  {
+    key: 'k3s-cluster',
+    groupKey: 'container',
+    objectName: 'K3SCluster',
+    objectDisplayName: 'K3S 集群',
+    inheritedPermissionPath: '/monitor/view',
+    component: K3sClusterDashboard
+  },
+  {
+    key: 'k3s-node',
+    groupKey: 'container',
+    objectName: 'K3SNode',
+    objectDisplayName: 'K3S 节点',
+    inheritedPermissionPath: '/monitor/view',
+    component: K3sNodeDashboard
+  },
+  {
+    key: 'k3s-pod',
+    groupKey: 'container',
+    objectName: 'K3SPod',
+    objectDisplayName: 'K3S Pod',
+    inheritedPermissionPath: '/monitor/view',
+    component: K3sPodDashboard
   }
 ];
 
@@ -340,6 +378,26 @@ export const getProfessionalDashboardKey = (objectName?: string | null, objectDi
   });
 
   return matched?.key || '';
+};
+
+/** 侧栏/列表展示名：优先 API display_name；TCPPort 等技术名回退到注册表 objectDisplayName（→ TCP）。 */
+export const getProfessionalObjectDisplayName = (objectName?: string | null, objectDisplayName?: string | null) => {
+  const matched = PROFESSIONAL_DASHBOARDS.find((item) => {
+    const candidates = getDashboardCandidates(item);
+    const objectCandidates = [objectName, objectDisplayName].map((value) => normalizeDashboardKey(value));
+    return objectCandidates.some((candidate) => candidate && candidates.includes(candidate));
+  });
+  const apiName = String(objectDisplayName || '').trim();
+  const technicalName = String(objectName || '').trim();
+  const apiKey = normalizeDashboardKey(apiName);
+  const techKey = normalizeDashboardKey(technicalName);
+
+  // 技术名 TCPPort（或 API 仍返回 TCPPort）时，强制用注册表展示名 TCP
+  if (techKey === 'tcpport' || apiKey === 'tcpport') {
+    return matched?.objectDisplayName || 'TCP';
+  }
+  if (apiName && apiName !== technicalName) return apiName;
+  return matched?.objectDisplayName || apiName || technicalName || '';
 };
 
 export const getProfessionalDashboardUrl = (

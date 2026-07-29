@@ -1,9 +1,27 @@
 [[inputs.disk]]
     startup_error_behavior = "retry"
-    ignore_fs = ["tmpfs", "devtmpfs", "devfs", "iso9660", "overlay", "aufs", "squashfs"]
     interval = "{{ interval }}s"
     [inputs.disk.tags]
         instance_id = "{{ instance_id }}"
         instance_type = "{{ instance_type }}"
         collect_type = "host"
         config_type = "disk"
+
+[[processors.starlark]]
+    namepass = ["disk"]
+    source = '''
+def _parse_fstypes(value):
+    return [item.strip().lower() for item in value.split(",") if item.strip()]
+
+def apply(metric):
+    fstype = metric.tags.get("fstype", "").strip().lower()
+    includes = _parse_fstypes(disk_include_fstypes)
+    excludes = _parse_fstypes(disk_exclude_fstypes)
+    if (includes and fstype not in includes) or fstype in excludes:
+        return None
+    return metric
+'''
+
+    [processors.starlark.constants]
+        disk_include_fstypes = "{{ disk_include_fstypes | default('', true) | replace('\\', '\\\\') | replace('"', '\\"') }}"
+        disk_exclude_fstypes = "{{ disk_exclude_fstypes | default('tmpfs,devtmpfs,devfs,iso9660,overlay,aufs,squashfs,vfat,exfat,fat,fat32') | replace('\\', '\\\\') | replace('"', '\\"') }}"

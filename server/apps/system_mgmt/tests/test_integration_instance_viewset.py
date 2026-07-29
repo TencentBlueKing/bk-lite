@@ -4,6 +4,22 @@ import pytest
 
 from apps.system_mgmt.models import IntegrationInstance, IntegrationInstanceStatusChoices
 from apps.system_mgmt.providers.runtime import CapabilityExecutionResult
+from apps.system_mgmt.viewset import integration_instance_viewset
+
+
+def test_test_connection_response_keeps_transport_success_for_validation_failure():
+    result = CapabilityExecutionResult.failed_result(
+        "AD connection credentials were rejected",
+        code="provider.auth_failed",
+        detail="LDAP bind rejected the configured credentials",
+        external_code="49",
+    )
+
+    response = integration_instance_viewset.build_test_connection_response(result)
+
+    assert response.data["result"] is True
+    assert response.data["data"]["result"] is False
+    assert response.data["data"]["data"]["errors"][0]["detail"] == "LDAP bind rejected the configured credentials"
 
 
 @pytest.fixture
@@ -433,7 +449,7 @@ class TestIntegrationInstanceViewSet:
             "login_auth": IntegrationInstanceStatusChoices.READY,
             "user_sync": IntegrationInstanceStatusChoices.PENDING_VERIFICATION,
         }
-        draft_instance.status = IntegrationInstanceStatusChoices.PENDING_VERIFICATION
+        draft_instance.status = IntegrationInstanceStatusChoices.READY
         draft_instance.save(update_fields=["capability_status", "status"])
 
         result = CapabilityExecutionResult.success_result(
@@ -457,6 +473,55 @@ class TestIntegrationInstanceViewSet:
         assert draft_instance.status == IntegrationInstanceStatusChoices.READY
         mock_log.assert_called_once()
 
+    def test_capability_test_requires_a_ready_base_connection(self, api_client, authenticated_user, draft_instance):
+        authenticated_user.is_superuser = True
+        authenticated_user.permission = {"system-manager": {"integration_center-Edit"}}
+        authenticated_user.save(update_fields=["is_superuser"])
+        draft_instance.status = IntegrationInstanceStatusChoices.VERIFICATION_FAILED
+        draft_instance.save(update_fields=["status"])
+
+        with patch(
+            "apps.system_mgmt.viewset.integration_instance_viewset.RuntimeApplicationService.test_connection",
+        ) as mock_test_connection:
+            response = api_client.post(
+                f"/api/v1/system_mgmt/integration_instance/{draft_instance.id}/test_connection/",
+                {"capability_key": "login_auth"},
+                format="json",
+            )
+
+        assert response.status_code == 200
+        assert response.data["data"]["result"] is False
+        assert response.data["data"]["data"]["errors"][0]["code"] == "provider.base_connection_required"
+        mock_test_connection.assert_not_called()
+
+    def test_capability_test_does_not_overwrite_ready_base_connection_status(self, api_client, authenticated_user, draft_instance):
+        authenticated_user.is_superuser = True
+        authenticated_user.permission = {"system-manager": {"integration_center-Edit"}}
+        authenticated_user.save(update_fields=["is_superuser"])
+        draft_instance.status = IntegrationInstanceStatusChoices.READY
+        draft_instance.capability_status = {"login_auth": IntegrationInstanceStatusChoices.READY}
+        draft_instance.save(update_fields=["status", "capability_status"])
+        result = CapabilityExecutionResult.failed_result(
+            "capability failed",
+            code="provider.request_failed",
+            payload={"capability_status": {"login_auth": IntegrationInstanceStatusChoices.VERIFICATION_FAILED}},
+        )
+
+        with patch(
+            "apps.system_mgmt.viewset.integration_instance_viewset.RuntimeApplicationService.test_connection",
+            return_value=result,
+        ):
+            response = api_client.post(
+                f"/api/v1/system_mgmt/integration_instance/{draft_instance.id}/test_connection/",
+                {"capability_key": "login_auth"},
+                format="json",
+            )
+
+        assert response.status_code == 200
+        draft_instance.refresh_from_db()
+        assert draft_instance.status == IntegrationInstanceStatusChoices.READY
+        assert draft_instance.capability_status["login_auth"] == IntegrationInstanceStatusChoices.VERIFICATION_FAILED
+
     def test_test_connection_updates_instance_status_for_full_check(self, api_client, authenticated_user, draft_instance):
         authenticated_user.is_superuser = True
         authenticated_user.permission = {"system-manager": {"integration_center-Edit"}}
@@ -474,7 +539,7 @@ class TestIntegrationInstanceViewSet:
         with patch(
             "apps.system_mgmt.viewset.integration_instance_viewset.RuntimeApplicationService.test_connection",
             return_value=result,
-        ):
+        ), patch("apps.system_mgmt.viewset.integration_instance_viewset.logger") as mock_logger:
             response = api_client.post(
                 f"/api/v1/system_mgmt/integration_instance/{draft_instance.id}/test_connection/",
                 {},
@@ -484,4 +549,10 @@ class TestIntegrationInstanceViewSet:
         assert response.status_code == 200
         draft_instance.refresh_from_db()
         assert draft_instance.status == IntegrationInstanceStatusChoices.VERIFICATION_FAILED
-        assert draft_instance.capability_status == {"login_auth": IntegrationInstanceStatusChoices.VERIFICATION_FAILED}
+        assert draft_instance.capability_status == {
+            "login_auth": IntegrationInstanceStatusChoices.PENDING_VERIFICATION,
+            "user_sync": IntegrationInstanceStatusChoices.PENDING_VERIFICATION,
+            "im_notification": IntegrationInstanceStatusChoices.PENDING_VERIFICATION,
+        }
+        mock_logger.warning.assert_not_called()
+        assert "test_connection: failed" in str(mock_logger.debug.call_args_list)

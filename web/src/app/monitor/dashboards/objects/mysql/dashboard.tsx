@@ -929,10 +929,6 @@ export default function MysqlDashboardPage() {
     setFrequence(val);
   };
 
-  const goBack = () => {
-    router.push('/monitor/view');
-  };
-
   const onInstanceChange = (value: string) => {
     const target = instanceOptions.find((item) => item.value === value);
     const params = new URLSearchParams(searchParams.toString());
@@ -964,7 +960,6 @@ export default function MysqlDashboardPage() {
             onTimeChange={onTimeChange}
             onFrequenceChange={onFrequenceChange}
             onRefresh={() => (isDashboardMode ? loadMetrics() : setMetricsRefreshSignal((value) => value + 1))}
-            onBack={goBack}
             showTimeSelector={false}
             styles={styles}
           />

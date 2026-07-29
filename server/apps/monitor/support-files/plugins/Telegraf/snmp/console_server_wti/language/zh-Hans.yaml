@@ -30,9 +30,22 @@ monitor_object_metric:
     device_psu_state:
       name: 电源状态
       desc: 控制台服务器的输入电源状态，统一归一为 1=正常、2=异常。未知或非正常码均按电源路径风险处理。
+    wti_input_power_1_state:
+      name: WTI 输入电源 1 状态
+      desc: WTI 输入电源 1 的状态，统一归一为正常或异常。
+    wti_input_power_2_state:
+      name: WTI 输入电源 2 状态
+      desc: WTI 输入电源 2 的状态，统一归一为正常或异常。
+    wti_input_power_3_state:
+      name: WTI 输入电源 3 状态
+      desc: WTI 输入电源 3 的状态，统一归一为正常或异常。
+    wti_input_power_4_state:
+      name: WTI 输入电源 4 状态
+      desc: WTI 输入电源 4 的状态，统一归一为正常或异常。
 monitor_object_metric_group:
   ConsoleServer:
     Base: 基础
     Traffic: 流量
     Temperature: 温度
     Hardware Status: 硬件状态
+    Power: 电源

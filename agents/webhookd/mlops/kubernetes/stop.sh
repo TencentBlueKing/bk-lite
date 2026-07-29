@@ -53,72 +53,89 @@ if [ -z "$NAMESPACE" ]; then
     NAMESPACE="$KUBERNETES_NAMESPACE"
 fi
 
-# 检查资源类型
+# 独立检查全部资源。历史失败可能留下孤儿 Service，不能只凭
+# Job/Deployment 不存在就宣称该运行时 ID 已可复用。
 set +e
 JOB_EXISTS=$(kubectl get job "$K8S_NAME" -n "$NAMESPACE" --ignore-not-found 2>/dev/null)
+JOB_GET_STATUS=$?
 DEPLOYMENT_EXISTS=$(kubectl get deployment "$K8S_NAME" -n "$NAMESPACE" --ignore-not-found 2>/dev/null)
+DEPLOYMENT_GET_STATUS=$?
+SERVICE_NAME="${K8S_NAME}-svc"
+SERVICE_EXISTS=$(kubectl get service "$SERVICE_NAME" -n "$NAMESPACE" --ignore-not-found 2>/dev/null)
+SERVICE_GET_STATUS=$?
 set -e
+
+if [ $JOB_GET_STATUS -ne 0 ] || [ $DEPLOYMENT_GET_STATUS -ne 0 ] || [ $SERVICE_GET_STATUS -ne 0 ]; then
+    json_error "RESOURCE_QUERY_FAILED" "$ID" "Failed to query Kubernetes resources before stopping"
+    exit 1
+fi
+
+DELETION_STARTED="false"
 
 if [ -n "$JOB_EXISTS" ]; then
     # 这是一个训练 Job
     # Kubernetes Job 无法"停止"，只能删除
     if [ "$REMOVE" = "true" ]; then
         # 删除 Job（会级联删除关联的 Pod），使用 --wait=false 立即返回
+        set +e
         DELETE_OUTPUT=$(kubectl delete job "$K8S_NAME" -n "$NAMESPACE" --wait=false 2>&1)
         DELETE_STATUS=$?
+        set -e
         
         if [ $DELETE_STATUS -ne 0 ]; then
             json_error "JOB_DELETE_FAILED" "$ID" "Failed to delete job" "$DELETE_OUTPUT"
             exit 1
         fi
+        DELETION_STARTED="true"
         
         # 删除关联的 Secret
         SECRET_NAME=$(generate_secret_name "$K8S_NAME")
         delete_secret "$NAMESPACE" "$SECRET_NAME"
         
-        # 返回 terminating 状态，前端通过 status 接口轮询最终状态
-        echo "{\"status\":\"success\",\"id\":\"$ID\",\"state\":\"terminating\",\"detail\":\"Job deletion initiated\"}"
-        exit 0
     else
         # Job 无法停止，只能删除
         json_error "JOB_CANNOT_STOP" "$ID" "Kubernetes Jobs cannot be stopped, only deleted. Use remove=true to delete."
         exit 1
     fi
-elif [ -n "$DEPLOYMENT_EXISTS" ]; then
+fi
+
+if [ -n "$DEPLOYMENT_EXISTS" ]; then
     # 这是一个推理 Deployment
     # 注意：为了与 Docker --rm 行为一致，stop 操作会删除 Deployment
     # 这样可以保证同一个 serving ID 可以"停止 → 重新部署"
     
-    SERVICE_NAME="${K8S_NAME}-svc"
-    
     # 删除 Deployment（使用 --wait=false 立即返回，不等待 Pod 终止）
+    set +e
     DELETE_OUTPUT=$(kubectl delete deployment "$K8S_NAME" -n "$NAMESPACE" --wait=false 2>&1)
     DELETE_STATUS=$?
+    set -e
     
     if [ $DELETE_STATUS -ne 0 ]; then
         json_error "DEPLOYMENT_DELETE_FAILED" "$ID" "Failed to delete deployment" "$DELETE_OUTPUT"
         exit 1
     fi
-    
-    # 删除 Service（使用 --wait=false 立即返回）
+    DELETION_STARTED="true"
+fi
+
+# Service 可能独立残留，必须单独删除。
+if [ -n "$SERVICE_EXISTS" ]; then
     set +e
-    SVC_EXISTS=$(kubectl get svc "$SERVICE_NAME" -n "$NAMESPACE" --ignore-not-found 2>/dev/null)
-    if [ -n "$SVC_EXISTS" ]; then
-        SVC_DELETE_OUTPUT=$(kubectl delete svc "$SERVICE_NAME" -n "$NAMESPACE" --wait=false 2>&1)
-        SVC_DELETE_STATUS=$?
-        if [ $SVC_DELETE_STATUS -ne 0 ]; then
-            # Service 删除失败，记录但不阻塞（Deployment 已删除）
-            json_error "SERVICE_DELETE_FAILED" "$ID" "Deployment deleted but Service deletion failed" "$SVC_DELETE_OUTPUT"
-            exit 1
-        fi
-    fi
+    SVC_DELETE_OUTPUT=$(kubectl delete service "$SERVICE_NAME" -n "$NAMESPACE" --wait=false 2>&1)
+    SVC_DELETE_STATUS=$?
     set -e
-    
-    # 返回 terminating 状态，前端通过 status 接口轮询最终状态
-    echo "{\"status\":\"success\",\"id\":\"$ID\",\"state\":\"terminating\",\"detail\":\"Deployment and Service deletion initiated\"}"
-    exit 0
-else
-    # 资源不存在（幂等设计：不存在时返回成功）
-    json_success "$ID" "Resource does not exist (already stopped or removed)"
+
+    if [ $SVC_DELETE_STATUS -ne 0 ]; then
+        json_error "SERVICE_DELETE_FAILED" "$ID" "Failed to delete Service" "$SVC_DELETE_OUTPUT"
+        exit 1
+    fi
+    DELETION_STARTED="true"
+fi
+
+if [ "$DELETION_STARTED" = "true" ]; then
+    echo "{\"status\":\"success\",\"id\":\"$ID\",\"state\":\"terminating\",\"detail\":\"Kubernetes resource deletion initiated\"}"
     exit 0
 fi
+
+# 资源不存在（幂等终态）
+json_success "$ID" "Resource does not exist (already stopped or removed)" "state" "removed"
+exit 0

@@ -1,5 +1,6 @@
 """IPAM 对账登记表模型 + 对账逻辑（本任务先放模型用例，后续任务追加）。"""
 import pytest
+from django.test import override_settings
 
 pytestmark = pytest.mark.django_db
 
@@ -36,6 +37,81 @@ SUBNETS = [
     {"_id": 1, "subnet_address": "10.0.1.0", "subnet_mask": "24"},
     {"_id": 2, "subnet_address": "10.0.2.0", "subnet_mask": "24"},
 ]
+
+
+def test_ci_source_is_loaded_by_stable_id_cursor_batches(monkeypatch):
+    from apps.cmdb.services import ipam_reconcile
+
+    calls = []
+
+    class FakeGraph:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return None
+
+        def query_entity(self, label, params, **kwargs):
+            calls.append((params, kwargs))
+            cursor = next((item["value"] for item in params if item["type"] == "id>"), 0)
+            rows = {
+                0: [{"_id": 1, "ip_addr": "10.0.1.1"}, {"_id": 2, "ip_addr": "10.0.1.2"}],
+                2: [{"_id": 5, "ip_addr": "10.0.1.5"}],
+            }[cursor]
+            return rows, None
+
+    monkeypatch.setattr(ipam_reconcile, "GraphClient", FakeGraph)
+
+    rows = list(ipam_reconcile._load_ci_with_ip("host", "ip_addr", batch_size=2))
+
+    assert [row["_id"] for row in rows] == [1, 2, 5]
+    assert len(calls) == 2
+    assert calls[0][1] == {"page": {"skip": 0, "limit": 2}, "include_count": False}
+    assert calls[1][0][-1] == {"field": "id", "type": "id>", "value": 2}
+
+
+def test_existing_ip_reference_set_fails_closed_above_limit(monkeypatch):
+    from apps.cmdb.services import ipam_reconcile
+
+    class FakeGraph:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return None
+
+        def query_entity(self, label, params, **kwargs):
+            assert kwargs == {"page": {"skip": 0, "limit": 3}, "include_count": False}
+            return [{"_id": 1}, {"_id": 2}, {"_id": 3}], None
+
+    monkeypatch.setattr(ipam_reconcile, "GraphClient", FakeGraph)
+
+    with pytest.raises(ipam_reconcile.IPAMReconcileLimitExceeded, match="existing_ips.*2"):
+        ipam_reconcile._load_existing_ips(limit=2)
+
+
+@override_settings(IPAM_RECONCILE_OCCUPANT_LIMIT=1)
+def test_occupant_aggregation_fails_closed_above_limit(monkeypatch):
+    from apps.cmdb.services import ipam_reconcile
+
+    monkeypatch.setattr(ipam_reconcile, "_load_sources", lambda: [{"model_id": "host", "ip_attr_id": "ip_addr"}])
+    monkeypatch.setattr(
+        ipam_reconcile,
+        "_load_subnets",
+        lambda: [{"_id": 1, "subnet_address": "10.0.1.0", "subnet_mask": "24"}],
+    )
+    monkeypatch.setattr(ipam_reconcile, "_load_existing_ips", lambda: [])
+    monkeypatch.setattr(
+        ipam_reconcile,
+        "_load_ci_with_ip",
+        lambda *args: [
+            {"_id": 1, "model_id": "host", "ip_addr": "10.0.1.1"},
+            {"_id": 2, "model_id": "host", "ip_addr": "10.0.1.2"},
+        ],
+    )
+
+    with pytest.raises(ipam_reconcile.IPAMReconcileLimitExceeded, match="occupants.*1"):
+        ipam_reconcile.run_reconciliation()
 
 
 class TestMatchSubnet:

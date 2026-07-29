@@ -467,7 +467,7 @@ const ImNotificationPage: React.FC = () => {
       sendMappings.map((mapping) => {
         return ({
           value: mapping.user,
-          label: `${mapping.username}`,
+          label: mapping.display_name || mapping.username,
         })
       }),
     [sendMappings],

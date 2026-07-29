@@ -1,6 +1,6 @@
 """相关告警服务覆盖测试。
 
-对照 spec/prd/告警中心·告警：根据维度相似度推荐相关告警。
+对照 specs/capabilities/legacy-prd-告警中心-告警.md：根据维度相似度推荐相关告警。
 """
 
 from datetime import timedelta

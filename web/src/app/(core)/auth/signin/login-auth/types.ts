@@ -47,6 +47,8 @@ export interface LoginAuthLoginResult {
   enable_otp?: boolean;
   password_expiry_reminder?: string;
   redirect_url?: string;
+  legacy_external_callback_url?: string;
+  legacy_third_login_code?: string;
   require_otp?: boolean;
   challenge_id?: string;
   qr_code?: string;

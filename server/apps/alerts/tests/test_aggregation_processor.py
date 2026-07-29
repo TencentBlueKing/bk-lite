@@ -1,6 +1,6 @@
 """聚合处理器辅助方法覆盖测试。
 
-对照 spec/prd/告警中心·配置：相关性规则按时间窗口取事件、缺失检查参数归一与心跳上下文。
+对照 specs/capabilities/legacy-prd-告警中心-配置.md：相关性规则按时间窗口取事件、缺失检查参数归一与心跳上下文。
 """
 
 import datetime
@@ -10,10 +10,10 @@ import pytest
 from django.utils import timezone
 
 from apps.alerts.aggregation.processor.aggregation_processor import AggregationProcessor
-from apps.alerts.constants.constants import EventAction, HeartbeatCheckMode
+from apps.alerts.constants.constants import AlertStatus, EventAction, HeartbeatCheckMode
 from apps.alerts.models.alert_operator import AlarmStrategy
 from apps.alerts.models.alert_source import AlertSource
-from apps.alerts.models.models import Event
+from apps.alerts.models.models import Alert, Event
 
 
 # --------------------------------------------------------------------------
@@ -101,6 +101,111 @@ def test_get_events_for_strategy_within_window(source):
     strategy = AlarmStrategy.objects.create(name="s", strategy_type="smart_denoise", params={"window_size": 60})
     events = AggregationProcessor.get_events_for_strategy(strategy, now)
     assert events.filter(event_id="E1").exists()
+
+
+@pytest.mark.parametrize("closed_status", AlertStatus.CLOSED_STATUS)
+@pytest.mark.django_db
+def test_get_events_for_strategy_excludes_event_linked_to_closed_alert_of_same_strategy(source, closed_status):
+    now = timezone.now()
+    event = Event.objects.create(
+        source=source,
+        raw_data={},
+        title="t",
+        level="0",
+        start_time=now,
+        event_id="E-CLOSED",
+        action=EventAction.CREATED,
+    )
+    strategy = AlarmStrategy.objects.create(
+        name="same-strategy",
+        strategy_type="smart_denoise",
+        params={"window_size": 60},
+    )
+    alert = Alert.objects.create(
+        alert_id="A-CLOSED",
+        level="0",
+        title="t",
+        content="c",
+        fingerprint="fp-closed",
+        status=closed_status,
+        rule_id=str(strategy.id),
+    )
+    alert.events.add(event)
+
+    events = AggregationProcessor.get_events_for_strategy(strategy, now)
+
+    assert not events.filter(pk=event.pk).exists()
+
+
+@pytest.mark.django_db
+def test_get_events_for_strategy_keeps_event_linked_to_active_alert_of_same_strategy(source):
+    now = timezone.now()
+    event = Event.objects.create(
+        source=source,
+        raw_data={},
+        title="t",
+        level="0",
+        start_time=now,
+        event_id="E-ACTIVE",
+        action=EventAction.CREATED,
+    )
+    strategy = AlarmStrategy.objects.create(
+        name="active-strategy",
+        strategy_type="smart_denoise",
+        params={"window_size": 60},
+    )
+    alert = Alert.objects.create(
+        alert_id="A-ACTIVE",
+        level="0",
+        title="t",
+        content="c",
+        fingerprint="fp-active",
+        status=AlertStatus.PENDING,
+        rule_id=str(strategy.id),
+    )
+    alert.events.add(event)
+
+    events = AggregationProcessor.get_events_for_strategy(strategy, now)
+
+    assert events.filter(pk=event.pk).exists()
+
+
+@pytest.mark.django_db
+def test_get_events_for_strategy_keeps_event_linked_to_closed_alert_of_other_strategy(source):
+    now = timezone.now()
+    event = Event.objects.create(
+        source=source,
+        raw_data={},
+        title="t",
+        level="0",
+        start_time=now,
+        event_id="E-OTHER-STRATEGY",
+        action=EventAction.CREATED,
+    )
+    current_strategy = AlarmStrategy.objects.create(
+        name="current-strategy",
+        strategy_type="smart_denoise",
+        params={"window_size": 60},
+    )
+    other_strategy = AlarmStrategy.objects.create(
+        name="other-strategy",
+        strategy_type="smart_denoise",
+        params={"window_size": 60},
+    )
+    alert = Alert.objects.create(
+        alert_id="A-OTHER-STRATEGY",
+        level="0",
+        title="t",
+        content="c",
+        fingerprint="fp-other-strategy",
+        status=AlertStatus.AUTO_RECOVERY,
+        rule_id=str(other_strategy.id),
+    )
+    alert.events.add(event)
+
+    events = AggregationProcessor.get_events_for_strategy(current_strategy, now)
+
+    assert events.filter(pk=event.pk).exists()
 
 
 @pytest.mark.django_db
@@ -210,6 +315,54 @@ def test_process_aggregation_smart_denoise_creates_alert(source):
 
     AggregationProcessor().process_aggregation()
     assert Alert.objects.exists()
+
+
+@pytest.mark.django_db
+def test_process_aggregation_reports_alert_creation_failure(source, mocker):
+    """告警组创建失败必须让本轮聚合失败，不能继续上报“聚合成功”。"""
+    from apps.alerts.constants.constants import LevelType
+    from apps.alerts.models.models import Level
+
+    for lid in (0, 1, 2):
+        Level.objects.create(
+            level_id=lid,
+            level_name=f"L{lid}",
+            level_display_name=f"等级{lid}",
+            level_type=LevelType.ALERT,
+        )
+
+    Event.objects.create(
+        source=source,
+        raw_data={},
+        title="CPU高",
+        level="1",
+        start_time=timezone.now(),
+        event_id="E-create-fails",
+        action=EventAction.CREATED,
+        service="svc-a",
+        resource_name="host1",
+        item="cpu",
+        external_id="ext-create-fails",
+    )
+    strategy = AlarmStrategy.objects.create(
+        name="创建失败降噪",
+        strategy_type="smart_denoise",
+        is_active=True,
+        team=[1],
+        dispatch_team=[1],
+        match_rules=[[{"key": "title", "operator": "eq", "value": "CPU高"}]],
+        params={"window_size": 60, "group_by": ["service"]},
+    )
+    mocker.patch(
+        "apps.alerts.aggregation.builder.alert_builder.AlertBuilder.create_or_update_alert",
+        side_effect=RuntimeError("alert write failed"),
+    )
+
+    with pytest.raises(RuntimeError, match="1 个告警组创建失败"):
+        AggregationProcessor().process_aggregation()
+
+    strategy.refresh_from_db()
+    assert strategy.last_execute_time is None
 
 
 @pytest.mark.django_db
@@ -381,6 +534,7 @@ def test_get_events_for_strategy_excludes_shielded(source):
 @pytest.mark.django_db
 def test_trigger_missing_alert_schedules_auto_assignment(source):
     from unittest import mock
+    from apps.alerts.models import AlertOutbox
 
     strategy = _missing_strategy()
     proc = AggregationProcessor()
@@ -388,13 +542,13 @@ def test_trigger_missing_alert_schedules_auto_assignment(source):
     with mock.patch(
         "apps.alerts.aggregation.processor.aggregation_processor.transaction.on_commit",
         side_effect=lambda fn: fn(),
-    ), mock.patch.object(AggregationProcessor, "_schedule_auto_assignment") as scheduled:
-        proc._trigger_missing_alert(strategy, strategy.params, timezone.now(), None)
+    ):
+        alert = proc._trigger_missing_alert(strategy, strategy.params, timezone.now(), None)
 
-    scheduled.assert_called_once()
-    alert_ids = scheduled.call_args.args[0]
-    assert isinstance(alert_ids, list) and len(alert_ids) == 1
-    assert alert_ids[0].startswith("ALERT-")
+    assert alert.alert_id.startswith("ALERT-")
+    records = {record.kind: record for record in AlertOutbox.objects.all()}
+    assert records["auto_assignment"].payload == {"alert_ids": [alert.alert_id]}
+    assert records["action"].payload == {"alert_id": alert.alert_id, "event_name": "created"}
 
 
 # --------------------------------------------------------------------------

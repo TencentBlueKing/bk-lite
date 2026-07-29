@@ -2,28 +2,22 @@
 # @File: assignment.py
 # @Time: 2025/6/10 17:43
 # @Author: windyzhao
-from typing import List, Dict, Any, Optional
+from typing import Any, Dict, List, Optional
 
-from django.utils import timezone
 from django.db import transaction
+from django.utils import timezone
 
+from apps.alerts.common.notification_target import normalize_notification_target, read_notification_target, resolve_notification_target_with_scope
+from apps.alerts.constants.constants import SYSTEM_OPERATOR_USER, AlertAssignmentMatchType, AlertStatus, LogAction, LogTargetType, SessionStatus
 from apps.alerts.error import AlertNotFoundError
-from apps.alerts.models.operator_log import OperatorLog
-from apps.alerts.models.models import Alert
 from apps.alerts.models.alert_operator import AlertAssignment
-from apps.alerts.constants.constants import (
-    AlertStatus,
-    AlertAssignmentMatchType,
-    LogAction,
-    LogTargetType,
-    SessionStatus,
-    SYSTEM_OPERATOR_USER,
-)
+from apps.alerts.models.models import Alert
+from apps.alerts.models.operator_log import OperatorLog
 from apps.alerts.service.alter_operator import AlertOperator
 from apps.alerts.service.un_dispatch import UnDispatchService
-from apps.alerts.utils.time_range_checker import TimeRangeChecker
-from apps.alerts.utils.rule_matcher import RuleMatcher
 from apps.alerts.utils.operator_log import record_operator_logs_bulk
+from apps.alerts.utils.rule_matcher import RuleMatcher
+from apps.alerts.utils.time_range_checker import TimeRangeChecker
 from apps.core.logger import alert_logger as logger
 
 
@@ -68,7 +62,8 @@ class AlertAssignmentOperator:
 
     # 字段映射到模型字段
     FIELD_MAPPING = {
-        "source_id": "source_name",
+        "source_id": "events__source_id",
+        "source_name": "source_name",
         # 前端 matchRule 组件下发的级别条件 key 是 `level`（分派弹窗用默认 ruleList），
         # value 为 level_id；Alert.level 存的也是 level_id。保留 `level_id` 兼容历史数据。
         "level": "level",
@@ -252,9 +247,10 @@ class AlertAssignmentOperator:
 
         elif assignment.match_type == AlertAssignmentMatchType.FILTER:
             # 过滤匹配，使用规则匹配器
-            return self.rule_matcher.filter_queryset(
+            matched_ids = self.rule_matcher.filter_queryset(
                 time_filtered_queryset, assignment.match_rules or []
             )
+            return list(dict.fromkeys(matched_ids))
 
         return []
 
@@ -273,17 +269,42 @@ class AlertAssignmentOperator:
         """
         results = []
 
-        # 获取分派人员信息
-        personnel = assignment.personnel or []
+        # 同一规则的一批告警只解析一次目标；历史规则自动回退到 personnel。
+        config = assignment.config if isinstance(assignment.config, dict) else {}
+        raw_target = read_notification_target(config)
+        normalized_target = normalize_notification_target(
+            raw_target,
+            assignment.personnel,
+        )
+        personnel, assignee_scope_group_ids = resolve_notification_target_with_scope(
+            raw_target,
+            assignment.personnel,
+        )
+        logger.info(
+            "[AlertAssign] 通知目标解析: assignment_id=%s, type=%s, "
+            "organization_ids=%s, resolved_count=%s",
+            assignment.id,
+            normalized_target["type"],
+            normalized_target["organization_ids"],
+            len(personnel),
+        )
         if not personnel:
             for alert_id in alert_ids:
                 alert = self.alerts.get(alert_id)
+                logger.warning(
+                    "[AlertAssign] 通知目标为空，跳过分派: assignment_id=%s, "
+                    "alert_id=%s, type=%s, organization_ids=%s, reason=no_active_recipient",
+                    assignment.id,
+                    alert.alert_id if alert else alert_id,
+                    normalized_target["type"],
+                    normalized_target["organization_ids"],
+                )
                 results.append(
                     {
                         "alert_id": alert.alert_id if alert else alert_id,
                         "alert_pk": alert_id,
                         "success": False,
-                        "message": "No personnel configured for assignment",
+                        "message": "No active recipients resolved for assignment",
                         "assignment_id": assignment.id,
                     }
                 )
@@ -331,8 +352,20 @@ class AlertAssignmentOperator:
                             data={
                                 "assignee": personnel,
                                 "assignment_id": assignment.id,
+                                "assignee_scope_group_ids": assignee_scope_group_ids,
                             },
                         )
+                        if not result.get("result"):
+                            results.append(
+                                {
+                                    "alert_id": alert.alert_id,
+                                    "alert_pk": alert.id,
+                                    "success": False,
+                                    "message": result.get("message", "assignment failed"),
+                                    "assignment_id": assignment.id,
+                                }
+                            )
+                            continue
                         logger.debug(
                             "[AlertAssign] 告警 %s 成功分派给 %s, result=%s",
                             alert.alert_id, personnel, result,
@@ -434,9 +467,9 @@ def not_assignment_alert_notify(alert_ids):
     alert_instances = list(
         Alert.objects.filter(alert_id__in=alert_ids, status=AlertStatus.UNASSIGNED)
     )
-    from apps.alerts.tasks import sync_notify
-
     params = UnDispatchService.notify_un_dispatched_alert_params_format(
         alerts=alert_instances
     )
-    sync_notify.delay(params)
+    from apps.alerts.common.notify.dispatcher import enqueue_notifications
+
+    enqueue_notifications(params)

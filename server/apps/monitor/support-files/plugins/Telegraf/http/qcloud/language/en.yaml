@@ -4,3 +4,58 @@ Tencent Cloud:
     such as computing resources, network performance, and storage usage. This empowers
     users to gain deep insights into resource status, precisely pinpoint anomalies,
     and efficiently accomplish operational management and cost optimization.
+monitor_object:
+  TCP: TCP
+  CVM: Cloud Virtual Machine
+monitor_object_type:
+  Tencent Cloud: Tencent Cloud
+monitor_object_metric_group:
+  TCP:
+    Base: Base
+  CVM:
+    CPU: CPU
+    Memory: Memory
+    Disk: Disk
+    Network: Network
+monitor_object_metric:
+  TCP:
+    ConnectStatus:
+      name: Connection Status
+      desc: Availability of cloud APIs, validity of account credentials, and health of the data collection pipeline.
+  CVM:
+    CPUUsage_gauge:
+      name: CPU Usage
+      desc: Real-time percentage of CPU used by the virtual machine.
+    MemUsed_gauge:
+      name: Memory Used
+      desc: Memory used by applications, excluding buffer and system cache memory.
+    MemUsage_gauge:
+      name: Memory Usage
+      desc: Percentage of total memory used by applications, excluding buffer and system cache memory.
+    CvmDiskUsage_gauge:
+      name: Disk Usage
+      desc: Percentage of used disk capacity across all disks.
+    LanOuttraffic_gauge:
+      name: Internal Network Outbound Traffic
+      desc: Average outbound traffic rate on the internal network interface.
+    LanIntraffic_gauge:
+      name: Internal Network Inbound Traffic
+      desc: Average inbound traffic rate on the internal network interface.
+    LanOutpkg_gauge:
+      name: Internal Network Outbound Packets
+      desc: Average outbound packet rate on the internal network interface.
+    LanInpkg_gauge:
+      name: Internal Network Inbound Packets
+      desc: Average inbound packet rate on the internal network interface.
+    WanOuttraffic_gauge:
+      name: Public Network Outbound Traffic
+      desc: Average outbound traffic rate on the public network interface.
+    WanIntraffic_gauge:
+      name: Public Network Inbound Traffic
+      desc: Average inbound traffic rate on the public network interface.
+    WanOutpkg_gauge:
+      name: Public Network Outbound Packets
+      desc: Average outbound packet rate on the public network interface.
+    WanInpkg_gauge:
+      name: Public Network Inbound Packets
+      desc: Average inbound packet rate on the public network interface.

@@ -1,6 +1,6 @@
 """事件屏蔽覆盖测试。
 
-对照 spec/prd/告警中心·配置：屏蔽策略在生效时间内匹配事件并置为屏蔽状态。
+对照 specs/capabilities/legacy-prd-告警中心-配置.md：屏蔽策略在生效时间内匹配事件并置为屏蔽状态。
 """
 
 import pytest
@@ -34,9 +34,12 @@ def test_shield_all_match_shields_events(source):
     _make_event(source, "E2")
     AlertShield.objects.create(name="全屏蔽", match_type="all", match_rules=[], suppression_time={})
 
-    execute_shield_check_for_events(["E1", "E2"])
+    result = execute_shield_check_for_events(["E1", "E2"])
     # 全部匹配 → 两条事件均被置为屏蔽状态
     assert Event.objects.filter(status=EventStatus.SHIELD).count() == 2
+    assert result["shielded_events"] == 2
+    assert result["unshielded_events"] == 0
+    assert len(result["shield_results"]) == 2
 
 
 @pytest.mark.django_db

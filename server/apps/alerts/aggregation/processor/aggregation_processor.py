@@ -4,7 +4,6 @@ from typing import List, Dict, Any, Optional, cast
 import re
 from zoneinfo import ZoneInfo
 from croniter import croniter
-from celery import current_app
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 from django.db import transaction
@@ -137,6 +136,13 @@ class AggregationProcessor:
         ).exclude(
             # 被屏蔽事件不参与聚合建警（事件级·不建警）
             status=EventStatus.SHIELD,
+        ).exclude(
+            # 当前策略已经闭环的告警事件不得再次进入窗口，避免关闭后重复建警。
+            # 只限定当前策略，防止一个策略的闭环误伤其他策略对同一事件的聚合。
+            alert__in=Alert.objects.filter(
+                rule_id=str(strategy.pk),
+                status__in=AlertStatus.CLOSED_STATUS,
+            ),
         )
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug("[AlertAggregation] 策略 %s: 时间范围内事件总数=%s", strategy.name, events.count())
@@ -179,6 +185,7 @@ class AggregationProcessor:
 
         except Exception as e:  # noqa
             logger.exception("[AlertAggregation] 策略 %s 处理失败", strategy.name)
+            raise
 
     def _process_missing_detection_strategy(self, strategy: AlarmStrategy, now: datetime) -> None:
         logger.info(
@@ -422,7 +429,13 @@ class AggregationProcessor:
         # 缺失检测告警与常规聚合/即时一致，需进入自动分派链路；
         # 当前处于 select_for_update 事务内，故延迟到提交后再调度，避免回滚后空跑。
         alert_id = alert.alert_id
-        transaction.on_commit(lambda: self._schedule_auto_assignment([alert_id]))
+
+        def _dispatch_created():
+            from apps.alerts.service.alert_lifecycle import dispatch_alert_lifecycle
+
+            dispatch_alert_lifecycle([alert_id], "created", auto_assign=True)
+
+        transaction.on_commit(_dispatch_created)
         return alert
 
     def _recover_missing_alert(
@@ -547,7 +560,7 @@ class AggregationProcessor:
 
         except Exception as e:
             logger.error("[AlertAggregation] 策略 %s: 维度 %s 聚合失败: %s", strategy.name, dimensions, e, exc_info=True)
-            return False
+            raise
 
     def _create_or_update_alerts(
         self,
@@ -615,6 +628,11 @@ class AggregationProcessor:
         # 异步执行新创建告警的自动分配（不阻塞聚合流程）
         if new_alert_ids:
             self._schedule_auto_assignment(new_alert_ids)
+
+        if fail_count:
+            raise RuntimeError(
+                f"策略 {strategy.name} 有 {fail_count} 个告警组创建失败"
+            )
 
         return success_count
 
@@ -697,13 +715,7 @@ class AggregationProcessor:
         Args:
             alert_ids: 新创建的告警ID列表
         """
-        try:
-            from apps.alerts.tasks import async_auto_assignment_for_alerts
+        from apps.alerts.service.alert_lifecycle import dispatch_alert_lifecycle
 
-            logger.info("[AlertAggregation] 调度自动分配任务，告警数量: %s", len(alert_ids))
-            current_app.send_task(async_auto_assignment_for_alerts.name, args=[alert_ids])
-            logger.debug("[AlertAggregation] 自动分配任务已提交到队列")
-
-        except Exception as e:  # noqa
-            logger.exception("[AlertAggregation] 调度自动分配任务失败")
-            # 调度失败不影响聚合主流程
+        logger.info("[AlertAggregation] 持久化自动分配意图，告警数量: %s", len(alert_ids))
+        dispatch_alert_lifecycle(alert_ids, "created", auto_assign=True)

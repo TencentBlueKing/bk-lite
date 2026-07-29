@@ -59,3 +59,71 @@ export const shouldRenderSecondLayerMenu = (
   // Otherwise, render menu
   return true;
 };
+
+/**
+ * Get the deepest matched menu items for the current path.
+ * Returns the children of the deepest matched item, or an empty array if no match.
+ */
+export const getDeepestMatchedMenuItems = (
+  menus: MenuItem[],
+  currentPath: string
+): MenuItem[] => {
+  const matchedPath = findMatchedMenuPath(menus, currentPath);
+  if (!matchedPath || matchedPath.length === 0) return [];
+
+  const deepest = matchedPath[matchedPath.length - 1];
+  return deepest.children ?? [];
+};
+
+/**
+ * Get the first-layer siblings of the matched menu item for the current path.
+ * If the matched item is at the first layer, returns its siblings.
+ * If the matched item is deeper, returns the children of the first-layer ancestor.
+ */
+export const getFirstLayerSiblingMenuItems = (
+  menus: MenuItem[],
+  currentPath: string
+): MenuItem[] => {
+  const matchedPath = findMatchedMenuPath(menus, currentPath);
+  if (!matchedPath || matchedPath.length === 0) return [];
+
+  const firstLayer = matchedPath[0];
+  return firstLayer.children ?? [];
+};
+
+const filterVisibleMenuItems = (items: MenuItem[] = []): MenuItem[] =>
+  items.filter((item) => !item.isNotMenuItem && !item.isDirectory);
+
+const findClosestAncestorMenuWithChildren = (
+  items: MenuItem[],
+  currentPath: string
+): MenuItem | null => {
+  for (const item of items) {
+    if (item.isDirectory && item.children?.length) {
+      const found = findClosestAncestorMenuWithChildren(item.children, currentPath);
+      if (found) return found;
+      continue;
+    }
+
+    if (item.url && item.url !== currentPath && currentPath.startsWith(item.url)) {
+      if (item.children?.length) {
+        return findClosestAncestorMenuWithChildren(item.children, currentPath) || item;
+      }
+      return item;
+    }
+
+    if (item.children?.length) {
+      const found = findClosestAncestorMenuWithChildren(item.children, currentPath);
+      if (found) return found;
+    }
+  }
+  return null;
+};
+
+export const getClosestAncestorMenuItems = (
+  items: MenuItem[],
+  currentPath: string
+): MenuItem[] => {
+  const matchedMenu = findClosestAncestorMenuWithChildren(items, currentPath);
+  return filterVisibleMenuItems(matchedMenu?.children);
+};

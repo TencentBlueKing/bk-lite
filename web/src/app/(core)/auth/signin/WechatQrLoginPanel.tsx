@@ -9,13 +9,12 @@
  * 本组件不再参与主登录流程，保留仅作为历史参考/兼容兜底，
  * 新需求请直接使用 login-auth validation 链路。
  *
- * 相关文档：docs/superpowers/plans/2026-06-18-signin-validation-cutover.md
  */
 
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useTheme } from '@/context/theme';
+import { useThemeMode } from '@/theme';
 import { useTranslation } from '@/utils/i18n';
 
 declare global {
@@ -38,9 +37,9 @@ export default function WechatQrLoginPanel({ callbackUrl, thirdLogin }: WechatQr
   const [wechatSettings, setWechatSettings] = useState<WechatSettings | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const { themeName } = useTheme();
+  const { mode } = useThemeMode();
   const { t } = useTranslation();
-  const isDarkTheme = themeName === 'dark';
+  const isDarkTheme = mode === 'dark';
   const containerRef = useRef<HTMLDivElement | null>(null);
 
   const redirectUri = useMemo(() => {

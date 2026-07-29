@@ -1,6 +1,6 @@
 """CMDB 配置采集 BDD（中文 Gherkin）。
 
-对照 spec/prd/CMDB·资产采集：
+对照 specs/capabilities/legacy-prd-cmdb-自动发现.md：
 - 调试态机的拥有者抽取与访问决策；
 - 节点权限上下文（current_team / include_children cookie 解析）；
 - 调度参数 format_params 与调度变化判断 is_schedule_config_changed；

@@ -1,6 +1,6 @@
 """CMDB 采集任务调试状态机 BDD（中文 Gherkin）。
 
-对照 spec/prd/CMDB·配置采集·调试：
+对照 specs/capabilities/legacy-prd-cmdb-自动发现.md：
 - save_debug_state / get_debug_state 状态读写与 TTL；
 - can_access_debug_state owner 鉴权；
 - 状态流转中 owner 的保留语义；

@@ -275,13 +275,10 @@ class LogClusteringTrainJobViewSet(TeamModelViewSet):
         获取训练任务的所有 MLflow 运行记录
         """
         try:
-            # 获取分页参数
-            page = int(request.GET.get("page", 1))
-            page_size = request.GET.get("page_size")
-            # page_size 为 None、0、-1 时不分页
-            use_pagination = page_size is not None and page_size not in ["0", "-1"]
-            if use_pagination:
-                page_size = int(page_size)
+            pagination = self.parse_run_list_pagination(request)
+            if pagination is None:
+                return Response({"error": "分页参数必须为正整数"}, status=status.HTTP_400_BAD_REQUEST)
+            page, page_size, use_pagination = pagination
 
             train_job = self.get_object()
 
@@ -610,12 +607,7 @@ class LogClusteringTrainJobViewSet(TeamModelViewSet):
             filename = f"mlflow_model_{safe_run_name}_{run_id[:8]}.zip"
 
             # 返回文件响应
-            response = FileResponse(
-                zip_buffer,
-                content_type="application/zip",
-                as_attachment=True,
-                filename=filename,
-            )
+            response = mlflow_service.build_model_download_response(zip_buffer, filename)
 
             logger.info(f"模型下载完成 [run_id: {run_id}, filename: {filename}]")
             return response

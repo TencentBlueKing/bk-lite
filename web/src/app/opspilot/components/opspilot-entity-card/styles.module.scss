@@ -1,0 +1,39 @@
+.CommonCard {
+  .iconContainer {
+    position: absolute;
+    top: 20px;
+    right: 35px;
+    background-color: var(--color-bg);
+  }
+
+  .desc {
+    color: var(--color-text-3);
+  }
+}
+
+.CommonCard :global(.ant-card-body) {
+  padding: 0;
+  color: var(--color-text-1);
+  border: none;
+  background-color: var(--color-bg);
+}
+
+.CommonCard :global(.ant-card-body .ant-card-meta-title) {
+  font-size: 14px;
+}
+
+.menuContainer :global(.ant-dropdown-menu-item) {
+  padding: 0 !important;
+}
+
+.menuContainer :global(.ant-dropdown-menu-item div) {
+  width: 100%;
+}
+
+.menuContainer :global(.ant-dropdown-menu-item span) {
+  width: 100%;
+}
+
+.menuContainer :global(.ant-dropdown-menu-item .block) {
+  padding: 5px 12px;
+}

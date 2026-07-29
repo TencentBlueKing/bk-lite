@@ -1,6 +1,6 @@
 import React, { forwardRef, useImperativeHandle, useState } from 'react';
 import { useTranslation } from '@/utils/i18n';
-import OperateModal from '@/app/monitor/components/operate-drawer';
+import OperateModal from '@/components/operate-drawer';
 
 interface DrawerRef {
   showDrawer: () => void;

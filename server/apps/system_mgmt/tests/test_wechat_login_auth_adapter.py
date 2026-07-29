@@ -10,6 +10,7 @@
 from unittest.mock import patch, MagicMock
 
 import pytest
+import requests
 
 from apps.system_mgmt.providers.adapters.wechat import WechatLoginAuthAdapter
 
@@ -25,6 +26,26 @@ def _mock_response(json_data, status_code=200):
     response.status_code = status_code
     response.json.return_value = json_data
     return response
+
+
+def test_authenticate_decodes_utf8_nickname_from_text_plain_userinfo_response():
+    """微信 userinfo 错标为 text/plain 时，昵称仍按 UTF-8 解析。"""
+    token_response = _mock_response({"access_token": "AT", "openid": "oxxx"})
+    userinfo_response = requests.Response()
+    userinfo_response.status_code = 200
+    userinfo_response.headers["Content-Type"] = "text/plain"
+    userinfo_response.encoding = requests.utils.get_encoding_from_headers(userinfo_response.headers)
+    userinfo_response._content = (
+        b'{"openid":"oxxx","nickname":"\xe5\xbc\xa0\xe4\xb8\x89\xf0\x9f\x98\x80"}'
+    )
+
+    with patch("apps.system_mgmt.providers.adapters.wechat.requests.get", side_effect=[token_response, userinfo_response]):
+        result = WechatLoginAuthAdapter.authenticate(
+            config=WECHAT_CONFIG, provider_key="wechat", capability_key="login_auth", auth_code="auth-code"
+        )
+
+    assert result.success is True
+    assert result.payload["external_user"]["nickname"] == "张三😀"
 
 
 def test_authenticate_returns_external_user_with_real_field_names():
@@ -131,3 +152,49 @@ def test_authenticate_rejects_token_missing_openid():
 
     assert result.success is False
     assert result.errors[0].code == "provider.invalid_response"
+
+
+def test_authenticate_does_not_log_secret_or_auth_code_on_token_request_failure():
+    error = requests.RequestException(
+        "GET https://api.weixin.qq.com/token?secret=wx-test-secret&code=private-auth-code"
+    )
+
+    with patch(
+        "apps.system_mgmt.providers.adapters.wechat.requests.get",
+        side_effect=error,
+    ), patch("apps.system_mgmt.providers.adapters.wechat.logger") as logger:
+        result = WechatLoginAuthAdapter.authenticate(
+            config=WECHAT_CONFIG,
+            provider_key="wechat",
+            capability_key="login_auth",
+            auth_code="private-auth-code",
+        )
+
+    assert result.success is False
+    log_text = str(logger.method_calls)
+    assert "wx-test-secret" not in log_text
+    assert "private-auth-code" not in log_text
+    assert "RequestException" in log_text
+
+
+def test_authenticate_does_not_log_access_token_on_user_info_failure():
+    token_response = _mock_response({"access_token": "private-access-token", "openid": "oxxx"})
+    error = requests.RequestException(
+        "GET https://api.weixin.qq.com/userinfo?access_token=private-access-token"
+    )
+
+    with patch(
+        "apps.system_mgmt.providers.adapters.wechat.requests.get",
+        side_effect=[token_response, error],
+    ), patch("apps.system_mgmt.providers.adapters.wechat.logger") as logger:
+        result = WechatLoginAuthAdapter.authenticate(
+            config=WECHAT_CONFIG,
+            provider_key="wechat",
+            capability_key="login_auth",
+            auth_code="auth-code",
+        )
+
+    assert result.success is False
+    log_text = str(logger.method_calls)
+    assert "private-access-token" not in log_text
+    assert "RequestException" in log_text

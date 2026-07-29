@@ -219,6 +219,12 @@ monitor_object_metric:
       name: Top Conversation Flow Traffic Rate
       desc: Conversation traffic ranked by source, destination, protocol, and destination
         port, used to locate dominant communication pairs.
+    device_psu_powered:
+      name: PSU Powered Status
+      desc: Whether the device power supply unit is powered on or off.
+    device_psu_present:
+      name: PSU Present Status
+      desc: Whether the device power supply unit slot is populated or empty.
 monitor_object_metric_group:
   Router:
     CPU: CPU
@@ -240,3 +246,4 @@ monitor_object_metric_group:
     Application Port: Application Port
     Endpoint: Endpoint
     Conversation: Conversation
+    Power: Power

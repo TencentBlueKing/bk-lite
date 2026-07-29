@@ -1,0 +1,5 @@
+interface:
+  display_name: "Grill with Docs"
+  short_description: "Help with Grill with Docs tasks"
+policy:
+  allow_implicit_invocation: false

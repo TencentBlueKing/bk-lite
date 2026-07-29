@@ -1,0 +1,15 @@
+.root {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+}
+
+.root > :global(.adm-pull-to-refresh) {
+  display: flex;
+  flex: 1 0 auto;
+  flex-direction: column;
+}
+
+.root :global(.adm-pull-to-refresh-content) {
+  flex: 1 0 auto;
+}

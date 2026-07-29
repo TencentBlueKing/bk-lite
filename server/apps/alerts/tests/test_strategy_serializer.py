@@ -1,6 +1,6 @@
 """告警策略序列化器校验覆盖测试。
 
-对照 spec/prd/告警中心·配置：相关性规则（智能降噪/缺失检查）参数校验。
+对照 specs/capabilities/legacy-prd-告警中心-配置.md：相关性规则（智能降噪/缺失检查）参数校验。
 """
 
 from types import SimpleNamespace

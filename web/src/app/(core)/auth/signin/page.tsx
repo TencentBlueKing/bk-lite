@@ -3,7 +3,12 @@ import { getServerSession } from "next-auth";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import SigninClient from "./SigninClient";
-import { buildThirdLoginCallbackUrl, resolveThirdLoginFlag } from "@/utils/authRedirect";
+import {
+  buildLegacyThirdLoginCallbackUrl,
+  buildThirdLoginCallbackUrl,
+  getLegacyThirdLoginCode,
+  resolveThirdLoginFlag,
+} from "@/utils/authRedirect";
 import PopupAuthBridge from "./PopupAuthBridge";
 
 const signinErrors: Record<string | "default", string> = {
@@ -45,6 +50,7 @@ export default async function SigninPage({ searchParams }: SignInPageProp) {
     resolvedSearchParams.thirdLogin,
     resolvedSearchParams.third_login,
   );
+  const thirdLoginCode = getLegacyThirdLoginCode(resolvedSearchParams.callbackUrl);
   const isPopupMode = resolvedSearchParams.popup === 'true' || resolvedSearchParams.popup === '1';
   const shouldRedirectAuthenticatedUser = Boolean(session?.user?.id);
 
@@ -68,12 +74,18 @@ export default async function SigninPage({ searchParams }: SignInPageProp) {
     }
 
     redirect(
-      buildThirdLoginCallbackUrl(
-        resolvedSearchParams.callbackUrl,
-        session.user.token,
-        thirdLoginFlag,
-        requestOrigin,
-      ),
+      thirdLoginCode
+        ? buildLegacyThirdLoginCallbackUrl(
+          resolvedSearchParams.callbackUrl,
+          session.user.token,
+          thirdLoginCode,
+        )
+        : buildThirdLoginCallbackUrl(
+          resolvedSearchParams.callbackUrl,
+          session.user.token,
+          thirdLoginFlag,
+          requestOrigin,
+        ),
     );
   }
   return <SigninClient searchParams={resolvedSearchParams} signinErrors={signinErrors} />;

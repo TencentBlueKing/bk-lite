@@ -1,11 +1,9 @@
 import {NextRequest, NextResponse} from 'next/server';
+import {consumeProxyTimeoutMs, DEFAULT_TIMEOUT_MS, scheduleProxyAbort} from '@/utils/proxyTimeout';
+
+import {buildProxyTargets} from './proxyTarget';
 
 const TARGET_SERVER = process.env.NEXTAPI_URL + '/api/v1' || 'http://localhost:3000';
-
-// SSE 连接超时时间（5 分钟），与后端 Agent 总超时一致
-const SSE_TIMEOUT_MS = 300_000;
-// 普通请求超时时间（60 秒）
-const DEFAULT_TIMEOUT_MS = 60_000;
 
 export async function GET(req: NextRequest) {
   return await handleProxy(req);
@@ -68,16 +66,10 @@ async function handleProxy(req: NextRequest): Promise<NextResponse | Response> {
     targetPath += '/';
   }
 
-  // 构造完整的目标 URL
-  let targetUrl = `${TARGET_SERVER}${targetPath}`;
+  // 转发地址保留查询参数；日志地址仅保留 origin 与 path，避免凭据进入日志。
+  const {targetUrl, logTarget} = buildProxyTargets(TARGET_SERVER, targetPath, req.nextUrl.search);
 
-  // 拼接查询参数
-  const searchParams = req.nextUrl.search;
-  if (searchParams) {
-    targetUrl += searchParams;
-  }
-
-  console.log(`[PROXY] Forwarding Request: ${req.method} ${targetUrl}`);
+  console.log(`[PROXY] Forwarding Request: ${req.method} ${logTarget}`);
 
   // 复制原始请求头，追加 X-Forwarded-* 自定义请求头
   const headers = new Headers(req.headers);
@@ -87,8 +79,8 @@ async function handleProxy(req: NextRequest): Promise<NextResponse | Response> {
 
   // 创建 AbortController 用于超时控制
   const controller = new AbortController();
-  // 初始使用默认超时，SSE 响应检测后会调整
-  let timeoutId = setTimeout(() => controller.abort(), SSE_TIMEOUT_MS);
+  // fetch 返回前无法从响应 Content-Type 判断 SSE，因此由请求契约选择并消费内部首包超时。
+  let timeoutId = scheduleProxyAbort(controller, consumeProxyTimeoutMs(headers));
 
   // 直接转发 body，而不对其进行解析
   const fetchOptions: RequestInit & { duplex?: string } = {
@@ -104,7 +96,7 @@ async function handleProxy(req: NextRequest): Promise<NextResponse | Response> {
     const proxyResponse = await fetch(targetUrl, fetchOptions);
 
     // 转发响应及其内容
-    console.log(`[PROXY] Response Status: ${proxyResponse.status} from ${targetUrl}`);
+    console.log(`[PROXY] Response Status: ${proxyResponse.status} from ${logTarget}`);
 
     // 检测是否为 SSE 响应
     if (isSSEResponse(proxyResponse)) {
@@ -116,7 +108,7 @@ async function handleProxy(req: NextRequest): Promise<NextResponse | Response> {
 
     // 非 SSE 响应，使用默认超时
     clearTimeout(timeoutId);
-    timeoutId = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT_MS);
+    timeoutId = scheduleProxyAbort(controller, DEFAULT_TIMEOUT_MS);
 
     return new NextResponse(proxyResponse.body, {
       status: proxyResponse.status,
@@ -127,14 +119,14 @@ async function handleProxy(req: NextRequest): Promise<NextResponse | Response> {
 
     // 区分超时错误和其他错误
     if (error.name === 'AbortError') {
-      console.error(`[PROXY ERROR] Request timeout: ${targetUrl}`);
+      console.error(`[PROXY ERROR] Request timeout: ${logTarget}`);
       return NextResponse.json(
         { error: 'Gateway Timeout', message: 'Request timed out' },
         { status: 504 }
       );
     }
 
-    console.error(`[PROXY ERROR] Failed to proxy request: ${error.message}`);
+    console.error(`[PROXY ERROR] Failed to proxy request: ${error.name || 'UnknownError'} from ${logTarget}`);
     return NextResponse.json(
       { error: 'Proxy Failed', message: error.message },
       { status: 500 }

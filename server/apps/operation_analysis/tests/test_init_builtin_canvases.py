@@ -1,6 +1,6 @@
 """init_builtin_canvases 管理命令覆盖测试。
 
-对照 spec/prd/运营分析：内置画布从 YAML 导入并标记为内置只读对象。
+对照 specs/capabilities/legacy-prd-运营分析-运营分析.md：内置画布从 YAML 导入并标记为内置只读对象。
 """
 
 from pathlib import Path

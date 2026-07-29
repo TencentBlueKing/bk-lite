@@ -115,6 +115,7 @@ class EventRawData(models.Model):
     data = S3JSONField(
         bucket_name="log-alert-raw-data",
         compressed=True,
+        delete_previous_on_update=True,
         verbose_name="原始数据",
         help_text="自动压缩并存储到 MinIO/S3",
     )

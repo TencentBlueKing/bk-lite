@@ -12,4 +12,5 @@ class AlertsConfig(AppConfig):
 
     def ready(self):
         import apps.operation_analysis.nats.nats  # noqa
+        import apps.operation_analysis.signals  # noqa
 

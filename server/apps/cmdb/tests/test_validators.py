@@ -1,6 +1,6 @@
 """CMDB CQL 参数验证器覆盖测试。
 
-对照 spec/prd/CMDB：查询中不可参数化的标签/字段/关系名走白名单校验，防注入。
+对照 specs/capabilities/legacy-prd-cmdb-资产.md：查询中不可参数化的标签/字段/关系名走白名单校验，防注入。
 """
 
 import pytest

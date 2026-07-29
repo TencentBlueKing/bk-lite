@@ -1,11 +1,10 @@
 """MonitorPluginSerializer 规格测试。"""
 
 import pytest
-
 from rest_framework import serializers
 
 from apps.monitor.models import MonitorPlugin
-from apps.monitor.models.monitor_object import MonitorObject
+from apps.monitor.models.monitor_object import MonitorObject, MonitorObjectType
 from apps.monitor.serializers.plugin import MonitorPluginSerializer
 
 pytestmark = pytest.mark.django_db
@@ -36,10 +35,14 @@ class TestValidate:
         obj2 = MonitorObject.objects.create(name="PSObj2", level="base")
         s = MonitorPluginSerializer()
         with pytest.raises(serializers.ValidationError):
-            s.validate({
-                "template_type": "api", "template_id": "t1", "display_name": "n",
-                "monitor_object": [obj1, obj2],
-            })
+            s.validate(
+                {
+                    "template_type": "api",
+                    "template_id": "t1",
+                    "display_name": "n",
+                    "monitor_object": [obj1, obj2],
+                }
+            )
 
     def test_builtin_passes_without_template_id(self):
         s = MonitorPluginSerializer()
@@ -71,6 +74,26 @@ class TestGetParentMonitorObject:
         plugin.monitor_object.add(child)
         assert MonitorPluginSerializer().get_parent_monitor_object(plugin) is None
 
+    def test_returns_first_parent_using_monitor_object_default_ordering(self):
+        later_type = MonitorObjectType.objects.create(id="PSLaterType", name="Later", order=200)
+        earlier_type = MonitorObjectType.objects.create(id="PSEarlierType", name="Earlier", order=100)
+        lower_id_later = MonitorObject.objects.create(
+            name="PSParentOrderedLater",
+            level="base",
+            type=later_type,
+            order=1,
+        )
+        higher_id_earlier = MonitorObject.objects.create(
+            name="PSParentOrderedEarlier",
+            level="base",
+            type=earlier_type,
+            order=999,
+        )
+        plugin = MonitorPlugin.objects.create(name="PSPluginOrderedParents")
+        plugin.monitor_object.add(lower_id_later, higher_id_earlier)
+
+        assert MonitorPluginSerializer().get_parent_monitor_object(plugin) == higher_id_earlier.id
+
 
 class TestBuildDefaultStatusQuery:
     def test_uses_instance_id_keys(self):
@@ -90,10 +113,15 @@ class TestBuildDefaultStatusQuery:
 class TestCreate:
     def test_api_create_sets_collect_fields(self, mocker):
         obj = MonitorObject.objects.create(name="PSCreateObj", level="base")
-        s = MonitorPluginSerializer(data={
-            "name": "apiplugin", "template_type": "api", "template_id": "api-1",
-            "display_name": "API插件", "monitor_object": [obj.id],
-        })
+        s = MonitorPluginSerializer(
+            data={
+                "name": "apiplugin",
+                "template_type": "api",
+                "template_id": "api-1",
+                "display_name": "API插件",
+                "monitor_object": [obj.id],
+            }
+        )
         assert s.is_valid(), s.errors
         plugin = s.save()
         assert plugin.collect_type == "push_api"

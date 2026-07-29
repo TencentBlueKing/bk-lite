@@ -106,8 +106,27 @@ assert.doesNotMatch(
   /unknownSource/,
   'empty source labels should be omitted instead of rendered as an alarming placeholder tag'
 );
+assert.doesNotMatch(decisionCenter, /DECISION_THEME/, 'decision center should use the shared web theme tokens');
+assert.doesNotMatch(decisionCenter, /#[\da-fA-F]{3,8}/, 'decision center should not define a private hex color palette');
+assert.doesNotMatch(decisionCenter, /min-h-\[700px\]/, 'decision center should not force a fixed minimum height');
+assert.match(
+  decisionCenter,
+  /<main className="[^"]*min-h-0[^"]*overflow-hidden[^"]*lg:h-full/,
+  'decision center should fill the available parent height without growing past it'
+);
+assert.match(
+  decisionCenter,
+  /className="min-h-0 flex-1 overflow-y-auto"/,
+  'decision list should scroll independently when its content exceeds the available height'
+);
+assert.match(
+  decisionCenter,
+  /<aside className="[^"]*bg-\[var\(--color-bg\)\]/,
+  'decision list should use the shared page background instead of a tinted panel background'
+);
 
 assert.match(decisionStory, /import WikiDecisionCenter from '@\/app\/opspilot\/components\/wiki\/WikiDecisionCenter'/);
+assert.doesNotMatch(decisionStory, /#[\da-fA-F]{3,8}/, 'decision center story should use the shared web theme tokens');
 assert.match(decisionStory, /current_knowledge:/);
 assert.match(decisionStory, /new_knowledge:/);
 assert.match(decisionStory, /target_identity:/);

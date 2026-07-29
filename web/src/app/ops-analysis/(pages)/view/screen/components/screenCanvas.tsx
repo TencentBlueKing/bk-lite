@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { Empty } from "antd";
 import { Rnd } from "react-rnd";
 import { useTranslation } from "@/utils/i18n";
 import type {
@@ -17,6 +18,7 @@ import {
   getScreenRndNodeClassName,
 } from "../utils/classNames";
 import { calculateScreenVisualMetrics } from "../utils/metrics";
+import { getScreenTheme } from "../utils/screenTheme";
 import ScreenWidgetRenderer from "./screenWidgetRenderer";
 
 const RndComponent = Rnd as unknown as React.ComponentType<any>;
@@ -417,6 +419,10 @@ const ScreenCanvas: React.FC<ScreenCanvasProps> = ({
   });
   const [currentTime, setCurrentTime] = useState(() => new Date());
   const { width, height } = viewSets.viewport;
+  const screenTheme = useMemo(
+    () => getScreenTheme(viewSets.viewport.theme),
+    [viewSets.viewport.theme],
+  );
   const screenTitle = viewSets.decorations.title?.trim() || "";
   const shouldShowTitle = Boolean(
     viewSets.decorations.showTitle && screenTitle,
@@ -481,6 +487,7 @@ const ScreenCanvas: React.FC<ScreenCanvasProps> = ({
         screenDensity={screenMetrics.screenDensity}
         screenUiScale={screenMetrics.screenUiScale}
         dataSourceResolver={resolveDataSource}
+        chartThemeMode={screenTheme.chartThemeMode}
         filterDefinitions={filterDefinitions}
         unifiedFilterValues={unifiedFilterValues}
         filterSearchVersion={filterSearchVersion}
@@ -531,6 +538,7 @@ const ScreenCanvas: React.FC<ScreenCanvasProps> = ({
       className={`screen-canvas-workbench flex h-full min-h-0 w-full items-center justify-center overflow-hidden ${
         fullscreen ? "screen-canvas-workbench--preview p-4" : "p-5"
       }`}
+      style={screenTheme.variables as React.CSSProperties}
     >
       <div
         className="screen-canvas-stage"
@@ -543,6 +551,7 @@ const ScreenCanvas: React.FC<ScreenCanvasProps> = ({
           className={`screen-tech-canvas relative overflow-hidden ${
             editMode && !fullscreen ? "screen-tech-canvas--editing" : ""
           }`}
+          data-screen-theme={screenTheme.id}
           onClick={() => editMode && onSelectItem?.(null)}
           style={{
             width,
@@ -574,7 +583,11 @@ const ScreenCanvas: React.FC<ScreenCanvasProps> = ({
                   </div>
                 </>
               )}
-              <div className="screen-canvas-header__side screen-canvas-header__side--right">
+              <div
+                className={`screen-canvas-header__side screen-canvas-header__side--right ${
+                  shouldShowClock ? "screen-canvas-header__side--with-clock" : ""
+                }`}
+              >
                 {shouldShowTitle && (
                   <div className="screen-canvas-header__rail" />
                 )}
@@ -587,11 +600,11 @@ const ScreenCanvas: React.FC<ScreenCanvasProps> = ({
             </div>
           )}
           {viewSets.items.length === 0 ? (
-            <div className="screen-canvas-empty">
-              <div className="screen-canvas-empty__icon" aria-hidden="true" />
-              <div className="screen-canvas-empty__title">
-                {t("opsAnalysis.screen.canvasEmpty")}
-              </div>
+            <div className="screen-canvas-empty" role="status">
+              <Empty
+                image={Empty.PRESENTED_IMAGE_SIMPLE}
+                description={t("opsAnalysis.screen.canvasEmpty")}
+              />
             </div>
           ) : (
             viewSets.items.map((item) => renderScreenItem(item))
@@ -600,24 +613,19 @@ const ScreenCanvas: React.FC<ScreenCanvasProps> = ({
       </div>
       <style>{`
         .screen-canvas-workbench {
-          background:
-            radial-gradient(circle at 50% -12%, rgba(34, 211, 238, 0.12), transparent 28%),
-            radial-gradient(circle at 12% 22%, rgba(59, 130, 246, 0.08), transparent 22%),
-            linear-gradient(180deg, #08111f 0%, #040815 100%);
+          background: var(--screen-workbench-bg);
         }
 
         .screen-canvas-workbench--preview {
-          background: #020617;
+          background: var(--screen-preview-workbench-bg);
         }
 
         .screen-canvas-stage {
           position: relative;
           overflow: hidden;
           border-radius: 14px;
-          background: #020617;
-          box-shadow:
-            0 22px 58px rgba(0, 0, 0, 0.38),
-            0 0 0 1px rgba(148, 163, 184, 0.12);
+          background: var(--screen-stage-bg);
+          box-shadow: var(--screen-stage-shadow);
         }
 
         .screen-tech-canvas {
@@ -625,25 +633,14 @@ const ScreenCanvas: React.FC<ScreenCanvasProps> = ({
           left: 0;
           top: 0;
           transform-origin: left top;
-          color: #eafbff;
-          border: 1px solid rgba(56, 189, 248, 0.12);
-          box-shadow:
-            inset 0 0 120px rgba(14, 165, 233, 0.06),
-            inset 0 0 0 1px rgba(255, 255, 255, 0.025);
-          background:
-            radial-gradient(circle at 52% 14%, rgba(34, 211, 238, 0.14), transparent 26%),
-            radial-gradient(circle at 18% 34%, rgba(37, 99, 235, 0.11), transparent 30%),
-            radial-gradient(circle at 82% 76%, rgba(14, 165, 233, 0.08), transparent 28%),
-            linear-gradient(135deg, #061428 0%, #09213c 46%, #020713 100%);
-          background-size: auto;
-        }
-
-        .screen-tech-canvas::before {
-          display: none;
+          color: var(--screen-canvas-color);
+          border: 1px solid var(--screen-canvas-border);
+          box-shadow: var(--screen-canvas-shadow);
+          background: var(--screen-canvas-bg);
         }
 
         .screen-tech-canvas--editing {
-          outline: 2px solid rgba(56, 189, 248, 0.26);
+          outline: 2px solid var(--screen-canvas-editing-outline);
           outline-offset: -2px;
         }
 
@@ -652,16 +649,16 @@ const ScreenCanvas: React.FC<ScreenCanvasProps> = ({
           left: calc(8px * var(--screen-ui-scale));
           top: calc(8px * var(--screen-ui-scale));
           z-index: 31;
-          border: 1px solid rgba(125, 211, 252, 0.14);
+          border: 1px solid var(--screen-resolution-border);
           border-radius: calc(4px * var(--screen-ui-scale));
-          background: rgba(4, 16, 34, 0.42);
-          color: rgba(224, 251, 255, 0.56);
+          background: var(--screen-resolution-bg);
+          color: var(--screen-resolution-color);
           padding: calc(4px * var(--screen-ui-scale)) calc(7px * var(--screen-ui-scale));
           font-size: calc(14px * var(--screen-ui-scale));
           font-weight: 600;
           letter-spacing: 0;
           line-height: 1.2;
-          box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+          box-shadow: var(--screen-resolution-shadow);
         }
 
         .screen-canvas-header {
@@ -694,31 +691,25 @@ const ScreenCanvas: React.FC<ScreenCanvasProps> = ({
           left: auto;
           right: 0;
           top: 50%;
-          width: min(58%, calc(460px * var(--screen-ui-scale)));
-          height: calc(16px * var(--screen-ui-scale));
-          opacity: 0.46;
+          width: 100%;
+          height: calc(12px * var(--screen-ui-scale));
+          opacity: 0.82;
           transform: translateY(-50%);
-          background:
-            linear-gradient(90deg, transparent, rgba(103, 232, 249, 0.34)),
-            linear-gradient(180deg, rgba(103, 232, 249, 0.12), transparent 46%);
-          clip-path: polygon(0 42%, 78% 42%, 84% 0, 100% 0, 94% 100%, 0 100%);
-          box-shadow: 0 0 calc(9px * var(--screen-ui-scale)) rgba(34, 211, 238, 0.09);
-        }
-
-        .screen-canvas-header__rail::after {
-          content: '';
-          position: absolute;
-          left: 18%;
-          right: calc(18px * var(--screen-ui-scale));
-          bottom: calc(2px * var(--screen-ui-scale));
-          height: calc(1px * var(--screen-ui-scale));
-          background: linear-gradient(90deg, transparent, rgba(125, 211, 252, 0.36), transparent);
+          background: var(--screen-header-rail-bg);
+          box-shadow: var(--screen-header-rail-shadow);
+          filter: var(--screen-header-rail-filter);
         }
 
         .screen-canvas-header__side--right .screen-canvas-header__rail {
           left: 0;
           right: auto;
+          width: 100%;
           transform: translateY(-50%) scaleX(-1);
+        }
+
+        .screen-canvas-header__side--right.screen-canvas-header__side--with-clock .screen-canvas-header__rail {
+          right: calc(250px * var(--screen-ui-scale));
+          width: auto;
         }
 
         .screen-canvas-title {
@@ -726,27 +717,22 @@ const ScreenCanvas: React.FC<ScreenCanvasProps> = ({
           display: inline-flex;
           align-items: center;
           justify-content: center;
-          min-width: calc(300px * var(--screen-ui-scale));
+          min-width: calc(340px * var(--screen-ui-scale));
           max-width: calc(600px * var(--screen-ui-scale));
-          height: calc(40px * var(--screen-ui-scale));
-          padding: 0 calc(46px * var(--screen-ui-scale));
-          border: calc(1px * var(--screen-ui-scale)) solid rgba(125, 211, 252, 0.16);
-          border-left-color: rgba(125, 211, 252, 0.06);
-          border-right-color: rgba(125, 211, 252, 0.06);
-          border-radius: calc(2px * var(--screen-ui-scale));
-          color: #eafbff;
+          height: calc(46px * var(--screen-ui-scale));
+          overflow: hidden;
+          padding: 0 calc(52px * var(--screen-ui-scale));
+          border: 1px solid var(--screen-title-border);
+          border-radius: calc(12px * var(--screen-ui-scale));
+          color: var(--screen-title-color);
           font-size: calc(24px * var(--screen-ui-scale));
           font-weight: 800;
           letter-spacing: 0;
-          text-shadow:
-            0 0 calc(8px * var(--screen-ui-scale)) rgba(103, 232, 249, 0.38),
-            0 0 calc(16px * var(--screen-ui-scale)) rgba(37, 99, 235, 0.13);
-          background:
-            linear-gradient(90deg, rgba(8, 47, 73, 0.02), rgba(34, 211, 238, 0.12) 24%, rgba(59, 130, 246, 0.1) 50%, rgba(34, 211, 238, 0.12) 76%, rgba(8, 47, 73, 0.02)),
-            linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(2, 6, 23, 0.04));
-          box-shadow:
-            inset 0 calc(1px * var(--screen-ui-scale)) 0 rgba(255, 255, 255, 0.06),
-            0 0 calc(18px * var(--screen-ui-scale)) rgba(34, 211, 238, 0.08);
+          text-shadow: var(--screen-title-text-shadow);
+          background: var(--screen-title-bg);
+          box-shadow: var(--screen-title-shadow);
+          backdrop-filter: var(--screen-header-backdrop-filter);
+          -webkit-backdrop-filter: var(--screen-header-backdrop-filter);
         }
 
         .screen-canvas-title span {
@@ -756,49 +742,21 @@ const ScreenCanvas: React.FC<ScreenCanvasProps> = ({
           align-items: center;
         }
 
-        .screen-canvas-title::before,
         .screen-canvas-title::after {
           content: '';
           position: absolute;
           pointer-events: none;
         }
 
-        .screen-canvas-title::before {
-          left: calc(28px * var(--screen-ui-scale));
-          right: calc(28px * var(--screen-ui-scale));
-          bottom: calc(4px * var(--screen-ui-scale));
-          height: calc(1px * var(--screen-ui-scale));
-          background: linear-gradient(90deg, transparent, rgba(103, 232, 249, 0.5), transparent);
-          box-shadow: 0 0 calc(8px * var(--screen-ui-scale)) rgba(34, 211, 238, 0.14);
-        }
-
         .screen-canvas-title::after {
           left: 50%;
-          top: calc(-1px * var(--screen-ui-scale));
-          width: calc(76px * var(--screen-ui-scale));
-          height: calc(2px * var(--screen-ui-scale));
-          border-radius: 999px;
-          background: linear-gradient(90deg, transparent, rgba(224, 251, 255, 0.62), transparent);
+          top: calc(-10px * var(--screen-ui-scale));
+          width: 62%;
+          height: calc(18px * var(--screen-ui-scale));
+          border-radius: 50%;
+          background: var(--screen-title-accent-bg);
           transform: translateX(-50%);
-          box-shadow: 0 0 calc(10px * var(--screen-ui-scale)) rgba(34, 211, 238, 0.18);
-        }
-
-        .screen-canvas-title span::before,
-        .screen-canvas-title span::after {
-          content: '';
-          display: inline-block;
-          width: calc(18px * var(--screen-ui-scale));
-          height: calc(1px * var(--screen-ui-scale));
-          background: rgba(103, 232, 249, 0.44);
-          box-shadow: 0 0 calc(6px * var(--screen-ui-scale)) rgba(34, 211, 238, 0.14);
-        }
-
-        .screen-canvas-title span::before {
-          margin-right: calc(14px * var(--screen-ui-scale));
-        }
-
-        .screen-canvas-title span::after {
-          margin-left: calc(14px * var(--screen-ui-scale));
+          filter: blur(calc(8px * var(--screen-ui-scale)));
         }
 
         .screen-canvas-clock {
@@ -807,10 +765,10 @@ const ScreenCanvas: React.FC<ScreenCanvasProps> = ({
           top: 50%;
           min-width: calc(230px * var(--screen-ui-scale));
           margin-left: auto;
-          border: 1px solid rgba(103, 232, 249, 0.2);
-          border-radius: calc(4px * var(--screen-ui-scale));
-          background: linear-gradient(90deg, rgba(8, 47, 73, 0.14), rgba(8, 145, 178, 0.18));
-          color: rgba(224, 251, 255, 0.82);
+          border: 1px solid var(--screen-clock-border);
+          border-radius: calc(10px * var(--screen-ui-scale));
+          background: var(--screen-clock-bg);
+          color: var(--screen-clock-color);
           padding: calc(4px * var(--screen-ui-scale)) calc(10px * var(--screen-ui-scale));
           font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
           font-size: calc(14px * var(--screen-ui-scale));
@@ -818,57 +776,22 @@ const ScreenCanvas: React.FC<ScreenCanvasProps> = ({
           letter-spacing: 0;
           text-align: center;
           transform: translateY(-50%);
-          box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+          box-shadow: var(--screen-clock-shadow);
+          backdrop-filter: var(--screen-header-backdrop-filter);
+          -webkit-backdrop-filter: var(--screen-header-backdrop-filter);
         }
 
         .screen-canvas-empty {
           position: absolute;
           inset: 0;
           display: flex;
-          flex-direction: column;
           align-items: center;
           justify-content: center;
-          gap: calc(12px * var(--screen-ui-scale));
-          color: rgba(224, 251, 255, 0.46);
-          font-size: calc(21px * var(--screen-ui-scale));
-          font-weight: 600;
+          color: var(--screen-empty-color);
         }
 
-        .screen-canvas-empty__icon {
-          position: relative;
-          width: calc(72px * var(--screen-ui-scale));
-          height: calc(72px * var(--screen-ui-scale));
-          border: 1px solid rgba(125, 211, 252, 0.16);
-          border-radius: calc(18px * var(--screen-ui-scale));
-          background:
-            linear-gradient(135deg, rgba(34, 211, 238, 0.09), transparent),
-            rgba(2, 6, 23, 0.2);
-          box-shadow: 0 0 28px rgba(34, 211, 238, 0.08);
-        }
-
-        .screen-canvas-empty__icon::before,
-        .screen-canvas-empty__icon::after {
-          content: '';
-          position: absolute;
-          left: 50%;
-          top: 50%;
-          border-radius: 999px;
-          background: rgba(186, 230, 253, 0.42);
-          transform: translate(-50%, -50%);
-        }
-
-        .screen-canvas-empty__icon::before {
-          width: calc(26px * var(--screen-ui-scale));
-          height: calc(2px * var(--screen-ui-scale));
-        }
-
-        .screen-canvas-empty__icon::after {
-          width: calc(2px * var(--screen-ui-scale));
-          height: calc(26px * var(--screen-ui-scale));
-        }
-
-        .screen-canvas-empty__title {
-          text-shadow: 0 0 18px rgba(34, 211, 238, 0.12);
+        .screen-canvas-empty .ant-empty-description {
+          color: var(--screen-empty-color) !important;
         }
 
         .screen-rnd-node {
@@ -888,16 +811,16 @@ const ScreenCanvas: React.FC<ScreenCanvasProps> = ({
 
         .screen-rnd-node--interacting {
           z-index: 10000 !important;
-          filter: drop-shadow(0 18px 34px rgba(14, 165, 233, 0.26));
+          filter: var(--screen-rnd-interacting-filter);
         }
 
         .screen-rnd-handle {
           z-index: 8;
           opacity: 0.64;
-          border: 1px solid rgba(186, 230, 253, 0.58);
+          border: 1px solid var(--screen-rnd-handle-border);
           border-radius: calc(2px * var(--screen-ui-scale));
-          background: rgba(6, 24, 50, 0.56);
-          box-shadow: 0 0 5px rgba(34, 211, 238, 0.14);
+          background: var(--screen-rnd-handle-bg);
+          box-shadow: var(--screen-rnd-handle-shadow);
           transition:
             background 120ms ease,
             border-color 120ms ease,
@@ -929,8 +852,8 @@ const ScreenCanvas: React.FC<ScreenCanvasProps> = ({
         .screen-rnd-node--selected:hover .screen-rnd-handle,
         .screen-rnd-node--interacting .screen-rnd-handle {
           opacity: 0.9;
-          border-color: rgba(186, 230, 253, 0.78);
-          background: rgba(6, 24, 50, 0.72);
+          border-color: var(--screen-rnd-handle-hover-border);
+          background: var(--screen-rnd-handle-hover-bg);
         }
 
         .screen-widget-frame {
@@ -940,16 +863,12 @@ const ScreenCanvas: React.FC<ScreenCanvasProps> = ({
           min-height: 0;
           flex-direction: column;
           overflow: hidden;
-          border: 1px solid rgba(125, 211, 252, 0.22);
+          border: 1px solid var(--screen-widget-border);
           border-radius: calc(8px * var(--screen-widget-ui-scale));
-          background:
-            linear-gradient(180deg, rgba(8, 31, 52, 0.78), rgba(3, 13, 29, 0.68)),
-            rgba(4, 18, 36, 0.62);
-          box-shadow:
-            0 14px 30px rgba(0, 10, 28, 0.18),
-            inset 0 1px 0 rgba(226, 251, 255, 0.08),
-            inset 0 -24px 42px rgba(14, 116, 144, 0.05);
-          backdrop-filter: blur(14px) saturate(112%);
+          background: var(--screen-widget-bg);
+          box-shadow: var(--screen-widget-shadow);
+          backdrop-filter: var(--screen-widget-backdrop-filter);
+          -webkit-backdrop-filter: var(--screen-widget-backdrop-filter);
           contain: layout paint style;
         }
 
@@ -958,18 +877,13 @@ const ScreenCanvas: React.FC<ScreenCanvasProps> = ({
           position: absolute;
           inset: 0;
           pointer-events: none;
-          background:
-            linear-gradient(90deg, rgba(103, 232, 249, 0.06), transparent 22%, transparent 78%, rgba(103, 232, 249, 0.05)),
-            linear-gradient(180deg, rgba(255, 255, 255, 0.03), transparent 38%);
+          background: var(--screen-widget-overlay-bg);
           opacity: 0.55;
         }
 
         .screen-widget-frame--selected {
-          border-color: rgba(125, 211, 252, 0.5);
-          box-shadow:
-            0 0 0 1px rgba(125, 211, 252, 0.1),
-            0 16px 40px rgba(0, 10, 28, 0.28),
-            inset 0 1px 0 rgba(226, 251, 255, 0.14);
+          border-color: var(--screen-widget-selected-border);
+          box-shadow: var(--screen-widget-selected-shadow);
         }
 
         .screen-widget-frame--bare {
@@ -987,10 +901,8 @@ const ScreenCanvas: React.FC<ScreenCanvasProps> = ({
 
         .screen-widget-frame--bare.screen-widget-frame--selected,
         .screen-widget-frame--bare.screen-widget-frame--editable:hover {
-          border-color: rgba(125, 211, 252, 0.34);
-          box-shadow:
-            inset 0 0 0 1px rgba(125, 211, 252, 0.22),
-            0 0 18px rgba(8, 145, 178, 0.14);
+          border-color: var(--screen-widget-bare-selected-border);
+          box-shadow: var(--screen-widget-bare-selected-shadow);
         }
 
         .screen-widget-frame__corners {
@@ -1006,10 +918,8 @@ const ScreenCanvas: React.FC<ScreenCanvasProps> = ({
           align-items: center;
           justify-content: space-between;
           padding: 0 calc(10px * var(--screen-widget-ui-scale));
-          border-bottom: 1px solid rgba(109, 226, 255, 0.12);
-          background:
-            linear-gradient(90deg, rgba(56, 189, 248, 0.09), transparent 72%),
-            rgba(2, 6, 23, 0.1);
+          border-bottom: 1px solid var(--screen-widget-header-border);
+          background: var(--screen-widget-header-bg);
           cursor: move;
           user-select: none;
         }
@@ -1021,11 +931,11 @@ const ScreenCanvas: React.FC<ScreenCanvasProps> = ({
           padding-right: 0;
           text-overflow: ellipsis;
           white-space: nowrap;
-          color: #eafbff;
+          color: var(--screen-widget-title-color);
           font-size: calc(14px * var(--screen-widget-ui-scale));
           font-weight: 700;
           letter-spacing: 0;
-          text-shadow: 0 0 8px rgba(125, 211, 252, 0.14);
+          text-shadow: var(--screen-widget-title-shadow);
         }
 
         .screen-widget-frame:hover .screen-widget-frame__title,
@@ -1041,8 +951,8 @@ const ScreenCanvas: React.FC<ScreenCanvasProps> = ({
           height: calc(1px * var(--screen-widget-ui-scale));
           border-radius: 999px;
           opacity: 0.48;
-          background: linear-gradient(90deg, transparent, rgba(103, 232, 249, 0.34));
-          box-shadow: 0 0 calc(5px * var(--screen-widget-ui-scale)) rgba(54, 231, 255, 0.1);
+          background: var(--screen-widget-signal-bg);
+          box-shadow: var(--screen-widget-signal-shadow);
           transform: translateY(-50%);
         }
 
@@ -1068,11 +978,6 @@ const ScreenCanvas: React.FC<ScreenCanvasProps> = ({
           padding: calc(8px * var(--screen-widget-ui-scale)) calc(10px * var(--screen-widget-ui-scale)) calc(10px * var(--screen-widget-ui-scale));
         }
 
-        .screen-widget-frame--bare.screen-widget-frame--kpi .screen-widget-frame__body,
-        .screen-widget-frame--bare.screen-widget-frame--gauge .screen-widget-frame__body {
-          padding: 0;
-        }
-
         .screen-widget-frame__drag-surface {
           position: absolute;
           inset: 0;
@@ -1080,37 +985,6 @@ const ScreenCanvas: React.FC<ScreenCanvasProps> = ({
           cursor: move;
           user-select: none;
           background: transparent;
-        }
-
-        .screen-widget-frame__bare-header {
-          position: absolute;
-          left: calc(6px * var(--screen-widget-ui-scale));
-          right: calc(32px * var(--screen-widget-ui-scale));
-          top: calc(4px * var(--screen-widget-ui-scale));
-          z-index: 5;
-          display: flex;
-          min-width: 0;
-          height: calc(24px * var(--screen-widget-ui-scale));
-          align-items: center;
-          padding: 0 calc(8px * var(--screen-widget-ui-scale));
-          border: 1px solid rgba(125, 211, 252, 0.18);
-          border-radius: calc(6px * var(--screen-widget-ui-scale));
-          background: rgba(2, 10, 24, 0.38);
-          cursor: move;
-          opacity: 0;
-          pointer-events: none;
-          backdrop-filter: blur(8px);
-          transform: translateY(calc(-3px * var(--screen-widget-ui-scale)));
-          transition:
-            opacity 120ms ease,
-            transform 120ms ease;
-        }
-
-        .screen-widget-frame--bare:hover .screen-widget-frame__bare-header,
-        .screen-widget-frame--bare.screen-widget-frame--selected .screen-widget-frame__bare-header {
-          opacity: 1;
-          pointer-events: auto;
-          transform: translateY(0);
         }
 
         .screen-widget-frame__actions {
@@ -1140,15 +1014,16 @@ const ScreenCanvas: React.FC<ScreenCanvasProps> = ({
           cursor: pointer;
           align-items: center;
           justify-content: center;
-          border: 1px solid rgba(148, 163, 184, 0.18);
+          border: 1px solid var(--screen-widget-action-border);
           border-radius: 999px;
-          background: rgba(2, 10, 24, 0.38);
-          color: rgba(224, 251, 255, 0.64);
+          background: var(--screen-widget-action-bg);
+          color: var(--screen-widget-action-color);
           padding: 0;
           font-size: calc(12px * var(--screen-widget-ui-scale));
           line-height: 1;
-          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.14);
-          backdrop-filter: blur(8px);
+          box-shadow: var(--screen-widget-action-shadow);
+          backdrop-filter: var(--screen-widget-control-backdrop-filter);
+          -webkit-backdrop-filter: var(--screen-widget-control-backdrop-filter);
           transition:
             border-color 120ms ease,
             background 120ms ease,
@@ -1156,9 +1031,9 @@ const ScreenCanvas: React.FC<ScreenCanvasProps> = ({
         }
 
         .screen-widget-frame__action:hover {
-          border-color: rgba(125, 211, 252, 0.46);
-          background: rgba(8, 29, 54, 0.72);
-          color: rgba(255, 255, 255, 0.9);
+          border-color: var(--screen-widget-action-hover-border);
+          background: var(--screen-widget-action-hover-bg);
+          color: var(--screen-widget-action-hover-color);
         }
 
         .screen-widget-frame-actions-menu .ant-dropdown-menu {
@@ -1190,11 +1065,11 @@ const ScreenCanvas: React.FC<ScreenCanvasProps> = ({
         }
 
         .screen-tech-canvas .ant-empty-description {
-          color: rgba(186, 230, 253, 0.68) !important;
+          color: var(--screen-table-muted) !important;
         }
 
         .screen-tech-canvas .ant-spin-dot-item {
-          background-color: #67e8f9;
+          background-color: var(--screen-table-spin-color);
         }
 
         .screen-tech-canvas .ant-table-wrapper,
@@ -1202,14 +1077,14 @@ const ScreenCanvas: React.FC<ScreenCanvasProps> = ({
         .screen-tech-canvas .ant-table-container,
         .screen-tech-canvas .ant-table-content,
         .screen-tech-canvas .ant-table-body {
-          color: rgba(224, 251, 255, 0.82) !important;
+          color: var(--screen-table-text) !important;
           background: transparent !important;
         }
 
         .screen-tech-canvas .ant-table-thead > tr > th {
-          border-bottom: 1px solid rgba(103, 232, 249, 0.18) !important;
-          background: linear-gradient(180deg, rgba(20, 82, 126, 0.88), rgba(9, 37, 72, 0.82)) !important;
-          color: #dffbff !important;
+          border-bottom: 1px solid var(--screen-table-border) !important;
+          background: var(--screen-table-header-bg) !important;
+          color: var(--screen-table-heading) !important;
           font-size: var(--ops-screen-table-header-font-size, calc(22px * var(--screen-widget-ui-scale))) !important;
           font-weight: 700 !important;
           line-height: var(--ops-screen-table-line-height, calc(32px * var(--screen-widget-ui-scale))) !important;
@@ -1224,21 +1099,21 @@ const ScreenCanvas: React.FC<ScreenCanvasProps> = ({
         }
 
         .screen-tech-canvas .ant-table-tbody > tr > td {
-          border-bottom: 1px solid rgba(103, 232, 249, 0.12) !important;
-          background: rgba(3, 16, 36, 0.46) !important;
-          color: rgba(224, 251, 255, 0.78) !important;
+          border-bottom: 1px solid var(--screen-table-border) !important;
+          background: var(--screen-table-row-bg) !important;
+          color: var(--screen-table-text) !important;
           font-size: var(--ops-screen-table-body-font-size, calc(20px * var(--screen-widget-ui-scale))) !important;
           line-height: var(--ops-screen-table-line-height, calc(30px * var(--screen-widget-ui-scale))) !important;
           padding: var(--ops-screen-table-cell-padding-y, calc(12px * var(--screen-widget-ui-scale))) var(--ops-screen-table-cell-padding-x, calc(18px * var(--screen-widget-ui-scale))) !important;
         }
 
         .screen-tech-canvas .ant-table-tbody > tr:nth-child(even) > td {
-          background: rgba(11, 38, 72, 0.44) !important;
+          background: var(--screen-table-row-even-bg) !important;
         }
 
         .screen-tech-canvas .ant-table-tbody > tr.ant-table-row:hover > td,
         .screen-tech-canvas .ant-table-tbody > tr > td.ant-table-cell-row-hover {
-          background: rgba(34, 139, 206, 0.32) !important;
+          background: var(--screen-table-row-hover-bg) !important;
         }
 
         .screen-tech-canvas .ant-table-placeholder,
@@ -1249,43 +1124,43 @@ const ScreenCanvas: React.FC<ScreenCanvasProps> = ({
         .screen-tech-canvas .ant-pagination,
         .screen-tech-canvas .ant-pagination-total-text,
         .screen-tech-canvas .ant-pagination-options {
-          color: rgba(186, 230, 253, 0.72) !important;
+          color: var(--screen-table-muted) !important;
           font-size: var(--ops-screen-table-pagination-font-size, var(--ops-screen-table-body-font-size, calc(18px * var(--screen-widget-ui-scale)))) !important;
         }
 
         .screen-tech-canvas .ant-pagination-item,
         .screen-tech-canvas .ant-pagination-prev .ant-pagination-item-link,
         .screen-tech-canvas .ant-pagination-next .ant-pagination-item-link {
-          border-color: rgba(103, 232, 249, 0.26) !important;
-          background: rgba(6, 24, 50, 0.74) !important;
+          border-color: var(--screen-table-border) !important;
+          background: var(--screen-table-control-bg) !important;
         }
 
         .screen-tech-canvas .ant-pagination-item a,
         .screen-tech-canvas .ant-pagination-prev button,
         .screen-tech-canvas .ant-pagination-next button {
-          color: rgba(224, 251, 255, 0.78) !important;
+          color: var(--screen-table-text) !important;
         }
 
         .screen-tech-canvas .ant-pagination-item-active {
-          border-color: rgba(103, 232, 249, 0.7) !important;
-          background: rgba(34, 211, 238, 0.22) !important;
+          border-color: var(--screen-table-spin-color) !important;
+          background: var(--screen-table-control-active-bg) !important;
         }
 
         .screen-tech-canvas .ant-table-row-expand-icon {
-          border-color: rgba(103, 232, 249, 0.38) !important;
-          background: rgba(6, 24, 50, 0.84) !important;
-          color: rgba(224, 251, 255, 0.76) !important;
+          border-color: var(--screen-table-border) !important;
+          background: var(--screen-table-expand-icon-bg) !important;
+          color: var(--screen-table-text) !important;
         }
 
         .screen-tech-canvas .ant-table-row-expand-icon::before,
         .screen-tech-canvas .ant-table-row-expand-icon::after {
-          background: rgba(103, 232, 249, 0.78) !important;
+          background: var(--screen-table-spin-color) !important;
         }
 
         .screen-tech-canvas .ant-select-selector {
-          border-color: rgba(103, 232, 249, 0.26) !important;
-          background: rgba(6, 24, 50, 0.82) !important;
-          color: rgba(224, 251, 255, 0.8) !important;
+          border-color: var(--screen-table-border) !important;
+          background: var(--screen-table-control-bg) !important;
+          color: var(--screen-table-text) !important;
         }
       `}</style>
     </div>

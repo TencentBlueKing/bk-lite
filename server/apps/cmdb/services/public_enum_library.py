@@ -4,7 +4,7 @@
 # @Author: windyzhao
 import json
 import time
-from typing import Any
+from typing import Any, Callable
 
 from django.db import transaction
 from nanoid import generate
@@ -18,6 +18,7 @@ from apps.core.logger import cmdb_logger as logger
 
 
 PUBLIC_ENUM_LIBRARY_MANAGER: Any = getattr(PublicEnumLibrary, "objects")
+LibraryAuthorizer = Callable[[PublicEnumLibrary], None]
 
 
 def _generate_library_id() -> str:
@@ -79,40 +80,59 @@ def create_library(payload: dict, operator: str) -> dict:
     }
 
 
-def update_library(library_id: str, payload: dict, operator: str) -> dict:
-    library = PUBLIC_ENUM_LIBRARY_MANAGER.filter(library_id=library_id).first()
-    if not library:
-        raise BaseAppException("公共选项库不存在")
+def update_library(
+    library_id: str,
+    payload: dict,
+    operator: str,
+    *,
+    authorize: LibraryAuthorizer | None = None,
+) -> dict:
+    with transaction.atomic():
+        library = (
+            PUBLIC_ENUM_LIBRARY_MANAGER.select_for_update()
+            .filter(library_id=library_id)
+            .first()
+        )
+        if not library:
+            raise BaseAppException("公共选项库不存在")
+        if authorize:
+            authorize(library)
 
-    update_fields = ["updated_at", "updated_by"]
-    library.updated_by = operator
+        update_fields = ["updated_at", "updated_by"]
+        library.updated_by = operator
 
-    if "name" in payload:
-        name = payload["name"].strip() if payload["name"] else ""
-        if not name:
-            raise BaseAppException("公共选项库名称不能为空")
-        library.name = name
-        update_fields.append("name")
+        if "name" in payload:
+            name = payload["name"].strip() if payload["name"] else ""
+            if not name:
+                raise BaseAppException("公共选项库名称不能为空")
+            library.name = name
+            update_fields.append("name")
 
-    if "team" in payload:
-        team = payload["team"]
-        if not isinstance(team, list):
-            raise BaseAppException("team 必须是数组")
-        library.team = team
-        update_fields.append("team")
+        if "team" in payload:
+            team = payload["team"]
+            if not isinstance(team, list):
+                raise BaseAppException("team 必须是数组")
+            library.team = team
+            update_fields.append("team")
 
-    if "options" in payload:
-        options = payload["options"]
-        _validate_options(options)
-        library.options = options
-        update_fields.append("options")
+        if "options" in payload:
+            options = payload["options"]
+            _validate_options(options)
+            library.options = options
+            update_fields.append("options")
 
-    library.save(update_fields=update_fields)
+        library.save(update_fields=update_fields)
 
     logger.info(f"[PublicEnumLibrary] updated library_id={library_id}, fields={update_fields}, operator={operator}")
 
     if "options" in payload:
-        enqueue_library_snapshot_refresh(library_id, trigger="update", operator=operator)
+        transaction.on_commit(
+            lambda: enqueue_library_snapshot_refresh(
+                library_id,
+                trigger="update",
+                operator=operator,
+            )
+        )
 
     return {
         "library_id": library.library_id,
@@ -126,28 +146,43 @@ def update_library(library_id: str, payload: dict, operator: str) -> dict:
     }
 
 
-def delete_library(library_id: str, operator: str) -> None:
-    library = PUBLIC_ENUM_LIBRARY_MANAGER.filter(library_id=library_id).first()
-    if not library:
-        raise BaseAppException("公共选项库不存在")
+def delete_library(
+    library_id: str,
+    operator: str,
+    *,
+    authorize: LibraryAuthorizer | None = None,
+) -> None:
+    with transaction.atomic():
+        library = (
+            PUBLIC_ENUM_LIBRARY_MANAGER.select_for_update()
+            .filter(library_id=library_id)
+            .first()
+        )
+        if not library:
+            raise BaseAppException("公共选项库不存在")
+        if authorize:
+            authorize(library)
 
-    start_time = time.time()
-    references = find_library_references(library_id)
-    query_cost_ms = int((time.time() - start_time) * 1000)
+        start_time = time.time()
+        references = find_library_references(library_id)
+        query_cost_ms = int((time.time() - start_time) * 1000)
 
-    logger.info(
-        f"[PublicEnumLibrary] delete_library library_id={library_id}, operator={operator}, "
-        f"blocked={len(references) > 0}, reference_count={len(references)}, query_cost_ms={query_cost_ms}"
-    )
-
-    if references:
-        ref_details = ", ".join(f"{ref['model_name']}({ref['model_id']}).{ref['attr_name']}({ref['attr_id']})" for ref in references)
-        raise BaseAppException(
-            f"该公共选项库正在被以下属性引用，无法删除: {ref_details}",
-            data={"references": references},
+        logger.info(
+            f"[PublicEnumLibrary] delete_library library_id={library_id}, operator={operator}, "
+            f"blocked={len(references) > 0}, reference_count={len(references)}, query_cost_ms={query_cost_ms}"
         )
 
-    library.delete()
+        if references:
+            ref_details = ", ".join(
+                f"{ref['model_name']}({ref['model_id']}).{ref['attr_name']}({ref['attr_id']})"
+                for ref in references
+            )
+            raise BaseAppException(
+                f"该公共选项库正在被以下属性引用，无法删除: {ref_details}",
+                data={"references": references},
+            )
+
+        library.delete()
     logger.info(f"[PublicEnumLibrary] deleted library_id={library_id}, operator={operator}")
 
 
@@ -283,8 +318,19 @@ def sync_library_snapshots(library_id: str, trigger: str, operator: str | None =
                     )
                     affected_models.add(model_id)
                 except Exception as e:
-                    logger.error(f"[SyncPublicEnumSnapshots] failed to update model={model_id}, error={e}")
-                    failed_items.append({"model_id": model_id, "error": str(e)})
+                    logger.exception(
+                        "[SyncPublicEnumSnapshots] failed to update model=%s, error_type=%s, error=%s",
+                        model_id,
+                        type(e).__name__,
+                        e,
+                    )
+                    failed_items.append(
+                        {
+                            "model_id": model_id,
+                            "error_type": type(e).__name__,
+                            "error": str(e),
+                        }
+                    )
 
     logger.info(
         f"[SyncPublicEnumSnapshots] completed library_id={library_id}, "
@@ -293,7 +339,7 @@ def sync_library_snapshots(library_id: str, trigger: str, operator: str | None =
     )
 
     return {
-        "result": True,
+        "result": not failed_items,
         "library_id": library_id,
         "affected_models": len(affected_models),
         "affected_attrs": affected_attrs,

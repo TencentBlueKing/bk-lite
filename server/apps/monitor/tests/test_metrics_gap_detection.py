@@ -1,7 +1,12 @@
 from types import SimpleNamespace
 
+import pytest
+
 from apps.monitor.services.metrics import Metrics
 from apps.monitor.views.metrics_instance import MetricsInstanceViewSet
+
+
+pytestmark = pytest.mark.unit
 
 
 def test_detect_gap_intervals_finds_missing_samples_inside_coarse_step():
@@ -57,7 +62,7 @@ def test_detect_gap_intervals_returns_empty_when_samples_are_continuous():
     assert Metrics.detect_gap_intervals(series, collection_interval_seconds=60) == []
 
 
-def test_detect_gap_intervals_merges_overlapping_series_gaps():
+def test_detect_gap_intervals_keeps_overlapping_series_gaps_independent():
     series = [
         {
             "metric": {"instance_id": "host-1", "cpu": "0"},
@@ -74,17 +79,31 @@ def test_detect_gap_intervals_merges_overlapping_series_gaps():
     assert gaps == [
         {
             "start": 120.0,
-            "end": 540.0,
-            "duration": 480.0,
+            "end": 180.0,
+            "duration": 120.0,
             "series": [
                 {
                     "metric": {"instance_id": "host-1", "cpu": "1"},
                     "missing_points": 2,
-                },
+                }
+            ],
+        },
+        {
+            "start": 180.0,
+            "end": 420.0,
+            "duration": 300.0,
+            "series": [
                 {
                     "metric": {"instance_id": "host-1", "cpu": "0"},
                     "missing_points": 5,
-                },
+                }
+            ],
+        },
+        {
+            "start": 300.0,
+            "end": 540.0,
+            "duration": 300.0,
+            "series": [
                 {
                     "metric": {"instance_id": "host-1", "cpu": "1"},
                     "missing_points": 5,
@@ -94,7 +113,7 @@ def test_detect_gap_intervals_merges_overlapping_series_gaps():
     ]
 
 
-def test_detect_gap_intervals_merges_adjacent_series_gaps():
+def test_merge_gap_intervals_keeps_adjacent_different_series_gaps_independent():
     gaps = Metrics.merge_gap_intervals(
         [
             {"start": 120.0, "end": 180.0, "duration": 120.0, "series": [{"metric": {"cpu": "0"}}]},
@@ -106,12 +125,44 @@ def test_detect_gap_intervals_merges_adjacent_series_gaps():
     assert gaps == [
         {
             "start": 120.0,
+            "end": 180.0,
+            "duration": 120.0,
+            "series": [{"metric": {"cpu": "0"}}],
+        },
+        {
+            "start": 240.0,
+            "end": 300.0,
+            "duration": 120.0,
+            "series": [{"metric": {"cpu": "1"}}],
+        },
+    ]
+
+
+def test_merge_gap_intervals_combines_adjacent_gaps_for_same_series():
+    gaps = Metrics.merge_gap_intervals(
+        [
+            {
+                "start": 120.0,
+                "end": 180.0,
+                "duration": 120.0,
+                "series": [{"metric": {"cpu": "0"}, "missing_points": 2}],
+            },
+            {
+                "start": 240.0,
+                "end": 300.0,
+                "duration": 120.0,
+                "series": [{"metric": {"cpu": "0"}, "missing_points": 2}],
+            },
+        ],
+        collection_interval_seconds=60,
+    )
+
+    assert gaps == [
+        {
+            "start": 120.0,
             "end": 300.0,
             "duration": 240.0,
-            "series": [
-                {"metric": {"cpu": "0"}},
-                {"metric": {"cpu": "1"}},
-            ],
+            "series": [{"metric": {"cpu": "0"}, "missing_points": 4}],
         }
     ]
 
@@ -173,7 +224,168 @@ def test_get_metrics_range_adds_gap_metadata_when_detection_enabled(monkeypatch)
                     "missing_points": 5,
                 }
             ],
+        },
+        {
+            "start": 540.0,
+            "end": 600.0,
+            "duration": 120.0,
+            "series": [
+                {
+                    "metric": {"instance_id": "host-1"},
+                    "missing_points": 2,
+                }
+            ],
+        },
+    ]
+
+
+def test_get_metrics_range_marks_trailing_gap_until_selected_range_end(monkeypatch):
+    class StubVictoriaMetricsAPI:
+        def query_range(self, query, start, end, step):
+            return {
+                "status": "success",
+                "data": {
+                    "result": [
+                        {
+                            "metric": {"instance_id": "host-1"},
+                            "values": [[0, "1"], [60, "1"], [120, "1"]],
+                        }
+                    ]
+                },
+            }
+
+    monkeypatch.setattr("apps.monitor.services.metrics.VictoriaMetricsAPI", StubVictoriaMetricsAPI)
+
+    response = Metrics.get_metrics_range(
+        "cpu_usage",
+        0,
+        1800000,
+        "60s",
+        detect_gaps=True,
+        collection_interval_seconds=60,
+    )
+
+    assert response["data"]["gaps"] == [
+        {
+            "start": 180.0,
+            "end": 1800.0,
+            "duration": 1680.0,
+            "series": [
+                {
+                    "metric": {"instance_id": "host-1"},
+                    "missing_points": 28,
+                }
+            ],
         }
+    ]
+
+
+def test_get_metrics_range_marks_leading_gap_from_selected_range_start(monkeypatch):
+    class StubVictoriaMetricsAPI:
+        def query_range(self, query, start, end, step):
+            return {
+                "status": "success",
+                "data": {
+                    "result": [
+                        {
+                            "metric": {"instance_id": "host-1"},
+                            "values": [[600, "1"], [660, "1"], [720, "1"]],
+                        }
+                    ]
+                },
+            }
+
+    monkeypatch.setattr("apps.monitor.services.metrics.VictoriaMetricsAPI", StubVictoriaMetricsAPI)
+
+    response = Metrics.get_metrics_range(
+        "cpu_usage",
+        0,
+        900000,
+        "60s",
+        detect_gaps=True,
+        collection_interval_seconds=60,
+    )
+
+    assert response["data"]["gaps"] == [
+        {
+            "start": 0.0,
+            "end": 540.0,
+            "duration": 600.0,
+            "series": [
+                {
+                    "metric": {"instance_id": "host-1"},
+                    "missing_points": 10,
+                }
+            ],
+        },
+        {
+            "start": 780.0,
+            "end": 900.0,
+            "duration": 180.0,
+            "series": [
+                {
+                    "metric": {"instance_id": "host-1"},
+                    "missing_points": 3,
+                }
+            ],
+        },
+    ]
+
+
+def test_get_metrics_range_reuses_response_when_step_matches_collection_interval(monkeypatch):
+    calls = []
+
+    class StubVictoriaMetricsAPI:
+        def query_range(self, query, start, end, step):
+            calls.append((query, start, end, step))
+            return {
+                "status": "success",
+                "data": {
+                    "result": [
+                        {
+                            "metric": {"instance_id": "host-1"},
+                            "values": [[0, "1"], [60, "1"], [120, "1"], [480, "1"]],
+                        }
+                    ]
+                },
+            }
+
+    monkeypatch.setattr("apps.monitor.services.metrics.VictoriaMetricsAPI", StubVictoriaMetricsAPI)
+
+    response = Metrics.get_metrics_range(
+        "cpu_usage",
+        0,
+        600000,
+        "60s",
+        detect_gaps=True,
+        collection_interval_seconds=60,
+    )
+
+    assert calls == [("cpu_usage", 0.0, 600.0, "60s")]
+    assert response["data"]["gap_detection"] == {"status": "ok", "limited": False}
+    assert response["data"]["gaps"] == [
+        {
+            "start": 180.0,
+            "end": 420.0,
+            "duration": 300.0,
+            "series": [
+                {
+                    "metric": {"instance_id": "host-1"},
+                    "missing_points": 5,
+                }
+            ],
+        },
+        {
+            "start": 540.0,
+            "end": 600.0,
+            "duration": 120.0,
+            "series": [
+                {
+                    "metric": {"instance_id": "host-1"},
+                    "missing_points": 2,
+                }
+            ],
+        },
     ]
 
 
@@ -274,7 +486,18 @@ def test_get_metrics_range_detects_one_minute_gaps_for_thirty_day_window(monkeyp
                     "missing_points": 5,
                 }
             ],
-        }
+        },
+        {
+            "start": 540.0,
+            "end": 2592000.0,
+            "duration": 2591520.0,
+            "series": [
+                {
+                    "metric": {"instance_id": "host-1"},
+                    "missing_points": 43192,
+                }
+            ],
+        },
     ]
 
 

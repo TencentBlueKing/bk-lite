@@ -93,6 +93,7 @@ class RequestTimingMiddleware(MiddlewareMixin):
         elif status_code >= 400:
             logger.warning(log_message)
         elif self._is_sidecar_open_api_path(path):
-            logger.debug(log_message)
+            # Sidecar 会高频轮询这些接口，成功请求不逐条记录，避免淹没异常日志。
+            return
         else:
             logger.info(log_message)

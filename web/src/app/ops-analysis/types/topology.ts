@@ -298,6 +298,9 @@ export interface ToolbarProps {
   isSelectMode: boolean;
   isEditMode?: boolean;
   isFullscreen?: boolean;
+  shareMode?: boolean;
+  shareLoading?: boolean;
+  onOpenShare?: () => void;
   selectedTopology?: DirItem | null;
   onZoomIn: () => void;
   onZoomOut: () => void;
@@ -325,6 +328,7 @@ export interface ViewConfigFormValues {
   chartThemeMode?: OpsChartThemeMode;
   dataSource?: number | string;
   compare?: boolean;
+  compareMode?: 'percent' | 'value';
   dataSourceParams?: ParamItem[];
   filterBindings?: FilterBindings;
   selectedFields?: string[];
@@ -351,6 +355,7 @@ export interface NodeConfigFormValues {
   logoIcon?: string;
   logoUrl?: string;
   compare?: boolean;
+  compareMode?: 'percent' | 'value';
   selectedFields?: string[];
   chartType?: string;
   dataSource?: number | string;
@@ -386,6 +391,7 @@ export interface NodeConfigFormValues {
 // Topology 组件 Props 和 Ref 类型
 export interface TopologyProps {
   selectedTopology?: DirItem | null;
+  shareMode?: boolean;
 }
 
 export interface TopologyRef {

@@ -643,6 +643,20 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
                 </div>
               ));
             })()}
+            {Array.isArray(userChoiceRequests) && userChoiceRequests.length > 0 && (
+              <div className="mt-2">
+                {[...userChoiceRequests]
+                  .sort((a, b) => (a.received_at || 0) - (b.received_at || 0))
+                  .map(req => (
+                    <UserChoiceCard
+                      key={req.choice_id}
+                      request={req}
+                      token={token || ''}
+                      onSubmit={handleUserChoiceSubmit}
+                    />
+                  ))}
+              </div>
+            )}
             {visibleReportFileDownloads.length > 0 && (
               <div className="mt-2">
                 {visibleReportFileDownloads.map(dl => (

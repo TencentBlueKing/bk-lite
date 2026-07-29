@@ -1,7 +1,7 @@
 /**
  * LocaleProvider 切换语言闪烁回归。
  *
- * 锁定 issue #0003 修法(OpenSpec `fix-locale-provider-switch-flash`):
+ * 锁定 `fix-locale-provider-switch-flash` 变更的回归行为：
  *   - `fetchLocaleMessages` 函数体内不再管控 `isLoading`,
  *     loading 状态完全由 useEffect 初始化路径显式管控。
  *   - `changeLocale` 仍后台调用 `fetchLocaleMessages` 拉新 messages,
