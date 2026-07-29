@@ -13,6 +13,7 @@ interface FormConfigParams {
   dynamicForm: FormInstance;
   copyToClipboard: (text: string) => void;
   isBuiltIn?: boolean;
+  isEditing?: boolean;
 }
 
 export const getNewAuthSourceFormFields = ({
@@ -218,7 +219,8 @@ export const getBluekingFormFields = ({
 export const getWeChatFormFields = ({
   t,
   dynamicForm,
-  copyToClipboard
+  copyToClipboard,
+  isEditing = false
 }: FormConfigParams) => [
   {
     name: 'name',
@@ -239,7 +241,7 @@ export const getWeChatFormFields = ({
     type: 'editablePwd',
     label: t('system.security.appSecret'),
     placeholder: `${t('common.inputMsg')}${t('system.security.appSecret')}`,
-    rules: [{ required: true, message: `${t('common.inputMsg')}${t('system.security.appSecret')}` }]
+    rules: [{ required: !isEditing, message: `${t('common.inputMsg')}${t('system.security.appSecret')}` }]
   },
   {
     name: 'redirect_uri',

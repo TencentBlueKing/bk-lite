@@ -115,7 +115,8 @@ const AuthSourcesList: React.FC<AuthSourcesListProps> = ({
     roleTreeData,
     selectedRoles,
     setSelectedRoles,
-  }), [t, dynamicForm, handleCopy, roleTreeData, selectedRoles, setSelectedRoles]);
+    isEditing: Boolean(editingSource),
+  }), [t, dynamicForm, handleCopy, roleTreeData, selectedRoles, setSelectedRoles, editingSource]);
 
   const renderWeChatModal = () => (
     <div className="w-full">

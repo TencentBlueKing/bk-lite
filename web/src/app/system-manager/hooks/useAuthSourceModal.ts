@@ -9,6 +9,7 @@ import {
   SourceType,
   buildUpdatePayload,
   buildCreatePayload,
+  mergeAuthSourceUpdate,
   populateFormFromSource,
   getDefaultRolesFromSource,
   getFieldsToResetOnTypeChange,
@@ -79,7 +80,7 @@ export function useAuthSourceModal({
         );
         await updateAuthSource(editingSource.id, updateData);
 
-        const updatedSource = { ...editingSource, ...updateData };
+        const updatedSource = mergeAuthSourceUpdate(editingSource, updateData);
         const enhancedSource = enhanceAuthSourcesList([updatedSource])[0];
 
         onUpdate(authSources.map(item =>

@@ -63,16 +63,19 @@ export function buildUpdatePayload(
 ): Partial<AuthSource> {
   if (sourceType === 'wechat') {
     const v = values as WeChatFormValues;
-    return {
+    const payload: Partial<AuthSource> = {
       name: v.name,
       app_id: v.app_id,
-      app_secret: v.app_secret,
       enabled: v.enabled,
       other_config: {
         redirect_uri: v.redirect_uri,
         callback_url: v.callback_url,
       },
     };
+    if (v.app_secret) {
+      payload.app_secret = v.app_secret;
+    }
+    return payload;
   }
 
   if (sourceType === 'bk_login') {
@@ -149,12 +152,22 @@ export function buildCreatePayload(
   };
 }
 
+export function mergeAuthSourceUpdate(
+  source: AuthSource,
+  updateData: Partial<AuthSource>
+): AuthSource {
+  const safeSource = { ...source };
+  const safeUpdateData = { ...updateData };
+  delete safeSource.app_secret;
+  delete safeUpdateData.app_secret;
+  return { ...safeSource, ...safeUpdateData };
+}
+
 export function populateFormFromSource(source: AuthSource): Record<string, any> {
   if (source.source_type === 'wechat') {
     return {
       name: source.name,
       app_id: source.app_id,
-      app_secret: source.app_secret,
       enabled: source.enabled,
       redirect_uri: source.other_config.redirect_uri,
       callback_url: source.other_config.callback_url,
