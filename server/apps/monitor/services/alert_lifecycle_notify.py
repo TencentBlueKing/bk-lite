@@ -27,8 +27,9 @@ NOTIFY_SCOPE_ALL_CONFIGURED = "all_configured"
 
 
 class AlertLifecycleNotifier:
-    def __init__(self, policy=None):
+    def __init__(self, policy=None, policies_by_id=None):
         self.policy = policy
+        self.policies_by_id = policies_by_id or {}
 
     def notify_alerts(self, alerts, action, operator="", reason="", notify_scope=NOTIFY_SCOPE_ALL_CONFIGURED):
         if not alerts:
@@ -330,17 +331,21 @@ class AlertLifecycleNotifier:
             org_map[instance_id].append(organization)
         return org_map
 
-    def _resolve_alert_organizations(self, alert, instance_org_map):
+    def _resolve_alert_organizations(self, alert, instance_org_map, policy=None):
         """实例组织优先；实例无组织时回退策略组织；都没有则为空。"""
         organizations = instance_org_map.get(alert.monitor_instance_id)
         if organizations:
             return organizations
-        if self.policy and getattr(self.policy, "organizations", None):
-            return list(self.policy.organizations)
+        policy = policy or self.policy
+        if policy and getattr(policy, "organizations", None):
+            return list(policy.organizations)
         return []
 
     def _build_alert_center_payload(self, alert, action, operator, reason, instance_org_map=None):
         instance_org_map = instance_org_map or {}
+        policy = self.policy
+        if action == "created":
+            policy = self.policies_by_id.get(alert.policy_id, policy)
         alert_center_action = ACTION_TO_ALERT_CENTER.get(action, "created")
         start_time = str(int(alert.start_event_time.timestamp())) if alert.start_event_time else None
         end_time = str(int(alert.end_event_time.timestamp())) if alert.end_event_time else None
@@ -356,10 +361,12 @@ class AlertLifecycleNotifier:
             "end_time": end_time,
             "resource_id": alert.monitor_instance_id,
             "resource_name": getattr(alert, "monitor_instance_name", ""),
-            "organizations": self._resolve_alert_organizations(alert, instance_org_map),
+            "organizations": self._resolve_alert_organizations(
+                alert, instance_org_map, policy
+            ),
             "tags": getattr(alert, "dimensions", {}),
             "labels": {
-                "policy_name": getattr(self.policy, "name", "") if self.policy else "",
+                "policy_name": getattr(policy, "name", "") if policy else "",
                 "metric_instance_id": getattr(alert, "metric_instance_id", ""),
                 "operator": operator,
                 "reason": reason,
