@@ -13,21 +13,21 @@ pytestmark = pytest.mark.unit
 MONITOR_ROOT = Path(__file__).resolve().parents[1]
 
 
-def _load_method(path, class_name, method_name, globals_dict):
+def _load_methods(path, class_name, method_names, globals_dict):
     tree = ast.parse(path.read_text())
     source_class = next(
         node for node in tree.body
         if isinstance(node, ast.ClassDef) and node.name == class_name
     )
-    method = next(
+    methods = [
         node for node in source_class.body
-        if isinstance(node, ast.FunctionDef) and node.name == method_name
-    )
+        if isinstance(node, ast.FunctionDef) and node.name in method_names
+    ]
     probe_class = ast.ClassDef(
         name="Subject",
         bases=[],
         keywords=[],
-        body=[method],
+        body=methods,
         decorator_list=[],
     )
     ast.fix_missing_locations(probe_class)
@@ -36,6 +36,10 @@ def _load_method(path, class_name, method_name, globals_dict):
         globals_dict,
     )
     return globals_dict["Subject"]
+
+
+def _load_method(path, class_name, method_name, globals_dict):
+    return _load_methods(path, class_name, {method_name}, globals_dict)
 
 
 def _load_function(path, function_name, globals_dict):
@@ -176,11 +180,17 @@ class _RetryObjects:
 
 
 def test_retry_task_selects_pending_lifecycle_actions(monkeypatch):
-    policy = types.SimpleNamespace(id=301, name="策略 A", organizations=[7])
+    policy_a = types.SimpleNamespace(id=301, name="策略 A", organizations=[7])
+    policy_b = types.SimpleNamespace(id=303, name="策略 B", organizations=[8])
     alerts = [
         types.SimpleNamespace(
             id=201, status="new",
-            policy_id=policy.id,
+            policy_id=policy_a.id,
+            alert_center_notified=False, alert_center_retry_count=0,
+        ),
+        types.SimpleNamespace(
+            id=206, status="new",
+            policy_id=policy_b.id,
             alert_center_notified=False, alert_center_retry_count=0,
         ),
         types.SimpleNamespace(
@@ -195,12 +205,12 @@ def test_retry_task_selects_pending_lifecycle_actions(monkeypatch):
         ),
         types.SimpleNamespace(
             id=204, status="new",
-            policy_id=policy.id,
+            policy_id=policy_a.id,
             alert_center_notified=True, alert_center_retry_count=0,
         ),
         types.SimpleNamespace(
             id=205, status="new",
-            policy_id=policy.id,
+            policy_id=policy_a.id,
             alert_center_notified=False, alert_center_retry_count=10,
         ),
     ]
@@ -221,7 +231,8 @@ def test_retry_task_selects_pending_lifecycle_actions(monkeypatch):
     models.MonitorPolicy = types.SimpleNamespace(
         objects=types.SimpleNamespace(
             in_bulk=lambda policy_ids: (
-                loaded_policy_ids.append(set(policy_ids)) or {policy.id: policy}
+                loaded_policy_ids.append(set(policy_ids))
+                or {policy_a.id: policy_a, policy_b.id: policy_b}
             )
         )
     )
@@ -229,8 +240,8 @@ def test_retry_task_selects_pending_lifecycle_actions(monkeypatch):
         "apps.monitor.services.alert_lifecycle_notify"
     )
 
-    def build_notifier(notifier_policy=None):
-        notifier_policies.append(notifier_policy)
+    def build_notifier(notifier_policy=None, policies_by_id=None):
+        notifier_policies.append((notifier_policy, policies_by_id))
         return notifier
 
     notify_module.AlertLifecycleNotifier = build_notifier
@@ -262,16 +273,62 @@ def test_retry_task_selects_pending_lifecycle_actions(monkeypatch):
         "alert_center_retry_count__lt": 10,
     }]
     assert pushes == [
-        ("created", [201]),
+        ("created", [201, 206]),
         ("recovered", [202]),
         ("closed", [203]),
     ]
-    assert loaded_policy_ids == [{policy.id}]
-    assert notifier_policies == [policy, None]
-    assert marked == [[201, 202, 203]]
+    assert loaded_policy_ids == [{policy_a.id, policy_b.id}]
+    assert notifier_policies == [
+        (None, {policy_a.id: policy_a, policy_b.id: policy_b})
+    ]
+    assert marked == [[201, 206, 202, 203]]
     assert result == {
         "success": True,
-        "total": 3,
-        "succeeded": 3,
+        "total": 4,
+        "succeeded": 4,
         "failed": 0,
     }
+
+
+def test_retry_payload_uses_new_alert_policy_without_changing_terminal_actions():
+    policy = types.SimpleNamespace(id=301, name="策略 A", organizations=[7])
+    alert = types.SimpleNamespace(
+        id=201,
+        policy_id=policy.id,
+        content="CPU 告警",
+        level="critical",
+        value=95,
+        start_event_time=None,
+        end_event_time=None,
+        monitor_instance_id="host-1",
+        monitor_instance_name="主机 1",
+        dimensions={"ip": "127.0.0.1"},
+        metric_instance_id="cpu",
+        status="new",
+    )
+    subject = _load_methods(
+        MONITOR_ROOT / "services/alert_lifecycle_notify.py",
+        "AlertLifecycleNotifier",
+        {"_resolve_alert_organizations", "_build_alert_center_payload"},
+        {
+            "ACTION_TO_ALERT_CENTER": {
+                "created": "created",
+                "recovered": "recovery",
+            },
+            "LEVEL_TO_ALERT_CENTER": {"critical": "0"},
+        },
+    )()
+    subject.policy = None
+    subject.policies_by_id = {policy.id: policy}
+
+    created_payload = subject._build_alert_center_payload(
+        alert, "created", "", "", {}
+    )
+    recovered_payload = subject._build_alert_center_payload(
+        alert, "recovered", "", "", {}
+    )
+
+    assert created_payload["organizations"] == [7]
+    assert created_payload["labels"]["policy_name"] == "策略 A"
+    assert recovered_payload["organizations"] == []
+    assert recovered_payload["labels"]["policy_name"] == ""

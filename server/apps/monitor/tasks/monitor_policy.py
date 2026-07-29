@@ -123,19 +123,13 @@ def retry_alert_center_lifecycle_notify_task():
 
     groups = defaultdict(list)
     for alert in alerts:
-        policy_id = alert.policy_id if alert.status == "new" else None
-        groups[(alert.status, policy_id)].append(alert)
+        groups[alert.status].append(alert)
 
-    notifiers = {}
+    notifier = AlertLifecycleNotifier(policies_by_id=policies_by_id)
     success_ids = []
     fail_ids = []
 
-    for (status, policy_id), group_alerts in groups.items():
-        if policy_id not in notifiers:
-            notifiers[policy_id] = AlertLifecycleNotifier(
-                policies_by_id.get(policy_id)
-            )
-        notifier = notifiers[policy_id]
+    for status, group_alerts in groups.items():
         # 单组异常隔离：一组毒数据不应崩溃整个任务，否则该批次会被反复取回永久楔死
         try:
             action = "created" if status == "new" else status
