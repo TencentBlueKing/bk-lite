@@ -1,9 +1,11 @@
 import pytest
+from django.core.exceptions import ValidationError
 
 from apps.operation_analysis.models.models import Dashboard, Directory
 from apps.operation_analysis.models.subscription_models import (
     DashboardReportExecution,
     DashboardReportExecutionSnapshot,
+    DashboardReportRenderSnapshot,
     DashboardReportSubscription,
 )
 from apps.operation_analysis.services.execution_orchestrator import (
@@ -11,6 +13,7 @@ from apps.operation_analysis.services.execution_orchestrator import (
     ExecutionOrchestrator,
     ExecutionStepResult,
     PermissionStep,
+    RenderSnapshotStep,
     RenderStep,
     SnapshotStep,
 )
@@ -74,6 +77,65 @@ def test_orchestrator_does_not_succeed_before_render_is_implemented(
     assert execution.error_message == ""
 
 
+def test_orchestrator_creates_render_snapshot_from_dashboard(
+    execution,
+    monkeypatch,
+):
+    execution.dashboard.view_sets = [
+        {
+            "id": "group",
+            "itemType": "group",
+            "subGridOpts": {
+                "children": [
+                    {
+                        "id": "chart-widget",
+                        "itemType": "widget",
+                        "valueConfig": {
+                            "chartType": "line",
+                            "dataSource": 17,
+                        },
+                    }
+                ]
+            },
+        },
+        {
+            "i": "legacy-static-widget",
+            "valueConfig": {"chartType": "single"},
+        },
+        "invalid-layout-node",
+    ]
+    execution.dashboard.filters = [{"field": "environment"}]
+    execution.dashboard.other = {"title": "运营总览"}
+    execution.dashboard.save(
+        update_fields=["view_sets", "filters", "other", "updated_at"]
+    )
+    set_dashboard_view_permission(monkeypatch, True)
+
+    ExecutionOrchestrator.execute(execution.id)
+
+    snapshot = DashboardReportRenderSnapshot.objects.get(
+        execution=execution
+    )
+    assert snapshot.dashboard_id == execution.dashboard_id
+    assert snapshot.dashboard_name == execution.dashboard.name
+    assert snapshot.dashboard_updated_at == execution.dashboard.updated_at
+    assert snapshot.view_sets == execution.dashboard.view_sets
+    assert snapshot.filters == execution.dashboard.filters
+    assert snapshot.other == execution.dashboard.other
+    assert snapshot.widget_manifest == [
+        {
+            "widget_id": "chart-widget",
+            "widget_type": "line",
+            "datasource_id": 17,
+        },
+        {
+            "widget_id": "legacy-static-widget",
+            "widget_type": "single",
+            "datasource_id": None,
+        },
+    ]
+
+
 def test_orchestrator_runs_steps_in_order(
     execution,
     monkeypatch,
@@ -95,9 +157,17 @@ def test_orchestrator_runs_steps_in_order(
 
     monkeypatch.setattr(SnapshotStep, "execute", snapshot_step)
     monkeypatch.setattr(
+        RenderSnapshotStep,
+        "execute",
+        lambda current: (
+            calls.append("render_snapshot"),
+            current.snapshot,
+        )[1],
+    )
+    monkeypatch.setattr(
         RenderStep,
         "execute",
-        lambda current, snapshot: (
+        lambda current, snapshot, render_snapshot: (
             calls.append("render"),
             ExecutionStepResult.NOT_READY,
         )[1],
@@ -110,7 +180,12 @@ def test_orchestrator_runs_steps_in_order(
 
     ExecutionOrchestrator.execute(execution.id)
 
-    assert calls == ["permission", "snapshot", "render"]
+    assert calls == [
+        "permission",
+        "snapshot",
+        "render_snapshot",
+        "render",
+    ]
 
 
 def test_orchestrator_does_not_succeed_before_delivery_is_implemented(
@@ -121,7 +196,7 @@ def test_orchestrator_does_not_succeed_before_delivery_is_implemented(
     monkeypatch.setattr(
         RenderStep,
         "execute",
-        lambda current, snapshot: ExecutionStepResult.COMPLETED,
+        lambda current, snapshot, render_snapshot: ExecutionStepResult.COMPLETED,
     )
 
     result = ExecutionOrchestrator.execute(execution.id)
@@ -146,7 +221,7 @@ def test_orchestrator_fails_when_creator_loses_dashboard_view(
     monkeypatch.setattr(
         RenderStep,
         "execute",
-        lambda current, snapshot: later_steps.append("render"),
+        lambda current, snapshot, render_snapshot: later_steps.append("render"),
     )
     monkeypatch.setattr(
         DeliveryStep,
@@ -174,7 +249,7 @@ def test_orchestrator_fails_when_snapshot_is_missing(
     monkeypatch.setattr(
         RenderStep,
         "execute",
-        lambda current, snapshot: later_steps.append("render"),
+        lambda current, snapshot, render_snapshot: later_steps.append("render"),
     )
     monkeypatch.setattr(
         DeliveryStep,
@@ -192,3 +267,120 @@ def test_orchestrator_fails_when_snapshot_is_missing(
     assert execution.finished_at is not None
     assert execution.failure_stage == "snapshot"
     assert later_steps == []
+
+
+def test_render_snapshot_isolated_from_later_dashboard_changes(
+    execution,
+    monkeypatch,
+):
+    execution.dashboard.filters = [{"field": "environment"}]
+    execution.dashboard.other = {"title": "原始标题"}
+    execution.dashboard.save(
+        update_fields=["filters", "other", "updated_at"]
+    )
+    set_dashboard_view_permission(monkeypatch, True)
+    ExecutionOrchestrator.execute(execution.id)
+    render_snapshot = execution.render_snapshot
+    original_dashboard_updated_at = render_snapshot.dashboard_updated_at
+
+    execution.dashboard.name = "修改后的仪表盘"
+    execution.dashboard.filters = [{"field": "region"}]
+    execution.dashboard.other = {"title": "修改后的标题"}
+    execution.dashboard.save(
+        update_fields=["name", "filters", "other", "updated_at"]
+    )
+    render_snapshot.refresh_from_db()
+
+    assert render_snapshot.dashboard_name == "编排测试仪表盘"
+    assert render_snapshot.dashboard_updated_at == original_dashboard_updated_at
+    assert render_snapshot.filters == [{"field": "environment"}]
+    assert render_snapshot.other == {"title": "原始标题"}
+
+
+def test_render_snapshot_isolated_from_later_widget_changes(
+    execution,
+    monkeypatch,
+):
+    original_view_sets = [
+        {
+            "id": "table-widget",
+            "itemType": "widget",
+            "valueConfig": {
+                "chartType": "table",
+                "dataSource": 23,
+            },
+        }
+    ]
+    execution.dashboard.view_sets = original_view_sets
+    execution.dashboard.save(update_fields=["view_sets", "updated_at"])
+    set_dashboard_view_permission(monkeypatch, True)
+    ExecutionOrchestrator.execute(execution.id)
+    render_snapshot = execution.render_snapshot
+
+    execution.dashboard.view_sets = [
+        {
+            "id": "changed-widget",
+            "itemType": "widget",
+            "valueConfig": {
+                "chartType": "line",
+                "dataSource": 99,
+            },
+        }
+    ]
+    execution.dashboard.save(update_fields=["view_sets", "updated_at"])
+    render_snapshot.refresh_from_db()
+
+    assert render_snapshot.view_sets == original_view_sets
+    assert render_snapshot.widget_manifest == [
+        {
+            "widget_id": "table-widget",
+            "widget_type": "table",
+            "datasource_id": 23,
+        }
+    ]
+
+
+def test_render_snapshot_cannot_be_updated(execution, monkeypatch):
+    set_dashboard_view_permission(monkeypatch, True)
+    ExecutionOrchestrator.execute(execution.id)
+    render_snapshot = execution.render_snapshot
+
+    render_snapshot.dashboard_name = "不允许修改"
+    with pytest.raises(ValidationError, match="Render Snapshot 创建后不可修改"):
+        render_snapshot.save()
+    with pytest.raises(ValidationError, match="Render Snapshot 创建后不可修改"):
+        DashboardReportRenderSnapshot.objects.filter(
+            pk=render_snapshot.pk
+        ).update(dashboard_name="不允许修改")
+    with pytest.raises(ValidationError, match="Render Snapshot 创建后不可修改"):
+        DashboardReportRenderSnapshot.objects.bulk_update(
+            [render_snapshot],
+            ["dashboard_name"],
+        )
+
+
+def test_render_snapshot_failure_marks_execution_failed(
+    execution,
+    monkeypatch,
+):
+    set_dashboard_view_permission(monkeypatch, True)
+    monkeypatch.setattr(
+        "apps.operation_analysis.services.execution_orchestrator."
+        "DashboardReportRenderSnapshotService.create",
+        lambda current: (_ for _ in ()).throw(RuntimeError("database error")),
+    )
+    render_calls = []
+    monkeypatch.setattr(
+        RenderStep,
+        "execute",
+        lambda current, snapshot, render_snapshot: render_calls.append("render"),
+    )
+
+    result = ExecutionOrchestrator.execute(execution.id)
+
+    execution.refresh_from_db()
+    assert result.id == execution.id
+    assert execution.status == DashboardReportExecution.Status.FAILED
+    assert execution.failure_stage == "render_snapshot"
+    assert execution.error_message == "Render Snapshot 创建失败"
+    assert render_calls == []

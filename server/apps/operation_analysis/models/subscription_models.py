@@ -5,6 +5,7 @@ from apps.core.models.time_info import TimeInfo
 from apps.operation_analysis.models.models import Dashboard
 
 EXECUTION_SNAPSHOT_IMMUTABLE_ERROR = "Execution Input Snapshot 创建后不可修改"
+RENDER_SNAPSHOT_IMMUTABLE_ERROR = "Render Snapshot 创建后不可修改"
 
 
 class DashboardReportSubscription(TimeInfo):
@@ -154,4 +155,46 @@ class DashboardReportExecutionSnapshot(models.Model):
     def save(self, *args, **kwargs):
         if self.pk is not None and type(self).objects.filter(pk=self.pk).exists():
             raise ValidationError(EXECUTION_SNAPSHOT_IMMUTABLE_ERROR)
+        super().save(*args, **kwargs)
+
+
+class DashboardReportRenderSnapshotQuerySet(models.QuerySet):
+    def update(self, **kwargs):
+        raise ValidationError(RENDER_SNAPSHOT_IMMUTABLE_ERROR)
+
+    def bulk_update(self, objs, fields, batch_size=None):
+        raise ValidationError(RENDER_SNAPSHOT_IMMUTABLE_ERROR)
+
+
+class DashboardReportRenderSnapshot(models.Model):
+    execution = models.OneToOneField(
+        DashboardReportExecution,
+        on_delete=models.CASCADE,
+        related_name="render_snapshot",
+        verbose_name="报告执行",
+    )
+    dashboard_id = models.BigIntegerField(verbose_name="仪表盘 ID")
+    dashboard_name = models.CharField(max_length=128, verbose_name="仪表盘名称")
+    dashboard_updated_at = models.DateTimeField(verbose_name="仪表盘更新时间")
+    view_sets = models.JSONField(default=list, verbose_name="仪表盘布局")
+    filters = models.JSONField(null=True, blank=True, verbose_name="筛选配置")
+    other = models.JSONField(null=True, blank=True, verbose_name="其他配置")
+    widget_manifest = models.JSONField(
+        default=list,
+        verbose_name="Widget 清单",
+    )
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+        db_index=True,
+        verbose_name="创建时间",
+    )
+    objects = DashboardReportRenderSnapshotQuerySet.as_manager()
+
+    class Meta:
+        db_table = "operation_analysis_dashboard_report_render_snapshot"
+        verbose_name = "仪表盘报告渲染快照"
+
+    def save(self, *args, **kwargs):
+        if self.pk is not None and type(self).objects.filter(pk=self.pk).exists():
+            raise ValidationError(RENDER_SNAPSHOT_IMMUTABLE_ERROR)
         super().save(*args, **kwargs)

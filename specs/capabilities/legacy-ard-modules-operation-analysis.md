@@ -19,6 +19,7 @@
 | DashboardReportSubscription | `models/subscription_models.py` | Dashboard 报告订阅配置；绑定 Dashboard、创建者、名称、状态、单个接收邮箱及预留 config。Phase 1A 仅提供配置 CRUD，不执行报告 |
 | DashboardReportExecution | `models/subscription_models.py` | 一次 Dashboard 报告订阅执行的基础审计记录；Phase 1B-1 支持 manual 触发及 pending/running/succeeded/failed/unknown 状态，不执行渲染或投递 |
 | DashboardReportExecutionSnapshot | `models/subscription_models.py` | 一次订阅执行的不可变输入快照；Phase 1B-2A 冻结 Dashboard、Subscription、创建者标识与已保存筛选值，不复制布局、Widget 或 DataSource 运行态 |
+| DashboardReportRenderSnapshot | `models/subscription_models.py` | 一次执行的不可变渲染输入；Phase 1D-0 冻结 Dashboard 名称、布局、筛选、其他展示配置及 Widget/DataSource 引用清单，不复制 DataSource 配置或凭据 |
 
 内置机制【已实现/已存在】：`Directory`/`Dashboard`/`Topology`/`Architecture`/`Screen`/`Report` 通过 `is_build_in` + 唯一 `build_in_key` 标识内置画布，承载「内置视图对组织可见但不可删改」语义（删改在视图层被 `_raise_if_builtin` 拦截，见 §3）；`DataSourceTag.build_in` 标识内置标签。
 
@@ -99,6 +100,7 @@
 
 - `[operation_analysis#20260729-004]` 新增统一 Execution Orchestrator 和 Permission/Snapshot/Render/Delivery 步骤边界。Manual Execute API 委托同一 Orchestrator；权限或 Snapshot 校验失败分别记录 `permission_check` / `snapshot`。Render 与 Delivery 仍为无副作用 placeholder，未接入异步任务、Chromium、PDF 或邮件。
 - `[operation_analysis#20260729-005]` 修正 Manual Execute 异步边界与成功语义：POST 只创建并返回 `pending` Execution；View 不再同步调用 Orchestrator；未实现的 Render/Delivery 返回 `not_ready`，不得产生 `succeeded`。Subscription Modal 可查询并展示单条 Execution 状态。
+- `[operation_analysis#20260729-006]` 新增一对一不可变 Render Snapshot。Orchestrator 在 Input Snapshot 校验后、Render Step 前冻结 Dashboard 配置及 Widget manifest；创建失败记录 `failure_stage=render_snapshot`。未新增 Render Route，未接入 DataSource Runtime Snapshot、Chromium、PDF、Email 或 Scheduler。
 
 ## 6. 证据来源
 `server/apps/operation_analysis/{urls.py,models/*,views/datasource_view.py,views/view.py,nats/nats.py,common/get_nats_source_data.py,constants/constants.py,tasks/tasks.py,management/commands/*,services/*}`、`apps/operation_analysis/migrations/0010_remove_namespace_groups.py`、`apps/rpc/base.py:OperationAnalysisRpc`、`web/src/app/ops-analysis/{utils/widgetRequestCache.ts,components/widgetDataRenderer.tsx,api/namespace.ts,(pages)/settings/namespace/operateModal.tsx}`。

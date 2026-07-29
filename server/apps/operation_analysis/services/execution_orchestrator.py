@@ -1,3 +1,4 @@
+import logging
 from dataclasses import dataclass
 from enum import StrEnum
 
@@ -5,10 +6,16 @@ from apps.base.models import User
 from apps.operation_analysis.models.subscription_models import (
     DashboardReportExecution,
     DashboardReportExecutionSnapshot,
+    DashboardReportRenderSnapshot,
 )
 from apps.operation_analysis.services.execution_service import (
     DashboardReportExecutionService,
 )
+from apps.operation_analysis.services.render_snapshot_service import (
+    DashboardReportRenderSnapshotService,
+)
+
+logger = logging.getLogger(__name__)
 
 
 class ExecutionStepResult(StrEnum):
@@ -105,11 +112,33 @@ class SnapshotStep:
         return snapshot
 
 
+class RenderSnapshotStep:
+    failure_stage = "render_snapshot"
+
+    @classmethod
+    def execute(
+        cls,
+        execution: DashboardReportExecution,
+    ) -> DashboardReportRenderSnapshot:
+        try:
+            return DashboardReportRenderSnapshotService.create(execution)
+        except Exception as exc:
+            logger.exception(
+                "创建 Render Snapshot 失败: execution_id=%s",
+                execution.id,
+            )
+            raise ExecutionStepError(
+                cls.failure_stage,
+                "Render Snapshot 创建失败",
+            ) from exc
+
+
 class RenderStep:
     @staticmethod
     def execute(
         execution: DashboardReportExecution,
         snapshot: DashboardReportExecutionSnapshot,
+        render_snapshot: DashboardReportRenderSnapshot,
     ) -> ExecutionStepResult:
         return ExecutionStepResult.NOT_READY
 
@@ -139,7 +168,12 @@ class ExecutionOrchestrator:
         try:
             PermissionStep.execute(execution)
             snapshot = SnapshotStep.execute(execution)
-            render_result = RenderStep.execute(execution, snapshot)
+            render_snapshot = RenderSnapshotStep.execute(execution)
+            render_result = RenderStep.execute(
+                execution,
+                snapshot,
+                render_snapshot,
+            )
             if render_result != ExecutionStepResult.COMPLETED:
                 return execution
             delivery_result = DeliveryStep.execute(execution, snapshot)

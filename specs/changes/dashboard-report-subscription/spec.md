@@ -118,6 +118,31 @@ Phase 1C.1 已修正上述占位步骤导致的假成功语义：
 后续 Render Vertical Slice 引入真实消费者。Phase 1C.1 不实现 Chromium、
 PDF、Email、Scheduler、Retry、Render Token 或 Render Snapshot。
 
+## Phase 1D-0 实现状态（2026-07-29）
+
+已实现最小 Render Snapshot 边界：
+
+- 新增与 Execution 一对一的不可变
+  `DashboardReportRenderSnapshot`；
+- Orchestrator 固定步骤调整为
+  `PermissionStep → SnapshotStep → RenderSnapshotStep → RenderStep → DeliveryStep`；
+- `RenderSnapshotStep` 从当前 Dashboard 一次性冻结 `dashboard_id`、
+  `dashboard_name`、`dashboard_updated_at`、`view_sets`、`filters`、`other`
+  与 `widget_manifest`；
+- `widget_manifest` 从当前及兼容的历史布局结构提取 Widget，至少记录
+  `widget_id`、`widget_type`、`datasource_id`，不复制 DataSource 配置或凭据；
+- Render Snapshot 创建成功后，后续 Dashboard 或 Widget 修改不改变该快照；
+- 快照拒绝实例 `save()`、QuerySet `update()` 与 `bulk_update()` 修改；
+- 创建失败由 Orchestrator 经过 Execution Service 标记为 `failed`，并记录
+  `failure_stage=render_snapshot`；
+- 未实现的 RenderStep 仍返回 `not_ready`，Execution 保持 `running`，不会
+  伪造 `succeeded`。
+
+Phase 1D-0 没有新增 Render Route，也没有实现 DataSource Runtime Snapshot、
+Query Config Snapshot、Credential Snapshot、Chromium、PDF、Email 或
+Scheduler。后续正式 Render Route 只接受 `execution_id`，并从上述快照读取
+冻结配置，不以 `dashboard_id` 作为渲染输入。
+
 ## Problem Statement
 
 运营分析仪表盘已经支持用户在浏览器中手工导出 PDF，但现有实现依赖当前页面 DOM、`html-to-image`、`jsPDF.save()` 和用户登录会话，只能下载到用户本机，不能由后台周期任务无会话生成并作为邮件附件发送。
