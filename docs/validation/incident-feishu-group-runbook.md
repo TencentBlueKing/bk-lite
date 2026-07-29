@@ -34,13 +34,21 @@
 
 在专用测试租户创建自建应用并启用机器人能力。应用需具备且仅具备完成以下操作所必需的权限：
 
-- 获取应用可见范围内的测试用户，用于用户同步和映射；
-- 创建群、查询群；
-- 向应用创建的群增加成员；
-- 以 `chat_id` 向群发送 Incident 摘要；
-- 机器人留在群内并具备后续增员所需的群管理能力。
+- `application:application:self_manage`：读取本应用已授权权限，用于 BK-Lite 的 readiness 诊断；
+- `im:chat:create`：创建群；
+- `im:chat` 或 `im:chat:read`：查询群；
+- `im:chat` 或 `im:chat.members:write_only`：向应用创建的群增加成员；
+- `im:message` 或 `im:message:send_as_bot`：以 `chat_id` 向群发送 Incident 摘要；
+- `im:chat:operate_as_owner`：以群主身份持续管理群成员。
 
-应用可见范围只包含上述测试用户。发布应用版本后，用飞书开放平台调试或权限页确认权限已生效。
+应用可见范围只包含上述测试用户。发布应用版本后：
+
+1. 在飞书后台确认机器人已启用，测试用户均在应用可见范围；
+2. 在 BK-Lite 系统管理执行连接测试；
+3. 确认 `im_group` 能力只有在 token、权限清单和机器人状态都验证成功后才为 `ready`；
+4. 分别撤销一个建群/增员/消息权限以及停用机器人，确认通道不会出现在 Incident 的可选通道中；恢复权限并重新验证后才重新可选。
+
+连接测试或日志不得输出 token、secret、完整权限响应、完整外部用户 ID 或原始异常正文。
 
 ### 3.3 BK-Lite 准备
 
@@ -78,6 +86,17 @@ BK-Lite 页面证据：
 
 同一次验证另建对象清单，至少包含 Incident ID、channel ID、binding ID、Outbox key、脱敏 chat ID、测试群名和创建时间。不得复制数据库凭据或飞书凭据。
 
+### 4.1 结构化日志核验
+
+在每个会触发外部调用的场景中，核对以下脱敏事件：
+
+- Provider 外呼：`operation`、`duration_ms`、`result`、`error_code`、`request_id`、`member_count`、`retryable`；
+- 建群/摘要/增员：成功、部分成功或失败结果及 joined/failed/invalid 数量；
+- 对账：当前成员数、pending 数和 waiting mapping 数；
+- Outbox backlog：pending、delivering、failed 数量和 oldest pending age。
+
+日志必须能用 BK-Lite request ID 和飞书 request ID 串联，但不得包含 token、secret、完整外部成员 ID、原始响应、完整请求体或换行注入内容。临时关闭日志输出或令日志 handler 抛错时，核心建群/增员业务仍应继续；仅记录可观测性降级。
+
 ## 5. 十二个真实场景
 
 ### 场景 1：用户同步与创建预览
@@ -113,10 +132,14 @@ BK-Lite 页面证据：
 ### 场景 5：重复提交与任务重投
 
 1. 在创建响应延迟或刷新页面的情况下重复点击/重复提交。
-2. 在测试环境按既定运维方式重投同一 create/summary Outbox。
-3. 检查 binding、飞书群和摘要消息数量。
+2. 在测试环境按既定运维方式分别制造并重投以下三种 ACK 丢失窗口：
+   - 飞书已返回建群成功、本地尚未保存 create ACK；
+   - 飞书已发送摘要、本地尚未保存 summary ACK；
+   - 飞书已增加成员、本地尚未保存 add-members ACK。
+3. 对三个窗口分别重投同一 Outbox。create/summary 记录重投前后的稳定 UUID；add-members 没有飞书原生幂等键，记录 Outbox attempts、每次 request ID、飞书原始分类（成功、invalid 或错误）和实际群成员结果。
+4. 检查 binding、飞书群、摘要消息和群成员数量。
 
-预期：重复创建请求返回既有绑定或 409；稳定 UUID 被复用；飞书只有一个群，摘要不重复；request ID 可串联两次请求。不得通过直接修改生产数据库制造重投。
+预期：重复创建请求返回既有绑定或 409；create 与 summary 复用稳定 UUID，飞书只有一个群和一个摘要。add-members 在“飞书成功、首个本地成员事实提交前硬崩溃”时可能再次外呼，必须记录飞书对已在群成员的真实返回，并验证 Provider 对成功、invalid 或错误的实际分类。若重投不能安全收敛为正确的本地成员状态，或产生无法处理的重复/错误，则本场景为 Fail，整体验证保持 Block。request ID 必须能串联原调用与重投。不得通过直接修改生产数据库制造重投，也不得让过期 worker 覆盖新 worker 的终态。
 
 ### 场景 6：补齐映射后自动入群
 
@@ -131,8 +154,10 @@ BK-Lite 页面证据：
 1. 准备另一个已映射测试用户 E。
 2. 在 Incident 中新增 E 为协作人。
 3. 观察页面同步状态和飞书群。
+4. 在独立测试 Incident 中分别准备 51 人和 101 人的已映射测试集合，触发增员并记录每次飞书请求的成员数、顺序、Outbox 链和 request ID。
+5. 在 51 人用例首批完成后手工暂停一次，再恢复；确认暂停期间不会发出第二批。
 
-预期：同一事务产生对账任务；E 自动加入一次；已有成员不重复处理。
+预期：同一事务产生对账任务；E 自动加入一次；已有成员不重复处理。每个 add-members Outbox 最多执行一次飞书调用，每次最多 50 人；51 人形成 50+1 两批，101 人形成 50+50+1 三批，后一批只能在前一批本地提交后生成。同一群的批次串行，暂停、关闭或解绑后不会继续下一批。
 
 ### 场景 8：移除人员不退群
 
@@ -195,5 +220,8 @@ BK-Lite 页面证据：
 3. 删除测试 Incident 中新增的协作关系和测试通知通道。
 4. 禁用或删除测试 IntegrationInstance；在飞书后台撤销测试应用版本、可见范围并轮换/删除 secret。
 5. 删除只为验证创建的测试用户 E；A–D 若为共享测试账号，恢复原始映射状态。
-6. 核对对象清单，确保没有残留 active binding、待投递 Outbox 或测试群。
-7. 在验证报告记录清理时间、执行人、残留对象；无法清理的对象必须列为风险，不得省略。
+6. 删除 51/101 人批次验证所用的专用测试 Incident、测试用户或测试映射；确认这些账号未被错误加入其他群。
+7. 核对对象清单，确保没有残留 active binding、`delivery_lock_token`、未过期 delivery lease、pending/delivering/failed Outbox 或测试群。
+8. 再运行一次 Outbox backlog 快照，确认本次验证对象的 pending/delivering/failed 均为 0；保存脱敏日志证据。
+9. 检查验证日志和截图，确认没有 token、secret、完整外部 ID、原始响应或未脱敏个人信息。
+10. 在验证报告记录清理时间、执行人、残留对象；无法清理的对象必须列为风险，不得省略。

@@ -6,6 +6,12 @@
 - [core-beliefs.md](core-beliefs.md) —— 工程信条(最小变更、证据优先、渐进式设计……)
 - [learnings.md](learnings.md) —— 经验与决策记录(认证 Cookie 处理……)
 
+## 功能设计导览
+
+| 主题 | 文档 |
+|------|------|
+| Incident 飞书协作群 | [incident-feishu-im-group.md](incident-feishu-im-group.md) —— 10 分钟了解需求、模块 seam、状态机、可靠性边界与发布门禁 |
+
 ## 模块级设计(现存,分布在各模块就近维护)
 | 主题 | 位置 |
 |------|------|

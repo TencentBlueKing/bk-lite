@@ -2,17 +2,17 @@
 
 > 计划日期：2026-07-21
 >
-> 实际执行日期：2026-07-23（2026-07-24 由 Claude Code 在本机复跑自动化门禁，见 §3.2）
+> 实际执行日期：2026-07-23（2026-07-24、2026-07-29 在同一 worktree 复跑自动化门禁，见 §3.2、§3.3）
 >
 > 分支：`codex/incident-feishu-im-group`
 >
-> 被测实现提交：`7608ed326`（代码同 `b77a626dd`，顶部仅文档提交）
+> 2026-07-29 被测实现提交：`540ccd2f8`
 
 ## 1. 最终结论
 
 **Block**
 
-2026-07-23 与 2026-07-24 两轮取得了后端 262 项完整回归、覆盖率、迁移门禁、Incident 前端合同测试和功能改动文件 ESLint 的新鲜通过证据；2026-07-24 已在本机解除 Web 依赖阻断（`pnpm install --frozen-lockfile` 成功，证明此前失败是沙箱网络限制而非 lock 问题）。但真实飞书租户 12 场景仍未执行，且仓库 Web 全量 lint/type-check 存在与本需求无关的既有基线失败（按维护者决定只记录豁免、不改无关文件，见 §3.2 与 VAL-IM-003）。缺少测试租户、测试应用和凭据时，不能把真实闭环写成 Pass，也不能发布该功能。
+2026-07-29 已把 readiness、51/101 人单批链、三类 ACK 窗口、delivery lease fencing、权限边界、0024/0025 迁移和结构化可观测性纳入最终候选门禁。扩大后的后端统一回归首次运行暴露 5 条旧测试合同/事务隔离失败；修复测试合同和终审发现后，同一 20 文件集合无排除重跑为 357 项全部通过，迁移、Incident 前端合同和功能改动文件 ESLint 也均取得新鲜通过证据，详见 §3.3。真实飞书租户 12 场景仍未执行，且仓库 Web 全量 lint/type-check 存在与本需求无关的既有基线失败。缺少测试租户、测试应用和凭据时，不能把真实闭环写成 Pass，也不能发布该功能。
 
 解除阻断需要：
 
@@ -88,6 +88,38 @@
 
 **结论变化**：VAL-IM-002（Web 依赖阻断）Resolved；发布阻断仅剩 VAL-IM-004（真实飞书 12 场景）。VAL-IM-003 维持 Baseline 豁免。
 
+### 3.3 复跑：2026-07-29（最终加固候选）
+
+本轮最终在 worktree HEAD `540ccd2f8`、Node v24.15.0、pnpm 11.5.2 上执行。所有后端命令显式设置测试 `SECRET_KEY`、SQLite `:memory:`、`INSTALL_APPS=system_mgmt,alerts` 和 `ENABLE_CELERY=true`。当前进程环境及仓库安全配置入口均未发现真实飞书测试凭据；检查未读取用户主目录敏感文件，也未输出任何环境变量值。
+
+| 门禁 | 退出码 | 新鲜结果 |
+|---|---:|---|
+| 后端最终 20 文件统一回归 | 0 | **Pass：357 passed in 47.82s**。终审新增生命周期提交后事件与回滚合同；同一集合无排除重跑全部通过。 |
+| Coverage：成员解析 | 0 | **Pass：18 passed；members.py 95%**。 |
+| Coverage：Delivery/Outbox | 0 | **Pass：109 passed；delivery.py 94%、outbox.py 98%、合计 95%**，无 deselect。 |
+| Coverage：可观测性 | 0 | **Pass：69 passed；observability.py 100%**。 |
+| `makemigrations --check --dry-run` | 0 | **Pass：No changes detected**。 |
+| `sqlmigrate alerts 0022–0025` | 0 | **Pass**：生成跨库 active slot 普通唯一约束、nullable reconcile 游标、3 个 `varchar(150)` 审计字段、nullable delivery lease 和 36 字符 fencing token。 |
+| Web 依赖状态 | 0 | **Pass**：worktree 自有 `tsx`、`eslint`、`tsc` 均可执行，无需借用主 checkout 依赖。 |
+| Incident UI 合同 | 0 | **Pass**：105 条断言通过，覆盖统一更多操作组件的复用、受控关闭和原生 MenuItem 键盘/禁用语义。沙箱内 pnpm 依赖重检受环境阻断后，直接使用 worktree 已安装的 `tsx` 运行同一脚本通过。 |
+| Focused ESLint | 0 | **Pass**：本功能 12 个 TS/TSX 业务文件 0 errors。 |
+| Web 全量 ESLint | 1 | **Baseline Fail：47 errors、3 warnings**，与 2026-07-24 一致；本功能文件 0 errors。 |
+| 直接全量 tsc | 2 | **Baseline Fail**：缺 `react-activation`、DND、`vitest` 依赖声明及既有类型冲突；本功能文件无错误。 |
+
+自动化最终结论为 **Pass with baseline waiver**：本功能后端、覆盖率、迁移、UI 合同及 focused ESLint 全部通过；仓库全量 Web 基线继续按 VAL-IM-003 豁免。真实租户 VAL-IM-004 仍是独立发布阻断，因此整体验证结论保持 **Block**。
+
+#### 3.3.1 本轮纳入门禁的修复项
+
+- 管理权限：前端动作矩阵与后端写接口统一要求当前 operator 且具备 `Incidents-Edit`，成员重试按钮具备 loading/disabled 防重；
+- 用户与审计边界：群主用户名按实际映射用户模型限制为 100 字符，认证操作人审计字段支持 150 字符；
+- readiness：不再以“获取 token 成功”代表可用；必须验证应用权限、机器人启用状态和运行时 capability 状态，不可用通道从 options 排除；
+- 可靠投递：add-members 每个 Outbox 最多一次、每批最多 50 人，51/101 人通过链式 Outbox 串行推进；delivery lease token 阻止旧 worker 越权外呼或覆盖新终态；
+- ACK 丢失：自动化覆盖 create、summary 和 add-members 三类重投窗口，关闭、暂停、解绑和过期 worker 不能越过最新状态；create/summary 使用稳定 UUID，add-members 没有飞书原生幂等键，外部成功但首个本地成员事实提交前硬崩溃仍可能重复外呼，其“已在群”真实返回及 Provider 分类必须在租户场景 5 验证，不能仅凭自动化宣称完整幂等；
+- 可观测性：Provider 外呼耗时/结果/错误码/request ID、业务结果计数、对账状态与 Outbox backlog 均进入脱敏结构化日志；日志失败不阻断业务；
+- 终审边界：飞书响应 request ID 在日志正文和结构化字段中统一转义 CR/LF/tab/backslash 并限长；手工暂停/恢复仅在事务提交后记录成功事件，回滚不留虚假成功事实；
+- 前端组件治理：Incident 群卡片与协作时间线共同复用 `MoreActionsDropdown`；菜单项使用 Ant 原生 `MenuItem` 交互、权限禁用和键盘语义，动作触发时显式关闭浮层；
+- 数据库迁移：0022–0025 覆盖跨 PostgreSQL/MySQL/SQLite 的 active slot 唯一约束、调度游标、审计字段长度和 delivery lease。
+
 ## 4. 十二个真实飞书场景
 
 本轮没有专用飞书测试租户、测试应用、2 名已映射 operator、1 名已映射 collaborator、1 名未映射 collaborator，也没有由用户在系统管理 UI 输入的凭据。因此下表全部为 **Not Run**，没有伪造 request ID、chat ID、截图或清理结果。
@@ -98,7 +130,7 @@
 | 2 | 单次建群 | Not Run | 无 | 无 | 无 | 缺测试通道与凭据 |
 | 3 | 部分映射 | Not Run | 无 | 无 | 无 | 缺 mapped/unmapped 测试用户 |
 | 4 | Incident 摘要 | Not Run | 无 | 无 | 无 | 未创建测试群 |
-| 5 | 重复提交/任务重投 | Not Run | 无 | 无 | 无 | 未创建 binding/Outbox |
+| 5 | 重复提交及 create/summary/add-members 三种 ACK 丢失重投 | Not Run | 无 | 无 | 无 | 未创建 binding/Outbox |
 | 6 | 补齐映射自动入群 | Not Run | 无 | 无 | 无 | 缺可修改测试映射 |
 | 7 | 新增协作人自动入群 | Not Run | 无 | 无 | 无 | 缺测试群与额外测试用户 |
 | 8 | 移除人员不退群 | Not Run | 无 | 无 | 无 | 缺测试群 |
@@ -165,12 +197,15 @@ INSTALL_APPS=system_mgmt,alerts DB_ENGINE=sqlite DB_NAME=:memory: \
 uv run pytest -o addopts='' --nomigrations \
   apps/system_mgmt/tests/test_feishu_im_group_provider_pure.py \
   apps/system_mgmt/tests/test_im_group_service.py \
+  apps/system_mgmt/tests/test_runtime_service.py \
   apps/system_mgmt/tests/test_im_notification_viewset.py \
   apps/alerts/tests/test_incident_im_models_service.py \
   apps/alerts/tests/test_incident_im_members_service.py \
   apps/alerts/tests/test_incident_im_group_*_views.py apps/alerts/tests/test_incident_im_group_create_service.py \
   apps/alerts/tests/test_incident_im_delivery_*_service.py \
+  apps/alerts/tests/test_incident_im_add_members_outbox_batches.py \
   apps/alerts/tests/test_incident_im_reconcile_service.py apps/alerts/tests/test_incident_im_lifecycle_service.py \
+  apps/alerts/tests/test_incident_im_observability.py \
   apps/alerts/tests/test_outbox.py \
   apps/alerts/tests/test_incident_operator.py -q
 
@@ -188,6 +223,16 @@ MINIO_ENDPOINT=localhost:9000 MINIO_ACCESS_KEY=test MINIO_SECRET_KEY=test \
 MINIO_USE_HTTPS=false SECRET_KEY=task11-validation ENABLE_CELERY=true \
 INSTALL_APPS=system_mgmt,alerts DB_ENGINE=sqlite DB_NAME=:memory: \
 uv run python manage.py sqlmigrate alerts 0023
+
+MINIO_ENDPOINT=localhost:9000 MINIO_ACCESS_KEY=test MINIO_SECRET_KEY=test \
+MINIO_USE_HTTPS=false SECRET_KEY=task11-validation ENABLE_CELERY=true \
+INSTALL_APPS=system_mgmt,alerts DB_ENGINE=sqlite DB_NAME=:memory: \
+uv run python manage.py sqlmigrate alerts 0024
+
+MINIO_ENDPOINT=localhost:9000 MINIO_ACCESS_KEY=test MINIO_SECRET_KEY=test \
+MINIO_USE_HTTPS=false SECRET_KEY=task11-validation ENABLE_CELERY=true \
+INSTALL_APPS=system_mgmt,alerts DB_ENGINE=sqlite DB_NAME=:memory: \
+uv run python manage.py sqlmigrate alerts 0025
 
 cd ../web
 PATH=/path/to/node-v24/bin:$PATH pnpm exec tsx scripts/incident-im-group-ui-test.ts
