@@ -30,6 +30,7 @@ class FakeRedisPool:
 
 
 @pytest.mark.asyncio
+@pytest.mark.unit
 async def test_repeated_public_reads_reuse_one_pool(monkeypatch):
     created_pools = []
 
@@ -53,6 +54,7 @@ async def test_repeated_public_reads_reuse_one_pool(monkeypatch):
 
 
 @pytest.mark.asyncio
+@pytest.mark.unit
 async def test_concurrent_public_reads_initialize_one_pool(monkeypatch):
     created_pools = []
 
@@ -79,6 +81,7 @@ async def test_concurrent_public_reads_initialize_one_pool(monkeypatch):
 
 
 @pytest.mark.asyncio
+@pytest.mark.unit
 async def test_close_pool_is_idempotent_and_next_read_reconnects(monkeypatch):
     created_pools = []
 
@@ -102,6 +105,7 @@ async def test_close_pool_is_idempotent_and_next_read_reconnects(monkeypatch):
 
 
 @pytest.mark.asyncio
+@pytest.mark.unit
 async def test_sanic_shutdown_closes_the_current_loop_pool(monkeypatch):
     created_pools = []
 
@@ -133,6 +137,7 @@ async def test_sanic_shutdown_closes_the_current_loop_pool(monkeypatch):
 
 
 @pytest.mark.asyncio
+@pytest.mark.unit
 async def test_arq_shutdown_closes_the_current_loop_pool(monkeypatch):
     from core.worker import WorkerSettings
 
@@ -153,6 +158,7 @@ async def test_arq_shutdown_closes_the_current_loop_pool(monkeypatch):
     assert created_pools[0].close_calls == 1
 
 
+@pytest.mark.unit
 def test_distinct_event_loops_do_not_share_a_pool(monkeypatch):
     created_pools = []
 
@@ -175,6 +181,7 @@ def test_distinct_event_loops_do_not_share_a_pool(monkeypatch):
 
 
 @pytest.mark.asyncio
+@pytest.mark.unit
 async def test_pool_creation_failure_does_not_poison_reconnect(monkeypatch):
     attempts = 0
     recovered_pool = FakeRedisPool()
@@ -249,6 +256,7 @@ def _redis_server():
                 process.wait()
 
 
+@pytest.mark.integration
 def test_real_redis_reuses_one_connection_and_reconnects_after_close(monkeypatch):
     async def exercise(client):
         client.flushdb()
