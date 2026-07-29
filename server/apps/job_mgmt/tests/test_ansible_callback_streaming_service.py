@@ -6,7 +6,7 @@ import pytest
 from apps.job_mgmt.constants import ExecutionStatus, JobType, TargetSource
 from apps.job_mgmt.models import JobCompletionOutbox, JobExecution
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.integration, pytest.mark.django_db]
 
 
 def _make_running_execution():

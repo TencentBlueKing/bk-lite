@@ -7,6 +7,17 @@ class Migration(migrations.Migration):
     dependencies = [("job_mgmt", "0013_dangerous_builtin_metadata")]
 
     operations = [
+        migrations.AddField(
+            model_name="jobexecution",
+            name="terminal_source",
+            field=models.CharField(
+                blank=True,
+                choices=[("ansible_callback", "Ansible 真实回调"), ("cancel_timeout", "取消超时兜底")],
+                default="",
+                max_length=32,
+                verbose_name="终态写入来源",
+            ),
+        ),
         migrations.CreateModel(
             name="JobCompletionOutbox",
             fields=[

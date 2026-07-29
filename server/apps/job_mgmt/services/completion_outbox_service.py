@@ -105,15 +105,21 @@ def _build_terminal_intents(execution) -> list[tuple[str, str, dict]]:
     return intents
 
 
-def enqueue_terminal_effects(execution) -> list[JobCompletionOutbox]:
-    """在调用方终态事务内持久化各副作用，返回新建或复用的记录。"""
+def enqueue_terminal_effects(
+    execution,
+    *,
+    not_before=None,
+    refresh_undelivered: bool = False,
+) -> list[JobCompletionOutbox]:
+    """在终态事务内持久化副作用；取消兜底可延迟并由真实回调刷新未投递载荷。"""
     if execution.status not in ExecutionStatus.TERMINAL_STATES:
         raise ValueError(f"仅终态可创建完成 outbox: status={execution.status}")
     if not transaction.get_connection().in_atomic_block:
         raise RuntimeError("终态与完成 outbox 必须在同一数据库事务内写入")
 
     records = []
-    created_ids = []
+    schedule_ids = []
+    schedule_now = not_before is None or not_before <= timezone.now()
     for kind, delivery_id, payload in _build_terminal_intents(execution):
         record, created = JobCompletionOutbox.objects.get_or_create(
             idempotency_key=delivery_id,
@@ -121,14 +127,40 @@ def enqueue_terminal_effects(execution) -> list[JobCompletionOutbox]:
                 "execution_id": execution.id,
                 "kind": kind,
                 "payload": payload,
+                "next_retry_at": not_before,
             },
         )
         records.append(record)
-        if created:
-            created_ids.append(record.pk)
+        if created and schedule_now:
+            schedule_ids.append(record.pk)
+        elif refresh_undelivered and record.status in (
+            JobCompletionOutbox.Status.PENDING,
+            JobCompletionOutbox.Status.FAILED,
+        ):
+            record.payload = payload
+            record.status = JobCompletionOutbox.Status.PENDING
+            record.attempts = 0
+            record.next_retry_at = not_before
+            record.lease_token = None
+            record.lease_expires_at = None
+            record.last_error = ""
+            record.save(
+                update_fields=[
+                    "payload",
+                    "status",
+                    "attempts",
+                    "next_retry_at",
+                    "lease_token",
+                    "lease_expires_at",
+                    "last_error",
+                    "updated_at",
+                ]
+            )
+            if schedule_now:
+                schedule_ids.append(record.pk)
 
-    if created_ids:
-        transaction.on_commit(lambda record_ids=tuple(created_ids): _schedule_deliveries(record_ids))
+    if schedule_ids:
+        transaction.on_commit(lambda record_ids=tuple(schedule_ids): _schedule_deliveries(record_ids))
     return records
 
 

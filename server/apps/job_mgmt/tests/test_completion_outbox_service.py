@@ -18,6 +18,8 @@ from apps.job_mgmt.services.completion_outbox_service import (
     enqueue_terminal_effects,
 )
 
+pytestmark = pytest.mark.integration
+
 
 def _terminal_execution(callback_type=CallbackType.BOTH):
     return JobExecution.objects.create(

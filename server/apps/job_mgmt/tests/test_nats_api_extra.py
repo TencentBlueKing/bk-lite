@@ -10,7 +10,7 @@ from apps.job_mgmt import nats_api
 from apps.job_mgmt.constants import DangerousLevel, ExecutionStatus, JobType
 from apps.job_mgmt.models import DangerousRule, DistributionFile, JobExecution, Script
 
-pytestmark = [pytest.mark.unit, pytest.mark.django_db]
+pytestmark = [pytest.mark.integration, pytest.mark.django_db]
 
 
 class TestModuleData:

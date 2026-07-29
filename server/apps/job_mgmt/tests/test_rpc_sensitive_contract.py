@@ -12,7 +12,7 @@ from nats_client import clients
 from nats_client.exceptions import NatsClientException
 
 
-@pytest.mark.unit
+@pytest.mark.integration
 @pytest.mark.django_db
 def test_ansible_task_callback_masks_sensitive_output_in_logs_and_results():
     execution = JobExecution.objects.create(

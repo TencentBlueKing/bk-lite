@@ -256,10 +256,10 @@ def _normalize_ansible_results(execution, data: dict, finished_at) -> tuple[list
     return results, ""
 
 
-def _write_ansible_terminal(execution, data: dict):
+def _write_ansible_terminal(execution, data: dict, *, reconcile_cancel_timeout: bool = False):
     finished_at = timezone.now()
     results, validation_error = _normalize_ansible_results(execution, data, finished_at)
-    was_cancelling = execution.status == ExecutionStatus.CANCELLING
+    was_cancelling = execution.status == ExecutionStatus.CANCELLING or reconcile_cancel_timeout
     if was_cancelling:
         final_status = ExecutionStatus.CANCELLED
     elif validation_error or any(item["status"] == ExecutionStatus.FAILED for item in results):
@@ -272,9 +272,11 @@ def _write_ansible_terminal(execution, data: dict):
     execution.finished_at = finished_at
     execution.success_count = sum(1 for item in results if item["status"] == ExecutionStatus.SUCCESS)
     execution.failed_count = sum(1 for item in results if item["status"] == ExecutionStatus.FAILED)
+    execution.terminal_source = JobExecution.TerminalSource.ANSIBLE_CALLBACK
     execution.save(
         update_fields=[
             "status",
+            "terminal_source",
             "execution_results",
             "finished_at",
             "success_count",
@@ -282,7 +284,7 @@ def _write_ansible_terminal(execution, data: dict):
             "updated_at",
         ]
     )
-    enqueue_terminal_effects(execution)
+    enqueue_terminal_effects(execution, refresh_undelivered=reconcile_cancel_timeout)
     return validation_error
 
 
@@ -300,14 +302,22 @@ def ansible_task_callback(data: dict):
         if execution is None:
             logger.warning("[ansible_task_callback] 执行记录不存在: task_id=%s", task_id)
             return {"success": False, "message": f"执行记录不存在: {task_id}"}
-        if execution.status in ExecutionStatus.TERMINAL_STATES:
+        reconcile_cancel_timeout = (
+            execution.status == ExecutionStatus.CANCELLED
+            and execution.terminal_source == JobExecution.TerminalSource.CANCEL_TIMEOUT
+        )
+        if execution.status in ExecutionStatus.TERMINAL_STATES and not reconcile_cancel_timeout:
             logger.info(
                 "[ansible_task_callback] 任务已处于终态: task_id=%s, status=%s",
                 task_id,
                 execution.status,
             )
             return {"success": True, "message": "任务已处理"}
-        validation_error = _write_ansible_terminal(execution, data)
+        validation_error = _write_ansible_terminal(
+            execution,
+            data,
+            reconcile_cancel_timeout=reconcile_cancel_timeout,
+        )
         final_status = execution.status
 
     if validation_error:

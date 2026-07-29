@@ -1,5 +1,6 @@
 """作业执行 Celery 任务入口"""
 
+from datetime import timedelta
 from uuid import uuid4
 
 from asgiref.sync import async_to_sync
@@ -11,7 +12,12 @@ from django.utils import timezone
 from apps.core.logger import job_logger as logger
 from apps.core.utils.safe_requests import safe_post
 from apps.core.utils.ssrf_validator import SSRFError, SSRFValidator
-from apps.job_mgmt.config import DISTRIBUTION_FILE_CLEANUP_BATCH_SIZE, DISTRIBUTION_FILE_CLEANUP_MAX_CONCURRENCY, SCHEDULED_TASK_QUEUE_RETRY_COUNTDOWN
+from apps.job_mgmt.config import (
+    CALLBACK_CANCEL_RECONCILE_GRACE_SECONDS,
+    DISTRIBUTION_FILE_CLEANUP_BATCH_SIZE,
+    DISTRIBUTION_FILE_CLEANUP_MAX_CONCURRENCY,
+    SCHEDULED_TASK_QUEUE_RETRY_COUNTDOWN,
+)
 from apps.job_mgmt.constants import ConcurrencyPolicy, ExecutionStatus, JobType, TriggerSource
 from apps.job_mgmt.models import DistributionFile, JobExecution, ScheduledTask
 from apps.job_mgmt.services import FileDistributionRunner, ScriptExecutionRunner, ScriptParamsService
@@ -68,6 +74,7 @@ def finalize_cancelling_execution(execution_id: int):
             )
 
         execution.status = ExecutionStatus.CANCELLED
+        execution.terminal_source = JobExecution.TerminalSource.CANCEL_TIMEOUT
         execution.finished_at = timezone.now()
         execution.execution_results = results
         execution.success_count = sum(1 for result in results if result.get("status") == ExecutionStatus.SUCCESS)
@@ -75,6 +82,7 @@ def finalize_cancelling_execution(execution_id: int):
         execution.save(
             update_fields=[
                 "status",
+                "terminal_source",
                 "finished_at",
                 "execution_results",
                 "success_count",
@@ -82,7 +90,10 @@ def finalize_cancelling_execution(execution_id: int):
                 "updated_at",
             ]
         )
-        enqueue_terminal_effects(execution)
+        enqueue_terminal_effects(
+            execution,
+            not_before=timezone.now() + timedelta(seconds=CALLBACK_CANCEL_RECONCILE_GRACE_SECONDS),
+        )
 
     logger.info(f"[finalize_cancelling_execution] 取消中任务已强制收敛为 CANCELLED: execution_id={execution_id}")
 

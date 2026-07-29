@@ -143,24 +143,24 @@ class TestBuildCallbackPayload:
 
 @pytest.mark.unit
 class TestPublishJobResultToSubject:
-    """测试把作业结果 request/reply 到指定 NATS 主题。"""
+    """测试按旧契约把作业结果 publish 到指定 NATS 主题。"""
 
-    @patch("apps.job_mgmt.services.callback_service.request_sync")
-    def test_full_subject_split(self, mock_request):
+    @patch("apps.job_mgmt.services.callback_service.publish_sync")
+    def test_full_subject_split(self, mock_publish):
         from apps.job_mgmt.services.callback_service import publish_job_result_to_subject
 
         payload = {"task_id": 7}
         publish_job_result_to_subject("bklite.alert_job_result", payload)
-        mock_request.assert_called_once_with("bklite", "alert_job_result", data=payload)
+        mock_publish.assert_called_once_with("bklite", "alert_job_result", data=payload)
 
-    @patch("apps.job_mgmt.services.callback_service.request_sync")
-    def test_bare_method_uses_default_namespace(self, mock_request, monkeypatch):
+    @patch("apps.job_mgmt.services.callback_service.publish_sync")
+    def test_bare_method_uses_default_namespace(self, mock_publish, monkeypatch):
         from apps.job_mgmt.services.callback_service import publish_job_result_to_subject
 
         monkeypatch.setenv("NATS_NAMESPACE", "bklite")
         payload = {"task_id": 7}
         publish_job_result_to_subject("alert_job_result", payload)
-        mock_request.assert_called_once_with("bklite", "alert_job_result", data=payload)
+        mock_publish.assert_called_once_with("bklite", "alert_job_result", data=payload)
 
 
 @pytest.mark.unit

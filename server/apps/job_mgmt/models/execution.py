@@ -16,11 +16,22 @@ class JobExecution(TimeInfo, MaintainerInfo):
     记录每次作业执行的主记录
     """
 
+    class TerminalSource(models.TextChoices):
+        ANSIBLE_CALLBACK = "ansible_callback", "Ansible 真实回调"
+        CANCEL_TIMEOUT = "cancel_timeout", "取消超时兜底"
+
     name = models.CharField(max_length=256, verbose_name="作业名称")
 
     job_type = models.CharField(max_length=32, choices=JobType.CHOICES, verbose_name="作业类型")
     trigger_source = models.CharField(max_length=32, choices=TriggerSource.CHOICES, default=TriggerSource.MANUAL, verbose_name="触发来源")
     status = models.CharField(max_length=32, choices=ExecutionStatus.CHOICES, default=ExecutionStatus.PENDING, db_index=True, verbose_name="执行状态")
+    terminal_source = models.CharField(
+        max_length=32,
+        choices=TerminalSource.choices,
+        blank=True,
+        default="",
+        verbose_name="终态写入来源",
+    )
 
     # 关联的脚本/Playbook（可为空，快速执行场景）
     script = models.ForeignKey(Script, on_delete=models.SET_NULL, null=True, blank=True, verbose_name="关联脚本")

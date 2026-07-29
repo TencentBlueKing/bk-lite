@@ -2,7 +2,7 @@
 
 作业进入终态后，按调用方在触发时选择的通道（callback_type）投递执行结果：
 - web:  HTTP POST 到 callback_url（原 web 层方式，带 HMAC 签名，Celery 重试）
-- nats: request/reply 到 callback_subject，确认已由注册的接收函数处理
+- nats: publish 到 callback_subject，兼容既有 fire-and-forget 消费者
 - both: 两个通道都投
 
 两个通道都走 Celery 任务异步执行（任务定义在 tasks.py，Celery autodiscover 只扫描 apps/*/tasks.py）：
@@ -16,7 +16,7 @@ from celery import current_app
 
 from apps.core.logger import job_logger as logger
 from apps.job_mgmt.constants import CallbackType
-from nats_client.clients import request_sync
+from nats_client.clients import publish_sync
 
 
 def build_callback_payload(execution) -> dict:
@@ -85,14 +85,14 @@ def _send_nats_callback(execution) -> None:
 
 
 def publish_job_result_to_subject(subject: str, payload: dict) -> None:
-    """把作业结果以 RPC 信封格式投递到指定 NATS 主题并等待接收方确认。
+    """把作业结果以 RPC 信封格式 publish 到指定 NATS 主题。
 
     subject 形如 ``bklite.alert_job_result``：拆成 namespace + 方法名，消费方按
     ``@nats_client.register def alert_job_result(data): ...`` 接收（与 ansible_task_callback 同构）。
-    无命名空间前缀时用默认命名空间。request/reply 让发送端能区分已处理与无接收方，
-    失败由 completion outbox 使用同一 delivery_id 重试。
+    无命名空间前缀时用默认命名空间。completion outbox 只在 publish 调用抛错时使用
+    同一 delivery_id 重试，不要求既有消费者新增 reply 行为。
     """
     namespace, sep, method = subject.partition(".")
     if not sep:
         namespace, method = os.getenv("NATS_NAMESPACE", "bklite"), subject
-    request_sync(namespace, method, data=payload)
+    publish_sync(namespace, method, data=payload)

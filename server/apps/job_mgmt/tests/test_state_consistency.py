@@ -15,6 +15,7 @@ from apps.job_mgmt.models import JobCompletionOutbox, JobExecution
 
 
 @pytest.mark.django_db
+@pytest.mark.integration
 class TestAnsibleCallbackFailureConvergence:
     """测试 Ansible 回调解析异常与终态 outbox 同时收敛。"""
 

@@ -6,13 +6,14 @@ from unittest.mock import patch
 
 import pytest
 from django.db import close_old_connections, connection
+from django.utils import timezone
 
 from apps.job_mgmt.constants import CallbackType, ExecutionStatus, JobType, TargetSource
 from apps.job_mgmt.models import JobCompletionOutbox, JobExecution
 from apps.job_mgmt.nats_api import ansible_task_callback
 from apps.job_mgmt.tasks import finalize_cancelling_execution
 
-pytestmark = pytest.mark.django_db(transaction=True)
+pytestmark = [pytest.mark.integration, pytest.mark.django_db(transaction=True)]
 
 
 def _execution(status=ExecutionStatus.RUNNING, callback_type=CallbackType.WEB, callback_url=None):
@@ -92,10 +93,10 @@ def test_callback_holding_row_lock_fences_timeout_finalizer():
 
     original_write = nats_api._write_ansible_terminal
 
-    def paused_write(locked_execution, data):
+    def paused_write(locked_execution, data, **kwargs):
         callback_has_lock.set()
         assert allow_callback_commit.wait(timeout=10)
-        return original_write(locked_execution, data)
+        return original_write(locked_execution, data, **kwargs)
 
     with patch("apps.job_mgmt.nats_api._write_ansible_terminal", side_effect=paused_write), patch(
         "apps.job_mgmt.services.completion_outbox_service._schedule_deliveries"
@@ -113,6 +114,39 @@ def test_callback_holding_row_lock_fences_timeout_finalizer():
     assert execution.execution_results[0]["stdout"] == "ok"
     assert "远端结果未知" not in execution.execution_results[0].get("error_message", "")
     assert JobCompletionOutbox.objects.filter(execution_id=execution.id).count() == 1
+
+
+def test_timeout_finalizer_first_is_reconciled_by_one_real_callback():
+    """兜底先提交时，协调窗口内的真实回调纠正占位结果且复用同一 outbox。"""
+    execution = _execution(status=ExecutionStatus.CANCELLING)
+
+    with patch("apps.job_mgmt.services.completion_outbox_service._schedule_deliveries") as schedule:
+        finalize_cancelling_execution(execution.id)
+
+        execution.refresh_from_db()
+        assert execution.status == ExecutionStatus.CANCELLED
+        assert execution.terminal_source == JobExecution.TerminalSource.CANCEL_TIMEOUT
+        assert "远端结果未知" in execution.execution_results[0]["error_message"]
+        record = JobCompletionOutbox.objects.get(execution_id=execution.id)
+        record_id = record.pk
+        assert record.next_retry_at > timezone.now()
+        assert schedule.call_count == 0
+
+        first = ansible_task_callback(_callback(execution.id, stdout="real-result"))
+        second = ansible_task_callback(_callback(execution.id, stdout="duplicate"))
+
+    execution.refresh_from_db()
+    record.refresh_from_db()
+    assert first == {"success": True, "message": "回调处理成功"}
+    assert second == {"success": True, "message": "任务已处理"}
+    assert execution.status == ExecutionStatus.CANCELLED
+    assert execution.terminal_source == JobExecution.TerminalSource.ANSIBLE_CALLBACK
+    assert execution.execution_results[0]["stdout"] == "real-result"
+    assert record.pk == record_id
+    assert record.payload["status"] == ExecutionStatus.SUCCESS
+    assert record.next_retry_at is None
+    assert JobCompletionOutbox.objects.filter(execution_id=execution.id).count() == 1
+    schedule.assert_called_once_with((record_id,))
 
 
 def test_invalid_callback_observes_current_cancelling_state():

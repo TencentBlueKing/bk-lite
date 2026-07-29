@@ -18,7 +18,7 @@ from apps.job_mgmt.services.file_distribution_runner import FileDistributionRunn
 from apps.job_mgmt.services.script_execution_runner import ScriptExecutionRunner
 from apps.job_mgmt.tasks import finalize_cancelling_execution
 
-pytestmark = pytest.mark.unit
+pytestmark = pytest.mark.integration
 
 
 def _make_execution(status, **kwargs):
