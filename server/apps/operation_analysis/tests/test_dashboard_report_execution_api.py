@@ -182,7 +182,7 @@ def test_snapshot_creation_failure_marks_execution_failed(
     assert response.data["error_message"] == (
         "Execution Input Snapshot 创建失败"
     )
-    assert response.data["started_at"] is not None
+    assert response.data["started_at"] is None
     assert response.data["finished_at"] is not None
     assert response.data["snapshot"] is None
 
@@ -214,6 +214,8 @@ def test_unexpected_snapshot_creation_failure_marks_execution_failed(
     assert execution.status == DashboardReportExecution.Status.FAILED
     assert execution.failure_stage == "snapshot"
     assert execution.error_message == "Execution Input Snapshot 创建失败"
+    assert execution.started_at is None
+    assert execution.finished_at is not None
     assert not hasattr(execution, "snapshot")
 
 
@@ -246,6 +248,40 @@ def test_execution_snapshot_cannot_be_updated(
     ):
         DashboardReportExecutionSnapshot.objects.filter(pk=snapshot.pk).update(
             filter_values={"environment": "staging"}
+        )
+
+
+def test_execution_service_enforces_status_transitions(
+    api_client,
+    subscription,
+    subscription_url,
+    monkeypatch,
+):
+    grant_dashboard_view(monkeypatch)
+    response = api_client.post(
+        f"{subscription_url}{subscription.id}/execute/",
+        format="json",
+    )
+    execution = DashboardReportExecution.objects.get(id=response.data["id"])
+
+    DashboardReportExecutionService.transition(
+        execution,
+        DashboardReportExecution.Status.RUNNING,
+    )
+    assert execution.status == DashboardReportExecution.Status.RUNNING
+    assert execution.started_at is not None
+
+    DashboardReportExecutionService.transition(
+        execution,
+        DashboardReportExecution.Status.SUCCEEDED,
+    )
+    assert execution.status == DashboardReportExecution.Status.SUCCEEDED
+    assert execution.finished_at is not None
+
+    with pytest.raises(ValidationError, match="不允许从 succeeded 转换到 failed"):
+        DashboardReportExecutionService.transition(
+            execution,
+            DashboardReportExecution.Status.FAILED,
         )
 
 

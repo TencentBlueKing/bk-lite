@@ -41,7 +41,7 @@ Phase 1B-1 的同步实验执行严格经过
 Scheduler、Celery Task、PDF、Chromium Worker、Email、完整 Snapshot、Retry
 或 Render Token。
 
-## Phase 1B-2A 实现状态（2026-07-28）
+## Phase 1B-2A 实现状态（2026-07-29）
 
 已实现且验证：
 
@@ -49,10 +49,14 @@ Scheduler、Celery Task、PDF、Chromium Worker、Email、完整 Snapshot、Retr
 - 执行创建时冻结 `dashboard_id`、`subscription_id`、`creator_id` 与
   Subscription 已保存的 `config.filter_values`；
 - Snapshot 创建成功后 Execution 保持 `pending`，等待后续 Worker 消费；
-- Snapshot 创建失败时严格经过 `pending → running → failed`，并记录
+- Snapshot 创建失败时直接经过 `pending → failed`，并记录
   `failure_stage=snapshot`；
 - Execution 详情 API 只读返回 Snapshot，后续订阅配置修改不改变已有快照；
-- Snapshot 模型拒绝对已持久化记录再次执行 `save()`。
+- Snapshot 模型拒绝通过实例 `save()`、QuerySet `update()` 或
+  `bulk_update()` 修改已持久化快照；
+- Execution 状态转换的公开入口统一为
+  `DashboardReportExecutionService.transition()`，API、未来 Task 与 Worker
+  不直接赋值 `status`。
 
 Phase 1B-2A 不从 Dashboard 页面临时 state 读取筛选值。当前 Subscription
 尚未开放筛选配置写入，因此既有 Phase 1A Subscription 通常冻结空
