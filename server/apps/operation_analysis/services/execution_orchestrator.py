@@ -2,6 +2,8 @@ import logging
 from dataclasses import dataclass
 from enum import StrEnum
 
+from django.core.exceptions import ValidationError
+
 from apps.base.models import User
 from apps.operation_analysis.models.subscription_models import (
     DashboardReportExecution,
@@ -160,10 +162,10 @@ class ExecutionOrchestrator:
             "subscription",
             "snapshot",
         ).get(pk=execution_id)
-        DashboardReportExecutionService.transition(
-            execution,
-            DashboardReportExecution.Status.RUNNING,
-        )
+        if execution.status != DashboardReportExecution.Status.RUNNING:
+            raise ValidationError(
+                {"status": "Execution 必须先由 Worker 成功领取"}
+            )
 
         try:
             PermissionStep.execute(execution)

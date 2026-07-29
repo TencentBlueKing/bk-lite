@@ -22,6 +22,20 @@ class DashboardReportExecutionService:
     SNAPSHOT_FAILURE_MESSAGE = "Execution Input Snapshot 创建失败"
 
     @classmethod
+    @transaction.atomic
+    def claim_execution(cls, execution_id: int) -> bool:
+        now = timezone.now()
+        claimed_count = DashboardReportExecution.objects.filter(
+            pk=execution_id,
+            status=DashboardReportExecution.Status.PENDING,
+        ).update(
+            status=DashboardReportExecution.Status.RUNNING,
+            started_at=now,
+            updated_at=now,
+        )
+        return claimed_count == 1
+
+    @classmethod
     def transition(
         cls,
         execution: DashboardReportExecution,
@@ -30,6 +44,14 @@ class DashboardReportExecutionService:
         failure_stage: str = "",
         error_message: str = "",
     ) -> DashboardReportExecution:
+        if (
+            execution.status == DashboardReportExecution.Status.PENDING
+            and target_status == DashboardReportExecution.Status.RUNNING
+        ):
+            raise ValidationError(
+                {"status": "pending → running 必须通过 claim_execution"}
+            )
+
         allowed = DashboardReportExecution.ALLOWED_TRANSITIONS.get(
             execution.status,
             set(),

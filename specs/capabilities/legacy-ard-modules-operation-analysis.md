@@ -101,6 +101,7 @@
 - `[operation_analysis#20260729-004]` 新增统一 Execution Orchestrator 和 Permission/Snapshot/Render/Delivery 步骤边界。Manual Execute API 委托同一 Orchestrator；权限或 Snapshot 校验失败分别记录 `permission_check` / `snapshot`。Render 与 Delivery 仍为无副作用 placeholder，未接入异步任务、Chromium、PDF 或邮件。
 - `[operation_analysis#20260729-005]` 修正 Manual Execute 异步边界与成功语义：POST 只创建并返回 `pending` Execution；View 不再同步调用 Orchestrator；未实现的 Render/Delivery 返回 `not_ready`，不得产生 `succeeded`。Subscription Modal 可查询并展示单条 Execution 状态。
 - `[operation_analysis#20260729-006]` 新增一对一不可变 Render Snapshot。Orchestrator 在 Input Snapshot 校验后、Render Step 前冻结 Dashboard 配置及 Widget manifest；创建失败记录 `failure_stage=render_snapshot`。未新增 Render Route，未接入 DataSource Runtime Snapshot、Chromium、PDF、Email 或 Scheduler。
+- `[operation_analysis#20260729-007]` 新增事务性 Execution Claim Service，通过条件更新及受影响行数保证同一 pending Execution 只被一个消费者领取并进入 running；公共 transition 禁止绕过 Claim。Orchestrator 改为只消费已领取的 running Execution，不再自行推进 pending。未新增 Worker、Chromium、PDF、Email、Scheduler 或 Retry。
 
 ## 6. 证据来源
 `server/apps/operation_analysis/{urls.py,models/*,views/datasource_view.py,views/view.py,nats/nats.py,common/get_nats_source_data.py,constants/constants.py,tasks/tasks.py,management/commands/*,services/*}`、`apps/operation_analysis/migrations/0010_remove_namespace_groups.py`、`apps/rpc/base.py:OperationAnalysisRpc`、`web/src/app/ops-analysis/{utils/widgetRequestCache.ts,components/widgetDataRenderer.tsx,api/namespace.ts,(pages)/settings/namespace/operateModal.tsx}`。

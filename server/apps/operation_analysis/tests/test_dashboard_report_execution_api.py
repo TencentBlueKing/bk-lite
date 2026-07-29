@@ -283,10 +283,17 @@ def test_execution_service_enforces_status_transitions(
             DashboardReportExecution.Status.SUCCEEDED,
         )
 
-    DashboardReportExecutionService.transition(
-        execution,
-        DashboardReportExecution.Status.RUNNING,
-    )
+    with pytest.raises(
+        ValidationError,
+        match="pending → running 必须通过 claim_execution",
+    ):
+        DashboardReportExecutionService.transition(
+            execution,
+            DashboardReportExecution.Status.RUNNING,
+        )
+
+    assert DashboardReportExecutionService.claim_execution(execution.id)
+    execution.refresh_from_db()
     assert execution.status == DashboardReportExecution.Status.RUNNING
     assert execution.started_at is not None
 

@@ -17,6 +17,9 @@ from apps.operation_analysis.services.execution_orchestrator import (
     RenderStep,
     SnapshotStep,
 )
+from apps.operation_analysis.services.execution_service import (
+    DashboardReportExecutionService,
+)
 
 
 pytestmark = pytest.mark.django_db
@@ -57,6 +60,8 @@ def execution(authenticated_user):
         subscription_id=subscription.id,
         filter_values={"environment": "production"},
     )
+    assert DashboardReportExecutionService.claim_execution(execution.id)
+    execution.refresh_from_db()
     return execution
 
 
@@ -75,6 +80,23 @@ def test_orchestrator_does_not_succeed_before_render_is_implemented(
     assert execution.finished_at is None
     assert execution.failure_stage == ""
     assert execution.error_message == ""
+
+
+def test_orchestrator_rejects_unclaimed_execution(execution):
+    DashboardReportExecution.objects.filter(pk=execution.id).update(
+        status=DashboardReportExecution.Status.PENDING,
+        started_at=None,
+    )
+
+    with pytest.raises(
+        ValidationError,
+        match="Execution 必须先由 Worker 成功领取",
+    ):
+        ExecutionOrchestrator.execute(execution.id)
+
+    execution.refresh_from_db()
+    assert execution.status == DashboardReportExecution.Status.PENDING
+    assert execution.started_at is None
 
 
 def test_orchestrator_creates_render_snapshot_from_dashboard(

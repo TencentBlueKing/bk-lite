@@ -143,6 +143,25 @@ Query Config Snapshot、Credential Snapshot、Chromium、PDF、Email 或
 Scheduler。后续正式 Render Route 只接受 `execution_id`，并从上述快照读取
 冻结配置，不以 `dashboard_id` 作为渲染输入。
 
+## Phase 1D-1A 实现状态（2026-07-29）
+
+已实现 Render Worker 之前的 Execution Claim 边界：
+
+- `DashboardReportExecutionService.claim_execution(execution_id)` 是唯一领取
+  入口；
+- Claim 在数据库事务中通过带 `status=pending` 条件的单条更新原子领取
+  Execution，并根据受影响行数判定结果；成功时写入 `running` 与
+  `started_at`；
+- Execution 不存在、已经被领取或处于其他非 `pending` 状态时返回 `False`，
+  不修改状态；
+- 两个独立数据库连接并发领取同一 Execution 时，只有一个返回成功；
+- 公共 `transition()` 禁止 `pending → running`，防止绕过 Claim；
+- Orchestrator 不再自行执行 `pending → running`，只接受已由 Worker 成功
+  领取的 `running` Execution；未领取的 Execution 会被拒绝且保持 `pending`。
+
+Phase 1D-1A 只建立 Claim Service 与 Orchestrator 调用边界，不新增 Worker
+任务，不实现 Chromium、PDF、Email、Scheduler 或 Retry。
+
 ## Problem Statement
 
 运营分析仪表盘已经支持用户在浏览器中手工导出 PDF，但现有实现依赖当前页面 DOM、`html-to-image`、`jsPDF.save()` 和用户登录会话，只能下载到用户本机，不能由后台周期任务无会话生成并作为邮件附件发送。
