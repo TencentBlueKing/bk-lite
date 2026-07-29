@@ -104,7 +104,7 @@ def retry_alert_center_lifecycle_notify_task():
 
     alerts = list(
         MonitorAlert.objects.filter(
-            status__in=["recovered", "closed"],
+            status__in=["new", "recovered", "closed"],
             alert_center_notified=False,
             alert_center_retry_count__lt=10,
         ).order_by("id")[:200]
@@ -125,7 +125,8 @@ def retry_alert_center_lifecycle_notify_task():
     for status, group_alerts in groups.items():
         # 单组异常隔离：一组毒数据不应崩溃整个任务，否则该批次会被反复取回永久楔死
         try:
-            results = notifier.push_to_alert_center_only(group_alerts, action=status)
+            action = "created" if status == "new" else status
+            results = notifier.push_to_alert_center_only(group_alerts, action=action)
         except Exception:
             logger.exception(f"告警中心补偿任务：status={status} 推送异常，本组按失败处理")
             fail_ids.extend(alert.id for alert in group_alerts)
