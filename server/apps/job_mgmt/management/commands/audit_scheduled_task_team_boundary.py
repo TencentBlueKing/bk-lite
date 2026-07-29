@@ -1,11 +1,13 @@
 """审计并可选治理存量定时任务的团队边界。"""
 
-from django.core.management.base import BaseCommand
+from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
 from apps.job_mgmt.models import ScheduledTask
-from apps.job_mgmt.services.scheduled_task_authz import plan_scheduled_task_team_migration
-from apps.job_mgmt.services.scheduled_task_service import ScheduledTaskService
+from apps.job_mgmt.services.scheduled_task_authz import (
+    disable_scheduled_task_and_schedule,
+    plan_scheduled_task_team_migration,
+)
 
 
 class Command(BaseCommand):
@@ -20,22 +22,23 @@ class Command(BaseCommand):
 
         tasks = ScheduledTask.objects.select_related("script", "playbook").order_by("id")
         for task in tasks.iterator():
-            plan = plan_scheduled_task_team_migration(task)
+            if should_apply:
+                with transaction.atomic():
+                    task = ScheduledTask.objects.select_for_update().get(id=task.id)
+                    plan = plan_scheduled_task_team_migration(task, lock_resources=True)
+                    if plan.action == "normalize":
+                        ScheduledTask.objects.filter(id=task.id).update(team=[plan.team])
+                    elif plan.action == "disable" and not disable_scheduled_task_and_schedule(task.id):
+                        raise CommandError(f"task={task.id} Beat 调度禁用失败，任务状态已回滚；请修复后重试")
+            else:
+                plan = plan_scheduled_task_team_migration(task)
+
             counts[plan.action] += 1
             team_text = str(plan.team) if plan.team is not None else "-"
-            self.stdout.write(f"task={task.id} action={plan.action} team={team_text} reason={plan.reason}")
-
-            if not should_apply or plan.action == "keep":
-                continue
-
-            with transaction.atomic():
-                if plan.action == "normalize":
-                    ScheduledTask.objects.filter(id=task.id).update(team=[plan.team])
-                elif plan.action == "disable":
-                    ScheduledTask.objects.filter(id=task.id, is_enabled=True).update(is_enabled=False)
-
-            if plan.action == "disable":
-                ScheduledTaskService.toggle_periodic_task(task.id, False)
+            self.stdout.write(
+                f"task={task.id} action={plan.action} team={team_text} "
+                f"previous_team={task.team} previous_enabled={task.is_enabled} reason={plan.reason}"
+            )
 
         mode = "APPLY" if should_apply else "DRY-RUN"
         self.stdout.write(

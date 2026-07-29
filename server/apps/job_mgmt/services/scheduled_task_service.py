@@ -192,6 +192,10 @@ class ScheduledTaskService:
                 action = "启用" if enabled else "禁用"
                 logger.info(f"{action}周期任务: {task_name}")
                 return True
+            elif not enabled:
+                # 禁用不存在的调度等价于目标状态已经满足，保证重复治理可幂等重试。
+                logger.info(f"周期任务不存在，视为已禁用: {task_name}")
+                return True
             else:
                 logger.warning(f"未找到要操作的周期任务: {task_name}")
                 return False

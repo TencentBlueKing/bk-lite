@@ -14,7 +14,7 @@ from apps.job_mgmt.constants import JobType, ScheduleType
 from apps.job_mgmt.models import ScheduledTask
 from apps.job_mgmt.services.scheduled_task_service import ScheduledTaskService
 
-pytestmark = [pytest.mark.unit, pytest.mark.django_db]
+pytestmark = [pytest.mark.integration, pytest.mark.django_db]
 
 
 def _task(**over):
@@ -90,6 +90,9 @@ class TestUpdateDeleteToggleSync:
 
     def test_toggle_missing_returns_false(self):
         assert ScheduledTaskService.toggle_periodic_task(999999, True) is False
+
+    def test_disable_missing_is_idempotent_success(self):
+        assert ScheduledTaskService.toggle_periodic_task(999999, False) is True
 
     def test_sync_returns_id(self):
         st = _task()

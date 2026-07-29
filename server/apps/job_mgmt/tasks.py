@@ -25,6 +25,7 @@ from apps.job_mgmt.services.dangerous_checker import DangerousChecker
 from apps.job_mgmt.services.playbook_execution import PlaybookExecution
 from apps.job_mgmt.services.scheduled_task_authz import (
     ScheduledTaskTeamBoundaryError,
+    disable_scheduled_task_and_schedule,
     validate_scheduled_task_resource_boundary,
 )
 from apps.job_mgmt.services.scheduled_task_service import ScheduledTaskService
@@ -156,64 +157,20 @@ def execute_scheduled_task(scheduled_task_id: int):
         logger.error(f"[execute_scheduled_task] 定时任务不存在: scheduled_task_id={scheduled_task_id}")
         return
     if not st_snapshot.is_enabled:
+        if not ScheduledTaskService.toggle_periodic_task(scheduled_task_id, False):
+            logger.error(
+                f"[execute_scheduled_task] 已禁用任务的 Beat 调度同步仍失败，将在下次触发重试: "
+                f"scheduled_task_id={scheduled_task_id}"
+            )
         logger.info(f"[execute_scheduled_task] 定时任务已禁用: scheduled_task_id={scheduled_task_id}")
         return
 
-    try:
-        validate_scheduled_task_resource_boundary({}, instance=st_snapshot)
-    except ScheduledTaskTeamBoundaryError as exc:
-        ScheduledTask.objects.filter(id=scheduled_task_id, is_enabled=True).update(is_enabled=False)
-        ScheduledTaskService.toggle_periodic_task(scheduled_task_id, False)
-        logger.error(
-            "[execute_scheduled_task] 团队资源边界校验失败，任务已禁用: "
-            f"scheduled_task_id={scheduled_task_id}, field={exc.field}, reason={exc.message}"
-        )
-        return
-
-    team = st_snapshot.team or []
-
-    # 脚本内容和类型：优先从关联的 Script 对象获取，回退到定时任务上的临时输入字段。
-    # 危险命令预检必须使用解析后的脚本内容，不能漏掉脚本库模式。
-    script_content = st_snapshot.script_content or ""
-    script_type = st_snapshot.script_type or ""
-    if st_snapshot.script:
-        script_content = st_snapshot.script.content or script_content
-        script_type = st_snapshot.script.script_type or script_type
-
-    if st_snapshot.job_type == JobType.SCRIPT and script_content:
-        check_result = DangerousChecker.check_command(script_content, team)
-        if not check_result.can_execute:
-            forbidden_rules = [r["rule_name"] for r in check_result.forbidden]
-            logger.warning(f"[execute_scheduled_task] 脚本包含高危命令，禁止执行: " f"scheduled_task_id={scheduled_task_id}, rules={forbidden_rules}")
-            return
-    if st_snapshot.job_type == JobType.FILE_DISTRIBUTION and st_snapshot.target_path:
-        check_result = DangerousChecker.check_path(st_snapshot.target_path, team)
-        if not check_result.can_execute:
-            forbidden_rules = [r["rule_name"] for r in check_result.forbidden]
-            logger.warning(
-                f"[execute_scheduled_task] 目标路径为高危路径，禁止分发: "
-                f"scheduled_task_id={scheduled_task_id}, path={st_snapshot.target_path}, rules={forbidden_rules}"
-            )
-            return
-
-    target_list = st_snapshot.target_list or []
-    if not target_list:
-        logger.warning(f"[execute_scheduled_task] 定时任务无执行目标: scheduled_task_id={scheduled_task_id}")
-        return
-
-    # 处理参数：解析 is_modified=False 的参数并转换为字符串
-    params = st_snapshot.params if isinstance(st_snapshot.params, list) else []
-    resolved_params = ScriptParamsService.resolve_params(params, script=st_snapshot.script)
-    params_str = ScriptParamsService.params_to_string(resolved_params)
-
     # ---- 阶段 2: 临界区(行锁 + 事务)----
-    # 只保留"竞争状态相关的 SQL":并发策略检查 + run_count 自增 + 创建 PENDING execution。
-    # run_count 用 F() 表达式走单条 SQL UPDATE,避免 read-modify-write 丢计数;
-    # updated_at 用 QuerySet.update() 时不会触发 auto_now,必须显式带上,否则列表排序/审计失真。
+    # 授权复核后一直持有任务与稳定资源行锁，直到创建 PENDING execution，
+    # 防止并发更新让校验结论与执行快照不一致。
     queue_retry_needed = False
     execution_id = None
-    job_type = st_snapshot.job_type
-    playbook_version = st_snapshot.playbook.version if st_snapshot.playbook else ""
+    job_type = None
 
     with transaction.atomic():
         scheduled_task = ScheduledTask.objects.select_for_update().get(id=scheduled_task_id)
@@ -221,6 +178,54 @@ def execute_scheduled_task(scheduled_task_id: int):
         if not scheduled_task.is_enabled:
             logger.info(f"[execute_scheduled_task] 定时任务已禁用: scheduled_task_id={scheduled_task_id}")
             return
+
+        try:
+            validate_scheduled_task_resource_boundary({}, instance=scheduled_task, lock_resources=True)
+        except ScheduledTaskTeamBoundaryError as exc:
+            disabled = disable_scheduled_task_and_schedule(scheduled_task_id)
+            outcome = "任务与调度已禁用" if disabled else "调度同步失败，任务保持启用以便下次重试"
+            logger.error(
+                f"[execute_scheduled_task] 锁内团队资源边界复核失败，{outcome}: "
+                f"scheduled_task_id={scheduled_task_id}, field={exc.field}, reason={exc.message}"
+            )
+            return
+
+        team = scheduled_task.team or []
+        script_content = scheduled_task.script_content or ""
+        script_type = scheduled_task.script_type or ""
+        if scheduled_task.script:
+            script_content = scheduled_task.script.content or script_content
+            script_type = scheduled_task.script.script_type or script_type
+
+        job_type = scheduled_task.job_type
+        if job_type == JobType.SCRIPT and script_content:
+            check_result = DangerousChecker.check_command(script_content, team)
+            if not check_result.can_execute:
+                forbidden_rules = [r["rule_name"] for r in check_result.forbidden]
+                logger.warning(
+                    f"[execute_scheduled_task] 脚本包含高危命令，禁止执行: "
+                    f"scheduled_task_id={scheduled_task_id}, rules={forbidden_rules}"
+                )
+                return
+        if job_type == JobType.FILE_DISTRIBUTION and scheduled_task.target_path:
+            check_result = DangerousChecker.check_path(scheduled_task.target_path, team)
+            if not check_result.can_execute:
+                forbidden_rules = [r["rule_name"] for r in check_result.forbidden]
+                logger.warning(
+                    f"[execute_scheduled_task] 目标路径为高危路径，禁止分发: "
+                    f"scheduled_task_id={scheduled_task_id}, path={scheduled_task.target_path}, rules={forbidden_rules}"
+                )
+                return
+
+        target_list = scheduled_task.target_list or []
+        if not target_list:
+            logger.warning(f"[execute_scheduled_task] 定时任务无执行目标: scheduled_task_id={scheduled_task_id}")
+            return
+
+        params = scheduled_task.params if isinstance(scheduled_task.params, list) else []
+        resolved_params = ScriptParamsService.resolve_params(params, script=scheduled_task.script)
+        params_str = ScriptParamsService.params_to_string(resolved_params)
+        playbook_version = scheduled_task.playbook.version if scheduled_task.playbook else ""
 
         # 并发策略检查
         policy = scheduled_task.concurrency_policy
@@ -263,26 +268,26 @@ def execute_scheduled_task(scheduled_task_id: int):
             )
 
             execution = JobExecution.objects.create(
-                name=st_snapshot.name,
+                name=scheduled_task.name,
                 job_type=job_type,
                 trigger_source=TriggerSource.SCHEDULED,
                 status=ExecutionStatus.PENDING,
-                script=st_snapshot.script,
-                playbook=st_snapshot.playbook,
+                script=scheduled_task.script,
+                playbook=scheduled_task.playbook,
                 playbook_version=playbook_version,
                 scheduled_task=scheduled_task,
                 params=params_str,
                 script_type=script_type,
                 script_content=script_content,
-                files=st_snapshot.files,
-                target_path=st_snapshot.target_path,
-                timeout=st_snapshot.timeout,
+                files=scheduled_task.files,
+                target_path=scheduled_task.target_path,
+                timeout=scheduled_task.timeout,
                 total_count=len(target_list),
-                target_source=st_snapshot.target_source,
+                target_source=scheduled_task.target_source,
                 target_list=target_list,
-                team=st_snapshot.team,
-                created_by=st_snapshot.created_by,
-                updated_by=st_snapshot.updated_by,
+                team=scheduled_task.team,
+                created_by=scheduled_task.created_by,
+                updated_by=scheduled_task.updated_by,
             )
             execution_id = execution.id
             logger.info(f"[execute_scheduled_task] 创建执行记录: execution_id={execution.id}, targets={len(target_list)}")

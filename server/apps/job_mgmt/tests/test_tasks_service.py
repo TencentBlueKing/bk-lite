@@ -59,8 +59,10 @@ class TestExecuteScheduledTask:
 
     def test_disabled_task_skips(self):
         st = _task(is_enabled=False)
-        tasks.execute_scheduled_task(st.id)
+        with patch("apps.job_mgmt.tasks.ScheduledTaskService.toggle_periodic_task", return_value=True) as toggle:
+            tasks.execute_scheduled_task(st.id)
         assert JobExecution.objects.filter(scheduled_task=st).count() == 0
+        toggle.assert_called_once_with(st.id, False)
 
     def test_happy_path_creates_execution_and_dispatches(self):
         st = _task()

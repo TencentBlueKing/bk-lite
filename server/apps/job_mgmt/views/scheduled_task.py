@@ -1,5 +1,6 @@
 """定时任务视图"""
 
+from django.db import transaction
 from rest_framework import serializers, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -43,9 +44,13 @@ class ScheduledTaskViewSet(AuthViewSet):
     permission_key = "job"
 
     @staticmethod
-    def _validate_resource_boundary(attrs, *, instance=None):
+    def _validate_resource_boundary(attrs, *, instance=None, lock_resources=False):
         try:
-            validate_scheduled_task_resource_boundary(attrs, instance=instance)
+            validate_scheduled_task_resource_boundary(
+                attrs,
+                instance=instance,
+                lock_resources=lock_resources,
+            )
         except ScheduledTaskTeamBoundaryError as exc:
             raise serializers.ValidationError({exc.field: exc.message}) from exc
 
@@ -75,12 +80,12 @@ class ScheduledTaskViewSet(AuthViewSet):
         serializer = ScheduledTaskCreateSerializer(data=request.data, context={"request": request})
         serializer.is_valid(raise_exception=True)
 
-        # 校验用户是否有目标组织的权限
-        team = serializer.validated_data.get("team", [])
-        self._validate_org_field_permission(request, team)
-        self._validate_resource_boundary(serializer.validated_data)
-
-        instance = serializer.save()
+        with transaction.atomic():
+            # 校验用户是否有目标组织的权限，并锁定全部稳定资源直至任务落库。
+            team = serializer.validated_data.get("team", [])
+            self._validate_org_field_permission(request, team)
+            self._validate_resource_boundary(serializer.validated_data, lock_resources=True)
+            instance = serializer.save()
         log_operation(request, "create", "job", f"新增定时任务: {instance.name}")
         return Response(
             ScheduledTaskDetailSerializer(instance).data,
@@ -94,14 +99,22 @@ class ScheduledTaskViewSet(AuthViewSet):
         serializer = ScheduledTaskUpdateSerializer(instance, data=request.data, partial=partial, context={"request": request})
         serializer.is_valid(raise_exception=True)
 
-        # 校验用户是否有目标组织的权限
-        team = serializer.validated_data.get("team", instance.team)
-        self._validate_org_field_permission(request, team)
-        disable_only = serializer.validated_data.get("is_enabled") is False and set(serializer.validated_data) == {"is_enabled"}
-        if not disable_only:
-            self._validate_resource_boundary(serializer.validated_data, instance=instance)
-
-        instance = serializer.save()
+        with transaction.atomic():
+            instance = ScheduledTask.objects.select_for_update().get(pk=instance.pk)
+            serializer.instance = instance
+            # 校验用户是否有目标组织的权限
+            team = serializer.validated_data.get("team", instance.team)
+            self._validate_org_field_permission(request, team)
+            disable_only = serializer.validated_data.get("is_enabled") is False and set(serializer.validated_data) == {
+                "is_enabled"
+            }
+            if not disable_only:
+                self._validate_resource_boundary(
+                    serializer.validated_data,
+                    instance=instance,
+                    lock_resources=True,
+                )
+            instance = serializer.save()
         log_operation(request, "update", "job", f"编辑定时任务: {instance.name}")
         return Response(ScheduledTaskDetailSerializer(instance).data)
 
@@ -115,21 +128,29 @@ class ScheduledTaskViewSet(AuthViewSet):
         serializer = ScheduledTaskToggleSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        is_enabled = serializer.validated_data["is_enabled"]
-        if is_enabled:
-            self._validate_resource_boundary({}, instance=instance)
+        schedule_sync_pending = False
+        with transaction.atomic():
+            instance = ScheduledTask.objects.select_for_update().get(pk=instance.pk)
+            is_enabled = serializer.validated_data["is_enabled"]
+            if is_enabled:
+                self._validate_resource_boundary({}, instance=instance, lock_resources=True)
 
-        instance.is_enabled = is_enabled
-        instance.updated_by = request.user.username if request.user else ""
-        instance.save(update_fields=["is_enabled", "updated_by", "updated_at"])
+            instance.is_enabled = is_enabled
+            instance.updated_by = request.user.username if request.user else ""
+            instance.save(update_fields=["is_enabled", "updated_by", "updated_at"])
 
-        # 同步更新 celery-beat PeriodicTask 的启用状态
-        ScheduledTaskService.toggle_periodic_task(instance.id, instance.is_enabled)
+            schedule_synced = ScheduledTaskService.toggle_periodic_task(instance.id, instance.is_enabled)
+            if not schedule_synced and instance.is_enabled:
+                raise serializers.ValidationError({"is_enabled": "同步定时调度状态失败，请稍后重试"})
+            schedule_sync_pending = not schedule_synced
         log_operation(request, "execute", "job", f"切换定时任务状态: {instance.name}")
 
         return Response(
             {
-                "message": f"任务已{'启用' if instance.is_enabled else '禁用'}",
+                "message": (
+                    f"任务已{'启用' if instance.is_enabled else '禁用'}"
+                    + ("，调度状态将在下次触发时重试同步" if schedule_sync_pending else "")
+                ),
                 "is_enabled": instance.is_enabled,
             }
         )
@@ -143,63 +164,65 @@ class ScheduledTaskViewSet(AuthViewSet):
         创建一个 JobExecution 并立即执行
         """
         instance = self.get_object()
-        self._validate_resource_boundary({}, instance=instance)
+        with transaction.atomic():
+            instance = ScheduledTask.objects.select_for_update().get(pk=instance.pk)
+            self._validate_resource_boundary({}, instance=instance, lock_resources=True)
 
-        # 获取执行目标
-        target_list = instance.target_list or []
-        if not target_list:
-            return Response({"error": "没有配置执行目标"}, status=status.HTTP_400_BAD_REQUEST)
+            # 获取执行目标
+            target_list = instance.target_list or []
+            if not target_list:
+                return Response({"error": "没有配置执行目标"}, status=status.HTTP_400_BAD_REQUEST)
 
-        # 处理参数：解析 is_modified=False 的参数并转换为字符串
-        params = instance.params if isinstance(instance.params, list) else []
-        resolved_params = ScriptParamsService.resolve_params(params, script=instance.script)
-        params_str = ScriptParamsService.params_to_string(resolved_params)
+            # 处理参数：解析 is_modified=False 的参数并转换为字符串
+            params = instance.params if isinstance(instance.params, list) else []
+            resolved_params = ScriptParamsService.resolve_params(params, script=instance.script)
+            params_str = ScriptParamsService.params_to_string(resolved_params)
 
-        # 脚本内容：优先从关联的 Script 对象获取，回退到定时任务上的临时输入字段
-        script_content = instance.script_content or ""
-        if instance.script:
-            script_content = instance.script.content or script_content
+            # 脚本内容：优先从关联的 Script 对象获取，回退到定时任务上的临时输入字段
+            script_content = instance.script_content or ""
+            if instance.script:
+                script_content = instance.script.content or script_content
 
-        # 高危命令/路径预检：与 execute_scheduled_task 保持一致，命中则直接拒绝，不创建执行记录
-        team = instance.team or []
-        if instance.job_type == JobType.SCRIPT and script_content:
-            check_result = DangerousChecker.check_command(script_content, team)
-            if not check_result.can_execute:
-                forbidden_rules = [r["rule_name"] for r in check_result.forbidden]
-                return Response(
-                    {"error": f"脚本包含高危命令，已拦截: {', '.join(forbidden_rules)}"},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-        if instance.job_type == JobType.FILE_DISTRIBUTION and instance.target_path:
-            check_result = DangerousChecker.check_path(instance.target_path, team)
-            if not check_result.can_execute:
-                forbidden_rules = [r["rule_name"] for r in check_result.forbidden]
-                return Response(
-                    {"error": f"目标路径为高危路径，已拦截: {', '.join(forbidden_rules)}"},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
+            # 高危命令/路径预检：与 execute_scheduled_task 保持一致，命中则直接拒绝，不创建执行记录
+            team = instance.team or []
+            if instance.job_type == JobType.SCRIPT and script_content:
+                check_result = DangerousChecker.check_command(script_content, team)
+                if not check_result.can_execute:
+                    forbidden_rules = [r["rule_name"] for r in check_result.forbidden]
+                    return Response(
+                        {"error": f"脚本包含高危命令，已拦截: {', '.join(forbidden_rules)}"},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+            if instance.job_type == JobType.FILE_DISTRIBUTION and instance.target_path:
+                check_result = DangerousChecker.check_path(instance.target_path, team)
+                if not check_result.can_execute:
+                    forbidden_rules = [r["rule_name"] for r in check_result.forbidden]
+                    return Response(
+                        {"error": f"目标路径为高危路径，已拦截: {', '.join(forbidden_rules)}"},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
 
-        # 根据作业类型创建执行记录
-        execution = JobExecution.objects.create(
-            name=f"[手动触发] {instance.name}",
-            job_type=instance.job_type,
-            status=ExecutionStatus.PENDING,
-            script=instance.script,
-            playbook=instance.playbook,
-            playbook_version=instance.playbook.version if instance.playbook else "",
-            params=params_str,
-            script_type=instance.script_type,
-            script_content=instance.script_content,
-            files=instance.files,
-            target_path=instance.target_path,
-            timeout=instance.timeout,
-            total_count=len(target_list),
-            target_source=instance.target_source,
-            target_list=target_list,
-            team=instance.team,
-            created_by=request.user.username if request.user else "",
-            updated_by=request.user.username if request.user else "",
-        )
+            # 资源锁与任务行锁持有到执行快照落库，关闭校验后的 TOCTOU 窗口。
+            execution = JobExecution.objects.create(
+                name=f"[手动触发] {instance.name}",
+                job_type=instance.job_type,
+                status=ExecutionStatus.PENDING,
+                script=instance.script,
+                playbook=instance.playbook,
+                playbook_version=instance.playbook.version if instance.playbook else "",
+                params=params_str,
+                script_type=instance.script_type,
+                script_content=instance.script_content,
+                files=instance.files,
+                target_path=instance.target_path,
+                timeout=instance.timeout,
+                total_count=len(target_list),
+                target_source=instance.target_source,
+                target_list=target_list,
+                team=instance.team,
+                created_by=request.user.username if request.user else "",
+                updated_by=request.user.username if request.user else "",
+            )
 
         # 触发异步任务；broker 不可用时置 FAILED 并返回 503
         task_func_map = {

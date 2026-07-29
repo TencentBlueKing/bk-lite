@@ -9,8 +9,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from django.db import transaction
+
 from apps.job_mgmt.constants import JobType, TargetSource
-from apps.job_mgmt.models import Target
+from apps.job_mgmt.models import ScheduledTask, Target
+from apps.job_mgmt.services.scheduled_task_service import ScheduledTaskService
 from apps.job_mgmt.utils.team_authz import is_team_authorized, normalize_team
 
 
@@ -40,6 +43,19 @@ def _resolve(attrs: dict, instance, key: str):
     return getattr(instance, key, None) if instance is not None else None
 
 
+def _reload_resource(resource, *, lock_resources: bool):
+    if resource is None or not lock_resources:
+        return resource
+    return resource.__class__.objects.select_for_update().get(pk=resource.pk)
+
+
+def _load_targets(target_ids: set[int], *, lock_resources: bool) -> list[Target]:
+    queryset = Target.objects.filter(id__in=target_ids)
+    if lock_resources:
+        queryset = queryset.select_for_update()
+    return list(queryset)
+
+
 def resolve_single_task_team(attrs: dict, *, instance=None) -> int:
     """返回任务唯一团队；空值、多值和不可解析值均拒绝。"""
 
@@ -52,7 +68,7 @@ def resolve_single_task_team(attrs: dict, *, instance=None) -> int:
         raise ScheduledTaskTeamBoundaryError("team", "定时任务团队 ID 无效") from exc
 
 
-def validate_scheduled_task_resource_boundary(attrs: dict, *, instance=None) -> int:
+def validate_scheduled_task_resource_boundary(attrs: dict, *, instance=None, lock_resources: bool = False) -> int:
     """按合并后的任务配置校验所有稳定资源引用。
 
     ``attrs`` 可为 create 的完整数据或 partial update 的增量数据；未提供字段从
@@ -69,13 +85,13 @@ def validate_scheduled_task_resource_boundary(attrs: dict, *, instance=None) -> 
         )
 
     if job_type == JobType.SCRIPT:
-        script = _resolve(attrs, instance, "script")
+        script = _reload_resource(_resolve(attrs, instance, "script"), lock_resources=lock_resources)
         if script is None and not _resolve(attrs, instance, "script_content"):
             raise ScheduledTaskTeamBoundaryError("script", "定时任务缺少可执行脚本")
         if script is not None and not is_team_authorized(script.team, {task_team}):
             raise ScheduledTaskTeamBoundaryError("script", "关联脚本未授权给定时任务所属团队")
     elif job_type == JobType.PLAYBOOK:
-        playbook = _resolve(attrs, instance, "playbook")
+        playbook = _reload_resource(_resolve(attrs, instance, "playbook"), lock_resources=lock_resources)
         if playbook is None:
             raise ScheduledTaskTeamBoundaryError("playbook", "定时任务缺少关联 Playbook")
         if not is_team_authorized(playbook.team, {task_team}):
@@ -88,7 +104,7 @@ def validate_scheduled_task_resource_boundary(attrs: dict, *, instance=None) -> 
             raise ScheduledTaskTeamBoundaryError("target_list", "手动目标必须提供有效的 target_id")
 
         unique_target_ids = set(target_ids)
-        targets = list(Target.objects.filter(id__in=unique_target_ids))
+        targets = _load_targets(unique_target_ids, lock_resources=lock_resources)
         if len(targets) != len(unique_target_ids):
             raise ScheduledTaskTeamBoundaryError("target_list", "部分目标不存在")
         if any(not is_team_authorized(target.team, {task_team}) for target in targets):
@@ -97,7 +113,7 @@ def validate_scheduled_task_resource_boundary(attrs: dict, *, instance=None) -> 
     return task_team
 
 
-def plan_scheduled_task_team_migration(task) -> ScheduledTaskTeamMigrationPlan:
+def plan_scheduled_task_team_migration(task, *, lock_resources: bool = False) -> ScheduledTaskTeamMigrationPlan:
     """评估存量任务能否唯一归一到一个团队。
 
     仅当任务原团队与全部稳定资源团队的交集唯一时才自动归一；无法唯一判定、
@@ -113,7 +129,8 @@ def plan_scheduled_task_team_migration(task) -> ScheduledTaskTeamMigrationPlan:
 
     if task.job_type == JobType.SCRIPT:
         if task.script_id:
-            script_teams = normalize_team(task.script.team)
+            script = _reload_resource(task.script, lock_resources=lock_resources)
+            script_teams = normalize_team(script.team)
             if not script_teams:
                 return ScheduledTaskTeamMigrationPlan("disable", None, "关联脚本没有团队归属")
             candidates &= script_teams
@@ -122,7 +139,8 @@ def plan_scheduled_task_team_migration(task) -> ScheduledTaskTeamMigrationPlan:
     elif task.job_type == JobType.PLAYBOOK:
         if not task.playbook_id:
             return ScheduledTaskTeamMigrationPlan("disable", None, "任务缺少关联 Playbook")
-        playbook_teams = normalize_team(task.playbook.team)
+        playbook = _reload_resource(task.playbook, lock_resources=lock_resources)
+        playbook_teams = normalize_team(playbook.team)
         if not playbook_teams:
             return ScheduledTaskTeamMigrationPlan("disable", None, "关联 Playbook 没有团队归属")
         candidates &= playbook_teams
@@ -133,7 +151,7 @@ def plan_scheduled_task_team_migration(task) -> ScheduledTaskTeamMigrationPlan:
         if len(target_ids) != len(target_list):
             return ScheduledTaskTeamMigrationPlan("disable", None, "手动目标引用不完整")
         unique_target_ids = set(target_ids)
-        targets = list(Target.objects.filter(id__in=unique_target_ids))
+        targets = _load_targets(unique_target_ids, lock_resources=lock_resources)
         if len(targets) != len(unique_target_ids):
             return ScheduledTaskTeamMigrationPlan("disable", None, "部分手动目标已不存在")
         for target in targets:
@@ -149,3 +167,18 @@ def plan_scheduled_task_team_migration(task) -> ScheduledTaskTeamMigrationPlan:
     if task.team == [canonical_team]:
         return ScheduledTaskTeamMigrationPlan("keep", canonical_team, "任务与全部稳定资源已归属同一团队")
     return ScheduledTaskTeamMigrationPlan("normalize", canonical_team, "任务与全部稳定资源唯一交集可自动归一")
+
+
+def disable_scheduled_task_and_schedule(task_id: int) -> bool:
+    """原子禁用业务任务与 Beat 调度；同步失败时保留原状态供下次重试。"""
+
+    with transaction.atomic():
+        try:
+            task = ScheduledTask.objects.select_for_update().get(id=task_id)
+        except ScheduledTask.DoesNotExist:
+            return True
+        if not ScheduledTaskService.toggle_periodic_task(task_id, False):
+            return False
+        if task.is_enabled:
+            ScheduledTask.objects.filter(id=task_id, is_enabled=True).update(is_enabled=False)
+    return True

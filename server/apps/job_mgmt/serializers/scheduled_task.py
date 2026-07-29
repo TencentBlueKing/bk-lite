@@ -204,9 +204,9 @@ class ScheduledTaskUpdateSerializer(serializers.ModelSerializer):
 
     def validate(self, attrs):
         """验证定时任务配置（共用校验见 :mod:`serializers.validators`）"""
-        attrs = validate_scheduled_task_payload(attrs, instance=self.instance)
         if attrs.get("is_enabled") is False and set(attrs) == {"is_enabled"}:
             return attrs
+        attrs = validate_scheduled_task_payload(attrs, instance=self.instance)
         try:
             resolve_single_task_team(attrs, instance=self.instance)
         except ScheduledTaskTeamBoundaryError as exc:
