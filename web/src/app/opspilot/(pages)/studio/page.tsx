@@ -9,6 +9,18 @@ import { message, Modal } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import { useStudioApi } from '@/app/opspilot/api/studio';
 
+type StudioModifyModalProps = Omit<
+  React.ComponentProps<typeof GenericModifyModal>,
+  'formType'
+>;
+
+const StudioModifyModal: React.FC<StudioModifyModalProps> = (props) => (
+  <GenericModifyModal
+    {...props}
+    formType="studio"
+  />
+);
+
 const StudioPage: React.FC = () => {
   const { t } = useTranslation();
   const { deleteStudio, toggleBotPin } = useStudioApi();
@@ -51,12 +63,7 @@ const StudioPage: React.FC = () => {
     <EntityList<Studio>
       endpoint="/opspilot/bot_mgmt/bot/"
       CardComponent={StudioCard}
-      ModifyModalComponent={(props) => (
-        <GenericModifyModal
-          {...props}
-          formType="studio"
-        />
-      )}
+      ModifyModalComponent={StudioModifyModal}
       itemTypeSingle="studio"
       typeConfig={{
         options: [

@@ -33,7 +33,7 @@ const ExportModelConfigModal = forwardRef<
   const { exportModelConfig } = useModelApi();
   const authContext = useAuth();
   const { data: session } = useSession();
-  const token = (session?.user as any)?.token || authContext?.token || null;
+  const token = authContext?.token || (session?.user as any)?.token || null;
   const tokenRef = useRef(token);
 
   const [visible, setVisible] = useState<boolean>(false);

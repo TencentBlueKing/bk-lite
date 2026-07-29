@@ -80,7 +80,7 @@ const AssetManage = () => {
   const { isSuperUser, selectedGroup } = useUserInfoContext();
   const authContext = useAuth();
   const { data: session } = useSession();
-  const token = (session?.user as any)?.token || authContext?.token || null;
+  const token = authContext?.token || (session?.user as any)?.token || null;
   const tokenRef = useRef(token);
   const commonContext = useCommon();
   const modelListFromContext = commonContext?.modelList || [];

@@ -13,7 +13,7 @@ import { MenusProvider, useMenus } from '@/context/menus';
 import { UserInfoProvider } from '@/context/userInfo';
 import { ClientProvider } from '@/context/client';
 import { PermissionsProvider, usePermissions } from '@/context/permissions';
-import AuthProvider from '@/context/auth';
+import AuthProvider, { useAuth } from '@/context/auth';
 import TopMenu from '@/app/(core)/components/top-menu';
 import { Watermark, message } from 'antd';
 import Spin from '@/components/spin';
@@ -67,6 +67,7 @@ const PortalBrandingHead = () => {
 const LayoutWithProviders = ({ children }: { children: React.ReactNode }) => {
   const { loading: permissionsLoading, hasPermission, menus } = usePermissions();
   const { data: session, status } = useSession();
+  const { isAuthenticated: authContextAuthenticated } = useAuth();
   const { loading: menusLoading, configMenus } = useMenus();
   const { username, displayName } = useUserInfoContext();
   const { portalName, watermarkEnabled, watermarkText } = usePortalBranding();
@@ -74,8 +75,9 @@ const LayoutWithProviders = ({ children }: { children: React.ReactNode }) => {
   const pathname = usePathname();
   const [isAllowed, setIsAllowed] = useState(false);
 
-  const isAuthenticated = status === 'authenticated' && !!session && !(session.user as any)?.temporary_pwd;
-  const isAuthLoading = status === 'loading';
+  const isAuthenticated = authContextAuthenticated
+    && !(session?.user as any)?.temporary_pwd;
+  const isAuthLoading = status === 'loading' && !authContextAuthenticated;
 
   const isLoading = isAuthLoading || (isAuthenticated && (permissionsLoading || menusLoading));
   const authPaths = ['/auth/signin', '/auth/signout', '/auth/signin/login-auth-result'];
@@ -183,27 +185,25 @@ const LayoutWithProviders = ({ children }: { children: React.ReactNode }) => {
   }
 
   const layoutContent = (
-    <AntdRegistry>
-      <div className={`flex flex-col ${isDashboardShareRoute ? 'h-screen overflow-hidden' : 'min-h-screen'} ${!isAuthRoute ? 'min-w-[1280px]' : ''}`}>
-        {isAuthenticated && hasResolvedPathname && !isAuthRoute && (
-          <header className="sticky top-0 left-0 right-0 flex justify-between items-center header-bg">
-            <TopMenu hideMainMenu={hideTopMenu} />
-          </header>
+    <div className={`flex flex-col ${isDashboardShareRoute ? 'h-screen overflow-hidden' : 'min-h-screen'} ${!isAuthRoute ? 'min-w-[1280px]' : ''}`}>
+      {isAuthenticated && hasResolvedPathname && !isAuthRoute && (
+        <header className="sticky top-0 left-0 right-0 flex justify-between items-center header-bg">
+          <TopMenu hideMainMenu={hideTopMenu} />
+        </header>
+      )}
+      <main className={`main-content flex-1 p-4 flex text-sm ${isDashboardShareRoute ? 'min-h-0 overflow-hidden' : ''} ${!isAuthenticated || isAuthRoute ? 'h-screen' : ''}`}>
+        {shouldRenderMenu ? (
+          <WithSideMenuLayout
+            layoutType="segmented"
+            menuLevel={1}
+          >
+            {children}
+          </WithSideMenuLayout>
+        ) : (
+          children
         )}
-        <main className={`main-content flex-1 p-4 flex text-sm ${isDashboardShareRoute ? 'min-h-0 overflow-hidden' : ''} ${!isAuthenticated || isAuthRoute ? 'h-screen' : ''}`}>
-          {shouldRenderMenu ? (
-            <WithSideMenuLayout
-              layoutType="segmented"
-              menuLevel={1}
-            >
-              {children}
-            </WithSideMenuLayout>
-          ) : (
-            children
-          )}
-        </main>
-      </div>
-    </AntdRegistry>
+      </main>
+    </div>
   );
 
   if (!isAuthenticated || !watermarkEnabled) {
@@ -242,26 +242,28 @@ export default function RootLayout({
         <Script src="/__enterprise-brands.js" strategy="beforeInteractive" />
       </head>
       <body>
-        {/* 全局 Context Provider 配置 */}
-        <SessionProvider refetchInterval={30 * 60}>
-          <LocaleProvider>
-            <ThemeProvider>
-              <AuthProvider>
-                <PortalBrandingHead />
-                <UserInfoProvider>
-                  <ClientProvider>
-                    <MenusProvider>
-                      <PermissionsProvider>
-                        {/* 渲染布局 */}
-                        <LayoutWithProviders>{children}</LayoutWithProviders>
-                      </PermissionsProvider>
-                    </MenusProvider>
-                  </ClientProvider>
-                </UserInfoProvider>
-              </AuthProvider>
-            </ThemeProvider>
-          </LocaleProvider>
-        </SessionProvider>
+        <AntdRegistry>
+          {/* 全局 Context Provider 配置 */}
+          <SessionProvider refetchInterval={30 * 60} refetchOnWindowFocus={false}>
+            <LocaleProvider>
+              <ThemeProvider>
+                <AuthProvider>
+                  <PortalBrandingHead />
+                  <UserInfoProvider>
+                    <ClientProvider>
+                      <MenusProvider>
+                        <PermissionsProvider>
+                          {/* 渲染布局 */}
+                          <LayoutWithProviders>{children}</LayoutWithProviders>
+                        </PermissionsProvider>
+                      </MenusProvider>
+                    </ClientProvider>
+                  </UserInfoProvider>
+                </AuthProvider>
+              </ThemeProvider>
+            </LocaleProvider>
+          </SessionProvider>
+        </AntdRegistry>
       </body>
     </html>
   );
