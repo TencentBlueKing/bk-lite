@@ -4,6 +4,7 @@
 """
 
 import os
+import secrets
 
 from django.apps import apps as django_apps
 from django.core.management import call_command
@@ -104,7 +105,7 @@ class Command(BaseCommand):
     @staticmethod
     def _get_admin_password() -> str:
         admin_password = os.getenv("BK_INIT_ADMIN_PASSWORD", "").strip()
-        return admin_password or "password"
+        return admin_password or secrets.token_urlsafe(32)
 
     def _init_cmdb(self):
         """CMDB资源初始化"""
