@@ -344,9 +344,7 @@ def test_chatflow_engine_records_execution_summary_with_final_and_failed_nodes(m
         "apps.opspilot.utils.chat_flow_utils.engine.execution_repository.WorkFlowTaskResult.objects.create",
         return_value=task_result,
     )
-    node_update = mocker.patch(
-        "apps.opspilot.utils.chat_flow_utils.engine.execution_repository.WorkFlowTaskNodeResult.objects.filter"
-    )
+    node_update = mocker.patch("apps.opspilot.utils.chat_flow_utils.engine.execution_repository.WorkFlowTaskNodeResult.objects.filter")
 
     from apps.opspilot.utils.chat_flow_utils.engine import execution_repository
 
@@ -415,9 +413,7 @@ def test_sse_subsequent_nodes_use_output_params_for_next_node_input(mocker):
         "apps.opspilot.utils.chat_flow_utils.engine.execution_repository.WorkFlowTaskResult.objects.create",
         return_value=mocker.Mock(),
     )
-    mocker.patch(
-        "apps.opspilot.utils.chat_flow_utils.engine.execution_repository.WorkFlowTaskNodeResult.objects.filter"
-    )
+    mocker.patch("apps.opspilot.utils.chat_flow_utils.engine.execution_repository.WorkFlowTaskNodeResult.objects.filter")
 
     engine = ChatFlowEngine(workflow, execution_id="exec-sse-params-1")
     evidence_package = '{"alert_id":"alert-001","ready_for_analysis":true}'
@@ -528,7 +524,7 @@ def test_llm_view_execute_passes_default_collection_tools_to_stream_chat(mocker)
 
     stream_response = mocker.Mock()
     mocker.patch("apps.opspilot.viewsets.llm_view.LLMSkill.objects.get", return_value=skill_obj)
-    mocker.patch("apps.opspilot.utils.prompt_utils.merge_skill_params", return_value=[])
+    mocker.patch("apps.opspilot.viewsets.llm_view.merge_skill_params", return_value=[])
     stream_chat = mocker.patch("apps.opspilot.viewsets.llm_view.stream_chat", return_value=stream_response)
 
     response = LLMViewSet().execute(request)

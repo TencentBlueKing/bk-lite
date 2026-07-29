@@ -1,11 +1,9 @@
-"""内置 webhook 域名 data migration 行为测试。
+"""内置 webhook 域名数据迁移行为测试。"""
 
-迁移:把 4 个官方 IM 域名同步到 NetworkWhiteList(domain=..., is_build_in=True)。
-- 首次执行:插入 4 条记录
-- 重复执行:idempotent,无副作用
-"""
+from importlib import import_module
 
 import pytest
+from django.apps import apps as django_apps
 
 from apps.system_mgmt.models import NetworkWhiteList
 
@@ -15,40 +13,31 @@ BUILTIN_WEBHOOK_DOMAINS = {
     "open.larksuite.com",
     "oapi.dingtalk.com",
 }
+MIGRATION = import_module("apps.system_mgmt.migrations.0041_networkwhitelist_domain_build_in")
+
+
+def _run_seed_migration():
+    MIGRATION.seed_builtin_webhook_domains(django_apps, None)
 
 
 @pytest.mark.django_db
 def test_init_builtin_whitelist_seeds_four_rows():
-    """迁移跑完后,4 个官方域名落库,带 is_build_in=True"""
-    for domain in BUILTIN_WEBHOOK_DOMAINS:
-        NetworkWhiteList.objects.get_or_create(
-            domain_name=domain,
-            defaults={"network": "", "is_build_in": True, "enabled": True},
-        )
+    NetworkWhiteList.objects.filter(domain_name__in=BUILTIN_WEBHOOK_DOMAINS).delete()
+
+    _run_seed_migration()
 
     rows = NetworkWhiteList.objects.filter(domain_name__in=BUILTIN_WEBHOOK_DOMAINS, is_build_in=True)
     assert rows.count() == 4
-    domains = set(rows.values_list("domain_name", flat=True))
-    assert domains == BUILTIN_WEBHOOK_DOMAINS
-    for row in rows:
-        assert row.enabled is True
+    assert set(rows.values_list("domain_name", flat=True)) == BUILTIN_WEBHOOK_DOMAINS
+    assert all(row.enabled for row in rows)
 
 
 @pytest.mark.django_db
 def test_init_builtin_whitelist_idempotent():
-    """重复跑迁移不会产生重复记录"""
-    for domain in BUILTIN_WEBHOOK_DOMAINS:
-        NetworkWhiteList.objects.get_or_create(
-            domain_name=domain,
-            defaults={"network": "", "is_build_in": True, "enabled": True},
-        )
+    NetworkWhiteList.objects.filter(domain_name__in=BUILTIN_WEBHOOK_DOMAINS).delete()
 
-    # 第二次跑
-    for domain in BUILTIN_WEBHOOK_DOMAINS:
-        NetworkWhiteList.objects.get_or_create(
-            domain_name=domain,
-            defaults={"network": "", "is_build_in": True, "enabled": True},
-        )
+    _run_seed_migration()
+    _run_seed_migration()
 
     rows = NetworkWhiteList.objects.filter(domain_name__in=BUILTIN_WEBHOOK_DOMAINS, is_build_in=True)
     assert rows.count() == 4
