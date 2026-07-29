@@ -3,6 +3,7 @@
 from unittest.mock import patch
 
 import pytest
+from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import serializers
 
 from apps.system_mgmt.models import NetworkWhiteList
@@ -35,6 +36,15 @@ def test_validate_network_rejects_supernet_v6():
     s = NetworkWhiteListSerializer()
     with pytest.raises(serializers.ValidationError):
         s.validate_network("::/0")
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("network", ["0.0.0.0/0", "::/0"])
+def test_model_rejects_forbidden_supernets(network):
+    entry = NetworkWhiteList(network=network, domain_name="", created_by="review", updated_by="review")
+
+    with pytest.raises(DjangoValidationError):
+        entry.full_clean()
 
 
 # ---- validate_domain_name ----

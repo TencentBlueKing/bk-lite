@@ -22,7 +22,6 @@ export interface SessionState {
  */
 interface StreamController {
     abort: () => void;
-    isRunning: boolean;
 }
 
 /**
@@ -435,25 +434,26 @@ class ConversationManager {
         const abortController = new AbortController();
         const controller: StreamController = {
             abort: () => abortController.abort(),
-            isRunning: true,
         };
         this.streamControllers.set(sessionId, controller);
 
-        // 启动流式处理
-        await this.handleAGUIEventStream(
-            sessionId,
-            bot,
-            nodeId,
-            userMessage,
-            aiMsgId,
-            renderMarkdown,
-            errorMessage,
-            abortController.signal,
-        );
-
-        // 清理控制器
-        if (this.streamControllers.get(sessionId) === controller) {
-            this.streamControllers.delete(sessionId);
+        try {
+            await this.handleAGUIEventStream(
+                sessionId,
+                bot,
+                nodeId,
+                userMessage,
+                aiMsgId,
+                renderMarkdown,
+                errorMessage,
+                abortController.signal,
+            );
+        } finally {
+            // 仅允许当前流收尾，避免旧流结束时覆盖同一会话的新请求状态。
+            if (this.streamControllers.get(sessionId) === controller) {
+                this.streamControllers.delete(sessionId);
+                this.setAIRunning(sessionId, false);
+            }
         }
     }
 
@@ -714,8 +714,12 @@ class ConversationManager {
                             })
                         );
                         this.setAIRunning(sessionId, false);
-                        break;
+                        return;
                 }
+            }
+
+            if (!signal.aborted) {
+                throw new Error('AI response stream ended before RUN_FINISHED');
             }
         } catch (error) {
             if (signal.aborted || (error instanceof Error && error.name === 'AbortError')) {
@@ -732,7 +736,8 @@ class ConversationManager {
                             ? {
                                 ...msg,
                                 message: errorMessage,
-                                status: 'ended' as const,
+                                status: 'interrupted' as const,
+                                streamError: errorMessage,
                             }
                             : msg
                     );
@@ -742,7 +747,8 @@ class ConversationManager {
                         {
                             id: aiMsgId,
                             message: errorMessage,
-                            status: 'ended' as const,
+                            status: 'interrupted' as const,
+                            streamError: errorMessage,
                             timestamp: Date.now(),
                         }
                     ];

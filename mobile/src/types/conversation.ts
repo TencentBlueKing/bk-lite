@@ -56,9 +56,10 @@ export interface ContentPart {
 export interface Message {
   id: string;
   message: string | React.ReactNode | null | { text: string; suggestions: string[] };
-  status: 'local' | 'ai' | 'thinking' | 'loading' | 'success' | 'ended' | 'history';
+  status: 'local' | 'ai' | 'thinking' | 'loading' | 'success' | 'ended' | 'interrupted' | 'history';
   timestamp: number;
   thinking?: string;
+  streamError?: string;
   userInput?: string | MessageContentItem[]; // 支持字符串或数组格式
   isWelcome?: boolean;
   isFileMessage?: boolean; // 标记为文件/图片消息，用于特殊样式

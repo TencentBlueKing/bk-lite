@@ -29,7 +29,7 @@ const ImportModelConfigModal = forwardRef<ImportModelConfigModalRef, ImportModel
     const { Dragger } = Upload;
     const authContext = useAuth();
     const { data: session } = useSession();
-    const token = (session?.user as any)?.token || authContext?.token || null;
+    const token = authContext?.token || (session?.user as any)?.token || null;
     const tokenRef = useRef(token);
 
     useEffect(() => {

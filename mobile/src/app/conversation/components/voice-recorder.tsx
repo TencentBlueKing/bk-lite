@@ -63,7 +63,6 @@ export const VoiceRecorder: React.FC<VoiceRecorderProps> = ({
 
         // 如果权限未授予,触发权限请求但不启动 UI 和语音识别
         if (!hasPermission) {
-            console.log('权限未授予,触发权限请求...');
             try {
                 // 触发权限请求
                 const stream = await navigator.mediaDevices.getUserMedia({ audio: true });

@@ -62,7 +62,8 @@ export const MessageList: React.FC<MessageListProps> = ({
     return (
         <>
             {messages.map((msg, index) => {
-                const isAIMessage = msg.status !== 'local' && (msg.status === 'ended' || msg.status === 'history');
+                const isAIMessage = msg.status !== 'local'
+                    && (msg.status === 'ended' || msg.status === 'history' || msg.status === 'interrupted');
                 const isLastAIMessage = isAIMessage && index === messages.length - 1;
                 const isThinkingMessage = msg.status === 'thinking';
                 const isHistoryMessage = msg.status === 'history';
@@ -137,7 +138,6 @@ export const MessageList: React.FC<MessageListProps> = ({
                                 if (part.type === 'text') {
                                     // 检查文本内容是否为空，避免渲染空白
                                     if (!part.content) {
-                                        console.log('MessageList: Skipping empty text part at index', idx);
                                         return null;
                                     }
                                     return <React.Fragment key={`text-${idx}`}>{part.content}</React.Fragment>;
@@ -236,38 +236,48 @@ export const MessageList: React.FC<MessageListProps> = ({
                         )}
 
                         {!shouldHideMessage && (
-                            <Bubble.List
-                                roles={getRoles}
-                                style={{ width: '100%' }}
-                                className="w-full"
-                                items={[{
-                                    key: msg.id,
-                                    loading: shouldShowLoading,
-                                    role: msg.status === 'local' ? 'local' : 'ai',
-                                    content: contentWithCustomComponent,
-                                    // 如果是文件消息，覆盖样式：无背景、无边框
-                                    ...(msg.isFileMessage && {
-                                        styles: {
-                                            content: {
-                                                backgroundColor: 'transparent',
-                                                border: 'none',
-                                                boxShadow: 'none',
-                                                padding: 0,
-                                            }
-                                        }
-                                    }),
-                                    ...(showActions && {
-                                        footer: (
-                                            <Actions
-                                                items={currentActionItems}
-                                                onClick={({ keyPath }) =>
-                                                    onActionClick(keyPath[0], msg.id)
+                            <>
+                                <Bubble.List
+                                    roles={getRoles}
+                                    style={{ width: '100%' }}
+                                    className="w-full"
+                                    items={[{
+                                        key: msg.id,
+                                        loading: shouldShowLoading,
+                                        role: msg.status === 'local' ? 'local' : 'ai',
+                                        content: contentWithCustomComponent,
+                                        // 如果是文件消息，覆盖样式：无背景、无边框
+                                        ...(msg.isFileMessage && {
+                                            styles: {
+                                                content: {
+                                                    backgroundColor: 'transparent',
+                                                    border: 'none',
+                                                    boxShadow: 'none',
+                                                    padding: 0,
                                                 }
-                                            />
-                                        ),
-                                    }),
-                                }]}
-                            />
+                                            }
+                                        }),
+                                        ...(showActions && {
+                                            footer: (
+                                                <Actions
+                                                    items={currentActionItems}
+                                                    onClick={({ keyPath }) =>
+                                                        onActionClick(keyPath[0], msg.id)
+                                                    }
+                                                />
+                                            ),
+                                        }),
+                                    }]}
+                                />
+                                {msg.streamError && msg.contentParts && msg.contentParts.length > 0 && (
+                                    <div
+                                        role="alert"
+                                        className="mx-4 mt-1 text-xs leading-5 text-[var(--color-fail)]"
+                                    >
+                                        {msg.streamError}
+                                    </div>
+                                )}
+                            </>
                         )}
                     </React.Fragment>
                 );

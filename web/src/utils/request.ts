@@ -19,6 +19,7 @@ import {
   getProxyTimeoutHeaderValue,
   PROXY_TIMEOUT_HEADER,
 } from '@/utils/proxyTimeout';
+import { resolveAuthToken } from '@/utils/authRecovery';
 
 const apiClient = axios.create({
   baseURL: '/api/proxy',
@@ -140,7 +141,7 @@ export const isSilentRequestError = (error: unknown) => {
 const useApiClient = () => {
   const authContext = useAuth();
   const { data: session } = useSession();
-  const token = (session?.user as any)?.token || authContext?.token || null;
+  const token = resolveAuthToken(authContext?.token, (session?.user as any)?.token);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {

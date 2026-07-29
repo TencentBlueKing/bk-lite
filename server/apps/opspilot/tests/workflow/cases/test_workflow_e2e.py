@@ -6,6 +6,7 @@ These tests exercise the full path:
 
 Real database, fake node executors (no LLM calls).
 """
+
 import pytest
 from django.utils import timezone
 

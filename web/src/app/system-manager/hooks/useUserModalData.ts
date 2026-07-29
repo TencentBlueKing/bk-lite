@@ -268,7 +268,7 @@ export function useUserModalData(): UseUserModalDataReturn {
           return;
         }
 
-        if (!isSuperuser && selectedRoles.length === 0) {
+        if (type === 'edit' && !isSuperuser && selectedRoles.length === 0) {
           message.error(t('common.inputRequired'));
           return;
         }
