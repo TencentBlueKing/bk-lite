@@ -48,12 +48,15 @@ def test_create_user_superuser_assigns_admin_role():
 
 
 def test_create_user_already_exists():
-    User.objects.create(username="dup", password="x", display_name="dup", email="d@x.com")
+    existing_user = User.objects.create(username="dup", password="x", display_name="dup", email="d@x.com")
+    original_password = existing_user.password
     out = StringIO()
     call_command("create_user", "dup", "pw", stdout=out)
+    existing_user.refresh_from_db()
     assert "已存在" in out.getvalue()
     # 不应创建第二个
     assert User.objects.filter(username="dup").count() == 1
+    assert existing_user.password == original_password
 
 
 # ---------------------------------------------------------------------------
