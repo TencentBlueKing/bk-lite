@@ -241,6 +241,7 @@ const CronTaskPage = () => {
       dataIndex: 'action',
       key: 'action',
       width: 200,
+      fixed: 'right',
       render: (_: unknown, record: ScheduledTask) => (
         <div className="flex items-center gap-3">
           <a

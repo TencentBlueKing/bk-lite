@@ -3,6 +3,7 @@
 import io
 import tarfile
 import zipfile
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
@@ -101,6 +102,18 @@ class TestValidateFile:
 def _patch_storage_save():
     storage = Playbook._meta.get_field("file").storage
     return patch.object(storage, "save", return_value="playbooks/pb.zip")
+
+
+class TestPlaybookReadSerializers:
+    def test_list_and_detail_include_team_ids_for_edit_form(self):
+        playbook = Playbook.objects.create(name="pb", version="v1.0.0", team=[1])
+        request = SimpleNamespace(user=SimpleNamespace(group_list=[{"id": 1, "name": "Default"}]))
+
+        list_data = pb.PlaybookListSerializer(playbook, context={"request": request}).data
+        detail_data = pb.PlaybookDetailSerializer(playbook).data
+
+        assert list_data["team"] == [1]
+        assert detail_data["team"] == [1]
 
 
 class TestCreateAndUpgrade:
