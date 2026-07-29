@@ -72,9 +72,19 @@ class TestAnsibleCallback:
     def test_missing_task_id(self):
         assert nats_api.ansible_task_callback({})["success"] is False
 
-    @pytest.mark.parametrize("task_id", [True, "1", -1, 0])
+    @pytest.mark.parametrize("task_id", [True, "invalid", -1, 0])
     def test_invalid_task_id(self, task_id):
         assert nats_api.ansible_task_callback({"task_id": task_id})["success"] is False
+
+    def test_numeric_string_task_id_keeps_legacy_executor_compatibility(self):
+        ex = _exec()
+        data = {"task_id": str(ex.id), "result": [{"host": "1.1.1.1", "status": "success", "stdout": "ok", "exit_code": 0}]}
+        with patch("apps.job_mgmt.services.completion_outbox_service._schedule_deliveries"):
+            result = nats_api.ansible_task_callback(data)
+
+        ex.refresh_from_db()
+        assert result["success"] is True
+        assert ex.status == ExecutionStatus.SUCCESS
 
     def test_not_found(self):
         assert nats_api.ansible_task_callback({"task_id": 999999})["success"] is False

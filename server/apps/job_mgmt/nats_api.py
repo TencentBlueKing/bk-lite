@@ -306,9 +306,12 @@ def ansible_task_callback(data: dict):
     if task_id is None:
         logger.warning("[ansible_task_callback] 缺少 task_id")
         return {"success": False, "message": "缺少 task_id"}
+    if isinstance(task_id, str):
+        normalized_task_id = task_id.strip()
+        task_id = int(normalized_task_id) if normalized_task_id.isdecimal() else task_id
     if isinstance(task_id, bool) or not isinstance(task_id, int) or task_id <= 0:
         logger.warning("[ansible_task_callback] task_id 非法: type=%s", type(task_id).__name__)
-        return {"success": False, "message": "task_id 必须为正整数"}
+        return {"success": False, "message": "task_id 必须为正整数或其字符串形式"}
 
     with transaction.atomic():
         execution = JobExecution.objects.select_for_update().filter(id=task_id).first()
