@@ -156,14 +156,6 @@ def execute_scheduled_task(scheduled_task_id: int):
     except ScheduledTask.DoesNotExist:
         logger.error(f"[execute_scheduled_task] 定时任务不存在: scheduled_task_id={scheduled_task_id}")
         return
-    if not st_snapshot.is_enabled:
-        if not ScheduledTaskService.toggle_periodic_task(scheduled_task_id, False):
-            logger.error(
-                f"[execute_scheduled_task] 已禁用任务的 Beat 调度同步仍失败，将在下次触发重试: "
-                f"scheduled_task_id={scheduled_task_id}"
-            )
-        logger.info(f"[execute_scheduled_task] 定时任务已禁用: scheduled_task_id={scheduled_task_id}")
-        return
 
     # ---- 阶段 2: 临界区(行锁 + 事务)----
     # 授权复核后一直持有任务与稳定资源行锁，直到创建 PENDING execution，
@@ -176,6 +168,11 @@ def execute_scheduled_task(scheduled_task_id: int):
         scheduled_task = ScheduledTask.objects.select_for_update().get(id=scheduled_task_id)
         # 二次确认 is_enabled:锁前检查后到拿到锁之间可能被关闭
         if not scheduled_task.is_enabled:
+            if not disable_scheduled_task_and_schedule(scheduled_task_id):
+                logger.error(
+                    f"[execute_scheduled_task] 已禁用任务的 Beat 调度同步仍失败，将在下次触发重试: "
+                    f"scheduled_task_id={scheduled_task_id}"
+                )
             logger.info(f"[execute_scheduled_task] 定时任务已禁用: scheduled_task_id={scheduled_task_id}")
             return
 

@@ -1,11 +1,13 @@
 """定时任务视图"""
 
-from django.db import transaction
+from django.db import DatabaseError, transaction
 from rest_framework import serializers, status
 from rest_framework.decorators import action
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 
 from apps.core.decorators.api_permission import HasPermission
+from apps.core.logger import job_logger as logger
 from apps.core.utils import viewset_utils
 from apps.core.utils.time_util import get_crontab_next_runs
 from apps.core.utils.user_group import normalize_user_group_ids
@@ -30,6 +32,7 @@ from apps.job_mgmt.services.scheduled_task_authz import (
 from apps.job_mgmt.services.scheduled_task_service import ScheduledTaskService
 from apps.job_mgmt.services.script_params_service import ScriptParamsService
 from apps.job_mgmt.tasks import distribute_files_task, execute_playbook_task, execute_script_task
+from apps.job_mgmt.utils.team_authz import is_team_authorized, normalize_authorized_team_ids
 from apps.system_mgmt.utils.operation_log_utils import log_operation
 
 
@@ -102,19 +105,35 @@ class ScheduledTaskViewSet(AuthViewSet):
         with transaction.atomic():
             instance = ScheduledTask.objects.select_for_update().get(pk=instance.pk)
             serializer.instance = instance
-            # 校验用户是否有目标组织的权限
-            team = serializer.validated_data.get("team", instance.team)
-            self._validate_org_field_permission(request, team)
             disable_only = serializer.validated_data.get("is_enabled") is False and set(serializer.validated_data) == {
                 "is_enabled"
             }
-            if not disable_only:
+            if disable_only:
+                # 存量任务可能含当前用户已不再拥有的旧团队；纯禁用必须始终可止损。
+                if not request.user.is_superuser and not is_team_authorized(
+                    instance.team,
+                    normalize_authorized_team_ids(getattr(request.user, "group_list", [])),
+                ):
+                    raise PermissionDenied("无权禁用其他团队的定时任务")
+                instance.is_enabled = False
+                instance.updated_by = request.user.username if request.user else ""
+                instance.save(update_fields=["is_enabled", "updated_by", "updated_at"])
+                try:
+                    with transaction.atomic():
+                        ScheduledTaskService.toggle_periodic_task_or_raise(instance.id, False)
+                except DatabaseError as exc:
+                    # 内层 savepoint 隔离 Beat 写失败，业务禁用仍可提交；残留触发会在 worker 中重试同步。
+                    logger.exception(f"纯禁用定时任务时同步 Beat 失败，将由残留触发重试: scheduled_task_id={instance.id}, error={exc}")
+            else:
+                # 校验用户是否有目标组织的权限
+                team = serializer.validated_data.get("team", instance.team)
+                self._validate_org_field_permission(request, team)
                 self._validate_resource_boundary(
                     serializer.validated_data,
                     instance=instance,
                     lock_resources=True,
                 )
-            instance = serializer.save()
+                instance = serializer.save()
         log_operation(request, "update", "job", f"编辑定时任务: {instance.name}")
         return Response(ScheduledTaskDetailSerializer(instance).data)
 
@@ -139,7 +158,13 @@ class ScheduledTaskViewSet(AuthViewSet):
             instance.updated_by = request.user.username if request.user else ""
             instance.save(update_fields=["is_enabled", "updated_by", "updated_at"])
 
-            schedule_synced = ScheduledTaskService.toggle_periodic_task(instance.id, instance.is_enabled)
+            try:
+                with transaction.atomic():
+                    schedule_synced = ScheduledTaskService.toggle_periodic_task_or_raise(instance.id, instance.is_enabled)
+            except DatabaseError:
+                if instance.is_enabled:
+                    raise serializers.ValidationError({"is_enabled": "同步定时调度状态失败，请稍后重试"})
+                schedule_synced = False
             if not schedule_synced and instance.is_enabled:
                 raise serializers.ValidationError({"is_enabled": "同步定时调度状态失败，请稍后重试"})
             schedule_sync_pending = not schedule_synced
@@ -180,8 +205,10 @@ class ScheduledTaskViewSet(AuthViewSet):
 
             # 脚本内容：优先从关联的 Script 对象获取，回退到定时任务上的临时输入字段
             script_content = instance.script_content or ""
+            script_type = instance.script_type or ""
             if instance.script:
                 script_content = instance.script.content or script_content
+                script_type = instance.script.script_type or script_type
 
             # 高危命令/路径预检：与 execute_scheduled_task 保持一致，命中则直接拒绝，不创建执行记录
             team = instance.team or []
@@ -211,8 +238,8 @@ class ScheduledTaskViewSet(AuthViewSet):
                 playbook=instance.playbook,
                 playbook_version=instance.playbook.version if instance.playbook else "",
                 params=params_str,
-                script_type=instance.script_type,
-                script_content=instance.script_content,
+                script_type=script_type,
+                script_content=script_content,
                 files=instance.files,
                 target_path=instance.target_path,
                 timeout=instance.timeout,

@@ -172,7 +172,7 @@ class TestScheduledTaskExecutionBoundary:
         script = Script.objects.create(name="foreign", content="echo foreign", script_type="shell", team=[2])
         task = _task(script=script, script_content="", team=[1], is_enabled=False)
 
-        with patch(VIEW_SERVICE + ".toggle_periodic_task") as toggle:
+        with patch(VIEW_SERVICE + ".toggle_periodic_task_or_raise") as toggle:
             response = su_client.post(f"{URL}{task.id}/toggle/", {"is_enabled": True}, format="json")
 
         assert response.status_code == 400
@@ -233,7 +233,7 @@ class TestScheduledTaskExecutionBoundary:
         before_count = JobExecution.objects.count()
 
         with patch("apps.job_mgmt.tasks._dispatch_execution_job") as dispatch, patch(
-            AUTHZ_SERVICE + ".toggle_periodic_task"
+            AUTHZ_SERVICE + ".toggle_periodic_task_or_raise"
         ) as toggle:
             tasks.execute_scheduled_task(task.id)
 
@@ -261,7 +261,7 @@ class TestScheduledTaskExecutionBoundary:
         with patch.object(QuerySet, "get", new=change_script_team_before_locked_get), patch(
             "apps.job_mgmt.tasks._dispatch_execution_job"
         ) as dispatch, patch(
-            AUTHZ_SERVICE + ".toggle_periodic_task",
+            AUTHZ_SERVICE + ".toggle_periodic_task_or_raise",
             return_value=True,
         ):
             tasks.execute_scheduled_task(task.id)
@@ -270,6 +270,34 @@ class TestScheduledTaskExecutionBoundary:
         assert task.is_enabled is False
         assert JobExecution.objects.count() == before_count
         dispatch.assert_not_called()
+
+    def test_celery_rechecks_disabled_snapshot_after_lock(self):
+        task = _task(is_enabled=False)
+        original_get = QuerySet.get
+        scheduled_task_get_count = 0
+
+        def enable_task_after_unlocked_get(queryset, *args, **kwargs):
+            nonlocal scheduled_task_get_count
+            result = original_get(queryset, *args, **kwargs)
+            if queryset.model is ScheduledTask:
+                scheduled_task_get_count += 1
+                if scheduled_task_get_count == 1:
+                    ScheduledTask.objects.filter(id=task.id).update(is_enabled=True)
+            return result
+
+        with patch.object(QuerySet, "get", new=enable_task_after_unlocked_get), patch(
+            "apps.job_mgmt.tasks._dispatch_execution_job",
+            return_value=True,
+        ), patch(
+            "apps.job_mgmt.tasks.ScheduledTaskService.toggle_periodic_task_or_raise",
+            return_value=True,
+        ) as toggle:
+            tasks.execute_scheduled_task(task.id)
+
+        task.refresh_from_db()
+        assert task.is_enabled is True
+        assert JobExecution.objects.filter(scheduled_task=task).count() == 1
+        toggle.assert_not_called()
 
     def test_celery_uses_locked_task_snapshot_after_concurrent_update(self):
         old_script = Script.objects.create(name="old", content="echo old", script_type="shell", team=[1])
@@ -297,12 +325,37 @@ class TestScheduledTaskExecutionBoundary:
         assert execution.script_content == new_script.content
         assert execution.team == [2]
 
+    def test_celery_uses_locked_script_snapshot_after_concurrent_update(self):
+        script = Script.objects.create(name="script", content="echo old", script_type="shell", team=[1])
+        task = _task(script=script, script_content="", team=[1], is_enabled=True)
+        original_get = QuerySet.get
+        script_get_count = 0
+
+        def update_script_after_unlocked_get(queryset, *args, **kwargs):
+            nonlocal script_get_count
+            result = original_get(queryset, *args, **kwargs)
+            if queryset.model is Script:
+                script_get_count += 1
+                if script_get_count == 1:
+                    Script.objects.filter(id=script.id).update(content="echo locked")
+            return result
+
+        with patch.object(QuerySet, "get", new=update_script_after_unlocked_get), patch(
+            "apps.job_mgmt.tasks._dispatch_execution_job",
+            return_value=True,
+        ):
+            tasks.execute_scheduled_task(task.id)
+
+        execution = JobExecution.objects.get(scheduled_task=task)
+        assert execution.script_id == script.id
+        assert execution.script_content == "echo locked"
+
     def test_celery_keeps_invalid_task_retryable_when_beat_sync_fails(self):
         script = Script.objects.create(name="foreign", content="echo foreign", script_type="shell", team=[2])
         task = _task(script=script, script_content="", team=[1], is_enabled=True)
 
         with patch(
-            AUTHZ_SERVICE + ".toggle_periodic_task",
+            AUTHZ_SERVICE + ".toggle_periodic_task_or_raise",
             return_value=False,
         ):
             tasks.execute_scheduled_task(task.id)
@@ -314,7 +367,7 @@ class TestScheduledTaskExecutionBoundary:
     def test_toggle_keeps_task_disabled_when_beat_sync_fails(self, su_client):
         task = _task(is_enabled=True)
 
-        with patch(VIEW_SERVICE + ".toggle_periodic_task", return_value=False):
+        with patch(VIEW_SERVICE + ".toggle_periodic_task_or_raise", return_value=False):
             response = su_client.post(f"{URL}{task.id}/toggle/", {"is_enabled": False}, format="json")
 
         assert response.status_code == 200
@@ -378,7 +431,7 @@ class TestScheduledTaskTeamBoundaryAudit:
         task = _task(**task_overrides)
         stdout = StringIO()
 
-        with patch(VIEW_SERVICE + ".toggle_periodic_task") as toggle:
+        with patch(VIEW_SERVICE + ".toggle_periodic_task_or_raise") as toggle:
             call_command("audit_scheduled_task_team_boundary", "--apply", stdout=stdout)
 
         task.refresh_from_db()
@@ -389,7 +442,7 @@ class TestScheduledTaskTeamBoundaryAudit:
     def test_apply_resynchronizes_beat_for_already_disabled_invalid_task(self):
         task = _task(team=[1, 2], is_enabled=False)
 
-        with patch(VIEW_SERVICE + ".toggle_periodic_task") as toggle:
+        with patch(VIEW_SERVICE + ".toggle_periodic_task_or_raise") as toggle:
             call_command("audit_scheduled_task_team_boundary", "--apply", stdout=StringIO())
 
         task.refresh_from_db()
@@ -399,7 +452,7 @@ class TestScheduledTaskTeamBoundaryAudit:
     def test_apply_rolls_back_when_beat_sync_fails(self):
         task = _task(team=[1, 2], is_enabled=True)
 
-        with patch(VIEW_SERVICE + ".toggle_periodic_task", return_value=False), pytest.raises(CommandError):
+        with patch(VIEW_SERVICE + ".toggle_periodic_task_or_raise", return_value=False), pytest.raises(CommandError):
             call_command("audit_scheduled_task_team_boundary", "--apply", stdout=StringIO())
 
         task.refresh_from_db()

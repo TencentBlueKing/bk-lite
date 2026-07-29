@@ -24,7 +24,8 @@ from django.utils import timezone
 
 from apps.job_mgmt import tasks
 from apps.job_mgmt.constants import ConcurrencyPolicy, JobType
-from apps.job_mgmt.models import JobExecution, ScheduledTask
+from apps.job_mgmt.models import JobExecution, ScheduledTask, Script
+from apps.job_mgmt.services import scheduled_task_authz
 
 # 多线程必须 transaction=True,否则 pytest-django 默认一个事务包测试,
 # 跨线程互相看不到对方写入,无法真实复现竞态
@@ -179,6 +180,59 @@ class TestAtomicContract:
         ):
             tasks.execute_scheduled_task(st.id)
         assert sfu_spy.called, "execute_scheduled_task 必须 select_for_update ScheduledTask 行"
+
+
+class TestResourceBoundaryConcurrency:
+    def test_script_update_waits_for_locked_execution_snapshot(self):
+        """Script 行锁必须覆盖边界校验到 JobExecution 快照落库，避免授权后读取漂移。"""
+
+        _skip_sqlite_true_concurrency()
+        script = Script.objects.create(name="locked", content="echo before", script_type="shell", team=[1])
+        st = _task(script=script, script_content="")
+        resource_locked = threading.Event()
+        update_started = threading.Event()
+        update_finished = threading.Event()
+        update_errors: list[Exception] = []
+        original_reload = scheduled_task_authz._reload_resource
+
+        def pause_after_resource_lock(resource, *, lock_resources):
+            locked_resource = original_reload(resource, lock_resources=lock_resources)
+            if lock_resources and isinstance(locked_resource, Script):
+                resource_locked.set()
+                assert update_started.wait(timeout=5), "并发更新线程未开始"
+            return locked_resource
+
+        def update_script():
+            try:
+                assert resource_locked.wait(timeout=5), "执行线程未取得 Script 行锁"
+                update_started.set()
+                Script.objects.filter(id=script.id).update(content="echo after")
+                update_finished.set()
+            except Exception as exc:  # noqa: BLE001 — 收集到主线程断言
+                update_errors.append(exc)
+            finally:
+                connection.close()
+
+        updater = threading.Thread(target=update_script)
+        updater.start()
+        with patch.object(scheduled_task_authz, "_reload_resource", new=pause_after_resource_lock), patch(
+            "apps.job_mgmt.tasks._dispatch_execution_job",
+            return_value=True,
+        ), patch.object(
+            tasks.DangerousChecker,
+            "check_command",
+            return_value=_safe_check_result(),
+        ):
+            tasks.execute_scheduled_task(st.id)
+
+        updater.join(timeout=15)
+        assert not updater.is_alive(), "Script 更新线程未在事务提交后结束，疑似死锁"
+        assert update_errors == []
+        assert update_finished.is_set()
+        execution = JobExecution.objects.get(scheduled_task=st)
+        assert execution.script_content == "echo before"
+        script.refresh_from_db()
+        assert script.content == "echo after"
 
 
 class TestUpdatedAtRefresh:

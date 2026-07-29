@@ -7,6 +7,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
+from django.db import DatabaseError
 
 from apps.job_mgmt.constants import JobType
 from apps.job_mgmt.models import ScheduledTask
@@ -164,10 +165,52 @@ class TestScheduledTaskCrud:
 class TestScheduledTaskActions:
     def test_toggle(self, su_client):
         task = _make_task(is_enabled=True)
-        with patch(VIEW_SVC + ".toggle_periodic_task"):
+        with patch(VIEW_SVC + ".toggle_periodic_task_or_raise"):
             resp = su_client.post(f"{URL}{task.id}/toggle/", {"is_enabled": False}, format="json")
         assert resp.status_code == 200
         assert resp.data["is_enabled"] is False
+
+    def test_toggle_disable_keeps_business_task_disabled_when_beat_db_fails(self, su_client):
+        task = _make_task(is_enabled=True)
+        with patch(VIEW_SVC + ".toggle_periodic_task_or_raise", side_effect=DatabaseError("beat unavailable")):
+            resp = su_client.post(f"{URL}{task.id}/toggle/", {"is_enabled": False}, format="json")
+
+        assert resp.status_code == 200
+        task.refresh_from_db()
+        assert task.is_enabled is False
+        assert "重试" in resp.data["message"]
+
+    def test_toggle_enable_rolls_back_when_beat_db_fails(self, su_client):
+        task = _make_task(is_enabled=False)
+        with patch(VIEW_SVC + ".toggle_periodic_task_or_raise", side_effect=DatabaseError("beat unavailable")):
+            resp = su_client.post(f"{URL}{task.id}/toggle/", {"is_enabled": True}, format="json")
+
+        assert resp.status_code == 400
+        task.refresh_from_db()
+        assert task.is_enabled is False
+
+    def test_patch_disable_keeps_business_task_disabled_when_beat_db_fails(self, su_client):
+        task = _make_task(is_enabled=True)
+        with patch(VIEW_SVC + ".toggle_periodic_task_or_raise", side_effect=DatabaseError("beat unavailable")):
+            resp = su_client.patch(f"{URL}{task.id}/", {"is_enabled": False}, format="json")
+
+        assert resp.status_code == 200
+        task.refresh_from_db()
+        assert task.is_enabled is False
+
+    def test_patch_disable_accepts_authorized_legacy_multi_team_task(self, api_client, authenticated_user):
+        task = _make_task(team=[1, 2], is_enabled=True)
+        authenticated_user.is_superuser = False
+        authenticated_user.group_list = [{"id": 1}]
+        authenticated_user.permission = {"job": {"cron_task-Edit"}}
+        api_client.cookies["current_team"] = "1"
+
+        with patch(VIEW_SVC + ".toggle_periodic_task_or_raise", return_value=True):
+            resp = api_client.patch(f"{URL}{task.id}/", {"is_enabled": False}, format="json")
+
+        assert resp.status_code == 200
+        task.refresh_from_db()
+        assert task.is_enabled is False
 
     def test_run_now_triggers_execution(self, su_client):
         task = _make_task()

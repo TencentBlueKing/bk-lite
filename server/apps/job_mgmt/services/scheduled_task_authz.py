@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from django.db import transaction
+from django.db import DatabaseError, transaction
 
 from apps.job_mgmt.constants import JobType, TargetSource
 from apps.job_mgmt.models import ScheduledTask, Target
@@ -46,7 +46,10 @@ def _resolve(attrs: dict, instance, key: str):
 def _reload_resource(resource, *, lock_resources: bool):
     if resource is None or not lock_resources:
         return resource
-    return resource.__class__.objects.select_for_update().get(pk=resource.pk)
+    try:
+        return resource.__class__.objects.select_for_update().get(pk=resource.pk)
+    except resource.__class__.DoesNotExist:
+        return None
 
 
 def _load_targets(target_ids: set[int], *, lock_resources: bool) -> list[Target]:
@@ -86,12 +89,16 @@ def validate_scheduled_task_resource_boundary(attrs: dict, *, instance=None, loc
 
     if job_type == JobType.SCRIPT:
         script = _reload_resource(_resolve(attrs, instance, "script"), lock_resources=lock_resources)
+        if instance is not None and lock_resources:
+            instance.script = script
         if script is None and not _resolve(attrs, instance, "script_content"):
             raise ScheduledTaskTeamBoundaryError("script", "定时任务缺少可执行脚本")
         if script is not None and not is_team_authorized(script.team, {task_team}):
             raise ScheduledTaskTeamBoundaryError("script", "关联脚本未授权给定时任务所属团队")
     elif job_type == JobType.PLAYBOOK:
         playbook = _reload_resource(_resolve(attrs, instance, "playbook"), lock_resources=lock_resources)
+        if instance is not None and lock_resources:
+            instance.playbook = playbook
         if playbook is None:
             raise ScheduledTaskTeamBoundaryError("playbook", "定时任务缺少关联 Playbook")
         if not is_team_authorized(playbook.team, {task_team}):
@@ -177,7 +184,12 @@ def disable_scheduled_task_and_schedule(task_id: int) -> bool:
             task = ScheduledTask.objects.select_for_update().get(id=task_id)
         except ScheduledTask.DoesNotExist:
             return True
-        if not ScheduledTaskService.toggle_periodic_task(task_id, False):
+        try:
+            with transaction.atomic():
+                schedule_synced = ScheduledTaskService.toggle_periodic_task_or_raise(task_id, False)
+        except DatabaseError:
+            return False
+        if not schedule_synced:
             return False
         if task.is_enabled:
             ScheduledTask.objects.filter(id=task_id, is_enabled=True).update(is_enabled=False)

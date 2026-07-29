@@ -54,12 +54,13 @@ class TestThinTaskWrappers:
 
 class TestExecuteScheduledTask:
     def test_missing_task_returns_silently(self):
+        before_count = JobExecution.objects.count()
         tasks.execute_scheduled_task(999999)  # 不抛
-        assert JobExecution.objects.count() == 0
+        assert JobExecution.objects.count() == before_count
 
     def test_disabled_task_skips(self):
         st = _task(is_enabled=False)
-        with patch("apps.job_mgmt.tasks.ScheduledTaskService.toggle_periodic_task", return_value=True) as toggle:
+        with patch("apps.job_mgmt.services.scheduled_task_authz.ScheduledTaskService.toggle_periodic_task_or_raise", return_value=True) as toggle:
             tasks.execute_scheduled_task(st.id)
         assert JobExecution.objects.filter(scheduled_task=st).count() == 0
         toggle.assert_called_once_with(st.id, False)
