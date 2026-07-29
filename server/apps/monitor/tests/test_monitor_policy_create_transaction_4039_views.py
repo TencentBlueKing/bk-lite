@@ -4,7 +4,7 @@ from uuid import uuid4
 
 import pytest
 from django.db import IntegrityError
-from django_celery_beat.models import PeriodicTask
+from django_celery_beat.models import CrontabSchedule, PeriodicTask
 
 from apps.monitor.models.monitor_object import MonitorObject
 from apps.monitor.models.monitor_policy import MonitorPolicy, PolicyOrganization
@@ -78,6 +78,7 @@ class TestMonitorPolicyCreateTransaction:
         )
         policy_name = f"policy-create-tx-{uuid4().hex[:8]}"
         before_task_ids = set(PeriodicTask.objects.values_list("id", flat=True))
+        before_schedule_ids = set(CrontabSchedule.objects.values_list("id", flat=True))
         failing_write = mocker.patch.object(
             MonitorPolicyViewSet,
             failing_method,
@@ -96,6 +97,7 @@ class TestMonitorPolicyCreateTransaction:
         failing_write.assert_called_once()
         assert not MonitorPolicy.objects.filter(name=policy_name).exists()
         assert set(PeriodicTask.objects.values_list("id", flat=True)) == before_task_ids
+        assert set(CrontabSchedule.objects.values_list("id", flat=True)) == before_schedule_ids
         assert not PolicyOrganization.objects.filter(
             policy__name=policy_name
         ).exists()
