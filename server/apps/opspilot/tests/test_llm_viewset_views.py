@@ -19,7 +19,6 @@ import json
 from types import SimpleNamespace
 
 import pytest
-from rest_framework.response import Response
 
 from apps.core.utils.ssrf_validator import SSRFError
 from apps.opspilot.serializers.llm_serializer import LLMSerializer
@@ -383,7 +382,7 @@ def test_skill_package_cleanup_storage_path_removes_directory(tmp_path, mocker):
     (storage_dir / "SKILL.md").write_text("# hi")
 
     mocker.patch(
-        "apps.opspilot.services.skill_package.importer.DEFAULT_SKILL_PACKAGE_ROOT",
+        "apps.opspilot.viewsets.llm_view.DEFAULT_SKILL_PACKAGE_ROOT",
         tmp_path,
     )
 
@@ -404,7 +403,7 @@ def test_skill_package_cleanup_storage_path_refuses_path_outside_root(tmp_path, 
     (outside_dir / "important.txt").write_text("data")
 
     mocker.patch(
-        "apps.opspilot.services.skill_package.importer.DEFAULT_SKILL_PACKAGE_ROOT",
+        "apps.opspilot.viewsets.llm_view.DEFAULT_SKILL_PACKAGE_ROOT",
         tmp_path / "totally_unrelated_root",
     )
 

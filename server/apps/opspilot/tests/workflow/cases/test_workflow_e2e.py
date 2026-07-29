@@ -6,6 +6,7 @@ These tests exercise the full path:
 
 Real database, fake node executors (no LLM calls).
 """
+
 import pytest
 from django.utils import timezone
 
@@ -429,7 +430,7 @@ def test_email_content_optimizer_requests_html_output(mocker):
     llm_client = mocker.Mock()
     llm_client.invoke.return_value = mocker.Mock(content="<p>优化后的邮件正文</p>")
     mocker.patch(
-        "apps.opspilot.utils.chat_flow_utils.nodes.action.action.LLMClientFactory.create_client",
+        "apps.opspilot.metis.llm.common.llm_client_factory.LLMClientFactory._create_openai_client",
         return_value=llm_client,
     )
 
@@ -448,11 +449,12 @@ def test_email_content_optimizer_requests_html_output(mocker):
 
 
 @pytest.mark.parametrize(("configured_timeout", "expected_timeout"), [("17", 17), (None, 300), ("", 300)])
-def test_email_content_optimizer_resolves_agent_execute_timeout(mocker, monkeypatch, configured_timeout, expected_timeout):
+def test_email_content_optimizer_uses_llm_invoke_timeout(mocker, monkeypatch, configured_timeout, expected_timeout):
+    monkeypatch.setenv("AGENT_EXECUTE_TIMEOUT", "41")
     if configured_timeout is None:
-        monkeypatch.delenv("AGENT_EXECUTE_TIMEOUT", raising=False)
+        monkeypatch.delenv("LLM_INVOKE_TIMEOUT", raising=False)
     else:
-        monkeypatch.setenv("AGENT_EXECUTE_TIMEOUT", configured_timeout)
+        monkeypatch.setenv("LLM_INVOKE_TIMEOUT", configured_timeout)
     llm_model = mocker.Mock()
     llm_model.openai_api_base = "https://example.com/v1"
     llm_model.openai_api_key = "key"
@@ -465,7 +467,7 @@ def test_email_content_optimizer_resolves_agent_execute_timeout(mocker, monkeypa
     llm_client = mocker.Mock()
     llm_client.invoke.return_value = mocker.Mock(content="<p>优化后的邮件正文</p>")
     create_client_mock = mocker.patch(
-        "apps.opspilot.utils.chat_flow_utils.nodes.action.action.LLMClientFactory.create_client",
+        "apps.opspilot.metis.llm.common.llm_client_factory.LLMClientFactory._create_openai_client",
         return_value=llm_client,
     )
 
@@ -476,7 +478,7 @@ def test_email_content_optimizer_resolves_agent_execute_timeout(mocker, monkeypa
         node_id="notify_node",
     )
 
-    assert create_client_mock.call_args.kwargs["timeout"] == expected_timeout
+    assert create_client_mock.call_args.args[2] == expected_timeout
 
 
 @pytest.mark.django_db(transaction=True)
