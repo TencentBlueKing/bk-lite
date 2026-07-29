@@ -92,7 +92,7 @@ def test_settings_require_operator_and_update_continuous_sync(api_client, operat
 @pytest.mark.django_db
 def test_enabling_continuous_sync_reconciles_and_audits_but_disabling_only_changes_config(api_client, operator, incident, channel, operator_mapping):
     group = create_active_group(incident, channel, continuous_sync_enabled=False,)
-    IncidentIMMember.objects.create(
+    member = IncidentIMMember.objects.create(
         group=group,
         username="operator",
         role=IncidentIMMember.Role.OPERATOR,
@@ -107,7 +107,12 @@ def test_enabling_continuous_sync_reconciles_and_audits_but_disabling_only_chang
 
     assert disabled.status_code == 200
     assert enabled.status_code == 200
-    assert AlertOutbox.objects.filter(kind="incident_im_group.add_members", payload={"group_id": str(group.id)},).count() == 1
+    event = AlertOutbox.objects.get(
+        kind="incident_im_group.add_members",
+        payload__group_id=str(group.id),
+    )
+    assert event.status == AlertOutbox.Status.PENDING
+    assert event.payload["member_pks"] == [member.pk]
     group.refresh_from_db()
     assert group.continuous_sync_enabled is True
     log = OperatorLog.objects.filter(target_type="incident", target_id=incident.incident_id, overview__contains="持续同步",).latest("id")
@@ -196,7 +201,7 @@ def test_retry_degraded_rechecks_external_group_without_recreating(api_client, o
 @pytest.mark.django_db
 def test_retry_active_partial_uses_manual_force_reconcile(api_client, operator, incident, channel, operator_mapping):
     group = create_active_group(incident, channel, status=IncidentIMGroup.Status.ACTIVE_PARTIAL,)
-    IncidentIMMember.objects.create(
+    member = IncidentIMMember.objects.create(
         group=group,
         username="operator",
         role=IncidentIMMember.Role.OPERATOR,
@@ -210,7 +215,12 @@ def test_retry_active_partial_uses_manual_force_reconcile(api_client, operator, 
     response = api_client.post(f"{group_url(incident)}retry/")
 
     assert response.status_code == 200
-    assert AlertOutbox.objects.filter(kind="incident_im_group.add_members", payload={"group_id": str(group.id)},).count() == 1
+    event = AlertOutbox.objects.get(
+        kind="incident_im_group.add_members",
+        payload__group_id=str(group.id),
+    )
+    assert event.status == AlertOutbox.Status.PENDING
+    assert event.payload["member_pks"] == [member.pk]
 
 
 @pytest.mark.django_db
@@ -255,7 +265,7 @@ def test_retry_degraded_existing_group_rechecks_then_force_reconciles(api_client
     from apps.system_mgmt.providers.runtime import CapabilityExecutionResult
 
     group = create_active_group(incident, channel, status=IncidentIMGroup.Status.DEGRADED,)
-    IncidentIMMember.objects.create(
+    member = IncidentIMMember.objects.create(
         group=group,
         username="operator",
         role=IncidentIMMember.Role.OPERATOR,
@@ -274,7 +284,12 @@ def test_retry_degraded_existing_group_rechecks_then_force_reconciles(api_client
 
     assert response.status_code == 200
     assert execute.call_args.kwargs["operation"] == "get_group"
-    assert AlertOutbox.objects.filter(kind="incident_im_group.add_members", payload={"group_id": str(group.id)},).count() == 1
+    event = AlertOutbox.objects.get(
+        kind="incident_im_group.add_members",
+        payload__group_id=str(group.id),
+    )
+    assert event.status == AlertOutbox.Status.PENDING
+    assert event.payload["member_pks"] == [member.pk]
 
 
 @pytest.mark.django_db

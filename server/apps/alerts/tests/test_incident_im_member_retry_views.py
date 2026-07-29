@@ -54,7 +54,12 @@ def test_retry_failed_member_only_enqueues_selected_current_incident_member(api_
     assert selected.sync_status == IncidentIMMember.SyncStatus.PENDING
     assert selected.last_error_code == ""
     assert untouched.sync_status == IncidentIMMember.SyncStatus.FAILED
-    assert AlertOutbox.objects.filter(kind="incident_im_group.add_members", payload={"group_id": str(group.id)}).count() == 1
+    event = AlertOutbox.objects.get(
+        kind="incident_im_group.add_members",
+        payload__group_id=str(group.id),
+    )
+    assert event.status == AlertOutbox.Status.PENDING
+    assert event.payload["member_pks"] == [selected.pk]
 
 
 @pytest.mark.parametrize(

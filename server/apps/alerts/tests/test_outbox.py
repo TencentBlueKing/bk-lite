@@ -6,7 +6,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from apps.alerts.models import AlertOutbox
-from apps.alerts.service.outbox import _deliver_payload, deliver_outbox_record, enqueue_outbox
+from apps.alerts.service.outbox import _deliver_payload, _schedule_delivery, deliver_outbox_record, enqueue_outbox
 from apps.alerts.tasks.tasks import dispatch_pending_alert_outbox
 
 
@@ -36,19 +36,18 @@ def test_broker_failure_keeps_pending_outbox(django_capture_on_commit_callbacks)
     assert record.attempts == 0
 
 
-@pytest.mark.django_db(transaction=True)
-def test_add_members_outbox_uses_dedicated_limited_task(django_capture_on_commit_callbacks):
+@pytest.mark.django_db
+def test_add_members_outbox_uses_dedicated_limited_task():
+    record = AlertOutbox.objects.create(
+        kind="incident_im_group.add_members",
+        payload={"group_id": "group-1", "member_pks": [1]},
+        idempotency_key="dedicated-add-key",
+    )
     with mock.patch("apps.alerts.tasks.deliver_incident_im_add_members_outbox.delay") as dedicated, mock.patch(
         "apps.alerts.tasks.deliver_alert_outbox.delay"
     ) as shared:
-        with django_capture_on_commit_callbacks(execute=True):
-            record, created = enqueue_outbox(
-                "incident_im_group.add_members",
-                {"group_id": "group-1", "member_pks": [1]},
-                "dedicated-add-key",
-            )
+        _schedule_delivery(record.pk)
 
-    assert created is True
     dedicated.assert_called_once_with(record.pk)
     shared.assert_not_called()
 
