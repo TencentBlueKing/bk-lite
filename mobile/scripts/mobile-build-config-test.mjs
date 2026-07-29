@@ -110,6 +110,17 @@ test('Next 配置只消费构建脚本解析后的环境', async () => {
   assert.doesNotMatch(nextConfig, /TAURI_DEV\b/);
   assert.doesNotMatch(nextConfig, /NEXT_PUBLIC_BASE_PATH\s*\|\|/);
   assert.doesNotMatch(basePathUtility, /NEXT_PUBLIC_BASE_PATH\s*\|\|/);
+  assert.match(nextConfig, /eslint:\s*\{\s*ignoreDuringBuilds:\s*true/s);
+});
+
+test('关闭 Next 重复 lint 时保留独立质量门', async () => {
+  const packageJson = JSON.parse(await readProjectFile('package.json'));
+  const h5Dockerfile = await readProjectFile('Dockerfile.h5');
+
+  assert.equal(packageJson.scripts.lint, 'eslint .');
+  assert.equal(packageJson.scripts['type-check'], 'tsc --noEmit');
+  assert.match(h5Dockerfile, /RUN pnpm run lint/);
+  assert.match(h5Dockerfile, /RUN pnpm run type-check/);
 });
 
 test('所有生产构建命令都显式声明目标', async () => {
@@ -133,6 +144,12 @@ test('Tauri 启动入口统一加载并校验本地环境', async () => {
   const tauriCli = await readProjectFile('scripts/tauri-cli.mjs');
   const androidBuild = await readProjectFile('scripts/android-build.mjs');
   const androidBuildShell = await readProjectFile('scripts/android-build.sh');
+  const androidBuildBat = await readProjectFile('scripts/android-build.bat');
+  const androidGeneratedPatch = await readProjectFile('scripts/patch-android-generated-sources.mjs');
+  const androidSecureCredentials = await readProjectFile('src-tauri/android/app/src/main/java/org/bklite/mobile/SecureCredentialsPlugin.kt');
+  const secureCredentialsRust = await readProjectFile('src-tauri/src/secure_credentials.rs');
+  const cargoToml = await readProjectFile('src-tauri/Cargo.toml');
+  const tauriLib = await readProjectFile('src-tauri/src/lib.rs');
 
   assert.equal(packageJson.scripts['dev:tauri'], 'node scripts/tauri-cli.mjs dev');
   assert.equal(packageJson.scripts['package:tauri'], 'node scripts/tauri-cli.mjs build');
@@ -141,6 +158,29 @@ test('Tauri 启动入口统一加载并校验本地环境', async () => {
   assert.match(androidBuild, /loadEnvConfig/);
   assert.match(androidBuild, /resolveBuildSettings\(\{ target: 'tauri'/);
   assert.doesNotMatch(androidBuildShell, /BK_MOBILE_TARGET/);
+  assert.match(androidBuildShell, /CUSTOM_JAVA_SRC="src-tauri\/android\/app\/src\/main\/java"/);
+  assert.match(androidBuildShell, /rm -rf "\$TARGET_JAVA_SRC\/io\/crates\/keyring"/);
+  assert.match(androidBuildShell, /cp -R "\$CUSTOM_JAVA_SRC"\/\. "\$TARGET_JAVA_SRC"\//);
+  assert.match(androidBuildShell, /patch-android-generated-sources\.mjs/);
+  assert.match(androidBuildBat, /CUSTOM_JAVA_SRC=src-tauri\\android\\app\\src\\main\\java/);
+  assert.match(androidBuildBat, /rmdir \/S \/Q "%TARGET_JAVA_SRC%\\io\\crates\\keyring"/);
+  assert.match(androidBuildBat, /xcopy \/Y \/E \/I "%CUSTOM_JAVA_SRC%\\\*" "%TARGET_JAVA_SRC%\\"/);
+  assert.match(androidBuildBat, /patch-android-generated-sources\.mjs/);
+  assert.match(androidGeneratedPatch, /@JvmStatic external fun create\(activity: WryActivity\)/);
+  assert.match(androidGeneratedPatch, /Rust\.create\(this\)/);
+  assert.match(androidSecureCredentials, /AndroidKeyStore/);
+  assert.match(androidSecureCredentials, /AES\/GCM\/NoPadding/);
+  assert.match(
+    androidSecureCredentials,
+    /cipher\.init\(Cipher\.ENCRYPT_MODE, getOrCreateSecretKey\(\)\)/,
+  );
+  assert.match(androidSecureCredentials, /val iv = cipher\.iv/);
+  assert.doesNotMatch(androidSecureCredentials, /SecureRandom/);
+  assert.match(androidSecureCredentials, /auth_token/);
+  assert.match(androidSecureCredentials, /refresh_token/);
+  assert.match(secureCredentialsRust, /register_android_plugin\("org\.bklite\.mobile", "SecureCredentialsPlugin"\)/);
+  assert.match(cargoToml, /\[target\.'cfg\(not\(target_os = "android"\)\)'\.dependencies\]/);
+  assert.match(tauriLib, /init_android_secure_credentials/);
 });
 
 test('Tauri 白名单在打包时固化到 Rust 二进制', async () => {
