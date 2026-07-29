@@ -57,12 +57,13 @@ const WinSphereTask: React.FC<WinSphereTaskProps> = ({
   const baseRef = useRef<BaseTaskRef>(null as any);
   const { copyTaskData, setCopyTaskData } = useAssetManageStore();
   const modelId = modelItem.model_id;
+  const credentialSchema = modelItem.credential_schema!;
   const initialValues = useMemo(
     () => ({
       ...BASE_INITIAL_VALUES,
-      credentialPool: [createWinSphereCredential()],
+      credentialPool: [createWinSphereCredential(credentialSchema)],
     }),
-    [],
+    [credentialSchema],
   );
 
   const {
@@ -96,7 +97,10 @@ const WinSphereTask: React.FC<WinSphereTaskProps> = ({
       return {
         ...baseData,
         instances: instance?.origin && [instance.origin],
-        credential: buildWinSphereCredential(credentialValue),
+        credential: buildWinSphereCredential(
+          credentialValue,
+          credentialSchema,
+        ),
       };
     },
   });
@@ -110,7 +114,11 @@ const WinSphereTask: React.FC<WinSphereTaskProps> = ({
     accessPointId: values.access_point?.[0]?.id,
     organization: values.team || [],
     credentialPool: [
-      restoreWinSphereCredential(values.credential, isCopy),
+      restoreWinSphereCredential(
+        values.credential,
+        isCopy,
+        credentialSchema,
+      ),
     ],
     instId: values.instances?.[0]?._id,
   });
@@ -133,16 +141,18 @@ const WinSphereTask: React.FC<WinSphereTaskProps> = ({
   const validateCredential = (_: unknown, value?: any[]) => {
     const credential =
       normalizeCredentialPool(value)[0]
-      || createWinSphereCredential();
-    const invalidField = validateWinSphereCredential(credential);
+      || createWinSphereCredential(credentialSchema);
+    const invalidField = validateWinSphereCredential(
+      credential,
+      credentialSchema,
+    );
     if (!invalidField) return Promise.resolve();
-    const fieldLabels = {
-      user: t('Collection.WinSphereTask.user', 'WinSphere账号'),
-      password: t('password', '密码'),
-      https_port: t('Collection.WinSphereTask.httpsPort', 'HTTPS端口'),
-      verify_tls: t('Collection.WinSphereTask.verifyTls', 'TLS证书校验'),
-    };
-    const label = fieldLabels[invalidField] || invalidField;
+    const field = credentialSchema.fields.find(
+      (candidate) => candidate.key === invalidField,
+    );
+    const label = field
+      ? t(field.label_key || field.key, field.label)
+      : invalidField;
     return Promise.reject(
       new Error(`${t('common.inputMsg')}${label}`),
     );
@@ -180,6 +190,7 @@ const WinSphereTask: React.FC<WinSphereTaskProps> = ({
             <CredentialPoolEditor
               credentialShape="winsphere"
               credentialHelp={resolveCredentialHelp(modelItem, t)}
+              credentialSchema={credentialSchema}
               editMode={Boolean(editId)}
               maxCount={1}
               allowAdd={false}

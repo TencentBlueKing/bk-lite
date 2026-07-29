@@ -1,6 +1,7 @@
 import pytest
 
 from enterprise.plugins.inputs.winsphere.winsphere_info import (
+    MODEL_IDS,
     WinSphereClient,
     WinSphereError,
     WinSphereInfo,
@@ -31,6 +32,26 @@ class FakeSession:
         return response
 
 
+@pytest.mark.parametrize(
+    "host",
+    [
+        "10.0.0.10:8443",
+        "https://10.0.0.10",
+        "ws.example.com/path",
+        "2001:db8::1",
+        "bad host",
+        "-bad.example.com",
+    ],
+)
+def test_client_rejects_management_address_that_is_not_a_host(host):
+    with pytest.raises(WinSphereError, match="management address"):
+        WinSphereClient(
+            host=host,
+            user="collector",
+            password="secret",
+        )
+
+
 def test_client_logs_in_once_and_collects_all_pool_pages():
     session = FakeSession(
         [
@@ -38,19 +59,22 @@ def test_client_logs_in_once_and_collects_all_pool_pages():
             FakeResponse(
                 200,
                 {
-                    "data": [{"id": "pool-1", "name": "生产池"}],
-                    "total": 2,
-                    "start": 0,
-                    "size": 1,
+                    "data": [
+                        {"id": "pool-1", "name": "生产池"},
+                        {"id": "pool-2", "name": "测试池"},
+                    ],
+                    "total": 3,
+                    "start": 1,
+                    "size": 2,
                 },
             ),
             FakeResponse(
                 200,
                 {
-                    "data": [{"id": "pool-2", "name": "灾备池"}],
-                    "total": 2,
-                    "start": 1,
-                    "size": 1,
+                    "data": [{"id": "pool-3", "name": "灾备池"}],
+                    "total": 3,
+                    "start": 2,
+                    "size": 2,
                 },
             ),
         ]
@@ -62,14 +86,15 @@ def test_client_logs_in_once_and_collects_all_pool_pages():
         https_port=8443,
         verify_tls=True,
         session=session,
-        page_size=1,
+        page_size=2,
     )
 
     pools = client.list_pools()
 
     assert pools == [
         {"id": "pool-1", "name": "生产池"},
-        {"id": "pool-2", "name": "灾备池"},
+        {"id": "pool-2", "name": "测试池"},
+        {"id": "pool-3", "name": "灾备池"},
     ]
     assert session.calls[0][:2] == (
         "POST",
@@ -78,8 +103,8 @@ def test_client_logs_in_once_and_collects_all_pool_pages():
     assert session.calls[0][2]["json"] == {"user": "collector", "pwd": "secret"}
     assert session.calls[1][3] == {"SESSION": "session-1"}
     assert session.calls[2][3] == {"SESSION": "session-1"}
-    assert session.calls[1][2]["params"]["start"] == 0
-    assert session.calls[2][2]["params"]["start"] == 1
+    assert session.calls[1][2]["params"]["start"] == 1
+    assert session.calls[2][2]["params"]["start"] == 2
 
 
 def test_client_reauthenticates_once_after_session_expires():
@@ -88,7 +113,7 @@ def test_client_reauthenticates_once_after_session_expires():
             FakeResponse(200, {"sessionId": "session-1"}),
             FakeResponse(401, {"message": "expired"}),
             FakeResponse(200, {"sessionId": "session-2"}),
-            FakeResponse(200, {"data": [], "total": 0, "start": 0, "size": 200}),
+            FakeResponse(200, {"data": [], "total": 0, "start": 1, "size": 200}),
         ]
     )
     client = WinSphereClient(
@@ -131,11 +156,11 @@ def test_standard_port_groups_are_paginated():
             FakeResponse(200, {"sessionId": "session-1"}),
             FakeResponse(
                 200,
-                {"data": [{"id": "pg-1"}], "total": 2, "start": 0, "size": 1},
+                {"data": [{"id": "pg-1"}], "total": 2, "start": 1, "size": 1},
             ),
             FakeResponse(
                 200,
-                {"data": [{"id": "pg-2"}], "total": 2, "start": 1, "size": 1},
+                {"data": [{"id": "pg-2"}], "total": 2, "start": 2, "size": 1},
             ),
         ]
     )
@@ -148,6 +173,214 @@ def test_standard_port_groups_are_paginated():
     )
 
     assert client.list_standard_port_groups() == [{"id": "pg-1"}, {"id": "pg-2"}]
+
+
+def test_paginated_endpoint_without_total_aborts_snapshot():
+    session = FakeSession(
+        [
+            FakeResponse(200, {"sessionId": "session-1"}),
+            FakeResponse(200, {"data": [{"id": "pool-1"}]}),
+        ]
+    )
+    client = WinSphereClient(
+        host="10.0.0.10",
+        user="collector",
+        password="secret",
+        session=session,
+    )
+
+    with pytest.raises(WinSphereError, match="pagination total"):
+        client.list_pools()
+
+
+def test_paginated_endpoint_rejects_total_drift_between_pages():
+    session = FakeSession(
+        [
+            FakeResponse(200, {"sessionId": "session-1"}),
+            FakeResponse(
+                200,
+                {
+                    "data": [{"id": "pool-1"}, {"id": "pool-2"}],
+                    "total": 3,
+                    "start": 1,
+                    "size": 2,
+                },
+            ),
+            FakeResponse(
+                200,
+                {
+                    "data": [{"id": "pool-3"}],
+                    "total": 4,
+                    "start": 2,
+                    "size": 2,
+                },
+            ),
+        ]
+    )
+    client = WinSphereClient(
+        host="10.0.0.10",
+        user="collector",
+        password="secret",
+        session=session,
+        page_size=2,
+    )
+
+    with pytest.raises(WinSphereError, match="pagination total changed"):
+        client.list_pools()
+
+
+def test_paginated_endpoint_rejects_wrong_response_page():
+    session = FakeSession(
+        [
+            FakeResponse(200, {"sessionId": "session-1"}),
+            FakeResponse(
+                200,
+                {
+                    "data": [{"id": "pool-1"}],
+                    "total": 1,
+                    "start": 2,
+                    "size": 1,
+                },
+            ),
+        ]
+    )
+    client = WinSphereClient(
+        host="10.0.0.10",
+        user="collector",
+        password="secret",
+        session=session,
+        page_size=1,
+    )
+
+    with pytest.raises(WinSphereError, match="pagination page mismatch"):
+        client.list_pools()
+
+
+def test_paginated_endpoint_rejects_duplicate_resource_ids_across_pages():
+    session = FakeSession(
+        [
+            FakeResponse(200, {"sessionId": "session-1"}),
+            FakeResponse(
+                200,
+                {
+                    "data": [{"id": "pool-1"}, {"id": "pool-2"}],
+                    "total": 4,
+                    "start": 1,
+                    "size": 2,
+                },
+            ),
+            FakeResponse(
+                200,
+                {
+                    "data": [{"id": "pool-2"}, {"id": "pool-3"}],
+                    "total": 4,
+                    "start": 2,
+                    "size": 2,
+                },
+            ),
+        ]
+    )
+    client = WinSphereClient(
+        host="10.0.0.10",
+        user="collector",
+        password="secret",
+        session=session,
+        page_size=2,
+    )
+
+    with pytest.raises(WinSphereError, match="duplicate resource id"):
+        client.list_pools()
+
+
+def test_standard_switch_pagination_allows_same_native_id_on_different_hosts():
+    session = FakeSession(
+        [
+            FakeResponse(200, {"sessionId": "session-1"}),
+            FakeResponse(
+                200,
+                {
+                    "data": [{"id": "switch-1", "hostId": "host-1"}],
+                    "total": 2,
+                    "start": 1,
+                },
+            ),
+            FakeResponse(
+                200,
+                {
+                    "data": [{"id": "switch-1", "hostId": "host-2"}],
+                    "total": 2,
+                    "start": 2,
+                },
+            ),
+        ]
+    )
+    client = WinSphereClient(
+        host="10.0.0.10",
+        user="collector",
+        password="secret",
+        session=session,
+        page_size=1,
+    )
+
+    switches = client.list_standard_switches()
+
+    assert [(item["hostId"], item["id"]) for item in switches] == [
+        ("host-1", "switch-1"),
+        ("host-2", "switch-1"),
+    ]
+
+
+def test_standard_port_group_pagination_uses_parent_scoped_identity():
+    session = FakeSession(
+        [
+            FakeResponse(200, {"sessionId": "session-1"}),
+            FakeResponse(
+                200,
+                {
+                    "data": [
+                        {
+                            "id": "pg-1",
+                            "hostId": "host-1",
+                            "vswitchId": "switch-1",
+                        }
+                    ],
+                    "total": 2,
+                    "start": 1,
+                },
+            ),
+            FakeResponse(
+                200,
+                {
+                    "data": [
+                        {
+                            "id": "pg-1",
+                            "hostId": "host-1",
+                            "vswitchId": "switch-2",
+                        }
+                    ],
+                    "total": 2,
+                    "start": 2,
+                },
+            ),
+        ]
+    )
+    client = WinSphereClient(
+        host="10.0.0.10",
+        user="collector",
+        password="secret",
+        session=session,
+        page_size=1,
+    )
+
+    port_groups = client.list_standard_port_groups()
+
+    assert [
+        (item["hostId"], item["vswitchId"], item["id"])
+        for item in port_groups
+    ] == [
+        ("host-1", "switch-1", "pg-1"),
+        ("host-1", "switch-2", "pg-1"),
+    ]
 
 
 def test_missing_optional_network_endpoint_is_an_empty_collection():
@@ -165,6 +398,7 @@ def test_missing_optional_network_endpoint_is_an_empty_collection():
     )
 
     assert client.list_distributed_switches() == []
+    assert client.optional_unavailable_paths == {"/api/compute/dvswitchs"}
 
 
 def test_required_endpoint_failure_aborts_snapshot_without_partial_result(monkeypatch):
@@ -338,7 +572,8 @@ def test_plugin_collects_eight_inventory_types_from_one_atomic_snapshot():
                             "vswitchId": "switch-1",
                             "hostId": "host-1",
                         }
-                    ]
+                    ],
+                    "total": 1,
                 },
             ),
             FakeResponse(
@@ -351,7 +586,16 @@ def test_plugin_collects_eight_inventory_types_from_one_atomic_snapshot():
             FakeResponse(200, {"data": [{"id": "host-1"}]}),
             FakeResponse(
                 200,
-                {"data": [{"id": "dpg-1", "name": "业务网络", "dvswitchId": "wrong-dvs"}]},
+                {
+                    "data": [
+                        {
+                            "id": "dpg-1",
+                            "name": "业务网络",
+                            "dvswitchId": "wrong-dvs",
+                        }
+                    ],
+                    "total": 1,
+                },
             ),
         ]
     )
@@ -369,6 +613,27 @@ def test_plugin_collects_eight_inventory_types_from_one_atomic_snapshot():
     snapshot = collector.list_all_resources()
 
     assert snapshot["success"] is True
+    assert snapshot["snapshot_status"] == "complete"
+    assert snapshot["snapshot_id"]
+    assert snapshot["snapshot_manifest"]["schema_version"] == 1
+    assert snapshot["snapshot_manifest"]["snapshot_id"] == snapshot["snapshot_id"]
+    assert snapshot["snapshot_manifest"]["expected_models"] == list(MODEL_IDS)
+    assert snapshot["snapshot_manifest"]["models"]["winsphere"] == {
+        "count": 1,
+        "identity_hash": (
+            "0af2cbcd443771b449fe33928fc5c83ce"
+            "6e61db6ba2eef032a5eef7f51be6fe7"
+        ),
+        "authoritative": True,
+    }
+    assert snapshot["snapshot_manifest"]["models"]["winsphere_vswitch"] == {
+        "count": 2,
+        "identity_hash": (
+            "74b082908c8afb3d074d4fb7122f248e"
+            "05f0aefcd7adcb6d95c1701c395f4399"
+        ),
+        "authoritative": True,
+    }
     assert set(snapshot["result"]) == {
         "winsphere",
         "winsphere_host_pool",
@@ -395,7 +660,7 @@ def test_plugin_collects_eight_inventory_types_from_one_atomic_snapshot():
         "standard:host-1:switch-1",
         "distributed:dvs-1",
     ]
-    assert switches[1]["host_ids"] == "host-1"
+    assert switches[1]["host_ids"] == ["host-1"]
 
     port_groups = snapshot["result"]["winsphere_port_group"]
     assert [item["resource_id"] for item in port_groups] == [

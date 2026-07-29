@@ -64,6 +64,27 @@ export interface CredentialPoolItem {
   [key: string]: any;
 }
 
+export interface CredentialFieldSchema {
+  key: string;
+  type: 'string' | 'password' | 'integer' | 'boolean';
+  required: boolean;
+  default?: string | number | boolean;
+  min?: number;
+  max?: number;
+  label: string;
+  label_key?: string;
+  help?: string;
+  help_key?: string;
+}
+
+export interface CredentialSchema {
+  schema_version: number;
+  allow_multiple: boolean;
+  allow_unknown_fields: boolean;
+  encrypted_fields: string[];
+  fields: CredentialFieldSchema[];
+}
+
 export interface CollectTask {
   id: number;
   name: string;
@@ -96,6 +117,7 @@ export interface TreeNode {
   credential_default_port?: number;
   credential_tip_key?: string;
   encrypted_fields?: string[];
+  credential_schema?: CredentialSchema;
   tag?: string[];
   desc?: string;
   children?: TreeNode[];
@@ -115,6 +137,7 @@ export interface ModelItem {
   credential_default_port?: number;
   credential_tip_key?: string;
   encrypted_fields?: string[];
+  credential_schema?: CredentialSchema;
   tag?: string[];
   desc?: string;
   tabItems?: TreeNode[];

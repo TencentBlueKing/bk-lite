@@ -40,7 +40,10 @@ import {
   MAX_CREDENTIAL_POOL_SIZE,
   PASSWORD_PLACEHOLDER,
 } from '@/app/cmdb/constants/professCollection';
-import { CredentialPoolItem } from '@/app/cmdb/types/autoDiscovery';
+import {
+  CredentialPoolItem,
+  CredentialSchema,
+} from '@/app/cmdb/types/autoDiscovery';
 import { useTranslation } from '@/utils/i18n';
 import type { CredentialHelpDefinition } from './credentialHelp';
 
@@ -80,6 +83,7 @@ export interface CredentialPoolEditorProps {
     projectId?: string;
   };
   defaultPort?: number | string;
+  credentialSchema?: CredentialSchema;
 }
 
 const makeClientId = () => `cred-local-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
@@ -94,6 +98,7 @@ const createEmptyCredential = (
   shape: CredentialShape,
   showDatabase?: boolean,
   defaultPort?: number | string,
+  credentialSchema?: CredentialSchema,
 ): CredentialPoolItem => {
   if (shape === 'snmp') {
     return {
@@ -147,10 +152,12 @@ const createEmptyCredential = (
   if (shape === 'winsphere') {
     return {
       _client_id: makeClientId(),
-      user: '',
-      password: '',
-      https_port: 443,
-      verify_tls: false,
+      ...Object.fromEntries(
+        (credentialSchema?.fields || []).map((field) => [
+          field.key,
+          field.default ?? (field.type === 'boolean' ? false : ''),
+        ]),
+      ),
     };
   }
 
@@ -416,17 +423,24 @@ function InputRow({
   children,
   required = true,
   htmlFor,
+  help,
 }: {
   label: string;
   children: React.ReactNode;
   required?: boolean;
   htmlFor?: string;
+  help?: string;
 }) {
   return (
     <div className={styles.credentialFieldRow}>
       <label className={styles.credentialFieldLabel} htmlFor={htmlFor}>
         {required && <span className={styles.credentialRequiredMark}>*</span>}
         <span>{label}</span>
+        {help && (
+          <Tooltip title={help}>
+            <QuestionCircleOutlined aria-label={help} />
+          </Tooltip>
+        )}
       </label>
       <div className={styles.credentialFieldControl}>{children}</div>
     </div>
@@ -444,6 +458,7 @@ function renderCredentialFields({
   onCloudRegionRefresh,
   onCredentialFieldChange,
   cloudCredentialLabels,
+  credentialSchema,
   t,
   updateItem,
 }: {
@@ -461,54 +476,75 @@ function renderCredentialFields({
     accessSecret: string;
     projectId?: string;
   };
+  credentialSchema?: CredentialSchema;
   t: (key: string, defaultMessage?: string) => string;
   updateItem: (index: number, patch: Partial<CredentialPoolItem>) => void;
 }) {
   if (shape === 'winsphere') {
     return (
       <div className={styles.credentialFieldGrid}>
-        <InputRow
-          label={t('Collection.WinSphereTask.user', 'WinSphere账号')}
-          required
-        >
-          <Input
-            value={item.user}
-            placeholder={t('common.inputTip', '请输入')}
-            onChange={(event) =>
-              updateItem(index, { user: event.target.value })
-            }
-          />
-        </InputRow>
-        <InputRow label={t('password', '密码')} required>
-          <SecretInput
-            value={item.password}
-            placeholder={t('common.inputTip', '请输入')}
-            editMode={editMode}
-            onChange={(password) => updateItem(index, { password })}
-          />
-        </InputRow>
-        <InputRow
-          label={t('Collection.WinSphereTask.httpsPort', 'HTTPS端口')}
-          required
-        >
-          <InputNumber
-            min={1}
-            max={65535}
-            className="w-32"
-            value={item.https_port}
-            onChange={(https_port) =>
-              updateItem(index, { https_port: https_port ?? undefined })
-            }
-          />
-        </InputRow>
-        <InputRow
-          label={t('Collection.WinSphereTask.verifyTls', 'TLS证书校验')}
-        >
-          <Switch
-            checked={Boolean(item.verify_tls)}
-            onChange={(verify_tls) => updateItem(index, { verify_tls })}
-          />
-        </InputRow>
+        {credentialSchema?.fields.map((field) => {
+          const inputId = `winsphere-credential-${index}-${field.key}`;
+          const label = t(field.label_key || field.key, field.label);
+          const help = field.help
+            ? t(field.help_key || `${field.key}.help`, field.help)
+            : undefined;
+          let control: React.ReactNode;
+          if (field.type === 'password') {
+            control = (
+              <SecretInput
+                id={inputId}
+                value={item[field.key]}
+                placeholder={t('common.inputTip', '请输入')}
+                editMode={editMode}
+                onChange={(value) => updateItem(index, { [field.key]: value })}
+              />
+            );
+          } else if (field.type === 'integer') {
+            control = (
+              <InputNumber
+                id={inputId}
+                min={field.min}
+                max={field.max}
+                className="w-32"
+                value={item[field.key]}
+                onChange={(value) =>
+                  updateItem(index, { [field.key]: value ?? undefined })
+                }
+              />
+            );
+          } else if (field.type === 'boolean') {
+            control = (
+              <Switch
+                id={inputId}
+                checked={Boolean(item[field.key])}
+                onChange={(value) => updateItem(index, { [field.key]: value })}
+              />
+            );
+          } else {
+            control = (
+              <Input
+                id={inputId}
+                value={item[field.key]}
+                placeholder={t('common.inputTip', '请输入')}
+                onChange={(event) =>
+                  updateItem(index, { [field.key]: event.target.value })
+                }
+              />
+            );
+          }
+          return (
+            <InputRow
+              key={field.key}
+              label={label}
+              required={field.required}
+              htmlFor={inputId}
+              help={help}
+            >
+              {control}
+            </InputRow>
+          );
+        })}
         {item.verify_tls === false && (
           <Alert
             type="warning"
@@ -1025,6 +1061,7 @@ export default function CredentialPoolEditor({
   credentialHelp,
   cloudCredentialLabels,
   defaultPort,
+  credentialSchema,
 }: CredentialPoolEditorProps): React.ReactElement {
   const { t } = useTranslation();
   const sensors = useSensors(useSensor(PointerSensor));
@@ -1069,6 +1106,7 @@ export default function CredentialPoolEditor({
       credentialShape,
       showDatabase,
       defaultPort,
+      credentialSchema,
     );
     const nextItems = [...normalizedValue, nextItem];
     emitChange(nextItems);
@@ -1285,6 +1323,7 @@ export default function CredentialPoolEditor({
                 onCloudRegionRefresh,
                 onCredentialFieldChange,
                 cloudCredentialLabels,
+                credentialSchema,
                 t,
                 updateItem,
               })}

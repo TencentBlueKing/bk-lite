@@ -1,6 +1,13 @@
 import os
 
 import openpyxl
+import pytest
+
+
+WINSPHERE_MODULE = pytest.importorskip(
+    "apps.cmdb_enterprise.collect.winsphere",
+    reason="WinSphere 仅随企业采集扩展交付",
+)
 
 
 XLSX = os.path.join(
@@ -71,7 +78,7 @@ def test_winsphere_models_and_relations_match_collection_contract():
     assert set(MODEL_IDS) <= set(models)
     assert all(models[model_id]["classification_id"] == "winsphere" for model_id in MODEL_IDS)
 
-    from apps.cmdb_enterprise.collect.winsphere import WinsphereCollectionPlugin
+    WinsphereCollectionPlugin = WINSPHERE_MODULE.WinsphereCollectionPlugin
 
     for model_id in MODEL_IDS:
         sheet_name = f"attr-{model_id}"
@@ -81,6 +88,8 @@ def test_winsphere_models_and_relations_match_collection_contract():
             for row in _records(workbook[sheet_name])
         }
         assert attrs["inst_name"]["is_only"] is True
+        if model_id == "winsphere":
+            assert attrs["resource_id"]["is_only"] is True
         assert attrs["organization"]["is_required"] is True
         assert {"auto_collect", "collect_time", "collect_task"} <= set(attrs)
         mapping = WinsphereCollectionPlugin.field_mappings[model_id]

@@ -98,8 +98,22 @@ class Management:
                 else:
                     heartbeat_list.append(info)
 
+        authoritative_snapshot = getattr(
+            self.collect_plugin,
+            "is_authoritative_snapshot",
+            None,
+        )
+        if callable(authoritative_snapshot):
+            deletion_input_complete = bool(
+                authoritative_snapshot(self.model_id)
+            )
+        else:
+            deletion_input_complete = bool(new_map)
+
         should_delete = (
-            self.data_cleanup_strategy == DataCleanupStrategy.IMMEDIATELY and getattr(self.collect_plugin, "_MODEL_ID", None) is not None and new_map
+            self.data_cleanup_strategy == DataCleanupStrategy.IMMEDIATELY
+            and getattr(self.collect_plugin, "_MODEL_ID", None) is not None
+            and deletion_input_complete
         )
 
         if should_delete:

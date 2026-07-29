@@ -1,11 +1,20 @@
+import pytest
+
 from apps.cmdb.tests.e2e import pipeline
-from apps.cmdb_enterprise.collect.winsphere import WinsphereCollectionPlugin
+
+
+WinsphereCollectionPlugin = pytest.importorskip(
+    "apps.cmdb_enterprise.collect.winsphere",
+    reason="WinSphere 仅随企业采集扩展交付",
+).WinsphereCollectionPlugin
 
 
 def test_winsphere_snapshot_flows_through_all_inventory_models(monkeypatch):
     platform_id = "https://10.0.0.10:443"
     stargazer_payload = {
         "success": True,
+        "snapshot_id": "snapshot-e2e",
+        "snapshot_status": "complete",
         "result": {
             "winsphere": [
                 {
