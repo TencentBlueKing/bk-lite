@@ -63,10 +63,10 @@ class TestCheckFirstLogin:
 
 
 class TestGetClientIp:
-    def test_uses_first_ip_from_x_forwarded_for(self):
+    def test_ignores_untrusted_x_forwarded_for(self):
         req = MagicMock()
         req.META = {"HTTP_X_FORWARDED_FOR": "1.1.1.1, 2.2.2.2", "REMOTE_ADDR": "9.9.9.9"}
-        assert index_view._get_client_ip(req) == "1.1.1.1"
+        assert index_view._get_client_ip(req) == "9.9.9.9"
 
     def test_falls_back_to_remote_addr(self):
         req = MagicMock()
