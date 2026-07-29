@@ -1,6 +1,6 @@
 """定时任务视图"""
 
-from rest_framework import status
+from rest_framework import serializers, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
@@ -22,6 +22,10 @@ from apps.job_mgmt.serializers.scheduled_task import (
 )
 from apps.job_mgmt.services.celery_dispatch import dispatch_celery_task
 from apps.job_mgmt.services.dangerous_checker import DangerousChecker
+from apps.job_mgmt.services.scheduled_task_authz import (
+    ScheduledTaskTeamBoundaryError,
+    validate_scheduled_task_resource_boundary,
+)
 from apps.job_mgmt.services.scheduled_task_service import ScheduledTaskService
 from apps.job_mgmt.services.script_params_service import ScriptParamsService
 from apps.job_mgmt.tasks import distribute_files_task, execute_playbook_task, execute_script_task
@@ -37,6 +41,13 @@ class ScheduledTaskViewSet(AuthViewSet):
     search_fields = ["name", "description"]
     ORGANIZATION_FIELD = "team"
     permission_key = "job"
+
+    @staticmethod
+    def _validate_resource_boundary(attrs, *, instance=None):
+        try:
+            validate_scheduled_task_resource_boundary(attrs, instance=instance)
+        except ScheduledTaskTeamBoundaryError as exc:
+            raise serializers.ValidationError({exc.field: exc.message}) from exc
 
     def get_serializer_class(self):
         if self.action == "retrieve":
@@ -67,6 +78,7 @@ class ScheduledTaskViewSet(AuthViewSet):
         # 校验用户是否有目标组织的权限
         team = serializer.validated_data.get("team", [])
         self._validate_org_field_permission(request, team)
+        self._validate_resource_boundary(serializer.validated_data)
 
         instance = serializer.save()
         log_operation(request, "create", "job", f"新增定时任务: {instance.name}")
@@ -85,6 +97,9 @@ class ScheduledTaskViewSet(AuthViewSet):
         # 校验用户是否有目标组织的权限
         team = serializer.validated_data.get("team", instance.team)
         self._validate_org_field_permission(request, team)
+        disable_only = serializer.validated_data.get("is_enabled") is False and set(serializer.validated_data) == {"is_enabled"}
+        if not disable_only:
+            self._validate_resource_boundary(serializer.validated_data, instance=instance)
 
         instance = serializer.save()
         log_operation(request, "update", "job", f"编辑定时任务: {instance.name}")
@@ -100,7 +115,11 @@ class ScheduledTaskViewSet(AuthViewSet):
         serializer = ScheduledTaskToggleSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        instance.is_enabled = serializer.validated_data["is_enabled"]
+        is_enabled = serializer.validated_data["is_enabled"]
+        if is_enabled:
+            self._validate_resource_boundary({}, instance=instance)
+
+        instance.is_enabled = is_enabled
         instance.updated_by = request.user.username if request.user else ""
         instance.save(update_fields=["is_enabled", "updated_by", "updated_at"])
 
@@ -124,6 +143,7 @@ class ScheduledTaskViewSet(AuthViewSet):
         创建一个 JobExecution 并立即执行
         """
         instance = self.get_object()
+        self._validate_resource_boundary({}, instance=instance)
 
         # 获取执行目标
         target_list = instance.target_list or []
