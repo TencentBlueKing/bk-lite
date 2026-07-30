@@ -467,30 +467,51 @@ const AssetManage = () => {
     markDirty();
   };
 
+  const compactTableBodyCell = () => ({
+    style: {
+      height: 48,
+      paddingBlock: 8,
+      borderBottomColor: 'var(--color-border-1)',
+      color: 'var(--color-text-2)',
+      fontSize: 14,
+    },
+  });
+
   const manageModelColumns = [
     {
-      title: t('Model.modelName') || '模型名称',
+      title: (
+        <span className="text-[13px] font-[500] leading-[20px] text-[var(--color-text-2)]">
+          {t('Model.modelName') || '模型名称'}
+        </span>
+      ),
       dataIndex: 'model_name',
       key: 'model_name',
       ellipsis: true,
+      onCell: compactTableBodyCell,
       render: (_: unknown, record: DraftClassification['models'][number]) => (
         <div
           className="flex items-center"
           style={{ opacity: record.is_visible ? 1 : 0.5 }}
         >
-          <div style={{ width: 28 }} className="flex-shrink-0">
+          <div
+            className="flex flex-shrink-0 items-center justify-center rounded-[6px]"
+            style={{ width: 30, height: 30, background: 'var(--color-fill-1)' }}
+          >
             <Image
               src={getIconUrl(record as any)}
-              className="block w-auto h-7"
+              className="block object-contain"
+              style={{ width: 24, height: 24 }}
               alt={t('picture')}
-              width={28}
-              height={28}
+              width={24}
+              height={24}
               onError={handleModelIconError}
             />
           </div>
-          <span className="text-[14px] font-[600] pl-[10px] truncate">{record.model_name}</span>
+          <span className="ml-[10px] min-w-0 truncate text-[14px] font-[500] leading-[22px] text-[var(--color-text-2)]">
+            {record.model_name}
+          </span>
           {record.is_custom_reporting ? (
-            <Tag color="purple" className="ml-[8px] flex-shrink-0">
+            <Tag color="purple" className="ml-[8px] flex-shrink-0 rounded-[4px] px-[6px] text-[12px] font-[400] leading-[20px]">
               {t('CustomReporting.modeQuick')}
             </Tag>
           ) : null}
@@ -498,31 +519,53 @@ const AssetManage = () => {
       ),
     },
     {
-      title: t('Model.modelId') || '模型ID',
+      title: (
+        <span className="text-[13px] font-[500] leading-[20px] text-[var(--color-text-2)]">
+          {t('Model.modelId') || '模型ID'}
+        </span>
+      ),
       dataIndex: 'model_id',
       key: 'model_id',
       width: 220,
       ellipsis: true,
+      onCell: compactTableBodyCell,
       render: (_: unknown, record: DraftClassification['models'][number]) => (
-        <span style={{ opacity: record.is_visible ? 1 : 0.5 }} className="text-[13px] text-[var(--color-text-2)]">
+        <span
+          style={{ opacity: record.is_visible ? 1 : 0.5 }}
+          className="text-[13px] font-[400] leading-[20px] text-[var(--color-text-2)] [font-variant-numeric:tabular-nums]"
+        >
           {record.model_id}
         </span>
       ),
     },
     {
-      title: t('Model.source') || '来源',
+      title: (
+        <span className="text-[13px] font-[500] leading-[20px] text-[var(--color-text-2)]">
+          {t('Model.source') || '来源'}
+        </span>
+      ),
       key: 'is_pre',
       width: 120,
+      onCell: compactTableBodyCell,
       render: (_: unknown, record: DraftClassification['models'][number]) => (
-        <Tag color={record.is_pre ? 'blue' : 'default'} style={{ opacity: record.is_visible ? 1 : 0.5 }}>
+        <Tag
+          color={record.is_pre ? 'blue' : 'default'}
+          className="m-0 rounded-[4px] px-[6px] text-[12px] font-[400] leading-[20px]"
+          style={{ opacity: record.is_visible ? 1 : 0.5 }}
+        >
           {record.is_pre ? (t('Model.builtin') || '内置') : (t('Model.custom') || '自定义')}
         </Tag>
       ),
     },
     {
-      title: t('Model.visible') || '可见',
+      title: (
+        <span className="text-[13px] font-[500] leading-[20px] text-[var(--color-text-2)]">
+          {t('Model.visible') || '可见'}
+        </span>
+      ),
       key: 'is_visible',
       width: 90,
+      onCell: compactTableBodyCell,
       render: (_: unknown, __: DraftClassification['models'][number], index: number) => (
         <Switch
           size="small"
@@ -617,7 +660,10 @@ const AssetManage = () => {
         </div>
         <Spin spinning={loading}>
           {manageMode ? (
-            <div className={assetManageStyle.managementLayout}>
+            <div
+              className={assetManageStyle.managementLayout}
+              style={{ marginTop: 6 }}
+            >
               {/* 左栏：分类（可拖拽 + 选中 + 可见性），独立滚动 */}
               <div className={assetManageStyle.managementSidebar}>
                 <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleGroupDragEnd}>
@@ -627,25 +673,38 @@ const AssetManage = () => {
                         <SortableItem key={group.classification_id} id={group.classification_id} index={gi}>
                           <div
                             onClick={() => setSelectedClassificationId(group.classification_id)}
-                            className="flex items-center justify-between px-[8px] py-[6px] rounded cursor-pointer"
+                            className={`${assetManageStyle.managementGroupRow} text-[13px] font-[400] leading-[20px]`}
                             style={{
-                              width: '100%',
+                              minHeight: 36,
+                              padding: '5px 8px',
                               opacity: group.is_visible ? 1 : 0.5,
-                              background:
-                                group.classification_id === selectedClassificationId
-                                  ? 'var(--color-fill-1)'
-                                  : 'transparent',
+                              ...(group.classification_id === selectedClassificationId
+                                ? {
+                                  borderColor: 'transparent',
+                                  background: 'var(--color-bg-active)',
+                                  color: 'var(--color-primary)',
+                                }
+                                : {}),
                             }}
                           >
-                            <span className="flex items-center min-w-0">
-                              <HolderOutlined className="mr-[6px] cursor-move flex-shrink-0" />
-                              <span className="truncate text-[14px]">
-                                {group.classification_name}（{group.models.length}）
+                            <span className="flex min-w-0 flex-1 items-center">
+                              <HolderOutlined className="mr-[8px] flex-shrink-0 cursor-move text-[12px] text-current opacity-50" />
+                              <span
+                                className={`min-w-0 truncate text-current ${
+                                  group.classification_id === selectedClassificationId
+                                    ? 'font-[500]'
+                                    : 'font-[400]'
+                                }`}
+                              >
+                                {group.classification_name}
+                              </span>
+                              <span className="flex-shrink-0 text-[12px] leading-[18px] text-current opacity-70 [font-variant-numeric:tabular-nums]">
+                                （{group.models.length}）
                               </span>
                             </span>
                             <Tooltip title={group.is_visible ? (t('common.hide') || '隐藏') : (t('common.show') || '显示')}>
                               <span
-                                className="flex-shrink-0 ml-[6px]"
+                                className="ml-[4px] inline-flex h-[24px] w-[24px] flex-shrink-0 items-center justify-center text-[13px] text-[var(--color-text-3)]"
                                 onClick={(e) => { e.stopPropagation(); toggleGroupVisible(gi); }}
                               >
                                 {group.is_visible ? <EyeOutlined /> : <EyeInvisibleOutlined />}
@@ -659,7 +718,7 @@ const AssetManage = () => {
                 </DndContext>
               </div>
               {/* 右栏：选中分类下的模型，表格自身独立滚动 */}
-              <div className={assetManageStyle.managementTablePane}>
+              <div className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto rounded-[8px] border border-solid border-[var(--color-border-1)] bg-[var(--color-bg)] text-[var(--color-text-3)]">
                 {activeDraftGroup ? (
                   <CustomTable
                     size="small"
