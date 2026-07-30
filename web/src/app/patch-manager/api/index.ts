@@ -168,21 +168,31 @@ const usePatchManagerApi = () => {
     return post(`/node_mgmt/api/node/search/${suffix}`, body, config);
   };
 
-  // 目标机连通性探测(TCP 端口可达);同步执行,超时放宽到 20s
+  interface TargetConnectivityResult {
+    target_id?: number;
+    connectivity_status: string;
+    port: number | null;
+    detail: string;
+    transport: 'node_executor' | 'nats_ssh' | 'ansible_winrm' | 'unknown';
+    stage: string;
+    reason_code: string;
+  }
+
+  // 沿补丁真实执行链路同步探测；Windows Ansible win_ping 最长约 30s。
   const checkPatchTargetConnectivity = async (
     id: number,
     data?: FormData | Partial<PatchTarget>,
-  ): Promise<{ target_id: number; connectivity_status: string; port: number; detail: string }> =>
+  ): Promise<TargetConnectivityResult> =>
     post(`${BASE}/patch_target/${id}/check_connectivity/`, data, {
-      timeout: 20000,
+      timeout: 45000,
       ...(data instanceof FormData ? { headers: { 'Content-Type': undefined } } : {}),
     });
 
   const testPatchTargetConnectivity = async (
     data: FormData | Partial<PatchTarget>,
-  ): Promise<{ connectivity_status: string; port: number; detail: string }> =>
+  ): Promise<TargetConnectivityResult> =>
     post(`${BASE}/patch_target/test_connectivity/`, data, {
-      timeout: 20000,
+      timeout: 45000,
       ...(data instanceof FormData ? { headers: { 'Content-Type': undefined } } : {}),
     });
 

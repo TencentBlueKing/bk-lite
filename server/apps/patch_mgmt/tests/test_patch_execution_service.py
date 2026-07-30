@@ -36,6 +36,7 @@ from apps.patch_mgmt.models import (
     WindowsPatchDetail,
 )
 from apps.patch_mgmt.services import patch_execution_service as pes
+from apps.patch_mgmt.services import target_execution_route as ter
 
 
 APT_SAMPLE = """
@@ -622,16 +623,12 @@ def test_run_reboot_manual_windows_target(monkeypatch):
     task = _make_task(GovernanceTaskType.REBOOT, [target.id])
     calls = []
 
-    class FakeNodeMgmt:
-        def node_list(self, query):
-            return {'nodes': [{'id': 'ansible-node-1'}]}
-
     class FakeAnsibleExecutor:
         def adhoc(self, **kwargs):
             calls.append(kwargs)
             return {'exit_code': 0}
 
-    monkeypatch.setattr(pes, 'NodeMgmt', FakeNodeMgmt)
+    monkeypatch.setattr(ter.AnsibleExecutorResolver, 'resolve', lambda cloud_region_id: 'ansible-node-1')
     monkeypatch.setattr(pes, 'AnsibleExecutor', lambda instance_id: FakeAnsibleExecutor())
     pes.run_governance_task(task)
 
@@ -931,10 +928,6 @@ def test_run_install_windows_success_creates_reboot_task(monkeypatch):
     task.team = [1]
     task.save(update_fields=['auto_reboot', 'team'])
 
-    class FakeNodeMgmt:
-        def node_list(self, query):  # noqa: ARG002
-            return {'nodes': [{'id': 'ansible-node-1'}]}
-
     class FakeAnsibleExecutor:
         def adhoc(self, **kwargs):
             return {'exit_code': 0, 'stdout': 'InstallResult=2 RebootRequired=True'}
@@ -944,7 +937,7 @@ def test_run_install_windows_success_creates_reboot_task(monkeypatch):
         def delay(task_id):  # noqa: ARG004
             pass
 
-    monkeypatch.setattr(pes, 'NodeMgmt', FakeNodeMgmt)
+    monkeypatch.setattr(ter.AnsibleExecutorResolver, 'resolve', lambda cloud_region_id: 'ansible-node-1')
     monkeypatch.setattr(pes, 'AnsibleExecutor', lambda instance_id: FakeAnsibleExecutor())
     monkeypatch.setattr('apps.patch_mgmt.tasks.execute_governance_task', FakeCeleryTask)
 
@@ -969,10 +962,6 @@ def test_run_install_windows_without_reboot_creates_verify_only(monkeypatch):
     task.save(update_fields=['auto_reboot'])
     delayed_ids = []
 
-    class FakeNodeMgmt:
-        def node_list(self, query):  # noqa: ARG002
-            return {'nodes': [{'id': 'ansible-node-1'}]}
-
     class FakeAnsibleExecutor:
         def adhoc(self, **kwargs):  # noqa: ARG002
             return {'exit_code': 0, 'stdout': 'InstallResult=2 RebootRequired=False'}
@@ -982,7 +971,7 @@ def test_run_install_windows_without_reboot_creates_verify_only(monkeypatch):
         def delay(task_id):
             delayed_ids.append(task_id)
 
-    monkeypatch.setattr(pes, 'NodeMgmt', FakeNodeMgmt)
+    monkeypatch.setattr(ter.AnsibleExecutorResolver, 'resolve', lambda cloud_region_id: 'ansible-node-1')
     monkeypatch.setattr(pes, 'AnsibleExecutor', lambda instance_id: FakeAnsibleExecutor())
     monkeypatch.setattr('apps.patch_mgmt.tasks.execute_governance_task', FakeCeleryTask)
 
@@ -1009,15 +998,11 @@ def test_run_install_windows_unknown_reboot_stays_pending_without_auto_reboot(mo
     task.auto_reboot = True
     task.save(update_fields=['auto_reboot'])
 
-    class FakeNodeMgmt:
-        def node_list(self, query):  # noqa: ARG002
-            return {'nodes': [{'id': 'ansible-node-1'}]}
-
     class FakeAnsibleExecutor:
         def adhoc(self, **kwargs):  # noqa: ARG002
             return {'exit_code': 0, 'stdout': 'InstallResult=2'}
 
-    monkeypatch.setattr(pes, 'NodeMgmt', FakeNodeMgmt)
+    monkeypatch.setattr(ter.AnsibleExecutorResolver, 'resolve', lambda cloud_region_id: 'ansible-node-1')
     monkeypatch.setattr(pes, 'AnsibleExecutor', lambda instance_id: FakeAnsibleExecutor())
 
     pes.run_governance_task(task)
@@ -1106,15 +1091,11 @@ def test_run_install_windows_failure_marks_failed_can_retry(monkeypatch):
     task.team = [1]
     task.save(update_fields=['team'])
 
-    class FakeNodeMgmt:
-        def node_list(self, query):  # noqa: ARG002
-            return {'nodes': [{'id': 'ansible-node-1'}]}
-
     class FakeAnsibleExecutor:
         def adhoc(self, **kwargs):
             return {'exit_code': 0, 'stdout': 'InstallResult=4 RebootRequired=False'}
 
-    monkeypatch.setattr(pes, 'NodeMgmt', FakeNodeMgmt)
+    monkeypatch.setattr(ter.AnsibleExecutorResolver, 'resolve', lambda cloud_region_id: 'ansible-node-1')
     monkeypatch.setattr(pes, 'AnsibleExecutor', lambda instance_id: FakeAnsibleExecutor())
 
     pes.run_governance_task(task)
@@ -1138,15 +1119,11 @@ def test_run_install_windows_no_matching_marks_failed_no_retry(monkeypatch):
     task.team = [1]
     task.save(update_fields=['team'])
 
-    class FakeNodeMgmt:
-        def node_list(self, query):  # noqa: ARG002
-            return {'nodes': [{'id': 'ansible-node-1'}]}
-
     class FakeAnsibleExecutor:
         def adhoc(self, **kwargs):
             return {'exit_code': 0, 'stdout': 'No matching updates found'}
 
-    monkeypatch.setattr(pes, 'NodeMgmt', FakeNodeMgmt)
+    monkeypatch.setattr(ter.AnsibleExecutorResolver, 'resolve', lambda cloud_region_id: 'ansible-node-1')
     monkeypatch.setattr(pes, 'AnsibleExecutor', lambda instance_id: FakeAnsibleExecutor())
 
     pes.run_governance_task(task)
