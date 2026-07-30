@@ -1,4 +1,4 @@
-import type { Meta, StoryObj } from '@storybook/react';
+import type { Meta, StoryObj } from '@storybook/nextjs';
 import SearchCombination from '@/components/search-combination';
 import type { FieldConfig } from '@/components/search-combination/types';
 

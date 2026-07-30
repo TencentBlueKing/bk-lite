@@ -355,8 +355,8 @@ const Architecture = forwardRef<ArchitectureRef, ArchitectureProps>(
             onOpenShare={
               !shareMode && selectedArchitecture?.data_id
                 ? () => {
-                    void openShare(selectedArchitecture.data_id);
-                  }
+                  void openShare(selectedArchitecture.data_id);
+                }
                 : undefined
             }
             loading={loading}
