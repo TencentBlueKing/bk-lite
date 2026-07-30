@@ -25,7 +25,7 @@ assertPresent(
   /\['failed',\s*'unknown',\s*'unmet'\]\.includes\(riskDetail\.status\)/,
   '仅可重试的终态展示重试',
 );
-assertPresent(page, /setInterval\(\(\) => \{[\s\S]{0,300}\},\s*2000\);/, '详情抽屉 2 秒轮询');
+assertPresent(page, /setInterval\(\(\) => \{[\s\S]{0,300}\},\s*PATCH_MANAGER_POLL_INTERVAL_MS\);/, '详情抽屉统一 5 秒轮询');
 assertPresent(page, /const apiRef = useRef\(api\);[\s\S]{0,100}apiRef\.current = api;/, '详情请求使用稳定 API 引用');
 assertPresent(page, /let polling = false;[\s\S]{0,300}if \(polling\) return;[\s\S]{0,300}polling = true;/, '详情轮询禁止并发请求');
 assertPresent(page, /<Button type="link" size="small" onClick=\{\(\) => openDetail\(row\.id\)\}>\{t\('patchManager\.risk\.details'\)\}<\/Button>/, '执行记录详情使用 Ant Design 链接按钮');

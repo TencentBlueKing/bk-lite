@@ -6,6 +6,8 @@ import PermissionWrapper from '@/components/permission';
 import { ToolOutlined, ExportOutlined, ReloadOutlined, DownOutlined, CloseOutlined } from '@ant-design/icons';
 import useApiClient from '@/utils/request';
 import usePatchManagerApi from '@/app/patch-manager/api';
+import { createListRequestCoordinator } from '@/app/patch-manager/utils/list-request-coordinator';
+import { PATCH_MANAGER_POLL_INTERVAL_MS } from '@/app/patch-manager/constants/polling';
 import RemediationTag from '@/app/patch-manager/components/remediation-tag';
 import ExcelJS from 'exceljs';
 import SeverityTag from '@/app/patch-manager/components/severity-tag';
@@ -117,6 +119,7 @@ export default function RiskPendingPage() {
   const api = usePatchManagerApi();
   const { isLoading } = useApiClient();
   const [loading, setLoading] = useState(false);
+  const listRequestCoordinatorRef = useRef(createListRequestCoordinator(setLoading));
   const [riskData, setRiskData] = useState<any[]>([]);
   const [pagination, setPagination] = useState({ current: 1, pageSize: 20, total: 0 });
   const [hostIdFilter, setHostIdFilter] = useState<number | undefined>(routeHostId);
@@ -124,7 +127,9 @@ export default function RiskPendingPage() {
   const viewParam = view;
 
   const loadRisk = async (page = 1, pageSize = pagination.pageSize, silent = false) => {
-    if (!silent) setLoading(true);
+    const coordinator = listRequestCoordinatorRef.current;
+    const ticket = coordinator.begin({ visible: !silent });
+    if (!ticket) return;
     try {
       const params: any = { view: viewParam, page, page_size: pageSize };
       if (view === 'host') {
@@ -138,14 +143,16 @@ export default function RiskPendingPage() {
         if (filters.baseline_name) params.baseline_name = filters.baseline_name;
       }
       if (filters.remediation) params.remediation = filters.remediation;
-      const res = await api.getRiskList(params);
+      const res = await api.getRiskList(params, { signal: ticket.signal });
+      if (!coordinator.shouldApply(ticket)) return;
       setRiskData(res.results || []);
       setPagination({ current: page, pageSize, total: res.count || 0 });
     } catch {
+      if (!coordinator.shouldApply(ticket)) return;
       setRiskData([]);
       setPagination({ current: page, pageSize, total: 0 });
     } finally {
-      if (!silent) setLoading(false);
+      coordinator.finish(ticket);
     }
   };
 
@@ -155,18 +162,22 @@ export default function RiskPendingPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoading, view, filters]);
 
-  // 轮询：抽屉关闭时每 2 秒静默刷新
+  // 外层列表持续静默轮询；抽屉打开不会停止轮询。
   const silentRefreshRef = useRef<() => void>(() => {});
   silentRefreshRef.current = () => {
     loadRisk(pagination.current, pagination.pageSize, true);
   };
   useEffect(() => {
     const interval = setInterval(() => {
-      if (document.hidden || scopeOpen || rebootOpen || detailRecord) return;
+      if (document.hidden) return;
       silentRefreshRef.current();
-    }, 2000);
+    }, PATCH_MANAGER_POLL_INTERVAL_MS);
     return () => clearInterval(interval);
-  }, [scopeOpen, rebootOpen, detailRecord, view]);
+  }, [view]);
+
+  useEffect(() => () => {
+    listRequestCoordinatorRef.current.invalidate();
+  }, []);
 
   const getRowName = (r: unknown) => {
     const row = r as { patch?: string; host?: string; baseline?: string };

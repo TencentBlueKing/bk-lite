@@ -250,6 +250,41 @@ class TestPatchSourceViewApi:
         assert resp.data == {"items": [], "total": 0, "page": 1, "page_size": 20}
         preview.assert_called_once_with(source)
 
+    def test_linux_preview_search_matches_package_name_only(self, su_client, mocker):
+        source = PatchSource.objects.create(
+            name="YUM-Test",
+            source_type=PatchSourceType.YUM_REPO,
+            url="https://repo.example.com",
+            team=[1],
+        )
+        mocker.patch(
+            "apps.patch_mgmt.services.source_sync_service.SourceSyncService.preview_sync_candidates",
+            return_value=[
+                {
+                    "key": "RLSA-KERNEL",
+                    "name": "kernel",
+                    "title": "Important: kernel security update",
+                    "version": "1.0-1",
+                },
+                {
+                    "key": "RLSA-BPFTOOL",
+                    "name": "bpftool",
+                    "title": "Important: kernel security update",
+                    "version": "1.0-1",
+                },
+            ],
+        )
+
+        resp = su_client.post(
+            f"{PATCH_SOURCE_URL}{source.id}/preview_sync/",
+            {"search": "kernel", "page": 1, "page_size": 20},
+            format="json",
+        )
+
+        assert resp.status_code == status.HTTP_200_OK
+        assert resp.data["total"] == 1
+        assert [item["name"] for item in resp.data["items"]] == ["kernel"]
+
     def test_wsus_preview_missing_dependency_returns_400(
         self, su_client, monkeypatch
     ):
