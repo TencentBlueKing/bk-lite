@@ -1,85 +1,61 @@
 # Consul Monitoring Guide
 
-This plugin uses Telegraf `inputs.consul` to call the HashiCorp Consul HTTP API and collect only health-check states — Consul telemetry itself is not included. If you need telemetry, expose it via the StatsD protocol on your own. The default Consul HTTP API port is `8500`.
+This capability uses Telegraf `inputs.consul` to access the Consul HTTP API. Its current metric scope is health-check state.
 
 ## Prerequisites
 
-- The target Consul cluster is up; the default HTTP API port is `8500`.
-- The collector node can reach the Consul host (security groups / firewalls opened).
-- Health checks and services are registered with Consul (the `consul_health_checks` measurement originates from `/v1/health/service/:name` and `/v1/health/state/:state`).
-- If ACLs are enabled, prepare a token for the monitoring account.
-
-> Telegraf outputs a single measurement `consul_health_checks`, tagged with `node`, `service_name`, `check_id`, `check_name`, `service_id`, `status`. The fields are integer counters `passing`, `critical`, `warning`.
-
-## Recommended Permissions
-
-By default, Consul health-check endpoints are publicly readable and require no ACL. If ACLs are enabled, a read-only policy is enough:
-
-```hcl
-# monitor token: health-related read only
-acl = "write"
-```
-
-```bash
-# recommended: explicit read-only policy
-consul acl policy create -name monitor-read -rules - <<EOF
-service ".*" {
-  policy = "read"
-}
-operator = "read"
-EOF
-
-consul acl token create -description "monitor" -policy-name monitor-read
-```
+- The collector node can reach the full Consul HTTP API base address.
+- The target has registered the health checks that need to be observed.
+- The current page and template have only URL and interval fields. They send no authentication credential and expose no other plugin options.
+- The API must therefore allow the collector node to read health checks directly. A target that requires authentication cannot be integrated directly.
 
 ## Setup Steps
 
-1. Verify the Consul API is reachable from the collector node:
+1. From the actual collector node, confirm that the Consul base address and health-check API can be read directly.
+2. Enter the full URL and interval (default `60` seconds).
+3. In the monitored objects table, select the node and enter the URL, instance name, and optional group.
+4. Save the configuration and wait for at least one collection interval.
 
-   ```bash
-   curl http://<host>:8500/v1/status/leader
-   ```
-
-2. On the configure page, fill in the URL (default `http://<host>:8500`) and interval (default `60s`).
-3. Add rows in the monitored objects table for node, URL, instance name, and group.
-4. Click Confirm and wait for at least one collection interval.
-5. Check the asset or metrics page to confirm data is reporting.
-
-## Pre-check Commands
-
-Consul API reachability:
+## Pre-checks
 
 ```bash
-curl http://<host>:8500/v1/health/service/consul
+curl --fail --silent --show-error "http://consul.example.com:8500/v1/agent/checks"
 ```
 
-HTTP 200 with a JSON array indicates the endpoint is healthy.
+The request must return `200` and JSON; `--fail` preserves `4xx/5xx` failures. An empty object means that the current agent has no registered checks, not that the collector failed.
 
 ## Field Reference
 
 | Field | Required | Description |
 | --- | --- | --- |
-| URL | Yes | Consul HTTP API address, e.g. `http://10.0.0.5:8500` |
-| Interval | Yes | Collection interval in seconds, default `60` |
-| Node | Yes | Collector node used for this instance |
-| Instance Name | Yes | Display name in the platform; defaults to the URL |
-| Group | No | Organization group for ownership/permission |
+| URL | Yes | Full Consul HTTP API base address, such as `http://consul.example.com:8500`. |
+| Interval | Yes | Collection interval in seconds; default `60`. |
+| Node | Yes | Collector node that can access the API directly. |
+| Instance Name | Yes | Display name in the platform. |
+| Group | No | Optional instance group. |
+
+## Post-setup Verification
+
+After saving and waiting for one interval, confirm that these metrics are queryable in the platform:
+
+- `consul_health_checks_passing`
+- `consul_health_checks_critical`
+- `consul_health_checks_warning`
+- `consul_health_checks_status`
 
 ## Troubleshooting
 
-### 1. No data after saving
+### The API returns `403` or requires authentication
 
-- Confirm Consul is running and port `8500` is reachable.
-- Run `curl /v1/status/leader` from the collector node.
-- Wait for at least one collection interval; confirm Telegraf / collection tasks are healthy on the node.
+- The current page and template cannot configure or send authentication credentials.
+- Do not embed sensitive credentials in the URL. An authenticated target requires an implemented security field before integration.
 
-### 2. Authentication failures
+### No health-check data appears
 
-- After enabling Consul ACLs, add `token = "<token>"` to `inputs.consul`. The current Telegraf template omits this; if you enable ACLs, also adjust the template and inject the token via env_config.
-- Check `acl.tokens.default` and `acl.enabled` are consistent in the Consul server config.
+- Confirm that the target agent has registered health checks and inspect the pre-check response.
+- The current capability covers health-check state only; it does not promise Consul telemetry or runtime metrics.
 
-### 3. Partial missing metrics
+### The URL is reachable but collection fails
 
-- `consul_health_checks` reports health-check state only — runtime / telemetry metrics are not included. Use `inputs.prometheus` against `/v1/agent/metrics` if you enabled it.
-- Field naming differs across Consul versions. `metric_version = 2` (the default from Consul v1.16) moves string fields to tags; upgrade to at least v1.16 if possible.
-- When no services are registered, only node-level checks such as `serfHealth` will appear — that is normal.
+- Enter the HTTP API base address, not a specific health-check path.
+- Inspect the Telegraf log for the actual HTTP status and parsing error.

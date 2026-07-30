@@ -14,7 +14,8 @@
       "type": "input",
       "required": true,
       "description": "指定当前程序的版本详情",
-      "guide_short": "Kafka Broker 协议版本，默认 2.0.0；不同版本在 idempotent / transactional 协议上有差异，需与 broker 实际版本对齐。",
+      "guide_short": "Kafka 客户端协议版本，例如 2.0.0；该值必须与 Broker 兼容，页面示例不是默认值。",
+      "guide_short_en": "Kafka client protocol version, such as 2.0.0. It must be compatible with the broker; the value shown on the page is an example, not a default.",
       "widget_props": {
         "placeholder": "2.0.0"
       },
@@ -31,6 +32,7 @@
       "default_value": false,
       "description": "是否启用 SASL 认证（用户名和密码）",
       "guide_short": "是否启用 SASL 认证。开启后下发 sasl.enabled；关闭时空串。Kafka SASL 默认走 PLAIN。",
+      "guide_short_en": "Controls SASL authentication. Enabling it passes sasl.enabled; disabling it passes an empty value. The exporter uses PLAIN when no other SASL mechanism is specified.",
       "transform_on_create": {
         "mapping": {
           "true": "--sasl.enabled",
@@ -65,7 +67,8 @@
       "type": "input",
       "required": true,
       "description": "用于访问接口的用户名",
-      "guide_short": "SASL 用户名。启用认证时必填。Kafka 7.0+ 推荐 SCRAM-SHA-256/512；需在 broker 端 bin/kafka-configs.sh 创建。",
+      "guide_short": "启用认证时必填的 SASL 用户名；必须与 Broker 上配置的认证主体及 ACL 匹配。",
+      "guide_short_en": "SASL username required when authentication is enabled. It must match a principal and ACL configuration on the broker.",
       "widget_props": {
         "placeholder": "用户名",
         "placeholder_en": "Username"
@@ -87,6 +90,7 @@
       "required": true,
       "description": "对应的登录密码",
       "guide_short": "SASL 密码。含 # @ 等特殊字符务必通过 password 字段下发，不要拼到 SASL_USERNAME 或其他 ENV。",
+      "guide_short_en": "SASL password. Supply values containing characters such as # or @ through this password field; do not append them to SASL_USERNAME or another environment value.",
       "widget_props": {
         "placeholder": "密码",
         "placeholder_en": "Password"
@@ -108,6 +112,7 @@
       "required": false,
       "description": "用于处理和响应通过发布端口接收的请求，包括请求的解析、处理和返回结果的完整流程",
       "guide_short": "SASL 机制：plain / sha256 / sha512 / gssapi；不填走 PLAIN。AKS/Strimzi 部署需 KafkaUser 的 authentication.type 与之匹配。",
+      "guide_short_en": "SASL mechanism: plain, sha256, sha512, or gssapi. An empty value uses PLAIN. For AKS or Strimzi, match the KafkaUser authentication.type.",
       "widget_props": {
         "placeholder": "plain"
       },
@@ -123,7 +128,8 @@
       "required": true,
       "visible_in": "edit",
       "description": "指定程序运行时应监听的端口号，用于接受外部请求和连接",
-      "guide_short": "kafka_exporter 本地暴露 /metrics 的端口，默认 9308；多实例需分配不同端口；与 Kafka Broker 端口 9092 不是同一个。",
+      "guide_short": "kafka_exporter 在采集节点本地暴露 /metrics 的端口；页面无默认值，需显式填写。多实例必须分配不同端口，且不要与 Broker 端口混淆。",
+      "guide_short_en": "Local port where kafka_exporter exposes /metrics on the collector node. The page has no default, so enter it explicitly. Use a unique port per instance and do not confuse it with a broker port.",
       "widget_props": {
         "min": 1,
         "precision": 0,
@@ -143,6 +149,7 @@
       "visible_in": "edit",
       "description": "监控对象的服务器地址",
       "guide_short": "Kafka Broker 的 host:port，如 kafka:9092；broker 必须能被访问到 advertised.listeners 设的地址，否则 exporter 报 no advertised brokers。",
+      "guide_short_en": "One Kafka broker in host:port form, such as kafka:9092. The exporter must also be able to reach the address advertised by the broker, or it may report no advertised brokers.",
       "widget_props": {
         "placeholder": "kafka:9092"
       },
@@ -159,6 +166,7 @@
       "default_value": ".*",
       "description": "按正则包含要采集的 Topic",
       "guide_short": "Topic 包含正则，默认 .*；regex 不匹配将不出维度。topic 数量大时用前缀如 ^prod_ 减少开销。",
+      "guide_short_en": "Regular expression for included topics; the default is .*. Topics that do not match are omitted. For many topics, use a prefix such as ^prod_ to reduce collection cost.",
       "widget_props": {
         "placeholder": ".*"
       },
@@ -175,6 +183,7 @@
       "default_value": "^$",
       "description": "按正则排除不需要采集的 Topic",
       "guide_short": "Topic 排除正则，默认 ^$（不排除）；例如 ^_internal 排除系统内部 topic。",
+      "guide_short_en": "Regular expression for excluded topics; the default ^$ excludes nothing. For example, ^_internal excludes internal topics.",
       "widget_props": {
         "placeholder": "^$"
       },
@@ -191,6 +200,7 @@
       "default_value": ".*",
       "description": "按正则包含要采集的消费组",
       "guide_short": "消费组包含正则，默认 .*；按需用 ^prod_ 等前缀收敛。账号需 Describe Group 权限。",
+      "guide_short_en": "Regular expression for included consumer groups; the default is .*. Narrow it with a prefix such as ^prod_ when needed. The account requires Describe Group permission.",
       "widget_props": {
         "placeholder": ".*"
       },
@@ -207,6 +217,7 @@
       "default_value": "^$",
       "description": "按正则排除不需要采集的消费组",
       "guide_short": "消费组排除正则，默认 ^$；例如 ^test- 排除测试组。",
+      "guide_short_en": "Regular expression for excluded consumer groups; the default is ^$. For example, ^test- excludes test groups.",
       "widget_props": {
         "placeholder": "^$"
       },
@@ -223,6 +234,7 @@
       "default_value": 60,
       "description": "监控数据的采集时间间隔（单位：秒）",
       "guide_short": "Telegraf inputs.prometheus 抓取周期，单位秒，默认 60；不要小于 10 防止 Describe Group 高频请求影响 broker。",
+      "guide_short_en": "Telegraf inputs.prometheus scrape interval in seconds; the default is 60. Avoid values below 10 to prevent frequent Describe Group requests from affecting the broker.",
       "widget_props": {
         "min": 1,
         "precision": 0,
