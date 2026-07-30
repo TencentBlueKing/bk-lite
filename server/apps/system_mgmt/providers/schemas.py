@@ -76,6 +76,14 @@ class ProviderManifest(BaseModel):
     key: str = Field(description="provider 唯一键")
     name: str = Field(description="provider 展示名称")
     description: str = Field(default="", description="provider 描述")
+    base_connection_adapter_key: str = Field(
+        default="",
+        description="基础连接校验 adapter 注册键",
+    )
+    base_connection_adapter_path: str = Field(
+        default="",
+        description="基础连接校验 adapter 类导入路径",
+    )
     instance_templates: dict[str, BusinessTemplateManifest] = Field(
         default_factory=dict,
         description="实例连接模板字典，key 为模板名称（如 base_connection）",

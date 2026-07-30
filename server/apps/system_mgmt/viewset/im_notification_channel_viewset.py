@@ -1,4 +1,6 @@
+from django.db import transaction
 from django.db.models import Prefetch
+from django.db.models.deletion import ProtectedError
 from django.http import JsonResponse
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -24,13 +26,6 @@ from apps.system_mgmt.services.im_notification_service import (
 from apps.system_mgmt.tasks import execute_im_notification_sync_run_task
 from apps.system_mgmt.utils.operation_log_utils import log_operation
 from config.drf.pagination import CustomPageNumberPagination
-
-
-def _channel_has_active_incident_group(channel):
-    incident_im_groups = getattr(channel, "incident_im_groups", None)
-    if incident_im_groups is None:
-        return False
-    return incident_im_groups.filter(active_slot=1).exists()
 
 
 class IMNotificationChannelViewSet(MaintainerViewSet):
@@ -150,19 +145,21 @@ class IMNotificationChannelViewSet(MaintainerViewSet):
         if not is_valid:
             return error_response
 
-        if _channel_has_active_incident_group(obj):
+        channel_name = obj.name
+        try:
+            with transaction.atomic():
+                obj.delete_sync_periodic_task()
+                response = super().destroy(request, *args, **kwargs)
+        except ProtectedError:
             return JsonResponse(
                 {
                     "result": False,
                     "code": "IM_CHANNEL_IN_USE",
-                    "message": "该 IM 通知渠道仍被有效的 Incident 协作群使用，无法删除",
+                    "message": "该 IM 通知渠道仍被其他业务使用，无法删除",
                 },
                 status=409,
             )
 
-        channel_name = obj.name
-        obj.delete_sync_periodic_task()
-        response = super().destroy(request, *args, **kwargs)
         if response.status_code in (200, 204):
             log_operation(request, "delete", "channel", f"删除IM应用通知: {channel_name}")
         return response

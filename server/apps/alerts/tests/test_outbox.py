@@ -5,9 +5,19 @@ import pytest
 from django.db import transaction
 from django.utils import timezone
 
+from apps.alerts.extensions.outbox import outbox_handlers
 from apps.alerts.models import AlertOutbox
 from apps.alerts.service.outbox import _deliver_payload, _schedule_delivery, deliver_outbox_record, enqueue_outbox
 from apps.alerts.tasks.tasks import dispatch_pending_alert_outbox
+
+
+@pytest.fixture
+def extension_handler():
+    handler = mock.Mock()
+    kind = "test.extension"
+    outbox_handlers.register(kind, handler)
+    yield kind, handler
+    outbox_handlers._handlers.pop(kind, None)
 
 
 @pytest.mark.django_db(transaction=True)
@@ -37,18 +47,17 @@ def test_broker_failure_keeps_pending_outbox(django_capture_on_commit_callbacks)
 
 
 @pytest.mark.django_db
-def test_add_members_outbox_uses_dedicated_limited_task():
+def test_extension_outbox_uses_registered_scheduler(extension_handler):
+    kind, handler = extension_handler
     record = AlertOutbox.objects.create(
-        kind="incident_im_group.add_members",
+        kind=kind,
         payload={"group_id": "group-1", "member_pks": [1]},
-        idempotency_key="dedicated-add-key",
+        idempotency_key="extension-schedule-key",
     )
-    with mock.patch("apps.alerts.tasks.deliver_incident_im_add_members_outbox.delay") as dedicated, mock.patch(
-        "apps.alerts.tasks.deliver_alert_outbox.delay"
-    ) as shared:
+    with mock.patch("apps.alerts.tasks.deliver_alert_outbox.delay") as shared:
         _schedule_delivery(record.pk)
 
-    dedicated.assert_called_once_with(record.pk)
+    handler.schedule.assert_called_once_with(record.pk)
     shared.assert_not_called()
 
 
@@ -63,24 +72,19 @@ def test_duplicate_idempotency_key_reuses_single_outbox():
     assert AlertOutbox.objects.filter(idempotency_key="same-key").count() == 1
 
 
-@pytest.mark.parametrize(
-    ("kind", "handler_name"),
-    [
-        ("incident_im_group.create", "deliver_create_group"),
-        ("incident_im_group.add_members", "deliver_add_members"),
-        ("incident_im_group.send_summary", "deliver_summary"),
-    ],
-)
-def test_incident_im_outbox_kinds_dispatch_to_delivery_handler(kind, handler_name):
-    with mock.patch(f"apps.alerts.service.incident_im.delivery.{handler_name}") as handler:
-        _deliver_payload(kind, {"group_id": "group-1"})
+def test_extension_outbox_kind_dispatches_to_registered_handler(extension_handler):
+    kind, handler = extension_handler
+    _deliver_payload(kind, {"group_id": "group-1"})
 
-    handler.assert_called_once_with("group-1")
+    handler.deliver.assert_called_once_with(
+        {"group_id": "group-1"},
+        delivery_claim=None,
+    )
 
 
-def test_unknown_incident_im_outbox_kind_is_rejected():
+def test_unknown_extension_outbox_kind_is_rejected():
     with pytest.raises(ValueError, match="unsupported alert outbox kind"):
-        _deliver_payload("incident_im_group.unknown", {"group_id": "group-1"})
+        _deliver_payload("test.extension.unknown", {"group_id": "group-1"})
 
 
 def test_existing_outbox_kinds_keep_their_original_dispatch_contracts():
@@ -171,9 +175,12 @@ def test_dispatch_beat_reschedules_stale_delivering_outbox():
 
 
 @pytest.mark.django_db(transaction=True)
-def test_exhausted_incident_delivery_calls_hook_after_failed_state_is_committed():
+def test_exhausted_extension_delivery_calls_hook_after_failed_state_is_committed(
+    extension_handler,
+):
+    kind, handler = extension_handler
     record = AlertOutbox.objects.create(
-        kind="incident_im_group.create",
+        kind=kind,
         payload={"group_id": "1"},
         idempotency_key="exhausted-key",
         max_attempts=1,
@@ -182,26 +189,27 @@ def test_exhausted_incident_delivery_calls_hook_after_failed_state_is_committed(
     def assert_failed_before_hook(kind, payload, error):
         record.refresh_from_db()
         assert record.status == AlertOutbox.Status.FAILED
-        assert kind == "incident_im_group.create"
+        assert kind == "test.extension"
         assert payload == {"group_id": "1"}
         assert error == "timeout"
 
+    handler.exhausted.side_effect = assert_failed_before_hook
     with mock.patch(
         "apps.alerts.service.outbox._deliver_payload", side_effect=RuntimeError("timeout")
-    ), mock.patch(
-        "apps.alerts.service.incident_im.delivery.handle_delivery_exhausted",
-        side_effect=assert_failed_before_hook,
-    ) as exhausted:
+    ):
         with pytest.raises(RuntimeError, match="timeout"):
             deliver_outbox_record(record.pk)
 
-    exhausted.assert_called_once()
+    handler.exhausted.assert_called_once()
 
 
 @pytest.mark.django_db(transaction=True)
-def test_non_exhausted_incident_failure_stays_pending_without_exhausted_hook():
+def test_non_exhausted_extension_failure_stays_pending_without_exhausted_hook(
+    extension_handler,
+):
+    kind, handler = extension_handler
     record = AlertOutbox.objects.create(
-        kind="incident_im_group.create",
+        kind=kind,
         payload={"group_id": "1"},
         idempotency_key="not-exhausted-key",
         max_attempts=2,
@@ -209,31 +217,28 @@ def test_non_exhausted_incident_failure_stays_pending_without_exhausted_hook():
 
     with mock.patch(
         "apps.alerts.service.outbox._deliver_payload", side_effect=RuntimeError("timeout")
-    ), mock.patch(
-        "apps.alerts.service.incident_im.delivery.handle_delivery_exhausted"
-    ) as exhausted:
+    ):
         with pytest.raises(RuntimeError, match="timeout"):
             deliver_outbox_record(record.pk)
 
-    exhausted.assert_not_called()
+    handler.exhausted.assert_not_called()
     record.refresh_from_db()
     assert record.status == AlertOutbox.Status.PENDING
 
 
 @pytest.mark.django_db(transaction=True)
-def test_exhausted_hook_failure_never_requeues_failed_outbox():
+def test_exhausted_hook_failure_never_requeues_failed_outbox(extension_handler):
+    kind, handler = extension_handler
     record = AlertOutbox.objects.create(
-        kind="incident_im_group.create",
+        kind=kind,
         payload={"group_id": "1"},
         idempotency_key="exhausted-hook-failure",
         max_attempts=1,
     )
 
+    handler.exhausted.side_effect = RuntimeError("hook failed")
     with mock.patch(
         "apps.alerts.service.outbox._deliver_payload", side_effect=RuntimeError("timeout")
-    ), mock.patch(
-        "apps.alerts.service.incident_im.delivery.handle_delivery_exhausted",
-        side_effect=RuntimeError("hook failed"),
     ):
         with pytest.raises(RuntimeError, match="timeout"):
             deliver_outbox_record(record.pk)
@@ -272,27 +277,27 @@ def test_dispatcher_recovers_only_expired_delivering_lease_after_hard_crash():
 
 
 @pytest.mark.django_db(transaction=True)
-def test_dispatcher_routes_add_members_to_dedicated_task():
+def test_dispatcher_routes_extension_to_registered_scheduler(extension_handler):
+    kind, handler = extension_handler
     record = AlertOutbox.objects.create(
-        kind="incident_im_group.add_members",
+        kind=kind,
         payload={"group_id": "group-1", "member_pks": [1]},
-        idempotency_key="dispatcher-dedicated-add",
+        idempotency_key="dispatcher-extension",
     )
-    with mock.patch(
-        "apps.alerts.tasks.tasks.deliver_incident_im_add_members_outbox.delay"
-    ) as dedicated, mock.patch(
-        "apps.alerts.tasks.tasks.deliver_alert_outbox.delay"
-    ) as shared:
+    with mock.patch("apps.alerts.tasks.tasks.deliver_alert_outbox.delay") as shared:
         assert dispatch_pending_alert_outbox() == {"scheduled": 1}
 
-    dedicated.assert_called_once_with(record.pk)
+    handler.schedule.assert_called_once_with(record.pk)
     shared.assert_not_called()
 
 
 @pytest.mark.django_db(transaction=True)
-def test_expired_exhausted_incident_lease_fails_once_without_redelivery():
+def test_expired_exhausted_extension_lease_fails_once_without_redelivery(
+    extension_handler,
+):
+    kind, handler = extension_handler
     record = AlertOutbox.objects.create(
-        kind="incident_im_group.create",
+        kind=kind,
         payload={"group_id": "1"},
         idempotency_key="expired-exhausted-incident",
         status=AlertOutbox.Status.DELIVERING,
@@ -307,27 +312,28 @@ def test_expired_exhausted_incident_lease_fails_once_without_redelivery():
         record.refresh_from_db()
         assert record.status == AlertOutbox.Status.FAILED
         assert record.attempts == 2
-        assert kind == "incident_im_group.create"
+        assert kind == "test.extension"
         assert payload == {"group_id": "1"}
         assert error == "delivery lease expired after retries exhausted"
         assert deliver_outbox_record(record.pk) is False
 
-    with mock.patch("apps.alerts.service.outbox._deliver_payload") as deliver, mock.patch(
-        "apps.alerts.service.incident_im.delivery.handle_delivery_exhausted",
-        side_effect=assert_failed_and_repeat_is_noop,
-    ) as exhausted:
+    handler.exhausted.side_effect = assert_failed_and_repeat_is_noop
+    with mock.patch("apps.alerts.service.outbox._deliver_payload") as deliver:
         assert deliver_outbox_record(record.pk) is False
         assert deliver_outbox_record(record.pk) is False
 
     deliver.assert_not_called()
-    exhausted.assert_called_once()
+    handler.exhausted.assert_called_once()
     record.refresh_from_db()
     assert record.status == AlertOutbox.Status.FAILED
     assert record.attempts == 2
 
 
 @pytest.mark.django_db(transaction=True)
-def test_expired_exhausted_non_incident_lease_fails_without_business_hook():
+def test_expired_exhausted_core_lease_fails_without_extension_hook(
+    extension_handler,
+):
+    _, handler = extension_handler
     record = AlertOutbox.objects.create(
         kind="notification",
         payload={"params": []},
@@ -340,22 +346,23 @@ def test_expired_exhausted_non_incident_lease_fails_without_business_hook():
         updated_at=timezone.now() - timedelta(minutes=6)
     )
 
-    with mock.patch("apps.alerts.service.outbox._deliver_payload") as deliver, mock.patch(
-        "apps.alerts.service.incident_im.delivery.handle_delivery_exhausted"
-    ) as exhausted:
+    with mock.patch("apps.alerts.service.outbox._deliver_payload") as deliver:
         assert deliver_outbox_record(record.pk) is False
 
     deliver.assert_not_called()
-    exhausted.assert_not_called()
+    handler.exhausted.assert_not_called()
     record.refresh_from_db()
     assert record.status == AlertOutbox.Status.FAILED
     assert record.attempts == 1
 
 
 @pytest.mark.django_db(transaction=True)
-def test_expired_exhausted_incident_hook_failure_keeps_failed_state():
+def test_expired_exhausted_extension_hook_failure_keeps_failed_state(
+    extension_handler,
+):
+    kind, handler = extension_handler
     record = AlertOutbox.objects.create(
-        kind="incident_im_group.create",
+        kind=kind,
         payload={"group_id": "1"},
         idempotency_key="expired-exhausted-hook-failure",
         status=AlertOutbox.Status.DELIVERING,
@@ -366,29 +373,30 @@ def test_expired_exhausted_incident_hook_failure_keeps_failed_state():
         updated_at=timezone.now() - timedelta(minutes=6)
     )
 
-    with mock.patch("apps.alerts.service.outbox._deliver_payload") as deliver, mock.patch(
-        "apps.alerts.service.incident_im.delivery.handle_delivery_exhausted",
-        side_effect=RuntimeError("hook failed"),
-    ) as exhausted:
+    handler.exhausted.side_effect = RuntimeError("hook failed")
+    with mock.patch("apps.alerts.service.outbox._deliver_payload") as deliver:
         assert deliver_outbox_record(record.pk) is False
 
     deliver.assert_not_called()
-    exhausted.assert_called_once()
+    handler.exhausted.assert_called_once()
     record.refresh_from_db()
     assert record.status == AlertOutbox.Status.FAILED
     assert record.attempts == 1
 
 
 @pytest.mark.django_db(transaction=True)
-def test_expired_old_worker_failure_cannot_overwrite_new_worker_delivered_state():
+def test_expired_old_worker_failure_cannot_overwrite_new_worker_delivered_state(
+    extension_handler,
+):
+    kind, handler = extension_handler
     record = AlertOutbox.objects.create(
-        kind="incident_im_group.create",
+        kind=kind,
         payload={"group_id": "1"},
         idempotency_key="fencing-delivered",
         max_attempts=3,
     )
 
-    def old_worker_interleaving(_kind, _payload):
+    def old_worker_interleaving(_kind, _payload, **_kwargs):
         AlertOutbox.objects.filter(pk=record.pk).update(
             updated_at=timezone.now() - timedelta(minutes=6)
         )
@@ -399,27 +407,28 @@ def test_expired_old_worker_failure_cannot_overwrite_new_worker_delivered_state(
     with mock.patch(
         "apps.alerts.service.outbox._deliver_payload",
         side_effect=old_worker_interleaving,
-    ), mock.patch(
-        "apps.alerts.service.incident_im.delivery.handle_delivery_exhausted"
-    ) as exhausted:
+    ):
         assert deliver_outbox_record(record.pk) is False
 
-    exhausted.assert_not_called()
+    handler.exhausted.assert_not_called()
     record.refresh_from_db()
     assert record.status == AlertOutbox.Status.DELIVERED
     assert record.attempts == 2
 
 
 @pytest.mark.django_db(transaction=True)
-def test_expired_old_worker_success_cannot_overwrite_new_worker_failed_state_or_repeat_hook():
+def test_expired_old_worker_success_cannot_overwrite_new_worker_failed_state_or_repeat_hook(
+    extension_handler,
+):
+    kind, handler = extension_handler
     record = AlertOutbox.objects.create(
-        kind="incident_im_group.create",
+        kind=kind,
         payload={"group_id": "1"},
         idempotency_key="fencing-failed",
         max_attempts=2,
     )
 
-    def old_worker_interleaving(_kind, _payload):
+    def old_worker_interleaving(_kind, _payload, **_kwargs):
         AlertOutbox.objects.filter(pk=record.pk).update(
             updated_at=timezone.now() - timedelta(minutes=6)
         )
@@ -433,12 +442,10 @@ def test_expired_old_worker_success_cannot_overwrite_new_worker_failed_state_or_
     with mock.patch(
         "apps.alerts.service.outbox._deliver_payload",
         side_effect=old_worker_interleaving,
-    ), mock.patch(
-        "apps.alerts.service.incident_im.delivery.handle_delivery_exhausted"
-    ) as exhausted:
+    ):
         assert deliver_outbox_record(record.pk) is False
 
-    exhausted.assert_called_once()
+    handler.exhausted.assert_called_once()
     record.refresh_from_db()
     assert record.status == AlertOutbox.Status.FAILED
     assert record.attempts == 2

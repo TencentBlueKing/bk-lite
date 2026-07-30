@@ -67,6 +67,12 @@ class BaseIMGroupAdapter(BaseCapabilityAdapter):
     capability_key = "im_group"
 
     @classmethod
+    def validate_create(cls, config: dict, provider_key: str, capability_key: str, **kwargs):
+        return CapabilityExecutionResult.success_result(
+            "IM group create request is valid",
+        )
+
+    @classmethod
     def create_group(cls, config: dict, provider_key: str, capability_key: str, **kwargs):
         return CapabilityExecutionResult.not_implemented(capability_key, "create_group")
 

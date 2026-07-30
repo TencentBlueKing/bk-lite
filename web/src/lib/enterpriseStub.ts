@@ -4,6 +4,8 @@
  */
 
 export const useEnterpriseConfig = (): Record<string, any> => ({});
+export const IncidentCollaborationExtension = null as any;
+export const INCIDENT_COLLABORATION_SIDEBAR_WIDTH_CLASS = 'w-full lg:w-[220px]';
 
 const enterpriseStub = {};
 export default enterpriseStub;
