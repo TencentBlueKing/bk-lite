@@ -224,7 +224,7 @@ class PatchSourceViewSet(AuthViewSet):
         if search:
             candidates = [
                 c for c in candidates
-                if search in c.get("name", "").lower() or search in c.get("title", "").lower()
+                if search in c.get("name", "").lower()
             ]
 
         total = len(candidates)
