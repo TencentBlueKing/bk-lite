@@ -35,9 +35,12 @@ from apps.patch_mgmt.constants import (
 )
 from apps.patch_mgmt.models import GovernanceTask, GovernanceTaskHost, HostBaselineBinding, HostComplianceSnapshot, Patch, PatchTarget
 from apps.patch_mgmt.services.assess_parsers import assess_requirements
+from apps.patch_mgmt.services.target_execution_route import (
+    TargetTransport,
+    resolve_target_execution_route,
+)
 from apps.rpc.ansible import AnsibleExecutor
 from apps.rpc.executor import Executor
-from apps.rpc.node_mgmt import NodeMgmt
 
 logger = logging.getLogger('app')
 
@@ -64,54 +67,6 @@ def _read_ssh_key(target: PatchTarget) -> Optional[str]:
         return None
 
 
-def _get_cloud_region_name(cloud_region_id: Optional[int]) -> str:
-    from apps.node_mgmt.models import CloudRegion
-
-    if not cloud_region_id:
-        raise ValueError('目标未配置云区域')
-    try:
-        return CloudRegion.objects.get(pk=cloud_region_id).name
-    except CloudRegion.DoesNotExist as exc:
-        raise ValueError(f'云区域 {cloud_region_id} 不存在') from exc
-
-
-def _get_nats_executor_instance_id(target: PatchTarget) -> str:
-    '''返回可用于 Executor 的 instance_id。'''
-    if target.source_type == PatchTargetSource.NODE_MGMT and target.node_id:
-        return target.node_id
-
-    if target.source_type == PatchTargetSource.MANUAL:
-        from apps.node_mgmt.constants.cloudregion_service import CloudRegionServiceConstants
-        from apps.node_mgmt.services.cloudregion import RegionService
-
-        region_name = _get_cloud_region_name(target.cloud_region_id)
-        return RegionService.get_region_service_instance_id(
-            region_name, CloudRegionServiceConstants.NATS_EXECUTOR_SERVICE_NAME
-        )
-
-    raise ValueError(f'目标 {target.id} 无法确定执行器实例')
-
-
-def _get_ansible_executor_instance_id(cloud_region_id: Optional[int]) -> str:
-    '''获取云区域内的 Ansible Executor 容器节点 ID。'''
-    if not cloud_region_id:
-        raise ValueError('manual Windows 目标必须配置云区域')
-    node_mgmt = NodeMgmt()
-    result = node_mgmt.node_list(
-        {
-            'cloud_region_id': cloud_region_id,
-            'is_container': True,
-            'page': 1,
-            'page_size': 1,
-            'skip_permission': True,
-        }
-    )
-    nodes = (result or {}).get('nodes', []) if isinstance(result, dict) else []
-    if not nodes:
-        raise ValueError(f'云区域 {cloud_region_id} 下未找到可用的 Ansible 执行节点')
-    return nodes[0]['id']
-
-
 def _execute_windows_manual(
     target: PatchTarget,
     command: str,
@@ -129,8 +84,10 @@ def _execute_windows_manual(
     if mode != 'executor':
         raise RuntimeError(f'不支持的 Windows 执行模式: {mode}')
 
-    ansible_node_id = _get_ansible_executor_instance_id(target.cloud_region_id)
-    executor = AnsibleExecutor(ansible_node_id)
+    route = resolve_target_execution_route(target)
+    if route.transport != TargetTransport.ANSIBLE_WINRM:
+        raise RuntimeError(f'Windows 手动目标路由异常: {route.transport}')
+    executor = AnsibleExecutor(route.instance_id)
     password = _decrypt_password(target.winrm_password)
     host_credentials = [
         {
@@ -249,7 +206,10 @@ def _stage_windows_package(target: PatchTarget, detail, *, timeout: int) -> str:
 
     if mode != 'executor':
         raise RuntimeError(f'不支持的 Windows 执行模式: {mode}')
-    executor = AnsibleExecutor(_get_ansible_executor_instance_id(target.cloud_region_id))
+    route = resolve_target_execution_route(target)
+    if route.transport != TargetTransport.ANSIBLE_WINRM:
+        raise RuntimeError(f'Windows 手动目标路由异常: {route.transport}')
+    executor = AnsibleExecutor(route.instance_id)
     task_id = f'patch-file-{target.id}-{uuid.uuid4().hex[:8]}'
     accepted = executor.playbook(
         host_credentials=_windows_host_credentials(target),
@@ -303,10 +263,10 @@ def _execute_command(
             )
         )
 
-    instance_id = _get_nats_executor_instance_id(target)
-    executor = Executor(instance_id)
+    route = resolve_target_execution_route(target)
+    executor = Executor(route.instance_id)
 
-    if target.source_type == PatchTargetSource.NODE_MGMT:
+    if route.transport == TargetTransport.NODE_EXECUTOR:
         return _normalize_result(
             executor.execute_local_stream(
                 command,
@@ -316,6 +276,9 @@ def _execute_command(
                 stream_log_topic=stream_log_topic,
             )
         )
+
+    if route.transport != TargetTransport.NATS_SSH:
+        raise RuntimeError(f'不支持的目标执行链路: {route.transport}')
 
     password = _decrypt_password(target.ssh_password)
     private_key = _read_ssh_key(target)

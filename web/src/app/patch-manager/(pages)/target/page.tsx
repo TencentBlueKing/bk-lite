@@ -113,6 +113,7 @@ function targetConnectionSignature(
   return JSON.stringify(os === 'linux' ? {
     os,
     ip: values.ip || '',
+    cloudRegion: values.cloud_region_id ?? null,
     port: values.ssh_port ?? 22,
     user: values.ssh_user || '',
     credential,
@@ -121,6 +122,7 @@ function targetConnectionSignature(
   } : {
     os,
     ip: values.ip || '',
+    cloudRegion: values.cloud_region_id ?? null,
     port: values.winrm_port ?? 5986,
     scheme: values.winrm_scheme || 'https',
     user: values.winrm_user || '',
@@ -404,6 +406,8 @@ export default function TargetPage() {
     }
     const formData = new FormData();
     formData.append('ip', values.ip);
+    formData.append('source_type', 'manual');
+    formData.append('cloud_region_id', String(values.cloud_region_id ?? ''));
     appendConnectionFields(formData, values);
     setTestingConnectivity(true);
     try {
@@ -635,8 +639,12 @@ export default function TargetPage() {
             <PermissionWrapper requiredPermissions={['Edit']}><a style={{ color: 'var(--color-primary, #1677ff)' }} onClick={async () => {
               setLoading(true);
               try {
-                await api.checkPatchTargetConnectivity(Number(r.key));
-                message.success(t('patchManager.targetPage.connectivityCompleted'));
+                const result = await api.checkPatchTargetConnectivity(Number(r.key));
+                if (result.connectivity_status === 'connected') {
+                  message.success(result.detail || t('patchManager.targetPage.connectivityCompleted'));
+                } else {
+                  message.error(result.detail || t('patchManager.targetPage.connectivityCompleted'));
+                }
                 await loadData();
               } catch {
               } finally {

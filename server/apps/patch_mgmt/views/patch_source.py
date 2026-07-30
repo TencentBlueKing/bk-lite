@@ -207,7 +207,6 @@ class PatchSourceViewSet(AuthViewSet):
 
         from apps.patch_mgmt.services.linux_repo_sync import RepoSyncError
         from apps.patch_mgmt.services.source_sync_service import SourceSyncError, SourceSyncService
-        from apps.patch_mgmt.services.wsus_sync import WsusSyncError
 
         source = self.get_object()
         search = (request.data.get("search") or "").strip().lower()
@@ -216,7 +215,7 @@ class PatchSourceViewSet(AuthViewSet):
 
         try:
             candidates = SourceSyncService.preview_sync_candidates(source)
-        except (SourceSyncError, RepoSyncError, WsusSyncError) as exc:
+        except (SourceSyncError, RepoSyncError) as exc:
             return Response({"error": str(exc)}, status=drf_status.HTTP_400_BAD_REQUEST)
         except Exception as exc:  # noqa: BLE001
             logger.warning("preview_sync 失败 source_id=%s: %s", source.id, exc, exc_info=True)
