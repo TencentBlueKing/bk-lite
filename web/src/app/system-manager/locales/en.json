@@ -975,6 +975,7 @@
           "phone": "Phone"
         },
         "externalFieldOption": {
+          "userid": "User ID",
           "user_id": "User ID",
           "open_id": "Open ID",
           "email": "Email",

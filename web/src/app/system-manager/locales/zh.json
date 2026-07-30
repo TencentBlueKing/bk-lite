@@ -975,6 +975,7 @@
           "phone": "手机号"
         },
         "externalFieldOption": {
+          "userid": "用户 ID",
           "user_id": "用户ID",
           "open_id": "OpenID",
           "email": "邮箱",
