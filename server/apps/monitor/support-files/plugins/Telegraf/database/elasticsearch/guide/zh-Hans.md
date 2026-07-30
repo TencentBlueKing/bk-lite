@@ -1,10 +1,10 @@
-# Elasticsearch 监控接入指南
+# ElasticSearch 监控接入指南
 
-本能力通过 Telegraf `inputs.elasticsearch` 访问 Elasticsearch HTTP API，采集集群健康和指定节点统计。
+本能力通过 Telegraf `inputs.elasticsearch` 访问 ElasticSearch HTTP API，采集集群健康和指定节点统计。
 
 ## 前置要求
 
-- 采集节点能够访问 Elasticsearch 的完整 HTTP(S) 地址。
+- 采集节点能够访问 ElasticSearch 的完整 HTTP(S) 地址。
 - 准备可读取集群健康与节点统计接口的用户名和密码；当前页面两项均为必填。
 - 带认证的端点应优先使用 HTTPS，并部署证书链受采集节点信任的服务端证书。
 - 若目标只能使用 HTTP，仅可部署在隔离且可信的链路中；Basic Auth 凭据只是可逆编码，会在网络中以未加密形式传输。
@@ -38,7 +38,7 @@ curl --fail --silent --show-error --user monitor "https://es.example.com:9200/_n
 | 用户名 | 是 | 可读取集群健康和节点统计接口的账号。 |
 | 密码 | 是 | 对应账号密码。 |
 | 间隔 | 是 | 采集周期，单位秒，默认 `60`。 |
-| 节点 | 是 | 能够访问 Elasticsearch 的采集节点。 |
+| 节点 | 是 | 能够访问 ElasticSearch 的采集节点。 |
 | 实例名称 | 是 | 平台内展示的实例名称。 |
 | 组 | 否 | 实例所属分组。 |
 
