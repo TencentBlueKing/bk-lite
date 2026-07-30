@@ -210,6 +210,18 @@ monitor_object_metric:
     device_flow_top_conversation_bytes_rate:
       name: Top 会话 Flow 流量速率
       desc: 按源地址、目的地址、协议和目的端口聚合的会话流量排行，用于定位主要通信关系。
+    barracuda_cpu_temperature_celsius:
+      name: Barracuda CPU 温度
+      desc: Barracuda 防火墙的 CPU 温度，单位为摄氏度。
+    barracuda_system_temperature_celsius:
+      name: Barracuda 系统温度
+      desc: Barracuda 防火墙的系统温度，单位为摄氏度。
+    barracuda_firmware_storage_usage:
+      name: 固件存储使用率
+      desc: Barracuda 防火墙的固件存储使用率。
+    barracuda_log_storage_usage:
+      name: 日志存储使用率
+      desc: Barracuda 防火墙的日志存储使用率。
 monitor_object_metric_group:
   Firewall:
     Packet: 数据包
@@ -229,3 +241,4 @@ monitor_object_metric_group:
     Application Port: 应用端口
     Endpoint: 端点
     Conversation: 会话
+    Storage: 存储

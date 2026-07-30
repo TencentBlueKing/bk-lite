@@ -101,7 +101,10 @@ export function useExecutionStream({
           `/api/proxy/job_mgmt/api/execution/${executionId}/stream/`,
           {
             method: 'GET',
-            headers: { Authorization: `Bearer ${token}` },
+            headers: {
+              Accept: 'text/event-stream',
+              Authorization: `Bearer ${token}`,
+            },
             signal: abortController.signal,
           }
         );

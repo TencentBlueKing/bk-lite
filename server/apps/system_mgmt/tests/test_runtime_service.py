@@ -220,6 +220,77 @@ def test_runtime_connection_mixed_failures_are_not_retryable():
     assert result.retryable is False
 
 
+def test_runtime_application_service_uses_provider_base_adapter_for_base_connection_test():
+    class BaseConnectionAdapter:
+        calls = 0
+
+        @classmethod
+        def test_connection(cls, config, provider_key, capability_key, **kwargs):
+            cls.calls += 1
+            assert capability_key == "base"
+            return CapabilityExecutionResult.success_result("base connection ok")
+
+    class CapabilityAdapter:
+        @classmethod
+        def test_connection(cls, config, provider_key, capability_key, **kwargs):
+            raise AssertionError("base connection test must not invoke capabilities")
+
+    capability = SimpleNamespace(key="login_auth", adapter_key="demo.login_auth")
+    manifest = SimpleNamespace(
+        key="demo",
+        base_connection_adapter_key="demo.base_connection",
+        capabilities=[capability],
+        get_capability=lambda capability_key: capability,
+    )
+    instance = SimpleNamespace(provider_key="demo", get_runtime_config=lambda: {})
+    service = RuntimeApplicationService()
+    service.provider_registry = FakeProviderRegistry(manifest)
+    service.adapter_registry = FakeAdapterRegistry(
+        {
+            "demo.base_connection": BaseConnectionAdapter,
+            "demo.login_auth": CapabilityAdapter,
+        }
+    )
+
+    result = service.test_connection(instance)
+
+    assert result.success is True
+    assert result.summary == "base connection ok"
+    assert result.payload["capability_status"] == {}
+    assert BaseConnectionAdapter.calls == 1
+
+
+def test_runtime_application_service_returns_first_failed_capability_diagnostic():
+    class FailingAdapter:
+        @classmethod
+        def test_connection(cls, config, provider_key, capability_key, **kwargs):
+            return CapabilityExecutionResult.failed_result(
+                "AD connection credentials were rejected",
+                code="provider.auth_failed",
+                detail="LDAP bind rejected the configured credentials",
+                external_code="49",
+            )
+
+    capability = SimpleNamespace(key="login_auth", adapter_key="ad.login_auth")
+    manifest = SimpleNamespace(
+        key="ad",
+        capabilities=[capability],
+        get_capability=lambda capability_key: capability,
+    )
+    instance = SimpleNamespace(provider_key="ad", get_runtime_config=lambda: {})
+    service = RuntimeApplicationService()
+    service.provider_registry = FakeProviderRegistry(manifest)
+    service.adapter_registry = FakeAdapterRegistry({"ad.login_auth": FailingAdapter})
+
+    result = service.test_connection(instance, capability_key="login_auth")
+
+    assert result.success is False
+    assert result.summary == "AD connection credentials were rejected"
+    assert result.errors[0].code == "provider.auth_failed"
+    assert result.errors[0].detail == "LDAP bind rejected the configured credentials"
+    assert result.errors[0].external_code == "49"
+
+
 def test_runtime_application_service_logs_failed_capability_details(caplog):
     class FailingAdapter:
         @classmethod

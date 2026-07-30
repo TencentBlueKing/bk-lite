@@ -18,6 +18,18 @@ export const useAssetMenuItems = (): MenuProps['items'] => {
         ),
         key: 'batchEdit',
       },
+      {
+        label: (
+          <PermissionWrapper
+            className="customMenuItem"
+            requiredPermissions={['Delete']}
+          >
+            {t('common.batchDelete')}
+          </PermissionWrapper>
+        ),
+        key: 'batchDelete',
+        danger: true,
+      },
     ],
     [t]
   );

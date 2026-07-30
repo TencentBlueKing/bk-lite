@@ -24,6 +24,7 @@ interface UserSyncRecordsDrawerProps {
   onPageChange: (current: number, pageSize: number) => void;
   onRefresh: () => void;
   onSearch: (value: string) => void;
+  onViewProgress: (record: RecordRow) => void;
   onClose: () => void;
 }
 
@@ -36,6 +37,7 @@ const UserSyncRecordsDrawer: React.FC<UserSyncRecordsDrawerProps> = ({
   onPageChange,
   onRefresh,
   onSearch,
+  onViewProgress,
   onClose,
 }) => {
   const { convertToLocalizedTime } = useLocalizedTime();
@@ -88,6 +90,19 @@ const UserSyncRecordsDrawer: React.FC<UserSyncRecordsDrawerProps> = ({
           </Tooltip>
         );
       },
+    },
+    {
+      title: t('system.user.userSyncPage.recordColumns.actions', '操作'),
+      key: 'actions',
+      width: 100,
+      render: (_: unknown, record: RecordRow) => (
+        <Button
+          type="link"
+          onClick={() => onViewProgress(record)}
+        >
+          {t('system.user.userSyncPage.recordColumns.viewProgress', '查看进度')}
+        </Button>
+      ),
     },
   ];
 

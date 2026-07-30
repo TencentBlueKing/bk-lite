@@ -20,7 +20,8 @@ export const POD_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: 'Pod 状态',
       description: 'Pod 当前生命周期阶段(0 未运行 / 1 运行中),用于快速判断 Pod 健康。',
       unit: 'none',
-      query: 'prometheus_remote_write_kube_pod_status_phase{instance_type="k3s",__$labels__}',
+      query:
+        'prometheus_remote_write_kube_pod_status_phase{instance_type="k3s",phase="Running",__$labels__}',
       color: '#27c274'
     },
     {
@@ -35,10 +36,10 @@ export const POD_DASHBOARD_CONFIG: SimpleDashboardConfig = {
     {
       name: 'pod_cpu_utilization',
       display_name: 'CPU 使用率',
-      description: 'Pod 实际 CPU 使用量占其 CPU limit 的比例(5 分钟均值)。',
+      description: 'Pod 实际 CPU 使用量占其 CPU limit 的比例(所选时间窗口均值)。',
       unit: 'percent',
       query:
-        '100 * ( sum(irate(prometheus_remote_write_container_cpu_usage_seconds_total{instance_type="k3s",__$labels__}[5m])) by (instance_id,pod) / on(instance_id,pod) sum(prometheus_remote_write_kube_pod_container_resource_limits{instance_type="k3s", resource="cpu",__$labels__}) by (instance_id,pod) )',
+        '100 * ( sum(irate(prometheus_remote_write_container_cpu_usage_seconds_total{instance_type="k3s",__$labels__}[__$window__])) by (instance_id,pod) / on(instance_id,pod) sum(prometheus_remote_write_kube_pod_container_resource_limits{instance_type="k3s", resource="cpu",__$labels__}) by (instance_id,pod) )',
       color: '#2f6bff'
     },
     {
@@ -56,7 +57,7 @@ export const POD_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       description: 'Pod 网络入站流量速率。',
       unit: 'byteps',
       query:
-        'sum by (instance_id,pod) ( rate(prometheus_remote_write_container_network_receive_bytes_total{instance_type="k3s",__$labels__}[5m]) )',
+        'sum by (instance_id,pod) ( rate(prometheus_remote_write_container_network_receive_bytes_total{instance_type="k3s",__$labels__}[__$window__]) )',
       color: '#13c2c2'
     },
     {
@@ -65,7 +66,7 @@ export const POD_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       description: 'Pod 网络出站流量速率。',
       unit: 'byteps',
       query:
-        'sum by (instance_id,pod) ( rate(prometheus_remote_write_container_network_transmit_bytes_total{instance_type="k3s",__$labels__}[5m]) )',
+        'sum by (instance_id,pod) ( rate(prometheus_remote_write_container_network_transmit_bytes_total{instance_type="k3s",__$labels__}[__$window__]) )',
       color: '#597ef7'
     },
     {
@@ -74,7 +75,7 @@ export const POD_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       description: 'Pod 每秒磁盘读操作次数。',
       unit: 'counts',
       query:
-        'sum by (instance_id,pod,device) ( rate(prometheus_remote_write_container_fs_reads_total{instance_type="k3s",__$labels__}[5m]) )',
+        'sum by (instance_id,pod,device) ( rate(prometheus_remote_write_container_fs_reads_total{instance_type="k3s",__$labels__}[__$window__]) )',
       color: '#9254de',
       dimensions: [{ name: 'device' }]
     },
@@ -84,7 +85,7 @@ export const POD_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       description: 'Pod 每秒磁盘写操作次数。',
       unit: 'counts',
       query:
-        'sum by (instance_id,pod,device) ( rate(prometheus_remote_write_container_fs_writes_total{instance_type="k3s",__$labels__}[5m]) )',
+        'sum by (instance_id,pod,device) ( rate(prometheus_remote_write_container_fs_writes_total{instance_type="k3s",__$labels__}[__$window__]) )',
       color: '#f5a623',
       dimensions: [{ name: 'device' }]
     }
@@ -92,7 +93,7 @@ export const POD_DASHBOARD_CONFIG: SimpleDashboardConfig = {
   summaryCards: [
     {
       title: 'Pod 状态',
-      guide: [{ label: 'Pod 状态', detail: 'Pod 当前生命周期阶段(运行中 / 未运行)。' }],
+      guide: [{ label: 'Pod 状态', detail: '未运行时优先查调度失败、镜像拉取、CrashLoop 与探针失败。' }],
       metric: 'pod_status_phase',
       unit: 'none',
       color: '#27c274',
@@ -101,7 +102,7 @@ export const POD_DASHBOARD_CONFIG: SimpleDashboardConfig = {
     },
     {
       title: 'CPU 使用率',
-      guide: [{ label: 'CPU 使用率', detail: 'Pod CPU 使用占 limit 的比例,越低越好。' }],
+      guide: [{ label: 'CPU 使用率', detail: '占 CPU limit 比例；持续逼近 100% 需扩容 limit 或优化热点容器。' }],
       metric: 'pod_cpu_utilization',
       unit: 'percent',
       color: '#2f6bff',
@@ -111,7 +112,7 @@ export const POD_DASHBOARD_CONFIG: SimpleDashboardConfig = {
     },
     {
       title: '内存使用率',
-      guide: [{ label: '内存使用率', detail: 'Pod 工作集内存(实际占用、不可被回收的内存)占 memory limit 的比例,越低越好。' }],
+      guide: [{ label: '内存使用率', detail: '工作集占 memory limit 比例；逼近 100% 可能 OOMKill，需扩容或查泄漏。' }],
       metric: 'pod_memory_utilization',
       unit: 'percent',
       color: '#27c274',

@@ -682,7 +682,6 @@ def search_models(params=None):
 
     params={
         "classification_id": "host_mgmt",  # 可选；按分类过滤
-        "include_hidden": False            # 可选；是否包含已隐藏模型，默认 False
     }
     -> [<模型定义>, ...]
     """
@@ -691,7 +690,7 @@ def search_models(params=None):
     classification_ids = [classification_id] if classification_id else None
     return ModelManage.search_model(
         classification_ids=classification_ids,
-        include_hidden=bool(params.get("include_hidden", False)),
+        include_hidden=False,
     )
 
 
@@ -700,13 +699,10 @@ def search_classifications(params=None):
     """
     查询模型分类列表
 
-    params={"include_hidden": False}  # 可选；是否包含已隐藏分类，默认 False
+    params={}
     -> [<分类定义>, ...]
     """
-    params = params or {}
-    return ClassificationManage.search_model_classification(
-        include_hidden=bool(params.get("include_hidden", False)),
-    )
+    return ClassificationManage.search_model_classification(include_hidden=False)
 
 
 @nats_client.register
@@ -720,7 +716,7 @@ def search_model_associations(params):
     model_id = (params or {}).get("model_id")
     if not model_id:
         raise ValueError("model_id is required")
-    return ModelManage.model_association_search(model_id)
+    return ModelManage.model_association_search(model_id, business_only=True)
 
 
 @nats_client.register
@@ -739,7 +735,11 @@ def search_instance_associations(params):
     inst_id = params.get("inst_id") or params.get("_id")
     if not model_id or inst_id in (None, ""):
         raise ValueError("model_id and inst_id are required")
-    return InstanceManage.instance_association_instance_list(model_id, int(inst_id))
+    return InstanceManage.instance_association_instance_list(
+        model_id,
+        int(inst_id),
+        business_only=True,
+    )
 
 
 @nats_client.register

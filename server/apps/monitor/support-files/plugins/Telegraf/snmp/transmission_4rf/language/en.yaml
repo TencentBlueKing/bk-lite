@@ -64,6 +64,9 @@ monitor_object_metric:
       desc: Operational state of each transmission device power supply. A non-normal
         state indicates offline power, missing input, over-temperature, hardware fault,
         or alert condition that should be investigated.
+    device_fan_fan1_state:
+      name: Fan 1 State
+      desc: Operational state of device fan 1, normalized to normal or abnormal.
 monitor_object_metric_group:
   Transmission:
     Base: Base
@@ -72,3 +75,4 @@ monitor_object_metric_group:
     Memory: Memory
     Temperature: Temperature
     Hardware Status: Hardware Status
+    Fan: Fan

@@ -1,9 +1,14 @@
+from copy import deepcopy
+from uuid import uuid4
+
 from config.drf.viewsets import ModelViewSet
 from apps.mlops.filters.timeseries_predict import *
 from apps.mlops.constants import TrainJobStatus, DatasetReleaseStatus, MLflowRunStatus
 from rest_framework.decorators import action
 from rest_framework import status
 from rest_framework.response import Response
+from django.db import DatabaseError, transaction
+from django.db.models import Case, F, JSONField, Q, Value, When
 from django.http import FileResponse
 from apps.mlops.utils.webhook_client import (
     WebhookClient,
@@ -39,6 +44,25 @@ from apps.mlops.serializers.algorithm_config import (
 from apps.mlops.filters.algorithm_config import AlgorithmConfigFilter
 from apps.mlops.views.base import TeamModelViewSet
 from apps.mlops.utils.group_scope import filter_queryset_by_parent_team
+
+
+TIMESERIES_PREDICT_PROXY_TIMEOUT_MARGIN_SECONDS = 5
+MAX_TIMESERIES_PREDICT_TIMEOUT_SECONDS = 290
+
+
+def get_timeseries_predict_budget_seconds() -> int:
+    raw_timeout = os.getenv("TIMESERIES_PREDICT_TIMEOUT_SECONDS", "120")
+    try:
+        timeout = int(raw_timeout)
+    except ValueError:
+        raise ValueError("TIMESERIES_PREDICT_TIMEOUT_SECONDS must be an integer between 1 and 290") from None
+    if not 1 <= timeout <= MAX_TIMESERIES_PREDICT_TIMEOUT_SECONDS:
+        raise ValueError("TIMESERIES_PREDICT_TIMEOUT_SECONDS must be an integer between 1 and 290")
+    return timeout
+
+
+def get_timeseries_predict_timeout_seconds() -> int:
+    return get_timeseries_predict_budget_seconds() + TIMESERIES_PREDICT_PROXY_TIMEOUT_MARGIN_SECONDS
 
 
 class TimeSeriesPredictDatasetViewSet(TeamModelViewSet):
@@ -280,13 +304,10 @@ class TimeSeriesPredictTrainJobViewSet(TeamModelViewSet):
         获取训练任务的所有 MLflow 运行记录
         """
         try:
-            # 获取分页参数
-            page = int(request.GET.get("page", 1))
-            page_size = request.GET.get("page_size")
-            # page_size 为 None、0、-1 时不分页，返回全部数据
-            use_pagination = page_size is not None and page_size not in ["0", "-1"]
-            if use_pagination:
-                page_size = int(page_size)
+            pagination = self.parse_run_list_pagination(request)
+            if pagination is None:
+                return Response({"error": "分页参数必须为正整数"}, status=status.HTTP_400_BAD_REQUEST)
+            page, page_size, use_pagination = pagination
 
             train_job = self.get_object()
 
@@ -667,6 +688,271 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
     permission_key = "serving.timeseries_predict_serving"
 
     MLFLOW_PREFIX = "TimeseriesPredict"  # MLflow 命名前缀
+    RUNTIME_GENERATION_KEY = "_runtime_generation"
+    RUNTIME_QUERY_TOKEN_KEY = "_runtime_query_token"
+
+    @staticmethod
+    def _snapshot_database_state(instance):
+        return {
+            field.attname: deepcopy(getattr(instance, field.attname))
+            for field in instance._meta.concrete_fields
+            if not field.primary_key
+        }
+
+    @classmethod
+    def _restore_database_state(cls, instance, old_state, applied_state, **overrides):
+        """只回滚仍保持本请求写入值的字段，避免覆盖并发请求。"""
+        with transaction.atomic():
+            current = instance.__class__.objects.select_for_update().get(pk=instance.pk)
+            restored_state = {}
+            for field_name, old_value in old_state.items():
+                applied_value = applied_state[field_name]
+                if old_value != applied_value and getattr(current, field_name) == applied_value:
+                    restored_state[field_name] = deepcopy(old_value)
+            for field_name, value in overrides.items():
+                if getattr(current, field_name) == applied_state[field_name]:
+                    if field_name == "container_info":
+                        value = cls._next_runtime_container_info(current, value)
+                    restored_state[field_name] = deepcopy(value)
+            if restored_state:
+                instance.__class__.objects.filter(pk=instance.pk).update(**restored_state)
+                for field_name, value in restored_state.items():
+                    setattr(instance, field_name, deepcopy(value))
+
+    def _get_runtime_locked_object(self):
+        """获取并锁定同一 serving，串行化所有运行时变更入口。"""
+        unlocked_instance = self.get_object()
+        return unlocked_instance.__class__.objects.select_for_update().get(pk=unlocked_instance.pk)
+
+    @classmethod
+    def _next_runtime_container_info(cls, instance, runtime_container_info):
+        """运行时所有者每次变更都递增 generation，避免状态值 ABA。"""
+        current_info = instance.container_info if isinstance(instance.container_info, dict) else {}
+        try:
+            current_generation = int(current_info.get(cls.RUNTIME_GENERATION_KEY, 0))
+        except (TypeError, ValueError):
+            current_generation = 0
+        return {
+            **(runtime_container_info or {}),
+            cls.RUNTIME_GENERATION_KEY: current_generation + 1,
+        }
+
+    @classmethod
+    def _assign_runtime_container_info(cls, instance, runtime_container_info):
+        instance.container_info = cls._next_runtime_container_info(instance, runtime_container_info)
+        return instance.container_info
+
+    @classmethod
+    def _runtime_status_generation(cls, container_info):
+        info = container_info if isinstance(container_info, dict) else {}
+        try:
+            return int(info.get(cls.RUNTIME_GENERATION_KEY, 0))
+        except (TypeError, ValueError):
+            return 0
+
+    @staticmethod
+    def _runtime_status_map(runtime_statuses, expected_ids):
+        """线性构建已校验状态映射；错 ID、缺 state 和畸形响应全部忽略。"""
+        if not isinstance(runtime_statuses, list):
+            return {}
+        expected_ids = set(expected_ids)
+        return {
+            item["id"]: item
+            for item in runtime_statuses
+            if isinstance(item, dict)
+            and item.get("id") in expected_ids
+            and item.get("state")
+        }
+
+    @classmethod
+    def _matching_runtime_status(cls, runtime_statuses, serving_id):
+        """仅接受目标 ID 明确匹配且包含 state 的运行时状态。"""
+        return cls._runtime_status_map(runtime_statuses, [serving_id]).get(serving_id)
+
+    @classmethod
+    def _reserve_runtime_status_sync(cls, observed_statuses):
+        """查询 runtime 前批量认领 generation；并发查询只允许最新认领者写回。"""
+        if not observed_statuses:
+            return {}
+
+        reserve_filter = Q(pk__in=[])
+        reserve_cases = []
+        claims_by_id = {}
+        for instance_id, observed_container_info in observed_statuses:
+            condition = Q(pk=instance_id, container_info=observed_container_info)
+            observed_info = observed_container_info if isinstance(observed_container_info, dict) else {}
+            claim = {
+                **observed_info,
+                cls.RUNTIME_GENERATION_KEY: cls._runtime_status_generation(observed_info) + 1,
+                cls.RUNTIME_QUERY_TOKEN_KEY: uuid4().hex,
+            }
+            reserve_filter |= condition
+            reserve_cases.append(
+                When(
+                    condition,
+                    then=Value(claim, output_field=JSONField()),
+                )
+            )
+            claims_by_id[instance_id] = claim
+
+        TimeSeriesPredictServing.objects.filter(reserve_filter).update(
+            container_info=Case(
+                *reserve_cases,
+                default=F("container_info"),
+                output_field=JSONField(),
+            )
+        )
+        return claims_by_id
+
+    @classmethod
+    def _finalize_runtime_status_sync(cls, claims_by_id, runtime_info_by_id):
+        """仅当前查询 token 仍有效时批量写回，并容忍记录已并发删除。"""
+        if claims_by_id and runtime_info_by_id:
+            finalize_filter = Q(pk__in=[])
+            finalize_cases = []
+            for instance_id, runtime_container_info in runtime_info_by_id.items():
+                claim = claims_by_id.get(instance_id)
+                if claim is None:
+                    continue
+                condition = Q(pk=instance_id, container_info=claim)
+                versioned_runtime_info = {
+                    **runtime_container_info,
+                    cls.RUNTIME_GENERATION_KEY: claim[cls.RUNTIME_GENERATION_KEY],
+                }
+                finalize_filter |= condition
+                finalize_cases.append(
+                    When(
+                        condition,
+                        then=Value(versioned_runtime_info, output_field=JSONField()),
+                    )
+                )
+
+            if finalize_cases:
+                TimeSeriesPredictServing.objects.filter(finalize_filter).update(
+                    container_info=Case(
+                        *finalize_cases,
+                        default=F("container_info"),
+                        output_field=JSONField(),
+                    )
+                )
+
+        instance_ids = list(claims_by_id)
+        if not instance_ids:
+            return {}
+        return dict(
+            TimeSeriesPredictServing.objects.filter(pk__in=instance_ids).values_list(
+                "pk",
+                "container_info",
+            )
+        )
+
+    @classmethod
+    def _claim_runtime_transition(cls, instance, transition):
+        """外部调用前推进 generation，并记录结果尚待对账。"""
+        observed_info = instance.container_info if isinstance(instance.container_info, dict) else {}
+        claim = cls._next_runtime_container_info(
+            instance,
+            {
+                **observed_info,
+                "status": "error",
+                "state": "unknown",
+                "message": f"{transition} 结果待对账",
+                "_runtime_transition": transition,
+            },
+        )
+        instance.container_info = claim
+        instance.save(update_fields=["container_info"])
+        return claim
+
+    @classmethod
+    def _reconcile_runtime_transition(cls, instance, serving_id, transition, error):
+        """副作用结果不确定时查询实际状态；查询失败则持久化 unknown。"""
+        try:
+            observed_runtime = WebhookClient.get_status([serving_id])
+            runtime_info = cls._matching_runtime_status(observed_runtime, serving_id)
+            if runtime_info is None:
+                runtime_info = {
+                    "status": "error",
+                    "id": serving_id,
+                    "state": "unknown",
+                    "message": f"{transition} 结果未知: {str(error)}; 状态查询未返回目标资源",
+                }
+        except Exception as status_error:
+            runtime_info = {
+                "status": "error",
+                "id": serving_id,
+                "state": "unknown",
+                "message": f"{transition} 结果未知: {str(error)}; 状态对账失败: {str(status_error)}",
+            }
+        cls._assign_runtime_container_info(instance, runtime_info)
+        instance.save(update_fields=["container_info"])
+        return instance.container_info
+
+    @staticmethod
+    def _cleanup_uncommitted_create_runtime(container_id, serving_id, cleanup_token):
+        """事务回滚后先持久化清理意图，再同步清理并由任务持续补投。"""
+        from apps.mlops.services.timeseries_runtime_cleanup import (
+            create_runtime_cleanup_intent,
+            process_runtime_cleanup_intent,
+        )
+
+        try:
+            intent = create_runtime_cleanup_intent(
+                container_id,
+                serving_id,
+                cleanup_token,
+            )
+        except Exception as intent_error:
+            from apps.mlops.tasks.runtime_cleanup import (
+                bootstrap_timeseries_runtime_cleanup,
+            )
+
+            try:
+                bootstrap_timeseries_runtime_cleanup.apply_async(
+                    args=(container_id, serving_id, cleanup_token),
+                    retry=True,
+                    retry_policy={
+                        "max_retries": 5,
+                        "interval_start": 0,
+                        "interval_step": 1,
+                        "interval_max": 5,
+                    },
+                )
+            except Exception as dispatch_error:
+                logger.critical(
+                    "创建 serving 事务回滚后的补偿意图与 bootstrap 任务均未持久化: "
+                    f"container_id={container_id}, intent_error={type(intent_error).__name__}, "
+                    f"dispatch_error={type(dispatch_error).__name__}",
+                    exc_info=True,
+                )
+            return
+
+        try:
+            process_runtime_cleanup_intent(intent.pk)
+        except Exception as cleanup_error:
+            from apps.mlops.tasks.runtime_cleanup import (
+                cleanup_orphan_timeseries_runtime,
+            )
+
+            try:
+                cleanup_orphan_timeseries_runtime.apply_async(
+                    args=(intent.pk,),
+                    retry=True,
+                    retry_policy={
+                        "max_retries": 5,
+                        "interval_start": 0,
+                        "interval_step": 1,
+                        "interval_max": 5,
+                    },
+                )
+            except Exception as dispatch_error:
+                logger.critical(
+                    "创建 serving 事务回滚后的补偿任务投递失败: "
+                    f"intent_id={intent.pk}, container_id={container_id}, "
+                    f"cleanup_error={type(cleanup_error).__name__}, "
+                    f"dispatch_error={type(dispatch_error).__name__}",
+                    exc_info=True,
+                )
 
     @HasPermission("timeseries_predict-View")
     def list(self, request, *args, **kwargs):
@@ -682,31 +968,22 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
             return response
 
         serving_ids = [f"TimeseriesPredict_Serving_{s['id']}" for s in servings]
+        claims_by_id = self._reserve_runtime_status_sync(
+            [(serving_data["id"], serving_data.get("container_info")) for serving_data in servings]
+        )
 
         try:
             # 批量查询
             result = WebhookClient.get_status(serving_ids)
-            status_map = {s.get("id"): s for s in result}
+            status_map = self._runtime_status_map(result, serving_ids)
 
-            # 批量获取所有需要更新的对象（避免N+1查询）
-            serving_id_list = [s["id"] for s in servings]
-            serving_objs = TimeSeriesPredictServing.objects.filter(id__in=serving_id_list)
-            serving_obj_map = {obj.id: obj for obj in serving_objs}
-
-            updates = []
+            runtime_info_by_id = {}
             for serving_data in servings:
                 serving_id = f"TimeseriesPredict_Serving_{serving_data['id']}"
                 container_info = status_map.get(serving_id)
 
                 if container_info:
-                    # 直接使用 webhookd 响应
-                    serving_data["container_info"] = container_info
-
-                    # 同步到数据库：从缓存字典获取对象，无额外查询
-                    serving_obj = serving_obj_map.get(serving_data["id"])
-                    if serving_obj:
-                        serving_obj.container_info = container_info
-                        updates.append(serving_obj)
+                    runtime_info_by_id[serving_data["id"]] = container_info
                 else:
                     # webhookd 没返回这个容器的状态（不应该发生）
                     serving_data["container_info"] = {
@@ -715,8 +992,19 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
                         "message": "webhookd 未返回此容器状态",
                     }
 
-            if updates:
-                TimeSeriesPredictServing.objects.bulk_update(updates, ["container_info"])
+            current_info_by_id = (
+                self._finalize_runtime_status_sync(claims_by_id, runtime_info_by_id)
+                if runtime_info_by_id
+                else {}
+            )
+            for serving_data in servings:
+                instance_id = serving_data["id"]
+                if instance_id in runtime_info_by_id:
+                    # 并发 DELETE 时记录已不存在，保留本次已取得的运行时快照。
+                    serving_data["container_info"] = current_info_by_id.get(
+                        instance_id,
+                        runtime_info_by_id[instance_id],
+                    )
 
         except WebhookError as e:
             logger.error(f"查询容器状态失败: {e}")
@@ -738,17 +1026,25 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
         response = super().retrieve(request, *args, **kwargs)
 
         serving_id = f"TimeseriesPredict_Serving_{response.data['id']}"
+        claims_by_id = self._reserve_runtime_status_sync(
+            [(response.data["id"], response.data.get("container_info"))]
+        )
 
         try:
             result = WebhookClient.get_status([serving_id])
-            container_info = result[0] if result else None
+            container_info = self._matching_runtime_status(result, serving_id)
 
             if container_info:
-                # 直接使用 webhookd 响应
-                response.data["container_info"] = container_info
-
-                # 更新数据库
-                TimeSeriesPredictServing.objects.filter(id=response.data["id"]).update(container_info=container_info)
+                current_info_by_id = self._finalize_runtime_status_sync(
+                    claims_by_id,
+                    {response.data["id"]: container_info},
+                )
+                # 详情已在请求开始时形成快照；并发 DELETE 时返回已取得的运行时状态，
+                # 不把正常竞争转换成 500。
+                response.data["container_info"] = current_info_by_id.get(
+                    response.data["id"],
+                    container_info,
+                )
             else:
                 # webhookd 没返回状态
                 response.data["container_info"] = {
@@ -771,30 +1067,67 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
         return response
 
     @HasPermission("timeseries_predict-Delete")
+    @transaction.atomic
     def destroy(self, request, *args, **kwargs):
-        return self.destroy_serving_with_runtime_cleanup(request, *args, **kwargs)
+        serving = self._get_runtime_locked_object()
+        access_error = self._validate_destroy_access(request, serving)
+        if access_error is not None:
+            return access_error
+        serving_id = f"TimeseriesPredict_Serving_{serving.id}"
+        self._claim_runtime_transition(serving, "delete")
+        cleanup_error = self.cleanup_serving_runtime(serving)
+        if cleanup_error is not None:
+            self._reconcile_runtime_transition(serving, serving_id, "delete", cleanup_error.data)
+            return cleanup_error
+        kwargs["_destroy_access_prechecked"] = True
+        return super().destroy(request, *args, **kwargs)
 
     @HasPermission("timeseries_predict-Add")
     def create(self, request, *args, **kwargs):
+        cleanup_context = {}
+        try:
+            return self._create_under_runtime_lock(request, cleanup_context, *args, **kwargs)
+        except Exception:
+            container_id = cleanup_context.get("container_id")
+            serving_id = cleanup_context.get("serving_id")
+            cleanup_token = cleanup_context.get("cleanup_token")
+            if container_id is not None and serving_id is not None and cleanup_token is not None:
+                self._cleanup_uncommitted_create_runtime(
+                    container_id,
+                    serving_id,
+                    cleanup_token,
+                )
+            raise
+
+    @transaction.atomic
+    def _create_under_runtime_lock(self, request, cleanup_context, *args, **kwargs):
         """
-        创建 serving 服务并自动启动容器
+        创建 serving 服务并自动启动容器。
+
+        新记录及外部运行时在同一事务内初始化，提交前对其他请求不可见；若事务
+        或最终落库失败，外层会在事务退出后幂等清理可能已创建的运行时。
         """
         # 创建 serving 记录（初始状态为 inactive）
         response = super().create(request, *args, **kwargs)
         serving_id = response.data["id"]
+        serving = None
+        container_id = None
 
         try:
-            # 获取创建的 serving 对象
-            serving = TimeSeriesPredictServing.objects.get(id=serving_id)
+            # 新记录在提交前不可见；显式行锁使创建与其余运行时入口使用同一锁约定。
+            serving = TimeSeriesPredictServing.objects.select_for_update().get(id=serving_id)
 
             # 获取 MLflow tracking URI
             mlflow_tracking_uri = get_mlflow_tracking_uri()
             if not mlflow_tracking_uri:
                 logger.error("环境变量 MLFLOW_TRACKER_URL 未配置")
-                serving.container_info = {
-                    "status": "error",
-                    "message": "环境变量 MLFLOW_TRACKER_URL 未配置",
-                }
+                self._assign_runtime_container_info(
+                    serving,
+                    {
+                        "status": "error",
+                        "message": "环境变量 MLFLOW_TRACKER_URL 未配置",
+                    },
+                )
                 serving.save(update_fields=["container_info"])
                 response.data["container_info"] = serving.container_info
                 response.data["message"] = "服务已创建但启动失败：环境变量未配置"
@@ -805,10 +1138,13 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
                 model_uri = self._resolve_model_uri(serving)
             except ValueError as e:
                 logger.error(f"解析 model URI 失败: {e}")
-                serving.container_info = {
-                    "status": "error",
-                    "message": f"解析模型 URI 失败: {str(e)}",
-                }
+                self._assign_runtime_container_info(
+                    serving,
+                    {
+                        "status": "error",
+                        "message": f"解析模型 URI 失败: {str(e)}",
+                    },
+                )
                 serving.save(update_fields=["container_info"])
                 response.data["container_info"] = serving.container_info
                 response.data["message"] = f"服务已创建但启动失败：{str(e)}"
@@ -816,8 +1152,19 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
 
             # 构建 serving ID
             container_id = f"TimeseriesPredict_Serving_{serving.id}"
+            cleanup_context["container_id"] = container_id
+            cleanup_context["serving_id"] = serving.id
+            cleanup_context["cleanup_token"] = str(uuid4())
 
             try:
+                from apps.mlops.services.timeseries_runtime_cleanup import (
+                    lock_timeseries_runtime_id,
+                )
+
+                # create 与失败补偿使用同一永久 guard。即使业务行尚未提交，唯一
+                # guard 插入也会阻塞并发 cleanup，直到本事务提交或回滚。
+                lock_timeseries_runtime_id(serving.id)
+                self._claim_runtime_transition(serving, "create")
                 # 调用 WebhookClient 启动服务
                 result = WebhookClient.serve(
                     container_id,
@@ -825,15 +1172,16 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
                     model_uri,
                     port=serving.port,
                     train_image=get_image_by_prefix(self.MLFLOW_PREFIX, serving.train_job.algorithm),
+                    timeseries_predict_timeout_seconds=get_timeseries_predict_budget_seconds(),
                 )
 
                 # 启动成功，仅更新容器信息
-                serving.container_info = result
+                versioned_result = self._assign_runtime_container_info(serving, result)
                 serving.port = int(result.get("port", 0)) if result.get("port") else serving.port
                 serving.save(update_fields=["container_info", "port"])
 
                 # 更新返回数据（status 由用户控制，不修改）
-                response.data["container_info"] = result
+                response.data["container_info"] = versioned_result
                 response.data["message"] = "服务已创建并启动"
 
             except WebhookError as e:
@@ -844,46 +1192,54 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
                 if e.code == "CONTAINER_ALREADY_EXISTS":
                     try:
                         result = WebhookClient.get_status([container_id])
-                        container_info = (
-                            result[0]
-                            if result
-                            else {
+                        container_info = self._matching_runtime_status(result, container_id)
+                        if container_info is None:
+                            container_info = {
                                 "status": "error",
                                 "id": container_id,
-                                "message": "无法查询容器状态",
+                                "state": "unknown",
+                                "message": "状态查询未返回目标运行时",
                             }
-                        )
 
                         # 仅更新容器信息，不修改 status
-                        serving.container_info = container_info
+                        container_info = self._assign_runtime_container_info(serving, container_info)
                         serving.save(update_fields=["container_info"])
 
                         response.data["container_info"] = container_info
                         response.data["message"] = "服务已创建，检测到容器已存在并同步容器状态"
                         response.data["warning"] = "容器已存在，已同步容器信息"
                     except WebhookError:
-                        serving.container_info = {
-                            "status": "error",
-                            "message": f"容器已存在但同步状态失败: {error_msg}",
-                        }
+                        self._assign_runtime_container_info(
+                            serving,
+                            {
+                                "status": "error",
+                                "state": "unknown",
+                                "message": f"容器已存在但同步状态失败: {error_msg}",
+                            },
+                        )
                         serving.save(update_fields=["container_info"])
                         response.data["container_info"] = serving.container_info
                         response.data["message"] = "服务已创建但启动失败"
                 else:
-                    # 其他错误
-                    serving.container_info = {"status": "error", "message": error_msg}
-                    serving.save(update_fields=["container_info"])
+                    # 调用失败可能已产生外部副作用，必须对账后再落库。
+                    self._reconcile_runtime_transition(serving, container_id, "create", e)
                     response.data["container_info"] = serving.container_info
                     response.data["message"] = f"服务已创建但启动失败: {error_msg}"
 
+        except DatabaseError:
+            raise
         except Exception as e:
             logger.error(f"自动启动 serving 异常: {str(e)}", exc_info=True)
+            if serving is not None and container_id is not None:
+                self._reconcile_runtime_transition(serving, container_id, "create", e)
+                response.data["container_info"] = serving.container_info
             # 确保至少有基本的错误信息
             response.data["message"] = f"服务已创建但启动异常: {str(e)}"
 
         return response
 
     @HasPermission("timeseries_predict-Edit")
+    @transaction.atomic
     def update(self, request, *args, **kwargs):
         """
         更新 serving 配置，自动检测并重启容器
@@ -892,7 +1248,24 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
         - 容器 running + 配置变更 → 自动重启
         - 容器非 running → 仅更新数据库，用户自行决定是否启动
         """
-        instance = self.get_object()
+        # 同一 serving 的数据库写入和外部运行时切换必须串行；普通并发 UPDATE
+        # 也会在 PostgreSQL 行锁上等待，避免另一个请求接管同一 runtime ID。
+        instance = self._get_runtime_locked_object()
+
+        # 本方法在父类更新前会解析 MLflow、镜像和运行时配置，因此先复用父类的
+        # 完整实例授权门禁；父类收到标记后不再重复执行同一校验。
+        access_error = self._validate_update_access(request, instance, request.data)
+        if access_error is not None:
+            return access_error
+        kwargs["_update_access_prechecked"] = True
+        old_database_state = self._snapshot_database_state(instance)
+        deferred_delete_teams = []
+        if self.ORGANIZATION_FIELD in request.data:
+            new_teams = self._normalize_org_values(request.data, self.ORGANIZATION_FIELD)
+            deferred_delete_teams = [
+                team for team in old_database_state.get(self.ORGANIZATION_FIELD, []) if team not in new_teams
+            ]
+            kwargs["_skip_rule_cleanup"] = True
 
         # 兜底校验：容器未运行时不允许设置 status=active
         new_status = request.data.get("status")
@@ -912,15 +1285,40 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
 
         # 获取容器实际状态（更新前），防御性处理 container_info 为空的情况
         container_info = instance.container_info or {}
+        old_container_info = dict(container_info)
         container_state = container_info.get("state")
         container_port = container_info.get("port")
 
+        # 需要重启时先校验全部旧服务恢复参数，避免系统配置错误导致旧容器下线。
+        predict_budget_seconds = None
+        mlflow_tracking_uri = None
+        old_model_uri = None
+        old_train_image = None
+        if container_state == "running" and (model_version_changed or train_job_changed or port_changed):
+            try:
+                predict_budget_seconds = get_timeseries_predict_budget_seconds()
+                mlflow_tracking_uri = get_mlflow_tracking_uri()
+                if not mlflow_tracking_uri:
+                    raise ValueError("环境变量 MLFLOW_TRACKER_URL 未配置")
+                old_model_uri = self._resolve_model_uri(instance)
+                old_train_image = get_image_by_prefix(self.MLFLOW_PREFIX, instance.train_job.algorithm)
+            except Exception as e:
+                logger.error(f"时序预测重启前置配置无效: {e}")
+                return Response(
+                    {"error": f"系统配置错误: {str(e)}"},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                )
+
         # 更新数据库
         response = super().update(request, *args, **kwargs)
+        if not isinstance(response, Response) or response.status_code >= 400:
+            return response
         instance.refresh_from_db()
+        applied_database_state = self._snapshot_database_state(instance)
 
         # 只有容器在运行时才考虑重启
         if container_state != "running":
+            self.delete_rules(instance.id, deferred_delete_teams)
             return response
 
         # 决策：是否需要重启
@@ -944,66 +1342,208 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
                 if container_port and str(new_port) != str(container_port):
                     need_restart = True
 
+        if not need_restart:
+            self.delete_rules(instance.id, deferred_delete_teams)
+            return response
+
         # 如果需要重启，先删除旧容器
         if need_restart:
             try:
-                logger.warning(f"配置变更需要重启，删除旧容器: {container_id}")
-                WebhookClient.remove(container_id)
-            except WebhookError as e:
-                logger.warning(f"删除旧容器失败（可能已不存在）: {e}")
-                # 继续执行，尝试启动新容器
+                model_uri = self._resolve_model_uri(instance)
+                train_image = get_image_by_prefix(self.MLFLOW_PREFIX, instance.train_job.algorithm)
+            except Exception as e:
+                self._restore_database_state(instance, old_database_state, applied_database_state)
+                logger.error(f"新 serving 配置校验失败，保留旧服务: {e}", exc_info=True)
+                return Response(
+                    {"error": f"配置更新未生效，旧服务保持运行: {str(e)}"},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                )
 
             try:
-                # 获取 MLflow tracking URI
-                mlflow_tracking_uri = get_mlflow_tracking_uri()
-                if not mlflow_tracking_uri:
-                    raise ValueError("环境变量 MLFLOW_TRACKER_URL 未配置")
+                logger.warning(f"配置变更需要重启，删除旧容器: {container_id}")
+                transition_claim = self._claim_runtime_transition(instance, "update")
+                applied_database_state["container_info"] = deepcopy(transition_claim)
+                WebhookClient.remove(container_id)
+            except Exception as e:
+                try:
+                    observed_runtime = WebhookClient.get_status([container_id])
+                except Exception as status_error:
+                    logger.error(f"删除旧容器失败且状态对账失败: {status_error}", exc_info=True)
+                    rollback_result = {
+                        "status": "error",
+                        "state": "unknown",
+                        "message": f"旧服务删除结果未知: {str(status_error)}",
+                    }
+                    rollback_port = old_port
+                    rollback_message = "配置已回滚，但旧服务删除结果未知"
+                else:
+                    runtime_state = self._matching_runtime_status(observed_runtime, container_id) or {}
+                    observed_state = runtime_state.get("state")
+                    if runtime_state and observed_state not in {"running", "not_found"}:
+                        try:
+                            # stop 成功但 remove 失败时会留下 completed/failed/stopped
+                            # 资源；再次幂等删除并确认消失后才能复用相同 ID。
+                            WebhookClient.remove(container_id)
+                            verified_runtime = WebhookClient.get_status([container_id])
+                            runtime_state = self._matching_runtime_status(verified_runtime, container_id) or {}
+                            observed_state = runtime_state.get("state")
+                        except Exception as cleanup_error:
+                            logger.error(f"清理非运行态旧 serving 失败: {cleanup_error}", exc_info=True)
+                            runtime_state = {
+                                "status": "error",
+                                "state": "unknown",
+                                "message": f"旧服务非运行态资源清理失败: {str(cleanup_error)}",
+                            }
+                            observed_state = "unknown"
 
-                # 解析新的 model_uri
-                model_uri = self._resolve_model_uri(instance)
+                    if observed_state == "not_found":
+                        try:
+                            rollback_result = WebhookClient.serve(
+                                container_id,
+                                mlflow_tracking_uri,
+                                old_model_uri,
+                                port=old_port,
+                                train_image=old_train_image,
+                                timeseries_predict_timeout_seconds=predict_budget_seconds,
+                            )
+                            rollback_port = (
+                                int(rollback_result.get("port", 0))
+                                if rollback_result.get("port")
+                                else old_port
+                            )
+                            rollback_message = "配置已回滚，并在对账确认旧服务已删除后恢复旧服务"
+                        except Exception as rollback_error:
+                            logger.error(f"对账后恢复旧 serving 失败: {rollback_error}", exc_info=True)
+                            rollback_result = {
+                                "status": "error",
+                                "state": "not_found",
+                                "message": f"旧服务已删除且恢复失败: {str(rollback_error)}",
+                            }
+                            rollback_port = old_port
+                            rollback_message = "配置已回滚，但旧服务恢复失败"
+                    elif observed_state == "running":
+                        rollback_result = runtime_state
+                        rollback_port = (
+                            int(runtime_state.get("port", 0))
+                            if runtime_state.get("port")
+                            else old_port
+                        )
+                        rollback_message = "配置已回滚，并已对账确认旧服务仍在运行"
+                    else:
+                        rollback_result = runtime_state or {
+                            "status": "error",
+                            "state": "unknown",
+                            "message": "旧服务删除结果未知：状态查询未返回目标资源",
+                        }
+                        rollback_port = old_port
+                        rollback_message = "配置已回滚，但旧服务删除结果未知"
 
+                self._restore_database_state(
+                    instance,
+                    old_database_state,
+                    applied_database_state,
+                    port=rollback_port,
+                    container_info=rollback_result,
+                )
+                logger.error(f"删除旧容器失败，配置已回滚并完成状态对账: {e}", exc_info=True)
+                return Response(
+                    {
+                        "error": f"配置更新未生效: {str(e)}",
+                        "message": rollback_message,
+                        "container_info": rollback_result,
+                    },
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                )
+
+            try:
                 # 启动新容器
                 result = WebhookClient.serve(
                     container_id,
                     mlflow_tracking_uri,
                     model_uri,
                     port=instance.port,
-                    train_image=get_image_by_prefix(self.MLFLOW_PREFIX, instance.train_job.algorithm),
+                    train_image=train_image,
+                    timeseries_predict_timeout_seconds=predict_budget_seconds,
                 )
 
                 # 更新容器信息（status 由用户控制，不修改）
-                instance.container_info = result
+                versioned_result = self._assign_runtime_container_info(instance, result)
                 instance.port = int(result.get("port", 0)) if result.get("port") else instance.port
                 instance.save(update_fields=["container_info", "port"])
 
                 # 更新返回数据
-                response.data["container_info"] = result
+                response.data["container_info"] = versioned_result
                 response.data["message"] = "配置已更新并重启服务"
+                self.delete_rules(instance.id, deferred_delete_teams)
 
             except Exception as e:
                 logger.error(f"自动重启失败: {str(e)}", exc_info=True)
+                try:
+                    # serve.sh 可能在返回失败前已创建容器或 Kubernetes 资源。
+                    # remove 端点对不存在资源幂等；确认清理完成后才能复用同一 ID。
+                    WebhookClient.remove(container_id)
+                except Exception as cleanup_error:
+                    logger.error(f"清理失败的新 serving 资源失败: {cleanup_error}", exc_info=True)
+                    rollback_result = {
+                        "status": "error",
+                        "message": f"新服务启动失败且残留资源清理失败: {str(cleanup_error)}",
+                    }
+                    rollback_port = old_port
+                    rollback_message = "新服务启动失败，旧配置已恢复但运行时残留未清理"
+                else:
+                    try:
+                        rollback_result = WebhookClient.serve(
+                            container_id,
+                            mlflow_tracking_uri,
+                            old_model_uri,
+                            port=old_port,
+                            train_image=old_train_image,
+                            timeseries_predict_timeout_seconds=predict_budget_seconds,
+                        )
+                        rollback_port = (
+                            int(rollback_result.get("port", 0))
+                            if rollback_result.get("port")
+                            else old_port
+                        )
+                        rollback_message = "新服务启动失败，已恢复旧配置与旧服务"
+                    except Exception as rollback_error:
+                        logger.error(f"恢复旧 serving 失败: {rollback_error}", exc_info=True)
+                        rollback_result = {
+                            "status": "error",
+                            "message": f"新服务与旧服务恢复均失败: {str(rollback_error)}",
+                        }
+                        rollback_port = old_port
+                        rollback_message = "新服务启动失败，旧配置已恢复但旧服务恢复失败"
 
-                # 启动失败，仅更新容器信息
-                instance.container_info = {
-                    "status": "error",
-                    "message": f"配置已更新但重启失败: {str(e)}",
-                }
-                instance.save(update_fields=["container_info"])
-
-                response.data["container_info"] = instance.container_info
-                response.data["message"] = f"配置已更新但重启失败: {str(e)}"
-                response.data["warning"] = "请手动调用 start 接口重新启动服务"
+                self._restore_database_state(
+                    instance,
+                    old_database_state,
+                    applied_database_state,
+                    port=rollback_port,
+                    container_info=rollback_result,
+                )
+                return Response(
+                    {
+                        "error": f"配置更新未生效: {str(e)}",
+                        "message": rollback_message,
+                        "container_info": rollback_result,
+                    },
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                )
 
         return response
 
     @action(detail=True, methods=["post"], url_path="start")
     @HasPermission("timeseries_predict-Start")
+    @transaction.atomic
     def start(self, request, *args, **kwargs):
         """
         启动 serving 服务
         """
+        serving = None
+        serving_id = None
         try:
-            serving = self.get_object()
+            serving = self._get_runtime_locked_object()
 
             # 获取 MLflow tracking URI
             mlflow_tracking_uri = get_mlflow_tracking_uri()
@@ -1024,6 +1564,7 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
             serving_id = f"TimeseriesPredict_Serving_{serving.id}"
 
             try:
+                self._claim_runtime_transition(serving, "start")
                 # 调用 WebhookClient 启动服务
                 result = WebhookClient.serve(
                     serving_id,
@@ -1031,10 +1572,11 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
                     model_uri,
                     port=serving.port,
                     train_image=get_image_by_prefix(self.MLFLOW_PREFIX, serving.train_job.algorithm),
+                    timeseries_predict_timeout_seconds=get_timeseries_predict_budget_seconds(),
                 )
 
                 # 正常启动成功，更新容器信息
-                serving.container_info = result
+                versioned_result = self._assign_runtime_container_info(serving, result)
                 serving.port = int(result.get("port", 0)) if result.get("port") else serving.port
                 serving.save(update_fields=["container_info", "port"])
 
@@ -1042,7 +1584,7 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
                     {
                         "message": "服务已启动",
                         "serving_id": serving_id,
-                        "container_info": result,
+                        "container_info": versioned_result,
                     }
                 )
 
@@ -1055,18 +1597,17 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
                     try:
                         # 查询当前容器状态
                         result = WebhookClient.get_status([serving_id])
-                        container_info = (
-                            result[0]
-                            if result
-                            else {
+                        container_info = self._matching_runtime_status(result, serving_id)
+                        if container_info is None:
+                            container_info = {
                                 "status": "error",
                                 "id": serving_id,
-                                "message": "无法查询容器状态",
+                                "state": "unknown",
+                                "message": "状态查询未返回目标运行时",
                             }
-                        )
 
                         # 仅更新容器信息，不修改 status
-                        serving.container_info = container_info
+                        container_info = self._assign_runtime_container_info(serving, container_info)
                         serving.save(update_fields=["container_info"])
 
                         return Response(
@@ -1085,17 +1626,24 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
                 else:
                     # 其他错误直接返回
                     logger.error(f"启动 serving 失败: {error_msg}")
+                    self._reconcile_runtime_transition(serving, serving_id, "start", e)
                     return Response(
                         {"error": error_msg},
                         status=status.HTTP_500_INTERNAL_SERVER_ERROR,
                     )
 
         except WebhookTimeoutError as e:
+            if serving is not None and serving_id is not None:
+                self._reconcile_runtime_transition(serving, serving_id, "start", e)
             return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         except WebhookConnectionError as e:
+            if serving is not None and serving_id is not None:
+                self._reconcile_runtime_transition(serving, serving_id, "start", e)
             return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         except Exception as e:
             logger.error(f"启动 serving 服务失败: {str(e)}", exc_info=True)
+            if serving is not None and serving_id is not None:
+                self._reconcile_runtime_transition(serving, serving_id, "start", e)
             return Response(
                 {"error": f"启动服务失败: {str(e)}"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -1103,18 +1651,33 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
 
     @action(detail=True, methods=["post"], url_path="stop")
     @HasPermission("timeseries_predict-Stop")
+    @transaction.atomic
     def stop(self, request, *args, **kwargs):
         """
         停止 serving 服务（停止并删除容器）
         """
+        serving = None
+        serving_id = None
         try:
-            serving = self.get_object()
+            serving = self._get_runtime_locked_object()
 
             # 构建 serving ID
             serving_id = f"TimeseriesPredict_Serving_{serving.id}"
 
             # 调用 WebhookClient 停止服务（默认删除容器）
+            self._claim_runtime_transition(serving, "stop")
             result = WebhookClient.stop(serving_id)
+
+            # Kubernetes stop 使用异步删除并可能返回 terminating；必须保留
+            # webhookd 的真实状态，不能提前宣称资源已 removed。
+            self._assign_runtime_container_info(
+                serving,
+                {
+                    **result,
+                    "id": result.get("id", serving_id),
+                },
+            )
+            serving.save(update_fields=["container_info"])
 
             return Response(
                 {
@@ -1125,14 +1688,22 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
             )
 
         except WebhookTimeoutError as e:
+            if serving is not None and serving_id is not None:
+                self._reconcile_runtime_transition(serving, serving_id, "stop", e)
             return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         except WebhookConnectionError as e:
+            if serving is not None and serving_id is not None:
+                self._reconcile_runtime_transition(serving, serving_id, "stop", e)
             return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         except WebhookError as e:
             logger.error(f"停止 serving 失败: {e}")
+            if serving is not None and serving_id is not None:
+                self._reconcile_runtime_transition(serving, serving_id, "stop", e)
             return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         except Exception as e:
             logger.error(f"停止 serving 服务失败: {str(e)}", exc_info=True)
+            if serving is not None and serving_id is not None:
+                self._reconcile_runtime_transition(serving, serving_id, "stop", e)
             return Response(
                 {"error": f"停止服务失败: {str(e)}"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -1140,26 +1711,33 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
 
     @action(detail=True, methods=["post"], url_path="remove")
     @HasPermission("timeseries_predict-Remove")
+    @transaction.atomic
     def remove(self, request, *args, **kwargs):
         """
         删除 serving 容器（可处理运行中的容器）
         """
+        serving = None
+        serving_id = None
         try:
-            serving = self.get_object()
+            serving = self._get_runtime_locked_object()
 
             # 构建 serving ID
             serving_id = f"TimeseriesPredict_Serving_{serving.id}"
 
             # 调用 WebhookClient 删除容器
+            self._claim_runtime_transition(serving, "remove")
             result = WebhookClient.remove(serving_id)
 
             # 更新容器信息（status 由用户控制，不修改）
-            serving.container_info = {
-                "status": "success",
-                "id": serving_id,
-                "state": "removed",
-                "message": "容器已删除",
-            }
+            self._assign_runtime_container_info(
+                serving,
+                {
+                    "status": "success",
+                    "id": serving_id,
+                    "state": "removed",
+                    "message": "容器已删除",
+                },
+            )
             serving.save(update_fields=["container_info"])
 
             return Response(
@@ -1171,14 +1749,22 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
             )
 
         except WebhookTimeoutError as e:
+            if serving is not None and serving_id is not None:
+                self._reconcile_runtime_transition(serving, serving_id, "remove", e)
             return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         except WebhookConnectionError as e:
+            if serving is not None and serving_id is not None:
+                self._reconcile_runtime_transition(serving, serving_id, "remove", e)
             return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         except WebhookError as e:
             logger.error(f"删除容器失败: {e}")
+            if serving is not None and serving_id is not None:
+                self._reconcile_runtime_transition(serving, serving_id, "remove", e)
             return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         except Exception as e:
             logger.error(f"删除 serving 容器失败: {str(e)}", exc_info=True)
+            if serving is not None and serving_id is not None:
+                self._reconcile_runtime_transition(serving, serving_id, "remove", e)
             return Response(
                 {"error": f"删除容器失败: {str(e)}"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -1235,12 +1821,13 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
 
             # 构建请求体
             payload = {"data": data, "config": {"steps": steps}}
+            proxy_timeout_seconds = get_timeseries_predict_timeout_seconds()
 
             # 发起 HTTP POST 请求
             response = requests.post(
                 predict_url,
                 json=payload,
-                timeout=60,
+                timeout=proxy_timeout_seconds,
                 headers={"Content-Type": "application/json"},
             )
 
@@ -1280,7 +1867,7 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
                 return Response({"error": error_msg}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
         except requests.exceptions.Timeout:
-            error_msg = f"预测请求超时（超过 60 秒）"
+            error_msg = f"预测请求超时（超过 {proxy_timeout_seconds} 秒）"
             logger.error(f"预测超时: serving_id={serving.id}, url={predict_url}")
             return Response({"error": error_msg}, status=status.HTTP_504_GATEWAY_TIMEOUT)
         except requests.exceptions.ConnectionError as e:

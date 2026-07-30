@@ -2,6 +2,8 @@
   "plugin": "Hardware Server IPMI",
   "plugin_desc": "The IPMI collection plugin gathers generic hardware component metrics from physical servers.",
   "status_query": "any({instance_type='hardware_server', collect_type='ipmi'}) by (instance_id)",
+  "instance_fact_bindings": [{"fact":"asset.ip","value_type":"ip","resolver":"input","options":{"field":"ip"}}],
+  "instance_summary_columns": [{"fact":"asset.ip","title":"monitor.views.assetIp","order":10}],
   "name": "Hardware Server",
   "icon": "mm-hardwareDevice_硬件设备",
   "type": "Hardware Device",

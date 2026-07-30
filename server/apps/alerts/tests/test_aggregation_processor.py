@@ -10,10 +10,10 @@ import pytest
 from django.utils import timezone
 
 from apps.alerts.aggregation.processor.aggregation_processor import AggregationProcessor
-from apps.alerts.constants.constants import EventAction, HeartbeatCheckMode
+from apps.alerts.constants.constants import AlertStatus, EventAction, HeartbeatCheckMode
 from apps.alerts.models.alert_operator import AlarmStrategy
 from apps.alerts.models.alert_source import AlertSource
-from apps.alerts.models.models import Event
+from apps.alerts.models.models import Alert, Event
 
 
 # --------------------------------------------------------------------------
@@ -101,6 +101,111 @@ def test_get_events_for_strategy_within_window(source):
     strategy = AlarmStrategy.objects.create(name="s", strategy_type="smart_denoise", params={"window_size": 60})
     events = AggregationProcessor.get_events_for_strategy(strategy, now)
     assert events.filter(event_id="E1").exists()
+
+
+@pytest.mark.parametrize("closed_status", AlertStatus.CLOSED_STATUS)
+@pytest.mark.django_db
+def test_get_events_for_strategy_excludes_event_linked_to_closed_alert_of_same_strategy(source, closed_status):
+    now = timezone.now()
+    event = Event.objects.create(
+        source=source,
+        raw_data={},
+        title="t",
+        level="0",
+        start_time=now,
+        event_id="E-CLOSED",
+        action=EventAction.CREATED,
+    )
+    strategy = AlarmStrategy.objects.create(
+        name="same-strategy",
+        strategy_type="smart_denoise",
+        params={"window_size": 60},
+    )
+    alert = Alert.objects.create(
+        alert_id="A-CLOSED",
+        level="0",
+        title="t",
+        content="c",
+        fingerprint="fp-closed",
+        status=closed_status,
+        rule_id=str(strategy.id),
+    )
+    alert.events.add(event)
+
+    events = AggregationProcessor.get_events_for_strategy(strategy, now)
+
+    assert not events.filter(pk=event.pk).exists()
+
+
+@pytest.mark.django_db
+def test_get_events_for_strategy_keeps_event_linked_to_active_alert_of_same_strategy(source):
+    now = timezone.now()
+    event = Event.objects.create(
+        source=source,
+        raw_data={},
+        title="t",
+        level="0",
+        start_time=now,
+        event_id="E-ACTIVE",
+        action=EventAction.CREATED,
+    )
+    strategy = AlarmStrategy.objects.create(
+        name="active-strategy",
+        strategy_type="smart_denoise",
+        params={"window_size": 60},
+    )
+    alert = Alert.objects.create(
+        alert_id="A-ACTIVE",
+        level="0",
+        title="t",
+        content="c",
+        fingerprint="fp-active",
+        status=AlertStatus.PENDING,
+        rule_id=str(strategy.id),
+    )
+    alert.events.add(event)
+
+    events = AggregationProcessor.get_events_for_strategy(strategy, now)
+
+    assert events.filter(pk=event.pk).exists()
+
+
+@pytest.mark.django_db
+def test_get_events_for_strategy_keeps_event_linked_to_closed_alert_of_other_strategy(source):
+    now = timezone.now()
+    event = Event.objects.create(
+        source=source,
+        raw_data={},
+        title="t",
+        level="0",
+        start_time=now,
+        event_id="E-OTHER-STRATEGY",
+        action=EventAction.CREATED,
+    )
+    current_strategy = AlarmStrategy.objects.create(
+        name="current-strategy",
+        strategy_type="smart_denoise",
+        params={"window_size": 60},
+    )
+    other_strategy = AlarmStrategy.objects.create(
+        name="other-strategy",
+        strategy_type="smart_denoise",
+        params={"window_size": 60},
+    )
+    alert = Alert.objects.create(
+        alert_id="A-OTHER-STRATEGY",
+        level="0",
+        title="t",
+        content="c",
+        fingerprint="fp-other-strategy",
+        status=AlertStatus.AUTO_RECOVERY,
+        rule_id=str(other_strategy.id),
+    )
+    alert.events.add(event)
+
+    events = AggregationProcessor.get_events_for_strategy(current_strategy, now)
+
+    assert events.filter(pk=event.pk).exists()
 
 
 @pytest.mark.django_db

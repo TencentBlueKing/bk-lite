@@ -7,7 +7,7 @@ import React, {
   useRef,
   useId
 } from 'react';
-import { Empty } from 'antd';
+import ChartEmptyState from '@/components/chart-empty-state';
 import {
   XAxis,
   YAxis,
@@ -40,6 +40,7 @@ import { LEVEL_MAP, CHART_COLORS } from '@/app/monitor/constants';
 import { useLevelList } from '@/app/monitor/hooks';
 import {
   GAP_INTERVAL_AREA_STYLE,
+  GAP_INTERVAL_BOUNDARY_STYLE,
   getChartDataWithGapBreaks,
   getRenderedGapIntervals
 } from '@/app/monitor/utils/gapIntervals';
@@ -71,6 +72,7 @@ interface LineChartProps {
   }>;
   xAxisTimeFormat?: string;
   leftAxisWidthOverride?: number;
+  xAxisDomain?: [number, number];
 }
 
 const getChartAreaKeys = (arr: ChartData[]): string[] => {
@@ -176,7 +178,8 @@ const LineChart: React.FC<LineChartProps> = memo(
     onXRangeChange,
     seriesStyles = [],
     xAxisTimeFormat,
-    leftAxisWidthOverride
+    leftAxisWidthOverride,
+    xAxisDomain
   }) => {
     const { formatTime } = useFormatTime();
     const levelList = useLevelList();
@@ -231,13 +234,13 @@ const LineChart: React.FC<LineChartProps> = memo(
     );
 
     const renderedGapIntervals = useMemo(
-      () => getRenderedGapIntervals(data, data[0]?.gapIntervals || []),
-      [data]
+      () => getRenderedGapIntervals(data, data[0]?.gapIntervals || [], xAxisDomain),
+      [data, xAxisDomain]
     );
 
     const chartDataWithGapBreaks = useMemo(
-      () => getChartDataWithGapBreaks(data, data[0]?.gapIntervals || []),
-      [data]
+      () => getChartDataWithGapBreaks(data, data[0]?.gapIntervals || [], xAxisDomain),
+      [data, xAxisDomain]
     );
 
     const yAxisTickCount = useMemo(() => {
@@ -289,12 +292,27 @@ const LineChart: React.FC<LineChartProps> = memo(
     }, []);
 
     const { minTime, maxTime } = useMemo(() => {
+      if (xAxisDomain) {
+        return {
+          minTime: xAxisDomain[0],
+          maxTime: xAxisDomain[1]
+        };
+      }
       const times = data.map((d) => d.time);
       return {
         minTime: +new Date(Math.min(...times)),
         maxTime: +new Date(Math.max(...times))
       };
-    }, [data]);
+    }, [data, xAxisDomain]);
+
+    const gapBoundaryTimes = useMemo(
+      () => Array.from(new Set(
+        renderedGapIntervals
+          .flatMap((gap) => [gap.start, gap.end])
+          .filter((time) => time > minTime && time < maxTime)
+      )),
+      [maxTime, minTime, renderedGapIntervals]
+    );
 
     // 计算 Y 轴范围，确保阈值线能显示
     const yAxisDomain = useMemo((): [number | 'auto', number | 'auto'] => {
@@ -678,7 +696,8 @@ const LineChart: React.FC<LineChartProps> = memo(
                 <XAxis
                   dataKey="time"
                   type="number"
-                  domain={['dataMin', 'dataMax']}
+                  domain={xAxisDomain || ['dataMin', 'dataMax']}
+                  allowDataOverflow={!!xAxisDomain}
                   tick={{ fill: 'var(--color-text-3)', fontSize: 12 }}
                   tickFormatter={formatXAxisTick}
                   tickCount={xAxisTickCount}
@@ -704,7 +723,16 @@ const LineChart: React.FC<LineChartProps> = memo(
                     x2={gap.end}
                     yAxisId="left"
                     {...GAP_INTERVAL_AREA_STYLE}
-                    ifOverflow="extendDomain"
+                    ifOverflow="hidden"
+                  />
+                ))}
+                {gapBoundaryTimes.map((time) => (
+                  <ReferenceLine
+                    key={`gap-boundary-${time}`}
+                    x={time}
+                    yAxisId="left"
+                    {...GAP_INTERVAL_BOUNDARY_STYLE}
+                    ifOverflow="hidden"
                   />
                 ))}
                 <Tooltip
@@ -949,7 +977,7 @@ const LineChart: React.FC<LineChartProps> = memo(
           </>
         ) : (
           <div className={`${chartLineStyle.chart} ${chartLineStyle.noData}`}>
-            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} />
+            <ChartEmptyState compact />
           </div>
         )}
       </div>

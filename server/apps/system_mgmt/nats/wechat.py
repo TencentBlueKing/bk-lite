@@ -21,7 +21,7 @@ def wechat_user_register(user_id, nick_name):
                 Q(name="normal", app__in=["opspilot", "ops-console"])
                 | Q(
                     name="guest",
-                    app__in=["opspilot", "cmdb", "monitor", "log", "alarm", "node", "mlops", "job"],
+                    app__in=["opspilot", "cmdb", "monitor", "log", "alarm", "node", "mlops", "job", "patch"],
                 )
             ).values_list("id", flat=True)
         )
@@ -29,11 +29,14 @@ def wechat_user_register(user_id, nick_name):
         user.role_list = list(set(default_role))
         user.last_login = timezone.now()
         user.save()
-    try:
         if default_group:
-            set_opspilot_guest_group_default_rule(default_group, user)
-    except Exception:  # noqa
-        pass
+            try:
+                # 规则写入成功时与用户及权限代际一起提交；失败时仅回滚规则写入，
+                # 保留原有的微信注册可用性。
+                with transaction.atomic():
+                    set_opspilot_guest_group_default_rule(default_group, user)
+            except Exception:  # noqa
+                logger.exception("Failed to initialize WeChat user data rules")
     secret_key = os.getenv("SECRET_KEY")
     algorithm = os.getenv("JWT_ALGORITHM", "HS256")
     user_obj = _build_jwt_payload(user.id)

@@ -1271,6 +1271,10 @@ def test_build_session_config_resolves_package_and_installer_by_architecture(mon
         "apps.node_mgmt.services.installer_session.PackageService.resolve_existing_file_path",
         lambda obj: PackageService.build_file_path(obj),
     )
+    monkeypatch.setattr(
+        "apps.node_mgmt.services.installer_session.time.time_ns",
+        lambda: 1785168000123456789,
+    )
 
     config = InstallerSessionService.build_session_config(token_value, NodeConstants.ARM64_ARCH)
 
@@ -1278,7 +1282,15 @@ def test_build_session_config_resolves_package_and_installer_by_architecture(mon
     assert config["storage"]["file_key"] == PackageService.build_file_path(arm_package)
     assert config["installer"]["architecture"] == NodeConstants.ARM64_ARCH
     assert f"/{NodeConstants.ARM64_ARCH}/" in config["installer"]["object_key"]
+    assert config["clock_validation"] == {
+        "server_time_unix_ms": 1785168000123,
+        "max_skew_seconds": 300,
+    }
     assert x86_package.id != arm_package.id
+
+    monkeypatch.setattr(InstallerConstants, "CONTROLLER_INSTALL_MAX_CLOCK_SKEW_SECONDS", 0)
+    with pytest.raises(BaseAppException, match="must be a positive integer"):
+        InstallerSessionService.build_session_config(token_value, NodeConstants.ARM64_ARCH)
 
 
 @pytest.mark.django_db
@@ -3164,8 +3176,8 @@ def test_controller_install_view_rejects_windows_arm64_payload():
                     "node_name": "windows-arm",
                     "os": NodeConstants.WINDOWS_OS,
                     "organizations": [1],
-                    "port": 22,
-                    "username": "root",
+                    "port": 5986,
+                    "username": "Administrator",
                     "password": "secret",
                     "private_key": "",
                     "passphrase": "",

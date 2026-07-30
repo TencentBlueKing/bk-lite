@@ -149,6 +149,29 @@ def test_update_group(super_client):
     assert role in g.roles.all()
 
 
+def test_update_group_invalidates_descendant_users(super_client):
+    parent = Group.objects.create(name="UpdateParent", parent_id=0, allow_inherit_roles=True)
+    child = Group.objects.create(name="UpdateChild", parent_id=parent.id)
+    User.objects.create(
+        username="update-descendant",
+        password="x",
+        display_name="Descendant",
+        email="descendant@x.com",
+        group_list=[child.id],
+    )
+
+    with patch("apps.system_mgmt.viewset.group_viewset.clear_users_permission_cache") as clear_cache:
+        resp = super_client.post(
+            f"{BASE}/update_group/",
+            {"group_id": parent.id, "group_name": parent.name, "role_ids": []},
+            format="json",
+        )
+
+    assert resp.json()["result"] is True
+    affected_users = clear_cache.call_args.args[0]
+    assert {user["username"] for user in affected_users} == {"update-descendant"}
+
+
 def test_update_group_default_protected(super_client):
     Group.objects.filter(name="Default", parent_id=0).delete()
     g = Group.objects.create(name="Default", parent_id=0)

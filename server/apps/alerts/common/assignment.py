@@ -2,27 +2,32 @@
 # @File: assignment.py
 # @Time: 2025/6/10 17:43
 # @Author: windyzhao
-from typing import List, Dict, Any, Optional
+from typing import Any, Dict, List, Optional
 
-from django.utils import timezone
 from django.db import transaction
+from django.utils import timezone
 
-from apps.alerts.models.operator_log import OperatorLog
-from apps.alerts.models.models import Alert
-from apps.alerts.models.alert_operator import AlertAssignment
+from apps.alerts.common.notification_target import (
+    normalize_notification_target,
+    read_notification_target,
+    resolve_notification_target_with_scope,
+)
 from apps.alerts.constants.constants import (
-    AlertStatus,
+    SYSTEM_OPERATOR_USER,
     AlertAssignmentMatchType,
+    AlertStatus,
     LogAction,
     LogTargetType,
     SessionStatus,
-    SYSTEM_OPERATOR_USER,
 )
+from apps.alerts.models.alert_operator import AlertAssignment
+from apps.alerts.models.models import Alert
+from apps.alerts.models.operator_log import OperatorLog
 from apps.alerts.service.alter_operator import AlertOperator
 from apps.alerts.service.un_dispatch import UnDispatchService
-from apps.alerts.utils.time_range_checker import TimeRangeChecker
-from apps.alerts.utils.rule_matcher import RuleMatcher
 from apps.alerts.utils.operator_log import record_operator_logs_bulk
+from apps.alerts.utils.rule_matcher import RuleMatcher
+from apps.alerts.utils.time_range_checker import TimeRangeChecker
 from apps.core.logger import alert_logger as logger
 
 
@@ -286,17 +291,42 @@ class AlertAssignmentOperator:
         """
         results = []
 
-        # 获取分派人员信息
-        personnel = assignment.personnel or []
+        # 同一规则的一批告警只解析一次目标；历史规则自动回退到 personnel。
+        config = assignment.config if isinstance(assignment.config, dict) else {}
+        raw_target = read_notification_target(config)
+        normalized_target = normalize_notification_target(
+            raw_target,
+            assignment.personnel,
+        )
+        personnel, assignee_scope_group_ids = resolve_notification_target_with_scope(
+            raw_target,
+            assignment.personnel,
+        )
+        logger.info(
+            "[AlertAssign] 通知目标解析: assignment_id=%s, type=%s, "
+            "organization_ids=%s, resolved_count=%s",
+            assignment.id,
+            normalized_target["type"],
+            normalized_target["organization_ids"],
+            len(personnel),
+        )
         if not personnel:
             for alert_id in alert_ids:
                 alert = self.alerts.get(alert_id)
+                logger.warning(
+                    "[AlertAssign] 通知目标为空，跳过分派: assignment_id=%s, "
+                    "alert_id=%s, type=%s, organization_ids=%s, reason=no_active_recipient",
+                    assignment.id,
+                    alert.alert_id if alert else alert_id,
+                    normalized_target["type"],
+                    normalized_target["organization_ids"],
+                )
                 results.append(
                     {
                         "alert_id": alert.alert_id if alert else alert_id,
                         "alert_pk": alert_id,
                         "success": False,
-                        "message": "No personnel configured for assignment",
+                        "message": "No active recipients resolved for assignment",
                         "assignment_id": assignment.id,
                     }
                 )
@@ -344,6 +374,7 @@ class AlertAssignmentOperator:
                             data={
                                 "assignee": personnel,
                                 "assignment_id": assignment.id,
+                                "assignee_scope_group_ids": assignee_scope_group_ids,
                             },
                         )
                         if not result.get("result"):

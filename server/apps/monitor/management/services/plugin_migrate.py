@@ -137,6 +137,7 @@ def _import_plugins_from_files(path_list):
             _validate_plugin_identity(file_path, collector, collect_type)
 
             plugin_name = plugin_data.get("plugin")
+            plugin_data["_mark_objects_builtin"] = True
             # 新 plugin 首次导入时,自动生成 language/ 空骨架(check_plugin_languages CI 要求)
             MonitorPluginService._ensure_language_skeleton(Path(file_path).parent, plugin_name)
             MonitorPluginService.import_monitor_plugin(plugin_data)

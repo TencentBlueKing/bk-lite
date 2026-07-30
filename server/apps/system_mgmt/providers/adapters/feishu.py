@@ -161,6 +161,12 @@ def _request_tenant_access_token(config: dict, capability_key: str):
     )
 
 
+class FeishuBaseConnectionAdapter:
+    @classmethod
+    def test_connection(cls, config: dict, provider_key: str, capability_key: str, **kwargs):
+        return _request_tenant_access_token(config, capability_key)
+
+
 def _fetch_tenant_access_token(config: dict, force_refresh: bool = False):
     app_id = (config or {}).get("app_id", "")
     app_secret = (config or {}).get("app_secret", "")

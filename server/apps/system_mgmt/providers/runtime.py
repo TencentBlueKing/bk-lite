@@ -51,6 +51,7 @@ class CapabilityExecutionError(BaseModel):
     message: str = Field(description="错误摘要")
     retryable: bool = Field(default=False, description="是否可直接重试")
     field: str = Field(default="", description="关联字段")
+    detail: str = Field(default="", description="安全的排查详情")
     external_code: str = Field(default="", description="第三方错误码")
     external_request_id: str = Field(default="", description="第三方请求 ID")
 
@@ -76,6 +77,7 @@ class CapabilityExecutionResult(BaseModel):
         code: str,
         retryable: bool = False,
         field: str = "",
+        detail: str = "",
         external_code: str = "",
         external_request_id: str = "",
         payload: dict[str, Any] | None = None,
@@ -91,6 +93,7 @@ class CapabilityExecutionResult(BaseModel):
                     message=summary,
                     retryable=retryable,
                     field=field,
+                    detail=detail,
                     external_code=external_code,
                     external_request_id=external_request_id,
                 )
@@ -145,10 +148,36 @@ class RuntimeApplicationService:
     def test_connection(self, instance, capability_key: str | None = None):
         manifest = self.get_provider_manifest(instance.provider_key)
         runtime_config = instance.get_runtime_config()
+        base_adapter_key = getattr(manifest, "base_connection_adapter_key", "")
+        if not capability_key and base_adapter_key:
+            adapter_cls = self.adapter_registry.get(base_adapter_key)
+            if adapter_cls is None:
+                raise ValueError(f"Base connection adapter '{base_adapter_key}' is not registered")
+            result = adapter_cls.test_connection(
+                config=runtime_config,
+                provider_key=manifest.key,
+                capability_key="base",
+            )
+            if isinstance(result, dict):
+                result = CapabilityExecutionResult.model_validate(result)
+            if not isinstance(result, CapabilityExecutionResult):
+                raise ValueError(f"Adapter '{adapter_cls.__name__}' returned unsupported result type '{type(result)}'")
+            return result.model_copy(
+                update={
+                    "payload": {
+                        "provider_key": manifest.key,
+                        "instance_status": "ready" if result.success else "verification_failed",
+                        "capability_status": dict(getattr(instance, "capability_status", {}) or {}),
+                        "capability_results": {},
+                    }
+                }
+            )
+
         capability_results: dict[str, dict[str, Any]] = {}
         capability_status: dict[str, str] = {}
         failure_details: list[dict[str, Any]] = []
         failure_codes: list[str] = []
+        first_failure_result: CapabilityExecutionResult | None = None
         all_success = True
         capabilities = manifest.capabilities
         if capability_key:
@@ -168,6 +197,8 @@ class RuntimeApplicationService:
             capability_status[capability.key] = "ready" if result.success else "verification_failed"
             all_success = all_success and result.success
             if not result.success:
+                if first_failure_result is None:
+                    first_failure_result = result
                 error_codes = [error.code for error in (result.errors or [])]
                 failure_codes.extend(error_codes)
                 error_details = [
@@ -197,7 +228,11 @@ class RuntimeApplicationService:
                 f"provider_key={manifest.key}, failures={failure_details}"
             )
 
-        summary = f"Provider '{manifest.key}' connection test succeeded" if all_success else f"Provider '{manifest.key}' connection test failed"
+        summary = (
+            f"Provider '{manifest.key}' connection test succeeded"
+            if all_success
+            else first_failure_result.summary
+        )
         logger.info(
             f"Integration instance test connection completed, "
             f"instance_id={getattr(instance, 'id', None)}, "
@@ -214,6 +249,7 @@ class RuntimeApplicationService:
             partial_success=not all_success and any(item["success"] for item in capability_results.values()),
             retryable=bool(failed_capabilities)
             and all(item["retryable"] for item in failed_capabilities),
+            errors=first_failure_result.errors if first_failure_result else [],
             payload={
                 "provider_key": manifest.key,
                 "instance_status": "ready" if all_success else "verification_failed",

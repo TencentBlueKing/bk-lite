@@ -46,9 +46,22 @@ monitor_object_metric:
       name: Power Supply Status
       desc: Input power state of the console server, normalized to 1=healthy and 2=fault.
         Any unknown or non-normal code should be investigated as a power-path risk.
+    wti_input_power_1_state:
+      name: WTI Input Power 1 State
+      desc: State of WTI input power 1, normalized to normal or abnormal.
+    wti_input_power_2_state:
+      name: WTI Input Power 2 State
+      desc: State of WTI input power 2, normalized to normal or abnormal.
+    wti_input_power_3_state:
+      name: WTI Input Power 3 State
+      desc: State of WTI input power 3, normalized to normal or abnormal.
+    wti_input_power_4_state:
+      name: WTI Input Power 4 State
+      desc: State of WTI input power 4, normalized to normal or abnormal.
 monitor_object_metric_group:
   ConsoleServer:
     Base: Base
     Traffic: Traffic
     Temperature: Temperature
     Hardware Status: Hardware Status
+    Power: Power

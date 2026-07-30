@@ -2,6 +2,8 @@
   "plugin": "TCPPort",
   "plugin_desc": "The TCP plugin uses Telegraf net_response to probe TCP port reachability for a target host:port, supporting IPv4 and IPv6, with optional send/expect string matching.",
   "status_query": "any({instance_type='tcp', collect_type='tcp'}) by (instance_id)",
+  "instance_fact_bindings": [{"fact":"collector.nodes","value_type":"node_ref_list","resolver":"selected_nodes","options":{"selection_field":"node_ids"}},{"fact":"probe.target","value_type":"endpoint","resolver":"compose_endpoint","options":{"host_field":"host","port_field":"port"}}],
+  "instance_summary_columns": [{"fact":"collector.nodes","title":"monitor.views.probeNodes","order":10},{"fact":"probe.target","title":"monitor.views.probeTarget","order":20}],
   "name": "TCPPort",
   "icon": "mm-website_网站",
   "type": "Web",

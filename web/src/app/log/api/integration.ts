@@ -90,6 +90,7 @@ const useIntegrationApi = () => {
     cloud_region_id?: number;
     page?: number;
     page_size?: number;
+    os?: 'linux' | 'windows';
     is_active?: boolean;
     is_container?: boolean;
   }) => {

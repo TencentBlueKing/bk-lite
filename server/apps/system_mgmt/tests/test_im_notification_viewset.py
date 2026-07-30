@@ -9,7 +9,11 @@ from django.utils import timezone
 from rest_framework.response import Response
 
 from apps.system_mgmt.models import IMNotificationChannel, IMNotificationSyncRun, IMNotificationUserMapping, IntegrationInstance, User
-from apps.system_mgmt.serializers.im_notification_channel_serializer import IMNotificationChannelSerializer, IMNotificationSyncRunSerializer
+from apps.system_mgmt.serializers.im_notification_channel_serializer import (
+    IMNotificationChannelSerializer,
+    IMNotificationSyncRunSerializer,
+    IMNotificationUserMappingSerializer,
+)
 from apps.system_mgmt.viewset.im_notification_channel_viewset import IMNotificationChannelViewSet
 
 
@@ -612,6 +616,13 @@ def test_mappings_returns_channel_user_mappings(api_client, authenticated_user, 
     assert response.status_code == 200
     assert response.data["count"] == 1
     assert response.data["items"][0]["username"] == "mapped-user"
+    assert response.data["items"][0]["display_name"] == "Mapped User"
+
+
+def test_im_notification_mapping_serializer_returns_platform_user_display_name():
+    mapping = SimpleNamespace(user_id=1, user=SimpleNamespace(display_name="Mapped User"))
+
+    assert IMNotificationUserMappingSerializer().get_display_name(mapping) == "Mapped User"
 
 
 @pytest.mark.django_db

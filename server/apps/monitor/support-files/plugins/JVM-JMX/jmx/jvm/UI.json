@@ -15,6 +15,8 @@
       "required": false,
       "editable": false,
       "description": "用于访问接口的用户名",
+      "guide_short": "启用 JMX 认证时填写；未启用认证时留空。账号权限应限制为读取当前模板所需的 MBean。",
+      "guide_short_en": "Enter a username only when JMX authentication is enabled; otherwise leave it empty. Limit the account to read access for the MBeans required by the current template.",
       "widget_props": {
         "placeholder": "用户名",
         "placeholder_en": "Username"
@@ -32,6 +34,8 @@
       "required": false,
       "editable": false,
       "description": "对应的登录密码",
+      "guide_short": "与 JMX 用户名配套填写；未启用认证时留空。请只通过密码字段下发，不要拼入 JMX URL。",
+      "guide_short_en": "Enter the password paired with the JMX username; leave it empty when authentication is disabled. Supply it only through this password field, never in the JMX URL.",
       "widget_props": {
         "placeholder": "密码",
         "placeholder_en": "Password"
@@ -50,6 +54,8 @@
       "visible_in": "edit",
       "editable": false,
       "description": "监控的目标网址链接，以检测其可用性和性能",
+      "guide_short": "填写标准 JMX Service URL，并确保采集节点可访问 JMX Registry 与 RMI 回调端口。",
+      "guide_short_en": "Enter a standard JMX Service URL and ensure that the collector node can reach both the JMX registry and RMI callback ports.",
       "widget_props": {
         "placeholder": ""
       },
@@ -65,6 +71,8 @@
       "required": true,
       "visible_in": "edit",
       "description": "指定程序运行时应监听的端口号，用于接受外部请求和连接",
+      "guide_short": "JMX Exporter 在采集节点本地暴露 /metrics 的端口；同一节点上的多个实例必须使用不同端口。",
+      "guide_short_en": "Local port where JMX Exporter exposes /metrics on the collector node; each instance on the same node must use a different port.",
       "widget_props": {
         "min": 1,
         "precision": 0,
@@ -83,6 +91,8 @@
       "required": true,
       "default_value": 60,
       "description": "监控数据的采集时间间隔（单位：秒）",
+      "guide_short": "Telegraf 抓取 JMX Exporter 的周期，单位秒，默认 60；过短会增加目标 JVM 与采集节点负载。",
+      "guide_short_en": "Telegraf scrape interval for JMX Exporter, in seconds; the default is 60. Short intervals increase load on the target JVM and collector node.",
       "widget_props": {
         "min": 1,
         "precision": 0,

@@ -143,6 +143,7 @@ const ObjectPage = () => {
         render: (_: unknown, record: TableDataItem) => (
           <Switch
             checked={record.is_visible}
+            disabled={(record as MonitorObjectItem).is_builtin}
             onChange={(checked) =>
               handleVisibilityChange(record as MonitorObjectItem, checked)
             }
@@ -163,6 +164,7 @@ const ObjectPage = () => {
                 <Button
                   type="link"
                   size="small"
+                  disabled={isBuiltin}
                   onClick={() =>
                     displayFieldsModalRef.current?.showModal({
                       type: 'edit',
@@ -178,7 +180,6 @@ const ObjectPage = () => {
                 <Button
                   type="link"
                   size="small"
-                  disabled={isBuiltin}
                   onClick={() =>
                     openObjectModal('edit', record as MonitorObjectItem)
                   }

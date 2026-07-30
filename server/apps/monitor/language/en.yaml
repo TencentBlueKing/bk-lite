@@ -1,3 +1,20 @@
+monitor_object_type:
+  OS: Operating System
+  Web: Probe
+  Database: Database
+  Middleware: Middleware
+  Network Device: Network Device
+  Hardware Device: Hardware Device
+  Container Management: Container Management
+  K8S: K8S
+  VMWare: VMware
+  Tencent Cloud: Tencent Cloud
+  Other: Other
+
+# Fallback display name when plugin i18n is missing: show TCP, not TCPPort
+monitor_object:
+  TCPPort: TCP
+
 flow_onboarding_ui:
   accessAsset: Access Asset
   accessGuide: Access Guide

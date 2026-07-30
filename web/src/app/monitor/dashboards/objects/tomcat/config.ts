@@ -134,7 +134,7 @@ export const TOMCAT_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '请求处理速率',
       description: 'Tomcat Connector 请求处理速率。',
       unit: 'cps',
-      query: 'rate(tomcat_connector_request_count{__$labels__}[5m])',
+      query: 'rate(tomcat_connector_request_count{__$labels__}[__$window__])',
       color: '#2f6bff'
     },
     {
@@ -142,7 +142,7 @@ export const TOMCAT_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '错误请求速率',
       description: 'Tomcat Connector 错误请求速率。',
       unit: 'cps',
-      query: 'rate(tomcat_connector_error_count{__$labels__}[5m])',
+      query: 'rate(tomcat_connector_error_count{__$labels__}[__$window__])',
       color: '#ff4d4f'
     },
     {
@@ -150,7 +150,7 @@ export const TOMCAT_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '数据发送速率',
       description: 'Tomcat Connector 数据发送速率。',
       unit: 'byteps',
-      query: 'rate(tomcat_connector_bytes_sent{__$labels__}[5m])',
+      query: 'rate(tomcat_connector_bytes_sent{__$labels__}[__$window__])',
       color: '#27c274'
     },
     {
@@ -183,8 +183,8 @@ export const TOMCAT_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '错误请求占比',
       description: '由错误请求速率与总请求速率推导出的错误占比（error_rate / request_rate × 100）。',
       unit: 'percent',
-      query: '100 * (rate(tomcat_connector_error_count{__$labels__}[5m]) / clamp_min(rate(tomcat_connector_request_count{__$labels__}[5m]), 1))',
-      color: '#faad14'
+      query: '100 * (rate(tomcat_connector_error_count{__$labels__}[__$window__]) / clamp_min(rate(tomcat_connector_request_count{__$labels__}[__$window__]), 1))',
+      color: '#8a5cff'
     }
   ],
   summaryCards: [
@@ -270,7 +270,7 @@ export const TOMCAT_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       series: [
         { metric: 'tomcat_connector_current_thread_count', label: '当前线程', color: '#2f6bff', unit: 'counts' },
         { metric: 'tomcat_connector_current_threads_busy', label: '忙碌线程', color: '#ff8a1f', unit: 'counts' },
-        { metric: 'tomcat_connector_max_threads', label: '最大线程', color: '#9aa9bf', unit: 'counts' }
+        { metric: 'tomcat_connector_max_threads', label: '最大线程', color: '#8a5cff', unit: 'counts', style: 'limit' }
       ]
     },
     {

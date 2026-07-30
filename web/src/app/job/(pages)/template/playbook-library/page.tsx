@@ -15,6 +15,7 @@ import {
   Alert,
   Spin,
   Drawer,
+  Popconfirm,
 } from 'antd';
 import {
   CloudUploadOutlined,
@@ -35,6 +36,7 @@ import SearchCombination from '@/components/search-combination';
 import { SearchFilters, FieldConfig } from '@/components/search-combination/types';
 import { useRouter } from 'next/navigation';
 import MarkdownRenderer from '@/components/markdown';
+import OrganizationTags, { getOrganizationColumnWidth } from '@/app/job/components/organization-tags';
 
 const { Dragger } = Upload;
 
@@ -349,19 +351,10 @@ const PlaybookLibraryPage = () => {
   };
 
   // Delete
-  const handleDelete = (record: Playbook) => {
-    Modal.confirm({
-      title: t('job.deletePlaybook'),
-      content: t('job.deletePlaybookConfirm'),
-      okText: t('job.confirm'),
-      cancelText: t('job.cancel'),
-      centered: true,
-      onOk: async () => {
-        await deletePlaybook(record.id);
-        message.success(t('job.deletePlaybook'));
-        fetchData();
-      },
-    });
+  const handleDelete = async (record: Playbook) => {
+    await deletePlaybook(record.id);
+    message.success(t('job.deletePlaybook'));
+    fetchData();
   };
 
   // File preview handler
@@ -528,6 +521,8 @@ const PlaybookLibraryPage = () => {
     ];
   }, [viewingPlaybook, t]);
 
+  const organizationColumnWidth = getOrganizationColumnWidth(data);
+
   const columns: ColumnItem[] = [
     {
       title: t('job.playbookName'),
@@ -548,16 +543,8 @@ const PlaybookLibraryPage = () => {
       title: t('job.organization'),
       dataIndex: 'team_name',
       key: 'team_name',
-      width: 120,
-      render: (_: unknown, record: Playbook) => (
-        <div className="flex flex-wrap gap-1">
-          {(record.team_name && record.team_name.length > 0)
-            ? record.team_name.map((name: string, idx: number) => (
-              <Tag key={idx}>{name}</Tag>
-            ))
-            : '-'}
-        </div>
-      ),
+      width: organizationColumnWidth,
+      render: (_: unknown, record: Playbook) => <OrganizationTags names={record.team_name} />,
     },
     {
       title: t('job.creator'),
@@ -584,6 +571,7 @@ const PlaybookLibraryPage = () => {
       dataIndex: 'action',
       key: 'action',
       width: 200,
+      fixed: 'right',
       render: (_: unknown, record: Playbook) => (
         <div className="flex items-center gap-3">
           <a
@@ -604,12 +592,18 @@ const PlaybookLibraryPage = () => {
           >
             {t('job.executeScript')}
           </a>
-          <a
-            className="text-red-500 cursor-pointer"
-            onClick={() => handleDelete(record)}
+          <Popconfirm
+            title={t('job.deletePlaybook')}
+            description={t('job.deletePlaybookConfirm')}
+            okText={t('job.confirm')}
+            cancelText={t('job.cancel')}
+            okButtonProps={{ danger: true }}
+            onConfirm={() => handleDelete(record)}
           >
-            {t('job.deletePlaybook')}
-          </a>
+            <a className="text-red-500 cursor-pointer">
+              {t('job.deletePlaybook')}
+            </a>
+          </Popconfirm>
         </div>
       ),
     },

@@ -160,6 +160,9 @@
       "addMetric": "添加指标"
     },
     "views": {
+      "assetIp": "IP信息",
+      "probeNodes": "拨测节点",
+      "probeTarget": "目标",
       "vmware_esxi_count": "ESXI数量",
       "vmware_datastore_count": "数据存储数量",
       "vmware_vm_count": "虚拟机数量",
@@ -358,6 +361,8 @@
       "disk_ratio": "磁盘使用率"
     },
     "integrations": {
+      "hostMonitoringAlreadyConfigured": "已接入主机监控",
+      "hostMonitoringStatusUnavailable": "接入状态查询失败，请稍后重试",
       "publishAddressDes": "系统监控的主要网址，用于检测其可用性和性能状态",
       "dataSource": "数据源",
       "ipDes": "监控的目标主机的 IP 地址，用于标识数据收集的来源。",
@@ -425,6 +430,7 @@
       "libraryPath": "驱动程序的lib目录",
       "note": "K8s的监控数据仅支持主动上报，暂不支持在此处接入。",
       "editMetric": "编辑指标",
+      "viewMetric": "查看指标配置",
       "installationMethod": "安装方法",
       "seviceName": "服务名称",
       "seviceNameDes": "要监控的服务名称，确保其与实际运行的服务一致。",
@@ -532,6 +538,9 @@
       "ruleDescription": "规则描述",
       "ruleName": "规则名称",
       "batchDeleteConfirm": "确定删除选中项吗？",
+      "assetBatchDeleteConfirm": "确定删除选中的 {count} 个监控资产吗？删除后数据无法恢复。",
+      "assetBatchDeleteSuccess": "已成功删除 {count} 个监控资产",
+      "assetDeleteRefreshFailed": "资产已删除，但列表刷新失败，请手动刷新。",
       "optionsSuffix": "选项",
       "excelImportTips": "只能上传xlsx文件,且不超过20MB",
       "importSuccessCount": "成功导入 {{count}} 条数据",
@@ -555,8 +564,21 @@
       "collectDetectSuccess": "成功",
       "collectDetectFailed": "失败",
       "collectDetectExitCode": "退出码",
+      "collectDetectRequestUrl": "最终请求 URL",
       "collectDetectNoOutput": "暂无输出",
       "collectDetectNodeRequired": "请先选择采集节点",
+      "advancedConfiguration": "高级配置",
+      "advancedConfigurationHint": "按需配置请求内容、认证方式与期望响应判断",
+      "advancedSections": {
+        "request": "请求内容",
+        "auth": "认证凭据",
+        "response": "期望响应",
+        "tls": "证书校验",
+        "other": "其他"
+      },
+      "keyValueEmpty": "暂无条目，点击下方添加",
+      "addRequestParam": "添加参数",
+      "addRequestHeader": "添加请求头",
       "clickUpload": "点击上传",
       "inputError": "输入错误",
       "noTemplateData": "暂无模版数据",
@@ -860,7 +882,12 @@
       "fieldKeyPlaceholder": "请输入维度 key",
       "selectField": "选择字段",
       "selectMetricFirst": "请先选择指标",
-      "display": "展示"
+      "display": "展示",
+      "cleanupPolicy": "清理策略",
+      "noCleanup": "不清理",
+      "timeoutCleanup": "超时清理",
+      "timeoutDays": "超时天数",
+      "cleanupPolicyHint": "超过 {days} 天无数据上报则自动删除资产，仅作用于自动发现资产"
     },
     "selectObject": "选择对象",
     "aggregation": "汇聚方法",

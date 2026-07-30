@@ -1,6 +1,8 @@
 """危险规则检查服务"""
 
+import ntpath
 import os
+import posixpath
 import re
 from typing import List
 
@@ -159,11 +161,16 @@ class DangerousChecker:
             匹配到的内容列表
         """
         if match_type == MatchType.EXACT:
-            # 精确匹配：路径相等 或 路径前缀 + /
-            # /temp 匹配 /temp, /temp/, /temp/abc
-            # /temp 不匹配 /temptest, /data/temp
-            normalized_pattern = pattern.rstrip("/")
-            if target_path == normalized_pattern or target_path.startswith(normalized_pattern + "/"):
+            is_windows = bool(re.match(r"^[A-Za-z]:[\\/]", pattern)) or "\\" in pattern
+            path_module = ntpath if is_windows else posixpath
+            normalized_pattern = path_module.normpath(pattern)
+            normalized_target = path_module.normpath(target_path)
+            separator = "\\" if is_windows else "/"
+            if is_windows:
+                normalized_pattern = ntpath.normcase(normalized_pattern)
+                normalized_target = ntpath.normcase(normalized_target)
+            normalized_pattern = normalized_pattern.rstrip(separator) or separator
+            if normalized_target == normalized_pattern or normalized_target.startswith(normalized_pattern + separator):
                 return [pattern]
             return []
 

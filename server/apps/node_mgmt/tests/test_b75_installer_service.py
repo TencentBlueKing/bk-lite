@@ -18,6 +18,7 @@ from apps.node_mgmt.models import Node, NodeOrganization, PackageVersion
 from apps.node_mgmt.models.cloud_region import CloudRegion, SidecarEnv
 from apps.node_mgmt.models.installer import CollectorTask, CollectorTaskNode, ControllerTask, ControllerTaskNode
 from apps.node_mgmt.services.installer import InstallerService
+from apps.node_mgmt.services.installer_session import InstallerSessionService
 
 
 # --------------------------------------------------------------------------- #
@@ -638,6 +639,119 @@ def test_get_linux_bootstrap_command_manual_mode_uses_interactive_sudo_for_non_r
 
 
 @pytest.mark.django_db
+def test_get_linux_bootstrap_command_manual_mode_keeps_login_shell_alive(tmp_path):
+    env, _, _, bootstrap_log = _prepare_bootstrap_shell_test(tmp_path, "sh")
+    shell_alive_log = tmp_path / "shell-alive.log"
+    env["SHELL_ALIVE_LOG"] = str(shell_alive_log)
+    with patch(
+        "apps.node_mgmt.services.installer.InstallerSessionService.build_session_config",
+        return_value=_SESSION_CFG,
+    ):
+        cmd = InstallerService.get_linux_bootstrap_command("tok", install_mode="manual")
+
+    result = subprocess.run(
+        ["/bin/sh", "-c", f'{cmd}; printf alive > "$SHELL_ALIVE_LOG"'],
+        env=env,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert bootstrap_log.read_text(encoding="utf-8") == "ran"
+    assert shell_alive_log.read_text(encoding="utf-8") == "alive"
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("failure_kind", "expected_status", "expect_bootstrap_log"),
+    [
+        pytest.param("download", 1, False, id="download-failure"),
+        pytest.param("installer", 7, True, id="installer-failure"),
+    ],
+)
+def test_get_linux_bootstrap_command_manual_mode_keeps_login_shell_alive_on_failure(
+    tmp_path,
+    failure_kind,
+    expected_status,
+    expect_bootstrap_log,
+):
+    env, bootstrap_temp, _, bootstrap_log = _prepare_bootstrap_shell_test(
+        tmp_path,
+        "sh",
+        curl_exit_code=22 if failure_kind == "download" else 0,
+    )
+    if failure_kind == "installer":
+        _write_executable(
+            tmp_path / "bin" / "curl",
+            """#!/bin/sh
+output=''
+while [ "$#" -gt 0 ]; do
+  if [ "$1" = "-o" ]; then output="$2"; shift 2; else shift; fi
+done
+printf '%s\n' '#!/bin/sh' 'printf ran > "$BOOTSTRAP_LOG"' 'exit 7' > "$output"
+""",
+        )
+
+    shell_alive_log = tmp_path / "shell-alive.log"
+    install_status_log = tmp_path / "install-status.log"
+    env.update(
+        {
+            "SHELL_ALIVE_LOG": str(shell_alive_log),
+            "INSTALL_STATUS_LOG": str(install_status_log),
+        }
+    )
+    with patch(
+        "apps.node_mgmt.services.installer.InstallerSessionService.build_session_config",
+        return_value=_SESSION_CFG,
+    ):
+        cmd = InstallerService.get_linux_bootstrap_command("tok", install_mode="manual")
+
+    result = subprocess.run(
+        [
+            "/bin/sh",
+            "-c",
+            f'{cmd}; install_status=$?; printf "%s" "$install_status" > "$INSTALL_STATUS_LOG"; '
+            'printf alive > "$SHELL_ALIVE_LOG"',
+        ],
+        env=env,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert install_status_log.read_text(encoding="utf-8") == str(expected_status)
+    assert shell_alive_log.read_text(encoding="utf-8") == "alive"
+    assert bootstrap_log.exists() is expect_bootstrap_log
+    assert not bootstrap_temp.exists()
+
+
+@pytest.mark.django_db
+def test_get_linux_bootstrap_command_auto_mode_still_ends_execution_shell(tmp_path):
+    env, _, _, bootstrap_log = _prepare_bootstrap_shell_test(tmp_path, "sh")
+    shell_alive_log = tmp_path / "shell-alive.log"
+    env["SHELL_ALIVE_LOG"] = str(shell_alive_log)
+    with patch(
+        "apps.node_mgmt.services.installer.InstallerSessionService.build_session_config",
+        return_value=_SESSION_CFG,
+    ):
+        cmd = InstallerService.get_linux_bootstrap_command("tok", install_mode="auto")
+
+    result = subprocess.run(
+        ["/bin/sh", "-c", f'{cmd}; printf alive > "$SHELL_ALIVE_LOG"'],
+        env=env,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert bootstrap_log.read_text(encoding="utf-8") == "ran"
+    assert not shell_alive_log.exists()
+
+
+@pytest.mark.django_db
 def test_get_linux_bootstrap_command_preserves_download_failure_and_cleans_temp_file(tmp_path):
     env, bootstrap_temp, runner_log, bootstrap_log = _prepare_bootstrap_shell_test(
         tmp_path,
@@ -720,3 +834,12 @@ def test_download_linux_installer_calls_s3():
     with patch("apps.node_mgmt.services.installer.download_file_by_s3", download):
         result = InstallerService.download_linux_installer("arm64")
     assert result == b"linux-bytes"
+# Windows 远程安装使用独立的无交互 bootstrap，避免把 GUI 安装器当作远程命令执行。
+def test_windows_bootstrap_artifact_uses_architecture_specific_path():
+    artifact = InstallerSessionService.windows_bootstrap_artifact("amd64")
+
+    assert artifact == {
+        "filename": "bklite-controller-bootstrap.exe",
+        "object_key": "installer/windows/x86_64/bklite-controller-bootstrap.exe",
+        "architecture": "x86_64",
+    }

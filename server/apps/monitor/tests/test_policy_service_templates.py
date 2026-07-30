@@ -15,6 +15,9 @@ def _install_module(monkeypatch, name, **attrs):
 def _load_policy_service_module(monkeypatch, rows):
     class _QuerySet:
         def filter(self, **kwargs):
+            return self
+
+        def order_by(self, *args):
             return rows
 
         def values_list(self, *args, **kwargs):
@@ -23,7 +26,11 @@ def _load_policy_service_module(monkeypatch, rows):
     _install_module(
         monkeypatch,
         "apps.monitor.models",
-        PolicyTemplate=types.SimpleNamespace(objects=types.SimpleNamespace(select_related=lambda *args: _QuerySet())),
+        PolicyTemplate=types.SimpleNamespace(
+            TYPE_BUILTIN="builtin",
+            TYPE_CUSTOM="custom",
+            objects=types.SimpleNamespace(select_related=lambda *args: _QuerySet()),
+        ),
         MonitorPlugin=object,
         MonitorObject=object,
     )
@@ -41,18 +48,35 @@ def _load_policy_service_module(monkeypatch, rows):
 def test_get_policy_templates_adds_default_trigger_count_and_preserves_explicit_value(monkeypatch):
     monitor_object = types.SimpleNamespace(id=1, name="Host", display_name="主机")
     plugin = types.SimpleNamespace(id=9, name="Telegraf", display_name="Telegraf", collector="Telegraf")
-    row = types.SimpleNamespace(
-        id=7,
-        monitor_object_id=1,
-        monitor_object=monitor_object,
-        plugin_id=9,
-        plugin=plugin,
-        templates=[
-            {"name": "CPU", "metric_name": "cpu_usage"},
-            {"name": "Memory", "metric_name": "memory_usage", "trigger_count": 2},
-        ],
-    )
-    module = _load_policy_service_module(monkeypatch, [row])
+    rows = [
+        types.SimpleNamespace(
+            id=7,
+            key="builtin:cpu",
+            scope_key="builtin",
+            template_type="builtin",
+            monitor_object_id=1,
+            monitor_object=monitor_object,
+            plugin_id=9,
+            plugin=plugin,
+            name="CPU",
+            description="",
+            config={"metric_name": "cpu_usage"},
+        ),
+        types.SimpleNamespace(
+            id=8,
+            key="builtin:memory",
+            scope_key="builtin",
+            template_type="builtin",
+            monitor_object_id=1,
+            monitor_object=monitor_object,
+            plugin_id=9,
+            plugin=plugin,
+            name="Memory",
+            description="",
+            config={"metric_name": "memory_usage", "trigger_count": 2},
+        ),
+    ]
+    module = _load_policy_service_module(monkeypatch, rows)
 
     templates = module.PolicyService.get_policy_templates("Host")
 

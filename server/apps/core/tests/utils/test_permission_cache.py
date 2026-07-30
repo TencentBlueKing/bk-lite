@@ -1,10 +1,14 @@
 import pydantic.root_model  # noqa
+
 """apps/core/utils/permission_cache.py 真实行为单元测试。
 
 策略：以真实 Django cache（locmem，不支持 delete_pattern）执行键生成/读写/清除主路径；
 对支持 delete_pattern 的后端分支，用具备 delete_pattern 的 fake cache 注入到模块的 cache 引用。
 断言真实缓存副作用（get/set/delete 后的可见性）与键派生的确定性。
 """
+import base64
+import json
+
 import pytest
 from django.core.cache import cache
 from django.test import override_settings
@@ -15,11 +19,13 @@ pytestmark = pytest.mark.unit
 
 
 @pytest.fixture(autouse=True)
-def _locmem_cache():
+def _locmem_cache(monkeypatch):
     """强制使用 locmem 后端：确定性、无外部依赖，且不支持 delete_pattern（覆盖索引兜底路径）。"""
-    with override_settings(
-        CACHES={"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache", "LOCATION": "perm-cache-test"}}
-    ):
+    monkeypatch.setattr(pc, "_advance_user_permission_versions", lambda users: len(users))
+    monkeypatch.setattr(pc, "_advance_all_user_permission_versions", lambda: 0)
+    monkeypatch.setattr(pc, "get_user_permission_version", lambda username, domain: 0)
+    monkeypatch.setattr(pc.transaction, "on_commit", lambda callback: callback())
+    with override_settings(CACHES={"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache", "LOCATION": "perm-cache-test"}}):
         cache.clear()
         yield
         cache.clear()
@@ -40,6 +46,10 @@ class _PatternCache:
     def delete(self, key):
         self.store.pop(key, None)
 
+    def delete_many(self, keys):
+        for key in keys:
+            self.delete(key)
+
     def delete_pattern(self, pattern):
         prefix = pattern.rstrip("*")
         for k in [k for k in self.store if k.startswith(prefix)]:
@@ -59,6 +69,9 @@ class TestKeyDerivation:
         assert p1 == p2
         assert p1 != p3
         assert p1.startswith(pc.PERM_CACHE_PREFIX)
+        encoded_identity = p1.removeprefix(pc.PERM_CACHE_PREFIX).removesuffix(":")
+        padding = "=" * (-len(encoded_identity) % 4)
+        assert json.loads(base64.urlsafe_b64decode(encoded_identity + padding)) == ["alice", "domain.com"]
 
     def test_cache_key_embeds_user_prefix_and_varies_by_dimensions(self):
         prefix = pc._get_user_perm_prefix("alice", "domain.com")
@@ -66,12 +79,37 @@ class TestKeyDerivation:
         k2 = pc._get_cache_key("alice", "domain.com", 2, "cmdb", "view")
         assert k1.startswith(prefix)
         assert k1 != k2
+        encoded_dimensions = k1.removeprefix(prefix)
+        padding = "=" * (-len(encoded_dimensions) % 4)
+        assert json.loads(base64.urlsafe_b64decode(encoded_dimensions + padding)) == [0, 1, "cmdb", "view", False]
+
+    def test_cache_key_separates_query_scopes(self):
+        app_key = pc._get_cache_key("alice", "domain.com", 1, "log", "policy", query_scope="app")
+        module_key = pc._get_cache_key("alice", "domain.com", 1, "log", "policy", query_scope="module")
+        assert app_key != module_key
+
+    def test_default_scope_preserves_legacy_cache_key(self):
+        default_key = pc._get_cache_key("alice", "domain.com", 1, "log", "policy", permission_version=0)
+        explicit_app_key = pc._get_cache_key(
+            "alice",
+            "domain.com",
+            1,
+            "log",
+            "policy",
+            permission_version=0,
+            query_scope="app",
+        )
+        assert default_key == explicit_app_key
 
     def test_token_info_key_format(self):
-        assert pc._get_token_info_key("u", "d") == "token_info:u:d"
+        assert pc._get_token_info_key("u", "d") == "token_info:u:d:v0"
 
     def test_user_keys_index_format(self):
         assert pc._get_user_keys_index("u", "d") == "user_perm_keys:u:d"
+
+    def test_api_token_permission_key_formats(self):
+        assert pc._get_api_token_permission_prefix("u", "d") == "api_token_permissions:u:d:"
+        assert pc._get_api_token_keys_index("u", "d") == "api_token_permission_keys:u:d"
 
 
 # ---------------------------------------------------------------------------
@@ -86,6 +124,25 @@ class TestTokenInfoCache:
         assert pc.get_cached_token_info("u", "domain.com") == {"id": 1}
         pc.clear_token_info_cache("u", "domain.com")
         assert pc.get_cached_token_info("u", "domain.com") is None
+
+    def test_version_change_makes_other_worker_entry_unreachable(self, monkeypatch):
+        version = {"value": 0}
+        monkeypatch.setattr(pc, "get_user_permission_version", lambda username, domain: version["value"])
+        pc.set_cached_token_info("u", "domain.com", {"id": 1}, permission_version=0)
+
+        version["value"] = 1
+
+        assert cache.get("token_info:u:domain.com:v0") == {"id": 1}
+        assert pc.get_cached_token_info("u", "domain.com") is None
+
+    def test_version_change_during_write_rejects_result(self, monkeypatch):
+        versions = iter([0, 1])
+        monkeypatch.setattr(pc, "get_user_permission_version", lambda username, domain: next(versions))
+
+        cached = pc.set_cached_token_info("u", "domain.com", {"id": 1}, permission_version=0)
+
+        assert cached is False
+        assert cache.get("token_info:u:domain.com:v0") == {"id": 1}
 
 
 # ---------------------------------------------------------------------------
@@ -102,6 +159,26 @@ class TestPermissionRulesCache:
         pc.set_cached_permission_rules("u", "domain.com", 1, "cmdb", "view", data)
         assert pc.get_cached_permission_rules("u", "domain.com", 1, "cmdb", "view") == data
 
+    def test_query_scopes_do_not_share_cached_payloads(self):
+        app_data = {"team": [1], "instance": []}
+        module_data = {"result": True, "data": {"1": app_data}, "team": [1]}
+        pc.set_cached_permission_rules("u", "domain.com", 1, "log", "policy", app_data)
+        pc.set_cached_permission_rules(
+            "u",
+            "domain.com",
+            1,
+            "log",
+            "policy",
+            module_data,
+            query_scope="module",
+        )
+
+        assert pc.get_cached_permission_rules("u", "domain.com", 1, "log", "policy") == app_data
+        assert (
+            pc.get_cached_permission_rules("u", "domain.com", 1, "log", "policy", query_scope="module")
+            == module_data
+        )
+
     def test_set_maintains_key_index_on_non_pattern_backend(self):
         pc.set_cached_permission_rules("u", "domain.com", 1, "cmdb", "view", {"team": []})
         index_key = pc._get_user_keys_index("u", "domain.com")
@@ -109,6 +186,51 @@ class TestPermissionRulesCache:
         assert index is not None
         cache_key = pc._get_cache_key("u", "domain.com", 1, "cmdb", "view")
         assert cache_key in index
+
+    def test_version_change_makes_other_worker_entry_unreachable(self, monkeypatch):
+        version = {"value": 0}
+        monkeypatch.setattr(pc, "get_user_permission_version", lambda username, domain: version["value"])
+        data = {"team": [1], "instance": []}
+        pc.set_cached_permission_rules(
+            "u",
+            "domain.com",
+            1,
+            "cmdb",
+            "view",
+            data,
+            permission_version=0,
+        )
+        old_key = pc._get_cache_key(
+            "u",
+            "domain.com",
+            1,
+            "cmdb",
+            "view",
+            permission_version=0,
+        )
+
+        version["value"] = 1
+
+        assert cache.get(old_key) == data
+        assert pc.get_cached_permission_rules("u", "domain.com", 1, "cmdb", "view") is None
+
+    def test_version_change_during_write_rejects_result(self, monkeypatch):
+        versions = iter([0, 1])
+        monkeypatch.setattr(pc, "get_user_permission_version", lambda username, domain: next(versions))
+        data = {"team": [1], "instance": []}
+
+        cached = pc.set_cached_permission_rules(
+            "u",
+            "domain.com",
+            1,
+            "cmdb",
+            "view",
+            data,
+            permission_version=0,
+        )
+
+        assert cached is False
+        assert cache.get(pc._get_cache_key("u", "domain.com", 1, "cmdb", "view", permission_version=0)) == data
 
     def test_clear_user_cache_by_index_removes_entries(self):
         pc.set_cached_permission_rules("u", "domain.com", 1, "cmdb", "view", {"team": [1]})
@@ -140,6 +262,19 @@ class TestClearUsersPermissionCache:
         # 不含 username 的条目不应触发异常
         pc.clear_users_permission_cache([{"domain": "x"}])
 
+    def test_clear_user_removes_registered_api_token_permission_snapshots(self):
+        key_team_1 = "api_token_permissions:u:domain.com:1"
+        key_team_2 = "api_token_permissions:u:domain.com:2"
+        cache.set(key_team_1, {"roles": [1]}, 600)
+        cache.set(key_team_2, {"roles": [2]}, 600)
+        pc.register_api_token_permission_cache_key("u", "domain.com", key_team_1, 600)
+        pc.register_api_token_permission_cache_key("u", "domain.com", key_team_2, 600)
+
+        pc.clear_user_permission_cache("u", "domain.com")
+
+        assert cache.get(key_team_1) is None
+        assert cache.get(key_team_2) is None
+
 
 # ---------------------------------------------------------------------------
 # 支持 delete_pattern 的后端分支
@@ -156,6 +291,15 @@ class TestPatternBackendBranches:
         cache_key = pc._get_cache_key("u", "domain.com", 1, "cmdb", "view")
         assert fake.store[cache_key] == {"team": [1]}
 
+    def test_api_token_snapshot_keeps_fallback_index_on_pattern_backend(self, mocker):
+        fake = _PatternCache()
+        mocker.patch.object(pc, "cache", fake)
+        cache_key = "api_token_permissions:u:domain.com:1"
+
+        pc.register_api_token_permission_cache_key("u", "domain.com", cache_key, 600)
+
+        assert fake.store[pc._get_api_token_keys_index("u", "domain.com")] == {cache_key}
+
     def test_clear_user_uses_delete_pattern(self, mocker):
         fake = _PatternCache()
         mocker.patch.object(pc, "cache", fake)
@@ -165,6 +309,19 @@ class TestPatternBackendBranches:
         assert pc.get_cached_permission_rules("u", "domain.com", 1, "cmdb", "view") is None
         assert pc.get_cached_permission_rules("u", "domain.com", 2, "cmdb", "edit") is None
 
+    def test_clear_user_pattern_removes_api_token_permission_snapshots(self, mocker):
+        fake = _PatternCache()
+        mocker.patch.object(pc, "cache", fake)
+        fake.store["api_token_permissions:u:domain.com:1"] = {"roles": [1]}
+        fake.store["api_token_permissions:u:domain.com:2"] = {"roles": [2]}
+        fake.store["api_token_permissions:other:domain.com:1"] = {"roles": [3]}
+
+        pc.clear_user_permission_cache("u", "domain.com")
+
+        assert "api_token_permissions:u:domain.com:1" not in fake.store
+        assert "api_token_permissions:u:domain.com:2" not in fake.store
+        assert "api_token_permissions:other:domain.com:1" in fake.store
+
     def test_clear_user_pattern_failure_falls_back_to_index(self, mocker):
         fake = _PatternCache()
         mocker.patch.object(pc, "cache", fake)
@@ -173,6 +330,10 @@ class TestPatternBackendBranches:
         cache_key = pc._get_cache_key("u", "domain.com", 1, "cmdb", "view")
         fake.store[cache_key] = {"team": [1]}
         fake.store[index_key] = {cache_key}
+        api_cache_key = "api_token_permissions:u:domain.com:1"
+        api_index_key = pc._get_api_token_keys_index("u", "domain.com")
+        fake.store[api_cache_key] = {"roles": [1]}
+        fake.store[api_index_key] = {api_cache_key}
 
         def boom(_pattern):
             raise RuntimeError("redis down")
@@ -182,12 +343,15 @@ class TestPatternBackendBranches:
         fake.delete_many = lambda keys: [fake.store.pop(k, None) for k in keys]
         pc.clear_user_permission_cache("u", "domain.com")
         assert cache_key not in fake.store
+        assert api_cache_key not in fake.store
 
     def test_clear_all_uses_delete_pattern(self, mocker):
         fake = _PatternCache()
         mocker.patch.object(pc, "cache", fake)
         fake.store[f"{pc.PERM_CACHE_PREFIX}abc:hash"] = {"team": []}
         fake.store[f"{pc.USER_PERM_KEYS_PREFIX}u:d"] = {"x"}
+        fake.store[f"{pc.API_TOKEN_PERMISSION_CACHE_PREFIX}:u:d:1"] = {"roles": [1]}
+        fake.store[f"{pc.API_TOKEN_PERMISSION_KEYS_PREFIX}u:d"] = {"api_token_permissions:u:d:1"}
         pc.clear_all_permission_cache()
         assert fake.store == {}
 

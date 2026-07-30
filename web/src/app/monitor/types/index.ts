@@ -230,10 +230,16 @@ export interface ObjectItem {
   icon?: string;
   instance_count?: number;
   display_fields?: {
+    column_key?: string;
     name: string;
     type?: 'metric' | 'field';
     sort_order: number;
     metrics: { plugin: string; metric: string; field?: string }[];
+  }[];
+  instance_summary_columns?: {
+    fact: string;
+    title: string;
+    order?: number;
   }[];
   options?: ObjectItem[];
   label?: string;

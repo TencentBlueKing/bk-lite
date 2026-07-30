@@ -7,7 +7,7 @@ import { VENDOR_ICON_MAP, VENDOR_LABEL_MAP } from '@/app/opspilot/constants/prov
 import type { ModelVendor } from '@/app/opspilot/types/provider';
 import { useProviderApi } from '@/app/opspilot/api/provider';
 import { ProviderGridSkeleton } from '@/app/opspilot/components/provider/skeleton';
-import { useTheme } from '@/context/theme';
+import { useThemeMode } from '@/theme';
 
 interface VendorCardGridProps {
   vendors: ModelVendor[];
@@ -27,10 +27,10 @@ const VendorCardGrid: React.FC<VendorCardGridProps> = ({
   onChange,
 }) => {
   const { t } = useTranslation();
-  const { themeName } = useTheme();
+  const { mode } = useThemeMode();
   const { patchVendor } = useProviderApi();
   const [switchLoadingId, setSwitchLoadingId] = useState<number | null>(null);
-  const isDark = themeName === 'dark';
+  const isDark = mode === 'dark';
 
   const getModelCount = (vendor: ModelVendor) => {
     if (typeof vendor.model_count === 'number') {

@@ -1,13 +1,13 @@
 'use client';
 
-import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import axios from 'axios';
 import { useSession, signIn } from 'next-auth/react';
 import type { Session } from 'next-auth';
 import { useRouter, usePathname } from 'next/navigation';
 import { Spin, message } from 'antd';
 import { useLocale } from '@/context/locale';
-import { useTheme } from '@/context/theme';
+import { useThemeMode } from '@/theme';
 import { useTranslation } from '@/utils/i18n';
 import { saveAuthToken } from '@/utils/crossDomainAuth';
 import SigninClient from '@/app/(core)/auth/signin/SigninClient';
@@ -22,6 +22,15 @@ import {
   shouldTriggerSessionExpiry,
 } from '@/utils/sessionExpiry';
 import { forceLogoutAndRedirect } from '@/utils/forceLogout';
+import {
+  publishAuthRecovery,
+  subscribeAuthRecovery,
+  type AuthRecoveryEvent,
+} from '@/utils/authRecoveryChannel';
+import {
+  getAuthUserIdentity,
+  recoverAuthWithRetry,
+} from '@/utils/authRecovery';
 
 // Type assertion helper for session
 type ExtendedSession = Session & {
@@ -49,6 +58,14 @@ const modalSigninErrors: Record<string | 'default', string> = {
   default: 'Unable to sign in.',
 };
 
+const hasValidSession = (session: Session | null): session is ExtendedSession => {
+  const extendedSession = session as ExtendedSession | null;
+  return Boolean(
+    extendedSession?.user
+    && (extendedSession.user.id || extendedSession.user.username),
+  );
+};
+
 export const useAuth = () => {
   const context = useContext(AuthContext);
   if (!context) {
@@ -60,7 +77,7 @@ export const useAuth = () => {
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { data: session, status } = useSession();
   const extendedSession = session as unknown as ExtendedSession | null;
-  const { themeName } = useTheme();
+  const { mode } = useThemeMode();
   const [token, setToken] = useState<string | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [isCheckingAuth, setIsCheckingAuth] = useState<boolean>(true);
@@ -75,11 +92,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const authPaths = ['/auth/signin', '/auth/signout', '/auth/callback', '/auth/signin/login-auth-result'];
   const isCurrentAuthPath = isAuthPath(pathname);
-  const isSessionValid = extendedSession && extendedSession.user && (extendedSession.user.id || extendedSession.user.username);
+  const isSessionValid = hasValidSession(extendedSession);
   const authenticatedSessionIdentityRef = useRef<string | null>(null);
-  authenticatedSessionIdentityRef.current = status === 'authenticated' && isSessionValid
-    ? String(extendedSession.user.token || extendedSession.user.id || extendedSession.user.username)
-    : null;
+  const pageUserIdentityRef = useRef<string | null>(null);
+  const expectedRecoveryUserIdentityRef = useRef<string | null>(null);
+  const pendingRecoveryRef = useRef<boolean>(false);
+  const sessionExpiredOpenRef = useRef<boolean>(false);
+  const recoveryPromiseRef = useRef<Promise<boolean> | null>(null);
+  const handledRecoveryEventIdsRef = useRef<Set<string>>(new Set());
+  authenticatedSessionIdentityRef.current = token || (
+    status === 'authenticated' && isSessionValid
+      ? String(extendedSession.user.token || extendedSession.user.id || extendedSession.user.username)
+      : null
+  );
+  if (status === 'authenticated' && isSessionValid) {
+    pageUserIdentityRef.current ??= getAuthUserIdentity(extendedSession.user);
+  }
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -285,6 +313,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return;
       }
 
+      expectedRecoveryUserIdentityRef.current ??= pageUserIdentityRef.current;
+      pendingRecoveryRef.current = true;
+      sessionExpiredOpenRef.current = true;
       setSessionExpiredOpen(true);
       setIsCheckingAuth(false);
     };
@@ -295,6 +326,84 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       window.removeEventListener(SESSION_EXPIRED_EVENT, handleSessionExpired as EventListener);
     };
   }, [isCurrentAuthPath]);
+
+  const recoverAuthenticatedSession = useCallback((event?: AuthRecoveryEvent) => {
+    if (event && handledRecoveryEventIdsRef.current.has(event.eventId)) {
+      return recoveryPromiseRef.current ?? Promise.resolve(true);
+    }
+
+    if (event) {
+      handledRecoveryEventIdsRef.current.add(event.eventId);
+      expectedRecoveryUserIdentityRef.current ??= pageUserIdentityRef.current;
+      pendingRecoveryRef.current = true;
+    }
+
+    if (recoveryPromiseRef.current) {
+      return recoveryPromiseRef.current;
+    }
+
+    const recoveryPromise = (async () => {
+      try {
+        const recoveryResult = await recoverAuthWithRetry(
+          expectedRecoveryUserIdentityRef.current,
+        );
+        if (recoveryResult.status !== 'recovered') {
+          if (recoveryResult.status === 'account-changed') {
+            pendingRecoveryRef.current = false;
+          }
+          return false;
+        }
+
+        const recoveredUser = recoveryResult.user;
+        const shouldShowRecoveryMessage = sessionExpiredOpenRef.current;
+        setToken(recoveredUser.token);
+        setIsAuthenticated(true);
+        resetSessionExpiredState();
+        pendingRecoveryRef.current = false;
+        sessionExpiredOpenRef.current = false;
+        expectedRecoveryUserIdentityRef.current = null;
+        setSessionExpiredOpen(false);
+        setIsCheckingAuth(false);
+
+        if (shouldShowRecoveryMessage && document.visibilityState !== 'hidden') {
+          message.success(t('common.reloginSuccess'));
+        }
+        return true;
+      } catch (error) {
+        console.error('Failed to recover authenticated session:', error);
+        return false;
+      } finally {
+        recoveryPromiseRef.current = null;
+      }
+    })();
+
+    recoveryPromiseRef.current = recoveryPromise;
+    return recoveryPromise;
+  }, [t]);
+
+  useEffect(() => subscribeAuthRecovery((event) => {
+    void recoverAuthenticatedSession(event);
+  }), [recoverAuthenticatedSession]);
+
+  useEffect(() => {
+    const retryPendingRecovery = () => {
+      if (pendingRecoveryRef.current && document.visibilityState !== 'hidden') {
+        void recoverAuthenticatedSession();
+      }
+    };
+
+    window.addEventListener('focus', retryPendingRecovery);
+    document.addEventListener('visibilitychange', retryPendingRecovery);
+    return () => {
+      window.removeEventListener('focus', retryPendingRecovery);
+      document.removeEventListener('visibilitychange', retryPendingRecovery);
+    };
+  }, [recoverAuthenticatedSession]);
+
+  const handleReloginSuccess = useCallback(() => {
+    const event = publishAuthRecovery();
+    void recoverAuthenticatedSession(event);
+  }, [recoverAuthenticatedSession]);
 
   useEffect(() => {
     const handleAuthPopupMessage = (event: MessageEvent) => {
@@ -314,7 +423,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => {
       window.removeEventListener('message', handleAuthPopupMessage);
     };
-  }, []);
+  }, [handleReloginSuccess]);
 
   // Process session changes
   useEffect(() => {
@@ -341,6 +450,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     // If no valid session, redirect to login page
     if (status === 'unauthenticated' || !isSessionValid) {
+      if (sessionExpiredOpen || token) {
+        setIsAuthenticated(Boolean(token));
+        setIsCheckingAuth(false);
+        return;
+      }
+
       setToken(null);
       setIsAuthenticated(false);
       setIsCheckingAuth(false);
@@ -374,17 +489,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       localStorage.setItem('locale', userLocale);
       localStorage.setItem('timezone', userTimezone);
     }
-  }, [status, session, pathname, setLocale, router, isAutoSigningIn, hasCheckedExistingAuth, isCheckingExistingAuth, isCurrentAuthPath, sessionExpiredOpen]);
-
-  const handleReloginSuccess = () => {
-    setSessionExpiredOpen(false);
-    resetSessionExpiredState();
-    message.success(t('common.reloginSuccess'));
-    window.location.reload();
-  };
+  }, [status, session, pathname, setLocale, router, isAutoSigningIn, hasCheckedExistingAuth, isCheckingExistingAuth, isCurrentAuthPath, sessionExpiredOpen, token]);
 
   // Show loading state until authentication state is determined
-  if ((status === 'loading' || isCheckingAuth || isAutoSigningIn || isCheckingExistingAuth) && pathname && !authPaths.includes(pathname)) {
+  if (((status === 'loading' && !isAuthenticated) || isCheckingAuth || isAutoSigningIn || isCheckingExistingAuth) && pathname && !authPaths.includes(pathname)) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-center">
@@ -411,9 +519,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             className="relative w-full overflow-hidden rounded-[16px] border"
             style={{
               maxWidth: 420,
-              borderColor: themeName === 'dark' ? 'var(--color-border-1)' : '#DBE3EC',
-              background: themeName === 'dark' ? 'var(--bg-color-2)' : '#FFFFFF',
-              boxShadow: themeName === 'dark' ? '0 18px 42px rgba(0,0,0,0.42)' : '0 10px 28px rgba(15,23,42,0.10)',
+              borderColor: mode === 'dark' ? 'var(--color-border-1)' : '#DBE3EC',
+              background: mode === 'dark' ? 'var(--bg-color-2)' : '#FFFFFF',
+              boxShadow: mode === 'dark' ? '0 18px 42px rgba(0,0,0,0.42)' : '0 10px 28px rgba(15,23,42,0.10)',
             }}
           >
             <div className="relative px-6 pb-5 pt-6">

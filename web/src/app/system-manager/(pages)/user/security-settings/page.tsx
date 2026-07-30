@@ -29,6 +29,12 @@ const SecuritySettingsPage: React.FC = () => {
   const [pendingLockDuration, setPendingLockDuration] = useState<string>('180');
   const [reminderDays, setReminderDays] = useState<string>('7');
   const [pendingReminderDays, setPendingReminderDays] = useState<string>('7');
+  const [initialPasswordEnabled, setInitialPasswordEnabled] = useState(false);
+  const [pendingInitialPasswordEnabled, setPendingInitialPasswordEnabled] = useState(false);
+  const [initialPasswordConfigured, setInitialPasswordConfigured] = useState(false);
+  const [initialPasswordEditing, setInitialPasswordEditing] = useState(false);
+  const [initialPassword, setInitialPassword] = useState('');
+  const [confirmInitialPassword, setConfirmInitialPassword] = useState('');
 
   const { getSystemSettings, updateOtpSettings } = useSecurityApi();
 
@@ -80,6 +86,14 @@ const SecuritySettingsPage: React.FC = () => {
       const pwdReminderDays = settings.pwd_set_expiry_reminder_days || '7';
       setReminderDays(pwdReminderDays);
       setPendingReminderDays(pwdReminderDays);
+
+      const initialPasswordEnabledValue = settings.user_create_initial_password_enabled === '1';
+      setInitialPasswordEnabled(initialPasswordEnabledValue);
+      setPendingInitialPasswordEnabled(initialPasswordEnabledValue);
+      setInitialPasswordConfigured(settings.user_create_initial_password_configured === '1');
+      setInitialPasswordEditing(false);
+      setInitialPassword('');
+      setConfirmInitialPassword('');
     } catch (error) {
       console.error('Failed to fetch system settings:', error);
     } finally {
@@ -123,7 +137,31 @@ const SecuritySettingsPage: React.FC = () => {
     setPendingReminderDays(value);
   };
 
+  const handleInitialPasswordEnabledChange = (enabled: boolean) => {
+    setPendingInitialPasswordEnabled(enabled);
+    setInitialPasswordEditing(enabled && !initialPasswordConfigured);
+    if (!enabled) {
+      setInitialPassword('');
+      setConfirmInitialPassword('');
+    }
+  };
+
+  const initialPasswordRequired = pendingInitialPasswordEnabled && (
+    !initialPasswordEnabled
+    || pendingMinimumLength !== minimumLength
+    || pendingMaximumLength !== maximumLength
+    || pendingPasswordComplexity.join(',') !== passwordComplexity.join(',')
+  );
+
   const handleSaveSettings = async () => {
+    if (initialPasswordRequired && !initialPassword) {
+      message.error(t('system.security.initialPasswordRequired'));
+      return;
+    }
+    if (initialPassword && initialPassword !== confirmInitialPassword) {
+      message.error(t('system.security.initialPasswordMismatch'));
+      return;
+    }
     try {
       setLoading(true);
       await updateOtpSettings({
@@ -136,6 +174,8 @@ const SecuritySettingsPage: React.FC = () => {
         pwdSetMaxRetryCount: pendingLoginAttempts,
         pwdSetLockDuration: pendingLockDuration,
         pwdSetExpiryReminderDays: pendingReminderDays,
+        userCreateInitialPasswordEnabled: pendingInitialPasswordEnabled ? '1' : '0',
+        userCreateInitialPassword: initialPassword || undefined,
       });
       setOtpEnabled(pendingOtpEnabled);
       setLoginExpiredTime(pendingLoginExpiredTime);
@@ -146,6 +186,11 @@ const SecuritySettingsPage: React.FC = () => {
       setLoginAttempts(pendingLoginAttempts);
       setLockDuration(pendingLockDuration);
       setReminderDays(pendingReminderDays);
+      setInitialPasswordEnabled(pendingInitialPasswordEnabled);
+      setInitialPasswordConfigured(pendingInitialPasswordEnabled);
+      setInitialPasswordEditing(false);
+      setInitialPassword('');
+      setConfirmInitialPassword('');
       message.success(t('common.updateSuccess'));
     } catch (error) {
       console.error('Failed to update settings:', error);
@@ -158,6 +203,10 @@ const SecuritySettingsPage: React.FC = () => {
       setPendingLoginAttempts(loginAttempts);
       setPendingLockDuration(lockDuration);
       setPendingReminderDays(reminderDays);
+      setPendingInitialPasswordEnabled(initialPasswordEnabled);
+      setInitialPasswordEditing(false);
+      setInitialPassword('');
+      setConfirmInitialPassword('');
     } finally {
       setLoading(false);
     }
@@ -174,6 +223,12 @@ const SecuritySettingsPage: React.FC = () => {
       loginAttempts={pendingLoginAttempts}
       lockDuration={pendingLockDuration}
       reminderDays={pendingReminderDays}
+      initialPasswordEnabled={pendingInitialPasswordEnabled}
+      initialPasswordConfigured={initialPasswordConfigured}
+      initialPasswordRequired={initialPasswordRequired}
+      initialPasswordEditing={initialPasswordEditing}
+      initialPassword={initialPassword}
+      confirmInitialPassword={confirmInitialPassword}
       loading={loading}
       disabled={fetching}
       onOtpChange={handleOtpChange}
@@ -185,6 +240,10 @@ const SecuritySettingsPage: React.FC = () => {
       onLoginAttemptsChange={handleLoginAttemptsChange}
       onLockDurationChange={handleLockDurationChange}
       onReminderDaysChange={handleReminderDaysChange}
+      onInitialPasswordEnabledChange={handleInitialPasswordEnabledChange}
+      onStartInitialPasswordChange={() => setInitialPasswordEditing(true)}
+      onInitialPasswordChange={setInitialPassword}
+      onConfirmInitialPasswordChange={setConfirmInitialPassword}
       onSave={handleSaveSettings}
     />
   );

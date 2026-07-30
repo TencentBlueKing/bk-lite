@@ -62,6 +62,11 @@ const nextConfig = {
   output: isProduction ? 'export' : undefined,
   basePath: isProduction && basePath !== '' ? basePath : undefined,
 
+  // ESLint Flat Config 由独立的 `pnpm lint` 质量门执行。
+  eslint: {
+    ignoreDuringBuilds: true,
+  },
+
   images: {
     unoptimized: true,
   },

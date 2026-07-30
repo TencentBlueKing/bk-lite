@@ -11,6 +11,7 @@ from apps.alerts.common.assignment import AlertAssignmentOperator, execute_auto_
 from apps.alerts.constants.constants import AlertStatus
 from apps.alerts.models.alert_operator import AlertAssignment
 from apps.alerts.models.models import Alert
+from apps.system_mgmt.models import Group
 
 
 @pytest.fixture
@@ -143,6 +144,59 @@ def test_auto_assignment_rejected_operation_is_not_counted_as_success(sys_user):
     assert result["failed_alerts"] == 1
     assert alert.status == AlertStatus.UNASSIGNED
     assert alert.operator == []
+
+
+@pytest.mark.django_db
+def test_auto_assignment_resolves_organization_members(sys_user):
+    group = Group.objects.create(name="值班组")
+    sys_user.group_list = [group.id]
+    sys_user.save(update_fields=["group_list"])
+    _make_alert("A1", status=AlertStatus.UNASSIGNED, team=[group.id])
+    _make_assignment(
+        match_type="all",
+        personnel=[],
+        config={
+            "notification_target": {
+                "type": "organization",
+                "organization_ids": [group.id],
+                "include_children": False,
+            }
+        },
+    )
+
+    result = AlertAssignmentOperator(["A1"]).execute_auto_assignment()
+
+    alert = Alert.objects.get(alert_id="A1")
+    assert result["assigned_alerts"] == 1
+    assert alert.status == AlertStatus.PENDING
+    assert alert.operator == ["op1"]
+
+
+@pytest.mark.django_db
+def test_auto_assignment_accepts_child_members_when_target_includes_children(
+    sys_user,
+):
+    parent = Group.objects.create(name="运维中心")
+    child = Group.objects.create(name="一线值班", parent_id=parent.id)
+    sys_user.group_list = [child.id]
+    sys_user.save(update_fields=["group_list"])
+    _make_alert("A1", status=AlertStatus.UNASSIGNED, team=[parent.id])
+    _make_assignment(
+        match_type="all",
+        personnel=[],
+        config={
+            "notification_target": {
+                "type": "organization",
+                "organization_ids": [parent.id],
+                "include_children": True,
+            }
+        },
+    )
+
+    result = AlertAssignmentOperator(["A1"]).execute_auto_assignment()
+
+    assert result["assigned_alerts"] == 1
+    assert Alert.objects.get(alert_id="A1").operator == ["op1"]
 
 
 @pytest.mark.django_db

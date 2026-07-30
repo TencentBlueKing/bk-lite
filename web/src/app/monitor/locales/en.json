@@ -160,6 +160,9 @@
       "addMetric": "Add Metric"
     },
     "views": {
+      "assetIp": "IP Address",
+      "probeNodes": "Probe Nodes",
+      "probeTarget": "Target",
       "vmware_esxi_count": "Number of ESXi",
       "vmware_datastore_count": "Number of Datastores",
       "vmware_vm_count": "Number of VM",
@@ -358,6 +361,8 @@
       "disk_ratio": "Disk Usage Ratio"
     },
     "integrations": {
+      "hostMonitoringAlreadyConfigured": "Host monitoring already configured",
+      "hostMonitoringStatusUnavailable": "Unable to verify monitoring status. Try again later",
       "publishAddressDes": "The main website for system monitoring, used to detect its availability and performance status.",
       "dataSource": "Data Source",
       "ipDes": "The IP address of the target host being monitored is used to identify the source of data collection.",
@@ -425,6 +430,7 @@
       "libraryPath": "Driver Library Path",
       "note": "The monitoring data of K8s only supports active reporting, and is not supported to be accessed here for the time being.",
       "editMetric": "Edit Metric",
+      "viewMetric": "View Metric Configuration",
       "installationMethod": "Installation Method",
       "seviceName": "Service Name",
       "seviceNameDes": "The service name to be monitored should be consistent with the actual running service.",
@@ -532,6 +538,9 @@
       "ruleDescription": "Rule Description",
       "ruleName": "Rule Name",
       "batchDeleteConfirm": "Are you sure you want to delete the selected items?",
+      "assetBatchDeleteConfirm": "Delete the {count} selected monitoring assets? This action cannot be undone.",
+      "assetBatchDeleteSuccess": "Deleted {count} monitoring assets",
+      "assetDeleteRefreshFailed": "The assets were deleted, but the list could not be refreshed. Refresh it manually.",
       "optionsSuffix": "Options",
       "excelImportTips": "Only xlsx files can be uploaded, and no more than 20MB",
       "importSuccessCount": "Successfully imported {{count}} records",
@@ -555,8 +564,21 @@
       "collectDetectSuccess": "Success",
       "collectDetectFailed": "Failed",
       "collectDetectExitCode": "Exit Code",
+      "collectDetectRequestUrl": "Final Request URL",
       "collectDetectNoOutput": "No output",
       "collectDetectNodeRequired": "Please select a collection node first",
+      "advancedConfiguration": "Advanced Configuration",
+      "advancedConfigurationHint": "Configure request payload, authentication, and expected response checks as needed",
+      "advancedSections": {
+        "request": "Request",
+        "auth": "Authentication",
+        "response": "Expected Response",
+        "tls": "TLS",
+        "other": "Other"
+      },
+      "keyValueEmpty": "No entries yet. Add one below.",
+      "addRequestParam": "Add parameter",
+      "addRequestHeader": "Add header",
       "clickUpload": "Click Upload",
       "inputError": "Input Error",
       "noTemplateData": "No template data available",
@@ -860,7 +882,12 @@
       "fieldKeyPlaceholder": "Enter dimension key",
       "selectField": "Select Field",
       "selectMetricFirst": "Select a metric first",
-      "display": "Display"
+      "display": "Display",
+      "cleanupPolicy": "Cleanup Policy",
+      "noCleanup": "No cleanup",
+      "timeoutCleanup": "Timeout cleanup",
+      "timeoutDays": "Timeout (days)",
+      "cleanupPolicyHint": "Automatically delete auto-discovered assets after {days} days without data"
     },
     "selectObject": "Select Object",
     "aggregation": "Aggregation",

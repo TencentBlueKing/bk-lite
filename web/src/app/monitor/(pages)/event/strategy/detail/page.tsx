@@ -86,7 +86,7 @@ const StrategyOperation = () => {
     getMonitorPlugin,
     getMonitorObject
   } = useMonitorApi();
-  const { getMonitorPolicy, getSystemChannelList } = useEventApi();
+  const { getMonitorPolicy, getSystemChannelList, savePolicyTemplate } = useEventApi();
   const commonContext = useCommon();
   const unitList = commonContext?.unitList || [];
   const groupedUnitOptions = useMemo(
@@ -112,6 +112,7 @@ const StrategyOperation = () => {
   const detailName = searchParams.get('name') || '--';
   const [pageLoading, setPageLoading] = useState<boolean>(false);
   const [confirmLoading, setConfirmLoading] = useState<boolean>(false);
+  const [templateSaving, setTemplateSaving] = useState<boolean>(false);
   const [source, setSource] = useState<SourceFeild>({
     type: '',
     values: []
@@ -781,9 +782,8 @@ const StrategyOperation = () => {
     window.open(url, '_blank', 'noopener,noreferrer');
   };
 
-  const createStrategy = () => {
-    form?.validateFields().then((values) => {
-      const params = cloneDeep(values);
+  const buildStrategyParams = (values: any): StrategyFields | null => {
+      const params: any = cloneDeep(values);
       delete params._conditions_validator;
       delete params.no_data_level;
       delete params.no_data_alert_name;
@@ -814,7 +814,7 @@ const StrategyOperation = () => {
               ? error.message
               : t('monitor.events.metricValidate')
           );
-          return;
+          return null;
         }
         const primaryMetric = metricRows[0];
         const mertricTarget = metrics.find(
@@ -884,8 +884,53 @@ const StrategyOperation = () => {
       params.recovery_condition = params.recovery_condition || 0;
       params.group_by = sanitizeGroupBy(metricRows[0]?.groupBy || groupBy);
       params.enable = true;
-      operateStrategy(params);
+      return params;
+  };
+
+  const createStrategy = () => {
+    form?.validateFields().then((values) => {
+      const params = buildStrategyParams(values);
+      if (params) void operateStrategy(params);
     });
+  };
+
+  const saveTemplate = async () => {
+    const trapTemplate = isTrap(form.getFieldValue);
+    const templateFields = [
+      'name',
+      'alert_name',
+      'collect_type',
+      'schedule',
+      'period',
+      'threshold',
+      'trigger_count',
+      'recovery_condition',
+      'no_data_alert_name',
+      ...(trapTemplate ? ['query'] : ['metric', 'algorithm']),
+    ];
+    let validated: Record<string, unknown>;
+    try {
+      validated = await form.validateFields(templateFields);
+    } catch {
+      return;
+    }
+    const params = buildStrategyParams({
+      ...form.getFieldsValue(true),
+      ...validated,
+    });
+    if (!params) return;
+    try {
+      setTemplateSaving(true);
+      await savePolicyTemplate({
+        monitor_object: monitorObjId,
+        plugin: params.collect_type,
+        name: params.name,
+        config: params,
+      });
+      message.success('模版保存成功');
+    } finally {
+      setTemplateSaving(false);
+    }
   };
 
   const operateStrategy = async (params: StrategyFields) => {
@@ -1084,14 +1129,19 @@ const StrategyOperation = () => {
             </div>
           </div>
         </div>
-        <div className={strategyStyle.footer}>
+        <div className={`${strategyStyle.footer} flex gap-2`}>
           <Button
             type="primary"
-            className="mr-[10px]"
             loading={confirmLoading}
             onClick={createStrategy}
           >
             {t('common.confirm')}
+          </Button>
+          <Button
+            loading={templateSaving}
+            onClick={() => void saveTemplate()}
+          >
+            保存模版
           </Button>
           <Button onClick={goBack}>{t('common.cancel')}</Button>
         </div>

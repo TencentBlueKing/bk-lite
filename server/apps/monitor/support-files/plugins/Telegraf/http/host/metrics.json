@@ -2,6 +2,8 @@
   "plugin": "Host Remote",
   "plugin_desc": "Remote host metrics collection via SSH/WinRM through Ansible Executor. Supports CPU, memory, disk, and network metrics without agent installation on target hosts.",
   "status_query": "any({instance_type='os', collect_type='http', config_type='host'}) by (instance_id)",
+  "instance_fact_bindings": [{"fact":"asset.ip","value_type":"ip","resolver":"input","options":{"field":"host","required":true}}],
+  "instance_summary_columns": [{"fact":"asset.ip","title":"monitor.views.assetIp","order":10}],
   "node_selector": {
     "is_container": true
   },

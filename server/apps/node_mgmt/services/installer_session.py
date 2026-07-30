@@ -1,3 +1,5 @@
+import time
+
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.logger import node_logger as logger
 from apps.core.utils.crypto.aes_crypto import AESCryptor
@@ -12,6 +14,18 @@ from config.components.nats import NATS_NAMESPACE
 
 
 class InstallerSessionService:
+    @staticmethod
+    def windows_bootstrap_artifact(cpu_architecture: str = "") -> dict:
+        normalized_arch = normalize_cpu_architecture(cpu_architecture) or NodeConstants.X86_64_ARCH
+        return {
+            "filename": InstallerConstants.WINDOWS_BOOTSTRAP_FILENAME,
+            "object_key": InstallerConstants.build_latest_bootstrap_path(
+                NodeConstants.WINDOWS_OS,
+                normalized_arch,
+            ),
+            "architecture": normalized_arch,
+        }
+
     @staticmethod
     def installer_artifact(os_name: str, cpu_architecture: str = "") -> dict:
         normalized_arch = normalize_cpu_architecture(cpu_architecture) or "generic"
@@ -70,8 +84,16 @@ class InstallerSessionService:
         # Prefer dedicated installer credentials; fall back to admin credentials with warning
         nats_username = envs.get(NodeConstants.NATS_INSTALLER_USERNAME_KEY)
         nats_password = envs.get(NodeConstants.NATS_INSTALLER_PASSWORD_KEY)
+        is_windows_remote = (
+            token_data["os"] == NodeConstants.WINDOWS_OS
+            and token_data.get("install_mode") == "auto"
+        )
 
         if not nats_username or not nats_password:
+            if is_windows_remote:
+                raise BaseAppException(
+                    "Windows remote installation requires dedicated NATS_INSTALLER_USERNAME/PASSWORD credentials"
+                )
             # Fallback to admin credentials (legacy deployments)
             logger.warning(
                 "NATS_INSTALLER_USERNAME/PASSWORD not configured for cloud region %s, "
@@ -90,7 +112,13 @@ class InstallerSessionService:
         groups = ",".join([str(org_id) for org_id in token_data.get("organizations", [])])
 
         nats_tls_ca = envs.get("NATS_TLS_CA") or ""
-        nats_protocol = envs.get("NATS_PROTOCOL") or "nats"
+        nats_protocol = (envs.get("NATS_PROTOCOL") or "nats").strip().lower()
+        if is_windows_remote:
+            if nats_protocol != "tls":
+                raise BaseAppException("Windows remote installation requires NATS_PROTOCOL=tls")
+            configured_servers = [item.strip() for item in nats_servers.split(",") if item.strip()]
+            if any("://" in item and not item.lower().startswith("tls://") for item in configured_servers):
+                raise BaseAppException("Windows remote installation requires TLS NATS server URLs")
 
         install_dir = (
             InstallerConstants.WINDOWS_INSTALL_DEFAULT_DIR
@@ -134,4 +162,11 @@ class InstallerSessionService:
             token_data["os"],
             resolved_arch,
         )
+        max_clock_skew_seconds = InstallerConstants.CONTROLLER_INSTALL_MAX_CLOCK_SKEW_SECONDS
+        if max_clock_skew_seconds <= 0:
+            raise BaseAppException("CONTROLLER_INSTALL_MAX_CLOCK_SKEW_SECONDS must be a positive integer")
+        config["clock_validation"] = {
+            "server_time_unix_ms": time.time_ns() // 1_000_000,
+            "max_skew_seconds": max_clock_skew_seconds,
+        }
         return config

@@ -23,6 +23,7 @@ import CustomTable from '@/components/custom-table';
 import { useTranslation } from '@/utils/i18n';
 import MoreActionsDropdown from '@/components/more-actions-dropdown';
 import type { MoreActionsDropdownItem } from '@/components/more-actions-dropdown';
+import { useShareMode } from '@/app/ops-analysis/context/shareMode';
 import {
   parseTableLikeData,
   resolveTableLikeColumns,
@@ -54,6 +55,7 @@ const OpsAnalysisTable: React.FC<OpsAnalysisTableProps> = ({
   onQueryChange,
 }) => {
   const { t } = useTranslation();
+  const shareMode = useShareMode();
   const [filters, setFilters] = useState<Record<string, any>>({});
   const [keywordDrafts, setKeywordDrafts] = useState<Record<string, string>>({});
   const [activeKeywordFieldKey, setActiveKeywordFieldKey] = useState<string>('');
@@ -109,6 +111,10 @@ const OpsAnalysisTable: React.FC<OpsAnalysisTableProps> = ({
 
   const handleActionClick = useCallback(
     (action: DashboardActionConfig, record: TableDataItem) => {
+      if (shareMode) {
+        message.warning(t('dashboard.shareNavigationDisabled'));
+        return;
+      }
       const params = resolveDashboardActionParams(action.params, record);
       const url = buildDashboardActionUrl(action.url, params);
       if (!url) {
@@ -123,12 +129,12 @@ const OpsAnalysisTable: React.FC<OpsAnalysisTableProps> = ({
 
       window.location.href = url;
     },
-    [t],
+    [shareMode, t],
   );
 
   const renderActionButtons = useCallback(
     (actions: DashboardActionConfig[], record: TableDataItem) => {
-      if (actions.length === 0) {
+      if (shareMode || actions.length === 0) {
         return '-';
       }
 
@@ -161,7 +167,7 @@ const OpsAnalysisTable: React.FC<OpsAnalysisTableProps> = ({
         </div>
       );
     },
-    [handleActionClick, t],
+    [handleActionClick, shareMode, t],
   );
 
   const antColumns = useMemo((): ColumnsType<TableDataItem> => {

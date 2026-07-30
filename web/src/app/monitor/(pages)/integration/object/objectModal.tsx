@@ -7,7 +7,16 @@ import React, {
   useImperativeHandle,
   useEffect
 } from 'react';
-import { Input, Button, Form, message, Popover, Spin } from 'antd';
+import {
+  Input,
+  InputNumber,
+  Radio,
+  Button,
+  Form,
+  message,
+  Popover,
+  Spin
+} from 'antd';
 import { PlusOutlined, CloseOutlined } from '@ant-design/icons';
 import OperateModal from '@/components/operate-modal';
 import type { FormInstance } from 'antd';
@@ -58,6 +67,9 @@ const ICON_LIST = [
   'cc-dameng_达梦',
   'cc-db2_DB2',
   'cc-sql-server_MSSQL',
+  'cc-influxdb_InfluxDB',
+  'cc-haproxy_HAProxy',
+  'cc-consul_Consul',
   'cc-weblogic_WebLogic',
   'cc-websphere_websphere',
   'cc-iis_IIS',
@@ -98,7 +110,10 @@ const ICON_LIST = [
   'mm-vmware_Vmware',
   'mm-weblogic_Weblogic',
   'mm-website_网站',
-  'mm-zookeeper_Zookeeper'
+  'mm-zookeeper_Zookeeper',
+  'mm-influxdb_InfluxDB',
+  'mm-haproxy_HAProxy',
+  'mm-consul_Consul'
 ];
 
 interface ModalProps {
@@ -138,6 +153,7 @@ const ObjectModal = forwardRef<ModalRef, ModalProps>(
         if (
           type === 'edit' &&
           data.id &&
+          !data.is_builtin &&
           (data as MonitorObjectItem).children_count &&
           (data as MonitorObjectItem).children_count! > 0
         ) {
@@ -159,14 +175,17 @@ const ObjectModal = forwardRef<ModalRef, ModalProps>(
         formRef.current?.resetFields();
         formRef.current?.setFieldsValue({
           ...formData,
-          display_name: formData.display_name || formData.name
+          display_name: formData.display_name || formData.name,
+          cleanup_policy: formData.cleanup_policy || 'no_cleanup',
+          cleanup_timeout_days: formData.cleanup_timeout_days || 1
         });
       }
     }, [visible, formData]);
 
     const handleSubmit = () => {
+      const isBuiltin = type === 'edit' && formData.is_builtin;
       // 验证图标必填
-      if (!selectedIcon) {
+      if (!isBuiltin && !selectedIcon) {
         message.error(t('monitor.object.iconRequired'));
         return;
       }
@@ -174,12 +193,17 @@ const ObjectModal = forwardRef<ModalRef, ModalProps>(
       formRef.current?.validateFields().then(async (values) => {
         try {
           setConfirmLoading(true);
-          const submitData: ObjectFormData = {
-            ...values,
-            icon: selectedIcon,
-            type_id: typeId || formData.type_id,
-            children: children.filter((c) => c.id && c.name)
-          };
+          const submitData = (isBuiltin
+            ? {
+              cleanup_policy: values.cleanup_policy,
+              cleanup_timeout_days: values.cleanup_timeout_days
+            }
+            : {
+              ...values,
+              icon: selectedIcon,
+              type_id: typeId || formData.type_id,
+              children: children.filter((c) => c.id && c.name)
+            }) as ObjectFormData;
 
           if (type === 'add') {
             await createObject(submitData);
@@ -261,6 +285,7 @@ const ObjectModal = forwardRef<ModalRef, ModalProps>(
 
     // 是否禁用确认按钮
     const isConfirmDisabled = dataLoading || confirmLoading;
+    const isBuiltin = type === 'edit' && formData.is_builtin;
 
     return (
       <OperateModal
@@ -312,10 +337,13 @@ const ObjectModal = forwardRef<ModalRef, ModalProps>(
               name="display_name"
               rules={[{ required: true, message: t('common.inputRequired') }]}
             >
-              <Input placeholder={t('monitor.object.displayNamePlaceholder')} />
+              <Input
+                placeholder={t('monitor.object.displayNamePlaceholder')}
+                disabled={isBuiltin}
+              />
             </Form.Item>
 
-            <Form.Item label={t('monitor.object.icon')} required>
+            <Form.Item label={t('monitor.object.icon')} required={!isBuiltin}>
               <div className="flex items-center gap-3">
                 <div className="w-12 h-12 flex items-center justify-center rounded-lg bg-[var(--color-fill-2)]">
                   <img
@@ -336,7 +364,9 @@ const ObjectModal = forwardRef<ModalRef, ModalProps>(
                   onOpenChange={setIconPopoverOpen}
                   placement="bottomLeft"
                 >
-                  <Button>{t('monitor.object.selectIcon')}</Button>
+                  <Button disabled={isBuiltin}>
+                    {t('monitor.object.selectIcon')}
+                  </Button>
                 </Popover>
               </div>
             </Form.Item>
@@ -348,12 +378,59 @@ const ObjectModal = forwardRef<ModalRef, ModalProps>(
               <Input.TextArea
                 rows={2}
                 placeholder={t('monitor.object.descriptionPlaceholder')}
+                disabled={isBuiltin}
               />
             </Form.Item>
 
+            <Form.Item<ObjectFormData>
+              label={t('monitor.object.cleanupPolicy')}
+              name="cleanup_policy"
+              rules={[{ required: true }]}
+            >
+              <Radio.Group>
+                <Radio value="no_cleanup">
+                  {t('monitor.object.noCleanup')}
+                </Radio>
+                <Radio value="timeout">
+                  {t('monitor.object.timeoutCleanup')}
+                </Radio>
+              </Radio.Group>
+            </Form.Item>
+
+            <Form.Item
+              noStyle
+              shouldUpdate={(previous, current) =>
+                previous.cleanup_policy !== current.cleanup_policy ||
+                previous.cleanup_timeout_days !== current.cleanup_timeout_days
+              }
+            >
+              {({ getFieldValue }) =>
+                getFieldValue('cleanup_policy') === 'timeout' && (
+                  <Form.Item<ObjectFormData>
+                    label={t('monitor.object.timeoutDays')}
+                    name="cleanup_timeout_days"
+                    extra={t('monitor.object.cleanupPolicyHint', undefined, {
+                      days: getFieldValue('cleanup_timeout_days') || 1
+                    })}
+                    rules={[
+                      { required: true, message: t('common.inputRequired') }
+                    ]}
+                  >
+                    <InputNumber
+                      min={1}
+                      max={365}
+                      precision={0}
+                      className="w-full"
+                    />
+                  </Form.Item>
+                )
+              }
+            </Form.Item>
+
             {/* 子对象：新增和编辑都可以添加/修改 */}
-            <Form.Item label={t('monitor.object.childObjects')}>
-              <div className="flex flex-col gap-2">
+            {!isBuiltin && (
+              <Form.Item label={t('monitor.object.childObjects')}>
+                <div className="flex flex-col gap-2">
                 {children.map((child, index) => {
                   // 判断是否为已存在的子对象（编辑模式下从后端加载的）
                   const isExisting = type === 'edit' && child._isExisting;
@@ -399,8 +476,9 @@ const ObjectModal = forwardRef<ModalRef, ModalProps>(
                 >
                   {t('monitor.object.addChildObject')}
                 </Button>
-              </div>
-            </Form.Item>
+                </div>
+              </Form.Item>
+            )}
           </Form>
         </Spin>
       </OperateModal>

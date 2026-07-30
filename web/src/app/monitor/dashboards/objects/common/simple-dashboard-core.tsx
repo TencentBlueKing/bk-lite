@@ -128,6 +128,12 @@ export interface RingPanelConfig {
   centerUnit?: SimpleMetricUnit;
   centerFormatter?: 'duration';
   segments: RingSegmentConfig[];
+  /**
+   * 全部分段无数据或数值均为 0 时视为空态（如拨测尚未拿到 HTTP 状态码）。
+   */
+  emptyWhenAllZero?: boolean;
+  /** 空态说明；缺省「暂无数据」。 */
+  emptyDescription?: string;
 }
 
 export interface BarPanelConfig {
@@ -137,6 +143,13 @@ export interface BarPanelConfig {
   items: Array<{ label: string; metric: string; color: string; unit?: SimpleMetricUnit }>;
   /** true 时每行渲染 sparkline 趋势(速率/计数类);缺省保留进度条(分布/对比类)。 */
   showTrend?: boolean;
+  /**
+   * 全部 item 无数据或数值均为 0 时视为空态，展示 emptyDescription。
+   * 用于拨测状态码等「全 0 ≠ 健康、可能尚未拿到该维度样本」的归因图。
+   */
+  emptyWhenAllZero?: boolean;
+  /** 空态说明；缺省「暂无数据」。 */
+  emptyDescription?: string;
 }
 
 /** A binary/flag signal shown as a status row (dot + state badge) rather than a value bar.
@@ -212,11 +225,14 @@ export interface PreparedRingPanel {
   data: Array<{ name: string; value: number; color: string; display: string }>;
   centerValue: string;
   isEmpty: boolean;
+  emptyDescription?: string;
 }
 
 export interface PreparedBarPanel {
   panel: BarPanelConfig;
   items: Array<{ label: string; value: number; display: string; color: string; max: number; trend?: ChartData[] }>;
+  isEmpty: boolean;
+  emptyDescription?: string;
 }
 
 export interface PreparedStatusPanel {
@@ -608,8 +624,9 @@ export function useSimpleDashboardData(config: SimpleDashboardConfig) {
     const value = getLatest(field.metric);
     if (!hasMetricData(field.metric)) return '--';
     if (field.formatter === 'duration') return formatDuration(value);
-    if (field.formatter === 'enumHealth') return formatClusterHealth(value).value;
+    // enumMap 优先：拨测结果码等业务枚举；无 enumMap 时 enumHealth 才走集群健康三态。
     if (field.enumMap) return formatMappedEnum(value, field.enumMap).value;
+    if (field.formatter === 'enumHealth') return formatClusterHealth(value).value;
     if (field.formatter === 'startedAt') {
       if (!Number.isFinite(value) || value < 0) return '--';
       return dayjs().subtract(Math.floor(value), 'second').format('YYYY-MM-DD HH:mm:ss');
@@ -632,7 +649,7 @@ export function useSimpleDashboardData(config: SimpleDashboardConfig) {
 
   const summaryCards = useMemo<PreparedSummaryCard[]>(() => (
     config.summaryCards.map((card) => {
-      const healthResult = card.formatter === 'enumHealth' && hasMetricData(card.metric)
+      const healthResult = card.formatter === 'enumHealth' && !card.enumMap && hasMetricData(card.metric)
         ? formatClusterHealth(getLatest(card.metric))
         : null;
       const enumResult = card.enumMap && hasMetricData(card.metric)
@@ -694,21 +711,30 @@ export function useSimpleDashboardData(config: SimpleDashboardConfig) {
   ), [config.charts, config.metrics, metricMap]);
 
   const ringPanels = useMemo<PreparedRingPanel[]>(() => (
-    (config.ringPanels || []).map((panel) => ({
-      panel,
-      data: panel.segments.map((item) => ({
+    (config.ringPanels || []).map((panel) => {
+      const data = panel.segments.map((item) => ({
         name: item.label,
         value: getTransformedValue(item.metric, item.transform),
         color: item.color,
         display: formatTransformedValue(item.metric, item.unit, item.transform)
-      })),
-      centerValue: hasMetricData(panel.centerMetric)
-        ? panel.centerFormatter === 'duration'
-          ? formatDuration(getLatest(panel.centerMetric))
-          : formatTransformedValue(panel.centerMetric, panel.centerUnit)
-        : '--',
-      isEmpty: !hasMetricData(panel.centerMetric) && panel.segments.every((item) => !hasMetricData(item.metric))
-    }))
+      }));
+      const anySegmentData = panel.segments.some((item) => hasMetricData(item.metric));
+      const allZero = data.every((item) => item.value <= 0);
+      const isEmpty =
+        (!hasMetricData(panel.centerMetric) && !anySegmentData) ||
+        Boolean(panel.emptyWhenAllZero && allZero);
+      return {
+        panel,
+        data,
+        centerValue: hasMetricData(panel.centerMetric)
+          ? panel.centerFormatter === 'duration'
+            ? formatDuration(getLatest(panel.centerMetric))
+            : formatTransformedValue(panel.centerMetric, panel.centerUnit)
+          : '--',
+        isEmpty,
+        emptyDescription: panel.emptyDescription
+      };
+    })
   ), [config.ringPanels, formatTransformedValue, getLatest, getTransformedValue, hasMetricData]);
 
   const barPanels = useMemo<PreparedBarPanel[]>(() => (
@@ -729,7 +755,15 @@ export function useSimpleDashboardData(config: SimpleDashboardConfig) {
         };
       });
       const max = Math.max(...items.map((item) => item.value), 1);
-      return { panel, items: items.map((item) => ({ ...item, max })) };
+      const anyData = panel.items.some((item) => hasMetricData(item.metric));
+      const allZero = items.every((item) => item.value <= 0);
+      const isEmpty = !anyData || Boolean(panel.emptyWhenAllZero && allZero);
+      return {
+        panel,
+        items: items.map((item) => ({ ...item, max })),
+        isEmpty,
+        emptyDescription: panel.emptyDescription
+      };
     })
   ), [config.barPanels, getLatest, hasMetricData, metricMap]);
 
@@ -816,7 +850,6 @@ export function useSimpleDashboardData(config: SimpleDashboardConfig) {
     setTimeDefaultValue((prev) => ({ ...prev, rangePickerVaule: arr, selectValue: 0 }));
     setTimeValues({ timeRange: [start, end], originValue: 0 });
   };
-  const goBack = () => router.push('/monitor/view');
   const onInstanceChange = (value: string) => {
     const target = instanceOptions.find((item) => item.value === value);
     const params = new URLSearchParams(searchParams.toString());
@@ -876,7 +909,6 @@ export function useSimpleDashboardData(config: SimpleDashboardConfig) {
     onTimeChange,
     onRefresh,
     onXRangeChange,
-    onBack: goBack,
     onInstanceChange,
     onClusterFilterChange
   };

@@ -7,21 +7,24 @@ import {
   FlexiblePanelSection,
   KpiSection,
   useFilteredChartPanels,
-  useFilteredRingPanels
+  useFilteredRingPanels,
+  useFilteredSummaryCards
 } from '../common/dashboard-components';
 import { RingChartPanel, TrendChartPanel } from '../../shared/widgets';
 import { TCP_DASHBOARD_CONFIG } from './config';
 import styles from './index.module.scss';
 
-const CHART_TITLES = ['响应时间趋势', '连通成功率趋势'];
-const RING_TITLES = ['探测结果分布'];
+const SUMMARY_TITLES = ['连通成功率', '平均响应时间'];
+const CHART_TITLES = ['连通成功率趋势', '响应时间趋势'];
+const RING_TITLES = ['结果码分布'];
 
 export default function TcpDashboardPage() {
   const dashboard = useSimpleDashboardData(TCP_DASHBOARD_CONFIG);
+  const summaryCards = useFilteredSummaryCards(dashboard.summaryCards, SUMMARY_TITLES);
   const charts = useFilteredChartPanels(dashboard.chartPanels, CHART_TITLES);
   const rings = useFilteredRingPanels(dashboard.ringPanels, RING_TITLES);
 
-  const [responseChart, successChart] = charts;
+  const [successChart, responseChart] = charts;
   const [resultRing] = rings;
 
   return (
@@ -31,23 +34,9 @@ export default function TcpDashboardPage() {
       dashboardContent={
         <>
           <div className={styles.sectionLabel}>健康概览</div>
-          <KpiSection dashboard={dashboard} summaryCards={dashboard.summaryCards} kpiCols={6} styles={styles} />
-          <div className={styles.sectionLabel}>分布与趋势</div>
+          <KpiSection dashboard={dashboard} summaryCards={summaryCards} kpiCols={3} styles={styles} />
+          <div className={styles.sectionLabel}>趋势与归因</div>
           <FlexiblePanelSection styles={styles}>
-            {resultRing ? (
-              <RingChartPanel
-                key={resultRing.panel.title}
-                title={resultRing.panel.title}
-                subtitle={resultRing.panel.subtitle}
-                guide={resultRing.panel.guide}
-                data={resultRing.data}
-                centerValue={resultRing.centerValue}
-                centerCaption={resultRing.panel.centerCaption}
-                isEmpty={resultRing.isEmpty}
-                className={styles.span4}
-                styles={styles}
-              />
-            ) : null}
             {successChart ? (
               <TrendChartPanel
                 key={successChart.chart.title}
@@ -79,6 +68,21 @@ export default function TcpDashboardPage() {
                 seriesStyles={responseChart.seriesStyles}
                 onXRangeChange={dashboard.onXRangeChange}
                 className={`${styles.span4} ${styles.compactTrend}`}
+                styles={styles}
+              />
+            ) : null}
+            {resultRing ? (
+              <RingChartPanel
+                key={resultRing.panel.title}
+                title={resultRing.panel.title}
+                subtitle={resultRing.panel.subtitle}
+                guide={resultRing.panel.guide}
+                data={resultRing.data}
+                centerValue={resultRing.centerValue}
+                centerCaption={resultRing.panel.centerCaption}
+                isEmpty={resultRing.isEmpty}
+                emptyDescription={resultRing.emptyDescription}
+                className={styles.span4}
                 styles={styles}
               />
             ) : null}

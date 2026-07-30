@@ -34,6 +34,7 @@ import AccessDashboard from './objects/access';
 import NetworkServiceDashboard from './objects/network_service';
 import ConsoleServerDashboard from './objects/console_server';
 import VoiceGatewayDashboard from './objects/voice_gateway';
+import JvmDashboard from './objects/jvm';
 import { ENTERPRISE_PROFESSIONAL_DASHBOARDS } from './objects/(enterprise)-registry';
 import { normalizeDashboardKey } from './shared/utils';
 
@@ -47,6 +48,7 @@ export const PROFESSIONAL_DASHBOARD_GROUPS = {
 } as const;
 
 const COMMUNITY_DASHBOARDS: ProfessionalDashboardRegistryItem[] = [
+  { key: 'jvm', groupKey: 'middleware', objectName: 'JVM', objectDisplayName: 'JVM', inheritedPermissionPath: '/monitor/view', component: JvmDashboard },
   {
     key: 'mysql',
     groupKey: 'database',
@@ -376,6 +378,26 @@ export const getProfessionalDashboardKey = (objectName?: string | null, objectDi
   });
 
   return matched?.key || '';
+};
+
+/** 侧栏/列表展示名：优先 API display_name；TCPPort 等技术名回退到注册表 objectDisplayName（→ TCP）。 */
+export const getProfessionalObjectDisplayName = (objectName?: string | null, objectDisplayName?: string | null) => {
+  const matched = PROFESSIONAL_DASHBOARDS.find((item) => {
+    const candidates = getDashboardCandidates(item);
+    const objectCandidates = [objectName, objectDisplayName].map((value) => normalizeDashboardKey(value));
+    return objectCandidates.some((candidate) => candidate && candidates.includes(candidate));
+  });
+  const apiName = String(objectDisplayName || '').trim();
+  const technicalName = String(objectName || '').trim();
+  const apiKey = normalizeDashboardKey(apiName);
+  const techKey = normalizeDashboardKey(technicalName);
+
+  // 技术名 TCPPort（或 API 仍返回 TCPPort）时，强制用注册表展示名 TCP
+  if (techKey === 'tcpport' || apiKey === 'tcpport') {
+    return matched?.objectDisplayName || 'TCP';
+  }
+  if (apiName && apiName !== technicalName) return apiName;
+  return matched?.objectDisplayName || apiName || technicalName || '';
 };
 
 export const getProfessionalDashboardUrl = (

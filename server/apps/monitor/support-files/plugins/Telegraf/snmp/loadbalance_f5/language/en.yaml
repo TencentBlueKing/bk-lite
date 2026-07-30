@@ -221,6 +221,9 @@ monitor_object_metric:
       name: Top Conversation Flow Traffic Rate
       desc: Conversation traffic ranked by source, destination, protocol, and destination
         port, used to locate dominant communication pairs.
+    loadbalance_current_connections:
+      name: Current Connections
+      desc: Current number of active connections through the load balancer.
 monitor_object_metric_group:
   Loadbalance:
     Packet Loss: Packet Loss
@@ -240,3 +243,4 @@ monitor_object_metric_group:
     Application Port: Application Port
     Endpoint: Endpoint
     Conversation: Conversation
+    Connection: Connection

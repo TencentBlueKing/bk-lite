@@ -5,10 +5,11 @@ import {
   InputNumber,
   Select,
   Checkbox,
+  Button,
   Tooltip,
   Switch
 } from 'antd';
-import { ExclamationCircleFilled } from '@ant-design/icons';
+import { ExclamationCircleFilled, MinusCircleOutlined, PlusOutlined } from '@ant-design/icons';
 import Password from '@/components/password';
 import GroupTreeSelector from '@/components/group-tree-select';
 import { useTranslation } from '@/utils/i18n';
@@ -36,13 +37,102 @@ export const useConfigRenderer = () => {
       guide_short,
       tooltip
     } = fieldConfig;
-    const guideTip = guide_short || tooltip;
+    const guideTip = guide_short || tooltip || description;
     const hasGuideTip = Boolean(guideTip);
+    // 悬浮提示已承载说明时，不再在控件旁重复展示同一段 description
+    const showInlineDescription = Boolean(description && description !== guideTip);
 
     if (type === 'hidden') {
       return (
         <Form.Item key={name} name={name} initialValue={default_value} hidden>
           <Input type="hidden" />
+        </Form.Item>
+      );
+    }
+
+    if (type === 'key_value_list') {
+      const tipText = guideTip || description;
+      const addLabel =
+        name === 'request_params'
+          ? t('monitor.integrations.addRequestParam')
+          : name === 'request_headers'
+            ? t('monitor.integrations.addRequestHeader')
+            : t('common.add');
+
+      return (
+        <Form.Item
+          key={name}
+          className="mb-3"
+        >
+          <Form.List name={name}>
+            {(fields, { add, remove }) => (
+              <div className="w-full max-w-[640px] overflow-hidden rounded-md border border-[var(--color-border)] bg-[var(--color-bg)]">
+                <div className="flex items-center justify-between gap-3 border-b border-[var(--color-border)] bg-[var(--color-fill-1)] px-3 py-2">
+                  <div className="inline-flex min-w-0 items-center text-[13px] font-medium leading-5 text-[var(--color-text-1)]">
+                    <span className="truncate">{label}</span>
+                    {tipText ? <FieldGuideTip short={tipText} /> : null}
+                  </div>
+                  <div className="shrink-0 text-[12px] leading-[18px] text-[var(--color-text-3)]">
+                    {t('common.name')} / {t('common.value')}
+                  </div>
+                </div>
+                <div className="space-y-2 px-3 py-2.5">
+                  {fields.length === 0 && (
+                    <div className="px-1 py-2 text-[12px] leading-[18px] text-[var(--color-text-3)]">
+                      {t('monitor.integrations.keyValueEmpty')}
+                    </div>
+                  )}
+                  {fields.map((field) => (
+                    <div
+                      key={field.key}
+                      className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.35fr)_28px] items-start gap-2"
+                    >
+                      <Form.Item
+                        {...field}
+                        name={[field.name, 'key']}
+                        className="mb-0"
+                        rules={[
+                          ({ getFieldValue }) => ({
+                            validator: async (_, value) => {
+                              const key = String(value ?? '').trim();
+                              const rowValue = String(
+                                getFieldValue([name, field.name, 'value']) ?? ''
+                              ).trim();
+                              if (!key && rowValue) {
+                                throw new Error(t('common.name') + t('common.required'));
+                              }
+                            },
+                          }),
+                        ]}
+                      >
+                        <Input placeholder={t('common.name')} className="w-full" />
+                      </Form.Item>
+                      <Form.Item {...field} name={[field.name, 'value']} className="mb-0">
+                        <Input placeholder={t('common.value')} className="w-full" />
+                      </Form.Item>
+                      <button
+                        type="button"
+                        aria-label={t('common.delete')}
+                        className="mt-[6px] inline-flex h-5 w-5 cursor-pointer items-center justify-center rounded text-[var(--color-text-3)] transition-colors duration-150 hover:bg-[var(--color-fill-2)] hover:text-[var(--color-fail)]"
+                        onClick={() => remove(field.name)}
+                      >
+                        <MinusCircleOutlined />
+                      </button>
+                    </div>
+                  ))}
+                  <Button
+                    type="link"
+                    size="small"
+                    icon={<PlusOutlined />}
+                    className="!px-0"
+                    onClick={() => add({ key: '', value: '' })}
+                  >
+                    {addLabel}
+                  </Button>
+                </div>
+              </div>
+            )}
+          </Form.List>
         </Form.Item>
       );
     }
@@ -253,7 +343,7 @@ export const useConfigRenderer = () => {
                 >
                   {renderWidget()}
                 </Form.Item>
-                {description && (
+                {showInlineDescription && (
                   <span
                     className="text-[12px] text-[var(--color-text-3)]"
                     style={{ verticalAlign: 'middle' }}
@@ -292,7 +382,7 @@ export const useConfigRenderer = () => {
         >
           {renderWidget()}
         </Form.Item>
-        {description && (
+        {showInlineDescription && (
           <span
             className="text-[12px] text-[var(--color-text-3)]"
             style={{ verticalAlign: 'middle' }}
@@ -492,12 +582,32 @@ export const useConfigRenderer = () => {
                 style={{ flex: 1 }}
                 status={errorMsg ? 'error' : ''}
                 showSearch
-                optionFilterProp="children"
+                optionFilterProp="label"
                 {...componentProps}
               >
                 {filteredOptions.map((option: any) => (
-                  <Select.Option key={option.value} value={option.value}>
-                    {option.label}
+                  <Select.Option
+                    key={option.value}
+                    value={option.value}
+                    label={option.label}
+                    disabled={option.disabled}
+                  >
+                    <Tooltip
+                      title={
+                        option.disabledReason
+                          ? `${option.label} · ${option.disabledReason}`
+                          : option.label
+                      }
+                    >
+                      <span className="flex w-full min-w-0 items-center justify-between gap-2">
+                        <span className="min-w-0 truncate">{option.label}</span>
+                        {option.disabledReason && (
+                          <span className="shrink-0 text-[12px] text-[var(--color-text-3)]">
+                            {option.disabledReason}
+                          </span>
+                        )}
+                      </span>
+                    </Tooltip>
                   </Select.Option>
                 ))}
               </Select>

@@ -11,13 +11,8 @@ from apps.core.utils.loader import LanguageLoader
 from apps.core.utils.viewset_utils import GenericViewSetFun
 from apps.system_mgmt.models import Channel, ChannelChoices, User
 from apps.system_mgmt.serializers import ChannelSerializer
-from apps.system_mgmt.utils.channel_utils import (
-    send_by_custom_webhook,
-    send_by_dingtalk_bot,
-    send_by_feishu_bot,
-    send_by_wecom_bot,
-    send_email,
-)
+from apps.system_mgmt.utils.channel_utils import send_by_custom_webhook, send_by_dingtalk_bot, send_by_feishu_bot, send_by_wecom_bot, send_email
+from apps.system_mgmt.utils.network_whitelist_error import NETWORK_WHITELIST_REQUIRED, build_network_whitelist_error_payload
 from apps.system_mgmt.utils.operation_log_utils import log_operation
 
 
@@ -316,6 +311,8 @@ class ChannelViewSet(viewsets.ModelViewSet, GenericViewSetFun):
             result = send_by_dingtalk_bot(test_channel, title, content, [receiver_name])
 
         if result.get("result") is False:
+            if result.get("code") == NETWORK_WHITELIST_REQUIRED or result.get("message") == "webhook domain or IP not in whitelist":
+                return JsonResponse(build_network_whitelist_error_payload(self._get_loader(request)), status=400)
             return Response({"result": False, "message": result.get("message") or "Test send failed"}, status=400)
 
         if channel_type != ChannelChoices.EMAIL:

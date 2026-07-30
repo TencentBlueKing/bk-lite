@@ -5,6 +5,9 @@ from pathlib import Path
 import pytest
 import yaml
 
+from apps.monitor.services.website_config import normalize_website_request_config
+from apps.monitor.utils.plugin_controller import Controller
+
 
 PLUGIN_DIR = (
     Path(__file__).resolve().parents[1]
@@ -125,3 +128,103 @@ def test_website_auto_access_columns_have_compact_layout(ui):
     assert fields["url"]["widget_props"]["width"] == 420
     assert fields["instance_name"]["widget_props"]["width"] == 220
     assert fields["group_ids"]["widget_props"]["width"] == 220
+
+
+@pytest.mark.unit
+def test_website_ignores_empty_key_value_placeholders():
+    normalized = normalize_website_request_config(
+        {
+            "url": "https://www.baidu.com/",
+            "request_params": [{"key": "", "value": ""}, {"key": "tag", "value": "blue"}],
+            "request_headers": [{"key": "", "value": ""}],
+        }
+    )
+
+    assert normalized["request_params"] == [{"key": "tag", "value": "blue"}]
+    assert normalized["request_headers"] == []
+    assert normalized["request_url"] == "https://www.baidu.com/?tag=blue"
+
+
+@pytest.mark.unit
+def test_website_exposes_advanced_http_request_configuration(ui, metrics):
+    fields = {field["name"]: field for field in ui["form_fields"]}
+    result_code = {item["name"]: item for item in metrics["metrics"]}["http_response_result_code"]
+    enum_values = {item["id"]: item["name"] for item in json.loads(result_code["unit"])}
+
+    assert fields["request_method"]["options"] == [
+        {"label": "GET", "value": "GET"},
+        {"label": "HEAD", "value": "HEAD"},
+        {"label": "POST", "value": "POST"},
+    ]
+    assert fields["request_body"]["dependency"] == {"field": "request_method", "value": "POST"}
+    assert fields["request_params"]["type"] == "key_value_list"
+    assert fields["request_params"]["section"] == "request"
+    assert fields["auth_type"]["section"] == "auth"
+    assert fields["response_status_code"]["section"] == "response"
+    assert fields["insecure_skip_verify"]["section"] == "tls"
+    for name in (
+        "monitor_url",
+        "interval",
+        "request_method",
+        "request_body",
+        "request_params",
+        "request_headers",
+        "auth_type",
+        "username",
+        "ENV_PASSWORD",
+        "ENV_BEARER_TOKEN",
+        "response_status_code",
+        "response_string_match",
+        "response_timeout",
+        "follow_redirects",
+        "insecure_skip_verify",
+    ):
+        assert fields[name].get("guide_short"), f"{name} missing guide_short"
+    assert fields["request_headers"]["type"] == "key_value_list"
+    assert fields["auth_type"]["options"] == [
+        {"label": "无认证", "value": "none"},
+        {"label": "Basic Auth", "value": "basic"},
+        {"label": "Bearer Token", "value": "bearer"},
+    ]
+    assert fields["response_status_code"]["advanced"] is True
+    assert fields["response_string_match"]["advanced"] is True
+    assert enum_values[1] == "响应内容不匹配"
+    assert enum_values[6] == "响应状态码不匹配"
+    assert metrics.get("support_collect_detect") is False
+
+
+@pytest.mark.unit
+def test_website_template_renders_configured_telegraf_http_response_options(toml_text):
+    rendered = Controller({}).render_template(
+        toml_text,
+        {
+            "url": "https://example.com/health",
+            "request_url": "https://example.com/health?region=%E4%B8%8A%E6%B5%B7&tag=blue&tag=green",
+            "interval": 60,
+            "insecure_skip_verify": False,
+            "request_method": "POST",
+            "request_body": '{"source":"bk-lite"}',
+            "request_headers": [
+                {"key": "Content-Type", "value": 'application/json; charset="utf-8"'},
+            ],
+            "auth_type": "bearer",
+            "response_status_code": 201,
+            "response_string_match": '"ok":true',
+            "response_timeout": 15,
+            "follow_redirects": False,
+            "instance_id": "web_example",
+            "instance_type": "web",
+            "config_id": "WEBSITE",
+        },
+        escape_toml_strings=True,
+    )
+
+    assert 'urls = ["https://example.com/health?region=%E4%B8%8A%E6%B5%B7&tag=blue&tag=green"]' in rendered
+    assert 'method = "POST"' in rendered
+    assert 'body = "{\\"source\\":\\"bk-lite\\"}"' in rendered
+    assert 'response_status_code = 201' in rendered
+    assert 'response_string_match = "\\"ok\\":true"' in rendered
+    assert 'response_timeout = "15s"' in rendered
+    assert "follow_redirects = false" in rendered
+    assert '"Content-Type" = "application/json; charset=\\"utf-8\\""' in rendered
+    assert 'Authorization = "Bearer ${BEARER_TOKEN__WEBSITE}"' in rendered

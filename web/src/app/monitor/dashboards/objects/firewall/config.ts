@@ -75,7 +75,7 @@ export const FIREWALL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       description: '设备所有接口入向流量速率之和（字节/秒）。',
       unit: 'byteps',
       query:
-        '(sum(rate(interface_ifHCInOctets{__$labels__}[5m])) by (instance_id)) or (sum(rate(interface_ifInOctets{__$labels__}[5m])) by (instance_id))',
+        '(sum(rate(interface_ifHCInOctets{__$labels__}[__$window__])) by (instance_id)) or (sum(rate(interface_ifInOctets{__$labels__}[__$window__])) by (instance_id))',
       color: '#27c274'
     },
     {
@@ -84,7 +84,7 @@ export const FIREWALL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       description: '设备所有接口出向流量速率之和（字节/秒）。',
       unit: 'byteps',
       query:
-        '(sum(rate(interface_ifHCOutOctets{__$labels__}[5m])) by (instance_id)) or (sum(rate(interface_ifOutOctets{__$labels__}[5m])) by (instance_id))',
+        '(sum(rate(interface_ifHCOutOctets{__$labels__}[__$window__])) by (instance_id)) or (sum(rate(interface_ifOutOctets{__$labels__}[__$window__])) by (instance_id))',
       color: '#2f6bff'
     }
   ],

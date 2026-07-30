@@ -135,6 +135,7 @@ const LogTerminal = forwardRef<LogTerminalRef, LogTerminalProps>(
           {
             method: 'GET',
             headers: {
+              Accept: 'text/event-stream',
               Authorization: `Bearer ${token}`,
             },
             signal: abortController.signal,

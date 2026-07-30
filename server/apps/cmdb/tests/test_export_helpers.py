@@ -93,6 +93,34 @@ def test_export_template_returns_bytesio():
     assert data[:2] == b"PK"  # xlsx zip 头
 
 
+def test_hidden_related_model_is_omitted_from_template(monkeypatch):
+    monkeypatch.setattr(
+        "apps.cmdb.utils.export.ModelManage.search_model",
+        lambda: [
+            {
+                "model_id": "host",
+                "model_name": "主机",
+            }
+        ],
+    )
+    association = [
+        {
+            "model_asst_id": "host_run_docker",
+            "src_model_id": "host",
+            "dst_model_id": "docker",
+            "asst_id": "run",
+        }
+    ]
+
+    workbook = Export(
+        _ATTRS,
+        model_id="host",
+        association=association,
+    ).generate_header()
+
+    assert "host_run_docker" not in [cell.value for cell in workbook.active[3]]
+
+
 # --------------------------------------------------------------------------
 # set_row_color / set_cell_color
 # --------------------------------------------------------------------------

@@ -123,7 +123,15 @@ def test_node_service_superuser_scope_intersects_object_permission(monkeypatch):
         },
     )
 
-    assert [item["id"] for item in result] == [current_node.id]
+    assert result == [
+        {
+            "id": current_node.id,
+            "name": current_node.name,
+            "ip": current_node.ip,
+            "node_type": current_node.node_type,
+            "organization_ids": [1],
+        }
+    ]
 
 
 @pytest.mark.django_db
@@ -477,7 +485,6 @@ def test_controller_install_allows_assignment_to_authorized_sibling_organization
     monkeypatch.setattr(current_team_scope, "SystemMgmt", _ScopedSystemMgmt)
     installed = []
     delayed = []
-    timeouts = []
     monkeypatch.setattr(
         installer_view.InstallerService,
         "install_controller",
@@ -487,11 +494,6 @@ def test_controller_install_allows_assignment_to_authorized_sibling_organization
         installer_view.install_controller,
         "delay",
         lambda *args, **kwargs: delayed.append((args, kwargs)),
-    )
-    monkeypatch.setattr(
-        installer_view.timeout_controller_install_task,
-        "apply_async",
-        lambda *args, **kwargs: timeouts.append((args, kwargs)),
     )
 
     response = installer_view.InstallerViewSet.as_view({"post": "controller_install"})(
@@ -519,7 +521,6 @@ def test_controller_install_allows_assignment_to_authorized_sibling_organization
     assert response.status_code == 200
     assert installed[0][0][3][0]["organizations"] == [2]
     assert delayed == [((1,), {})]
-    assert len(timeouts) == 1
 
 
 def test_controller_manual_install_rejects_empty_organizations(monkeypatch):
@@ -643,7 +644,6 @@ def test_installer_endpoints_reject_noncanonical_organizations_before_business_l
         lambda *args, **kwargs: business_calls.append((args, kwargs)) or "command",
     )
     monkeypatch.setattr(installer_view.install_controller, "delay", lambda *args, **kwargs: None)
-    monkeypatch.setattr(installer_view.timeout_controller_install_task, "apply_async", lambda *args, **kwargs: None)
 
     response = installer_view.InstallerViewSet.as_view({"post": action})(
         _request(
@@ -679,7 +679,6 @@ def test_installer_endpoints_accept_canonical_numeric_string_organization(monkey
         lambda *args, **kwargs: business_calls.append((args, kwargs)) or "command",
     )
     monkeypatch.setattr(installer_view.install_controller, "delay", lambda *args, **kwargs: None)
-    monkeypatch.setattr(installer_view.timeout_controller_install_task, "apply_async", lambda *args, **kwargs: None)
 
     response = installer_view.InstallerViewSet.as_view({"post": action})(
         _request(
@@ -778,7 +777,6 @@ def test_controller_install_allows_new_node_id_before_node_registration(monkeypa
     _patch_broad_permission(monkeypatch)
     installed = []
     delayed = []
-    timeouts = []
     monkeypatch.setattr(
         installer_view.InstallerService,
         "install_controller",
@@ -788,11 +786,6 @@ def test_controller_install_allows_new_node_id_before_node_registration(monkeypa
         installer_view.install_controller,
         "delay",
         lambda *args, **kwargs: delayed.append((args, kwargs)),
-    )
-    monkeypatch.setattr(
-        installer_view.timeout_controller_install_task,
-        "apply_async",
-        lambda *args, **kwargs: timeouts.append((args, kwargs)),
     )
 
     response = installer_view.InstallerViewSet.as_view({"post": "controller_install"})(
@@ -809,7 +802,6 @@ def test_controller_install_allows_new_node_id_before_node_registration(monkeypa
     assert response.status_code == 200
     assert installed
     assert delayed == [((1,), {})]
-    assert len(timeouts) == 1
 
 
 @pytest.mark.django_db

@@ -1,8 +1,13 @@
+import json
 import os
+import shutil
 import tempfile
+from pathlib import Path
+from urllib.parse import urlparse
 
-from django.http import JsonResponse
+import yaml
 from django.db.models import Q
+from django.http import JsonResponse
 from django_filters import filters
 from django_filters.rest_framework import FilterSet
 from redis.exceptions import RedisError
@@ -16,11 +21,14 @@ from apps.core.logger import opspilot_logger as logger
 from apps.core.mixinx import EncryptMixin
 from apps.core.utils.loader import LanguageLoader
 from apps.core.utils.ssrf_validator import SSRFError, SSRFValidator
-from apps.core.utils.team_utils import get_current_team
 from apps.core.utils.viewset_utils import AuthViewSet, LanguageViewSet
 from apps.opspilot.metis.llm.tools.elasticsearch.connection import normalize_es_instance, test_es_instance
 from apps.opspilot.metis.llm.tools.jenkins.connection import normalize_jenkins_instance, test_jenkins_instance
-from apps.opspilot.metis.llm.tools.kubernetes.connection import normalize_kubernetes_instance, test_kubernetes_instance
+from apps.opspilot.metis.llm.tools.kubernetes.connection import (
+    build_kubernetes_config_from_instance,
+    normalize_kubernetes_instance,
+    test_kubernetes_instance,
+)
 from apps.opspilot.metis.llm.tools.mysql.connection import normalize_mysql_instance, test_mysql_instance
 from apps.opspilot.metis.llm.tools.oracle.connection import normalize_oracle_instance, test_oracle_instance
 from apps.opspilot.metis.llm.tools.postgres.connection import normalize_postgres_instance, test_postgres_instance
@@ -47,16 +55,19 @@ from apps.opspilot.services.builtin_tools import (
     build_builtin_oracle_tool,
     build_builtin_redis_tool,
 )
-from apps.opspilot.services.skill_package.importer import SkillPackageImporter
+from apps.opspilot.services.mcp_client import MCPClient
+from apps.opspilot.services.skill_package.importer import DEFAULT_SKILL_PACKAGE_ROOT, SkillPackageImporter
 from apps.opspilot.services.skill_package.runtime import build_skill_package_prompt, build_skill_package_strategy, hydrate_skill_packages
 from apps.opspilot.utils.agui_chat import stream_agui_chat
 from apps.opspilot.utils.mcp_cache import get_cached_mcp_tools, set_cached_mcp_tools
-from apps.opspilot.services.mcp_client import MCPClient
 from apps.opspilot.utils.pin_mixin import PinMixin
+from apps.opspilot.utils.prompt_utils import merge_skill_params
 from apps.opspilot.utils.skill_execution_params import resolve_request_tools
-from apps.opspilot.utils.sse_chat import stream_chat
+from apps.opspilot.utils.sse_chat import create_error_stream_response, stream_chat
 from apps.opspilot.utils.vendor_model_mixin import VendorModelMixin
+from apps.system_mgmt.utils.network_whitelist_error import build_network_whitelist_error_payload
 from apps.system_mgmt.utils.operation_log_utils import log_operation
+from config.drf.renderers import CustomRenderer, EventStreamRenderer
 
 
 class LLMFilter(FilterSet):
@@ -249,7 +260,6 @@ class LLMViewSet(PinMixin, AuthViewSet):
         实际实现位于 utils.sse_chat.create_error_stream_response，此处保留
         静态方法仅为兼容既有调用方。
         """
-        from apps.opspilot.utils.sse_chat import create_error_stream_response
 
         return create_error_stream_response(error_message)
 
@@ -308,7 +318,6 @@ class LLMViewSet(PinMixin, AuthViewSet):
             params["wiki_kb_ids"] = list(skill_obj.wiki_knowledge_bases.values_list("id", flat=True))
             self._apply_skill_packages_to_params(params, skill_obj)
             # 合并前端传入的 skill_params 和 DB 中的值（处理 ****** 掩码）
-            from apps.opspilot.utils.prompt_utils import merge_skill_params
 
             params["skill_params"] = merge_skill_params(params.get("skill_params", []), skill_obj.skill_params or [])
             # 调用stream_chat函数返回流式响应
@@ -320,7 +329,11 @@ class LLMViewSet(PinMixin, AuthViewSet):
             logger.exception("Skill execute failed: skill_id=%s", params.get("skill_id"))
             return self.create_error_stream_response(str(e))
 
-    @action(methods=["POST"], detail=False)
+    @action(
+        methods=["POST"],
+        detail=False,
+        renderer_classes=[CustomRenderer, EventStreamRenderer],
+    )
     @HasPermission("skill_setting-View")
     def execute_agui(self, request):
         """
@@ -381,7 +394,6 @@ class LLMViewSet(PinMixin, AuthViewSet):
             params["wiki_kb_ids"] = list(skill_obj.wiki_knowledge_bases.values_list("id", flat=True))
             self._apply_skill_packages_to_params(params, skill_obj)
             # 合并前端传入的 skill_params 和 DB 中的值（处理 ****** 掩码）
-            from apps.opspilot.utils.prompt_utils import merge_skill_params
 
             params["skill_params"] = merge_skill_params(params.get("skill_params", []), skill_obj.skill_params or [])
 
@@ -437,7 +449,6 @@ class ObjFilter(FilterSet):
         前端传 skill_id,后端按 skill_id → cluster_name 找 kubeconfig,不暴露给前端。
         """
         from kubernetes import client
-        import yaml as _yaml
 
         namespace = (request.data.get("namespace") or "").strip()
         name = (request.data.get("name") or "").strip()
@@ -450,7 +461,7 @@ class ObjFilter(FilterSet):
             )
         try:
             # 按 skill_id 查 LLMSkill 找匹配的 kubernetes_instances
-            from apps.opspilot.models import LLMSkill
+
             skill = LLMSkill.objects.filter(id=skill_id).first()
             if not skill or not skill.tools:
                 return Response(
@@ -461,14 +472,13 @@ class ObjFilter(FilterSet):
             for tool in skill.tools:
                 if tool.get("name") != "kubernetes":
                     continue
-                for kw in (tool.get("kwargs") or []):
+                for kw in tool.get("kwargs") or []:
                     if kw.get("key") != "kubernetes_instances":
                         continue
                     instances = kw.get("value")
                     if not isinstance(instances, list):
                         try:
-                            import json as _json
-                            instances = _json.loads(instances)
+                            instances = json.loads(instances)
                         except Exception:
                             continue
                     for inst in instances:
@@ -483,12 +493,8 @@ class ObjFilter(FilterSet):
                     status=status.HTTP_404_NOT_FOUND,
                 )
             self._guard_kubeconfig(kubeconfig_data)
-            from apps.opspilot.metis.llm.tools.kubernetes.connection import (
-                build_kubernetes_config_from_instance,
-            )
-            instance_cfg = build_kubernetes_config_from_instance(
-                {"kubeconfig_data": kubeconfig_data}
-            )
+
+            instance_cfg = build_kubernetes_config_from_instance({"kubeconfig_data": kubeconfig_data})
             configuration = client.Configuration()
             if instance_cfg.get("verify_ssl") is not None:
                 configuration.verify_ssl = instance_cfg["verify_ssl"]
@@ -496,7 +502,7 @@ class ObjFilter(FilterSet):
             apps_v1 = client.AppsV1Api(api_client=api_client)
             dep = apps_v1.read_namespaced_deployment(name, namespace)
             manifest = api_client.sanitize_for_serialization(dep)
-            yaml_str = _yaml.safe_dump(manifest, allow_unicode=True, sort_keys=False)
+            yaml_str = yaml.safe_dump(manifest, allow_unicode=True, sort_keys=False)
             return Response(
                 {"result": True, "data": {"yaml": yaml_str, "name": name, "namespace": namespace}, "code": "20000"},
                 status=status.HTTP_200_OK,
@@ -705,9 +711,6 @@ class SkillPackageViewSet(AuthViewSet):
         if not storage_path_text:
             return False
         try:
-            import shutil
-            from pathlib import Path
-            from apps.opspilot.services.skill_package.importer import DEFAULT_SKILL_PACKAGE_ROOT
             target = Path(storage_path_text).resolve()
             root = DEFAULT_SKILL_PACKAGE_ROOT.resolve()
             if root in target.parents and target.exists():
@@ -735,10 +738,7 @@ class SkillPackageViewSet(AuthViewSet):
         keyword = (self.request.query_params.get("search") or "").strip()
         if keyword:
             queryset = queryset.filter(
-                Q(name__icontains=keyword)
-                | Q(package_id__icontains=keyword)
-                | Q(description__icontains=keyword)
-                | Q(category__icontains=keyword)
+                Q(name__icontains=keyword) | Q(package_id__icontains=keyword) | Q(description__icontains=keyword) | Q(category__icontains=keyword)
             )
         return queryset
 
@@ -888,9 +888,23 @@ class SkillToolsViewSet(AuthViewSet):
     permission_key = "tools"
 
     def _ssrf_error_response(self, error):
-        """统一的 SSRF 拦截响应（保持 {result, message} 形状）。"""
-        message = self.loader.get("error.connection_target_forbidden") if self.loader else "Connection target is not allowed"
-        return JsonResponse({"result": False, "message": f"{message}: {error}"}, status=status.HTTP_400_BAD_REQUEST)
+        """统一 SSRF 拦截响应，并为可通过白名单放行的目标提供稳定契约。"""
+        error_code = getattr(error, "code", "CONNECTION_TARGET_FORBIDDEN")
+        if error_code == "NETWORK_WHITELIST_REQUIRED":
+            return JsonResponse(
+                build_network_whitelist_error_payload(self.loader),
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        message = (
+            self.loader.get("error.connection_target_forbidden", "Connection target is not allowed")
+            if self.loader
+            else "Connection target is not allowed"
+        )
+        return JsonResponse(
+            {"result": False, "code": error_code, "message": message},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
 
     @staticmethod
     def _guard_connection_host(host, port=None):
@@ -909,8 +923,6 @@ class SkillToolsViewSet(AuthViewSet):
         # 去除可能误带的协议前缀，仅取主机名用于校验。
         netloc = host
         if "://" in netloc:
-            from urllib.parse import urlparse
-
             netloc = urlparse(host).hostname or host
         target = f"http://{netloc}"
         if port not in (None, ""):
@@ -933,7 +945,6 @@ class SkillToolsViewSet(AuthViewSet):
         """
         if not kubeconfig_data or not str(kubeconfig_data).strip():
             return
-        import yaml
 
         try:
             kubeconfig = yaml.safe_load(kubeconfig_data)

@@ -1,4 +1,5 @@
 import dayjs from 'dayjs';
+import { getAppliedThemeMode } from '@/theme';
 import { formatOpsDisplayTime } from '@/app/ops-analysis/components/ops-analysis-widgets/date-time';
 import { getValueByPath } from '@/app/ops-analysis/components/ops-analysis-config-sections';
 import type { DashboardActionParamMapping } from '@/app/ops-analysis/components/ops-analysis-widgets';
@@ -23,15 +24,7 @@ export type PieChartData = ChartDataItem[];
 
 export type OpsChartThemeName = 'light' | 'dark';
 
-export const resolveOpsChartThemeName = (): OpsChartThemeName => {
-  if (
-    typeof document !== 'undefined' &&
-    document.documentElement.classList.contains('dark')
-  ) {
-    return 'dark';
-  }
-  return 'light';
-};
+export const resolveOpsChartThemeName = (): OpsChartThemeName => getAppliedThemeMode();
 
 export const getOpsChartTheme = (themeName: OpsChartThemeName) => {
   const isDarkTheme = themeName === 'dark';

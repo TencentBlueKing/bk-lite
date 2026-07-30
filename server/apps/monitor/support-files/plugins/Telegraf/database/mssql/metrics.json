@@ -2,6 +2,8 @@
   "plugin": "MSSQL",
   "plugin_desc": "MSSQL Exporter is used to collect and export metrics from Microsoft SQL Server databases, including query performance, connection counts, transaction statistics, and resource usage, to help monitor the health and performance of MSSQL instances.",
   "status_query": "any({instance_type='mssql', collect_type='database'}) by (instance_id)",
+  "instance_fact_bindings": [{"fact":"asset.ip","value_type":"ip","resolver":"input","options":{"field":"host"}}],
+  "instance_summary_columns": [{"fact":"asset.ip","title":"monitor.views.assetIp","order":10}],
   "name": "MSSQL",
   "icon": "mm-mssql_Mssql",
   "type": "Database",
@@ -9,7 +11,15 @@
   "default_metric": "any({instance_type='mssql'}) by (instance_id)",
   "instance_id_keys": ["instance_id"],
   "supplementary_indicators": ["sqlserver_database_io_read_latency_ms", "sqlserver_waitstats_wait_time_ms_rate", "sqlserver_volume_space_available_space_bytes"],
-  "display_fields": [{"name":"进程CPU使用率","sort_order":0,"metrics":[{"plugin":"MSSQL","metric":"sqlserver_cpu_sqlserver_process_cpu_avg"}]}, {"name":"缓冲区缓存命中率","sort_order":1,"metrics":[{"plugin":"MSSQL","metric":"sqlserver_buffer_cache_hit_ratio"}]}, {"name":"批处理请求速率","sort_order":2,"metrics":[{"plugin":"MSSQL","metric":"sqlserver_performance_value_rate"}]}, {"name":"数据库读取延迟","sort_order":3,"metrics":[{"plugin":"MSSQL","metric":"sqlserver_database_io_read_latency_ms"}]}, {"name":"用户连接数","sort_order":4,"metrics":[{"plugin":"MSSQL","metric":"sqlserver_user_connections_rate"}]}],
+  "display_fields": [
+    {"name":"进程CPU使用率","sort_order":0,"metrics":[{"plugin":"MSSQL","metric":"sqlserver_cpu_sqlserver_process_cpu_avg"}]},
+    {"name":"缓冲区缓存命中率","sort_order":1,"metrics":[{"plugin":"MSSQL","metric":"sqlserver_buffer_cache_hit_ratio"}]},
+    {"name":"批处理请求速率","sort_order":2,"metrics":[{"plugin":"MSSQL","metric":"sqlserver_performance_value_rate"}]},
+    {"name":"数据库读取延迟","sort_order":3,"metrics":[{"plugin":"MSSQL","metric":"sqlserver_database_io_read_latency_ms"}]},
+    {"name":"用户连接数","sort_order":4,"metrics":[{"plugin":"MSSQL","metric":"sqlserver_user_connections_rate"}]},
+    {"name":"阻塞进程数","sort_order":5,"metrics":[{"plugin":"MSSQL","metric":"sqlserver_processes_blocked"}]},
+    {"name":"等待内存授予的请求数","sort_order":6,"metrics":[{"plugin":"MSSQL","metric":"sqlserver_memory_grants_pending"}]}
+  ],
   "metrics": [
     {
       "metric_group": "Base",
@@ -112,6 +122,149 @@
     },
     {
       "metric_group": "Performance",
+      "name": "sqlserver_checkpoint_pages_rate",
+      "display_name": "Checkpoint Pages Rate",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "description": "Rate at which the checkpoint process flushes dirty buffer pages to disk. It reflects write-back pressure and should be interpreted together with write latency and lazy writes.",
+      "query": "rate(sqlserver_performance_value{counter=\"Checkpoint pages/sec\", __$labels__}[5m])"
+    },
+    {
+      "metric_group": "Performance",
+      "name": "sqlserver_lazy_writes_rate",
+      "display_name": "Lazy Writes Rate",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "description": "Rate at which the lazy writer flushes pages to make buffer-pool space available. Sustained growth together with low page life expectancy indicates memory pressure.",
+      "query": "rate(sqlserver_performance_value{counter=\"Lazy writes/sec\", __$labels__}[5m])"
+    },
+    {
+      "metric_group": "Performance",
+      "name": "sqlserver_memory_grants_pending",
+      "display_name": "Memory Grants Pending",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "description": "Current number of queries waiting for execution-memory grants. A nonzero sustained value indicates query-workspace memory pressure.",
+      "query": "sqlserver_performance_value{counter=\"Memory Grants Pending\", __$labels__}"
+    },
+    {
+      "metric_group": "Performance",
+      "name": "sqlserver_processes_blocked",
+      "display_name": "Blocked Processes",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "description": "Current number of blocked SQL Server processes. Sustained values require checking blocking sessions, transaction scope, and lock contention.",
+      "query": "sqlserver_performance_value{counter=\"Processes blocked\", __$labels__}"
+    },
+    {
+      "metric_group": "Performance",
+      "name": "sqlserver_deadlocks_rate",
+      "display_name": "Deadlocks Rate",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "description": "Rate of SQL Server deadlocks. Any sustained nonzero rate requires investigation of transaction order, isolation level, and indexing.",
+      "query": "rate(sqlserver_performance_value{counter=\"Number of Deadlocks/sec\", __$labels__}[5m])"
+    },
+    {
+      "metric_group": "Performance",
+      "name": "sqlserver_sql_compilations_rate",
+      "display_name": "SQL Compilations Rate",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "description": "Rate of SQL statement compilations. It helps assess plan-cache efficiency when compared with batch request and recompilation rates.",
+      "query": "rate(sqlserver_performance_value{counter=\"SQL Compilations/sec\", __$labels__}[5m])"
+    },
+    {
+      "metric_group": "Performance",
+      "name": "sqlserver_sql_recompilations_rate",
+      "display_name": "SQL Re-Compilations Rate",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "description": "Rate of SQL statement recompilations. A high rate relative to compilations can increase CPU cost and reveal unstable plans or frequent schema changes.",
+      "query": "rate(sqlserver_performance_value{counter=\"SQL Re-Compilations/sec\", __$labels__}[5m])"
+    },
+    {
+      "metric_group": "Performance",
+      "name": "sqlserver_memory_grants_outstanding",
+      "display_name": "Memory Grants Outstanding",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "description": "Current number of granted query-workspace memory requests that have not yet completed. Interpret it with pending grants to distinguish active workload from memory pressure.",
+      "query": "sqlserver_performance_value{counter=\"Memory Grants Outstanding\", __$labels__}"
+    },
+    {
+      "metric_group": "Performance",
+      "name": "sqlserver_memory_target_server_memory_kb",
+      "display_name": "Target Server Memory",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "kibibytes",
+      "dimensions": [],
+      "description": "SQL Server target memory in KiB. Compare it with total server memory to determine whether the buffer pool has reached its configured target.",
+      "query": "sqlserver_performance_value{counter=\"Target Server Memory (KB)\", __$labels__}"
+    },
+    {
+      "metric_group": "Performance",
+      "name": "sqlserver_memory_total_server_memory_kb",
+      "display_name": "Total Server Memory",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "kibibytes",
+      "dimensions": [],
+      "description": "Current SQL Server memory committed in KiB. A persistent gap below target can indicate memory pressure or a recent workload change.",
+      "query": "sqlserver_performance_value{counter=\"Total Server Memory (KB)\", __$labels__}"
+    },
+    {
+      "metric_group": "Storage",
+      "name": "sqlserver_tempdb_free_space_kb",
+      "display_name": "TempDB Free Space",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "kibibytes",
+      "dimensions": [],
+      "description": "Current free space in TempDB in KiB. Low free space can cause failures in sorting, hashing, row versioning, and temporary-object workloads.",
+      "query": "sqlserver_performance_value{counter=\"Free Space in tempdb (KB)\", __$labels__}"
+    },
+    {
+      "metric_group": "Storage",
+      "name": "sqlserver_tempdb_version_store_size_kb",
+      "display_name": "TempDB Version Store Size",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "kibibytes",
+      "dimensions": [],
+      "description": "Current TempDB version-store size in KiB. Growth can indicate long-running snapshot or read-committed snapshot transactions.",
+      "query": "sqlserver_performance_value{counter=\"Version Store Size (KB)\", __$labels__}"
+    },
+    {
+      "metric_group": "Performance",
+      "name": "sqlserver_log_flushes_rate",
+      "display_name": "Transaction Log Flushes Rate",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "description": "Rate of transaction-log flushes. Interpret it with database write latency to identify write-intensive workloads and log I/O pressure.",
+      "query": "rate(sqlserver_performance_value{counter=\"Log Flushes/sec\", __$labels__}[5m])"
+    },
+    {
+      "metric_group": "Performance",
       "name": "sqlserver_page_life_expectancy",
       "display_name": "Page Life Expectancy",
       "instance_id_keys": ["instance_id"],
@@ -141,18 +294,18 @@
       "unit": "counts",
       "dimensions": [],
       "description": "Number of users currently connected to the SQL Server instance, reflecting concurrent load and connection pool usage. Too many connections may lead to resource contention.",
-      "query": "rate(sqlserver_performance_value{counter=~\"User Connections\", __$labels__}[5m])"
+      "query": "sqlserver_performance_value{counter=\"User Connections\", __$labels__}"
     },
     {
       "metric_group": "Performance",
       "name": "sqlserver_lock_wait_time_rate",
-      "display_name": "Lock Wait Time",
+      "display_name": "Lock Waits Rate",
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
-      "unit": "ms",
+      "unit": "counts",
       "dimensions": [{"name": "instance", "description": "锁资源类型"}],
-      "description": "Rate of lock wait time, reflecting concurrency contention. High values may indicate blocking or lock contention issues that require transaction design optimization.",
-      "query": "rate(sqlserver_performance_value{counter=~\"Lock Waits/sec\", __$labels__}[5m])"
+      "description": "Rate of lock waits, reflecting concurrency contention. High values may indicate blocking or lock contention that requires transaction design optimization.",
+      "query": "rate(sqlserver_performance_value{counter=\"Lock Waits/sec\", __$labels__}[5m])"
     },
     {
       "metric_group": "Performance",

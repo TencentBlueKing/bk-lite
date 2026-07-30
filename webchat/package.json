@@ -9,7 +9,9 @@
     "build:core": "cd packages/webchat-core && npm run build",
     "build:ui": "cd packages/webchat-ui && npm run build",
     "build:demo": "cd packages/webchat-demo && npm run build",
-    "test": "node tests/state-machine.issue-3882.mjs",
+    "test": "node tests/state-machine.issue-3882.mjs && npm run test:core",
+    "pretest:core": "node -e \"require('node:fs').rmSync('.test-dist', { recursive: true, force: true })\"",
+    "test:core": "tsc -p tests/tsconfig.json && node --test .test-dist/tests/core/core.test.js",
     "lint": "echo 'No linter configured yet'",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\"",
     "clean": "rm -rf node_modules packages/*/node_modules packages/*/dist packages/*/.next"

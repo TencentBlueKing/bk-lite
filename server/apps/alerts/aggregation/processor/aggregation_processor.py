@@ -139,6 +139,13 @@ class AggregationProcessor:
         ).exclude(
             # 被屏蔽事件不参与聚合建警（事件级·不建警）
             status=EventStatus.SHIELD,
+        ).exclude(
+            # 当前策略已经闭环的告警事件不得再次进入窗口，避免关闭后重复建警。
+            # 只限定当前策略，防止一个策略的闭环误伤其他策略对同一事件的聚合。
+            alert__in=Alert.objects.filter(
+                rule_id=str(strategy.pk),
+                status__in=AlertStatus.CLOSED_STATUS,
+            ),
         )
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug("[AlertAggregation] 策略 %s: 时间范围内事件总数=%s", strategy.name, events.count())

@@ -15,6 +15,8 @@ from apps.cmdb.models.change_record import (
 )
 from apps.cmdb.instance_ops.extensions import get_instance_enterprise_extension
 from apps.cmdb.services.instance import InstanceManage
+from apps.cmdb.services.model import ModelManage
+from apps.cmdb.services.model_visibility import BusinessModelVisibility
 from apps.cmdb.utils.base import (
     format_group_params,
     format_groups_params,
@@ -48,6 +50,21 @@ from apps.core.utils.team_utils import get_current_team
 
 class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
     K8S_CHILD_MODELS = ("k8s_namespace", "k8s_workload", "k8s_pod", "k8s_node")
+
+    @staticmethod
+    def _is_instance_model_visible(instance: dict) -> bool:
+        model_id = instance.get("model_id")
+        if not model_id:
+            return True
+        return BusinessModelVisibility.is_visible(
+            ModelManage.search_model_info(model_id)
+        )
+
+    @staticmethod
+    def _is_model_visible(model_id: str) -> bool:
+        return BusinessModelVisibility.is_visible(
+            ModelManage.search_model_info(model_id)
+        )
 
     def _k8s_resource_context(self, request, cluster_id):
         instance = InstanceManage.query_entity_by_id(int(cluster_id))
@@ -249,6 +266,8 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
         model_id = request.data.get("model_id")
         if not model_id:
             return WebUtils.response_error("model_id不能为空", status_code=status.HTTP_400_BAD_REQUEST)
+        if not self._is_model_visible(model_id):
+            return WebUtils.response_error("模型不存在", status_code=status.HTTP_404_NOT_FOUND)
 
         query_list = self._normalize_query_list(request.data.get("query_list", []))
         try:
@@ -279,7 +298,7 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
     @HasPermission("asset_info-View")
     def retrieve(self, request, pk: str):
         instance = InstanceManage.query_entity_by_id(int(pk))
-        if not instance:
+        if not instance or not self._is_instance_model_visible(instance):
             return WebUtils.response_error("实例不存在", status_code=status.HTTP_404_NOT_FOUND)
 
         if self.check_creator_and_organizations(request, instance):
@@ -384,6 +403,8 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
 
         model_id = request.data.get("model_id")
         instance_info = request.data.get("instance_info")
+        if not model_id or not self._is_model_visible(model_id):
+            return WebUtils.response_error("模型不存在", status_code=status.HTTP_404_NOT_FOUND)
         allowed_org_ids = self._get_allowed_org_ids(request)
         idempotency_key = request.headers.get("Idempotency-Key") or uuid.uuid4().hex
         try:
@@ -416,7 +437,7 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
     @HasPermission("asset_info-Delete")
     def destroy(self, request, pk: int):
         instance = InstanceManage.query_entity_by_id(pk)
-        if not instance:
+        if not instance or not self._is_instance_model_visible(instance):
             return WebUtils.response_error("实例不存在", status_code=status.HTTP_404_NOT_FOUND)
 
         if not self.check_creator_and_organizations(request, instance):
@@ -451,6 +472,8 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
         instances = InstanceManage.query_entity_by_ids(request.data)
         if not instances:
             return WebUtils.response_error(error_message="实例不存在", status_code=status.HTTP_404_NOT_FOUND)
+        if any(not self._is_instance_model_visible(instance) for instance in instances):
+            return WebUtils.response_error("实例不存在", status_code=status.HTTP_404_NOT_FOUND)
 
         model_id = instances[0]["model_id"]
         permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(request=request, model_id=model_id)
@@ -502,7 +525,7 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
         from apps.cmdb.services.operation_service import OperationConflict, OperationService
 
         instance = InstanceManage.query_entity_by_id(pk)
-        if not instance:
+        if not instance or not self._is_instance_model_visible(instance):
             return WebUtils.response_error("实例不存在", status_code=status.HTTP_404_NOT_FOUND)
 
         if not self.check_creator_and_organizations(request, instance):
@@ -577,6 +600,8 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
         instances = InstanceManage.query_entity_by_ids(inst_ids)
         if not instances:
             return WebUtils.response_success()
+        if any(not self._is_instance_model_visible(instance) for instance in instances):
+            return WebUtils.response_error("实例不存在", status_code=status.HTTP_404_NOT_FOUND)
 
         model_id = instances[0]["model_id"]
         permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(request=request, model_id=model_id)
@@ -632,9 +657,9 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
         src_inst = InstanceManage.query_entity_by_id(src_inst_id)
         dst_inst = InstanceManage.query_entity_by_id(dst_inst_id)
 
-        if not src_inst:
+        if not src_inst or not self._is_instance_model_visible(src_inst):
             return WebUtils.response_error("源实例不存在", status_code=status.HTTP_404_NOT_FOUND)
-        if not dst_inst:
+        if not dst_inst or not self._is_instance_model_visible(dst_inst):
             return WebUtils.response_error("目标实例不存在", status_code=status.HTTP_404_NOT_FOUND)
 
         # 检查源实例权限
@@ -683,7 +708,7 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
 
         for endpoint_key, endpoint_label in (("src", "源"), ("dst", "目标")):
             endpoint_inst = asso_info.get(endpoint_key)
-            if not endpoint_inst:
+            if not endpoint_inst or not self._is_instance_model_visible(endpoint_inst):
                 return WebUtils.response_error(
                     f"{endpoint_label}实例不存在",
                     status_code=status.HTTP_404_NOT_FOUND,
@@ -712,7 +737,7 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
     @HasPermission("asset_info-View")
     def instance_association_instance_list(self, request, model_id: str, inst_id: int):
         instance = InstanceManage.query_entity_by_id(int(inst_id))
-        if not instance:
+        if not instance or not self._is_instance_model_visible(instance):
             return WebUtils.response_error("实例不存在", status_code=status.HTTP_404_NOT_FOUND)
 
         permission_error = self.require_instance_permission(
@@ -723,7 +748,12 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
         if permission_error:
             return permission_error
 
-        asso_insts = InstanceManage.instance_association_instance_list(model_id, int(inst_id))
+        asso_insts = InstanceManage.instance_association_instance_list(
+            model_id,
+            int(inst_id),
+            business_only=True,
+            language=request.user.locale,
+        )
         return WebUtils.response_success(asso_insts)
 
     @action(
@@ -734,19 +764,26 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
     @HasPermission("asset_info-View")
     def instance_association(self, request, model_id: str, inst_id: int):
         instance = InstanceManage.query_entity_by_id(int(inst_id))
-        if not instance:
+        if not instance or not self._is_instance_model_visible(instance):
             return WebUtils.response_error("实例不存在", status_code=status.HTTP_404_NOT_FOUND)
 
         permission_error = self.require_instance_permission(request, instance, operator=VIEW)
         if permission_error:
             return permission_error
 
-        asso_insts = InstanceManage.instance_association(model_id, int(inst_id))
+        asso_insts = InstanceManage.instance_association(
+            model_id,
+            int(inst_id),
+            business_only=True,
+            language=request.user.locale,
+        )
         return WebUtils.response_success(asso_insts)
 
     @HasPermission("asset_info-Add")
     @action(methods=["get"], detail=False, url_path=r"(?P<model_id>.+?)/download_template")
     def download_template(self, request, model_id):
+        if not self._is_model_visible(model_id):
+            return WebUtils.response_error("模型不存在", status_code=status.HTTP_404_NOT_FOUND)
         response = HttpResponse(content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
         response["Content-Disposition"] = f"attachment;filename={f'{model_id}_import_template.xlsx'}"
         response.write(InstanceManage.download_import_template(model_id).read())
@@ -755,6 +792,8 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
     @HasPermission("asset_info-Add")
     @action(methods=["post"], detail=False, url_path=r"(?P<model_id>.+?)/inst_import")
     def inst_import(self, request, model_id):
+        if not self._is_model_visible(model_id):
+            return WebUtils.response_error("模型不存在", status_code=status.HTTP_404_NOT_FOUND)
         try:
             current_team_raw = get_current_team(request)
             if not current_team_raw:
@@ -839,6 +878,8 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
     @HasPermission("asset_info-View")
     @action(methods=["post"], detail=False, url_path=r"(?P<model_id>.+?)/inst_export")
     def inst_export(self, request, model_id):
+        if not self._is_model_visible(model_id):
+            return WebUtils.response_error("模型不存在", status_code=status.HTTP_404_NOT_FOUND)
         # 获取导出参数
         attr_list = request.data.get("attr_list", [])
         association_list = request.data.get("association_list", [])

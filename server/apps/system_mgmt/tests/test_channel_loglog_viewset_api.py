@@ -20,7 +20,10 @@ def super_client(db):
     from apps.base.models import User as BaseUser
 
     admin = BaseUser.objects.create_user(
-        username="chadmin", password="pw", domain="domain.com", locale="en",
+        username="chadmin",
+        password="pw",
+        domain="domain.com",
+        locale="en",
         email="chadmin@x.com",
     )
     admin.is_superuser = True
@@ -58,9 +61,7 @@ def test_channel_create_and_retrieve(super_client):
 
 
 def test_channel_update_settings(super_client):
-    ch = Channel.objects.create(
-        name="ec", channel_type=ChannelChoices.EMAIL, config={"smtp_pwd": "old"}, description="d", team=[1]
-    )
+    ch = Channel.objects.create(name="ec", channel_type=ChannelChoices.EMAIL, config={"smtp_pwd": "old"}, description="d", team=[1])
     with patch("apps.system_mgmt.viewset.channel_viewset.log_operation"):
         resp = super_client.post(
             f"{V}/channel/{ch.id}/update_settings/",
@@ -81,16 +82,12 @@ def test_channel_destroy(super_client):
 
 
 def test_channel_test_send_unsupported_type(super_client):
-    resp = super_client.post(
-        f"{V}/channel/test_send/", {"channel_type": "totally_unknown", "config": {}}, format="json"
-    )
+    resp = super_client.post(f"{V}/channel/test_send/", {"channel_type": "totally_unknown", "config": {}}, format="json")
     assert resp.status_code == 400
 
 
 def test_channel_test_send_wecom_bot(super_client):
-    with patch(
-        "apps.system_mgmt.viewset.channel_viewset.send_by_wecom_bot", return_value={"errcode": 0}
-    ) as m_send:
+    with patch("apps.system_mgmt.viewset.channel_viewset.send_by_wecom_bot", return_value={"errcode": 0}) as m_send:
         resp = super_client.post(
             f"{V}/channel/test_send/",
             {"channel_type": ChannelChoices.ENTERPRISE_WECHAT_BOT, "config": {"webhook_url": "http://x"}, "name": "bot"},
@@ -115,10 +112,27 @@ def test_channel_test_send_wecom_bot_failure(super_client):
     assert resp.json()["result"] is False
 
 
+def test_channel_test_send_whitelist_failure_has_action_contract(super_client):
+    with patch(
+        "apps.system_mgmt.viewset.channel_viewset.send_by_wecom_bot",
+        return_value={"result": False, "message": "webhook domain or IP not in whitelist"},
+    ):
+        resp = super_client.post(
+            f"{V}/channel/test_send/",
+            {"channel_type": ChannelChoices.ENTERPRISE_WECHAT_BOT, "config": {}, "name": "bot"},
+            format="json",
+        )
+
+    body = resp.json()
+    assert resp.status_code == 400
+    assert body["code"] == "NETWORK_WHITELIST_REQUIRED"
+    assert body["message"] == ("The target IP is not in the allowlist. Add it in System Management > Network Allowlist.")
+    assert body["data"]["network_whitelist_url"] == "/system-manager/settings/network-whitelist"
+    assert body["data"]["action_label"] == "Open Network Allowlist"
+
+
 def test_channel_update_opspilot_managed_readonly(super_client):
-    ch = Channel.objects.create(
-        name="nats", channel_type=ChannelChoices.NATS, config={"source": "opspilot"}, description="d", team=[1]
-    )
+    ch = Channel.objects.create(name="nats", channel_type=ChannelChoices.NATS, config={"source": "opspilot"}, description="d", team=[1])
     resp = super_client.put(
         f"{V}/channel/{ch.id}/",
         {"name": "nats", "channel_type": ChannelChoices.NATS, "config": {"source": "opspilot"}, "description": "d", "team": [1]},
@@ -140,8 +154,12 @@ def test_user_login_log_statistics(super_client):
     from apps.system_mgmt.models import User as SmUser
 
     SmUser.objects.create(
-        username="lluser", password="x", display_name="L", email="l@x.com",
-        domain="domain.com", group_list=[1],
+        username="lluser",
+        password="x",
+        display_name="L",
+        email="l@x.com",
+        domain="domain.com",
+        group_list=[1],
     )
     UserLoginLog.objects.create(username="lluser", domain="domain.com", source_ip="1.1.1.1", status=UserLoginLog.STATUS_SUCCESS)
     UserLoginLog.objects.create(username="lluser", domain="domain.com", source_ip="1.1.1.1", status=UserLoginLog.STATUS_FAILED)

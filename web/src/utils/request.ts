@@ -10,10 +10,20 @@ import {
   SESSION_EXPIRED_REQUEST_ERROR,
 } from '@/utils/sessionExpiry';
 import { forceLogoutAndRedirect } from '@/utils/forceLogout';
+import {
+  getRequestErrorPresentation,
+  renderRequestErrorPresentation,
+  type RequestErrorPresentation,
+} from '@/utils/requestErrorPresentation';
+import {
+  getProxyTimeoutHeaderValue,
+  PROXY_TIMEOUT_HEADER,
+} from '@/utils/proxyTimeout';
+import { resolveAuthToken } from '@/utils/authRecovery';
 
 const apiClient = axios.create({
   baseURL: '/api/proxy',
-  timeout: 300000,
+  timeout: 60000,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -28,9 +38,12 @@ const setToken = (token: string | null) => {
 
 /** Error already shown to user by the request interceptor — callers should stay silent. */
 export class HandledRequestError extends Error {
-  constructor(message: string) {
+  readonly presentation?: RequestErrorPresentation;
+
+  constructor(message: string, presentation?: RequestErrorPresentation) {
     super(message);
     this.name = 'HandledRequestError';
+    this.presentation = presentation;
   }
 }
 
@@ -54,6 +67,12 @@ apiClient.interceptors.request.use(
     }
 
     config.headers.Authorization = `Bearer ${tokenRef.current}`;
+    const proxyTimeoutHeaderValue = getProxyTimeoutHeaderValue(config.timeout);
+    if (proxyTimeoutHeaderValue) {
+      config.headers.set(PROXY_TIMEOUT_HEADER, proxyTimeoutHeaderValue);
+    } else {
+      config.headers.delete(PROXY_TIMEOUT_HEADER);
+    }
     return config;
   },
   (error) => {
@@ -71,6 +90,7 @@ apiClient.interceptors.response.use(
     if (error.response) {
       const { status } = error.response;
       const messageText = error.response?.data?.message ?? error.response?.data?.error;
+      const presentation = getRequestErrorPresentation(error.response?.data);
       if (status === 460) {
         void forceLogoutAndRedirect();
         return Promise.reject(error);
@@ -78,8 +98,15 @@ apiClient.interceptors.response.use(
         emitSessionExpired({ reason: 'api-session-expired', status });
         return Promise.reject(error);
       } else if ([400, 403].includes(status)) {
-        message.error(messageText);
-        return Promise.reject(new HandledRequestError(messageText));
+        if (presentation) {
+          message.error({
+            content: renderRequestErrorPresentation(presentation),
+            duration: 8,
+          });
+        } else {
+          message.error(messageText);
+        }
+        return Promise.reject(new HandledRequestError(messageText, presentation ?? undefined));
       } else if (status === 500) {
         message.error(messageText);
         return Promise.reject(new HandledRequestError(messageText || 'Internal Server Error'));
@@ -114,7 +141,7 @@ export const isSilentRequestError = (error: unknown) => {
 const useApiClient = () => {
   const authContext = useAuth();
   const { data: session } = useSession();
-  const token = (session?.user as any)?.token || authContext?.token || null;
+  const token = resolveAuthToken(authContext?.token, (session?.user as any)?.token);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {

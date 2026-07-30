@@ -202,15 +202,41 @@ def _run_update(ctx, operator, library_id, payload_str, *, expect_error: bool):
 @when(parsers.re(
     r'管理员 "(?P<operator>[^"]+)" 更新选项库 "(?P<library_id>[^"]+)" 字段 (?P<payload>.+)$'
 ))
-def _when_update_happy(ctx, operator, library_id, payload):
-    _run_update(ctx, operator, library_id, payload, expect_error=False)
+def _when_update_happy(
+    ctx,
+    operator,
+    library_id,
+    payload,
+    django_capture_on_commit_callbacks,
+):
+    with django_capture_on_commit_callbacks(execute=True):
+        _run_update(
+            ctx,
+            operator,
+            library_id,
+            payload,
+            expect_error=False,
+        )
 
 
 @when(parsers.re(
     r'管理员 "(?P<operator>[^"]+)" 尝试更新选项库 "(?P<library_id>[^"]+)" 字段 (?P<payload>.+)$'
 ))
-def _when_update_corner(ctx, operator, library_id, payload):
-    _run_update(ctx, operator, library_id, payload, expect_error=True)
+def _when_update_corner(
+    ctx,
+    operator,
+    library_id,
+    payload,
+    django_capture_on_commit_callbacks,
+):
+    with django_capture_on_commit_callbacks(execute=True):
+        _run_update(
+            ctx,
+            operator,
+            library_id,
+            payload,
+            expect_error=True,
+        )
 
 
 def _run_delete(ctx, operator, library_id, *, expect_error: bool):

@@ -103,12 +103,15 @@ def test_search_models_all(mock_mm):
 
 
 @patch("apps.cmdb.nats.nats.ModelManage")
-def test_search_models_by_classification(mock_mm):
+def test_search_models_by_classification_cannot_include_hidden(mock_mm):
     mock_mm.search_model.return_value = []
 
     N.search_models({"classification_id": "host_mgmt", "include_hidden": True})
 
-    mock_mm.search_model.assert_called_once_with(classification_ids=["host_mgmt"], include_hidden=True)
+    mock_mm.search_model.assert_called_once_with(
+        classification_ids=["host_mgmt"],
+        include_hidden=False,
+    )
 
 
 # --------------------------------------------------------------------------
@@ -134,7 +137,10 @@ def test_search_model_associations_ok(mock_mm):
     mock_mm.model_association_search.return_value = [{"model_asst_id": "a1"}]
 
     assert N.search_model_associations({"model_id": "host"}) == [{"model_asst_id": "a1"}]
-    mock_mm.model_association_search.assert_called_once_with("host")
+    mock_mm.model_association_search.assert_called_once_with(
+        "host",
+        business_only=True,
+    )
 
 
 @patch("apps.cmdb.nats.nats.ModelManage")
@@ -156,7 +162,11 @@ def test_search_instance_associations_ok(mock_im):
     result = N.search_instance_associations({"model_id": "host", "inst_id": "12"})
 
     assert result == [{"model_asst_id": "a1", "inst_list": []}]
-    mock_im.instance_association_instance_list.assert_called_once_with("host", 12)
+    mock_im.instance_association_instance_list.assert_called_once_with(
+        "host",
+        12,
+        business_only=True,
+    )
 
 
 @patch("apps.cmdb.nats.nats.InstanceManage")

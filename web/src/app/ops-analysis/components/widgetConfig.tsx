@@ -72,7 +72,11 @@ import {
   type WidgetConfigFormValues,
 } from './widgetConfig/utils/submitConfig';
 import { useNetworkStatusTopologyConfig } from './widgetConfig/hooks/useNetworkStatusTopologyConfig';
-import { normalizeScreenWidgetAppearance } from '@/app/ops-analysis/(pages)/view/screen/utils/layout';
+import {
+  canConfigureScreenWidgetFrame,
+  getDefaultScreenWidgetAppearance,
+  resolveScreenWidgetAppearance,
+} from '@/app/ops-analysis/(pages)/view/screen/utils/layout';
 
 interface ViewConfigPropsWithManager extends ViewConfigProps {
   dataSourceManager: ReturnType<typeof useDataSourceManager>;
@@ -276,6 +280,10 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
         form.setFieldsValue({
           chartType: NETWORK_STATUS_TOPOLOGY,
           sceneWidgetType: NETWORK_STATUS_TOPOLOGY,
+          appearance:
+            surface === 'screen'
+              ? getDefaultScreenWidgetAppearance(NETWORK_STATUS_TOPOLOGY)
+              : undefined,
           dataSource: undefined,
           networkStatusTopology: {
             modelId: '',
@@ -333,6 +341,10 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
       form.setFieldsValue({
         dataSource: fullItem.id,
         chartType: defaultChartType,
+        appearance:
+          surface === 'screen'
+            ? getDefaultScreenWidgetAppearance(defaultChartType)
+            : undefined,
         sceneWidgetType: undefined,
         networkStatusTopology: undefined,
         params,
@@ -480,6 +492,12 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
     const newChartType = e.target.value;
     setChartType(newChartType);
     form.setFieldValue('chartType', newChartType);
+    if (surface === 'screen') {
+      form.setFieldValue(
+        'appearance',
+        getDefaultScreenWidgetAppearance(newChartType),
+      );
+    }
     if (newChartType !== 'topN') {
       setWidgetParamOverrides((previous) =>
         previous.map(clearComponentParamSwitch),
@@ -512,7 +530,10 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
         : undefined,
       appearance:
         surface === 'screen'
-          ? normalizeScreenWidgetAppearance(valueConfig?.appearance)
+          ? resolveScreenWidgetAppearance(
+            valueConfig?.chartType,
+            valueConfig?.appearance,
+          )
           : undefined,
       dataSource: valueConfig?.dataSource || '',
       dataSourceParams: valueConfig?.dataSourceParams || [],
@@ -1093,7 +1114,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
               />
             </Form.Item>
           )}
-          {surface === 'screen' && (
+          {surface === 'screen' && canConfigureScreenWidgetFrame(chartType) && (
             <Form.Item
               label={t('opsAnalysis.screen.widgetAppearance')}
               name={['appearance', 'frame']}
@@ -1101,6 +1122,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
             >
               <Segmented
                 block
+                className="w-60 max-w-full"
                 options={[
                   {
                     label: t('opsAnalysis.screen.widgetFramePanel'),

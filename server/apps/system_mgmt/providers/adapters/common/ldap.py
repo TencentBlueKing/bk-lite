@@ -13,10 +13,10 @@ class LDAPConnectionConfig:
     base_dn: str
 
 
-def build_connection_config(config: dict[str, Any] | None) -> LDAPConnectionConfig:
+def build_connection_config(config: dict[str, Any] | None, *, require_base_dn: bool = True) -> LDAPConnectionConfig:
     raw = config or {}
     base_dn = str(raw.get("base_dn") or "").strip()
-    if not base_dn:
+    if require_base_dn and not base_dn:
         raise ValueError(
             "AD login_auth.base_dn is required but missing; "
             "configure it on the IntegrationInstance (登录认证 connection template)."

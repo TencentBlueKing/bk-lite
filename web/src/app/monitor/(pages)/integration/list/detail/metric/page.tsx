@@ -128,36 +128,38 @@ const Configure = () => {
       dataIndex: 'action',
       fixed: 'right',
       width: 110,
-      render: (_, record) => (
-        <>
-          <Permission
-            requiredPermissions={['Edit Metric']}
-            className="mr-[10px]"
-          >
-            <Button
-              type="link"
-              disabled={record.is_pre}
-              onClick={() => openMetricModal('edit', record)}
+      render: (_, record) =>
+        record.is_pre ? (
+          <Button type="link" onClick={() => openMetricModal('view', record)}>
+            {t('common.view')}
+          </Button>
+        ) : (
+          <>
+            <Permission
+              requiredPermissions={['Edit Metric']}
+              className="mr-[10px]"
             >
-              {t('common.edit')}
-            </Button>
-          </Permission>
-          <Permission requiredPermissions={['Delete Metric']}>
-            <Popconfirm
-              title={t('common.deleteTitle')}
-              description={t('common.deleteContent')}
-              okText={t('common.confirm')}
-              cancelText={t('common.cancel')}
-              okButtonProps={{ loading: confirmLoading }}
-              onConfirm={() => handleDeleteConfirm(record as MetricItem)}
-            >
-              <Button type="link" disabled={record.is_pre}>
-                {t('common.delete')}
+              <Button
+                type="link"
+                onClick={() => openMetricModal('edit', record)}
+              >
+                {t('common.edit')}
               </Button>
-            </Popconfirm>
-          </Permission>
-        </>
-      )
+            </Permission>
+            <Permission requiredPermissions={['Delete Metric']}>
+              <Popconfirm
+                title={t('common.deleteTitle')}
+                description={t('common.deleteContent')}
+                okText={t('common.confirm')}
+                cancelText={t('common.cancel')}
+                okButtonProps={{ loading: confirmLoading }}
+                onConfirm={() => handleDeleteConfirm(record as MetricItem)}
+              >
+                <Button type="link">{t('common.delete')}</Button>
+              </Popconfirm>
+            </Permission>
+          </>
+        )
     }
   ];
 
@@ -361,7 +363,9 @@ const Configure = () => {
     const title = t(
       type === 'add'
         ? 'monitor.integrations.addMetric'
-        : 'monitor.integrations.editMetric'
+        : type === 'view'
+          ? 'monitor.integrations.viewMetric'
+          : 'monitor.integrations.editMetric'
     );
     metricRef.current?.showModal({
       title,
@@ -429,12 +433,14 @@ const Configure = () => {
       if (draggingIndex !== -1 && targetIndex !== -1) {
         try {
           setLoading(true);
-          const updatedOrder = reorderedData.map(
-            (item: MetricItem, index: number) => ({
-              id: item.id,
-              sort_order: index
-            })
-          );
+          const updatedOrder = reorderedData
+            .filter((item: MetricListItem) => !item.is_pre)
+            .map(
+              (item: MetricItem, index: number) => ({
+                id: item.id,
+                sort_order: index
+              })
+            );
           await updateMetricsGroup(updatedOrder);
           message.success(t('common.updateSuccess'));
           getInitData(activeTab, true);
@@ -448,15 +454,19 @@ const Configure = () => {
 
   const onRowDragEnd = async (data: any) => {
     setLoading(true);
-    metrics.forEach((metricItem) => {
-      if (!data.map((item: MetricItem) => item.id).includes(metricItem.id)) {
-        data.push(metricItem);
-      }
-    });
-    const updatedOrder = data.map((item: MetricItem, index: number) => ({
-      id: item.id,
-      sort_order: index
-    }));
+    metrics
+      .filter((metricItem) => !metricItem.is_pre)
+      .forEach((metricItem) => {
+        if (!data.map((item: MetricItem) => item.id).includes(metricItem.id)) {
+          data.push(metricItem);
+        }
+      });
+    const updatedOrder = data
+      .filter((item: MetricItem) => !item.is_pre)
+      .map((item: MetricItem, index: number) => ({
+        id: item.id,
+        sort_order: index
+      }));
 
     updateMonitorMetrics(updatedOrder)
       .then(() => {
@@ -530,7 +540,7 @@ const Configure = () => {
                     : ''
                 }`}
                 key={metricItem.id}
-                sortable
+                sortable={!metricItem.is_pre}
                 dragHandleOnly
                 onDragStart={(e) => onDragStart(e, metricItem.id)}
                 onDragEnd={onDragEnd}
@@ -575,10 +585,12 @@ const Configure = () => {
                 <CustomTable
                   pagination={false}
                   dataSource={metricItem.child || []}
-                  scroll={{ x: 'calc(100vw - 260px)' }}
                   columns={columns}
                   rowKey="id"
-                  rowDraggable={metricItem.child?.length > 1}
+                  rowDraggable={
+                    metricItem.child?.length > 1 &&
+                    metricItem.child.every((item) => !item.is_pre)
+                  }
                   onRowDragEnd={onRowDragEnd}
                 />
               </Collapse>

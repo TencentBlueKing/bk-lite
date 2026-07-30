@@ -61,3 +61,8 @@ automation/
 /server/apps/cmdb_enterprise/
 
 .pnpm-store/*
+
+# mavis 工作流产物:调研资料 + PM 设计文档
+# 之前误推到 bk-lite 仓库,现在显式 ignore
+docs/ai-product-capabilities/
+docs/superpowers/

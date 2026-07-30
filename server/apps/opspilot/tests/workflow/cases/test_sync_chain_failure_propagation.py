@@ -36,6 +36,7 @@ def _make_runner(executor_result, node_type="agent"):
             self.variable_manager = MagicMock()
             self.variable_manager.get_variable.side_effect = lambda key, *a, **k: (None if key == "intent_previous_output" else "input-text")
             self.recorded = []
+            self.next_nodes_queried = False
 
         def _get_node_by_id(self, node_id):
             return {
@@ -61,6 +62,10 @@ def _make_runner(executor_result, node_type="agent"):
         def _record_node_execution_result(self, node_id, context):
             self.recorded.append((node_id, context.status))
 
+        def _get_next_nodes(self, node_id, node_result):
+            self.next_nodes_queried = True
+            return ["email-node"]
+
     return _Runner()
 
 
@@ -81,6 +86,14 @@ class TestSyncChainFailurePropagation:
         # 失败节点记为 FAILED,且失败时不把错误文本写成全局 last_message
         assert runner.recorded[-1] == ("n1", NodeStatus.FAILED)
         runner.variable_manager.set_variable.assert_not_called()
+
+    def test_inband_failure_does_not_schedule_downstream_nodes(self):
+        runner = _make_runner({"success": False, "error": "LLM timeout", "last_message": "调用失败"})
+
+        result = runner._execute_node_chain("agent-node", {"last_message": "hi"}, remaining_timeout=1800)
+
+        assert result.get("success") is False
+        assert runner.next_nodes_queried is False
 
     def test_success_path_unaffected(self):
         runner = _make_runner({"last_message": "正常回复"})

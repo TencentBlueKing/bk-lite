@@ -3,6 +3,8 @@ from apps.system_mgmt.providers.schemas import ProviderManifest
 PROVIDER_MANIFEST = ProviderManifest.model_validate(
     {
         "key": "feishu",
+        "base_connection_adapter_key": "feishu.base_connection",
+        "base_connection_adapter_path": "apps.system_mgmt.providers.adapters.feishu.FeishuBaseConnectionAdapter",
         "name": "Feishu",
         "description": "Built-in Feishu integration provider for Phase 1.",
         "instance_templates": {

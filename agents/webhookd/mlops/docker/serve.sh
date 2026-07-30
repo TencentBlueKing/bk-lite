@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # webhookd mlops serve script
-# 接收 JSON: {"id": "serving-001", "mlflow_tracking_uri": "http://127.0.0.1:15000", "mlflow_model_uri": "models:/model/1", "train_image": "classify-timeseries:latest", "workers": 2, "network_mode": "bridge", "device": "auto|cpu|gpu"}
+# 接收 JSON: {"id": "serving-001", "mlflow_tracking_uri": "http://127.0.0.1:15000", "mlflow_model_uri": "models:/model/1", "train_image": "classify-timeseries:latest", "workers": 2, "network_mode": "bridge", "device": "auto|cpu|gpu", "timeseries_predict_timeout_seconds": 120}
 
 set -e
 
@@ -26,6 +26,7 @@ PORT=$(echo "$JSON_DATA" | jq -r '.port // empty')
 NETWORK_MODE=$(echo "$JSON_DATA" | jq -r '.network_mode // "bridge"')
 TRAIN_IMAGE=$(echo "$JSON_DATA" | jq -r '.train_image // empty')
 DEVICE=$(echo "$JSON_DATA" | jq -r '.device // empty')  # 未传递时为空字符串
+TIMESERIES_PREDICT_TIMEOUT_SECONDS=$(echo "$JSON_DATA" | jq -r '.timeseries_predict_timeout_seconds // empty')
 
 # 验证必需参数
 if [ -z "$ID" ] || [ -z "$MLFLOW_TRACKING_URI" ] || [ -z "$MLFLOW_MODEL_URI" ]; then
@@ -36,6 +37,13 @@ fi
 if [ -z "$TRAIN_IMAGE" ]; then
     json_error "MISSING_TRAIN_IMAGE" "$ID" "Missing required field: train_image"
     exit 1
+fi
+
+if [ -n "$TIMESERIES_PREDICT_TIMEOUT_SECONDS" ]; then
+    if ! [[ "$TIMESERIES_PREDICT_TIMEOUT_SECONDS" =~ ^[1-9][0-9]*$ ]] || [ "$TIMESERIES_PREDICT_TIMEOUT_SECONDS" -gt 290 ]; then
+        json_error "INVALID_PREDICT_TIMEOUT" "$ID" "timeseries_predict_timeout_seconds must be between 1 and 290"
+        exit 1
+    fi
 fi
 
 # 检查容器是否已存在
@@ -76,7 +84,14 @@ setup_device_args "$DEVICE" || {
     exit 1
 }
 
+# 只有时序预测调用方传入该预算，其他算法服务保持现有环境不变。
+PREDICT_TIMEOUT_ENV_ARGS=()
+if [ -n "$TIMESERIES_PREDICT_TIMEOUT_SECONDS" ]; then
+    PREDICT_TIMEOUT_ENV_ARGS=(-e "TIMESERIES_PREDICT_TIMEOUT_SECONDS=$TIMESERIES_PREDICT_TIMEOUT_SECONDS")
+fi
+
 # 启动 serving 容器（使用 Dockerfile 定义的 ENTRYPOINT: startup.sh -> supervisord）
+set +e
 DOCKER_OUTPUT=$(docker run -d \
     --name "$ID" \
     --network "$NETWORK_MODE" \
@@ -93,9 +108,11 @@ DOCKER_OUTPUT=$(docker run -d \
     -e MLFLOW_MODEL_URI="$MLFLOW_MODEL_URI" \
     -e WORKERS="$WORKERS" \
     -e ALLOW_DUMMY_FALLBACK="false" \
+    "${PREDICT_TIMEOUT_ENV_ARGS[@]}" \
     "$TRAIN_IMAGE" 2>&1)
 
 DOCKER_STATUS=$?
+set -e
 
 if [ $DOCKER_STATUS -ne 0 ]; then
     json_error "CONTAINER_START_FAILED" "$ID" "Failed to start container" "$DOCKER_OUTPUT"

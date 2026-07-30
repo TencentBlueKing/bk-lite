@@ -8,7 +8,10 @@ dangerous_rule / dangerous_path 两个 ViewSet 仅 model、serializer、权限�
 ``*_with_log`` 实现。
 """
 
+from django.db.models import Q
 from rest_framework import status
+from rest_framework.exceptions import PermissionDenied
+from rest_framework.response import Response
 
 from apps.core.utils.viewset_utils import AuthViewSet
 from apps.system_mgmt.utils.operation_log_utils import log_operation
@@ -34,6 +37,20 @@ class BaseDangerousItemViewSet(AuthViewSet):
     dangerous_log_label = ""
     dangerous_name_field = "name"
 
+    def list(self, request, *args, **kwargs):
+        """组织自定义规则按原权限过滤，系统预置规则对页面用户全局可见。"""
+        queryset = self.filter_queryset(self.get_queryset())
+        custom_queryset = self.get_queryset_by_permission(request, queryset.filter(is_builtin=False))
+        custom_ids = custom_queryset.values_list("id", flat=True)
+        visible_queryset = queryset.filter(Q(is_builtin=True) | Q(id__in=custom_ids)).order_by(self.ORDERING_FIELD)
+        return self._list(visible_queryset)
+
+    def retrieve(self, request, *args, **kwargs):
+        instance = self.get_object()
+        if instance.is_builtin:
+            return Response(self.get_serializer(instance).data)
+        return super().retrieve(request, *args, **kwargs)
+
     def get_serializer_class(self):
         if self.action == "create":
             return self.create_serializer_class
@@ -55,6 +72,10 @@ class BaseDangerousItemViewSet(AuthViewSet):
         return response
 
     def update_with_log(self, request, *args, **kwargs):
+        instance = self.get_object()
+        if instance.is_builtin and not getattr(request.user, "is_superuser", False):
+            raise PermissionDenied("只有平台超级管理员可操作内置规则")
+
         response = super().update(request, *args, **kwargs)
         if response.status_code == status.HTTP_200_OK:
             name = self._resolve_item_name(response, request)
@@ -63,6 +84,8 @@ class BaseDangerousItemViewSet(AuthViewSet):
 
     def destroy_with_log(self, request, *args, **kwargs):
         instance = self.get_object()
+        if instance.is_builtin and not getattr(request.user, "is_superuser", False):
+            raise PermissionDenied("只有平台超级管理员可操作内置规则")
         response = super().destroy(request, *args, **kwargs)
         if response.status_code in (status.HTTP_200_OK, status.HTTP_204_NO_CONTENT):
             name = getattr(instance, self.dangerous_name_field, "")

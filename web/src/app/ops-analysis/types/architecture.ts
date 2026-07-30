@@ -12,4 +12,5 @@ export interface DiagramData {
 }
 export interface ArchitectureProps {
   selectedArchitecture?: DirItem | null;
+  shareMode?: boolean;
 }

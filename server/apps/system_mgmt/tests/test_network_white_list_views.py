@@ -8,6 +8,7 @@ import types
 import pytest
 from rest_framework.test import APIRequestFactory, force_authenticate
 
+from apps.system_mgmt.models import NetworkWhiteList
 from apps.system_mgmt.viewset.network_white_list_viewset import NetworkWhiteListViewSet
 
 factory = APIRequestFactory()
@@ -67,8 +68,6 @@ def test_create_denied_without_permission():
 
 @pytest.mark.django_db
 def test_list_returns_rows():
-    from apps.system_mgmt.models import NetworkWhiteList
-
     NetworkWhiteList.objects.create(network="10.11.73.0/24")
     view = NetworkWhiteListViewSet.as_view({"get": "list"})
     request = factory.get("/system_mgmt/network_white_list/")
@@ -83,9 +82,24 @@ def test_list_returns_rows():
 
 
 @pytest.mark.django_db
-def test_partial_update_invalidates_cache(mocker):
-    from apps.system_mgmt.models import NetworkWhiteList
+def test_list_paginates_custom_entries_and_excludes_builtins():
+    NetworkWhiteList.objects.create(network="", domain_name="builtin.example.com", is_build_in=True)
+    first = NetworkWhiteList.objects.create(network="10.11.73.0/24")
+    second = NetworkWhiteList.objects.create(network="10.11.74.0/24")
+    view = NetworkWhiteListViewSet.as_view({"get": "list"})
+    request = factory.get("/system_mgmt/network_white_list/", {"page": 2, "page_size": 1})
+    force_authenticate(request, user=_user({"network_white_list-View"}))
 
+    response = view(request)
+
+    assert response.status_code == 200
+    assert response.data["count"] == 2
+    assert [item["id"] for item in response.data["items"]] == [first.id]
+    assert second.id > first.id
+
+
+@pytest.mark.django_db
+def test_partial_update_invalidates_cache(mocker):
     obj = NetworkWhiteList.objects.create(network="10.11.73.0/24")
     inval = mocker.patch("apps.system_mgmt.viewset.network_white_list_viewset.invalidate_network_whitelist_cache")
     view = NetworkWhiteListViewSet.as_view({"patch": "partial_update"})
@@ -100,8 +114,6 @@ def test_partial_update_invalidates_cache(mocker):
 
 @pytest.mark.django_db
 def test_destroy_invalidates_cache_and_deletes(mocker):
-    from apps.system_mgmt.models import NetworkWhiteList
-
     obj = NetworkWhiteList.objects.create(network="10.11.73.0/24")
     inval = mocker.patch("apps.system_mgmt.viewset.network_white_list_viewset.invalidate_network_whitelist_cache")
     view = NetworkWhiteListViewSet.as_view({"delete": "destroy"})

@@ -1,13 +1,15 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Segmented } from 'antd';
+import { Breadcrumb, Segmented } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import { useSearchParams, useRouter } from 'next/navigation';
 import detailStyle from '../index.module.scss';
 import { ArrowLeftOutlined } from '@ant-design/icons';
 import Overview from './overview';
 import Metric from '@/app/monitor/components/metric-views';
+import { getDashboardReturnNavigation } from '@/app/monitor/dashboards/shared/utils';
+import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 
 const ViewDetail = () => {
   const { t } = useTranslation();
@@ -21,6 +23,8 @@ const ViewDetail = () => {
   const monitorObjectName: string = searchParams.get('name') || '';
   const instanceId: React.Key = searchParams.get('instance_id') || '';
   const instanceName: string = searchParams.get('instance_name') || '';
+  const detailTitle = `${monitorObjDisplayName || monitorObjectName || '监控对象'}指标详情`;
+  const returnNavigation = getDashboardReturnNavigation(searchParams, detailTitle);
   const idValues: string[] = (
     searchParams.get('instance_id_values') || ''
   ).split(',');
@@ -31,8 +35,7 @@ const ViewDetail = () => {
   };
 
   const onBackButtonClick = () => {
-    const targetUrl = `/monitor/view`;
-    router.push(targetUrl);
+    router.push(returnNavigation.href);
   };
 
   return (
@@ -74,14 +77,17 @@ const ViewDetail = () => {
             onChange={onTabChange}
           />
           <button
-            className="absolute bottom-4 left-4 flex items-center py-2 rounded-md text-sm"
+            className="absolute bottom-4 left-4 flex max-w-[168px] items-center py-2 rounded-md text-sm"
             onClick={onBackButtonClick}
+            title={returnNavigation.label}
           >
-            <ArrowLeftOutlined className="mr-2" />
+            <ArrowLeftOutlined className="mr-2 shrink-0" />
+            <EllipsisWithTooltip className="min-w-0 truncate" text={returnNavigation.label} />
           </button>
         </div>
       </div>
       <div className={detailStyle.rightSide}>
+        <Breadcrumb className="mb-4" items={returnNavigation.breadcrumbItems} />
         {activeMenu === 'metrics' ? (
           <Metric
             idValues={idValues}

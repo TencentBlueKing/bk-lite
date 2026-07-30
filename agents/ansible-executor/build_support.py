@@ -19,12 +19,14 @@ def ensure_ansible_windows_collection(
     if (root / "ansible_collections").exists():
         shutil.rmtree(root / "ansible_collections")
     root.mkdir(parents=True, exist_ok=True)
+    requirements_file = Path(__file__).resolve().parent / "collections" / "requirements.yml"
     subprocess.run(
         [
             "ansible-galaxy",
             "collection",
             "install",
-            "ansible.windows",
+            "-r",
+            str(requirements_file),
             "-p",
             str(root),
             "--force",

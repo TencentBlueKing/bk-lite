@@ -1,4 +1,5 @@
 import type { RunStatus, UserSyncRun, UserSyncSource } from '@/app/system-manager/types/user-sync';
+import { formatUserSyncErrorMessage } from '@/app/system-manager/utils/userSyncProgress';
 
 export const RUN_STATUS_TEXT_STYLE: Record<RunStatus, string> = {
   running: 'processing',
@@ -196,7 +197,7 @@ export function getUserSyncRunSummary(
     } else {
       summary = formatTemplate(t('system.user.userSyncPage.runSummary.result'), {
         external: externalSummary,
-        summary: record.summary,
+        summary: formatUserSyncErrorMessage(record.summary, t),
       });
     }
   } else {

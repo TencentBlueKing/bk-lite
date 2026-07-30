@@ -1,6 +1,7 @@
 from sanic import Sanic
 from api import api, enterprise_api
 from core.config import YamlConfig
+from core.credential_state_cache import register_credential_state_cache_lifecycle
 from dotenv import load_dotenv
 from core.host_remote_runtime import register_host_remote_runtime
 from core.nats import initialize_nats
@@ -22,6 +23,7 @@ nats = initialize_nats(app, service_name=service_name)
 
 # 初始化任务队列
 task_queue = initialize_task_queue(app)
+register_credential_state_cache_lifecycle(app)
 register_collect_credential_result_push_loop(app)
 register_host_remote_runtime(app)
 

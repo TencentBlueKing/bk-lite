@@ -34,7 +34,7 @@ const StatisticCard = ({ title, value, accentClass }: { title: string; value: nu
   return (
     <Card size="small" className="shadow-sm">
       <div className="text-xs text-[var(--color-text-3)] mb-1">{title}</div>
-      <div className={`text-3xl font-semibold ${accentClass}`}>{value}</div>
+      <div className={`text-sm font-semibold tabular-nums ${accentClass}`}>{value}</div>
     </Card>
   );
 };

@@ -26,7 +26,7 @@ import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import dayjs from 'dayjs';
 
 // EE 端运行时注入的 BRANDS:由 web/scripts/prepare-enterprise.mjs 生成
-// /public/__enterprise-brands.js,next layout.tsx <Script> 加载后挂到这里。
+// /public/__enterprise-brands.js 由 next layout.tsx 的 defer script 加载后挂到这里。
 // 类型契约:每条 brand 的 match/label/icon 字段与下方 BRANDS 项同型。
 declare global {
   // eslint-disable-next-line @typescript-eslint/no-empty-object-type
@@ -486,6 +486,23 @@ export const getBaseInstanceColumn = (config: {
     .find((item) => item.level === 'base');
   const title = baseTarget?.display_name || config.t('monitor.source');
   const isDerivative = isDerivativeObject(config.row, config.objects);
+  const renderAssetText = (value: unknown) => (
+    <EllipsisWithTooltip
+      text={value == null || value === '' ? '--' : String(value)}
+      className="w-full overflow-hidden text-ellipsis whitespace-nowrap"
+    ></EllipsisWithTooltip>
+  );
+  const formatSummaryFact = (value: unknown) => {
+    if (!Array.isArray(value)) return value;
+    return value
+      .map((item) => {
+        if (item == null || typeof item !== 'object') return String(item);
+        const node = item as { id?: string; name?: string; ip?: string };
+        if (node.name && node.ip) return `${node.name} (${node.ip})`;
+        return node.name || node.ip || node.id || JSON.stringify(node);
+      })
+      .join(', ');
+  };
   const columnItems: any = [
     {
       title: config.t('common.name'),
@@ -507,6 +524,19 @@ export const getBaseInstanceColumn = (config: {
       }
     }
   ];
+  const summaryColumns = [...(config.row.instance_summary_columns || [])].sort(
+    (left, right) => (left.order || 0) - (right.order || 0)
+  );
+  summaryColumns.forEach((column) => {
+    columnItems.push({
+      title: config.t(column.title),
+      dataIndex: ['summary_facts', column.fact],
+      key: `summary_fact:${column.fact}`,
+      onCell: () => ({ style: { minWidth: 150 } }),
+      render: (_: unknown, record: TableDataItem) =>
+        renderAssetText(formatSummaryFact(record.summary_facts?.[column.fact]))
+    });
+  });
   if (isDerivative) {
     columnItems.unshift({
       title: title,
@@ -551,7 +581,7 @@ export const getIconByObjectName = (objectName = '', objects: ObjectItem[]) => {
 // 品牌专属采集模板/实例（如思科交换机）的品牌识别：按名称匹配 → 提供品牌标签（及可选 logo 图标）。
 // icon 可选：未提供时集成卡片回退到监控对象默认图标，仪表盘头部仍展示品牌文字标签。
 const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
-  { match: /cisco/i, label: 'Cisco', icon: 'mm-cisco_思科' },
+  { match: /^(?!.*san_cisco).*cisco/i, label: 'Cisco', icon: 'mm-cisco_思科' },
   { match: /huawei/i, label: 'Huawei', icon: 'mm-huawei_华为' },
   { match: /aruba/i, label: 'Aruba', icon: 'mm-aruba_aruba' },
   { match: /juniper/i, label: 'Juniper', icon: 'mm-juniper_juniper' },
@@ -784,7 +814,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /infinera|coriant|groove/i, label: 'Infinera', icon: 'mm-infinera_infinera' },
   { match: /bridgewave|flexport|fe80/i, label: 'BridgeWave', icon: 'mm-bridgewave_bridgewave' },
   { match: /huber\s*\+?\s*suhner|cubo\s*mini|cube\s*optics/i, label: 'Huber+Suhner Cubo', icon: 'mm-hubersuhner_hubersuhner' },
-  { match: /fibrolan|falcon/i, label: 'Fibrolan', icon: 'mm-fibrolan_fibrolan' },
+  { match: /fibrolan|falcon(?!stor)/i, label: 'Fibrolan', icon: 'mm-fibrolan_fibrolan' },
   { match: /smartoptics/i, label: 'Smartoptics', icon: 'mm-smartoptics_smartoptics' },
   { match: /racom|\bray\b/i, label: 'RACOM', icon: 'mm-racom_racom' },
   { match: /ifotec/i, label: 'Ifotec', icon: 'mm-ifotec_ifotec' },

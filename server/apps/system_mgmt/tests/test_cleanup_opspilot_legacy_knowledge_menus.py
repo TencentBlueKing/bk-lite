@@ -1,9 +1,11 @@
 from io import StringIO
+from unittest.mock import patch
 
 import pytest
 from django.core.management import call_command
 
-from apps.system_mgmt.models import CustomMenuGroup, Menu, Role
+from apps.system_mgmt.management.commands.cleanup_opspilot_legacy_knowledge_menus import _clear_permission_cache_for_roles
+from apps.system_mgmt.models import CustomMenuGroup, Group, Menu, Role, User
 
 pytestmark = pytest.mark.django_db
 
@@ -115,3 +117,30 @@ def test_cleanup_opspilot_legacy_knowledge_menus_updates_custom_menu_groups():
     assert "bot_list" in names
     assert "provide_list" in names
     assert "wiki_list" in names
+
+
+def test_role_cleanup_invalidates_descendant_group_users():
+    role = Role.objects.create(name="inherited", app="opspilot")
+    parent = Group.objects.create(
+        name="permission-parent",
+        parent_id=0,
+        allow_inherit_roles=True,
+    )
+    child = Group.objects.create(
+        name="permission-child",
+        parent_id=parent.id,
+        allow_inherit_roles=True,
+    )
+    parent.roles.add(role)
+    user = User.objects.create(
+        username="inherited-cleanup-user",
+        display_name="Inherited cleanup user",
+        email="inherited-cleanup@example.com",
+        password="",
+        group_list=[child.id],
+    )
+
+    with patch("apps.system_mgmt.management.commands.cleanup_opspilot_legacy_knowledge_menus.clear_users_permission_cache") as clear_cache:
+        _clear_permission_cache_for_roles([role.id])
+
+    clear_cache.assert_called_once_with([{"username": user.username, "domain": user.domain}])

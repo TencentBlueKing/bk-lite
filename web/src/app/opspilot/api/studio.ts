@@ -38,7 +38,7 @@ export const useStudioApi = () => {
   const { get, post, del, patch } = useApiClient();
   const { data: session } = useSession();
   const authContext = useAuth();
-  const token = (session?.user as any)?.token || authContext?.token || null;
+  const token = authContext?.token || (session?.user as any)?.token || null;
 
   const fetchLogs = async (params: LogSearchParams): Promise<LogSearchResponse> => {
     return get('/opspilot/bot_mgmt/history/search_log/', { params });
