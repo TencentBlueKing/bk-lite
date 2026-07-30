@@ -240,6 +240,8 @@ export async function* tauriApiStream(
     resolveNext = null;
   };
   const handleAbort = () => {
+    queue.length = 0;
+    streamError = null;
     isStreamEnded = true;
     wakeConsumer();
   };
@@ -251,6 +253,9 @@ export async function* tauriApiStream(
 
   const onEvent = new Channel<NativeStreamEvent>();
   onEvent.onmessage = (event) => {
+    if (signal?.aborted || isStreamEnded) {
+      return;
+    }
     switch (event.event) {
       case 'chunk':
         queue.push(event.data);

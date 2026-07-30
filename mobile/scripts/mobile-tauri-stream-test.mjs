@@ -162,6 +162,7 @@ test('aborting an active Tauri stream cancels Rust and ignores later chunks', { 
 
   assert.ok(streamChannel instanceof MockChannel);
   controller.abort();
+  streamChannel.onmessage({ event: 'chunk', data: 'late chunk' });
   assert.deepEqual(await pendingChunk, { value: undefined, done: true });
   assert.deepEqual(
     invokeCalls.map(({ command }) => command),
@@ -169,7 +170,6 @@ test('aborting an active Tauri stream cancels Rust and ignores later chunks', { 
   );
   assert.deepEqual(invokeCalls[1].args, { streamId: 'stream-live' });
 
-  streamChannel.onmessage({ event: 'chunk', data: 'late chunk' });
   assert.deepEqual(await iterator.next(), { value: undefined, done: true });
 });
 
