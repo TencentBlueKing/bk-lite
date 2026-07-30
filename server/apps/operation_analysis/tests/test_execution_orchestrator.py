@@ -1,6 +1,7 @@
 import pytest
 from django.core.exceptions import ValidationError
 
+from apps.operation_analysis.models.datasource_models import DataSourceAPIModel
 from apps.operation_analysis.models.models import Dashboard, Directory
 from apps.operation_analysis.models.subscription_models import (
     DashboardReportExecution,
@@ -11,6 +12,7 @@ from apps.operation_analysis.models.subscription_models import (
 from apps.operation_analysis.services.execution_orchestrator import (
     DeliveryStep,
     ExecutionOrchestrator,
+    ExecutionStepError,
     ExecutionStepResult,
     PermissionStep,
     RenderSnapshotStep,
@@ -20,6 +22,13 @@ from apps.operation_analysis.services.execution_orchestrator import (
 from apps.operation_analysis.services.execution_service import (
     DashboardReportExecutionService,
 )
+from apps.operation_analysis.services.dashboard_report_renderer import (
+    DashboardRenderError,
+)
+from apps.operation_analysis.services.report_render_service import (
+    DashboardReportRenderService,
+)
+from apps.system_mgmt.models import Channel
 
 
 pytestmark = pytest.mark.django_db
@@ -34,7 +43,18 @@ def set_dashboard_view_permission(monkeypatch, allowed):
 
 
 @pytest.fixture
-def execution(authenticated_user):
+def email_channel():
+    return Channel.objects.create(
+        name="编排邮件通道",
+        channel_type="email",
+        config={},
+        description="测试",
+        team=[1],
+    )
+
+
+@pytest.fixture
+def execution(authenticated_user, email_channel):
     directory = Directory.objects.create(name="编排测试目录", groups=[1])
     dashboard = Dashboard.objects.create(
         name="编排测试仪表盘",
@@ -47,6 +67,7 @@ def execution(authenticated_user):
         creator=authenticated_user.username,
         name="编排测试订阅",
         recipient_email="ops@example.com",
+        email_channel=email_channel,
     )
     execution = DashboardReportExecution.objects.create(
         subscription=subscription,
@@ -58,6 +79,10 @@ def execution(authenticated_user):
         dashboard_id=dashboard.id,
         creator_id=authenticated_user.username,
         subscription_id=subscription.id,
+        subscription_name=subscription.name,
+        recipient_email=subscription.recipient_email,
+        trigger_type=execution.trigger_type,
+        email_channel_id=email_channel.id,
         filter_values={"environment": "production"},
     )
     assert DashboardReportExecutionService.claim_execution(execution.id)
@@ -65,21 +90,35 @@ def execution(authenticated_user):
     return execution
 
 
-def test_orchestrator_does_not_succeed_before_render_is_implemented(
+def test_orchestrator_marks_unavailable_renderer_failed(
     execution,
     monkeypatch,
 ):
     set_dashboard_view_permission(monkeypatch, True)
 
+    def unavailable_renderer(
+        cls,
+        current,
+        snapshot,
+        render_snapshot,
+    ):
+        raise DashboardRenderError("Chromium 不可用")
+
+    monkeypatch.setattr(
+        DashboardReportRenderService,
+        "render",
+        classmethod(unavailable_renderer),
+    )
+
     result = ExecutionOrchestrator.execute(execution.id)
 
     execution.refresh_from_db()
     assert result.id == execution.id
-    assert execution.status == DashboardReportExecution.Status.RUNNING
+    assert execution.status == DashboardReportExecution.Status.FAILED
     assert execution.started_at is not None
-    assert execution.finished_at is None
-    assert execution.failure_stage == ""
-    assert execution.error_message == ""
+    assert execution.finished_at is not None
+    assert execution.failure_stage == "render"
+    assert execution.error_message == "报告 PDF 生成失败"
 
 
 def test_orchestrator_rejects_unclaimed_execution(execution):
@@ -191,13 +230,16 @@ def test_orchestrator_runs_steps_in_order(
         "execute",
         lambda current, snapshot, render_snapshot: (
             calls.append("render"),
-            ExecutionStepResult.NOT_READY,
+            ExecutionStepResult.COMPLETED,
         )[1],
     )
     monkeypatch.setattr(
         DeliveryStep,
         "execute",
-        lambda current, snapshot: calls.append("delivery"),
+        lambda current, snapshot: (
+            calls.append("delivery"),
+            ExecutionStepResult.COMPLETED,
+        )[1],
     )
 
     ExecutionOrchestrator.execute(execution.id)
@@ -207,10 +249,35 @@ def test_orchestrator_runs_steps_in_order(
         "snapshot",
         "render_snapshot",
         "render",
+        "delivery",
     ]
 
 
-def test_orchestrator_does_not_succeed_before_delivery_is_implemented(
+def test_orchestrator_succeeds_only_after_delivery_success(
+    execution,
+    monkeypatch,
+):
+    set_dashboard_view_permission(monkeypatch, True)
+    monkeypatch.setattr(
+        RenderStep,
+        "execute",
+        lambda current, snapshot, render_snapshot: ExecutionStepResult.COMPLETED,
+    )
+    monkeypatch.setattr(
+        DeliveryStep,
+        "execute",
+        lambda current, snapshot: ExecutionStepResult.COMPLETED,
+    )
+
+    result = ExecutionOrchestrator.execute(execution.id)
+
+    execution.refresh_from_db()
+    assert result.id == execution.id
+    assert execution.status == DashboardReportExecution.Status.SUCCEEDED
+    assert execution.finished_at is not None
+
+
+def test_delivery_failure_marks_execution_email_failed(
     execution,
     monkeypatch,
 ):
@@ -221,12 +288,18 @@ def test_orchestrator_does_not_succeed_before_delivery_is_implemented(
         lambda current, snapshot, render_snapshot: ExecutionStepResult.COMPLETED,
     )
 
+    def fail_delivery(current, snapshot):
+        raise ExecutionStepError("email", "SMTP 失败")
+
+    monkeypatch.setattr(DeliveryStep, "execute", fail_delivery)
+
     result = ExecutionOrchestrator.execute(execution.id)
 
     execution.refresh_from_db()
     assert result.id == execution.id
-    assert execution.status == DashboardReportExecution.Status.RUNNING
-    assert execution.finished_at is None
+    assert execution.status == DashboardReportExecution.Status.FAILED
+    assert execution.failure_stage == "email"
+    assert execution.error_message == "SMTP 失败"
 
 
 def test_orchestrator_fails_when_creator_loses_dashboard_view(
@@ -403,6 +476,94 @@ def test_render_snapshot_failure_marks_execution_failed(
     execution.refresh_from_db()
     assert result.id == execution.id
     assert execution.status == DashboardReportExecution.Status.FAILED
-    assert execution.failure_stage == "render_snapshot"
+    assert execution.failure_stage == "snapshot"
     assert execution.error_message == "Render Snapshot 创建失败"
     assert render_calls == []
+
+
+def test_datasource_snapshot_persists_non_sensitive_audit_freeze(
+    execution,
+    monkeypatch,
+):
+    """MVP freezes DS metadata into Render Snapshot for audit only.
+
+    It does not guarantee runtime queries ignore later live DataSource edits.
+    """
+    datasource = DataSourceAPIModel.objects.create(
+        name="原始数据源",
+        source_type="nats",
+        query_config={"path": "get_alert_list"},
+        field_schema=[{"key": "name", "title": "名称"}],
+    )
+    execution.dashboard.view_sets = [
+        {
+            "id": "widget-ds",
+            "itemType": "widget",
+            "valueConfig": {
+                "chartType": "table",
+                "dataSource": datasource.id,
+            },
+        }
+    ]
+    execution.dashboard.save(update_fields=["view_sets", "updated_at"])
+    set_dashboard_view_permission(monkeypatch, True)
+
+    ExecutionOrchestrator.execute(execution.id)
+
+    render_snapshot = DashboardReportRenderSnapshot.objects.get(
+        execution=execution
+    )
+    assert len(render_snapshot.datasource_snapshots) == 1
+    ds_snap = render_snapshot.datasource_snapshots[0]
+    assert ds_snap["datasource_id"] == datasource.id
+    assert ds_snap["source_type"] == "nats"
+    assert ds_snap["query_config"] == {"path": "get_alert_list"}
+    assert ds_snap["field_schema"] == [{"key": "name", "title": "名称"}]
+    assert "connection_config" not in ds_snap
+    assert "password" not in ds_snap
+    assert "token" not in ds_snap
+
+    datasource.query_config = {"path": "get_alert_list_v2"}
+    datasource.field_schema = [
+        {"key": "name", "title": "名称"},
+        {"key": "severity", "title": "严重度"},
+    ]
+    datasource.save(update_fields=["query_config", "field_schema"])
+    render_snapshot.refresh_from_db()
+
+    # Persisted snapshot rows stay immutable; runtime query path is unchanged.
+    ds_snap_after = render_snapshot.datasource_snapshots[0]
+    assert ds_snap_after["query_config"] == {"path": "get_alert_list"}
+    assert ds_snap_after["field_schema"] == [{"key": "name", "title": "名称"}]
+
+
+def test_datasource_snapshot_skips_missing_datasources(
+    execution,
+    monkeypatch,
+):
+    execution.dashboard.view_sets = [
+        {
+            "id": "widget-no-ds",
+            "itemType": "widget",
+            "valueConfig": {
+                "chartType": "single",
+            },
+        },
+        {
+            "id": "widget-deleted-ds",
+            "itemType": "widget",
+            "valueConfig": {
+                "chartType": "table",
+                "dataSource": 99999,
+            },
+        },
+    ]
+    execution.dashboard.save(update_fields=["view_sets", "updated_at"])
+    set_dashboard_view_permission(monkeypatch, True)
+
+    ExecutionOrchestrator.execute(execution.id)
+
+    render_snapshot = DashboardReportRenderSnapshot.objects.get(
+        execution=execution
+    )
+    assert render_snapshot.datasource_snapshots == []

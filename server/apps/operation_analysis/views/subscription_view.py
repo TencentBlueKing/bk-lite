@@ -65,7 +65,7 @@ class DashboardReportSubscriptionViewSet(viewsets.ModelViewSet):
     @HasPermission("view-View")
     @action(detail=True, methods=["post"])
     def execute(self, request, *args, **kwargs):
-        execution = DashboardReportExecutionService.execute_manual(
+        execution, created = DashboardReportExecutionService.execute_manual(
             request,
             self.get_object(),
         )
@@ -73,6 +73,12 @@ class DashboardReportSubscriptionViewSet(viewsets.ModelViewSet):
             {
                 "execution_id": execution.id,
                 "status": execution.status,
+                "request_id": execution.request_id,
+                "created": created,
             },
-            status=status.HTTP_201_CREATED,
+            status=(
+                status.HTTP_201_CREATED
+                if created
+                else status.HTTP_200_OK
+            ),
         )

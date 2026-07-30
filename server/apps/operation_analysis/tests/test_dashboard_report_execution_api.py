@@ -7,6 +7,7 @@ from apps.operation_analysis.models.models import Dashboard, Directory
 from apps.operation_analysis.models.subscription_models import (
     DashboardReportExecution,
     DashboardReportExecutionSnapshot,
+    DashboardReportRenderSnapshot,
     DashboardReportSubscription,
 )
 from apps.operation_analysis.services.execution_service import (
@@ -15,6 +16,11 @@ from apps.operation_analysis.services.execution_service import (
 from apps.operation_analysis.services.execution_orchestrator import (
     ExecutionOrchestrator,
 )
+from apps.operation_analysis.services.render_token_service import (
+    DashboardReportRenderTokenService,
+)
+from apps.system_mgmt.models import Channel
+from apps.system_mgmt.models import User as SystemUser
 
 
 pytestmark = pytest.mark.django_db
@@ -40,12 +46,24 @@ def dashboard():
 
 
 @pytest.fixture
-def subscription(authenticated_user, dashboard):
+def email_channel():
+    return Channel.objects.create(
+        name="执行邮件通道",
+        channel_type="email",
+        config={},
+        description="测试",
+        team=[1],
+    )
+
+
+@pytest.fixture
+def subscription(authenticated_user, dashboard, email_channel):
     return DashboardReportSubscription.objects.create(
         dashboard=dashboard,
         creator=authenticated_user.username,
         name="日报",
         recipient_email="ops@example.com",
+        email_channel=email_channel,
         config={
             "filter_values": {
                 "environment": "production",
@@ -78,6 +96,21 @@ def grant_dashboard_view(monkeypatch, allowed=True):
     )
 
 
+_REQUEST_ID_SEQ = 0
+
+
+def post_execute(api_client, subscription_url, subscription_id, request_id=None):
+    global _REQUEST_ID_SEQ
+    if request_id is None:
+        _REQUEST_ID_SEQ += 1
+        request_id = f"req-{_REQUEST_ID_SEQ}"
+    return api_client.post(
+        f"{subscription_url}{subscription_id}/execute/",
+        {"request_id": request_id},
+        format="json",
+    )
+
+
 def test_creator_with_dashboard_view_can_execute_and_retrieve(
     api_client,
     subscription,
@@ -88,15 +121,16 @@ def test_creator_with_dashboard_view_can_execute_and_retrieve(
 ):
     grant_dashboard_view(monkeypatch)
 
-    create_response = api_client.post(
-        f"{subscription_url}{subscription.id}/execute/",
-        format="json",
+    create_response = post_execute(
+        api_client, subscription_url, subscription.id, "req-main-1"
     )
 
     assert create_response.status_code == 201, create_response.data
     assert create_response.data == {
         "execution_id": create_response.data["execution_id"],
         "status": "pending",
+        "request_id": "req-main-1",
+        "created": True,
     }
 
     retrieve_response = api_client.get(
@@ -107,7 +141,8 @@ def test_creator_with_dashboard_view_can_execute_and_retrieve(
     assert retrieve_response.data["subscription"] == subscription.id
     assert retrieve_response.data["dashboard"] == subscription.dashboard_id
     assert retrieve_response.data["creator"] == authenticated_user.username
-    assert retrieve_response.data["trigger_type"] == "manual"
+    assert retrieve_response.data["trigger_type"] == "manual_test"
+    assert retrieve_response.data["request_id"] == "req-main-1"
     assert retrieve_response.data["status"] == "pending"
     assert retrieve_response.data["started_at"] is None
     assert retrieve_response.data["finished_at"] is None
@@ -116,7 +151,12 @@ def test_creator_with_dashboard_view_can_execute_and_retrieve(
     assert retrieve_response.data["snapshot"] == {
         "dashboard_id": subscription.dashboard_id,
         "creator_id": authenticated_user.username,
+        "creator_timezone": "Asia/Shanghai",
         "subscription_id": subscription.id,
+        "subscription_name": "日报",
+        "recipient_email": "ops@example.com",
+        "trigger_type": "manual_test",
+        "email_channel_id": subscription.email_channel_id,
         "filter_values": {
             "environment": "production",
             "time_range": "last_7_days",
@@ -133,9 +173,8 @@ def test_user_without_dashboard_view_cannot_execute(
 ):
     grant_dashboard_view(monkeypatch, allowed=False)
 
-    response = api_client.post(
-        f"{subscription_url}{subscription.id}/execute/",
-        format="json",
+    response = post_execute(
+        api_client, subscription_url, subscription.id
     )
 
     assert response.status_code == 403, response.data
@@ -149,24 +188,31 @@ def test_subscription_changes_do_not_affect_existing_snapshot(
     monkeypatch,
 ):
     grant_dashboard_view(monkeypatch)
-    create_response = api_client.post(
-        f"{subscription_url}{subscription.id}/execute/",
-        format="json",
+    create_response = post_execute(
+        api_client, subscription_url, subscription.id
     )
     execution_id = create_response.data["execution_id"]
 
+    subscription.name = "改名后的订阅"
+    subscription.recipient_email = "changed@example.com"
     subscription.config = {
         "filter_values": {
             "environment": "staging",
             "time_range": "today",
         }
     }
-    subscription.save(update_fields=["config", "updated_at"])
+    subscription.save(
+        update_fields=["name", "recipient_email", "config", "updated_at"]
+    )
 
     retrieve_response = api_client.get(f"{execution_url}{execution_id}/")
 
     assert retrieve_response.status_code == 200
-    assert retrieve_response.data["snapshot"]["filter_values"] == {
+    snapshot = retrieve_response.data["snapshot"]
+    assert snapshot["subscription_name"] == "日报"
+    assert snapshot["recipient_email"] == "ops@example.com"
+    assert snapshot["trigger_type"] == "manual_test"
+    assert snapshot["filter_values"] == {
         "environment": "production",
         "time_range": "last_7_days",
     }
@@ -182,9 +228,8 @@ def test_snapshot_creation_failure_marks_execution_failed(
     subscription.config = {"filter_values": ["invalid"]}
     subscription.save(update_fields=["config", "updated_at"])
 
-    response = api_client.post(
-        f"{subscription_url}{subscription.id}/execute/",
-        format="json",
+    response = post_execute(
+        api_client, subscription_url, subscription.id
     )
 
     assert response.status_code == 201, response.data
@@ -216,9 +261,8 @@ def test_unexpected_snapshot_creation_failure_marks_execution_failed(
         classmethod(raise_snapshot_error),
     )
 
-    response = api_client.post(
-        f"{subscription_url}{subscription.id}/execute/",
-        format="json",
+    response = post_execute(
+        api_client, subscription_url, subscription.id
     )
 
     assert response.status_code == 201, response.data
@@ -240,9 +284,8 @@ def test_execution_snapshot_cannot_be_updated(
     monkeypatch,
 ):
     grant_dashboard_view(monkeypatch)
-    response = api_client.post(
-        f"{subscription_url}{subscription.id}/execute/",
-        format="json",
+    response = post_execute(
+        api_client, subscription_url, subscription.id
     )
     snapshot = DashboardReportExecutionSnapshot.objects.get(
         execution_id=response.data["execution_id"]
@@ -311,6 +354,25 @@ def test_execution_service_enforces_status_transitions(
         )
 
 
+def test_unknown_terminal_state_records_finished_at(
+    subscription,
+):
+    execution = DashboardReportExecution.objects.create(
+        subscription=subscription,
+        dashboard=subscription.dashboard,
+        creator=subscription.creator,
+    )
+    assert DashboardReportExecutionService.claim_execution(execution.id)
+    execution.refresh_from_db()
+
+    DashboardReportExecutionService.transition(
+        execution,
+        DashboardReportExecution.Status.UNKNOWN,
+    )
+    assert execution.status == DashboardReportExecution.Status.UNKNOWN
+    assert execution.finished_at is not None
+
+
 def test_manual_execute_does_not_run_orchestrator_in_request(
     api_client,
     subscription,
@@ -328,14 +390,137 @@ def test_manual_execute_does_not_run_orchestrator_in_request(
         ),
     )
 
-    response = api_client.post(
-        f"{subscription_url}{subscription.id}/execute/",
-        format="json",
+    response = post_execute(
+        api_client, subscription_url, subscription.id
     )
 
     assert response.status_code == 201, response.data
     assert response.status_code == 201
     assert response.data["status"] == "pending"
+
+
+def test_manual_execute_dispatches_render_task_after_commit(
+    api_client,
+    subscription,
+    subscription_url,
+    monkeypatch,
+    django_capture_on_commit_callbacks,
+):
+    grant_dashboard_view(monkeypatch)
+    dispatched = []
+    monkeypatch.setattr(
+        "apps.operation_analysis.tasks.tasks."
+        "render_dashboard_report_task.delay",
+        lambda execution_id: dispatched.append(execution_id),
+    )
+
+    with django_capture_on_commit_callbacks(execute=True):
+        response = post_execute(
+            api_client, subscription_url, subscription.id
+        )
+
+    assert response.status_code == 201
+    assert response.data["status"] == "pending"
+    assert dispatched == [response.data["execution_id"]]
+
+
+def test_running_execution_exposes_only_frozen_render_input(
+    api_client,
+    subscription,
+    execution_url,
+    authenticated_user,
+):
+    execution = DashboardReportExecution.objects.create(
+        subscription=subscription,
+        dashboard=subscription.dashboard,
+        creator=authenticated_user.username,
+        status=DashboardReportExecution.Status.RUNNING,
+    )
+    DashboardReportExecutionSnapshot.objects.create(
+        execution=execution,
+        dashboard_id=subscription.dashboard_id,
+        creator_id=authenticated_user.username,
+        subscription_id=subscription.id,
+        subscription_name=subscription.name,
+        recipient_email=subscription.recipient_email,
+        trigger_type=execution.trigger_type,
+        email_channel_id=subscription.email_channel_id,
+        filter_values={"environment": "production"},
+    )
+    DashboardReportRenderSnapshot.objects.create(
+        execution=execution,
+        dashboard_id=subscription.dashboard_id,
+        dashboard_name="冻结仪表盘",
+        dashboard_updated_at=subscription.dashboard.updated_at,
+        view_sets=[{"i": "chart-1", "valueConfig": {"chartType": "line"}}],
+        filters=[{"id": "environment"}],
+        other={"title": "冻结标题"},
+        widget_manifest=[
+            {
+                "widget_id": "chart-1",
+                "widget_type": "line",
+                "datasource_id": 17,
+            }
+        ],
+    )
+    SystemUser.objects.get_or_create(
+        username=authenticated_user.username,
+        defaults={
+            "display_name": authenticated_user.username,
+            "email": "render-session@example.com",
+            "password": "unused",
+            "domain": authenticated_user.domain,
+            "group_list": authenticated_user.group_list,
+        },
+    )
+    issued = DashboardReportRenderTokenService.issue(execution)
+    session_user = DashboardReportRenderTokenService.consume(
+        execution_id=execution.id,
+        plaintext=issued.plaintext,
+    )
+
+    response = api_client.get(
+        f"{execution_url}{execution.id}/render-input/",
+        HTTP_AUTHORIZATION=f"Bearer {session_user['token']}",
+    )
+
+    assert response.status_code == 200
+    assert response.data == {
+        "execution_id": execution.id,
+        "input_snapshot": {
+            "dashboard_id": subscription.dashboard_id,
+            "creator_id": authenticated_user.username,
+            "creator_timezone": "Asia/Shanghai",
+            "subscription_id": subscription.id,
+            "subscription_name": subscription.name,
+            "recipient_email": subscription.recipient_email,
+            "trigger_type": execution.trigger_type,
+            "email_channel_id": subscription.email_channel_id,
+            "filter_values": {"environment": "production"},
+            "created_at": response.data["input_snapshot"]["created_at"],
+        },
+        "render_snapshot": {
+            "dashboard_id": subscription.dashboard_id,
+            "dashboard_name": "冻结仪表盘",
+            "dashboard_updated_at": (
+                response.data["render_snapshot"]["dashboard_updated_at"]
+            ),
+            "view_sets": [
+                {"i": "chart-1", "valueConfig": {"chartType": "line"}}
+            ],
+            "filters": [{"id": "environment"}],
+            "other": {"title": "冻结标题"},
+            "widget_manifest": [
+                {
+                    "widget_id": "chart-1",
+                    "widget_type": "line",
+                    "datasource_id": 17,
+                }
+            ],
+            "datasource_snapshots": [],
+            "created_at": response.data["render_snapshot"]["created_at"],
+        },
+    }
 
 
 def test_user_cannot_execute_another_users_subscription(
@@ -356,6 +541,7 @@ def test_user_cannot_execute_another_users_subscription(
 
     response = other_client.post(
         f"{subscription_url}{subscription.id}/execute/",
+        {"request_id": "req-other"},
         format="json",
     )
 
@@ -382,6 +568,7 @@ def test_superuser_cannot_execute_another_users_subscription(
 
     response = superuser_client.post(
         f"{subscription_url}{subscription.id}/execute/",
+        {"request_id": "req-super"},
         format="json",
     )
 

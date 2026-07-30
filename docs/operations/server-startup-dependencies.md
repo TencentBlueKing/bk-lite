@@ -33,8 +33,17 @@
 4. `batch_init`（启动硬门禁，失败会使 `startup.sh` 退出）
 5. 条件清理配置并设置进程数
 6. `supervisord -n`
-7. Supervisor 才启动 Django API、Celery Worker、Celery Beat、`nats_listener`
-   和 SNMP Bridge 等运行期进程
+7. Supervisor 才启动 Django API、默认 Celery Worker、独立 Dashboard Report
+   Render Worker、Celery Beat、`nats_listener` 和 SNMP Bridge 等运行期进程
+
+Dashboard Report Render Worker 只消费 `dashboard_report_render` 队列，默认并发
+为 2。它和默认 Celery Worker 均属于运行期进程，只能在 `batch_init` 成功后由
+Supervisor 启动；启动期不得投递任务并等待它消费。
+
+生产环境必须为 Render Worker 和后续 Delivery Worker 配置同一个受控共享目录
+`DASHBOARD_REPORT_ARTIFACT_ROOT`。该目录只保存当前发送及必要重试窗口内的
+短期 PDF，并按 Execution 子目录隔离；未配置时 Render 明确失败，不回退到容器
+本地 `/tmp`。临时文件清理属于运行期能力，不得加入 `batch_init`。
 
 ## 启动期允许与禁止事项
 

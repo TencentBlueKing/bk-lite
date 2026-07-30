@@ -13,8 +13,18 @@ from apps.operation_analysis.models.subscription_models import (
 from apps.operation_analysis.services.execution_service import (
     DashboardReportExecutionService,
 )
+from apps.operation_analysis.services.dashboard_report_renderer import (
+    DashboardRenderContractError,
+)
 from apps.operation_analysis.services.render_snapshot_service import (
     DashboardReportRenderSnapshotService,
+)
+from apps.operation_analysis.services.delivery_service import (
+    DashboardReportDeliveryError,
+    DashboardReportDeliveryService,
+)
+from apps.operation_analysis.services.report_render_service import (
+    DashboardReportRenderService,
 )
 
 logger = logging.getLogger(__name__)
@@ -22,7 +32,6 @@ logger = logging.getLogger(__name__)
 
 class ExecutionStepResult(StrEnum):
     COMPLETED = "completed"
-    NOT_READY = "not_ready"
 
 
 @dataclass
@@ -115,7 +124,7 @@ class SnapshotStep:
 
 
 class RenderSnapshotStep:
-    failure_stage = "render_snapshot"
+    failure_stage = "snapshot"
 
     @classmethod
     def execute(
@@ -136,22 +145,73 @@ class RenderSnapshotStep:
 
 
 class RenderStep:
-    @staticmethod
+    failure_stage = "render"
+
+    @classmethod
     def execute(
+        cls,
         execution: DashboardReportExecution,
         snapshot: DashboardReportExecutionSnapshot,
         render_snapshot: DashboardReportRenderSnapshot,
     ) -> ExecutionStepResult:
-        return ExecutionStepResult.NOT_READY
+        try:
+            DashboardReportRenderService.render(
+                execution,
+                snapshot,
+                render_snapshot,
+            )
+        except DashboardRenderContractError as exc:
+            logger.warning(
+                "Dashboard Render Contract 失败: "
+                "execution_id=%s widget_id=%s",
+                execution.id,
+                exc.widget_id,
+            )
+            raise ExecutionStepError(
+                cls.failure_stage,
+                str(exc),
+            ) from exc
+        except Exception as exc:
+            logger.exception(
+                "Dashboard PDF 渲染失败: execution_id=%s",
+                execution.id,
+            )
+            safe_message = getattr(exc, "safe_message", "报告 PDF 生成失败")
+            if isinstance(exc, ExecutionStepError):
+                safe_message = exc.message
+            raise ExecutionStepError(
+                cls.failure_stage,
+                safe_message,
+            ) from exc
+        return ExecutionStepResult.COMPLETED
 
 
 class DeliveryStep:
-    @staticmethod
+    failure_stage = "email"
+
+    @classmethod
     def execute(
+        cls,
         execution: DashboardReportExecution,
         snapshot: DashboardReportExecutionSnapshot,
     ) -> ExecutionStepResult:
-        return ExecutionStepResult.NOT_READY
+        try:
+            DashboardReportDeliveryService.deliver(execution, snapshot)
+        except DashboardReportDeliveryError as exc:
+            raise ExecutionStepError(
+                cls.failure_stage,
+                str(exc),
+            ) from exc
+        except Exception as exc:
+            logger.exception(
+                "邮件投递失败: execution_id=%s",
+                execution.id,
+            )
+            raise ExecutionStepError(
+                cls.failure_stage,
+                "邮件投递失败",
+            ) from exc
+        return ExecutionStepResult.COMPLETED
 
 
 class ExecutionOrchestrator:
@@ -171,16 +231,12 @@ class ExecutionOrchestrator:
             PermissionStep.execute(execution)
             snapshot = SnapshotStep.execute(execution)
             render_snapshot = RenderSnapshotStep.execute(execution)
-            render_result = RenderStep.execute(
+            RenderStep.execute(
                 execution,
                 snapshot,
                 render_snapshot,
             )
-            if render_result != ExecutionStepResult.COMPLETED:
-                return execution
-            delivery_result = DeliveryStep.execute(execution, snapshot)
-            if delivery_result != ExecutionStepResult.COMPLETED:
-                return execution
+            DeliveryStep.execute(execution, snapshot)
         except ExecutionStepError as exc:
             return DashboardReportExecutionService.transition(
                 execution,

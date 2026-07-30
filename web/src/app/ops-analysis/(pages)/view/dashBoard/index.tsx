@@ -72,7 +72,9 @@ import {
   buildDashboardRenderSignal,
   emitDashboardRenderSignal,
   type DashboardWidgetRenderResult,
+  type DashboardRenderSignal,
 } from '@/app/ops-analysis/renderContract';
+import { prepareDashboardPrintLayout } from '@/app/ops-analysis/utils/prepareDashboardPrintLayout';
 
 interface DashboardProps {
   selectedDashboard?: DirItem | null;
@@ -80,6 +82,7 @@ interface DashboardProps {
   shareSessionId?: string;
   getDashboardDetailOverride?: (id: string | number) => Promise<any>;
   renderMode?: boolean;
+  renderFilterValues?: Record<string, FilterValue>;
 }
 
 export interface DashboardRef {
@@ -87,7 +90,13 @@ export interface DashboardRef {
 }
 
 const Dashboard = forwardRef<DashboardRef, DashboardProps>(
-  ({ selectedDashboard, shareMode = false, getDashboardDetailOverride, renderMode = false }, ref) => {
+  ({
+    selectedDashboard,
+    shareMode = false,
+    getDashboardDetailOverride,
+    renderMode = false,
+    renderFilterValues,
+  }, ref) => {
     const { t } = useTranslation();
     const { data: session } = useSession();
     const themeName = renderMode ? 'light' : resolveOpsChartThemeName();
@@ -221,6 +230,31 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
       [layout],
     );
 
+    const emitPreparedRenderSignal = useCallback(
+      async (signal: DashboardRenderSignal) => {
+        if (emittedRenderSignalRef.current) return;
+        emittedRenderSignalRef.current = true;
+        if (signal.type === 'report-ready') {
+          try {
+            await prepareDashboardPrintLayout();
+          } catch (error) {
+            emitDashboardRenderSignal({
+              type: 'report-failed',
+              dashboardId: signal.dashboardId,
+              widgets: signal.widgets,
+              error:
+                error instanceof Error
+                  ? error.message
+                  : 'Dashboard print preparation failed',
+            });
+            return;
+          }
+        }
+        emitDashboardRenderSignal(signal);
+      },
+      [],
+    );
+
     const handleWidgetRenderStatus = useCallback(
       (result: DashboardWidgetRenderResult) => {
         if (!renderMode || emittedRenderSignalRef.current) return;
@@ -231,11 +265,15 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
           renderResultsRef.current,
         );
         if (signal) {
-          emittedRenderSignalRef.current = true;
-          emitDashboardRenderSignal(signal);
+          void emitPreparedRenderSignal(signal);
         }
       },
-      [renderMode, selectedDashboard?.data_id, widgetLayoutItems],
+      [
+        emitPreparedRenderSignal,
+        renderMode,
+        selectedDashboard?.data_id,
+        widgetLayoutItems,
+      ],
     );
 
     const groupIds = useMemo(
@@ -351,7 +389,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
 
           const initialValues = syncFilterValuesWithDefinitions(
             loadedDefinitions,
-            {},
+            renderMode ? (renderFilterValues ?? {}) : {},
           );
 
           setDefinitions(loadedDefinitions);
@@ -393,6 +431,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
       loadCanvasNamespaces,
       syncDashboardCanvasResources,
       renderMode,
+      renderFilterValues,
     ]);
 
     // 监听 selectedDashboard 的变化，重置状态
@@ -1153,7 +1192,12 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
     );
 
     const dashboardCanvas = (
-      <div className="h-full overflow-auto" data-export-expand="true">
+      <div
+        className={
+          renderMode ? 'w-full overflow-visible' : 'h-full overflow-auto'
+        }
+        data-export-expand="true"
+      >
         <DashboardCanvas
           dashboardId={selectedDashboard?.data_id}
           loading={loading}
@@ -1191,7 +1235,9 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
         className={`flex flex-col ${
           isFullscreen
             ? 'fixed inset-0 h-screen w-screen overflow-hidden'
-            : 'h-full flex-1 overflow-auto'
+            : renderMode
+              ? 'w-full min-h-screen overflow-visible'
+              : 'h-full flex-1 overflow-auto'
         }`}
         style={{
           backgroundColor: isDarkTheme ? 'var(--color-bg-2)' : '#f7f8fa',
@@ -1201,7 +1247,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
         <AppViewFullscreenExit visible={isFullscreen} onExit={exitFullscreen} />
         {renderMode ? (
           <div
-            className="fixed inset-0 z-[9999] min-h-screen w-full overflow-auto bg-[#f7f8fa] p-4"
+            className="z-[9999] w-full min-h-screen overflow-visible bg-[#f7f8fa] p-4"
             data-dashboard-render-root="true"
           >
             {dashboardCanvas}

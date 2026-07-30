@@ -16,10 +16,12 @@
 | NameSpace | `models/datasource_models.py` | NATS 连接配置（域/账号/密码加密/TLS）；含 `namespace`（NATS 命名空间标识，消息主题前缀，default=`bklite`）；含 `is_active`（内部预留，前端不暴露、运行时不校验） |
 | DataSourceAPIModel | `models/datasource_models.py` | 数据源定义；含 `source_type`（NATS/MySQL/PostgreSQL/REST API/Excel）、`connection_config`（连接配置）、`query_config`（取数配置）、`chart_type`（JSON，图表类型，default=list）、`field_schema`（JSON，接口返回字段定义，default=list）、`is_active`（内部预留） |
 | DataSourceTag | `models/datasource_models.py` | 数据源标签；含 `build_in`（是否内置） |
-| DashboardReportSubscription | `models/subscription_models.py` | Dashboard 报告订阅配置；绑定 Dashboard、创建者、名称、状态、单个接收邮箱及预留 config。Phase 1A 仅提供配置 CRUD，不执行报告 |
-| DashboardReportExecution | `models/subscription_models.py` | 一次 Dashboard 报告订阅执行的基础审计记录；Phase 1B-1 支持 manual 触发及 pending/running/succeeded/failed/unknown 状态，不执行渲染或投递 |
-| DashboardReportExecutionSnapshot | `models/subscription_models.py` | 一次订阅执行的不可变输入快照；Phase 1B-2A 冻结 Dashboard、Subscription、创建者标识与已保存筛选值，不复制布局、Widget 或 DataSource 运行态 |
-| DashboardReportRenderSnapshot | `models/subscription_models.py` | 一次执行的不可变渲染输入；Phase 1D-0 冻结 Dashboard 名称、布局、筛选、其他展示配置及 Widget/DataSource 引用清单，不复制 DataSource 配置或凭据 |
+| DashboardReportSubscription | `models/subscription_models.py` | Dashboard 报告订阅配置；绑定 Dashboard、创建者、名称、状态、单个接收邮箱、邮件渠道及预留 config |
+| DashboardReportExecution | `models/subscription_models.py` | 一次 Dashboard 报告订阅执行审计；支持 manual 触发及 pending/running/succeeded/failed/unknown；`pending→running` 仅经 Claim |
+| DashboardReportExecutionSnapshot | `models/subscription_models.py` | 一次订阅执行的不可变输入快照；冻结 Dashboard、Subscription、创建者标识/时区与已保存筛选值，不复制布局或 Widget |
+| DashboardReportRenderSnapshot | `models/subscription_models.py` | 一次执行的不可变渲染输入；冻结 Dashboard 名称、布局、筛选、其他展示配置、Widget 清单，以及非敏感 `datasource_snapshots` 审计冻结（当前不驱动取数，不含凭据） |
+| DashboardReportPdfArtifact | `models/subscription_models.py` | 一次执行生成的短期 PDF 元数据；保存附件文件名、受控共享存储引用、文件大小、SHA-256、生成时间与到期时间，不提供历史下载或长期归档 |
+| DashboardReportRenderToken | `models/subscription_models.py` | 一次 Execution 对应的一次性短时 Render Token 审计记录；数据库仅保存 SHA-256、到期与消费时间，明文只在 Worker 内存存在 |
 
 内置机制【已实现/已存在】：`Directory`/`Dashboard`/`Topology`/`Architecture`/`Screen`/`Report` 通过 `is_build_in` + 唯一 `build_in_key` 标识内置画布，承载「内置视图对组织可见但不可删改」语义（删改在视图层被 `_raise_if_builtin` 拦截，见 §3）；`DataSourceTag.build_in` 标识内置标签。
 
@@ -32,8 +34,9 @@
 - `directory` 的 `tree`（GET）：返回目录树（`views/view.py:148`）。
 - `scene_widgets/network_status_topology`（POST）：按 `model_id`、`inst_id`、`depth` 构建网络状态拓扑场景数据，是网络状态拓扑组件的专用后端入口；复用 CMDB network_topology/实例权限并汇总 Alerts 活跃告警，权限动作 `view`（证据：`urls.py:23`、`views/scene_widget_view.py:10-23,10,12`、`services/network_status_topology.py:5,65,87`）。
 - `screen` / `report`【已实现/已存在】：通过 `CanvasModelViewSet` 复用画布类 CRUD、权限与内置对象保护逻辑，新增 `directory.screen` 与 `directory.report` 两类权限域（`views/view.py:347-423`）。
-- `dashboard_subscription`【Phase 1A 已实现】：提供当前用户 Dashboard 报告订阅的 GET/POST/PATCH/DELETE。创建与更新要求当前用户仍可查看目标 Dashboard；删除允许创建者在 Dashboard 查看权限丢失后清理；`terminated` 暂不对 API 开放（证据：`views/subscription_view.py`、`services/subscription_service.py`、`serializers/subscription_serializers.py`）。
-- `dashboard_subscription/{id}/execute` 与 `dashboard_execution/{id}`【Phase 1C.1 已实现】：前者只为已保存订阅创建 manual Execution、冻结一对一 Input Snapshot，并立即返回 `pending` Execution ID；请求线程不调用 Orchestrator。后者只读返回当前用户自己的执行及 Snapshot。`ExecutionOrchestrator` 遇到尚未实现的 Render/Delivery `not_ready` 结果时保持 `running`，只有两个步骤均明确完成后才允许进入 `succeeded`（证据：`views/{subscription_view,execution_view}.py`、`services/{execution_service,execution_orchestrator}.py`、`serializers/execution_serializers.py`）。
+- `dashboard_subscription`【已实现】：当前用户 Dashboard 报告订阅 GET/POST/PATCH/DELETE。创建与更新要求当前用户仍可查看目标 Dashboard；删除允许创建者在 Dashboard 查看权限丢失后清理；`terminated` 不可由 API 直接写入（证据：`views/subscription_view.py`、`services/subscription_service.py`、`serializers/subscription_serializers.py`）。
+- `dashboard_subscription/{id}/execute` 与 `dashboard_execution/{id}`【已实现】：前者为已保存订阅创建 manual Execution、冻结 Input Snapshot，支持 `request_id` 幂等与在途串行，立即返回 Execution；请求线程不调用 Orchestrator。后者只读返回当前用户自己的执行及双 Snapshot。异步 Render Worker Claim 后经 Orchestrator 完成 Render + Email Delivery，两端均明确完成后才进入 `succeeded`；主链路无 `not_ready` placeholder（证据：`views/{subscription_view,execution_view}.py`、`services/{execution_service,execution_orchestrator,delivery_service}.py`）。
+- `dashboard_execution/{id}/render-token-exchange` 与 `render-input`【已实现】：Worker 为 `running` Execution 签发一次性短时 Token，匿名 exchange 原子消费后建立绑定 Execution 的短时 Render Session；普通用户 Session、过期 Token、重复消费和跨 Execution 会话均不能读取 render-input。正式页面只使用双 Snapshot（布局/筛选），Widget 取数仍走实时 DataSource，不消费 `datasource_snapshots`。PDF artifact 按 Execution 隔离；生产环境强制配置 Render/Delivery 共同可见的 `DASHBOARD_REPORT_ARTIFACT_ROOT`（证据：`views/execution_view.py`、`services/{render_token_service,dashboard_report_renderer,report_render_service,render_snapshot_service}.py`）。
 - `open_api/import_export`：开放导入导出 API 通过 `api_pass`/API Token 校验，支持 `export`、`precheck_import`、`submit_import` 三类动作；授权服务解析组织、计算导入导出权限矩阵，并在实例/组织维度过滤对象（证据：`views/openapi_import_export_view.py:34,48,118,190,280`、`services/import_export/authorization_service.py:24,71,87,180`）。
 
 安全说明【已实现/已存在】：`NameSpace` 密码使用 AES（`PasswordCrypto`）加解密，密钥取自 `constants.constants.SECRET_KEY`；该密钥已移除源码内置硬编码值，仅从环境变量 `SECRET_KEY` 读取，未配置时为空串（`constants/constants.py:51-53`）。命名空间编辑时前端只回显掩码占位符；若用户未修改密码，提交时会省略 `password` 字段并以 PATCH 保留原密文，避免因重复提交掩码值而覆盖真实密码（`web/src/app/ops-analysis/(pages)/settings/namespace/operateModal.tsx:10-18,30-49,74-83`、`web/src/app/ops-analysis/api/namespace.ts:22-27`）。
@@ -72,7 +75,7 @@
 
 ## 5. 风险 / 待确认
 - 数据源为外部 NATS / 数据库 / REST API / Excel，运营分析本身不落原始数据；组件运行时已按 `scopeId + requestVersionKey + requestSignature` 做内存级请求缓存，`compare` 维度也参与签名，以减少同页重复请求，但跨页面/跨会话一致性仍依赖上游数据源【已实现 / 待确认】（`web/src/app/ops-analysis/utils/widgetRequestCache.ts:1-39`、`web/src/app/ops-analysis/components/widgetDataRenderer.tsx:324-354`）。
-- 无 Celery 后台任务【已实现】：任务文件已由顶层 `tasks.py` 调整为包形式 `tasks/tasks.py`，文件仍不含任何 Celery 任务（`tasks/tasks.py:1-4`，仅文件头注释）。
+- Dashboard 报告 Render Task【已实现】：`operation_analysis.render_dashboard_report` 固定进入 `dashboard_report_render` 队列，由默认并发 2 的独立 Supervisor Worker 消费，负责原子 claim、Orchestrator Render 与 Email Delivery；未实现 Retry、Scheduler 或 Cleanup（`tasks/tasks.py`、`support-files/release/supervisor/dashboard_report_render_worker.conf`、`services/{execution_service,delivery_service}.py`）。
 
 ## 2026-07-01 Code-ARD 校准
 - `[operation_analysis#20260701-013]` 补录 `api/scene_widgets/network_status_topology` 路由、view 权限、CMDB 拓扑/实例权限复用和 Alerts 活跃告警汇总边界。
@@ -102,6 +105,12 @@
 - `[operation_analysis#20260729-005]` 修正 Manual Execute 异步边界与成功语义：POST 只创建并返回 `pending` Execution；View 不再同步调用 Orchestrator；未实现的 Render/Delivery 返回 `not_ready`，不得产生 `succeeded`。Subscription Modal 可查询并展示单条 Execution 状态。
 - `[operation_analysis#20260729-006]` 新增一对一不可变 Render Snapshot。Orchestrator 在 Input Snapshot 校验后、Render Step 前冻结 Dashboard 配置及 Widget manifest；创建失败记录 `failure_stage=render_snapshot`。未新增 Render Route，未接入 DataSource Runtime Snapshot、Chromium、PDF、Email 或 Scheduler。
 - `[operation_analysis#20260729-007]` 新增事务性 Execution Claim Service，通过条件更新及受影响行数保证同一 pending Execution 只被一个消费者领取并进入 running；公共 transition 禁止绕过 Claim。Orchestrator 改为只消费已领取的 running Execution，不再自行推进 pending。未新增 Worker、Chromium、PDF、Email、Scheduler 或 Retry。
+- `[operation_analysis#20260729-008]` 接入 Execution Render Vertical Slice：Manual Execute 提交后异步派发专用队列 Render Task，独立 Worker claim 后经统一 Orchestrator 加载双 Snapshot；正式 execution render route 注入冻结筛选与布局，Chromium 仅等待显式 ready/failed 并生成临时 PDF artifact。Render 成功保持 running 等待 Delivery，失败记录 `failure_stage=render`。本阶段未实现 Render Token，使用 Worker 新建的无登录审计副作用标准用户会话作为阶段性边界；未实现 Email/Retry。
+- `[operation_analysis#20260729-009]` Render 生产边界收口：新增一次性短时 Render Token 与匿名 exchange，明文不落库，短时渲染 JWT 绑定 Execution，普通登录 Session 与跨 Execution 会话不能读取 render-input；PDF artifact 增加附件文件名、到期时间和共享根目录硬约束。Release-image Chromium 回归增加 `fc-match`、版本与 PyMuPDF 中文文本提取断言；未实现 Email、Retry 或清理 Worker。
+
+## 2026-07-30 MVP Closure 契约对齐
+
+- `[operation_analysis#20260730-001]` 手动主链路（含 Email Delivery）已落地；文档与测试不再宣称 DataSource Runtime Snapshot 已保证配置变更不影响历史 Execution（仅审计冻结、未接入取数消费）。清理过时的 Email 未实现 / `not_ready` placeholder / Phase 临时表述；`ALLOWED_TRANSITIONS` 去掉误导性的 `pending→running` 条目（Claim 仍为唯一入口）。
 
 ## 6. 证据来源
 `server/apps/operation_analysis/{urls.py,models/*,views/datasource_view.py,views/view.py,nats/nats.py,common/get_nats_source_data.py,constants/constants.py,tasks/tasks.py,management/commands/*,services/*}`、`apps/operation_analysis/migrations/0010_remove_namespace_groups.py`、`apps/rpc/base.py:OperationAnalysisRpc`、`web/src/app/ops-analysis/{utils/widgetRequestCache.ts,components/widgetDataRenderer.tsx,api/namespace.ts,(pages)/settings/namespace/operateModal.tsx}`。

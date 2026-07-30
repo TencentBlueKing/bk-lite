@@ -3,6 +3,7 @@ from rest_framework.test import APIClient
 
 from apps.base.models import User
 from apps.operation_analysis.models.models import Dashboard, Directory
+from apps.system_mgmt.models import Channel
 
 
 pytestmark = pytest.mark.django_db
@@ -14,6 +15,12 @@ def grant_feature_permission(authenticated_user):
         "ops-analysis": {"view-View"},
     }
     return authenticated_user
+
+
+@pytest.fixture(autouse=True)
+def bind_current_team(api_client):
+    api_client.cookies["current_team"] = "1"
+    return api_client
 
 
 @pytest.fixture
@@ -32,6 +39,17 @@ def subscription_url():
     return "/api/v1/operation_analysis/api/dashboard_subscription/"
 
 
+@pytest.fixture
+def email_channel():
+    return Channel.objects.create(
+        name="订阅邮件通道",
+        channel_type="email",
+        config={},
+        description="测试",
+        team=[1],
+    )
+
+
 def grant_dashboard_view(monkeypatch, allowed=True):
     monkeypatch.setattr(
         "apps.operation_analysis.services.subscription_service."
@@ -41,7 +59,12 @@ def grant_dashboard_view(monkeypatch, allowed=True):
 
 
 def test_creator_with_dashboard_view_can_create_subscription(
-    api_client, authenticated_user, dashboard, subscription_url, monkeypatch
+    api_client,
+    authenticated_user,
+    dashboard,
+    subscription_url,
+    monkeypatch,
+    email_channel,
 ):
     grant_dashboard_view(monkeypatch)
 
@@ -51,6 +74,7 @@ def test_creator_with_dashboard_view_can_create_subscription(
             "dashboard": dashboard.id,
             "name": "日报",
             "recipient_email": "ops@example.com",
+            "email_channel": email_channel.id,
         },
         format="json",
     )
@@ -62,7 +86,7 @@ def test_creator_with_dashboard_view_can_create_subscription(
 
 
 def test_user_without_dashboard_view_cannot_create_subscription(
-    api_client, dashboard, subscription_url, monkeypatch
+    api_client, dashboard, subscription_url, monkeypatch, email_channel
 ):
     grant_dashboard_view(monkeypatch, allowed=False)
 
@@ -72,6 +96,7 @@ def test_user_without_dashboard_view_cannot_create_subscription(
             "dashboard": dashboard.id,
             "name": "日报",
             "recipient_email": "ops@example.com",
+            "email_channel": email_channel.id,
         },
         format="json",
     )
@@ -80,7 +105,7 @@ def test_user_without_dashboard_view_cannot_create_subscription(
 
 
 def test_missing_dashboard_cannot_create_subscription(
-    api_client, subscription_url, monkeypatch
+    api_client, subscription_url, monkeypatch, email_channel
 ):
     grant_dashboard_view(monkeypatch)
 
@@ -90,6 +115,7 @@ def test_missing_dashboard_cannot_create_subscription(
             "dashboard": 999999,
             "name": "日报",
             "recipient_email": "ops@example.com",
+            "email_channel": email_channel.id,
         },
         format="json",
     )
@@ -99,7 +125,7 @@ def test_missing_dashboard_cannot_create_subscription(
 
 
 def test_paused_subscription_still_requires_dashboard_on_create(
-    api_client, subscription_url, monkeypatch
+    api_client, subscription_url, monkeypatch, email_channel
 ):
     grant_dashboard_view(monkeypatch)
 
@@ -109,6 +135,7 @@ def test_paused_subscription_still_requires_dashboard_on_create(
             "name": "暂停的日报",
             "status": "paused",
             "recipient_email": "ops@example.com",
+            "email_channel": email_channel.id,
         },
         format="json",
     )
@@ -118,7 +145,12 @@ def test_paused_subscription_still_requires_dashboard_on_create(
 
 
 def test_creator_must_still_view_dashboard_to_update(
-    api_client, authenticated_user, dashboard, subscription_url, monkeypatch
+    api_client,
+    authenticated_user,
+    dashboard,
+    subscription_url,
+    monkeypatch,
+    email_channel,
 ):
     grant_dashboard_view(monkeypatch)
     created = api_client.post(
@@ -127,6 +159,7 @@ def test_creator_must_still_view_dashboard_to_update(
             "dashboard": dashboard.id,
             "name": "日报",
             "recipient_email": "ops@example.com",
+            "email_channel": email_channel.id,
         },
         format="json",
     )
@@ -147,6 +180,7 @@ def test_creator_can_delete_after_dashboard_view_is_lost(
     dashboard,
     subscription_url,
     monkeypatch,
+    email_channel,
 ):
     grant_dashboard_view(monkeypatch)
     created = api_client.post(
@@ -155,6 +189,7 @@ def test_creator_can_delete_after_dashboard_view_is_lost(
             "dashboard": dashboard.id,
             "name": "日报",
             "recipient_email": "ops@example.com",
+            "email_channel": email_channel.id,
         },
         format="json",
     )
@@ -167,7 +202,7 @@ def test_creator_can_delete_after_dashboard_view_is_lost(
 
 
 def test_other_user_cannot_update_or_delete_subscription(
-    api_client, dashboard, subscription_url, monkeypatch
+    api_client, dashboard, subscription_url, monkeypatch, email_channel
 ):
     grant_dashboard_view(monkeypatch)
     created = api_client.post(
@@ -176,6 +211,7 @@ def test_other_user_cannot_update_or_delete_subscription(
             "dashboard": dashboard.id,
             "name": "日报",
             "recipient_email": "ops@example.com",
+            "email_channel": email_channel.id,
         },
         format="json",
     )
@@ -203,7 +239,12 @@ def test_other_user_cannot_update_or_delete_subscription(
 
 
 def test_list_only_returns_current_users_subscriptions(
-    api_client, authenticated_user, dashboard, subscription_url, monkeypatch
+    api_client,
+    authenticated_user,
+    dashboard,
+    subscription_url,
+    monkeypatch,
+    email_channel,
 ):
     grant_dashboard_view(monkeypatch)
     own = api_client.post(
@@ -212,6 +253,7 @@ def test_list_only_returns_current_users_subscriptions(
             "dashboard": dashboard.id,
             "name": "自己的订阅",
             "recipient_email": "ops@example.com",
+            "email_channel": email_channel.id,
         },
         format="json",
     )
@@ -233,7 +275,7 @@ def test_list_only_returns_current_users_subscriptions(
 
 
 def test_creator_can_update_subscription(
-    api_client, dashboard, subscription_url, monkeypatch
+    api_client, dashboard, subscription_url, monkeypatch, email_channel
 ):
     grant_dashboard_view(monkeypatch)
     created = api_client.post(
@@ -242,6 +284,7 @@ def test_creator_can_update_subscription(
             "dashboard": dashboard.id,
             "name": "日报",
             "recipient_email": "ops@example.com",
+            "email_channel": email_channel.id,
         },
         format="json",
     )
@@ -258,7 +301,7 @@ def test_creator_can_update_subscription(
 
 
 def test_create_rejects_invalid_email(
-    api_client, dashboard, subscription_url, monkeypatch
+    api_client, dashboard, subscription_url, monkeypatch, email_channel
 ):
     grant_dashboard_view(monkeypatch)
 
@@ -268,6 +311,7 @@ def test_create_rejects_invalid_email(
             "dashboard": dashboard.id,
             "name": "日报",
             "recipient_email": "not-an-email",
+            "email_channel": email_channel.id,
         },
         format="json",
     )
@@ -277,7 +321,7 @@ def test_create_rejects_invalid_email(
 
 
 def test_update_cannot_change_dashboard(
-    api_client, dashboard, subscription_url, monkeypatch
+    api_client, dashboard, subscription_url, monkeypatch, email_channel
 ):
     grant_dashboard_view(monkeypatch)
     other_dashboard = Dashboard.objects.create(name="另一个仪表盘")
@@ -287,6 +331,7 @@ def test_update_cannot_change_dashboard(
             "dashboard": dashboard.id,
             "name": "日报",
             "recipient_email": "ops@example.com",
+            "email_channel": email_channel.id,
         },
         format="json",
     )
@@ -298,3 +343,22 @@ def test_update_cannot_change_dashboard(
     )
 
     assert response.status_code == 400
+
+
+def test_create_requires_email_channel(
+    api_client, dashboard, subscription_url, monkeypatch
+):
+    grant_dashboard_view(monkeypatch)
+
+    response = api_client.post(
+        subscription_url,
+        {
+            "dashboard": dashboard.id,
+            "name": "日报",
+            "recipient_email": "ops@example.com",
+        },
+        format="json",
+    )
+
+    assert response.status_code == 400
+    assert response.data["email_channel"][0] == "报告订阅必须指定邮件通道"

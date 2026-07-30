@@ -5,6 +5,7 @@ import type {
   DashboardSubscriptionPayload,
   DashboardSubscriptionUpdatePayload,
   DashboardExecutionCreated,
+  DashboardExecutionRenderInput,
   DashboardReportExecution,
 } from '@/app/ops-analysis/types/dashboardSubscription';
 import useApiClient from '@/utils/request';
@@ -46,9 +47,10 @@ export const useDashboardSubscriptionApi = () => {
   );
 
   const executeSubscription = useCallback(
-    (id: number) =>
+    (id: number, requestId: string) =>
       post<DashboardExecutionCreated>(
         `${SUBSCRIPTION_ENDPOINT}${id}/execute/`,
+        { request_id: requestId },
       ),
     [post],
   );
@@ -59,6 +61,14 @@ export const useDashboardSubscriptionApi = () => {
     [get],
   );
 
+  const getExecutionRenderInput = useCallback(
+    (id: number) =>
+      get<DashboardExecutionRenderInput>(
+        `${EXECUTION_ENDPOINT}${id}/render-input/`,
+      ),
+    [get],
+  );
+
   return {
     listSubscriptions,
     createSubscription,
@@ -66,5 +76,6 @@ export const useDashboardSubscriptionApi = () => {
     deleteSubscription,
     executeSubscription,
     getExecution,
+    getExecutionRenderInput,
   };
 };

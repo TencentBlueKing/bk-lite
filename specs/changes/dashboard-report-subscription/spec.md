@@ -1,6 +1,29 @@
 # 仪表盘报告订阅 MVP
 
-Status: in_progress
+Status: mvp_closure_aligned
+
+## Current MVP Closure Status（2026-07-30）
+
+手动主链路已落地并可诚实宣告成功，不再依赖 `not_ready` / placeholder 假成功：
+
+`Subscription → Execution → Input Snapshot → Render Snapshot → Claim → Render Worker → PDF Artifact → Email Delivery → succeeded`
+
+当前已交付：
+
+- Subscription CRUD（`terminated` 不可由 API 直接写入）；
+- Manual Execute（`request_id` 幂等 + 在途串行）；
+- 双 Snapshot、Claim、Render Token、Chromium PDF、Email Delivery；
+- Render Snapshot 写入非敏感 `datasource_snapshots` **审计冻结**。
+
+明确未交付 / 非本 Closure 宣称能力：
+
+- Scheduler、Retry/Attempt、Cleanup Worker、软删除生命周期；
+- **DataSource Runtime Snapshot 消费链路未接入**：渲染取数仍走实时 DataSource；
+  MVP **不保证**「DataSource 配置修改不影响历史 / 在途 Execution」；
+- 完整权限 Snapshot、对象存储长期归档、历史 PDF 下载。
+
+以下 Phase 1A–1D 小节为历史推进记录，其中“Email 未实现”“`not_ready` placeholder”
+等表述已被本段覆盖；以本节与代码/测试为当前事实。
 
 ## Phase 1A 实现状态（2026-07-28）
 
@@ -162,6 +185,66 @@ Scheduler。后续正式 Render Route 只接受 `execution_id`，并从上述快
 Phase 1D-1A 只建立 Claim Service 与 Orchestrator 调用边界，不新增 Worker
 任务，不实现 Chromium、PDF、Email、Scheduler 或 Retry。
 
+## Phase 1D-1B 实现状态（2026-07-29）
+
+已实现 Render Vertical Slice：
+
+- Manual Execute 在数据库事务提交后异步派发
+  `operation_analysis.render_dashboard_report` Celery Task，HTTP 仍立即返回
+  `pending`；
+- Task 通过 `claim_execution()` 原子领取 Execution，再调用统一
+  `ExecutionOrchestrator`；
+- 正式页面入口为
+  `/ops-analysis/render/execution/{execution_id}`，页面只通过
+  `GET /dashboard_execution/{execution_id}/render-input/` 读取 Execution Input
+  Snapshot 与 Render Snapshot，不调用 Dashboard detail API；
+- Input Snapshot 的 `filter_values` 会注入 Dashboard 报告模式；布局、筛选定义、
+  `other` 与 Widget manifest 来自不可变 Render Snapshot；
+- Chromium 固定使用亮色、1440×900 viewport、横向 A4，并只等待
+  `bk-dashboard-render` 的 `report-ready/report-failed`；不使用固定 sleep、
+  `networkidle` 或 DOM 存在判断；
+- `report-ready` 后生成并校验 PDF，受控临时目录按 Execution 隔离；新增一对一
+  `DashboardReportPdfArtifact` 保存 storage reference、size、SHA-256 与生成时间；
+- PDF 成功后 Execution 保持 `running`，等待尚未实现的 DeliveryStep；Render
+  Contract、Chromium、PDF 或任务投递失败均进入 `failed` 且
+  `failure_stage=render`；
+- 同一 Execution 只能成功 claim 一次，已有 artifact 的 Render Service 也保持
+  幂等，不重复生成 PDF；
+- Phase 0 `dashboard_render_regression.py` 已复用正式 Chromium 适配器，继续保留
+  为显式 Render Contract/PDF 回归工具。
+
+本阶段按任务限制没有实现 Render Token。Worker 不复用用户浏览器 Cookie，而是
+为 Execution 创建者无登录审计副作用地临时签发既有标准用户 JWT，并在新的
+Chromium Context 中建立 NextAuth Session；该过程不更新 `last_login`，JWT
+不进入 URL、Snapshot、artifact 或日志。正式 MVP 仍必须以第 12 节的一次性
+Render Token 替换该阶段性会话边界。
+
+部署时必须配置 Worker 可访问的 `DASHBOARD_REPORT_WEB_BASE_URL`；artifact 根目录
+可通过 `DASHBOARD_REPORT_ARTIFACT_ROOT` 配置，未配置时使用系统临时目录。
+Render Task 固定进入 `dashboard_report_render` 队列，由独立 Supervisor Worker
+消费，默认并发为 2，不占用普通业务 Worker 资源池。本阶段尚未实现 Email、
+Scheduler、Retry、Render Token、Data Source Runtime Snapshot 或长期 PDF 归档。
+
+## Phase 1D-1C 实现状态（2026-07-29）
+
+Render 生产边界已按 MVP 收紧：
+
+- 新增与 Execution 一对一的短时 `DashboardReportRenderToken`，数据库只保存
+  SHA-256、`expires_at`、`consumed_at` 与创建时间；
+- Worker 签发的明文 Token 只在内存中传递，通过匿名 exchange 原子消费，重复、
+  过期和跨 Execution 使用均失败；
+- exchange 建立的短时 Render Session JWT 显式绑定 `render_execution_id`，
+  普通用户登录 Session 不能读取 `render-input`；
+- PDF artifact 增加附件 `filename` 与 `expires_at`，存储引用改为
+  Execution 隔离目录；非 DEBUG 环境必须配置 Render Worker 与未来 DeliveryStep
+  共同可见的 `DASHBOARD_REPORT_ARTIFACT_ROOT`；
+- release-image Chromium smoke 增加 `fc-match` CJK 字体验证、Chromium 版本、
+  PDF 非空与 PyMuPDF 中文文本提取断言。
+
+本阶段未实现 Retry/Attempt/Revoke、Email、Scheduler、对象存储或 Artifact
+cleanup worker。Render Token 保持每个 Execution 单次签发边界，后续 Retry
+阶段再按第 12 节扩展 attempt/revoke 字段。
+
 ## Problem Statement
 
 运营分析仪表盘已经支持用户在浏览器中手工导出 PDF，但现有实现依赖当前页面 DOM、`html-to-image`、`jsPDF.save()` 和用户登录会话，只能下载到用户本机，不能由后台周期任务无会话生成并作为邮件附件发送。
@@ -188,7 +271,7 @@ MVP 只支持运营分析 `Dashboard`，只输出 PDF，只支持一个收件邮
 | 订阅执行（Execution） | 一次计划执行或手工测试产生的独立生成与投递单元，是状态、幂等、重试与审计边界。 |
 | Execution Input Snapshot | 执行开始时冻结的本次业务输入；后续订阅编辑不影响当前执行。 |
 | Render Snapshot | 执行开始时冻结的 Dashboard 布局、Widget、数据源引用和展示配置；不是复制出来的新 Dashboard。 |
-| Data Source Runtime Snapshot | 本次执行冻结的非敏感数据源运行配置及版本引用；不包含凭据或用户权限。 |
+| Data Source Runtime Snapshot | 本次执行写入 Render Snapshot 的非敏感数据源配置审计冻结（如 `query_config` / `field_schema`）；不含凭据。当前 MVP 仅持久化，**不驱动**渲染取数；后续若接入消费链路，才可宣称配置变更不影响该次执行查询。 |
 | Render Token | 每次渲染 attempt 使用的短时、一次性、仅限内部渲染会话的凭据；不是数据授权凭据。 |
 | 计划执行（scheduled） | 由统一扫描器针对某个 `scheduled_time_utc` 创建的执行。 |
 | 测试执行（manual_test） | 用户显式请求、基于已保存订阅创建且不影响调度计划的执行。 |
@@ -374,23 +457,24 @@ Execution 开始时冻结 `Render Snapshot`：
 - Dashboard `updated_at` 或版本标识；
 - Snapshot 创建时间。
 
-按 Render Snapshot 引用解析并冻结 `Data Source Runtime Snapshot`：
+按 Render Snapshot 引用写入 `Data Source Runtime Snapshot`（审计冻结）：
 
 - `datasource_id`；
-- `datasource_type`；
-- 配置版本；
-- 查询路径与参数定义；
-- namespace 等运行引用。
+- `source_type`；
+- 非敏感 `query_config` / `field_schema`。
 
 任何 Snapshot 均不得保存密码、Token、Secret 或用户权限。
 
-数据查询时：
+数据查询时（当前 MVP 实现）：
 
 - 根据 `creator_id` 获取当前用户上下文。
 - 沿用现有 `user_info` 权限链路向下游传递当前组织、用户、权限和组织树。
 - 从安全存储读取当前有效凭据。
+- **按 Widget 引用的实时 DataSource 定义取数**，不读取上述审计冻结驱动查询。
 
-数据源在冻结前不存在或不可访问时执行失败。冻结后修改数据源配置不影响当前执行；凭据无法取得时按 `data_load` 失败。
+数据源在 Render Snapshot 创建时缺失则跳过写入对应审计项；渲染期若实时 DataSource
+不可访问或凭据无效，按既有数据加载失败处理。**当前不宣称**“冻结后修改数据源配置
+不影响当前执行”；该保证取决于尚未接入的消费链路。
 
 ### 8. Dashboard 编辑与删除竞态
 

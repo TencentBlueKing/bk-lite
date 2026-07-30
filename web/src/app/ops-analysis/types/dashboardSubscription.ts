@@ -7,6 +7,7 @@ export interface DashboardSubscription {
   name: string;
   status: DashboardSubscriptionStatus;
   recipient_email: string;
+  email_channel: number;
   config: Record<string, unknown>;
   created_at: string;
   updated_at: string;
@@ -16,6 +17,7 @@ export interface DashboardSubscriptionPayload {
   dashboard: number;
   name: string;
   recipient_email: string;
+  email_channel: number;
   status: DashboardSubscriptionStatus;
 }
 
@@ -34,6 +36,8 @@ export type DashboardExecutionStatus =
 export interface DashboardExecutionCreated {
   execution_id: number;
   status: DashboardExecutionStatus;
+  request_id: string;
+  created: boolean;
 }
 
 export interface DashboardReportExecutionSnapshot {
@@ -57,4 +61,33 @@ export interface DashboardReportExecution {
   started_at: string | null;
   finished_at: string | null;
   snapshot: DashboardReportExecutionSnapshot | null;
+  pdf_artifact: DashboardReportPdfArtifact | null;
+}
+
+export interface DashboardReportRenderSnapshot {
+  dashboard_id: number;
+  dashboard_name: string;
+  dashboard_updated_at: string;
+  view_sets: unknown[];
+  filters: unknown;
+  other: Record<string, unknown> | null;
+  widget_manifest: Array<{
+    widget_id: string;
+    widget_type: string | null;
+    datasource_id: number | string | null;
+  }>;
+  created_at: string;
+}
+
+export interface DashboardReportPdfArtifact {
+  storage_reference: string;
+  size_bytes: number;
+  sha256: string;
+  created_at: string;
+}
+
+export interface DashboardExecutionRenderInput {
+  execution_id: number;
+  input_snapshot: DashboardReportExecutionSnapshot;
+  render_snapshot: DashboardReportRenderSnapshot;
 }

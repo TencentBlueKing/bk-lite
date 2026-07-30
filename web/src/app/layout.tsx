@@ -68,7 +68,11 @@ const LayoutWithProviders = ({ children }: { children: React.ReactNode }) => {
   const { loading: permissionsLoading, hasPermission, menus } = usePermissions();
   const { data: session, status } = useSession();
   const { loading: menusLoading, configMenus } = useMenus();
-  const { username, displayName } = useUserInfoContext();
+  const {
+    username,
+    displayName,
+    loading: userInfoLoading,
+  } = useUserInfoContext();
   const { portalName, watermarkEnabled, watermarkText } = usePortalBranding();
   const router = useRouter();
   const pathname = usePathname();
@@ -77,20 +81,42 @@ const LayoutWithProviders = ({ children }: { children: React.ReactNode }) => {
   const isAuthenticated = status === 'authenticated' && !!session && !(session.user as any)?.temporary_pwd;
   const isAuthLoading = status === 'loading';
 
-  const isLoading = isAuthLoading || (isAuthenticated && (permissionsLoading || menusLoading));
   const authPaths = ['/auth/signin', '/auth/signout', '/auth/signin/login-auth-result'];
   const excludedPaths = ['/no-permission', '/no-found', '/', ...authPaths];
   const hasResolvedPathname = pathname !== null;
   const isAuthRoute = Boolean(pathname && authPaths.includes(pathname));
   const isDashboardRoute = isProfessionalDashboardRoute(pathname);
   const isDashboardShareRoute = pathname?.startsWith('/ops-analysis/share/');
+  const isDashboardRenderRoute = pathname?.startsWith(
+    '/ops-analysis/render/execution/',
+  );
+  const isStandaloneDashboardRoute = (
+    isDashboardShareRoute || isDashboardRenderRoute
+  );
+  const isLoading = isAuthLoading || (
+    isAuthenticated
+    && (
+      isDashboardRenderRoute
+        ? userInfoLoading || !username
+        : permissionsLoading || menusLoading
+    )
+  );
 
   const shouldRenderMenu = useMemo(() => {
-    if (pathname?.startsWith('/ops-console') || isDashboardRoute || isDashboardShareRoute) {
+    if (
+      pathname?.startsWith('/ops-console')
+      || isDashboardRoute
+      || isStandaloneDashboardRoute
+    ) {
       return false;
     }
     return shouldRenderSecondLayerMenu(pathname, menus);
-  }, [pathname, menus, isDashboardRoute, isDashboardShareRoute]);
+  }, [
+    pathname,
+    menus,
+    isDashboardRoute,
+    isStandaloneDashboardRoute,
+  ]);
 
   const isPathInMenu = useCallback((path: string, menus: MenuItem[]): boolean => {
     for (const menu of menus) {
@@ -117,7 +143,10 @@ const LayoutWithProviders = ({ children }: { children: React.ReactNode }) => {
       }
 
       if (!isLoading) {
-        if ((pathname && excludedPaths.includes(pathname)) || isDashboardShareRoute) {
+        if (
+          (pathname && excludedPaths.includes(pathname))
+          || isStandaloneDashboardRoute
+        ) {
           setIsAllowed(true);
           return;
         }
@@ -139,7 +168,17 @@ const LayoutWithProviders = ({ children }: { children: React.ReactNode }) => {
     };
 
     checkPermission();
-  }, [isLoading, pathname, isAuthenticated, status, session, router, configMenus, hasPermission, isDashboardShareRoute]);
+  }, [
+    isLoading,
+    pathname,
+    isAuthenticated,
+    status,
+    session,
+    router,
+    configMenus,
+    hasPermission,
+    isStandaloneDashboardRoute,
+  ]);
 
   // Show password expiry reminder after login redirect
   useEffect(() => {
@@ -175,7 +214,7 @@ const LayoutWithProviders = ({ children }: { children: React.ReactNode }) => {
       && !isAllowed
       && pathname
       && !excludedPaths.includes(pathname)
-      && !isDashboardShareRoute
+      && !isStandaloneDashboardRoute
       && !isLoading
     )
   ) {
@@ -184,13 +223,27 @@ const LayoutWithProviders = ({ children }: { children: React.ReactNode }) => {
 
   const layoutContent = (
     <AntdRegistry>
-      <div className={`flex flex-col ${isDashboardShareRoute ? 'h-screen overflow-hidden' : 'min-h-screen'} ${!isAuthRoute ? 'min-w-[1280px]' : ''}`}>
-        {isAuthenticated && hasResolvedPathname && !isAuthRoute && (
-          <header className="sticky top-0 left-0 right-0 flex justify-between items-center header-bg">
-            <TopMenu hideMainMenu={hideTopMenu} />
-          </header>
-        )}
-        <main className={`main-content flex-1 p-4 flex text-sm ${isDashboardShareRoute ? 'min-h-0 overflow-hidden' : ''} ${!isAuthenticated || isAuthRoute ? 'h-screen' : ''}`}>
+      <div className={`flex flex-col ${
+        isDashboardRenderRoute
+          ? 'min-h-screen overflow-visible'
+          : isStandaloneDashboardRoute
+            ? 'h-screen overflow-hidden'
+            : 'min-h-screen'
+      } ${!isAuthRoute ? 'min-w-[1280px]' : ''}`}>
+        {isAuthenticated
+          && hasResolvedPathname
+          && !isAuthRoute
+          && !isDashboardRenderRoute
+          && (
+            <header className="sticky top-0 left-0 right-0 flex justify-between items-center header-bg">
+              <TopMenu hideMainMenu={hideTopMenu} />
+            </header>
+          )}
+        <main className={`main-content flex-1 flex text-sm ${
+          isDashboardRenderRoute
+            ? 'min-h-screen overflow-visible p-0'
+            : 'p-4'
+        } ${isDashboardShareRoute ? 'min-h-0 overflow-hidden' : ''} ${!isAuthenticated || isAuthRoute ? 'h-screen' : ''}`}>
           {shouldRenderMenu ? (
             <WithSideMenuLayout
               layoutType="segmented"
@@ -206,7 +259,7 @@ const LayoutWithProviders = ({ children }: { children: React.ReactNode }) => {
     </AntdRegistry>
   );
 
-  if (!isAuthenticated || !watermarkEnabled) {
+  if (!isAuthenticated || !watermarkEnabled || isDashboardRenderRoute) {
     return layoutContent;
   }
 

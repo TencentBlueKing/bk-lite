@@ -15,6 +15,7 @@ class DashboardReportSubscriptionSerializer(serializers.ModelSerializer):
             "name",
             "status",
             "recipient_email",
+            "email_channel",
             "config",
             "created_at",
             "updated_at",
@@ -29,7 +30,9 @@ class DashboardReportSubscriptionSerializer(serializers.ModelSerializer):
 
     def validate_status(self, value):
         if value == DashboardReportSubscription.Status.TERMINATED:
-            raise serializers.ValidationError("Phase 1A 不允许设置 terminated")
+            raise serializers.ValidationError(
+                "terminated 状态不可由 API 直接写入"
+            )
         return value
 
     def validate(self, attrs):
@@ -56,11 +59,19 @@ class DashboardReportSubscriptionSerializer(serializers.ModelSerializer):
             if self.instance
             else DashboardReportSubscription.Status.ACTIVE,
         )
+        email_channel = attrs.get(
+            "email_channel",
+            self.instance.email_channel if self.instance else None,
+        )
         if (
             status == DashboardReportSubscription.Status.ACTIVE
             and dashboard is None
         ):
             raise serializers.ValidationError(
                 {"dashboard": "启用状态的报告订阅必须关联仪表盘"}
+            )
+        if email_channel is None:
+            raise serializers.ValidationError(
+                {"email_channel": "报告订阅必须指定邮件通道"}
             )
         return attrs

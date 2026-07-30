@@ -7,14 +7,18 @@ from apps.operation_analysis.models.share_models import DashboardShareLink, Dash
 from apps.operation_analysis.models.subscription_models import (
     DashboardReportExecution,
     DashboardReportExecutionSnapshot,
+    DashboardReportPdfArtifact,
     DashboardReportRenderSnapshot,
+    DashboardReportRenderToken,
     DashboardReportSubscription,
 )
 
 __all__ = [
     "DashboardReportExecution",
     "DashboardReportExecutionSnapshot",
+    "DashboardReportPdfArtifact",
     "DashboardReportRenderSnapshot",
+    "DashboardReportRenderToken",
     "DashboardReportSubscription",
     "DashboardShareLink",
     "DashboardShareSession",

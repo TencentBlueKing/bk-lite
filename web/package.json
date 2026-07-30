@@ -80,6 +80,8 @@
     "test:ops-analysis-dashboard-share": "pnpm exec tsx scripts/ops-analysis-dashboard-share-test.ts",
     "test:ops-analysis-render-contract": "pnpm exec tsx scripts/ops-analysis-render-contract-test.ts",
     "test:ops-analysis-dashboard-subscription": "pnpm exec vitest run src/app/ops-analysis/components/__tests__/dashboardSubscriptionModal.test.tsx",
+    "test:ops-analysis-dashboard-render-page": "pnpm exec vitest run src/app/ops-analysis/components/__tests__/dashboardExecutionRenderPage.test.tsx",
+    "test:ops-analysis-prepare-print": "pnpm exec vitest run src/app/ops-analysis/utils/__tests__/prepareDashboardPrintLayout.test.tsx",
     "type-check": "pnpm clean && pnpm prepare-enterprise && pnpm precommit && tsc -p tsconfig.lint.json --noEmit",
     "precommit": "node -r dotenv/config scripts/generate-tsconfig.js dotenv_config_path=.env.local",
     "prepare": "husky install",
