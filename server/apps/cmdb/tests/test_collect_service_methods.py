@@ -16,7 +16,11 @@ import types
 import pydantic.root_model  # noqa
 import pytest
 
-from apps.cmdb.constants.constants import CollectPluginTypes, CollectRunStatusType
+from apps.cmdb.constants.constants import (
+    CollectDriverTypes,
+    CollectPluginTypes,
+    CollectRunStatusType,
+)
 from apps.cmdb.services.collect_service import CollectModelService
 from apps.core.exceptions.base_app_exception import BaseAppException
 
@@ -373,6 +377,37 @@ class TestFormatUpdateCredential:
             "regions": {"resource_id": "cn-east-3"},
         }
 
+    def test_华为云编辑提交掩码时沿用旧AKSK(self, mocker):
+        mocker.patch(
+            "apps.cmdb.services.collect_service.get_collect_model_passwords",
+            return_value=["accessKey", "accessSecret"],
+        )
+        inst = fake_instance(
+            is_k8s=False,
+            model_id="hwcloud",
+            driver_type=CollectDriverTypes.PROTOCOL,
+            decrypt_credentials={
+                "accessKey": "AK-old",
+                "accessSecret": "SK-old",
+                "project_id": "project-old",
+            },
+        )
+        data = {
+            "credential": {
+                "accessKey": "******",
+                "accessSecret": "******",
+                "project_id": "project-new",
+            }
+        }
+
+        CollectModelService.format_update_credential(inst, data)
+
+        assert data["credential"] == {
+            "accessKey": "AK-old",
+            "accessSecret": "SK-old",
+            "project_id": "project-new",
+        }
+
     def test_regions与其他字段共存(self):
         inst = fake_instance(is_k8s=False, decrypt_credentials={"user": "old"})
         data = {"credential": {"user": "new", "regions": ["r1"]}}
@@ -432,6 +467,46 @@ class TestFormatUpdateCredential:
                 "scheme": "https",
                 "port": 8443,
                 "verify_tls": True,
+            }
+        ]
+
+    def test_凭据池编辑提交掩码时沿用旧密钥(self, mocker):
+        mocker.patch(
+            "apps.cmdb.services.collect_service.get_collect_model_passwords",
+            return_value=["token"],
+        )
+        inst = fake_instance(
+            is_k8s=False,
+            model_id="influxdb",
+            driver_type=CollectDriverTypes.PROTOCOL,
+            decrypt_credentials=[
+                {
+                    "credential_id": "cred-1",
+                    "token": "old-token",
+                    "scheme": "https",
+                    "port": 8086,
+                }
+            ],
+        )
+        data = {
+            "credential": [
+                {
+                    "credential_id": "cred-1",
+                    "token": "******",
+                    "scheme": "https",
+                    "port": 8443,
+                }
+            ]
+        }
+
+        CollectModelService.format_update_credential(inst, data)
+
+        assert data["credential"] == [
+            {
+                "credential_id": "cred-1",
+                "token": "old-token",
+                "scheme": "https",
+                "port": 8443,
             }
         ]
 

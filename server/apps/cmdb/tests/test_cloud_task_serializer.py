@@ -114,6 +114,24 @@ def test_hwcloud_accepts_service_normalized_credential_pool():
     ]
 
 
+def test_hwcloud_create_rejects_masked_access_keys():
+    serializer = _serializer(
+        "hwcloud",
+        {
+            "accessKey": "******",
+            "accessSecret": "******",
+            "project_id": "project-1",
+            "regions": {"resource_id": "cn-north-4"},
+        },
+    )
+
+    assert serializer.is_valid() is False
+    assert set(serializer.errors["credential"]) == {
+        "accessKey",
+        "accessSecret",
+    }
+
+
 @pytest.mark.parametrize("model_id", ["aliyun_account", "qcloud"])
 def test_other_public_clouds_do_not_require_project_id(model_id):
     serializer = _serializer(

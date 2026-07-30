@@ -19,6 +19,7 @@ from apps.cmdb.models.collect_model import (
 from apps.cmdb.services.collect_credential_pool_service import CollectCredentialPoolService
 from apps.cmdb.services.collect_object_tree import get_collect_object_meta
 from apps.cmdb.services.collect_credential_contract import (
+    API_SECRET_MASK,
     CredentialContractError,
     get_collect_credential_contract,
     validate_collect_credential,
@@ -128,6 +129,204 @@ class CollectModelSerializer(AuthSerializer):
         params.update(normalize_topology_contract(params))
         return params
 
+    def _reject_masked_secrets_on_create(self, attrs, model_id):
+        if self.instance is not None:
+            return
+
+        raw_credential = self._get_attr_or_instance_value(attrs, "credential")
+        if isinstance(raw_credential, dict):
+            credential_pool = [raw_credential]
+        elif isinstance(raw_credential, list):
+            credential_pool = raw_credential
+        else:
+            return
+
+        encrypted_fields = get_collect_model_passwords(
+            collect_model_id=model_id,
+            driver_type=self._get_attr_or_instance_value(
+                attrs,
+                "driver_type",
+            ),
+        )
+        masked_fields = sorted(
+            {
+                field
+                for credential in credential_pool
+                if isinstance(credential, dict)
+                for field in encrypted_fields
+                if credential.get(field) == API_SECRET_MASK
+            }
+        )
+        if masked_fields:
+            raise serializers.ValidationError(
+                {
+                    "credential": {
+                        field: "新建任务时请重新填写凭据"
+                        for field in masked_fields
+                    }
+                }
+            )
+
+    def _validate_influxdb_credential(self, attrs):
+        instances = self._get_attr_or_instance_value(attrs, "instances")
+        ip_range = self._get_attr_or_instance_value(attrs, "ip_range")
+        if ip_range or not isinstance(instances, list) or len(instances) != 1:
+            raise serializers.ValidationError(
+                {"instances": "InfluxDB 仅支持选择一个明确的采集端点"}
+            )
+
+        raw_credential = self._get_attr_or_instance_value(attrs, "credential")
+        if isinstance(raw_credential, dict):
+            credential_pool = [copy.deepcopy(raw_credential)]
+        elif isinstance(raw_credential, list):
+            credential_pool = copy.deepcopy(raw_credential)
+        else:
+            raise serializers.ValidationError(
+                {"credential": "InfluxDB 凭据格式错误"}
+            )
+        if len(credential_pool) != 1 or not isinstance(credential_pool[0], dict):
+            raise serializers.ValidationError(
+                {"credential": "InfluxDB 仅支持一组连接配置"}
+            )
+
+        credential = credential_pool[0]
+        allowed_fields = {
+            "credential_id",
+            "scheme",
+            "port",
+            "verify_tls",
+            "token",
+            "password",  # 兼容历史 InfluxDB 任务
+        }
+        unknown_fields = sorted(set(credential) - allowed_fields)
+        errors = {}
+        if unknown_fields:
+            errors["fields"] = f"不支持字段: {', '.join(unknown_fields)}"
+
+        scheme = str(credential.get("scheme") or "http").strip().lower()
+        if scheme not in {"http", "https"}:
+            errors["scheme"] = "仅支持 HTTP 或 HTTPS"
+
+        try:
+            port = int(credential.get("port", 8086))
+        except (TypeError, ValueError):
+            port = 0
+        if not 1 <= port <= 65535:
+            errors["port"] = "端口必须在 1 到 65535 之间"
+
+        verify_tls = credential.get("verify_tls", True)
+        if not isinstance(verify_tls, bool):
+            errors["verify_tls"] = "证书校验开关必须为布尔值"
+
+        for secret_field in ("token", "password"):
+            if secret_field in credential and not isinstance(
+                credential[secret_field],
+                str,
+            ):
+                errors[secret_field] = "Token 必须为字符串"
+
+        if errors:
+            raise serializers.ValidationError({"credential": errors})
+
+        credential.update(
+            scheme=scheme,
+            port=port,
+            verify_tls=verify_tls,
+        )
+        attrs["credential"] = [credential]
+
+    def _validate_hwcloud_credential(self, attrs):
+        raw_credential = self._get_attr_or_instance_value(attrs, "credential")
+        if isinstance(raw_credential, dict):
+            credential_pool = [copy.deepcopy(raw_credential)]
+        elif isinstance(raw_credential, list):
+            credential_pool = copy.deepcopy(raw_credential)
+        else:
+            raise serializers.ValidationError(
+                {"credential": "华为云凭据格式错误"}
+            )
+
+        if len(credential_pool) != 1 or not isinstance(credential_pool[0], dict):
+            raise serializers.ValidationError(
+                {"credential": "华为云仅支持一组连接凭据"}
+            )
+
+        credential = credential_pool[0]
+        project_id = credential.get("project_id")
+        if not isinstance(project_id, str) or not project_id.strip():
+            raise serializers.ValidationError(
+                {"credential": {"project_id": "请输入华为云 Project ID"}}
+            )
+        credential["project_id"] = project_id.strip()
+        attrs["credential"] = [credential]
+
+    def _validate_platform_api_credential(self, attrs):
+        raw_credential = self._get_attr_or_instance_value(attrs, "credential")
+        if isinstance(raw_credential, dict):
+            credential_pool = [copy.deepcopy(raw_credential)]
+        elif isinstance(raw_credential, list):
+            credential_pool = copy.deepcopy(raw_credential)
+        else:
+            raise serializers.ValidationError(
+                {"credential": "平台 API 凭据格式错误"}
+            )
+        if len(credential_pool) != 1 or not isinstance(credential_pool[0], dict):
+            raise serializers.ValidationError(
+                {"credential": "平台 API 仅支持一组连接凭据"}
+            )
+
+        credential = credential_pool[0]
+        legacy_username = credential.pop("accessKey", None)
+        legacy_password = credential.pop("accessSecret", None)
+        if not credential.get("username") and legacy_username:
+            credential["username"] = legacy_username
+        if not credential.get("password") and legacy_password:
+            credential["password"] = legacy_password
+        allowed_fields = {
+            "credential_id",
+            "username",
+            "password",
+            "port",
+            "verify_tls",
+        }
+        unknown_fields = sorted(set(credential) - allowed_fields)
+        errors = {}
+        if unknown_fields:
+            errors["fields"] = f"不支持字段: {', '.join(unknown_fields)}"
+
+        username = credential.get("username")
+        if not isinstance(username, str) or not username.strip():
+            errors["username"] = "请输入平台 API 用户名"
+
+        password = credential.get("password")
+        if self.instance is None and (
+            not isinstance(password, str) or not password.strip()
+        ):
+            errors["password"] = "请输入平台 API 密码"
+        elif password is not None and not isinstance(password, str):
+            errors["password"] = "平台 API 密码必须为字符串"
+
+        try:
+            port = int(credential.get("port"))
+        except (TypeError, ValueError):
+            port = 0
+        if not 1 <= port <= 65535:
+            errors["port"] = "端口必须在 1 到 65535 之间"
+
+        verify_tls = credential.get("verify_tls", True)
+        if not isinstance(verify_tls, bool):
+            errors["verify_tls"] = "证书校验开关必须为布尔值"
+
+        if errors:
+            raise serializers.ValidationError({"credential": errors})
+
+        credential.update(
+            username=username.strip(),
+            port=port,
+            verify_tls=verify_tls,
+        )
+        attrs["credential"] = [credential]
+
     def _validate_registered_credential(self, attrs, model_id):
         raw_credential = self._get_attr_or_instance_value(attrs, "credential")
         existing_credential = (
@@ -207,8 +406,15 @@ class CollectModelSerializer(AuthSerializer):
             raise serializers.ValidationError(
                 {"model_id": "当前版本未启用该采集能力"}
             )
+        self._reject_masked_secrets_on_create(attrs, model_id)
         if credential_contract:
             self._validate_registered_credential(attrs, model_id)
+        elif model_id == "influxdb":
+            self._validate_influxdb_credential(attrs)
+        elif model_id == "hwcloud":
+            self._validate_hwcloud_credential(attrs)
+        elif model_id in {"fusioninsight", "storage"}:
+            self._validate_platform_api_credential(attrs)
 
         if model_id == "winsphere":
             self._normalize_winsphere_instances(attrs)

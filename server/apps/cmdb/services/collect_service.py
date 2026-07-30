@@ -14,8 +14,10 @@ from apps.cmdb.constants.constants import OPERATOR_COLLECT_TASK, CollectPluginTy
 from apps.cmdb.models import CREATE_INST, DELETE_INST, EXECUTE, UPDATE_INST
 from apps.cmdb.models.change_record import COLLECT_AUTOMATION_CHANGE
 from apps.cmdb.node_configs.config_factory import NodeParamsFactory
+from apps.cmdb.services.collect_credential_contract import API_SECRET_MASK
 from apps.cmdb.services.collect_credential_pool_service import CollectCredentialPoolService
 from apps.cmdb.services.collect_hit_state_service import CollectHitStateService
+from apps.cmdb.services.encrypt_collect_password import get_collect_model_passwords
 from apps.cmdb.tasks.celery_tasks import sync_collect_task
 from apps.cmdb.utils.base import get_current_team_from_request
 from apps.cmdb.utils.change_record import create_change_record
@@ -323,6 +325,23 @@ class CollectModelService(object):
         if credential is None:
             data["credential"] = old_credential
             return
+        encrypted_fields = set(
+            get_collect_model_passwords(
+                collect_model_id=getattr(instance, "model_id", ""),
+                driver_type=getattr(instance, "driver_type", None),
+            )
+        )
+
+        def without_masked_secrets(item):
+            return {
+                key: value
+                for key, value in item.items()
+                if not (
+                    key in encrypted_fields
+                    and value == API_SECRET_MASK
+                )
+            }
+
         if isinstance(credential, list):
             old_pool = old_credential if isinstance(old_credential, list) else []
             legacy_single_credential = (
@@ -345,7 +364,7 @@ class CollectModelService(object):
                     old_pool_map.get(credential_id)
                     or legacy_single_credential
                 )
-                merged.update(item)
+                merged.update(without_masked_secrets(item))
                 merged_pool.append(merged)
             data["credential"] = merged_pool
             return
@@ -354,7 +373,7 @@ class CollectModelService(object):
             old_credential = {}
         if not isinstance(credential, dict):
             raise BaseAppException("采集凭据格式错误！")
-        old_credential.update(credential)
+        old_credential.update(without_masked_secrets(credential))
         data["credential"] = old_credential
 
     @classmethod

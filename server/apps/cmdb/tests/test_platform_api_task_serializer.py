@@ -101,6 +101,21 @@ def test_platform_api_converts_legacy_aksk_to_username_password():
     ]
 
 
+def test_platform_api_create_rejects_masked_password():
+    serializer = _serializer(
+        "storage",
+        {
+            "username": "readonly",
+            "password": "******",
+            "port": 8088,
+            "verify_tls": True,
+        },
+    )
+
+    assert serializer.is_valid() is False
+    assert "password" in serializer.errors["credential"]
+
+
 def test_fusioninsight_decrypts_legacy_encrypted_access_key():
     task = CollectModels(
         model_id="fusioninsight",

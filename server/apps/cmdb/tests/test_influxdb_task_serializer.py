@@ -73,6 +73,20 @@ def test_influxdb_accepts_http_without_operator_token():
     ]
 
 
+def test_influxdb_create_rejects_masked_operator_token():
+    serializer = _serializer(
+        {
+            "scheme": "https",
+            "port": 8086,
+            "verify_tls": True,
+            "token": "******",
+        }
+    )
+
+    assert serializer.is_valid() is False
+    assert "token" in serializer.errors["credential"]
+
+
 @pytest.mark.parametrize(
     "target",
     [
