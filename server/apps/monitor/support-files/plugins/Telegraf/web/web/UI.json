@@ -17,6 +17,7 @@
       "editable": false,
       "description": "监控的目标网址链接，以检测其可用性和性能。",
       "guide_short": "拨测目标地址（不含 query）；IPv6 需用方括号，如 https://[2001:db8::1]/。Query 请在「请求参数」中填写。",
+      "guide_short_en": "Probe target URL without a query string. Enclose IPv6 literals in brackets, as in https://[2001:db8::1]/, and enter query data under Query Parameters.",
       "widget_props": {
         "placeholder": "https://example.com"
       },
@@ -33,6 +34,7 @@
       "default_value": 60,
       "description": "监控数据的采集时间间隔（单位：秒）",
       "guide_short": "Telegraf inputs.http_response 采集周期，单位秒，默认 60；过短会高频访问目标站点，建议 ≥30。",
+      "guide_short_en": "Telegraf inputs.http_response probe interval in seconds; the default is 60. Short intervals create frequent target traffic; use at least 30 seconds when practical.",
       "widget_props": {
         "min": 1,
         "precision": 0,
@@ -61,6 +63,7 @@
       "required": false,
       "default_value": false,
       "guide_short": "仅 HTTPS 自签或证书链不完整时开启；生产环境建议关闭，避免中间人风险被掩盖。",
+      "guide_short_en": "Enable only temporarily for HTTPS with a self-signed or incomplete certificate chain. Keep it disabled in production so certificate and man-in-the-middle risks are not hidden.",
       "widget_props": {},
       "transform_on_edit": {
         "origin_path": "child.content.config.insecure_skip_verify"
@@ -77,6 +80,7 @@
       "options": [{"label":"GET","value":"GET"},{"label":"HEAD","value":"HEAD"},{"label":"POST","value":"POST"}],
       "description": "仅支持不会修改目标资源的 GET、HEAD 与 POST 拨测。",
       "guide_short": "仅支持 GET、HEAD、POST。POST 才允许填写请求体；HEAD 只取响应头，适合探活且流量更小。",
+      "guide_short_en": "Supports GET, HEAD, and POST only. The request body is available only for POST; HEAD retrieves headers only and uses less traffic for availability checks.",
       "label_en": "Request Method"
     },
     {
@@ -88,6 +92,7 @@
       "required": false,
       "dependency": {"field":"request_method","value":"POST"},
       "guide_short": "仅 POST 可用。填写原始文本（JSON/XML/表单等），并通过 Content-Type 请求头声明格式，例如 application/json。",
+      "guide_short_en": "Available only for POST. Enter the raw JSON, XML, or form body and declare its format with a Content-Type header such as application/json.",
       "transform_on_edit": {"origin_path": "child.content.config.body", "to_api": {}},
       "label_en": "Request Body"
     },
@@ -99,6 +104,7 @@
       "type": "key_value_list",
       "required": false,
       "guide_short": "URL 本身不要带 query。参数按填写顺序 URL 编码后追加；同名参数可重复。空行会自动忽略。",
+      "guide_short_en": "Do not include a query string in the base URL. Parameters are URL-encoded and appended in entry order; duplicate names are allowed and blank rows are ignored.",
       "label_en": "Query Parameters"
     },
     {
@@ -109,6 +115,7 @@
       "type": "key_value_list",
       "required": false,
       "guide_short": "仅填非敏感头，如 Content-Type、Accept。不要手写 Authorization；Basic/Bearer 请用下方认证配置，凭据走环境变量下发。",
+      "guide_short_en": "Enter only non-sensitive headers such as Content-Type and Accept. Do not set Authorization manually; use the Basic or Bearer fields so credentials are injected through environment variables.",
       "transform_on_edit": {"origin_path": "child.content.config.headers", "to_form": {"type": "key_value_list"}, "to_api": {"type": "key_value_map"}},
       "label_en": "Request Headers"
     },
@@ -122,6 +129,7 @@
       "default_value": "none",
       "options": [{"label":"无认证","value":"none"},{"label":"Basic Auth","value":"basic"},{"label":"Bearer Token","value":"bearer"}],
       "guide_short": "无认证 / Basic Auth / Bearer Token。凭据写入 env_config，不会进入 Telegraf 配置正文。",
+      "guide_short_en": "Select no authentication, Basic Auth, or Bearer Token. Credentials are stored in env_config rather than rendered into the Telegraf configuration body.",
       "label_en": "Authentication"
     },
     {
@@ -133,6 +141,7 @@
       "required": false,
       "dependency": {"field":"auth_type","value":"basic"},
       "guide_short": "Basic Auth 用户名；选择 Basic Auth 时必填。",
+      "guide_short_en": "Basic Auth username; enter it when Basic Auth is selected.",
       "transform_on_edit": {"origin_path": "child.content.config.username", "to_api": {}},
       "label_en": "Username"
     },
@@ -146,6 +155,7 @@
       "dependency": {"field":"auth_type","value":"basic"},
       "encrypted": true,
       "guide_short": "Basic Auth 密码；含特殊字符无需转义。通过环境变量注入，不要写进请求头。",
+      "guide_short_en": "Basic Auth password. Special characters need no escaping; it is injected through an environment variable, so do not place it in a request header.",
       "transform_on_edit": {"origin_path": "child.env_config.PASSWORD__{{config_id}}", "to_api": {}},
       "label_en": "Password"
     },
@@ -159,6 +169,7 @@
       "dependency": {"field":"auth_type","value":"bearer"},
       "encrypted": true,
       "guide_short": "Bearer Token 明文值（无需再加 Bearer 前缀）；通过环境变量注入 Authorization 头。",
+      "guide_short_en": "Bearer token value only, without the Bearer prefix. It is injected through an environment variable into the Authorization header.",
       "transform_on_edit": {"origin_path": "child.env_config.BEARER_TOKEN__{{config_id}}", "to_api": {}},
       "label_en": "Bearer Token"
     },
@@ -171,6 +182,7 @@
       "required": false,
       "widget_props": {"min":100,"max":599},
       "guide_short": "期望 HTTP 状态码（100–599）。留空则不校验状态码；不匹配时拨测结果为「响应状态码不匹配」。",
+      "guide_short_en": "Expected HTTP status code from 100 to 599. Leave it empty to disable status matching; a mismatch produces a response-status-code-mismatch probe result.",
       "transform_on_edit": {"origin_path": "child.content.config.response_status_code", "to_api": {}},
       "label_en": "Expected Status Code"
     },
@@ -181,7 +193,8 @@
       "label": "期望响应内容",
       "type": "input",
       "required": false,
-      "guide_short": "响应正文需包含的字符串（非正则）。留空则不校验内容；不匹配时拨测结果为「响应内容不匹配」。",
+      "guide_short": "对响应正文执行的正则表达式。留空则不校验内容；正则不匹配时拨测结果为「响应内容不匹配」。",
+      "guide_short_en": "Regular expression evaluated against the response body. Leave it empty to disable content matching; a non-match produces a response-content-mismatch probe result.",
       "transform_on_edit": {"origin_path": "child.content.config.response_string_match", "to_api": {}},
       "label_en": "Expected Response Content"
     },
@@ -194,6 +207,7 @@
       "required": false,
       "widget_props": {"min":1,"max":600,"addonAfter":"s"},
       "guide_short": "单次拨测超时秒数（1–600）。留空默认 5 秒（Telegraf http_response 默认值）；超时记为「超时」失败。",
+      "guide_short_en": "Per-probe timeout from 1 to 600 seconds. An empty value uses the Telegraf http_response default of 5 seconds; a timeout is recorded as a probe failure.",
       "transform_on_edit": {"origin_path": "child.content.config.response_timeout", "to_form": {"regex": "^(\\d+)s$"}, "to_api": {"suffix": "s"}},
       "label_en": "Response Timeout"
     },
@@ -205,6 +219,7 @@
       "type": "switch",
       "required": false,
       "guide_short": "是否跟随 3xx 重定向。关闭时以首跳响应判断状态码与内容；开启时对最终落地页做判断。",
+      "guide_short_en": "Controls 3xx redirects. When disabled, status and content are evaluated on the first response; when enabled, they are evaluated on the final destination.",
       "transform_on_edit": {"origin_path": "child.content.config.follow_redirects", "to_api": {}},
       "label_en": "Follow Redirects"
     }
