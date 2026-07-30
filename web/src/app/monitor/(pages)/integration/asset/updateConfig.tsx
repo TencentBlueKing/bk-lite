@@ -13,6 +13,7 @@ import { useTranslation } from '@/utils/i18n';
 import OperateModal from '@/components/operate-modal';
 import useApiClient from '@/utils/request';
 import { usePluginFromJson } from '@/app/monitor/hooks/integration/usePluginFromJson';
+import { trackSnmpFilterMutexLastChanged, normalizeMutexValues, formatSnmpFilterMutexConflict } from '@/app/monitor/hooks/integration/snmpFilterMutex';
 
 const UpdateConfig = forwardRef<ModalRef, ModalProps>(({ onSuccess }, ref) => {
   const [form] = Form.useForm();
@@ -86,6 +87,8 @@ const UpdateConfig = forwardRef<ModalRef, ModalProps>(({ onSuccess }, ref) => {
   const initData = (row: TableDataItem) => {
     const activeFormData = configsInfo.getDefaultForm?.(row) || {};
     form.setFieldsValue(activeFormData);
+    // 用当前值初始化互斥追踪基线，避免默认排除被误判为“后填写”
+    trackSnmpFilterMutexLastChanged({}, form.getFieldsValue(true), form);
   };
 
   const handleCancel = () => {
@@ -97,6 +100,23 @@ const UpdateConfig = forwardRef<ModalRef, ModalProps>(({ onSuccess }, ref) => {
 
   const handleSubmit = () => {
     form.validateFields().then((values) => {
+      const mutexErrors: string[] = [];
+      if (
+        normalizeMutexValues(values.iftype_exclude).length &&
+        normalizeMutexValues(values.iftype_include).length
+      ) {
+        mutexErrors.push(formatSnmpFilterMutexConflict(t, 'iftype'));
+      }
+      if (
+        normalizeMutexValues(values.ifdescr_exclude).length &&
+        normalizeMutexValues(values.ifdescr_include).length
+      ) {
+        mutexErrors.push(formatSnmpFilterMutexConflict(t, 'ifdescr'));
+      }
+      if (mutexErrors.length) {
+        mutexErrors.forEach((msg) => message.error(msg));
+        return;
+      }
       operateConfig(values);
     });
   };
@@ -150,7 +170,15 @@ const UpdateConfig = forwardRef<ModalRef, ModalProps>(({ onSuccess }, ref) => {
             {showEmpty ? (
               <Empty description={t('monitor.integrations.noConfigData')} />
             ) : (
-              <Form ref={formRef} form={form} name="basic" layout="vertical">
+              <Form
+                ref={formRef}
+                form={form}
+                name="basic"
+                layout="vertical"
+                onValuesChange={(changed, all) => {
+                  trackSnmpFilterMutexLastChanged(changed, all, form);
+                }}
+              >
                 {formItems}
               </Form>
             )}
