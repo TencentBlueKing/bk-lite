@@ -52,22 +52,36 @@ def test_periodic_collect_skips_running_task_without_mutation(monkeypatch):
 
 
 @pytest.mark.django_db
-def test_claim_execution_only_first_claim_succeeds():
+def test_worker_execution_only_first_claim_succeeds():
     task = create_collect_task(exec_status=CollectRunStatusType.SUCCESS)
+    start_time = now()
 
-    first_claim = CollectModelService.claim_execution(task.id)
-    second_claim = CollectModelService.claim_execution(task.id)
+    first_claim = ct._claim_collect_task_execution(
+        task.id,
+        start_time,
+        execution_id="execution-A",
+    )
+    second_claim = ct._claim_collect_task_execution(
+        task.id,
+        start_time,
+        execution_id="execution-B",
+    )
 
     assert first_claim is not None
     assert second_claim is None
     task.refresh_from_db()
     assert task.exec_status == CollectRunStatusType.RUNNING
-    assert task.exec_time == first_claim
+    assert task.task_id == "execution-A"
+    assert task.execution_claim_token.startswith("execution-A:")
 
 
 @pytest.mark.django_db
-def test_preclaimed_collect_runs_without_claiming_again(monkeypatch):
-    task = create_collect_task(exec_status=CollectRunStatusType.RUNNING, exec_time=now())
+def test_manual_execution_token_can_be_claimed_by_worker(monkeypatch):
+    task = create_collect_task(
+        exec_status=CollectRunStatusType.RUNNING,
+        exec_time=now(),
+        task_id="execution-A",
+    )
     monkeypatch.setattr(
         "apps.cmdb.services.collect_dispatch_service.CollectDispatchService.should_dispatch",
         staticmethod(lambda instance: False),
@@ -81,7 +95,8 @@ def test_preclaimed_collect_runs_without_claiming_again(monkeypatch):
             return {}, {"add": [], "update": [], "delete": [], "association": [], "__raw_data__": []}
 
     monkeypatch.setattr(ct, "ProtocolCollect", FakeCollect)
-    ct.sync_collect_task(task.id, preclaimed=True)
+    monkeypatch.setattr(CollectModelService, "repair_host_cloud_snapshot", lambda instance: None)
+    ct.sync_collect_task(task.id, execution_id="execution-A")
 
     task.refresh_from_db()
     assert task.exec_status == CollectRunStatusType.ERROR
@@ -89,36 +104,44 @@ def test_preclaimed_collect_runs_without_claiming_again(monkeypatch):
 
 
 @pytest.mark.django_db
-def test_preclaimed_collect_skips_when_claim_is_no_longer_running(monkeypatch):
-    task = create_collect_task(exec_status=CollectRunStatusType.SUCCESS)
+def test_terminal_manual_execution_token_is_not_reopened(monkeypatch):
+    task = create_collect_task(
+        exec_status=CollectRunStatusType.SUCCESS,
+        task_id="execution-A",
+    )
     monkeypatch.setattr(
         ct,
         "ProtocolCollect",
         lambda task: (_ for _ in ()).throw(AssertionError("失效消息不应执行")),
     )
 
-    ct.sync_collect_task(task.id, preclaimed=True)
+    ct.sync_collect_task(task.id, execution_id="execution-A")
 
     task.refresh_from_db()
     assert task.exec_status == CollectRunStatusType.SUCCESS
 
 
 @pytest.mark.django_db
-def test_manual_exec_atomically_claims_and_dispatches_preclaimed(settings, mocker):
+def test_manual_exec_atomically_claims_and_dispatches_execution_token(
+    settings,
+    mocker,
+    django_capture_on_commit_callbacks,
+):
     settings.DEBUG = False
     task = create_collect_task(exec_status=CollectRunStatusType.SUCCESS)
     delay = mocker.patch("apps.cmdb.services.collect_service.sync_collect_task.delay")
     mocker.patch.object(CollectModelService, "repair_host_cloud_snapshot", return_value=False)
     mocker.patch("apps.cmdb.services.collect_service.create_change_record")
 
-    CollectModelService.exec_task(task, operator="tester")
+    with django_capture_on_commit_callbacks(execute=True):
+        CollectModelService.exec_task(task, operator="tester")
 
     task.refresh_from_db()
     assert task.exec_status == CollectRunStatusType.RUNNING
     assert task.collect_data == {}
     assert task.format_data == {}
     assert task.collect_digest == {}
-    delay.assert_called_once_with(task.id, preclaimed=True)
+    delay.assert_called_once_with(task.id, task.task_id, None, None)
 
 
 @pytest.mark.django_db
@@ -148,7 +171,11 @@ def test_manual_exec_rejects_when_database_was_claimed_after_instance_loaded(set
 
 
 @pytest.mark.django_db
-def test_manual_dispatch_failure_rolls_back_own_claim(settings, mocker):
+def test_manual_dispatch_failure_marks_own_claim_error(
+    settings,
+    mocker,
+    django_capture_on_commit_callbacks,
+):
     settings.DEBUG = False
     previous_time = now()
     task = create_collect_task(
@@ -164,12 +191,12 @@ def test_manual_dispatch_failure_rolls_back_own_claim(settings, mocker):
         side_effect=RuntimeError("broker down"),
     )
 
-    with pytest.raises(RuntimeError, match="broker down"):
+    with django_capture_on_commit_callbacks(execute=True):
         CollectModelService.exec_task(task, operator="tester")
 
     task.refresh_from_db()
     assert task.exec_status == CollectRunStatusType.ERROR
-    assert task.exec_time == previous_time
-    assert task.collect_data == {"old": 1}
-    assert task.format_data == {"old": 2}
-    assert task.collect_digest == {"old": 3}
+    assert task.exec_time > previous_time
+    assert task.collect_data == {}
+    assert task.format_data == {}
+    assert task.collect_digest == {"message": "采集任务下发失败，请稍后重试"}

@@ -28,20 +28,26 @@ def test_period_to_seconds_invalid_type_raises():
         pm.period_to_seconds({"type": "week", "value": 1})
 
 
-def test_build_policy_query_normal_aggregation():
-    assert pm.build_policy_query("sum", "cpu", "5m", "instance_id") == "sum(cpu) by (instance_id)"
+def test_build_policy_query_maps_legacy_aggregation_to_two_stage_query():
+    assert (
+        pm.build_policy_query("sum", "cpu", "5m", "instance_id")
+        == "sum_over_time((sum(cpu) by (instance_id))[5m:10s])"
+    )
 
 
-def test_build_policy_query_over_time_simple_selector_gets_range():
-    # 裸指标属于简单 selector，会被补上 [step]
+def test_build_policy_query_maps_legacy_window_algorithm_to_group_algorithm():
     q = pm.build_policy_query("max_over_time", "cpu", "5m", "instance_id")
-    assert q == "any(max_over_time(cpu[5m])) by (instance_id)"
+    assert q == "max_over_time((max(cpu) by (instance_id))[5m:10s])"
 
 
-def test_build_policy_query_over_time_complex_expr_unchanged():
-    # 复杂表达式不补 range selector，保持原样
+def test_build_policy_query_preserves_complex_metric_expression_inside_group_stage():
     q = pm.build_policy_query("avg_over_time", "rate(cpu[1m])", "5m", "instance_id")
-    assert q == "any(avg_over_time(rate(cpu[1m]))) by (instance_id)"
+    assert q == "avg_over_time((avg(rate(cpu[1m])) by (instance_id))[5m:10s])"
+
+
+def test_build_policy_query_uses_explicit_two_stage_algorithms():
+    q = pm.build_policy_query("last_over_time", "cpu", "1h", "instance_id", "count")
+    assert q == "last_over_time((count(cpu) by (instance_id))[1h:2m])"
 
 
 def test_build_policy_query_invalid_algorithm_raises():
@@ -49,16 +55,19 @@ def test_build_policy_query_invalid_algorithm_raises():
         pm.build_policy_query("median", "cpu", "5m", "instance_id")
 
 
-@pytest.mark.parametrize("query,expected", [
-    ("cpu", True),
-    ("cpu{host='a'}", True),
-    ("{host='a'}", True),
-    ("rate(cpu[1m])", False),
-    ("", False),
-    ("  ", False),
+@pytest.mark.parametrize("period,expected", [
+    ("5m", "10s"),
+    ("1h", "2m"),
+    ("1d", "48m"),
 ])
-def test_supports_explicit_range_selector(query, expected):
-    assert pm._supports_explicit_range_selector(query) is expected
+def test_period_step_generates_thirty_subquery_samples(period, expected):
+    assert pm.period_step(period) == expected
+
+
+@pytest.mark.parametrize("period", ["", "5s", "week", None])
+def test_period_step_rejects_invalid_period(period):
+    with pytest.raises(BaseAppException, match="invalid period"):
+        pm.period_step(period)
 
 
 def test_sum_calls_vm_query_range_with_built_query():
@@ -66,7 +75,12 @@ def test_sum_calls_vm_query_range_with_built_query():
         inst = MockVM.return_value
         inst.query_range.return_value = {"data": {"result": []}}
         out = pm._sum("cpu", "s", "e", "5m", "instance_id")
-    inst.query_range.assert_called_once_with("sum(cpu) by (instance_id)", "s", "e", "5m")
+    inst.query_range.assert_called_once_with(
+        "sum_over_time((sum(cpu) by (instance_id))[5m:10s])",
+        "s",
+        "e",
+        "5m",
+    )
     assert out == {"data": {"result": []}}
 
 
@@ -75,30 +89,31 @@ def test_max_over_time_calls_query_range():
         inst = MockVM.return_value
         inst.query_range.return_value = {"data": {"result": []}}
         pm.max_over_time("cpu", "s", "e", "5m", "instance_id")
-    inst.query_range.assert_called_once_with("any(max_over_time(cpu[5m])) by (instance_id)", "s", "e", "5m")
+    inst.query_range.assert_called_once_with(
+        "max_over_time((max(cpu) by (instance_id))[5m:10s])",
+        "s",
+        "e",
+        "5m",
+    )
 
 
-def test_last_over_time_simple_selector_uses_instant_query_and_wraps_values():
+def test_last_over_time_uses_range_query_with_two_stage_aggregation():
     with patch.object(pm, "VictoriaMetricsAPI") as MockVM:
         inst = MockVM.return_value
-        inst.query.return_value = {"data": {"result": [{"value": [123, "9"]}]}}
+        inst.query_range.return_value = {"data": {"result": [{"values": [[123, "9"]]}]}}
         out = pm.last_over_time("cpu", "s", "e", "5m", "instance_id")
-    # 简单 selector → query(query, None, end)
-    inst.query.assert_called_once_with("any(last_over_time(cpu[5m])) by (instance_id)", None, "e")
-    # values 被包装成 [value]
+    inst.query_range.assert_called_once_with(
+        "last_over_time((avg(cpu) by (instance_id))[5m:10s])",
+        "s",
+        "e",
+        "5m",
+    )
     assert out["data"]["result"][0]["values"] == [[123, "9"]]
-
-
-def test_last_over_time_complex_expr_uses_step_path():
-    with patch.object(pm, "VictoriaMetricsAPI") as MockVM:
-        inst = MockVM.return_value
-        inst.query.return_value = {"data": {"result": []}}
-        pm.last_over_time("rate(cpu[1m])", "s", "e", "5m", "instance_id")
-    inst.query.assert_called_once_with("any(last_over_time(rate(cpu[1m]))) by (instance_id)", "5m", "e")
 
 
 def test_method_registry_maps_all_algorithms():
     assert set(pm.METHOD) == {
         "sum", "avg", "max", "min", "count",
-        "max_over_time", "min_over_time", "avg_over_time", "sum_over_time", "last_over_time",
+        "max_over_time", "min_over_time", "avg_over_time", "sum_over_time",
+        "count_over_time", "last_over_time",
     }

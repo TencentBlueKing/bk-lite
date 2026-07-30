@@ -313,8 +313,10 @@ class TrainJobConfigSyncMixin:
 
     def _build_complete_config(self):
         """Build complete config file (add model, mlflow, and max_evals sections)."""
+        import copy
+
         # Base config (from frontend)
-        config = dict(self.hyperopt_config) if self.hyperopt_config else {}
+        config = copy.deepcopy(self.hyperopt_config) if self.hyperopt_config else {}
 
         # Generate model identifier: {prefix}_{algorithm}_{id} (pk exists at this point)
         model_identifier = f"{self._model_prefix}_{self.algorithm}_{self.pk}"

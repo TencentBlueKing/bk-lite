@@ -3,6 +3,7 @@
 from unittest.mock import patch
 
 import django
+import pytest
 from asgiref.sync import async_to_sync
 from django.conf import settings
 
@@ -12,6 +13,7 @@ from apps.cmdb.nats import nats as cmdb_nats
 from nats_client.handlers import nats_handler
 
 
+@pytest.mark.django_db
 def test_delete_instance_nats_dispatch_applies_scope_before_delete():
     """NATS 分发后的授权范围必须进入实例查询，再执行审计和图删除。"""
     instance = {

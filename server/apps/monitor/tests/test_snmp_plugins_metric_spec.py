@@ -23,24 +23,19 @@ import re
 from pathlib import Path
 
 import pytest
-import yaml
+
+from apps.core.utils.loader import LanguageLoader
 
 # repo root = .../server/apps/monitor/tests/<this file> -> up 4 to <repo>/server, up 5 to <repo>
 _MONITOR = Path(__file__).resolve().parents[1]  # apps/monitor
 _PLUGINS_GLOB = str(_MONITOR / "support-files" / "plugins" / "Telegraf" / "snmp" / "*" / "metrics.json")
-_LANG = _MONITOR / "language"
 
 _AGG_RE = re.compile(r"\b(?:max|min|avg|sum|count)\s*\(")
 _BY_RE = re.compile(r"by\s*\(")
 
 
-def _load_yaml(name: str) -> dict:
-    with open(_LANG / name, encoding="utf-8") as fh:
-        return yaml.safe_load(fh)
-
-
-_ZH = _load_yaml("zh-Hans.yaml")
-_EN = _load_yaml("en.yaml")
+_ZH = LanguageLoader("monitor", "zh-Hans").translations
+_EN = LanguageLoader("monitor", "en").translations
 _ZG = _ZH.get("monitor_object_metric_group", {})
 _EG = _EN.get("monitor_object_metric_group", {})
 _ZM = _ZH.get("monitor_object_metric", {})

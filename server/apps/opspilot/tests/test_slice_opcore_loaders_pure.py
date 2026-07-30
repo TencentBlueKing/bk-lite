@@ -62,12 +62,10 @@ class TestExcelFormatString:
         df = pd.DataFrame({"name": ["alice", "bob"], "age": [30, 25]})
         s = ExcelLoader("x.xlsx").dataframe_to_excel_format_string(df)
         lines = s.strip().split("\n")
-        # 注意: 表头行是 str(df.columns) 的 Index repr 被逐字符 \t 拼接（实现特性，
-        # 非真正的列名制表符分隔），故此处只对真实可靠的数据行断言。
+        # 表头和数据行都使用真正的制表符分隔，便于下游按表格文本解析。
+        assert lines[0] == "name\tage"
         assert "alice\t30" in s
         assert "bob\t25" in s
-        # 表头行（首行）含 Index repr 残留字符
-        assert lines[0].startswith("I\tn\td\te\tx")
 
     def test_all_nan_rows_and_cols_dropped_and_nan_stripped(self):
         df = pd.DataFrame({"a": [1, None], "b": [None, None]})

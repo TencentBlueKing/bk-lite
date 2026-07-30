@@ -213,7 +213,7 @@ def test_export_model_config_minimal(monkeypatch):
                                 "icn": "icon", "classification_id": "net", "attrs": "[]"}],
     )
     monkeypatch.setattr(
-        f"{MODULE}.ModelManage.model_association_search", lambda mid: [],
+        f"{MODULE}.ModelManage.model_association_search", lambda mid, **kwargs: [],
     )
     monkeypatch.setattr(
         "apps.cmdb.services.public_enum_library.list_libraries", lambda: [],
@@ -247,7 +247,7 @@ def test_export_model_config_with_attrs_and_assoc(monkeypatch):
     )
     monkeypatch.setattr(
         f"{MODULE}.ModelManage.model_association_search",
-        lambda mid: [{"src_model_id": "host", "dst_model_id": "sw", "asst_id": "conn",
+        lambda mid, **kwargs: [{"src_model_id": "host", "dst_model_id": "sw", "asst_id": "conn",
                       "mapping": "1:n"}],
     )
     monkeypatch.setattr(
@@ -320,7 +320,7 @@ def _setup_two_models(monkeypatch):
     monkeypatch.setattr(f"{MODULE}.ModelManage.search_model", lambda language="en": models)
     monkeypatch.setattr(
         f"{MODULE}.ModelManage.model_association_search",
-        lambda mid: [{"src_model_id": "host", "dst_model_id": "sw",
+        lambda mid, **kwargs: [{"src_model_id": "host", "dst_model_id": "sw",
                       "asst_id": "conn", "mapping": "1:n"}] if mid == "host" else [],
     )
     monkeypatch.setattr("apps.cmdb.services.public_enum_library.list_libraries",
