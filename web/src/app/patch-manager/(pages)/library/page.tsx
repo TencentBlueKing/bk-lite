@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Tag, Button, Input, Select, Space, Tabs, Modal, Form, message, Popconfirm, Upload } from 'antd';
 import PermissionWrapper from '@/components/permission';
 import type { ColumnsType } from 'antd/es/table';
@@ -10,6 +10,7 @@ import type { FieldConfig, SearchFilters } from '@/components/search-combination
 import useApiClient from '@/utils/request';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import usePatchManagerApi from '@/app/patch-manager/api';
+import { createListRequestCoordinator } from '@/app/patch-manager/utils/list-request-coordinator';
 import type { Patch, PatchSeverity, OSType, PackageStatus, PatchParams, CandidateItem, PatchSource, IngestResult } from '@/app/patch-manager/types';
 import SeverityTag from '@/app/patch-manager/components/severity-tag';
 import ReadyTag from '@/app/patch-manager/components/ready-tag';
@@ -17,6 +18,7 @@ import CustomTable from '@/components/custom-table';
 import OperateDrawer from '@/app/patch-manager/components/operate-drawer';
 import { getWindowsPackageUploadState } from '@/app/patch-manager/components/windows-package-upload-state';
 import { useTranslation } from '@/utils/i18n';
+import { PATCH_MANAGER_POLL_INTERVAL_MS } from '@/app/patch-manager/constants/polling';
 
 type TabKey = 'win' | 'linux';
 type SourceType = 'auto' | 'manual';
@@ -110,6 +112,7 @@ export default function LibraryPage() {
   const [activeTab, setActiveTab] = useState<TabKey>('win');
   const [data, setData] = useState<Patch[]>([]);
   const [loading, setLoading] = useState(false);
+  const listRequestCoordinatorRef = useRef(createListRequestCoordinator(setLoading));
   const [filters, setFilters] = useState<SearchFilters>({});
   const [createOpen, setCreateOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
@@ -124,9 +127,12 @@ export default function LibraryPage() {
 
   // 同步入库抽屉
   const [sources, setSources] = useState<PatchSource[]>([]);
+  const sourceRequestCoordinatorRef = useRef(createListRequestCoordinator(() => undefined));
   const [selectedSourceId, setSelectedSourceId] = useState<number | null>(null);
   const [candidateData, setCandidateData] = useState<CandidateItem[]>([]);
   const [candidateLoading, setCandidateLoading] = useState(false);
+  const candidateRequestCoordinatorRef = useRef(createListRequestCoordinator(setCandidateLoading));
+  const [candidateActionLoading, setCandidateActionLoading] = useState(false);
   const [candidatePagination, setCandidatePagination] = useState({ current: 1, pageSize: 20, total: 0 });
   const [candidateSeverity, setCandidateSeverity] = useState<Record<string, string>>({});
   const [batchSeverityOpen, setBatchSeverityOpen] = useState(false);
@@ -171,26 +177,28 @@ export default function LibraryPage() {
     currentFilters?: SearchFilters,
     silent = false,
   ) => {
-    if (!silent) setLoading(true);
-    const requestedTab = activeTab;
+    const coordinator = listRequestCoordinatorRef.current;
+    const ticket = coordinator.begin({ visible: !silent });
+    if (!ticket) return;
     const targetPage = page ?? pagination.current;
     const targetSize = pageSize ?? pagination.pageSize;
     const targetFilters = currentFilters ?? filters;
     try {
-      const res = await api.getPatchList(buildParams(targetPage, targetSize, targetFilters));
-      if (requestedTab === activeTab) {
+      const res = await api.getPatchList(
+        buildParams(targetPage, targetSize, targetFilters),
+        { signal: ticket.signal },
+      );
+      if (coordinator.shouldApply(ticket)) {
         setData(res.items || []);
         setPagination((p) => ({ ...p, current: targetPage, pageSize: targetSize, total: res.count || 0 }));
       }
     } catch {
-      if (requestedTab === activeTab && !silent) {
+      if (coordinator.shouldApply(ticket)) {
         setData([]);
         setPagination((p) => ({ ...p, current: targetPage, pageSize: targetSize, total: 0 }));
       }
     } finally {
-      if (requestedTab === activeTab && !silent) {
-        setLoading(false);
-      }
+      coordinator.finish(ticket);
     }
   };
 
@@ -206,11 +214,17 @@ export default function LibraryPage() {
     if (!hasProcessingPackage) return;
     const timer = window.setInterval(
       () => loadData(undefined, undefined, undefined, true),
-      2000,
+      PATCH_MANAGER_POLL_INTERVAL_MS,
     );
     return () => window.clearInterval(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hasProcessingPackage, activeTab, pagination.current, pagination.pageSize, filters]);
+
+  useEffect(() => () => {
+    listRequestCoordinatorRef.current.invalidate();
+    sourceRequestCoordinatorRef.current.invalidate();
+    candidateRequestCoordinatorRef.current.invalidate();
+  }, []);
 
   const editPackageUploadState = useMemo(
     () => getWindowsPackageUploadState(editingPatch),
@@ -353,8 +367,15 @@ export default function LibraryPage() {
   };
 
   const loadSources = async () => {
+    const coordinator = sourceRequestCoordinatorRef.current;
+    const ticket = coordinator.begin({ visible: false });
+    if (!ticket) return;
     try {
-      const res = await api.getPatchSourceList({ page: 1, page_size: -1, is_enabled: true });
+      const res = await api.getPatchSourceList(
+        { page: 1, page_size: -1, is_enabled: true },
+        { signal: ticket.signal },
+      );
+      if (!coordinator.shouldApply(ticket)) return;
       const items = Array.isArray(res) ? res : (res.items || []);
       const osType = OS_TYPE_MAP[activeTab];
       const filtered = items.filter((s: PatchSource) =>
@@ -368,13 +389,22 @@ export default function LibraryPage() {
         setCandidateData([]);
       }
     } catch {
+    } finally {
+      coordinator.finish(ticket);
     }
   };
 
   const loadCandidates = async (sourceId: number, page = 1, pageSize = 20, search = '') => {
-    setCandidateLoading(true);
+    const coordinator = candidateRequestCoordinatorRef.current;
+    const ticket = coordinator.begin({ visible: true });
+    if (!ticket) return;
     try {
-      const res = await api.previewSyncPatchSource(sourceId, { search, page, page_size: pageSize });
+      const res = await api.previewSyncPatchSource(
+        sourceId,
+        { search, page, page_size: pageSize },
+        { signal: ticket.signal },
+      );
+      if (!coordinator.shouldApply(ticket)) return;
       const items = res.items || [];
       setCandidateData(items);
       setCandidatePagination({ current: res.page || page, pageSize: res.page_size || pageSize, total: res.total || 0 });
@@ -394,11 +424,18 @@ export default function LibraryPage() {
       });
       setCandidateSeverity(sevMap);
     } catch {
+      if (!coordinator.shouldApply(ticket)) return;
       setCandidateData([]);
       setCandidatePagination({ current: 1, pageSize: 20, total: 0 });
     } finally {
-      setCandidateLoading(false);
+      coordinator.finish(ticket);
     }
+  };
+
+  const closeImportDrawer = () => {
+    setImportOpen(false);
+    sourceRequestCoordinatorRef.current.invalidate();
+    candidateRequestCoordinatorRef.current.invalidate();
   };
 
   const handleImportSearch = () => {
@@ -430,7 +467,7 @@ export default function LibraryPage() {
 
   const handleImportSubmit = async () => {
     if (!selectedSourceId || selectedCandidates.length === 0) return;
-    setCandidateLoading(true);
+    setCandidateActionLoading(true);
     try {
       const severityOverrides: Record<string, string> = {};
       selectedCandidates.forEach((k) => {
@@ -443,18 +480,19 @@ export default function LibraryPage() {
       } else {
         message.success(t('patchManager.libraryPage.ingestCompleted', undefined, { created: res.created, updated: res.updated }));
       }
-      setImportOpen(false);
+      closeImportDrawer();
       setSelectedCandidates([]);
       setCandidateSearch('');
       loadData(1);
     } catch {
     } finally {
-      setCandidateLoading(false);
+      setCandidateActionLoading(false);
     }
   };
 
   const handleSingleIngest = async (item: CandidateItem) => {
     if (!selectedSourceId) return;
+    setCandidateActionLoading(true);
     try {
       const severityOverrides: Record<string, string> = {};
       const sev = candidateSeverity[item.key];
@@ -468,6 +506,8 @@ export default function LibraryPage() {
       }
       loadData();
     } catch {
+    } finally {
+      setCandidateActionLoading(false);
     }
   };
 
@@ -623,13 +663,13 @@ export default function LibraryPage() {
       <OperateDrawer
         title={t('patchManager.libraryPage.syncIngest')}
         open={importOpen}
-        onClose={() => setImportOpen(false)}
+        onClose={closeImportDrawer}
         width={900}
         bodyStyle={{ padding: 0, overflow: 'hidden' }}
         footer={
           <Space>
-            <Button onClick={() => setImportOpen(false)}>{t('patchManager.cancel')}</Button>
-            <Button type="primary" disabled={selectedCandidates.length === 0} icon={<CloudDownloadOutlined />} onClick={handleImportSubmit}>{t('patchManager.libraryPage.batchIngest', undefined, { count: selectedCandidates.length })}</Button>
+            <Button onClick={closeImportDrawer}>{t('patchManager.cancel')}</Button>
+            <Button type="primary" loading={candidateActionLoading} disabled={selectedCandidates.length === 0} icon={<CloudDownloadOutlined />} onClick={handleImportSubmit}>{t('patchManager.libraryPage.batchIngest', undefined, { count: selectedCandidates.length })}</Button>
           </Space>
         }
       >
@@ -655,7 +695,7 @@ export default function LibraryPage() {
             <div style={{ flex: 1, minHeight: 0 }}>
               <CustomTable<CandidateItem>
                 rowKey="key"
-                loading={candidateLoading}
+                loading={candidateLoading || candidateActionLoading}
                 rowSelection={{ selectedRowKeys: selectedCandidates, onChange: setSelectedCandidates, getCheckboxProps: (r) => ({ disabled: r.added }) }}
                 columns={candidateColumns}
                 dataSource={candidateData}
