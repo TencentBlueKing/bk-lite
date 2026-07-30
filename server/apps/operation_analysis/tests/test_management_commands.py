@@ -7,6 +7,7 @@ import importlib
 
 import pytest
 from django.core.management import call_command
+from django.core.management.base import CommandError
 
 from apps.operation_analysis.models.datasource_models import DataSourceAPIModel, DataSourceTag, NameSpace
 from apps.operation_analysis.models.models import Directory
@@ -30,36 +31,93 @@ def test_init_default_namespace_creates_from_nats_url(settings):
 
 @pytest.mark.django_db
 def test_init_default_namespace_creates_from_tls_url(settings):
-    settings.NATS_SERVERS = "tls://user:pwd@example.com:4222"
+    settings.NATS_SERVERS = "tls://user:pwd%40value@example.com:4222"
     call_command("init_default_namespace")
 
     ns = NameSpace.objects.get(name="默认命名空间")
+    assert ns.account == "user"
+    assert ns.decrypt_password == "pwd@value"
     assert ns.enable_tls is True
     assert ns.domain == "example.com:4222"
 
 
 @pytest.mark.django_db
-def test_init_default_namespace_plain_host(settings):
-    settings.NATS_SERVERS = "myhost:4222"
+@pytest.mark.parametrize("nats_servers", ["myhost:4222", "nats://myhost:4222"])
+def test_init_default_namespace_plain_host_uses_explicit_nats_options(settings, nats_servers):
+    settings.NATS_SERVERS = nats_servers
+    settings.NATS_OPTIONS = {
+        "user": "configured-user",
+        "password": "configured-password",
+    }
     call_command("init_default_namespace")
 
     ns = NameSpace.objects.get(name="默认命名空间")
     assert ns.domain == "myhost:4222"
-    assert ns.account == "admin"
+    assert ns.account == "configured-user"
+    assert ns.decrypt_password == "configured-password"
 
 
 @pytest.mark.django_db
-def test_init_default_namespace_no_servers_returns_early(settings):
-    settings.NATS_SERVERS = ""
-    import os
+@pytest.mark.parametrize(
+    "nats_servers",
+    [
+        "",
+        "not-a-valid-url",
+        "http://user:secret@nats.internal:4222",
+        "nats://nats.internal:4222",
+        "nats://user@nats.internal:4222",
+        "nats://user:secret@nats.internal",
+        "nats://user:secret@[bad:4222",
+        "nats://user:secret@bad host:4222",
+        "nats://user:secret@bad%20host:4222",
+        "nats://user:secret@bad%00host:4222",
+        "nats://user:secret@nats.internal:0",
+        "user:secret@nats.internal:4222",
+        "nats://%20:secret@nats.internal:4222",
+        "nats://user:%20@nats.internal:4222",
+        "nats://:@nats.internal:4222",
+    ],
+)
+def test_init_default_namespace_rejects_invalid_config_without_writing(settings, monkeypatch, nats_servers):
+    settings.NATS_SERVERS = nats_servers
+    settings.NATS_OPTIONS = {}
+    monkeypatch.delenv("NATS_SERVERS", raising=False)
 
-    old = os.environ.pop("NATS_SERVERS", None)
-    try:
+    with pytest.raises(CommandError, match="NATS_SERVERS"):
         call_command("init_default_namespace")
-        assert not NameSpace.objects.filter(name="默认命名空间").exists()
-    finally:
-        if old is not None:
-            os.environ["NATS_SERVERS"] = old
+
+    assert not NameSpace.objects.filter(name="默认命名空间").exists()
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "nats_options",
+    [
+        {"user": "configured-user"},
+        {"password": "configured-password"},
+        {"user": " ", "password": "configured-password"},
+        {"user": "configured-user", "password": " "},
+    ],
+)
+def test_init_default_namespace_rejects_incomplete_nats_options_without_writing(settings, nats_options):
+    settings.NATS_SERVERS = "myhost:4222"
+    settings.NATS_OPTIONS = nats_options
+
+    with pytest.raises(CommandError, match="NATS_SERVERS"):
+        call_command("init_default_namespace")
+
+    assert not NameSpace.objects.filter(name="默认命名空间").exists()
+
+
+@pytest.mark.django_db
+def test_batch_init_propagates_invalid_nats_config(settings):
+    settings.NATS_SERVERS = "nats://user:secret@[bad:4222"
+    settings.NATS_OPTIONS = {}
+
+    with pytest.raises(CommandError, match="NATS_SERVERS"):
+        call_command("batch_init", apps="operation_analysis")
+
+    assert not NameSpace.objects.filter(name="默认命名空间").exists()
 
 
 @pytest.mark.django_db
@@ -131,9 +189,7 @@ def test_init_source_api_data_creates_cloud_cost_distribution_contract(settings)
     call_command("init_default_namespace")
     call_command("init_source_api_data")
 
-    source = DataSourceAPIModel.objects.get(
-        rest_api="cmdb/get_cloud_resource_cost_distribution"
-    )
+    source = DataSourceAPIModel.objects.get(rest_api="cmdb/get_cloud_resource_cost_distribution")
     params = {item["name"]: item for item in source.params}
     fields = {item["key"]: item for item in source.field_schema}
 
@@ -197,9 +253,7 @@ class _MigrationApps:
 
 
 def _distribution_migration():
-    return importlib.import_module(
-        "apps.operation_analysis.migrations.0018_set_cloud_cost_distribution_field_schema"
-    )
+    return importlib.import_module("apps.operation_analysis.migrations.0018_set_cloud_cost_distribution_field_schema")
 
 
 def test_cloud_cost_distribution_migration_updates_existing_group_by_and_is_idempotent():
