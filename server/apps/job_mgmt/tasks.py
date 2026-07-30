@@ -5,13 +5,13 @@ from uuid import uuid4
 from asgiref.sync import async_to_sync
 from celery import current_app, shared_task
 from django.db import transaction
-from django.db.models import F
+from django.db.models import F, Q
 from django.utils import timezone
 
 from apps.core.logger import job_logger as logger
 from apps.core.utils.safe_requests import safe_post
 from apps.core.utils.ssrf_validator import SSRFError, SSRFValidator
-from apps.job_mgmt.config import SCHEDULED_TASK_QUEUE_RETRY_COUNTDOWN
+from apps.job_mgmt.config import DISTRIBUTION_FILE_CLEANUP_BATCH_SIZE, DISTRIBUTION_FILE_CLEANUP_MAX_CONCURRENCY, SCHEDULED_TASK_QUEUE_RETRY_COUNTDOWN
 from apps.job_mgmt.constants import ConcurrencyPolicy, ExecutionStatus, JobType, TriggerSource
 from apps.job_mgmt.models import DistributionFile, JobExecution, ScheduledTask
 from apps.job_mgmt.services import FileDistributionRunner, ScriptExecutionRunner, ScriptParamsService
@@ -20,7 +20,7 @@ from apps.job_mgmt.services.dangerous_checker import DangerousChecker
 from apps.job_mgmt.services.execution_stream_service import publish_done_sentinel
 from apps.job_mgmt.services.playbook_execution import PlaybookExecution
 from apps.job_mgmt.utils.callback_signer import get_signed_headers
-from apps.node_mgmt.utils.s3 import delete_s3_file
+from apps.node_mgmt.utils.s3 import delete_s3_files
 
 
 @shared_task(max_retries=0)
@@ -242,7 +242,8 @@ def execute_scheduled_task(scheduled_task_id: int):
 @shared_task(max_retries=0)
 def cleanup_expired_distribution_files_task():
     # 清理所有已到期文件（expire_at <= 当前时间）
-    expired_files = DistributionFile.objects.filter(expire_at__lte=timezone.now())
+    expire_before = timezone.now()
+    expired_files = DistributionFile.objects.filter(expire_at__lte=expire_before)
     total_count = expired_files.count()
     if total_count == 0:
         logger.info("[cleanup_expired_distribution_files_task] 没有过期文件需要清理")
@@ -250,17 +251,47 @@ def cleanup_expired_distribution_files_task():
     logger.info(f"[cleanup_expired_distribution_files_task] 开始清理 {total_count} 个过期文件")
     success_count = 0
     fail_count = 0
-    for df in expired_files:
+    cursor = None
+    while True:
+        batch_query = expired_files
+        if cursor is not None:
+            created_at, file_id = cursor
+            batch_query = batch_query.filter(Q(created_at__lt=created_at) | Q(created_at=created_at, id__lt=file_id))
+        batch = list(
+            batch_query.order_by("-created_at", "-id").values("id", "file_key", "original_name", "created_at")[:DISTRIBUTION_FILE_CLEANUP_BATCH_SIZE]
+        )
+        if not batch:
+            break
+        cursor = batch[-1]["created_at"], batch[-1]["id"]
+
         try:
-            # 删除 S3 文件
-            async_to_sync(delete_s3_file)(df.file_key)
-            # 删除数据库记录
-            df.delete()
-            success_count += 1
-            logger.info(f"[cleanup_expired_distribution_files_task] 已删除: {df.original_name} ({df.file_key})")
-        except Exception as e:
-            fail_count += 1
-            logger.warning(f"[cleanup_expired_distribution_files_task] 删除失败: {df.file_key}, error={e}")
+            delete_results = async_to_sync(delete_s3_files)(
+                [item["file_key"] for item in batch],
+                max_concurrency=DISTRIBUTION_FILE_CLEANUP_MAX_CONCURRENCY,
+            )
+        except Exception as error:
+            delete_results = {item["file_key"]: error for item in batch}
+
+        successful_files = []
+        for item in batch:
+            error = delete_results.get(item["file_key"], RuntimeError("对象存储未返回删除结果"))
+            if error is None:
+                successful_files.append(item)
+            else:
+                fail_count += 1
+                logger.warning(f"[cleanup_expired_distribution_files_task] 删除失败: {item['file_key']}, error={error}")
+
+        if successful_files:
+            try:
+                DistributionFile.objects.filter(id__in=[item["id"] for item in successful_files]).delete()
+            except Exception as error:
+                fail_count += len(successful_files)
+                for item in successful_files:
+                    logger.warning(f"[cleanup_expired_distribution_files_task] 删除失败: {item['file_key']}, error={error}")
+            else:
+                success_count += len(successful_files)
+                for item in successful_files:
+                    logger.info(f"[cleanup_expired_distribution_files_task] 已删除: {item['original_name']} ({item['file_key']})")
     logger.info(f"[cleanup_expired_distribution_files_task] 清理完成: success={success_count}, fail={fail_count}")
 
 
@@ -285,10 +316,7 @@ def _dispatch_execution_job(job_type: str, execution_id: int) -> bool:
     try:
         updated = JobExecution.objects.filter(id=execution_id).update(celery_task_id=celery_task_id)
     except Exception as e:
-        logger.exception(
-            f"[_dispatch_execution_job] Celery 任务ID持久化失败: "
-            f"execution_id={execution_id}, job_type={job_type}, error={e}"
-        )
+        logger.exception(f"[_dispatch_execution_job] Celery 任务ID持久化失败: " f"execution_id={execution_id}, job_type={job_type}, error={e}")
         return False
     if not updated:
         logger.error(f"[_dispatch_execution_job] 执行记录不存在: execution_id={execution_id}, job_type={job_type}")
@@ -303,8 +331,7 @@ def _dispatch_execution_job(job_type: str, execution_id: int) -> bool:
             current_app.control.revoke(celery_task_id)
         except Exception as revoke_error:
             logger.exception(
-                f"[_dispatch_execution_job] Celery 任务撤销失败: "
-                f"execution_id={execution_id}, task_id={celery_task_id}, error={revoke_error}"
+                f"[_dispatch_execution_job] Celery 任务撤销失败: " f"execution_id={execution_id}, task_id={celery_task_id}, error={revoke_error}"
             )
         return False
 
