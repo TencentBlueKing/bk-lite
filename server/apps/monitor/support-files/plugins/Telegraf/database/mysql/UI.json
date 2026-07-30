@@ -16,6 +16,7 @@
       "editable": false,
       "description": "用于连接 MySQL 数据库的用户名",
       "guide_short": "建议使用专用只读监控账号，至少具备 PROCESS 与 REPLICATION CLIENT 权限，以及 performance_schema / information_schema 的 SELECT 权限。",
+      "guide_short_en": "Use a dedicated read-only monitoring account with PROCESS and REPLICATION CLIENT plus SELECT on the required performance_schema and information_schema objects.",
       "widget_props": {
         "placeholder": "用户名",
         "placeholder_en": "Username"
@@ -36,6 +37,7 @@
       "editable": false,
       "description": "用于连接 MySQL 数据库的密码",
       "guide_short": "填写与用户名对应的登录密码，注意不要带入首尾空格或换行；MySQL 8.0 默认 caching_sha2_password，请确认采集端驱动兼容。",
+      "guide_short_en": "Enter the password for the username without leading or trailing spaces or line breaks. For MySQL 8.0 caching_sha2_password, confirm collector-driver compatibility.",
       "widget_props": {
         "placeholder": "密码",
         "placeholder_en": "Password"
@@ -54,6 +56,7 @@
       "editable": false,
       "description": "与设备进行通信的主机",
       "guide_short": "填写 MySQL 实例的 IP 或域名，例如 10.0.0.10；保存前可在采集节点用 mysql -h <host> -u <user> -p 验证连通。",
+      "guide_short_en": "Enter the MySQL instance IP address or hostname, such as 10.0.0.10, and verify connectivity from the collector node with an interactive mysql login.",
       "widget_props": {
         "placeholder": "主机地址"
       },
@@ -74,6 +77,7 @@
       "editable": false,
       "description": "与设备进行通信的端口",
       "guide_short": "MySQL 服务监听端口，默认 3306；若修改过 my.cnf 的 port，请填写实际端口；本端口与任何 exporter 端口无关。",
+      "guide_short_en": "Enter the actual MySQL listener port, commonly 3306. If my.cnf changes the port, use that value; it is unrelated to any exporter port.",
       "widget_props": {
         "min": 1,
         "precision": 0,
@@ -96,6 +100,7 @@
       "default_value": 60,
       "description": "监控数据的采集时间间隔（单位：秒）",
       "guide_short": "默认 60 秒；过低会增加 MySQL 实例压力，过高会延误告警；建议不少于 30 秒。",
+      "guide_short_en": "The default is 60 seconds. Short intervals increase MySQL load, while long intervals delay alerts; use at least 30 seconds.",
       "widget_props": {
         "min": 1,
         "precision": 0,
