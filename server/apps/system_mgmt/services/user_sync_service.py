@@ -290,6 +290,9 @@ def execute_user_sync(source_id: int, trigger_mode: str = UserSyncTriggerModeCho
         )
         return {"result": False, "message": safe_error_code}
 
+    # 拉取目录成功后立即写入统计，供运行中的进度详情展示；不能等到终态再写。
+    _mutate_run_payload(run.id, lambda payload: payload.update({"input_summary": input_summary}))
+
     user_list = result.payload.get("user_list") or []
     group_list = result.payload.get("group_list") or []
     fetch_total = len(user_list) + len(group_list)

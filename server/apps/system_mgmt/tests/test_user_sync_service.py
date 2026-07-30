@@ -145,6 +145,49 @@ def test_reconcile_deletes_stale_users_instead_of_disabling_them():
 
 
 @pytest.mark.django_db
+def test_execute_user_sync_persists_directory_summary_before_sync_stages(ready_integration_instance):
+    source = UserSyncSource.objects.create(
+        name="directory-summary-during-sync",
+        integration_instance=ready_integration_instance,
+        enabled=True,
+        root_group_name="Directory Summary",
+        business_config={"root_department_id": "0"},
+        field_mapping={"username": "user_id"},
+        schedule_config={"mode": "disabled"},
+    )
+    provider_result = CapabilityExecutionResult.success_result(
+        "ok",
+        payload={
+            "group_list": [{"id": "dept-1"}, {"id": "dept-2"}, {"id": "dept-3"}],
+            "user_list": [{"user_id": "user-1"}, {"user_id": "user-2"}],
+        },
+    )
+    observed_payload = {}
+
+    def capture_payload_before_sync_stages(source, payload, current_run):
+        current_run.refresh_from_db()
+        observed_payload.update(current_run.payload)
+        return {
+            "summary": "ok",
+            "synced_user_count": 0,
+            "synced_group_count": 0,
+            "disabled_user_count": 0,
+            "conflict_usernames": [],
+        }
+
+    with patch(
+        "apps.system_mgmt.services.user_sync_service.RuntimeApplicationService.execute",
+        return_value=provider_result,
+    ), patch(
+        "apps.system_mgmt.services.user_sync_service._apply_user_sync_payload",
+        side_effect=capture_payload_before_sync_stages,
+    ):
+        assert execute_user_sync(source.id)["result"] is True
+
+    assert observed_payload["input_summary"] == {"fetched_user_count": 2, "fetched_group_count": 3}
+
+
+@pytest.mark.django_db
 def test_user_sync_source_serializer_rejects_conflicting_root_group_name(ready_integration_instance):
     Group.objects.create(name="Feishu Root", parent_id=0)
 
