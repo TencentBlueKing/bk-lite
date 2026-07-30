@@ -193,6 +193,16 @@ test('a new send owns state and prevents the replaced stream from completing it'
   assert.deepEqual(oldReader.cancelled, ['replaced-by-new-stream']);
 });
 
+test('Chat keeps the Sender cancellable until the owned response body closes', () => {
+  const source = fs.readFileSync(chatPath, 'utf8');
+  const activeHandlers = source.slice(
+    source.indexOf("case 'RUN_ERROR':"),
+    source.indexOf('// Add message to state and session')
+  );
+
+  assert.equal(activeHandlers.includes('setIsLoading(false)'), false);
+});
+
 test('clearing a session or pressing stop cancels without producing an error', async () => {
   for (const reason of ['session-cleared', 'user-stopped']) {
     const lifecycle = new StreamLifecycle(fakeAbortController);

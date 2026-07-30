@@ -200,7 +200,6 @@ export const Chat = React.forwardRef<any, ChatProps>((props, ref) => {
 
       case 'RUN_ERROR':
         setIsThinking(false);
-        setIsLoading(false);
         const error = (event as any).error || 'Unknown error';
         const errorContent = `\n\n❌ **错误**: ${error}`;
         
@@ -323,11 +322,6 @@ export const Chat = React.forwardRef<any, ChatProps>((props, ref) => {
         if (!currentMessageIdRef.current) {
           console.warn('⚠️ Received CONTENT without START, ignoring');
           break;
-        }
-        
-        // 收到第一个内容块时关闭 loading 状态
-        if (streamingContentRef.current === '' && delta) {
-          setIsLoading(false);
         }
         
         // 累加内容到 ref
@@ -652,7 +646,6 @@ export const Chat = React.forwardRef<any, ChatProps>((props, ref) => {
         if (currentMessageIdRef.current && sessionManagerRef.current) {
           sessionManagerRef.current.saveSession();
         }
-        setIsLoading(false);
         setIsThinking(false);
         stateMachineRef.current?.transition('connected');
         break;
@@ -676,7 +669,6 @@ export const Chat = React.forwardRef<any, ChatProps>((props, ref) => {
         metadata: data.metadata,
       };
       addMessage(botMsg);
-      setIsLoading(false);
     }
   };
 
