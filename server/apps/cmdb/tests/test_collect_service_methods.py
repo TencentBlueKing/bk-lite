@@ -830,3 +830,25 @@ class TestCollectCrudSideEffects:
             CollectModelService.destroy(request, view)
 
         assert delete_calls == []
+
+    def test_destroy_pc_task_只删任务资源不操作图资产(self, mocker):
+        patch_transaction_callbacks(mocker)
+        delete_calls = []
+        instance = collect_instance(
+            model_id="pc",
+            driver_type="job",
+            delete=lambda: delete_calls.append("task-deleted"),
+        )
+        view = FakeCollectView(instance)
+        request = fake_request({})
+        mocker.patch.object(CollectModelService, "has_permission")
+        mocker.patch("apps.cmdb.services.collect_service.CeleryUtils.delete_periodic_task")
+        mocker.patch.object(CollectModelService, "delete_butch_node_params")
+        mocker.patch("apps.cmdb.services.collect_service.create_change_record")
+        graph_client = mocker.patch("apps.cmdb.services.pc_discovery.GraphClient")
+
+        result = CollectModelService.destroy(request, view)
+
+        assert result == instance.id
+        assert delete_calls == ["task-deleted"]
+        graph_client.assert_not_called()
