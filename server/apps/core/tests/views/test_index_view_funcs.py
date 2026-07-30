@@ -391,6 +391,15 @@ class TestOtpViews:
         assert _json(resp)["result"] is True
         assert resp.cookies["bklite_token"].value == "OTPJWT"
 
+    @pytest.mark.django_db
+    def test_verify_otp_login_forwards_direct_peer_ip(self):
+        req = _post({"challenge_id": "ch", "otp_code": "999999"})
+        req.META.update({"HTTP_X_FORWARDED_FOR": "1.1.1.1", "REMOTE_ADDR": "9.9.9.9"})
+        with patch.object(index_view, "_create_system_mgmt_client") as mock_client:
+            mock_client.return_value.verify_otp_login.return_value = {"result": False}
+            index_view.verify_otp_login(req)
+        mock_client.return_value.verify_otp_login.assert_called_once_with("ch", "999999", "9.9.9.9")
+
 
 class TestClientViews:
     def test_get_my_client_uses_query_or_env(self):
