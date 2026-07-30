@@ -1,10 +1,16 @@
+from io import StringIO
+
 import pytest
+from django.core.management import call_command
 
 from apps.core.utils.crypto.password_crypto import PasswordCrypto
 from apps.operation_analysis.common.get_nats_source_data import GetNatsData
+from apps.operation_analysis.management.commands import init_default_namespace
 from apps.operation_analysis.models import datasource_models
-from apps.operation_analysis.models.datasource_models import NameSpace
+from apps.operation_analysis.models.datasource_models import NameSpace, NamespacePasswordDecryptionError
 from apps.operation_analysis.serializers.datasource_serializers import NameSpaceModelSerializer
+
+pytestmark = pytest.mark.integration
 
 
 @pytest.fixture(autouse=True)
@@ -36,7 +42,7 @@ def test_decrypt_password_rejects_unreadable_value_without_exposing_credentials(
     stored_value = PasswordCrypto("old-key").encrypt("plain-secret")
     namespace = _namespace(password=stored_value)
 
-    with pytest.raises(ValueError, match="命名空间密码解密失败") as error:
+    with pytest.raises(NamespacePasswordDecryptionError, match="命名空间密码解密失败") as error:
         _ = namespace.decrypt_password
 
     assert stored_value not in str(error.value)
@@ -149,3 +155,33 @@ def test_create_still_encrypts_password():
 
     assert namespace.password != "plain-secret"
     assert namespace.decrypt_password == "plain-secret"
+
+
+@pytest.mark.django_db
+def test_default_namespace_init_survives_unreadable_password_and_recovers_after_rerecord(settings, monkeypatch):
+    settings.NATS_SERVERS = "nats://admin:current-password@nats.example.com:4222"
+    namespace = NameSpace.objects.create(
+        name="默认命名空间", account="admin", password="initial-password", domain="nats.example.com:4222"
+    )
+    stored_value = PasswordCrypto("old-key").encrypt("plain-secret")
+    NameSpace.objects.filter(pk=namespace.pk).update(password=stored_value)
+    logged_errors = []
+    monkeypatch.setattr(init_default_namespace.logger, "error", lambda *args, **kwargs: logged_errors.append((args, kwargs)))
+
+    failed_output = StringIO()
+    call_command("init_default_namespace", stdout=failed_output)
+    assert "命名空间密码解密失败，请重新录入密码" in failed_output.getvalue()
+    assert stored_value not in failed_output.getvalue()
+    assert "plain-secret" not in failed_output.getvalue()
+    assert isinstance(logged_errors[0][0][1], NamespacePasswordDecryptionError)
+    assert str(logged_errors[0][0][1]) == "命名空间密码解密失败，请重新录入密码"
+    assert logged_errors[0][1]["exc_info"] is True
+
+    namespace.refresh_from_db()
+    serializer = NameSpaceModelSerializer(namespace, data={"password": "current-password"}, partial=True)
+    serializer.is_valid(raise_exception=True)
+    serializer.save()
+
+    recovered_output = StringIO()
+    call_command("init_default_namespace", stdout=recovered_output)
+    assert "默认命名空间配置未变化" in recovered_output.getvalue()

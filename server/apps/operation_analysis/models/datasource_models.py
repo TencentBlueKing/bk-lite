@@ -12,6 +12,10 @@ from apps.core.utils.crypto.password_crypto import PasswordCrypto
 from apps.operation_analysis.constants.constants import SECRET_KEY
 
 
+class NamespacePasswordDecryptionError(ValueError):
+    pass
+
+
 class NameSpace(MaintainerInfo, TimeInfo):
     name = models.CharField(max_length=128, verbose_name="命名空间名称", unique=True)
     namespace = models.CharField(max_length=64, verbose_name="NATS命名空间", default="bklite", help_text="NATS服务端的命名空间,用于消息主题前缀")
@@ -56,7 +60,7 @@ class NameSpace(MaintainerInfo, TimeInfo):
             crypto = PasswordCrypto(SECRET_KEY)
             return crypto.decrypt(self.password)
         except Exception as exc:
-            raise ValueError("命名空间密码解密失败，请重新录入密码") from exc
+            raise NamespacePasswordDecryptionError("命名空间密码解密失败，请重新录入密码") from exc
 
     def set_password(self, raw_password):
         """
