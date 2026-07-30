@@ -588,7 +588,7 @@ def _apply_user_sync_payload(source: UserSyncSource, payload: dict, current_run:
                 counters=dict(sync_counters),  # 只含 new/updated/conflict
             )
 
-    # 阶段 C: 全量对账 (单事务) - 依据完整同步名单禁用 stale 用户、删除 stale 组织
+    # 阶段 C: 全量对账 (单事务) - 依据完整同步名单删除 stale 用户和组织
     try:
         with transaction.atomic():
             reconcile_result = _reconcile_synced_directory(
@@ -605,7 +605,7 @@ def _apply_user_sync_payload(source: UserSyncSource, payload: dict, current_run:
     _record_progress(
         PHASE_RECONCILE, current=1, total=1, status="finish",
         counters={
-            "disabled_users": reconcile_result["disabled_count"],
+            "deleted_users": reconcile_result["deleted_user_count"],
             "deleted_group_count": reconcile_result["deleted_group_count"],
         },
     )
@@ -652,7 +652,8 @@ def _apply_user_sync_payload(source: UserSyncSource, payload: dict, current_run:
         "summary": summary,
         "synced_user_count": len(all_synced_usernames),
         "synced_group_count": synced_group_count,
-        "disabled_user_count": reconcile_result["disabled_count"],
+        # 保留现有数据库字段名，兼容既有运行记录 API；值语义为本轮删除的用户数。
+        "disabled_user_count": reconcile_result["deleted_user_count"],
         "conflict_usernames": sorted(set(all_conflict_usernames)),
     }
 
@@ -889,28 +890,26 @@ def _reconcile_synced_directory(
     active_group_ids: list[int],
     root_group_id: int,
 ) -> dict:
-    """全量对账:依据完整同步名单禁用 stale 用户、删除 stale 组织。
+    """全量对账:依据完整同步名单删除 stale 用户和组织。
 
-    只在所有用户 batch 成功后调用,避免单批失败时错误禁用其他批次的用户。
-    返回 {disabled_count, deleted_group_count}。
+    只在所有用户 batch 成功后调用,避免单批失败时错误删除其他批次的用户。
+    返回 {deleted_user_count, deleted_group_count}。
     """
     legacy_domain = "domain.com"
     affected_usernames: set[str] = set()
-    disabled_count = 0
+    deleted_user_count = 0
     deleted_group_count = 0
 
     with transaction.atomic():
-        # 禁用不在 synced_usernames 名单的该 source 用户
+        # 删除不在 synced_usernames 名单的该 source 用户。外部目录恢复时会在后续同步中重新创建。
         stale_users = User.objects.filter(
             sync_source=source, domain=legacy_domain
         ).exclude(username__in=synced_usernames)
-        for user in stale_users:
-            if not user.disabled or user.group_list:
-                user.disabled = True
-                user.group_list = []
-                user.save(update_fields=["disabled", "group_list"])
-                disabled_count += 1
-                affected_usernames.add(user.username)
+        stale_usernames = list(stale_users.values_list("username", flat=True))
+        if stale_usernames:
+            stale_users.delete()
+            deleted_user_count = len(stale_usernames)
+            affected_usernames.update(stale_usernames)
 
         # 删除 stale 组织(不在 active_group_ids 名单)。此处是唯一删除入口,
         # 确保所有用户 batch 成功后才改变组织及其用户组关联。
@@ -934,7 +933,7 @@ def _reconcile_synced_directory(
         )
 
     return {
-        "disabled_count": disabled_count,
+        "deleted_user_count": deleted_user_count,
         "deleted_group_count": deleted_group_count,
     }
 
