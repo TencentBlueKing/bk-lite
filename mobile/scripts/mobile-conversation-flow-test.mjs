@@ -790,6 +790,55 @@ test('AI 流收到 RUN_FINISHED 后标记正常结束', async () => {
   }
 });
 
+test('发送中的会话可渲染本地消息并由全局清理终止活跃流', { timeout: 5000 }, async () => {
+  let activeSignal;
+  let markStreamStarted;
+  const streamStarted = new Promise((resolve) => {
+    markStreamStarted = resolve;
+  });
+  const { ConversationManager } = await loadConversationManager(async function* (
+    _bot,
+    _nodeId,
+    _message,
+    _sessionId,
+    options,
+  ) {
+    activeSignal = options.signal;
+    markStreamStarted();
+    await new Promise((resolve) => {
+      activeSignal.addEventListener('abort', resolve, { once: true });
+    });
+  });
+  const manager = new ConversationManager();
+
+  try {
+    const response = manager.startAIResponse(
+      'session-cancel',
+      9,
+      'mobile-node',
+      'cancel me',
+      (text) => `rendered:${text}`,
+      '响应中断，请重试',
+    );
+    await streamStarted;
+
+    const runningState = manager.getSessionState('session-cancel');
+    assert.equal(runningState?.isAIRunning, true);
+    assert.equal(runningState?.messages[0]?.message, 'rendered:cancel me');
+    assert.equal(runningState?.messages[1]?.status, 'loading');
+
+    manager.clearAll();
+    await response;
+
+    assert.equal(activeSignal.aborted, true);
+    assert.equal(manager.getSessionState('session-cancel'), undefined);
+    assert.deepEqual(manager.getRunningSessionIds(), []);
+    assert.deepEqual(manager.getCacheStats(), { total: 0, running: 0, maxSize: 10 });
+  } finally {
+    delete globalThis.__conversationAiChatStream;
+  }
+});
+
 test('对话抽屉使用明确返回入口并限制在动态视口内', async () => {
   const sidebar = await readProjectFile('src/app/conversation/components/conversation-sidebar.tsx');
   const shellStyles = await readProjectFile('src/app/conversation/components/conversation-drawer-shell.module.css');
