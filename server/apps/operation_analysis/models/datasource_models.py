@@ -55,9 +55,8 @@ class NameSpace(MaintainerInfo, TimeInfo):
         try:
             crypto = PasswordCrypto(SECRET_KEY)
             return crypto.decrypt(self.password)
-        except Exception:
-            # 如果解密失败，可能是明文密码，直接返回
-            return self.password
+        except Exception as exc:
+            raise ValueError("命名空间密码解密失败，请重新录入密码") from exc
 
     def set_password(self, raw_password):
         """
@@ -65,32 +64,11 @@ class NameSpace(MaintainerInfo, TimeInfo):
         :param raw_password: 明文密码
         """
         self.password = self.encrypt_password(raw_password)
-
-    def _is_password_encrypted(self):
-        """
-        判断密码是否已经加密
-        加密后的密码特征:
-        1. 长度 >= 44 (AES加密后base64编码的最小长度)
-        2. 能够成功解密
-
-        :return: True 表示已加密，False 表示明文
-        """
-        if not self.password:
-            return False
-
-        # 尝试解密，如果成功说明已加密
-        try:
-            crypto = PasswordCrypto(SECRET_KEY)
-            crypto.decrypt(self.password)
-            return True
-        except Exception:
-            # 解密失败，说明是明文密码
-            return False
+        self._password_explicitly_encrypted = True
 
     def save(self, *args, **kwargs):
-        # 只有在密码未加密时才进行加密
-        if self.password and not self._is_password_encrypted():
-            self.password = self.encrypt_password(self.password)
+        if self._state.adding and self.password and not getattr(self, "_password_explicitly_encrypted", False):
+            self.set_password(self.password)
         super().save(*args, **kwargs)
 
 
