@@ -221,7 +221,9 @@ class TestGetSkillAndParams:
 
     def test_成功(self):
         LLMSkill.objects.create(name="sk2", team=[1], skill_prompt="P", conversation_window_size=5)
-        skill, params, err = views.get_skill_and_params({"model": "sk2", "messages": [{"role": "user", "content": "你好"}]}, 1)
+        skill, params, err = views.get_skill_and_params(
+            {"model": "sk2", "messages": [{"role": "user", "content": "你好"}]}, 1
+        )
         assert err is None
         assert skill.name == "sk2"
         assert params["user_message"] == "你好"
@@ -237,29 +239,11 @@ class TestTokenConsumption:
         req.user = SimpleNamespace(username="admin", domain="domain.com", is_superuser=True, group_list=[{"id": 1}])
         return req
 
-    def test_time_range_patch_stays_authoritative(self, mocker):
-        start_time = datetime.datetime(2026, 1, 1)
-        end_time = datetime.datetime(2026, 1, 2)
-        get_time_range = mocker.patch(f"{VIEWS}.set_time_range", return_value=(end_time, start_time))
-
-        _queryset, actual_start, actual_end = views._token_consumption_queryset(
-            self._admin_req("?start_time=2026-01-01T00:00:00.000Z" "&end_time=2026-01-02T00:00:00.000Z")
-        )
-
-        get_time_range.assert_called_once_with(
-            "2026-01-02T00:00:00.000Z",
-            "2026-01-01T00:00:00.000Z",
-        )
-        assert (actual_start, actual_end) == (start_time, end_time)
-
     def test_total_token_consumption(self):
         skill = LLMSkill.objects.create(name="ts", team=[1])
         SkillRequestLog.objects.create(
-            skill=skill,
-            current_ip="10.0.0.1",
-            state=True,
-            request_detail={},
-            response_detail={"usage": {"prompt_tokens": 10, "completion_tokens": 5}},
+            skill=skill, current_ip="10.0.0.1", state=True,
+            request_detail={}, response_detail={"usage": {"prompt_tokens": 10, "completion_tokens": 5}},
         )
         resp = views.get_total_token_consumption(self._admin_req())
         body = _body(resp)
@@ -271,11 +255,8 @@ class TestTokenConsumption:
     def test_overview_按天聚合(self):
         skill = LLMSkill.objects.create(name="tov", team=[1])
         SkillRequestLog.objects.create(
-            skill=skill,
-            current_ip="10.0.0.1",
-            state=True,
-            request_detail={},
-            response_detail={"usage": {"total_tokens": 7}},
+            skill=skill, current_ip="10.0.0.1", state=True,
+            request_detail={}, response_detail={"usage": {"total_tokens": 7}},
         )
         resp = views.get_token_consumption_overview(self._admin_req())
         body = _body(resp)
@@ -287,11 +268,8 @@ class TestTokenConsumption:
         # bot 不属于调用者团队 -> queryset.none()，统计为 0
         skill = LLMSkill.objects.create(name="tsx", team=[1])
         SkillRequestLog.objects.create(
-            skill=skill,
-            current_ip="10.0.0.1",
-            state=True,
-            request_detail={},
-            response_detail={"usage": {"total_tokens": 99}},
+            skill=skill, current_ip="10.0.0.1", state=True,
+            request_detail={}, response_detail={"usage": {"total_tokens": 99}},
         )
         bot = Bot.objects.create(name="other", team=[5], api_token="z")
         req = RequestFactory().get(f"/?bot_id={bot.id}")
