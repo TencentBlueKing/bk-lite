@@ -335,6 +335,7 @@
           "syncUsersUpdated": "Updated {{n}} users",
           "syncUsersConflict": "Found {{n}} conflicting users",
           "reconcileDisabled": "Disabled {{n}}",
+          "reconcileDeletedUsers": "Deleted {{n}} users",
           "reconcileDeleted": "Deleted {{n}} groups",
           "syncGroupsSynced": "Synced {{n}} groups",
           "syncGroupsCreated": "Created {{n}} groups",
@@ -344,7 +345,7 @@
           "fetchDirectory": "Retrieved {{users}} users · {{groups}} groups",
           "syncGroupsUnchanged": "Verified {{groups}} groups; no changes found",
           "syncUsersUnchanged": "Verified {{users}} users; no changes found",
-          "reconcileChanged": "Disabled {{users}} users · Removed {{groups}} groups",
+          "reconcileChanged": "Deleted {{users}} users · Removed {{groups}} groups",
           "reconcileUnchanged": "No users or groups require cleanup",
           "emailQueued": "Emails queued; {{total}} pending",
           "emailSending": "Sending emails; {{sent}} / {{total}} sent",
@@ -980,6 +981,7 @@
           "phone": "Phone"
         },
         "externalFieldOption": {
+          "userid": "User ID",
           "user_id": "User ID",
           "open_id": "Open ID",
           "email": "Email",
