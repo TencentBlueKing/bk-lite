@@ -17,6 +17,7 @@ import {
   DownloadOutlined,
   UploadOutlined,
   DownOutlined,
+  RightOutlined,
   EyeOutlined,
   EyeInvisibleOutlined,
   HolderOutlined,
@@ -51,6 +52,7 @@ import CustomTable from '@/components/custom-table';
 import { useRouter } from 'next/navigation';
 import { useTranslation } from '@/utils/i18n';
 import PermissionWrapper from '@/components/permission';
+import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import { useClassificationApi, useInstanceApi, useModelApi } from '@/app/cmdb/api';
 import { useCommon } from '@/app/cmdb/context/common';
 import { useUserInfoContext } from '@/context/userInfo';
@@ -71,6 +73,22 @@ interface DraftClassification {
     order_id: number;
   }>;
 }
+
+const DEFAULT_MODEL_ICON_URL =
+  '/assets/icons-realistic/cc-default_默认.svg';
+
+const handleModelIconError = (
+  event: React.SyntheticEvent<HTMLImageElement>
+) => {
+  const image = event.currentTarget;
+  if (image.dataset.fallbackApplied === 'true') {
+    image.style.visibility = 'hidden';
+    return;
+  }
+
+  image.dataset.fallbackApplied = 'true';
+  image.src = DEFAULT_MODEL_ICON_URL;
+};
 
 const AssetManage = () => {
   const { getClassificationList, deleteClassification } =
@@ -98,7 +116,9 @@ const AssetManage = () => {
   const [loading, setLoading] = useState<boolean>(false);
   const [searchText, setSearchText] = useState<string>('');
   const [rawModelGroup, setRawModelGroup] = useState<GroupItem[]>([]);
-  const [hoveredModelId, setHoveredModelId] = useState<string | null>(null);
+  const [collapsedGroupIds, setCollapsedGroupIds] = useState<Set<string>>(
+    () => new Set()
+  );
   const [manageMode, setManageMode] = useState<boolean>(false);
   const [savingLayout, setSavingLayout] = useState<boolean>(false);
   const [layoutDirty, setLayoutDirty] = useState<boolean>(false);
@@ -266,11 +286,12 @@ const AssetManage = () => {
     getModelGroup();
   };
 
-  const onSearchTxtChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setSearchText(e.target.value);
-  };
-  const onSearchTxtEnter = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    setSearchText((e.target as HTMLInputElement).value);
+  const onSearch = (value: string) => {
+    const keyword = value.trim();
+    if (keyword) {
+      setCollapsedGroupIds(new Set());
+    }
+    setSearchText(keyword);
   };
 
   // 导出模型配置：打开勾选弹窗
@@ -332,6 +353,18 @@ const AssetManage = () => {
   const handleCopyClick = (e: React.MouseEvent, model: ModelItem) => {
     e.stopPropagation();
     showCopyModelModal(model);
+  };
+
+  const toggleModelGroup = (classificationId: string) => {
+    setCollapsedGroupIds((previous) => {
+      const next = new Set(previous);
+      if (next.has(classificationId)) {
+        next.delete(classificationId);
+      } else {
+        next.add(classificationId);
+      }
+      return next;
+    });
   };
 
   const markDirty = () => setLayoutDirty(true);
@@ -452,6 +485,7 @@ const AssetManage = () => {
               alt={t('picture')}
               width={28}
               height={28}
+              onError={handleModelIconError}
             />
           </div>
           <span className="text-[14px] font-[600] pl-[10px] truncate">{record.model_name}</span>
@@ -504,13 +538,11 @@ const AssetManage = () => {
       <Introduction title={t('Model.title')} message={t('Model.message')} />
       <div className={assetManageStyle.modelSetting}>
         <div className="nav-box flex justify-between mb-[10px]">
-          <div className="left-side w-[240px]">
-            <Input
+          <div className="left-side w-[320px] max-w-full">
+            <Input.Search
               placeholder={t('common.search')}
-              value={searchText}
               allowClear
-              onChange={onSearchTxtChange}
-              onPressEnter={onSearchTxtEnter}
+              onSearch={onSearch}
               onClear={() => setSearchText('')}
             />
           </div>
@@ -647,22 +679,52 @@ const AssetManage = () => {
             <div className={assetManageStyle.modelCardsScroll}>
               {modelGroup.length ? (
                 modelGroup.map(item => {
+                  const isCollapsed = collapsedGroupIds.has(
+                    item.classification_id
+                  );
+                  const groupContentId = `model-group-${item.classification_id}`;
                   return (
-                    <div className="model-group" key={item.classification_id}>
-                      <div
-                        className={`${assetManageStyle.groupTitle} flex items-center mt-[20px] text-[14px]`}
-                      >
-                        <span className="border-l-[4px] border-[var(--color-primary)] px-[4px] py-[1px] font-[600]">
-                          {item.classification_name}（{item.count}）
-                        </span>
+                    <div
+                      className={assetManageStyle.modelGroup}
+                      key={item.classification_id}
+                    >
+                      <div className={assetManageStyle.groupTitle}>
+                        <button
+                          type="button"
+                          className={assetManageStyle.groupToggle}
+                          aria-expanded={!isCollapsed}
+                          aria-controls={groupContentId}
+                          onClick={() =>
+                            toggleModelGroup(item.classification_id)
+                          }
+                        >
+                          <RightOutlined
+                            aria-hidden="true"
+                            className={`${assetManageStyle.groupChevron} ${
+                              isCollapsed
+                                ? ''
+                                : assetManageStyle.groupChevronExpanded
+                            }`}
+                          />
+                          <span className={assetManageStyle.groupName}>
+                            {item.classification_name}
+                          </span>
+                          <span className={assetManageStyle.groupCount}>
+                            （{item.count}）
+                          </span>
+                        </button>
                         {!item.is_pre && (
                           <div className={assetManageStyle.groupOperate}>
                             <PermissionWrapper
                               requiredPermissions={['Edit Group']}
                               instPermissions={item.permission}
                             >
-                              <EditTwoTone
-                                className="edit mr-[6px] cursor-pointer"
+                              <Button
+                                type="text"
+                                size="small"
+                                className={assetManageStyle.groupAction}
+                                aria-label={t('common.edit')}
+                                icon={<EditTwoTone aria-hidden="true" />}
                                 onClick={() => showGroupModal('edit', item)}
                               />
                             </PermissionWrapper>
@@ -672,8 +734,12 @@ const AssetManage = () => {
                                 requiredPermissions={['Delete Group']}
                                 instPermissions={item.permission}
                               >
-                                <DeleteTwoTone
-                                  className="delete cursor-pointer"
+                                <Button
+                                  type="text"
+                                  size="small"
+                                  className={assetManageStyle.groupAction}
+                                  aria-label={t('common.delete')}
+                                  icon={<DeleteTwoTone aria-hidden="true" />}
                                   onClick={() => showDeleteConfirm(item)}
                                 />
                               </PermissionWrapper>
@@ -681,43 +747,46 @@ const AssetManage = () => {
                           </div>
                         )}
                       </div>
-                      <ul className={assetManageStyle.modelList}>
-                        {item.list.map((model, index) => (
-                          <li
-                            className={`bg-[var(--color-bg)] flex justify-between items-center ${assetManageStyle.modelListItem}`}
-                            key={index}
-                            onMouseEnter={() => setHoveredModelId(model.model_id)}
-                            onMouseLeave={() => setHoveredModelId(null)}
-                          >
-                            <div
-                              className={assetManageStyle.leftSide}
-                              onClick={() =>
-                                linkToDetail({
-                                  ...model,
-                                  classification_id: item.classification_id,
-                                })
-                              }
+                      {!isCollapsed && (
+                        <ul
+                          id={groupContentId}
+                          className={assetManageStyle.modelList}
+                        >
+                          {item.list.map((model) => (
+                            <li
+                              className={assetManageStyle.modelListItem}
+                              key={model.model_id}
                             >
-                              <div style={{ width: 40 }}>
-                                <Image
-                                  src={getIconUrl(model)}
-                                  className="block w-auto h-10"
-                                  alt={t('picture')}
-                                  width={40}
-                                  height={40}
-                                />
+                              <div
+                                className={assetManageStyle.leftSide}
+                                onClick={() =>
+                                  linkToDetail({
+                                    ...model,
+                                    classification_id: item.classification_id,
+                                  })
+                                }
+                              >
+                                <div className={assetManageStyle.modelIcon}>
+                                  <Image
+                                    src={getIconUrl(model)}
+                                    className={assetManageStyle.modelImage}
+                                    alt={t('picture')}
+                                    width={32}
+                                    height={32}
+                                    onError={handleModelIconError}
+                                  />
+                                </div>
+                                <div className={assetManageStyle.modelMeta}>
+                                  <EllipsisWithTooltip
+                                    text={model.model_name}
+                                    className={assetManageStyle.modelName}
+                                  />
+                                  <span className={assetManageStyle.modelId}>
+                                    {model.model_id}
+                                  </span>
+                                </div>
                               </div>
-                              <div className="flex flex-col pl-[10px]">
-                                <span className="text-[14px] pb-[4px] font-[600]">
-                                  {model.model_name}
-                                </span>
-                                <span className="text-[12px] text-[var(--color-text-3)]">
-                                  {model.model_id}
-                                </span>
-                              </div>
-                            </div>
-                            {/* 复制按钮 */}
-                            {hoveredModelId === model.model_id && (
+                              {/* 复制按钮 */}
                               <PermissionWrapper
                                 requiredPermissions={['Add Model']}
                                 instPermissions={model.permission}
@@ -728,49 +797,51 @@ const AssetManage = () => {
                                       type="primary"
                                       shape="circle"
                                       size="small"
-                                      icon={<CopyOutlined />}
-                                      onClick={(e) => handleCopyClick(e, model)}
+                                      aria-label={t('Model.copyModel')}
+                                      icon={<CopyOutlined aria-hidden="true" />}
+                                      onClick={(e) =>
+                                        handleCopyClick(e, model)
+                                      }
                                     />
                                   </Tooltip>
                                 </div>
                               </PermissionWrapper>
-                            )}
-                            <div
-                              className={assetManageStyle.rightSide}
-                              onClick={() => linkToInstList(model)}
-                            >
-                              <SwitcherOutlined />
-                              <span className="text-[12px] pt-[4px]">
-                                {model.count}
-                              </span>
-                            </div>
-                          </li>
-                        ))}
-                        <li
-                          className={`${assetManageStyle.modelListItem} ${assetManageStyle.addModelCard}`}
-                          key={`add-${item.classification_id}`}
-                        >
-                          <PermissionWrapper
-                            requiredPermissions={['Add Model']}
-                            instPermissions={item.permission}
-                            className="block w-full h-full"
+                              <button
+                                type="button"
+                                className={assetManageStyle.rightSide}
+                                onClick={() => linkToInstList(model)}
+                              >
+                                <SwitcherOutlined aria-hidden="true" />
+                                <span>{model.count}</span>
+                              </button>
+                            </li>
+                          ))}
+                          <li
+                            className={`${assetManageStyle.modelListItem} ${assetManageStyle.addModelCard}`}
+                            key={`add-${item.classification_id}`}
                           >
-                            <Button
-                              type="dashed"
-                              block
-                              icon={<PlusOutlined />}
-                              className={assetManageStyle.addModelButton}
-                              onClick={() =>
-                                showModelModal('add', {
-                                  classification_id: item.classification_id,
-                                })
-                              }
+                            <PermissionWrapper
+                              requiredPermissions={['Add Model']}
+                              instPermissions={item.permission}
+                              className="block w-full h-full"
                             >
-                              {t('Model.addModel')}
-                            </Button>
-                          </PermissionWrapper>
-                        </li>
-                      </ul>
+                              <Button
+                                type="dashed"
+                                block
+                                icon={<PlusOutlined />}
+                                className={assetManageStyle.addModelButton}
+                                onClick={() =>
+                                  showModelModal('add', {
+                                    classification_id: item.classification_id,
+                                  })
+                                }
+                              >
+                                {t('Model.addModel')}
+                              </Button>
+                            </PermissionWrapper>
+                          </li>
+                        </ul>
+                      )}
                     </div>
                   );
                 })
