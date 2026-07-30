@@ -1,4 +1,4 @@
-"""apps/system_mgmt/nats_api.py 处理函数单元测试。
+"""apps/system_mgmt/nats_api.py 处理函数服务层测试。
 
 nats handler 直接可调用（@nats_client.register 返回原函数）。
 只 mock 真实外部边界（cache、send_msg、jwt token 验证等），断言真实 DB 行为与返回结构。
