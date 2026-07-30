@@ -114,8 +114,8 @@
       "label": "请求头",
       "type": "key_value_list",
       "required": false,
-      "guide_short": "仅填非敏感头，如 Content-Type、Accept。不要手写 Authorization；Basic/Bearer 请用下方认证配置，凭据走环境变量下发。",
-      "guide_short_en": "Enter only non-sensitive headers such as Content-Type and Accept. Do not set Authorization manually; use the Basic or Bearer fields so credentials are injected through environment variables.",
+      "guide_short": "仅填非敏感头，如 Content-Type、Accept。不要手写 Authorization；请用下方认证配置。密码和 Bearer Token 由环境变量注入，Basic Auth 用户名会写入配置正文。",
+      "guide_short_en": "Enter only non-sensitive headers such as Content-Type and Accept. Do not set Authorization manually; use the authentication fields below. Passwords and Bearer tokens are injected through environment variables, while the Basic Auth username is rendered into the configuration body.",
       "transform_on_edit": {"origin_path": "child.content.config.headers", "to_form": {"type": "key_value_list"}, "to_api": {"type": "key_value_map"}},
       "label_en": "Request Headers"
     },
@@ -128,8 +128,8 @@
       "required": true,
       "default_value": "none",
       "options": [{"label":"无认证","value":"none"},{"label":"Basic Auth","value":"basic"},{"label":"Bearer Token","value":"bearer"}],
-      "guide_short": "无认证 / Basic Auth / Bearer Token。凭据写入 env_config，不会进入 Telegraf 配置正文。",
-      "guide_short_en": "Select no authentication, Basic Auth, or Bearer Token. Credentials are stored in env_config rather than rendered into the Telegraf configuration body.",
+      "guide_short": "无认证 / Basic Auth / Bearer Token。密码和 Bearer Token 由环境变量注入；Basic Auth 用户名会写入 Telegraf 配置正文。",
+      "guide_short_en": "Select no authentication, Basic Auth, or Bearer Token. Passwords and Bearer tokens are injected through environment variables; the Basic Auth username is rendered into the Telegraf configuration body.",
       "label_en": "Authentication"
     },
     {
