@@ -6,7 +6,7 @@ import json
 import os
 import time
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone as dt_timezone
 from typing import Any
 
 from django.db import IntegrityError, OperationalError, transaction
@@ -1771,7 +1771,7 @@ class NodeMgmtSyncService:
                 continue
             if parsed.tzinfo is None or parsed.utcoffset() is None:
                 continue
-            parsed_values.append(parsed.astimezone(UTC))
+            parsed_values.append(parsed.astimezone(dt_timezone.utc))
         if not parsed_values:
             return ""
         return max(parsed_values).strftime("%Y-%m-%d %H:%M:%S%z")
