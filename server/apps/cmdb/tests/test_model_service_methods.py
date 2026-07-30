@@ -318,11 +318,21 @@ def test_update_enum_instances_display(fake_graph):
     assert any(c[0] == "batch_update_node_properties" for c in fg.calls)
 
 
+def _paged_query_entity(instances):
+    def _query(*args, page=None, **kwargs):
+        start = page["skip"]
+        end = start + page["limit"]
+        return instances[start:end], None
+
+    return _query
+
+
 def test_rebuild_file_instances_display_backfills_stem(fake_graph):
     # 实例 1 有附件但无 _display（历史数据）；实例 2 无附件值
+    instances = [{"_id": 1, "doc": [{"name": "report.pdf"}]}, {"_id": 2}]
     fg = fake_graph(
         MODULE,
-        query_entity=([{"_id": 1, "doc": [{"name": "report.pdf"}]}, {"_id": 2}], 2),
+        query_entity=_paged_query_entity(instances),
     )
     count = ModelManage.rebuild_file_instances_display("host", "doc")
     # 只有实例 1 含 doc → 回填 1 个
@@ -349,7 +359,7 @@ def test_rebuild_file_instances_display_batches_1000_distinct_values_once(
     instances.extend([{"_id": 1001}, {"_id": 1002, "doc": []}])
     fg = fake_graph(
         MODULE,
-        query_entity=(instances, len(instances)),
+        query_entity=_paged_query_entity(instances),
     )
 
     count = ModelManage.rebuild_file_instances_display("host", "doc")
@@ -371,8 +381,31 @@ def test_rebuild_file_instances_display_batches_1000_distinct_values_once(
     )
 
 
+def test_rebuild_file_instances_display_pages_without_unbounded_graph_writes(
+    fake_graph,
+):
+    instances = [
+        {"_id": index, "doc": [{"name": f"report-{index}.pdf"}]}
+        for index in range(1, 1002)
+    ]
+    fg = fake_graph(
+        MODULE,
+        query_entity=_paged_query_entity(instances),
+    )
+
+    count = ModelManage.rebuild_file_instances_display("host", "doc")
+
+    assert count == 1001
+    update_calls = [
+        call
+        for call in fg.calls
+        if call[0] == "batch_update_node_property_values"
+    ]
+    assert [len(call[1][2]) for call in update_calls] == [1000, 1]
+
+
 def test_rebuild_file_instances_display_no_instances(fake_graph):
-    fg = fake_graph(MODULE, query_entity=([], 0))
+    fg = fake_graph(MODULE, query_entity=_paged_query_entity([]))
     count = ModelManage.rebuild_file_instances_display("host", "doc")
     assert count == 0
     assert not any(
@@ -389,12 +422,11 @@ def test_rebuild_file_instances_display_backend_failure_is_non_blocking(
 
     fake_graph(
         MODULE,
-        query_entity=(
+        query_entity=_paged_query_entity(
             [
                 {"_id": 1, "doc": [{"name": "report.pdf"}]},
                 {"_id": 2, "doc": [{"name": "photo.png"}]},
-            ],
-            2,
+            ]
         ),
         batch_update_node_property_values=_raise,
     )

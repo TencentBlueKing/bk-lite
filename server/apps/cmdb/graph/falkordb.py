@@ -1109,21 +1109,9 @@ class FalkorDBClient:
         """在一次图查询中为不同节点写入同一字段的不同值。"""
         validated_label = CQLValidator.validate_label(label)
         validated_field = CQLValidator.validate_field(field)
-        if not isinstance(property_values, list):
-            raise BaseAppException("property_values must be a list")
-        if not property_values:
+        validated_property_values = CQLValidator.validate_property_values(property_values)
+        if not validated_property_values:
             return []
-
-        validated_property_values = []
-        for item in property_values:
-            if not isinstance(item, dict) or "id" not in item or "value" not in item:
-                raise BaseAppException("property_values items must contain id and value")
-            validated_property_values.append(
-                {
-                    "id": CQLValidator.validate_id(item["id"]),
-                    "value": item["value"],
-                }
-            )
 
         query = (
             f"UNWIND $property_values AS row "
