@@ -7,6 +7,7 @@ import type {
   MessageEvent as WebChatMessageEvent,
 } from '../../packages/webchat-core/src/types';
 
+/** Build a streaming fetch response from the supplied text chunks. */
 function streamResponse(chunks: string[]): Response {
   const encoder = new TextEncoder();
   const body = new ReadableStream<Uint8Array>({

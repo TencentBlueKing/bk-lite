@@ -34,6 +34,7 @@ class MemoryStorage implements Storage {
   }
 }
 
+/** Install a localStorage stub and return a function that restores the original. */
 function installLocalStorage(storage: Storage): () => void {
   const previous = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
   Object.defineProperty(globalThis, 'localStorage', {
@@ -50,6 +51,7 @@ function installLocalStorage(storage: Storage): () => void {
   };
 }
 
+/** Build the persisted session fixture for a given activity timestamp. */
 function storedSession(lastActivityTime: number): ChatSession {
   return {
     sessionId: 'persisted-session',
