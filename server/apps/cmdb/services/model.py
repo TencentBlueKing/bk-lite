@@ -1178,36 +1178,56 @@ class ModelManage(object):
 
         try:
             with GraphClient() as ag:
-                offset = 0
+                last_instance_id = None
+                property_values = []
                 while True:
+                    query_params = [{"field": "model_id", "type": "str=", "value": model_id}]
+                    if last_instance_id is not None:
+                        query_params.append(
+                            {
+                                "field": "id",
+                                "type": "id>",
+                                "value": last_instance_id,
+                            }
+                        )
                     instances, _ = ag.query_entity(
                         INSTANCE,
-                        [{"field": "model_id", "type": "str=", "value": model_id}],
-                        page={"skip": offset, "limit": MAX_BATCH_UPDATE_PROPERTY_VALUES},
+                        query_params,
+                        page={"skip": 0, "limit": MAX_BATCH_UPDATE_PROPERTY_VALUES},
                         include_count=False,
                     )
                     if not instances:
                         break
 
-                    property_values = [
-                        {
-                            "id": instance["_id"],
-                            "value": DisplayFieldConverter.convert_file(instance[attr_id]),
-                        }
-                        for instance in instances
-                        if attr_id in instance and instance[attr_id]
-                    ]
-                    if property_values:
-                        ag.batch_update_node_property_values(
-                            INSTANCE,
-                            display_field_id,
-                            property_values,
+                    for instance in instances:
+                        if attr_id not in instance or not instance[attr_id]:
+                            continue
+                        property_values.append(
+                            {
+                                "id": instance["_id"],
+                                "value": DisplayFieldConverter.convert_file(instance[attr_id]),
+                            }
                         )
-                        updated_count += len(property_values)
+                        if len(property_values) == MAX_BATCH_UPDATE_PROPERTY_VALUES:
+                            ag.batch_update_node_property_values(
+                                INSTANCE,
+                                display_field_id,
+                                property_values,
+                            )
+                            updated_count += len(property_values)
+                            property_values = []
 
                     if len(instances) < MAX_BATCH_UPDATE_PROPERTY_VALUES:
                         break
-                    offset += len(instances)
+                    last_instance_id = instances[-1]["_id"]
+
+                if property_values:
+                    ag.batch_update_node_property_values(
+                        INSTANCE,
+                        display_field_id,
+                        property_values,
+                    )
+                    updated_count += len(property_values)
 
                 if updated_count > 0:
                     logger.info(

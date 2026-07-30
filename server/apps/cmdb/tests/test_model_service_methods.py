@@ -318,11 +318,27 @@ def test_update_enum_instances_display(fake_graph):
     assert any(c[0] == "batch_update_node_properties" for c in fg.calls)
 
 
-def _paged_query_entity(instances):
-    def _query(*args, page=None, **kwargs):
+def _paged_query_entity(instances, delete_after_first=False):
+    call_count = 0
+
+    def _query(label, params, page=None, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        last_id = next(
+            (item["value"] for item in params if item["type"] == "id>"),
+            None,
+        )
+        candidates = [
+            instance
+            for instance in instances
+            if last_id is None or instance["_id"] > last_id
+        ]
         start = page["skip"]
         end = start + page["limit"]
-        return instances[start:end], None
+        result = candidates[start:end]
+        if delete_after_first and call_count == 1:
+            instances[:] = [instance for instance in instances if instance["_id"] != 1]
+        return result, None
 
     return _query
 
@@ -352,11 +368,12 @@ def test_rebuild_file_instances_display_backfills_stem(fake_graph):
 def test_rebuild_file_instances_display_batches_1000_distinct_values_once(
     fake_graph,
 ):
-    instances = [
+    instances = [{"_id": 1}]
+    instances.extend(
         {"_id": index, "doc": [{"name": f"report-{index}.pdf"}]}
-        for index in range(1, 1001)
-    ]
-    instances.extend([{"_id": 1001}, {"_id": 1002, "doc": []}])
+        for index in range(2, 1002)
+    )
+    instances.append({"_id": 1002, "doc": []})
     fg = fake_graph(
         MODULE,
         query_entity=_paged_query_entity(instances),
@@ -374,7 +391,7 @@ def test_rebuild_file_instances_display_batches_1000_distinct_values_once(
     assert update_calls[0][1][0:2] == ("instance", "doc_display")
     assert update_calls[0][1][2] == [
         {"id": index, "value": f"report-{index}"}
-        for index in range(1, 1001)
+        for index in range(2, 1002)
     ]
     assert not any(
         call[0] == "batch_update_node_properties" for call in fg.calls
@@ -402,6 +419,30 @@ def test_rebuild_file_instances_display_pages_without_unbounded_graph_writes(
         if call[0] == "batch_update_node_property_values"
     ]
     assert [len(call[1][2]) for call in update_calls] == [1000, 1]
+
+
+def test_rebuild_file_instances_display_keyset_does_not_skip_after_delete(
+    fake_graph,
+):
+    instances = [
+        {"_id": index, "doc": [{"name": f"report-{index}.pdf"}]}
+        for index in range(1, 1002)
+    ]
+    fg = fake_graph(
+        MODULE,
+        query_entity=_paged_query_entity(instances, delete_after_first=True),
+    )
+
+    count = ModelManage.rebuild_file_instances_display("host", "doc")
+
+    assert count == 1001
+    update_calls = [
+        call
+        for call in fg.calls
+        if call[0] == "batch_update_node_property_values"
+    ]
+    assert [len(call[1][2]) for call in update_calls] == [1000, 1]
+    assert update_calls[-1][1][2] == [{"id": 1001, "value": "report-1001"}]
 
 
 def test_rebuild_file_instances_display_no_instances(fake_graph):
