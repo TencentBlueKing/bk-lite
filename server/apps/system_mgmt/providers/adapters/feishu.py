@@ -1071,6 +1071,25 @@ class FeishuIMGroupAdapter(BaseIMGroupAdapter):
     capability_key = "im_group"
 
     @classmethod
+    def validate_create(cls, config: dict, provider_key: str, capability_key: str, **kwargs):
+        member_ids = list(dict.fromkeys(kwargs.get("member_ids") or []))
+        validation_error = _validate_group_members(
+            kwargs.get("member_id_type"),
+            member_ids,
+        )
+        if validation_error:
+            return validation_error
+        if (kwargs.get("owner_id") or "") not in member_ids:
+            return CapabilityExecutionResult.failed_result(
+                "Feishu group owner must be included in member_ids",
+                code="provider.invalid_config",
+                field="owner_id",
+            )
+        return CapabilityExecutionResult.success_result(
+            "Feishu group create request is valid",
+        )
+
+    @classmethod
     def test_connection(cls, config: dict, provider_key: str, capability_key: str, **kwargs):
         started_at = time.monotonic()
 
@@ -1138,16 +1157,23 @@ class FeishuIMGroupAdapter(BaseIMGroupAdapter):
     def create_group(cls, config: dict, provider_key: str, capability_key: str, **kwargs):
         member_id_type = kwargs["member_id_type"]
         member_ids = list(dict.fromkeys(kwargs.get("member_ids") or []))
-        validation_error = _validate_group_members(member_id_type, member_ids)
-        if validation_error:
+        validation = cls.validate_create(
+            config,
+            provider_key,
+            capability_key,
+            member_id_type=member_id_type,
+            member_ids=member_ids,
+            owner_id=kwargs.get("owner_id"),
+        )
+        if not validation.success:
             _log_feishu_group_request(
                 operation="create_group",
                 started_at=time.monotonic(),
-                result=validation_error,
+                result=validation,
                 request_id="",
                 member_count=len(member_ids),
             )
-            return validation_error
+            return validation
         result = _execute_feishu_group_request(
             config=config,
             operation="create_group",

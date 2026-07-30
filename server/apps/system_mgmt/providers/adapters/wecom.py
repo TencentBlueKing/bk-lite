@@ -1,8 +1,16 @@
+import hashlib
 from urllib.parse import urlencode, urlparse
 
 import requests
+from wechatpy.enterprise import WeChatClient
+from wechatpy.exceptions import WeChatClientException
 
-from .base import BaseIMNotificationAdapter, BaseLoginAuthAdapter, BaseUserSyncAdapter
+from .base import (
+    BaseIMGroupAdapter,
+    BaseIMNotificationAdapter,
+    BaseLoginAuthAdapter,
+    BaseUserSyncAdapter,
+)
 from ..runtime import CapabilityExecutionResult
 
 
@@ -592,3 +600,207 @@ class WeComIMNotificationAdapter(BaseIMNotificationAdapter):
             )
         _, error = cls._token(config)
         return error or CapabilityExecutionResult.success_result("WeCom IM notification capability is ready")
+
+
+def _wecom_group_validation(config, member_id_type=None, member_ids=None):
+    error = _validate_credentials(config)
+    if error:
+        return error
+    if not (config or {}).get("agent_id"):
+        return CapabilityExecutionResult.failed_result(
+            "WeCom AgentId is missing",
+            code="provider.invalid_config",
+            field="agent_id",
+        )
+    if member_id_type is not None and member_id_type != "userid":
+        return CapabilityExecutionResult.failed_result(
+            "WeCom group members must use userid",
+            code="provider.invalid_config",
+            field="member_id_type",
+        )
+    if member_ids is not None and not member_ids:
+        return CapabilityExecutionResult.failed_result(
+            "No WeCom group members provided",
+            code="provider.invalid_config",
+            field="member_ids",
+        )
+    return None
+
+
+def _wecom_group_client(config):
+    return WeChatClient(
+        config["corp_id"],
+        config["corp_secret"],
+        timeout=WECOM_TIMEOUT,
+    )
+
+
+def _wecom_group_failure(error):
+    if isinstance(error, WeChatClientException):
+        external_code = str(error.errcode)
+        if error.errcode in {40014, 40097, 41001, 42001}:
+            code, retryable = "provider.auth_failed", False
+        elif error.errcode in {45009, 45011}:
+            code, retryable = "provider.rate_limited", True
+        elif error.errcode in {60011, 60020, 84061}:
+            code, retryable = "provider.permission_denied", False
+        elif error.errcode in {86001, 86004, 86005, 86007}:
+            code, retryable = "provider.member_invalid", False
+        else:
+            code, retryable = "provider.request_failed", False
+        return CapabilityExecutionResult.failed_result(
+            "WeCom group request failed",
+            code=code,
+            retryable=retryable,
+            external_code=external_code,
+        )
+    if isinstance(error, requests.Timeout):
+        return CapabilityExecutionResult.failed_result(
+            "WeCom group request timed out",
+            code="provider.timeout",
+            retryable=True,
+        )
+    return CapabilityExecutionResult.failed_result(
+        "WeCom group request failed",
+        code="provider.request_failed",
+        retryable=isinstance(error, requests.RequestException),
+    )
+
+
+class WeComIMGroupAdapter(BaseIMGroupAdapter):
+    capability_key = "im_group"
+
+    @classmethod
+    def validate_create(cls, config, provider_key, capability_key, **kwargs):
+        member_ids = list(dict.fromkeys(kwargs.get("member_ids") or []))
+        error = _wecom_group_validation(
+            config,
+            kwargs.get("member_id_type"),
+            member_ids,
+        )
+        if error:
+            return error
+        if len(member_ids) < 2:
+            return CapabilityExecutionResult.failed_result(
+                "企业微信应用群聊至少需要两名成员",
+                code="provider.invalid_config",
+                field="member_ids",
+            )
+        if (kwargs.get("owner_id") or "") not in member_ids:
+            return CapabilityExecutionResult.failed_result(
+                "企业微信群主必须包含在初始成员中",
+                code="provider.invalid_config",
+                field="owner_id",
+            )
+        return CapabilityExecutionResult.success_result(
+            "WeCom group create request is valid",
+        )
+
+    @classmethod
+    def test_connection(cls, config, provider_key, capability_key, **kwargs):
+        error = _wecom_group_validation(config)
+        if error:
+            return error
+        try:
+            _wecom_group_client(config).fetch_access_token()
+        except (WeChatClientException, requests.RequestException) as exc:
+            return _wecom_group_failure(exc)
+        return CapabilityExecutionResult.success_result(
+            "WeCom IM group capability is ready",
+        )
+
+    @classmethod
+    def create_group(cls, config, provider_key, capability_key, **kwargs):
+        member_ids = list(dict.fromkeys(kwargs.get("member_ids") or []))
+        validation = cls.validate_create(
+            config,
+            provider_key,
+            capability_key,
+            member_id_type=kwargs.get("member_id_type"),
+            member_ids=member_ids,
+            owner_id=kwargs.get("owner_id"),
+        )
+        if not validation.success:
+            return validation
+        owner_id = kwargs.get("owner_id") or ""
+        chat_id = hashlib.sha256(
+            str(kwargs["idempotency_key"]).encode("utf-8")
+        ).hexdigest()[:32]
+        try:
+            _wecom_group_client(config).appchat.create(
+                chat_id=chat_id,
+                name=kwargs["group_name"],
+                owner=owner_id,
+                user_list=member_ids,
+            )
+        except (WeChatClientException, requests.RequestException) as exc:
+            return _wecom_group_failure(exc)
+        return CapabilityExecutionResult.success_result(
+            "WeCom group created",
+            payload={
+                "chat_id": chat_id,
+                "invalid_member_ids": [],
+            },
+        )
+
+    @classmethod
+    def get_group(cls, config, provider_key, capability_key, **kwargs):
+        error = _wecom_group_validation(config)
+        if error:
+            return error
+        chat_id = kwargs["chat_id"]
+        try:
+            _wecom_group_client(config).appchat.get(chat_id)
+        except WeChatClientException as exc:
+            if exc.errcode in {86003, 86008}:
+                return CapabilityExecutionResult.failed_result(
+                    "WeCom group was not found",
+                    code="provider.group_not_found",
+                    external_code=str(exc.errcode),
+                )
+            return _wecom_group_failure(exc)
+        except requests.RequestException as exc:
+            return _wecom_group_failure(exc)
+        return CapabilityExecutionResult.success_result(
+            "WeCom group loaded",
+            payload={"chat_id": chat_id},
+        )
+
+    @classmethod
+    def add_members(cls, config, provider_key, capability_key, **kwargs):
+        member_ids = list(dict.fromkeys(kwargs.get("member_ids") or []))
+        error = _wecom_group_validation(
+            config,
+            kwargs.get("member_id_type"),
+            member_ids,
+        )
+        if error:
+            return error
+        try:
+            _wecom_group_client(config).appchat.update(
+                kwargs["chat_id"],
+                add_user_list=member_ids,
+            )
+        except (WeChatClientException, requests.RequestException) as exc:
+            return _wecom_group_failure(exc)
+        return CapabilityExecutionResult.success_result(
+            "WeCom group members added",
+            payload={"invalid_member_ids": []},
+        )
+
+    @classmethod
+    def send_group_message(cls, config, provider_key, capability_key, **kwargs):
+        error = _wecom_group_validation(config)
+        if error:
+            return error
+        try:
+            _wecom_group_client(config).appchat.send_text(
+                kwargs["chat_id"],
+                kwargs["content"],
+            )
+        except (WeChatClientException, requests.RequestException) as exc:
+            return _wecom_group_failure(exc)
+        return CapabilityExecutionResult.success_result(
+            "WeCom group message sent",
+            payload={"chat_id": kwargs["chat_id"]},
+        )

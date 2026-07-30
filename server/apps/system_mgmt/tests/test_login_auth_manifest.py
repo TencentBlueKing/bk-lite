@@ -2,8 +2,6 @@ from apps.system_mgmt.providers.manifests.ad import PROVIDER_MANIFEST as AD_PROV
 from apps.system_mgmt.providers.manifests.feishu import PROVIDER_MANIFEST as FEISHU_PROVIDER_MANIFEST
 from apps.system_mgmt.providers.manifests.wechat import PROVIDER_MANIFEST as WECHAT_PROVIDER_MANIFEST
 from apps.system_mgmt.providers.manifests.wecom import PROVIDER_MANIFEST as WECOM_PROVIDER_MANIFEST
-
-
 def test_ad_external_field_manifests_expose_both_phone_variants():
     """AD 表单暴露两个可映射的手机号字段。"""
     login_template = AD_PROVIDER_MANIFEST.business_templates["login_auth_form"]

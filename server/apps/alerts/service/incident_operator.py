@@ -6,10 +6,11 @@
 from django.db import transaction
 from django.utils import timezone
 
-from apps.alerts.models.models import  Incident
+from apps.alerts.constants.constants import IncidentStatus, IncidentOperate, LogAction, LogTargetType
+from apps.alerts.extensions.incident import incident_extensions
+from apps.alerts.models.models import Incident
 from apps.alerts.utils.operator_log import record_operator_log
 from apps.core.logger import alert_logger as logger
-from apps.alerts.constants.constants import IncidentStatus, IncidentOperate, LogAction, LogTargetType
 
 
 class IncidentOperator:
@@ -138,10 +139,6 @@ class IncidentOperator:
             incident.updated_by = self.user
             incident.save()
 
-            from apps.alerts.service.incident_im.reconcile import pause_group_for_closed_incident
-
-            pause_group_for_closed_incident(incident.id)
-
             log_data = {
                 "action": LogAction.MODIFY,
                 "target_type": LogTargetType.INCIDENT,
@@ -151,6 +148,9 @@ class IncidentOperator:
                 "overview": f"事故关闭, 事故[{incident.title}]状态变更: {self.status_map[IncidentStatus.PROCESSING]} -> {self.status_map[IncidentStatus.CLOSED]}"
             }
             self.operator_log(log_data)
+            transaction.on_commit(
+                lambda incident_id=incident.id: incident_extensions.incident_closed(incident_id)
+            )
 
             return {
                 "result": True,
@@ -183,10 +183,6 @@ class IncidentOperator:
             incident.updated_by = self.user
             incident.save()
 
-            from apps.alerts.service.incident_im.reconcile import resume_group_for_reopened_incident
-
-            resume_group_for_reopened_incident(incident.id)
-
             log_data = {
                 "action": LogAction.MODIFY,
                 "target_type": LogTargetType.INCIDENT,
@@ -196,6 +192,9 @@ class IncidentOperator:
                 "overview": f"事故重新打开, 事故[{incident.title}]状态变更: {self.status_map[IncidentStatus.CLOSED]} -> {self.status_map[IncidentStatus.PROCESSING]}"
             }
             self.operator_log(log_data)
+            transaction.on_commit(
+                lambda incident_id=incident.id: incident_extensions.incident_reopened(incident_id)
+            )
 
             return {
                 "result": True,

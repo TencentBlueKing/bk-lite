@@ -1,5 +1,10 @@
 # Incident 飞书协作群：快速设计导览
 
+> **已被取代（2026-07-30）**：该文档记录早期“社区版 Alerts 直接承载、首期仅飞书、
+> 停止管理后可重新建群”的设计与实现历史。当前正式设计为企业版、多 Provider
+> 创建前选择且绑定后不可切换，见
+> [企业版 Incident 一键拉群](../enterprise-incident-im-group/spec.md)。
+
 > 面向第一次接触该功能的开发者和评审者。目标是在 10 分钟内理解需求、关键接口、可靠性边界与发布条件；实现细节以代码和[完整规格](../../../docs/superpowers/specs/2026-07-21-incident-feishu-im-group-design.md)为准。
 
 ## 1. 一句话目标

@@ -23,7 +23,6 @@ from .incident import IncidentModelViewSet
 
 # 事故协作更新
 from .incident_update import IncidentUpdateViewSet
-from .incident_im import IncidentIMGroupViewSet
 
 # 分派与屏蔽
 from .assignment_shield import (
@@ -63,7 +62,6 @@ __all__ = [
     # 事故
     "IncidentModelViewSet",
     "IncidentUpdateViewSet",
-    "IncidentIMGroupViewSet",
     # 分派与屏蔽
     "AlertAssignmentModelViewSet",
     "AlertShieldModelViewSet",

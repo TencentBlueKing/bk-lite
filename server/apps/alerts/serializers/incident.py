@@ -5,8 +5,8 @@ from rest_framework import serializers
 
 from apps.alerts.constants import PERMISSION_INCIDENT
 from apps.alerts.constants.constants import IncidentStatus
+from apps.alerts.extensions.incident import incident_extensions
 from apps.alerts.models.models import Alert, Incident
-from apps.alerts.service.incident_im.reconcile import enqueue_reconcile
 from apps.alerts.utils.operator_scope import normalize_usernames, validate_incident_operators
 from apps.alerts.utils.permission_scope import get_authorized_group_ids, normalize_team_ids
 from apps.core.utils.serializers import AuthSerializer
@@ -111,7 +111,9 @@ class IncidentModelSerializer(AuthSerializer):
             if alerts is not None:
                 instance.alert.set(alerts)
             if member_changed:
-                enqueue_reconcile(instance)
+                transaction.on_commit(
+                    lambda incident_id=instance.id: incident_extensions.participants_changed(incident_id)
+                )
         return instance
 
     def _get_operator_scope_alerts(self):

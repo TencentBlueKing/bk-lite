@@ -27,8 +27,10 @@ import type {
   IncidentUpdateReply,
 } from '@/app/alarm/types/incidents';
 import type { UserItem } from '@/app/alarm/types/types';
-import IncidentIMGroupPanel from './imGroup';
-import { PANEL_SIDEBAR_WIDTH_CLASS } from './imGroup/viewModel';
+import {
+  IncidentCollaborationExtension,
+  INCIDENT_COLLABORATION_SIDEBAR_WIDTH_CLASS,
+} from '@/app/alarm/(enterprise)/incidents/im-group';
 
 /** Avatar background colors, cycled by first char of username */
 const AVATAR_COLORS = [
@@ -537,12 +539,14 @@ const CollaborationTab: React.FC<CollaborationTabProps> = ({
       </div>
 
       {/* Right: Collaborator panel */}
-      <div className={`${PANEL_SIDEBAR_WIDTH_CLASS} min-w-0 shrink-0 border-t border-gray-200 pt-4 lg:border-l lg:border-t-0 lg:pl-4 lg:pt-0`}>
-        <IncidentIMGroupPanel
-          incidentPk={incidentPk}
-          incidentDetail={incidentDetail}
-          refreshVersion={imGroupRefreshVersion}
-        />
+      <div className={`${INCIDENT_COLLABORATION_SIDEBAR_WIDTH_CLASS} min-w-0 shrink-0 border-t border-gray-200 pt-4 lg:border-l lg:border-t-0 lg:pl-4 lg:pt-0`}>
+        {IncidentCollaborationExtension && (
+          <IncidentCollaborationExtension
+            incidentPk={incidentPk}
+            incidentDetail={incidentDetail}
+            refreshVersion={imGroupRefreshVersion}
+          />
+        )}
         <div className="flex justify-between items-center mb-4">
           <h4 className="text-sm font-semibold m-0">{t('incidents.collaborators')}</h4>
           <PermissionWrapper requiredPermissions={['Edit']}>

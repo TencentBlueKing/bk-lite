@@ -3,6 +3,7 @@ from datetime import timedelta
 from django.db import transaction
 from django.utils import timezone
 
+from apps.alerts.extensions.outbox import outbox_handlers
 from apps.alerts.models.outbox import AlertOutbox
 from apps.core.logger import alert_logger as logger
 
@@ -22,53 +23,18 @@ def enqueue_outbox(kind: str, payload: dict, idempotency_key: str):
 
 def _schedule_delivery(record_id: int) -> None:
     try:
-        from apps.alerts.tasks import deliver_alert_outbox, deliver_incident_im_add_members_outbox
-
         kind = AlertOutbox.objects.filter(pk=record_id).values_list("kind", flat=True).first()
-        task = deliver_incident_im_add_members_outbox if kind == "incident_im_group.add_members" else deliver_alert_outbox
-        task.delay(record_id)
+        if outbox_handlers.schedule(kind, record_id):
+            return
+        from apps.alerts.tasks import deliver_alert_outbox
+
+        deliver_alert_outbox.delay(record_id)
     except Exception:
         logger.exception("alert outbox broker enqueue failed: outbox_id=%s", record_id)
 
 
 def _deliver_payload(kind: str, payload: dict, *, delivery_claim=None) -> None:
-    if kind.startswith("incident_im_group."):
-        from apps.alerts.service.incident_im.delivery import (
-            OUTBOX_ADD_MEMBERS,
-            OUTBOX_CREATE,
-            OUTBOX_SEND_SUMMARY,
-            deliver_add_members,
-            deliver_create_group,
-            deliver_summary,
-        )
-        from apps.alerts.service.incident_im.reconcile import (
-            OUTBOX_RECONCILE,
-            reconcile_incident_im_group,
-        )
-
-        handlers = {
-            OUTBOX_CREATE: deliver_create_group,
-            OUTBOX_ADD_MEMBERS: deliver_add_members,
-            OUTBOX_SEND_SUMMARY: deliver_summary,
-            OUTBOX_RECONCILE: reconcile_incident_im_group,
-        }
-        handler = handlers.get(kind)
-        if handler is None:
-            raise ValueError(f"unsupported alert outbox kind: {kind}")
-        if kind == OUTBOX_RECONCILE:
-            handler(
-                payload["incident_id"],
-                resume_create=bool(payload.get("resume_create")),
-            )
-        elif kind == OUTBOX_ADD_MEMBERS:
-            kwargs = {}
-            if "member_pks" in payload:
-                kwargs["member_pks"] = payload["member_pks"]
-            if delivery_claim is not None:
-                kwargs["delivery_claim"] = delivery_claim
-            handler(payload["group_id"], **kwargs)
-        else:
-            handler(payload["group_id"])
+    if outbox_handlers.deliver(kind, payload, delivery_claim=delivery_claim):
         return
     if kind == "notification":
         from apps.alerts.tasks import sync_notify
@@ -88,19 +54,13 @@ def _deliver_payload(kind: str, payload: dict, *, delivery_claim=None) -> None:
     raise ValueError(f"unsupported alert outbox kind: {kind}")
 
 
-def _notify_incident_delivery_exhausted(record_id, kind, payload, error):
-    if not kind.startswith("incident_im_group."):
-        return
-    try:
-        from apps.alerts.service.incident_im.delivery import handle_delivery_exhausted
-
-        handle_delivery_exhausted(kind, payload, error)
-    except Exception:
-        logger.exception(
-            "incident im outbox exhausted hook failed: outbox_id=%s kind=%s",
-            record_id,
-            kind,
-        )
+def _notify_delivery_exhausted(record_id, kind, payload, error):
+    outbox_handlers.notify_exhausted(
+        kind,
+        payload,
+        error,
+        record_id=record_id,
+    )
 
 
 def deliver_outbox_record(record_id: int) -> bool:
@@ -140,21 +100,18 @@ def deliver_outbox_record(record_id: int) -> bool:
             max_attempts = record.max_attempts
 
     if lease_exhausted:
-        _notify_incident_delivery_exhausted(record_id, kind, payload, error)
+        _notify_delivery_exhausted(record_id, kind, payload, error)
         return False
 
     try:
-        if kind == "incident_im_group.add_members":
-            _deliver_payload(
-                kind,
-                payload,
-                delivery_claim={
-                    "record_id": record_id,
-                    "generation": claim_generation,
-                },
-            )
-        else:
-            _deliver_payload(kind, payload)
+        _deliver_payload(
+            kind,
+            payload,
+            delivery_claim={
+                "record_id": record_id,
+                "generation": claim_generation,
+            },
+        )
     except Exception as exc:
         next_status = (
             AlertOutbox.Status.FAILED
@@ -176,7 +133,7 @@ def deliver_outbox_record(record_id: int) -> bool:
             return False
         exhausted = next_status == AlertOutbox.Status.FAILED
         if exhausted:
-            _notify_incident_delivery_exhausted(record_id, kind, payload, str(exc))
+            _notify_delivery_exhausted(record_id, kind, payload, str(exc))
         raise
 
     delivered_at = timezone.now()
