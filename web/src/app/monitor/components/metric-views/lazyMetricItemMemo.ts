@@ -5,6 +5,11 @@ interface LazyMetricItemMemoProps {
   item: {
     id: number;
     viewData?: ChartData[] | InterfaceTableItem[];
+    seriesBudget?: {
+      truncated: boolean;
+      limit: number;
+      applied?: boolean;
+    };
   };
   xAxisDomain?: [number, number];
   isLoading: boolean;
@@ -20,6 +25,8 @@ export const areLazyMetricItemPropsEqual = (
 ): boolean => (
   prevProps.item.id === nextProps.item.id &&
   prevProps.item.viewData === nextProps.item.viewData &&
+  prevProps.item.seriesBudget?.truncated === nextProps.item.seriesBudget?.truncated &&
+  prevProps.item.seriesBudget?.limit === nextProps.item.seriesBudget?.limit &&
   prevProps.xAxisDomain?.[0] === nextProps.xAxisDomain?.[0] &&
   prevProps.xAxisDomain?.[1] === nextProps.xAxisDomain?.[1] &&
   prevProps.isLoading === nextProps.isLoading &&

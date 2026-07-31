@@ -401,6 +401,20 @@ class Controller:
 
                         # 互斥校验放在模板渲染前，避免被包装成「渲染采集模板失败」
                         assert_snmp_interface_filter_mutex_from_values(render_context)
+                    if (
+                        is_child
+                        and str(collect_type or "") == "exporter"
+                        and str(type_name or "").lower() == "kafka"
+                    ):
+                        from apps.monitor.utils.kafka_collect_timeouts import (
+                            assert_kafka_group_metrics_timeout_lt_interval,
+                        )
+
+                        assert_kafka_group_metrics_timeout_lt_interval(
+                            config_info.get("ENV_GROUP_METRICS_TIMEOUT")
+                            or env_config.get("GROUP_METRICS_TIMEOUT"),
+                            config_info.get("interval"),
+                        )
                     template_config = self.render_template(
                         template["content"],
                         render_context,
