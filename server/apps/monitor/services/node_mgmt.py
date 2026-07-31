@@ -967,7 +967,7 @@ class InstanceConfigService:
                     validate_rendered_website_config(child_info.get("content") or {}, env_config)
                 except ValueError as exc:
                     raise BaseAppException(str(exc)) from exc
-            if config_obj.collect_type == "snmp":
+            if (config_obj.collect_type or "").startswith("snmp"):
                 from apps.monitor.utils.snmp_interface_filters import normalize_snmp_interface_filter_config
 
                 child_info["content"] = normalize_snmp_interface_filter_config(child_info.get("content"))

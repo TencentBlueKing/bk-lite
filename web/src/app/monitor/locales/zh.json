@@ -575,7 +575,7 @@
       "filterMutexOptionDisabled": "「{peer}」已选中该值",
       "filterMutexPeerOccupied": "「{peer}」已填写，不能同时配置",
       "filterIfTypeTagsPlaceholder": "选择常用类型，或输入数字（如 22）后回车",
-      "filterIfTypeInvalid": "ifType 请填数字（如 22）；已忽略：{values}",
+      "filterIfTypeInvalid": "ifType 请填数字（如 22）；无效值：{values}",
       "filterMutexFields": {
         "iftype_exclude": "排除的接口类型",
         "iftype_include": "仅采集的接口类型",

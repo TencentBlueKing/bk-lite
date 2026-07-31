@@ -24,7 +24,10 @@ import Permission from '@/components/permission';
 import { cloneDeep } from 'lodash';
 import { usePluginFromJson } from '@/app/monitor/hooks/integration/usePluginFromJson';
 import { useConfigRenderer } from '@/app/monitor/hooks/integration/useConfigRenderer';
-import { trackSnmpFilterMutexLastChanged, normalizeMutexValues, formatSnmpFilterMutexConflict } from '@/app/monitor/hooks/integration/snmpFilterMutex';
+import {
+  getSnmpFilterMutexConflicts,
+  trackSnmpFilterMutexLastChanged
+} from '@/app/monitor/hooks/integration/snmpFilterMutex';
 import { toMonitorNodeOption } from '@/app/monitor/hooks/integration/nodeOptions';
 import BatchEditModal from './batchEditModal';
 import ExcelImportModal from './excelImportModal';
@@ -806,19 +809,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     }
     form.validateFields().then((values) => {
       try {
-        const mutexErrors: string[] = [];
-        if (
-          normalizeMutexValues(values.iftype_exclude).length &&
-          normalizeMutexValues(values.iftype_include).length
-        ) {
-          mutexErrors.push(formatSnmpFilterMutexConflict(t, 'iftype'));
-        }
-        if (
-          normalizeMutexValues(values.ifdescr_exclude).length &&
-          normalizeMutexValues(values.ifdescr_include).length
-        ) {
-          mutexErrors.push(formatSnmpFilterMutexConflict(t, 'ifdescr'));
-        }
+        const mutexErrors = getSnmpFilterMutexConflicts(values, t);
         if (mutexErrors.length) {
           mutexErrors.forEach((msg) => message.error(msg));
           return;

@@ -144,3 +144,24 @@ export const formatSnmpFilterMutexConflict = (
     right: t(`monitor.integrations.filterMutexFields.${right}`),
   });
 };
+
+/** 保存拦截用：返回所有同维黑白名单冲突 */
+export const getSnmpFilterMutexConflicts = (
+  values: Record<string, unknown>,
+  t: (id: string, defaultMessage?: string, values?: Record<string, string>) => string
+): string[] => {
+  const conflicts: string[] = [];
+  if (
+    normalizeMutexValues(values.iftype_exclude).length &&
+    normalizeMutexValues(values.iftype_include).length
+  ) {
+    conflicts.push(formatSnmpFilterMutexConflict(t, 'iftype'));
+  }
+  if (
+    normalizeMutexValues(values.ifdescr_exclude).length &&
+    normalizeMutexValues(values.ifdescr_include).length
+  ) {
+    conflicts.push(formatSnmpFilterMutexConflict(t, 'ifdescr'));
+  }
+  return conflicts;
+};

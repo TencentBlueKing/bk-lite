@@ -13,7 +13,10 @@ import { useTranslation } from '@/utils/i18n';
 import OperateModal from '@/components/operate-modal';
 import useApiClient from '@/utils/request';
 import { usePluginFromJson } from '@/app/monitor/hooks/integration/usePluginFromJson';
-import { trackSnmpFilterMutexLastChanged, normalizeMutexValues, formatSnmpFilterMutexConflict } from '@/app/monitor/hooks/integration/snmpFilterMutex';
+import {
+  getSnmpFilterMutexConflicts,
+  trackSnmpFilterMutexLastChanged
+} from '@/app/monitor/hooks/integration/snmpFilterMutex';
 
 const UpdateConfig = forwardRef<ModalRef, ModalProps>(({ onSuccess }, ref) => {
   const [form] = Form.useForm();
@@ -100,19 +103,7 @@ const UpdateConfig = forwardRef<ModalRef, ModalProps>(({ onSuccess }, ref) => {
 
   const handleSubmit = () => {
     form.validateFields().then((values) => {
-      const mutexErrors: string[] = [];
-      if (
-        normalizeMutexValues(values.iftype_exclude).length &&
-        normalizeMutexValues(values.iftype_include).length
-      ) {
-        mutexErrors.push(formatSnmpFilterMutexConflict(t, 'iftype'));
-      }
-      if (
-        normalizeMutexValues(values.ifdescr_exclude).length &&
-        normalizeMutexValues(values.ifdescr_include).length
-      ) {
-        mutexErrors.push(formatSnmpFilterMutexConflict(t, 'ifdescr'));
-      }
+      const mutexErrors = getSnmpFilterMutexConflicts(values, t);
       if (mutexErrors.length) {
         mutexErrors.forEach((msg) => message.error(msg));
         return;

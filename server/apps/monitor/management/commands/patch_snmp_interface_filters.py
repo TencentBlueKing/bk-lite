@@ -68,6 +68,9 @@ def _ensure_default_tagdrop(config: dict, overwrite: bool = False) -> bool:
     elif "ifType" not in tagexclude:
         tagexclude.append("ifType")
         changed = True
+    tagpass = config.get("tagpass")
+    if isinstance(tagpass, dict) and tagpass.get("ifType") not in (None, [], ""):
+        return changed
     tagdrop = config.get("tagdrop")
     if not isinstance(tagdrop, dict):
         tagdrop = {}

@@ -426,7 +426,10 @@ export const usePluginFromJson = () => {
               }
             });
             // SNMP 接口黑白名单：空数组/空串不得写成 []（会误杀全部接口），改为删除对应键
-            if (config.collect_type === 'snmp' && result?.child?.content?.config) {
+            if (
+              String(config.collect_type || '').startsWith('snmp') &&
+              result?.child?.content?.config
+            ) {
               const snmpFilterNames = new Set(
                 (formFields || [])
                   .map((field: any) => field?.name)

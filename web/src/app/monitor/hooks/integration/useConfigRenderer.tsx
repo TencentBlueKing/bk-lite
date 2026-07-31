@@ -7,8 +7,7 @@ import {
   Checkbox,
   Button,
   Tooltip,
-  Switch,
-  message
+  Switch
 } from 'antd';
 import { ExclamationCircleFilled, MinusCircleOutlined, PlusOutlined } from '@ant-design/icons';
 import Password from '@/components/password';
@@ -172,9 +171,27 @@ export const useConfigRenderer = () => {
     const mutexPeerOccupiedTip = mutexPeerLabel
       ? t('monitor.integrations.filterMutexPeerOccupied', '', { peer: mutexPeerLabel })
       : '';
+    const isIfTypeFilterField =
+      name === 'iftype_exclude' || name === 'iftype_include';
 
     const formRules = [
       ...(required ? [{ required: true, message: t('common.required') }] : []),
+      ...(isIfTypeFilterField
+        ? [
+          {
+            validator: async (_: unknown, value: unknown) => {
+              const { rejected } = normalizeIfTypeTags(value);
+              if (rejected.length) {
+                throw new Error(
+                  t('monitor.integrations.filterIfTypeInvalid', '', {
+                    values: rejected.join(', ')
+                  })
+                );
+              }
+            }
+          }
+        ]
+        : []),
       ...rules.flatMap((rule: any) => {
         if (rule?.type === 'mutex_with') {
           return [];
@@ -409,9 +426,6 @@ export const useConfigRenderer = () => {
       }
     };
 
-    const isIfTypeFilterField =
-      name === 'iftype_exclude' || name === 'iftype_include';
-
     const renderNamedControl = () => (
       <Form.Item
         noStyle
@@ -420,22 +434,6 @@ export const useConfigRenderer = () => {
         dependencies={mutexPeerFields}
         initialValue={default_value}
         valuePropName={type === 'switch' ? 'checked' : 'value'}
-        getValueFromEvent={
-          isIfTypeFilterField
-            ? (value) => {
-              const { values, rejected } = normalizeIfTypeTags(value);
-              if (rejected.length) {
-                message.warning(
-                  t('monitor.integrations.filterIfTypeInvalid', '', {
-                    values: rejected.join(', ')
-                  })
-                );
-              }
-              return values;
-            }
-            : undefined
-        }
-        normalize={isIfTypeFilterField ? (value) => normalizeIfTypeTags(value).values : undefined}
       >
         {renderWidget()}
       </Form.Item>

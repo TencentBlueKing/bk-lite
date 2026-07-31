@@ -575,7 +575,7 @@
       "filterMutexOptionDisabled": "Already selected in \"{peer}\"",
       "filterMutexPeerOccupied": "\"{peer}\" is already set; cannot configure both",
       "filterIfTypeTagsPlaceholder": "Select a common type, or type a number (e.g. 22) and press Enter",
-      "filterIfTypeInvalid": "ifType must be a number (e.g. 22); ignored: {values}",
+      "filterIfTypeInvalid": "ifType must be a number (e.g. 22); invalid: {values}",
       "filterMutexFields": {
         "iftype_exclude": "Excluded Interface Types",
         "iftype_include": "Included Interface Types",
