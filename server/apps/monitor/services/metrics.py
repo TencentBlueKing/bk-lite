@@ -42,9 +42,13 @@ class Metrics:
         return effective_keys
 
     @staticmethod
-    def get_metrics(query):
-        """查询指标信息"""
-        return VictoriaMetricsAPI().query(query)
+    def get_metrics(query, time=None):
+        """查询指标信息。
+
+        :param query: PromQL
+        :param time: 求值时刻（Unix 秒）；None 表示由 VictoriaMetrics 使用当前时间
+        """
+        return VictoriaMetricsAPI().query(query, time=time)
 
     @staticmethod
     def query_already_limited(query: str) -> bool:

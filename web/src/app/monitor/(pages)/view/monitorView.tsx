@@ -340,6 +340,10 @@ const MonitorView: React.FC<ViewModalProps> = ({
       }
       return;
     }
+    // 响应返回后若已被新请求替换，丢弃结果，避免 force 刷新被旧数据覆盖。
+    if (activeRequestsRef.current.get(metric.id) !== abortController) {
+      return;
+    }
     try {
       const instanceRow = [
         {
@@ -416,9 +420,11 @@ const MonitorView: React.FC<ViewModalProps> = ({
       }
       return;
     } finally {
-      if (activeRequestsRef.current.get(metric.id) === abortController) {
-        activeRequestsRef.current.delete(metric.id);
+      // 仅当前请求仍占用该指标槽时清理 loading/loaded，避免 force 刷新时被中止的旧请求清掉新请求状态。
+      if (activeRequestsRef.current.get(metric.id) !== abortController) {
+        return;
       }
+      activeRequestsRef.current.delete(metric.id);
       setLoadingMetricIds((prev) => {
         const newSet = new Set(prev);
         newSet.delete(metric.id);

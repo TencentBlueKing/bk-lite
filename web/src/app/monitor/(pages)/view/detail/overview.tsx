@@ -128,7 +128,7 @@ const Overview: React.FC<ViewDetailProps> = ({
 
   const getParams = (item: MetricItem) => {
     const params: SearchParams = {
-      query: (item.query || '').replace(
+      query: ((item.view_query as string | undefined) || item.query || '').replace(
         /__\$labels__/g,
         mergeViewQueryKeyValues([
           { keys: item.instance_id_keys || [], values: idValues }
@@ -136,6 +136,8 @@ const Overview: React.FC<ViewDetailProps> = ({
       ),
       source_unit: item.unit || ''
     };
+    // Overview 指标卡与详情指标 Tab 共用 card budget，避免大基数全量打满。
+    params.query_budget = 'card';
     const recentTimeRange = getRecentTimeRange(timeValues);
     const startTime = recentTimeRange.at(0);
     const endTime = recentTimeRange.at(1);

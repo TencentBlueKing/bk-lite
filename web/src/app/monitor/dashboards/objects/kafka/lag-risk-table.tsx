@@ -64,7 +64,7 @@ export function KafkaLagRiskTable({ dashboard, styles }: KafkaLagRiskTableProps)
     setLoading(true);
     setSelectedKey(null);
     const load = async () => {
-      // 首屏只做一次 instant Top 10 查询；负 Lag 不参与正常风险排行。
+      // instant Top 10 在时间窗终点求值（buildSearchParams.time=end），与趋势 range 对齐；负 Lag 不参与排行。
       const lag = await getInstanceInstantQuery(buildSearchParams(
         KAFKA_LAG_TOP_QUERY, 'counts', dashboard.idValues, instanceIdKeys, dashboard.timeValues,
       )).catch(() => null);
