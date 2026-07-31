@@ -7,6 +7,7 @@ from rest_framework import status, viewsets
 from rest_framework.response import Response
 
 from apps.apm.adapters import TelemetryStoreUnavailable, VictoriaTracesTraceStore
+from apps.apm.renderers import ApmRenderer
 from apps.apm.serializers import TraceSearchSerializer
 from apps.apm.services import DjangoTelemetryQueryService
 from apps.apm.services.access import current_organization_id
@@ -63,6 +64,7 @@ def _detail_data(detail: TraceDetail) -> dict[str, object]:
 
 
 class ApmTraceViewSet(viewsets.ViewSet):
+    renderer_classes = (ApmRenderer,)
     access = TraceAccessResolver()
 
     @staticmethod
@@ -75,7 +77,11 @@ class ApmTraceViewSet(viewsets.ViewSet):
         if organization_id is None:
             return Response({"items": [], "next_cursor": None})
         serializer = TraceSearchSerializer(data=request.query_params)
-        serializer.is_valid(raise_exception=True)
+        if not serializer.is_valid():
+            return Response(
+                {"code": "invalid_query", "detail": serializer.errors},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         data = serializer.validated_data
         query = TraceSearchQuery(
             started_at=data["started_at"],
@@ -90,7 +96,10 @@ class ApmTraceViewSet(viewsets.ViewSet):
         try:
             page = self._query_service().search_traces(query)
         except ValueError as exc:
-            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {"code": "invalid_query", "detail": str(exc)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         except TelemetryStoreUnavailable as exc:
             return Response(
                 {"detail": str(exc), "code": "telemetry_unavailable"},

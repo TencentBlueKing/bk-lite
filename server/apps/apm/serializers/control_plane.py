@@ -163,6 +163,9 @@ class ServiceMetricQuerySerializer(serializers.Serializer):
     ended_at = serializers.DateTimeField(required=False)
 
     def validate(self, attrs):
+        unsupported = sorted(set(self.initial_data) - set(self.fields))
+        if unsupported:
+            raise serializers.ValidationError(f"不支持的 RED 查询参数: {', '.join(unsupported)}")
         ended_at = attrs.get("ended_at") or timezone.now()
         started_at = attrs.get("started_at") or ended_at - timedelta(hours=1)
         attrs["started_at"] = started_at

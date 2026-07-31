@@ -7,6 +7,7 @@ from rest_framework.generics import get_object_or_404
 from rest_framework.response import Response
 
 from apps.apm.models import ApmIngestSource, ApmPolicy, ApmPolicyState, ApmService, ApmServiceInstance
+from apps.apm.renderers import ApmRenderer
 from apps.apm.serializers import (
     ApmEventQuerySerializer,
     ApmIngestSourceSerializer,
@@ -51,6 +52,7 @@ def _notification_actor_context(request, organization_id: int) -> dict:
 
 
 class ApmIngestSourceViewSet(viewsets.GenericViewSet):
+    renderer_classes = (ApmRenderer,)
     serializer_class = ApmIngestSourceSerializer
     service = DjangoIngestSourceService()
 
@@ -147,6 +149,7 @@ class ApmIngestSourceViewSet(viewsets.GenericViewSet):
 
 
 class ApmServiceViewSet(viewsets.ReadOnlyModelViewSet):
+    renderer_classes = (ApmRenderer,)
     serializer_class = ApmServiceSerializer
     catalog = DjangoTelemetryCatalogService()
 
@@ -211,7 +214,11 @@ class ApmServiceViewSet(viewsets.ReadOnlyModelViewSet):
     def metrics(self, request, *args, **kwargs):
         service = self.get_object()
         serializer = ServiceMetricQuerySerializer(data=request.query_params)
-        serializer.is_valid(raise_exception=True)
+        if not serializer.is_valid():
+            return Response(
+                {"code": "invalid_query", "detail": serializer.errors},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         data = serializer.validated_data
         query = ServiceMetricQuery(
             service_namespace=service.namespace,
@@ -219,11 +226,15 @@ class ApmServiceViewSet(viewsets.ReadOnlyModelViewSet):
             environment=data["environment"],
             started_at=data["started_at"],
             ended_at=data["ended_at"],
+            include_breakdown=True,
         )
         try:
             red = DjangoTelemetryQueryService(VictoriaMetricsMetricStore()).service_red(query)
         except ValueError as exc:
-            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {"code": "invalid_query", "detail": str(exc)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         except TelemetryStoreUnavailable as exc:
             return Response(
                 {"detail": str(exc), "code": "telemetry_unavailable"},
@@ -239,11 +250,32 @@ class ApmServiceViewSet(viewsets.ReadOnlyModelViewSet):
                 "error_rate": red.error_rate,
                 "p95_ms": red.p95_ms,
                 "p99_ms": red.p99_ms,
+                "timeseries": [
+                    {
+                        "timestamp": point.timestamp,
+                        "request_rate": point.request_rate,
+                        "error_rate": point.error_rate,
+                        "p95_ms": point.p95_ms,
+                        "p99_ms": point.p99_ms,
+                    }
+                    for point in red.timeseries
+                ],
+                "top_endpoints": [
+                    {
+                        "endpoint": endpoint.endpoint,
+                        "request_rate": endpoint.request_rate,
+                        "error_rate": endpoint.error_rate,
+                        "p95_ms": endpoint.p95_ms,
+                        "p99_ms": endpoint.p99_ms,
+                    }
+                    for endpoint in red.top_endpoints
+                ],
             }
         )
 
 
 class ApmServiceInstanceViewSet(viewsets.ReadOnlyModelViewSet):
+    renderer_classes = (ApmRenderer,)
     serializer_class = ApmServiceInstanceSerializer
     catalog = DjangoTelemetryCatalogService()
 
@@ -320,6 +352,7 @@ class ApmServiceInstanceViewSet(viewsets.ReadOnlyModelViewSet):
 
 
 class ApmPolicyViewSet(viewsets.GenericViewSet):
+    renderer_classes = (ApmRenderer,)
     serializer_class = ApmPolicySerializer
     notification_directory = NotificationChannelDirectory()
 
@@ -462,6 +495,7 @@ class ApmPolicyViewSet(viewsets.GenericViewSet):
 
 
 class ApmEventViewSet(viewsets.GenericViewSet):
+    renderer_classes = (ApmRenderer,)
     reader = DjangoApmEventReader()
 
     @HasPermission("events-View")
@@ -475,6 +509,7 @@ class ApmEventViewSet(viewsets.GenericViewSet):
 
 
 class ApmNotificationChannelViewSet(viewsets.GenericViewSet):
+    renderer_classes = (ApmRenderer,)
     directory = NotificationChannelDirectory()
 
     @HasPermission("policies-View")

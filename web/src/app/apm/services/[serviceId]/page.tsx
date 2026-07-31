@@ -1,10 +1,12 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeftOutlined, SearchOutlined } from '@ant-design/icons';
-import { Button, Col, Row, Segmented, Select, Space, Tag, Typography } from 'antd';
+import { Button, Col, Row, Segmented, Select, Space, Table, Tag, Typography } from 'antd';
+import type { TableColumnsType } from 'antd';
+import dayjs from 'dayjs';
 import useApmApi from '@/app/apm/api';
 import ApmRouteShell, { ApmSurface } from '@/app/apm/components/apm-route-shell';
 import CatalogState, {
@@ -12,11 +14,19 @@ import CatalogState, {
   type CatalogStateKind,
 } from '@/app/apm/components/catalog-state';
 import ApmStatusTag from '@/app/apm/components/status-tag';
-import type { ApmService, ApmServiceRed } from '@/app/apm/types';
+import type { ApmService, ApmServiceEndpointRed, ApmServiceRed } from '@/app/apm/types';
 import SummaryMetricCard from '@/components/summary-metric-card';
+import TimeSeriesComposedChart from '@/components/time-series-composed-chart';
 
 type PageState = CatalogStateKind | 'ready';
 type TimeRange = '15m' | '1h' | '4h' | '24h';
+type RedChartPoint = Record<string, unknown> & {
+  timestamp: string;
+  request_rate: number;
+  error_rate_percent: number;
+  p95_ms: number;
+  p99_ms: number;
+};
 
 const RANGE_MS: Record<TimeRange, number> = {
   '15m': 15 * 60 * 1000,
@@ -92,6 +102,53 @@ export default function ApmServiceDetailPage() {
     }).toString()}`
     : '/apm/traces';
 
+  const chartData = useMemo<RedChartPoint[]>(
+    () => (red?.timeseries ?? []).map((point) => ({
+      timestamp: point.timestamp,
+      request_rate: point.request_rate,
+      error_rate_percent: point.error_rate * 100,
+      p95_ms: point.p95_ms,
+      p99_ms: point.p99_ms,
+    })),
+    [red]
+  );
+
+  const endpointColumns: TableColumnsType<ApmServiceEndpointRed> = [
+    {
+      title: '端点',
+      dataIndex: 'endpoint',
+      render: (value) => <Typography.Text code className="break-all">{value}</Typography.Text>,
+    },
+    {
+      title: '请求速率',
+      dataIndex: 'request_rate',
+      width: 130,
+      align: 'right',
+      render: (value) => <span className="tabular-nums">{value.toFixed(2)} req/s</span>,
+    },
+    {
+      title: '错误率',
+      dataIndex: 'error_rate',
+      width: 110,
+      align: 'right',
+      render: (value) => <span className="tabular-nums">{(value * 100).toFixed(2)}%</span>,
+    },
+    {
+      title: 'P95',
+      dataIndex: 'p95_ms',
+      width: 110,
+      align: 'right',
+      render: (value) => <span className="tabular-nums">{value.toFixed(1)} ms</span>,
+    },
+    {
+      title: 'P99',
+      dataIndex: 'p99_ms',
+      width: 110,
+      align: 'right',
+      render: (value) => <span className="tabular-nums">{value.toFixed(1)} ms</span>,
+    },
+  ];
+
   return (
     <ApmRouteShell
       title="服务详情"
@@ -147,45 +204,105 @@ export default function ApmServiceDetailPage() {
             </div>
           </ApmSurface>
           {metricState === 'ready' && red ? (
-            <Row gutter={[16, 16]}>
-              <Col xs={24} md={12} xl={6}>
-                <SummaryMetricCard
-                  layout="vertical"
-                  label="请求速率"
-                  value={red.request_rate.toFixed(2)}
-                  unit="req/s"
-                  className="h-full bg-[var(--color-bg)] p-4"
+            <div className="flex flex-col gap-4">
+              <Row gutter={[16, 16]}>
+                <Col xs={24} md={12} xl={6}>
+                  <SummaryMetricCard
+                    layout="vertical"
+                    label="请求速率"
+                    value={red.request_rate.toFixed(2)}
+                    unit="req/s"
+                    className="h-full bg-[var(--color-bg)] p-4"
+                  />
+                </Col>
+                <Col xs={24} md={12} xl={6}>
+                  <SummaryMetricCard
+                    layout="vertical"
+                    label="错误率"
+                    value={(red.error_rate * 100).toFixed(2)}
+                    unit="%"
+                    valueColor={red.error_rate > 0.05 ? 'var(--color-fail)' : 'var(--color-text-1)'}
+                    className="h-full bg-[var(--color-bg)] p-4"
+                  />
+                </Col>
+                <Col xs={24} md={12} xl={6}>
+                  <SummaryMetricCard
+                    layout="vertical"
+                    label="P95 延迟"
+                    value={red.p95_ms.toFixed(1)}
+                    unit="ms"
+                    className="h-full bg-[var(--color-bg)] p-4"
+                  />
+                </Col>
+                <Col xs={24} md={12} xl={6}>
+                  <SummaryMetricCard
+                    layout="vertical"
+                    label="P99 延迟"
+                    value={red.p99_ms.toFixed(1)}
+                    unit="ms"
+                    className="h-full bg-[var(--color-bg)] p-4"
+                  />
+                </Col>
+              </Row>
+              <Row gutter={[16, 16]}>
+                <Col xs={24} xl={12}>
+                  <ApmSurface className="h-[340px]">
+                    <Typography.Text strong className="mb-3 block">吞吐与错误率趋势</Typography.Text>
+                    <div className="h-[280px]">
+                      <TimeSeriesComposedChart<RedChartPoint>
+                        data={chartData}
+                        xDataKey="timestamp"
+                        getXLabel={(item) => dayjs(item.timestamp).format('HH:mm')}
+                        xAxisBoundaryGap={false}
+                        yAxes={[
+                          { formatter: (value) => `${value.toFixed(value >= 10 ? 0 : 1)}` },
+                          { formatter: (value) => `${value.toFixed(1)}%`, splitLine: false },
+                        ]}
+                        series={[
+                          { name: '请求速率 req/s', type: 'line', dataKey: 'request_rate', color: '#1677ff', showArea: true },
+                          { name: '错误率 %', type: 'line', dataKey: 'error_rate_percent', color: '#f5222d', yAxisIndex: 1 },
+                        ]}
+                        surfaceProps={{ emptyStateProps: { description: '当前时间窗暂无 RED 趋势点' } }}
+                      />
+                    </div>
+                  </ApmSurface>
+                </Col>
+                <Col xs={24} xl={12}>
+                  <ApmSurface className="h-[340px]">
+                    <Typography.Text strong className="mb-3 block">延迟趋势</Typography.Text>
+                    <div className="h-[280px]">
+                      <TimeSeriesComposedChart<RedChartPoint>
+                        data={chartData}
+                        xDataKey="timestamp"
+                        getXLabel={(item) => dayjs(item.timestamp).format('HH:mm')}
+                        xAxisBoundaryGap={false}
+                        yAxes={[{ formatter: (value) => `${value.toFixed(0)} ms` }]}
+                        series={[
+                          { name: 'P95', type: 'line', dataKey: 'p95_ms', color: '#722ed1', showArea: true },
+                          { name: 'P99', type: 'line', dataKey: 'p99_ms', color: '#fa8c16' },
+                        ]}
+                        surfaceProps={{ emptyStateProps: { description: '当前时间窗暂无延迟趋势点' } }}
+                      />
+                    </div>
+                  </ApmSurface>
+                </Col>
+              </Row>
+              <ApmSurface padding="none" className="overflow-hidden">
+                <div className="border-b border-[var(--color-border-1)] px-4 py-3">
+                  <Typography.Text strong>Top endpoint</Typography.Text>
+                  <Typography.Text type="secondary" className="ml-2 text-xs">按请求速率排序，最多 10 项</Typography.Text>
+                </div>
+                <Table
+                  rowKey="endpoint"
+                  size="small"
+                  columns={endpointColumns}
+                  dataSource={red.top_endpoints}
+                  pagination={false}
+                  locale={{ emptyText: '当前时间窗暂无端点指标' }}
+                  scroll={{ x: 760 }}
                 />
-              </Col>
-              <Col xs={24} md={12} xl={6}>
-                <SummaryMetricCard
-                  layout="vertical"
-                  label="错误率"
-                  value={(red.error_rate * 100).toFixed(2)}
-                  unit="%"
-                  valueColor={red.error_rate > 0.05 ? 'var(--color-fail)' : 'var(--color-text-1)'}
-                  className="h-full bg-[var(--color-bg)] p-4"
-                />
-              </Col>
-              <Col xs={24} md={12} xl={6}>
-                <SummaryMetricCard
-                  layout="vertical"
-                  label="P95 延迟"
-                  value={red.p95_ms.toFixed(1)}
-                  unit="ms"
-                  className="h-full bg-[var(--color-bg)] p-4"
-                />
-              </Col>
-              <Col xs={24} md={12} xl={6}>
-                <SummaryMetricCard
-                  layout="vertical"
-                  label="P99 延迟"
-                  value={red.p99_ms.toFixed(1)}
-                  unit="ms"
-                  className="h-full bg-[var(--color-bg)] p-4"
-                />
-              </Col>
-            </Row>
+              </ApmSurface>
+            </div>
           ) : (
             <ApmSurface padding="none">
               <CatalogState

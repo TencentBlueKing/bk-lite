@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import os
 from datetime import datetime, timezone
 from uuid import UUID
@@ -10,12 +11,19 @@ from apps.apm.services.contracts import (
     InstanceActivity,
     InstanceActivityQuery,
     ServiceMetricQuery,
+    ServiceEndpointRed,
     ServiceRed,
+    ServiceRedPoint,
 )
 
 
 class TelemetryStoreUnavailable(RuntimeError):
     pass
+
+
+MAX_RED_POINTS = 120
+MAX_TOP_ENDPOINTS = 10
+MAX_ENDPOINT_NAME_LENGTH = 256
 
 
 def _promql_string(value: str) -> str:
@@ -65,17 +73,88 @@ class VictoriaMetricsMetricStore:
             raise TelemetryStoreUnavailable("VictoriaMetrics 返回格式无效")
         return result
 
+    def _query_range(
+        self,
+        promql: str,
+        *,
+        started_at: datetime,
+        ended_at: datetime,
+        step: int,
+    ) -> list[dict]:
+        if not self.endpoint:
+            raise TelemetryStoreUnavailable("VictoriaMetrics 查询地址未配置")
+        try:
+            response = self.session.get(
+                f"{self.endpoint}/api/v1/query_range",
+                params={
+                    "query": promql,
+                    "start": started_at.isoformat(),
+                    "end": ended_at.isoformat(),
+                    "step": step,
+                },
+                auth=self.auth,
+                verify=self.verify,
+                timeout=self.timeout,
+            )
+            response.raise_for_status()
+            payload = response.json()
+        except (requests.RequestException, ValueError) as exc:
+            raise TelemetryStoreUnavailable("VictoriaMetrics 查询不可用") from exc
+        if payload.get("status") != "success":
+            raise TelemetryStoreUnavailable("VictoriaMetrics 返回查询错误")
+        result = payload.get("data", {}).get("result", [])
+        if not isinstance(result, list):
+            raise TelemetryStoreUnavailable("VictoriaMetrics 返回格式无效")
+        return result
+
     @staticmethod
     def _scalar(result: list[dict]) -> float:
         if not result:
             return 0.0
         try:
-            return float(result[0]["value"][1])
+            value = float(result[0]["value"][1])
         except (KeyError, IndexError, TypeError, ValueError) as exc:
             raise TelemetryStoreUnavailable("VictoriaMetrics 标量格式无效") from exc
+        return value if math.isfinite(value) else 0.0
+
+    @staticmethod
+    def _range_values(result: list[dict]) -> dict[float, float]:
+        if not result:
+            return {}
+        if len(result) != 1:
+            raise TelemetryStoreUnavailable("VictoriaMetrics 时序聚合格式无效")
+        try:
+            values = result[0]["values"]
+        except (KeyError, TypeError, ValueError) as exc:
+            raise TelemetryStoreUnavailable("VictoriaMetrics 时序格式无效") from exc
+        parsed: dict[float, float] = {}
+        try:
+            for timestamp, value in values:
+                parsed_timestamp = float(timestamp)
+                parsed_value = float(value)
+                if math.isfinite(parsed_timestamp):
+                    parsed[parsed_timestamp] = parsed_value if math.isfinite(parsed_value) else 0.0
+        except (TypeError, ValueError) as exc:
+            raise TelemetryStoreUnavailable("VictoriaMetrics 时序格式无效") from exc
+        return dict(sorted(parsed.items())[-MAX_RED_POINTS:])
+
+    @staticmethod
+    def _endpoint_values(result: list[dict]) -> dict[str, float]:
+        values: dict[str, float] = {}
+        for series in result:
+            try:
+                endpoint = str(series["metric"].get("span_name", "")).strip()
+                value = float(series["value"][1])
+            except (KeyError, IndexError, TypeError, ValueError):
+                continue
+            if endpoint and math.isfinite(value):
+                values[endpoint[:MAX_ENDPOINT_NAME_LENGTH]] = value
+        return values
 
     def service_red(self, query: ServiceMetricQuery) -> ServiceRed:
         window = _window_seconds(query.started_at, query.ended_at)
+        step = max(15, math.ceil(window / (MAX_RED_POINTS - 1)))
+        trend_window = max(60, step * 4)
         labels = {
             "service_namespace": query.service_namespace,
             "service_name": query.service_name,
@@ -102,11 +181,101 @@ class VictoriaMetricsMetricStore:
         p99_ms = self._scalar(
             self._query(f"histogram_quantile(0.99, {buckets})", evaluated_at=query.ended_at)
         )
+        if not query.include_breakdown:
+            return ServiceRed(
+                request_rate=request_rate,
+                error_rate=error_rate_value / request_rate if request_rate > 0 else 0.0,
+                p95_ms=p95_ms,
+                p99_ms=p99_ms,
+            )
+
+        trend_rate = f"sum(rate(bklite_apm_calls_total{{{entry_selector}}}[{trend_window}s]))"
+        trend_errors = (
+            "sum(rate(bklite_apm_calls_total{"
+            f'{entry_selector},status_code="STATUS_CODE_ERROR"'
+            f"}}[{trend_window}s]))"
+        )
+        trend_buckets = (
+            "sum(rate(bklite_apm_duration_milliseconds_bucket{"
+            f"{entry_selector}"
+            f"}}[{trend_window}s])) by (le)"
+        )
+        range_options = {
+            "started_at": query.started_at,
+            "ended_at": query.ended_at,
+            "step": step,
+        }
+        trend_rates = self._range_values(self._query_range(trend_rate, **range_options))
+        trend_error_rates = self._range_values(self._query_range(trend_errors, **range_options))
+        trend_p95 = self._range_values(
+            self._query_range(f"histogram_quantile(0.95, {trend_buckets})", **range_options)
+        )
+        trend_p99 = self._range_values(
+            self._query_range(f"histogram_quantile(0.99, {trend_buckets})", **range_options)
+        )
+        timeseries = tuple(
+            ServiceRedPoint(
+                timestamp=datetime.fromtimestamp(timestamp, tz=timezone.utc),
+                request_rate=value,
+                error_rate=trend_error_rates.get(timestamp, 0.0) / value if value > 0 else 0.0,
+                p95_ms=trend_p95.get(timestamp, 0.0),
+                p99_ms=trend_p99.get(timestamp, 0.0),
+            )
+            for timestamp, value in trend_rates.items()
+        )
+
+        endpoint_rate_query = (
+            "sum(rate(bklite_apm_calls_total{"
+            f"{entry_selector}"
+            f"}}[{window}s])) by (span_name)"
+        )
+        endpoint_error_query = (
+            "sum(rate(bklite_apm_calls_total{"
+            f'{entry_selector},status_code="STATUS_CODE_ERROR"'
+            f"}}[{window}s])) by (span_name)"
+        )
+        endpoint_bucket_query = (
+            "sum(rate(bklite_apm_duration_milliseconds_bucket{"
+            f"{entry_selector}"
+            f"}}[{window}s])) by (le,span_name)"
+        )
+        endpoint_rates = self._endpoint_values(
+            self._query(endpoint_rate_query, evaluated_at=query.ended_at)
+        )
+        endpoint_errors = self._endpoint_values(
+            self._query(endpoint_error_query, evaluated_at=query.ended_at)
+        )
+        endpoint_p95 = self._endpoint_values(
+            self._query(
+                f"histogram_quantile(0.95, {endpoint_bucket_query})",
+                evaluated_at=query.ended_at,
+            )
+        )
+        endpoint_p99 = self._endpoint_values(
+            self._query(
+                f"histogram_quantile(0.99, {endpoint_bucket_query})",
+                evaluated_at=query.ended_at,
+            )
+        )
+        top_endpoints = tuple(
+            ServiceEndpointRed(
+                endpoint=endpoint,
+                request_rate=value,
+                error_rate=endpoint_errors.get(endpoint, 0.0) / value if value > 0 else 0.0,
+                p95_ms=endpoint_p95.get(endpoint, 0.0),
+                p99_ms=endpoint_p99.get(endpoint, 0.0),
+            )
+            for endpoint, value in sorted(
+                endpoint_rates.items(), key=lambda item: (-item[1], item[0])
+            )[:MAX_TOP_ENDPOINTS]
+        )
         return ServiceRed(
             request_rate=request_rate,
             error_rate=error_rate_value / request_rate if request_rate > 0 else 0.0,
             p95_ms=p95_ms,
             p99_ms=p99_ms,
+            timeseries=timeseries,
+            top_endpoints=top_endpoints,
         )
 
     def instance_activity(self, query: InstanceActivityQuery) -> list[InstanceActivity]:

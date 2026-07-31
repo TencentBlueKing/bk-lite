@@ -129,6 +129,25 @@ class ServiceMetricQuery:
     environment: str
     started_at: datetime
     ended_at: datetime
+    include_breakdown: bool = False
+
+
+@dataclass(frozen=True)
+class ServiceRedPoint:
+    timestamp: datetime
+    request_rate: float
+    error_rate: float
+    p95_ms: float
+    p99_ms: float
+
+
+@dataclass(frozen=True)
+class ServiceEndpointRed:
+    endpoint: str
+    request_rate: float
+    error_rate: float
+    p95_ms: float
+    p99_ms: float
 
 
 @dataclass(frozen=True)
@@ -137,6 +156,8 @@ class ServiceRed:
     error_rate: float
     p95_ms: float
     p99_ms: float
+    timeseries: tuple[ServiceRedPoint, ...] = ()
+    top_endpoints: tuple[ServiceEndpointRed, ...] = ()
 
 
 @dataclass(frozen=True)

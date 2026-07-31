@@ -16,14 +16,41 @@ def _response(result):
     return response
 
 
+def _range_response(result):
+    response = Mock()
+    response.raise_for_status.return_value = None
+    response.json.return_value = {"status": "success", "data": {"result": result}}
+    return response
+
+
 def test_service_red_uses_environment_scoped_entry_spans_and_histogram_quantiles():
     now = timezone.now()
+    earlier = now - timedelta(minutes=1)
     session = Mock()
     session.get.side_effect = [
         _response([{"value": [0, "20"]}]),
         _response([{"value": [0, "2"]}]),
         _response([{"value": [0, "125"]}]),
         _response([{"value": [0, "250"]}]),
+        _range_response([{"values": [[earlier.timestamp(), "10"], [now.timestamp(), "20"]]}]),
+        _range_response([{"values": [[earlier.timestamp(), "1"], [now.timestamp(), "2"]]}]),
+        _range_response([{"values": [[earlier.timestamp(), "100"], [now.timestamp(), "125"]]}]),
+        _range_response([{"values": [[earlier.timestamp(), "180"], [now.timestamp(), "250"]]}]),
+        _response([
+            {"metric": {"span_name": "GET /checkout"}, "value": [0, "12"]},
+            {"metric": {"span_name": "GET /health"}, "value": [0, "8"]},
+        ]),
+        _response([
+            {"metric": {"span_name": "GET /checkout"}, "value": [0, "1.2"]},
+        ]),
+        _response([
+            {"metric": {"span_name": "GET /checkout"}, "value": [0, "110"]},
+            {"metric": {"span_name": "GET /health"}, "value": [0, "20"]},
+        ]),
+        _response([
+            {"metric": {"span_name": "GET /checkout"}, "value": [0, "210"]},
+            {"metric": {"span_name": "GET /health"}, "value": [0, "30"]},
+        ]),
     ]
     store = VictoriaMetricsMetricStore(endpoint="http://metrics.test", session=session)
 
@@ -34,6 +61,7 @@ def test_service_red_uses_environment_scoped_entry_spans_and_histogram_quantiles
             environment="production",
             started_at=now - timedelta(minutes=5),
             ended_at=now,
+            include_breakdown=True,
         )
     )
 
@@ -41,11 +69,25 @@ def test_service_red_uses_environment_scoped_entry_spans_and_histogram_quantiles
     assert red.error_rate == 0.1
     assert red.p95_ms == 125
     assert red.p99_ms == 250
+    assert [(point.request_rate, point.error_rate) for point in red.timeseries] == [
+        (10, 0.1),
+        (20, 0.1),
+    ]
+    assert [(item.endpoint, item.request_rate) for item in red.top_endpoints] == [
+        ("GET /checkout", 12),
+        ("GET /health", 8),
+    ]
+    assert red.top_endpoints[0].error_rate == pytest.approx(0.1)
+    assert red.top_endpoints[1].error_rate == 0
     queries = [call.kwargs["params"]["query"] for call in session.get.call_args_list]
     assert all('deployment_environment="production"' in query for query in queries)
     assert all('span_kind=~"SPAN_KIND_SERVER|SPAN_KIND_CONSUMER"' in query for query in queries)
     assert "histogram_quantile(0.95" in queries[2]
     assert "histogram_quantile(0.99" in queries[3]
+    assert all(call.args[0].endswith("/api/v1/query_range") for call in session.get.call_args_list[4:8])
+    assert all(int(call.kwargs["params"]["step"]) >= 15 for call in session.get.call_args_list[4:8])
+    assert "by (span_name)" in queries[8]
+    assert "by (le,span_name)" in queries[10]
 
 
 def test_instance_activity_only_accepts_complete_trusted_catalog_dimensions():
@@ -95,3 +137,16 @@ def test_transport_failures_are_mapped_to_degraded_store_error():
 
     with pytest.raises(TelemetryStoreUnavailable, match="查询不可用"):
         store.instance_activity(InstanceActivityQuery(started_at=now - timedelta(minutes=20), ended_at=now))
+
+
+def test_non_finite_metric_values_never_escape_the_store_contract():
+    assert VictoriaMetricsMetricStore._scalar([{"value": [0, "NaN"]}]) == 0
+    assert VictoriaMetricsMetricStore._range_values(
+        [{"values": [[1, "NaN"], [2, "Infinity"], [3, "4"]]}]
+    ) == {1.0: 0.0, 2.0: 0.0, 3.0: 4.0}
+    assert VictoriaMetricsMetricStore._endpoint_values(
+        [
+            {"metric": {"span_name": "GET /bad"}, "value": [0, "NaN"]},
+            {"metric": {"span_name": "GET /ok"}, "value": [0, "2"]},
+        ]
+    ) == {"GET /ok": 2.0}

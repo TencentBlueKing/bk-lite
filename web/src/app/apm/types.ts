@@ -46,6 +46,24 @@ export interface ApmServiceRed {
   error_rate: number;
   p95_ms: number;
   p99_ms: number;
+  timeseries: ApmServiceRedPoint[];
+  top_endpoints: ApmServiceEndpointRed[];
+}
+
+export interface ApmServiceRedPoint {
+  timestamp: string;
+  request_rate: number;
+  error_rate: number;
+  p95_ms: number;
+  p99_ms: number;
+}
+
+export interface ApmServiceEndpointRed {
+  endpoint: string;
+  request_rate: number;
+  error_rate: number;
+  p95_ms: number;
+  p99_ms: number;
 }
 
 export interface ApmIngestSource {

@@ -165,9 +165,11 @@ def test_policy_metric_types_use_controlled_red_values(policy, metric_type, red,
     policy.threshold = expected
     policy.duration_window = 1
     policy.save()
-    service = DjangoApmPolicyService(MutableMetricStore(red), InMemoryAlertPublisher())
+    metric_store = MutableMetricStore(red)
+    service = DjangoApmPolicyService(metric_store, InMemoryAlertPublisher())
 
     result = service.test_query(policy, evaluated_at=timezone.now())
 
     assert result.value == expected
     assert result.breached is True
+    assert metric_store.queries[-1].include_breakdown is False

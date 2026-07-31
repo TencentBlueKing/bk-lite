@@ -63,7 +63,7 @@ export default function ApmTracesPage() {
       .then((page) => {
         setItems((current) => (cursor ? [...current, ...page.items] : page.items));
         setNextCursor(page.next_cursor);
-        setState(page.items.length === 0 && !cursor ? 'empty' : 'ready');
+        setState(page.items.length === 0 && !cursor && !page.next_cursor ? 'empty' : 'ready');
       })
       .catch((error) => setState(catalogErrorKind(error)));
   }, [authLoading, buildQuery, getTraces, serviceName]);

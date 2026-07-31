@@ -155,6 +155,7 @@ def test_trace_query_limits_and_store_degradation_are_distinct(apm_api_client, m
     )
 
     assert too_wide.status_code == 400
+    assert too_wide.data["code"] == "invalid_query"
     assert degraded.status_code == 503
     assert degraded.data["code"] == "telemetry_unavailable"
 
@@ -185,4 +186,5 @@ def test_arbitrary_traceql_is_rejected_instead_of_forwarded(apm_api_client, mock
     )
 
     assert response.status_code == 400
+    assert response.data["code"] == "invalid_query"
     query.assert_not_called()
