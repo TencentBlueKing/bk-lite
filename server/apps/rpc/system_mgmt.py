@@ -228,23 +228,39 @@ class SystemMgmt(object):
             detail=detail,
         )
 
-    def search_channel_list(self, channel_type, teams, include_children):
+    def search_channel_list(self, channel_type, teams, include_children, channel_method=""):
         """
         :param channel_type: str， 目前只有email、enterprise_wechat
         :param teams: list, [1,2,3]
         :param include_children: bool , True、False
         """
-        return_data = self.client.run("search_channel_list", channel_type=channel_type, teams=teams, include_children=include_children)
+        kwargs = {
+            "channel_type": channel_type,
+            "teams": teams,
+            "include_children": include_children,
+        }
+        if channel_method:
+            kwargs["channel_method"] = channel_method
+        return_data = self.client.run("search_channel_list", **kwargs)
         return return_data
 
-    def search_channel_list_scoped(self, actor_context, channel_type="", teams=None, include_children=False):
-        return_data = self.client.run(
-            "search_channel_list_scoped",
-            actor_context=actor_context,
-            channel_type=channel_type,
-            teams=teams,
-            include_children=include_children,
-        )
+    def search_channel_list_scoped(
+        self,
+        actor_context,
+        channel_type="",
+        teams=None,
+        include_children=False,
+        channel_method="",
+    ):
+        kwargs = {
+            "actor_context": actor_context,
+            "channel_type": channel_type,
+            "teams": teams,
+            "include_children": include_children,
+        }
+        if channel_method:
+            kwargs["channel_method"] = channel_method
+        return_data = self.client.run("search_channel_list_scoped", **kwargs)
         return return_data
 
     def search_groups(self, query_params):

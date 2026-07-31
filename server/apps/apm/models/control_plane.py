@@ -194,6 +194,9 @@ class ApmPolicy(AuditedModel):
     duration_window = models.PositiveIntegerField()
     recovery_window = models.PositiveIntegerField()
     severity = models.CharField(max_length=16, choices=Severity.choices)
+    notice = models.BooleanField(default=False)
+    notice_type_ids = models.JSONField(default=list)
+    notice_users = models.JSONField(default=list)
     is_enabled = models.BooleanField(default=True, db_index=True)
 
     class Meta:
@@ -221,13 +224,92 @@ class ApmPolicyState(AuditedModel):
         verbose_name_plural = "APM 策略状态"
 
 
+class ApmAlert(AuditedModel):
+    class Status(models.TextChoices):
+        FIRING = "firing", "告警中"
+        RECOVERED = "recovered", "已恢复"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    external_id = models.CharField(max_length=256, unique=True)
+    policy = models.ForeignKey(
+        ApmPolicy,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="alerts",
+    )
+    service = models.ForeignKey(
+        ApmService,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="alerts",
+    )
+    policy_id_snapshot = models.CharField(max_length=36)
+    policy_name = models.CharField(max_length=256)
+    service_namespace = models.CharField(max_length=256, blank=True, default="")
+    service_name = models.CharField(max_length=256)
+    environment = models.CharField(max_length=256, blank=True, default="")
+    metric_type = models.CharField(max_length=32, choices=ApmPolicy.MetricType.choices)
+    severity = models.CharField(max_length=16, choices=ApmPolicy.Severity.choices)
+    status = models.CharField(max_length=16, choices=Status.choices, default=Status.FIRING, db_index=True)
+    current_value = models.DecimalField(max_digits=20, decimal_places=6, null=True, blank=True)
+    organizations = models.JSONField(default=list)
+    started_at = models.DateTimeField(db_index=True)
+    ended_at = models.DateTimeField(null=True, blank=True)
+    last_event_at = models.DateTimeField(db_index=True)
+
+    class Meta:
+        verbose_name = "APM 告警"
+        verbose_name_plural = "APM 告警"
+        ordering = ("-last_event_at", "-id")
+
+
+class ApmEvent(AuditedModel):
+    class Action(models.TextChoices):
+        CREATED = "created", "触发"
+        RECOVERY = "recovery", "恢复"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    event_id = models.CharField(max_length=320, unique=True)
+    alert = models.ForeignKey(ApmAlert, on_delete=models.CASCADE, related_name="events")
+    action = models.CharField(max_length=16, choices=Action.choices, db_index=True)
+    title = models.CharField(max_length=512)
+    description = models.TextField(blank=True, default="")
+    severity = models.CharField(max_length=16, choices=ApmPolicy.Severity.choices, db_index=True)
+    service = models.CharField(max_length=256)
+    item = models.CharField(max_length=32, choices=ApmPolicy.MetricType.choices)
+    value = models.DecimalField(max_digits=20, decimal_places=6, null=True, blank=True)
+    resource_id = models.CharField(max_length=36)
+    resource_name = models.CharField(max_length=512)
+    policy_id = models.CharField(max_length=36, db_index=True)
+    environment = models.CharField(max_length=256, blank=True, default="")
+    organizations = models.JSONField(default=list)
+    occurred_at = models.DateTimeField(db_index=True)
+    ended_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        verbose_name = "APM 告警事件"
+        verbose_name_plural = "APM 告警事件"
+        ordering = ("-occurred_at", "-id")
+
+
 class ApmAlertOutbox(AuditedModel):
     class DeliveryStatus(models.TextChoices):
         PENDING = "pending", "待投递"
         DELIVERED = "delivered", "已投递"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    event_key = models.CharField(max_length=256, unique=True)
+    event_key = models.CharField(max_length=384, unique=True)
+    event = models.ForeignKey(
+        ApmEvent,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="outbox_entries",
+    )
+    channel_id = models.PositiveBigIntegerField(null=True, blank=True, db_index=True)
+    receivers = models.JSONField(default=list)
     payload = models.JSONField(default=dict)
     delivery_status = models.CharField(
         max_length=16,
@@ -242,3 +324,10 @@ class ApmAlertOutbox(AuditedModel):
         verbose_name = "APM 告警投递箱"
         verbose_name_plural = "APM 告警投递箱"
         ordering = ("created_at", "id")
+        constraints = [
+            models.UniqueConstraint(
+                fields=("event", "channel_id"),
+                condition=Q(event__isnull=False, channel_id__isnull=False),
+                name="apm_outbox_event_channel_unique",
+            )
+        ]

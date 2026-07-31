@@ -8,7 +8,7 @@ from django.db import transaction
 from django.db.models import Q
 from django.utils import timezone
 
-from apps.apm.models import ApmAlertOutbox, ApmPolicy, ApmPolicyState
+from apps.apm.models import ApmAlert, ApmAlertOutbox, ApmEvent, ApmPolicy, ApmPolicyState
 from apps.apm.services.contracts import (
     AlertPublisher,
     ApmAlertEvent,
@@ -117,46 +117,105 @@ class DjangoApmPolicyService:
                     external_id = f"apm-{locked_policy.id}-{uuid4().hex}"
                     state.status = ApmPolicyState.Status.FIRING
                     state.external_alert_id = external_id
-                    self._enqueue(locked_policy, result.value, evaluated_at, external_id, "created")
+                    self._record_event(locked_policy, result.value, evaluated_at, external_id, "created")
             else:
                 state.consecutive_hits = 0
                 state.consecutive_recoveries = state.consecutive_recoveries + 1 if not result.breached else 0
                 if not result.breached and state.consecutive_recoveries >= locked_policy.recovery_window:
                     external_id = state.external_alert_id
-                    self._enqueue(locked_policy, result.value, evaluated_at, external_id, "recovery")
+                    self._record_event(locked_policy, result.value, evaluated_at, external_id, "recovery")
                     state.status = ApmPolicyState.Status.NORMAL
                     state.external_alert_id = ""
                     state.consecutive_recoveries = 0
             state.save()
 
     @staticmethod
-    def _enqueue(
+    def _record_event(
         policy: ApmPolicy,
         value: Decimal,
         evaluated_at: datetime,
         external_id: str,
         action: str,
-    ) -> None:
-        event_key = f"{external_id}:{action}"
+    ) -> ApmEvent:
+        event_id = f"{external_id}:{action}"
         organizations = list(
             policy.service.organization_links.order_by("organization")
             .values_list("organization", flat=True)
             .distinct()
         )
         metric_label = policy.get_metric_type_display()
+        title = f"APM {policy.name}{'触发' if action == 'created' else '恢复'}"
+        description = (
+            f"{policy.service.namespace}/{policy.service.name} "
+            f"[{policy.environment}] {metric_label}={value}"
+        )
+        resource_name = f"{policy.service.namespace}/{policy.service.name}".lstrip("/")
+        alert_defaults = {
+            "policy": policy,
+            "service": policy.service,
+            "policy_id_snapshot": str(policy.id),
+            "policy_name": policy.name,
+            "service_namespace": policy.service.namespace,
+            "service_name": policy.service.name,
+            "environment": policy.environment,
+            "metric_type": policy.metric_type,
+            "severity": policy.severity,
+            "current_value": value,
+            "organizations": organizations,
+            "started_at": evaluated_at,
+            "last_event_at": evaluated_at,
+        }
+        alert, _ = ApmAlert.objects.get_or_create(external_id=external_id, defaults=alert_defaults)
+        alert.policy = policy
+        alert.service = policy.service
+        alert.policy_id_snapshot = str(policy.id)
+        alert.policy_name = policy.name
+        alert.service_namespace = policy.service.namespace
+        alert.service_name = policy.service.name
+        alert.environment = policy.environment
+        alert.metric_type = policy.metric_type
+        alert.severity = policy.severity
+        alert.current_value = value
+        alert.organizations = organizations
+        alert.last_event_at = evaluated_at
+        if action == ApmEvent.Action.RECOVERY:
+            alert.status = ApmAlert.Status.RECOVERED
+            alert.ended_at = evaluated_at
+        else:
+            alert.status = ApmAlert.Status.FIRING
+            alert.ended_at = None
+        alert.save()
+
+        event, _ = ApmEvent.objects.get_or_create(
+            event_id=event_id,
+            defaults={
+                "alert": alert,
+                "action": action,
+                "title": title,
+                "description": description,
+                "severity": policy.severity,
+                "service": policy.service.name,
+                "item": policy.metric_type,
+                "value": value,
+                "resource_id": str(policy.service.id),
+                "resource_name": resource_name,
+                "policy_id": str(policy.id),
+                "environment": policy.environment,
+                "organizations": organizations,
+                "occurred_at": evaluated_at,
+                "ended_at": evaluated_at if action == ApmEvent.Action.RECOVERY else None,
+            },
+        )
         payload = {
-            "event_key": event_key,
+            "event_key": event_id,
             "external_id": external_id,
             "action": action,
             "severity": policy.severity,
             "level": SEVERITY_LEVEL[policy.severity],
-            "title": f"APM {policy.name}{'触发' if action == 'created' else '恢复'}",
-            "description": (
-                f"{policy.service.namespace}/{policy.service.name} "
-                f"[{policy.environment}] {metric_label}={value}"
-            ),
+            "title": title,
+            "description": description,
             "occurred_at": evaluated_at.isoformat(),
-            "start_time": str(int(evaluated_at.timestamp())),
+            "start_time": str(int(alert.started_at.timestamp())),
             "end_time": str(int(evaluated_at.timestamp())) if action == "recovery" else None,
             "rule_id": str(policy.id),
             "service": policy.service.name,
@@ -164,7 +223,7 @@ class DjangoApmPolicyService:
             "value": float(value),
             "resource_id": str(policy.service.id),
             "resource_type": "apm_service",
-            "resource_name": f"{policy.service.namespace}/{policy.service.name}".lstrip("/"),
+            "resource_name": resource_name,
             "organizations": organizations,
             "tags": {},
             "labels": {
@@ -175,10 +234,18 @@ class DjangoApmPolicyService:
                 "service_name": policy.service.name,
             },
         }
-        ApmAlertOutbox.objects.get_or_create(
-            event_key=event_key,
-            defaults={"payload": payload},
-        )
+        if policy.notice:
+            for channel_id in sorted(set(policy.notice_type_ids or [])):
+                ApmAlertOutbox.objects.get_or_create(
+                    event_key=f"{event_id}:channel:{channel_id}",
+                    defaults={
+                        "event": event,
+                        "channel_id": channel_id,
+                        "receivers": policy.notice_users or [],
+                        "payload": payload,
+                    },
+                )
+        return event
 
     @staticmethod
     def _as_event(outbox: ApmAlertOutbox) -> ApmAlertEvent:
@@ -190,6 +257,8 @@ class DjangoApmPolicyService:
             severity=payload["severity"],
             title=payload["title"],
             occurred_at=datetime.fromisoformat(payload["occurred_at"]),
+            channel_id=outbox.channel_id,
+            receivers=tuple(str(receiver) for receiver in outbox.receivers),
             payload=payload,
         )
 

@@ -8,9 +8,9 @@ APM 原始 Span 吞吐量高、数据体积大，并需要 OTLP、批处理、�
 
 ## Decision
 
-BK-Lite 的 `apps.apm` 只作为控制面，拥有接入源、服务、实例、权限和策略元数据，并通过内部存储接口查询遥测。OpenTelemetry Collector Gateway 是唯一 OTLP 数据入口；原始 Span 经采样写入默认的 VictoriaTraces，全量 Span 派生指标写入现有 VictoriaMetrics。Django 不接收、转发或保存原始 Span，`/telegraf/api` 保持原用途。
+BK-Lite 的 `apps.apm` 只作为控制面，拥有接入源、服务、实例、权限、策略、事件和告警生命周期数据，并通过内部存储接口查询遥测。OpenTelemetry Collector Gateway 是唯一 OTLP 数据入口；原始 Span 经采样写入默认的 VictoriaTraces，全量 Span 派生指标写入现有 VictoriaMetrics。Django 不接收、转发或保存原始 Span，`/telegraf/api` 保持原用途。
 
-VictoriaTraces、Collector、VictoriaMetrics 和告警链路均是运行期可降级依赖，缺失或失败不得阻断 BK-Lite Server 启动。领域层只依赖 `TraceStore`、`MetricStore` 和 `AlertPublisher` 小接口，生产与内存适配器遵守相同契约。
+VictoriaTraces、Collector、VictoriaMetrics 和外部通知渠道均是运行期可降级依赖，缺失或失败不得阻断 BK-Lite Server 启动。领域层只依赖 `TraceStore`、`MetricStore` 和 `AlertPublisher` 小接口，生产与内存适配器遵守相同契约；告警归属与跨 App 协同遵循 ADR 0004。
 
 ## Consequences
 

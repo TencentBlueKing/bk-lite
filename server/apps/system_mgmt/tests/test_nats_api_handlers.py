@@ -7,6 +7,7 @@ nats handler 直接可调用（@nats_client.register 返回原函数）。
 import types
 
 import pytest
+from django.db import connection
 from nats_client.registry import default_registry
 
 import nats_client
@@ -422,6 +423,42 @@ def test_search_channel_list_filters_by_team_and_type():
     result = nats_api.search_channel_list(channel_type=ChannelChoices.EMAIL, teams=[5])
     names = {c["name"] for c in result["data"]}
     assert "c1" in names and "c2" not in names
+
+
+@pytest.mark.skipif(
+    connection.vendor == "sqlite",
+    reason="现有 Channel.team JSON contains 查询只支持生产 PostgreSQL",
+)
+def test_search_channel_list_filters_nats_method_without_exposing_config():
+    Channel.objects.create(
+        name="alert-center",
+        channel_type=ChannelChoices.NATS,
+        config={"method_name": "receive_alert_events", "secret": "hidden"},
+        description="d",
+        team=[5],
+    )
+    Channel.objects.create(
+        name="workflow",
+        channel_type=ChannelChoices.NATS,
+        config={"method_name": "trigger_workflow_by_nats"},
+        description="d",
+        team=[5],
+    )
+
+    result = nats_api.search_channel_list(
+        channel_type=ChannelChoices.NATS,
+        teams=[5],
+        channel_method="receive_alert_events",
+    )
+
+    assert result["data"] == [
+        {
+            "id": Channel.objects.get(name="alert-center").id,
+            "name": "alert-center",
+            "channel_type": "nats",
+            "description": "d",
+        }
+    ]
 
 
 def test_search_channel_list_include_children():
