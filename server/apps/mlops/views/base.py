@@ -1,6 +1,7 @@
 from apps.core.logger import mlops_logger as logger
 from apps.core.utils.viewset_utils import AuthViewSet
 from apps.mlops.constants import TrainJobStatus, MLflowRunStatus
+from apps.mlops.utils.i18n import mlops_message
 from apps.mlops.utils.group_scope import assert_dataset_version_scope
 from apps.mlops.utils.webhook_client import (
     WebhookClient,
@@ -95,11 +96,10 @@ class TeamModelViewSet(AuthViewSet):
         runs = self.get_train_job_runs(train_job)
         return self.has_run_in_runs_frame(runs, run_id)
 
-    @staticmethod
-    def run_not_found_response(run_id):
+    def run_not_found_response(self, run_id):
         return Response(
             {
-                "error": "未找到对应的训练运行记录",
+                "error": mlops_message(self.request, "error.training_run_not_found"),
                 "code": "run_not_found",
                 "run_id": run_id,
             },
@@ -122,7 +122,7 @@ class TeamModelViewSet(AuthViewSet):
                 exc_info=True,
             )
             return Response(
-                {"error": f"删除服务失败：容器清理失败，{str(e)}"},
+                {"error": mlops_message(self.request, "error.serving_runtime_cleanup_failed", detail=str(e))},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
         except WebhookError as e:
@@ -138,7 +138,7 @@ class TeamModelViewSet(AuthViewSet):
                     exc_info=True,
                 )
                 return Response(
-                    {"error": f"删除服务失败：容器清理失败，{str(e)}"},
+                    {"error": mlops_message(self.request, "error.serving_runtime_cleanup_failed", detail=str(e))},
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 )
 

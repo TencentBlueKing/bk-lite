@@ -81,6 +81,7 @@
     "logContent": "Log Content",
     "textContent": "Text Content",
     "label": "Label",
+    "fileList": "File List",
     "value": "Value",
     "loadDataError": "Failed to load data",
     "delDataset": "Delete Dataset",

@@ -17,7 +17,7 @@ def mlops_message(request: Any, key: str, *_legacy_default: str, **values: Any) 
         return str(template)
 
 
-def serializer_message(serializer: Any, key: str, default: str, **values: Any) -> str:
+def serializer_message(serializer: Any, key: str, default: str = "", **values: Any) -> str:
     """在 DRF Serializer 中复用请求语言。"""
     request = getattr(serializer, "context", {}).get("request")
     return mlops_message(request, key, default, **values)

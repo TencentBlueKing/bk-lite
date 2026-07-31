@@ -81,6 +81,7 @@
     "logContent": "日志内容",
     "textContent": "文本内容",
     "label": "标注",
+    "fileList": "文件列表",
     "value": "数值",
     "loadDataError": "加载数据失败",
     "delDataset": "删除数据集",

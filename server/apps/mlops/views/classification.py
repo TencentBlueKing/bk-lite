@@ -201,7 +201,7 @@ class ClassificationServingViewSet(TeamModelViewSet):
                 }
                 serving.save(update_fields=["container_info"])
                 response.data["container_info"] = serving.container_info
-                response.data["message"] = "服务已创建但启动失败：环境变量未配置"
+                response.data["message"] = mlops_message(request, "message.serving_created_start_failed_config_missing")
                 return response
 
             # 解析 model_uri
@@ -215,7 +215,7 @@ class ClassificationServingViewSet(TeamModelViewSet):
                 }
                 serving.save(update_fields=["container_info"])
                 response.data["container_info"] = serving.container_info
-                response.data["message"] = f"服务已创建但启动失败：{str(e)}"
+                response.data["message"] = mlops_message(request, "message.serving_created_start_failed", detail=str(e))
                 return response
 
             # 构建 serving ID
@@ -239,7 +239,7 @@ class ClassificationServingViewSet(TeamModelViewSet):
                 serving.save(update_fields=["container_info", "port"])
 
                 response.data["container_info"] = result
-                response.data["message"] = "服务已创建并启动"
+                response.data["message"] = mlops_message(request, "message.serving_created_and_started")
 
             except WebhookError as e:
                 error_msg = str(e)
@@ -263,7 +263,7 @@ class ClassificationServingViewSet(TeamModelViewSet):
                         serving.save(update_fields=["container_info"])
 
                         response.data["container_info"] = container_info
-                        response.data["message"] = "服务已创建，检测到容器已存在并同步容器状态"
+                        response.data["message"] = mlops_message(request, "message.serving_created_existing_container_synced")
                         response.data["warning"] = "容器已存在，已同步容器信息"
                     except WebhookError:
                         serving.container_info = {
@@ -272,16 +272,16 @@ class ClassificationServingViewSet(TeamModelViewSet):
                         }
                         serving.save(update_fields=["container_info"])
                         response.data["container_info"] = serving.container_info
-                        response.data["message"] = "服务已创建但启动失败"
+                        response.data["message"] = mlops_message(request, "message.serving_created_start_failed_generic")
                 else:
                     serving.container_info = {"status": "error", "message": error_msg}
                     serving.save(update_fields=["container_info"])
                     response.data["container_info"] = serving.container_info
-                    response.data["message"] = f"服务已创建但启动失败: {error_msg}"
+                    response.data["message"] = mlops_message(request, "message.serving_created_start_failed", detail=error_msg)
 
         except Exception as e:
             logger.error(f"自动启动 serving 异常: {str(e)}", exc_info=True)
-            response.data["message"] = f"服务已创建但启动异常: {str(e)}"
+            response.data["message"] = mlops_message(request, "message.serving_created_start_exception", detail=str(e))
 
         return response
 
@@ -379,7 +379,7 @@ class ClassificationServingViewSet(TeamModelViewSet):
 
                 # 更新返回数据
                 response.data["container_info"] = result
-                response.data["message"] = "配置已更新并重启服务"
+                response.data["message"] = mlops_message(request, "message.serving_updated_and_restarted")
 
             except Exception as e:
                 logger.error(f"自动重启失败: {str(e)}", exc_info=True)
@@ -392,7 +392,7 @@ class ClassificationServingViewSet(TeamModelViewSet):
                 instance.save(update_fields=["container_info"])
 
                 response.data["container_info"] = instance.container_info
-                response.data["message"] = f"配置已更新但重启失败: {str(e)}"
+                response.data["message"] = mlops_message(request, "message.serving_updated_restart_failed", detail=str(e))
                 response.data["warning"] = "请手动调用 start 接口重新启动服务"
 
         return response
@@ -411,7 +411,7 @@ class ClassificationServingViewSet(TeamModelViewSet):
             if not mlflow_tracking_uri:
                 logger.error("MLflow tracking URI not configured")
                 return Response(
-                    {"error": "系统配置错误，请联系管理员"},
+                    {"error": mlops_message(request, "error.system_configuration_error")},
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 )
 
@@ -444,7 +444,7 @@ class ClassificationServingViewSet(TeamModelViewSet):
 
                 return Response(
                     {
-                        "message": "服务已启动",
+                        "message": mlops_message(request, "message.service_started"),
                         "serving_id": serving_id,
                         "container_info": result,
                     }
@@ -483,7 +483,7 @@ class ClassificationServingViewSet(TeamModelViewSet):
                     except WebhookError as sync_error:
                         logger.error(f"同步容器状态失败: {sync_error}")
                         return Response(
-                            {"error": f"容器已存在但同步状态失败: {sync_error}"},
+                            {"error": mlops_message(request, "error.serving_container_sync_failed", detail=sync_error)},
                             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
                         )
                 else:
@@ -501,7 +501,7 @@ class ClassificationServingViewSet(TeamModelViewSet):
         except Exception as e:
             logger.error(f"启动 serving 服务失败: {str(e)}", exc_info=True)
             return Response(
-                {"error": f"启动服务失败: {str(e)}"},
+                {"error": mlops_message(request, "error.serving_start_failed", detail=str(e))},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
@@ -522,7 +522,7 @@ class ClassificationServingViewSet(TeamModelViewSet):
 
             return Response(
                 {
-                    "message": "服务已停止并删除",
+                    "message": mlops_message(request, "message.service_stopped_and_deleted"),
                     "serving_id": serving_id,
                     "webhook_response": result,
                 }
@@ -538,7 +538,7 @@ class ClassificationServingViewSet(TeamModelViewSet):
         except Exception as e:
             logger.error(f"停止 serving 服务失败: {str(e)}", exc_info=True)
             return Response(
-                {"error": f"停止服务失败: {str(e)}"},
+                {"error": mlops_message(request, "error.serving_stop_failed", detail=str(e))},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
@@ -568,7 +568,7 @@ class ClassificationServingViewSet(TeamModelViewSet):
 
             return Response(
                 {
-                    "message": "容器已删除",
+                    "message": mlops_message(request, "message.container_deleted"),
                     "serving_id": serving_id,
                     "webhook_response": result,
                 }
@@ -584,7 +584,7 @@ class ClassificationServingViewSet(TeamModelViewSet):
         except Exception as e:
             logger.error(f"删除 serving 容器失败: {str(e)}", exc_info=True)
             return Response(
-                {"error": f"删除容器失败: {str(e)}"},
+                {"error": mlops_message(request, "error.serving_container_delete_failed", detail=str(e))},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
@@ -713,7 +713,7 @@ class ClassificationServingViewSet(TeamModelViewSet):
         except Exception as e:
             logger.error(f"预测失败: serving_id={serving.id}, error={str(e)}", exc_info=True)
             return Response(
-                {"error": f"预测失败: {str(e)}"},
+                {"error": mlops_message(request, "error.serving_prediction_failed", detail=str(e))},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
@@ -801,7 +801,7 @@ class ClassificationTrainJobViewSet(TeamModelViewSet):
             except ConfigurationError as e:
                 logger.error(str(e))
                 return Response(
-                    {"error": "系统配置错误，请联系管理员"},
+                    {"error": mlops_message(request, "error.system_configuration_error")},
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 )
 
@@ -899,7 +899,7 @@ class ClassificationTrainJobViewSet(TeamModelViewSet):
                 self.restore_train_job_status(train_job, previous_status)
             logger.error(f"启动训练任务失败: {str(e)}", exc_info=True)
             return Response(
-                {"error": f"启动训练任务失败: {str(e)}"},
+                {"error": mlops_message(request, "error.training_task_start_failed", detail=str(e))},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
@@ -949,7 +949,7 @@ class ClassificationTrainJobViewSet(TeamModelViewSet):
         except Exception as e:
             logger.error(f"停止训练任务失败: {str(e)}", exc_info=True)
             return Response(
-                {"error": f"停止训练任务失败: {str(e)}"},
+                {"error": mlops_message(request, "error.training_task_stop_failed", detail=str(e))},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
@@ -1070,7 +1070,7 @@ class ClassificationTrainJobViewSet(TeamModelViewSet):
         except Exception as e:
             logger.error(f"获取训练记录列表失败: {str(e)}", exc_info=True)
             return Response(
-                {"error": f"获取训练记录失败: {str(e)}"},
+                {"error": mlops_message(request, "error.training_records_fetch_failed", detail=str(e))},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
@@ -1106,7 +1106,7 @@ class ClassificationTrainJobViewSet(TeamModelViewSet):
         except Exception as e:
             logger.error(f"删除 run 失败: {str(e)}", exc_info=True)
             return Response(
-                {"result": False, "message": f"删除 run 失败: {str(e)}"},
+                {"result": False, "message": mlops_message(request, "error.run_delete_failed", detail=str(e))},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
@@ -1127,7 +1127,7 @@ class ClassificationTrainJobViewSet(TeamModelViewSet):
 
         except Exception as e:
             return Response(
-                {"error": f"获取指标列表失败: {str(e)}"},
+                {"error": mlops_message(request, "error.metrics_list_fetch_failed", detail=str(e))},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
@@ -1173,7 +1173,7 @@ class ClassificationTrainJobViewSet(TeamModelViewSet):
         except Exception as e:
             logger.error(f"获取指标历史数据失败: {str(e)}", exc_info=True)
             return Response(
-                {"error": f"获取指标历史数据失败: {str(e)}"},
+                {"error": mlops_message(request, "error.metric_history_fetch_failed", detail=str(e))},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
@@ -1214,7 +1214,7 @@ class ClassificationTrainJobViewSet(TeamModelViewSet):
         except Exception as e:
             logger.error(f"获取运行参数失败: {str(e)}", exc_info=True)
             return Response(
-                {"error": f"获取运行参数失败: {str(e)}"},
+                {"error": mlops_message(request, "error.run_params_fetch_failed", detail=str(e))},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
@@ -1252,7 +1252,7 @@ class ClassificationTrainJobViewSet(TeamModelViewSet):
         except Exception as e:
             logger.error(f"获取模型版本列表失败: {str(e)}", exc_info=True)
             return Response(
-                {"error": f"获取模型版本列表失败: {str(e)}"},
+                {"error": mlops_message(request, "error.model_versions_fetch_failed", detail=str(e))},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
@@ -1287,7 +1287,7 @@ class ClassificationTrainJobViewSet(TeamModelViewSet):
         except Exception as e:
             logger.error(f"下载模型失败: {str(e)}", exc_info=True)
             return Response(
-                {"error": f"下载模型失败: {str(e)}"},
+                {"error": mlops_message(request, "error.model_download_failed", detail=str(e))},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
@@ -1349,7 +1349,7 @@ class ClassificationDatasetReleaseViewSet(ModelViewSet):
         except Exception as e:
             logger.error(f"下载数据集失败: {str(e)}", exc_info=True)
             return Response(
-                {"error": f"下载失败: {str(e)}"},
+                {"error": mlops_message(request, "error.dataset_download_failed", detail=str(e))},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
@@ -1373,7 +1373,7 @@ class ClassificationDatasetReleaseViewSet(ModelViewSet):
         except Exception as e:
             logger.error(f"归档数据集版本失败: {str(e)}", exc_info=True)
             return Response(
-                {"error": f"归档失败: {str(e)}"},
+                {"error": mlops_message(request, "error.dataset_release_archive_failed", detail=str(e))},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
@@ -1397,7 +1397,7 @@ class ClassificationDatasetReleaseViewSet(ModelViewSet):
         except Exception as e:
             logger.error(f"恢复数据集版本失败: {str(e)}", exc_info=True)
             return Response(
-                {"error": f"恢复失败: {str(e)}"},
+                {"error": mlops_message(request, "error.dataset_release_unarchive_failed", detail=str(e))},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
@@ -1443,7 +1443,7 @@ class ClassificationAlgorithmConfigViewSet(ModelViewSet):
             if task_count > 0:
                 return Response(
                     {
-                        "error": f"无法禁用：有 {task_count} 个训练任务正在使用此算法",
+                        "error": mlops_message(request, "error.algorithm_in_use_cannot_disable", task_count=task_count),
                         "task_count": task_count,
                     },
                     status=status.HTTP_400_BAD_REQUEST,
@@ -1457,7 +1457,7 @@ class ClassificationAlgorithmConfigViewSet(ModelViewSet):
         if task_count > 0:
             return Response(
                 {
-                    "error": f"无法删除：有 {task_count} 个训练任务正在使用此算法",
+                    "error": mlops_message(request, "error.algorithm_in_use_cannot_delete", task_count=task_count),
                     "task_count": task_count,
                 },
                 status=status.HTTP_400_BAD_REQUEST,

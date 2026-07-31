@@ -32,7 +32,6 @@ class AlgorithmConfigSerializer(serializers.ModelSerializer):
                 serializer_message(
                     self,
                     "error.form_config_must_be_object",
-                    "form_config 必须是一个对象",
                 )
             )
 
@@ -44,7 +43,6 @@ class AlgorithmConfigSerializer(serializers.ModelSerializer):
                     serializer_message(
                         self,
                         "error.hyperopt_config_must_be_array",
-                        "hyperopt_config 必须是一个数组",
                     )
                 )
             for item in hyperopt:
@@ -53,7 +51,6 @@ class AlgorithmConfigSerializer(serializers.ModelSerializer):
                         serializer_message(
                             self,
                             "error.hyperopt_config_item_must_be_object",
-                            "hyperopt_config 中的每项必须是对象",
                         )
                     )
                 if "key" not in item:
@@ -61,7 +58,6 @@ class AlgorithmConfigSerializer(serializers.ModelSerializer):
                         serializer_message(
                             self,
                             "error.hyperopt_config_item_key_required",
-                            "hyperopt_config 中的每项必须包含 key 字段",
                         )
                     )
 

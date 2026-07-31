@@ -14,6 +14,7 @@ const requiredKeys = [
   'datasets.logContent',
   'datasets.textContent',
   'datasets.label',
+  'datasets.fileList',
   'traintask.datasetVersion',
   'traintask.selectDatasetVersion',
   'traintask.maxEvals',
@@ -43,9 +44,10 @@ const sources = [
   'src/app/mlops/components/algorithm-config/AlgorithmConfigModal.tsx',
   'src/app/mlops/hooks/task/forms/useGenericDatasetForm.tsx',
   'src/app/mlops/components/annotation/tableContent.tsx',
+  'src/app/mlops/components/annotation/aside/index.tsx',
 ].map(read).join('\n');
 
-for (const text of ['基础配置', '优化指标', '数据集版本', '训练轮次', '日志内容', '文本内容', '标注']) {
+for (const text of ['基础配置', '优化指标', '数据集版本', '训练轮次', '日志内容', '文本内容', '标注', '文件列表']) {
   if (sources.includes(`'${text}'`) || sources.includes(`"${text}"`)) {
     throw new Error(`Hardcoded UI copy remains: ${text}`);
   }

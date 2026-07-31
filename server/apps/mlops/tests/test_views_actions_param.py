@@ -178,7 +178,7 @@ def test_train_rejects_already_running(monkeypatch, superuser, suffix, prefix, m
     request = factory.post(f"/{suffix}_train_jobs/x/train/")
     resp = _call(view, request, superuser, pk=tj.id)
     assert resp.status_code == status.HTTP_400_BAD_REQUEST
-    assert "运行中" in resp.data["error"]
+    assert "running" in resp.data["error"]
 
 
 @pytest.mark.parametrize("suffix,prefix,model_module,basename", ALGOS, ids=ALGO_IDS)
@@ -196,7 +196,7 @@ def test_train_config_error_returns_500(monkeypatch, superuser, suffix, prefix, 
     request = factory.post(f"/{suffix}_train_jobs/x/train/")
     resp = _call(view, request, superuser, pk=tj.id)
     assert resp.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
-    assert "系统配置错误" in resp.data["error"]
+    assert "configuration" in resp.data["error"]
 
 
 @pytest.mark.parametrize("suffix,prefix,model_module,basename", ALGOS, ids=ALGO_IDS)
@@ -213,9 +213,9 @@ def test_train_missing_dataset_file(monkeypatch, superuser, suffix, prefix, mode
     view = getattr(mod, f"{basename}TrainJobViewSet").as_view({"post": "train"})
     request = factory.post(f"/{suffix}_train_jobs/x/train/")
     resp = _call(view, request, superuser, pk=tj.id)
-    # no dataset_version -> 数据集文件不存在
+    # no dataset_version -> Dataset file was not found
     assert resp.status_code == status.HTTP_400_BAD_REQUEST
-    assert "数据集文件不存在" in resp.data["error"]
+    assert "Dataset file was not found" in resp.data["error"]
 
 
 @pytest.mark.parametrize("suffix,prefix,model_module,basename", ALGOS, ids=ALGO_IDS)
@@ -234,7 +234,7 @@ def test_train_missing_config_url(monkeypatch, superuser, suffix, prefix, model_
     request = factory.post(f"/{suffix}_train_jobs/x/train/")
     resp = _call(view, request, superuser, pk=tj.id)
     assert resp.status_code == status.HTTP_400_BAD_REQUEST
-    assert "训练配置文件不存在" in resp.data["error"]
+    assert "Training configuration file was not found" in resp.data["error"]
 
 
 @pytest.mark.parametrize("suffix,prefix,model_module,basename", ALGOS, ids=ALGO_IDS)
@@ -301,7 +301,7 @@ def test_stop_not_running_rejected(monkeypatch, superuser, suffix, prefix, model
     request = factory.post(f"/{suffix}_train_jobs/x/stop/")
     resp = _call(view, request, superuser, pk=tj.id)
     assert resp.status_code == status.HTTP_400_BAD_REQUEST
-    assert "未在运行中" in resp.data["error"]
+    assert "Training task is not running" in resp.data["error"]
 
 
 @pytest.mark.parametrize("suffix,prefix,model_module,basename", ALGOS, ids=ALGO_IDS)
@@ -704,6 +704,7 @@ def test_serving_stop_success(monkeypatch, superuser, suffix, prefix, model_modu
     request = factory.post(f"/{suffix}_servings/x/stop/")
     resp = _call(view, request, superuser, pk=serving.id)
     assert resp.status_code == status.HTTP_200_OK
+    assert resp.data["message"] == "Service stopped and deleted"
     assert resp.data["serving_id"] == f"{prefix}_Serving_{serving.id}"
     stop_mock.assert_called_once()
 
@@ -904,8 +905,10 @@ def test_serving_start_config_error(monkeypatch, superuser, suffix, prefix, mode
     request = factory.post(f"/{suffix}_servings/x/start/")
     resp = _call(view, request, superuser, pk=serving.id)
     assert resp.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
-    # Config-related error: either explicit env-var message or generic config error.
-    assert ("MLFLOW_TRACKER_URL" in resp.data["error"]) or ("配置" in resp.data["error"])
+    assert resp.data["error"] in {
+        "System configuration error. Please contact an administrator.",
+        "MLFLOW_TRACKER_URL environment variable is not configured",
+    }
 
 
 def _allow_team_one(monkeypatch):

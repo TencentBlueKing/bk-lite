@@ -146,7 +146,7 @@ class TimeSeriesPredictTrainJobViewSet(TeamModelViewSet):
             except ConfigurationError as e:
                 logger.error(str(e))
                 return Response(
-                    {"error": "系统配置错误，请联系管理员"},
+                    {"error": mlops_message(request, "error.system_configuration_error")},
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 )
 
@@ -244,7 +244,7 @@ class TimeSeriesPredictTrainJobViewSet(TeamModelViewSet):
                 self.restore_train_job_status(train_job, previous_status)
             logger.error(f"启动训练任务失败: {str(e)}", exc_info=True)
             return Response(
-                {"error": f"启动训练任务失败: {str(e)}"},
+                {"error": mlops_message(request, "error.training_task_start_failed", detail=str(e))},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
@@ -294,7 +294,7 @@ class TimeSeriesPredictTrainJobViewSet(TeamModelViewSet):
         except Exception as e:
             logger.error(f"停止训练任务失败: {str(e)}", exc_info=True)
             return Response(
-                {"error": f"停止训练任务失败: {str(e)}"},
+                {"error": mlops_message(request, "error.training_task_stop_failed", detail=str(e))},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
@@ -419,7 +419,7 @@ class TimeSeriesPredictTrainJobViewSet(TeamModelViewSet):
         except Exception as e:
             logger.error(f"获取训练记录列表失败: {str(e)}", exc_info=True)
             return Response(
-                {"error": f"获取训练记录失败: {str(e)}"},
+                {"error": mlops_message(request, "error.training_records_fetch_failed", detail=str(e))},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
@@ -455,7 +455,7 @@ class TimeSeriesPredictTrainJobViewSet(TeamModelViewSet):
         except Exception as e:
             logger.error(f"删除 run 失败: {str(e)}", exc_info=True)
             return Response(
-                {"result": False, "message": f"删除 run 失败: {str(e)}"},
+                {"result": False, "message": mlops_message(request, "error.run_delete_failed", detail=str(e))},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
@@ -480,7 +480,7 @@ class TimeSeriesPredictTrainJobViewSet(TeamModelViewSet):
         except Exception as e:
             logger.error(f"获取指标列表失败: {str(e)}", exc_info=True)
             return Response(
-                {"error": f"获取指标列表失败: {str(e)}"},
+                {"error": mlops_message(request, "error.metrics_list_fetch_failed", detail=str(e))},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
@@ -526,7 +526,7 @@ class TimeSeriesPredictTrainJobViewSet(TeamModelViewSet):
         except Exception as e:
             logger.error(f"获取指标历史数据失败: {str(e)}", exc_info=True)
             return Response(
-                {"error": f"获取指标历史数据失败: {str(e)}"},
+                {"error": mlops_message(request, "error.metric_history_fetch_failed", detail=str(e))},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
@@ -567,7 +567,7 @@ class TimeSeriesPredictTrainJobViewSet(TeamModelViewSet):
         except Exception as e:
             logger.error(f"获取运行参数失败: {str(e)}", exc_info=True)
             return Response(
-                {"error": f"获取运行参数失败: {str(e)}"},
+                {"error": mlops_message(request, "error.run_params_fetch_failed", detail=str(e))},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
@@ -604,7 +604,7 @@ class TimeSeriesPredictTrainJobViewSet(TeamModelViewSet):
         except Exception as e:
             logger.error(f"获取模型版本列表失败: {str(e)}", exc_info=True)
             return Response(
-                {"error": f"获取模型版本列表失败: {str(e)}"},
+                {"error": mlops_message(request, "error.model_versions_fetch_failed", detail=str(e))},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
@@ -643,7 +643,7 @@ class TimeSeriesPredictTrainJobViewSet(TeamModelViewSet):
         except Exception as e:
             logger.error(f"下载模型失败: {str(e)}", exc_info=True)
             return Response(
-                {"error": f"下载模型失败: {str(e)}"},
+                {"error": mlops_message(request, "error.model_download_failed", detail=str(e))},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
@@ -1131,7 +1131,7 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
                 )
                 serving.save(update_fields=["container_info"])
                 response.data["container_info"] = serving.container_info
-                response.data["message"] = "服务已创建但启动失败：环境变量未配置"
+                response.data["message"] = mlops_message(request, "message.serving_created_start_failed_config_missing")
                 return response
 
             # 解析 model_uri
@@ -1148,7 +1148,7 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
                 )
                 serving.save(update_fields=["container_info"])
                 response.data["container_info"] = serving.container_info
-                response.data["message"] = f"服务已创建但启动失败：{str(e)}"
+                response.data["message"] = mlops_message(request, "message.serving_created_start_failed", detail=str(e))
                 return response
 
             # 构建 serving ID
@@ -1183,7 +1183,7 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
 
                 # 更新返回数据（status 由用户控制，不修改）
                 response.data["container_info"] = versioned_result
-                response.data["message"] = "服务已创建并启动"
+                response.data["message"] = mlops_message(request, "message.serving_created_and_started")
 
             except WebhookError as e:
                 error_msg = str(e)
@@ -1207,7 +1207,7 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
                         serving.save(update_fields=["container_info"])
 
                         response.data["container_info"] = container_info
-                        response.data["message"] = "服务已创建，检测到容器已存在并同步容器状态"
+                        response.data["message"] = mlops_message(request, "message.serving_created_existing_container_synced")
                         response.data["warning"] = "容器已存在，已同步容器信息"
                     except WebhookError:
                         self._assign_runtime_container_info(
@@ -1220,12 +1220,12 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
                         )
                         serving.save(update_fields=["container_info"])
                         response.data["container_info"] = serving.container_info
-                        response.data["message"] = "服务已创建但启动失败"
+                        response.data["message"] = mlops_message(request, "message.serving_created_start_failed_generic")
                 else:
                     # 调用失败可能已产生外部副作用，必须对账后再落库。
                     self._reconcile_runtime_transition(serving, container_id, "create", e)
                     response.data["container_info"] = serving.container_info
-                    response.data["message"] = f"服务已创建但启动失败: {error_msg}"
+                    response.data["message"] = mlops_message(request, "message.serving_created_start_failed", detail=error_msg)
 
         except DatabaseError:
             raise
@@ -1235,7 +1235,7 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
                 self._reconcile_runtime_transition(serving, container_id, "create", e)
                 response.data["container_info"] = serving.container_info
             # 确保至少有基本的错误信息
-            response.data["message"] = f"服务已创建但启动异常: {str(e)}"
+            response.data["message"] = mlops_message(request, "message.serving_created_start_exception", detail=str(e))
 
         return response
 
@@ -1270,7 +1270,7 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
 
         # 兜底校验：容器未运行时不允许设置 status=active
         new_status = request.data.get("status")
-        if error_response := validate_serving_status_change(instance, new_status):
+        if error_response := validate_serving_status_change(request, instance, new_status):
             return error_response
         # 保存旧值用于判断变更
         old_port = instance.port
@@ -1306,7 +1306,7 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
             except Exception as e:
                 logger.error(f"时序预测重启前置配置无效: {e}")
                 return Response(
-                    {"error": f"系统配置错误: {str(e)}"},
+                    {"error": mlops_message(request, "error.system_configuration_error")},
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 )
 
@@ -1356,7 +1356,7 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
                 self._restore_database_state(instance, old_database_state, applied_database_state)
                 logger.error(f"新 serving 配置校验失败，保留旧服务: {e}", exc_info=True)
                 return Response(
-                    {"error": f"配置更新未生效，旧服务保持运行: {str(e)}"},
+                    {"error": mlops_message(request, "error.serving_update_configuration_failed", detail=str(e))},
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 )
 
@@ -1474,7 +1474,7 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
 
                 # 更新返回数据
                 response.data["container_info"] = versioned_result
-                response.data["message"] = "配置已更新并重启服务"
+                response.data["message"] = mlops_message(request, "message.serving_updated_and_restarted")
                 self.delete_rules(instance.id, deferred_delete_teams)
 
             except Exception as e:
@@ -1551,7 +1551,7 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
             if not mlflow_tracking_uri:
                 logger.error("MLflow tracking URI not configured")
                 return Response(
-                    {"error": "系统配置错误，请联系管理员"},
+                    {"error": mlops_message(request, "error.system_configuration_error")},
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 )
 
@@ -1583,7 +1583,7 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
 
                 return Response(
                     {
-                        "message": "服务已启动",
+                        "message": mlops_message(request, "message.service_started"),
                         "serving_id": serving_id,
                         "container_info": versioned_result,
                     }
@@ -1621,7 +1621,7 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
                     except WebhookError as sync_error:
                         logger.error(f"同步容器状态失败: {sync_error}")
                         return Response(
-                            {"error": f"容器已存在但同步状态失败: {sync_error}"},
+                            {"error": mlops_message(request, "error.serving_container_sync_failed", detail=sync_error)},
                             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
                         )
                 else:
@@ -1646,7 +1646,7 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
             if serving is not None and serving_id is not None:
                 self._reconcile_runtime_transition(serving, serving_id, "start", e)
             return Response(
-                {"error": f"启动服务失败: {str(e)}"},
+                {"error": mlops_message(request, "error.serving_start_failed", detail=str(e))},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
@@ -1682,7 +1682,7 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
 
             return Response(
                 {
-                    "message": "服务已停止并删除",
+                    "message": mlops_message(request, "message.service_stopped_and_deleted"),
                     "serving_id": serving_id,
                     "webhook_response": result,
                 }
@@ -1706,7 +1706,7 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
             if serving is not None and serving_id is not None:
                 self._reconcile_runtime_transition(serving, serving_id, "stop", e)
             return Response(
-                {"error": f"停止服务失败: {str(e)}"},
+                {"error": mlops_message(request, "error.serving_stop_failed", detail=str(e))},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
@@ -1736,7 +1736,7 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
                     "status": "success",
                     "id": serving_id,
                     "state": "removed",
-                    "message": "容器已删除",
+                    "message": mlops_message(request, "message.container_deleted"),
                 },
             )
             serving.save(update_fields=["container_info"])
@@ -1767,7 +1767,7 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
             if serving is not None and serving_id is not None:
                 self._reconcile_runtime_transition(serving, serving_id, "remove", e)
             return Response(
-                {"error": f"删除容器失败: {str(e)}"},
+                {"error": mlops_message(request, "error.serving_container_delete_failed", detail=str(e))},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
@@ -1882,7 +1882,7 @@ class TimeSeriesPredictServingViewSet(TeamModelViewSet):
         except Exception as e:
             logger.error(f"预测失败: serving_id={serving.id}, error={str(e)}", exc_info=True)
             return Response(
-                {"error": f"预测失败: {str(e)}"},
+                {"error": mlops_message(request, "error.serving_prediction_failed", detail=str(e))},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
@@ -1966,7 +1966,7 @@ class TimeSeriesPredictDatasetReleaseViewSet(ModelViewSet):
         except Exception as e:
             logger.error(f"下载数据集失败: {str(e)}", exc_info=True)
             return Response(
-                {"error": f"下载失败: {str(e)}"},
+                {"error": mlops_message(request, "error.dataset_download_failed", detail=str(e))},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
@@ -1994,7 +1994,7 @@ class TimeSeriesPredictDatasetReleaseViewSet(ModelViewSet):
         except Exception as e:
             logger.error(f"归档失败: {str(e)}", exc_info=True)
             return Response(
-                {"error": f"归档失败: {str(e)}"},
+                {"error": mlops_message(request, "error.dataset_release_archive_failed", detail=str(e))},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
@@ -2026,7 +2026,7 @@ class TimeSeriesPredictDatasetReleaseViewSet(ModelViewSet):
         except Exception as e:
             logger.error(f"恢复失败: {str(e)}", exc_info=True)
             return Response(
-                {"error": f"恢复失败: {str(e)}"},
+                {"error": mlops_message(request, "error.dataset_release_unarchive_failed", detail=str(e))},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
@@ -2072,7 +2072,7 @@ class TimeSeriesPredictAlgorithmConfigViewSet(ModelViewSet):
             if task_count > 0:
                 return Response(
                     {
-                        "error": f"无法禁用：有 {task_count} 个训练任务正在使用此算法",
+                        "error": mlops_message(request, "error.algorithm_in_use_cannot_disable", task_count=task_count),
                         "task_count": task_count,
                     },
                     status=status.HTTP_400_BAD_REQUEST,
@@ -2086,7 +2086,7 @@ class TimeSeriesPredictAlgorithmConfigViewSet(ModelViewSet):
         if task_count > 0:
             return Response(
                 {
-                    "error": f"无法删除：有 {task_count} 个训练任务正在使用此算法",
+                    "error": mlops_message(request, "error.algorithm_in_use_cannot_delete", task_count=task_count),
                     "task_count": task_count,
                 },
                 status=status.HTTP_400_BAD_REQUEST,
