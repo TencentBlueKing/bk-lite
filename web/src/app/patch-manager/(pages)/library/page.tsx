@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { Tag, Button, Input, Select, Space, Tabs, Modal, Form, message, Popconfirm, Upload } from 'antd';
+import { Tag, Button, Input, Select, Space, Tabs, Modal, Form, message, Popconfirm, Tooltip, Upload } from 'antd';
 import PermissionWrapper from '@/components/permission';
 import type { ColumnsType } from 'antd/es/table';
 import { PlusOutlined, CloudDownloadOutlined, EditOutlined, DeleteOutlined, CloseOutlined, InboxOutlined, UploadOutlined } from '@ant-design/icons';
@@ -278,6 +278,7 @@ export default function LibraryPage() {
   ];
 
   const handleDelete = async (row: Patch) => {
+    if ((row.baseline_requirement_count ?? 0) > 0) return;
     try {
       await api.deletePatch(row.id);
       message.success(t('patchManager.libraryPage.deleted'));
@@ -302,14 +303,27 @@ export default function LibraryPage() {
       { title: t('patchManager.libraryPage.readyStatus'), dataIndex: 'pkg_status', width: 120, render: (_: unknown, r: Patch) => <ReadyTag status={mapPkgStatus(r.pkg_status)} /> },
       { title: t('patchManager.libraryPage.baselineReferences'), dataIndex: 'baseline_requirement_count', width: 110, render: (v: number) => <span style={{ color: '#bfbfbf' }}>{v ?? 0}</span> },
       { title: t('patchManager.libraryPage.lastUpdated'), dataIndex: 'last_synced_at', width: 180, render: (v: string | null, r: Patch) => convertToLocalizedTime(v || r.updated_at) || '—' },
-      { title: t('patchManager.operation'), dataIndex: 'op', width: 180, fixed: 'right', render: (_: unknown, r: Patch) => (
-        <Space size={12}>
+      { title: t('patchManager.operation'), dataIndex: 'op', width: 180, fixed: 'right', render: (_: unknown, r: Patch) => {
+        const deleteBlocked = (r.baseline_requirement_count ?? 0) > 0;
+        const deleteButton = <Button
+          type="link"
+          size="small"
+          danger
+          disabled={deleteBlocked}
+          icon={<DeleteOutlined />}
+          style={{ paddingInline: 0 }}
+        >
+          {t('patchManager.delete')}
+        </Button>;
+        return <Space size={12}>
           <PermissionWrapper requiredPermissions={['Edit']}><a style={{ color: '#1677ff' }} onClick={() => setEditingPatch(r)}><EditOutlined /> {t('patchManager.edit')}</a></PermissionWrapper>
-          <PermissionWrapper requiredPermissions={['Delete']}><Popconfirm title={t('patchManager.libraryPage.deleteConfirm')} onConfirm={() => handleDelete(r)} okText={t('patchManager.delete')} cancelText={t('patchManager.cancel')}>
-            <a style={{ color: '#ff4d4f' }}><DeleteOutlined /> {t('patchManager.delete')}</a>
-          </Popconfirm></PermissionWrapper>
-        </Space>
-      )},
+          <PermissionWrapper requiredPermissions={['Delete']}>
+            {deleteBlocked ? <Tooltip title={t('patchManager.libraryPage.deleteReferenced')}><span>{deleteButton}</span></Tooltip> : <Popconfirm title={t('patchManager.libraryPage.deleteConfirm')} onConfirm={() => handleDelete(r)} okText={t('patchManager.delete')} cancelText={t('patchManager.cancel')}>
+              {deleteButton}
+            </Popconfirm>}
+          </PermissionWrapper>
+        </Space>;
+      }},
     ];
   }, [activeTab, convertToLocalizedTime, t]);
 

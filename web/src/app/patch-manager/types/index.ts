@@ -96,6 +96,7 @@ export interface Patch {
   linux_detail?: LinuxPatchDetail | null;
   sources: number[];
   source_type: PatchSourceType | null;
+  baseline_requirement_count?: number;
   released_at: string | null;
   last_synced_at: string | null;
   team: number[];
