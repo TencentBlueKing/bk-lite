@@ -1,38 +1,142 @@
 import { BUILD_IN_MODEL } from '@/app/cmdb/constants/asset';
 import type { ModelIconItem } from '@/app/cmdb/types/assetManage';
 
-interface IconDescriptor {
+export type ModelIconSource = 'icons' | 'icons-realistic';
+
+export interface IconDescriptor {
+  describe?: string;
   key: string;
+  url: string;
+}
+
+export interface ModelIconOption extends IconDescriptor {
+  source: ModelIconSource;
+  value: string;
+  src: string;
+}
+
+interface IconCatalogs {
+  standardIcons: IconDescriptor[];
+  realisticIcons: IconDescriptor[];
+}
+
+interface ExactModelIconReference {
+  source: ModelIconSource;
   url: string;
 }
 
 export const DEFAULT_MODEL_ICON_NAME = 'cc-default_默认';
 
-const findConfiguredIcon = (
-  icn: string,
-  realisticIcons: IconDescriptor[]
-) => {
-  const raw = icn.startsWith('icon-') ? icn.slice('icon-'.length) : icn;
-  const exactMatch = realisticIcons.find((item) => item.url === raw);
-  if (exactMatch) return exactMatch.url;
+const createModelIconReference = (
+  source: ModelIconSource,
+  url: string
+) => `${source}/${url}`;
 
-  const key = raw.split('_')[0];
-  return realisticIcons.find((item) => item.key === key)?.url;
+const createModelIconOption = (
+  icon: IconDescriptor,
+  source: ModelIconSource
+): ModelIconOption => {
+  const value = createModelIconReference(source, icon.url);
+  return {
+    ...icon,
+    source,
+    value,
+    src: `/assets/${value}.svg`,
+  };
 };
 
-export const resolveModelIconName = (
+const parseExactModelIconReference = (
+  icon: string
+): ExactModelIconReference | undefined => {
+  const sources: ModelIconSource[] = ['icons-realistic', 'icons'];
+  const source = sources.find((item) => icon.startsWith(`${item}/`));
+  if (!source) return undefined;
+
+  const url = icon.slice(source.length + 1);
+  if (!url || url.includes('/')) return undefined;
+  return { source, url };
+};
+
+const findExactIcon = (icon: string, icons: IconDescriptor[]) =>
+  icons.find((item) => item.url === icon);
+
+const findIconByKey = (icon: string, icons: IconDescriptor[]) => {
+  const key = icon.split('_')[0];
+  return icons.find((item) => item.key === key);
+};
+
+const resolveExactReference = (
+  reference: ExactModelIconReference,
+  catalogs: IconCatalogs
+) => {
+  const icons =
+    reference.source === 'icons-realistic'
+      ? catalogs.realisticIcons
+      : catalogs.standardIcons;
+  const icon = findExactIcon(reference.url, icons);
+  return icon
+    ? createModelIconReference(reference.source, icon.url)
+    : undefined;
+};
+
+const resolveLegacyReference = (icon: string, catalogs: IconCatalogs) => {
+  const raw = icon.startsWith('icon-') ? icon.slice('icon-'.length) : icon;
+  const realisticIcon =
+    findExactIcon(raw, catalogs.realisticIcons) ||
+    findIconByKey(raw, catalogs.realisticIcons);
+  if (realisticIcon) {
+    return createModelIconReference('icons-realistic', realisticIcon.url);
+  }
+
+  const standardIcon =
+    findExactIcon(raw, catalogs.standardIcons) ||
+    findIconByKey(raw, catalogs.standardIcons);
+  return standardIcon
+    ? createModelIconReference('icons', standardIcon.url)
+    : undefined;
+};
+
+const resolveConfiguredReference = (
+  icon: string,
+  catalogs: IconCatalogs
+) => {
+  const exactReference = parseExactModelIconReference(icon);
+  return exactReference
+    ? resolveExactReference(exactReference, catalogs)
+    : resolveLegacyReference(icon, catalogs);
+};
+
+const getDefaultModelIconReference = (catalogs: IconCatalogs) =>
+  resolveLegacyReference(DEFAULT_MODEL_ICON_NAME, catalogs) ||
+  createModelIconReference('icons-realistic', DEFAULT_MODEL_ICON_NAME);
+
+export const createModelIconOptions = (
+  standardIcons: IconDescriptor[],
+  realisticIcons: IconDescriptor[]
+) => [
+  ...realisticIcons.map((icon) =>
+    createModelIconOption(icon, 'icons-realistic')
+  ),
+  ...standardIcons.map((icon) => createModelIconOption(icon, 'icons')),
+];
+
+export const resolveModelIconReference = (
   model: ModelIconItem,
+  standardIcons: IconDescriptor[],
   realisticIcons: IconDescriptor[]
 ) => {
-  const configuredIconName = model.icn
-    ? findConfiguredIcon(model.icn, realisticIcons)
+  const catalogs = { standardIcons, realisticIcons };
+  const configuredReference = model.icn
+    ? resolveConfiguredReference(model.icn, catalogs)
     : undefined;
+  if (configuredReference) return configuredReference;
+
   const builtInIconKey = BUILD_IN_MODEL.find(
     (item) => item.key === model.model_id
   )?.icon;
-  const builtInIconName = builtInIconKey
-    ? findConfiguredIcon(builtInIconKey, realisticIcons)
+  const builtInReference = builtInIconKey
+    ? resolveLegacyReference(builtInIconKey, catalogs)
     : undefined;
 
-  return configuredIconName || builtInIconName || DEFAULT_MODEL_ICON_NAME;
+  return builtInReference || getDefaultModelIconReference(catalogs);
 };

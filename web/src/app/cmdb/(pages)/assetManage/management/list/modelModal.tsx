@@ -138,10 +138,8 @@ const ModelModal = forwardRef<ModelModalRef, ModelModalProps>(
     };
 
     const onConfirmSelectIcon = (icon: string) => {
-      const objId = icon.replace('cc-', '');
-      const _iconId = 'icon-' + icon;
-      setModelIcon({ icn: _iconId, model_id: objId });
-      setIconId(_iconId);
+      setModelIcon({ icn: icon, model_id: modelInfo.model_id });
+      setIconId(icon);
     };
 
     const onSelectIcon = () => {

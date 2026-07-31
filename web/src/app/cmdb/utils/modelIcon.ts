@@ -1,7 +1,8 @@
 import type { ModelIconItem } from '@/app/cmdb/types/assetManage';
 import {
+  createModelIconOptions,
   DEFAULT_MODEL_ICON_NAME,
-  resolveModelIconName,
+  resolveModelIconReference,
 } from '@/app/cmdb/utils/modelIconResolver';
 
 declare const require: {
@@ -14,10 +15,6 @@ declare const require: {
   };
 };
 
-const CMDB_MODEL_ICON_DIR = '/assets/icons-realistic';
-
-export const DEFAULT_MODEL_ICON_URL = `${CMDB_MODEL_ICON_DIR}/${DEFAULT_MODEL_ICON_NAME}.svg`;
-
 const normalizeSvgIconList = (data: string[]) =>
   data.map((item) => {
     const url = item.replace(/\.\//g, '').replace(/\.svg/g, '');
@@ -28,7 +25,7 @@ const normalizeSvgIconList = (data: string[]) =>
     };
   });
 
-export const iconList = normalizeSvgIconList(
+const standardIconList = normalizeSvgIconList(
   require.context('../../../../public/assets/icons', false, /\.svg$/).keys()
 );
 
@@ -37,15 +34,31 @@ const realisticIconList = normalizeSvgIconList(
     .context('../../../../public/assets/icons-realistic', false, /\.svg$/)
     .keys()
 );
+
+export const iconList = createModelIconOptions(
+  standardIconList,
+  realisticIconList
+);
+
+const resolveReference = (model: ModelIconItem) =>
+  resolveModelIconReference(model, standardIconList, realisticIconList);
+
+export const DEFAULT_MODEL_ICON_URL = `/assets/${resolveReference({
+  icn: DEFAULT_MODEL_ICON_NAME,
+  model_id: '',
+})}.svg`;
+
 const iconUrlCache = new Map<string, string>();
+
+export const getSelectedModelIconValue = (icon: string) =>
+  resolveReference({ icn: icon, model_id: '' });
 
 export const getModelIconUrl = (model: ModelIconItem) => {
   const cacheKey = `${model.icn || ''}|${model.model_id || ''}`;
   const cached = iconUrlCache.get(cacheKey);
   if (cached) return cached;
 
-  const iconName = resolveModelIconName(model, realisticIconList);
-  const iconUrl = `${CMDB_MODEL_ICON_DIR}/${iconName}.svg`;
+  const iconUrl = `/assets/${resolveReference(model)}.svg`;
   iconUrlCache.set(cacheKey, iconUrl);
   return iconUrl;
 };

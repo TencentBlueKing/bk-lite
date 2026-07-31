@@ -9,7 +9,10 @@ import React, {
 import { Button, Empty, Input } from 'antd';
 import Image from 'next/image';
 import OperateModal from '@/components/operate-modal';
-import { iconList } from '@/app/cmdb/utils/common';
+import {
+  getSelectedModelIconValue,
+  iconList,
+} from '@/app/cmdb/utils/modelIcon';
 import selectIconStyle from './selectIcon.module.scss';
 import { useTranslation } from '@/utils/i18n';
 
@@ -32,6 +35,7 @@ const SelectIcon = forwardRef<SelectIconRef, SelectIconProps>(
     const [visible, setVisible] = useState<boolean>(false);
     const [title, setTitle] = useState<string>('');
     const [activeIcon, setActiveIcon] = useState<string>('');
+    const [selectedIcon, setSelectedIcon] = useState<string>('');
     const [searchText, setSearchText] = useState<string>('');
     const [keyword, setKeyword] = useState<string>('');
 
@@ -51,14 +55,15 @@ const SelectIcon = forwardRef<SelectIconRef, SelectIconProps>(
         // 开启弹窗的交互
         setVisible(true);
         setTitle(title);
-        setActiveIcon(defaultIcon);
+        setActiveIcon(getSelectedModelIconValue(defaultIcon));
+        setSelectedIcon(defaultIcon);
         setSearchText('');
         setKeyword('');
       },
     }));
 
     const handleSubmit = () => {
-      onSelect(activeIcon);
+      onSelect(selectedIcon);
       handleCancel();
     };
 
@@ -118,16 +123,19 @@ const SelectIcon = forwardRef<SelectIconRef, SelectIconProps>(
                 {filteredIconList.map((item) => {
                   return (
                     <li
-                      key={item.key + item.describe}
+                      key={item.value}
                       className={`${
                         selectIconStyle.modelIcon
                       } w-[80px] h-[70px] flex flex-col items-center justify-center p-1 ${
-                        activeIcon === item.key ? selectIconStyle.active : ''
+                        activeIcon === item.value ? selectIconStyle.active : ''
                       }`}
-                      onClick={() => setActiveIcon(item.key)}
+                      onClick={() => {
+                        setActiveIcon(item.value);
+                        setSelectedIcon(item.value);
+                      }}
                     >
                       <Image
-                        src={`/assets/icons/${item.url}.svg`}
+                        src={item.src}
                         className="block cursor-pointer mb-1"
                         alt={t('picture')}
                         width={34}
