@@ -1,8 +1,10 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { PlusOutlined } from '@ant-design/icons';
+import { DeleteOutlined, PlusOutlined, ReloadOutlined } from '@ant-design/icons';
+import Link from 'next/link';
 import {
+  Alert,
   Badge,
   Button,
   Form,
@@ -30,9 +32,12 @@ import type {
   ApmPolicySeverity,
   ApmService,
   ApmNotificationChannel,
+  ApmNotificationRecipient,
+  ApmPolicyNotificationTarget,
 } from '@/app/apm/types';
 
 type PageState = CatalogStateKind | 'ready';
+type ChannelState = 'loading' | 'ready' | 'empty' | 'error';
 
 const METRIC_LABELS: Record<ApmPolicyMetric, string> = {
   error_rate: '错误率',
@@ -63,9 +68,7 @@ const DEFAULT_POLICY: Partial<ApmPolicyInput> = {
   duration_window: 3,
   recovery_window: 3,
   severity: 'warning',
-  notice: false,
-  notice_type_ids: [],
-  notice_users: [],
+  notification_targets: [],
   is_enabled: true,
 };
 
@@ -75,6 +78,7 @@ export default function ApmPoliciesPage() {
     deletePolicy,
     getPolicies,
     getNotificationChannels,
+    getNotificationRecipients,
     getServices,
     isLoading: authLoading,
     setPolicyEnabled,
@@ -85,6 +89,9 @@ export default function ApmPoliciesPage() {
   const [policies, setPolicies] = useState<ApmPolicy[]>([]);
   const [services, setServices] = useState<ApmService[]>([]);
   const [notificationChannels, setNotificationChannels] = useState<ApmNotificationChannel[]>([]);
+  const [notificationRecipients, setNotificationRecipients] = useState<ApmNotificationRecipient[]>([]);
+  const [channelState, setChannelState] = useState<ChannelState>('loading');
+  const [recipientState, setRecipientState] = useState<ChannelState>('loading');
   const [state, setState] = useState<PageState>('loading');
   const [editing, setEditing] = useState<ApmPolicy | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
@@ -94,9 +101,26 @@ export default function ApmPoliciesPage() {
   const load = useCallback(() => {
     if (authLoading) return;
     setState('loading');
+    setChannelState('loading');
     getNotificationChannels()
-      .then(setNotificationChannels)
-      .catch(() => setNotificationChannels([]));
+      .then((items) => {
+        setNotificationChannels(items);
+        setChannelState(items.length ? 'ready' : 'empty');
+      })
+      .catch(() => {
+        setNotificationChannels([]);
+        setChannelState('error');
+      });
+    setRecipientState('loading');
+    getNotificationRecipients({ limit: 100 })
+      .then((items) => {
+        setNotificationRecipients(items);
+        setRecipientState(items.length ? 'ready' : 'empty');
+      })
+      .catch(() => {
+        setNotificationRecipients([]);
+        setRecipientState('error');
+      });
     Promise.all([getPolicies(), getServices()])
       .then(([policyItems, serviceItems]) => {
         setPolicies(policyItems);
@@ -104,7 +128,7 @@ export default function ApmPoliciesPage() {
         setState(policyItems.length ? 'ready' : 'empty');
       })
       .catch((error) => setState(catalogErrorKind(error)));
-  }, [authLoading, getNotificationChannels, getPolicies, getServices]);
+  }, [authLoading, getNotificationChannels, getNotificationRecipients, getPolicies, getServices]);
 
   useEffect(() => load(), [load]);
 
@@ -145,6 +169,11 @@ export default function ApmPoliciesPage() {
       label: `${service.namespace || '未归类应用'} / ${service.name}`,
     })),
     [services]
+  );
+
+  const channelById = useMemo(
+    () => new Map(notificationChannels.map((channel) => [channel.id, channel])),
+    [notificationChannels]
   );
 
   const columns: TableColumnsType<ApmPolicy> = [
@@ -255,7 +284,7 @@ export default function ApmPoliciesPage() {
   return (
     <ApmRouteShell
       title="APM 策略"
-      description="按服务与环境管理阈值策略；告警事实保存在 APM，告警中心可作为 NATS 通知渠道。"
+      description="按服务与环境管理阈值策略；告警事实保存在 APM，通知通过系统管理公开渠道投递。"
       dependency="control"
     >
       <div className="flex flex-col gap-3">
@@ -354,28 +383,120 @@ export default function ApmPoliciesPage() {
               <Select options={Object.entries(SEVERITY_LABELS).map(([value, label]) => ({ value, label }))} />
             </Form.Item>
           </div>
-          <Form.Item name="notice" label="发送到告警中心" valuePropName="checked">
-            <Switch />
-          </Form.Item>
-          <Form.Item noStyle shouldUpdate={(previous, current) => previous.notice !== current.notice}>
-            {({ getFieldValue }) => getFieldValue('notice') ? (
-              <Form.Item
-                name="notice_type_ids"
-                label="告警中心 NATS 渠道"
-                rules={[{ required: true, message: '请选择告警中心通知渠道' }]}
-                extra="这里只发送 APM 事件副本；渠道不可用时，APM 自有告警和事件仍会正常保存。"
-              >
-                <Select
-                  mode="multiple"
-                  options={notificationChannels.map((channel) => ({
-                    value: channel.id,
-                    label: channel.name,
-                  }))}
-                  placeholder={notificationChannels.length ? '请选择渠道' : '请先在系统管理中配置告警中心 NATS 渠道'}
-                />
-              </Form.Item>
+          <Form.Item label="通知渠道" extra="渠道投递失败不会影响 APM 告警和事件持久化，可在事件页查看终态并人工重投。">
+            {channelState === 'error' ? (
+              <Alert
+                type="warning"
+                showIcon
+                message="暂时无法读取系统通知渠道"
+                description={(
+                  <Space wrap>
+                    <span>可以稍后重试，或前往系统管理检查渠道配置。</span>
+                    <Button type="link" size="small" icon={<ReloadOutlined />} onClick={load}>重试</Button>
+                    <Link href="/system-manager/channel">系统管理</Link>
+                  </Space>
+                )}
+              />
+            ) : channelState === 'empty' ? (
+              <Alert
+                type="info"
+                showIcon
+                message="当前组织没有可用通知渠道"
+                description={<Link href="/system-manager/channel">前往系统管理配置渠道</Link>}
+              />
             ) : null}
           </Form.Item>
+          <Form.List name="notification_targets">
+            {(fields, { add, remove }) => (
+              <Space direction="vertical" className="w-full" size="middle">
+                {fields.some((field) => {
+                  const channelId = form.getFieldValue(['notification_targets', field.name, 'channel_id']);
+                  return channelById.get(channelId)?.recipient_mode === 'system_user';
+                }) && recipientState === 'error' ? (
+                  <Alert type="warning" showIcon message="系统用户目录暂不可用，已有配置可查看但暂不能新增接收人。" />
+                  ) : null}
+                {fields.map((field) => {
+                  const target = form.getFieldValue(['notification_targets', field.name]) as ApmPolicyNotificationTarget | undefined;
+                  const channel = target ? channelById.get(target.channel_id) : undefined;
+                  const snapshot = editing?.notification_targets.find((item) => item.channel_id === target?.channel_id);
+                  const recipientMode = channel?.recipient_mode ?? snapshot?.recipient_mode;
+                  const deliveryMode = channel?.delivery_mode ?? snapshot?.delivery_mode;
+                  const channelMissing = Boolean(target?.channel_id && !channel && channelState !== 'loading');
+                  return (
+                    <div key={field.key} className="rounded-md border border-[var(--color-border-2)] p-3">
+                      <div className="mb-3 flex items-start justify-between gap-3">
+                        <div>
+                          <Typography.Text strong>{channel?.name ?? snapshot?.channel_name ?? `渠道 ${target?.channel_id ?? ''}`}</Typography.Text>
+                          <div className="mt-1 flex flex-wrap gap-1">
+                            <Tag bordered={false}>{channel?.channel_type ?? snapshot?.channel_type ?? '未知类型'}</Tag>
+                            <Tag bordered={false} color={deliveryMode === 'alert_event_copy' ? 'purple' : 'blue'}>
+                              {deliveryMode === 'alert_event_copy' ? '告警中心事件副本' : '普通通知'}
+                            </Tag>
+                            {channelMissing ? <Tag bordered={false} color="error">已失效，保存前请移除</Tag> : null}
+                          </div>
+                        </div>
+                        <Button type="text" danger icon={<DeleteOutlined />} aria-label="移除通知渠道" onClick={() => remove(field.name)} />
+                      </div>
+                      <Form.Item name={[field.name, 'channel_id']} hidden><InputNumber /></Form.Item>
+                      <Form.Item
+                        name={[field.name, 'recipients']}
+                        label={recipientMode === 'system_user' ? '系统用户 ID' : '接收人'}
+                        hidden={recipientMode === 'none'}
+                        rules={recipientMode === 'none' ? [] : [
+                          { required: true, message: '请填写至少一个接收人' },
+                          ...(recipientMode === 'system_user' ? [{
+                            validator: (_: unknown, values?: string[]) => (
+                              (values ?? []).every((value) => /^\d+$/.test(value))
+                                ? Promise.resolve()
+                                : Promise.reject(new Error('系统用户必须填写数字 ID'))
+                            ),
+                          }] : []),
+                        ]}
+                        className="mb-0"
+                      >
+                        <Select
+                          mode={recipientMode === 'system_user' ? 'multiple' : 'tags'}
+                          tokenSeparators={[',', ' ']}
+                          maxCount={100}
+                          loading={recipientMode === 'system_user' && recipientState === 'loading'}
+                          options={recipientMode === 'system_user' ? [
+                            ...notificationRecipients.map((recipient) => ({
+                              value: String(recipient.id),
+                              label: recipient.display_name
+                                ? `${recipient.display_name} (${recipient.username})`
+                                : recipient.username,
+                            })),
+                            ...(target?.recipients ?? [])
+                              .filter((recipientId) => !notificationRecipients.some((recipient) => String(recipient.id) === recipientId))
+                              .map((recipientId) => ({ value: recipientId, label: `用户 ${recipientId}（当前不可用）`, disabled: true })),
+                          ] : undefined}
+                          notFoundContent={recipientMode === 'system_user' && recipientState === 'error'
+                            ? '系统用户目录暂不可用'
+                            : undefined}
+                          placeholder={recipientMode === 'system_user' ? '请选择系统用户' : '输入接收人，回车确认'}
+                        />
+                      </Form.Item>
+                    </div>
+                  );
+                })}
+                <Select
+                  value={undefined}
+                  loading={channelState === 'loading'}
+                  disabled={channelState !== 'ready'}
+                  placeholder="添加通知渠道"
+                  options={notificationChannels
+                    .filter((channel) => !fields.some((field) => (
+                      form.getFieldValue(['notification_targets', field.name, 'channel_id']) === channel.id
+                    )))
+                    .map((channel) => ({
+                      value: channel.id,
+                      label: `${channel.name} · ${channel.delivery_mode === 'alert_event_copy' ? '告警中心副本' : channel.channel_type}`,
+                    }))}
+                  onChange={(channelId) => add({ channel_id: channelId, recipients: [] })}
+                />
+              </Space>
+            )}
+          </Form.List>
           <Form.Item name="is_enabled" label="创建后启用" valuePropName="checked">
             <Switch />
           </Form.Item>

@@ -3,18 +3,19 @@ from datetime import timedelta
 import pytest
 from django.utils import timezone
 
-from apps.apm.adapters import InMemoryAlertPublisher
+from apps.apm.adapters import InMemoryNotificationDispatcher
 from apps.apm.models import (
     ApmAlert,
     ApmAlertOutbox,
     ApmEvent,
     ApmPolicy,
+    ApmPolicyNotificationTarget,
     ApmPolicyState,
     ApmService,
     ApmServiceOrganization,
 )
 from apps.apm.services import DjangoApmPolicyService
-from apps.apm.services.contracts import ServiceRed
+from apps.apm.services.contracts import NotificationDeliveryResult, ServiceRed
 
 
 pytestmark = pytest.mark.django_db
@@ -33,9 +34,14 @@ class MutableMetricStore:
         return self.red
 
 
-class FailingPublisher:
-    def publish(self, events):
-        raise RuntimeError("alerts unavailable")
+class RetryableFailingDispatcher:
+    def dispatch(self, delivery):
+        return NotificationDeliveryResult(False, "provider_unavailable", True, "temporarily down")
+
+
+class TerminalFailingDispatcher:
+    def dispatch(self, delivery):
+        return NotificationDeliveryResult(False, "channel_not_found", False, "deleted")
 
 
 @pytest.fixture
@@ -50,7 +56,7 @@ def policy():
         last_seen_at=now,
     )
     ApmServiceOrganization.objects.create(service=service, organization=10)
-    return ApmPolicy.objects.create(
+    policy = ApmPolicy.objects.create(
         name="生产错误率",
         service=service,
         environment="production",
@@ -64,12 +70,22 @@ def policy():
         notice_type_ids=[7],
         notice_users=["on-call"],
     )
+    ApmPolicyNotificationTarget.objects.create(
+        policy=policy,
+        channel_id=7,
+        channel_name="告警中心",
+        channel_type="nats",
+        delivery_mode="alert_event_copy",
+        recipient_mode="none",
+        recipients=[],
+    )
+    return policy
 
 
 def test_evaluation_creates_one_idempotent_trigger_and_one_recovery(policy):
     metric_store = MutableMetricStore(ServiceRed(20, 0.10, 100, 150))
-    publisher = InMemoryAlertPublisher()
-    service = DjangoApmPolicyService(metric_store, publisher)
+    dispatcher = InMemoryNotificationDispatcher()
+    service = DjangoApmPolicyService(metric_store, dispatcher)
     started_at = timezone.now().replace(second=0, microsecond=0)
 
     service.evaluate(policy.id, evaluated_at=started_at)
@@ -84,7 +100,10 @@ def test_evaluation_creates_one_idempotent_trigger_and_one_recovery(policy):
     assert ApmAlertOutbox.objects.count() == 1
     trigger = ApmAlertOutbox.objects.get()
     assert trigger.channel_id == 7
-    assert trigger.receivers == ["on-call"]
+    assert trigger.recipients == []
+    assert trigger.delivery_mode == "alert_event_copy"
+    assert trigger.title == "APM 生产错误率触发"
+    assert "shop/checkout" in trigger.body
     assert trigger.payload["action"] == "created"
     assert trigger.payload["organizations"] == [10]
     assert trigger.payload["external_id"] == state.external_alert_id
@@ -106,8 +125,8 @@ def test_evaluation_creates_one_idempotent_trigger_and_one_recovery(policy):
     result = service.retry_pending_events()
     assert result.accepted == 2
     assert result.failed == 0
-    assert len(publisher.events) == 2
-    assert {event.channel_id for event in publisher.events} == {7}
+    assert len(dispatcher.deliveries) == 2
+    assert {delivery.channel_id for delivery in dispatcher.deliveries} == {7}
     assert not ApmAlertOutbox.objects.filter(
         delivery_status=ApmAlertOutbox.DeliveryStatus.PENDING
     ).exists()
@@ -115,7 +134,7 @@ def test_evaluation_creates_one_idempotent_trigger_and_one_recovery(policy):
 
 def test_metric_failure_keeps_last_state_and_produces_no_event(policy):
     metric_store = MutableMetricStore(ServiceRed(20, 0.10, 100, 150))
-    service = DjangoApmPolicyService(metric_store, InMemoryAlertPublisher())
+    service = DjangoApmPolicyService(metric_store, InMemoryNotificationDispatcher())
     evaluated_at = timezone.now().replace(second=0, microsecond=0)
     service.evaluate(policy.id, evaluated_at=evaluated_at)
     before = ApmPolicyState.objects.get(policy=policy)
@@ -135,19 +154,47 @@ def test_metric_failure_keeps_last_state_and_produces_no_event(policy):
 
 def test_failed_delivery_remains_pending_for_bounded_compensation(policy):
     metric_store = MutableMetricStore(ServiceRed(20, 0.10, 100, 150))
-    evaluator = DjangoApmPolicyService(metric_store, InMemoryAlertPublisher())
+    evaluator = DjangoApmPolicyService(metric_store, InMemoryNotificationDispatcher())
     evaluated_at = timezone.now().replace(second=0, microsecond=0)
     evaluator.evaluate(policy.id, evaluated_at=evaluated_at)
     evaluator.evaluate(policy.id, evaluated_at=evaluated_at + timedelta(minutes=1))
 
-    result = DjangoApmPolicyService(metric_store, FailingPublisher()).retry_pending_events()
+    result = DjangoApmPolicyService(metric_store, RetryableFailingDispatcher()).retry_pending_events()
 
     outbox = ApmAlertOutbox.objects.get()
     assert result.failed == 1
     assert outbox.delivery_status == ApmAlertOutbox.DeliveryStatus.PENDING
     assert outbox.attempts == 1
+    assert outbox.last_error_code == "provider_unavailable"
     assert outbox.next_retry_at is not None
     assert outbox.next_retry_at <= timezone.now() + timedelta(minutes=5, seconds=5)
+
+
+def test_terminal_delivery_failure_does_not_retry_and_eight_retryable_failures_stop(policy):
+    metric_store = MutableMetricStore(ServiceRed(20, 0.10, 100, 150))
+    evaluated_at = timezone.now().replace(second=0, microsecond=0)
+    evaluator = DjangoApmPolicyService(metric_store, InMemoryNotificationDispatcher())
+    evaluator.evaluate(policy.id, evaluated_at=evaluated_at)
+    evaluator.evaluate(policy.id, evaluated_at=evaluated_at + timedelta(minutes=1))
+    outbox = ApmAlertOutbox.objects.get()
+
+    DjangoApmPolicyService(metric_store, TerminalFailingDispatcher()).retry_pending_events()
+    outbox.refresh_from_db()
+    assert outbox.delivery_status == ApmAlertOutbox.DeliveryStatus.FAILED
+    assert outbox.attempts == 1
+    assert outbox.failed_at is not None
+    assert outbox.next_retry_at is None
+
+    outbox.delivery_status = ApmAlertOutbox.DeliveryStatus.PENDING
+    outbox.attempts = 7
+    outbox.next_retry_at = None
+    outbox.failed_at = None
+    outbox.save()
+    DjangoApmPolicyService(metric_store, RetryableFailingDispatcher()).retry_pending_events()
+    outbox.refresh_from_db()
+    assert outbox.delivery_status == ApmAlertOutbox.DeliveryStatus.FAILED
+    assert outbox.attempts == 8
+    assert outbox.failed_at is not None
 
 
 @pytest.mark.parametrize(
@@ -166,7 +213,7 @@ def test_policy_metric_types_use_controlled_red_values(policy, metric_type, red,
     policy.duration_window = 1
     policy.save()
     metric_store = MutableMetricStore(red)
-    service = DjangoApmPolicyService(metric_store, InMemoryAlertPublisher())
+    service = DjangoApmPolicyService(metric_store, InMemoryNotificationDispatcher())
 
     result = service.test_query(policy, evaluated_at=timezone.now())
 

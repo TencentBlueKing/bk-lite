@@ -3,9 +3,8 @@ from uuid import uuid4
 
 from django.utils import timezone
 
-from apps.apm.adapters import InMemoryAlertPublisher, InMemoryMetricStore, InMemoryTraceStore
+from apps.apm.adapters import InMemoryMetricStore, InMemoryTraceStore
 from apps.apm.services.contracts import (
-    ApmAlertEvent,
     InstanceActivity,
     InstanceActivityQuery,
     ServiceMetricQuery,
@@ -65,23 +64,3 @@ def test_metric_store_supports_exact_red_and_bounded_activity_queries():
             ingest_source_id=source_id,
         )
     ) == [activity]
-
-
-def test_alert_publisher_is_idempotent_by_event_key():
-    now = timezone.now()
-    event = ApmAlertEvent(
-        event_key="policy:1:firing:10",
-        external_id="apm-1",
-        status="firing",
-        severity="critical",
-        title="checkout error rate",
-        occurred_at=now,
-    )
-    publisher = InMemoryAlertPublisher()
-
-    first = publisher.publish([event])
-    second = publisher.publish([event])
-
-    assert first.accepted == 1
-    assert second.duplicates == 1
-    assert publisher.events == [event]

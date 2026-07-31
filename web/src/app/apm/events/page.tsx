@@ -2,12 +2,12 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { ReloadOutlined } from '@ant-design/icons';
-import { Badge, Button, Select, Space, Table, Tag, Typography, type TableColumnsType } from 'antd';
+import { Badge, Button, message, Select, Space, Table, Tag, Typography, type TableColumnsType } from 'antd';
 import dayjs from 'dayjs';
 import useApmApi from '@/app/apm/api';
 import ApmRouteShell, { ApmSurface } from '@/app/apm/components/apm-route-shell';
 import CatalogState, { catalogErrorKind, type CatalogStateKind } from '@/app/apm/components/catalog-state';
-import type { ApmEvent, ApmEventQuery, ApmPolicySeverity } from '@/app/apm/types';
+import type { ApmEvent, ApmEventQuery, ApmNotificationDelivery, ApmPolicySeverity } from '@/app/apm/types';
 
 type PageState = CatalogStateKind | 'ready';
 
@@ -23,11 +23,18 @@ const ACTION = {
   recovery: { label: '恢复', color: 'success' },
 } as const;
 
+const DELIVERY_STATUS: Record<ApmNotificationDelivery['status'], { label: string; color: string }> = {
+  pending: { label: '待投递', color: 'processing' },
+  delivered: { label: '已送达', color: 'success' },
+  failed: { label: '终止失败', color: 'error' },
+};
+
 export default function ApmEventsPage() {
-  const { getEvents, isLoading: authLoading } = useApmApi();
+  const { getEvents, isLoading: authLoading, retryNotificationDelivery } = useApmApi();
   const [events, setEvents] = useState<ApmEvent[]>([]);
   const [state, setState] = useState<PageState>('loading');
   const [query, setQuery] = useState<ApmEventQuery>({ limit: 50 });
+  const [retryingId, setRetryingId] = useState<string | null>(null);
 
   const load = useCallback(() => {
     if (authLoading) return;
@@ -79,6 +86,21 @@ export default function ApmEventsPage() {
       responsive: ['md'],
       render: (value) => value ?? '—',
       className: 'tabular-nums',
+    },
+    {
+      title: '通知',
+      width: 130,
+      render: (_, event) => {
+        const deliveries = event.notification_deliveries ?? [];
+        if (!deliveries.length) return <Typography.Text type="secondary">未配置</Typography.Text>;
+        const failed = deliveries.filter((delivery) => delivery.status === 'failed').length;
+        const pending = deliveries.filter((delivery) => delivery.status === 'pending').length;
+        return failed
+          ? <Tag bordered={false} color="error">{failed} 个失败</Tag>
+          : pending
+            ? <Tag bordered={false} color="processing">{pending} 个处理中</Tag>
+            : <Tag bordered={false} color="success">全部送达</Tag>;
+      },
     },
     {
       title: '发生时间',
@@ -137,6 +159,60 @@ export default function ApmEventsPage() {
               columns={columns}
               dataSource={events}
               pagination={false}
+              expandable={{
+                rowExpandable: (event) => Boolean(event.notification_deliveries?.length),
+                expandedRowRender: (event) => (
+                  <div className="flex flex-col gap-2 py-1">
+                    {event.notification_deliveries.map((delivery) => (
+                      <div
+                        key={delivery.id}
+                        className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-[var(--color-border-2)] bg-[var(--color-bg-1)] px-3 py-2"
+                      >
+                        <Space direction="vertical" size={0}>
+                          <Space wrap>
+                            <Typography.Text strong>{delivery.channel_name || `渠道 ${delivery.channel_id ?? '未知'}`}</Typography.Text>
+                            <Tag bordered={false}>{delivery.channel_type || '未知类型'}</Tag>
+                            <Tag bordered={false} color={delivery.delivery_mode === 'alert_event_copy' ? 'purple' : 'blue'}>
+                              {delivery.delivery_mode === 'alert_event_copy' ? '告警中心事件副本' : '普通通知'}
+                            </Tag>
+                            <Tag bordered={false} color={DELIVERY_STATUS[delivery.status].color}>
+                              {DELIVERY_STATUS[delivery.status].label}
+                            </Tag>
+                          </Space>
+                          <Typography.Text type="secondary" className="text-xs">
+                            尝试 {delivery.attempts} 次
+                            {delivery.recipients.length ? ` · 接收人 ${delivery.recipients.join('、')}` : ''}
+                            {delivery.last_error_message ? ` · ${delivery.last_error_code || 'delivery_failed'}：${delivery.last_error_message}` : ''}
+                          </Typography.Text>
+                        </Space>
+                        {delivery.status === 'failed' ? (
+                          <Button
+                            size="small"
+                            loading={retryingId === delivery.id}
+                            onClick={async () => {
+                              setRetryingId(delivery.id);
+                              try {
+                                const retried = await retryNotificationDelivery(delivery.id);
+                                setEvents((items) => items.map((item) => item.id === event.id ? {
+                                  ...item,
+                                  notification_deliveries: item.notification_deliveries.map((current) => (
+                                    current.id === retried.id ? retried : current
+                                  )),
+                                } : item));
+                                message.success('通知已进入重投队列');
+                              } finally {
+                                setRetryingId(null);
+                              }
+                            }}
+                          >
+                            人工重投
+                          </Button>
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
+                ),
+              }}
             />
           ) : (
             <CatalogState

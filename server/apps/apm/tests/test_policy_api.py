@@ -6,10 +6,17 @@ import pytest
 from django.utils import timezone
 from rest_framework.test import APIClient
 
-from apps.apm.adapters import InMemoryAlertPublisher
-from apps.apm.models import ApmPolicy, ApmService, ApmServiceOrganization
+from apps.apm.adapters import InMemoryNotificationDispatcher
+from apps.apm.models import (
+    ApmAlertOutbox,
+    ApmNotificationDeliveryRetry,
+    ApmPolicy,
+    ApmPolicyNotificationTarget,
+    ApmService,
+    ApmServiceOrganization,
+)
 from apps.apm.services import DjangoApmPolicyService
-from apps.apm.services.contracts import ServiceRed
+from apps.apm.services.contracts import NotificationChannel, NotificationRecipient, ServiceRed
 
 
 pytestmark = pytest.mark.django_db
@@ -105,23 +112,47 @@ def test_policy_notification_requires_an_explicit_channel(apm_api_client):
     response = apm_api_client.post("/api/v1/apm/policies/", payload, format="json")
 
     assert response.status_code == 400
-    assert "notice_type_ids" in response.data
+    assert "notification_targets" in response.data
 
 
 def test_policy_notification_channel_is_revalidated_in_current_scope(apm_api_client, mocker):
     directory = mocker.patch("apps.apm.views.control_plane.ApmPolicyViewSet.notification_directory")
-    directory.list_alert_event_channels.return_value = [{"id": 23}]
+    directory.list_available.return_value = [
+        SimpleNamespace(
+            id=23,
+            name="邮件",
+            channel_type="email",
+            description="值班邮件",
+            delivery_mode="message",
+            recipient_mode="system_user",
+            availability="available",
+        )
+    ]
     payload = _payload(_service(10))
-    payload.update({"notice": True, "notice_type_ids": [99]})
+    payload.update({
+        "notification_targets": [{"channel_id": 99, "recipients": ["42"]}],
+    })
 
     denied = apm_api_client.post("/api/v1/apm/policies/", payload, format="json")
-    payload["notice_type_ids"] = [23]
+    payload["notification_targets"] = [{"channel_id": 23, "recipients": ["42"]}]
     created = apm_api_client.post("/api/v1/apm/policies/", payload, format="json")
 
     assert denied.status_code == 400
-    assert "notice_type_ids" in denied.data
+    assert "notification_targets" in denied.data
     assert created.status_code == 201
+    assert created.data["notice"] is True
     assert created.data["notice_type_ids"] == [23]
+    assert created.data["notification_targets"] == [
+        {
+            "channel_id": 23,
+            "channel_name": "邮件",
+            "channel_type": "email",
+            "delivery_mode": "message",
+            "recipient_mode": "system_user",
+            "recipients": ["42"],
+        }
+    ]
+    assert ApmPolicyNotificationTarget.objects.filter(policy_id=created.data["id"]).count() == 1
 
 
 def test_notification_directory_outage_only_blocks_notification_configuration(apm_api_client, mocker):
@@ -140,7 +171,7 @@ def test_notification_directory_outage_only_blocks_notification_configuration(ap
         notice_type_ids=[23],
     )
     directory = mocker.patch("apps.apm.views.control_plane.ApmPolicyViewSet.notification_directory")
-    directory.list_alert_event_channels.side_effect = RuntimeError("system management unavailable")
+    directory.list_available.side_effect = RuntimeError("system management unavailable")
 
     ordinary_update = apm_api_client.patch(
         f"/api/v1/apm/policies/{policy.id}/",
@@ -226,7 +257,7 @@ def test_policy_trigger_is_queryable_from_apm_owned_event_api(apm_api_client):
             p99_ms=150,
         )
     )
-    evaluator = DjangoApmPolicyService(metric_store, InMemoryAlertPublisher())
+    evaluator = DjangoApmPolicyService(metric_store, InMemoryNotificationDispatcher())
     evaluated_at = timezone.now().replace(second=0, microsecond=0)
 
     evaluator.evaluate(policy.id, evaluated_at=evaluated_at)
@@ -244,14 +275,112 @@ def test_policy_trigger_is_queryable_from_apm_owned_event_api(apm_api_client):
 
 def test_notification_channel_view_uses_current_organization_scope(apm_api_client, mocker):
     directory = mocker.patch("apps.apm.views.control_plane.ApmNotificationChannelViewSet.directory")
-    directory.list_alert_event_channels.return_value = [
-        {"id": 23, "name": "告警中心", "channel_type": "nats"}
+    directory.list_available.return_value = [
+        NotificationChannel(
+            id=23,
+            name="告警中心",
+            channel_type="nats",
+            description="事件副本",
+            delivery_mode="alert_event_copy",
+            recipient_mode="none",
+            availability="available",
+        )
     ]
 
     response = apm_api_client.get("/api/v1/apm/notification-channels/")
 
     assert response.status_code == 200
     assert response.data[0]["id"] == 23
-    call = directory.list_alert_event_channels.call_args.kwargs
+    call = directory.list_available.call_args.kwargs
     assert call["organization_id"] == 10
     assert call["actor_context"]["current_team"] == 10
+
+
+def test_notification_recipient_view_returns_scoped_stable_user_options(apm_api_client, mocker):
+    directory = mocker.patch("apps.apm.views.control_plane.ApmNotificationRecipientViewSet.directory")
+    directory.search_recipients.return_value = [
+        NotificationRecipient(id=42, username="alice", display_name="Alice On-call")
+    ]
+
+    response = apm_api_client.get("/api/v1/apm/notification-recipients/?search=ali&limit=20")
+
+    assert response.status_code == 200
+    assert response.data == [{"id": 42, "username": "alice", "display_name": "Alice On-call"}]
+    call = directory.search_recipients.call_args.kwargs
+    assert call["organization_id"] == 10
+    assert call["search"] == "ali"
+    assert call["limit"] == 20
+
+
+def test_notification_delivery_status_and_manual_retry_are_real_and_scoped(apm_api_client, apm_user):
+    service = _service(10)
+    policy = ApmPolicy.objects.create(
+        **{
+            key: value
+            for key, value in _payload(service).items()
+            if key not in {"service_id", "is_enabled", "duration_window"}
+        },
+        service=service,
+        duration_window=1,
+        notice=True,
+    )
+    ApmPolicyNotificationTarget.objects.create(
+        policy=policy,
+        channel_id=31,
+        channel_name="Webhook",
+        channel_type="custom_webhook",
+        delivery_mode="message",
+        recipient_mode="free_text",
+        recipients=["on-call"],
+    )
+    evaluator = DjangoApmPolicyService(
+        SimpleNamespace(service_red=lambda query: ServiceRed(20, 0.10, 100, 150)),
+        InMemoryNotificationDispatcher(),
+    )
+    evaluator.evaluate(policy.id, evaluated_at=timezone.now().replace(second=0, microsecond=0))
+    delivery = ApmAlertOutbox.objects.get()
+    delivery.delivery_status = ApmAlertOutbox.DeliveryStatus.FAILED
+    delivery.attempts = 8
+    delivery.last_error_code = "provider_unavailable"
+    delivery.last_error_message = "temporarily down"
+    delivery.failed_at = timezone.now()
+    delivery.save()
+
+    listed = apm_api_client.get("/api/v1/apm/notification-deliveries/")
+    retried = apm_api_client.post(
+        f"/api/v1/apm/notification-deliveries/{delivery.id}/retry/",
+        {"recipients": ["new-on-call"]},
+        format="json",
+    )
+
+    assert listed.status_code == 200
+    assert listed.data[0]["status"] == "failed"
+    assert listed.data[0]["channel_name"] == "Webhook"
+    assert listed.data[0]["event_id"] == delivery.event.event_id
+    events = apm_api_client.get("/api/v1/apm/events/")
+    assert events.status_code == 200
+    assert events.data[0]["notification_deliveries"][0]["id"] == delivery.id
+    assert retried.status_code == 200
+    assert retried.data["status"] == "pending"
+    assert retried.data["attempts"] == 0
+    delivery.refresh_from_db()
+    assert delivery.recipients == ["new-on-call"]
+    assert ApmNotificationDeliveryRetry.objects.filter(
+        delivery=delivery,
+        previous_attempts=8,
+        previous_error_code="provider_unavailable",
+    ).exists()
+
+    conflict = apm_api_client.post(f"/api/v1/apm/notification-deliveries/{delivery.id}/retry/", {}, format="json")
+    assert conflict.status_code == 409
+    assert conflict.data["code"] == "state_conflict"
+
+    apm_api_client.cookies["current_team"] = "20"
+    assert apm_api_client.get("/api/v1/apm/notification-deliveries/").data == []
+    hidden = apm_api_client.post(f"/api/v1/apm/notification-deliveries/{delivery.id}/retry/", {}, format="json")
+    assert hidden.status_code == 404
+
+    apm_api_client.cookies["current_team"] = "10"
+    apm_user.permission["apm"] = {"events-View", "policies-View"}
+    denied = apm_api_client.post(f"/api/v1/apm/notification-deliveries/{delivery.id}/retry/", {}, format="json")
+    assert denied.status_code == 403

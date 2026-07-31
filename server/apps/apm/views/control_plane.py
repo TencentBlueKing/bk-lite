@@ -1,3 +1,6 @@
+from dataclasses import asdict
+
+from django.db import transaction
 from django.db.models import Prefetch, QuerySet
 from django.utils import timezone
 from rest_framework import status, viewsets
@@ -6,7 +9,15 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.generics import get_object_or_404
 from rest_framework.response import Response
 
-from apps.apm.models import ApmIngestSource, ApmPolicy, ApmPolicyState, ApmService, ApmServiceInstance
+from apps.apm.models import (
+    ApmAlertOutbox,
+    ApmIngestSource,
+    ApmPolicy,
+    ApmPolicyNotificationTarget,
+    ApmPolicyState,
+    ApmService,
+    ApmServiceInstance,
+)
 from apps.apm.renderers import ApmRenderer
 from apps.apm.serializers import (
     ApmEventQuerySerializer,
@@ -16,14 +27,23 @@ from apps.apm.serializers import (
     ApmServiceSerializer,
     CreateIngestSourceSerializer,
     IngestSnippetSerializer,
+    NotificationDeliveryQuerySerializer,
+    NotificationDeliveryRetrySerializer,
+    NotificationRecipientQuerySerializer,
     OrganizationAssignmentSerializer,
     ServiceMetricQuerySerializer,
 )
-from apps.apm.adapters import SystemMgmtNatsAlertPublisher, TelemetryStoreUnavailable, VictoriaMetricsMetricStore
+from apps.apm.adapters import (
+    SystemMgmtNotificationDispatcher,
+    TelemetryStoreUnavailable,
+    VictoriaMetricsMetricStore,
+)
 from apps.apm.services import (
     DjangoApmEventReader,
     DjangoApmPolicyService,
     DjangoIngestSourceService,
+    DeliveryStateConflict,
+    DjangoNotificationDeliveryService,
     DjangoTelemetryCatalogService,
     DjangoTelemetryQueryService,
     NotificationChannelDirectory,
@@ -358,11 +378,12 @@ class ApmPolicyViewSet(viewsets.GenericViewSet):
 
     @staticmethod
     def _service():
-        return DjangoApmPolicyService(VictoriaMetricsMetricStore(), SystemMgmtNatsAlertPublisher())
+        return DjangoApmPolicyService(VictoriaMetricsMetricStore(), SystemMgmtNotificationDispatcher())
 
     def get_queryset(self):
         queryset = ApmPolicy.objects.select_related("service", "state").prefetch_related(
-            "service__organization_links"
+            "service__organization_links",
+            "notification_targets",
         )
         return filter_current_organization(queryset, self.request, "service__organization_links")
 
@@ -374,20 +395,53 @@ class ApmPolicyViewSet(viewsets.GenericViewSet):
         )
         return get_object_or_404(queryset, id=service_id)
 
+    @staticmethod
+    def _pop_notification_fields(data):
+        notification_targets = data.pop("notification_targets", None)
+        notice = data.pop("notice", None)
+        if notification_targets is not None:
+            notice = bool(notification_targets)
+        return {
+            "notice": notice,
+            "notification_targets": notification_targets,
+            "notice_type_ids": data.pop("notice_type_ids", None),
+            "notice_users": data.pop("notice_users", None),
+        }
+
     def _validate_notification_channels(self, serializer, policy=None):
         data = serializer.validated_data
-        if policy is not None and not {"notice", "notice_type_ids", "service_id"}.intersection(data):
+        notification_fields = {"notice", "notification_targets", "notice_type_ids", "notice_users"}
+        if policy is not None and not notification_fields.intersection(data):
             return None
-        notice = data.get("notice", getattr(policy, "notice", False))
-        channel_ids = data.get("notice_type_ids", getattr(policy, "notice_type_ids", []))
+        requested_targets = data.get("notification_targets")
+        notice = (
+            bool(requested_targets)
+            if requested_targets is not None
+            else data.get("notice", getattr(policy, "notice", False))
+        )
         if not notice:
-            return None
+            return []
+        if requested_targets is None:
+            legacy_channel_ids = data.get("notice_type_ids")
+            if legacy_channel_ids is None and policy is not None:
+                requested_targets = [
+                    {"channel_id": target.channel_id, "recipients": list(target.recipients)}
+                    for target in policy.notification_targets.all()
+                ]
+            else:
+                legacy_recipients = data.get("notice_users", getattr(policy, "notice_users", []))
+                requested_targets = [
+                    {"channel_id": channel_id, "recipients": list(legacy_recipients or [])}
+                    for channel_id in legacy_channel_ids or []
+                ]
+        if not requested_targets:
+            raise ValidationError({"notification_targets": "启用通知时至少选择一个渠道。"})
         organization_id = current_organization_id(self.request)
         if organization_id is None:
-            raise ValidationError({"notice_type_ids": "缺少当前组织。"})
+            raise ValidationError({"notification_targets": "缺少当前组织。"})
         actor_context = _notification_actor_context(self.request, organization_id)
         try:
-            channels = self.notification_directory.list_alert_event_channels(
+            channels = self.notification_directory.list_available(
                 actor_context=actor_context,
                 organization_id=organization_id,
                 include_children=actor_context["include_children"],
@@ -397,10 +451,45 @@ class ApmPolicyViewSet(viewsets.GenericViewSet):
                 {"detail": str(exc), "code": "notification_channels_unavailable"},
                 status=status.HTTP_503_SERVICE_UNAVAILABLE,
             )
-        allowed_ids = {int(channel["id"]) for channel in channels}
-        if not set(channel_ids).issubset(allowed_ids):
-            raise ValidationError({"notice_type_ids": "包含当前组织不可用的告警中心渠道。"})
-        return None
+        allowed = {channel.id: channel for channel in channels if channel.availability == "available"}
+        normalized_targets = []
+        for target in requested_targets:
+            channel = allowed.get(int(target["channel_id"]))
+            if channel is None:
+                raise ValidationError({"notification_targets": "包含当前组织不可用的通知渠道。"})
+            recipients = [str(value).strip() for value in target.get("recipients", [])]
+            if channel.recipient_mode == "none" and recipients:
+                raise ValidationError({"notification_targets": f"渠道 {channel.name} 不接受接收人。"})
+            if channel.recipient_mode != "none" and not recipients:
+                raise ValidationError({"notification_targets": f"渠道 {channel.name} 必须配置接收人。"})
+            if channel.recipient_mode == "system_user" and not all(value.isdigit() for value in recipients):
+                raise ValidationError({"notification_targets": f"渠道 {channel.name} 只接受系统用户 ID。"})
+            normalized_targets.append(
+                {
+                    "channel_id": channel.id,
+                    "channel_name": channel.name,
+                    "channel_type": channel.channel_type,
+                    "delivery_mode": channel.delivery_mode,
+                    "recipient_mode": channel.recipient_mode,
+                    "recipients": recipients,
+                }
+            )
+        return normalized_targets
+
+    @staticmethod
+    def _replace_notification_targets(policy, targets, *, actor):
+        policy.notification_targets.all().delete()
+        ApmPolicyNotificationTarget.objects.bulk_create(
+            [
+                ApmPolicyNotificationTarget(
+                    policy=policy,
+                    created_by=actor,
+                    updated_by=actor,
+                    **target,
+                )
+                for target in targets
+            ]
+        )
 
     @HasPermission("policies-View")
     def list(self, request, *args, **kwargs):
@@ -414,16 +503,20 @@ class ApmPolicyViewSet(viewsets.GenericViewSet):
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        notification_error = self._validate_notification_channels(serializer)
-        if notification_error is not None:
-            return notification_error
+        targets = self._validate_notification_channels(serializer)
+        if isinstance(targets, Response):
+            return targets
         service_id = serializer.validated_data.pop("service_id")
-        policy = serializer.save(
-            service=self._visible_service(service_id),
-            created_by=request.user.username,
-            updated_by=request.user.username,
-        )
-        self._service().save_policy(policy)
+        notification_data = self._pop_notification_fields(serializer.validated_data)
+        with transaction.atomic():
+            policy = serializer.save(
+                service=self._visible_service(service_id),
+                notice=bool(notification_data["notice"]),
+                created_by=request.user.username,
+                updated_by=request.user.username,
+            )
+            self._replace_notification_targets(policy, targets or [], actor=request.user.username)
+            self._service().save_policy(policy)
         return Response(self.get_serializer(policy).data, status=status.HTTP_201_CREATED)
 
     @HasPermission("policies-Operate")
@@ -431,19 +524,25 @@ class ApmPolicyViewSet(viewsets.GenericViewSet):
         policy = self.get_object()
         serializer = self.get_serializer(policy, data=request.data, partial=kwargs.get("partial", False))
         serializer.is_valid(raise_exception=True)
-        notification_error = self._validate_notification_channels(serializer, policy)
-        if notification_error is not None:
-            return notification_error
+        targets = self._validate_notification_channels(serializer, policy)
+        if isinstance(targets, Response):
+            return targets
         service_id = serializer.validated_data.pop("service_id", None)
+        notification_data = self._pop_notification_fields(serializer.validated_data)
         save_kwargs = {"updated_by": request.user.username}
         if service_id is not None:
             save_kwargs["service"] = self._visible_service(service_id)
-        policy = serializer.save(**save_kwargs)
-        state, _ = ApmPolicyState.objects.get_or_create(policy=policy)
-        state.evaluation_cursor = ""
-        state.consecutive_hits = 0
-        state.consecutive_recoveries = 0
-        state.save()
+        if notification_data["notice"] is not None:
+            save_kwargs["notice"] = bool(notification_data["notice"])
+        with transaction.atomic():
+            policy = serializer.save(**save_kwargs)
+            if targets is not None:
+                self._replace_notification_targets(policy, targets, actor=request.user.username)
+            state, _ = ApmPolicyState.objects.get_or_create(policy=policy)
+            state.evaluation_cursor = ""
+            state.consecutive_hits = 0
+            state.consecutive_recoveries = 0
+            state.save()
         return Response(self.get_serializer(policy).data)
 
     @HasPermission("policies-Operate")
@@ -519,7 +618,7 @@ class ApmNotificationChannelViewSet(viewsets.GenericViewSet):
             return Response([])
         actor_context = _notification_actor_context(request, organization_id)
         try:
-            channels = self.directory.list_alert_event_channels(
+            channels = self.directory.list_available(
                 actor_context=actor_context,
                 organization_id=organization_id,
                 include_children=actor_context["include_children"],
@@ -529,4 +628,74 @@ class ApmNotificationChannelViewSet(viewsets.GenericViewSet):
                 {"detail": str(exc), "code": "notification_channels_unavailable"},
                 status=status.HTTP_503_SERVICE_UNAVAILABLE,
             )
-        return Response(channels)
+        return Response([asdict(channel) for channel in channels])
+
+
+class ApmNotificationDeliveryViewSet(viewsets.GenericViewSet):
+    renderer_classes = (ApmRenderer,)
+    delivery_service = DjangoNotificationDeliveryService()
+
+    def get_queryset(self):
+        organization_id = current_organization_id(self.request)
+        if organization_id is None:
+            return ApmAlertOutbox.objects.none()
+        return self.delivery_service.queryset(organization_id=organization_id)
+
+    @HasPermission("events-View")
+    def list(self, request, *args, **kwargs):
+        serializer = NotificationDeliveryQuerySerializer(data=request.query_params)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        queryset = self.get_queryset()
+        if data.get("event_id"):
+            queryset = queryset.filter(event__event_id=data["event_id"])
+        if data.get("status"):
+            queryset = queryset.filter(delivery_status=data["status"])
+        deliveries = queryset.order_by("-created_at", "-id")[: data["limit"]]
+        return Response([self.delivery_service.serialize(delivery) for delivery in deliveries])
+
+    @action(methods=("post",), detail=True)
+    @HasPermission("policies-Operate")
+    def retry(self, request, *args, **kwargs):
+        delivery = self.get_object()
+        serializer = NotificationDeliveryRetrySerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            retried = self.delivery_service.retry(
+                delivery,
+                actor=request.user.username,
+                recipients=serializer.validated_data.get("recipients"),
+            )
+        except DeliveryStateConflict as exc:
+            return Response(
+                {"code": "state_conflict", "detail": str(exc)},
+                status=status.HTTP_409_CONFLICT,
+            )
+        return Response(self.delivery_service.serialize(retried))
+
+
+class ApmNotificationRecipientViewSet(viewsets.GenericViewSet):
+    renderer_classes = (ApmRenderer,)
+    directory = NotificationChannelDirectory()
+
+    @HasPermission("policies-View")
+    def list(self, request, *args, **kwargs):
+        organization_id = current_organization_id(request)
+        if organization_id is None:
+            return Response([])
+        serializer = NotificationRecipientQuerySerializer(data=request.query_params)
+        serializer.is_valid(raise_exception=True)
+        actor_context = _notification_actor_context(request, organization_id)
+        try:
+            recipients = self.directory.search_recipients(
+                actor_context=actor_context,
+                organization_id=organization_id,
+                include_children=actor_context["include_children"],
+                **serializer.validated_data,
+            )
+        except RuntimeError as exc:
+            return Response(
+                {"detail": str(exc), "code": "notification_recipients_unavailable"},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+        return Response([asdict(recipient) for recipient in recipients])

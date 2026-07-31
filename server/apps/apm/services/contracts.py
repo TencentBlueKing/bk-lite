@@ -179,19 +179,6 @@ class InstanceActivity:
 
 
 @dataclass(frozen=True)
-class ApmAlertEvent:
-    event_key: str
-    external_id: str
-    status: str
-    severity: str
-    title: str
-    occurred_at: datetime
-    channel_id: int | None = None
-    receivers: tuple[str, ...] = ()
-    payload: Mapping[str, object] = field(default_factory=dict)
-
-
-@dataclass(frozen=True)
 class PublishResult:
     accepted: int
     duplicates: int = 0
@@ -203,6 +190,43 @@ class PolicyQueryResult:
     value: Decimal
     breached: bool
     evaluated_at: datetime
+
+
+@dataclass(frozen=True)
+class NotificationChannel:
+    id: int
+    name: str
+    channel_type: str
+    description: str
+    delivery_mode: str
+    recipient_mode: str
+    availability: str
+
+
+@dataclass(frozen=True)
+class NotificationRecipient:
+    id: int
+    username: str
+    display_name: str
+
+
+@dataclass(frozen=True)
+class NotificationDelivery:
+    delivery_key: str
+    channel_id: int
+    organization_ids: tuple[int, ...]
+    recipients: tuple[str, ...]
+    title: str
+    body: str
+    event_payload: Mapping[str, object]
+
+
+@dataclass(frozen=True)
+class NotificationDeliveryResult:
+    delivered: bool
+    code: str
+    retryable: bool
+    message: str
 
 
 class TraceStore(Protocol):
@@ -217,8 +241,8 @@ class MetricStore(Protocol):
     def instance_activity(self, query: InstanceActivityQuery) -> list[InstanceActivity]: ...
 
 
-class AlertPublisher(Protocol):
-    def publish(self, events: Sequence[ApmAlertEvent]) -> PublishResult: ...
+class NotificationDispatcher(Protocol):
+    def dispatch(self, delivery: NotificationDelivery) -> NotificationDeliveryResult: ...
 
 
 class IngestSourceService(Protocol):

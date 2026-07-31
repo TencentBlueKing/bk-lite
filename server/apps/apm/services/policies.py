@@ -10,9 +10,10 @@ from django.utils import timezone
 
 from apps.apm.models import ApmAlert, ApmAlertOutbox, ApmEvent, ApmPolicy, ApmPolicyState
 from apps.apm.services.contracts import (
-    AlertPublisher,
-    ApmAlertEvent,
     MetricStore,
+    NotificationDelivery,
+    NotificationDeliveryResult,
+    NotificationDispatcher,
     PolicyQueryResult,
     PublishResult,
     ServiceMetricQuery,
@@ -24,14 +25,16 @@ SEVERITY_LEVEL = {
     ApmPolicy.Severity.ERROR: "1",
     ApmPolicy.Severity.WARNING: "2",
 }
+MAX_NOTIFICATION_ATTEMPTS = 8
+NOTIFICATION_CLAIM_TTL = timedelta(minutes=5)
 
 
 class DjangoApmPolicyService:
     """封装 APM 策略查询、连续窗口状态机和 outbox 补偿。"""
 
-    def __init__(self, metric_store: MetricStore, alert_publisher: AlertPublisher):
+    def __init__(self, metric_store: MetricStore, notification_dispatcher: NotificationDispatcher):
         self.metric_store = metric_store
-        self.alert_publisher = alert_publisher
+        self.notification_dispatcher = notification_dispatcher
 
     def save_policy(self, policy: ApmPolicy) -> ApmPolicy:
         ApmPolicyState.objects.get_or_create(policy=policy)
@@ -235,32 +238,53 @@ class DjangoApmPolicyService:
             },
         }
         if policy.notice:
-            for channel_id in sorted(set(policy.notice_type_ids or [])):
+            for target in policy.notification_targets.order_by("channel_id", "id"):
+                recipients = [] if target.recipient_mode == "none" else list(target.recipients)
                 ApmAlertOutbox.objects.get_or_create(
-                    event_key=f"{event_id}:channel:{channel_id}",
+                    event_key=f"{event_id}:channel:{target.channel_id}",
                     defaults={
                         "event": event,
-                        "channel_id": channel_id,
-                        "receivers": policy.notice_users or [],
+                        "channel_id": target.channel_id,
+                        "channel_name": target.channel_name,
+                        "channel_type": target.channel_type,
+                        "delivery_mode": target.delivery_mode,
+                        "receivers": recipients,
+                        "recipients": recipients,
+                        "title": title,
+                        "body": description,
                         "payload": payload,
                     },
                 )
         return event
 
     @staticmethod
-    def _as_event(outbox: ApmAlertOutbox) -> ApmAlertEvent:
-        payload = outbox.payload
-        return ApmAlertEvent(
-            event_key=outbox.event_key,
-            external_id=payload["external_id"],
-            status=payload["action"],
-            severity=payload["severity"],
-            title=payload["title"],
-            occurred_at=datetime.fromisoformat(payload["occurred_at"]),
+    def _as_delivery(outbox: ApmAlertOutbox) -> NotificationDelivery:
+        if outbox.channel_id is None:
+            raise ValueError("APM 通知投递缺少渠道 ID")
+        organizations = outbox.payload.get("organizations", [])
+        return NotificationDelivery(
+            delivery_key=outbox.event_key,
             channel_id=outbox.channel_id,
-            receivers=tuple(str(receiver) for receiver in outbox.receivers),
-            payload=payload,
+            organization_ids=tuple(int(value) for value in organizations),
+            recipients=tuple(str(receiver) for receiver in outbox.recipients),
+            title=outbox.title,
+            body=outbox.body,
+            event_payload=outbox.payload,
         )
+
+    @staticmethod
+    def _claim(outbox_id: UUID, *, now: datetime) -> ApmAlertOutbox | None:
+        with transaction.atomic():
+            outbox = ApmAlertOutbox.objects.select_for_update().get(id=outbox_id)
+            if outbox.delivery_status != ApmAlertOutbox.DeliveryStatus.PENDING:
+                return None
+            if outbox.next_retry_at is not None and outbox.next_retry_at > now:
+                return None
+            if outbox.claimed_at is not None and outbox.claimed_at > now - NOTIFICATION_CLAIM_TTL:
+                return None
+            outbox.claimed_at = now
+            outbox.save(update_fields=("claimed_at", "updated_at"))
+            return outbox
 
     def retry_pending_events(self, *, limit: int = 100) -> PublishResult:
         if limit < 1:
@@ -271,36 +295,65 @@ class DjangoApmPolicyService:
                 delivery_status=ApmAlertOutbox.DeliveryStatus.PENDING,
             )
             .filter(Q(next_retry_at__isnull=True) | Q(next_retry_at__lte=now))
+            .filter(Q(claimed_at__isnull=True) | Q(claimed_at__lte=now - NOTIFICATION_CLAIM_TTL))
             .order_by("created_at", "id")
             .values_list("id", flat=True)[: min(limit, 1000)]
         )
         accepted = duplicates = failed = 0
         for outbox_id in ids:
-            outbox = ApmAlertOutbox.objects.get(id=outbox_id)
-            try:
-                result = self.alert_publisher.publish([self._as_event(outbox)])
-            except Exception:
-                failed += 1
-                self._mark_failed(outbox_id)
+            outbox = self._claim(outbox_id, now=now)
+            if outbox is None:
                 continue
-            if result.accepted + result.duplicates == 1 and result.failed == 0:
+            try:
+                result = self.notification_dispatcher.dispatch(self._as_delivery(outbox))
+            except Exception:
+                result = NotificationDeliveryResult(
+                    delivered=False,
+                    code="dispatcher_exception",
+                    retryable=True,
+                    message="通知 dispatcher 执行异常。",
+                )
+            if result.delivered:
                 ApmAlertOutbox.objects.filter(id=outbox_id).update(
                     delivery_status=ApmAlertOutbox.DeliveryStatus.DELIVERED,
                     attempts=outbox.attempts + 1,
                     next_retry_at=None,
+                    claimed_at=None,
+                    last_error_code="",
+                    last_error_message="",
+                    delivered_at=timezone.now(),
+                    failed_at=None,
                 )
-                accepted += result.accepted
-                duplicates += result.duplicates
+                accepted += 1
             else:
                 failed += 1
-                self._mark_failed(outbox_id)
+                self._mark_failed(outbox_id, result)
         return PublishResult(accepted=accepted, duplicates=duplicates, failed=failed)
 
     @staticmethod
-    def _mark_failed(outbox_id: UUID) -> None:
+    def _mark_failed(outbox_id: UUID, result: NotificationDeliveryResult) -> None:
         with transaction.atomic():
             outbox = ApmAlertOutbox.objects.select_for_update().get(id=outbox_id)
             outbox.attempts += 1
-            delay_seconds = min(300, 2 ** min(outbox.attempts, 8))
-            outbox.next_retry_at = timezone.now() + timedelta(seconds=delay_seconds)
-            outbox.save(update_fields=("attempts", "next_retry_at", "updated_at"))
+            outbox.claimed_at = None
+            outbox.last_error_code = result.code[:128]
+            outbox.last_error_message = result.message[:512]
+            if not result.retryable or outbox.attempts >= MAX_NOTIFICATION_ATTEMPTS:
+                outbox.delivery_status = ApmAlertOutbox.DeliveryStatus.FAILED
+                outbox.next_retry_at = None
+                outbox.failed_at = timezone.now()
+            else:
+                delay_seconds = min(300, 2 ** min(outbox.attempts, MAX_NOTIFICATION_ATTEMPTS))
+                outbox.next_retry_at = timezone.now() + timedelta(seconds=delay_seconds)
+            outbox.save(
+                update_fields=(
+                    "attempts",
+                    "claimed_at",
+                    "last_error_code",
+                    "last_error_message",
+                    "delivery_status",
+                    "next_retry_at",
+                    "failed_at",
+                    "updated_at",
+                )
+            )

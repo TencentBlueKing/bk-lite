@@ -1,4 +1,7 @@
 # flake8: noqa
+import html
+import re
+
 from .common import *  # noqa: F401,F403
 from .users import _get_actor_user_scope
 
@@ -170,6 +173,239 @@ def _normalize_nats_content(content):
 
 
 RAW_PASSTHROUGH_NATS_METHODS = {"receive_alert_events"}
+
+ALERT_EVENT_COPY_METHOD = "receive_alert_events"
+SYSTEM_USER_CHANNEL_TYPES = {
+    ChannelChoices.EMAIL,
+    ChannelChoices.ENTERPRISE_WECHAT,
+}
+RICH_TEXT_CHANNEL_TYPES = {
+    ChannelChoices.EMAIL,
+    ChannelChoices.ENTERPRISE_WECHAT_BOT,
+    ChannelChoices.FEISHU_BOT,
+    ChannelChoices.DINGTALK_BOT,
+}
+MAX_NOTIFICATION_RECIPIENTS = 100
+MAX_NOTIFICATION_RECIPIENT_LENGTH = 150
+MAX_NOTIFICATION_TITLE_LENGTH = 512
+MAX_NOTIFICATION_BODY_LENGTH = 20_000
+
+
+def _notification_channel_capabilities(channel):
+    is_alert_event_copy = (
+        channel.channel_type == ChannelChoices.NATS
+        and (channel.config or {}).get("method_name") == ALERT_EVENT_COPY_METHOD
+    )
+    if is_alert_event_copy:
+        delivery_mode = "alert_event_copy"
+        recipient_mode = "none"
+    else:
+        delivery_mode = "message"
+        recipient_mode = "system_user" if channel.channel_type in SYSTEM_USER_CHANNEL_TYPES else "free_text"
+    return {
+        "id": channel.id,
+        "name": channel.name,
+        "channel_type": channel.channel_type,
+        "description": channel.description,
+        "delivery_mode": delivery_mode,
+        "recipient_mode": recipient_mode,
+        "availability": "available",
+    }
+
+
+def _channel_has_organization(channel, organization_ids):
+    try:
+        allowed = {int(value) for value in channel.team or []}
+        requested = {int(value) for value in organization_ids or []}
+    except (TypeError, ValueError):
+        return False
+    return bool(allowed.intersection(requested))
+
+
+@nats_client.register
+def list_notification_channels_scoped(actor_context, teams=None, include_children=False):
+    """返回调用方组织范围内可用的公开通知能力，不暴露渠道私有配置。"""
+    user_obj, authorized_groups = _get_actor_user_scope(actor_context, include_children=include_children)
+    if not user_obj or not authorized_groups:
+        return {"result": True, "data": []}
+    if teams:
+        try:
+            requested = {int(value) for value in teams}
+        except (TypeError, ValueError):
+            requested = set()
+        authorized_groups = [group_id for group_id in authorized_groups if group_id in requested]
+    if not authorized_groups:
+        return {"result": True, "data": []}
+    channels = [
+        channel
+        for channel in Channel.objects.order_by("id")
+        if _channel_has_organization(channel, authorized_groups)
+    ]
+    return {
+        "result": True,
+        "data": [_notification_channel_capabilities(channel) for channel in channels],
+    }
+
+
+@nats_client.register
+def search_notification_recipients_scoped(
+    actor_context,
+    teams=None,
+    include_children=False,
+    search="",
+    limit=100,
+):
+    """返回通知配置可引用的组织内系统用户稳定 ID，不暴露用户敏感字段。"""
+    user_obj, authorized_groups = _get_actor_user_scope(actor_context, include_children=include_children)
+    if not user_obj or not authorized_groups:
+        return {"result": True, "data": []}
+    try:
+        requested = {int(value) for value in teams} if teams else set(authorized_groups)
+        bounded_limit = min(max(int(limit), 1), 100)
+    except (TypeError, ValueError):
+        return _notification_failure("invalid_payload", "接收人查询参数无效。")
+    scoped_groups = set(authorized_groups).intersection(requested)
+    if not scoped_groups:
+        return {"result": True, "data": []}
+    needle = str(search or "").strip().casefold()[:100]
+    result = []
+    for user in User.objects.order_by("id").only("id", "username", "display_name", "group_list"):
+        group_ids = set()
+        for value in user.group_list or []:
+            try:
+                group_ids.add(int(value.get("id") if isinstance(value, dict) else value))
+            except (TypeError, ValueError):
+                continue
+        if not group_ids.intersection(scoped_groups):
+            continue
+        if needle and needle not in user.username.casefold() and needle not in (user.display_name or "").casefold():
+            continue
+        result.append({"id": user.id, "username": user.username, "display_name": user.display_name})
+        if len(result) >= bounded_limit:
+            break
+    return {"result": True, "data": result}
+
+
+def _notification_failure(code, message, *, retryable=False):
+    return {
+        "result": False,
+        "code": code,
+        "retryable": retryable,
+        "message": message,
+    }
+
+
+def _validate_notification_recipients(recipient_mode, recipients):
+    if not isinstance(recipients, list) or len(recipients) > MAX_NOTIFICATION_RECIPIENTS:
+        return None
+    normalized = []
+    for recipient in recipients:
+        value = str(recipient).strip()
+        if not value or len(value) > MAX_NOTIFICATION_RECIPIENT_LENGTH:
+            return None
+        normalized.append(value)
+    if recipient_mode == "none":
+        return [] if not normalized else None
+    if not normalized:
+        return None
+    if recipient_mode == "system_user" and not all(value.isdigit() for value in normalized):
+        return None
+    return normalized
+
+
+def _escape_notification_rich_text(value):
+    """把外部命名字段作为纯文本嵌入 HTML/Markdown 渠道。"""
+    escaped = html.escape(value, quote=True)
+    return re.sub(r"([\\`*{}\[\]()#+\-.!|>~_])", r"\\\1", escaped)
+
+
+@nats_client.register
+def dispatch_notification(
+    delivery_key,
+    channel_id,
+    organization_ids,
+    recipients,
+    title,
+    body,
+    event_payload,
+):
+    """按公开渠道能力投递一次通知，并返回稳定、可判定重试的结果。"""
+    if not isinstance(delivery_key, str) or not delivery_key.strip() or len(delivery_key) > 384:
+        return _notification_failure("invalid_payload", "投递键无效。")
+    channel = Channel.objects.filter(id=channel_id).first()
+    if channel is None:
+        return _notification_failure("channel_not_found", "通知渠道不存在。")
+    if not _channel_has_organization(channel, organization_ids):
+        return _notification_failure("channel_forbidden", "通知渠道不属于事件组织范围。")
+    capability = _notification_channel_capabilities(channel)
+    normalized_recipients = _validate_notification_recipients(capability["recipient_mode"], recipients)
+    if normalized_recipients is None:
+        return _notification_failure("invalid_recipients", "通知接收人不符合渠道能力。")
+    if capability["recipient_mode"] == "system_user":
+        requested_user_ids = {int(value) for value in normalized_recipients}
+        if User.objects.filter(id__in=requested_user_ids).count() != len(requested_user_ids):
+            return _notification_failure("invalid_recipients", "通知接收人不存在或已失效。")
+    if (
+        not isinstance(title, str)
+        or len(title) > MAX_NOTIFICATION_TITLE_LENGTH
+        or not isinstance(body, str)
+        or not body.strip()
+        or len(body) > MAX_NOTIFICATION_BODY_LENGTH
+        or not isinstance(event_payload, dict)
+    ):
+        return _notification_failure("invalid_payload", "通知内容无效。")
+
+    if capability["delivery_mode"] == "alert_event_copy":
+        content = {
+            "source_id": "nats",
+            "pusher": "lite-apm",
+            "events": [event_payload],
+        }
+        send_title = ""
+        send_recipients = []
+    elif channel.channel_type == ChannelChoices.NATS:
+        content = {
+            "message": body.strip(),
+            "team": int(next(iter(organization_ids))),
+            "user_ids": normalized_recipients,
+        }
+        send_title = title
+        send_recipients = normalized_recipients
+    else:
+        if channel.channel_type in RICH_TEXT_CHANNEL_TYPES:
+            content = _escape_notification_rich_text(body.strip())
+            send_title = _escape_notification_rich_text(title)
+        else:
+            content = body.strip()
+            send_title = title
+        send_recipients = normalized_recipients
+
+    try:
+        response = send_msg_with_channel(
+            channel.id,
+            send_title,
+            content,
+            send_recipients,
+        )
+    except Exception:
+        logger.exception("Public notification dispatch failed")
+        return _notification_failure("provider_unavailable", "通知传输暂不可用。", retryable=True)
+    if not isinstance(response, dict):
+        return _notification_failure("invalid_provider_response", "通知渠道返回格式无效。", retryable=True)
+    if response.get("result") is False:
+        return _notification_failure(
+            str(response.get("code") or "delivery_failed"),
+            str(response.get("message") or "通知渠道投递失败。")[:512],
+            retryable=bool(response.get("retryable", True)),
+        )
+    if capability["delivery_mode"] == "alert_event_copy":
+        ingestion = (response.get("data") or {}).get("ingestion") or {}
+        if ingestion and (
+            int(ingestion.get("errored", 0) or 0) > 0
+            or int(ingestion.get("accepted", 0) or 0) + int(ingestion.get("skipped", 0) or 0) < 1
+        ):
+            return _notification_failure("alert_copy_rejected", "告警中心未接受事件副本。", retryable=True)
+    return {"result": True, "code": "delivered", "retryable": False, "message": "success"}
 
 
 @nats_client.register

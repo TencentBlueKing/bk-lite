@@ -4,6 +4,8 @@ from apps.apm.views.control_plane import (
     ApmEventViewSet,
     ApmIngestSourceViewSet,
     ApmNotificationChannelViewSet,
+    ApmNotificationDeliveryViewSet,
+    ApmNotificationRecipientViewSet,
     ApmPolicyViewSet,
     ApmServiceInstanceViewSet,
     ApmServiceViewSet,
@@ -22,5 +24,7 @@ router.register(r"traces", ApmTraceViewSet, basename="apm-trace")
 router.register(r"policies", ApmPolicyViewSet, basename="apm-policy")
 router.register(r"events", ApmEventViewSet, basename="apm-event")
 router.register(r"notification-channels", ApmNotificationChannelViewSet, basename="apm-notification-channel")
+router.register(r"notification-deliveries", ApmNotificationDeliveryViewSet, basename="apm-notification-delivery")
+router.register(r"notification-recipients", ApmNotificationRecipientViewSet, basename="apm-notification-recipient")
 
 urlpatterns = router.urls

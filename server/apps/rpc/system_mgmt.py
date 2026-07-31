@@ -263,6 +263,53 @@ class SystemMgmt(object):
         return_data = self.client.run("search_channel_list_scoped", **kwargs)
         return return_data
 
+    def list_notification_channels_scoped(self, actor_context, teams=None, include_children=False):
+        return self.client.run(
+            "list_notification_channels_scoped",
+            actor_context=actor_context,
+            teams=teams,
+            include_children=include_children,
+        )
+
+    def search_notification_recipients_scoped(
+        self,
+        actor_context,
+        teams=None,
+        include_children=False,
+        search="",
+        limit=100,
+    ):
+        return self.client.run(
+            "search_notification_recipients_scoped",
+            actor_context=actor_context,
+            teams=teams,
+            include_children=include_children,
+            search=search,
+            limit=limit,
+        )
+
+    def dispatch_notification(
+        self,
+        *,
+        delivery_key,
+        channel_id,
+        organization_ids,
+        recipients,
+        title,
+        body,
+        event_payload,
+    ):
+        return self.client.run(
+            "dispatch_notification",
+            delivery_key=delivery_key,
+            channel_id=channel_id,
+            organization_ids=organization_ids,
+            recipients=recipients,
+            title=title,
+            body=body,
+            event_payload=event_payload,
+        )
+
     def search_groups(self, query_params):
         """
         :param query_params: {"search": ""}

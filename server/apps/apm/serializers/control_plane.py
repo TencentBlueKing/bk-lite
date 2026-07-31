@@ -194,6 +194,19 @@ class TraceSearchSerializer(serializers.Serializer):
         return attrs
 
 
+class ApmPolicyNotificationTargetSerializer(serializers.Serializer):
+    channel_id = serializers.IntegerField(min_value=1)
+    channel_name = serializers.CharField(read_only=True)
+    channel_type = serializers.CharField(read_only=True)
+    delivery_mode = serializers.ChoiceField(choices=("message", "alert_event_copy"), read_only=True)
+    recipient_mode = serializers.ChoiceField(choices=("none", "system_user", "free_text"), read_only=True)
+    recipients = serializers.ListField(
+        child=serializers.CharField(max_length=150),
+        allow_empty=True,
+        max_length=100,
+    )
+
+
 class ApmPolicySerializer(serializers.ModelSerializer):
     service_id = serializers.UUIDField(required=False)
     service_namespace = serializers.CharField(source="service.namespace", read_only=True)
@@ -208,6 +221,7 @@ class ApmPolicySerializer(serializers.ModelSerializer):
         required=False,
         allow_empty=True,
     )
+    notification_targets = ApmPolicyNotificationTargetSerializer(many=True, required=False)
     state = serializers.SerializerMethodField()
 
     class Meta:
@@ -228,6 +242,7 @@ class ApmPolicySerializer(serializers.ModelSerializer):
             "notice",
             "notice_type_ids",
             "notice_users",
+            "notification_targets",
             "is_enabled",
             "state",
             "created_at",
@@ -266,13 +281,36 @@ class ApmPolicySerializer(serializers.ModelSerializer):
             "notice_type_ids",
             getattr(self.instance, "notice_type_ids", []),
         )
-        if notice and not notice_type_ids:
-            raise serializers.ValidationError({"notice_type_ids": "启用通知时至少选择一个渠道。"})
+        notification_targets = attrs.get("notification_targets")
+        existing_targets = (
+            list(self.instance.notification_targets.values_list("channel_id", flat=True))
+            if self.instance is not None
+            else []
+        )
+        if notice and not notice_type_ids and not notification_targets and not existing_targets:
+            raise serializers.ValidationError({"notification_targets": "启用通知时至少选择一个渠道。"})
+        if notification_targets is not None:
+            channel_ids = [target["channel_id"] for target in notification_targets]
+            if len(channel_ids) != len(set(channel_ids)):
+                raise serializers.ValidationError({"notification_targets": "同一通知渠道不能重复选择。"})
         if "notice_type_ids" in attrs:
             attrs["notice_type_ids"] = sorted(set(notice_type_ids))
         if "notice_users" in attrs:
             attrs["notice_users"] = list(dict.fromkeys(attrs["notice_users"]))
         return attrs
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        targets = list(instance.notification_targets.all())
+        if targets:
+            data["notice_type_ids"] = [target.channel_id for target in targets]
+            recipients = []
+            for target in targets:
+                for recipient in target.recipients:
+                    if recipient not in recipients:
+                        recipients.append(recipient)
+            data["notice_users"] = recipients
+        return data
 
 
 class ApmEventQuerySerializer(serializers.Serializer):
@@ -292,3 +330,26 @@ class ApmEventQuerySerializer(serializers.Serializer):
         attrs["started_at"] = started_at
         attrs["ended_at"] = ended_at
         return attrs
+
+
+class NotificationDeliveryQuerySerializer(serializers.Serializer):
+    event_id = serializers.CharField(max_length=320, required=False)
+    status = serializers.ChoiceField(choices=("pending", "delivered", "failed"), required=False)
+    limit = serializers.IntegerField(min_value=1, max_value=100, default=50)
+
+
+class NotificationRecipientQuerySerializer(serializers.Serializer):
+    search = serializers.CharField(max_length=100, required=False, allow_blank=True, default="")
+    limit = serializers.IntegerField(min_value=1, max_value=100, default=100)
+
+
+class NotificationDeliveryRetrySerializer(serializers.Serializer):
+    recipients = serializers.ListField(
+        child=serializers.CharField(max_length=150),
+        required=False,
+        allow_empty=True,
+        max_length=100,
+    )
+
+    def validate_recipients(self, value):
+        return list(dict.fromkeys(item.strip() for item in value))

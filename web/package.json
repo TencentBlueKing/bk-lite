@@ -43,6 +43,7 @@
     "test:apm-dynamic-route-permission": "pnpm exec tsx scripts/apm-dynamic-route-permission-test.ts",
     "test:apm-menu-route": "pnpm exec tsx scripts/apm-menu-route-test.ts",
     "test:apm-real-query-wiring": "pnpm exec tsx scripts/apm-real-query-wiring-test.ts",
+    "test:apm-notification-closure": "pnpm exec tsx scripts/apm-notification-closure-test.ts",
     "test:log-winlogbeat-node-os-filter": "pnpm exec tsx scripts/log-winlogbeat-node-os-filter-test.ts",
     "test:log-policy-form": "pnpm exec tsx scripts/log-policy-form-state-test.ts",
     "test:log-vector-config": "pnpm exec tsx scripts/log-vector-config-test.ts",

@@ -1,8 +1,5 @@
-from datetime import datetime, timezone
-
-from apps.apm.adapters import SystemMgmtNatsAlertPublisher
-from apps.apm.constants import APM_ALERT_PUSHER
-from apps.apm.services.contracts import ApmAlertEvent
+from apps.apm.adapters import SystemMgmtNotificationDispatcher
+from apps.apm.services.contracts import NotificationDelivery
 
 
 class FakeClient:
@@ -10,58 +7,60 @@ class FakeClient:
         self.response = response
         self.calls = []
 
-    def send_msg_with_channel(self, channel_id, title, content, receivers):
-        self.calls.append((channel_id, title, content, receivers))
+    def dispatch_notification(self, **kwargs):
+        self.calls.append(kwargs)
         return self.response
 
 
 def _event():
-    return ApmAlertEvent(
-        event_key="event-1:channel:23",
-        external_id="alert-1",
-        status="created",
-        severity="error",
-        title="APM 告警",
-        occurred_at=datetime(2026, 7, 30, tzinfo=timezone.utc),
+    return NotificationDelivery(
+        delivery_key="event-1:channel:23",
         channel_id=23,
-        payload={"title": "APM 告警", "action": "created"},
+        organization_ids=(10,),
+        recipients=("42",),
+        title="APM 告警",
+        body="checkout 错误率过高",
+        event_payload={"title": "APM 告警", "action": "created"},
     )
 
 
-def test_nats_publisher_uses_selected_system_management_channel():
+def test_dispatcher_uses_public_system_management_contract():
     client = FakeClient(
         {
             "result": True,
-            "data": {"ingestion": {"accepted": 1, "skipped": 0, "errored": 0}},
+            "code": "delivered",
+            "retryable": False,
+            "message": "success",
         }
     )
 
-    result = SystemMgmtNatsAlertPublisher(client=client).publish([_event()])
+    result = SystemMgmtNotificationDispatcher(client=client).dispatch(_event())
 
-    assert result.accepted == 1
-    assert client.calls == [
-        (
-            23,
-            "",
-            {
-                "source_id": "nats",
-                "pusher": APM_ALERT_PUSHER,
-                "events": [{"title": "APM 告警", "action": "created"}],
-            },
-            [],
-        )
-    ]
+    assert result.delivered is True
+    assert result.retryable is False
+    assert client.calls == [{
+        "delivery_key": "event-1:channel:23",
+        "channel_id": 23,
+        "organization_ids": [10],
+        "recipients": ["42"],
+        "title": "APM 告警",
+        "body": "checkout 错误率过高",
+        "event_payload": {"title": "APM 告警", "action": "created"},
+    }]
 
 
-def test_nats_publisher_treats_clean_ingress_skip_as_idempotent_duplicate():
+def test_dispatcher_preserves_retryability_and_stable_error_code():
     client = FakeClient(
         {
             "result": False,
-            "data": {"ingestion": {"accepted": 0, "skipped": 1, "errored": 0}},
+            "code": "provider_unavailable",
+            "retryable": True,
+            "message": "temporarily unavailable",
         }
     )
 
-    result = SystemMgmtNatsAlertPublisher(client=client).publish([_event()])
+    result = SystemMgmtNotificationDispatcher(client=client).dispatch(_event())
 
-    assert result.duplicates == 1
-    assert result.failed == 0
+    assert result.delivered is False
+    assert result.code == "provider_unavailable"
+    assert result.retryable is True

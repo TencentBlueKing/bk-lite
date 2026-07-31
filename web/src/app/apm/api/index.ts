@@ -16,6 +16,8 @@ import type {
   ApmPolicyInput,
   ApmPolicyQueryResult,
   ApmNotificationChannel,
+  ApmNotificationDelivery,
+  ApmNotificationRecipient,
   ApmTraceDetail,
   ApmTracePage,
   ApmTraceSearchParams,
@@ -174,6 +176,25 @@ const useApmApi = () => {
     [get]
   );
 
+  const getNotificationDeliveries = useCallback(
+    (params: { status?: ApmNotificationDelivery['status']; event_id?: string } = {}) =>
+      get<ApmNotificationDelivery[]>('/apm/notification-deliveries/', { params }),
+    [get]
+  );
+
+  const getNotificationRecipients = useCallback(
+    (params: { search?: string; limit?: number } = {}) =>
+      get<ApmNotificationRecipient[]>('/apm/notification-recipients/', { params }),
+    [get]
+  );
+
+  const retryNotificationDelivery = useCallback(
+    (deliveryId: string, recipients?: string[]) =>
+      post<ApmNotificationDelivery>(`/apm/notification-deliveries/${deliveryId}/retry/`,
+        recipients === undefined ? {} : { recipients }),
+    [post]
+  );
+
   return {
     getServices,
     getService,
@@ -200,6 +221,9 @@ const useApmApi = () => {
     testPolicy,
     getEvents,
     getNotificationChannels,
+    getNotificationDeliveries,
+    getNotificationRecipients,
+    retryNotificationDelivery,
     isLoading,
   };
 };

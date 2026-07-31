@@ -52,6 +52,11 @@ def test_policy_runtime_tasks_are_beat_driven_and_not_in_batch_init():
     assert "dispatch_apm_policy_evaluations" not in batch_init
     assert "apps.alerts" not in batch_init
 
+    import apps.apm.tasks as runtime_tasks
+
+    assert "SystemMgmtNatsAlertPublisher" not in runtime_tasks.__dict__
+    assert "SystemMgmtNotificationDispatcher" in runtime_tasks.__dict__
+
 
 def test_dispatch_only_schedules_enabled_policies(mocker):
     enabled = _policy(enabled=True)

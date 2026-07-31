@@ -288,6 +288,7 @@ class NotificationDispatcher(Protocol):
 | `/api/v1/apm/policies/` | 基础策略 CRUD、启停与测试查询 |
 | `/api/v1/apm/events/` | 查询 APM 自有事件与告警生命周期 |
 | `/api/v1/apm/notification-channels/` | 查询当前组织可选择的系统管理通知渠道及展示、投递和接收人能力 |
+| `/api/v1/apm/notification-recipients/` | 有界搜索当前组织内可用于 `system_user` 渠道的稳定用户 ID 与显示名 |
 | `/api/v1/apm/notification-deliveries/` | 查询逐渠道投递状态，并对终止失败执行有权限的人工重投 |
 | `/api/v1/apm/machine-auth/` | 仅供 edge 使用的 Bearer Token 校验与受信来源 Header |
 | `/api/v1/apm/health/` | 查询目录、Collector、TraceStore、MetricStore、策略评估和通知投递的分项运行期状态 |
@@ -311,6 +312,7 @@ class NotificationDispatcher(Protocol):
 #### 9.1 渠道目录与权限
 
 - APM 只通过系统管理的公开、带调用者上下文的目录 RPC 查询渠道，不直接访问 `Channel` 模型。目录按当前组织及其已授权子组织过滤，返回能力 DTO；无权限与不存在的渠道在策略写入时统一拒绝。
+- `system_user` 接收人通过独立的公开、组织内、有界用户目录查询，APM 页面和后端均不读取 System Management 用户模型或页面内部 DTO；选项值只使用稳定用户 ID。
 - 策略详情读取不依赖目录实时可用；目录不可用时，已有策略和 APM 事件仍可查看，只有新增或修改通知目标返回可重试的 503。
 - 策略保存时校验渠道和接收人能力；实际投递时再次由系统管理校验渠道当前状态。渠道被删除、禁用或授权撤销属于该投递项的终止失败，不能导致策略评估失败或无限重试。
 - `channel_type` 只用于图标、类型标签和排障展示；行为由 `delivery_mode`、`recipient_mode` 决定。APM 不把所有 NATS 当作告警中心，也不把告警中心当作普通通知的必经路径。

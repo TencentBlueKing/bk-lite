@@ -177,6 +177,17 @@ export interface ApmTraceSearchParams {
 export type ApmPolicyMetric = 'error_rate' | 'p95' | 'p99' | 'throughput' | 'no_traffic';
 export type ApmPolicyComparator = 'gt' | 'gte' | 'lt' | 'lte';
 export type ApmPolicySeverity = 'critical' | 'error' | 'warning';
+export type ApmNotificationDeliveryMode = 'message' | 'alert_event_copy';
+export type ApmNotificationRecipientMode = 'none' | 'system_user' | 'free_text';
+
+export interface ApmPolicyNotificationTarget {
+  channel_id: number;
+  channel_name?: string;
+  channel_type?: string;
+  delivery_mode?: ApmNotificationDeliveryMode;
+  recipient_mode?: ApmNotificationRecipientMode;
+  recipients: string[];
+}
 
 export interface ApmPolicyInput {
   name: string;
@@ -188,9 +199,7 @@ export interface ApmPolicyInput {
   duration_window: number;
   recovery_window: number;
   severity: ApmPolicySeverity;
-  notice: boolean;
-  notice_type_ids: number[];
-  notice_users: string[];
+  notification_targets: ApmPolicyNotificationTarget[];
   is_enabled: boolean;
 }
 
@@ -235,6 +244,7 @@ export interface ApmEvent {
   received_at: string;
   policy_id: string | null;
   environment: string;
+  notification_deliveries: ApmNotificationDelivery[];
 }
 
 export interface ApmEventQuery {
@@ -248,6 +258,32 @@ export interface ApmEventQuery {
 export interface ApmNotificationChannel {
   id: number;
   name: string;
-  channel_type: 'nats';
+  channel_type: string;
   description: string;
+  delivery_mode: ApmNotificationDeliveryMode;
+  recipient_mode: ApmNotificationRecipientMode;
+  availability: 'available' | 'unavailable';
+}
+
+export interface ApmNotificationRecipient {
+  id: number;
+  username: string;
+  display_name: string;
+}
+
+export interface ApmNotificationDelivery {
+  id: string;
+  event_id: string | null;
+  channel_id: number | null;
+  channel_name: string;
+  channel_type: string;
+  delivery_mode: ApmNotificationDeliveryMode;
+  recipients: string[];
+  status: 'pending' | 'delivered' | 'failed';
+  attempts: number;
+  next_retry_at: string | null;
+  last_error_code: string;
+  last_error_message: string;
+  delivered_at: string | null;
+  failed_at: string | null;
 }

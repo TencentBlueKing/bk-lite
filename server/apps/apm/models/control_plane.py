@@ -205,6 +205,40 @@ class ApmPolicy(AuditedModel):
         ordering = ("name", "id")
 
 
+class ApmPolicyNotificationTarget(AuditedModel):
+    class DeliveryMode(models.TextChoices):
+        MESSAGE = "message", "普通通知"
+        ALERT_EVENT_COPY = "alert_event_copy", "告警中心事件副本"
+
+    class RecipientMode(models.TextChoices):
+        NONE = "none", "无需接收人"
+        SYSTEM_USER = "system_user", "系统用户"
+        FREE_TEXT = "free_text", "自由输入"
+
+    policy = models.ForeignKey(
+        ApmPolicy,
+        on_delete=models.CASCADE,
+        related_name="notification_targets",
+    )
+    channel_id = models.PositiveBigIntegerField(db_index=True)
+    channel_name = models.CharField(max_length=100, blank=True, default="")
+    channel_type = models.CharField(max_length=30, blank=True, default="")
+    delivery_mode = models.CharField(max_length=32, choices=DeliveryMode.choices)
+    recipient_mode = models.CharField(max_length=32, choices=RecipientMode.choices)
+    recipients = models.JSONField(default=list)
+
+    class Meta:
+        verbose_name = "APM 策略通知目标"
+        verbose_name_plural = "APM 策略通知目标"
+        ordering = ("channel_id", "id")
+        constraints = [
+            models.UniqueConstraint(
+                fields=("policy", "channel_id"),
+                name="apm_policy_notification_target_unique",
+            )
+        ]
+
+
 class ApmPolicyState(AuditedModel):
     class Status(models.TextChoices):
         NORMAL = "normal", "正常"
@@ -298,6 +332,7 @@ class ApmAlertOutbox(AuditedModel):
     class DeliveryStatus(models.TextChoices):
         PENDING = "pending", "待投递"
         DELIVERED = "delivered", "已投递"
+        FAILED = "failed", "终止失败"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     event_key = models.CharField(max_length=384, unique=True)
@@ -310,6 +345,12 @@ class ApmAlertOutbox(AuditedModel):
     )
     channel_id = models.PositiveBigIntegerField(null=True, blank=True, db_index=True)
     receivers = models.JSONField(default=list)
+    recipients = models.JSONField(default=list)
+    channel_name = models.CharField(max_length=100, blank=True, default="")
+    channel_type = models.CharField(max_length=30, blank=True, default="")
+    delivery_mode = models.CharField(max_length=32, blank=True, default="message")
+    title = models.CharField(max_length=512, blank=True, default="")
+    body = models.TextField(blank=True, default="")
     payload = models.JSONField(default=dict)
     delivery_status = models.CharField(
         max_length=16,
@@ -319,6 +360,11 @@ class ApmAlertOutbox(AuditedModel):
     )
     attempts = models.PositiveIntegerField(default=0)
     next_retry_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    claimed_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    last_error_code = models.CharField(max_length=128, blank=True, default="")
+    last_error_message = models.CharField(max_length=512, blank=True, default="")
+    delivered_at = models.DateTimeField(null=True, blank=True)
+    failed_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         verbose_name = "APM 告警投递箱"
@@ -331,3 +377,21 @@ class ApmAlertOutbox(AuditedModel):
                 name="apm_outbox_event_channel_unique",
             )
         ]
+
+
+class ApmNotificationDeliveryRetry(AuditedModel):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    delivery = models.ForeignKey(
+        ApmAlertOutbox,
+        on_delete=models.CASCADE,
+        related_name="manual_retries",
+    )
+    requested_by = models.CharField(max_length=150)
+    previous_attempts = models.PositiveIntegerField(default=0)
+    previous_error_code = models.CharField(max_length=128, blank=True, default="")
+    previous_error_message = models.CharField(max_length=512, blank=True, default="")
+
+    class Meta:
+        verbose_name = "APM 通知人工重投审计"
+        verbose_name_plural = "APM 通知人工重投审计"
+        ordering = ("-created_at", "-id")

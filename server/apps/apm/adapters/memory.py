@@ -3,10 +3,10 @@ from __future__ import annotations
 from collections.abc import Iterable, Sequence
 
 from apps.apm.services.contracts import (
-    ApmAlertEvent,
     InstanceActivity,
     InstanceActivityQuery,
-    PublishResult,
+    NotificationDelivery,
+    NotificationDeliveryResult,
     ServiceMetricQuery,
     ServiceRed,
     TraceDetail,
@@ -91,19 +91,19 @@ class InMemoryMetricStore:
         ]
 
 
-class InMemoryAlertPublisher:
-    def __init__(self):
-        self.events: list[ApmAlertEvent] = []
-        self._event_keys: set[str] = set()
+class InMemoryNotificationDispatcher:
+    def __init__(self, results: dict[int, NotificationDeliveryResult] | None = None):
+        self.results = results or {}
+        self.deliveries: list[NotificationDelivery] = []
 
-    def publish(self, events: Sequence[ApmAlertEvent]) -> PublishResult:
-        accepted = 0
-        duplicates = 0
-        for event in events:
-            if event.event_key in self._event_keys:
-                duplicates += 1
-                continue
-            self._event_keys.add(event.event_key)
-            self.events.append(event)
-            accepted += 1
-        return PublishResult(accepted=accepted, duplicates=duplicates)
+    def dispatch(self, delivery: NotificationDelivery) -> NotificationDeliveryResult:
+        self.deliveries.append(delivery)
+        return self.results.get(
+            delivery.channel_id,
+            NotificationDeliveryResult(
+                delivered=True,
+                code="delivered",
+                retryable=False,
+                message="success",
+            ),
+        )

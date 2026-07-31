@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from apps.apm.models import ApmEvent
+from apps.apm.services.deliveries import DjangoNotificationDeliveryService
 from apps.core.utils.viewset_utils import build_json_membership_query
 
 
@@ -19,7 +20,7 @@ class DjangoApmEventReader:
         severity: str | None = None,
         limit: int = 50,
     ) -> list[dict]:
-        queryset = ApmEvent.objects.select_related("alert").filter(
+        queryset = ApmEvent.objects.select_related("alert").prefetch_related("outbox_entries").filter(
             occurred_at__gte=started_at,
             occurred_at__lte=ended_at,
         )
@@ -51,4 +52,8 @@ class DjangoApmEventReader:
             "received_at": event.occurred_at,
             "policy_id": event.policy_id,
             "environment": event.environment,
+            "notification_deliveries": [
+                DjangoNotificationDeliveryService.serialize(delivery)
+                for delivery in event.outbox_entries.all()
+            ],
         }
