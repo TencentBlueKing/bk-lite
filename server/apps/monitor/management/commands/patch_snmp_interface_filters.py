@@ -30,6 +30,13 @@ def _table_has_iftype(table: dict) -> bool:
     return False
 
 
+def _config_has_ifdescr(config: dict) -> bool:
+    tables = config.get("table")
+    return isinstance(tables, list) and any(
+        isinstance(table, dict) and _table_has_ifdescr(table) for table in tables
+    )
+
+
 def _ensure_iftype_fields(config: dict) -> bool:
     changed = False
     tables = config.get("table")
@@ -54,8 +61,12 @@ def _ensure_iftype_fields(config: dict) -> bool:
 
 def _ensure_default_tagdrop(config: dict, overwrite: bool = False) -> bool:
     changed = False
-    if config.get("tagexclude") != ["ifType"]:
+    tagexclude = config.get("tagexclude")
+    if tagexclude is None:
         config["tagexclude"] = ["ifType"]
+        changed = True
+    elif "ifType" not in tagexclude:
+        tagexclude.append("ifType")
         changed = True
     tagdrop = config.get("tagdrop")
     if not isinstance(tagdrop, dict):
@@ -70,43 +81,15 @@ def _ensure_default_tagdrop(config: dict, overwrite: bool = False) -> bool:
     return changed
 
 
-def _remove_filters(config: dict) -> bool:
-    changed = False
-    if "tagexclude" in config:
-        config.pop("tagexclude", None)
-        changed = True
-    for table_name in ("tagpass", "tagdrop"):
-        if table_name in config:
-            config.pop(table_name, None)
-            changed = True
-    tables = config.get("table")
-    if isinstance(tables, list):
-        for table in tables:
-            if not isinstance(table, dict):
-                continue
-            fields = table.get("field")
-            if not isinstance(fields, list):
-                continue
-            new_fields = [
-                field
-                for field in fields
-                if not (
-                    isinstance(field, dict)
-                    and (field.get("name") == "ifType" or field.get("oid") == IFTYPE_OID)
-                )
-            ]
-            if len(new_fields) != len(fields):
-                table["field"] = new_fields
-                changed = True
-    return changed
-
-
-def patch_child_content_dict(content: dict, revert: bool = False, overwrite_default: bool = False) -> bool:
+def patch_child_content_dict(content: dict, overwrite_default: bool = False) -> bool:
     if not isinstance(content, dict) or not isinstance(content.get("config"), dict):
         return False
     config = content["config"]
-    if revert:
-        return _remove_filters(config)
+    if not _config_has_ifdescr(config):
+        return False
+    tagexclude = config.get("tagexclude")
+    if tagexclude is not None and not isinstance(tagexclude, list):
+        return False
     changed = _ensure_iftype_fields(config)
     changed = _ensure_default_tagdrop(config, overwrite=overwrite_default) or changed
     return changed
@@ -115,9 +98,9 @@ def patch_child_content_dict(content: dict, revert: bool = False, overwrite_defa
 class Command(BaseCommand):
     help = (
         "Idempotently backfill ifType fields and default tagdrop.ifType for existing SNMP child configs; "
-        "supports --dry-run / --revert. Not hooked into startup init. "
+        "supports --dry-run and compensating rollback on update failure. Not hooked into startup init. "
         "为存量 SNMP 子配置幂等补齐 ifType 字段与默认 tagdrop.ifType；"
-        "支持 --dry-run / --revert。不挂入启动期初始化。"
+        "支持 --dry-run，更新失败时自动补偿回滚。不挂入启动期初始化。"
     )
 
     def add_arguments(self, parser):
@@ -125,11 +108,6 @@ class Command(BaseCommand):
             "--dry-run",
             action="store_true",
             help="Print config_ids that would change only / 只打印将变更的 config_id",
-        )
-        parser.add_argument(
-            "--revert",
-            action="store_true",
-            help="Remove injected ifType fields and filter blocks / 移除注入的 ifType 与过滤段",
         )
         parser.add_argument(
             "--overwrite-default",
@@ -142,7 +120,6 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         dry_run = options["dry_run"]
-        revert = options["revert"]
         overwrite_default = options["overwrite_default"]
 
         config_ids = list(
@@ -159,7 +136,7 @@ class Command(BaseCommand):
             logger.error("Failed to fetch SNMP child configs / 获取 SNMP 子配置失败: %s", exc)
             raise
 
-        updated = 0
+        pending_updates: list[tuple[str, str, str]] = []
         for child in child_configs:
             config_id = child.get("id")
             raw_content = child.get("content")
@@ -177,34 +154,51 @@ class Command(BaseCommand):
 
             changed = patch_child_content_dict(
                 content,
-                revert=revert,
                 overwrite_default=overwrite_default,
             )
             if not changed:
                 continue
 
-            summary = "revert" if revert else "patch"
-            self.stdout.write(f"{summary}: {config_id}")
-            if dry_run:
-                updated += 1
-                continue
-            try:
-                node_mgmt.update_child_config_content(
-                    config_id,
-                    ConfigFormat.json_to_toml(content),
-                )
-                updated += 1
-            except Exception as exc:
-                logger.error(
-                    "Failed to update child config / 更新子配置失败 config_id=%s: %s",
-                    config_id,
-                    exc,
-                )
+            pending_updates.append((config_id, raw_content, ConfigFormat.json_to_toml(content)))
+            self.stdout.write(f"patch: {config_id}")
 
-        mode = "dry-run" if dry_run else "applied"
+        if dry_run:
+            self.stdout.write(
+                self.style.SUCCESS(
+                    f"Done (dry-run), changed {len(pending_updates)}/{len(child_configs)} / "
+                    f"完成 (dry-run)，变更 {len(pending_updates)}/{len(child_configs)}"
+                )
+            )
+            return
+
+        attempted: list[tuple[str, str]] = []
+        try:
+            for config_id, original_content, updated_content in pending_updates:
+                attempted.append((config_id, original_content))
+                node_mgmt.update_child_config_content(config_id, updated_content)
+        except Exception as exc:
+            logger.error(
+                "Failed to update child config; rolling back attempted configs / "
+                "更新 SNMP 子配置失败，开始回滚已尝试配置 config_id=%s: %s",
+                config_id,
+                exc,
+            )
+            rollback_errors: list[str] = []
+            for attempted_id, original_content in reversed(attempted):
+                try:
+                    node_mgmt.update_child_config_content(attempted_id, original_content)
+                except Exception as rollback_exc:
+                    rollback_errors.append(f"{attempted_id}: {rollback_exc}")
+            if rollback_errors:
+                logger.error(
+                    "Failed to roll back SNMP child configs / 回滚 SNMP 子配置失败: %s",
+                    "; ".join(rollback_errors),
+                )
+            raise
+
         self.stdout.write(
             self.style.SUCCESS(
-                f"Done ({mode}), changed {updated}/{len(child_configs)} / "
-                f"完成 ({mode})，变更 {updated}/{len(child_configs)}"
+                f"Done (applied), changed {len(pending_updates)}/{len(child_configs)} / "
+                f"完成 (applied)，变更 {len(pending_updates)}/{len(child_configs)}"
             )
         )

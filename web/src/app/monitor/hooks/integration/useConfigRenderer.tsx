@@ -423,16 +423,16 @@ export const useConfigRenderer = () => {
         getValueFromEvent={
           isIfTypeFilterField
             ? (value) => {
-                const { values, rejected } = normalizeIfTypeTags(value);
-                if (rejected.length) {
-                  message.warning(
-                    t('monitor.integrations.filterIfTypeInvalid', '', {
-                      values: rejected.join(', ')
-                    })
-                  );
-                }
-                return values;
+              const { values, rejected } = normalizeIfTypeTags(value);
+              if (rejected.length) {
+                message.warning(
+                  t('monitor.integrations.filterIfTypeInvalid', '', {
+                    values: rejected.join(', ')
+                  })
+                );
               }
+              return values;
+            }
             : undefined
         }
         normalize={isIfTypeFilterField ? (value) => normalizeIfTypeTags(value).values : undefined}

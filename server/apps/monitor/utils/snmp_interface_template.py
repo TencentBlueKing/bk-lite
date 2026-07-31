@@ -10,6 +10,7 @@ from typing import Any
 from apps.monitor.constants.snmp_interface import (
     DEFAULT_IFTYPE_EXCLUDE,
     FILTER_TEMPLATE_VARS,
+    IFTYPE_OID,
     IFTYPE_OPTIONS,
 )
 
@@ -178,7 +179,6 @@ _UI_FILTER_FIELDS: list[dict[str, Any]] = [
     },
 ]
 
-IFTYPE_OID = "1.3.6.1.2.1.2.2.1.3"
 IFTYPE_FIELD_BLOCK = f"""\
     [[inputs.snmp.table.field]]
         oid = "{IFTYPE_OID}"
@@ -190,16 +190,14 @@ INTERFACE_HINT_RE = re.compile(
     r'name\s*=\s*"ifDescr"|oid\s*=\s*"1\.3\.6\.1\.2\.1\.2\.2"|oid\s*=\s*"1\.3\.6\.1\.2\.1\.31\.1\.1"',
     re.MULTILINE,
 )
-IFDESCR_FIELD_RE = re.compile(
-    r'(\[\[inputs\.snmp\.table\.field\]\]\s*\n\s*oid\s*=\s*"[^"]+"\s*\n\s*name\s*=\s*"ifDescr"\s*\n\s*is_tag\s*=\s*true\s*)',
-    re.MULTILINE,
+TABLE_BLOCK_RE = re.compile(
+    r"^[ \t]*\[\[inputs\.snmp\.table\]\][^\n]*\n.*?"
+    r"(?=^[ \t]*\[\[(?!inputs\.snmp\.table\.field\]\])|\Z)",
+    re.MULTILINE | re.DOTALL,
 )
-CANONICAL_IFTYPE_FIELD_RE = re.compile(
-    r"\n?[ \t]*\[\[inputs\.snmp\.table\.field\]\]\s*\n"
-    r"[ \t]*oid\s*=\s*\"1\.3\.6\.1\.2\.1\.2\.2\.1\.3\"\s*\n"
-    r"[ \t]*name\s*=\s*\"ifType\"\s*\n"
-    r"[ \t]*is_tag\s*=\s*true\s*\n?",
-    re.MULTILINE,
+FIELD_BLOCK_RE = re.compile(
+    r"^[ \t]*\[\[inputs\.snmp\.table\.field\]\][^\n]*\n.*?(?=^[ \t]*\[\[|\Z)",
+    re.MULTILINE | re.DOTALL,
 )
 PROCESSORS_RE = re.compile(r"^\[\[processors\.", re.MULTILINE)
 FILTER_BLOCK_RE = re.compile(
@@ -259,17 +257,32 @@ def ensure_iftype_tag_fields(template_content: str) -> str:
     if not has_interface_collection(template_content):
         return template_content
 
-    text = CANONICAL_IFTYPE_FIELD_RE.sub("\n", template_content)
-    out: list[str] = []
-    last = 0
-    for match in IFDESCR_FIELD_RE.finditer(text):
-        out.append(text[last : match.end()])
-        out.append("\n" + IFTYPE_FIELD_BLOCK.rstrip() + "\n")
-        last = match.end()
-    if last == 0:
-        return template_content
-    out.append(text[last:])
-    return re.sub(r"\n{3,}", "\n\n", "".join(out))
+    def ensure_table(table_match: re.Match[str]) -> str:
+        table_text = table_match.group(0)
+        fields = list(FIELD_BLOCK_RE.finditer(table_text))
+        ifdescr = next(
+            (field for field in fields if re.search(r'^\s*name\s*=\s*"ifDescr"\s*$', field.group(0), re.MULTILINE)),
+            None,
+        )
+        if ifdescr is None:
+            return table_text
+        if any(
+            re.search(r'^\s*name\s*=\s*"ifType"\s*$', field.group(0), re.MULTILINE)
+            or re.search(
+                rf'^\s*oid\s*=\s*"{re.escape(IFTYPE_OID)}"\s*$',
+                field.group(0),
+                re.MULTILINE,
+            )
+            for field in fields
+        ):
+            return table_text
+        insert_at = ifdescr.end()
+        before = table_text[:insert_at].rstrip("\n")
+        after = table_text[insert_at:].lstrip("\n")
+        injected = f"{before}\n{IFTYPE_FIELD_BLOCK.rstrip()}"
+        return f"{injected}\n{after}" if after else f"{injected}\n"
+
+    return TABLE_BLOCK_RE.sub(ensure_table, template_content)
 
 
 def ensure_snmp_interface_filter_jinja(template_content: str) -> str:
@@ -280,14 +293,16 @@ def ensure_snmp_interface_filter_jinja(template_content: str) -> str:
     text = ensure_iftype_tag_fields(template_content)
     text = FILTER_BLOCK_RE.sub("", text)
     text = TAGEXCLUDE_IFTYPE_RE.sub("", text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
 
     processors = PROCESSORS_RE.search(text)
     insert_at = processors.start() if processors else len(text)
-    before = text[:insert_at].rstrip() + "\n"
-    after = text[insert_at:]
-    if after and not after.startswith("\n"):
-        after = "\n" + after
-    return before + "\n" + FILTER_JINJA_BLOCK + after
+    before = text[:insert_at].rstrip("\n")
+    after = text[insert_at:].lstrip("\n")
+    block = FILTER_JINJA_BLOCK.strip("\n")
+    if after:
+        return f"{before}\n\n{block}\n\n{after}"
+    return f"{before}\n\n{block}\n"
 
 
 def merge_snmp_interface_filter_ui(content: dict | None) -> dict | None:

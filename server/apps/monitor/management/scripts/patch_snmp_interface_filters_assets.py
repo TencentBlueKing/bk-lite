@@ -19,17 +19,18 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[5]
 SNMP_DIR = ROOT / "server/apps/monitor/support-files/plugins/Telegraf/snmp"
+SERVER_DIR = ROOT / "server"
+if str(SERVER_DIR) not in sys.path:
+    sys.path.insert(0, str(SERVER_DIR))
 
-FILTER_MARKER_BEGIN = "# ---- BK-Lite SNMP interface dimension filters (begin) ----"
-FILTER_MARKER_END = "# ---- BK-Lite SNMP interface dimension filters (end) ----"
+from apps.monitor.constants.snmp_interface import FILTER_TEMPLATE_VARS, IFTYPE_OID  # noqa: E402
+from apps.monitor.utils.snmp_interface_template import (  # noqa: E402
+    FILTER_MARKER_BEGIN,
+    FILTER_MARKER_END,
+    UI_ADVANCED_PANEL,
+)
 
-FILTER_FIELD_NAMES = {
-    "iftype_exclude",
-    "iftype_include",
-    "ifdescr_exclude",
-    "ifdescr_include",
-}
-
+FILTER_FIELD_NAMES = set(FILTER_TEMPLATE_VARS)
 INTERFACE_HINT_RE = re.compile(
     r'name\s*=\s*"ifDescr"|oid\s*=\s*"1\.3\.6\.1\.2\.1\.2\.2"|oid\s*=\s*"1\.3\.6\.1\.2\.1\.31\.1\.1"',
     re.MULTILINE,
@@ -40,10 +41,10 @@ FILTER_BLOCK_RE = re.compile(
 )
 TAGEXCLUDE_IFTYPE_RE = re.compile(r'^\s*tagexclude\s*=\s*\["ifType"\]\s*\n', re.MULTILINE)
 CANONICAL_IFTYPE_FIELD_RE = re.compile(
-    r"\n?[ \t]*\[\[inputs\.snmp\.table\.field\]\]\s*\n"
-    r"[ \t]*oid\s*=\s*\"1\.3\.6\.1\.2\.1\.2\.2\.1\.3\"\s*\n"
-    r"[ \t]*name\s*=\s*\"ifType\"\s*\n"
-    r"[ \t]*is_tag\s*=\s*true\s*\n?",
+    r"(?:\r?\n)?[ \t]*\[\[inputs\.snmp\.table\.field\]\]\r?\n"
+    rf"[ \t]*oid\s*=\s*\"{re.escape(IFTYPE_OID)}\"\r?\n"
+    r"[ \t]*name\s*=\s*\"ifType\"\r?\n"
+    r"[ \t]*is_tag\s*=\s*true",
     re.MULTILINE,
 )
 
@@ -84,7 +85,8 @@ def patch_ui(path: Path) -> dict:
     form_fields = data.get("form_fields") or []
     kept = [f for f in form_fields if not (isinstance(f, dict) and f.get("name") in FILTER_FIELD_NAMES)]
     changed = len(kept) != len(form_fields)
-    if data.pop("advanced_panel", None) is not None:
+    if data.get("advanced_panel") == UI_ADVANCED_PANEL:
+        data.pop("advanced_panel")
         changed = True
     if changed:
         data["form_fields"] = kept
