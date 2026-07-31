@@ -1,8 +1,8 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { SearchOutlined } from '@ant-design/icons';
-import { Alert, Input, Select, Table, Tag, Typography, type TableColumnsType } from 'antd';
+import { EditOutlined, InboxOutlined, SearchOutlined, UndoOutlined } from '@ant-design/icons';
+import { Alert, Button, Input, message, Popconfirm, Select, Space, Table, Tag, Typography, type TableColumnsType } from 'antd';
 import dayjs from 'dayjs';
 import useApmApi from '@/app/apm/api';
 import ApmRouteShell, { ApmSurface } from '@/app/apm/components/apm-route-shell';
@@ -10,20 +10,39 @@ import CatalogState, {
   catalogErrorKind,
   type CatalogStateKind,
 } from '@/app/apm/components/catalog-state';
+import OrganizationAssignmentModal from '@/app/apm/components/organization-assignment-modal';
 import ServiceIdentity from '@/app/apm/components/service-identity';
 import ApmStatusTag from '@/app/apm/components/status-tag';
 import type { ApmServiceInstance, CatalogStatus } from '@/app/apm/types';
+import Permission from '@/components/permission';
+import { useUserInfoContext } from '@/context/userInfo';
 
 type PageState = CatalogStateKind | 'ready';
 
 export default function ApmIntegrationInstancesPage() {
-  const { getHealth, getIngestSources, getInstances, isLoading: authLoading } = useApmApi();
+  const {
+    getHealth,
+    getIngestSources,
+    getInstances,
+    setInstanceArchived,
+    setInstanceOrganizations,
+    isLoading: authLoading,
+  } = useApmApi();
+  const { flatGroups } = useUserInfoContext();
   const [instances, setInstances] = useState<ApmServiceInstance[]>([]);
   const [hasMissingIdentity, setHasMissingIdentity] = useState(false);
   const [catalogDegraded, setCatalogDegraded] = useState(false);
   const [status, setStatus] = useState<CatalogStatus | undefined>();
   const [keyword, setKeyword] = useState('');
   const [state, setState] = useState<PageState>('loading');
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [organizationInstance, setOrganizationInstance] = useState<ApmServiceInstance | null>(null);
+  const [organizationSubmitting, setOrganizationSubmitting] = useState(false);
+
+  const groupNames = useMemo(
+    () => new Map(flatGroups.map((group) => [Number(group.id), group.name])),
+    [flatGroups]
+  );
 
   useEffect(() => {
     if (authLoading) return;
@@ -47,7 +66,26 @@ export default function ApmIntegrationInstancesPage() {
     return () => {
       active = false;
     };
-  }, [authLoading, getHealth, getIngestSources, getInstances, status]);
+  }, [authLoading, getHealth, getIngestSources, getInstances, refreshKey, status]);
+
+  const submitOrganizations = async (organizationIds: number[]) => {
+    if (!organizationInstance) return;
+    setOrganizationSubmitting(true);
+    try {
+      await setInstanceOrganizations(organizationInstance.id, organizationIds);
+      message.success('实例组织已更新');
+      setOrganizationInstance(null);
+      setRefreshKey((value) => value + 1);
+    } finally {
+      setOrganizationSubmitting(false);
+    }
+  };
+
+  const setArchived = async (instance: ApmServiceInstance, archived: boolean) => {
+    await setInstanceArchived(instance.id, archived);
+    message.success(archived ? '实例已归档' : '实例已解档');
+    setRefreshKey((value) => value + 1);
+  };
 
   const filteredInstances = useMemo(() => {
     const normalizedKeyword = keyword.trim().toLowerCase();
@@ -88,7 +126,47 @@ export default function ApmIntegrationInstancesPage() {
       dataIndex: 'organization_ids',
       width: 120,
       responsive: ['xl'],
-      render: (value: number[]) => value.map((id) => <Tag bordered={false} key={id}>#{id}</Tag>),
+      render: (value: number[]) => value.map((id) => (
+        <Tag bordered={false} key={id}>{groupNames.get(id) ?? `#${id}`}</Tag>
+      )),
+    },
+    {
+      title: '操作',
+      key: 'action',
+      width: 190,
+      align: 'right',
+      render: (_, item) => (
+        <Permission requiredPermissions={['Operate']} permissionPath="/apm/integration/instances">
+          <Space size={0}>
+            {!item.archived_at ? (
+              <Button
+                type="link"
+                size="small"
+                icon={<EditOutlined aria-hidden="true" />}
+                onClick={() => setOrganizationInstance(item)}
+              >
+                组织
+              </Button>
+            ) : null}
+            <Popconfirm
+              title={item.archived_at ? '确认解档实例？' : '确认归档实例？'}
+              description={item.archived_at ? '解档后实例将重新出现在默认列表。' : '归档不会删除已经存储的遥测数据。'}
+              okText={item.archived_at ? '解档' : '归档'}
+              cancelText="取消"
+              onConfirm={() => setArchived(item, !item.archived_at)}
+            >
+              <Button
+                type="link"
+                size="small"
+                danger={!item.archived_at}
+                icon={item.archived_at ? <UndoOutlined aria-hidden="true" /> : <InboxOutlined aria-hidden="true" />}
+              >
+                {item.archived_at ? '解档' : '归档'}
+              </Button>
+            </Popconfirm>
+          </Space>
+        </Permission>
+      ),
     },
   ];
 
@@ -163,6 +241,15 @@ export default function ApmIntegrationInstancesPage() {
           )}
         </ApmSurface>
       </div>
+      <OrganizationAssignmentModal
+        open={Boolean(organizationInstance)}
+        title={`调整实例组织${organizationInstance ? `：${organizationInstance.instance_id}` : ''}`}
+        organizationIds={organizationInstance?.organization_ids ?? []}
+        submitting={organizationSubmitting}
+        description="保存后此实例转为自定义组织，不再自动继承接入源后续的组织调整。"
+        onCancel={() => setOrganizationInstance(null)}
+        onSubmit={submitOrganizations}
+      />
     </ApmRouteShell>
   );
 }

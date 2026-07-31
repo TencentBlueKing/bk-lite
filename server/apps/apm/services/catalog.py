@@ -55,14 +55,6 @@ class DjangoTelemetryCatalogService:
         if source_update_fields:
             source.save(update_fields=(*source_update_fields, "updated_at"))
 
-        if missing_instance_identity:
-            return CatalogDiscoveryResult(
-                service=None,
-                instance=None,
-                missing_instance_identity=True,
-            )
-
-        normalized_instance_id = normalize_instance_identity(discovery.instance_id)
         source_organizations = tuple(
             source.organization_links.order_by("organization").values_list("organization", flat=True)
         )
@@ -79,6 +71,29 @@ class DjangoTelemetryCatalogService:
                 "last_seen_at": seen_at,
             },
         )
+        if service_created:
+            ApmServiceOrganization.objects.bulk_create(
+                [
+                    ApmServiceOrganization(service=service, organization=organization)
+                    for organization in source_organizations
+                ]
+            )
+        elif seen_at > service.last_seen_at or (
+            service.archived_at is not None and seen_at >= service.last_seen_at
+        ):
+            service.last_seen_at = max(seen_at, service.last_seen_at)
+            service.archived_at = None
+            service.archive_reason = ""
+            service.save(update_fields=("last_seen_at", "archived_at", "archive_reason", "updated_at"))
+
+        if missing_instance_identity:
+            return CatalogDiscoveryResult(
+                service=service,
+                instance=None,
+                missing_instance_identity=True,
+            )
+
+        normalized_instance_id = normalize_instance_identity(discovery.instance_id)
         instance, instance_created = ApmServiceInstance.objects.get_or_create(
             service=service,
             normalized_instance_id=normalized_instance_id,
@@ -132,23 +147,6 @@ class DjangoTelemetryCatalogService:
                         for organization in source_organizations
                     ]
                 )
-
-        if seen_at > service.last_seen_at or (
-            service.archived_at is not None and seen_at >= service.last_seen_at
-        ):
-            service.last_seen_at = max(seen_at, service.last_seen_at)
-            service.archived_at = None
-            service.archive_reason = ""
-            service.save(update_fields=("last_seen_at", "archived_at", "archive_reason", "updated_at"))
-
-        if service_created:
-            instance_organizations = instance.organization_links.values_list("organization", flat=True)
-            ApmServiceOrganization.objects.bulk_create(
-                [
-                    ApmServiceOrganization(service=service, organization=organization)
-                    for organization in instance_organizations
-                ]
-            )
 
         return CatalogDiscoveryResult(service=service, instance=instance)
 

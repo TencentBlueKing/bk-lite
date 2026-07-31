@@ -30,6 +30,7 @@ import type { ColumnsType } from 'antd/es/table';
 import useApmApi from '@/app/apm/api';
 import ApmRouteShell, { ApmSurface } from '@/app/apm/components/apm-route-shell';
 import CatalogState, { catalogErrorKind, type CatalogStateKind } from '@/app/apm/components/catalog-state';
+import OrganizationAssignmentModal from '@/app/apm/components/organization-assignment-modal';
 import type {
   ApmIngestSnippet,
   ApmIngestSnippetInput,
@@ -106,7 +107,6 @@ export default function ApmIntegrationAddPage() {
   const [organizationSubmitting, setOrganizationSubmitting] = useState(false);
   const [createForm] = Form.useForm<ApmIngestSourceInput>();
   const [snippetForm] = Form.useForm<Omit<ApmIngestSnippetInput, 'credential'>>();
-  const [organizationForm] = Form.useForm<{ organization_ids: number[] }>();
 
   const groupNames = useMemo(
     () => new Map(flatGroups.map((group) => [Number(group.id), group.name])),
@@ -178,22 +178,20 @@ export default function ApmIntegrationAddPage() {
 
   const openOrganizations = useCallback((source: ApmIngestSource) => {
     setOrganizationSource(source);
-    organizationForm.setFieldsValue({ organization_ids: source.organization_ids });
-  }, [organizationForm]);
+  }, []);
 
-  const submitOrganizations = useCallback(async (values: { organization_ids: number[] }) => {
+  const submitOrganizations = useCallback(async (organizationIds: number[]) => {
     if (!organizationSource) return;
     setOrganizationSubmitting(true);
     try {
-      await setIngestSourceOrganizations(organizationSource.id, values.organization_ids);
+      await setIngestSourceOrganizations(organizationSource.id, organizationIds);
       setOrganizationSource(null);
-      organizationForm.resetFields();
       message.success('接入源组织已更新');
       await loadSources();
     } finally {
       setOrganizationSubmitting(false);
     }
-  }, [loadSources, organizationForm, organizationSource, setIngestSourceOrganizations]);
+  }, [loadSources, organizationSource, setIngestSourceOrganizations]);
 
   const generateSnippet = useCallback(async (values: Omit<ApmIngestSnippetInput, 'credential'>) => {
     if (!secret) return;
@@ -477,26 +475,15 @@ export default function ApmIntegrationAddPage() {
         )}
       </Modal>
 
-      <Modal
-        title={`调整组织${organizationSource ? `：${organizationSource.name}` : ''}`}
+      <OrganizationAssignmentModal
         open={Boolean(organizationSource)}
-        okText="保存"
-        cancelText="取消"
-        confirmLoading={organizationSubmitting}
-        onOk={() => organizationForm.submit()}
-        onCancel={() => {
-          setOrganizationSource(null);
-          organizationForm.resetFields();
-        }}
-        destroyOnHidden
-      >
-        <Form form={organizationForm} layout="vertical" onFinish={submitOrganizations} preserve={false}>
-          <Form.Item name="organization_ids" label="可用组织" rules={[{ required: true, message: '请至少选择一个组织' }]}>
-            <GroupTreeSelect multiple mode="ownership" showSearch placeholder="选择组织" />
-          </Form.Item>
-          <Alert type="info" showIcon message="继承此接入源组织的实例会同步更新；自定义组织实例不受影响。" />
-        </Form>
-      </Modal>
+        title={`调整组织${organizationSource ? `：${organizationSource.name}` : ''}`}
+        organizationIds={organizationSource?.organization_ids ?? []}
+        submitting={organizationSubmitting}
+        description="继承此接入源组织的实例会同步更新；自定义组织实例不受影响。"
+        onCancel={() => setOrganizationSource(null)}
+        onSubmit={submitOrganizations}
+      />
     </ApmRouteShell>
   );
 }

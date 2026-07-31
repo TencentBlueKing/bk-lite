@@ -2,8 +2,8 @@
 
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
-import { EyeOutlined, SearchOutlined } from '@ant-design/icons';
-import { Alert, Button, Input, Select, Table, Tag, Typography, type TableColumnsType } from 'antd';
+import { EditOutlined, EyeOutlined, InboxOutlined, SearchOutlined, UndoOutlined } from '@ant-design/icons';
+import { Alert, Button, Input, message, Popconfirm, Select, Space, Table, Tag, Typography, type TableColumnsType } from 'antd';
 import dayjs from 'dayjs';
 import useApmApi from '@/app/apm/api';
 import ApmRouteShell, { ApmSurface } from '@/app/apm/components/apm-route-shell';
@@ -11,33 +11,54 @@ import CatalogState, {
   catalogErrorKind,
   type CatalogStateKind,
 } from '@/app/apm/components/catalog-state';
+import OrganizationAssignmentModal from '@/app/apm/components/organization-assignment-modal';
 import ServiceIdentity from '@/app/apm/components/service-identity';
 import ApmStatusTag from '@/app/apm/components/status-tag';
 import type { ApmEnvironmentView, ApmService, CatalogStatus } from '@/app/apm/types';
+import Permission from '@/components/permission';
+import { useUserInfoContext } from '@/context/userInfo';
 
 interface ServiceEnvironmentRow extends ApmEnvironmentView {
   key: string;
   serviceId: string;
   namespace: string;
   serviceName: string;
+  serviceOrganizationIds: number[];
+  serviceArchivedAt: string | null;
 }
 
 type PageState = CatalogStateKind | 'ready';
 
 export default function ApmServicesPage() {
-  const { getHealth, getServices, isLoading: authLoading } = useApmApi();
+  const {
+    getHealth,
+    getServices,
+    setServiceArchived,
+    setServiceOrganizations,
+    isLoading: authLoading,
+  } = useApmApi();
+  const { flatGroups } = useUserInfoContext();
   const [services, setServices] = useState<ApmService[]>([]);
   const [catalogDegraded, setCatalogDegraded] = useState(false);
   const [keyword, setKeyword] = useState('');
   const [environment, setEnvironment] = useState<string>();
   const [status, setStatus] = useState<CatalogStatus>();
   const [state, setState] = useState<PageState>('loading');
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [organizationService, setOrganizationService] = useState<ApmService | null>(null);
+  const [organizationSubmitting, setOrganizationSubmitting] = useState(false);
+
+  const groupNames = useMemo(
+    () => new Map(flatGroups.map((group) => [Number(group.id), group.name])),
+    [flatGroups]
+  );
 
   useEffect(() => {
     if (authLoading) return;
     let active = true;
+    setState('loading');
     Promise.all([
-      getServices(),
+      getServices({ include_archived: status === 'archived' }),
       getHealth().catch(() => ({ catalog_reconcile: { status: 'degraded' as const } })),
     ])
       .then(([items, health]) => {
@@ -52,19 +73,44 @@ export default function ApmServicesPage() {
     return () => {
       active = false;
     };
-  }, [authLoading, getHealth, getServices]);
+  }, [authLoading, getHealth, getServices, refreshKey, status]);
+
+  const submitOrganizations = async (organizationIds: number[]) => {
+    if (!organizationService) return;
+    setOrganizationSubmitting(true);
+    try {
+      await setServiceOrganizations(organizationService.id, organizationIds);
+      message.success('服务组织已更新');
+      setOrganizationService(null);
+      setRefreshKey((value) => value + 1);
+    } finally {
+      setOrganizationSubmitting(false);
+    }
+  };
+
+  const setArchived = async (serviceId: string, archived: boolean) => {
+    await setServiceArchived(serviceId, archived);
+    message.success(archived ? '服务已归档' : '服务已解档');
+    setRefreshKey((value) => value + 1);
+  };
 
   const rows = useMemo(
     () =>
-      services.flatMap((service) =>
-        service.environment_views.map((environment) => ({
+      services.flatMap((service) => {
+        const environmentViews = service.environment_views.length
+          ? service.environment_views
+          : [{ environment: '', last_seen_at: service.last_seen_at, status: service.status }];
+        return environmentViews.map((environment) => ({
           ...environment,
+          status: service.archived_at ? 'archived' as const : environment.status,
           key: `${service.id}:${environment.environment}`,
           serviceId: service.id,
           namespace: service.namespace,
           serviceName: service.name,
-        }))
-      ),
+          serviceOrganizationIds: service.organization_ids,
+          serviceArchivedAt: service.archived_at,
+        }));
+      }),
     [services]
   );
 
@@ -114,16 +160,63 @@ export default function ApmServicesPage() {
     },
     { title: '状态', dataIndex: 'status', width: 110, render: (value) => <ApmStatusTag status={value} /> },
     {
+      title: '组织',
+      dataIndex: 'serviceOrganizationIds',
+      width: 140,
+      responsive: ['xl'],
+      render: (value: number[]) => value.map((id) => (
+        <Tag bordered={false} key={id}>{groupNames.get(id) ?? `#${id}`}</Tag>
+      )),
+    },
+    {
       title: '操作',
       key: 'action',
-      width: 120,
+      width: 300,
       align: 'right',
       render: (_, item) => (
-        <Link href={`/apm/services/${item.serviceId}?environment=${encodeURIComponent(item.environment)}`}>
-          <Button type="link" size="small" icon={<EyeOutlined aria-hidden="true" />}>
-            查看 RED
-          </Button>
-        </Link>
+        <Space size={0}>
+          {item.environment ? (
+            <Link href={`/apm/services/${item.serviceId}?environment=${encodeURIComponent(item.environment)}`}>
+              <Button type="link" size="small" icon={<EyeOutlined aria-hidden="true" />}>
+                查看 RED
+              </Button>
+            </Link>
+          ) : (
+            <Button type="link" size="small" disabled title="收到带环境与实例身份的 Span 后可查询 RED">
+              待实例身份
+            </Button>
+          )}
+          <Permission requiredPermissions={['Operate']} permissionPath="/apm/services">
+            <Space size={0}>
+              {!item.serviceArchivedAt ? (
+                <Button
+                  type="link"
+                  size="small"
+                  icon={<EditOutlined aria-hidden="true" />}
+                  onClick={() => setOrganizationService(services.find((service) => service.id === item.serviceId) ?? null)}
+                >
+                  组织
+                </Button>
+              ) : null}
+              <Popconfirm
+                title={item.serviceArchivedAt ? '确认解档服务？' : '确认归档服务？'}
+                description={item.serviceArchivedAt ? '解档后服务将重新出现在默认目录。' : '归档不会删除 Trace 或指标数据。'}
+                okText={item.serviceArchivedAt ? '解档' : '归档'}
+                cancelText="取消"
+                onConfirm={() => setArchived(item.serviceId, !item.serviceArchivedAt)}
+              >
+                <Button
+                  type="link"
+                  size="small"
+                  danger={!item.serviceArchivedAt}
+                  icon={item.serviceArchivedAt ? <UndoOutlined aria-hidden="true" /> : <InboxOutlined aria-hidden="true" />}
+                >
+                  {item.serviceArchivedAt ? '解档' : '归档'}
+                </Button>
+              </Popconfirm>
+            </Space>
+          </Permission>
+        </Space>
       ),
     },
   ];
@@ -182,9 +275,7 @@ export default function ApmServicesPage() {
           </div>
         </ApmSurface>
         <ApmSurface padding="none" className="overflow-hidden">
-          {state === 'ready' && !rows.length ? (
-            <CatalogState kind="empty" description="服务已发现，但尚无具有实例身份的环境视图。" />
-          ) : state === 'ready' ? (
+          {state === 'ready' ? (
             <Table
               columns={columns}
               dataSource={filteredRows}
@@ -200,6 +291,15 @@ export default function ApmServicesPage() {
           )}
         </ApmSurface>
       </div>
+      <OrganizationAssignmentModal
+        open={Boolean(organizationService)}
+        title={`调整服务组织${organizationService ? `：${organizationService.namespace}/${organizationService.name}` : ''}`}
+        organizationIds={organizationService?.organization_ids ?? []}
+        submitting={organizationSubmitting}
+        description="服务组织独立于接入源与实例，仅影响此逻辑服务的可见和可操作范围。"
+        onCancel={() => setOrganizationService(null)}
+        onSubmit={submitOrganizations}
+      />
     </ApmRouteShell>
   );
 }

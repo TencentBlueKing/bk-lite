@@ -50,6 +50,38 @@ const useApmApi = () => {
     [get]
   );
 
+  const setInstanceOrganizations = useCallback(
+    (instanceId: string, organizationIds: number[]) =>
+      put<ApmServiceInstance>(`/apm/instances/${instanceId}/organizations/`, {
+        organization_ids: organizationIds,
+      }),
+    [put]
+  );
+
+  const setInstanceArchived = useCallback(
+    (instanceId: string, archived: boolean) =>
+      post<ApmServiceInstance>(`/apm/instances/${instanceId}/${archived ? 'archive' : 'restore'}/`, {
+        reason: 'manual',
+      }),
+    [post]
+  );
+
+  const setServiceOrganizations = useCallback(
+    (serviceId: string, organizationIds: number[]) =>
+      put<ApmService>(`/apm/services/${serviceId}/organizations/`, {
+        organization_ids: organizationIds,
+      }),
+    [put]
+  );
+
+  const setServiceArchived = useCallback(
+    (serviceId: string, archived: boolean) =>
+      post<ApmService>(`/apm/services/${serviceId}/${archived ? 'archive' : 'restore'}/`, {
+        reason: 'manual',
+      }),
+    [post]
+  );
+
   const getIngestSources = useCallback(() => get<ApmIngestSource[]>('/apm/ingest-sources/'), [get]);
 
   const createIngestSource = useCallback(
@@ -146,6 +178,10 @@ const useApmApi = () => {
     getServices,
     getService,
     getInstances,
+    setInstanceOrganizations,
+    setInstanceArchived,
+    setServiceOrganizations,
+    setServiceArchived,
     getIngestSources,
     createIngestSource,
     rotateIngestSource,

@@ -60,7 +60,7 @@ def test_service_and_instance_identity_are_distinct_and_normalized():
     assert first.service.name == " checkout "
 
 
-def test_missing_instance_identity_does_not_create_fake_catalog_rows():
+def test_missing_instance_identity_discovers_the_service_without_creating_a_fake_instance():
     source = _create_source("source", [10])
 
     result = DjangoTelemetryCatalogService().discover(
@@ -75,8 +75,12 @@ def test_missing_instance_identity_does_not_create_fake_catalog_rows():
 
     assert result.missing_instance_identity is True
     assert result.instance is None
+    assert result.service is not None
+    assert result.service.namespace == "shop"
+    assert result.service.name == "checkout"
+    assert set(result.service.organization_links.values_list("organization", flat=True)) == {10}
     assert ApmServiceInstance.objects.count() == 0
-    assert ApmService.objects.count() == 0
+    assert ApmService.objects.count() == 1
     source.refresh_from_db()
     assert source.last_missing_instance_identity_at is not None
 
