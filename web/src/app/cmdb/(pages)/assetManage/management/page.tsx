@@ -38,9 +38,8 @@ import {
   arrayMove,
 } from '@dnd-kit/sortable';
 import SortableItem from '@/app/cmdb/components/sortable-item';
-import Image from 'next/image';
 import assetManageStyle from './index.module.scss';
-import { getIconUrl } from '@/app/cmdb/utils/common';
+import ModelIcon from '@/app/cmdb/components/model-icon';
 import GroupModal from './list/groupModal';
 import ModelModal from './list/modelModal';
 import CopyModelModal from './list/copyModelModal';
@@ -73,22 +72,6 @@ interface DraftClassification {
     order_id: number;
   }>;
 }
-
-const DEFAULT_MODEL_ICON_URL =
-  '/assets/icons-realistic/cc-default_默认.svg';
-
-const handleModelIconError = (
-  event: React.SyntheticEvent<HTMLImageElement>
-) => {
-  const image = event.currentTarget;
-  if (image.dataset.fallbackApplied === 'true') {
-    image.style.visibility = 'hidden';
-    return;
-  }
-
-  image.dataset.fallbackApplied = 'true';
-  image.src = DEFAULT_MODEL_ICON_URL;
-};
 
 const AssetManage = () => {
   const { getClassificationList, deleteClassification } =
@@ -497,14 +480,14 @@ const AssetManage = () => {
             className="flex flex-shrink-0 items-center justify-center rounded-[6px]"
             style={{ width: 30, height: 30, background: 'var(--color-fill-1)' }}
           >
-            <Image
-              src={getIconUrl(record as any)}
+            <ModelIcon
+              icon={record.icn}
+              modelId={record.model_id}
               className="block object-contain"
               style={{ width: 24, height: 24 }}
               alt={t('picture')}
               width={24}
               height={24}
-              onError={handleModelIconError}
             />
           </div>
           <span className="ml-[10px] min-w-0 truncate text-[14px] font-[500] leading-[22px] text-[var(--color-text-2)]">
@@ -826,13 +809,13 @@ const AssetManage = () => {
                                 }
                               >
                                 <div className={assetManageStyle.modelIcon}>
-                                  <Image
-                                    src={getIconUrl(model)}
+                                  <ModelIcon
+                                    icon={model.icn}
+                                    modelId={model.model_id}
                                     className={assetManageStyle.modelImage}
                                     alt={t('picture')}
                                     width={32}
                                     height={32}
-                                    onError={handleModelIconError}
                                   />
                                 </div>
                                 <div className={assetManageStyle.modelMeta}>
