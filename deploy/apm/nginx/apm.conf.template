@@ -65,3 +65,49 @@ server {
         return 404;
     }
 }
+
+server {
+    listen 8081;
+    http2 on;
+    server_name _;
+
+    client_max_body_size ${APM_MAX_REQUEST_BODY};
+    limit_req_status 429;
+
+    location = /_apm_grpc_machine_auth {
+        internal;
+        access_log off;
+
+        proxy_pass ${APM_SERVER_UPSTREAM}/api/v1/apm/machine-auth/;
+        proxy_pass_request_body off;
+        proxy_set_header Content-Length "";
+        proxy_set_header Authorization $http_authorization;
+        proxy_set_header X-BK-Ingest-Source-Id "";
+
+        proxy_cache apm_auth;
+        proxy_cache_key $http_authorization;
+        proxy_cache_valid 204 8s;
+        proxy_ignore_headers Cache-Control Set-Cookie Vary;
+        proxy_hide_header Set-Cookie;
+    }
+
+    location = /opentelemetry.proto.collector.trace.v1.TraceService/Export {
+        limit_req zone=apm_ingest burst=${APM_INGEST_BURST} nodelay;
+        auth_request /_apm_grpc_machine_auth;
+        auth_request_set $trusted_ingest_source_id $upstream_http_x_bk_ingest_source_id;
+        error_page 500 = @apm_grpc_auth_unavailable;
+
+        grpc_set_header Authorization "";
+        grpc_set_header X-BK-Ingest-Source-Id $trusted_ingest_source_id;
+        grpc_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        grpc_pass grpc://apm-otel-collector:4317;
+    }
+
+    location @apm_grpc_auth_unavailable {
+        return 503;
+    }
+
+    location / {
+        return 404;
+    }
+}

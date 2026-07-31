@@ -101,6 +101,24 @@ def test_edge_replaces_internal_identity_and_does_not_overlap_telegraf():
     assert "/telegraf/api" not in compose
 
 
+def test_edge_authenticates_external_otlp_grpc_without_exposing_collector_ports():
+    edge = EDGE_CONFIG.read_text()
+    services = _compose_config()["services"]
+    edge_service = services["apm-edge"]
+    collector = services["apm-otel-collector"]
+
+    assert "listen 8081;" in edge
+    assert "http2 on;" in edge
+    assert "location = /opentelemetry.proto.collector.trace.v1.TraceService/Export" in edge
+    assert "auth_request /_apm_grpc_machine_auth" in edge
+    assert 'grpc_set_header Authorization ""' in edge
+    assert "grpc_set_header X-BK-Ingest-Source-Id $trusted_ingest_source_id" in edge
+    assert "grpc_pass grpc://apm-otel-collector:4317" in edge
+    assert any("${APM_OTLP_GRPC_PORT:-4317}:8081" in port for port in edge_service["ports"])
+    assert "ports" not in collector
+    assert set(collector["expose"]) >= {"4317", "4318"}
+
+
 def test_data_plane_is_not_a_server_startup_dependency():
     startup = (REPOSITORY_ROOT / "server/support-files/release/startup.sh").read_text()
 

@@ -2,7 +2,8 @@
 
 该目录是与 Django Server 启动解耦的 APM 运行期部署单元：
 
-- `apm-edge` 对外只提供 `POST /v1/traces`，通过 Django 机器鉴权接口校验 Bearer Token；
+- `apm-edge` 对外提供 OTLP/HTTP `POST /v1/traces` 与 OTLP/gRPC
+  `TraceService/Export`，两者都通过 Django 机器鉴权接口校验 Bearer Token；
 - `apm-collector-queue-init` 以最小能力一次性初始化持久队列卷权限，完成后退出；
 - `apm-otel-collector` 在内部提供 OTLP/gRPC 4317 与 OTLP/HTTP 4318；
 - `apm-victoria-traces` 默认保存 7 天尾采样 Trace；
@@ -29,6 +30,11 @@ APM_VICTORIAMETRICS_WRITE_ENDPOINT=http://apm-victoriametrics:8428/api/v1/write 
 ```text
 Authorization: Bearer <token>
 ```
+
+默认外部端点为 HTTP `:4318` 和 gRPC `:4317`，可分别用
+`APM_OTLP_HTTP_BIND`/`APM_OTLP_HTTP_PORT` 与
+`APM_OTLP_GRPC_BIND`/`APM_OTLP_GRPC_PORT` 覆盖。Collector 的内部 4317/4318
+只在 Compose 网络暴露，不能绕过 edge 直接从宿主机访问。
 
 边缘代理会移除客户端传入的 `X-BK-Ingest-Source-Id`；Collector 再删除客户端在
 Resource、Scope、Span 和 Span Event 中提交的 `bk.*` 属性，并从鉴权结果注入

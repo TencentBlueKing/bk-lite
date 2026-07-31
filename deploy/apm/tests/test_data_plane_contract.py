@@ -10,6 +10,7 @@ import json
 import os
 import socket
 import subprocess
+import tempfile
 import threading
 import time
 import urllib.error
@@ -144,6 +145,37 @@ def _post_trace(edge_port: int, trace_id: str, service_name: str, *, token: str 
     )
 
 
+def _post_empty_grpc_trace(edge_port: int, *, token: str | None):
+    # gRPC frame: uncompressed flag + uint32 message length + empty ExportTraceServiceRequest.
+    with tempfile.NamedTemporaryFile() as payload:
+        payload.write(b"\x00\x00\x00\x00\x00")
+        payload.flush()
+        command = [
+            "curl",
+            "--http2-prior-knowledge",
+            "--silent",
+            "--show-error",
+            "--dump-header",
+            "-",
+            "--output",
+            "/dev/null",
+            "--header",
+            "Content-Type: application/grpc",
+            "--header",
+            "TE: trailers",
+            "--data-binary",
+            f"@{payload.name}",
+        ]
+        if token is not None:
+            command.extend(("--header", f"Authorization: Bearer {token}"))
+        command.append(
+            f"http://127.0.0.1:{edge_port}/opentelemetry.proto.collector.trace.v1.TraceService/Export"
+        )
+        completed = subprocess.run(command, capture_output=True, text=True, timeout=10, check=False)
+    status_line = next((line for line in completed.stdout.splitlines() if line.startswith("HTTP/")), "")
+    return completed.returncode, status_line, completed.stdout, completed.stderr
+
+
 def _eventually(fetch, predicate, *, timeout: float = 45):
     deadline = time.monotonic() + timeout
     last_value = None
@@ -161,6 +193,7 @@ def test_otlp_reaches_trace_and_metric_stores_with_trusted_identity():
     _AuthHandler.calls = 0
     project = f"bk-lite-apm-contract-{os.getpid()}"
     edge_port = _free_port()
+    grpc_port = _free_port()
     traces_port = _free_port()
     metrics_port = _free_port()
     auth_server = ThreadingHTTPServer(("0.0.0.0", 0), _AuthHandler)
@@ -173,6 +206,8 @@ def test_otlp_reaches_trace_and_metric_stores_with_trusted_identity():
             "APM_SERVER_UPSTREAM": f"http://host.docker.internal:{auth_server.server_port}",
             "APM_OTLP_HTTP_BIND": "127.0.0.1",
             "APM_OTLP_HTTP_PORT": str(edge_port),
+            "APM_OTLP_GRPC_BIND": "127.0.0.1",
+            "APM_OTLP_GRPC_PORT": str(grpc_port),
             "APM_VICTORIATRACES_QUERY_PORT": str(traces_port),
             "APM_VICTORIAMETRICS_QUERY_PORT": str(metrics_port),
             "APM_VICTORIAMETRICS_WRITE_ENDPOINT": "http://apm-victoriametrics:8428/api/v1/write",
@@ -204,6 +239,11 @@ def test_otlp_reaches_trace_and_metric_stores_with_trusted_identity():
 
         assert _post_trace(edge_port, "0" * 31 + "1", "unauthorized", token=None, is_error=True)[0] == 401
         assert _post_trace(edge_port, "0" * 31 + "2", "wrong-token", token="wrong", is_error=True)[0] == 401
+        grpc_missing = _post_empty_grpc_trace(grpc_port, token=None)
+        grpc_valid = _post_empty_grpc_trace(grpc_port, token=VALID_TOKEN)
+        assert " 401 " in grpc_missing[1], grpc_missing
+        assert grpc_valid[0] == 0 and " 200 " in grpc_valid[1], grpc_valid
+        assert "grpc-status: 0" in grpc_valid[2].lower(), grpc_valid
 
         error_trace_id = "0123456789abcdef0123456789abcdef"
         unsampled_trace_id = "fedcba9876543210fedcba9876543210"
