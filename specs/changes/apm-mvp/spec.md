@@ -26,7 +26,9 @@ BK-Lite apps.apm
       ├── PostgreSQL：接入源、服务、实例、组织、策略、事件与告警
       ├── TraceStore：查询 VictoriaTraces
       ├── MetricStore：查询 VictoriaMetrics
-      └── 可选通知 ── 标准事件 / NATS ──→ 告警中心
+      └── NotificationDispatcher ──→ 系统管理通知渠道
+                                  ├── 邮件 / 机器人 / Webhook / 普通 NATS
+                                  └── alert_event_copy ──→ 告警中心
 ```
 
 第一期只实现添加接入、接入实例列表、服务目录与 RED、Trace 搜索与详情、基础阈值告警。首页、拓扑、SLO、Issue 聚类、运行时指标和高级治理保留 Storybook 设计，不进入本期生产路由。
@@ -38,7 +40,7 @@ BK-Lite apps.apm
 3. As an application owner, I want horizontally scaled instances to aggregate into one logical service, so that throughput, error rate and latency describe the whole service.
 4. As an operator, I want service health separated by environment, so that testing traffic cannot pollute production health.
 5. As a developer, I want to start from an anomalous service and drill into a concrete Trace and Span, so that I can locate the slow or failing dependency.
-6. As an alert administrator, I want APM policies to maintain their own alert lifecycle and optionally send standard events to a configured alert-center NATS channel, so that APM remains independently operable while cross-source aggregation is still available.
+6. As an alert administrator, I want APM policies to maintain their own alert lifecycle and optionally use any authorized System Management notification channel, so that recipients can be notified without coupling APM to another product App, while an alert-center event copy remains an optional special target.
 7. As a deployment administrator, I want APM storage failures to degrade APM pages without blocking BK-Lite Server startup, so that observability is not a circular hard dependency.
 
 ## Implementation Decisions
@@ -117,7 +119,8 @@ service.namespace + service.name
 | `ApmServiceOrganization` | 服务 + 组织唯一；与实例组织独立 |
 | `ApmServiceInstance` | UUID 主键、服务外键、instance ID、环境、版本、来源外键、权限模式、首次/最近发现、归档字段；服务 + instance ID 唯一 |
 | `ApmServiceInstanceOrganization` | 实例 + 组织唯一；实例为继承态时由接入源组织同步 |
-| `ApmPolicy` | 服务、环境、指标类型、比较符、阈值、持续/恢复窗口、级别、通知开关、通知渠道、启用状态和审计字段 |
+| `ApmPolicy` | 服务、环境、指标类型、比较符、阈值、持续/恢复窗口、级别、通知开关、启用状态和审计字段 |
+| `ApmPolicyNotificationTarget` | 策略、系统管理渠道 ID、接收人配置；策略 + 渠道唯一。渠道 ID 是外部引用，不建立跨 App 外键 |
 | `ApmPolicyState` | 策略评估游标、连续命中/恢复计数、当前状态、最后成功/失败时间、外部告警 ID |
 | `ApmAlert` | APM 告警唯一 ID、策略、服务、环境、状态、级别、当前值、开始/结束时间和组织快照 |
 | `ApmEvent` | 事件唯一键、关联告警、动作、级别、值、内容、发生时间和组织快照 |
@@ -186,7 +189,7 @@ Collector 不同步调用 Django 创建服务或实例。`TelemetryCatalogReconc
 1. `IngestSourceService`：创建、轮换、禁用接入源，管理默认组织，生成接入片段和校验机器凭证；隐藏摘要、轮换并发、审计和模板参数。
 2. `TelemetryCatalogService`：发现、查询、归档服务与实例，管理服务/实例组织；隐藏身份规范化、继承/自定义权限、首次实例规则和状态机。
 3. `TelemetryQueryService`：提供服务 RED、Trace 搜索与详情；隐藏查询语言、标签转义、时间窗/分页硬限制和外部错误映射。
-4. `ApmPolicyService`：管理策略、周期评估和 APM 自有告警生命周期，并按策略通知配置发布标准事件；隐藏查询公式、连续命中、恢复、防重复与投递补偿。
+4. `ApmPolicyService`：管理策略、周期评估和 APM 自有告警生命周期，并按策略通知配置创建事务性投递项；隐藏查询公式、连续命中、恢复、防重复与投递补偿。
 
 外部存储通过小接口隔离：
 
@@ -199,11 +202,22 @@ class MetricStore(Protocol):
     def service_red(self, query: ServiceMetricQuery) -> ServiceRed: ...
     def instance_activity(self, query: InstanceActivityQuery) -> list[InstanceActivity]: ...
 
-class AlertPublisher(Protocol):
-    def publish(self, events: Sequence[ApmAlertEvent]) -> PublishResult: ...
+class NotificationChannelDirectory(Protocol):
+    def list_available(self, query: ChannelQuery) -> Sequence[NotificationChannel]: ...
+
+class NotificationDispatcher(Protocol):
+    def dispatch(self, deliveries: Sequence[NotificationDelivery]) -> DispatchResult: ...
 ```
 
-生产适配器分别使用 VictoriaTraces、VictoriaMetrics 和系统管理通知渠道；告警中心通过用户选择的 `receive_alert_events` NATS 渠道接收事件副本。测试使用功能完整的内存适配器。View、Serializer 和 Celery task 只能调用深模块，不直接拼外部查询。
+`NotificationChannel` 是 APM 与系统管理之间的公开能力 DTO，至少包含 `id`、`name`、`channel_type`、`description`、`delivery_mode` 和 `recipient_mode`：
+
+- `delivery_mode=message`：发送适合人员或外部自动化消费的标题与正文。
+- `delivery_mode=alert_event_copy`：发送标准告警事件副本；当前由系统管理把 `nats + receive_alert_events` 映射为该模式，APM 不读取或判断 `config.method_name`。
+- `recipient_mode=none | system_user | free_text`：驱动接收人校验与 UI，不允许前后端分别按 `channel_type` 猜测。
+
+`NotificationDelivery` 包含稳定投递键、渠道 ID、接收人快照、通知标题/正文和 APM 事件快照。生产 `NotificationDispatcher` 只调用系统管理公开 RPC；系统管理负责解析渠道当前配置、选择具体传输适配器以及规范化成功、可重试失败和终止失败。APM 的策略服务、View、Serializer 和 Celery task 不知道 NATS payload、邮件或机器人格式，也不得直接导入 `apps.system_mgmt`、`apps.alerts` 的模型或内部服务。
+
+生产适配器分别使用 VictoriaTraces、VictoriaMetrics 和系统管理公开渠道接口。测试为所有端口提供功能完整的内存适配器；内存 `NotificationDispatcher` 必须覆盖普通消息与告警中心事件副本两种语义。
 
 ### 8. API 与权限
 
@@ -219,7 +233,7 @@ class AlertPublisher(Protocol):
 | `/api/v1/apm/traces/{trace_id}/` | Trace、Span 瀑布和属性详情 |
 | `/api/v1/apm/policies/` | 基础策略 CRUD、启停与测试查询 |
 | `/api/v1/apm/events/` | 查询 APM 自有事件与告警生命周期 |
-| `/api/v1/apm/notification-channels/` | 查询当前组织可选择的告警中心 NATS 渠道 |
+| `/api/v1/apm/notification-channels/` | 查询当前组织可选择的系统管理通知渠道及展示、投递和接收人能力 |
 
 - APM 菜单声明独立 View/Operate 权限；读取要求 View，接入、组织、归档和策略变更要求对应 Operate。
 - 服务 API 按 `ApmServiceOrganization` 与当前团队授权；实例和 Trace API 按 `ApmServiceInstanceOrganization` 授权。通过 trace ID 直接访问也必须先解析实例并鉴权。
@@ -233,9 +247,37 @@ class AlertPublisher(Protocol):
 - 评估任务查询 VictoriaMetrics；查询失败时保持上次状态，记录“评估失败”并重试，不产生触发、恢复或无数据误报。
 - 连续命中、恢复窗口和事件 external ID 必须幂等，任务重复执行不能创建重复告警。
 - `apps.apm` 保存自身事件与告警生命周期；事件页面只查询 APM 模型，不读取其他 App 的表。
-- 策略可选择系统管理中的一个或多个 `receive_alert_events` NATS 渠道。APM 以 `lite-apm` 推送方发送标准事件副本，由告警中心负责跨源聚合与事故协同，但不反向拥有 APM 告警事实。
+- 策略可选择当前组织有权使用的一个或多个系统管理通知渠道。普通渠道发送 APM 通知；`delivery_mode=alert_event_copy` 的渠道发送标准事件副本，用于告警中心跨源聚合与事故协同，但不反向拥有 APM 告警事实。
 - 未选择通知渠道时仍正常产生 APM 告警；通知失败只影响对应渠道投递状态，不影响 APM 事件和状态。
 - 事务提交后通知失败必须保留待投递状态并由运行期任务补偿；不能在请求事务内同步等待通知渠道响应。
+
+#### 9.1 渠道目录与权限
+
+- APM 只通过系统管理的公开、带调用者上下文的目录 RPC 查询渠道，不直接访问 `Channel` 模型。目录按当前组织及其已授权子组织过滤，返回能力 DTO；无权限与不存在的渠道在策略写入时统一拒绝。
+- 策略详情读取不依赖目录实时可用；目录不可用时，已有策略和 APM 事件仍可查看，只有新增或修改通知目标返回可重试的 503。
+- 策略保存时校验渠道和接收人能力；实际投递时再次由系统管理校验渠道当前状态。渠道被删除、禁用或授权撤销属于该投递项的终止失败，不能导致策略评估失败或无限重试。
+- `channel_type` 只用于图标、类型标签和排障展示；行为由 `delivery_mode`、`recipient_mode` 决定。APM 不把所有 NATS 当作告警中心，也不把告警中心当作普通通知的必经路径。
+
+#### 9.2 策略通知配置
+
+- 规范化配置是一组 `notification_targets`，每项包含 `channel_id` 与该渠道自己的 `recipients`；允许同时选择不同接收人模式的多个渠道。
+- `recipient_mode=none` 时接收人必须为空；`system_user` 时保存系统用户稳定 ID；`free_text` 时保存经过数量、长度和字符约束的字符串。所有面向 HTML 或 Markdown 的内容在传输适配层转义。
+- 已实现的 `notice_type_ids + notice_users` 仅作为兼容输入：数据迁移为每个渠道创建 `ApmPolicyNotificationTarget`，复制原接收人列表；迁移不调用 RPC，也不依赖系统管理或任何运行期 responder。过渡期 API 可读旧字段，但新写入只使用 `notification_targets`，待前端和调用方完成迁移后删除旧字段。
+- 通知内容由 APM 根据事件快照生成，至少包含状态、级别、策略、服务、环境、指标、当前值和发生时间；不得包含凭据、未脱敏 Span 属性或请求/响应正文。
+
+#### 9.3 投递与告警中心特殊路径
+
+- 每个 APM 事件和目标渠道创建一条 outbox，唯一键为事件 + 渠道；接收人、标题、正文和标准事件 payload 在创建时快照，避免策略后续修改改变历史投递语义。
+- `NotificationDispatcher` 在 APM 的系统管理适配器内根据公开 `delivery_mode` 选择语义：普通消息使用统一消息接口；`alert_event_copy` 使用 `lite-apm` 标识和标准事件契约。策略服务本身不包含渠道类型分支。
+- 系统管理负责把统一消息映射到邮件、企业微信机器人、飞书、钉钉、自定义 Webhook 或普通 NATS 所需格式，并返回统一结果；渠道供应商的原始响应不能泄漏到 APM 领域层。
+- 告警中心未安装、未迁移或 NATS responder 不可用时，只有相应 `alert_event_copy` 投递失败；邮件、机器人、Webhook、普通 NATS 以及 APM 自有功能继续工作。
+
+#### 9.4 失败分类与补偿
+
+- outbox 状态至少包含 `pending`、`delivered`、`failed`，并记录 `attempts`、`next_retry_at`、`last_error_code`、`last_error_message` 和 `delivered_at`。错误文本必须截断且不得记录凭据或渠道密文。
+- 超时、网络故障、限流和暂时性上游错误按指数退避有界重试，默认最多 8 次且单次任务最多处理 100 条；渠道不存在、授权撤销、接收人无效和 payload 不合法直接进入 `failed`。
+- 运行期任务重复执行必须依赖稳定投递键保持幂等；系统管理接口无法提供传输级幂等时，APM 至少保证同一时刻只有一个 worker 占用一条 outbox，并保留可能的“已发送但响应丢失”审计事实。
+- `failed` 支持在修正渠道或接收人后人工重投，人工重投创建审计记录并复用原事件快照；不得通过无限自动重试掩盖终止错误。
 
 ### 10. 前端范围
 
@@ -256,6 +298,10 @@ class AlertPublisher(Protocol):
 - 服务目录按逻辑服务展示；指标行按环境分开。详情页固定服务身份并允许切换环境和时间窗。
 - 加载、无数据、无权限、存储不可用和部分数据状态必须可区分；不得用空数组伪装外部存储失败。
 - 接入页面根据语言和运行环境生成动态实例 ID 配置，包含 OTLP 端点、协议、传播器、资源属性和 Authorization；Token 只在创建/轮换成功态显示一次。
+- 策略页使用“通知配置”“通知渠道”“接收人”，不再使用“发送到告警中心”“告警中心 NATS 渠道”作为通用文案。
+- 渠道按 Monitor/Log 已有样式展示为带图标、类型标签和说明的可多选卡片；`alert_event_copy` 额外显示“告警中心事件副本”语义标签，普通 NATS 只显示 NATS 类型。
+- 每个已选渠道按 `recipient_mode` 渲染自己的接收人控件：`none` 不展示，`system_user` 使用系统用户多选，`free_text` 使用受限标签输入；混合选择时不得共用一个含义不明的全局接收人字段。
+- 无可用渠道时提供前往系统管理配置的入口；目录加载失败、无权限、空列表和已选渠道失效必须是不同状态。通知 UI 不直接读取系统管理页面内部数据结构。
 - Storybook fixtures 与 API DTO 分离；生产页面不得 import story 文件或硬编码演示数据。
 
 ### 11. 部署、启动与降级
@@ -272,7 +318,7 @@ class AlertPublisher(Protocol):
 ### Slice 1：骨架与契约
 
 - 创建 `apps.apm`、菜单、权限、前端路由壳。
-- 建立模型、四个深模块接口、TraceStore/MetricStore/AlertPublisher 内存适配器。
+- 建立模型、四个深模块接口、TraceStore/MetricStore/NotificationDispatcher 内存适配器。
 - 用 API/权限测试固定身份、组织继承和首次实例服务权限规则。
 
 ### Slice 2：真实数据面
@@ -294,7 +340,16 @@ class AlertPublisher(Protocol):
 ### Slice 5：基础告警
 
 - 实现三类基础策略、评估任务、APM 自有告警生命周期、幂等事件和通知渠道补偿投递。
-- APM 事件页读取本 App 数据；告警中心仅作为可选 NATS 通知渠道。
+- APM 事件页读取本 App 数据；所有通知经系统管理公开接口投递，告警中心仅接收用户选择的 `alert_event_copy` 事件副本。
+
+### Slice 5.1：通知渠道契约修正
+
+1. **先扩展系统管理公开契约**：目录响应向后兼容地增加 `delivery_mode`、`recipient_mode` 和可用状态；投递响应增加稳定错误码与 `retryable`。能力推导集中在系统管理，不修改现有渠道 ID。
+2. **再替换 APM 适配器**：`list_alert_event_channels` 改为通用目录；`SystemMgmtNatsAlertPublisher` 改为 `SystemMgmtNotificationDispatcher`；删除 APM 中的 NATS-only 校验和 payload 分支，补齐普通消息与事件副本测试。
+3. **迁移策略与投递箱**：用纯 ORM 数据迁移把旧字段转换为逐渠道目标；投递箱增加终止状态、错误摘要和完成时间，保持事件 + 渠道幂等键。迁移期间不访问 RPC 或其他 App 数据库表。
+4. **切换前端与收口兼容层**：先让 API 同时返回新旧 DTO，再把策略页切换为能力驱动的渠道卡片和逐渠道接收人；完成前后端与本地全流程验证后删除旧写入路径。Monitor/Log 的重复渠道表单可在同一能力 DTO 稳定后迁移到共享组件，不阻塞 APM 修正。
+
+部署顺序必须允许系统管理新契约先上线、旧调用方继续工作；APM 新后端上线后旧前端仍能读取策略；最后上线新前端。任一步回滚都不能删除 APM 事件、告警或已经创建的 outbox。
 
 ## 必须覆盖的验收场景
 
@@ -309,10 +364,52 @@ class AlertPublisher(Protocol):
 9. RED 查询不平均实例百分位；无界属性不进入指标标签；动态 URL 不导致指标基数无界增长。
 10. 缺少 instance ID 的 Span 可在服务和 Trace 中出现，但不生成伪实例，并可观察身份诊断。
 11. Trace 直接访问经过实例组织鉴权；越权和不存在返回不可枚举结果；敏感属性不回传。
-12. 评估重复执行不重复告警；VictoriaMetrics 查询失败不误触发或误恢复；通知渠道投递失败可补偿。
+12. 评估重复执行不重复告警；VictoriaMetrics 查询失败不误触发或误恢复；通知渠道投递失败按错误类型有界补偿并可审计。
 13. Collector、VictoriaTraces、VictoriaMetrics、NATS 或通知渠道不可用均不阻断 Server 启动；未安装 Alerts 时 APM 全部领域功能仍可用；`batch_init` 不调用任何运行期进程。
 14. 外部存储失败与合法空数据在 API 和 UI 中有不同状态；查询时间窗、分页和响应大小都有硬限制。
 15. 生产页面使用真实 API，无 Storybook fixture 泄漏；中英文菜单、权限和主要空/错/加载态均有覆盖。
+16. 同一策略可同时选择邮件、机器人/Webhook、普通 NATS 和告警中心事件副本；每个渠道使用自己的接收人配置，一个渠道失败不影响其他渠道或 APM 告警事实。
+17. APM 不导入 System Management、Monitor、Log 或 Alerts 的模型和内部服务；删除或停用 Alerts 后，普通通知、策略评估、事件查询与页面访问仍能工作。
+18. 渠道目录只返回当前组织有权使用的目标；保存越权渠道被拒绝，已选渠道失效有明确 UI 与终止投递状态，不产生无限重试。
+19. 策略页按能力显示渠道图标、类型、说明和逐渠道接收人控件；普通 NATS 与“告警中心事件副本”在文案和行为上可区分。
+
+## 通知优化验证计划
+
+### 自动化验证
+
+| 层级 | 必测场景 |
+| --- | --- |
+| 系统管理单元/RPC | 全渠道目录与组织范围；能力推导；普通消息、普通 NATS、`alert_event_copy` 分派；成功/可重试/终止错误归一化；旧调用参数兼容 |
+| APM 领域/适配器 | 不同渠道独立投递；事件 + 渠道幂等；接收人快照；单渠道失败不污染其他渠道；8 次后终止；人工重投；事件副本 envelope |
+| APM API/权限 | 多渠道与逐渠道接收人校验；越权/已删除渠道；目录 503 时只阻止配置变更；已有策略、事件和告警可读；无 Alerts 安装时接口可用 |
+| 数据迁移 | 旧 `notice_type_ids + notice_users` 无损转换；空配置、重复 ID、仅 NATS 和混合渠道；迁移重复/回滚安全；迁移过程零 RPC |
+| Web | 渠道卡片图标与标签；三种接收人模式；混合渠道；空/错/失效态；去除告警中心专属文案；策略编辑回显与提交 DTO |
+| 架构/启动 | APM 禁止导入其他产品 App 模型；`batch_init` 零目录查询和零投递；Responder 缺失、超时、容器重启后 Server 仍可启动且 outbox 可恢复 |
+
+实施完成后至少运行以下新鲜验证：
+
+```bash
+cd server
+uv run python manage.py makemigrations --check
+uv run pytest apps/apm/tests apps/system_mgmt/tests/test_nats_api_handlers.py apps/rpc/tests/test_system_mgmt_forwarding.py -v
+
+cd ../web
+pnpm test:apm-notification-form
+pnpm type-check
+pnpm build
+```
+
+`test:apm-notification-form` 是本切片新增的聚焦交互测试。若全量构建存在与本改动无关的基线失败，必须保存原始失败输出，并继续完成聚焦测试和受影响模块验证，不能用旧结果代替。
+
+### 本地真实全流程
+
+1. 在本地数据库执行迁移并重启 `compose-server`，确认启动日志中 `batch_init` 没有等待 NATS responder 或查询通知目录；随后启动/刷新 `compose-web`。
+2. 在系统管理创建两个当前组织可用的测试渠道：一个指向本地捕获端点的 Custom Webhook，另一个为 `receive_alert_events` 告警中心 NATS；若需验证普通 NATS，再增加一个非 `receive_alert_events` 方法的 NATS 渠道。
+3. 从 APM 策略页同时选择 Webhook 与告警中心事件副本，分别看到正确控件；保存后用可控测试指标或测试查询触发一次告警和一次恢复。
+4. 核对 APM 自有 `ApmAlert/ApmEvent`、每渠道 outbox、Webhook 收到的人类可读通知，以及告警中心收到的标准事件副本；重复运行评估和投递任务，确认没有重复 APM 事件或重复 outbox。
+5. 暂停通知 responder 或让 Webhook 返回 503，触发新事件并确认 APM 页面和告警事实仍正常、outbox 进入待重试；恢复依赖后运行期任务自动投递成功。再用不存在渠道验证其进入终止失败而非无限重试。
+6. 停止或禁用 Alerts App/消费者，保留系统管理普通渠道，重新触发策略；确认 APM 策略、事件、告警、Webhook/邮件通知和页面全部可用，只有告警中心事件副本显示失败或待补偿。
+7. 使用浏览器完成创建、编辑、触发后查看事件的生产路由回归，并检查加载、无渠道、目录失败、渠道失效、无权限和中英文文案。保存 API 响应、容器日志、outbox 状态和接收端 payload 作为验收证据。
 
 ## Out of Scope
 
