@@ -12,3 +12,8 @@ error:
   training_task_not_running: "Training task is not running"
   dataset_file_not_found: "Dataset file was not found"
   training_config_file_not_found: "Training configuration file was not found"
+  dataset_release_already_archived: "Dataset release is already archived"
+  dataset_release_not_archived: "Only archived dataset releases can be restored"
+message:
+  archive_success: "Archived successfully"
+  unarchive_success: "Restored successfully"

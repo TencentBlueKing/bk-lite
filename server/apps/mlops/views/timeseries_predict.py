@@ -1981,7 +1981,7 @@ class TimeSeriesPredictDatasetReleaseViewSet(ModelViewSet):
 
             if release.status == DatasetReleaseStatus.ARCHIVED:
                 return Response(
-                    {"error": "数据集版本已处于归档状态"},
+                    {"error": mlops_message(request, "error.dataset_release_already_archived")},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
@@ -1989,7 +1989,7 @@ class TimeSeriesPredictDatasetReleaseViewSet(ModelViewSet):
             release.description = f"[已归档] {release.description or ''}"
             release.save(update_fields=["status", "description"])
 
-            return Response({"message": "归档成功", "release_id": release.id})
+            return Response({"message": mlops_message(request, "message.archive_success"), "release_id": release.id})
 
         except Exception as e:
             logger.error(f"归档失败: {str(e)}", exc_info=True)
@@ -2009,7 +2009,7 @@ class TimeSeriesPredictDatasetReleaseViewSet(ModelViewSet):
 
             if release.status != DatasetReleaseStatus.ARCHIVED:
                 return Response(
-                    {"error": "只能恢复已归档的数据集版本"},
+                    {"error": mlops_message(request, "error.dataset_release_not_archived")},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
@@ -2021,13 +2021,7 @@ class TimeSeriesPredictDatasetReleaseViewSet(ModelViewSet):
             release.status = DatasetReleaseStatus.PUBLISHED
             release.save(update_fields=["status", "description"])
 
-            return Response(
-                {
-                    "message": "恢复成功",
-                    "release_id": release.id,
-                    "status": release.status,
-                }
-            )
+            return Response({"message": mlops_message(request, "message.unarchive_success"), "release_id": release.id})
 
         except Exception as e:
             logger.error(f"恢复失败: {str(e)}", exc_info=True)

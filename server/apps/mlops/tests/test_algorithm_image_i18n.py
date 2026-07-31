@@ -35,3 +35,25 @@ def test_training_lifecycle_endpoints_use_localized_messages():
             "训练配置文件不存在",
         ):
             assert f'"{message}"' not in source, f"{module}: {message}"
+
+
+def test_dataset_release_archive_messages_use_i18n():
+    views_dir = Path(__file__).resolve().parents[1] / "views"
+    for module in (
+        "anomaly_detection.py",
+        "timeseries_predict.py",
+        "log_clustering.py",
+        "classification.py",
+        "image_classification.py",
+        "object_detection.py",
+    ):
+        source = (views_dir / module).read_text(encoding="utf-8")
+        for message in (
+            "归档成功",
+            "恢复成功",
+            "数据集版本已处于归档状态",
+            "数据集版本已经是归档状态",
+            "只能恢复已归档的数据集版本",
+            "只能恢复归档状态的数据集版本",
+        ):
+            assert f'"{message}"' not in source, f"{module}: {message}"

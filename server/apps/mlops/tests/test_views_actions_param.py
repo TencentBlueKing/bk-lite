@@ -57,8 +57,7 @@ PREDICT_PARAM = {
 }
 
 # Algorithms whose DatasetReleaseViewSet exposes archive/unarchive.
-HAS_ARCHIVE = {"anomaly_detection", "log_clustering", "timeseries_predict",
-               "image_classification", "object_detection"}
+HAS_ARCHIVE = set(ALGO_IDS)
 
 # Algorithms whose archive/unarchive also mutate ``description`` (prepend /
 # strip the "[已归档] " marker). image/object only flip ``status``.
@@ -636,6 +635,7 @@ def test_release_archive_success(monkeypatch, superuser, suffix, prefix, model_m
     request = factory.post(f"/{suffix}_dataset_releases/x/archive/")
     resp = _call(view, request, superuser, pk=rel.id)
     assert resp.status_code == status.HTTP_200_OK
+    assert resp.data == {"message": "Archived successfully", "release_id": rel.id}
     rel.refresh_from_db()
     assert rel.status == DatasetReleaseStatus.ARCHIVED
     if suffix in ARCHIVE_TOUCHES_DESCRIPTION:
@@ -652,6 +652,7 @@ def test_release_archive_already_archived(monkeypatch, superuser, suffix, prefix
     request = factory.post(f"/{suffix}_dataset_releases/x/archive/")
     resp = _call(view, request, superuser, pk=rel.id)
     assert resp.status_code == status.HTTP_400_BAD_REQUEST
+    assert resp.data == {"error": "Dataset release is already archived"}
 
 
 @pytest.mark.parametrize("suffix,prefix,model_module,basename", ALGOS, ids=ALGO_IDS)
@@ -664,6 +665,7 @@ def test_release_unarchive_success(monkeypatch, superuser, suffix, prefix, model
     request = factory.post(f"/{suffix}_dataset_releases/x/unarchive/")
     resp = _call(view, request, superuser, pk=rel.id)
     assert resp.status_code == status.HTTP_200_OK
+    assert resp.data == {"message": "Restored successfully", "release_id": rel.id}
     rel.refresh_from_db()
     assert rel.status == DatasetReleaseStatus.PUBLISHED
     if suffix in ARCHIVE_TOUCHES_DESCRIPTION:
@@ -680,6 +682,7 @@ def test_release_unarchive_not_archived(monkeypatch, superuser, suffix, prefix, 
     request = factory.post(f"/{suffix}_dataset_releases/x/unarchive/")
     resp = _call(view, request, superuser, pk=rel.id)
     assert resp.status_code == status.HTTP_400_BAD_REQUEST
+    assert resp.data == {"error": "Only archived dataset releases can be restored"}
 
 
 # =========================================================================

@@ -220,15 +220,14 @@ class ObjectDetectionDatasetReleaseViewSet(ModelViewSet):
 
             if instance.status == DatasetReleaseStatus.ARCHIVED:
                 return Response(
-                    {"error": "数据集版本已经是归档状态"},
+                    {"error": mlops_message(request, "error.dataset_release_already_archived")},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
             instance.status = DatasetReleaseStatus.ARCHIVED
             instance.save(update_fields=["status"])
 
-            serializer = self.get_serializer(instance)
-            return Response(serializer.data)
+            return Response({"message": mlops_message(request, "message.archive_success"), "release_id": instance.id})
 
         except Exception as e:
             logger.error(f"归档数据集版本失败: {str(e)}", exc_info=True)
@@ -246,15 +245,13 @@ class ObjectDetectionDatasetReleaseViewSet(ModelViewSet):
 
             if instance.status != DatasetReleaseStatus.ARCHIVED:
                 return Response(
-                    {"error": "只能恢复归档状态的数据集版本"},
+                    {"error": mlops_message(request, "error.dataset_release_not_archived")},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
             instance.status = DatasetReleaseStatus.PUBLISHED
             instance.save(update_fields=["status"])
-
-            serializer = self.get_serializer(instance)
-            return Response(serializer.data)
+            return Response({"message": mlops_message(request, "message.unarchive_success"), "release_id": instance.id})
 
         except Exception as e:
             logger.error(f"恢复数据集版本失败: {str(e)}", exc_info=True)

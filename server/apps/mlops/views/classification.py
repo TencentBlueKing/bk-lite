@@ -31,7 +31,7 @@ from apps.mlops.services import (
     get_mlflow_tracking_uri,
     ConfigurationError,
 )
-from apps.mlops.constants import TrainJobStatus, MLflowRunStatus
+from apps.mlops.constants import DatasetReleaseStatus, TrainJobStatus, MLflowRunStatus
 from apps.mlops.models import AlgorithmConfig
 from apps.mlops.serializers.algorithm_config import (
     AlgorithmConfigSerializer,
@@ -1350,6 +1350,54 @@ class ClassificationDatasetReleaseViewSet(ModelViewSet):
             logger.error(f"下载数据集失败: {str(e)}", exc_info=True)
             return Response(
                 {"error": f"下载失败: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+    @action(detail=True, methods=["post"], url_path="archive")
+    @HasPermission("classification-Edit")
+    def archive(self, request, *args, **kwargs):
+        """归档数据集版本。"""
+        try:
+            release = self.get_object()
+
+            if release.status == DatasetReleaseStatus.ARCHIVED:
+                return Response(
+                    {"error": mlops_message(request, "error.dataset_release_already_archived")},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            release.status = DatasetReleaseStatus.ARCHIVED
+            release.save(update_fields=["status"])
+            return Response({"message": mlops_message(request, "message.archive_success"), "release_id": release.id})
+
+        except Exception as e:
+            logger.error(f"归档数据集版本失败: {str(e)}", exc_info=True)
+            return Response(
+                {"error": f"归档失败: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+    @action(detail=True, methods=["post"], url_path="unarchive")
+    @HasPermission("classification-Edit")
+    def unarchive(self, request, *args, **kwargs):
+        """恢复归档的数据集版本。"""
+        try:
+            release = self.get_object()
+
+            if release.status != DatasetReleaseStatus.ARCHIVED:
+                return Response(
+                    {"error": mlops_message(request, "error.dataset_release_not_archived")},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            release.status = DatasetReleaseStatus.PUBLISHED
+            release.save(update_fields=["status"])
+            return Response({"message": mlops_message(request, "message.unarchive_success"), "release_id": release.id})
+
+        except Exception as e:
+            logger.error(f"恢复数据集版本失败: {str(e)}", exc_info=True)
+            return Response(
+                {"error": f"恢复失败: {str(e)}"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
