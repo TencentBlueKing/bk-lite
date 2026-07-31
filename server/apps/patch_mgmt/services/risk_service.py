@@ -180,13 +180,17 @@ def _compute_remediation(target_id: int, patch_id: int, compliance: str, evaluat
         ).values_list('stage', flat=True).first()
         return RemediationStatus.SCHEDULED if host_stage == 'waiting' else 'installing'
 
-    rebooting = GovernanceTaskHost.objects.filter(
-        target_id=target_id,
-        task__task_type=GovernanceTaskType.REBOOT,
-        task__status__in=GovernanceTaskStatus.ACTIVE_STATES,
-    ).exists()
-    if rebooting:
-        return 'rebooting'
+    reboot_task = _latest_task_for_pair(GovernanceTask.objects.filter(
+        task_type=GovernanceTaskType.REBOOT,
+        status__in=GovernanceTaskStatus.ACTIVE_STATES,
+        target_list__contains=[target_id],
+        patch_list__contains=[patch_id],
+    ), target_id, patch_id)
+    if reboot_task:
+        reboot_stage = GovernanceTaskHost.objects.filter(
+            task=reboot_task, target_id=target_id
+        ).values_list('stage', flat=True).first()
+        return RemediationStatus.SCHEDULED if reboot_stage == 'waiting' else 'rebooting'
 
     # 安装后无需重启会直接创建验证任务；验证完成前仍属于治理中。
     verifying = _latest_task_for_pair(GovernanceTask.objects.filter(
@@ -197,6 +201,16 @@ def _compute_remediation(target_id: int, patch_id: int, compliance: str, evaluat
     ), target_id, patch_id)
     if verifying:
         return 'verifying'
+
+    # 技术性验证失败不覆盖当前合规快照，但风险项必须明确显示治理失败。
+    failed_verify = _latest_task_for_pair(GovernanceTask.objects.filter(
+        task_type=GovernanceTaskType.VERIFY,
+        status__in=(GovernanceTaskStatus.FAILED, GovernanceTaskStatus.PARTIAL_SUCCESS),
+        target_list__contains=[target_id],
+        patch_list__contains=[patch_id],
+    ), target_id, patch_id)
+    if failed_verify:
+        return RemediationStatus.FAILED
 
     # 已完成的安装任务按 host stage 推断下一步
     install_task = _latest_task_for_pair(GovernanceTask.objects.filter(

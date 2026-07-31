@@ -146,6 +146,12 @@ export default function HomePage() {
   const assessedCount = compliantCount + nonCompliantCount + failedCount;
   const targetTotal = stats?.target_total ?? 0;
   const coverageHint = targetTotal > 0 ? ` = ${assessedCount} / ${targetTotal} ≈ ${Math.round(assessedCount / targetTotal * 100)}%` : '';
+  const recentExecutionText = (record: RecentTaskItem) => {
+    if (record.execution_mode !== 'window') return t('patchManager.risk.executeNow');
+    const start = record.execution_window_start ? convertToLocalizedTime(record.execution_window_start) : '—';
+    const end = record.execution_window_end ? convertToLocalizedTime(record.execution_window_end) : '—';
+    return `${t('patchManager.risk.executionWindow')} ${start}–${end}`;
+  };
 
   const FILTER_COLORS: Record<string, string> = {
     compliant: '#1D9E75',
@@ -290,9 +296,10 @@ export default function HomePage() {
             scroll={{ y: Math.max(120, tableHeight - 76) }}
             columns={[
               { title: t('patchManager.dashboard.taskName'), dataIndex: 'name', ellipsis: true },
-              { title: t('patchManager.statusLabel'), dataIndex: 'status', width: 100, render: (_: unknown, r: RecentTaskItem) => <Tag color={r.status_color}>{t(`patchManager.execution.statuses.${r.status_code}`, r.status)}</Tag> },
-              { title: t('patchManager.dashboard.progress'), dataIndex: 'progress', width: 80 },
-              { title: t('patchManager.dashboard.time'), dataIndex: 'time', width: 150, render: (_: string, r: RecentTaskItem) => <span style={{ color: 'var(--color-text-3, #8c8c8c)' }}>{convertToLocalizedTime(r.created_at) || '—'}</span> },
+              { title: t('patchManager.execution.type'), dataIndex: 'task_type_display', width: 90, render: (value: string) => <Tag>{value}</Tag> },
+              { title: t('patchManager.risk.executionMode'), dataIndex: 'execution_mode', width: 210, render: (_: unknown, r: RecentTaskItem) => recentExecutionText(r) },
+              { title: t('patchManager.execution.status'), dataIndex: 'status', width: 110, render: (_: unknown, r: RecentTaskItem) => <Tag color={r.status_color}>{t(`patchManager.execution.statuses.${r.status_code}`, r.status)}</Tag> },
+              { title: t('patchManager.createTime'), dataIndex: 'created_at', width: 170, render: (_: string, r: RecentTaskItem) => <span style={{ color: 'var(--color-text-3, #8c8c8c)' }}>{convertToLocalizedTime(r.created_at) || '—'}</span> },
             ]}
           />
         </Card>
