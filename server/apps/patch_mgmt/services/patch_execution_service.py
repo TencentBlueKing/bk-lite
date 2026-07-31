@@ -763,6 +763,78 @@ def _is_assess_success(result: dict[str, Any]) -> bool:
     return True
 
 
+def _persist_verification_snapshot(
+    task: GovernanceTask | None,
+    target: PatchTarget,
+    *,
+    evaluated_at,
+    requirements=None,
+    assessments=None,
+    failure_reason: str = "",
+) -> None:
+    """把 verify 的主机-补丁结果冻结在当次任务。"""
+    if task is None or task.task_type != GovernanceTaskType.VERIFY:
+        return
+    items = [
+        item
+        for item in (task.risk_snapshot or [])
+        if int(item.get("host_id") or 0) == target.id
+    ]
+    if not items:
+        return
+    assessment_by_patch = {}
+    if requirements is not None and assessments is not None:
+        for requirement in requirements:
+            assessment = assessments.get(requirement.id)
+            if assessment is not None:
+                assessment_by_patch[int(requirement.patch_id)] = assessment
+
+    entries = []
+    for item in items:
+        patch_id = int(item.get("patch_id") or 0)
+        assessment = assessment_by_patch.get(patch_id)
+        if failure_reason or assessment is None:
+            entries.append(
+                {
+                    "risk_item_id": str(item.get("id") or ""),
+                    "host_id": target.id,
+                    "patch_id": patch_id,
+                    "status": "failed",
+                    "satisfied": None,
+                    "reason": failure_reason or "未获取到该补丁的验证结果",
+                    "evidence": {},
+                    "evaluated_at": evaluated_at.isoformat(),
+                }
+            )
+            continue
+        entries.append(
+            {
+                "risk_item_id": str(item.get("id") or ""),
+                "host_id": target.id,
+                "patch_id": patch_id,
+                "status": "completed",
+                "satisfied": bool(assessment.satisfied),
+                "reason": assessment.reason or "",
+                "evidence": dict(assessment.evidence or {}),
+                "evaluated_at": evaluated_at.isoformat(),
+            }
+        )
+
+    # 同一 verify 任务的多台主机可并行回写，必须加锁合并，避免 JSON 覆盖。
+    with transaction.atomic():
+        locked = GovernanceTask.objects.select_for_update().get(pk=task.pk)
+        item_ids = {entry["risk_item_id"] for entry in entries}
+        merged = [
+            entry
+            for entry in (locked.result_snapshot or [])
+            if str(entry.get("risk_item_id") or "") not in item_ids
+        ]
+        merged.extend(entries)
+        locked.result_snapshot = merged
+        locked.save(update_fields=["result_snapshot", "updated_at"])
+    task.result_snapshot = merged
+
+
 def _update_binding_after_assess(
     target: PatchTarget,
     success: bool,
@@ -771,13 +843,20 @@ def _update_binding_after_assess(
 ) -> None:
     '''评估完成后把结果写回 HostBaselineBinding 与 HostComplianceSnapshot。'''
     binding = getattr(target, 'baseline_binding', None)
-    if binding is None:
-        return
     try:
         task_id = int(str(execution_id).split(':', 1)[0])
     except (TypeError, ValueError):
         task_id = 0
     task = GovernanceTask.objects.filter(pk=task_id).first() if task_id else None
+    now = timezone.now()
+    if binding is None:
+        _persist_verification_snapshot(
+            task,
+            target,
+            evaluated_at=now,
+            failure_reason="主机未绑定基线，无法验证",
+        )
+        return
     if task and task.status == GovernanceTaskStatus.CANCELLED:
         logger.info('忽略已取消评估结果 task=%s target=%s', task.id, target.id)
         return
@@ -815,10 +894,19 @@ def _update_binding_after_assess(
                 expected_baseline_id,
             )
             return
-    now = timezone.now()
     binding.last_evaluated_at = now
 
     if not success:
+        _persist_verification_snapshot(
+            task,
+            target,
+            evaluated_at=now,
+            failure_reason=_result_reason(result) or "验证命令执行失败",
+        )
+        if task and task.task_type == GovernanceTaskType.VERIFY:
+            # 验证本身失败时保留上一次合规事实，风险状态由 verify
+            # 执行结果标记为治理失败，避免风险项因 binding=failed 消失。
+            return
         binding.compliance_status = ComplianceStatus.FAILED
         binding.missing_count = 0
         binding.save(update_fields=['compliance_status', 'missing_count', 'last_evaluated_at', 'updated_at'])
@@ -832,6 +920,14 @@ def _update_binding_after_assess(
         assessments = assess_requirements(target.os_type, stdout, requirements)
     except Exception as exc:  # noqa: BLE001
         logger.exception('解析目标 %s 评估输出失败: %s', target.id, exc)
+        _persist_verification_snapshot(
+            task,
+            target,
+            evaluated_at=now,
+            failure_reason=f"验证结果解析失败: {exc}",
+        )
+        if task and task.task_type == GovernanceTaskType.VERIFY:
+            return
         binding.compliance_status = ComplianceStatus.FAILED
         binding.missing_count = 0
         binding.save(update_fields=['compliance_status', 'missing_count', 'last_evaluated_at', 'updated_at'])
@@ -875,6 +971,13 @@ def _update_binding_after_assess(
             )
         )
     HostComplianceSnapshot.objects.bulk_create(snapshots)
+    _persist_verification_snapshot(
+        task,
+        target,
+        evaluated_at=now,
+        requirements=requirements,
+        assessments=assessments,
+    )
 
     binding.missing_count = missing_count
     binding.compliance_status = (
@@ -1723,7 +1826,14 @@ def _schedule_auto_reboot(install_task: GovernanceTask) -> None:
         execution_mode='now',
         status=GovernanceTaskStatus.PENDING,
         target_list=successful_target_ids,
-        patch_list=[],
+        patch_list=list(
+            dict.fromkeys(
+                int(item['patch_id'])
+                for item in (install_task.risk_snapshot or [])
+                if int(item.get('host_id') or 0) in successful_target_ids
+                and item.get('patch_id')
+            )
+        ),
         risk_snapshot=[
             item
             for item in (install_task.risk_snapshot or [])
@@ -1764,11 +1874,8 @@ def _schedule_auto_reboot(install_task: GovernanceTask) -> None:
 
 
 def _schedule_post_install_verify(install_task: GovernanceTask) -> None:
-    '''无需重启或安装失败的主机进入验证，以最终合规结果作为业务事实。'''
-    verify_hosts = list(
-        install_task.host_results.filter(stage__in=('completed', 'failed'))
-        .exclude(failed_stage='dispatch')
-    )
+    '''仅无需重启且安装成功的主机直接进入验证。'''
+    verify_hosts = list(install_task.host_results.filter(stage='completed'))
     if not verify_hosts:
         return
 

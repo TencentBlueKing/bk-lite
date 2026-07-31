@@ -57,7 +57,9 @@ interface RiskSummary {
   status_display: string;
   status_color: string;
   host_name?: string;
+  host_ip?: string;
   patch_name?: string;
+  can_retry?: boolean;
 }
 
 const STATUS_COLOR: Record<string, string> = {
@@ -330,12 +332,18 @@ export default function RiskExecutionPage() {
   const filteredRiskItems = useMemo(() => {
     const keyword = riskSearch.trim().toLowerCase();
     const items: RiskSummary[] = detailTask?.risk_items || [];
-    return keyword ? items.filter((item) => item.display_name.toLowerCase().includes(keyword)) : items;
+    return keyword ? items.filter((item) => (
+      [item.host_name, item.patch_name, item.host_ip]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase()
+        .includes(keyword)
+    )) : items;
   }, [detailTask?.risk_items, riskSearch]);
 
   const handleRetry = async () => {
-    if (!detailTask?.id || !riskDetail?.host_id) return;
-    await api.retryGovernanceTaskHost(detailTask.id, riskDetail.host_id);
+    if (!detailTask?.id || !riskDetail?.id) return;
+    await api.retryGovernanceTaskHost(detailTask.id, riskDetail.id);
     message.success(t('patchManager.execution.retryStarted'));
     await loadTaskDetail(detailTask.id);
   };
@@ -494,7 +502,12 @@ export default function RiskExecutionPage() {
             const selected = item.id === selectedRiskId;
             return <div key={item.id} onClick={() => setSelectedRiskId(item.id)} style={{ padding: '10px 12px', marginBottom: 8, cursor: 'pointer', borderRadius: 7, border: '1px solid var(--color-border-1, #e8e8e8)', borderLeft: `3px solid ${STEP_BORDER[item.status] || '#d9d9d9'}`, background: selected ? 'var(--color-fill-1, #f4f6f9)' : 'var(--color-bg-1, #fff)' }}>
               <Tooltip title={`${item.host_name || ''}-${item.patch_name || t('patchManager.risk.patch')}`}><div style={{ fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.host_name || ''}-{item.patch_name || t('patchManager.risk.patch')}</div></Tooltip>
-              <Tag color={item.status_color} style={{ marginTop: 6 }}>{t(`patchManager.execution.statuses.${item.status}`, item.status_display)}</Tag>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6, minWidth: 0 }}>
+                <Tag color={item.status_color} style={{ marginInlineEnd: 0, flexShrink: 0 }}>{t(`patchManager.execution.statuses.${item.status}`, item.status_display)}</Tag>
+                <Tooltip title={item.host_ip || '—'}>
+                  <span style={{ color: 'var(--color-text-3, #8c8c8c)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.host_ip || '—'}</span>
+                </Tooltip>
+              </div>
             </div>;
           }) : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t('patchManager.execution.noMatchingRisk')} />}
         </div>
@@ -511,19 +524,25 @@ export default function RiskExecutionPage() {
               </Space>}
               style={{ marginBottom: 16 }}
             />}
+            {riskDetail.source_record && <Alert
+              type="info"
+              showIcon
+              message={<Space>{t('patchManager.execution.sourceRecord')}：<Button type="link" size="small" style={{ paddingInline: 0 }} onClick={() => openDetail(riskDetail.source_record.id)}>{riskDetail.source_record.name} (#{riskDetail.source_record.id})</Button></Space>}
+              style={{ marginBottom: 16 }}
+            />}
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
               <div>
                 <div style={{ fontSize: 16, fontWeight: 600 }}>{riskDetail.display_name}</div>
                 <div style={{ color: 'var(--color-text-3, #8c8c8c)', marginTop: 4 }}>{riskDetail.host_ip || '—'} · {riskDetail.baseline_name || '—'}</div>
               </div>
-              {detailTask?.can_retry && ['failed', 'unknown', 'unmet'].includes(riskDetail.status) && <PermissionWrapper requiredPermissions={['Edit']}><Button type="link" size="small" onClick={handleRetry}>{t('patchManager.execution.retry')}</Button></PermissionWrapper>}
+              {riskDetail.can_retry && <PermissionWrapper requiredPermissions={['Edit']}><Button type="link" size="small" onClick={handleRetry}>{t('patchManager.execution.retry')}</Button></PermissionWrapper>}
             </div>
             {(riskDetail.steps || []).map((step: any, stepIndex: number) => <div key={step.key} style={{ position: 'relative', paddingLeft: 28, paddingBottom: stepIndex === riskDetail.steps.length - 1 ? 0 : 18 }}>
               {stepIndex < riskDetail.steps.length - 1 && <div style={{ position: 'absolute', left: 9, top: 20, bottom: -2, width: 2, background: STEP_BORDER[step.status] || '#d9d9d9' }} />}
               <div style={{ position: 'absolute', left: 0, top: 2, width: 20, height: 20, borderRadius: '50%', background: STEP_BORDER[step.status] || '#d9d9d9', color: '#fff', textAlign: 'center', lineHeight: '20px', fontSize: 12 }}>{stepIndex + 1}</div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}><strong>{t(`patchManager.execution.steps.${step.key}`, step.name)}</strong><Tag color={step.status_color}>{t(`patchManager.execution.statuses.${step.status}`, step.status_display)}</Tag></div>
               <div style={{ display: 'grid', gap: 8 }}>
-                {(step.attempts?.length ? step.attempts : [{ id: `${step.key}-empty`, status: step.status, status_display: step.status_display, status_color: step.status_color, log: '' }]).map((attempt: any, attemptIndex: number) => {
+                {(step.attempts?.length ? step.attempts : [{ id: `${step.key}-empty`, status: step.status, status_display: step.status_display, status_color: step.status_color, reason: step.reason, log: '' }]).map((attempt: any, attemptIndex: number) => {
                   return <div key={attempt.id} style={{ borderLeft: `3px solid ${STEP_BORDER[attempt.status] || '#d9d9d9'}`, background: 'var(--color-fill-1, #f4f6f9)', borderRadius: 6, padding: '10px 12px' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
                       <span>{step.attempts?.length > 1 ? t('patchManager.execution.attempt', undefined, { count: attemptIndex + 1 }) : t(`patchManager.execution.steps.${step.key}`, step.name)}</span>
