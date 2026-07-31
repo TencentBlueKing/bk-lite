@@ -2,13 +2,14 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'next/navigation';
-import { Alert, Card, Col, Descriptions, Row, Space, Statistic, Table, Tag, Typography } from 'antd';
+import { Alert, Col, Descriptions, Row, Space, Table, Tag, Typography } from 'antd';
 import type { TableProps } from 'antd';
 import useApmApi from '@/app/apm/api';
-import ApmRouteShell from '@/app/apm/components/apm-route-shell';
+import ApmRouteShell, { ApmSurface } from '@/app/apm/components/apm-route-shell';
 import CatalogState, { catalogErrorKind, type CatalogStateKind } from '@/app/apm/components/catalog-state';
 import type { ApmSpanDetail, ApmTraceDetail } from '@/app/apm/types';
 import { HandledRequestError } from '@/utils/request';
+import SummaryMetricCard from '@/components/summary-metric-card';
 
 type PageState = CatalogStateKind | 'ready' | 'not-found';
 
@@ -75,48 +76,88 @@ export default function ApmTraceDetailPage() {
       dependency="telemetry"
     >
       {state === 'not-found' ? (
-        <CatalogState kind="empty" description="Trace 不存在、已超过保留期或当前组织无权访问。" />
+        <ApmSurface padding="none"><CatalogState kind="empty" description="Trace 不存在、已超过保留期或当前组织无权访问。" /></ApmSurface>
       ) : state !== 'ready' ? (
-        <CatalogState kind={state} />
+        <ApmSurface padding="none"><CatalogState kind={state} /></ApmSurface>
       ) : trace ? (
-        <Space direction="vertical" size={16} className="w-full">
+        <div className="flex w-full flex-col gap-4">
           {trace.truncated ? <Alert type="warning" showIcon message="Trace 响应已达到安全上限，当前展示部分 Span 或属性。" /> : null}
+          <ApmSurface padding="compact">
+            <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+              <div className="min-w-0">
+                <Typography.Text type="secondary" className="block text-xs">Trace ID</Typography.Text>
+                <Typography.Text copyable className="block truncate font-mono text-sm font-medium">
+                  {trace.trace_id}
+                </Typography.Text>
+              </div>
+              <Space wrap>
+                <Tag bordered={false}>{trace.service_namespace || '未归类应用'}</Tag>
+                <Tag bordered={false} color="blue">{trace.service_name}</Tag>
+                <Tag bordered={false}>{trace.environment || '未设置环境'}</Tag>
+              </Space>
+            </div>
+          </ApmSurface>
           <Row gutter={[16, 16]}>
-            <Col xs={24} md={12} xl={8}><Card><Statistic title="Trace ID" value={trace.trace_id} valueStyle={{ fontSize: 14 }} /></Card></Col>
-            <Col xs={12} md={6} xl={4}><Card><Statistic title="Span 数" value={trace.spans.length} /></Card></Col>
-            <Col xs={12} md={6} xl={4}><Card><Statistic title="错误 Span" value={trace.spans.filter((span) => span.status === 'error').length} /></Card></Col>
-            <Col xs={12} md={6} xl={4}><Card><Statistic title="服务数" value={new Set(trace.spans.map((span) => span.service_name)).size} /></Card></Col>
-            <Col xs={12} md={6} xl={4}><Card><Statistic title="总耗时" value={totalDuration} precision={2} suffix="ms" /></Card></Col>
+            <Col xs={12} md={6}>
+              <SummaryMetricCard layout="vertical" label="Span 数" value={trace.spans.length} className="h-full bg-[var(--color-bg)] p-4" />
+            </Col>
+            <Col xs={12} md={6}>
+              <SummaryMetricCard
+                layout="vertical"
+                label="错误 Span"
+                value={trace.spans.filter((span) => span.status === 'error').length}
+                valueColor={trace.spans.some((span) => span.status === 'error') ? 'var(--color-fail)' : 'var(--color-text-1)'}
+                className="h-full bg-[var(--color-bg)] p-4"
+              />
+            </Col>
+            <Col xs={12} md={6}>
+              <SummaryMetricCard layout="vertical" label="服务数" value={new Set(trace.spans.map((span) => span.service_name)).size} className="h-full bg-[var(--color-bg)] p-4" />
+            </Col>
+            <Col xs={12} md={6}>
+              <SummaryMetricCard layout="vertical" label="总耗时" value={totalDuration.toFixed(2)} unit="ms" className="h-full bg-[var(--color-bg)] p-4" />
+            </Col>
           </Row>
           <Row gutter={[16, 16]}>
             <Col xs={24} xl={16}>
-              <Card title="Span 瀑布">
+              <ApmSurface className="h-full">
+                <div className="mb-3 flex items-center justify-between">
+                  <Typography.Text strong>Span 瀑布</Typography.Text>
+                  <Typography.Text type="secondary" className="text-xs tabular-nums">
+                    {trace.spans.length} spans
+                  </Typography.Text>
+                </div>
                 <div className="space-y-1 overflow-x-auto">
                   {layout.map(({ span, depth, left, width }) => (
                     <button
                       type="button"
                       key={span.span_id}
                       onClick={() => setSelectedSpanId(span.span_id)}
-                      className={`flex w-full items-center border-0 px-2 py-1 text-left ${selectedSpanId === span.span_id ? 'bg-blue-50' : 'bg-transparent'}`}
+                      aria-pressed={selectedSpanId === span.span_id}
+                      className={`flex min-h-9 w-full items-center rounded-md border-0 px-2 py-1 text-left transition-colors duration-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--color-primary)] ${selectedSpanId === span.span_id ? 'bg-[var(--color-primary-bg-active)]' : 'bg-transparent hover:bg-[var(--color-fill-1)]'}`}
                     >
                       <div className="w-64 shrink-0 truncate text-xs" style={{ paddingLeft: depth * 12 }}>
-                        <Tag color={span.status === 'error' ? 'error' : 'blue'}>{span.kind.toUpperCase()}</Tag>
+                        <Tag bordered={false} color={span.status === 'error' ? 'error' : 'blue'}>{span.kind.toUpperCase()}</Tag>
                         {span.service_name} · {span.name}
                       </div>
-                      <div className="relative h-5 min-w-[420px] flex-1 bg-gray-50">
+                      <div className="relative h-5 min-w-[420px] flex-1 rounded bg-[var(--color-fill-1)]">
                         <div
-                          className={`absolute top-1 h-3 rounded ${span.status === 'error' ? 'bg-red-500' : 'bg-blue-500'}`}
-                          style={{ left: `${left}%`, width: `${width}%` }}
+                          className="absolute top-1 h-3 rounded-sm"
+                          style={{
+                            left: `${left}%`,
+                            width: `${width}%`,
+                            background: span.status === 'error' ? 'var(--color-fail)' : 'var(--color-primary)',
+                          }}
                         />
                       </div>
-                      <div className="w-24 text-right text-xs">{span.duration_ms.toFixed(2)} ms</div>
+                      <div className="w-24 text-right text-xs tabular-nums">{span.duration_ms.toFixed(2)} ms</div>
                     </button>
                   ))}
                 </div>
-              </Card>
+              </ApmSurface>
             </Col>
             <Col xs={24} xl={8}>
-              <Card title="Span 详情">
+              <ApmSurface className="h-full">
+                <Typography.Text strong className="mb-3 block">Span 详情</Typography.Text>
                 {selected ? (
                   <Space direction="vertical" className="w-full">
                     <Descriptions size="small" column={1}>
@@ -128,10 +169,10 @@ export default function ApmTraceDetailPage() {
                     <Table rowKey="key" size="small" columns={attributeColumns} dataSource={attributeRows} pagination={false} />
                   </Space>
                 ) : null}
-              </Card>
+              </ApmSurface>
             </Col>
           </Row>
-        </Space>
+        </div>
       ) : null}
     </ApmRouteShell>
   );

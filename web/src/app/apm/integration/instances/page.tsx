@@ -1,14 +1,16 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { Alert, Select, Table, type TableColumnsType } from 'antd';
+import { useEffect, useMemo, useState } from 'react';
+import { SearchOutlined } from '@ant-design/icons';
+import { Alert, Input, Select, Table, Tag, Typography, type TableColumnsType } from 'antd';
 import dayjs from 'dayjs';
 import useApmApi from '@/app/apm/api';
-import ApmRouteShell from '@/app/apm/components/apm-route-shell';
+import ApmRouteShell, { ApmSurface } from '@/app/apm/components/apm-route-shell';
 import CatalogState, {
   catalogErrorKind,
   type CatalogStateKind,
 } from '@/app/apm/components/catalog-state';
+import ServiceIdentity from '@/app/apm/components/service-identity';
 import ApmStatusTag from '@/app/apm/components/status-tag';
 import type { ApmServiceInstance, CatalogStatus } from '@/app/apm/types';
 
@@ -20,6 +22,7 @@ export default function ApmIntegrationInstancesPage() {
   const [hasMissingIdentity, setHasMissingIdentity] = useState(false);
   const [catalogDegraded, setCatalogDegraded] = useState(false);
   const [status, setStatus] = useState<CatalogStatus | undefined>();
+  const [keyword, setKeyword] = useState('');
   const [state, setState] = useState<PageState>('loading');
 
   useEffect(() => {
@@ -46,19 +49,47 @@ export default function ApmIntegrationInstancesPage() {
     };
   }, [authLoading, getHealth, getIngestSources, getInstances, status]);
 
+  const filteredInstances = useMemo(() => {
+    const normalizedKeyword = keyword.trim().toLowerCase();
+    if (!normalizedKeyword) return instances;
+    return instances.filter((item) => (
+      `${item.service_namespace} ${item.service_name} ${item.instance_id}`
+        .toLowerCase()
+        .includes(normalizedKeyword)
+    ));
+  }, [instances, keyword]);
+
   const columns: TableColumnsType<ApmServiceInstance> = [
     {
       title: '服务',
       key: 'service',
-      render: (_, item) => `${item.service_namespace || '未归类应用'} / ${item.service_name}`,
+      render: (_, item) => (
+        <ServiceIdentity namespace={item.service_namespace} name={item.service_name} />
+      ),
     },
-    { title: '环境', dataIndex: 'environment', render: (value) => value || '未设置' },
-    { title: '实例 ID', dataIndex: 'instance_id', ellipsis: true },
-    { title: '版本', dataIndex: 'version', render: (value) => value || '—' },
-    { title: '接入方式', dataIndex: 'ingest_source_name' },
-    { title: '最近上报', dataIndex: 'last_seen_at', render: (value) => dayjs(value).format('YYYY-MM-DD HH:mm:ss') },
-    { title: '状态', dataIndex: 'status', render: (value: CatalogStatus) => <ApmStatusTag status={value} /> },
-    { title: '组织', dataIndex: 'organization_ids', render: (value: number[]) => value.join(', ') },
+    { title: '环境', dataIndex: 'environment', width: 120, responsive: ['sm'], render: (value) => <Tag bordered={false}>{value || '未设置'}</Tag> },
+    {
+      title: '实例 ID',
+      dataIndex: 'instance_id',
+      render: (value) => <Typography.Text ellipsis className="block max-w-56 font-mono text-xs">{value}</Typography.Text>,
+    },
+    { title: '版本', dataIndex: 'version', width: 100, responsive: ['lg'], render: (value) => value || '—' },
+    { title: '接入源', dataIndex: 'ingest_source_name', width: 140, responsive: ['xl'] },
+    {
+      title: '最近上报',
+      dataIndex: 'last_seen_at',
+      width: 190,
+      responsive: ['md'],
+      render: (value) => <span className="tabular-nums">{dayjs(value).format('YYYY-MM-DD HH:mm:ss')}</span>,
+    },
+    { title: '状态', dataIndex: 'status', width: 100, render: (value: CatalogStatus) => <ApmStatusTag status={value} /> },
+    {
+      title: '组织',
+      dataIndex: 'organization_ids',
+      width: 120,
+      responsive: ['xl'],
+      render: (value: number[]) => value.map((id) => <Tag bordered={false} key={id}>#{id}</Tag>),
+    },
   ];
 
   return (
@@ -66,12 +97,6 @@ export default function ApmIntegrationInstancesPage() {
       title="接入实例"
       description="按 service.instance.id 查看每一个实际上报的运行实例及其组织范围。"
     >
-      <Alert
-        className="mb-4"
-        type="info"
-        showIcon
-        message="目录由运行期任务每分钟幂等对账；新实例通常在 1–2 分钟内出现。"
-      />
       {hasMissingIdentity ? (
         <Alert
           className="mb-4"
@@ -90,23 +115,54 @@ export default function ApmIntegrationInstancesPage() {
           description="下方是最近一次成功对账后的元数据，可能落后于 Trace 与指标存储。"
         />
       ) : null}
-      <Select
-        className="mb-4 w-40"
-        allowClear
-        placeholder="全部状态"
-        value={status}
-        onChange={setStatus}
-        options={[
-          { value: 'active', label: '活跃' },
-          { value: 'silent', label: '静默' },
-          { value: 'archived', label: '已归档' },
-        ]}
-      />
-      {state === 'ready' ? (
-        <Table rowKey="id" columns={columns} dataSource={instances} pagination={{ pageSize: 20 }} />
-      ) : (
-        <CatalogState kind={state} />
-      )}
+      <div className="flex flex-col gap-3">
+        <ApmSurface padding="compact">
+          <div className="flex flex-wrap items-center gap-3">
+            <Input
+              allowClear
+              aria-label="按服务、应用或实例 ID 搜索"
+              className="min-w-64 flex-1 md:max-w-sm"
+              prefix={<SearchOutlined className="text-[var(--color-text-4)]" aria-hidden="true" />}
+              placeholder="搜索服务、应用或实例 ID"
+              value={keyword}
+              onChange={(event) => setKeyword(event.target.value)}
+            />
+            <Select<CatalogStatus>
+              className="w-40"
+              allowClear
+              aria-label="按实例状态筛选"
+              placeholder="全部状态"
+              value={status}
+              onChange={setStatus}
+              options={[
+                { value: 'active', label: '活跃' },
+                { value: 'silent', label: '静默' },
+                { value: 'archived', label: '已归档' },
+              ]}
+            />
+            <Typography.Text type="secondary" className="ml-auto text-xs tabular-nums">
+              已接入 {filteredInstances.length} 个实例
+            </Typography.Text>
+          </div>
+        </ApmSurface>
+        <ApmSurface padding="none" className="overflow-hidden">
+          {state === 'ready' ? (
+            <Table
+              rowKey="id"
+              columns={columns}
+              dataSource={filteredInstances}
+              pagination={{
+                defaultPageSize: 20,
+                pageSizeOptions: [10, 20, 50, 100],
+                showSizeChanger: true,
+                showTotal: (total) => `共 ${total} 条`,
+              }}
+            />
+          ) : (
+            <CatalogState kind={state} />
+          )}
+        </ApmSurface>
+      </div>
     </ApmRouteShell>
   );
 }

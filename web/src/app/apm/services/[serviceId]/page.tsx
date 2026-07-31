@@ -3,14 +3,17 @@
 import { useEffect, useState } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { Button, Card, Col, Row, Select, Space, Statistic } from 'antd';
+import { ArrowLeftOutlined, SearchOutlined } from '@ant-design/icons';
+import { Button, Col, Row, Segmented, Select, Space, Tag, Typography } from 'antd';
 import useApmApi from '@/app/apm/api';
-import ApmRouteShell from '@/app/apm/components/apm-route-shell';
+import ApmRouteShell, { ApmSurface } from '@/app/apm/components/apm-route-shell';
 import CatalogState, {
   catalogErrorKind,
   type CatalogStateKind,
 } from '@/app/apm/components/catalog-state';
+import ApmStatusTag from '@/app/apm/components/status-tag';
 import type { ApmService, ApmServiceRed } from '@/app/apm/types';
+import SummaryMetricCard from '@/components/summary-metric-card';
 
 type PageState = CatalogStateKind | 'ready';
 type TimeRange = '15m' | '1h' | '4h' | '24h';
@@ -96,49 +99,102 @@ export default function ApmServiceDetailPage() {
       dependency="telemetry"
     >
       {catalogState !== 'ready' ? (
-        <CatalogState kind={catalogState} />
+        <ApmSurface padding="none"><CatalogState kind={catalogState} /></ApmSurface>
       ) : service ? (
-        <>
-          <Space className="mb-4" wrap>
-            <Select
-              className="min-w-52"
-              value={environment}
-              onChange={setEnvironment}
-              options={service.environment_views.map((item) => ({
-                value: item.environment,
-                label: item.environment || '未设置',
-              }))}
-            />
-            <Select<TimeRange>
-              value={timeRange}
-              onChange={setTimeRange}
-              options={(Object.keys(RANGE_MS) as TimeRange[]).map((value) => ({ value, label: value }))}
-              className="w-24"
-            />
-            {metricState === 'ready' ? <Link href={traceHref}><Button>查看此时间窗 Trace</Button></Link> : null}
-          </Space>
+        <div className="flex flex-col gap-4">
+          <ApmSurface padding="compact">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <div className="flex min-w-0 items-center gap-3">
+                <Link href="/apm/services">
+                  <Button aria-label="返回服务目录" icon={<ArrowLeftOutlined aria-hidden="true" />} />
+                </Link>
+                <div className="min-w-0">
+                  <Space size={8} wrap>
+                    <Typography.Title level={2} className="!mb-0 !text-lg !font-semibold">
+                      {service.name}
+                    </Typography.Title>
+                    <Tag bordered={false}>{environment || '未设置'}</Tag>
+                    <ApmStatusTag status={service.status} />
+                  </Space>
+                  <Typography.Text type="secondary" className="block truncate text-xs">
+                    所属应用 {service.namespace || '未归类应用'}
+                  </Typography.Text>
+                </div>
+              </div>
+              <Space wrap>
+                <Select
+                  aria-label="选择环境"
+                  className="min-w-40"
+                  value={environment}
+                  onChange={setEnvironment}
+                  options={service.environment_views.map((item) => ({
+                    value: item.environment,
+                    label: item.environment || '未设置',
+                  }))}
+                />
+                <Segmented<TimeRange>
+                  aria-label="选择时间窗"
+                  value={timeRange}
+                  onChange={setTimeRange}
+                  options={(Object.keys(RANGE_MS) as TimeRange[]).map((value) => ({ value, label: value }))}
+                />
+                {metricState === 'ready' ? (
+                  <Link href={traceHref}>
+                    <Button icon={<SearchOutlined aria-hidden="true" />}>查看 Trace</Button>
+                  </Link>
+                ) : null}
+              </Space>
+            </div>
+          </ApmSurface>
           {metricState === 'ready' && red ? (
             <Row gutter={[16, 16]}>
               <Col xs={24} md={12} xl={6}>
-                <Card><Statistic title="请求速率" value={red.request_rate} precision={2} suffix="req/s" /></Card>
+                <SummaryMetricCard
+                  layout="vertical"
+                  label="请求速率"
+                  value={red.request_rate.toFixed(2)}
+                  unit="req/s"
+                  className="h-full bg-[var(--color-bg)] p-4"
+                />
               </Col>
               <Col xs={24} md={12} xl={6}>
-                <Card><Statistic title="错误率" value={red.error_rate * 100} precision={2} suffix="%" /></Card>
+                <SummaryMetricCard
+                  layout="vertical"
+                  label="错误率"
+                  value={(red.error_rate * 100).toFixed(2)}
+                  unit="%"
+                  valueColor={red.error_rate > 0.05 ? 'var(--color-fail)' : 'var(--color-text-1)'}
+                  className="h-full bg-[var(--color-bg)] p-4"
+                />
               </Col>
               <Col xs={24} md={12} xl={6}>
-                <Card><Statistic title="P95" value={red.p95_ms} precision={1} suffix="ms" /></Card>
+                <SummaryMetricCard
+                  layout="vertical"
+                  label="P95 延迟"
+                  value={red.p95_ms.toFixed(1)}
+                  unit="ms"
+                  className="h-full bg-[var(--color-bg)] p-4"
+                />
               </Col>
               <Col xs={24} md={12} xl={6}>
-                <Card><Statistic title="P99" value={red.p99_ms} precision={1} suffix="ms" /></Card>
+                <SummaryMetricCard
+                  layout="vertical"
+                  label="P99 延迟"
+                  value={red.p99_ms.toFixed(1)}
+                  unit="ms"
+                  className="h-full bg-[var(--color-bg)] p-4"
+                />
               </Col>
             </Row>
           ) : (
-            <CatalogState
-              kind={metricState === 'ready' ? 'error' : metricState}
-              description={metricState === 'empty' ? '当前服务尚无可查询的环境视图。' : undefined}
-            />
+            <ApmSurface padding="none">
+              <CatalogState
+                kind={metricState === 'ready' ? 'error' : metricState}
+                description={metricState === 'empty' ? '当前服务尚无可查询的环境视图。' : undefined}
+              />
+            </ApmSurface>
           )}
-        </>
+        </div>
       ) : null}
     </ApmRouteShell>
   );

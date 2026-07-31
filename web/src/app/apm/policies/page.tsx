@@ -1,7 +1,9 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { PlusOutlined } from '@ant-design/icons';
 import {
+  Badge,
   Button,
   Form,
   Input,
@@ -18,7 +20,7 @@ import {
   type TableColumnsType,
 } from 'antd';
 import useApmApi from '@/app/apm/api';
-import ApmRouteShell from '@/app/apm/components/apm-route-shell';
+import ApmRouteShell, { ApmSurface } from '@/app/apm/components/apm-route-shell';
 import CatalogState, { catalogErrorKind, type CatalogStateKind } from '@/app/apm/components/catalog-state';
 import type {
   ApmPolicy,
@@ -149,7 +151,6 @@ export default function ApmPoliciesPage() {
     {
       title: '策略',
       dataIndex: 'name',
-      fixed: 'left',
       render: (value, policy) => (
         <Space direction="vertical" size={0}>
           <Typography.Text strong>{value}</Typography.Text>
@@ -161,6 +162,7 @@ export default function ApmPoliciesPage() {
     },
     {
       title: '条件',
+      responsive: ['sm'],
       render: (_, policy) => (
         <span className="font-mono">
           {METRIC_LABELS[policy.metric_type]} {COMPARATOR_LABELS[policy.comparator]} {policy.threshold}
@@ -170,21 +172,23 @@ export default function ApmPoliciesPage() {
     {
       title: '窗口',
       width: 150,
+      responsive: ['lg'],
       render: (_, policy) => `${policy.duration_window} 次命中 / ${policy.recovery_window} 次恢复`,
     },
     {
       title: '级别',
       dataIndex: 'severity',
       width: 90,
+      responsive: ['lg'],
       render: (value: ApmPolicySeverity) => (
-        <Tag color={{ critical: 'red', error: 'orange', warning: 'gold' }[value]}>{SEVERITY_LABELS[value]}</Tag>
+        <Tag bordered={false} color={{ critical: 'red', error: 'orange', warning: 'gold' }[value]}>{SEVERITY_LABELS[value]}</Tag>
       ),
     },
     {
       title: '状态',
       width: 100,
       render: (_, policy) => (
-        <Tag color={policy.state?.status === 'firing' ? 'error' : 'success'}>
+        <Tag bordered={false} color={policy.state?.status === 'firing' ? 'error' : 'success'}>
           {policy.state?.status === 'firing' ? '告警中' : '正常'}
         </Tag>
       ),
@@ -192,6 +196,7 @@ export default function ApmPoliciesPage() {
     {
       title: '启用',
       width: 90,
+      responsive: ['md'],
       render: (_, policy) => (
         <Switch
           checked={policy.is_enabled}
@@ -208,8 +213,8 @@ export default function ApmPoliciesPage() {
     },
     {
       title: '操作',
-      fixed: 'right',
-      width: 220,
+      width: 210,
+      align: 'right',
       render: (_, policy) => (
         <Space wrap>
           <Button type="link" onClick={() => openEdit(policy)}>编辑</Button>
@@ -253,18 +258,50 @@ export default function ApmPoliciesPage() {
       description="按服务与环境管理阈值策略；告警事实保存在 APM，告警中心可作为 NATS 通知渠道。"
       dependency="control"
     >
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <Typography.Text type="secondary">策略每分钟评估；查询失败保持上次状态，不产生误触发或误恢复。</Typography.Text>
-        <Button type="primary" onClick={openCreate} disabled={!services.length}>新建策略</Button>
+      <div className="flex flex-col gap-3">
+        <ApmSurface padding="compact">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <Badge
+                count={policies.filter((policy) => policy.state?.status === 'firing').length}
+                showZero
+                color="var(--color-fail)"
+              />
+              <Typography.Text type="secondary" className="text-xs">
+                告警中策略 · 每分钟评估，查询失败时保持上次状态
+              </Typography.Text>
+            </div>
+            <Button
+              type="primary"
+              icon={<PlusOutlined aria-hidden="true" />}
+              onClick={openCreate}
+              disabled={!services.length}
+            >
+              新建策略
+            </Button>
+          </div>
+        </ApmSurface>
+        <ApmSurface padding="none" className="overflow-hidden">
+          {state === 'ready' ? (
+            <Table
+              rowKey="id"
+              columns={columns}
+              dataSource={policies}
+              pagination={{
+                defaultPageSize: 20,
+                pageSizeOptions: [10, 20, 50, 100],
+                showSizeChanger: true,
+                showTotal: (total) => `共 ${total} 条`,
+              }}
+            />
+          ) : (
+            <CatalogState
+              kind={state}
+              description={state === 'empty' ? (services.length ? '当前组织暂无 APM 策略。' : '请先接入并发现服务，再创建策略。') : undefined}
+            />
+          )}
+        </ApmSurface>
       </div>
-      {state === 'ready' ? (
-        <Table rowKey="id" columns={columns} dataSource={policies} scroll={{ x: 1100 }} pagination={{ pageSize: 20 }} />
-      ) : (
-        <CatalogState
-          kind={state}
-          description={state === 'empty' ? (services.length ? '当前组织暂无 APM 策略。' : '请先接入并发现服务，再创建策略。') : undefined}
-        />
-      )}
       <Modal
         title={editing ? '编辑 APM 策略' : '新建 APM 策略'}
         open={modalOpen}
@@ -277,6 +314,8 @@ export default function ApmPoliciesPage() {
           form.resetFields();
         }}
         destroyOnHidden
+        width={760}
+        styles={{ body: { maxHeight: 'calc(100vh - 240px)', overflowY: 'auto' } }}
       >
         <Form form={form} layout="vertical" requiredMark>
           <Form.Item name="name" label="策略名称" rules={[{ required: true, message: '请输入策略名称' }]}>

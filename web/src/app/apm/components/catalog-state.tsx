@@ -1,6 +1,6 @@
 'use client';
 
-import { Empty, Result, Spin } from 'antd';
+import { Empty, Result, Skeleton } from 'antd';
 import { HandledRequestError } from '@/utils/request';
 
 export type CatalogStateKind = 'loading' | 'empty' | 'forbidden' | 'degraded' | 'error';
@@ -18,10 +18,14 @@ export function catalogErrorKind(error: unknown): Exclude<CatalogStateKind, 'loa
 
 export default function CatalogState({ kind, description }: CatalogStateProps) {
   if (kind === 'loading') {
-    return <Spin className="my-12 flex justify-center" tip="加载 APM 数据" />;
+    return (
+      <div className="min-h-56 p-6" aria-label="加载 APM 数据">
+        <Skeleton active paragraph={{ rows: 5 }} title={false} />
+      </div>
+    );
   }
   if (kind === 'empty') {
-    return <Empty description={description ?? '当前范围暂无 APM 数据'} />;
+    return <Empty className="my-10" description={description ?? '当前范围暂无 APM 数据'} />;
   }
   if (kind === 'forbidden') {
     return <Result status="403" title="无权访问当前组织的 APM 数据" subTitle={description} />;

@@ -1,10 +1,11 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { Button, Select, Space, Table, Tag, Typography, type TableColumnsType } from 'antd';
+import { ReloadOutlined } from '@ant-design/icons';
+import { Badge, Button, Select, Space, Table, Tag, Typography, type TableColumnsType } from 'antd';
 import dayjs from 'dayjs';
 import useApmApi from '@/app/apm/api';
-import ApmRouteShell from '@/app/apm/components/apm-route-shell';
+import ApmRouteShell, { ApmSurface } from '@/app/apm/components/apm-route-shell';
 import CatalogState, { catalogErrorKind, type CatalogStateKind } from '@/app/apm/components/catalog-state';
 import type { ApmEvent, ApmEventQuery, ApmPolicySeverity } from '@/app/apm/types';
 
@@ -60,27 +61,31 @@ export default function ApmEventsPage() {
       dataIndex: 'severity',
       width: 90,
       render: (severity: ApmEvent['severity']) => (
-        <Tag color={SEVERITY[severity].color}>{SEVERITY[severity].label}</Tag>
+        <Tag bordered={false} color={SEVERITY[severity].color}>{SEVERITY[severity].label}</Tag>
       ),
     },
     {
       title: '生命周期',
       dataIndex: 'action',
       width: 100,
-      render: (action: ApmEvent['action']) => <Tag color={ACTION[action].color}>{ACTION[action].label}</Tag>,
+      responsive: ['sm'],
+      render: (action: ApmEvent['action']) => <Tag bordered={false} color={ACTION[action].color}>{ACTION[action].label}</Tag>,
     },
-    { title: '指标', dataIndex: 'item', width: 130 },
+    { title: '指标', dataIndex: 'item', width: 130, responsive: ['lg'] },
     {
       title: '值',
       dataIndex: 'value',
       width: 100,
+      responsive: ['md'],
       render: (value) => value ?? '—',
+      className: 'tabular-nums',
     },
     {
       title: '发生时间',
       dataIndex: 'start_time',
       width: 180,
-      render: (value) => dayjs(value).format('YYYY-MM-DD HH:mm:ss'),
+      responsive: ['md'],
+      render: (value) => <span className="tabular-nums">{dayjs(value).format('YYYY-MM-DD HH:mm:ss')}</span>,
     },
   ];
 
@@ -90,39 +95,57 @@ export default function ApmEventsPage() {
       description="查看由 APM 自己持久化和管理的告警生命周期事件。"
       dependency="control"
     >
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <Space wrap>
-          <Select
-            allowClear
-            aria-label="按生命周期筛选"
-            className="w-32"
-            placeholder="全部生命周期"
-            value={query.action}
-            options={Object.entries(ACTION).map(([value, config]) => ({ value, label: config.label }))}
-            onChange={(action) => setQuery((current) => ({ ...current, action }))}
-          />
-          <Select
-            allowClear
-            aria-label="按告警级别筛选"
-            className="w-32"
-            placeholder="全部级别"
-            value={query.severity}
-            options={(Object.entries(SEVERITY) as [ApmEvent['severity'], typeof SEVERITY[keyof typeof SEVERITY]][])
-              .filter(([value]) => value !== 'info')
-              .map(([value, config]) => ({ value: value as ApmPolicySeverity, label: config.label }))}
-            onChange={(severity) => setQuery((current) => ({ ...current, severity }))}
-          />
-        </Space>
-        <Button onClick={load}>刷新</Button>
+      <div className="flex flex-col gap-3">
+        <ApmSurface padding="compact">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <Space wrap>
+              <Select
+                allowClear
+                aria-label="按生命周期筛选"
+                className="w-36"
+                placeholder="全部生命周期"
+                value={query.action}
+                options={Object.entries(ACTION).map(([value, config]) => ({ value, label: config.label }))}
+                onChange={(action) => setQuery((current) => ({ ...current, action }))}
+              />
+              <Select
+                allowClear
+                aria-label="按告警级别筛选"
+                className="w-36"
+                placeholder="全部级别"
+                value={query.severity}
+                options={(Object.entries(SEVERITY) as [ApmEvent['severity'], typeof SEVERITY[keyof typeof SEVERITY]][])
+                  .filter(([value]) => value !== 'info')
+                  .map(([value, config]) => ({ value: value as ApmPolicySeverity, label: config.label }))}
+                onChange={(severity) => setQuery((current) => ({ ...current, severity }))}
+              />
+              <Badge
+                count={events.length}
+                showZero
+                color="var(--color-primary)"
+                className="text-xs text-[var(--color-text-3)]"
+              />
+              <Typography.Text type="secondary" className="text-xs">最近 7 天事件</Typography.Text>
+            </Space>
+            <Button icon={<ReloadOutlined aria-hidden="true" />} onClick={load}>刷新</Button>
+          </div>
+        </ApmSurface>
+        <ApmSurface padding="none" className="overflow-hidden">
+          {state === 'ready' ? (
+            <Table
+              rowKey="event_id"
+              columns={columns}
+              dataSource={events}
+              pagination={false}
+            />
+          ) : (
+            <CatalogState
+              kind={state}
+              description={state === 'empty' ? '最近 7 天当前组织没有 APM 告警事件。' : undefined}
+            />
+          )}
+        </ApmSurface>
       </div>
-      {state === 'ready' ? (
-        <Table rowKey="event_id" columns={columns} dataSource={events} scroll={{ x: 980 }} pagination={false} />
-      ) : (
-        <CatalogState
-          kind={state}
-          description={state === 'empty' ? '最近 7 天当前组织没有 APM 告警事件。' : undefined}
-        />
-      )}
     </ApmRouteShell>
   );
 }
