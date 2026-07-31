@@ -357,7 +357,7 @@ def test_runs_data_list_no_experiment(monkeypatch, superuser, suffix, prefix, mo
     assert resp.status_code == status.HTTP_200_OK
     assert resp.data["count"] == 0
     assert resp.data["items"] == []
-    assert "未找到对应的MLflow实验" in resp.data["message"]
+    assert resp.data["message"] == "MLflow experiment was not found"
 
 
 @pytest.mark.parametrize("suffix,prefix,model_module,basename", ALGOS, ids=ALGO_IDS)
@@ -374,7 +374,7 @@ def test_runs_data_list_empty_runs(monkeypatch, superuser, suffix, prefix, model
     resp = _call(view, request, superuser, pk=tj.id)
     assert resp.status_code == status.HTTP_200_OK
     assert resp.data["count"] == 0
-    assert "未找到训练运行记录" in resp.data["message"]
+    assert resp.data["message"] == "No training run records were found"
 
 
 @pytest.mark.parametrize("suffix,prefix,model_module,basename", ALGOS, ids=ALGO_IDS)
@@ -430,6 +430,7 @@ def test_delete_run_not_found(monkeypatch, superuser, suffix, prefix, model_modu
     resp = _call(view, request, superuser, pk=tj.id, run_id="missing")
     assert resp.status_code == status.HTTP_404_NOT_FOUND
     assert resp.data["code"] == "run_not_found"
+    assert resp.data["error"] == "Training run record was not found"
 
 
 @pytest.mark.parametrize("suffix,prefix,model_module,basename", ALGOS, ids=ALGO_IDS)
@@ -446,6 +447,7 @@ def test_delete_run_blocked_active_latest(monkeypatch, superuser, suffix, prefix
     resp = _call(view, request, superuser, pk=tj.id, run_id="r1")
     assert resp.status_code == status.HTTP_400_BAD_REQUEST
     assert resp.data["code"] == "active_latest_run"
+    assert resp.data["error"] == "The current training run record cannot be deleted"
 
 
 @pytest.mark.parametrize("suffix,prefix,model_module,basename", ALGOS, ids=ALGO_IDS)

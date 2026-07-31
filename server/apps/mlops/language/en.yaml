@@ -14,8 +14,13 @@ error:
   training_config_file_not_found: "Training configuration file was not found"
   dataset_release_already_archived: "Dataset release is already archived"
   dataset_release_not_archived: "Only archived dataset releases can be restored"
+  pagination_must_be_positive_integer: "Pagination parameters must be positive integers"
+  training_run_not_found: "Training run record was not found"
+  training_run_cannot_delete: "The current training run record cannot be deleted"
 message:
   archive_success: "Archived successfully"
   unarchive_success: "Restored successfully"
   training_task_started: "Training task started"
   training_task_stopped: "Training task stopped"
+  mlflow_experiment_not_found: "MLflow experiment was not found"
+  training_run_not_found: "No training run records were found"

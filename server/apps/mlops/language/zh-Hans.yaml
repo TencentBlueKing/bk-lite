@@ -14,8 +14,13 @@ error:
   training_config_file_not_found: "训练配置文件不存在"
   dataset_release_already_archived: "数据集版本已处于归档状态"
   dataset_release_not_archived: "只能恢复已归档的数据集版本"
+  pagination_must_be_positive_integer: "分页参数必须为正整数"
+  training_run_not_found: "未找到对应的训练运行记录"
+  training_run_cannot_delete: "当前训练运行记录不允许删除"
 message:
   archive_success: "归档成功"
   unarchive_success: "恢复成功"
   training_task_started: "训练任务已启动"
   training_task_stopped: "训练任务已停止"
+  mlflow_experiment_not_found: "未找到对应的MLflow实验"
+  training_run_not_found: "未找到训练运行记录"

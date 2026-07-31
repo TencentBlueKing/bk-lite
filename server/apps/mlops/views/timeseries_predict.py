@@ -307,7 +307,7 @@ class TimeSeriesPredictTrainJobViewSet(TeamModelViewSet):
         try:
             pagination = self.parse_run_list_pagination(request)
             if pagination is None:
-                return Response({"error": "分页参数必须为正整数"}, status=status.HTTP_400_BAD_REQUEST)
+                return Response({"error": mlops_message(request, "error.pagination_must_be_positive_integer")}, status=status.HTTP_400_BAD_REQUEST)
             page, page_size, use_pagination = pagination
 
             train_job = self.get_object()
@@ -328,7 +328,7 @@ class TimeSeriesPredictTrainJobViewSet(TeamModelViewSet):
                         "train_job_id": train_job.id,
                         "train_job_name": train_job.name,
                         "algorithm": train_job.algorithm,
-                        "message": "未找到对应的MLflow实验",
+                        "message": mlops_message(request, "message.mlflow_experiment_not_found"),
                         "count": 0,
                         "items": [],
                     }
@@ -343,7 +343,7 @@ class TimeSeriesPredictTrainJobViewSet(TeamModelViewSet):
                         "train_job_id": train_job.id,
                         "train_job_name": train_job.name,
                         "algorithm": train_job.algorithm,
-                        "message": "未找到训练运行记录",
+                        "message": mlops_message(request, "message.training_run_not_found"),
                         "count": 0,
                         "items": [],
                     }
@@ -434,7 +434,7 @@ class TimeSeriesPredictTrainJobViewSet(TeamModelViewSet):
             if not allowed:
                 return Response(
                     {
-                        "error": "未找到对应的训练运行记录" if reason == "run_not_found" else "当前训练运行记录不允许删除",
+                        "error": mlops_message(request, "error.training_run_not_found" if reason == "run_not_found" else "error.training_run_cannot_delete"),
                         "code": reason,
                         "run_id": run_id,
                     },
