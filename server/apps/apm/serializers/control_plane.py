@@ -24,6 +24,21 @@ class CreateIngestSourceSerializer(OrganizationAssignmentSerializer):
     environment_hint = serializers.CharField(max_length=128, required=False, allow_blank=True)
 
 
+class IngestSnippetSerializer(serializers.Serializer):
+    credential = serializers.CharField(max_length=128, trim_whitespace=False, write_only=True)
+    language = serializers.ChoiceField(choices=("python", "nodejs", "java", "go"))
+    runtime = serializers.ChoiceField(choices=("kubernetes", "docker", "host", "other"))
+    endpoint = serializers.URLField(max_length=512)
+    service_namespace = serializers.CharField(max_length=256, allow_blank=True)
+    service_name = serializers.CharField(max_length=256)
+    environment = serializers.CharField(max_length=256, allow_blank=True)
+
+    def validate_endpoint(self, value):
+        if not value.lower().startswith(("http://", "https://")):
+            raise serializers.ValidationError("OTLP 端点只支持 HTTP 或 HTTPS。")
+        return value
+
+
 class ApmIngestSourceSerializer(serializers.ModelSerializer):
     organization_ids = serializers.SerializerMethodField()
     missing_instance_identity = serializers.SerializerMethodField()

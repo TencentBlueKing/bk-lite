@@ -14,6 +14,7 @@ from apps.apm.serializers import (
     ApmServiceInstanceSerializer,
     ApmServiceSerializer,
     CreateIngestSourceSerializer,
+    IngestSnippetSerializer,
     OrganizationAssignmentSerializer,
     ServiceMetricQuerySerializer,
 )
@@ -31,7 +32,7 @@ from apps.apm.services.access import (
     filter_current_organization,
     validate_assignable_organizations,
 )
-from apps.apm.services.contracts import ServiceMetricQuery
+from apps.apm.services.contracts import IngestSnippetRequest, ServiceMetricQuery
 from apps.apm.services.status import ACTIVE_WINDOW, ARCHIVE_WINDOW
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.utils.user_group import normalize_user_group_ids
@@ -101,6 +102,30 @@ class ApmIngestSourceViewSet(viewsets.GenericViewSet):
         source = self.get_object()
         disabled = self.service.disable(source.id, actor=request.user.username)
         return Response(self.get_serializer(disabled).data)
+
+    @action(methods=("post",), detail=True)
+    @HasPermission("integration_add-Operate")
+    def snippet(self, request, *args, **kwargs):
+        source = self.get_object()
+        serializer = IngestSnippetSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        credential_source = self.service.validate_credential(data["credential"])
+        if credential_source is None or credential_source.id != source.id:
+            raise ValidationError({"credential": ["接入凭证无效或已失效。"]})
+        snippet = self.service.render_snippet(
+            IngestSnippetRequest(
+                language=data["language"],
+                runtime=data["runtime"],
+                endpoint=data["endpoint"],
+                service_namespace=data["service_namespace"],
+                service_name=data["service_name"],
+                environment=data["environment"],
+                credential=data["credential"],
+                ingest_type=source.ingest_type,
+            )
+        )
+        return Response({"environment": snippet.environment, "code": snippet.code})
 
     @action(methods=("put",), detail=True, url_path="organizations")
     @HasPermission("integration_add-Operate")

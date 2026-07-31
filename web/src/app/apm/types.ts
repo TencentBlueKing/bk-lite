@@ -51,10 +51,47 @@ export interface ApmServiceRed {
 export interface ApmIngestSource {
   id: string;
   name: string;
+  ingest_type: 'otlp_http' | 'otlp_grpc';
+  cloud_region_id: number | null;
+  environment_hint: string;
+  credential_prefix: string;
+  is_enabled: boolean;
   first_received_at: string | null;
   last_received_at: string | null;
   last_missing_instance_identity_at: string | null;
   missing_instance_identity: boolean;
+  organization_ids: number[];
+  created_at: string;
+  updated_at: string;
+  created_by: string;
+  updated_by: string;
+}
+
+export interface ApmIngestSourceInput {
+  name: string;
+  ingest_type: ApmIngestSource['ingest_type'];
+  organization_ids: number[];
+  cloud_region_id?: number | null;
+  environment_hint?: string;
+}
+
+export interface ApmIngestSourceWithCredential extends ApmIngestSource {
+  credential: string;
+}
+
+export interface ApmIngestSnippetInput {
+  credential: string;
+  language: 'python' | 'nodejs' | 'java' | 'go';
+  runtime: 'kubernetes' | 'docker' | 'host' | 'other';
+  endpoint: string;
+  service_namespace: string;
+  service_name: string;
+  environment: string;
+}
+
+export interface ApmIngestSnippet {
+  environment: Record<string, string>;
+  code: string;
 }
 
 export interface ApmHealth {

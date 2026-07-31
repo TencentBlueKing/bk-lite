@@ -2,6 +2,10 @@ import { useCallback } from 'react';
 import useApiClient from '@/utils/request';
 import type {
   ApmIngestSource,
+  ApmIngestSourceInput,
+  ApmIngestSourceWithCredential,
+  ApmIngestSnippet,
+  ApmIngestSnippetInput,
   ApmEvent,
   ApmEventQuery,
   ApmHealth,
@@ -25,7 +29,7 @@ interface InstanceQuery {
 }
 
 const useApmApi = () => {
-  const { del, get, patch, post, isLoading } = useApiClient();
+  const { del, get, patch, post, put, isLoading } = useApiClient();
 
   const getServices = useCallback(
     (params: { environment?: string; include_archived?: boolean } = {}) =>
@@ -47,6 +51,37 @@ const useApmApi = () => {
   );
 
   const getIngestSources = useCallback(() => get<ApmIngestSource[]>('/apm/ingest-sources/'), [get]);
+
+  const createIngestSource = useCallback(
+    (payload: ApmIngestSourceInput) =>
+      post<ApmIngestSourceWithCredential>('/apm/ingest-sources/', payload),
+    [post]
+  );
+
+  const rotateIngestSource = useCallback(
+    (sourceId: string) =>
+      post<ApmIngestSourceWithCredential>(`/apm/ingest-sources/${sourceId}/rotate/`),
+    [post]
+  );
+
+  const disableIngestSource = useCallback(
+    (sourceId: string) => post<ApmIngestSource>(`/apm/ingest-sources/${sourceId}/disable/`),
+    [post]
+  );
+
+  const setIngestSourceOrganizations = useCallback(
+    (sourceId: string, organizationIds: number[]) =>
+      put<ApmIngestSource>(`/apm/ingest-sources/${sourceId}/organizations/`, {
+        organization_ids: organizationIds,
+      }),
+    [put]
+  );
+
+  const getIngestSnippet = useCallback(
+    (sourceId: string, payload: ApmIngestSnippetInput) =>
+      post<ApmIngestSnippet>(`/apm/ingest-sources/${sourceId}/snippet/`, payload),
+    [post]
+  );
 
   const getHealth = useCallback(() => get<ApmHealth>('/apm/health/'), [get]);
 
@@ -112,6 +147,11 @@ const useApmApi = () => {
     getService,
     getInstances,
     getIngestSources,
+    createIngestSource,
+    rotateIngestSource,
+    disableIngestSource,
+    setIngestSourceOrganizations,
+    getIngestSnippet,
     getHealth,
     getServiceRed,
     getTraces,
