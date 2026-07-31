@@ -234,6 +234,7 @@
         "title": "Model Setting",
         "message": "Asset model management provides the creation and management of all asset models and model groups. You can create and manage them according to your needs.",
         "selectIcon": "Select the icon",
+        "searchIcon": "Search icon name",
         "addAttribute": "Add Attribute",
         "editAttribute": "Edit Attribute",
         "addAttrGroup": "Add Attribute Group",

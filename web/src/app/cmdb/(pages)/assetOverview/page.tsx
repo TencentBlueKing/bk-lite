@@ -5,29 +5,13 @@ import assetsOverviewStyle from './index.module.scss';
 import useApiClient from '@/utils/request';
 import { useTranslation } from '@/utils/i18n';
 import { GroupItem, ModelItem } from '@/app/cmdb/types/assetManage';
-import { deepClone, getIconUrl } from '@/app/cmdb/utils/common';
+import { deepClone } from '@/app/cmdb/utils/common';
 import { useRouter } from 'next/navigation';
-import Image from 'next/image';
+import ModelIcon from '@/app/cmdb/components/model-icon';
 import { Spin, Input, Empty } from 'antd';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import { useClassificationApi, useInstanceApi } from '@/app/cmdb/api';
 import { useCommon } from '@/app/cmdb/context/common';
-
-const DEFAULT_MODEL_ICON_URL =
-  '/assets/icons-realistic/cc-default_默认.svg';
-
-const handleModelIconError = (
-  event: React.SyntheticEvent<HTMLImageElement>
-) => {
-  const image = event.currentTarget;
-  if (image.dataset.fallbackApplied === 'true') {
-    image.style.visibility = 'hidden';
-    return;
-  }
-
-  image.dataset.fallbackApplied = 'true';
-  image.src = DEFAULT_MODEL_ICON_URL;
-};
 
 const AssetsOverview: React.FC = () => {
   const { isLoading } = useApiClient();
@@ -151,12 +135,12 @@ const AssetsOverview: React.FC = () => {
                             className={assetsOverviewStyle.modelIcon}
                             aria-hidden="true"
                           >
-                            <Image
-                              src={getIconUrl(sec)}
+                            <ModelIcon
+                              icon={sec.icn}
+                              modelId={sec.model_id}
                               alt=""
                               width={18}
                               height={18}
-                              onError={handleModelIconError}
                             />
                           </span>
                           <EllipsisWithTooltip
