@@ -39,11 +39,18 @@ const setToken = (token: string | null) => {
 /** Error already shown to user by the request interceptor — callers should stay silent. */
 export class HandledRequestError extends Error {
   readonly presentation?: RequestErrorPresentation;
+  status?: number;
 
-  constructor(message: string, presentation?: RequestErrorPresentation) {
+  constructor(message: string, presentation?: RequestErrorPresentation, status?: number) {
     super(message);
     this.name = 'HandledRequestError';
     this.presentation = presentation;
+    this.status = status;
+  }
+
+  withStatus(status: number) {
+    this.status = status;
+    return this;
   }
 }
 
@@ -106,13 +113,17 @@ apiClient.interceptors.response.use(
         } else {
           message.error(messageText);
         }
-        return Promise.reject(new HandledRequestError(messageText, presentation ?? undefined));
+        return Promise.reject(
+          new HandledRequestError(messageText, presentation ?? undefined).withStatus(status)
+        );
       } else if (status === 500) {
         message.error(messageText);
-        return Promise.reject(new HandledRequestError(messageText || 'Internal Server Error'));
+        return Promise.reject(
+          new HandledRequestError(messageText || 'Internal Server Error').withStatus(status)
+        );
       } else {
         message.error(messageText);
-        return Promise.reject(new HandledRequestError(messageText));
+        return Promise.reject(new HandledRequestError(messageText).withStatus(status));
       }
     }
 

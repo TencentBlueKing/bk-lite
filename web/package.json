@@ -40,6 +40,7 @@
     "test:log-search-field-stats": "pnpm exec tsx scripts/log-search-field-stats-test.ts",
     "test:log-analysis-group-bootstrap": "pnpm exec tsx scripts/log-analysis-group-bootstrap-test.ts",
     "test:log-terminal-token": "pnpm exec tsx scripts/log-terminal-token-test.ts",
+    "test:apm-dynamic-route-permission": "pnpm exec tsx scripts/apm-dynamic-route-permission-test.ts",
     "test:log-policy-form": "pnpm exec tsx scripts/log-policy-form-state-test.ts",
     "test:log-vector-config": "pnpm exec tsx scripts/log-vector-config-test.ts",
     "test:log-extractor-interaction": "pnpm exec tsx scripts/log-extractor-interaction-test.ts",

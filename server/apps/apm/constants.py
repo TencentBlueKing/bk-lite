@@ -1,0 +1,2 @@
+APM_ALERT_SOURCE_ID = "apm"
+APM_ALERT_PUSHER = "lite-apm"

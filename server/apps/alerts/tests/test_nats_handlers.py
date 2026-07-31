@@ -933,7 +933,7 @@ def test_receive_alert_events_success():
     assert Event.objects.filter(title="事件A").exists()
 
 
-@pytest.mark.parametrize("pusher", ["lite-monitor", "lite-log"])
+@pytest.mark.parametrize("pusher", ["lite-monitor", "lite-log", "lite-apm"])
 @pytest.mark.django_db
 def test_receive_alert_events_allows_whitelisted_internal_organizations_without_source_registration(pusher):
     """内部白名单来源直推不依赖 NATS 告警源预先登记组织。"""
