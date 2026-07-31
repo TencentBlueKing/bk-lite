@@ -875,7 +875,7 @@ class ClassificationTrainJobViewSet(TeamModelViewSet):
 
             return Response(
                 {
-                    "message": "训练任务已启动",
+                    "message": mlops_message(request, "message.training_task_started"),
                     "job_id": job_id,
                     "train_job_id": train_job.id,
                 }
@@ -932,7 +932,7 @@ class ClassificationTrainJobViewSet(TeamModelViewSet):
 
             return Response(
                 {
-                    "message": "训练任务已停止",
+                    "message": mlops_message(request, "message.training_task_stopped"),
                     "job_id": job_id,
                     "train_job_id": train_job.id,
                     "webhook_response": result,

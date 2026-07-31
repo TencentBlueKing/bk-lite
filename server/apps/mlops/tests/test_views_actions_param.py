@@ -280,6 +280,7 @@ def test_train_happy_path(monkeypatch, superuser, suffix, prefix, model_module, 
     request = factory.post(f"/{suffix}_train_jobs/x/train/")
     resp = _call(view, request, superuser, pk=tj.id)
     assert resp.status_code == status.HTTP_200_OK
+    assert resp.data["message"] == "Training task started"
     assert "train_job_id" in resp.data
     train_mock.assert_called_once()
     delay_mock.assert_called_once()
@@ -314,6 +315,7 @@ def test_stop_running_success(monkeypatch, superuser, suffix, prefix, model_modu
     request = factory.post(f"/{suffix}_train_jobs/x/stop/")
     resp = _call(view, request, superuser, pk=tj.id)
     assert resp.status_code == status.HTTP_200_OK
+    assert resp.data["message"] == "Training task stopped"
     assert resp.data["webhook_response"] == {"ok": True}
     tj.refresh_from_db()
     assert tj.status == TrainJobStatus.PENDING

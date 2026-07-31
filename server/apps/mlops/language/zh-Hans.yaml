@@ -17,3 +17,5 @@ error:
 message:
   archive_success: "归档成功"
   unarchive_success: "恢复成功"
+  training_task_started: "训练任务已启动"
+  training_task_stopped: "训练任务已停止"

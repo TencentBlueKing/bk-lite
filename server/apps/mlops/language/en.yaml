@@ -17,3 +17,5 @@ error:
 message:
   archive_success: "Archived successfully"
   unarchive_success: "Restored successfully"
+  training_task_started: "Training task started"
+  training_task_stopped: "Training task stopped"

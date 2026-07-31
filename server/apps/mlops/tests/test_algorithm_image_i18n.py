@@ -31,6 +31,8 @@ def test_training_lifecycle_endpoints_use_localized_messages():
         for message in (
             "训练任务已在运行中",
             "训练任务未在运行中",
+            "训练任务已启动",
+            "训练任务已停止",
             "数据集文件不存在",
             "训练配置文件不存在",
         ):
