@@ -5,7 +5,9 @@ from django.utils import timezone
 
 from apps.apm.adapters import InMemoryAlertPublisher
 from apps.apm.models import (
+    ApmAlert,
     ApmAlertOutbox,
+    ApmEvent,
     ApmPolicy,
     ApmPolicyState,
     ApmService,
@@ -58,6 +60,9 @@ def policy():
         duration_window=2,
         recovery_window=2,
         severity=ApmPolicy.Severity.ERROR,
+        notice=True,
+        notice_type_ids=[7],
+        notice_users=["on-call"],
     )
 
 
@@ -74,8 +79,12 @@ def test_evaluation_creates_one_idempotent_trigger_and_one_recovery(policy):
     state = ApmPolicyState.objects.get(policy=policy)
     assert state.status == ApmPolicyState.Status.FIRING
     assert state.consecutive_hits == 2
+    assert ApmAlert.objects.filter(status=ApmAlert.Status.FIRING).count() == 1
+    assert ApmEvent.objects.filter(action=ApmEvent.Action.CREATED).count() == 1
     assert ApmAlertOutbox.objects.count() == 1
     trigger = ApmAlertOutbox.objects.get()
+    assert trigger.channel_id == 7
+    assert trigger.receivers == ["on-call"]
     assert trigger.payload["action"] == "created"
     assert trigger.payload["organizations"] == [10]
     assert trigger.payload["external_id"] == state.external_alert_id
@@ -86,8 +95,11 @@ def test_evaluation_creates_one_idempotent_trigger_and_one_recovery(policy):
 
     state.refresh_from_db()
     events = list(ApmAlertOutbox.objects.order_by("created_at"))
+    alert = ApmAlert.objects.get()
     assert state.status == ApmPolicyState.Status.NORMAL
     assert state.external_alert_id == ""
+    assert alert.status == ApmAlert.Status.RECOVERED
+    assert alert.events.count() == 2
     assert [event.payload["action"] for event in events] == ["created", "recovery"]
     assert events[0].payload["external_id"] == events[1].payload["external_id"]
 
@@ -95,6 +107,7 @@ def test_evaluation_creates_one_idempotent_trigger_and_one_recovery(policy):
     assert result.accepted == 2
     assert result.failed == 0
     assert len(publisher.events) == 2
+    assert {event.channel_id for event in publisher.events} == {7}
     assert not ApmAlertOutbox.objects.filter(
         delivery_status=ApmAlertOutbox.DeliveryStatus.PENDING
     ).exists()
@@ -117,6 +130,7 @@ def test_metric_failure_keeps_last_state_and_produces_no_event(policy):
     assert after.evaluation_cursor == before.evaluation_cursor
     assert after.last_failed_at is not None
     assert ApmAlertOutbox.objects.count() == 0
+    assert ApmEvent.objects.count() == 0
 
 
 def test_failed_delivery_remains_pending_for_bounded_compensation(policy):

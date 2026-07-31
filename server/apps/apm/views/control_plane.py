@@ -2,6 +2,7 @@ from django.db.models import Prefetch, QuerySet
 from django.utils import timezone
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import ValidationError
 from rest_framework.generics import get_object_or_404
 from rest_framework.response import Response
 
@@ -16,19 +17,36 @@ from apps.apm.serializers import (
     OrganizationAssignmentSerializer,
     ServiceMetricQuerySerializer,
 )
-from apps.apm.adapters import AlertsNatsPublisher, TelemetryStoreUnavailable, VictoriaMetricsMetricStore
+from apps.apm.adapters import SystemMgmtNatsAlertPublisher, TelemetryStoreUnavailable, VictoriaMetricsMetricStore
 from apps.apm.services import (
-    AlertsUnavailable,
     DjangoApmEventReader,
     DjangoApmPolicyService,
     DjangoIngestSourceService,
     DjangoTelemetryCatalogService,
     DjangoTelemetryQueryService,
+    NotificationChannelDirectory,
 )
-from apps.apm.services.access import current_organization_id, filter_current_organization, validate_assignable_organizations
+from apps.apm.services.access import (
+    current_organization_id,
+    filter_current_organization,
+    validate_assignable_organizations,
+)
 from apps.apm.services.contracts import ServiceMetricQuery
 from apps.apm.services.status import ACTIVE_WINDOW, ARCHIVE_WINDOW
 from apps.core.decorators.api_permission import HasPermission
+from apps.core.utils.user_group import normalize_user_group_ids
+
+
+def _notification_actor_context(request, organization_id: int) -> dict:
+    include_children = request.COOKIES.get("include_children", "0") == "1"
+    return {
+        "username": request.user.username,
+        "domain": request.user.domain,
+        "current_team": organization_id,
+        "include_children": include_children,
+        "is_superuser": request.user.is_superuser,
+        "group_list": normalize_user_group_ids(getattr(request.user, "group_list", [])),
+    }
 
 
 class ApmIngestSourceViewSet(viewsets.GenericViewSet):
@@ -278,10 +296,11 @@ class ApmServiceInstanceViewSet(viewsets.ReadOnlyModelViewSet):
 
 class ApmPolicyViewSet(viewsets.GenericViewSet):
     serializer_class = ApmPolicySerializer
+    notification_directory = NotificationChannelDirectory()
 
     @staticmethod
     def _service():
-        return DjangoApmPolicyService(VictoriaMetricsMetricStore(), AlertsNatsPublisher())
+        return DjangoApmPolicyService(VictoriaMetricsMetricStore(), SystemMgmtNatsAlertPublisher())
 
     def get_queryset(self):
         queryset = ApmPolicy.objects.select_related("service", "state").prefetch_related(
@@ -297,6 +316,34 @@ class ApmPolicyViewSet(viewsets.GenericViewSet):
         )
         return get_object_or_404(queryset, id=service_id)
 
+    def _validate_notification_channels(self, serializer, policy=None):
+        data = serializer.validated_data
+        if policy is not None and not {"notice", "notice_type_ids", "service_id"}.intersection(data):
+            return None
+        notice = data.get("notice", getattr(policy, "notice", False))
+        channel_ids = data.get("notice_type_ids", getattr(policy, "notice_type_ids", []))
+        if not notice:
+            return None
+        organization_id = current_organization_id(self.request)
+        if organization_id is None:
+            raise ValidationError({"notice_type_ids": "缺少当前组织。"})
+        actor_context = _notification_actor_context(self.request, organization_id)
+        try:
+            channels = self.notification_directory.list_alert_event_channels(
+                actor_context=actor_context,
+                organization_id=organization_id,
+                include_children=actor_context["include_children"],
+            )
+        except RuntimeError as exc:
+            return Response(
+                {"detail": str(exc), "code": "notification_channels_unavailable"},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+        allowed_ids = {int(channel["id"]) for channel in channels}
+        if not set(channel_ids).issubset(allowed_ids):
+            raise ValidationError({"notice_type_ids": "包含当前组织不可用的告警中心渠道。"})
+        return None
+
     @HasPermission("policies-View")
     def list(self, request, *args, **kwargs):
         return Response(self.get_serializer(self.get_queryset(), many=True).data)
@@ -309,6 +356,9 @@ class ApmPolicyViewSet(viewsets.GenericViewSet):
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+        notification_error = self._validate_notification_channels(serializer)
+        if notification_error is not None:
+            return notification_error
         service_id = serializer.validated_data.pop("service_id")
         policy = serializer.save(
             service=self._visible_service(service_id),
@@ -323,6 +373,9 @@ class ApmPolicyViewSet(viewsets.GenericViewSet):
         policy = self.get_object()
         serializer = self.get_serializer(policy, data=request.data, partial=kwargs.get("partial", False))
         serializer.is_valid(raise_exception=True)
+        notification_error = self._validate_notification_channels(serializer, policy)
+        if notification_error is not None:
+            return notification_error
         service_id = serializer.validated_data.pop("service_id", None)
         save_kwargs = {"updated_by": request.user.username}
         if service_id is not None:
@@ -393,11 +446,27 @@ class ApmEventViewSet(viewsets.GenericViewSet):
             return Response([])
         serializer = ApmEventQuerySerializer(data=request.query_params)
         serializer.is_valid(raise_exception=True)
+        return Response(self.reader.list(organization_id=organization_id, **serializer.validated_data))
+
+
+class ApmNotificationChannelViewSet(viewsets.GenericViewSet):
+    directory = NotificationChannelDirectory()
+
+    @HasPermission("policies-View")
+    def list(self, request, *args, **kwargs):
+        organization_id = current_organization_id(request)
+        if organization_id is None:
+            return Response([])
+        actor_context = _notification_actor_context(request, organization_id)
         try:
-            events = self.reader.list(organization_id=organization_id, **serializer.validated_data)
-        except AlertsUnavailable as exc:
+            channels = self.directory.list_alert_event_channels(
+                actor_context=actor_context,
+                organization_id=organization_id,
+                include_children=actor_context["include_children"],
+            )
+        except RuntimeError as exc:
             return Response(
-                {"detail": str(exc), "code": "alerts_unavailable"},
+                {"detail": str(exc), "code": "notification_channels_unavailable"},
                 status=status.HTTP_503_SERVICE_UNAVAILABLE,
             )
-        return Response(events)
+        return Response(channels)

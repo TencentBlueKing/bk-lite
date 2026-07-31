@@ -1,6 +1,5 @@
 'use client';
 
-import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
 import { Button, Select, Space, Table, Tag, Typography, type TableColumnsType } from 'antd';
 import dayjs from 'dayjs';
@@ -21,7 +20,6 @@ const SEVERITY = {
 const ACTION = {
   created: { label: '触发', color: 'error' },
   recovery: { label: '恢复', color: 'success' },
-  closed: { label: '关闭', color: 'default' },
 } as const;
 
 export default function ApmEventsPage() {
@@ -84,23 +82,13 @@ export default function ApmEventsPage() {
       width: 180,
       render: (value) => dayjs(value).format('YYYY-MM-DD HH:mm:ss'),
     },
-    {
-      title: '操作',
-      fixed: 'right',
-      width: 120,
-      render: (_, event) => (
-        <Link href={`/alarm/alarms?resource_type=apm_service&resource_id=${encodeURIComponent(event.resource_id)}`}>
-          <Button type="link">告警中心</Button>
-        </Link>
-      ),
-    },
   ];
 
   return (
     <ApmRouteShell
       title="APM 事件"
-      description="查看统一告警中心中来源为 APM 的事件，不复制告警生命周期数据。"
-      dependency="alerts"
+      description="查看由 APM 自己持久化和管理的告警生命周期事件。"
+      dependency="control"
     >
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <Space wrap>

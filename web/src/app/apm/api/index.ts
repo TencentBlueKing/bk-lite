@@ -11,6 +11,7 @@ import type {
   ApmPolicy,
   ApmPolicyInput,
   ApmPolicyQueryResult,
+  ApmNotificationChannel,
   ApmTraceDetail,
   ApmTracePage,
   ApmTraceSearchParams,
@@ -101,6 +102,11 @@ const useApmApi = () => {
     [get]
   );
 
+  const getNotificationChannels = useCallback(
+    () => get<ApmNotificationChannel[]>('/apm/notification-channels/'),
+    [get]
+  );
+
   return {
     getServices,
     getService,
@@ -117,6 +123,7 @@ const useApmApi = () => {
     setPolicyEnabled,
     testPolicy,
     getEvents,
+    getNotificationChannels,
     isLoading,
   };
 };

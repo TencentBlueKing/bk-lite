@@ -3,6 +3,7 @@ from rest_framework import routers
 from apps.apm.views.control_plane import (
     ApmEventViewSet,
     ApmIngestSourceViewSet,
+    ApmNotificationChannelViewSet,
     ApmPolicyViewSet,
     ApmServiceInstanceViewSet,
     ApmServiceViewSet,
@@ -20,5 +21,6 @@ router.register(r"health", ApmHealthViewSet, basename="apm-health")
 router.register(r"traces", ApmTraceViewSet, basename="apm-trace")
 router.register(r"policies", ApmPolicyViewSet, basename="apm-policy")
 router.register(r"events", ApmEventViewSet, basename="apm-event")
+router.register(r"notification-channels", ApmNotificationChannelViewSet, basename="apm-notification-channel")
 
 urlpatterns = router.urls

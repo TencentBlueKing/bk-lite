@@ -212,6 +212,29 @@ def test_search_channel_list_scoped_默认值(client):
     )
 
 
+def test_search_channel_list_scoped_转发NATS方法过滤(client):
+    ctx = {"user": "a"}
+
+    client.search_channel_list_scoped(
+        ctx,
+        channel_type="nats",
+        teams=[1],
+        channel_method="receive_alert_events",
+    )
+
+    assert _last(client) == (
+        "search_channel_list_scoped",
+        (),
+        {
+            "actor_context": ctx,
+            "channel_type": "nats",
+            "teams": [1],
+            "include_children": False,
+            "channel_method": "receive_alert_events",
+        },
+    )
+
+
 def test_search_groups_转发query_params(client):
     client.search_groups({"search": "x"})
     assert _last(client) == ("search_groups", (), {"query_params": {"search": "x"}})

@@ -133,6 +133,9 @@ export interface ApmPolicyInput {
   duration_window: number;
   recovery_window: number;
   severity: ApmPolicySeverity;
+  notice: boolean;
+  notice_type_ids: number[];
+  notice_users: string[];
   is_enabled: boolean;
 }
 
@@ -159,13 +162,13 @@ export interface ApmPolicyQueryResult {
 }
 
 export interface ApmEvent {
-  id: number;
+  id: string;
   event_id: string;
   external_id: string;
   title: string;
   description: string;
   severity: ApmPolicySeverity | 'info';
-  action: 'created' | 'recovery' | 'closed';
+  action: 'created' | 'recovery';
   status: string;
   service: string;
   item: ApmPolicyMetric;
@@ -185,4 +188,11 @@ export interface ApmEventQuery {
   started_at?: string;
   ended_at?: string;
   limit?: number;
+}
+
+export interface ApmNotificationChannel {
+  id: number;
+  name: string;
+  channel_type: 'nats';
+  description: string;
 }

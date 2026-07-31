@@ -23,10 +23,10 @@ OpenTelemetry Collector Gateway
       └── 尾采样 Span ───────────→ VictoriaTraces
 
 BK-Lite apps.apm
-      ├── PostgreSQL：接入源、服务、实例、组织、策略元数据
+      ├── PostgreSQL：接入源、服务、实例、组织、策略、事件与告警
       ├── TraceStore：查询 VictoriaTraces
       ├── MetricStore：查询 VictoriaMetrics
-      └── 告警事件 ───────────────→ apps.alerts
+      └── 可选通知 ── 标准事件 / NATS ──→ 告警中心
 ```
 
 第一期只实现添加接入、接入实例列表、服务目录与 RED、Trace 搜索与详情、基础阈值告警。首页、拓扑、SLO、Issue 聚类、运行时指标和高级治理保留 Storybook 设计，不进入本期生产路由。
@@ -38,7 +38,7 @@ BK-Lite apps.apm
 3. As an application owner, I want horizontally scaled instances to aggregate into one logical service, so that throughput, error rate and latency describe the whole service.
 4. As an operator, I want service health separated by environment, so that testing traffic cannot pollute production health.
 5. As a developer, I want to start from an anomalous service and drill into a concrete Trace and Span, so that I can locate the slow or failing dependency.
-6. As an alert administrator, I want APM policies to produce events in the existing alert center, so that notification, shielding and escalation remain unified.
+6. As an alert administrator, I want APM policies to maintain their own alert lifecycle and optionally send standard events to a configured alert-center NATS channel, so that APM remains independently operable while cross-source aggregation is still available.
 7. As a deployment administrator, I want APM storage failures to degrade APM pages without blocking BK-Lite Server startup, so that observability is not a circular hard dependency.
 
 ## Implementation Decisions
@@ -47,7 +47,8 @@ BK-Lite apps.apm
 
 - 后端新增 `server/apps/apm`，由现有 app 自动发现机制暴露在 `/api/v1/apm/`；前端新增 `web/src/app/apm`，与 `/monitor`、`/log` 同级。
 - APM 不复用 Monitor 的监控对象、监控实例或 CMDB 服务模型。它们的身份、生命周期和数据来源不同。
-- APM 只拥有接入元数据、服务与实例目录、遥测查询编排、APM 策略和评估状态。原始 Span 与派生指标不写 PostgreSQL。
+- APM 只拥有接入元数据、服务与实例目录、遥测查询编排、APM 策略、事件、告警和评估状态。原始 Span 与派生指标不写 PostgreSQL。
+- Monitor、Log、APM 等同级 App 各自拥有领域告警事实与生命周期；任何 App 不得直接引用另一个 App 的模型、表或内部实现。告警中心仅作为可选通知渠道接收标准事件副本。
 - Storybook 是视觉和交互参考，不把当前大型 story 文件直接复制进生产页面。生产页面按路由拆分并复用 Ant Design 和已有共享组件；只有出现至少两个真实使用方时才新增共享抽象。
 
 ### 2. 统一领域模型
@@ -116,14 +117,16 @@ service.namespace + service.name
 | `ApmServiceOrganization` | 服务 + 组织唯一；与实例组织独立 |
 | `ApmServiceInstance` | UUID 主键、服务外键、instance ID、环境、版本、来源外键、权限模式、首次/最近发现、归档字段；服务 + instance ID 唯一 |
 | `ApmServiceInstanceOrganization` | 实例 + 组织唯一；实例为继承态时由接入源组织同步 |
-| `ApmPolicy` | 服务、环境、指标类型、比较符、阈值、持续窗口、恢复窗口、级别、启用状态和审计字段 |
+| `ApmPolicy` | 服务、环境、指标类型、比较符、阈值、持续/恢复窗口、级别、通知开关、通知渠道、启用状态和审计字段 |
 | `ApmPolicyState` | 策略评估游标、连续命中/恢复计数、当前状态、最后成功/失败时间、外部告警 ID |
-| `ApmAlertOutbox` | 事件唯一键、规范化 payload、投递状态、尝试次数和下次重试时间；唯一键防止重复投递 |
+| `ApmAlert` | APM 告警唯一 ID、策略、服务、环境、状态、级别、当前值、开始/结束时间和组织快照 |
+| `ApmEvent` | 事件唯一键、关联告警、动作、级别、值、内容、发生时间和组织快照 |
+| `ApmAlertOutbox` | 关联 APM 事件、目标通知渠道、规范化 payload、投递状态、尝试次数和下次重试时间；事件 + 渠道唯一防止重复投递 |
 
 - 所有数据库访问使用 Django ORM，不使用 raw SQL、`.raw()`、`RawSQL` 或 `cursor.execute`。
 - 原始 namespace/name/instance ID 保留用于展示，同时保存规范化值用于唯一约束；规范化规则由一个领域函数统一实现，API、任务和迁移不能各自复制。
 - 外部组织使用稳定 ID 关联并遵循现有组织删除语义；不得把组织 ID写进 Trace 或指标标签。
-- `ApmAlertOutbox` 与策略状态更新处于同一数据库事务，实际 NATS 发布发生在提交后的运行期任务。
+- `ApmAlert`、`ApmEvent`、`ApmAlertOutbox` 与策略状态更新处于同一数据库事务；实际通知发生在提交后的运行期任务。
 
 ### 3. 遥测入口与数据面
 
@@ -183,7 +186,7 @@ Collector 不同步调用 Django 创建服务或实例。`TelemetryCatalogReconc
 1. `IngestSourceService`：创建、轮换、禁用接入源，管理默认组织，生成接入片段和校验机器凭证；隐藏摘要、轮换并发、审计和模板参数。
 2. `TelemetryCatalogService`：发现、查询、归档服务与实例，管理服务/实例组织；隐藏身份规范化、继承/自定义权限、首次实例规则和状态机。
 3. `TelemetryQueryService`：提供服务 RED、Trace 搜索与详情；隐藏查询语言、标签转义、时间窗/分页硬限制和外部错误映射。
-4. `ApmPolicyService`：管理策略、周期评估并发布标准告警事件；隐藏查询公式、连续命中、恢复、防重复与投递补偿。
+4. `ApmPolicyService`：管理策略、周期评估和 APM 自有告警生命周期，并按策略通知配置发布标准事件；隐藏查询公式、连续命中、恢复、防重复与投递补偿。
 
 外部存储通过小接口隔离：
 
@@ -200,7 +203,7 @@ class AlertPublisher(Protocol):
     def publish(self, events: Sequence[ApmAlertEvent]) -> PublishResult: ...
 ```
 
-生产适配器分别使用 VictoriaTraces、VictoriaMetrics 和现有 Alerts NATS 契约；测试使用功能完整的内存适配器。View、Serializer 和 Celery task 只能调用深模块，不直接拼外部查询。
+生产适配器分别使用 VictoriaTraces、VictoriaMetrics 和系统管理通知渠道；告警中心通过用户选择的 `receive_alert_events` NATS 渠道接收事件副本。测试使用功能完整的内存适配器。View、Serializer 和 Celery task 只能调用深模块，不直接拼外部查询。
 
 ### 8. API 与权限
 
@@ -215,7 +218,8 @@ class AlertPublisher(Protocol):
 | `/api/v1/apm/traces/` | 有界时间窗、游标分页的 Trace 搜索 |
 | `/api/v1/apm/traces/{trace_id}/` | Trace、Span 瀑布和属性详情 |
 | `/api/v1/apm/policies/` | 基础策略 CRUD、启停与测试查询 |
-| `/api/v1/apm/events/` | 查询告警中心中 APM 来源事件 |
+| `/api/v1/apm/events/` | 查询 APM 自有事件与告警生命周期 |
+| `/api/v1/apm/notification-channels/` | 查询当前组织可选择的告警中心 NATS 渠道 |
 
 - APM 菜单声明独立 View/Operate 权限；读取要求 View，接入、组织、归档和策略变更要求对应 Operate。
 - 服务 API 按 `ApmServiceOrganization` 与当前团队授权；实例和 Trace API 按 `ApmServiceInstanceOrganization` 授权。通过 trace ID 直接访问也必须先解析实例并鉴权。
@@ -228,9 +232,10 @@ class AlertPublisher(Protocol):
 - `apps.apm` 保存并评估错误率、P95/P99、吞吐异常/无流量三类基础策略，评估维度为服务 + 环境。
 - 评估任务查询 VictoriaMetrics；查询失败时保持上次状态，记录“评估失败”并重试，不产生触发、恢复或无数据误报。
 - 连续命中、恢复窗口和事件 external ID 必须幂等，任务重复执行不能创建重复告警。
-- APM 通过现有 `receive_alert_events` NATS 契约发布，注册独立有效 source，并把 `lite-apm` 纳入明确的可信内部推送方。
-- `apps.alerts` 继续负责事件聚合、生命周期、通知、屏蔽与升级。APM 的“事件”页面只是 APM 来源的领域视图，不复制告警表。
-- 事务提交后投递失败必须保留待投递状态并由运行期任务补偿；不能在请求事务内同步等待 Alerts 响应。
+- `apps.apm` 保存自身事件与告警生命周期；事件页面只查询 APM 模型，不读取其他 App 的表。
+- 策略可选择系统管理中的一个或多个 `receive_alert_events` NATS 渠道。APM 以 `lite-apm` 推送方发送标准事件副本，由告警中心负责跨源聚合与事故协同，但不反向拥有 APM 告警事实。
+- 未选择通知渠道时仍正常产生 APM 告警；通知失败只影响对应渠道投递状态，不影响 APM 事件和状态。
+- 事务提交后通知失败必须保留待投递状态并由运行期任务补偿；不能在请求事务内同步等待通知渠道响应。
 
 ### 10. 前端范围
 
@@ -257,7 +262,7 @@ class AlertPublisher(Protocol):
 
 - 默认部署新增 VictoriaTraces、APM OTel Collector Gateway 和边缘鉴权路由；VictoriaMetrics 复用现有实例。
 - VictoriaTraces 是默认 Trace Store，但 `apps.apm` 只依赖 `TraceStore` 接口。外部部署可以提供兼容适配器，不把 VictoriaTraces SDK 类型泄漏到领域层。
-- `batch_init` 不探测、不创建、不等待 Collector、VictoriaTraces、VictoriaMetrics、NATS listener 或 Alerts responder。非关键外部声明和对账全部在 Supervisor 启动后的运行期执行。
+- `batch_init` 不探测、不创建、不等待 Collector、VictoriaTraces、VictoriaMetrics、NATS listener 或通知渠道 responder。非关键外部声明和对账全部在 Supervisor 启动后的运行期执行。
 - APM 外部依赖缺失时，BK-Lite Server 正常启动；APM 健康接口和页面返回明确 degraded 状态。元数据 CRUD 仍可用，遥测查询返回可重试的 503。
 - Collector、VictoriaTraces 和边缘代理各自提供健康检查、资源限制和持久卷；“端口可连接”不等同于数据可写，接入自检以成功认证和最近落库事实为准。
 - 不使用 `sleep`、无限重试或延长启动超时掩盖依赖顺序。
@@ -288,8 +293,8 @@ class AlertPublisher(Protocol):
 
 ### Slice 5：基础告警
 
-- 实现三类基础策略、评估任务、幂等事件和 Alerts 补偿投递。
-- APM 事件页复用告警中心数据与生命周期。
+- 实现三类基础策略、评估任务、APM 自有告警生命周期、幂等事件和通知渠道补偿投递。
+- APM 事件页读取本 App 数据；告警中心仅作为可选 NATS 通知渠道。
 
 ## 必须覆盖的验收场景
 
@@ -304,8 +309,8 @@ class AlertPublisher(Protocol):
 9. RED 查询不平均实例百分位；无界属性不进入指标标签；动态 URL 不导致指标基数无界增长。
 10. 缺少 instance ID 的 Span 可在服务和 Trace 中出现，但不生成伪实例，并可观察身份诊断。
 11. Trace 直接访问经过实例组织鉴权；越权和不存在返回不可枚举结果；敏感属性不回传。
-12. 评估重复执行不重复告警；VictoriaMetrics 查询失败不误触发或误恢复；Alerts 投递失败可补偿。
-13. Collector、VictoriaTraces、VictoriaMetrics、NATS 或 Alerts 不可用均不阻断 Server 启动；`batch_init` 不调用任何运行期进程。
+12. 评估重复执行不重复告警；VictoriaMetrics 查询失败不误触发或误恢复；通知渠道投递失败可补偿。
+13. Collector、VictoriaTraces、VictoriaMetrics、NATS 或通知渠道不可用均不阻断 Server 启动；未安装 Alerts 时 APM 全部领域功能仍可用；`batch_init` 不调用任何运行期进程。
 14. 外部存储失败与合法空数据在 API 和 UI 中有不同状态；查询时间窗、分页和响应大小都有硬限制。
 15. 生产页面使用真实 API，无 Storybook fixture 泄漏；中英文菜单、权限和主要空/错/加载态均有覆盖。
 
@@ -322,4 +327,4 @@ class AlertPublisher(Protocol):
 
 - 本规格覆盖并修正 `spec/requirements/APM` 中“接入列表按服务键聚合”“接入页不签发凭证”“Service 表同时保存接入方式与实例状态”等旧口径。产品 PRD 应在实现前同步修改，避免双重契约。
 - 默认 VictoriaMetrics 当前部署保留期为 30 天；VictoriaTraces 尚未进入仓库部署资产。
-- 本设计遵守 Server 启动约束：所有遥测目录对账、告警源声明和外部健康检查都属于运行期、可重试、非启动硬门禁。
+- 本设计遵守 Server 启动约束：所有遥测目录对账、通知渠道投递和外部健康检查都属于运行期、可重试、非启动硬门禁。

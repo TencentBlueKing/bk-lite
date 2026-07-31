@@ -8,7 +8,6 @@ from apps.apm.tasks import (
     deliver_apm_alert_outbox,
     dispatch_apm_policy_evaluations,
     evaluate_apm_policy,
-    reconcile_apm_alert_source_task,
 )
 
 
@@ -47,15 +46,11 @@ def test_policy_runtime_tasks_are_beat_driven_and_not_in_batch_init():
     assert CELERY_BEAT_SCHEDULE["apm_deliver_alert_outbox"]["task"] == (
         "apps.apm.tasks.deliver_apm_alert_outbox"
     )
-    assert CELERY_BEAT_SCHEDULE["apm_reconcile_alert_source"]["task"] == (
-        "apps.apm.tasks.reconcile_apm_alert_source_task"
-    )
     assert evaluate_apm_policy.retry_kwargs["max_retries"] == 5
-    assert reconcile_apm_alert_source_task.retry_kwargs["max_retries"] == 5
     with open("apps/core/management/commands/batch_init.py", encoding="utf-8") as file:
         batch_init = file.read()
     assert "dispatch_apm_policy_evaluations" not in batch_init
-    assert "reconcile_apm_alert_source" not in batch_init
+    assert "apps.alerts" not in batch_init
 
 
 def test_dispatch_only_schedules_enabled_policies(mocker):

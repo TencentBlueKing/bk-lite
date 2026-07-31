@@ -165,6 +165,8 @@ class ApmAlertEvent:
     severity: str
     title: str
     occurred_at: datetime
+    channel_id: int | None = None
+    receivers: tuple[str, ...] = ()
     payload: Mapping[str, object] = field(default_factory=dict)
 
 

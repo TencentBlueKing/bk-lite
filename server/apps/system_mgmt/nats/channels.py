@@ -19,11 +19,12 @@ def get_channel_detail(channel_id):
 
 
 @nats_client.register
-def search_channel_list(channel_type="", teams=None, include_children=False):
+def search_channel_list(channel_type="", teams=None, include_children=False, channel_method=""):
     """
     :param channel_type: str， 目前只有email、enterprise_wechat_bot
     :param teams: list, [1,2,3]
     :param include_children: bool , True、False
+    :param channel_method: 可选，仅返回 config.method_name 匹配的通道
     """
     # 空 teams 直接返回空数据
     if not teams:
@@ -54,6 +55,8 @@ def search_channel_list(channel_type="", teams=None, include_children=False):
     channels = Channel.objects.all()
     if channel_type:
         channels = channels.filter(channel_type=channel_type)
+    if channel_method:
+        channels = channels.filter(config__method_name=channel_method)
 
     # 使用 Q 对象构建 OR 条件
     if teams:
@@ -69,7 +72,13 @@ def search_channel_list(channel_type="", teams=None, include_children=False):
 
 
 @nats_client.register
-def search_channel_list_scoped(actor_context, channel_type="", teams=None, include_children=False):
+def search_channel_list_scoped(
+    actor_context,
+    channel_type="",
+    teams=None,
+    include_children=False,
+    channel_method="",
+):
     """
     在调用方授权范围内查询通知通道列表。
 
@@ -77,6 +86,7 @@ def search_channel_list_scoped(actor_context, channel_type="", teams=None, inclu
     :param channel_type: 可选，通道类型过滤条件
     :param teams: 可选，待查询的组织 ID 列表；最终会与调用方授权范围取交集
     :param include_children: 是否包含当前组织下的已授权子组织
+    :param channel_method: 可选，仅返回 config.method_name 匹配的通道
     :return: 标准 NATS 返回结构，data 为通知通道列表
     """
     user_obj, authorized_groups = _get_actor_user_scope(actor_context, include_children=include_children)
@@ -98,6 +108,7 @@ def search_channel_list_scoped(actor_context, channel_type="", teams=None, inclu
         channel_type=channel_type,
         teams=teams,
         include_children=False,
+        channel_method=channel_method,
     )
 
 

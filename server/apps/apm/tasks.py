@@ -5,7 +5,7 @@ from celery import shared_task
 from django.core.cache import cache
 from django.utils import timezone
 
-from apps.apm.adapters import AlertsNatsPublisher, VictoriaMetricsMetricStore, reconcile_apm_alert_source
+from apps.apm.adapters import SystemMgmtNatsAlertPublisher, VictoriaMetricsMetricStore
 from apps.apm.models import ApmPolicy
 from apps.apm.services import DjangoApmPolicyService, TelemetryCatalogReconciler
 from apps.apm.services.health import CATALOG_RECONCILE_HEALTH_KEY
@@ -76,7 +76,7 @@ def dispatch_apm_policy_evaluations():
     retry_kwargs={"max_retries": 5},
 )
 def evaluate_apm_policy(policy_id: str, evaluated_at: str):
-    service = DjangoApmPolicyService(VictoriaMetricsMetricStore(), AlertsNatsPublisher())
+    service = DjangoApmPolicyService(VictoriaMetricsMetricStore(), SystemMgmtNatsAlertPublisher())
     try:
         service.evaluate(policy_id, evaluated_at=datetime.fromisoformat(evaluated_at))
     except ApmPolicy.DoesNotExist:
@@ -88,21 +88,9 @@ def evaluate_apm_policy(policy_id: str, evaluated_at: str):
 def deliver_apm_alert_outbox():
     result = DjangoApmPolicyService(
         VictoriaMetricsMetricStore(),
-        AlertsNatsPublisher(),
+        SystemMgmtNatsAlertPublisher(),
     ).retry_pending_events(limit=100)
     payload = asdict(result)
     if result.failed:
         logger.warning("APM alert outbox delivery deferred", extra=payload)
     return payload
-
-
-@shared_task(
-    autoretry_for=(Exception,),
-    retry_backoff=True,
-    retry_backoff_max=300,
-    retry_jitter=True,
-    retry_kwargs={"max_retries": 5},
-)
-def reconcile_apm_alert_source_task():
-    source, created = reconcile_apm_alert_source()
-    return {"source_id": source.source_id, "created": created}

@@ -180,6 +180,16 @@ class ApmPolicySerializer(serializers.ModelSerializer):
     service_id = serializers.UUIDField(required=False)
     service_namespace = serializers.CharField(source="service.namespace", read_only=True)
     service_name = serializers.CharField(source="service.name", read_only=True)
+    notice_type_ids = serializers.ListField(
+        child=serializers.IntegerField(min_value=1),
+        required=False,
+        allow_empty=True,
+    )
+    notice_users = serializers.ListField(
+        child=serializers.CharField(max_length=150),
+        required=False,
+        allow_empty=True,
+    )
     state = serializers.SerializerMethodField()
 
     class Meta:
@@ -197,6 +207,9 @@ class ApmPolicySerializer(serializers.ModelSerializer):
             "duration_window",
             "recovery_window",
             "severity",
+            "notice",
+            "notice_type_ids",
+            "notice_users",
             "is_enabled",
             "state",
             "created_at",
@@ -230,13 +243,24 @@ class ApmPolicySerializer(serializers.ModelSerializer):
         if metric_type == ApmPolicy.MetricType.ERROR_RATE and threshold is not None:
             if threshold < 0 or threshold > 1:
                 raise serializers.ValidationError({"threshold": "错误率阈值必须在 0 到 1 之间。"})
+        notice = attrs.get("notice", getattr(self.instance, "notice", False))
+        notice_type_ids = attrs.get(
+            "notice_type_ids",
+            getattr(self.instance, "notice_type_ids", []),
+        )
+        if notice and not notice_type_ids:
+            raise serializers.ValidationError({"notice_type_ids": "启用通知时至少选择一个渠道。"})
+        if "notice_type_ids" in attrs:
+            attrs["notice_type_ids"] = sorted(set(notice_type_ids))
+        if "notice_users" in attrs:
+            attrs["notice_users"] = list(dict.fromkeys(attrs["notice_users"]))
         return attrs
 
 
 class ApmEventQuerySerializer(serializers.Serializer):
     started_at = serializers.DateTimeField(required=False)
     ended_at = serializers.DateTimeField(required=False)
-    action = serializers.ChoiceField(choices=("created", "recovery", "closed"), required=False)
+    action = serializers.ChoiceField(choices=("created", "recovery"), required=False)
     severity = serializers.ChoiceField(choices=("critical", "error", "warning"), required=False)
     limit = serializers.IntegerField(min_value=1, max_value=100, default=50)
 

@@ -8,14 +8,14 @@ const { Paragraph, Title } = Typography;
 interface ApmRouteShellProps {
   title: string;
   description: string;
-  dependency?: 'metadata' | 'telemetry' | 'alerts';
+  dependency?: 'metadata' | 'telemetry' | 'control';
   children?: ReactNode;
 }
 
 const dependencyCopy = {
   metadata: '接入与目录元数据可用；遥测数据将在数据面配置后出现。',
   telemetry: '遥测存储不可用时，本页会明确显示降级状态，不会将查询故障伪装成空数据。',
-  alerts: 'APM 事件由统一告警中心管理；告警链路不可用不会阻断 Server 启动。',
+  control: '策略与告警事件由 APM 自己管理；外部通知渠道不可用不会影响事件查询。',
 };
 
 export default function ApmRouteShell({

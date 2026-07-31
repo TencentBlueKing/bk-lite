@@ -14,8 +14,4 @@ CELERY_BEAT_SCHEDULE = {
         "task": "apps.apm.tasks.deliver_apm_alert_outbox",
         "schedule": crontab(minute="*"),
     },
-    "apm_reconcile_alert_source": {
-        "task": "apps.apm.tasks.reconcile_apm_alert_source_task",
-        "schedule": crontab(minute="*/5"),
-    },
 }

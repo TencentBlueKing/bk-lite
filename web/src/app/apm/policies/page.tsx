@@ -27,6 +27,7 @@ import type {
   ApmPolicyMetric,
   ApmPolicySeverity,
   ApmService,
+  ApmNotificationChannel,
 } from '@/app/apm/types';
 
 type PageState = CatalogStateKind | 'ready';
@@ -60,6 +61,9 @@ const DEFAULT_POLICY: Partial<ApmPolicyInput> = {
   duration_window: 3,
   recovery_window: 3,
   severity: 'warning',
+  notice: false,
+  notice_type_ids: [],
+  notice_users: [],
   is_enabled: true,
 };
 
@@ -68,6 +72,7 @@ export default function ApmPoliciesPage() {
     createPolicy,
     deletePolicy,
     getPolicies,
+    getNotificationChannels,
     getServices,
     isLoading: authLoading,
     setPolicyEnabled,
@@ -77,6 +82,7 @@ export default function ApmPoliciesPage() {
   const [form] = Form.useForm<ApmPolicyInput>();
   const [policies, setPolicies] = useState<ApmPolicy[]>([]);
   const [services, setServices] = useState<ApmService[]>([]);
+  const [notificationChannels, setNotificationChannels] = useState<ApmNotificationChannel[]>([]);
   const [state, setState] = useState<PageState>('loading');
   const [editing, setEditing] = useState<ApmPolicy | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
@@ -86,6 +92,9 @@ export default function ApmPoliciesPage() {
   const load = useCallback(() => {
     if (authLoading) return;
     setState('loading');
+    getNotificationChannels()
+      .then(setNotificationChannels)
+      .catch(() => setNotificationChannels([]));
     Promise.all([getPolicies(), getServices()])
       .then(([policyItems, serviceItems]) => {
         setPolicies(policyItems);
@@ -93,7 +102,7 @@ export default function ApmPoliciesPage() {
         setState(policyItems.length ? 'ready' : 'empty');
       })
       .catch((error) => setState(catalogErrorKind(error)));
-  }, [authLoading, getPolicies, getServices]);
+  }, [authLoading, getNotificationChannels, getPolicies, getServices]);
 
   useEffect(() => load(), [load]);
 
@@ -241,8 +250,8 @@ export default function ApmPoliciesPage() {
   return (
     <ApmRouteShell
       title="APM 策略"
-      description="按服务与环境管理错误率、延迟、吞吐和无流量基础阈值策略。"
-      dependency="alerts"
+      description="按服务与环境管理阈值策略；告警事实保存在 APM，告警中心可作为 NATS 通知渠道。"
+      dependency="control"
     >
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <Typography.Text type="secondary">策略每分钟评估；查询失败保持上次状态，不产生误触发或误恢复。</Typography.Text>
@@ -306,6 +315,28 @@ export default function ApmPoliciesPage() {
               <Select options={Object.entries(SEVERITY_LABELS).map(([value, label]) => ({ value, label }))} />
             </Form.Item>
           </div>
+          <Form.Item name="notice" label="发送到告警中心" valuePropName="checked">
+            <Switch />
+          </Form.Item>
+          <Form.Item noStyle shouldUpdate={(previous, current) => previous.notice !== current.notice}>
+            {({ getFieldValue }) => getFieldValue('notice') ? (
+              <Form.Item
+                name="notice_type_ids"
+                label="告警中心 NATS 渠道"
+                rules={[{ required: true, message: '请选择告警中心通知渠道' }]}
+                extra="这里只发送 APM 事件副本；渠道不可用时，APM 自有告警和事件仍会正常保存。"
+              >
+                <Select
+                  mode="multiple"
+                  options={notificationChannels.map((channel) => ({
+                    value: channel.id,
+                    label: channel.name,
+                  }))}
+                  placeholder={notificationChannels.length ? '请选择渠道' : '请先在系统管理中配置告警中心 NATS 渠道'}
+                />
+              </Form.Item>
+            ) : null}
+          </Form.Item>
           <Form.Item name="is_enabled" label="创建后启用" valuePropName="checked">
             <Switch />
           </Form.Item>
