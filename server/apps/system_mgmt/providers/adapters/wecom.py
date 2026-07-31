@@ -671,6 +671,21 @@ class WeComIMGroupAdapter(BaseIMGroupAdapter):
     capability_key = "im_group"
 
     @classmethod
+    def get_constraints(cls, config, provider_key, capability_key, **kwargs):
+        return CapabilityExecutionResult.success_result(
+            "WeCom IM group constraints loaded",
+            payload={
+                "member_id_type": "userid",
+                "min_initial_members": 2,
+                "max_initial_members": 500,
+                "max_add_members": 50,
+                "native_create_idempotency": False,
+                "deterministic_create_recovery": True,
+                "requirements": ["internal_members", "root_department_visibility"],
+            },
+        )
+
+    @classmethod
     def validate_create(cls, config, provider_key, capability_key, **kwargs):
         member_ids = list(dict.fromkeys(kwargs.get("member_ids") or []))
         error = _wecom_group_validation(
@@ -683,6 +698,12 @@ class WeComIMGroupAdapter(BaseIMGroupAdapter):
         if len(member_ids) < 2:
             return CapabilityExecutionResult.failed_result(
                 "企业微信应用群聊至少需要两名成员",
+                code="provider.invalid_config",
+                field="member_ids",
+            )
+        if len(member_ids) > 500:
+            return CapabilityExecutionResult.failed_result(
+                "企业微信应用群聊初始成员不能超过 500 人",
                 code="provider.invalid_config",
                 field="member_ids",
             )
@@ -701,10 +722,29 @@ class WeComIMGroupAdapter(BaseIMGroupAdapter):
         error = _wecom_group_validation(config)
         if error:
             return error
+        client = _wecom_group_client(config)
         try:
-            _wecom_group_client(config).fetch_access_token()
+            client.fetch_access_token()
+            application = client.agent.get(config["agent_id"])
         except (WeChatClientException, requests.RequestException) as exc:
             return _wecom_group_failure(exc)
+        allowed_departments = (
+            (application.get("allow_partys") or {}).get("partyid") or []
+        )
+        if 1 not in {
+            int(department_id)
+            for department_id in allowed_departments
+            if str(department_id).isdigit()
+        }:
+            return CapabilityExecutionResult.failed_result(
+                "WeCom application must be visible to the root department",
+                code="provider.permission_unverified",
+                payload={
+                    "missing_requirements": [
+                        "root_department_visibility"
+                    ]
+                },
+            )
         return CapabilityExecutionResult.success_result(
             "WeCom IM group capability is ready",
         )
@@ -726,8 +766,26 @@ class WeComIMGroupAdapter(BaseIMGroupAdapter):
         chat_id = hashlib.sha256(
             str(kwargs["idempotency_key"]).encode("utf-8")
         ).hexdigest()[:32]
+        client = _wecom_group_client(config)
         try:
-            _wecom_group_client(config).appchat.create(
+            client.appchat.get(chat_id)
+        except WeChatClientException as exc:
+            if exc.errcode not in {86003, 86008}:
+                return _wecom_group_failure(exc)
+        except requests.RequestException as exc:
+            return _wecom_group_failure(exc)
+        else:
+            return CapabilityExecutionResult.success_result(
+                "WeCom group already exists",
+                payload={
+                    "chat_id": chat_id,
+                    "invalid_member_ids": [],
+                    "reused": True,
+                },
+            )
+
+        try:
+            client.appchat.create(
                 chat_id=chat_id,
                 name=kwargs["group_name"],
                 owner=owner_id,
@@ -740,6 +798,7 @@ class WeComIMGroupAdapter(BaseIMGroupAdapter):
             payload={
                 "chat_id": chat_id,
                 "invalid_member_ids": [],
+                "reused": False,
             },
         )
 
@@ -776,6 +835,12 @@ class WeComIMGroupAdapter(BaseIMGroupAdapter):
         )
         if error:
             return error
+        if len(member_ids) > 50:
+            return CapabilityExecutionResult.failed_result(
+                "企业微信应用群聊单次增员不能超过 50 人",
+                code="provider.invalid_config",
+                field="member_ids",
+            )
         try:
             _wecom_group_client(config).appchat.update(
                 kwargs["chat_id"],

@@ -67,6 +67,20 @@ class BaseIMGroupAdapter(BaseCapabilityAdapter):
     capability_key = "im_group"
 
     @classmethod
+    def get_constraints(cls, config: dict, provider_key: str, capability_key: str, **kwargs):
+        return CapabilityExecutionResult.success_result(
+            "IM group constraints loaded",
+            payload={
+                "member_id_type": "",
+                "min_initial_members": 1,
+                "max_initial_members": 50,
+                "max_add_members": 50,
+                "native_create_idempotency": False,
+                "requirements": [],
+            },
+        )
+
+    @classmethod
     def validate_create(cls, config: dict, provider_key: str, capability_key: str, **kwargs):
         return CapabilityExecutionResult.success_result(
             "IM group create request is valid",

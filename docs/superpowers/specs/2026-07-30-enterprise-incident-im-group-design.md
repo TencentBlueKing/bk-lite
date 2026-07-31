@@ -391,6 +391,7 @@ adapter 已注册
 | `provider_key` | 创建时从 IntegrationInstance 冻结；无 `feishu` 默认值 |
 | `channel_name_snapshot` | 通道名称快照 |
 | `member_id_type` | 创建时冻结的外部身份类型 |
+| `max_initial_members/max_add_members` | 创建时冻结的 Provider 批次约束，避免升级后改变既有群语义 |
 | `group_name` | 外部群名快照 |
 | `external_chat_id` | 外部群 ID；得到后立即持久化 |
 | `external_owner_id` | 外部群主身份快照 |
@@ -1371,7 +1372,8 @@ GREEN：
 2. EE 许可无效时所有新外部副作用 fail closed。
 3. 企业 app 只有一个 `0001_initial`，模型无漂移。
 4. 一个 Incident 永久最多一个群绑定。
-5. 创建前可以从多个 ready Provider 通道中选择一个。
+5. 创建前可以从多个 Provider 通道中选择一个；未 ready 通道保留展示并返回
+   channel 级 blocker 供诊断，但禁止提交。
 6. 创建后 Provider、channel 和成员 ID 类型不可切换。
 7. 飞书和企业微信的创建、摘要、增员、暂停、重试、关闭/重开和停止管理闭环通过。
 8. 只增不减和“已移除 pending 人员不再入群”同时成立。
@@ -1384,7 +1386,12 @@ GREEN：
 
 - 社区版只保留 Incident、Outbox、路由和 Web 四个通用扩展 seam；无企业包回归
   `40 passed`。
-- 企业版 Alerts、飞书与企业微信 Provider 合同联合回归 `249 passed`。
+- 企业版 Alerts、飞书与企业微信 Provider 合同联合回归 `294 passed`，其中包含
+  Enterprise → Runtime → WeCom 的创建、增员、摘要、暂停、恢复和停止纵向链路。
+- Provider 约束读取失败时 fail closed，不使用默认批次值继续创建；企业微信超过
+  500 人时只校验并创建首批，剩余成员按冻结的增员批次持续入群。
+- 许可失效时保留暂停、停止等安全管理动作，配置入口只读；日志降级次数可由健康
+  诊断读取。
 - 企业 Web 状态机、API 路径、双 Provider 选择与不可逆停止的专项 TDD 通过。
 - `alerts_enterprise` 仅含 `0001_initial`；`makemigrations --check --dry-run`
   返回 `No changes detected`，`sqlmigrate alerts_enterprise 0001` 成功。
@@ -1392,3 +1399,18 @@ GREEN：
 - 企业构建必须显式安装 `alerts_enterprise` 并执行其 `0001_initial`；社区构建不得安装。
 - 自动化闭环已经完成；发布前剩余工作仅为按 Runbook 在真实飞书租户与企业微信测试企业
   验证应用权限、通讯录映射、客户端群可见性和平台限流。
+
+正式验收入口：
+[Incident IM 飞书/企业微信完整链路 Runbook](../../validation/incident-im-group-dual-platform-runbook.md)。
+
+### 15.1 审计后补强（2026-07-31）
+
+- 企业许可在 HTTP 写入口、周期对账、Outbox 消费和 Provider Gateway 四层
+  fail-closed；只读查询与安全停止操作保留。
+- 企业微信确定性 `chatid` 创建采用 `GET → 明确不存在 → CREATE`，查询结果不确定时
+  禁止创建，覆盖 create 成功但本地 ACK 丢失的恢复窗口。
+- Provider 通过 `get_constraints` 公开成员 ID 类型、初始成员上下限、增员批次、
+  原生幂等能力和平台要求；Options 返回 `requirements/satisfied/blockers`，前端在提交
+  前阻断不满足的请求。
+- 企业微信 readiness 不再只验证 token，还验证自建应用详情和根部门可见范围。
+- 平台展示名来自 Provider manifest，Alerts 和 Web 不硬编码飞书/企业微信分支。

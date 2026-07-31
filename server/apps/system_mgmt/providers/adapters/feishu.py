@@ -1071,6 +1071,20 @@ class FeishuIMGroupAdapter(BaseIMGroupAdapter):
     capability_key = "im_group"
 
     @classmethod
+    def get_constraints(cls, config: dict, provider_key: str, capability_key: str, **kwargs):
+        return CapabilityExecutionResult.success_result(
+            "Feishu IM group constraints loaded",
+            payload={
+                "member_id_type": "open_id",
+                "min_initial_members": 1,
+                "max_initial_members": 50,
+                "max_add_members": 50,
+                "native_create_idempotency": True,
+                "requirements": ["bot_enabled", "application_self_manage"],
+            },
+        )
+
+    @classmethod
     def validate_create(cls, config: dict, provider_key: str, capability_key: str, **kwargs):
         member_ids = list(dict.fromkeys(kwargs.get("member_ids") or []))
         validation_error = _validate_group_members(
