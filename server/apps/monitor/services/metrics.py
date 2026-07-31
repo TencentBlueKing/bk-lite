@@ -19,6 +19,8 @@ from apps.monitor.utils.victoriametrics_api import VictoriaMetricsAPI
 class Metrics:
     _STEP_PATTERN = re.compile(r"^(?P<value>\d+)(?P<unit>[smhdw])$")
     MAX_GAP_DETECTION_POINTS = 50000
+    CARD_QUERY_MAX_SERIES = 200
+    CARD_QUERY_MAX_POINTS = 100000
 
     @staticmethod
     def get_effective_metric_instance_id_keys(metric: Metric) -> list[str]:
@@ -89,6 +91,26 @@ class Metrics:
                 data["gap_detection"] = {"status": "skipped", "limited": False}
         Metrics.fill_missing_points(start, end, step_seconds, resp.get("data", {}).get("result", []))
         return resp
+
+    @staticmethod
+    def enforce_card_query_budget(response, start_ms, end_ms, step):
+        """Reject card responses that would freeze the browser.
+
+        This budget applies only to the full-metric-card view. Search and
+        dashboard endpoints retain their existing explicit query behaviour.
+        """
+        result = response.get("data", {}).get("result", [])
+        if len(result) > Metrics.CARD_QUERY_MAX_SERIES:
+            raise BaseAppException(
+                f"指标卡查询超过序列上限（{Metrics.CARD_QUERY_MAX_SERIES} 条），请在搜索页缩小维度范围"
+            )
+        step_seconds = Metrics.parse_step_to_seconds(step)
+        expected_points = int((int(end_ms) - int(start_ms)) / 1000 / step_seconds) + 1
+        total_points = len(result) * expected_points
+        if total_points > Metrics.CARD_QUERY_MAX_POINTS:
+            raise BaseAppException(
+                f"指标卡查询超过数据点上限（{Metrics.CARD_QUERY_MAX_POINTS} 个），请缩短时间范围或在搜索页缩小维度范围"
+            )
 
     @staticmethod
     def parse_step_to_seconds(step) -> int:

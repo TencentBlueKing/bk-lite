@@ -376,6 +376,7 @@
       "rule": "规则",
       "dbNameDes": "访问所需数据库的具体名字",
       "configuration": "采集配置",
+      "fieldGuideTip": "填写说明",
       "configureStep1": "定义收集目标",
       "reportingStatus": "上报状态",
       "version": "版本",
@@ -574,6 +575,7 @@
       "filterMutexConflict": "「{left}」与「{right}」不能同时配置，请先清空其中一侧",
       "filterMutexOptionDisabled": "「{peer}」已选中该值",
       "filterMutexPeerOccupied": "「{peer}」已填写，不能同时配置",
+      "timeoutMustLtInterval": "消费组采集超时必须小于采集间隔",
       "filterIfTypeTagsPlaceholder": "选择常用类型，或输入数字（如 22）后回车",
       "filterIfTypeInvalid": "ifType 请填数字（如 22）；无效值：{values}",
       "filterMutexFields": {

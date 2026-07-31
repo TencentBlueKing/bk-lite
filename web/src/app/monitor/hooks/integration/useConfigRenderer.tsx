@@ -158,6 +158,9 @@ export const useConfigRenderer = () => {
       );
     }
 
+    const ltPeerFields = (rules || [])
+      .filter((rule: any) => rule?.type === 'lt_field' && rule.field)
+      .map((rule: any) => rule.field as string);
     const mutexPeerField = (FILTER_MUTEX_PEERS[name] ||
       (rules || []).find((rule: any) => rule?.type === 'mutex_with' && rule.field)?.field) as
       | string
@@ -195,6 +198,31 @@ export const useConfigRenderer = () => {
       ...rules.flatMap((rule: any) => {
         if (rule?.type === 'mutex_with') {
           return [];
+        }
+        if (rule?.type === 'lt_field' && rule.field) {
+          return [
+            ({ getFieldValue }: { getFieldValue: (name: string) => unknown }) => ({
+              validator: async (_: unknown, value: unknown) => {
+                if (value === undefined || value === null || value === '') {
+                  return;
+                }
+                const peer = getFieldValue(rule.field);
+                if (peer === undefined || peer === null || peer === '') {
+                  return;
+                }
+                const left = Number(value);
+                const right = Number(peer);
+                if (!Number.isFinite(left) || !Number.isFinite(right)) {
+                  return;
+                }
+                if (left >= right) {
+                  throw new Error(
+                    rule.message || t('monitor.integrations.timeoutMustLtInterval')
+                  );
+                }
+              }
+            })
+          ];
         }
         if (rule?.type === 'pattern' && rule.pattern) {
           return [
@@ -431,7 +459,7 @@ export const useConfigRenderer = () => {
         noStyle
         name={name}
         rules={formRules}
-        dependencies={mutexPeerFields}
+        dependencies={[...mutexPeerFields, ...ltPeerFields]}
         initialValue={default_value}
         valuePropName={type === 'switch' ? 'checked' : 'value'}
       >

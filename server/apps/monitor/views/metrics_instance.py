@@ -70,6 +70,7 @@ class MetricsInstanceViewSet(viewsets.ViewSet):
         auto_convert = request.GET.get("auto_convert_unit", "true").lower() == "true"
         detect_gaps = request.GET.get("detect_gaps", "false").lower() == "true"
         collection_interval = request.GET.get("collection_interval")
+        query_budget = request.GET.get("query_budget")
 
         if not query:
             raise BaseAppException("query is required")
@@ -102,6 +103,9 @@ class MetricsInstanceViewSet(viewsets.ViewSet):
             detect_gaps=detect_gaps,
             collection_interval_seconds=collection_interval,
         )
+
+        if query_budget == "card":
+            MetricsService.enforce_card_query_budget(data, start_int, end_int, step)
 
         if source_unit:
             if target_unit:

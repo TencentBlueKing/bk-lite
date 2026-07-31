@@ -56,7 +56,8 @@ const LazyMetricItem: React.FC<LazyMetricItemProps> = ({
   const observerOptions = useMemo(
     () => ({
       threshold: 0.1,
-      rootMargin: '50px'
+      // 两列卡片高度约 220px；预取下一行，避免滚动到卡片后才开始等待请求。
+      rootMargin: '240px 0px'
     }),
     []
   );

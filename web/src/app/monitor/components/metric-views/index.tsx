@@ -20,14 +20,14 @@ import { SearchParams } from '@/app/monitor/types/search';
 import { useTranslation } from '@/utils/i18n';
 import {
   mergeViewQueryKeyValues,
-  renderChart
+  renderChart,
+  getRecentTimeRange
 } from '@/app/monitor/utils/common';
 import { calculateQueryStep } from '@/app/monitor/utils/queryStep';
 import { attachGapIntervals, buildGapDetectionParams } from '@/app/monitor/utils/gapIntervals';
 
 import dayjs, { Dayjs } from 'dayjs';
 import LazyMetricItem from './lazyMetricItem';
-import { createMetricQueryWindow } from './queryWindow';
 
 const MYSQL_GROUP_NAME_MAP: Record<string, string> = {
   ConnStatus: '连接状态',
@@ -145,24 +145,15 @@ const MetricViews: React.FC<ViewDetailProps> = ({
     useState<boolean>(false);
   const lastExternalRefreshSignalRef = useRef<number | undefined>(externalRefreshSignal);
 
-  // 请求并发控制
-  const MAX_CONCURRENT_REQUESTS = 12;
+  // 大量指标卡片同时请求会挤占浏览器、VictoriaMetrics 和 Telegraf 的资源。
+  // 只允许可视区域及下一行卡片以最多四路请求排队加载。
+  const MAX_CONCURRENT_REQUESTS = 4;
   const activeRequestsRef = useRef<Map<number, AbortController>>(new Map());
-  const requestQueueRef = useRef<number[]>([]);
+  const requestGenerationRef = useRef(0);
   const isMysqlView = String(monitorObjectName || '').toLowerCase() === 'mysql';
   const activeTimeValues = externalTimeValues || timeValues;
   const activeTimeDefaultValue = externalTimeDefaultValue || timeDefaultValue;
   const activeFrequence = typeof externalFrequence === 'number' ? externalFrequence : frequence;
-  const [activeQueryWindow, setActiveQueryWindow] = useState(() =>
-    createMetricQueryWindow(activeTimeValues)
-  );
-  const activeQueryWindowRef = useRef(activeQueryWindow);
-
-  const snapshotActiveQueryWindow = () => {
-    const nextQueryWindow = createMetricQueryWindow(activeTimeValues);
-    activeQueryWindowRef.current = nextQueryWindow;
-    setActiveQueryWindow(nextQueryWindow);
-  };
 
   const getDisplayName = (item: { name?: string; display_name?: string }) => {
     const displayName = item.display_name || item.name || '--';
@@ -172,31 +163,6 @@ const MetricViews: React.FC<ViewDetailProps> = ({
     return MYSQL_METRIC_NAME_MAP[item.name || ''] || MYSQL_GROUP_NAME_MAP[displayName] || normalizeMysqlDisplayName(displayName);
   };
 
-  const cancelRequest = (metricId: number) => {
-    const abortController = activeRequestsRef.current.get(metricId);
-    if (abortController) {
-      abortController.abort();
-      activeRequestsRef.current.delete(metricId);
-    }
-    requestQueueRef.current = requestQueueRef.current.filter(
-      (id) => id !== metricId
-    );
-
-    setCancelledMetricIds((prev) => new Set(prev).add(metricId));
-
-    setLoadingMetricIds((prev) => {
-      const newSet = new Set(prev);
-      newSet.delete(metricId);
-      return newSet;
-    });
-
-    setLoadedMetricIds((prev) => {
-      const newSet = new Set(prev);
-      newSet.delete(metricId);
-      return newSet;
-    });
-  };
-
   const cancelAllRequests = () => {
     const cancelledIds = Array.from(activeRequestsRef.current.keys());
 
@@ -204,7 +170,7 @@ const MetricViews: React.FC<ViewDetailProps> = ({
       abortController.abort();
     });
     activeRequestsRef.current.clear();
-    requestQueueRef.current = [];
+    requestGenerationRef.current += 1;
 
     setCancelledMetricIds((prev) => {
       const newSet = new Set(prev);
@@ -213,22 +179,6 @@ const MetricViews: React.FC<ViewDetailProps> = ({
     });
 
     setLoadingMetricIds(new Set());
-  };
-
-  const manageRequestQueue = (newMetricId: number) => {
-    if (activeRequestsRef.current.size >= MAX_CONCURRENT_REQUESTS) {
-      const oldestMetricId = requestQueueRef.current.shift();
-      if (oldestMetricId !== undefined) {
-        cancelRequest(oldestMetricId);
-        setLoadingMetricIds((prev) => {
-          const newSet = new Set(prev);
-          newSet.delete(oldestMetricId);
-          return newSet;
-        });
-      }
-    }
-
-    requestQueueRef.current.push(newMetricId);
   };
 
   useEffect(() => {
@@ -401,7 +351,7 @@ const MetricViews: React.FC<ViewDetailProps> = ({
 
   const getParams = (item: MetricItem, ids: string[]) => {
     const params: SearchParams = {
-      query: (item.query || '').replace(
+      query: ((item.view_query as string | undefined) || item.query || '').replace(
         /__\$labels__/g,
         mergeViewQueryKeyValues([
           { keys: item.instance_id_keys || [], values: ids }
@@ -409,10 +359,14 @@ const MetricViews: React.FC<ViewDetailProps> = ({
       ),
       source_unit: item.unit || ''
     };
-    const queryWindow = activeQueryWindowRef.current;
-    if (queryWindow) {
-      params.start = queryWindow.startMs;
-      params.end = queryWindow.endMs;
+    // 指标卡使用受限视图查询；完整明细仍由搜索页按维度选择后查询。
+    params.query_budget = 'card';
+    const recentTimeRange = getRecentTimeRange(activeTimeValues);
+    const startTime = recentTimeRange.at(0);
+    const endTime = recentTimeRange.at(1);
+    if (Number.isFinite(startTime) && Number.isFinite(endTime)) {
+      params.start = startTime;
+      params.end = endTime;
       params.step = calculateQueryStep(params.start, params.end, collectionInterval);
     }
     return buildGapDetectionParams(params, collectionInterval);
@@ -433,17 +387,19 @@ const MetricViews: React.FC<ViewDetailProps> = ({
         return newSet;
       });
     }
+    const generation = requestGenerationRef.current;
+    setLoadingMetricIds((prev) => new Set(prev).add(metric.id));
+    // 不再取消最早请求。超出并发上限的可视卡片在这里排队，直到有空槽。
+    while (activeRequestsRef.current.size >= MAX_CONCURRENT_REQUESTS) {
+      await new Promise((resolve) => window.setTimeout(resolve, 30));
+      if (generation !== requestGenerationRef.current) return;
+    }
+    if (generation !== requestGenerationRef.current) return;
     const abortController = new AbortController();
     activeRequestsRef.current.set(metric.id, abortController);
-    manageRequestQueue(metric.id);
-    const currentController = activeRequestsRef.current.get(metric.id);
-    if (!currentController || currentController.signal.aborted) {
-      return;
-    }
-    setLoadingMetricIds((prev) => new Set(prev).add(metric.id));
-    const params = getParams(metric, idValues);
     let response;
     try {
+      const params = getParams(metric, idValues);
       response = await get(`/monitor/api/metrics_instance/query_range/`, {
         params,
         signal: abortController.signal
@@ -530,9 +486,6 @@ const MetricViews: React.FC<ViewDetailProps> = ({
     } finally {
       if (activeRequestsRef.current.get(metric.id) === abortController) {
         activeRequestsRef.current.delete(metric.id);
-        requestQueueRef.current = requestQueueRef.current.filter(
-          (id) => id !== metric.id
-        );
       }
       setLoadingMetricIds((prev) => {
         const newSet = new Set(prev);
@@ -572,7 +525,6 @@ const MetricViews: React.FC<ViewDetailProps> = ({
 
   const handleSearch = (type: string) => {
     if (['refresh', 'timer'].includes(type)) {
-      snapshotActiveQueryWindow();
       cancelAllRequests();
       setResetCounter((prev) => prev + 1);
       setNeedsRefreshOnExpand(true);
@@ -818,7 +770,6 @@ const MetricViews: React.FC<ViewDetailProps> = ({
                       isCancelled={cancelledMetricIds.has(item.id)}
                       onVisibilityChange={handleVisibilityChange}
                       isInViewport={visibleMetricIds.has(item.id)}
-                      xAxisDomain={activeQueryWindow?.xAxisDomain}
                     />
                   ))}
                 </div>
