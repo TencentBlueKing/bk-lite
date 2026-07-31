@@ -150,10 +150,15 @@ const MetricViews: React.FC<ViewDetailProps> = ({
   const MAX_CONCURRENT_REQUESTS = 4;
   const activeRequestsRef = useRef<Map<number, AbortController>>(new Map());
   const requestGenerationRef = useRef(0);
+  const visibleMetricIdsRef = useRef<Set<number>>(new Set());
+  const metricDataRef = useRef<IndexViewItem[]>([]);
   const isMysqlView = String(monitorObjectName || '').toLowerCase() === 'mysql';
   const activeTimeValues = externalTimeValues || timeValues;
   const activeTimeDefaultValue = externalTimeDefaultValue || timeDefaultValue;
   const activeFrequence = typeof externalFrequence === 'number' ? externalFrequence : frequence;
+
+  visibleMetricIdsRef.current = visibleMetricIds;
+  metricDataRef.current = metricData;
 
   const getDisplayName = (item: { name?: string; display_name?: string }) => {
     const displayName = item.display_name || item.name || '--';
@@ -292,9 +297,9 @@ const MetricViews: React.FC<ViewDetailProps> = ({
           setMetricData(_groupData);
           setOriginMetricData(_groupData);
           if (_groupData.length > 0) {
-            setExpandedIds(
-              new Set(_groupData.map((group: IndexViewItem) => group.id))
-            );
+            // 默认只展开第一个分组，降低首屏并发请求与 DOM 压力。
+            // 默认展开全部分组，避免用户逐个点开；具体指标卡仍靠滚入视图懒加载。
+            setExpandedIds(new Set(_groupData.map((group: IndexViewItem) => group.id)));
           }
           setLoadedMetricIds(new Set());
           setLoadingMetricIds(new Set());
@@ -323,7 +328,8 @@ const MetricViews: React.FC<ViewDetailProps> = ({
             .filter((item) => item.id === metricId)
             .map((item) => ({
               ...item,
-              viewData: []
+              viewData: [],
+              seriesBudget: undefined
             }))
         }))
         .filter((item) => item.child?.find((tex) => tex.id === metricId));
@@ -333,16 +339,27 @@ const MetricViews: React.FC<ViewDetailProps> = ({
         ...group,
         child: (group.child || []).map((item) => ({
           ...item,
-          viewData: []
+          viewData: [],
+          seriesBudget: undefined
         }))
       }));
     }
 
     setMetricData(clearedData);
-    // 更新展开状态
-    if (clearedData.length > 0) {
-      setExpandedIds(new Set(clearedData.map((group) => group.id)));
-    }
+    // 刷新时保留已展开分组；若为空则只展开第一个。
+    setExpandedIds((prev) => {
+      if (prev.size > 0) {
+        const kept = new Set(
+          clearedData
+            .map((group) => group.id)
+            .filter((id) => prev.has(id))
+        );
+        if (kept.size > 0) {
+          return kept;
+        }
+      }
+      return new Set(clearedData.map((group) => group.id));
+    });
     setLoadedMetricIds(new Set());
     setLoadingMetricIds(new Set());
     setCancelledMetricIds(new Set());
@@ -372,11 +389,18 @@ const MetricViews: React.FC<ViewDetailProps> = ({
     return buildGapDetectionParams(params, collectionInterval);
   };
 
-  const fetchSingleMetricData = async (metric: MetricItem) => {
-    if (loadedMetricIds.has(metric.id) && !cancelledMetricIds.has(metric.id)) {
+  const fetchSingleMetricData = async (
+    metric: MetricItem,
+    options?: { force?: boolean }
+  ) => {
+    if (
+      !options?.force &&
+      loadedMetricIds.has(metric.id) &&
+      !cancelledMetricIds.has(metric.id)
+    ) {
       return;
     }
-    if (loadingMetricIds.has(metric.id)) {
+    if (!options?.force && loadingMetricIds.has(metric.id)) {
       return;
     }
     const isCancelledRequest = cancelledMetricIds.has(metric.id);
@@ -395,6 +419,12 @@ const MetricViews: React.FC<ViewDetailProps> = ({
       if (generation !== requestGenerationRef.current) return;
     }
     if (generation !== requestGenerationRef.current) return;
+    // force 刷新时中止同指标旧请求，避免竞态覆盖。
+    const previousController = activeRequestsRef.current.get(metric.id);
+    if (previousController) {
+      previousController.abort();
+      activeRequestsRef.current.delete(metric.id);
+    }
     const abortController = new AbortController();
     activeRequestsRef.current.set(metric.id, abortController);
     let response;
@@ -422,6 +452,7 @@ const MetricViews: React.FC<ViewDetailProps> = ({
       ];
       const chartData = response?.data?.result || [];
       const displayUnit = response?.data?.unit || '';
+      const seriesBudget = response?.data?.series_budget;
       const viewData = attachGapIntervals(
         renderChart(chartData, instanceRow),
         response?.data?.gaps || []
@@ -435,7 +466,8 @@ const MetricViews: React.FC<ViewDetailProps> = ({
               ? {
                 ...item,
                 displayUnit,
-                viewData
+                viewData,
+                seriesBudget
               }
               : item
           )
@@ -451,7 +483,8 @@ const MetricViews: React.FC<ViewDetailProps> = ({
               ? {
                 ...item,
                 displayUnit,
-                viewData
+                viewData,
+                seriesBudget
               }
               : item
           )
@@ -524,13 +557,27 @@ const MetricViews: React.FC<ViewDetailProps> = ({
   };
 
   const handleSearch = (type: string) => {
-    if (['refresh', 'timer'].includes(type)) {
+    if (type === 'refresh') {
       cancelAllRequests();
       setResetCounter((prev) => prev + 1);
       setNeedsRefreshOnExpand(true);
-
-      // 使用新的clearAllMetricData函数清空所有指标数据
       clearAllMetricData();
+      return;
+    }
+    if (type === 'timer') {
+      // 定时刷新只重拉当前视口内卡片，保留离屏 viewData，避免全量清空导致卡顿。
+      const visibleIds = Array.from(visibleMetricIdsRef.current);
+      if (!visibleIds.length) {
+        return;
+      }
+      const visibleIdSet = new Set(visibleIds);
+      metricDataRef.current.forEach((group) => {
+        (group.child || []).forEach((metric: MetricItem) => {
+          if (visibleIdSet.has(metric.id)) {
+            void fetchSingleMetricData(metric, { force: true });
+          }
+        });
+      });
     }
   };
 

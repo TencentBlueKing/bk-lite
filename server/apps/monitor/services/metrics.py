@@ -18,9 +18,12 @@ from apps.monitor.utils.victoriametrics_api import VictoriaMetricsAPI
 
 class Metrics:
     _STEP_PATTERN = re.compile(r"^(?P<value>\d+)(?P<unit>[smhdw])$")
+    _LIMITING_QUERY_PATTERN = re.compile(r"^\s*(topk|bottomk|limitk)\s*\(", re.IGNORECASE)
     MAX_GAP_DETECTION_POINTS = 50000
     CARD_QUERY_MAX_SERIES = 200
     CARD_QUERY_MAX_POINTS = 100000
+    # 已显式配置 view_query（topk/bottomk/limitk）时的兜底硬上限；超过则截断而非拒绝。
+    CARD_QUERY_HARD_MAX_SERIES = 2000
 
     @staticmethod
     def get_effective_metric_instance_id_keys(metric: Metric) -> list[str]:
@@ -44,6 +47,68 @@ class Metrics:
         return VictoriaMetricsAPI().query(query)
 
     @staticmethod
+    def query_already_limited(query: str) -> bool:
+        """True when the query already applies topk/bottomk/limitk (e.g. view_query)."""
+        return bool(Metrics._LIMITING_QUERY_PATTERN.match(query or ""))
+
+    @staticmethod
+    def apply_card_series_limit(query: str, limit: int | None = None) -> tuple[str, bool]:
+        """Wrap an unlimited card query with limitk(N+1) for truncation detection.
+
+        Returns (rewritten_query, applied). Queries that already start with
+        topk/bottomk/limitk (explicit view_query) are left unchanged.
+        """
+        series_limit = Metrics.CARD_QUERY_MAX_SERIES if limit is None else limit
+        if Metrics.query_already_limited(query):
+            return query, False
+        return f"limitk({series_limit + 1}, {query})", True
+
+    @staticmethod
+    def clamp_card_step(start_ms, end_ms, step) -> tuple[str, bool]:
+        """Enlarge step so worst-case series * points stays under CARD_QUERY_MAX_POINTS.
+
+        Assumes at most CARD_QUERY_MAX_SERIES series. Returns (step_string, clamped).
+        """
+        step_seconds = Metrics.parse_step_to_seconds(step)
+        duration_seconds = max(0.0, (int(end_ms) - int(start_ms)) / 1000.0)
+        max_points_per_series = max(1, Metrics.CARD_QUERY_MAX_POINTS // Metrics.CARD_QUERY_MAX_SERIES)
+        if max_points_per_series <= 1:
+            min_step = max(1, int(duration_seconds) or 1)
+        else:
+            min_step = max(1, int(duration_seconds / (max_points_per_series - 1)) or 1)
+
+        if step_seconds >= min_step:
+            if isinstance(step, str) and step.strip():
+                return step, False
+            return f"{step_seconds}s", False
+        return f"{min_step}s", True
+
+    @staticmethod
+    def finalize_card_series_budget(response, *, applied_limit: bool) -> bool:
+        """Trim over-budget series and annotate series_budget. Returns truncated flag."""
+        data = response.setdefault("data", {})
+        result = data.get("result") or []
+        truncated = False
+        limit = Metrics.CARD_QUERY_MAX_SERIES
+
+        if applied_limit:
+            if len(result) > limit:
+                truncated = True
+                data["result"] = result[:limit]
+        elif len(result) > Metrics.CARD_QUERY_HARD_MAX_SERIES:
+            # view_query 路径的兜底：截断而非抛错，避免浏览器卡死。
+            truncated = True
+            limit = Metrics.CARD_QUERY_HARD_MAX_SERIES
+            data["result"] = result[:limit]
+
+        data["series_budget"] = {
+            "truncated": truncated,
+            "limit": limit,
+            "applied": applied_limit,
+        }
+        return truncated
+
+    @staticmethod
     def get_metrics_range(
         query,
         start,
@@ -52,13 +117,38 @@ class Metrics:
         detect_gaps=False,
         collection_interval_seconds=None,
         max_gap_detection_points=None,
+        card_budget=False,
     ):
-        """查询指标（范围）"""
-        step_seconds = Metrics.parse_step_to_seconds(step)
-        start = int(start) / 1000  # Convert milliseconds to seconds
-        end = int(end) / 1000  # Convert milliseconds to seconds
+        """查询指标（范围）
+
+        When card_budget=True, rewrite the query with limitk before hitting VM and
+        clamp step so the card path cannot overload VictoriaMetrics or the browser.
+        """
+        start_ms = int(start)
+        end_ms = int(end)
+        effective_query = query
+        applied_limit = False
+        effective_step = step
+        step_clamped = False
+
+        if card_budget:
+            effective_query, applied_limit = Metrics.apply_card_series_limit(query)
+            effective_step, step_clamped = Metrics.clamp_card_step(start_ms, end_ms, step)
+
+        step_seconds = Metrics.parse_step_to_seconds(effective_step)
+        start_sec = start_ms / 1000  # Convert milliseconds to seconds
+        end_sec = end_ms / 1000  # Convert milliseconds to seconds
         vm_api = VictoriaMetricsAPI()
-        resp = vm_api.query_range(query, start, end, step)
+        resp = vm_api.query_range(effective_query, start_sec, end_sec, effective_step)
+
+        truncated = False
+        if card_budget:
+            truncated = Metrics.finalize_card_series_budget(resp, applied_limit=applied_limit)
+            if step_clamped:
+                data = resp.setdefault("data", {})
+                data["step"] = str(effective_step)
+                data["step_clamped"] = True
+
         if detect_gaps:
             data = resp.setdefault("data", {})
             try:
@@ -67,9 +157,16 @@ class Metrics:
                 collection_interval = 0
 
             detection_limit = max_gap_detection_points or Metrics.MAX_GAP_DETECTION_POINTS
-            detection_points = int((end - start) / collection_interval) + 1 if collection_interval > 0 else 0
+            detection_points = int((end_sec - start_sec) / collection_interval) + 1 if collection_interval > 0 else 0
 
-            if collection_interval > 0 and detection_points > detection_limit:
+            if truncated:
+                data["gaps"] = []
+                data["gap_detection"] = {
+                    "status": "limited",
+                    "limited": True,
+                    "reason": "series_truncated",
+                }
+            elif collection_interval > 0 and detection_points > detection_limit:
                 data["gaps"] = []
                 data["gap_detection"] = {
                     "status": "limited",
@@ -77,40 +174,37 @@ class Metrics:
                     "reason": "max_points_exceeded",
                 }
             elif collection_interval > 0:
-                detection_resp = resp if step_seconds == collection_interval else vm_api.query_range(query, start, end, f"{collection_interval}s")
+                detection_resp = (
+                    resp
+                    if step_seconds == collection_interval
+                    else vm_api.query_range(effective_query, start_sec, end_sec, f"{collection_interval}s")
+                )
                 gaps = Metrics.detect_gap_intervals(
                     detection_resp.get("data", {}).get("result", []),
                     collection_interval,
-                    range_start=start,
-                    range_end=end,
+                    range_start=start_sec,
+                    range_end=end_sec,
                 )
                 data["gaps"] = gaps
                 data["gap_detection"] = {"status": "ok", "limited": False}
             else:
                 data["gaps"] = []
                 data["gap_detection"] = {"status": "skipped", "limited": False}
-        Metrics.fill_missing_points(start, end, step_seconds, resp.get("data", {}).get("result", []))
+        Metrics.fill_missing_points(start_sec, end_sec, step_seconds, resp.get("data", {}).get("result", []))
         return resp
 
     @staticmethod
-    def enforce_card_query_budget(response, start_ms, end_ms, step):
-        """Reject card responses that would freeze the browser.
+    def enforce_card_query_budget(response, start_ms=None, end_ms=None, step=None):
+        """Deprecated post-fetch guard; card path now uses pre-query limitk + step clamp.
 
-        This budget applies only to the full-metric-card view. Search and
-        dashboard endpoints retain their existing explicit query behaviour.
+        Kept for callers that still invoke it; prefers truncation annotation over raise
+        when series_budget is already present.
         """
-        result = response.get("data", {}).get("result", [])
-        if len(result) > Metrics.CARD_QUERY_MAX_SERIES:
-            raise BaseAppException(
-                f"指标卡查询超过序列上限（{Metrics.CARD_QUERY_MAX_SERIES} 条），请在搜索页缩小维度范围"
-            )
-        step_seconds = Metrics.parse_step_to_seconds(step)
-        expected_points = int((int(end_ms) - int(start_ms)) / 1000 / step_seconds) + 1
-        total_points = len(result) * expected_points
-        if total_points > Metrics.CARD_QUERY_MAX_POINTS:
-            raise BaseAppException(
-                f"指标卡查询超过数据点上限（{Metrics.CARD_QUERY_MAX_POINTS} 个），请缩短时间范围或在搜索页缩小维度范围"
-            )
+        del start_ms, end_ms, step  # retained for call-site compatibility
+        data = response.get("data", {})
+        if "series_budget" in data:
+            return
+        Metrics.finalize_card_series_budget(response, applied_limit=False)
 
     @staticmethod
     def parse_step_to_seconds(step) -> int:

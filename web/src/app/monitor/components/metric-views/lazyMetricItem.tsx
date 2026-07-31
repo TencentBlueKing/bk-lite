@@ -114,14 +114,14 @@ const LazyMetricItem: React.FC<LazyMetricItemProps> = ({
     >
       <div className="flex justify-between items-center">
         <div className="flex items-center w-[calc(100%-36px)] text-[14px] pr-[15px]">
-          <div className="flex w-full box-border relative">
+          <div className="flex w-full box-border relative items-center min-w-0">
             <span
               className={`font-[600]  overflow-hidden text-ellipsis whitespace-nowrap`}
               title={item.display_name}
             >
               {item.display_name}
             </span>
-            <div className="text-[var(--color-text-3)] text-[12px] relative">
+            <div className="text-[var(--color-text-3)] text-[12px] relative shrink-0">
               {getUnit(item)}
               <Tooltip placement="topLeft" title={item.display_description}>
                 <div
@@ -135,6 +135,20 @@ const LazyMetricItem: React.FC<LazyMetricItemProps> = ({
                 </div>
               </Tooltip>
             </div>
+            {item.seriesBudget?.truncated ? (
+              <Tooltip
+                placement="top"
+                title={t('monitor.views.seriesTruncated', '', {
+                  limit: item.seriesBudget.limit
+                })}
+              >
+                <span className="ml-[8px] shrink-0 text-[12px] text-[var(--color-warning)] cursor-default whitespace-nowrap">
+                  {t('monitor.views.seriesTruncatedShort', '', {
+                    limit: item.seriesBudget.limit
+                  })}
+                </span>
+              </Tooltip>
+            ) : null}
           </div>
         </div>
         <div className="text-[var(--color-text-3)]">

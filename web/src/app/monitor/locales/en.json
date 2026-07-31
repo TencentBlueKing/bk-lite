@@ -202,6 +202,8 @@
       "ifHighSpeed": "Bandwidth",
       "metrics": "Full Metrics",
       "quickSearch": "Quick Search",
+      "seriesTruncated": "Showing the first {{limit}} series. Use search on the right to drill down by dimension.",
+      "seriesTruncatedShort": "Truncated to {{limit}} series",
       "apache_ReqPerSec": "Request Processing Rate",
       "apache_BusyWorkers": "Busy Workers",
       "apache_CPULoad": "CPU Load",

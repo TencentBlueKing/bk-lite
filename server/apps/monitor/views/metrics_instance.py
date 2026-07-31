@@ -102,10 +102,8 @@ class MetricsInstanceViewSet(viewsets.ViewSet):
             step,
             detect_gaps=detect_gaps,
             collection_interval_seconds=collection_interval,
+            card_budget=query_budget == "card",
         )
-
-        if query_budget == "card":
-            MetricsService.enforce_card_query_budget(data, start_int, end_int, step)
 
         if source_unit:
             if target_unit:
