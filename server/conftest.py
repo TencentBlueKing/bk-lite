@@ -1,3 +1,4 @@
+import pydantic.root_model  # noqa: F401
 import pytest
 
 

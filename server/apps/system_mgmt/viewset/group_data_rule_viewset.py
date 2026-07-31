@@ -28,13 +28,19 @@ from apps.system_mgmt.utils.operation_log_utils import log_operation
 def _build_actor_context(request, loader=None):
     current_team = get_current_team(request)
     if current_team in (None, ""):
-        message = loader.get("error.current_team_required") if loader else "缺少 current_team 参数"
+        message = (
+            (loader.get("error.current_team_required") if loader else None)
+            or "缺少 current_team 参数"
+        )
         return None, JsonResponse({"result": False, "message": message}, status=400)
 
     try:
         current_team = int(current_team)
     except (TypeError, ValueError):
-        message = loader.get("error.invalid_current_team") if loader else "current_team 参数非法"
+        message = (
+            (loader.get("error.invalid_current_team") if loader else None)
+            or "current_team 参数非法"
+        )
         return None, JsonResponse({"result": False, "message": message}, status=400)
 
     return {
@@ -245,7 +251,10 @@ class GroupDataRuleViewSet(LanguageViewSet):
             try:
                 team = int(current_team) if current_team not in (None, "") else None
             except (TypeError, ValueError):
-                message = self.loader.get("error.invalid_current_team") if self.loader else "current_team 参数非法"
+                message = (
+                    (self.loader.get("error.invalid_current_team") if self.loader else None)
+                    or "current_team 参数非法"
+                )
                 return JsonResponse({"result": False, "message": message}, status=400)
             params["user_info"] = {
                 "user": getattr(user, "username", ""),

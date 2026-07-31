@@ -175,7 +175,10 @@ def test_group_data_rule_job_get_app_data_rejects_unauthorized_group(monkeypatch
     payload = _json_payload(response)
 
     assert response.status_code == 403
-    assert payload == {"result": False, "message": "无权访问该组织"}
+    assert payload == {
+        "result": False,
+        "message": "You do not have permission to access this group.",
+    }
 
 
 @pytest.mark.django_db

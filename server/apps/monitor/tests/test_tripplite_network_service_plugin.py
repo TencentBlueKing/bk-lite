@@ -13,6 +13,8 @@ from pathlib import Path
 import pytest
 import yaml
 
+from apps.core.utils.loader import LanguageLoader
+
 SERVER_ROOT = Path(__file__).resolve().parents[3]
 PLUGINS = SERVER_ROOT / "apps" / "monitor" / "support-files" / "plugins" / "Telegraf"
 BRAND_DIR = PLUGINS / "snmp" / "network_service_tripplite"
@@ -87,7 +89,7 @@ def toml_text():
 @pytest.fixture(scope="module")
 def languages():
     return {
-        lang: yaml.safe_load((LANGUAGE_DIR / f"{lang}.yaml").read_text(encoding="utf-8"))
+        lang: LanguageLoader("monitor", lang).translations
         for lang in ("zh-Hans", "en")
     }
 
@@ -152,12 +154,11 @@ def test_tripplite_private_health_oids_are_not_guessed(metrics, policy, toml_tex
 
 
 @pytest.mark.unit
-def test_metrics_json_is_zero_delta_child(metrics):
-    assert metrics["metrics"] == []
-    assert metrics.get("supplementary_indicators", []) == []
-    names = {m["name"] for m in metrics["metrics"]}
-    leaked = [name for name in BASE_METRICS if name in names]
-    assert leaked == []
+def test_metrics_json_embeds_deployed_snmp_floor(metrics):
+    names = {metric["name"] for metric in metrics["metrics"]}
+    expected = {"snmp_uptime", "interface_ifHCInOctets", "interface_ifHCOutOctets"}
+    assert names == expected
+    assert set(metrics.get("supplementary_indicators", [])) == {"snmp_uptime"}
 
 
 @pytest.mark.unit

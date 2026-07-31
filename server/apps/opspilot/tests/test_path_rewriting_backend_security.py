@@ -16,11 +16,13 @@
 from __future__ import annotations
 
 import os
-import sys
 from types import SimpleNamespace
-from unittest.mock import MagicMock
 
 import pytest
+
+from apps.opspilot.services.skill_executor.path_rewriting_backend import (
+    PathRewritingBackend as _PathRewritingBackend,
+)
 
 
 pytestmark = pytest.mark.unit
@@ -28,32 +30,8 @@ pytestmark = pytest.mark.unit
 
 @pytest.fixture
 def PathRewritingBackend():
-    """在测试期间解除 conftest 对 deepagents.backends.protocol 的 mock,
-    拿到真正的 PathRewritingBackend 类(conftest 用 MagicMock 替了父类,
-    导致 PathRewritingBackend 整个变成 MagicMock 树,无法直接用)。
-
-    解除 mocks 之后,`PathRewritingBackend` 是一个真类,继承真的
-    SandboxBackendProtocol。我们用 SimpleNamespace 充当 self(self 只需要
-    `_ALLOWED_COMMANDS` / `_BLOCKED_PATTERNS` 两个类属性即可,_validate_command
-    不调用任何实例方法)。
-    """
-    # 清掉 conftest 设的 MagicMock,触发 deepagents 重新 import 拿真模块
-    for name in list(sys.modules.keys()):
-        if name.startswith("deepagents"):
-            del sys.modules[name]
-    # 同时把 path_rewriting_backend 自己从缓存里踢掉,下次 import 会用真父类重新执行 class 体
-    for name in list(sys.modules.keys()):
-        if "path_rewriting_backend" in name:
-            del sys.modules[name]
-
-    from apps.opspilot.services.skill_executor.path_rewriting_backend import (
-        PathRewritingBackend as _Cls,
-    )
-    assert isinstance(_Cls, type), (
-        f"PathRewritingBackend 应该是真类,实际 {type(_Cls).__name__}——"
-        "检查 conftest 的 mock 是否还在干扰"
-    )
-    return _Cls
+    """返回真实的 deepagents 协议适配类。"""
+    return _PathRewritingBackend
 
 
 def _make_self(Cls) -> SimpleNamespace:
@@ -257,4 +235,3 @@ def test_https_external_url_via_python_still_validated(tmp_path, PathRewritingBa
 # 逃生口:admin 配置(留作后续 PR,需要先在 source 实现
 # OPSPILOT_PATH_REWRITE_DISABLE_CURL_BLOCK env var 读取 + 模块加载时机)
 # =========================================================================
-

@@ -82,14 +82,14 @@ class TestUpdateUserBaseInfo:
 
     def test_更新成功落库(self):
         _make_user(display_name="old")
-        req = _req("post", {"display_name": "新名字", "email": "new@x.com", "locale": "en", "timezone": "UTC"})
+        req = _req("post", {"display_name": "新名字", "locale": "en", "timezone": "UTC"})
         req.user = MagicMock(username="alice", domain="domain.com", locale="zh-CN")
         with patch.object(views, "log_operation"):
             resp = update_user_base_info(req)
         assert json.loads(resp.content)["result"] is True
         u = User.objects.get(username="alice", domain="domain.com")
         assert u.display_name == "新名字"
-        assert u.email == "new@x.com"
+        assert u.email == "a@b.com"
         assert u.locale == "en"
 
     def test_用户不存在返回错误(self):

@@ -59,8 +59,20 @@ class TestMetricGroupView:
     def _setup(self):
         obj = MonitorObject.objects.create(name="MGViewObj", level="base")
         plugin = MonitorPlugin.objects.create(name="MGViewPlugin")
-        g1 = MetricGroup.objects.create(monitor_object=obj, monitor_plugin=plugin, name="g1", sort_order=2)
-        g2 = MetricGroup.objects.create(monitor_object=obj, monitor_plugin=plugin, name="g2", sort_order=1)
+        g1 = MetricGroup.objects.create(
+            monitor_object=obj,
+            monitor_plugin=plugin,
+            name="g1",
+            sort_order=2,
+            is_pre=False,
+        )
+        g2 = MetricGroup.objects.create(
+            monitor_object=obj,
+            monitor_plugin=plugin,
+            name="g2",
+            sort_order=1,
+            is_pre=False,
+        )
         return obj, g1, g2
 
     def test_list_returns_groups(self, api_client):
@@ -83,7 +95,12 @@ class TestMetricView:
     def test_list_and_set_order(self, api_client):
         obj = MonitorObject.objects.create(name="MViewObj", level="base")
         plugin = MonitorPlugin.objects.create(name="MViewPlugin")
-        group = MetricGroup.objects.create(monitor_object=obj, monitor_plugin=plugin, name="g")
+        group = MetricGroup.objects.create(
+            monitor_object=obj,
+            monitor_plugin=plugin,
+            name="g",
+            is_pre=False,
+        )
         m = Metric.objects.create(
             monitor_object=obj,
             monitor_plugin=plugin,
@@ -92,6 +109,7 @@ class TestMetricView:
             display_name="CPU",
             description="d",
             sort_order=3,
+            is_pre=False,
         )
         resp = api_client.get(f"{BASE}/api/metrics/?monitor_object_id={obj.id}")
         assert resp.status_code == 200

@@ -18,58 +18,63 @@ def _clear_cache():
 
 
 class TestLanguageLoaderLoad:
-    def test_loads_main_yaml(self, tmp_path, mocker):
-        # 边界：os.path.exists + open。主文件命中，企业目录不命中。
-        def fake_exists(path):
-            return path == "apps/core/language/en.yaml"
-
-        mocker.patch.object(loader_mod.os.path, "exists", side_effect=fake_exists)
-        mocker.patch.object(
-            loader_mod.yaml, "safe_load", return_value={"os": {"linux": "Linux"}}
+    def test_loads_main_yaml(self, tmp_path, monkeypatch):
+        language_dir = tmp_path / "apps" / "core" / "language"
+        language_dir.mkdir(parents=True)
+        (language_dir / "en.yaml").write_text(
+            "os:\n  linux: Linux\n",
+            encoding="utf-8",
         )
-        m = mocker.patch("builtins.open", mocker.mock_open(read_data="ignored"))
+        monkeypatch.chdir(tmp_path)
 
         ld = LanguageLoader(app="core", default_lang="en")
+
         assert ld.get("os.linux") == "Linux"
-        m.assert_called_once()
 
-    def test_deep_merge_with_enterprise(self, mocker):
-        def fake_exists(path):
-            return True  # 主文件 + 企业文件都存在
-
-        mocker.patch.object(loader_mod.os.path, "exists", side_effect=fake_exists)
-        mocker.patch.object(
-            loader_mod.yaml,
-            "safe_load",
-            side_effect=[
-                {"a": {"x": 1}, "b": 2},  # 主文件
-                {"a": {"y": 9}, "c": 3},  # 企业文件覆盖/合并
-            ],
+    def test_deep_merge_with_enterprise(self, tmp_path, monkeypatch):
+        language_dir = tmp_path / "apps" / "core" / "language"
+        enterprise_dir = tmp_path / "apps" / "core" / "enterprise" / "language"
+        language_dir.mkdir(parents=True)
+        enterprise_dir.mkdir(parents=True)
+        (language_dir / "en.yaml").write_text(
+            "a:\n  x: 1\nb: 2\n",
+            encoding="utf-8",
         )
-        mocker.patch("builtins.open", mocker.mock_open(read_data="ignored"))
+        (enterprise_dir / "en.yaml").write_text(
+            "a:\n  y: 9\nc: 3\n",
+            encoding="utf-8",
+        )
+        monkeypatch.chdir(tmp_path)
 
         ld = LanguageLoader(app="core", default_lang="en")
+
         assert ld.get("a.x") == 1
         assert ld.get("a.y") == 9
         assert ld.get("c") == 3
 
-    def test_missing_files_returns_empty(self, mocker):
-        mocker.patch.object(loader_mod.os.path, "exists", return_value=False)
+    def test_missing_files_returns_empty(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+
         ld = LanguageLoader(app="core", default_lang="en")
+
         assert ld.translations == {}
         assert ld.get("anything", "DEF") == "DEF"
 
-    def test_load_failure_logged_not_raised(self, mocker):
-        mocker.patch.object(loader_mod.os.path, "exists", side_effect=lambda p: p == "apps/core/language/en.yaml")
+    def test_load_failure_logged_not_raised(self, tmp_path, monkeypatch, mocker):
+        language_dir = tmp_path / "apps" / "core" / "language"
+        language_dir.mkdir(parents=True)
+        (language_dir / "en.yaml").write_text("key: value\n", encoding="utf-8")
+        monkeypatch.chdir(tmp_path)
         mocker.patch("builtins.open", side_effect=OSError("disk error"))
+
         ld = LanguageLoader(app="core", default_lang="en")
+
         assert ld.translations == {}
 
 
 class TestLanguageLoaderGet:
-    def _loader_with(self, mocker, data):
-        mocker.patch.object(loader_mod.os.path, "exists", return_value=False)
-        ld = LanguageLoader(app="core", default_lang="en")
+    def _loader_with(self, _mocker, data):
+        ld = LanguageLoader.__new__(LanguageLoader)
         ld.translations = data
         return ld
 
@@ -88,7 +93,7 @@ class TestLanguageLoaderGet:
 
 class TestCache:
     def test_cache_hit_skips_reload(self, mocker):
-        mocker.patch.object(loader_mod.os.path, "exists", return_value=False)
+        mocker.patch.object(LanguageLoader, "_load_language_file", return_value={})
         load_spy = mocker.spy(LanguageLoader, "_load_language_file")
         LanguageLoader(app="core", default_lang="en")
         first = load_spy.call_count
@@ -110,7 +115,7 @@ class TestCache:
         assert loader_mod._translation_cache == {}
 
     def test_load_language_compat_method(self, mocker):
-        mocker.patch.object(loader_mod.os.path, "exists", return_value=False)
+        mocker.patch.object(LanguageLoader, "_load_language_file", return_value={})
         ld = LanguageLoader(app="core", default_lang="en")
         loader_mod._translation_cache[("core", "zh-Hans")] = {"hi": "你好"}
         ld.load_language("zh-Hans")

@@ -304,7 +304,11 @@ class _MigrationApps:
 
 
 def _distribution_migration():
-    pytest.skip("0018_set_cloud_cost_distribution_field_schema 已不在当前迁移链中")
+    import importlib
+
+    return importlib.import_module(
+        "apps.operation_analysis.migrations.0019_set_cloud_cost_distribution_field_schema"
+    )
 
 
 def test_cloud_cost_distribution_migration_updates_existing_group_by_and_is_idempotent():
@@ -469,14 +473,28 @@ def test_init_default_groups_covers_all_registered_canvas_models():
 
     root_default, _ = Group.objects.get_or_create(name="Default", parent_id=0)
     records = []
+    directory = Directory.objects.create(
+        name="网络拓扑测试目录",
+        groups=[root_default.id],
+        created_by="system",
+    )
 
     for object_type, meta in CANVAS_TYPE_REGISTRY.items():
-        required_fields = {}
+        extra = {}
         if object_type == "networkTopology":
-            directory = Directory.objects.create(name="网络拓扑目录", groups=[], created_by="system")
-            required_fields = {"directory": directory, "base_url": "https://weops.example.com"}
-        empty = meta.model.objects.create(name=f"无组织-{object_type}", groups=[], created_by="system", **required_fields)
-        existing = meta.model.objects.create(name=f"已分组-{object_type}", groups=[99], created_by="system", **required_fields)
+            extra = {"directory": directory, "base_url": "https://weops.example.com"}
+        empty = meta.model.objects.create(
+            name=f"无组织-{object_type}",
+            groups=[],
+            created_by="system",
+            **extra,
+        )
+        existing = meta.model.objects.create(
+            name=f"已分组-{object_type}",
+            groups=[99],
+            created_by="system",
+            **extra,
+        )
         records.append((empty, existing))
 
     call_command("init_default_groups")
