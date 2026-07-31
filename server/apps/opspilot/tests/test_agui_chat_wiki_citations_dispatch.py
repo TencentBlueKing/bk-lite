@@ -46,7 +46,7 @@ def _build_fake_graph(events):
         def __init__(self, events):
             self._events = events
 
-        async def agui_stream(self, request):  # noqa: ARG002
+        async def agui_stream(self, request, **_kwargs):  # noqa: ARG002
             for ev in self._events:
                 yield ev
 
