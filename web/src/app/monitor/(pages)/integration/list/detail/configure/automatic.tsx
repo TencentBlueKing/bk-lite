@@ -24,6 +24,10 @@ import Permission from '@/components/permission';
 import { cloneDeep } from 'lodash';
 import { usePluginFromJson } from '@/app/monitor/hooks/integration/usePluginFromJson';
 import { useConfigRenderer } from '@/app/monitor/hooks/integration/useConfigRenderer';
+import {
+  getSnmpFilterMutexConflicts,
+  trackSnmpFilterMutexLastChanged
+} from '@/app/monitor/hooks/integration/snmpFilterMutex';
 import { toMonitorNodeOption } from '@/app/monitor/hooks/integration/nodeOptions';
 import BatchEditModal from './batchEditModal';
 import ExcelImportModal from './excelImportModal';
@@ -709,6 +713,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     form.setFieldsValue({
       ...(formConfig?.defaultForm || {})
     });
+    trackSnmpFilterMutexLastChanged({}, form.getFieldsValue(true), form);
   };
 
   const getNodeList = async () => {
@@ -804,6 +809,11 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     }
     form.validateFields().then((values) => {
       try {
+        const mutexErrors = getSnmpFilterMutexConflicts(values, t);
+        if (mutexErrors.length) {
+          mutexErrors.forEach((msg) => message.error(msg));
+          return;
+        }
         const row = cloneDeep(values);
         delete row.nodes;
         const params =
@@ -831,6 +841,12 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
       });
       const targetUrl = `/monitor/integration/list?${searchParams.toString()}`;
       router.push(targetUrl);
+    } catch (error: any) {
+      message.error(
+        error?.response?.data?.message ||
+          error?.message ||
+          t('common.operationFailed')
+      );
     } finally {
       setConfirmLoading(false);
     }
@@ -852,7 +868,10 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
       form={form}
       name="basic"
       layout="vertical"
-      onValuesChange={clearCollectDetectState}
+      onValuesChange={(changed, all) => {
+        clearCollectDetectState();
+        trackSnmpFilterMutexLastChanged(changed, all, form);
+      }}
     >
       <div className="flex items-center justify-between mb-[10px]">
         <b className="text-[14px] ml-[-10px]">

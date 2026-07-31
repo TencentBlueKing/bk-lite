@@ -1,5 +1,4 @@
-import { BUILD_IN_MODEL, CREDENTIAL_LIST } from '@/app/cmdb/constants/asset';
-import { getSvgIcon } from './utils';
+import { CREDENTIAL_LIST } from '@/app/cmdb/constants/asset';
 import dayjs from 'dayjs';
 import { AttrFieldType } from '@/app/cmdb/types/assetManage';
 import {
@@ -23,7 +22,6 @@ import UserAvatar from '@/components/user-avatar';
 import React from 'react';
 import { useTranslation } from '@/utils/i18n';
 import {
-  ModelIconItem,
   ColumnItem,
   UserItem,
   SubGroupItem,
@@ -363,52 +361,7 @@ export const OrganizationField: React.FC<{ value: any; hideUserAvatar?: boolean 
   return getOrganizationDisplayText(value, flatGroups);
 };
 
-export const iconList = getSvgIcon();
-// 图标套切换点：'/assets/icons'（扁平蓝块） | '/assets/icons-realistic'（写实立体）
-const CMDB_ICON_DIR = '/assets/icons-realistic';
-// 缓存 getIconUrl 结果,避免每次调用都生成新字符串(稳定引用
-// 可让 x6 setAttrs 判断 attrs 没变,跳过 <image> 元素重建,避免 SVG 重请求)
-const iconUrlCache = new Map<string, string>();
-export function getIconUrl(tex: ModelIconItem) {
-  try {
-    const icn = tex.icn || '';
-    const cacheKey = `${icn}|${tex.model_id || ''}`;
-    const cached = iconUrlCache.get(cacheKey);
-    if (cached !== undefined) return cached;
-
-    // 查找显示的图标：
-    // 1) icn 直接是完整文件名（后端配置形如 cc-switch2_交换机）
-    // 2) 兼容历史 'icon-xxx' 前缀，并按图标 key（文件名首个下划线前的部分）匹配
-    let showIcon = icn ? iconList.find((item) => item.url === icn) : undefined;
-    if (!showIcon && icn) {
-      const raw = icn.includes('icon-') ? icn.split('icon-')[1] : icn;
-      const key = raw?.split('_')[0];
-      showIcon = iconList.find((item) => item.key === key);
-    }
-
-    // 如果显示图标存在，直接返回相应的图标路径
-    let result: string;
-    if (showIcon) {
-      result = `${CMDB_ICON_DIR}/${showIcon.url}.svg`;
-    } else {
-      // 查找内置模型和对应图标
-      const isBuilt = BUILD_IN_MODEL.find((item) => item.key === tex.model_id);
-      const builtIcon = isBuilt
-        ? iconList.find((item) => item.key === isBuilt.icon)
-        : null;
-      // 使用内置模型图标或者默认图标
-      const iconUrl = builtIcon?.url || 'cc-default_默认';
-      result = `${CMDB_ICON_DIR}/${iconUrl}.svg`;
-    }
-
-    iconUrlCache.set(cacheKey, result);
-    return result;
-  } catch (e) {
-    // 记录错误日志并返回默认图标
-    console.error('Error in getIconUrl:', e);
-    return `${CMDB_ICON_DIR}/cc-default_默认.svg`;
-  }
-}
+export { getIconUrl, iconList } from '@/app/cmdb/utils/modelIcon';
 
 // 深克隆
 export const deepClone = (obj: any, hash = new WeakMap()) => {

@@ -3,8 +3,8 @@ import json
 from pathlib import Path
 
 import pytest
-import yaml
 
+from apps.core.utils.loader import LanguageLoader
 from apps.monitor.management.services import plugin_migrate
 from apps.monitor.models import CollectConfig, MonitorObject, MonitorPlugin
 from apps.monitor.models.monitor_object import MonitorInstance
@@ -21,19 +21,12 @@ HOST_TEMPLATE = MONITOR_ROOT / "support-files/plugins/Telegraf/http/host/host.ch
 WINDOWS_WMI_TEMPLATE = MONITOR_ROOT / "support-files/plugins/Telegraf/http/windows_wmi/windows_wmi.child.toml.j2"
 HOST_METRICS = MONITOR_ROOT / "support-files/plugins/Telegraf/http/host/metrics.json"
 WINDOWS_WMI_METRICS = MONITOR_ROOT / "support-files/plugins/Telegraf/http/windows_wmi/metrics.json"
-ZH_LANG = MONITOR_ROOT / "language/zh-Hans.yaml"
-EN_LANG = MONITOR_ROOT / "language/en.yaml"
 STARGAZER_MONITOR = REPO_ROOT / "agents/stargazer/api/monitor.py"
 
 
 def _load_json(path):
     with path.open(encoding="utf-8") as fh:
         return json.load(fh)
-
-
-def _load_yaml(path):
-    with path.open(encoding="utf-8") as fh:
-        return yaml.safe_load(fh)
 
 
 def _field_by_name(ui, name):
@@ -86,9 +79,9 @@ def test_stargazer_monitor_api_defaults_to_full_modules():
     assert 'request.headers.get("metrics_modules", "cpu,mem,disk,net")' not in host_metrics_block
 
 
-@pytest.mark.parametrize("lang_path", [ZH_LANG, EN_LANG])
-def test_remote_host_metric_groups_and_names_are_bilingual(lang_path):
-    lang = _load_yaml(lang_path)
+@pytest.mark.parametrize("language", ["zh-Hans", "en"])
+def test_remote_host_metric_groups_and_names_are_bilingual(language):
+    lang = LanguageLoader("monitor", language).translations
     host_groups = lang["monitor_object_metric_group"]["Host"]
     host_metrics = lang["monitor_object_metric"]["Host"]
 

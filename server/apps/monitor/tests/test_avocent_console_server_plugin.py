@@ -5,6 +5,8 @@ from pathlib import Path
 import pytest
 import yaml
 
+from apps.core.utils.loader import LanguageLoader
+
 SERVER_ROOT = Path(__file__).resolve().parents[3]
 PLUGINS = SERVER_ROOT / "apps" / "monitor" / "support-files" / "plugins" / "Telegraf"
 BRAND_DIR = PLUGINS / "snmp" / "console_server_avocent"
@@ -63,7 +65,7 @@ def toml_text():
 @pytest.fixture(scope="module")
 def languages():
     return {
-        lang: yaml.safe_load((LANGUAGE_DIR / f"{lang}.yaml").read_text(encoding="utf-8"))
+        lang: LanguageLoader("monitor", lang).translations
         for lang in ("zh-Hans", "en")
     }
 
@@ -118,11 +120,11 @@ def test_snmpv3_passwords_use_runtime_env_placeholders(toml_text):
 
 
 @pytest.mark.unit
-def test_metrics_json_is_zero_delta_without_base_metrics(metrics):
-    names = {m["name"] for m in metrics["metrics"]}
-    assert names == set()
-    assert BASE_METRICS.isdisjoint(names)
-    assert metrics.get("supplementary_indicators", []) == []
+def test_metrics_json_embeds_deployed_snmp_floor(metrics):
+    names = {metric["name"] for metric in metrics["metrics"]}
+    expected = {"snmp_uptime", "interface_ifHCInOctets", "interface_ifHCOutOctets"}
+    assert names == expected
+    assert set(metrics.get("supplementary_indicators", [])) == {"snmp_uptime"}
 
 
 @pytest.mark.unit

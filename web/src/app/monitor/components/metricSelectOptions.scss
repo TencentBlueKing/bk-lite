@@ -1,0 +1,15 @@
+/* 双行指标 option：避免 Ant Design 默认单行高度裁切英文 ID */
+.metric-select-popup {
+  .ant-select-item-option {
+    min-height: auto;
+    height: auto;
+    padding-top: 6px;
+    padding-bottom: 6px;
+    line-height: 1.4;
+  }
+
+  .ant-select-item-option-content {
+    white-space: normal;
+    overflow: visible;
+  }
+}

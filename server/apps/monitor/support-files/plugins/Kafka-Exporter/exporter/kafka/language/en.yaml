@@ -31,6 +31,9 @@ monitor_object_metric:
     kafka_topic_partition_in_sync_replica:
       name: Partition In-Sync Replicas
       desc: Number of in-sync replicas for the specified topic and partition.
+    kafka_topic_partition_leader:
+      name: Partition Leader
+      desc: Leader broker ID for the specified topic and partition.
     kafka_topic_partition_leader_is_preferred:
       name: Partition Preferred Leader Status
       desc: Value is 1 if the preferred Broker node is in use for the topic/partition,
@@ -44,10 +47,46 @@ monitor_object_metric:
     kafka_consumergroup_current_offset:
       name: Consumer Group Current Offset
       desc: Current offset for the consumer group in the specified topic and partition.
+    kafka_consumergroup_current_offset_sum:
+      name: Consumer Group Current Offset Sum
+      desc: Sum of committed offsets for a consumer group and topic.
     kafka_consumergroup_lag:
       name: Consumer Group Lag
       desc: Current approximate lag of the consumer group in the specified topic and
         partition.
+    kafka_consumergroup_lag_sum:
+      name: Consumer Group Lag Sum
+      desc: Sum of lag across partitions for a consumer group and topic.
+    kafka_consumergroup_members:
+      name: Consumer Group Member Count
+      desc: Number of members in a consumer group.
+    kafka_consumergroup_lag_anomaly:
+      name: Consumer Group Lag Anomaly
+      desc: Value is 1 when the committed offset is greater than the log end offset from the same collection.
+    kafka_exporter_scrape_duration_seconds:
+      name: Kafka Collection Duration
+      desc: Duration of the complete Kafka metric collection.
+    kafka_exporter_scrape_success:
+      name: Kafka Collection Success Status
+      desc: Value is 1 when the latest Kafka metric collection completed without request errors, otherwise 0.
+    kafka_exporter_scrape_stage_duration_seconds:
+      name: Kafka Collection Stage Duration
+      desc: Duration of each Kafka metric collection stage.
+    kafka_exporter_kafka_requests:
+      name: Kafka Request Count
+      desc: Number of Kafka requests issued by the latest collection.
+    kafka_exporter_kafka_request_errors:
+      name: Kafka Request Error Count
+      desc: Number of Kafka request errors observed by the latest collection.
+    kafka_exporter_collected_series:
+      name: Collected Metric Series
+      desc: Number of Kafka data series emitted by the latest collection before exporter self metrics.
+    kafka_exporter_lag_anomalies:
+      name: Lag Anomaly Partition Count
+      desc: Number of partitions whose committed offset is greater than the same-collection log end offset.
+    kafka_exporter_last_success_timestamp_seconds:
+      name: Last Successful Collection Timestamp
+      desc: Unix timestamp of the last fully successful Kafka metric collection.
     up_gauge:
       name: Probe Status
       desc: Probe Uptime status. 0 means connection failed, 1 means connection success.
@@ -107,4 +146,5 @@ monitor_object_metric_group:
     Base: Base
     Topic: Topic
     ConsumerGroup: ConsumerGroup
+    Exporter: Exporter
     Process: Process

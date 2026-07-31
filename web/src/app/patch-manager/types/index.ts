@@ -213,11 +213,14 @@ export interface ComplianceDistributionItem {
 export interface RecentTaskItem {
   id: number;
   name: string;
+  task_type: 'install' | 'reboot';
+  task_type_display: string;
+  execution_mode: 'now' | 'window';
+  execution_window_start?: string | null;
+  execution_window_end?: string | null;
   status: string;
   status_code?: string;
   status_color: string;
-  progress: string;
-  time: string;
   created_at: string | null;
 }
 

@@ -306,7 +306,7 @@ def test_log_group_update_is_scoped_by_permission(api_client, authenticated_user
 @pytest.mark.django_db
 def test_log_group_update_rejects_view_only_instance_permission(api_client, authenticated_user, mocker):
     LogGroup.objects.create(id="g-1", name="Allowed", rule={"mode": "AND", "conditions": [{"field": "app", "op": "==", "value": "demo"}]})
-    LogGroupOrganization.objects.create(log_group_id="g-1", organization=2)
+    LogGroupOrganization.objects.create(log_group_id="g-1", organization=1)
     _mock_group_permission(
         mocker,
         teams=[],
@@ -326,7 +326,7 @@ def test_log_group_update_rejects_view_only_instance_permission(api_client, auth
 @pytest.mark.django_db
 def test_log_group_destroy_rejects_view_only_instance_permission(api_client, authenticated_user, mocker):
     LogGroup.objects.create(id="g-1", name="Allowed", rule={"mode": "AND", "conditions": [{"field": "app", "op": "==", "value": "demo"}]})
-    LogGroupOrganization.objects.create(log_group_id="g-1", organization=2)
+    LogGroupOrganization.objects.create(log_group_id="g-1", organization=1)
     _mock_group_permission(
         mocker,
         teams=[],
@@ -356,7 +356,10 @@ def test_log_group_create_rejects_unauthorized_organizations(api_client, authent
     )
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST
-    assert "无权限绑定日志分组" in str(response.json())
+    assert (
+        response.json()["message"]
+        == "organizations:organization_ids 包含无权分配的组织"
+    )
 
 
 @pytest.mark.django_db
@@ -428,7 +431,10 @@ def test_policy_create_rejects_invalid_organizations_payload(api_client, authent
     )
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST
-    assert response.json()["message"] == "organizations entries must be integers"
+    assert (
+        response.json()["message"]
+        == "organizations entries must be canonical positive integers"
+    )
     assert Policy.objects.count() == 0
 
 
@@ -451,7 +457,7 @@ def test_policy_update_hides_unauthorized_policy(api_client, authenticated_user,
 
 @pytest.mark.django_db
 def test_policy_update_rejects_view_only_instance_permission(api_client, authenticated_user, mocker):
-    policy = _create_policy("view-only-policy", organization=2)
+    policy = _create_policy("view-only-policy", organization=1)
     _mock_policy_permission_result(
         mocker,
         permission_data={
@@ -519,13 +525,16 @@ def test_policy_update_rejects_invalid_organizations_payload(api_client, authent
     )
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST
-    assert response.json()["message"] == "organizations entries must be integers"
+    assert (
+        response.json()["message"]
+        == "organizations entries must be canonical positive integers"
+    )
     assert list(policy.policyorganization_set.values_list("organization", flat=True)) == [1]
 
 
 @pytest.mark.django_db
 def test_policy_update_rejects_target_org_outside_authorized_scope(api_client, authenticated_user, mocker):
-    policy = _create_policy("scoped-policy", organization=2)
+    policy = _create_policy("scoped-policy", organization=1)
     _mock_policy_permission_result(
         mocker,
         permission_data={
@@ -545,12 +554,12 @@ def test_policy_update_rejects_target_org_outside_authorized_scope(api_client, a
     )
 
     assert response.status_code == status.HTTP_403_FORBIDDEN
-    assert list(policy.policyorganization_set.values_list("organization", flat=True)) == [2]
+    assert list(policy.policyorganization_set.values_list("organization", flat=True)) == [1]
 
 
 @pytest.mark.django_db
 def test_policy_enable_rejects_view_only_instance_permission(api_client, authenticated_user, mocker):
-    policy = _create_policy("toggle-policy", organization=2)
+    policy = _create_policy("toggle-policy", organization=1)
     _mock_policy_permission_result(
         mocker,
         permission_data={

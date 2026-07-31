@@ -83,7 +83,9 @@ def test_mode_resolver_reads_manual_input_from_manifest():
     )
     from apps.system_mgmt.providers.registry import get_provider_registry, get_capability_adapter_registry
     from apps.system_mgmt.providers.adapters.base import BaseUserSyncAdapter
+    from apps.system_mgmt.providers.loader import load_builtin_providers
 
+    load_builtin_providers()
     registry = get_provider_registry()
     adapter_registry = get_capability_adapter_registry()
     registry.register(manifest)
@@ -108,6 +110,7 @@ def test_ad_root_dn_uses_manual_input_mode():
 def manual_input_instance(db):
     from apps.system_mgmt.providers.registry import get_provider_registry, get_capability_adapter_registry
     from apps.system_mgmt.providers.adapters.base import BaseUserSyncAdapter
+    from apps.system_mgmt.providers.loader import load_builtin_providers
     from apps.system_mgmt.providers.schemas import ProviderManifest
 
     manifest = ProviderManifest.model_validate(
@@ -145,6 +148,7 @@ def manual_input_instance(db):
             ],
         }
     )
+    load_builtin_providers()
     registry = get_provider_registry()
     adapter_registry = get_capability_adapter_registry()
     registry.register(manifest)

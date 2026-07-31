@@ -4,8 +4,8 @@ import sys
 from pathlib import Path
 
 import pytest
-import yaml
 
+from apps.core.utils.loader import LanguageLoader
 
 FLOW_METRICS_ROOT = Path(__file__).resolve().parents[1] / "support-files" / "plugins" / "Telegraf"
 MONITOR_ROOT = Path(__file__).resolve().parents[1]
@@ -445,7 +445,7 @@ def test_flow_policy_templates_use_low_cardinality_metrics_only():
 
 def test_flow_metrics_have_bilingual_translations():
     for language in ("zh-Hans", "en"):
-        payload = yaml.safe_load((LANGUAGE_ROOT / f"{language}.yaml").read_text(encoding="utf-8"))
+        payload = LanguageLoader("monitor", language).translations
         object_metrics = payload["monitor_object_metric"]
         metric_groups = payload["monitor_object_metric_group"]
         plugins = payload["monitor_object_plugin"]
@@ -472,6 +472,6 @@ def test_flow_metrics_have_bilingual_translations():
                 assert plugins.get(plugin_name, {}).get("name"), f"{language}:{plugin_name}: missing plugin name"
                 assert plugins.get(plugin_name, {}).get("desc"), f"{language}:{plugin_name}: missing plugin desc"
 
-        language_text = (LANGUAGE_ROOT / f"{language}.yaml").read_text(encoding="utf-8")
+        language_text = json.dumps(payload, ensure_ascii=False)
         for old_metric in OLD_FLOW_METRICS:
             assert old_metric not in language_text

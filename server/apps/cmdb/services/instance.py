@@ -87,6 +87,11 @@ def _normalize_batch_instance_ids(inst_ids: list) -> list[int]:
             continue
         seen_ids.add(normalized_id)
         normalized_ids.append(normalized_id)
+    if not normalized_ids:
+        raise InstanceBatchError(
+            "实例不存在",
+            reason="not_found",
+        )
     return normalized_ids
 
 

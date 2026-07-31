@@ -50,7 +50,7 @@ class ExcelLoader:
         excel_format_str = ""
 
         # Step 2: Format and append column headers
-        column_headers = "\t".join(str(df.columns))  # Using tab as a separator
+        column_headers = "\t".join(str(column) for column in df.columns)
         excel_format_str += column_headers + "\n"
 
         # Step 3 & 4: Iterate through rows and append their formatted string representation

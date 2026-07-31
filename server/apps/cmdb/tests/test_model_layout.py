@@ -322,6 +322,10 @@ class TestModelLayoutAPI:
     def test_save_layout_writes_both(self, superuser, monkeypatch):
         cls_calls, mdl_calls = [], []
         monkeypatch.setattr(
+            "apps.cmdb.views.model.ClassificationManage.snapshot_classification_layout",
+            lambda classification_ids: [],
+        )
+        monkeypatch.setattr(
             "apps.cmdb.views.model.ClassificationManage.update_classification_layout",
             lambda items: cls_calls.append(items),
         )

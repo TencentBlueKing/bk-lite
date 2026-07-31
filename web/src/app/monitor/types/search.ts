@@ -33,6 +33,7 @@ export interface SearchParams {
   auto_convert_unit?: boolean;
   detect_gaps?: boolean;
   collection_interval?: number;
+  query_budget?: 'card';
 }
 
 export interface QueryGroup {

@@ -284,11 +284,17 @@ export interface MetricItem {
   instance_id_keys?: string[];
   dimensions: Dimension[];
   query?: string;
+  view_query?: string;
   unit?: string;
   displayType?: string;
   description?: string;
   viewData?: ChartData[] | InterfaceTableItem[];
   displayUnit?: string;
+  seriesBudget?: {
+    truncated: boolean;
+    limit: number;
+    applied?: boolean;
+  };
   style?: {
     width: string;
     height: string;

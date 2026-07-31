@@ -26,6 +26,8 @@ from pathlib import Path
 import pytest
 import yaml
 
+from apps.core.utils.loader import LanguageLoader
+
 SERVER_ROOT = Path(__file__).resolve().parents[3]
 REPO_ROOT = SERVER_ROOT.parent
 PLUGINS = SERVER_ROOT / "apps" / "monitor" / "support-files" / "plugins" / "Telegraf"
@@ -105,7 +107,7 @@ def toml_text():
 @pytest.fixture(scope="module")
 def languages():
     return {
-        lang: yaml.safe_load((LANGUAGE_DIR / f"{lang}.yaml").read_text(encoding="utf-8"))
+        lang: LanguageLoader("monitor", lang).translations
         for lang in ("zh-Hans", "en")
     }
 
@@ -142,16 +144,16 @@ def test_ui_is_pure_snmp_form_with_sidecar_secret_fields(ui):
 @pytest.mark.unit
 def test_metrics_json_declares_only_psu_temperature_vendor_delta(metrics):
     names = {metric["name"] for metric in metrics["metrics"]}
-    assert names == {"device_psu_temperature_celsius"}
-    # Anti-baseline-metric assertions
-    assert names & BASE_METRICS == set()
+    floor = {"snmp_uptime", "interface_ifHCInOctets", "interface_ifHCOutOctets"}
+    assert names - floor == {"device_psu_temperature_celsius"}
+    assert floor <= names
     # Anti-fabricated-health assertions: per-row / heterogeneous sensor
     # leaves must NOT be promoted as scalar bk-lite metrics.
     forbidden_vendor_metric_names = (
         HEALTH_METRICS - {"device_temperature_celsius"}
     )
     assert names & forbidden_vendor_metric_names == set()
-    assert metrics["supplementary_indicators"] == ["device_psu_temperature_celsius"]
+    assert set(metrics["supplementary_indicators"]) == {"snmp_uptime", "device_psu_temperature_celsius"}
 
 
 @pytest.mark.unit

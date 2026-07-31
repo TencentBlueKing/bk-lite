@@ -8,12 +8,12 @@ import React, {
   useImperativeHandle,
 } from 'react';
 import { Input, Button, Form, message, Select, Checkbox } from 'antd';
-import Image from 'next/image';
 import OperateModal from '@/components/operate-modal';
 import GroupTreeSelector from '@/components/group-tree-select';
 import SelectIcon from './selectIcon';
-import { getIconUrl } from '@/app/cmdb/utils/common';
+import ModelIcon from '@/app/cmdb/components/model-icon';
 import type { FormInstance } from 'antd';
+import type { ModelIconItem } from '@/app/cmdb/types/assetManage';
 const { Option } = Select;
 import { useTranslation } from '@/utils/i18n';
 import { useModelApi } from '@/app/cmdb/api';
@@ -46,7 +46,10 @@ const CopyModelModal = forwardRef<CopyModelModalRef, CopyModelModalProps>(
     const [modalVisible, setModalVisible] = useState<boolean>(false);
     const [confirmLoading, setConfirmLoading] = useState<boolean>(false);
     const [sourceModel, setSourceModel] = useState<any>({});
-    const [modelIcon, setModelIcon] = useState<any>('');
+    const [modelIcon, setModelIcon] = useState<ModelIconItem>({
+      icn: '',
+      model_id: '',
+    });
     const [iconId, setIconId] = useState<any>('');
 
     useEffect(() => {
@@ -68,8 +71,7 @@ const CopyModelModal = forwardRef<CopyModelModalRef, CopyModelModalProps>(
       showModal: (model: any) => {
         setModalVisible(true);
         setSourceModel(model);
-        const icon = getIconUrl(model);
-        setModelIcon(icon);
+        setModelIcon({ icn: model.icn, model_id: model.model_id });
         setIconId(model.icn || 'icon-cc-host');
       },
     }));
@@ -134,15 +136,8 @@ const CopyModelModal = forwardRef<CopyModelModalRef, CopyModelModalProps>(
     };
 
     const onConfirmSelectIcon = (icon: string) => {
-      const objId = icon.replace('cc-', '');
-      const _iconId = 'icon-' + icon;
-      setModelIcon(
-        getIconUrl({
-          icn: _iconId,
-          model_id: objId,
-        })
-      );
-      setIconId(_iconId);
+      setModelIcon({ icn: icon, model_id: sourceModel.model_id });
+      setIconId(icon);
     };
 
     const onSelectIcon = () => {
@@ -177,8 +172,9 @@ const CopyModelModal = forwardRef<CopyModelModalRef, CopyModelModalProps>(
               className="flex items-center justify-center cursor-pointer w-[80px] h-[80px] rounded-full border-solid border-[1px] border-[var(--color-border)]"
               onClick={onSelectIcon}
             >
-              <Image
-                src={modelIcon}
+              <ModelIcon
+                icon={modelIcon.icn}
+                modelId={modelIcon.model_id}
                 className="block w-auto h-10"
                 alt={t('picture')}
                 width={60}
