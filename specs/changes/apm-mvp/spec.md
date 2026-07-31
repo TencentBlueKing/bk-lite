@@ -4,7 +4,7 @@ Status: accepted
 
 ## Problem Statement
 
-仓库已经有 APM 产品规格和 Storybook 原型，但尚无真实的 `server/apps/apm`、`web/src/app/apm`、OTLP 数据面或 Trace 存储。现有规格还混淆了“接入实例”与“逻辑服务”：接入列表口头上展示实例，实际却按 `service.namespace + service.name` 聚合；同一多节点服务因此无法同时满足实例接入管理和服务整体健康分析。
+仓库已经有 `server/apps/apm`、`web/src/app/apm`、`deploy/apm` 和部分自动化测试，但 Phase 0 审计确认它仍是“后端骨架较多、用户闭环缺失”的半成品：接入页只有硬编码展示，用户不能创建接入源、取得一次性 Token 或复制可执行片段；实例和服务页面不能完成组织及归档管理；真实 OTLP、存储查询、策略触发与多渠道通知也尚未在本地全链验收。基线差距与新鲜运行证据见 [`gap-analysis.md`](./gap-analysis.md)。
 
 当前 `/telegraf/api` 由 Telegraf 的 Influx 输入使用，不能接收 OTLP protobuf。Django 也不适合作为高吞吐 Span 接收器。APM 必须作为与 Monitor、Log 同级的独立产品域，在不破坏现有采集链路、不让外部 Trace 基础设施阻断 Server 启动的前提下，先打通“能接入、能看服务、能查 Trace、能告警”的纵向链路。
 
@@ -42,6 +42,60 @@ BK-Lite apps.apm
 5. As a developer, I want to start from an anomalous service and drill into a concrete Trace and Span, so that I can locate the slow or failing dependency.
 6. As an alert administrator, I want APM policies to maintain their own alert lifecycle and optionally use any authorized System Management notification channel, so that recipients can be notified without coupling APM to another product App, while an alert-center event copy remains an optional special target.
 7. As a deployment administrator, I want APM storage failures to degrade APM pages without blocking BK-Lite Server startup, so that observability is not a circular hard dependency.
+
+## Phase 0 审计结论与契约优先级
+
+本文件是 APM MVP 的唯一目标契约；`gap-analysis.md` 只记录 `a2c80bdaf` 基线的事实证据。实现过程中如代码与本文件不一致，必须修改代码或提出明确的高影响分歧，不能把已有代码反向当成需求。通知渠道解耦是告警闭环中的一个子切片，不得优先于创建接入、凭证、数据上报、目录发现和查询诊断。
+
+当前优先级按用户真实旅程固定为：
+
+1. 页面创建并管理接入源，安全取得一次性 Token 和可执行片段；
+2. 通过鉴权的 OTLP/HTTP 或 OTLP/gRPC 将真实 Span 写入存储；
+3. 运行期发现实例和逻辑服务，并可管理组织与归档状态；
+4. 查询真实服务 RED、Trace 列表和瀑布详情；
+5. 创建、编辑、启停、测试并实际评估策略；
+6. 保存 APM 自有告警事实，再独立投递普通通知和可选的告警中心事件副本。
+
+## 用户旅程与系统时序
+
+```mermaid
+sequenceDiagram
+    actor U as APM 管理员
+    participant W as APM Web
+    participant C as apps.apm 控制面
+    participant E as APM Edge
+    participant O as OTel Collector
+    participant VT as VictoriaTraces
+    participant VM as VictoriaMetrics
+    participant R as 运行期对账/评估
+    participant SM as System Management 公共通知接口
+    participant AC as 告警中心
+
+    U->>W: 选择组织、接入方式并创建接入源
+    W->>C: POST ingest-sources
+    C-->>W: 仅本次返回 Token
+    W->>C: 用内存 Token 请求受限接入片段
+    C-->>W: 可复制的 SDK/运行环境片段
+    U->>E: 应用以 Bearer Token 上报 OTLP HTTP/gRPC
+    E->>C: machine-auth 校验
+    C-->>E: 受信 ingest_source_id
+    E->>O: 删除伪造保留字段并注入受信来源
+    O->>VM: 采样前全量 Span Metrics
+    O->>VT: 尾采样 Trace
+    R->>VM: 查询最近活动并幂等对账目录
+    R->>C: 创建/更新逻辑服务和有身份的实例
+    W->>C: 查询目录、RED、Trace 和瀑布
+    C->>VM: 受控 MetricStore 查询
+    C->>VT: 受控 TraceStore 查询
+    R->>VM: 按策略窗口评估
+    R->>C: 幂等创建/恢复 APM Alert 与 Event
+    R->>SM: 每个渠道独立投递普通通知
+    opt 用户选择 alert_event_copy
+        SM->>AC: 发送告警中心事件副本
+    end
+```
+
+安全失败必须发生在相应边界：鉴权失败不得进入 Collector；存储不可用不得伪装为空数据；评估查询失败不得误触发/误恢复；通知失败不得回滚 APM 告警事实或阻断其他渠道。
 
 ## Implementation Decisions
 
@@ -234,6 +288,9 @@ class NotificationDispatcher(Protocol):
 | `/api/v1/apm/policies/` | 基础策略 CRUD、启停与测试查询 |
 | `/api/v1/apm/events/` | 查询 APM 自有事件与告警生命周期 |
 | `/api/v1/apm/notification-channels/` | 查询当前组织可选择的系统管理通知渠道及展示、投递和接收人能力 |
+| `/api/v1/apm/notification-deliveries/` | 查询逐渠道投递状态，并对终止失败执行有权限的人工重投 |
+| `/api/v1/apm/machine-auth/` | 仅供 edge 使用的 Bearer Token 校验与受信来源 Header |
+| `/api/v1/apm/health/` | 查询目录、Collector、TraceStore、MetricStore、策略评估和通知投递的分项运行期状态 |
 
 - APM 菜单声明独立 View/Operate 权限；读取要求 View，接入、组织、归档和策略变更要求对应 Operate。
 - 服务 API 按 `ApmServiceOrganization` 与当前团队授权；实例和 Trace API 按 `ApmServiceInstanceOrganization` 授权。通过 trace ID 直接访问也必须先解析实例并鉴权。
@@ -313,47 +370,116 @@ class NotificationDispatcher(Protocol):
 - Collector、VictoriaTraces 和边缘代理各自提供健康检查、资源限制和持久卷；“端口可连接”不等同于数据可写，接入自检以成功认证和最近落库事实为准。
 - 不使用 `sleep`、无限重试或延长启动超时掩盖依赖顺序。
 
+### 12. 控制面 API、权限与错误契约
+
+- 所有浏览器操作只调用 `/api/v1/apm/` 公开接口；权限继续使用菜单资源的 `View`/`Operate` 动作。服务、实例、策略、事件和接入源先按当前组织过滤，再查对象；越权对象与不存在对象采用不可枚举结果。
+- 接入源新增片段 action。输入只允许协议、语言/SDK、运行环境、服务 namespace/name、environment 和 endpoint 等白名单字段；Token 只存在于请求生命周期，服务端先按当前摘要验证再渲染，响应与日志不得包含摘要或其他接入源秘密。
+- 创建、轮换、禁用、组织调整、归档/解档和策略写入必须使用 serializer 完整校验；并发轮换、重复归档/恢复和运行期对账以数据库最终状态为准，提供幂等语义。
+- 目录列表、事件和投递审计使用有硬上限的分页；Trace 使用不透明 cursor；指标和 Trace 时间窗、返回 span 数、属性长度、序列点数、Top endpoint 数均在服务端限制。
+- 错误映射统一区分：`400 invalid_query`、`401 invalid_credential`、`403 permission_denied`、不可枚举 `404`、`409 state_conflict`、`503 telemetry_unavailable` / `notification_channels_unavailable`。合法空数据仍返回 200 和空结构。
+
+### 13. 数据面协议与安全
+
+- edge 对外同时提供 OTLP/HTTP 与 OTLP/gRPC。两种协议都复用同一 Bearer Token、机器鉴权、短时正缓存、payload 上限、限流、内部 Header 清理和受信 `bk.ingest_source.id` 注入，认证服务不可用时 fail closed。
+- gRPC 使用 edge 的 HTTP/2 listener，经认证子请求成功后 `grpc_pass` 到 Collector 内部 4317；Collector 4317/4318 只在 APM 内部网络可达，不将未鉴权端口发布给宿主机或外部网络。
+- Collector 先删除客户端提供的 `bk.*` 保留身份和敏感正文，再注入 edge 认证产生的来源；spanmetrics 必须位于 tail sampling 之前。Metric exporter 写 VictoriaMetrics，trace exporter 写 VictoriaTraces，各自有界队列、超时和失败日志，不相互回滚。
+- 创建/轮换后的旧 Token 在控制面立即失效，edge 最多受已声明的短时正缓存影响；禁用同理。凭据不能出现在 access log、Collector log、Span 属性、Web local/session storage 或操作审计正文。
+
+### 14. 身份、组织和目录对账
+
+- 服务键固定为规范化 `service.namespace + service.name`；实例键固定为服务键 + 非空 `service.instance.id`。environment、version、ingest source 都不是身份组成部分。
+- 缺少实例 ID 的 Span 仍创建/更新逻辑服务，并记录可观察的身份诊断计数或状态，但不创建实例；这是对当前基线错误行为的强制修正。
+- 服务首次创建时原子复制首个成功发现来源的组织；实例默认继承当前接入源组织。实例切为自定义组织后不再跟随；服务组织始终独立。调整组织立即影响当前和历史目录对象/Trace 的访问，不能重写遥测数据。
+- 对账是运行期、幂等、可补偿任务。存储查询失败只更新降级状态，不归档对象；成功观察才推进 `last_seen_at`，明确超过阈值才自动归档，新观察自动解档。
+
+### 15. Trace 与 Metric 查询
+
+- `TraceStore` 只暴露受控搜索和详情，不允许透传 TraceQL；`MetricStore` 只暴露服务 RED、时间序列、Top endpoint、实例活动和策略窗口值，不允许透传 PromQL。
+- 服务 RED 响应包含兼容 summary 字段、固定最大点数的 timeseries，以及以低基数 `span.name`/受控 route 聚合的 Top endpoint。百分位从全局 histogram 计算，不平均实例百分位。
+- Trace 查询必须指定 service、environment 和有界时间；实例过滤可选。详情先取回受限数据再按实例组织或缺实例时的受信来源组织判权；响应统一脱敏、截断并标注 partial/truncated。
+- 前端必须分别呈现 loading、合法空数据、查询条件错误、无权限和存储 degraded；服务页能携带同一 service/environment/time window 跳到 Trace，Trace 搜索再进入瀑布详情。
+
+### 16. 前端完整操作与状态
+
+- `/apm/integration/add` 改为真实接入管理页：接入源列表、创建表单、组织多选、接入方式、创建成功一次性 Token 弹窗、复制反馈、语言/运行环境/协议片段切换、轮换二次确认、禁用和组织编辑全部调用真实 API。
+- Token 弹窗关闭前明确提示“无法再次查看”；关闭或刷新即清空 React 内存态。复制失败有显式反馈，不用硬编码成功；片段不能含占位假 Token。
+- 实例和服务页面提供详情、组织管理、归档/解档与确认弹窗；操作后使查询失效并刷新，显示权限不足、并发状态冲突和 API 错误。归档对象通过明确筛选显示，不在默认列表混入。
+- 服务详情提供 RED summary、趋势、Top endpoint 和到 Trace 的跳转；Trace 页面保留受控筛选与瀑布；策略页提供 CRUD/启停/测试查询和能力驱动的逐渠道表单；事件页展示触发/恢复事实及每渠道通知状态/人工重投入口。
+- 所有页面使用 Ant Design 与现有 Monitor/Log 交互语言；生产代码不 import story/fixture，不显示无法操作的假按钮。尚未进入 MVP 的功能使用明确的 disabled/“暂未支持”，不得伪装已可用。
+
+### 17. 告警、通知与失败补偿
+
+- 策略评估先持久化 APM 自有 PolicyState、Alert 和 Event，再按事件 + 渠道创建独立 outbox；通知调用不参与领域事务。重复评估、任务重放和进程重启不得重复产生领域事件或 outbox。
+- System Management 只通过公开能力 DTO 暴露当前组织可用渠道，字段至少包含 ID、名称、类型、说明、`delivery_mode`、`recipient_mode`、availability；公开投递响应统一为成功或稳定 `code/retryable/message`，不得让 APM 解析内部模型/异常。
+- 策略以 `ApmPolicyNotificationTarget` 保存逐渠道 ID、模式与接收人配置。普通渠道发送人类可读通知；`alert_event_copy` 发送标准事件 envelope；普通 NATS 仍是普通渠道，不因传输类型获得告警中心语义。
+- outbox 状态至少为 `pending/delivered/failed`，保存 attempt、next_attempt_at、last_error_code/message、delivered_at/failed_at。可重试错误指数退避且最多 8 次；越权、删除、配置失效等终止错误直接 failed；人工重投重新进入 pending 并留下审计。
+- 单渠道失败不影响其他渠道、APM Alert/Event 或页面查询；Alerts 未安装/不可用时只有被选择的 `alert_event_copy` 失败，普通通知和全部 APM 领域功能继续工作。
+
+### 18. 上线、迁移兼容与回滚
+
+1. 先发布 System Management 向后兼容的渠道目录/投递协议，保留旧 RPC 参数和响应读取能力；不在迁移或 `batch_init` 中调用 responder。
+2. 发布 PostgreSQL schema：新增逐渠道 target 和 outbox 审计/终态字段。纯 ORM 数据迁移把旧 `notice_type_ids + notice_users` 转为 target，按策略 + 渠道去重；空值、重复 ID、仅 NATS 和无效历史渠道都有确定映射。
+3. 发布 APM 后端双读兼容：旧前端仍可读取旧字段，新写入只创建 target/outbox 新结构；完成数据核对后再发布新 Web。
+4. 发布 edge/Collector：先内部验证新配置和 HTTP/gRPC 鉴权，再切外部端口；VictoriaTraces/VictoriaMetrics 不健康时保持旧控制面可用并显示 degraded。
+5. 最后删除旧写路径和过期 UI 文案；至少跨一个发布窗口后才允许移除旧字段。回滚应用版本不得回滚或删除 APM Event/Alert/outbox 数据；数据迁移 reverse 只重建可表示的旧字段，不能丢新渠道事实。
+
+部署和回滚均使用当前环境注入的 endpoint/凭据，不提交 `.env`、Token、绝对 worktree 路径或环境专属配置。外部依赖永远不是 `batch_init` 或 Server 启动硬门禁。
+
 ## 实施切片
 
-### Slice 1：骨架与契约
+以下切片是从当前基线继续实施的纵向闭环；既有代码必须在对应切片重新验证，不能因“文件已存在”跳过 DoD。
 
-- 创建 `apps.apm`、菜单、权限、前端路由壳。
-- 建立模型、四个深模块接口、TraceStore/MetricStore/NotificationDispatcher 内存适配器。
-- 用 API/权限测试固定身份、组织继承和首次实例服务权限规则。
+### Slice 1：创建接入源、一次性凭证与可执行片段
 
-### Slice 2：真实数据面
+- **范围**：`server/apps/apm` 接入 source serializer/action/service；`web/src/app/apm/integration/add`、API hook、类型与聚焦测试；必要的菜单/权限回归。
+- **依赖**：现有组织选择能力与 `integration_add-Operate`；不依赖 Collector、存储或通知。
+- **DoD**：管理员可在生产页面选择组织、名称、接入方式并创建；创建/轮换只显示一次 Token；可复制至少 Python/Java/Node 及 Kubernetes/Docker/Host 的 HTTP/gRPC 片段；可查看源、编辑组织、禁用/轮换；刷新后无法取回 Token。
+- **自动化**：serializer/API 权限、Token 不序列化/不日志、轮换/禁用失效、片段白名单与多运行环境、Web 表单 DTO/一次性 modal/复制与错误态。
+- **本地真实验证**：浏览器创建源并保存 API 响应截图；刷新确认 Token 消失；用旧/新 Token 调机器鉴权并核对 401/204；复制的命令可直接运行。
 
-- 增加 VictoriaTraces、Collector 和反向代理配置。
-- 实现接入凭证、受信来源注入、实例 ID 动态模板、全量 spanmetrics 和尾采样。
-- 用真实容器契约测试验证 OTLP → Trace/Metric 两条链路以及伪造属性被覆盖。
+### Slice 2：双协议鉴权数据面与真实存储落库
 
-### Slice 3：目录与 RED
+- **范围**：`deploy/apm` edge HTTP/gRPC、Collector、compose、健康检查、容器契约和测试上报应用；接入片段 endpoint/protocol。
+- **依赖**：Slice 1 的源和 Token；可用 VictoriaTraces/VictoriaMetrics。
+- **DoD**：OTLP/HTTP 与 OTLP/gRPC 均经 Bearer 鉴权；外部伪造来源被覆盖；全量 Span Metrics 写 VM、尾采样 Trace 写 VT；无/错/旧/禁用 Token 失败；`/telegraf/api` 不变；唯一 compose project 从当前 worktree 新启动且健康。
+- **自动化**：Nginx/Collector 静态契约、真实容器 HTTP/gRPC happy path、认证失败、Header 覆盖、采样前 metrics、payload/queue 限制。
+- **本地真实验证**：用官方 OTel SDK/测试应用分别通过 HTTP 和 gRPC 上报，直接查询 VT/VM 保存响应和容器日志；停止 Server machine-auth 验证新请求 503，再恢复。
 
-- 实现运行期目录对账、接入实例列表、服务目录、环境视图和 RED 查询。
-- 覆盖 Pod 重建、并发首次发现、继承/自定义组织、静默/归档/解档。
+### Slice 3：目录发现、组织与归档闭环
 
-### Slice 4：Trace 诊断
+- **范围**：TelemetryCatalog 深模块、运行期任务、服务/实例 API 与页面操作、健康状态；修正缺实例 ID 行为。
+- **依赖**：Slice 2 有可查询的真实 span metrics；不依赖通知。
+- **DoD**：三个同服务不同实例展示三行并聚合一个服务；缺实例 ID 仍发现服务但不造实例；组织继承/自定义、服务独立组织、手动/自动归档和新流量解档均可由页面操作/观察；失败不阻断启动。
+- **自动化**：并发首次发现、缺身份、Pod 重建、继承/自定义组织、不可枚举权限、重复对账、存储失败不误归档、Web 操作与状态刷新。
+- **本地真实验证**：上报多实例和缺身份 Span，运行对账任务，从浏览器编辑组织、归档/解档并用不同组织会话验证边界；重启 worker 后再次对账无重复。
 
-- 实现 Trace 搜索、详情、瀑布图、Span 属性与敏感字段屏蔽。
-- 从服务异常时间窗携带服务/环境条件跳转到 Trace 搜索。
+### Slice 4：服务 RED、Trace 搜索与瀑布诊断
 
-### Slice 5：基础告警
+- **范围**：MetricStore/TraceStore 生产 adapter、查询服务、API DTO、服务详情图表/Top endpoint、Trace 搜索/详情和完整降级状态。
+- **依赖**：Slice 2 的 VT/VM 数据、Slice 3 的目录和组织。
+- **DoD**：真实服务页显示分环境 RED summary/趋势/Top endpoint；可带条件跳 Trace、搜索到真实上报、打开瀑布和脱敏属性；越权/不存在不可枚举；空数据与存储不可用不同。
+- **自动化**：受控 query builder、全局 histogram、低基数 endpoint、窗口/点数/响应上限、游标、Trace 鉴权/脱敏/截断、Web loading/empty/error/degraded。
+- **本地真实验证**：测试应用生成成功/错误/慢 Trace，直查存储与 API 对账数值，浏览器从服务页一路进入具体 Span；分别停止 VT/VM 验证 503 和页面降级，再恢复。
 
-- 实现三类基础策略、评估任务、APM 自有告警生命周期、幂等事件和通知渠道补偿投递。
-- APM 事件页读取本 App 数据；所有通知经系统管理公开接口投递，告警中心仅接收用户选择的 `alert_event_copy` 事件副本。
+### Slice 5：APM 策略、告警事实与通用通知
 
-### Slice 5.1：通知渠道契约修正
+- **范围**：System Management 公开渠道能力和 dispatcher；APM target/outbox schema、纯 ORM 迁移、策略/事件 API、运行期任务；策略与事件页面。
+- **依赖**：Slice 4 的 MetricStore 查询；普通渠道可以独立于 Alerts 工作。
+- **DoD**：策略 CRUD/启停/测试查询可用；阈值触发与恢复只产生一次 APM Alert/Event；同一策略可选普通渠道与 `alert_event_copy`，逐渠道接收人独立；最多 8 次重试后终止，支持人工重投；单渠道/Alerts 失败不污染其他渠道或 APM 事实。
+- **自动化**：System Management 能力/权限/兼容 RPC，数据迁移，策略状态机，事件/outbox 幂等、成功/可重试/终止、重启恢复，Alerts 未安装，Web 能力驱动表单与投递状态。
+- **本地真实验证**：配置本地 Webhook、普通 NATS 和告警中心副本，实际触发/恢复；核对数据库、接收 payload 与 UI；中断 responder/Alerts/单渠道后恢复并验证补偿。
 
-1. **先扩展系统管理公开契约**：目录响应向后兼容地增加 `delivery_mode`、`recipient_mode` 和可用状态；投递响应增加稳定错误码与 `retryable`。能力推导集中在系统管理，不修改现有渠道 ID。
-2. **再替换 APM 适配器**：`list_alert_event_channels` 改为通用目录；`SystemMgmtNatsAlertPublisher` 改为 `SystemMgmtNotificationDispatcher`；删除 APM 中的 NATS-only 校验和 payload 分支，补齐普通消息与事件副本测试。
-3. **迁移策略与投递箱**：用纯 ORM 数据迁移把旧字段转换为逐渠道目标；投递箱增加终止状态、错误摘要和完成时间，保持事件 + 渠道幂等键。迁移期间不访问 RPC 或其他 App 数据库表。
-4. **切换前端与收口兼容层**：先让 API 同时返回新旧 DTO，再把策略页切换为能力驱动的渠道卡片和逐渠道接收人；完成前后端与本地全流程验证后删除旧写入路径。Monitor/Log 的重复渠道表单可在同一能力 DTO 稳定后迁移到共享组件，不阻塞 APM 修正。
+### Slice 6：迁移、启动、浏览器与全栈收口
 
-部署顺序必须允许系统管理新契约先上线、旧调用方继续工作；APM 新后端上线后旧前端仍能读取策略；最后上线新前端。任一步回滚都不能删除 APM 事件、告警或已经创建的 outbox。
+- **范围**：受影响迁移/部署/文档、全量回归、生产路由浏览器 E2E 和验收证据；只修复会阻断本目标的公共接口或基线问题。
+- **依赖**：Slice 1–5 全部 DoD。
+- **DoD**：全新 PostgreSQL migration、已有数据升级、Server/Web/APM compose 启动、重启恢复和 19 条验收场景全部有新鲜证据；不存在启动循环依赖、环境专属路径或凭据；代码与契约一致。
+- **自动化**：受影响后端/System Management/RPC 测试，Web 聚焦测试、lint/type-check/build，架构边界，compose config/container contract，migration forward/reverse/重跑。
+- **本地真实验证**：从浏览器创建接入到事件/通知完成一条全链，再逐项执行 Token、存储、responder、Alerts 和重启故障演练；保存 API、容器日志、存储查询和 UI 截图。
 
 ## 必须覆盖的验收场景
 
-1. `/telegraf/api` 保持 Influx 行为；OTLP/HTTP `/v1/traces` 和内部 4317/4318 独立工作。
+1. `/telegraf/api` 保持 Influx 行为；对外 OTLP/HTTP 与 OTLP/gRPC 均经 edge 鉴权，Collector 内部 4317/4318 不直接暴露。
 2. 无 Token、错误 Token、禁用源和伪造内部来源字段均被拒绝或覆盖；明文 Token 不落库、不进日志，只显示一次。
 3. 三个同 namespace/name、不同 instance ID 的 Pod 在接入列表显示三行，在服务目录聚合成一个逻辑服务。
 4. Pod 重建产生新实例；旧实例静默并归档，新实例继承接入源组织，历史实例不被覆盖。
@@ -373,43 +499,57 @@ class NotificationDispatcher(Protocol):
 18. 渠道目录只返回当前组织有权使用的目标；保存越权渠道被拒绝，已选渠道失效有明确 UI 与终止投递状态，不产生无限重试。
 19. 策略页按能力显示渠道图标、类型、说明和逐渠道接收人控件；普通 NATS 与“告警中心事件副本”在文案和行为上可区分。
 
-## 通知优化验证计划
+## 总测试矩阵
 
-### 自动化验证
+| 层级 | 必测范围 | 通过门槛 |
+| --- | --- | --- |
+| Django 模型/领域 | 接入 Token 生命周期；服务/实例身份；组织继承/自定义；归档/解档；策略状态机；Alert/Event/outbox 幂等 | 新鲜聚焦测试全通过；不使用 raw SQL；时钟、并发和重放均有覆盖 |
+| APM API/权限 | 本规格全部 API；serializer 边界；当前组织；View/Operate；不可枚举；空数据与 503；分页/窗口/响应上限 | 每个写操作有成功、无权限、越权对象、非法输入；每个存储查询有 empty/degraded |
+| Trace/Metric adapter | VictoriaTraces 受控查询/映射/脱敏；VictoriaMetrics RED summary/timeseries/Top endpoint/活动/策略值 | transport error 稳定映射；无 TraceQL/PromQL 透传；真实存储契约与单元测试都通过 |
+| System Management/RPC | 组织范围渠道目录；能力推导；普通消息/NATS/`alert_event_copy`；`code/retryable`；旧调用兼容 | APM 只依赖公开 DTO/RPC；目录与投递的成功、超时、越权、失效均覆盖 |
+| 数据迁移 | 全新安装；0001–最新升级；旧通知字段到 target；outbox 字段；重复/反向；迁移一致性 | PostgreSQL 实跑成功；`makemigrations --check --dry-run` 无漂移；迁移过程零 RPC/外部依赖 |
+| 架构边界 | APM 不 import System Management、Monitor、Log、Alerts 的模型/内部服务；运行期任务不进入 `batch_init` | 静态架构测试覆盖四个产品域；Alerts 未安装的 Django test collection 与关键场景通过 |
+| Web 单元/交互 | 接入创建/一次性 Token/片段；源/实例/服务管理；RED/Trace；策略多渠道；事件/重投；所有加载/空/错/权限态 | APM 聚焦脚本与组件测试全通过；生产代码零 story fixture；按钮均对应真实 API 或明确 disabled |
+| Web 静态/构建 | APM app type-check、lint、动态路由权限、菜单、中英文资源、production build | `NEXTAPI_INSTALL_APP=apm` 环境下全部 exit 0；若基线失败保留原始输出并证明与改动无关，但不能跳过聚焦测试 |
+| Compose/数据面 | compose config；HTTP/gRPC 鉴权；来源覆盖；spanmetrics 前置；VT/VM exporter；健康/资源/队列；`/telegraf/api` | 当前 worktree 唯一项目全新启动；容器契约不 skip；HTTP/gRPC 都有成功与拒绝证据 |
+| 真实 SDK 上报 | 至少一种官方 SDK 同时生成成功、错误、慢、缺 instance 和多实例 Span | VT Trace、VM metrics、APM 目录/API/UI 四方数据可对账；Token 不出现在任一日志或存储 |
+| 浏览器 E2E | 创建源→复制运行→实例/服务→RED→Trace→策略→事件→通知；组织/归档/启停/测试查询 | 只走生产路由和真实 API；保存关键页面截图、请求响应与最终数据库/接收端证据 |
+| 失败与恢复 | 错/旧/禁用 Token；machine-auth DB 不可用；Collector/VT/VM 停止；通知 responder/Webhook/Alerts 停止；Server/worker/容器重启 | Server 启动不被阻断；UI 显示正确 degraded；无误告警/误恢复/重复事件；恢复后运行期自动补偿且重试有界 |
 
-| 层级 | 必测场景 |
-| --- | --- |
-| 系统管理单元/RPC | 全渠道目录与组织范围；能力推导；普通消息、普通 NATS、`alert_event_copy` 分派；成功/可重试/终止错误归一化；旧调用参数兼容 |
-| APM 领域/适配器 | 不同渠道独立投递；事件 + 渠道幂等；接收人快照；单渠道失败不污染其他渠道；8 次后终止；人工重投；事件副本 envelope |
-| APM API/权限 | 多渠道与逐渠道接收人校验；越权/已删除渠道；目录 503 时只阻止配置变更；已有策略、事件和告警可读；无 Alerts 安装时接口可用 |
-| 数据迁移 | 旧 `notice_type_ids + notice_users` 无损转换；空配置、重复 ID、仅 NATS 和混合渠道；迁移重复/回滚安全；迁移过程零 RPC |
-| Web | 渠道卡片图标与标签；三种接收人模式；混合渠道；空/错/失效态；去除告警中心专属文案；策略编辑回显与提交 DTO |
-| 架构/启动 | APM 禁止导入其他产品 App 模型；`batch_init` 零目录查询和零投递；Responder 缺失、超时、容器重启后 Server 仍可启动且 outbox 可恢复 |
-
-实施完成后至少运行以下新鲜验证：
+最低新鲜验证命令包括但不限于：
 
 ```bash
 cd server
-uv run python manage.py makemigrations --check
-uv run pytest apps/apm/tests apps/system_mgmt/tests/test_nats_api_handlers.py apps/rpc/tests/test_system_mgmt_forwarding.py -v
+uv run python manage.py makemigrations --check --dry-run
+uv run python manage.py migrate --noinput
+uv run pytest apps/apm/tests \
+  apps/system_mgmt/tests/test_nats_api_handlers.py \
+  apps/rpc/tests/test_system_mgmt_forwarding.py -v
 
 cd ../web
+NEXTAPI_INSTALL_APP=apm pnpm type-check
+NEXTAPI_INSTALL_APP=apm pnpm lint
+NEXTAPI_INSTALL_APP=apm pnpm build
+pnpm test:apm-dynamic-route-permission
+pnpm test:apm-menu-route
+pnpm test:apm-integration-flow
 pnpm test:apm-notification-form
-pnpm type-check
-pnpm build
+
+cd ../deploy/apm
+docker compose config --quiet
+RUN_APM_CONTAINER_CONTRACT=1 pytest tests/test_data_plane_contract.py -v
 ```
 
-`test:apm-notification-form` 是本切片新增的聚焦交互测试。若全量构建存在与本改动无关的基线失败，必须保存原始失败输出，并继续完成聚焦测试和受影响模块验证，不能用旧结果代替。
+### 本地真实全流程验收
 
-### 本地真实全流程
-
-1. 在本地数据库执行迁移并重启 `compose-server`，确认启动日志中 `batch_init` 没有等待 NATS responder 或查询通知目录；随后启动/刷新 `compose-web`。
-2. 在系统管理创建两个当前组织可用的测试渠道：一个指向本地捕获端点的 Custom Webhook，另一个为 `receive_alert_events` 告警中心 NATS；若需验证普通 NATS，再增加一个非 `receive_alert_events` 方法的 NATS 渠道。
-3. 从 APM 策略页同时选择 Webhook 与告警中心事件副本，分别看到正确控件；保存后用可控测试指标或测试查询触发一次告警和一次恢复。
-4. 核对 APM 自有 `ApmAlert/ApmEvent`、每渠道 outbox、Webhook 收到的人类可读通知，以及告警中心收到的标准事件副本；重复运行评估和投递任务，确认没有重复 APM 事件或重复 outbox。
-5. 暂停通知 responder 或让 Webhook 返回 503，触发新事件并确认 APM 页面和告警事实仍正常、outbox 进入待重试；恢复依赖后运行期任务自动投递成功。再用不存在渠道验证其进入终止失败而非无限重试。
-6. 停止或禁用 Alerts App/消费者，保留系统管理普通渠道，重新触发策略；确认 APM 策略、事件、告警、Webhook/邮件通知和页面全部可用，只有告警中心事件副本显示失败或待补偿。
-7. 使用浏览器完成创建、编辑、触发后查看事件的生产路由回归，并检查加载、无渠道、目录失败、渠道失效、无权限和中英文文案。保存 API 响应、容器日志、outbox 状态和接收端 payload 作为验收证据。
+1. 使用唯一 compose project 和新卷启动 `compose-server`、`compose-web`、`deploy/apm`，在 PostgreSQL 完整执行迁移；检查 `batch_init` 没有等待 Collector、存储、NATS responder 或通知目录。
+2. 浏览器在当前组织创建接入源，取得一次性 Token，切换 HTTP/gRPC 与语言/运行环境片段并复制；刷新确认秘密消失。
+3. 运行真实测试应用，上报多实例、缺实例、成功、错误和慢 Trace；用错误/旧/禁用 Token 重试，核对 edge 响应、日志脱敏和内部来源覆盖。
+4. 直接查询 VictoriaTraces/VictoriaMetrics，运行目录对账，再在页面核对实例、逻辑服务、分环境 RED、Top endpoint、Trace 搜索和瀑布；完成组织调整、归档/解档。
+5. 创建/编辑/启停策略并执行测试查询；用可控指标触发一次和恢复一次，核对 APM 自有 Alert/Event 去重。
+6. 在 System Management 配置本地捕获 Webhook、普通 NATS 和 `alert_event_copy`；同一策略多选，核对普通通知、告警中心事件副本、逐渠道 outbox 和 UI 状态。
+7. 依次中断 machine-auth DB、Collector、VT、VM、通知 responder、单个 Webhook 和 Alerts，再重启 Server/worker/容器；核对 fail closed、明确降级、无启动循环、无误告警和恢复补偿。
+8. 保存每一阶段的 API 请求/响应、容器健康与日志、VT/VM 查询、数据库 Alert/Event/outbox、通知捕获 payload 和浏览器截图。只有 19 条验收场景全部关闭，目标才可标记完成。
 
 ## Out of Scope
 
@@ -422,6 +562,6 @@ pnpm build
 
 ## Further Notes
 
-- 本规格覆盖并修正 `spec/requirements/APM` 中“接入列表按服务键聚合”“接入页不签发凭证”“Service 表同时保存接入方式与实例状态”等旧口径。产品 PRD 应在实现前同步修改，避免双重契约。
-- 默认 VictoriaMetrics 当前部署保留期为 30 天；VictoriaTraces 尚未进入仓库部署资产。
+- 本规格覆盖并修正 `spec/requirements/APM` 中“接入列表按服务键聚合”“接入页不签发凭证”“Service 表同时保存接入方式与实例状态”等旧口径；过期 Storybook/PRD 只能作为视觉参考，不构成第二份契约。
+- 默认 VictoriaMetrics 当前部署保留期为 30 天；VictoriaTraces、Collector 和 edge 已有部署资产，但必须按 Slice 2 在当前 worktree 隔离启动并完成真实数据验证。
 - 本设计遵守 Server 启动约束：所有遥测目录对账、通知渠道投递和外部健康检查都属于运行期、可重试、非启动硬门禁。
