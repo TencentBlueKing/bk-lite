@@ -7,12 +7,16 @@ const webRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (path: string) => readFileSync(join(webRoot, path), 'utf8');
 
 const api = read('src/app/apm/api/index.ts');
+const serviceList = read('src/app/apm/services/page.tsx');
+const organizationModal = read('src/app/apm/components/organization-assignment-modal.tsx');
 const serviceDetail = read('src/app/apm/services/[serviceId]/page.tsx');
 const traceSearch = read('src/app/apm/traces/page.tsx');
 const traceDetail = read('src/app/apm/traces/[traceId]/page.tsx');
 
 assert.match(api, /\/apm\/services\/\$\{serviceId\}\/metrics\//, '服务详情必须调用真实 RED API');
 assert.match(api, /\/apm\/traces\//, 'Trace 页面必须调用真实 Trace API');
+assert.match(serviceList, /new Set\(filteredRows\.map\(\(item\) => item\.serviceId\)\)\.size/, '服务统计必须跟随当前筛选结果');
+assert.match(organizationModal, /afterOpenChange[\s\S]*setFieldsValue/, '组织弹窗必须在字段挂载后恢复已有值');
 assert.match(serviceDetail, /timeseries/, '服务详情必须读取真实 RED 时序');
 assert.match(serviceDetail, /TimeSeriesComposedChart/, '服务详情必须呈现真实 RED 时序图');
 assert.match(serviceDetail, /top_endpoints/, '服务详情必须呈现真实 Top endpoint');

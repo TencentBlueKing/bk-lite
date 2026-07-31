@@ -113,11 +113,20 @@ export interface ApmIngestSnippet {
 }
 
 export interface ApmHealth {
-  catalog_reconcile: {
-    status: 'pending' | 'ok' | 'degraded';
-    last_succeeded_at?: string;
-    last_failed_at?: string;
-  };
+  catalog_reconcile: ApmHealthComponent;
+  collector: ApmHealthComponent;
+  trace_store: ApmHealthComponent;
+  metric_store: ApmHealthComponent;
+  policy_evaluation: ApmHealthComponent;
+  notification_delivery: ApmHealthComponent & { failed_deliveries?: number };
+}
+
+export interface ApmHealthComponent {
+  status: 'pending' | 'ok' | 'degraded';
+  last_succeeded_at?: string;
+  last_failed_at?: string;
+  last_checked_at?: string;
+  error_code?: string;
 }
 
 export interface ApmTraceSummary {

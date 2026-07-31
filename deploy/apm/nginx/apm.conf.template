@@ -20,6 +20,15 @@ server {
         return 200 "ok\n";
     }
 
+    location = /healthz/collector {
+        access_log off;
+        proxy_pass_request_body off;
+        proxy_set_header Content-Length "";
+        proxy_set_header Authorization "";
+        proxy_set_header X-BK-Ingest-Source-Id "";
+        proxy_pass http://apm-otel-collector:13133/;
+    }
+
     location = /_apm_machine_auth {
         internal;
         access_log off;

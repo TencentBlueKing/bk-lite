@@ -79,12 +79,17 @@ class DjangoTelemetryCatalogService:
                 ]
             )
         elif seen_at > service.last_seen_at or (
-            service.archived_at is not None and seen_at >= service.last_seen_at
+            service.archived_at is not None
+            and service.archive_reason == "silent_timeout"
+            and seen_at >= service.last_seen_at
         ):
             service.last_seen_at = max(seen_at, service.last_seen_at)
-            service.archived_at = None
-            service.archive_reason = ""
-            service.save(update_fields=("last_seen_at", "archived_at", "archive_reason", "updated_at"))
+            update_fields = ["last_seen_at"]
+            if service.archived_at is not None and service.archive_reason == "silent_timeout":
+                service.archived_at = None
+                service.archive_reason = ""
+                update_fields.extend(("archived_at", "archive_reason"))
+            service.save(update_fields=(*update_fields, "updated_at"))
 
         if missing_instance_identity:
             return CatalogDiscoveryResult(
@@ -133,7 +138,11 @@ class DjangoTelemetryCatalogService:
                     if getattr(instance, field) != value:
                         setattr(instance, field, value)
                         update_fields.append(field)
-            if instance.archived_at is not None and is_latest_observation:
+            if (
+                instance.archived_at is not None
+                and instance.archive_reason == "silent_timeout"
+                and is_latest_observation
+            ):
                 instance.archived_at = None
                 instance.archive_reason = ""
                 update_fields.extend(("archived_at", "archive_reason"))

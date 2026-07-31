@@ -85,6 +85,35 @@ def test_stale_instances_archive_and_new_activity_unarchives_without_replacing_h
     assert ApmServiceInstance.objects.count() == 1
 
 
+def test_manual_archives_survive_new_activity_until_explicit_restore():
+    observed_at = timezone.now()
+    source = _source((10,))
+    catalog = DjangoTelemetryCatalogService()
+    discovered = catalog.discover(
+        CatalogDiscovery(source.id, "shop", "checkout", "pod-manual", "production", seen_at=observed_at)
+    )
+    catalog.archive_service(discovered.service.id, reason="manual", actor="tester")
+    catalog.archive_instance(discovered.instance.id, reason="manual", actor="tester")
+
+    catalog.discover(
+        CatalogDiscovery(
+            source.id,
+            "shop",
+            "checkout",
+            "pod-manual",
+            "production",
+            seen_at=observed_at + timedelta(minutes=1),
+        )
+    )
+
+    discovered.service.refresh_from_db()
+    discovered.instance.refresh_from_db()
+    assert discovered.service.archive_reason == "manual"
+    assert discovered.service.archived_at is not None
+    assert discovered.instance.archive_reason == "manual"
+    assert discovered.instance.archived_at is not None
+
+
 def test_environment_views_are_separate_and_instance_status_filters_are_bounded(apm_api_client):
     now = timezone.now()
     source = _source((10,))

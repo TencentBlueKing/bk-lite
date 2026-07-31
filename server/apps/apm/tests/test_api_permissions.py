@@ -73,6 +73,36 @@ def test_created_credential_can_render_an_executable_snippet_only_for_its_source
     assert "opentelemetry-instrument python app.py" in response.data["code"]
 
 
+def test_created_credential_can_render_snippet_for_an_assignable_non_current_organization(apm_api_client):
+    created = apm_api_client.post(
+        "/api/v1/apm/ingest-sources/",
+        {
+            "name": "checkout-team-20",
+            "ingest_type": "otlp_http",
+            "organization_ids": [20],
+        },
+        format="json",
+    )
+
+    response = apm_api_client.post(
+        f"/api/v1/apm/ingest-sources/{created.data['id']}/snippet/",
+        {
+            "credential": created.data["credential"],
+            "language": "python",
+            "runtime": "kubernetes",
+            "endpoint": "https://apm.example.com",
+            "service_namespace": "shop",
+            "service_name": "checkout",
+            "environment": "production",
+        },
+        format="json",
+    )
+
+    assert created.status_code == 201
+    assert response.status_code == 200
+    assert response.data["environment"]["OTEL_EXPORTER_OTLP_PROTOCOL"] == "http/protobuf"
+
+
 def test_snippet_rejects_a_credential_from_another_source_without_revealing_it(apm_api_client):
     first = apm_api_client.post(
         "/api/v1/apm/ingest-sources/",

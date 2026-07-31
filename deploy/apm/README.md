@@ -34,7 +34,8 @@ Authorization: Bearer <token>
 默认外部端点为 HTTP `:4318` 和 gRPC `:4317`，可分别用
 `APM_OTLP_HTTP_BIND`/`APM_OTLP_HTTP_PORT` 与
 `APM_OTLP_GRPC_BIND`/`APM_OTLP_GRPC_PORT` 覆盖。Collector 的内部 4317/4318
-只在 Compose 网络暴露，不能绕过 edge 直接从宿主机访问。
+只在 Compose 网络暴露，不能绕过 edge 直接从宿主机访问。Collector 的 13133 健康端口
+同样不映射到宿主机；edge 的 OTLP/HTTP 入口只读暴露 `/healthz/collector`，用于运行期探测。
 
 边缘代理会移除客户端传入的 `X-BK-Ingest-Source-Id`；Collector 再删除客户端在
 Resource、Scope、Span 和 Span Event 中提交的 `bk.*` 属性，并从鉴权结果注入
@@ -55,6 +56,13 @@ Trace 搜索与详情默认查询 `http://127.0.0.1:10428`，可通过
 `APM_VICTORIATRACES_USER`、`APM_VICTORIATRACES_PASSWORD`、
 `APM_VICTORIATRACES_VERIFY_TLS` 和 `APM_VICTORIATRACES_QUERY_TIMEOUT` 只在用户发起
 Trace 查询时生效，同样不属于 Server 启动依赖。
+
+APM 健康接口的 Collector/存储分项由 Celery beat 每分钟做一次 1 秒连接、2 秒响应的
+有界运行期探测。Server 运行环境可设置 `APM_COLLECTOR_HEALTH_ENDPOINT`（本地 Compose
+示例为 `http://127.0.0.1:4318/healthz/collector`）、
+`APM_VICTORIATRACES_HEALTH_ENDPOINT` 和 `APM_VICTORIAMETRICS_HEALTH_ENDPOINT`；
+Trace/Metric 未显式设置健康地址时会从查询入口派生同源 `/health`。未配置显示
+`pending`，不可达显示 `degraded`，均不阻断 `batch_init` 或 Server 启动。
 
 ## 容器契约测试
 

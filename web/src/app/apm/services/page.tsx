@@ -132,6 +132,11 @@ export default function ApmServicesPage() {
     });
   }, [environment, keyword, rows, status]);
 
+  const filteredServiceCount = useMemo(
+    () => new Set(filteredRows.map((item) => item.serviceId)).size,
+    [filteredRows]
+  );
+
   const columns: TableColumnsType<ServiceEnvironmentRow> = [
     {
       title: '服务',
@@ -270,7 +275,7 @@ export default function ApmServicesPage() {
               onChange={setStatus}
             />
             <Typography.Text type="secondary" className="ml-auto text-xs tabular-nums">
-              {filteredRows.length} 个环境视图 · {services.length} 个逻辑服务
+              {filteredRows.length} 个环境视图 · {filteredServiceCount} 个逻辑服务
             </Typography.Text>
           </div>
         </ApmSurface>

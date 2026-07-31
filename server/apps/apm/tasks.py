@@ -6,9 +6,15 @@ from django.core.cache import cache
 from django.utils import timezone
 
 from apps.apm.adapters import SystemMgmtNotificationDispatcher, VictoriaMetricsMetricStore
-from apps.apm.models import ApmPolicy
+from apps.apm.models import ApmAlertOutbox, ApmPolicy
 from apps.apm.services import DjangoApmPolicyService, TelemetryCatalogReconciler
-from apps.apm.services.health import CATALOG_RECONCILE_HEALTH_KEY
+from apps.apm.services.health import (
+    CATALOG_RECONCILE_HEALTH_KEY,
+    NOTIFICATION_DELIVERY_HEALTH_KEY,
+    POLICY_EVALUATION_HEALTH_KEY,
+    RUNTIME_DEPENDENCIES_HEALTH_KEY,
+    RuntimeDependencyHealthProbe,
+)
 from apps.core.logger import celery_logger as logger
 
 
@@ -51,6 +57,14 @@ def reconcile_telemetry_catalog():
         cache.delete(CATALOG_RECONCILE_LOCK_KEY)
 
 
+@shared_task
+def probe_apm_runtime_dependencies():
+    """运行期有界探测；不可用只进入健康状态，不触发启动或任务无限重试。"""
+    result = RuntimeDependencyHealthProbe().probe()
+    cache.set(RUNTIME_DEPENDENCIES_HEALTH_KEY, result, timeout=None)
+    return result
+
+
 @shared_task(
     autoretry_for=(Exception,),
     retry_backoff=True,
@@ -81,6 +95,18 @@ def evaluate_apm_policy(policy_id: str, evaluated_at: str):
         service.evaluate(policy_id, evaluated_at=datetime.fromisoformat(evaluated_at))
     except ApmPolicy.DoesNotExist:
         return {"policy_id": policy_id, "evaluated_at": evaluated_at, "skipped": "deleted"}
+    except Exception:
+        cache.set(
+            POLICY_EVALUATION_HEALTH_KEY,
+            {"status": "degraded", "last_failed_at": timezone.now().isoformat()},
+            timeout=None,
+        )
+        raise
+    cache.set(
+        POLICY_EVALUATION_HEALTH_KEY,
+        {"status": "ok", "last_succeeded_at": timezone.now().isoformat()},
+        timeout=None,
+    )
     return {"policy_id": policy_id, "evaluated_at": evaluated_at}
 
 
@@ -91,6 +117,24 @@ def deliver_apm_alert_outbox():
         SystemMgmtNotificationDispatcher(),
     ).retry_pending_events(limit=100)
     payload = asdict(result)
-    if result.failed:
+    terminal_failures = ApmAlertOutbox.objects.filter(
+        delivery_status=ApmAlertOutbox.DeliveryStatus.FAILED,
+    ).count()
+    if result.failed or terminal_failures:
+        cache.set(
+            NOTIFICATION_DELIVERY_HEALTH_KEY,
+            {
+                "status": "degraded",
+                "last_failed_at": timezone.now().isoformat(),
+                "failed_deliveries": terminal_failures,
+            },
+            timeout=None,
+        )
         logger.warning("APM alert outbox delivery deferred", extra=payload)
+    else:
+        cache.set(
+            NOTIFICATION_DELIVERY_HEALTH_KEY,
+            {"status": "ok", "last_succeeded_at": timezone.now().isoformat(), "failed_deliveries": 0},
+            timeout=None,
+        )
     return payload

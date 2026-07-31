@@ -128,7 +128,20 @@ class ApmIngestSourceViewSet(viewsets.GenericViewSet):
     @action(methods=("post",), detail=True)
     @HasPermission("integration_add-Operate")
     def snippet(self, request, *args, **kwargs):
-        source = self.get_object()
+        # 创建向导允许把接入源直接分配给用户可管理、但并非当前选中的组织。
+        # 这里不能复用按 current_team 过滤的 get_object()，否则刚返回的一次性
+        # 凭证会在同一个向导中立即变成不可验证。凭证本身仍需匹配目标 source，
+        # 同时用公开的可分配组织校验约束控制面访问范围。
+        source = get_object_or_404(
+            ApmIngestSource.objects.prefetch_related("organization_links"),
+            pk=kwargs["pk"],
+        )
+        organization_ids = list(source.organization_links.values_list("organization", flat=True))
+        try:
+            validate_assignable_organizations(request, organization_ids)
+        except PermissionError:
+            # 与常规 detail 路由保持一致，不向越权调用方泄漏资源是否存在。
+            return Response(status=status.HTTP_404_NOT_FOUND)
         serializer = IngestSnippetSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data

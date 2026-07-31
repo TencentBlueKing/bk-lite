@@ -37,6 +37,11 @@ export default function OrganizationAssignmentModal({
       okText="保存"
       cancelText="取消"
       confirmLoading={submitting}
+      afterOpenChange={(visible) => {
+        // destroyOnHidden + preserve={false} 会在弹窗关闭时卸载字段；待字段重新
+        // 挂载后再同步一次，避免已有组织在下拉中显示为空而被误覆盖。
+        if (visible) form.setFieldsValue({ organization_ids: organizationIds });
+      }}
       onOk={() => form.submit()}
       onCancel={() => {
         form.resetFields();

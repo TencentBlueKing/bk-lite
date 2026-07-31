@@ -119,6 +119,16 @@ def test_edge_authenticates_external_otlp_grpc_without_exposing_collector_ports(
     assert set(collector["expose"]) >= {"4317", "4318"}
 
 
+def test_collector_health_is_read_only_through_edge_without_host_port_mapping():
+    edge = EDGE_CONFIG.read_text()
+    collector = _compose_config()["services"]["apm-otel-collector"]
+
+    assert "location = /healthz/collector" in edge
+    assert "proxy_pass_request_body off;" in edge
+    assert "proxy_pass http://apm-otel-collector:13133/;" in edge
+    assert "ports" not in collector
+
+
 def test_data_plane_is_not_a_server_startup_dependency():
     startup = (REPOSITORY_ROOT / "server/support-files/release/startup.sh").read_text()
 

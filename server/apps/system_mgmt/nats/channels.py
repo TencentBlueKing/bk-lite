@@ -214,12 +214,18 @@ def _notification_channel_capabilities(channel):
 
 
 def _channel_has_organization(channel, organization_ids):
+    return _channel_delivery_organization(channel, organization_ids) is not None
+
+
+def _channel_delivery_organization(channel, organization_ids):
+    """返回渠道与事件共同归属的确定性组织，避免多组织事件投递到错误 team。"""
     try:
         allowed = {int(value) for value in channel.team or []}
         requested = {int(value) for value in organization_ids or []}
     except (TypeError, ValueError):
-        return False
-    return bool(allowed.intersection(requested))
+        return None
+    shared = allowed.intersection(requested)
+    return min(shared) if shared else None
 
 
 @nats_client.register
@@ -335,7 +341,8 @@ def dispatch_notification(
     channel = Channel.objects.filter(id=channel_id).first()
     if channel is None:
         return _notification_failure("channel_not_found", "通知渠道不存在。")
-    if not _channel_has_organization(channel, organization_ids):
+    delivery_organization = _channel_delivery_organization(channel, organization_ids)
+    if delivery_organization is None:
         return _notification_failure("channel_forbidden", "通知渠道不属于事件组织范围。")
     capability = _notification_channel_capabilities(channel)
     normalized_recipients = _validate_notification_recipients(capability["recipient_mode"], recipients)
@@ -366,7 +373,7 @@ def dispatch_notification(
     elif channel.channel_type == ChannelChoices.NATS:
         content = {
             "message": body.strip(),
-            "team": int(next(iter(organization_ids))),
+            "team": delivery_organization,
             "user_ids": normalized_recipients,
         }
         send_title = title

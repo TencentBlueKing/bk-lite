@@ -648,6 +648,40 @@ def test_public_notification_dispatch_builds_alert_center_event_copy(monkeypatch
     assert sent["receivers"] == []
 
 
+def test_public_notification_dispatch_uses_shared_channel_organization_for_nats(monkeypatch):
+    channel = Channel.objects.create(
+        name="组织内 NATS",
+        channel_type=ChannelChoices.NATS,
+        config={"namespace": "notify", "method_name": "send"},
+        description="message",
+        team=[9, 7],
+    )
+    sent = {}
+
+    def fake_send(channel_id, title, content, receivers, attachments=None):
+        sent.update(channel_id=channel_id, title=title, content=content, receivers=receivers)
+        return {"result": True}
+
+    monkeypatch.setattr("apps.system_mgmt.nats.channels.send_msg_with_channel", fake_send)
+
+    result = nats_api.dispatch_notification(
+        delivery_key="apm:event:nats-team",
+        channel_id=channel.id,
+        organization_ids=[1, 9, 7],
+        recipients=["on-call"],
+        title="APM 告警",
+        body="checkout 错误率过高",
+        event_payload={"event_key": "event-1"},
+    )
+
+    assert result["result"] is True
+    assert sent["content"] == {
+        "message": "checkout 错误率过高",
+        "team": 7,
+        "user_ids": ["on-call"],
+    }
+
+
 def test_public_notification_dispatch_rejects_missing_system_user_without_retry(monkeypatch):
     channel = Channel.objects.create(
         name="邮件",
