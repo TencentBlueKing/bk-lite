@@ -127,6 +127,52 @@ test('Tauri stream receives events emitted before the start command returns', as
   assert.deepEqual(chunks, ['data: {"text":"fast"}\n']);
 });
 
+test('aborting an active Tauri stream cancels Rust and ignores later chunks', { timeout: 5000 }, async () => {
+  class MockChannel {
+    onmessage = () => {};
+  }
+
+  const invokeCalls = [];
+  let streamChannel;
+  let markStreamStarted;
+  const streamStarted = new Promise((resolve) => {
+    markStreamStarted = resolve;
+  });
+  globalThis.__loadTauriCore = async () => ({
+    Channel: MockChannel,
+    invoke: async (command, args) => {
+      invokeCalls.push({ command, args });
+      if (command === 'api_stream_proxy') {
+        streamChannel = args.onEvent;
+        markStreamStarted();
+        return 'stream-live';
+      }
+      assert.equal(command, 'cancel_stream');
+      return undefined;
+    },
+  });
+
+  const { tauriApiStream } = await loadTauriApiProxy();
+  const controller = new AbortController();
+  const iterator = tauriApiStream('https://bklite.example.com/api/stream', {
+    signal: controller.signal,
+  });
+  const pendingChunk = iterator.next();
+  await streamStarted;
+
+  assert.ok(streamChannel instanceof MockChannel);
+  controller.abort();
+  streamChannel.onmessage({ event: 'chunk', data: 'late chunk' });
+  assert.deepEqual(await pendingChunk, { value: undefined, done: true });
+  assert.deepEqual(
+    invokeCalls.map(({ command }) => command),
+    ['api_stream_proxy', 'cancel_stream'],
+  );
+  assert.deepEqual(invokeCalls[1].args, { streamId: 'stream-live' });
+
+  assert.deepEqual(await iterator.next(), { value: undefined, done: true });
+});
+
 test('Tauri stream 401 uses the shared unauthorized-session path', async () => {
   class MockTauriStreamError extends Error {
     constructor(message, status) {
