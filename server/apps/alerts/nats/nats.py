@@ -28,7 +28,7 @@ from apps.core.utils.permission_utils import get_permission_rules
 from apps.core.utils.viewset_utils import GenericViewSetFun
 
 ALERT_LEVEL_DISPLAY_MAP = dict(EventLevel.CHOICES)
-TRUSTED_INTERNAL_PUSHERS = {"lite-monitor", "lite-log"}
+TRUSTED_INTERNAL_PUSHERS = {"lite-monitor", "lite-log", "lite-apm"}
 
 
 def _positive_int_env(name, default):

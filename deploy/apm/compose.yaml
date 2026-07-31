@@ -1,0 +1,154 @@
+name: bk-lite-apm
+
+services:
+  apm-edge:
+    image: ${APM_EDGE_IMAGE:-nginx:1.29.1-alpine}
+    restart: unless-stopped
+    depends_on:
+      apm-otel-collector:
+        condition: service_started
+    environment:
+      APM_SERVER_UPSTREAM: ${APM_SERVER_UPSTREAM:-http://host.docker.internal:8000}
+      APM_INGEST_RATE: ${APM_INGEST_RATE:-20r/s}
+      APM_INGEST_BURST: ${APM_INGEST_BURST:-40}
+      APM_MAX_REQUEST_BODY: ${APM_MAX_REQUEST_BODY:-8m}
+    ports:
+      - "${APM_OTLP_HTTP_BIND:-0.0.0.0}:${APM_OTLP_HTTP_PORT:-4318}:8080"
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    volumes:
+      - ./nginx/apm.conf.template:/etc/nginx/templates/apm.conf.template:ro
+    tmpfs:
+      - /var/cache/nginx/apm-auth:size=16m,mode=0700
+    healthcheck:
+      test: [CMD, wget, -q, -O, /dev/null, http://127.0.0.1:8080/healthz]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    mem_limit: ${APM_EDGE_MEMORY_LIMIT:-64m}
+    cpus: ${APM_EDGE_CPU_LIMIT:-0.50}
+    security_opt:
+      - no-new-privileges:true
+
+  apm-collector-queue-init:
+    image: ${APM_QUEUE_INIT_IMAGE:-nginx:1.29.1-alpine}
+    restart: "no"
+    user: "0:0"
+    command:
+      - /bin/sh
+      - -ec
+      - |
+        chown "${APM_COLLECTOR_UID:-10001}:${APM_COLLECTOR_GID:-10001}" /var/lib/otelcol/queue
+        chmod 0700 /var/lib/otelcol/queue
+    network_mode: none
+    read_only: true
+    volumes:
+      - apm_collector_queue:/var/lib/otelcol/queue
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+    security_opt:
+      - no-new-privileges:true
+
+  apm-otel-collector:
+    image: ${APM_COLLECTOR_IMAGE:-otel/opentelemetry-collector-contrib:0.153.0}
+    restart: unless-stopped
+    user: "${APM_COLLECTOR_UID:-10001}:${APM_COLLECTOR_GID:-10001}"
+    command: [--config=/etc/otelcol-contrib/collector.yaml]
+    depends_on:
+      apm-collector-queue-init:
+        condition: service_completed_successfully
+      apm-victoria-traces:
+        condition: service_started
+    environment:
+      APM_COLLECTOR_MEMORY_LIMIT_MIB: ${APM_COLLECTOR_MEMORY_LIMIT_MIB:-384}
+      APM_COLLECTOR_MEMORY_SPIKE_MIB: ${APM_COLLECTOR_MEMORY_SPIKE_MIB:-96}
+      APM_TAIL_DECISION_WAIT: ${APM_TAIL_DECISION_WAIT:-10s}
+      APM_TAIL_NUM_TRACES: ${APM_TAIL_NUM_TRACES:-50000}
+      APM_TAIL_EXPECTED_TRACES_PER_SEC: ${APM_TAIL_EXPECTED_TRACES_PER_SEC:-1000}
+      APM_SLOW_TRACE_THRESHOLD_MS: ${APM_SLOW_TRACE_THRESHOLD_MS:-1000}
+      APM_NORMAL_TRACE_SAMPLE_PERCENT: ${APM_NORMAL_TRACE_SAMPLE_PERCENT:-10}
+      APM_TRACE_BATCH_SIZE: ${APM_TRACE_BATCH_SIZE:-512}
+      APM_TRACE_BATCH_MAX_SIZE: ${APM_TRACE_BATCH_MAX_SIZE:-1024}
+      APM_METRIC_BATCH_SIZE: ${APM_METRIC_BATCH_SIZE:-512}
+      APM_METRIC_BATCH_MAX_SIZE: ${APM_METRIC_BATCH_MAX_SIZE:-1024}
+      APM_SPANMETRICS_CARDINALITY_LIMIT: ${APM_SPANMETRICS_CARDINALITY_LIMIT:-10000}
+      APM_TRACE_EXPORT_QUEUE_SIZE: ${APM_TRACE_EXPORT_QUEUE_SIZE:-2048}
+      APM_METRIC_EXPORT_QUEUE_SIZE: ${APM_METRIC_EXPORT_QUEUE_SIZE:-2048}
+      APM_VICTORIATRACES_OTLP_ENDPOINT: ${APM_VICTORIATRACES_OTLP_ENDPOINT:-http://apm-victoria-traces:10428/insert/opentelemetry/v1/traces}
+      APM_VICTORIAMETRICS_WRITE_ENDPOINT: ${APM_VICTORIAMETRICS_WRITE_ENDPOINT:-http://host.docker.internal:8428/api/v1/write}
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    expose:
+      - "4317"
+      - "4318"
+      - "13133"
+      - "8888"
+    volumes:
+      - ./otel/collector.yaml:/etc/otelcol-contrib/collector.yaml:ro
+      - apm_collector_queue:/var/lib/otelcol/queue
+    healthcheck:
+      test: [CMD, /otelcol-contrib, validate, --config=/etc/otelcol-contrib/collector.yaml]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    mem_limit: ${APM_COLLECTOR_CONTAINER_MEMORY_LIMIT:-512m}
+    cpus: ${APM_COLLECTOR_CPU_LIMIT:-1.00}
+    security_opt:
+      - no-new-privileges:true
+
+  apm-victoria-traces:
+    image: ${APM_VICTORIATRACES_IMAGE:-victoriametrics/victoria-traces:v0.9.4}
+    restart: unless-stopped
+    command:
+      - -storageDataPath=/victoria-traces-data
+      - -retentionPeriod=${APM_TRACE_RETENTION:-7d}
+      - -httpListenAddr=:10428
+      - -opentelemetry.traces.maxRequestSize=${APM_VICTORIATRACES_MAX_REQUEST_SIZE:-8MiB}
+    ports:
+      - "${APM_VICTORIATRACES_QUERY_BIND:-127.0.0.1}:${APM_VICTORIATRACES_QUERY_PORT:-10428}:10428"
+    volumes:
+      - apm_victoria_traces_data:/victoria-traces-data
+    healthcheck:
+      test: [CMD, /victoria-traces-prod, -version]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    mem_limit: ${APM_VICTORIATRACES_MEMORY_LIMIT:-512m}
+    cpus: ${APM_VICTORIATRACES_CPU_LIMIT:-1.00}
+    security_opt:
+      - no-new-privileges:true
+
+  apm-victoriametrics:
+    image: ${APM_VICTORIAMETRICS_IMAGE:-victoriametrics/victoria-metrics:v1.144.0}
+    profiles: [standalone-metrics]
+    restart: unless-stopped
+    command:
+      - -storageDataPath=/victoria-metrics-data
+      - -retentionPeriod=${APM_METRIC_RETENTION:-30d}
+      - -httpListenAddr=:8428
+    ports:
+      - "${APM_VICTORIAMETRICS_QUERY_BIND:-127.0.0.1}:${APM_VICTORIAMETRICS_QUERY_PORT:-8428}:8428"
+    volumes:
+      - apm_victoria_metrics_data:/victoria-metrics-data
+    healthcheck:
+      test: [CMD, /victoria-metrics-prod, -version]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    mem_limit: ${APM_VICTORIAMETRICS_MEMORY_LIMIT:-512m}
+    cpus: ${APM_VICTORIAMETRICS_CPU_LIMIT:-1.00}
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  apm_collector_queue:
+  apm_victoria_traces_data:
+  apm_victoria_metrics_data:

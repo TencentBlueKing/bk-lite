@@ -21,6 +21,7 @@ const APP_ORDER = [
   'system-manager',
   'cmdb',
   'monitor',
+  'apm',
   'log',
   'node',
   'alarm',
