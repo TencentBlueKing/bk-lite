@@ -1,4 +1,4 @@
-import type { Meta, StoryObj } from '@storybook/react';
+import type { Meta, StoryObj } from '@storybook/nextjs';
 import React from 'react';
 import { Form, Button, Space, Card } from 'antd';
 import GroupTreeSelect from '@/components/group-tree-select';

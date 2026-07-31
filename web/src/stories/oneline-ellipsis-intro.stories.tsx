@@ -1,4 +1,4 @@
-import type { Meta, StoryObj } from '@storybook/react';
+import type { Meta, StoryObj } from '@storybook/nextjs';
 import OneLineEllipsisIntro from '@/app/opspilot/components/oneline-ellipsis-intro';
 
 const meta: Meta<typeof OneLineEllipsisIntro> = {

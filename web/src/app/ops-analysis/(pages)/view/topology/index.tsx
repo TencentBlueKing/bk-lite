@@ -388,8 +388,8 @@ const Topology = forwardRef<TopologyRef, TopologyProps>(
         onOpenShare={
           !shareMode && selectedTopology?.data_id
             ? () => {
-                void openShare(selectedTopology.data_id);
-              }
+              void openShare(selectedTopology.data_id);
+            }
             : undefined
         }
         onEdit={handleEnterEditMode}

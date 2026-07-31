@@ -479,8 +479,8 @@ def test_feishu_user_sync_serializer_drops_deprecated_fetch_child_config(ready_i
                 "user_id_type": "open_id",
                 "fetch_child": False,
             },
-            "field_mapping": {},
-            "schedule_config": {},
+            "field_mapping": {"username": "user_id"},
+            "schedule_config": {"mode": "disabled"},
         }
     )
 
@@ -679,8 +679,8 @@ def test_serializer_accepts_business_config_without_mirroring_legacy_columns(rea
             "business_config": {
                 "root_department_id": "dept-99",
             },
-            "field_mapping": {},
-            "schedule_config": {},
+            "field_mapping": {"username": "user_id"},
+            "schedule_config": {"mode": "disabled"},
         }
     )
 
@@ -792,7 +792,7 @@ def test_serializer_rejects_legacy_schedule_payload(ready_integration_instance):
                 "enabled": True,
                 "root_group_name": "Invalid Schedule Root",
                 "business_config": {"root_department_id": "0"},
-                "field_mapping": {},
+                "field_mapping": {"username": "user_id"},
                 "schedule_config": {"enabled": True, "sync_time": "25:00"},
             }
         )
@@ -815,7 +815,7 @@ def test_serializer_accepts_weekly_schedule_config(ready_integration_instance):
                 "enabled": True,
                 "root_group_name": "Weekly Schedule Root",
                 "business_config": {"root_department_id": "0"},
-                "field_mapping": {},
+                "field_mapping": {"username": "user_id"},
                 "schedule_config": {
                     "mode": "weekly",
                     "time": "02:00",
@@ -856,7 +856,7 @@ def test_serializer_rejects_user_sync_field_mapping_not_declared_by_manifest(rea
             "root_group_name": "Invalid Mapping Value Root",
             "business_config": {"root_department_id": "0"},
             "field_mapping": {"username": "private_token"},
-            "schedule_config": {},
+            "schedule_config": {"mode": "disabled"},
         }
     )
 
@@ -920,8 +920,8 @@ def test_serializer_normalizes_all_department_selection_and_passes_department_id
                 "root_department_id": "__all__",
                 "department_id_type": "department_id",
             },
-            "field_mapping": {},
-            "schedule_config": {},
+            "field_mapping": {"username": "user_id"},
+            "schedule_config": {"mode": "disabled"},
         }
     )
 
@@ -957,8 +957,8 @@ def test_serializer_rejects_stale_root_department_selection(ready_integration_in
                 "root_department_id": "stale-dept",
                 "department_id_type": "department_id",
             },
-            "field_mapping": {},
-            "schedule_config": {},
+            "field_mapping": {"username": "user_id"},
+            "schedule_config": {"mode": "disabled"},
         }
     )
 
@@ -978,8 +978,8 @@ def test_serializer_requires_root_department_selection(ready_integration_instanc
             "business_config": {
                 "department_id_type": "department_id",
             },
-            "field_mapping": {},
-            "schedule_config": {},
+            "field_mapping": {"username": "user_id"},
+            "schedule_config": {"mode": "disabled"},
         }
     )
 
@@ -1652,7 +1652,7 @@ def test_existing_user_skips_password_initialization(password_init_source_factor
 @pytest.mark.django_db
 def test_none_mode_does_not_enqueue_initial_password_email(password_init_source_factory):
     source = password_init_source_factory("none")
-    with patch("apps.system_mgmt.services.password_init_service.send_initial_password_email.delay") as delay:
+    with patch("apps.system_mgmt.services.password_init_service.send_initial_password_email_batch.delay") as delay:
         _apply_user_sync_payload(
             source,
             {"user_list": [{"user_id": "alice-none", "name": "Alice", "email": "a@b.c"}], "group_list": []},
@@ -2025,7 +2025,7 @@ def test_batch_sync_does_not_disable_later_batch_users(ready_integration_instanc
         assert user.disabled is False, f"u{user.username} 不应被 disable,reconcile 阶段未跑"
 
 
-@pytest.mark.django_db
+@pytest.mark.django_db(transaction=True)
 def test_run_payload_mutations_preserve_all_writers(ready_integration_instance):
     """交错模拟进度、密码初始化、邮件状态写入,断言阶段、保险库和邮件状态均未丢失。"""
     source = UserSyncSource.objects.create(
