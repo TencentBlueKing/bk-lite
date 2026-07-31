@@ -80,3 +80,24 @@ def test_training_run_query_messages_use_i18n():
             "当前训练运行记录不允许删除",
         ):
             assert f'"{message}"' not in source, f"{module}: {message}"
+
+
+def test_prediction_validation_messages_use_i18n():
+    views_dir = Path(__file__).resolve().parents[1] / "views"
+    for module in (
+        "anomaly_detection.py",
+        "timeseries_predict.py",
+        "log_clustering.py",
+        "classification.py",
+        "image_classification.py",
+        "object_detection.py",
+    ):
+        source = (views_dir / module).read_text(encoding="utf-8")
+        for message in (
+            "参数不能为空",
+            "缺少参数",
+            "必须是数组格式",
+            "批量预测上限为",
+            "单张图片 base64 长度超过上限",
+        ):
+            assert message not in source, f"{module}: {message}"

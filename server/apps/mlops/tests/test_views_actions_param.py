@@ -740,9 +740,7 @@ def test_serving_predict_empty_data(monkeypatch, superuser, suffix, prefix, mode
     request = factory.post(f"/{suffix}_servings/x/predict/", {}, format="json")
     resp = _call(view, request, superuser, pk=serving.id)
     assert resp.status_code == status.HTTP_400_BAD_REQUEST
-    # message mentions the missing param name (不能为空 / 缺少参数)
-    err = resp.data["error"]
-    assert PREDICT_PARAM[suffix] in err or "不能为空" in err or "缺少参数" in err
+    assert resp.data["error"] == f"{PREDICT_PARAM[suffix]} is required"
 
 
 @pytest.mark.parametrize("suffix,prefix,model_module,basename", ALGOS, ids=ALGO_IDS)
@@ -761,7 +759,7 @@ def test_serving_predict_non_list_data(monkeypatch, superuser, suffix, prefix, m
     request = factory.post(f"/{suffix}_servings/x/predict/", {param: {"a": 1}}, format="json")
     resp = _call(view, request, superuser, pk=serving.id)
     assert resp.status_code == status.HTTP_400_BAD_REQUEST
-    assert "数组格式" in resp.data["error"]
+    assert resp.data["error"] == f"{PREDICT_PARAM[suffix]} must be an array"
 
 
 @pytest.mark.parametrize("suffix,prefix,model_module,basename", ALGOS, ids=ALGO_IDS)

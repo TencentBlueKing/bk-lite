@@ -1326,15 +1326,15 @@ class AnomalyDetectionServingViewSet(TeamModelViewSet):
 
             # 参数校验
             if not data:
-                return Response({"error": "data 参数不能为空"}, status=status.HTTP_400_BAD_REQUEST)
+                return Response({"error": mlops_message(request, "error.predict_input_required", field="data")}, status=status.HTTP_400_BAD_REQUEST)
 
             if not isinstance(data, list):
-                return Response({"error": "data 必须是数组格式"}, status=status.HTTP_400_BAD_REQUEST)
+                return Response({"error": mlops_message(request, "error.predict_input_must_be_array", field="data")}, status=status.HTTP_400_BAD_REQUEST)
 
             max_batch_size = int(os.getenv("MLOPS_PREDICT_MAX_BATCH_SIZE", "10000"))
             if len(data) > max_batch_size:
                 return Response(
-                    {"error": f"批量预测上限为 {max_batch_size} 条，当前请求包含 {len(data)} 条"},
+                    {"error": mlops_message(request, "error.predict_batch_limit_exceeded", limit=max_batch_size, count=len(data))},
                     status=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
                 )
 

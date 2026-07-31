@@ -17,6 +17,10 @@ error:
   pagination_must_be_positive_integer: "Pagination parameters must be positive integers"
   training_run_not_found: "Training run record was not found"
   training_run_cannot_delete: "The current training run record cannot be deleted"
+  predict_input_required: "{field} is required"
+  predict_input_must_be_array: "{field} must be an array"
+  predict_batch_limit_exceeded: "Prediction batch limit is {limit}; request contains {count} items"
+  image_base64_too_large: "Image base64 length exceeds the {limit}-byte limit"
 message:
   archive_success: "Archived successfully"
   unarchive_success: "Restored successfully"

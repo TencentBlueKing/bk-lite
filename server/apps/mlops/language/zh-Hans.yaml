@@ -17,6 +17,10 @@ error:
   pagination_must_be_positive_integer: "分页参数必须为正整数"
   training_run_not_found: "未找到对应的训练运行记录"
   training_run_cannot_delete: "当前训练运行记录不允许删除"
+  predict_input_required: "{field} 参数不能为空"
+  predict_input_must_be_array: "{field} 必须是数组格式"
+  predict_batch_limit_exceeded: "批量预测上限为 {limit}，当前请求包含 {count} 项"
+  image_base64_too_large: "单张图片 base64 长度超过上限 {limit} 字节"
 message:
   archive_success: "归档成功"
   unarchive_success: "恢复成功"

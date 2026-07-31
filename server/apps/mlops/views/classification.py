@@ -628,15 +628,15 @@ class ClassificationServingViewSet(TeamModelViewSet):
             config = request.data.get("config")
 
             if not texts:
-                return Response({"error": "texts 参数不能为空"}, status=status.HTTP_400_BAD_REQUEST)
+                return Response({"error": mlops_message(request, "error.predict_input_required", field="texts")}, status=status.HTTP_400_BAD_REQUEST)
 
             if not isinstance(texts, list):
-                return Response({"error": "texts 必须是数组格式"}, status=status.HTTP_400_BAD_REQUEST)
+                return Response({"error": mlops_message(request, "error.predict_input_must_be_array", field="texts")}, status=status.HTTP_400_BAD_REQUEST)
 
             max_batch_size = int(os.getenv("MLOPS_PREDICT_MAX_BATCH_SIZE", "10000"))
             if len(texts) > max_batch_size:
                 return Response(
-                    {"error": f"批量预测上限为 {max_batch_size} 条，当前请求包含 {len(texts)} 条"},
+                    {"error": mlops_message(request, "error.predict_batch_limit_exceeded", limit=max_batch_size, count=len(texts))},
                     status=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
                 )
 
