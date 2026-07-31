@@ -6,8 +6,8 @@
         "http://{{ host }}:{{ port }}/minio/v2/metrics/resource",
     ]
     interval = "{{ interval }}s"
-    timeout = "30s"
-    response_timeout = "30s"
+    timeout = "{{ interval }}s"
+    response_timeout = "{{ interval }}s"
     [inputs.prometheus.tags]
         instance_id = "{{ instance_id }}"
         instance_type = "{{ instance_type }}"
