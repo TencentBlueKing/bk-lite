@@ -35,6 +35,7 @@ from apps.opspilot.serializers.request_serializers import (
     SubmitApprovalRequestSerializer,
     SubmitChoiceRequestSerializer,
 )
+from apps.opspilot.services.caller_identity import CALLER_IDENTITY_CONFIG_KEY, CallerIdentityError, capture_caller_identity, mark_api_secret_identity
 from apps.opspilot.services.chat_completion_service import ChatCompletionService
 from apps.opspilot.services.chat_service import ChatService
 from apps.opspilot.services.dingtalk_chat_flow_utils import DingTalkChatFlowUtils, start_dingtalk_stream_client
@@ -174,6 +175,7 @@ def validate_openai_token(token, team=None, is_mobile=False):
         user.group_list = user_info.get("group_list", [])  # pragma: no cover
     else:
         # UserAPISecret 认证：查询用户信息获取 locale
+        mark_api_secret_identity(user)
         user.locale = _get_user_locale(user.username, user.domain)  # pragma: no cover
     return True, user  # pragma: no cover
 
@@ -246,7 +248,9 @@ def get_skill_and_params(kwargs, team, bot_id=None):
     if not isinstance(messages, list) or not messages:  # pragma: no cover
         return (None, None, {"choices": [{"message": {"role": "assistant", "content": loader.get("error.message_required", "Message is required")}}]})
     num = safe_conversation_window_size(kwargs, skill_obj.conversation_window_size)  # pragma: no cover
-    chat_history = [{"message": i.get("content", ""), "event": i.get("role", "")} for i in messages[-1 * num :] if isinstance(i, dict)]  # pragma: no cover
+    chat_history = [
+        {"message": i.get("content", ""), "event": i.get("role", "")} for i in messages[-1 * num :] if isinstance(i, dict)
+    ]  # pragma: no cover
     if not chat_history or not chat_history[-1]["message"]:  # pragma: no cover
         return (None, None, {"choices": [{"message": {"role": "assistant", "content": loader.get("error.message_required", "Message is required")}}]})
 
@@ -344,6 +348,10 @@ def _build_chat_completion_service() -> ChatCompletionService:  # pragma: no cov
     )
 
 
+def _enrich_openai_params(request, user, params):  # pragma: no cover
+    params[CALLER_IDENTITY_CONFIG_KEY] = capture_caller_identity(request, user)
+
+
 @api_exempt
 def openai_completions(request):  # pragma: no cover
     """Main entry point for OpenAI completions"""
@@ -353,6 +361,7 @@ def openai_completions(request):  # pragma: no cover
         validate=lambda token, kwargs: validate_openai_token(token),
         resolve_skill=lambda kwargs, user: get_skill_and_params(kwargs, user.team),
         get_user_id=lambda user: user.username,
+        enrich_params=_enrich_openai_params,
     )
 
 
@@ -663,7 +672,11 @@ async def execute_chat_flow(request, bot_id, node_id):  # pragma: no cover
     # 验证Bot — 始终按已验证用户所属团队作用域解析 bot，所有客户端一致
     # (此前移动端基于可伪造的 User-Agent 绕过 team 校验，构成跨租户越权，已移除)
     user = msg
-    current_team = int(user.team)
+    try:
+        caller_snapshot = capture_caller_identity(request, user)
+    except CallerIdentityError as e:
+        return JsonResponse({"result": False, "message": str(e)}, status=e.status_code)
+    current_team = caller_snapshot["team_id"]
     # 构建 team 过滤：
     # - 测试(is_test=True，管理页测试)：仅【管理组织】可发起。测试会回填管理画布、占用"同 bot
     #   同时仅一个测试"的槽位，属管理活动，使用组织不得触发(即便经 API)。
@@ -735,6 +748,7 @@ async def execute_chat_flow(request, bot_id, node_id):  # pragma: no cover
             "session_id": session_id,
             "execution_id": engine.execution_id,
             "locale": getattr(user, "locale", "en"),  # 用户语言设置，用于 browser-use 输出国际化
+            CALLER_IDENTITY_CONFIG_KEY: caller_snapshot,
         }
 
         logger.info(f"开始执行ChatFlow流程，bot_id: {bot_id}, node_id: {node_id}, user: {user.username}, node_type: {node_type}")

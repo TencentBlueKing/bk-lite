@@ -9,6 +9,7 @@ from apps.core.logger import opspilot_logger as logger
 from apps.core.utils.safe_template import TemplateSecurityError, safe_render
 from apps.opspilot.models import LLMModel, LLMSkill, WorkflowAttachmentAsset
 from apps.opspilot.services.builtin_tools import BUILTIN_ATTACHMENT_FILE_TOOL_NAME
+from apps.opspilot.services.caller_identity import CALLER_IDENTITY_CONFIG_KEY
 from apps.opspilot.services.chat_service import ChatService, chat_service
 from apps.opspilot.services.skill_package.runtime import build_skill_package_prompt, build_skill_package_strategy, hydrate_skill_packages
 from apps.opspilot.services.workflow_attachment_service import build_signed_attachment_download_url
@@ -210,7 +211,7 @@ class AgentNode(BaseNodeExecutor):
             available_tool_names={tool.get("name") for tool in (skill.tools or []) if isinstance(tool, dict) and tool.get("name")},
         )
         skill_package_strategy = build_skill_package_strategy(matched_skill_packages)
-        return {
+        params = {
             "llm_model": skill.llm_model_id,
             "skill_prompt": resolved_prompt,
             "matched_skill_packages": matched_skill_packages,
@@ -240,6 +241,12 @@ class AgentNode(BaseNodeExecutor):
             # 与 /opspilot/skill/detail 路径行为一致,Issue #3919。
             "wiki_kb_ids": list(skill.wiki_knowledge_bases.values_list("id", flat=True)),
         }
+        caller_identity = flow_input.get(CALLER_IDENTITY_CONFIG_KEY)
+        if caller_identity is not None:
+            # 只透传 HTTP 入口已经校验并捕获的快照。不要从 Skill 的 team
+            # 或其它运行参数推断身份；无快照的非交互入口应由 Monitor 明确拒绝。
+            params[CALLER_IDENTITY_CONFIG_KEY] = dict(caller_identity)
+        return params
 
     @staticmethod
     def _skill_supports_attachment_generation(skill: LLMSkill) -> bool:

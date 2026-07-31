@@ -43,6 +43,7 @@ class ToolsLoader:
         "kubernetes_data_collection": ("apps.opspilot.metis.llm.tools.kubernetes_data_collection", True),
         "mssql": ("apps.opspilot.metis.llm.tools.mssql", True),
         "mysql": ("apps.opspilot.metis.llm.tools.mysql", True),
+        "monitor": ("apps.opspilot.metis.llm.tools.monitor", False),
         "oracle": ("apps.opspilot.metis.llm.tools.oracle", True),
         "postgres": ("apps.opspilot.metis.llm.tools.postgres", True),
         "python": ("apps.opspilot.metis.llm.tools.python", False),

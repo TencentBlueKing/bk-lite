@@ -55,6 +55,7 @@ from apps.opspilot.services.builtin_tools import (
     build_builtin_oracle_tool,
     build_builtin_redis_tool,
 )
+from apps.opspilot.services.caller_identity import CALLER_IDENTITY_CONFIG_KEY, CallerIdentityError, capture_caller_identity
 from apps.opspilot.services.mcp_client import MCPClient
 from apps.opspilot.services.skill_package.importer import DEFAULT_SKILL_PACKAGE_ROOT, SkillPackageImporter
 from apps.opspilot.services.skill_package.runtime import build_skill_package_prompt, build_skill_package_strategy, hydrate_skill_packages
@@ -282,6 +283,10 @@ class LLMViewSet(PinMixin, AuthViewSet):
         params["username"] = request.user.username
         params["user_id"] = request.user.id
         try:
+            params[CALLER_IDENTITY_CONFIG_KEY] = capture_caller_identity(request, request.user)
+        except CallerIdentityError as e:
+            return self.create_error_stream_response(str(e))
+        try:
             # 获取客户端IP
             skill_obj = LLMSkill.objects.get(id=int(params["skill_id"]))
             if not request.user.is_superuser:
@@ -358,6 +363,10 @@ class LLMViewSet(PinMixin, AuthViewSet):
         params = request.data
         params["username"] = request.user.username
         params["user_id"] = request.user.id
+        try:
+            params[CALLER_IDENTITY_CONFIG_KEY] = capture_caller_identity(request, request.user)
+        except CallerIdentityError as e:
+            return self.create_error_stream_response(str(e))
         try:
             skill_obj = LLMSkill.objects.get(id=int(params["skill_id"]))
             if not request.user.is_superuser:

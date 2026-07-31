@@ -10,6 +10,7 @@ revert 解耦修复(还原为不传 wiki_kb_ids)后,所有三个测试均失败�
 import pytest
 
 from apps.opspilot.models import WikiKnowledgeBase
+from apps.opspilot.services.caller_identity import CALLER_IDENTITY_CONFIG_KEY
 from apps.opspilot.utils.chat_flow_utils.engine.core.variable_manager import VariableManager
 from apps.opspilot.utils.chat_flow_utils.nodes.agent.agent import AgentNode
 
@@ -93,3 +94,49 @@ def test_agent_node_wiki_kb_ids_preserves_int_type(agent_node, db):
     # wiki_context_service.augment_prompt 内部 WikiKnowledgeBase.objects.filter(id=kb_ids[0]),
     # 若被强转 str 会导致查询空结果或类型错误。
     assert isinstance(out_ids[0], int)
+
+
+def test_agent_node_passes_captured_caller_identity_from_flow_input(agent_node):
+    """入口捕获的调用方身份快照必须原样且以独立字典透传给 ChatService。"""
+    skill = _make_skill_with_kb(team=99, kb_ids=[])
+    snapshot = {
+        "username": "alice",
+        "domain": "example.com",
+        "team_id": 7,
+        "include_children": True,
+    }
+
+    params = agent_node._build_llm_params(
+        skill,
+        final_message="hi",
+        flow_input={CALLER_IDENTITY_CONFIG_KEY: snapshot},
+    )
+
+    assert params[CALLER_IDENTITY_CONFIG_KEY] == snapshot
+    assert params[CALLER_IDENTITY_CONFIG_KEY] is not snapshot
+
+
+def test_agent_node_does_not_infer_caller_identity_when_snapshot_is_absent(agent_node):
+    """无入口快照时不得从 Skill 的 team 或其它运行参数合成 Monitor 身份。"""
+    skill = _make_skill_with_kb(team=99, kb_ids=[])
+
+    params = agent_node._build_llm_params(
+        skill,
+        final_message="hi",
+        flow_input={"user_id": "alice"},
+    )
+
+    assert CALLER_IDENTITY_CONFIG_KEY not in params
+
+
+def test_agent_node_ignores_explicit_none_caller_identity(agent_node):
+    """显式 None 不代表已捕获快照，行为应与字段缺失一致。"""
+    skill = _make_skill_with_kb(team=99, kb_ids=[])
+
+    params = agent_node._build_llm_params(
+        skill,
+        final_message="hi",
+        flow_input={CALLER_IDENTITY_CONFIG_KEY: None},
+    )
+
+    assert CALLER_IDENTITY_CONFIG_KEY not in params

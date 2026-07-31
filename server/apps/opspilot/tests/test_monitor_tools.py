@@ -1,267 +1,378 @@
 import pytest
-from django.contrib.auth.hashers import make_password
 
-from apps.core.mixinx import EncryptMixin
+CALLER_IDENTITY = {
+    "username": "alice",
+    "domain": "tenant-a.com",
+    "team_id": 12,
+    "include_children": True,
+}
 
 
-@pytest.mark.django_db
-def test_monitor_authenticate_context_uses_user_group_first(mocker):
-    from apps.opspilot.metis.llm.tools.monitor import utils
-    from apps.system_mgmt.models import User
+def _runtime_config(identity=CALLER_IDENTITY, **legacy_configurable):
+    configurable = dict(legacy_configurable)
+    if identity is not None:
+        configurable["caller_identity"] = identity
+    return {"configurable": configurable}
 
-    user = User.objects.create(
-        username="alice",
-        password=make_password("secret"),
-        domain="domain.com",
-        group_list=[{"id": 12, "name": "Team 12"}],
+
+def _monitor_tools():
+    from apps.opspilot.metis.llm.tools.monitor import (
+        monitor_list_active_alerts,
+        monitor_list_instance_metrics,
+        monitor_list_object_instances,
+        monitor_list_object_metrics,
+        monitor_list_objects,
+        monitor_query_alert_segments,
+        monitor_query_metric_data,
     )
 
-    context = utils.authenticate_monitor_user(username="alice", password="secret")
+    return [
+        monitor_list_objects,
+        monitor_list_object_instances,
+        monitor_list_object_metrics,
+        monitor_list_instance_metrics,
+        monitor_query_metric_data,
+        monitor_list_active_alerts,
+        monitor_query_alert_segments,
+    ]
 
-    assert context["user"] == user.username
-    assert context["domain"] == user.domain
-    assert context["team"] == 12
-    assert context["include_children"] is False
+
+def test_monitor_constructor_has_no_identity_params():
+    from apps.opspilot.metis.llm.tools.monitor import CONSTRUCTOR_PARAMS
+
+    assert CONSTRUCTOR_PARAMS == []
 
 
-@pytest.mark.django_db
-def test_monitor_authenticate_context_uses_explicit_team_id(mocker):
+@pytest.mark.parametrize("monitor_tool", _monitor_tools(), ids=lambda monitor_tool: monitor_tool.name)
+def test_monitor_tool_schemas_hide_runtime_and_legacy_identity_fields(monitor_tool):
+    hidden_fields = {"username", "password", "domain", "team_id", "caller_identity", "config"}
+
+    assert hidden_fields.isdisjoint(monitor_tool.args)
+
+
+def test_monitor_legacy_authentication_helpers_are_removed():
     from apps.opspilot.metis.llm.tools.monitor import utils
-    from apps.system_mgmt.models import User
 
-    user = User.objects.create(
-        username="alice",
-        password=make_password("secret"),
-        domain="domain.com",
-        group_list=[{"id": 12, "name": "Team 12"}],
+    assert not hasattr(utils, "authenticate_monitor_user")
+    assert not hasattr(utils, "resolve_monitor_runtime_params")
+
+
+def test_resolve_monitor_user_info_builds_rpc_identity_from_runtime_snapshot():
+    from apps.opspilot.metis.llm.tools.monitor.utils import resolve_monitor_user_info
+
+    assert resolve_monitor_user_info(_runtime_config()) == {
+        "user": "alice",
+        "domain": "tenant-a.com",
+        "team": 12,
+        "include_children": True,
+    }
+
+
+@pytest.mark.parametrize(
+    "identity,error",
+    [
+        ([], "caller_identity must be a dictionary"),
+        ({"username": "", "domain": "tenant-a.com", "team_id": 12, "include_children": False}, "username"),
+        ({"username": "   ", "domain": "tenant-a.com", "team_id": 12, "include_children": False}, "username"),
+        ({"username": True, "domain": "tenant-a.com", "team_id": 12, "include_children": False}, "username"),
+        ({"username": "alice", "domain": "", "team_id": 12, "include_children": False}, "domain"),
+        ({"username": "alice", "domain": "   ", "team_id": 12, "include_children": False}, "domain"),
+        ({"username": "alice", "domain": False, "team_id": 12, "include_children": False}, "domain"),
+    ],
+)
+def test_resolve_monitor_user_info_rejects_malformed_identity_fields(identity, error):
+    from apps.opspilot.metis.llm.tools.monitor.utils import resolve_monitor_user_info
+
+    with pytest.raises(ValueError, match=error):
+        resolve_monitor_user_info(_runtime_config(identity))
+
+
+@pytest.mark.parametrize("team_id", [True, "12", 0, -1, 1.5])
+def test_resolve_monitor_user_info_requires_strict_positive_integer_team_id(team_id):
+    from apps.opspilot.metis.llm.tools.monitor.utils import resolve_monitor_user_info
+
+    identity = {**CALLER_IDENTITY, "team_id": team_id}
+
+    with pytest.raises(ValueError, match="team_id must be a positive integer"):
+        resolve_monitor_user_info(_runtime_config(identity))
+
+
+@pytest.mark.parametrize("include_children", [None, 0, 1, "false", []])
+def test_resolve_monitor_user_info_requires_boolean_include_children(include_children):
+    from apps.opspilot.metis.llm.tools.monitor.utils import resolve_monitor_user_info
+
+    identity = {**CALLER_IDENTITY, "include_children": include_children}
+
+    with pytest.raises(ValueError, match="include_children must be a boolean"):
+        resolve_monitor_user_info(_runtime_config(identity))
+
+
+def test_monitor_without_snapshot_reports_unsupported_trigger_and_never_starts_rpc(mocker):
+    from apps.opspilot.metis.llm.tools.monitor import utils
+    from apps.opspilot.metis.llm.tools.monitor.objects import monitor_list_objects
+
+    rpc_cls = mocker.patch.object(utils, "MonitorOperationAnaRpc")
+
+    result = monitor_list_objects.invoke(
+        {},
+        config=_runtime_config(
+            None,
+            username="legacy-user",
+            password="legacy-password",
+            domain="legacy.example",
+            team_id=99,
+        ),
     )
 
-    context = utils.authenticate_monitor_user(username="alice", password="secret", team_id=33)
+    assert result["success"] is False
+    assert "authenticated caller" in result["error"]
+    assert "interactive HTTP" in result["error"]
+    assert "current trigger" in result["error"]
+    rpc_cls.assert_not_called()
 
-    assert context["user"] == user.username
-    assert context["domain"] == user.domain
-    assert context["team"] == 33
-    assert context["include_children"] is False
 
-
-@pytest.mark.django_db
-def test_monitor_authenticate_context_uses_explicit_domain(mocker):
+def test_legacy_configurable_and_model_fields_cannot_override_snapshot(mocker):
     from apps.opspilot.metis.llm.tools.monitor import utils
-    from apps.system_mgmt.models import User
+    from apps.opspilot.metis.llm.tools.monitor.objects import monitor_list_objects
 
-    user = User.objects.create(
-        username="alice",
-        password=make_password("secret"),
-        domain="tenant-a.com",
-        group_list=[{"id": 12, "name": "Team 12"}],
-    )
-
-    context = utils.authenticate_monitor_user(username="alice", password="secret", domain="tenant-a.com")
-
-    assert context["user"] == user.username
-    assert context["domain"] == user.domain
-    assert context["team"] == 12
-    assert context["include_children"] is False
-
-
-@pytest.mark.django_db
-def test_monitor_authenticate_context_falls_back_to_default_group(mocker):
-    from apps.opspilot.metis.llm.tools.monitor import utils
-    from apps.system_mgmt.models import User
-
-    User.objects.create(
-        username="alice",
-        password=make_password("secret"),
-        domain="domain.com",
-        group_list=[],
-    )
-    mocker.patch.object(utils, "get_default_group_id", return_value=[99])
-
-    context = utils.authenticate_monitor_user(username="alice", password="secret")
-
-    assert context["team"] == 99
-    assert context["include_children"] is False
-
-
-def test_monitor_authenticate_context_requires_username_and_password():
-    from apps.opspilot.metis.llm.tools.monitor import utils
-
-    with pytest.raises(ValueError, match="username is required"):
-        utils.authenticate_monitor_user(username="", password="secret")
-
-    with pytest.raises(ValueError, match="password is required"):
-        utils.authenticate_monitor_user(username="alice", password="")
-
-
-@pytest.mark.django_db
-def test_monitor_authenticate_context_rejects_bad_password():
-    from apps.opspilot.metis.llm.tools.monitor import utils
-    from apps.system_mgmt.models import User
-
-    User.objects.create(
-        username="alice",
-        password=make_password("secret"),
-        domain="domain.com",
-        group_list=[{"id": 12, "name": "Team 12"}],
-    )
-
-    with pytest.raises(ValueError, match="Username or password is incorrect"):
-        utils.authenticate_monitor_user(username="alice", password="bad")
-
-
-@pytest.mark.django_db
-def test_monitor_authenticate_context_accepts_encrypted_password():
-    from apps.opspilot.metis.llm.tools.monitor import utils
-    from apps.system_mgmt.models import User
-
-    User.objects.create(
-        username="alice",
-        password=make_password("secret"),
-        domain="domain.com",
-        group_list=[{"id": 12, "name": "Team 12"}],
-    )
-    encrypted = {"value": "secret"}
-    EncryptMixin.encrypt_field("value", encrypted)
-
-    context = utils.authenticate_monitor_user(username="alice", password=encrypted["value"])
-
-    assert context["user"] == "alice"
-    assert context["domain"] == "domain.com"
-    assert context["team"] == 12
-
-
-@pytest.mark.django_db
-def test_monitor_call_rpc_wraps_success(mocker):
-    from apps.opspilot.metis.llm.tools.monitor import utils
-    from apps.system_mgmt.models import User
-
-    user = User.objects.create(
-        username="alice",
-        password=make_password("secret"),
-        domain="domain.com",
-        group_list=[{"id": 12, "name": "Team 12"}],
-    )
     rpc = mocker.Mock()
-    rpc.monitor_objects.return_value = {"result": True, "data": [{"id": "host"}], "message": ""}
-    rpc_cls = mocker.patch.object(utils, "MonitorOperationAnaRpc", return_value=rpc)
+    rpc.monitor_objects.return_value = {"result": True, "data": [{"id": "host"}]}
+    mocker.patch.object(utils, "MonitorOperationAnaRpc", return_value=rpc)
 
-    result = utils.call_monitor_rpc("monitor_objects", username="alice", password="secret")
+    result = monitor_list_objects.invoke(
+        {
+            "username": "model-user",
+            "password": "model-password",
+            "domain": "model.example",
+            "team_id": 777,
+            "caller_identity": {
+                "username": "model-user",
+                "domain": "model.example",
+                "team_id": 777,
+                "include_children": False,
+            },
+            "config": {
+                "configurable": {
+                    "caller_identity": {
+                        "username": "model-user",
+                        "domain": "model.example",
+                        "team_id": 777,
+                        "include_children": False,
+                    }
+                }
+            },
+        },
+        config=_runtime_config(
+            username="legacy-user",
+            password="legacy-password",
+            domain="legacy.example",
+            team_id=99,
+        ),
+    )
 
     assert result == {"success": True, "data": [{"id": "host"}]}
-    rpc_cls.assert_called_once_with()
-    rpc.monitor_objects.assert_called_once_with(user_info={"user": user.username, "domain": user.domain, "team": 12, "include_children": False})
-
-
-@pytest.mark.django_db
-def test_monitor_call_rpc_wraps_rpc_error(mocker):
-    from apps.opspilot.metis.llm.tools.monitor import utils
-    from apps.system_mgmt.models import User
-
-    User.objects.create(
-        username="alice",
-        password=make_password("secret"),
-        domain="domain.com",
-        group_list=[{"id": 12, "name": "Team 12"}],
+    rpc.monitor_objects.assert_called_once_with(
+        user_info={
+            "user": "alice",
+            "domain": "tenant-a.com",
+            "team": 12,
+            "include_children": True,
+        }
     )
+
+
+@pytest.mark.parametrize(
+    "tool_index,tool_input,rpc_method,rpc_kwargs",
+    [
+        (0, {}, "monitor_objects", {}),
+        (1, {"monitor_obj_id": "host"}, "monitor_object_instances", {"monitor_obj_id": "host"}),
+        (2, {"monitor_obj_id": "host"}, "monitor_metrics", {"monitor_obj_id": "host"}),
+        (
+            3,
+            {
+                "monitor_obj_id": "host",
+                "instance_id": "host-1",
+                "only_with_data": True,
+                "lookback": "6h",
+                "page": 2,
+                "page_size": 25,
+            },
+            "monitor_instance_metrics",
+            {
+                "query_data": {
+                    "monitor_obj_id": "host",
+                    "instance_id": "host-1",
+                    "only_with_data": True,
+                    "lookback": "6h",
+                    "page": 2,
+                    "page_size": 25,
+                }
+            },
+        ),
+        (
+            4,
+            {
+                "monitor_obj_id": "host",
+                "metric": "cpu_usage",
+                "start": 100,
+                "end": 200,
+                "step": "1m",
+                "instance_ids": ["host-1"],
+                "dimensions": {"cpu": "0"},
+            },
+            "query_monitor_data_by_metric",
+            {
+                "query_data": {
+                    "monitor_obj_id": "host",
+                    "metric": "cpu_usage",
+                    "start": 100,
+                    "end": 200,
+                    "step": "1m",
+                    "instance_ids": ["host-1"],
+                    "dimensions": {"cpu": "0"},
+                }
+            },
+        ),
+        (
+            5,
+            {
+                "monitor_obj_id": "host",
+                "limit": 20,
+                "instance_ids": ["host-1"],
+                "level": "critical",
+                "alert_type": "threshold",
+            },
+            "query_latest_active_alerts",
+            {
+                "query_data": {
+                    "monitor_obj_id": "host",
+                    "limit": 20,
+                    "instance_ids": ["host-1"],
+                    "level": "critical",
+                    "alert_type": "threshold",
+                }
+            },
+        ),
+        (
+            6,
+            {
+                "monitor_obj_id": "host",
+                "start": 100,
+                "end": 200,
+                "instance_ids": ["host-1"],
+                "status": "closed",
+                "level": "warning",
+                "alert_type": "threshold",
+                "page": 3,
+                "page_size": 50,
+            },
+            "query_monitor_alert_segments",
+            {
+                "query_data": {
+                    "monitor_obj_id": "host",
+                    "start": 100,
+                    "end": 200,
+                    "instance_ids": ["host-1"],
+                    "status": "closed",
+                    "level": "warning",
+                    "alert_type": "threshold",
+                    "page": 3,
+                    "page_size": 50,
+                }
+            },
+        ),
+    ],
+    ids=[
+        "list-objects",
+        "list-object-instances",
+        "list-object-metrics",
+        "list-instance-metrics",
+        "query-metric-data",
+        "list-active-alerts",
+        "query-alert-segments",
+    ],
+)
+def test_monitor_tools_map_business_arguments_to_existing_rpc_methods(
+    mocker,
+    tool_index,
+    tool_input,
+    rpc_method,
+    rpc_kwargs,
+):
+    from apps.opspilot.metis.llm.tools.monitor import utils
+
+    rpc = mocker.Mock()
+    getattr(rpc, rpc_method).return_value = {"result": True, "data": {"rpc_method": rpc_method}}
+    mocker.patch.object(utils, "MonitorOperationAnaRpc", return_value=rpc)
+
+    result = _monitor_tools()[tool_index].invoke(tool_input, config=_runtime_config())
+
+    assert result == {"success": True, "data": {"rpc_method": rpc_method}}
+    getattr(rpc, rpc_method).assert_called_once_with(
+        user_info={
+            "user": "alice",
+            "domain": "tenant-a.com",
+            "team": 12,
+            "include_children": True,
+        },
+        **rpc_kwargs,
+    )
+
+
+def test_monitor_call_rpc_preserves_monitor_error_response(mocker):
+    from apps.opspilot.metis.llm.tools.monitor import utils
+
+    rpc = mocker.Mock()
+    rpc.monitor_objects.return_value = {"result": False, "message": "monitor denied"}
+    mocker.patch.object(utils, "MonitorOperationAnaRpc", return_value=rpc)
+
+    assert utils.call_monitor_rpc("monitor_objects", _runtime_config()) == {
+        "success": False,
+        "error": "monitor denied",
+    }
+
+
+def test_monitor_call_rpc_wraps_rpc_exception(mocker):
+    from apps.opspilot.metis.llm.tools.monitor import utils
+
     rpc = mocker.Mock()
     rpc.monitor_objects.side_effect = RuntimeError("rpc down")
     mocker.patch.object(utils, "MonitorOperationAnaRpc", return_value=rpc)
 
-    result = utils.call_monitor_rpc("monitor_objects", username="alice", password="secret")
+    result = utils.call_monitor_rpc("monitor_objects", _runtime_config())
 
     assert result["success"] is False
     assert "rpc down" in result["error"]
 
 
-def test_monitor_list_objects_uses_rpc_wrapper(mocker):
-    from apps.opspilot.metis.llm.tools.monitor.objects import monitor_list_objects
+@pytest.mark.parametrize(
+    "tool_index,tool_input,error",
+    [
+        (1, {"monitor_obj_id": ""}, "monitor_obj_id is required"),
+        (2, {"monitor_obj_id": ""}, "monitor_obj_id is required"),
+        (3, {"monitor_obj_id": "", "instance_id": "host-1"}, "monitor_obj_id is required"),
+        (3, {"monitor_obj_id": "host", "instance_id": ""}, "instance_id is required"),
+        (4, {"metric": "cpu", "start": 100, "end": 200}, "monitor_obj_id is required"),
+        (4, {"monitor_obj_id": "host", "start": 100, "end": 200}, "metric is required"),
+        (4, {"monitor_obj_id": "host", "metric": "cpu", "end": 200}, "start is required"),
+        (4, {"monitor_obj_id": "host", "metric": "cpu", "start": 100}, "end is required"),
+        (6, {"start": 100, "end": 200}, "monitor_obj_id is required"),
+        (6, {"monitor_obj_id": "host", "end": 200}, "start is required"),
+        (6, {"monitor_obj_id": "host", "start": 100}, "end is required"),
+    ],
+)
+def test_monitor_tools_keep_existing_business_required_validation(mocker, tool_index, tool_input, error):
+    tool = _monitor_tools()[tool_index]
+    rpc_call = mocker.patch(f"{tool.func.__module__}.call_monitor_rpc")
 
-    rpc_call = mocker.patch(
-        "apps.opspilot.metis.llm.tools.monitor.objects.call_monitor_rpc",
-        return_value={"success": True, "data": [{"id": "host"}]},
-    )
+    result = tool.invoke(tool_input, config=_runtime_config())
 
-    result = monitor_list_objects.invoke({"username": "alice", "password": "secret", "domain": "tenant-a.com"})
-
-    assert result == {"success": True, "data": [{"id": "host"}]}
-    rpc_call.assert_called_once_with("monitor_objects", username="alice", password="secret", domain="tenant-a.com", team_id=None)
-
-
-def test_monitor_list_objects_uses_configurable_fallback_when_tool_args_missing(mocker):
-    from apps.opspilot.metis.llm.tools.monitor.objects import monitor_list_objects
-
-    rpc_call = mocker.patch(
-        "apps.opspilot.metis.llm.tools.monitor.objects.call_monitor_rpc",
-        return_value={"success": True, "data": [{"id": "host"}]},
-    )
-
-    result = monitor_list_objects.invoke(
-        {},
-        config={"configurable": {"username": "alice", "password": "secret", "domain": "tenant-a.com", "team_id": 88}},
-    )
-
-    assert result == {"success": True, "data": [{"id": "host"}]}
-    rpc_call.assert_called_once_with("monitor_objects", username="alice", password="secret", domain="tenant-a.com", team_id=88)
-
-
-def test_monitor_list_object_instances_passes_optional_team_id_only(mocker):
-    from apps.opspilot.metis.llm.tools.monitor.objects import monitor_list_object_instances
-
-    rpc_call = mocker.patch(
-        "apps.opspilot.metis.llm.tools.monitor.objects.call_monitor_rpc",
-        return_value={"success": True, "data": [{"id": "1"}]},
-    )
-
-    result = monitor_list_object_instances.invoke(
-        {"monitor_obj_id": "host", "username": "alice", "password": "secret", "domain": "tenant-a.com", "team_id": 88}
-    )
-
-    assert result == {"success": True, "data": [{"id": "1"}]}
-    kwargs = rpc_call.call_args.kwargs
-    assert kwargs["monitor_obj_id"] == "host"
-    assert kwargs["team_id"] == 88
-    assert kwargs["username"] == "alice"
-    assert kwargs["password"] == "secret"
-    assert kwargs["domain"] == "tenant-a.com"
-    assert "include_children" not in kwargs
-
-
-def test_monitor_query_metric_data_requires_minimum_fields(mocker):
-    from apps.opspilot.metis.llm.tools.monitor.metrics import monitor_query_metric_data
-
-    rpc_call = mocker.patch("apps.opspilot.metis.llm.tools.monitor.metrics.call_monitor_rpc")
-
-    result = monitor_query_metric_data.invoke(
-        {
-            "monitor_obj_id": "host",
-            "metric": "cpu_usage",
-            "username": "alice",
-            "password": "secret",
-        }
-    )
-
-    assert result["success"] is False
-    assert "start is required" in result["error"]
+    assert result == {"success": False, "error": error}
     rpc_call.assert_not_called()
 
 
-def test_monitor_not_in_static_tools_loader_metadata():
-    """monitor 是 builtin 工具（经 build_builtin_monitor_tool 注册），
-
-    刻意不挂在 ToolsLoader.TOOL_MODULES 静态映射里，因此 get_all_tools_metadata
-    不应包含 monitor 类别。回归这一隔离边界，避免 monitor 被重复登记到通用 loader。
-    """
-    from apps.opspilot.metis.llm.tools.tools_loader import ToolsLoader
-
-    assert "monitor" not in ToolsLoader.TOOL_MODULES
-
-    metadata = ToolsLoader.get_all_tools_metadata()
-    names = {item["name"] for item in metadata}
-    assert "monitor" not in names
-
-
 def test_builtin_monitor_tool_descriptor_shape():
-    """build_builtin_monitor_tool 产出的描述符须带 builtin 标记、langchain url 与子工具。"""
+    """The builtin descriptor keeps the langchain URL and seven sub-tools."""
     from apps.core.utils.loader import LanguageLoader
     from apps.opspilot.services import builtin_tools
 
@@ -272,22 +383,6 @@ def test_builtin_monitor_tool_descriptor_shape():
     assert descriptor["name"] == "monitor"
     assert descriptor["is_build_in"] is True
     assert descriptor["params"]["url"] == "langchain:monitor"
-    # CONSTRUCTOR_PARAMS 不应作为子工具泄漏
-    sub_names = {t["name"] for t in descriptor["tools"]}
+    sub_names = {tool["name"] for tool in descriptor["tools"]}
     assert "CONSTRUCTOR_PARAMS" not in sub_names
-    assert "monitor_list_objects" in sub_names
-
-
-def test_builtin_monitor_runtime_tool_passes_param_prompt():
-    """运行期描述符须透传 tool_kwargs 到 extra_param_prompt，并默认关闭鉴权。"""
-    from apps.opspilot.services import builtin_tools
-
-    runtime = builtin_tools.build_builtin_monitor_runtime_tool({"team_id": "12"})
-    assert runtime["name"] == "monitor"
-    assert runtime["url"] == "langchain:monitor"
-    assert runtime["enable_auth"] is False
-    assert runtime["extra_param_prompt"] == {"team_id": "12"}
-
-    # None 时回退为空 dict
-    runtime_none = builtin_tools.build_builtin_monitor_runtime_tool(None)
-    assert runtime_none["extra_param_prompt"] == {}
+    assert sub_names == {tool.name for tool in _monitor_tools()}
