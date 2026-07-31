@@ -1,0 +1,10 @@
+error:
+  algorithm_config_not_found: "Algorithm configuration was not found: {algorithm}"
+  form_config_must_be_object: "form_config must be an object"
+  hyperopt_config_must_be_array: "hyperopt_config must be an array"
+  hyperopt_config_item_must_be_object: "Each item in hyperopt_config must be an object"
+  hyperopt_config_item_key_required: "Each item in hyperopt_config must include the key field"
+  algorithm_in_use_cannot_disable: "Cannot disable the algorithm because {task_count} training task(s) are using it"
+  algorithm_in_use_cannot_delete: "Cannot delete the algorithm configuration because {task_count} training task(s) are using it"
+  algorithm_type_and_name_required: "algorithm_type and name are required"
+  algorithm_name_required: "name is required"

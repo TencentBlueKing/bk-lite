@@ -1,0 +1,10 @@
+error:
+  algorithm_config_not_found: "未找到算法配置：{algorithm}"
+  form_config_must_be_object: "form_config 必须是一个对象"
+  hyperopt_config_must_be_array: "hyperopt_config 必须是一个数组"
+  hyperopt_config_item_must_be_object: "hyperopt_config 中的每项必须是对象"
+  hyperopt_config_item_key_required: "hyperopt_config 中的每项必须包含 key 字段"
+  algorithm_in_use_cannot_disable: "无法禁用：有 {task_count} 个训练任务正在使用此算法"
+  algorithm_in_use_cannot_delete: "无法删除：有 {task_count} 个训练任务正在使用此算法"
+  algorithm_type_and_name_required: "algorithm_type 和 name 参数必填"
+  algorithm_name_required: "name 参数必填"
