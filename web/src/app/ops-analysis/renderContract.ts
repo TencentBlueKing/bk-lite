@@ -8,6 +8,8 @@ export interface DashboardWidgetRenderResult {
   widgetId: string;
   status: DashboardWidgetRenderStatus;
   error?: string;
+  /** Stable machine code for report-failed → RetryClassifier (optional). */
+  errorCode?: string;
 }
 
 export interface DashboardRenderSignal {
@@ -16,6 +18,7 @@ export interface DashboardRenderSignal {
   widgets: DashboardWidgetRenderResult[];
   widgetId?: string;
   error?: string;
+  errorCode?: string;
 }
 
 export const DASHBOARD_RENDER_EVENT = 'bk-dashboard-render';
@@ -64,6 +67,7 @@ export const buildDashboardRenderSignal = (
       widgets,
       widgetId: failed.widgetId,
       error: failed.error || 'Widget render failed',
+      ...(failed.errorCode ? { errorCode: failed.errorCode } : {}),
     }
     : {
       type: 'report-ready',

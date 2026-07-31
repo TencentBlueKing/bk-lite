@@ -8,19 +8,29 @@ Status: mvp_closure_aligned
 
 `Subscription → Execution → Input Snapshot → Render Snapshot → Claim → Render Worker → PDF Artifact → Email Delivery → succeeded`
 
+Scheduler 阶段已接入计划执行创建边界（不含 missed-run compensation）：
+
+`Subscription(active + schedule) → Due Scanner → create_scheduled → on_commit(_dispatch_render) → Render Worker → Orchestrator → Email`
+
 当前已交付：
 
 - Subscription CRUD（`terminated` 不可由 API 直接写入）；
 - Manual Execute（`request_id` 幂等 + 在途串行）；
 - 双 Snapshot、Claim、Render Token、Chromium PDF、Email Delivery；
-- Render Snapshot 写入非敏感 `datasource_snapshots` **审计冻结**。
+- Render Snapshot 写入非敏感 `datasource_snapshots` **审计冻结**；
+- ScheduleCalculator、调度字段（可空，旧数据不回填）、DueSubscriptionScanner、
+  每分钟 Beat、`create_scheduled` 专用入口；
+- 邮件计划时间使用 `scheduled_time_utc` + 订阅时区；手动测试邮件无时间语义。
 
 明确未交付 / 非本 Closure 宣称能力：
 
-- Scheduler、Retry/Attempt、Cleanup Worker、软删除生命周期；
+- Retry/Attempt 代码实现、Cleanup Worker、软删除生命周期、missed-run compensation；
 - **DataSource Runtime Snapshot 消费链路未接入**：渲染取数仍走实时 DataSource；
   MVP **不保证**「DataSource 配置修改不影响历史 / 在途 Execution」；
 - 完整权限 Snapshot、对象存储长期归档、历史 PDF 下载。
+
+Retry 执行语义已对齐（尚未编码）：见第 14 节修正版 Resume Matrix 与 Orphan/in-flight 边界；
+不新增 `retrying` 状态，不产生新 Execution，不接管 orphan；orphan `running` 仍占用 in-flight。
 
 以下 Phase 1A–1D 小节为历史推进记录，其中“Email 未实现”“`not_ready` placeholder”
 等表述已被本段覆盖；以本节与代码/测试为当前事实。
@@ -436,17 +446,23 @@ Execution 不使用系统账号、不回退其他用户、不使用创建时权�
 
 Execution 开始时冻结 `Execution Input Snapshot`：
 
-- `subscription_version`；
+- `subscription_version`（schedule configuration version；非调度字段变更不递增）；
 - `subscription_name`；
 - `recipient_email`；
 - `email_channel_id`；
-- `scheduled_time_utc`（manual_test 为空）；
-- 本地计划时间；
-- 时区；
+- `scheduled_time_utc`（`scheduled` 必填；`manual_test` 为空）；
+- `schedule_timezone`（订阅 IANA 时区；有调度配置时必填冻结；邮件计划时间的唯一时区来源）；
+- `scheduled_local_time`（由 `scheduled_time_utc` + `schedule_timezone` 派生的本地审计表达；`manual_test` 可空）；
 - `trigger_type`；
 - `creator_id`；
 - 筛选语义；
 - 本次解析后的筛选具体值。
+
+时间语义边界：
+
+- 订阅 `timezone` / Snapshot `schedule_timezone` 是报告周期与邮件展示的**唯一**时区来源。
+- `execution.created_at` / `started_at` / `finished_at` 仅用于 Execution Detail、运维排障与审计查询，**不**进入普通报告邮件正文。
+- 既有 Snapshot 字段 `creator_timezone`（若仍存在）表示创建者账号展示偏好，**不是**邮件时间来源，Scheduler 阶段不得将其用于标题、正文或附件文件名。
 
 Execution 开始时冻结 `Render Snapshot`：
 
@@ -597,21 +613,45 @@ Execution 使用 Input Snapshot 中冻结的 `email_channel_id`，并在发送�
 - 不自动切换其他渠道；
 - 在 `email` 阶段失败并记录原因。
 
+邮件时间语义（普通报告邮件）：
+
+- **只展示计划时间**，不展示实际生成时间或 Worker 处理时间。
+- `scheduled` Execution：
+  - 计划时间来源：`Execution.scheduled_time_utc`（创建时冻结进 Input Snapshot）+
+    `Subscription.timezone`（冻结为 Snapshot `schedule_timezone`）。
+  - 展示格式：`报告计划时间：YYYY-MM-DD HH:MM ({IANA})`，
+    例如 `报告计划时间：2026-08-01 09:00 (Asia/Shanghai)`。
+  - 这是用户理解「这封报告属于哪个周期」的业务时间。
+- `manual_test` Execution：
+  - 无计划周期；标题与正文不伪造计划时间，也不写入实际生成时间。
+  - 标题使用：`[BK-Lite] {订阅名称} - 手动测试`。
+  - 正文标明手动测试，不出现「报告计划时间」行。
+- 禁止使用 `creator_timezone`、服务器本地时区或执行节点时区拼装邮件时间。
+
 固定邮件标题：
 
-`[BK-Lite] {订阅名称} - {本地计划时间}`
+- `scheduled`：`[BK-Lite] {订阅名称} - {本地计划时间}`
+  （本地计划时间由 Snapshot `scheduled_local_time` 或等价格式化结果提供，不含时区后缀也可；
+  时区在正文「报告计划时间」行中显式给出。）
+- `manual_test`：`[BK-Lite] {订阅名称} - 手动测试`
 
 固定邮件正文包含：
 
 - Dashboard 名称；
-- 报告计划时间；
-- 实际生成时间；
-- 订阅时区；
+- `scheduled`：报告计划时间（含 IANA 时区）；
+- `manual_test`：手动测试说明（无计划时间、无实际生成时间）；
 - “由 BK-Lite 自动生成”的说明。
+
+固定邮件正文**不包含**：
+
+- 实际生成时间；
+- `created_at` / `started_at` / `finished_at`；
+- 创建者展示时区或其他非订阅时区。
 
 PDF 文件名：
 
-`{仪表盘名称}_{本地计划时间}.pdf`
+- `scheduled`：`{仪表盘名称}_{本地计划时间}.pdf`
+- `manual_test`：`{仪表盘名称}_手动测试.pdf`
 
 文件名必须清理非法字符。
 
@@ -621,7 +661,7 @@ Execution 状态：
 
 - `pending`
 - `running`
-- `succeeded`：SMTP 明确接受。
+- `succeeded`：SMTP 明确接受，或已确认 delivery success 后的终态。
 - `failed`
 - `unknown`：SMTP 提交结果未知。
 
@@ -636,27 +676,197 @@ Execution 状态：
 
 具体原因使用稳定 `error_code` 和脱敏失败信息表达，不为每种错误新增状态。
 
-不重试：
+#### 14.1 Retry 状态机与 ownership
 
-- 创建者账号或权限失效；
-- Dashboard 或数据源不存在；
-- 数据源或下游业务权限失败；
-- 筛选条件失效；
-- 其他明确业务失败。
+- Retry 是单个 Execution 内部的 attempt 级行为，不创建新的 Execution。
+- MVP 不增加 `retrying` 状态；attempt 失败但仍准备继续重试时，Execution 保持 `running`。
+- 禁止 `failed → running`：可重试的中间失败不得先把 Execution 写成 `failed`。
+- Execution claim 一次：`pending → running` 仍只能经 `claim_execution`；Retry 不重新 claim，也不把 Execution 退回 `pending`。
+- Attempt 不独立 claim。
+- Celery：一个 Render Task 在 claim 后的同一 owning task 内串行完成最多三个 attempt（`attempt_no` 1..3；最多两次自动重试）；不按 attempt 重新 dispatch。
+- `attempt_count`：每个 attempt **开始时**递增；Classifier 在 attempt 失败后看到的值即刚结束的 attempt 序号。若结果本可 `retry` 但 `attempt_count >= 3`，必须 `terminal_failed`。
+- 系统只保证内部避免重复执行，不承诺邮件端严格一次投递。
 
-最多自动重试两次：
+#### 14.2 RetryClassifier 输入与职责
 
-- Chromium 页面加载失败；
-- PDF 生成失败；
-- 临时网络异常；
-- SMTP 明确的可重试失败。
+失败分类与「是否创建下一 attempt」**不得**由各 Step 决定。
 
-SMTP 已提交但结果未知时：
+固定流水线：
 
-- 状态为 `unknown`；
-- 不自动重发，避免重复邮件。
+`AttemptResult + attempt_count + current_resource_state → RetryClassifier → next attempt / terminal`
 
-`attempt_count` 独立记录。MVP 不增加 `retrying` 状态。系统只保证内部避免重复执行，不承诺邮件端严格一次投递。
+然后（仅当输出 `retry`）：
+
+`resume_class + current_resource_state → Orchestrator 计算 resume point → 启动下一 attempt`
+
+##### 输入（必须拆开）
+
+| 输入 | 内容 | 禁止 |
+| --- | --- | --- |
+| `AttemptResult` | 见下方最小字段 | **不得**内嵌完整 `resource_state`；不得包含 `should_retry` / `resume_class` |
+| `attempt_count` | 刚结束（或当前）attempt 序号 | — |
+| `current_resource_state` | Orchestrator 在调用 Classifier **之前**观测到的只读资源快照（见 14.3） | **不得**由 Step 拼进 `AttemptResult`；**不**单独决定 `resume_class` |
+
+##### AttemptResult 最小字段
+
+| 字段 | 必填 | 说明 |
+| --- | --- | --- |
+| `ok` | 是 | 本步是否成功 |
+| `failure_stage` | `ok=false` | 稳定阶段名 |
+| `error_code` | `ok=false` | 稳定机器码 |
+| `error_message` | `ok=false` | 脱敏可读信息 |
+| `side_effect` | 否 | **仅日志/调试**；**不参与** RetryClassifier 决策 |
+
+##### 职责
+
+- **Step**：只执行业务步骤并返回 `AttemptResult`；不循环、不决定 retry、不计算 resume point。
+- **RetryClassifier**：唯一策略入口；输出且仅输出：
+  - `retry` + `resume_class`（见 14.5）；
+  - `terminal_failed`；
+  - `terminal_unknown`（仅 SMTP 结果未知）。
+  - `resume_class` **唯一**来自 Classifier 输出；`current_resource_state` 只作观测/校验上下文（例如 artifact 是否仍 valid），不得由 Orchestrator 根据资源态改写 Classifier 已给出的 `resume_class`。
+- **Orchestrator**：唯一推进 attempt、写 Execution 终态、在 `retry` 后按 Classifier 的 `resume_class` 续跑的编排者。生产入口仅 `execute(execution_id)`（或唯一等价公开方法），**禁止**第二生产入口或长期双轨旧单次执行路径；允许测试辅助函数/注入，但不得被生产调用。
+
+##### Execution 最终错误字段语义
+
+- `failure_stage` / `error_code` / `error_message` 表示 **Execution 最终原因**。
+- attempt 中间失败 **不得**覆盖写入这些字段。
+- 仅当 Classifier 输出 `terminal_failed` 或 `terminal_unknown`（或等价终态收敛）时，才写入最终原因。
+- **不新增** `last_attempt_*` 字段；中间 attempt 诊断依赖日志 / 未来可选 attempt entity，不进 Execution 终态列。
+
+##### Delivery outcome 最小规则（先于 retry）
+
+`current_resource_state.delivery_outcome`：
+
+- `not_delivered`：尚未确认投递成功；
+- `delivered`：已确认投递成功（与现有 `delivered_at` 语义一致）；
+- `smtp_unknown`：SMTP 提交结果未知。
+
+硬规则：
+
+- `delivery_outcome=delivered`：不得 `retry`；Orchestrator 必须将 Execution 收敛为 `succeeded`（若尚非终态）。
+- `delivery_outcome=smtp_unknown` 或 Classifier 判为 SMTP unknown：`terminal_unknown`；不得再 Delivery。
+- timeout 收敛**不得**把已 `delivered` 的 Execution 写成 `failed`（见 14.6）。
+
+#### 14.3 current_resource_state（观测契约）
+
+Orchestrator 在每次调用 Classifier / 计算 resume 前观测：
+
+| 字段 | 取值 | 观测方式（最小） |
+| --- | --- | --- |
+| `input_snapshot` | `absent` \| `valid` \| `corrupt` | DB：无行=`absent`；有行且与 Execution 标识/筛选结构一致=`valid`；有行但不一致=`corrupt` |
+| `render_snapshot` | `absent` \| `valid` \| `corrupt` | DB：无行=`absent`；有行且绑定本 Execution=`valid`；有行但损坏/不一致=`corrupt` |
+| `artifact` | `absent` \| `valid` \| `unusable` | 无行=`absent`；有行且未过期且文件可读=`valid`；有行但过期/缺文件/不可读=`unusable` |
+| `delivery_outcome` | `not_delivered` \| `delivered` \| `smtp_unknown` | 已确认成功=`delivered`；SMTP unknown 已记录=`smtp_unknown`；否则=`not_delivered` |
+
+说明：
+
+- `absent` 与「创建动作失败仍无行」在观测上相同；是否可 retry 由 `error_code` + 资源态共同由 Classifier 判定。
+- **有行即视为曾成功冻结**；此后只允许 verify/reuse，不允许覆盖重建。`corrupt` → 只能 `terminal_failed`。
+- `current_resource_state` **仅观测上下文**：用于 Classifier 输入与 resume 路径上的前置校验（如 delivery 要求 artifact valid）；**不得**由 Orchestrator 根据资源态另行推导或覆盖 `resume_class`。
+
+#### 14.4 InputSnapshot 创建边界（Retry 不得改写）
+
+保持现有链路：**Execution 创建阶段**负责 InputSnapshot 冻结；Retry **不**重新定义 Creation。
+
+| 阶段 | 行为 |
+| --- | --- |
+| Execution creation（`execute_manual` / `create_scheduled`） | 在同一创建路径内创建 InputSnapshot。成功：Execution 保持 `pending` 并 on_commit 派发 Render Task。失败：`pending → failed`，`failure_stage=snapshot`，**不** claim、**不**进入 Retry attempt 循环。 |
+| claim 之后 / Retry attempt 内 | **禁止**补建、重建、覆盖 InputSnapshot。SnapshotStep 只做 verify：`absent` 或 `corrupt` → `AttemptResult` 交 Classifier → 必须 `terminal_failed`。`valid` → 继续。 |
+
+因此：
+
+- claim 后不存在「InputSnapshot ensure/create」resume point。
+- 「Snapshot 创建阶段 transient failure」若发生在 **creation**，由创建路径直接终态 `failed`；不占用 owning-task Retry 窗口。
+- 「成功冻结后不可重建」适用于 claim 后的 InputSnapshot；与 creation 失败是否可另开新 Execution 无关（新 Execution 是新的创建边界，不是 Retry）。
+
+#### 14.5 failure classification → retry decision → resume point
+
+禁止无法定位 resume 的泛化分类（例如笼统的「临时网络异常」）。网络类失败必须落到具体 `failure_stage` + `error_code`，从而落入下表唯一行。
+
+`resume_class` 仅在 Classifier 输出 `retry` 时出现：
+
+- `render_snapshot_ensure`
+- `render`
+- `delivery`
+
+##### 映射表（实现唯一依据）
+
+| failure_stage | error_code（稳定名，示例集合） | `input_snapshot` | `render_snapshot` | `artifact` | `delivery_outcome` | Classifier | resume_class / 终态 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| * | * | * | * | * | `delivered` | （不进入 retry） | Orchestrator → `succeeded` |
+| permission_check | `creator_inactive` / `dashboard_view_denied` / … | * | * | * | * | `terminal_failed` | — |
+| snapshot | `input_snapshot_absent` / `input_snapshot_corrupt` / `filter_invalid` | absent/corrupt/valid | * | * | * | `terminal_failed` | claim 后不可补建 |
+| snapshot | （creation 路径失败，未 claim） | absent | — | — | — | 不适用 Retry | creation 已 `failed` |
+| render_snapshot | `render_snapshot_create_transient` | valid | absent | * | not_delivered | `retry`（若 attempt_count < 3） | `render_snapshot_ensure` |
+| render_snapshot | `render_snapshot_corrupt` | valid | corrupt | * | * | `terminal_failed` | — |
+| data_load | `widget_query_timeout` / `widget_query_transient` | valid | valid | * | not_delivered | `retry` | `render` |
+| data_load | `widget_data_forbidden` / `datasource_missing` / … | valid | valid | * | * | `terminal_failed` | — |
+| render | `chromium_launch_failed` / `page_load_failed` / `report_ready_timeout` / `pdf_generate_failed` | valid | valid | absent/unusable | not_delivered | `retry` | `render` |
+| render | `pdf_too_large` / `render_contract_business_failed` / … | valid | valid | * | * | `terminal_failed` | — |
+| email | `smtp_transient` / `smtp_connection_failed` / `smtp_timeout` | valid | valid | valid | not_delivered | `retry` | `delivery` |
+| email | `smtp_transient` / … | valid | valid | absent/unusable | not_delivered | `retry` | `render`（先重建可用 Artifact，再 Delivery） |
+| email | `channel_missing` / `channel_not_email` / `smtp_permanent` / … | * | * | * | * | `terminal_failed` | — |
+| email | `smtp_result_unknown` | * | * | * | smtp_unknown 或等价 | `terminal_unknown` | — |
+| * | 未登记 / 无法分类 | * | * | * | * | `terminal_failed` | — |
+| * | `execution_timeout` | * | * | * | not_delivered | `terminal_failed` | owning task 或 timeout checker |
+| * | `execution_timeout` | * | * | * | delivered | 不得 failed | 见 14.6：优先 `succeeded` |
+
+##### resume point（仅 `retry`）
+
+统一：下一 attempt 始终先 `Permission`；失败则新的 `AttemptResult` 再进 Classifier。
+
+| resume_class | Permission 之后的路径 |
+| --- | --- |
+| `render_snapshot_ensure` | InputSnapshot **verify only** → RenderSnapshot create（仅当 `render_snapshot=absent`）→ Render → Delivery |
+| `render` | InputSnapshot verify → RenderSnapshot verify/reuse → Render → Delivery |
+| `delivery` | InputSnapshot verify → RenderSnapshot verify/reuse → **跳过 Render** → Delivery |
+
+约束：
+
+- `delivery` 仅当 Classifier 给出 `resume_class=delivery` **且**观测时 `artifact=valid`；不得仅因 Artifact valid 选择 Delivery。
+- `render_snapshot_ensure` 仅当 `render_snapshot=absent`；若已是 `corrupt`，不得 ensure，应已在映射表 terminal。
+- RenderSnapshot：**首次创建与 retry 补创建**共用同一 ensure/create 语义——仅 `absent` 时创建；`valid` 只 reuse；**禁止**覆盖已持久化行。与 InputSnapshot 不同：RenderSnapshot 本就在 claim 后的 Orchestrator 路径创建。
+
+#### 14.6 Execution timeout 与 orphan（最终收敛）
+
+区分两类 `running`：
+
+| 类型 | 含义 | 谁负责 | 收敛 |
+| --- | --- | --- | --- |
+| retry window 内 running | owning task 仍存活 | owning task / Orchestrator | 总预算耗尽 → 条件写 `failed`（若未 delivered）；释放 in-flight |
+| orphan running | owning task 已丢失 | **Execution timeout 收敛检查**（可挂现有每分钟 Beat 旁路；非完整 Recovery） | 超过 deadline → 条件写终态；释放 in-flight |
+
+##### timeout 定义
+
+- 总预算从 claim 成功（`started_at`）起算，覆盖最多三个 attempt；默认与单次 Execution 总超时同量级（5 分钟级，可配置），可加短 grace。
+- 查询 orphan 候选：`status=running` 且 `started_at`（否则 `created_at`）早于 `now - execution_timeout`。
+- timeout checker **不做**：重 claim、dispatch Render、新 attempt、重建 Snapshot、重发邮件、删 artifact、补漏期。
+
+##### 并发保护与仲裁（必须）
+
+所有终态写入（含 timeout、`succeeded`/`failed`/`unknown`）必须带 **状态条件保护**：
+
+- 仅当当前 `status=running` 时才允许迁移到终态（条件更新 / 等价 CAS；受影响行数 0 视为 no-op）。
+- **禁止** timeout 或任何 writer 覆盖已存在的 `succeeded` / `failed` / `unknown`。
+
+仲裁：
+
+1. owning task 与 timeout checker 同时尝试终态化时：谁先成功把 `running` 改为终态，谁生效；另一方条件更新失败并停止。
+2. 若观测 `delivery_outcome=delivered`：timeout checker **不得**写 `failed`；应条件写 `succeeded`（若仍为 `running`），或 no-op（若已终态）。
+3. 若观测 `delivery_outcome=smtp_unknown`：timeout checker **不得**改写为 `failed`；应条件写 `unknown`（若仍为 `running`），或 no-op。
+4. owning task 在 SMTP 成功并标记 delivered 后写 `succeeded`：即使 checker 并发，条件保护保证不会出现「先 succeeded 再被 timeout 打成 failed」。
+
+##### timeout 与 in-flight
+
+- 成功收敛为 `failed` / `succeeded` / `unknown` 后，均不再计入 in-flight，Subscription 槽位释放。
+- 释放后允许新的 manual_test；Scanner 可按既有规则继续领取后续计划（timeout 不构成漏期补偿新周期）。
+
+##### 明确不做
+
+- 不引入完整 Recovery/Cleanup；
+- timeout 不恢复未完成投递（已 delivered 的只保证终态不被错误降级）；
+- Retry 不接管 orphan。
 
 ### 15. 幂等与串行执行
 
@@ -801,8 +1011,8 @@ Subscription 列表展示：
 
 Execution 记录分层展示：
 
-- 计划时间；
-- 实际时间；
+- 计划时间（订阅时区下的业务周期时间；`manual_test` 可空或标为手动测试）；
+- 实际时间（`created_at` / `started_at` / `finished_at`，仅详情与排障，不 mirror 进邮件）；
 - trigger type；
 - 状态；
 - failure stage；
@@ -831,14 +1041,16 @@ Snapshot ID、版本、error code 等技术字段放在详情中，不挤占列�
 
 4. **Execution Orchestrator**
    - 负责 Execution 状态机、实时权限校验、双 Snapshot、数据源运行 Snapshot、attempt、分级重试、临时文件和最终审计。
-   - scheduled 与 manual_test 共用该模块。
+   - Retry resume 按 InputSnapshot / RenderSnapshot / Artifact 资源状态决定起点，不按 failure_stage 硬编码路径。
+   - scheduled 与 manual_test 共用该模块；Retry 不产生新 Execution，也不接管 orphan。
 
 5. **Dashboard Render Contract**
    - 渲染页与 Worker 只通过 `report-ready/report-failed`、Render Token 和冻结 Snapshot 协作。
    - Widget 自身只报告状态，不理解调度、邮件或重试。
 
 6. **Mail Delivery Adapter**
-   - 输入冻结渠道 ID、固定模板数据和 PDF 字节。
+   - 输入冻结渠道 ID、固定模板数据（含 Snapshot 计划时间字段）和 PDF 字节。
+   - 邮件只消费 `scheduled_time_utc` / `schedule_timezone` / `scheduled_local_time` 拼装计划时间；不消费 `creator_timezone`，不写入实际生成时间。
    - 复用现有系统管理邮件附件能力，隐藏渠道解密、SMTP 结果分类和 `unknown` 判定。
 
 删除任一模块时，其规则会散落到多个 API、任务或组件，因而这些边界都应保持小接口和高行为杠杆。
@@ -851,6 +1063,8 @@ Snapshot ID、版本、error code 等技术字段放在详情中，不挤占列�
 | Dashboard View 失效 | permission_check | 否 | failed，不生成、不发送 |
 | 数据源或下游 401/403 | permission_check/data_load | 否 | failed，不发送部分报告 |
 | 筛选值失效 | snapshot | 否 | failed，不回退默认值 |
+| Input/Render Snapshot 创建阶段 transient failure | snapshot / render_snapshot | 最多 2 次 | 仍未成功落库则可再 ensure/create；耗尽后 failed |
+| Input/Render Snapshot 冻结成功后损坏 | snapshot / render_snapshot | 否 | failed；禁止重建 |
 | Widget 空数据 | data_load | 不适用 | 合法 empty，继续生成 |
 | Widget 查询临时超时 | data_load | 最多 2 次 | 耗尽后 failed |
 | Widget 明确失败 | data_load/render | 按错误分类 | 不发送部分报告 |
@@ -860,6 +1074,8 @@ Snapshot ID、版本、error code 等技术字段放在详情中，不挤占列�
 | 邮件渠道删除或越出组织 | email | 否 | failed，不切换渠道 |
 | SMTP 明确临时失败 | email | 最多 2 次 | 耗尽后 failed |
 | SMTP 结果未知 | email | 否 | unknown，不重发 |
+| Execution 总超时耗尽 | running 内 | 否 | failed；不得再开下一 attempt |
+| Worker crash / task 丢失导致 orphan running | running | 否（MVP） | 保持 running；不自动 reclaim / 重投；**继续占用 in-flight，阻塞同订阅新的 manual/scheduled** |
 | Dashboard 在 Snapshot 前删除 | snapshot | 否 | failed |
 | Dashboard 在 Snapshot 后删除 | 不阻断 | 不适用 | 当前执行继续；Subscription terminated |
 | 清理任务失败 | cleanup | 后续周期重试 | 不影响 Server 启动 |
@@ -871,11 +1087,12 @@ Snapshot ID、版本、error code 等技术字段放在详情中，不挤占列�
 - Schedule Calculator 使用纯函数表驱动测试覆盖周期、月末、DST 和补偿。
 - Subscription Service 使用真实 ORM 与权限 fixture 覆盖权限、状态、乐观锁、逻辑删除和 Dashboard 删除终止。
 - Scanner 使用真实数据库事务验证行锁、批量限制、串行执行、幂等唯一约束和 `next_run_at` 推进。
-- Execution Orchestrator 在 Chromium、数据查询和邮件适配器边界替换外部依赖，验证状态机、Snapshot、attempt 和重试分类。
+- Execution Orchestrator 在 Chromium、数据查询和邮件适配器边界替换外部依赖，验证状态机、Snapshot、attempt、按资源状态的 resume 起点，以及重试分类。
 - 内部 Render Token 使用真实签发与校验逻辑测试 hash、TTL、消费、废止、attempt 和跨 Execution 拒绝。
 - 渲染页使用组件级测试与真实浏览器集成测试验证 Widget 状态聚合、完整展开、显式 ready/failed 和 PDF 生成。
-- 邮件适配器复用现有附件发送测试风格，并覆盖固定标题、正文、文件名清理、20 MB 限制和 SMTP 结果分类。
+- 邮件适配器复用现有附件发送测试风格，并覆盖固定标题、正文、文件名清理、20 MB 限制、SMTP 结果分类，以及「只含计划时间、不含实际生成时间 / 不使用 creator_timezone」的契约。
 - UI 通过现有 Ant Design/Storybook 或页面测试覆盖列表、抽屉、权限、状态、禁用、错误和执行详情。
+- MVP 不要求覆盖 orphan reclaim；若补充测试，仅断言 worker 丢失后 execution 可停留 `running` 且无第二 task 自动接管。
 
 ### 必须覆盖的验收场景
 
@@ -897,9 +1114,11 @@ Snapshot ID、版本、error code 等技术字段放在详情中，不挤占列�
 16. Chromium 使用亮色、1440px、横向 A4 和完整展开页面生成 PDF；默认分页不丢内容；超时和 20 MB 上限生效。
 17. 每个 attempt 使用新 Render Token；明文不落库；消费、过期、废止、跨任务和重复建立会话均按契约处理。
 18. 权限类错误不重试；临时加载、PDF、网络及明确 SMTP 临时失败最多重试两次；SMTP 未知不重发。
+18a. Resume 仅按资源状态：Snapshot 未成功落库的 transient 创建失败可再 ensure/create；冻结成功后损坏则终结且禁止重建；无可用 Artifact 的可重试 render/pdf 从 Render 重跑；有有效 Artifact 的可重试 delivery 跳过 Render。
+18b. Retry 期间 Execution 保持 `running`；不新增 `retrying`；不出现 `failed → running`；同一 owning task 内完成 attempt；MVP 不自动接管 orphan running Execution；orphan 继续占用 in-flight 并阻塞同订阅新的 manual/scheduled。
 19. scheduled 与 manual_test 分别按各自幂等键去重；同一 Subscription 不能同时存在多个 pending/running Execution。
 20. manual_test 只基于已保存 Subscription，异步返回 execution ID，不影响 next_run_at，不进入漏期补偿。
-21. 固定邮件标题、正文和文件名符合契约；发送使用冻结渠道 ID和当前安全存储凭据；渠道失效不 fallback。
+21. 固定邮件标题、正文和文件名符合契约；`scheduled` 仅展示订阅时区下的计划时间，不展示实际生成时间；`manual_test` 不伪造计划时间；发送使用冻结渠道 ID 和当前安全存储凭据；渠道失效不 fallback。
 22. PDF 在重试窗口后清理，不提供历史下载；Execution 保存文件元数据和内容哈希。
 23. 逻辑删除隐藏并停止调度，但保留 Subscription、Execution 和 Snapshot；terminated 仍可展示原因且不可恢复。
 24. 180 天清理任务分批、幂等删除 Execution 及 Snapshot，失败不阻断启动，Subscription 生命周期审计长期保留。

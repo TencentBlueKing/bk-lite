@@ -15,6 +15,11 @@ class DashboardReportSubscription(TimeInfo):
         PAUSED = "paused", "暂停"
         TERMINATED = "terminated", "已终止"
 
+    class ScheduleType(models.TextChoices):
+        DAILY = "daily", "每天"
+        WEEKLY = "weekly", "每周"
+        MONTHLY = "monthly", "每月"
+
     dashboard = models.ForeignKey(
         Dashboard,
         null=True,
@@ -41,12 +46,61 @@ class DashboardReportSubscription(TimeInfo):
         related_name="report_subscriptions",
         verbose_name="邮件通道",
     )
+    schedule_type = models.CharField(
+        max_length=16,
+        choices=ScheduleType.choices,
+        null=True,
+        blank=True,
+        verbose_name="周期类型",
+    )
+    schedule_hour = models.PositiveSmallIntegerField(
+        null=True,
+        blank=True,
+        verbose_name="计划小时",
+    )
+    schedule_minute = models.PositiveSmallIntegerField(
+        null=True,
+        blank=True,
+        verbose_name="计划分钟",
+    )
+    schedule_weekday = models.PositiveSmallIntegerField(
+        null=True,
+        blank=True,
+        verbose_name="计划星期（0=周一）",
+    )
+    schedule_day_of_month = models.PositiveSmallIntegerField(
+        null=True,
+        blank=True,
+        verbose_name="计划日（1–31）",
+    )
+    timezone = models.CharField(
+        max_length=64,
+        null=True,
+        blank=True,
+        verbose_name="订阅时区",
+    )
+    next_run_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        db_index=True,
+        verbose_name="下次计划执行时间",
+    )
+    version = models.PositiveIntegerField(
+        default=1,
+        verbose_name="调度配置版本",
+    )
     config = models.JSONField(default=dict, blank=True, verbose_name="扩展配置")
 
     class Meta:
         db_table = "operation_analysis_dashboard_report_subscription"
         verbose_name = "仪表盘报告订阅"
         ordering = ["-id"]
+        indexes = [
+            models.Index(
+                fields=["status", "next_run_at"],
+                name="idx_drs_status_next_run",
+            ),
+        ]
 
     def clean(self):
         super().clean()
@@ -54,6 +108,31 @@ class DashboardReportSubscription(TimeInfo):
             raise ValidationError(
                 {"dashboard": "启用状态的报告订阅必须关联仪表盘"}
             )
+        if self.schedule_type is None:
+            return
+        errors = {}
+        if self.schedule_hour is None or not (0 <= self.schedule_hour <= 23):
+            errors["schedule_hour"] = "已配置调度时必须指定 0–23 小时"
+        if self.schedule_minute is None or not (
+            0 <= self.schedule_minute <= 59
+        ):
+            errors["schedule_minute"] = "已配置调度时必须指定 0–59 分钟"
+        if not self.timezone:
+            errors["timezone"] = "已配置调度时必须指定 IANA 时区"
+        if self.schedule_type == self.ScheduleType.WEEKLY and (
+            self.schedule_weekday is None
+            or not (0 <= self.schedule_weekday <= 6)
+        ):
+            errors["schedule_weekday"] = "每周调度必须指定 weekday（0–6）"
+        if self.schedule_type == self.ScheduleType.MONTHLY and (
+            self.schedule_day_of_month is None
+            or not (1 <= self.schedule_day_of_month <= 31)
+        ):
+            errors["schedule_day_of_month"] = (
+                "每月调度必须指定 day_of_month（1–31）"
+            )
+        if errors:
+            raise ValidationError(errors)
 
     def __str__(self):
         return self.name
@@ -120,16 +199,43 @@ class DashboardReportExecution(TimeInfo):
         default="",
         verbose_name="请求幂等键",
     )
+    scheduled_time_utc = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="计划执行时间 UTC",
+    )
     failure_stage = models.CharField(
         max_length=64,
         blank=True,
         default="",
         verbose_name="失败阶段",
     )
+    error_code = models.CharField(
+        max_length=64,
+        blank=True,
+        default="",
+        verbose_name="稳定错误码",
+    )
     error_message = models.TextField(blank=True, default="", verbose_name="错误信息")
+    attempt_count = models.PositiveSmallIntegerField(
+        default=0,
+        verbose_name="已开始 Attempt 数",
+    )
     started_at = models.DateTimeField(null=True, blank=True, verbose_name="开始时间")
     finished_at = models.DateTimeField(null=True, blank=True, verbose_name="完成时间")
     delivered_at = models.DateTimeField(null=True, blank=True, verbose_name="投递时间")
+    class DeliveryOutcome(models.TextChoices):
+        NOT_DELIVERED = "not_delivered", "未确认投递"
+        DELIVERED = "delivered", "已确认投递"
+        SMTP_UNKNOWN = "smtp_unknown", "SMTP 结果未知"
+
+    delivery_outcome = models.CharField(
+        max_length=16,
+        choices=DeliveryOutcome.choices,
+        default=DeliveryOutcome.NOT_DELIVERED,
+        db_index=True,
+        verbose_name="投递事实",
+    )
 
     class Meta:
         db_table = "operation_analysis_dashboard_report_execution"
@@ -140,6 +246,14 @@ class DashboardReportExecution(TimeInfo):
                 fields=["subscription", "request_id", "trigger_type"],
                 condition=~models.Q(request_id=""),
                 name="uniq_dashboard_report_execution_request",
+            ),
+            models.UniqueConstraint(
+                fields=["subscription", "scheduled_time_utc", "trigger_type"],
+                condition=models.Q(
+                    trigger_type="scheduled",
+                    scheduled_time_utc__isnull=False,
+                ),
+                name="uniq_dashboard_report_execution_scheduled",
             ),
         ]
 
@@ -184,6 +298,28 @@ class DashboardReportExecutionSnapshot(models.Model):
         null=True,
         blank=True,
         verbose_name="邮件通道 ID",
+    )
+    scheduled_time_utc = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="计划执行时间 UTC",
+    )
+    schedule_timezone = models.CharField(
+        max_length=64,
+        blank=True,
+        default="",
+        verbose_name="订阅计划时区",
+    )
+    scheduled_local_time = models.CharField(
+        max_length=32,
+        blank=True,
+        default="",
+        verbose_name="本地计划时间（展示/审计）",
+    )
+    subscription_version = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        verbose_name="调度配置版本",
     )
     filter_values = models.JSONField(
         default=dict,
@@ -289,6 +425,10 @@ class DashboardReportRenderToken(models.Model):
         related_name="render_token",
         verbose_name="报告执行",
     )
+    attempt_no = models.PositiveSmallIntegerField(
+        default=1,
+        verbose_name="签发时 attempt 序号",
+    )
     token_hash = models.CharField(
         max_length=64,
         unique=True,
@@ -299,6 +439,11 @@ class DashboardReportRenderToken(models.Model):
         null=True,
         blank=True,
         verbose_name="消费时间",
+    )
+    revoked_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="废止时间",
     )
     created_at = models.DateTimeField(
         auto_now_add=True,

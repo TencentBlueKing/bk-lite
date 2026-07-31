@@ -1,5 +1,7 @@
 export type DashboardSubscriptionStatus = 'active' | 'paused';
 
+export type DashboardScheduleType = 'daily' | 'weekly' | 'monthly';
+
 export interface DashboardSubscription {
   id: number;
   dashboard: number | null;
@@ -8,6 +10,14 @@ export interface DashboardSubscription {
   status: DashboardSubscriptionStatus;
   recipient_email: string;
   email_channel: number;
+  schedule_type: DashboardScheduleType | null;
+  schedule_hour: number | null;
+  schedule_minute: number | null;
+  schedule_weekday: number | null;
+  schedule_day_of_month: number | null;
+  timezone: string | null;
+  next_run_at: string | null;
+  version: number;
   config: Record<string, unknown>;
   created_at: string;
   updated_at: string;
@@ -18,7 +28,14 @@ export interface DashboardSubscriptionPayload {
   name: string;
   recipient_email: string;
   email_channel: number;
-  status: DashboardSubscriptionStatus;
+  status?: DashboardSubscriptionStatus;
+  schedule_type?: DashboardScheduleType | null;
+  schedule_hour?: number | null;
+  schedule_minute?: number | null;
+  schedule_weekday?: number | null;
+  schedule_day_of_month?: number | null;
+  timezone?: string | null;
+  version?: number;
 }
 
 export type DashboardSubscriptionUpdatePayload = Omit<
@@ -45,6 +62,10 @@ export interface DashboardReportExecutionSnapshot {
   creator_id: string;
   subscription_id: number;
   filter_values: Record<string, unknown>;
+  scheduled_time_utc?: string | null;
+  schedule_timezone?: string;
+  scheduled_local_time?: string;
+  subscription_version?: number | null;
   created_at: string;
 }
 
@@ -54,7 +75,8 @@ export interface DashboardReportExecution {
   dashboard: number | null;
   creator: string;
   status: DashboardExecutionStatus;
-  trigger_type: 'manual';
+  trigger_type: 'manual_test' | 'scheduled';
+  scheduled_time_utc?: string | null;
   failure_stage: string;
   error_message: string;
   created_at: string;

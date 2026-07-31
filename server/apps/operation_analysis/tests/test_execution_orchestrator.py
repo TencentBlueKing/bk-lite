@@ -42,6 +42,19 @@ def set_dashboard_view_permission(monkeypatch, allowed):
     )
 
 
+def stub_render_and_delivery(monkeypatch):
+    monkeypatch.setattr(
+        RenderStep,
+        "execute",
+        lambda *args, **kwargs: ExecutionStepResult.COMPLETED,
+    )
+    monkeypatch.setattr(
+        DeliveryStep,
+        "execute",
+        lambda *args, **kwargs: ExecutionStepResult.COMPLETED,
+    )
+
+
 @pytest.fixture
 def email_channel():
     return Channel.objects.create(
@@ -172,6 +185,17 @@ def test_orchestrator_creates_render_snapshot_from_dashboard(
     )
     set_dashboard_view_permission(monkeypatch, True)
 
+    monkeypatch.setattr(
+        RenderStep,
+        "execute",
+        lambda *args, **kwargs: ExecutionStepResult.COMPLETED,
+    )
+    monkeypatch.setattr(
+        DeliveryStep,
+        "execute",
+        lambda *args, **kwargs: ExecutionStepResult.COMPLETED,
+    )
+
     ExecutionOrchestrator.execute(execution.id)
 
     snapshot = DashboardReportRenderSnapshot.objects.get(
@@ -217,13 +241,24 @@ def test_orchestrator_runs_steps_in_order(
         return current.snapshot
 
     monkeypatch.setattr(SnapshotStep, "execute", snapshot_step)
+
+    def render_snapshot_step(current):
+        calls.append("render_snapshot")
+        return DashboardReportRenderSnapshot.objects.create(
+            execution=current,
+            dashboard_id=current.dashboard_id,
+            dashboard_name=current.dashboard.name,
+            dashboard_updated_at=current.dashboard.updated_at,
+            view_sets=[],
+            filters=[],
+            other={},
+            widget_manifest=[],
+        )
+
     monkeypatch.setattr(
         RenderSnapshotStep,
         "execute",
-        lambda current: (
-            calls.append("render_snapshot"),
-            current.snapshot,
-        )[1],
+        render_snapshot_step,
     )
     monkeypatch.setattr(
         RenderStep,
@@ -374,6 +409,7 @@ def test_render_snapshot_isolated_from_later_dashboard_changes(
         update_fields=["filters", "other", "updated_at"]
     )
     set_dashboard_view_permission(monkeypatch, True)
+    stub_render_and_delivery(monkeypatch)
     ExecutionOrchestrator.execute(execution.id)
     render_snapshot = execution.render_snapshot
     original_dashboard_updated_at = render_snapshot.dashboard_updated_at
@@ -409,6 +445,7 @@ def test_render_snapshot_isolated_from_later_widget_changes(
     execution.dashboard.view_sets = original_view_sets
     execution.dashboard.save(update_fields=["view_sets", "updated_at"])
     set_dashboard_view_permission(monkeypatch, True)
+    stub_render_and_delivery(monkeypatch)
     ExecutionOrchestrator.execute(execution.id)
     render_snapshot = execution.render_snapshot
 
@@ -437,6 +474,7 @@ def test_render_snapshot_isolated_from_later_widget_changes(
 
 def test_render_snapshot_cannot_be_updated(execution, monkeypatch):
     set_dashboard_view_permission(monkeypatch, True)
+    stub_render_and_delivery(monkeypatch)
     ExecutionOrchestrator.execute(execution.id)
     render_snapshot = execution.render_snapshot
 
@@ -476,9 +514,69 @@ def test_render_snapshot_failure_marks_execution_failed(
     execution.refresh_from_db()
     assert result.id == execution.id
     assert execution.status == DashboardReportExecution.Status.FAILED
-    assert execution.failure_stage == "snapshot"
+    assert execution.failure_stage == "render_snapshot"
+    assert execution.error_code == ""
     assert execution.error_message == "Render Snapshot 创建失败"
+    assert execution.attempt_count == 1
     assert render_calls == []
+
+
+def test_render_snapshot_value_error_is_permanent_terminal(
+    execution,
+    monkeypatch,
+):
+    set_dashboard_view_permission(monkeypatch, True)
+    monkeypatch.setattr(
+        "apps.operation_analysis.services.execution_orchestrator."
+        "DashboardReportRenderSnapshotService.create",
+        lambda current: (_ for _ in ()).throw(ValueError("Dashboard 不存在")),
+    )
+    result = ExecutionOrchestrator.execute(execution.id)
+    execution.refresh_from_db()
+    assert result.status == DashboardReportExecution.Status.FAILED
+    assert execution.error_code == "render_snapshot_create_permanent"
+    assert execution.attempt_count == 1
+
+
+def test_render_snapshot_operational_error_can_retry(
+    execution,
+    monkeypatch,
+):
+    from django.db import OperationalError
+
+    set_dashboard_view_permission(monkeypatch, True)
+    calls = {"n": 0}
+
+    def flaky_create(current):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise OperationalError("db busy")
+        from apps.operation_analysis.models.subscription_models import (
+            DashboardReportRenderSnapshot,
+        )
+
+        return DashboardReportRenderSnapshot.objects.create(
+            execution=current,
+            dashboard_id=current.dashboard_id,
+            dashboard_name=current.dashboard.name,
+            dashboard_updated_at=current.dashboard.updated_at,
+            view_sets=[],
+            filters=[],
+            other={},
+            widget_manifest=[],
+        )
+
+    monkeypatch.setattr(
+        "apps.operation_analysis.services.execution_orchestrator."
+        "DashboardReportRenderSnapshotService.create",
+        flaky_create,
+    )
+    stub_render_and_delivery(monkeypatch)
+    result = ExecutionOrchestrator.execute(execution.id)
+    execution.refresh_from_db()
+    assert result.status == DashboardReportExecution.Status.SUCCEEDED
+    assert execution.attempt_count == 2
+    assert calls["n"] == 2
 
 
 def test_datasource_snapshot_persists_non_sensitive_audit_freeze(
@@ -508,6 +606,7 @@ def test_datasource_snapshot_persists_non_sensitive_audit_freeze(
     execution.dashboard.save(update_fields=["view_sets", "updated_at"])
     set_dashboard_view_permission(monkeypatch, True)
 
+    stub_render_and_delivery(monkeypatch)
     ExecutionOrchestrator.execute(execution.id)
 
     render_snapshot = DashboardReportRenderSnapshot.objects.get(
@@ -561,6 +660,7 @@ def test_datasource_snapshot_skips_missing_datasources(
     execution.dashboard.save(update_fields=["view_sets", "updated_at"])
     set_dashboard_view_permission(monkeypatch, True)
 
+    stub_render_and_delivery(monkeypatch)
     ExecutionOrchestrator.execute(execution.id)
 
     render_snapshot = DashboardReportRenderSnapshot.objects.get(

@@ -75,7 +75,8 @@
 
 ## 5. 风险 / 待确认
 - 数据源为外部 NATS / 数据库 / REST API / Excel，运营分析本身不落原始数据；组件运行时已按 `scopeId + requestVersionKey + requestSignature` 做内存级请求缓存，`compare` 维度也参与签名，以减少同页重复请求，但跨页面/跨会话一致性仍依赖上游数据源【已实现 / 待确认】（`web/src/app/ops-analysis/utils/widgetRequestCache.ts:1-39`、`web/src/app/ops-analysis/components/widgetDataRenderer.tsx:324-354`）。
-- Dashboard 报告 Render Task【已实现】：`operation_analysis.render_dashboard_report` 固定进入 `dashboard_report_render` 队列，由默认并发 2 的独立 Supervisor Worker 消费，负责原子 claim、Orchestrator Render 与 Email Delivery；未实现 Retry、Scheduler 或 Cleanup（`tasks/tasks.py`、`support-files/release/supervisor/dashboard_report_render_worker.conf`、`services/{execution_service,delivery_service}.py`）。
+- Dashboard 报告 Render Task【已实现】：`operation_analysis.render_dashboard_report` 固定进入 `dashboard_report_render` 队列，由默认并发 2 的独立 Supervisor Worker 消费，负责原子 claim、Orchestrator Render 与 Email Delivery；未实现 Retry 或 Cleanup（`tasks/tasks.py`、`support-files/release/supervisor/dashboard_report_render_worker.conf`、`services/{execution_service,delivery_service}.py`）。Retry 执行语义已在 change spec 第 14 节对齐：同 task 多 attempt、按资源状态 resume、MVP 不接管 orphan。
+- Dashboard 报告 Scheduler【已实现】：固定 Beat 每分钟触发 `operation_analysis.scan_due_dashboard_report_subscriptions`；`DueSubscriptionScanner` 仅扫描 `active + schedule_type/next_run_at 非空且到期` 的订阅，经专用 `create_scheduled` 创建 Execution 后复用 `_dispatch_render`；旧订阅无默认调度回填；未实现 missed-run compensation（`services/{schedule_calculator,due_subscription_scanner,execution_service}.py`、`config.py`）。
 
 ## 2026-07-01 Code-ARD 校准
 - `[operation_analysis#20260701-013]` 补录 `api/scene_widgets/network_status_topology` 路由、view 权限、CMDB 拓扑/实例权限复用和 Alerts 活跃告警汇总边界。
@@ -111,6 +112,7 @@
 ## 2026-07-30 MVP Closure 契约对齐
 
 - `[operation_analysis#20260730-001]` 手动主链路（含 Email Delivery）已落地；文档与测试不再宣称 DataSource Runtime Snapshot 已保证配置变更不影响历史 Execution（仅审计冻结、未接入取数消费）。清理过时的 Email 未实现 / `not_ready` placeholder / Phase 临时表述；`ALLOWED_TRANSITIONS` 去掉误导性的 `pending→running` 条目（Claim 仍为唯一入口）。
+- `[operation_analysis#20260730-002]` Retry Resume / Orphan 语义对齐（未编码）：Execution 重试期间保持 `running`、claim 一次、同 task 多 attempt；下一 attempt 起点按 InputSnapshot / RenderSnapshot / Artifact 资源状态决定。**修正**：Snapshot 创建阶段 transient failure 允许再 ensure/create；仅冻结成功后损坏才终结且禁止重建。Artifact 可在 Delivery retry 复用；不可用 Artifact 视为需重跑 Render。MVP 超时收敛为 `failed`；orphan running 不自动 reclaim，且继续占用 in-flight 阻塞同订阅新的 manual/scheduled。
 
 ## 6. 证据来源
 `server/apps/operation_analysis/{urls.py,models/*,views/datasource_view.py,views/view.py,nats/nats.py,common/get_nats_source_data.py,constants/constants.py,tasks/tasks.py,management/commands/*,services/*}`、`apps/operation_analysis/migrations/0010_remove_namespace_groups.py`、`apps/rpc/base.py:OperationAnalysisRpc`、`web/src/app/ops-analysis/{utils/widgetRequestCache.ts,components/widgetDataRenderer.tsx,api/namespace.ts,(pages)/settings/namespace/operateModal.tsx}`。

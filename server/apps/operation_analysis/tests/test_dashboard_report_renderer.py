@@ -198,6 +198,33 @@ def test_report_failed_prevents_page_pdf(tmp_path):
         renderer.render(request)
 
     assert "query failed" not in str(exc_info.value)
+    assert exc_info.value.error_code == "render_contract_business_failed"
+    assert exc_info.value.failure_stage == "render"
     assert page.pdf_calls == 0
     assert not request.output_path.exists()
+    assert browser.closed is True
+
+
+def test_report_failed_widget_query_timeout_maps_to_data_load(tmp_path):
+    request, page, browser = _request(
+        tmp_path,
+        {
+            "type": "report-failed",
+            "dashboardId": "8",
+            "widgets": [],
+            "widgetId": "chart-1",
+            "errorCode": "widget_query_timeout",
+            "error": "timed out",
+        },
+    )
+    renderer = DashboardChromiumRenderer(
+        playwright_factory=lambda: FakePlaywrightManager(browser)
+    )
+
+    with pytest.raises(DashboardRenderContractError) as exc_info:
+        renderer.render(request)
+
+    assert exc_info.value.error_code == "widget_query_timeout"
+    assert exc_info.value.failure_stage == "data_load"
+    assert page.pdf_calls == 0
     assert browser.closed is True

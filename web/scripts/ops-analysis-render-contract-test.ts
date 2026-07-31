@@ -64,6 +64,24 @@ const failed = buildDashboardRenderSignal(
 assert.equal(failed?.type, 'report-failed');
 assert.equal(failed?.widgetId, 'failed');
 assert.equal(failed?.error, 'fixture failure');
+assert.equal(failed?.errorCode, undefined);
+
+const failedWithCode = buildDashboardRenderSignal(
+  1,
+  ['chart', 'timeout'],
+  results([
+    { widgetId: 'chart', status: 'ready' },
+    {
+      widgetId: 'timeout',
+      status: 'failed',
+      error: 'query timed out',
+      errorCode: 'widget_query_timeout',
+    },
+  ]),
+);
+assert.equal(failedWithCode?.type, 'report-failed');
+assert.equal(failedWithCode?.errorCode, 'widget_query_timeout');
+assert.equal(failedWithCode?.widgetId, 'timeout');
 
 const dispatched: Array<{ type: string; detail: unknown }> = [];
 const previousWindow = globalThis.window;

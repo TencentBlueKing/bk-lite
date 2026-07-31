@@ -1,5 +1,7 @@
 import logging
 from copy import deepcopy
+from dataclasses import dataclass
+from datetime import datetime
 
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
@@ -15,6 +17,10 @@ from apps.operation_analysis.models.subscription_models import (
 from apps.operation_analysis.services.report_display_time import (
     resolve_creator_timezone,
 )
+from apps.operation_analysis.services.schedule_calculator import (
+    ScheduleSpec,
+    next_after,
+)
 from apps.operation_analysis.services.subscription_service import (
     DashboardSubscriptionService,
 )
@@ -25,6 +31,16 @@ IN_FLIGHT_STATUSES = (
     DashboardReportExecution.Status.PENDING,
     DashboardReportExecution.Status.RUNNING,
 )
+
+
+@dataclass(frozen=True)
+class CreateScheduledResult:
+    """DueSubscriptionScanner 专用创建结果。"""
+
+    execution: DashboardReportExecution | None
+    created: bool
+    skipped_in_flight: bool = False
+    already_exists: bool = False
 
 
 class DashboardReportExecutionService:
@@ -45,6 +61,14 @@ class DashboardReportExecutionService:
         )
         return claimed_count == 1
 
+    TERMINAL_STATUSES = frozenset(
+        {
+            DashboardReportExecution.Status.SUCCEEDED,
+            DashboardReportExecution.Status.FAILED,
+            DashboardReportExecution.Status.UNKNOWN,
+        }
+    )
+
     @classmethod
     def transition(
         cls,
@@ -52,6 +76,7 @@ class DashboardReportExecutionService:
         target_status: str,
         *,
         failure_stage: str = "",
+        error_code: str = "",
         error_message: str = "",
     ) -> DashboardReportExecution:
         if (
@@ -76,20 +101,212 @@ class DashboardReportExecutionService:
             )
 
         now = timezone.now()
+        if (
+            execution.status == DashboardReportExecution.Status.RUNNING
+            and target_status in cls.TERMINAL_STATUSES
+        ):
+            return cls._cas_running_to_terminal(
+                execution,
+                target_status,
+                now=now,
+                failure_stage=failure_stage,
+                error_code=error_code,
+                error_message=error_message,
+            )
+
         execution.status = target_status
         update_fields = ["status", "updated_at"]
-        if target_status in {
-            DashboardReportExecution.Status.SUCCEEDED,
-            DashboardReportExecution.Status.FAILED,
-            DashboardReportExecution.Status.UNKNOWN,
-        }:
+        if target_status in cls.TERMINAL_STATUSES:
             execution.finished_at = now
             update_fields.append("finished_at")
         if target_status == DashboardReportExecution.Status.FAILED:
             execution.failure_stage = failure_stage
+            execution.error_code = error_code
             execution.error_message = error_message
-            update_fields.extend(["failure_stage", "error_message"])
+            update_fields.extend(
+                ["failure_stage", "error_code", "error_message"]
+            )
+        elif target_status == DashboardReportExecution.Status.UNKNOWN:
+            execution.failure_stage = failure_stage
+            execution.error_code = error_code or "smtp_result_unknown"
+            execution.error_message = error_message
+            update_fields.extend(
+                ["failure_stage", "error_code", "error_message"]
+            )
         execution.save(update_fields=update_fields)
+        return execution
+
+    @classmethod
+    def _cas_running_to_terminal(
+        cls,
+        execution: DashboardReportExecution,
+        target_status: str,
+        *,
+        now,
+        failure_stage: str = "",
+        error_code: str = "",
+        error_message: str = "",
+    ) -> DashboardReportExecution:
+        """仅当 status 仍为 running 时写入终态；冲突则 no-op 并 refresh。"""
+        updates = {
+            "status": target_status,
+            "finished_at": now,
+            "updated_at": now,
+        }
+        if target_status == DashboardReportExecution.Status.FAILED:
+            updates["failure_stage"] = failure_stage
+            updates["error_code"] = error_code
+            updates["error_message"] = error_message
+        elif target_status == DashboardReportExecution.Status.UNKNOWN:
+            updates["failure_stage"] = failure_stage
+            updates["error_code"] = error_code or "smtp_result_unknown"
+            updates["error_message"] = error_message
+
+        updated = DashboardReportExecution.objects.filter(
+            pk=execution.pk,
+            status=DashboardReportExecution.Status.RUNNING,
+        ).update(**updates)
+        execution.refresh_from_db()
+        if updated != 1:
+            logger.info(
+                "Execution 终态 CAS 未生效（可能已被并发收敛）: "
+                "execution_id=%s target=%s current=%s",
+                execution.id,
+                target_status,
+                execution.status,
+            )
+        return execution
+
+    @classmethod
+    def begin_attempt(
+        cls,
+        execution: DashboardReportExecution,
+    ) -> int:
+        """Attempt 开始时递增 attempt_count，返回新序号。"""
+        from django.db.models import F
+
+        DashboardReportExecution.objects.filter(pk=execution.pk).update(
+            attempt_count=F("attempt_count") + 1,
+            updated_at=timezone.now(),
+        )
+        execution.refresh_from_db(fields=["attempt_count", "updated_at"])
+        return execution.attempt_count
+
+    @classmethod
+    def mark_delivery_outcome(
+        cls,
+        execution: DashboardReportExecution,
+        outcome: str,
+    ) -> DashboardReportExecution:
+        """写入 durable 投递事实；不经 status 状态机，不复用 error_code。"""
+        now = timezone.now()
+        allowed = {
+            DashboardReportExecution.DeliveryOutcome.DELIVERED,
+            DashboardReportExecution.DeliveryOutcome.SMTP_UNKNOWN,
+        }
+        if outcome not in allowed:
+            raise ValidationError(
+                {"delivery_outcome": f"不允许标记为 {outcome}"}
+            )
+
+        updates = {
+            "delivery_outcome": outcome,
+            "updated_at": now,
+        }
+        if outcome == DashboardReportExecution.DeliveryOutcome.DELIVERED:
+            updates["delivered_at"] = now
+
+        # 已 delivered 不可降级为 smtp_unknown
+        filter_q = DashboardReportExecution.objects.filter(pk=execution.pk)
+        if outcome == DashboardReportExecution.DeliveryOutcome.SMTP_UNKNOWN:
+            filter_q = filter_q.exclude(
+                delivery_outcome=(
+                    DashboardReportExecution.DeliveryOutcome.DELIVERED
+                )
+            )
+        filter_q.update(**updates)
+        execution.refresh_from_db()
+        return execution
+
+    @classmethod
+    def align_status_with_delivery_outcome(
+        cls,
+        execution: DashboardReportExecution,
+    ) -> DashboardReportExecution:
+        """按投递事实对齐生命周期 status。
+
+        不变量：
+        - delivery_outcome=delivered → 不得停留 failed/unknown/running
+        - delivery_outcome=smtp_unknown → 不得停留 failed/running（收敛为 unknown）
+        """
+        execution.refresh_from_db()
+        now = timezone.now()
+        outcome = execution.delivery_outcome
+        if (
+            outcome == DashboardReportExecution.DeliveryOutcome.DELIVERED
+            or execution.delivered_at is not None
+        ):
+            updated = DashboardReportExecution.objects.filter(
+                pk=execution.pk,
+                status__in={
+                    DashboardReportExecution.Status.RUNNING,
+                    DashboardReportExecution.Status.FAILED,
+                    DashboardReportExecution.Status.UNKNOWN,
+                },
+            ).update(
+                status=DashboardReportExecution.Status.SUCCEEDED,
+                finished_at=now,
+                updated_at=now,
+                failure_stage="",
+                error_code="",
+                error_message="",
+                delivery_outcome=(
+                    DashboardReportExecution.DeliveryOutcome.DELIVERED
+                ),
+            )
+            execution.refresh_from_db()
+            if updated:
+                logger.info(
+                    "按 delivery_outcome=delivered 对齐 status=succeeded: "
+                    "execution_id=%s",
+                    execution.id,
+                )
+            return execution
+
+        if (
+            outcome
+            == DashboardReportExecution.DeliveryOutcome.SMTP_UNKNOWN
+        ):
+            updated = DashboardReportExecution.objects.filter(
+                pk=execution.pk,
+                status__in={
+                    DashboardReportExecution.Status.RUNNING,
+                    DashboardReportExecution.Status.FAILED,
+                },
+            ).exclude(
+                delivery_outcome=(
+                    DashboardReportExecution.DeliveryOutcome.DELIVERED
+                )
+            ).update(
+                status=DashboardReportExecution.Status.UNKNOWN,
+                finished_at=now,
+                updated_at=now,
+                failure_stage="email",
+                error_code="smtp_result_unknown",
+                error_message="SMTP 提交结果未知",
+                delivery_outcome=(
+                    DashboardReportExecution.DeliveryOutcome.SMTP_UNKNOWN
+                ),
+            )
+            execution.refresh_from_db()
+            if updated:
+                logger.info(
+                    "按 delivery_outcome=smtp_unknown 对齐 status=unknown: "
+                    "execution_id=%s",
+                    execution.id,
+                )
+            return execution
+
         return execution
 
     @staticmethod
@@ -115,6 +332,37 @@ class DashboardReportExecutionService:
         return normalized
 
     @classmethod
+    def _schedule_snapshot_fields(
+        cls,
+        execution: DashboardReportExecution,
+        subscription: DashboardReportSubscription,
+    ) -> dict:
+        if (
+            execution.trigger_type
+            != DashboardReportExecution.TriggerType.SCHEDULED
+        ):
+            return {
+                "scheduled_time_utc": None,
+                "schedule_timezone": "",
+                "scheduled_local_time": "",
+                "subscription_version": subscription.version,
+            }
+        from zoneinfo import ZoneInfo
+
+        scheduled = execution.scheduled_time_utc
+        tz_name = subscription.timezone or ""
+        local_display = ""
+        if scheduled is not None and tz_name:
+            local = scheduled.astimezone(ZoneInfo(tz_name))
+            local_display = local.strftime("%Y-%m-%d %H:%M")
+        return {
+            "scheduled_time_utc": scheduled,
+            "schedule_timezone": tz_name,
+            "scheduled_local_time": local_display,
+            "subscription_version": subscription.version,
+        }
+
+    @classmethod
     def _create_snapshot(
         cls,
         execution: DashboardReportExecution,
@@ -122,6 +370,9 @@ class DashboardReportExecutionService:
         *,
         creator_timezone: str,
     ) -> DashboardReportExecutionSnapshot:
+        schedule_fields = cls._schedule_snapshot_fields(
+            execution, subscription
+        )
         return DashboardReportExecutionSnapshot.objects.create(
             execution=execution,
             dashboard_id=subscription.dashboard_id,
@@ -133,6 +384,7 @@ class DashboardReportExecutionService:
             trigger_type=execution.trigger_type,
             email_channel_id=subscription.email_channel_id,
             filter_values=cls._snapshot_filter_values(subscription),
+            **schedule_fields,
         )
 
     @classmethod
@@ -147,6 +399,48 @@ class DashboardReportExecutionService:
             request_id=request_id,
             trigger_type=DashboardReportExecution.TriggerType.MANUAL_TEST,
         ).first()
+
+    @classmethod
+    def _find_scheduled(
+        cls,
+        *,
+        subscription_id: int,
+        scheduled_time_utc: datetime,
+    ) -> DashboardReportExecution | None:
+        return DashboardReportExecution.objects.filter(
+            subscription_id=subscription_id,
+            scheduled_time_utc=scheduled_time_utc,
+            trigger_type=DashboardReportExecution.TriggerType.SCHEDULED,
+        ).first()
+
+    @classmethod
+    def _subscription_schedule_spec(
+        cls,
+        subscription: DashboardReportSubscription,
+    ) -> ScheduleSpec:
+        return ScheduleSpec(
+            schedule_type=subscription.schedule_type,
+            hour=subscription.schedule_hour,
+            minute=subscription.schedule_minute,
+            weekday=subscription.schedule_weekday,
+            day_of_month=subscription.schedule_day_of_month,
+        )
+
+    @classmethod
+    def _advance_subscription_next_run(
+        cls,
+        subscription: DashboardReportSubscription,
+        *,
+        scheduled_time_utc: datetime,
+    ) -> None:
+        spec = cls._subscription_schedule_spec(subscription)
+        advanced = next_after(
+            spec,
+            subscription.timezone,
+            scheduled_time_utc,
+        )
+        subscription.next_run_at = advanced.utc
+        subscription.save(update_fields=["next_run_at", "updated_at"])
 
     @classmethod
     @transaction.atomic
@@ -236,6 +530,124 @@ class DashboardReportExecutionService:
                 lambda: cls._dispatch_render(execution.id)
             )
         return execution, True
+
+    @classmethod
+    @transaction.atomic
+    def create_scheduled(
+        cls,
+        subscription_id: int,
+        *,
+        scheduled_time_utc: datetime,
+    ) -> CreateScheduledResult:
+        """创建 scheduled Execution。
+
+        仅供 DueSubscriptionScanner 调用；不是通用 Execution 创建入口。
+        禁止 Retry / 补偿 / 其他模块直接复用本方法作为通用工厂。
+        """
+        locked_subscription = (
+            DashboardReportSubscription.objects.select_for_update().get(
+                pk=subscription_id
+            )
+        )
+        if (
+            locked_subscription.status
+            != DashboardReportSubscription.Status.ACTIVE
+            or locked_subscription.schedule_type is None
+            or locked_subscription.next_run_at is None
+            or locked_subscription.dashboard_id is None
+        ):
+            return CreateScheduledResult(
+                execution=None, created=False
+            )
+
+        if locked_subscription.next_run_at != scheduled_time_utc:
+            return CreateScheduledResult(
+                execution=None, created=False
+            )
+
+        existing = cls._find_scheduled(
+            subscription_id=locked_subscription.id,
+            scheduled_time_utc=scheduled_time_utc,
+        )
+        if existing is not None:
+            return CreateScheduledResult(
+                execution=existing,
+                created=False,
+                already_exists=True,
+            )
+
+        if DashboardReportExecution.objects.filter(
+            subscription_id=locked_subscription.id,
+            status__in=IN_FLIGHT_STATUSES,
+        ).exists():
+            return CreateScheduledResult(
+                execution=None,
+                created=False,
+                skipped_in_flight=True,
+            )
+
+        creator_timezone = resolve_creator_timezone(
+            locked_subscription.creator
+        )
+        try:
+            execution = DashboardReportExecution.objects.create(
+                subscription=locked_subscription,
+                dashboard=locked_subscription.dashboard,
+                creator=locked_subscription.creator,
+                trigger_type=DashboardReportExecution.TriggerType.SCHEDULED,
+                scheduled_time_utc=scheduled_time_utc,
+            )
+        except IntegrityError:
+            existing = cls._find_scheduled(
+                subscription_id=locked_subscription.id,
+                scheduled_time_utc=scheduled_time_utc,
+            )
+            if existing is not None:
+                return CreateScheduledResult(
+                    execution=existing,
+                    created=False,
+                    already_exists=True,
+                )
+            raise
+
+        try:
+            with transaction.atomic():
+                cls._create_snapshot(
+                    execution,
+                    locked_subscription,
+                    creator_timezone=creator_timezone,
+                )
+        except Exception:
+            logger.exception(
+                "创建 scheduled Execution Snapshot 失败: execution_id=%s",
+                execution.id,
+            )
+            cls.transition(
+                execution,
+                DashboardReportExecution.Status.FAILED,
+                failure_stage="snapshot",
+                error_message=cls.SNAPSHOT_FAILURE_MESSAGE,
+            )
+            cls._advance_subscription_next_run(
+                locked_subscription,
+                scheduled_time_utc=scheduled_time_utc,
+            )
+            return CreateScheduledResult(
+                execution=execution, created=True
+            )
+
+        cls._advance_subscription_next_run(
+            locked_subscription,
+            scheduled_time_utc=scheduled_time_utc,
+        )
+
+        if execution.status == DashboardReportExecution.Status.PENDING:
+            transaction.on_commit(
+                lambda: cls._dispatch_render(execution.id)
+            )
+        return CreateScheduledResult(
+            execution=execution, created=True
+        )
 
     @staticmethod
     def _dispatch_render(execution_id: int) -> None:

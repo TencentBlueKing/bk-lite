@@ -17,7 +17,6 @@ from apps.operation_analysis.services.delivery_service import (
 )
 from apps.operation_analysis.services.execution_orchestrator import (
     DeliveryStep,
-    ExecutionStepError,
 )
 from apps.operation_analysis.services.execution_service import (
     DashboardReportExecutionService,
@@ -336,30 +335,60 @@ class TestDeliverySmtp:
 # --- DeliveryStep 集成 ---
 
 class TestDeliveryStepIntegration:
-    def test_delivery_step_raises_step_error_on_failure(
+    def test_delivery_step_returns_attempt_result_on_failure(
         self, running_execution
     ):
         snapshot = running_execution.snapshot
-        with pytest.raises(ExecutionStepError) as exc_info:
-            DeliveryStep.execute(running_execution, snapshot)
-        assert exc_info.value.stage == "email"
+        result = DeliveryStep.execute(running_execution, snapshot)
+        assert result.ok is False
+        # 缺 Artifact → pdf_generate_failed，stage=render 以便 Classifier 走 RENDER
+        assert result.failure_stage == "render"
+        assert result.error_code == "pdf_generate_failed"
 
 
-# --- creator_timezone 展示 ---
+# --- 邮件时间语义（计划时间 / 手动测试；不使用 creator_timezone） ---
 
-class TestCreatorTimezoneDisplay:
-    def test_shanghai_timezone_converts_utc_created_at(
+class TestEmailTimeSemantics:
+    def test_manual_test_email_has_no_time_semantics(
+        self, running_execution
+    ):
+        snapshot = running_execution.snapshot
+        title = DashboardReportDeliveryService._build_title(
+            snapshot, running_execution
+        )
+        html = DashboardReportDeliveryService._build_html(
+            snapshot, running_execution
+        )
+        filename = DashboardReportRenderService._filename(
+            "投递测试仪表盘",
+            running_execution,
+            snapshot,
+        )
+
+        assert title == "[BK-Lite] 投递测试订阅 - 手动测试"
+        assert "报告计划时间" not in html
+        assert "报告生成时间" not in html
+        assert "created_at" not in html
+        assert "手动测试" in html
+        assert filename == "投递测试仪表盘_手动测试.pdf"
+
+    def test_scheduled_email_uses_subscription_timezone_plan_time(
         self, running_execution
     ):
         from datetime import datetime, timezone as dt_timezone
 
-        created_at = datetime(2026, 7, 30, 2, 36, 18, tzinfo=dt_timezone.utc)
+        scheduled = datetime(2026, 8, 1, 1, 0, tzinfo=dt_timezone.utc)
         DashboardReportExecution.objects.filter(pk=running_execution.pk).update(
-            created_at=created_at
+            trigger_type=DashboardReportExecution.TriggerType.SCHEDULED,
+            scheduled_time_utc=scheduled,
         )
         running_execution.refresh_from_db()
         snapshot = running_execution.snapshot
-        snapshot.creator_timezone = "Asia/Shanghai"
+        snapshot.trigger_type = "scheduled"
+        snapshot.scheduled_time_utc = scheduled
+        snapshot.schedule_timezone = "Asia/Shanghai"
+        snapshot.scheduled_local_time = "2026-08-01 09:00"
+        snapshot.creator_timezone = "America/New_York"
 
         title = DashboardReportDeliveryService._build_title(
             snapshot, running_execution
@@ -370,83 +399,25 @@ class TestCreatorTimezoneDisplay:
         filename = DashboardReportRenderService._filename(
             "投递测试仪表盘",
             running_execution,
-            snapshot.creator_timezone,
+            snapshot,
         )
 
-        assert title == "[BK-Lite] 投递测试订阅 - 2026-07-30 10:36"
-        assert "报告生成时间：2026-07-30 10:36:18" in html
-        assert filename == "投递测试仪表盘_20260730_103618.pdf"
+        assert title == "[BK-Lite] 投递测试订阅 - 2026-08-01 09:00"
+        assert "报告计划时间：2026-08-01 09:00 (Asia/Shanghai)" in html
+        assert "报告生成时间" not in html
+        assert "America/New_York" not in title
+        assert "America/New_York" not in html
+        assert filename == "投递测试仪表盘_20260801_0900.pdf"
 
-    def test_frozen_timezone_ignores_later_user_timezone_change(
-        self, running_execution, authenticated_user
-    ):
-        from datetime import datetime, timezone as dt_timezone
-
-        from apps.system_mgmt.models import User as SystemUser
-
-        system_user = SystemUser.objects.create(
-            username=authenticated_user.username,
-            display_name=authenticated_user.username,
-            email="tz@example.com",
-            password="unused",
-            domain=authenticated_user.domain,
-            timezone="Asia/Shanghai",
-        )
-        created_at = datetime(2026, 7, 30, 2, 36, 18, tzinfo=dt_timezone.utc)
-        DashboardReportExecution.objects.filter(pk=running_execution.pk).update(
-            created_at=created_at
-        )
-        running_execution.refresh_from_db()
-        snapshot = running_execution.snapshot
-        assert snapshot.creator_timezone == "Asia/Shanghai"
-
-        system_user.timezone = "America/New_York"
-        system_user.save(update_fields=["timezone"])
-
-        title = DashboardReportDeliveryService._build_title(
-            snapshot, running_execution
-        )
-        html = DashboardReportDeliveryService._build_html(
-            snapshot, running_execution
-        )
-        filename = DashboardReportRenderService._filename(
-            "投递测试仪表盘",
-            running_execution,
-            snapshot.creator_timezone,
-        )
-
-        assert title.endswith("2026-07-30 10:36")
-        assert "报告生成时间：2026-07-30 10:36:18" in html
-        assert filename.endswith("20260730_103618.pdf")
-
-    def test_invalid_snapshot_timezone_falls_back_to_shanghai(
+    def test_delivery_does_not_read_creator_timezone_or_audit_timestamps(
         self, running_execution
     ):
-        from datetime import datetime, timezone as dt_timezone
-
-        created_at = datetime(2026, 7, 30, 2, 36, 18, tzinfo=dt_timezone.utc)
-        DashboardReportExecution.objects.filter(pk=running_execution.pk).update(
-            created_at=created_at
-        )
-        running_execution.refresh_from_db()
         snapshot = running_execution.snapshot
-        snapshot.creator_timezone = "Not/AZone"
-
-        title = DashboardReportDeliveryService._build_title(
-            snapshot, running_execution
-        )
         html = DashboardReportDeliveryService._build_html(
             snapshot, running_execution
         )
-        filename = DashboardReportRenderService._filename(
-            "投递测试仪表盘",
-            running_execution,
-            snapshot.creator_timezone,
-        )
-
-        assert title.endswith("2026-07-30 10:36")
-        assert "报告生成时间：2026-07-30 10:36:18" in html
-        assert filename.endswith("20260730_103618.pdf")
+        assert "10:36" not in html
+        assert str(running_execution.created_at) not in html
 
 
 class TestCreatorTimezoneFreeze:

@@ -34,7 +34,7 @@ import { useParamInputOptions } from "@/app/ops-analysis/hooks/useParamInputOpti
 import { fetchCompareData } from "@/app/ops-analysis/utils/compareQuery";
 import { useDataSourceApi } from "@/app/ops-analysis/api/dataSource";
 import { ChartDataTransformer } from "@/app/ops-analysis/utils/chartDataTransform";
-import { getRequestErrorMessage } from "@/app/ops-analysis/utils/requestError";
+import { getRequestErrorMessage, classifyWidgetQueryError } from "@/app/ops-analysis/utils/requestError";
 import { getValueByPath } from "@/app/ops-analysis/utils/objectPath";
 import {
   buildWidgetRequestCacheKey,
@@ -262,6 +262,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
   const [dataValidation, setDataValidation] = useState<{
     isValid: boolean;
     message?: string;
+    errorCode?: string;
   } | null>(null);
   const [tableQueryParams, setTableQueryParams] = useState<Record<string, any>>(
     { page: 1, page_size: 20 },
@@ -675,11 +676,13 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
         err,
         t("dashboard.dataFetchFailed"),
       );
+      const errorCode = classifyWidgetQueryError(err);
       setDataValidation({
         isValid: false,
         message,
+        ...(errorCode ? { errorCode } : {}),
       });
-      setWidgetRequestFailureCache(requestKey, message);
+      setWidgetRequestFailureCache(requestKey, message, errorCode);
     } finally {
       if (currentFetchId !== fetchIdRef.current) return;
       hasSettledRequestRef.current = true;
@@ -714,7 +717,11 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
       setRawData(null);
       setLoading(false);
       setTableLoading(false);
-      setDataValidation(null);
+      setDataValidation({
+        isValid: false,
+        message: t("dashboard.dataFetchFailed"),
+        errorCode: "datasource_missing",
+      });
       return;
     }
 
@@ -725,6 +732,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
       setDataValidation({
         isValid: false,
         message: t("common.noAuth"),
+        errorCode: "widget_data_forbidden",
       });
       return;
     }
@@ -770,6 +778,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
         ? {
           isValid: false,
           message: cached.errorMessage,
+          ...(cached.errorCode ? { errorCode: cached.errorCode } : {}),
         }
         : validateChartData(cached.rawData, chartType),
     );
@@ -909,6 +918,9 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
         status: "failed",
         error:
           dataValidation.message || t("dashboard.dataCannotRenderAsChart"),
+        ...(dataValidation.errorCode
+          ? { errorCode: dataValidation.errorCode }
+          : {}),
       });
     }
   }, [

@@ -147,7 +147,9 @@ def test_creator_with_dashboard_view_can_execute_and_retrieve(
     assert retrieve_response.data["started_at"] is None
     assert retrieve_response.data["finished_at"] is None
     assert retrieve_response.data["failure_stage"] == ""
+    assert retrieve_response.data["error_code"] == ""
     assert retrieve_response.data["error_message"] == ""
+    assert retrieve_response.data["attempt_count"] == 0
     assert retrieve_response.data["snapshot"] == {
         "dashboard_id": subscription.dashboard_id,
         "creator_id": authenticated_user.username,
@@ -157,6 +159,10 @@ def test_creator_with_dashboard_view_can_execute_and_retrieve(
         "recipient_email": "ops@example.com",
         "trigger_type": "manual_test",
         "email_channel_id": subscription.email_channel_id,
+        "scheduled_time_utc": None,
+        "schedule_timezone": "",
+        "scheduled_local_time": "",
+        "subscription_version": subscription.version,
         "filter_values": {
             "environment": "production",
             "time_range": "last_7_days",
@@ -445,6 +451,10 @@ def test_running_execution_exposes_only_frozen_render_input(
         recipient_email=subscription.recipient_email,
         trigger_type=execution.trigger_type,
         email_channel_id=subscription.email_channel_id,
+        scheduled_time_utc=None,
+        schedule_timezone="",
+        scheduled_local_time="",
+        subscription_version=subscription.version,
         filter_values={"environment": "production"},
     )
     DashboardReportRenderSnapshot.objects.create(
@@ -496,6 +506,10 @@ def test_running_execution_exposes_only_frozen_render_input(
             "recipient_email": subscription.recipient_email,
             "trigger_type": execution.trigger_type,
             "email_channel_id": subscription.email_channel_id,
+            "scheduled_time_utc": None,
+            "schedule_timezone": "",
+            "scheduled_local_time": "",
+            "subscription_version": subscription.version,
             "filter_values": {"environment": "production"},
             "created_at": response.data["input_snapshot"]["created_at"],
         },

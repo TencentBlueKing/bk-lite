@@ -22,25 +22,85 @@ DEFAULT_TIMEOUT_MS = 120_000
 
 class DashboardRenderError(RuntimeError):
     safe_message = "报告 PDF 生成失败"
+    error_code = ""
+
+    def __init__(self, message: str | None = None, *, error_code: str = ""):
+        if error_code:
+            self.error_code = error_code
+        super().__init__(message or self.safe_message)
+
+
+# report-failed.errorCode → data_load（仅白名单；其它仍视为 render contract）
+_DATA_LOAD_ERROR_CODES = frozenset(
+    {
+        "widget_query_timeout",
+        "widget_query_transient",
+        "widget_data_forbidden",
+        "datasource_missing",
+    }
+)
+
+
+def resolve_report_failed_semantics(
+    signal: dict[str, Any] | None,
+) -> tuple[str, str]:
+    """从 report-failed 信号解析 (failure_stage, error_code)。
+
+    未携带/未识别的 errorCode → render + render_contract_business_failed。
+    """
+    raw = ""
+    if isinstance(signal, dict):
+        raw = str(
+            signal.get("errorCode") or signal.get("error_code") or ""
+        ).strip()
+    if raw in _DATA_LOAD_ERROR_CODES:
+        return "data_load", raw
+    return "render", "render_contract_business_failed"
 
 
 class DashboardRenderContractError(DashboardRenderError):
     safe_message = "Dashboard 渲染失败"
+    error_code = "render_contract_business_failed"
+    failure_stage = "render"
 
-    def __init__(self, *, widget_id: object = None):
+    def __init__(
+        self,
+        *,
+        widget_id: object = None,
+        error_code: str | None = None,
+        failure_stage: str | None = None,
+    ):
         raw_widget_id = str(widget_id or "unknown")
         self.widget_id = re.sub(
             r"[^A-Za-z0-9_.:-]",
             "_",
             raw_widget_id,
         )[:128]
-        super().__init__(
-            f"{self.safe_message}: widget={self.widget_id}"
+        if failure_stage and error_code:
+            self.failure_stage = failure_stage
+            resolved_code = error_code
+        else:
+            stage, resolved_code = resolve_report_failed_semantics(
+                {"errorCode": error_code or ""}
+            )
+            self.failure_stage = stage
+        DashboardRenderError.__init__(
+            self,
+            f"{self.safe_message}: widget={self.widget_id}",
+            error_code=resolved_code,
         )
 
 
 class DashboardPdfValidationError(DashboardRenderError):
     safe_message = "报告 PDF 校验失败"
+
+    def __init__(self, message: str, *, error_code: str = ""):
+        if not error_code:
+            if "超过 20 MB" in message or "20 MB" in message:
+                error_code = "pdf_too_large"
+            else:
+                error_code = "pdf_generate_failed"
+        super().__init__(message, error_code=error_code)
 
 
 @dataclass(frozen=True)
@@ -118,7 +178,13 @@ class DashboardChromiumRenderer:
             if executable_path:
                 launch_options["executable_path"] = executable_path
 
-            browser = await playwright.chromium.launch(**launch_options)
+            try:
+                browser = await playwright.chromium.launch(**launch_options)
+            except Exception as exc:
+                raise DashboardRenderError(
+                    "Chromium 启动失败",
+                    error_code="chromium_launch_failed",
+                ) from exc
             try:
                 context = await browser.new_context(
                     viewport=VIEWPORT,
@@ -152,33 +218,54 @@ class DashboardChromiumRenderer:
                     asyncio.get_running_loop().time()
                     + request.timeout_ms / 1000
                 )
-                await page.goto(
-                    request.render_url,
-                    wait_until="commit",
-                    timeout=request.timeout_ms,
-                )
+                try:
+                    await page.goto(
+                        request.render_url,
+                        wait_until="commit",
+                        timeout=request.timeout_ms,
+                    )
+                except Exception as exc:
+                    raise DashboardRenderError(
+                        "渲染页加载失败",
+                        error_code="page_load_failed",
+                    ) from exc
                 remaining_seconds = max(
                     0,
                     deadline - asyncio.get_running_loop().time(),
                 )
-                signal = await asyncio.wait_for(
-                    signal_future,
-                    timeout=remaining_seconds,
-                )
-                if signal.get("type") != "report-ready":
-                    raise DashboardRenderContractError(
-                        widget_id=signal.get("widgetId")
+                try:
+                    signal = await asyncio.wait_for(
+                        signal_future,
+                        timeout=remaining_seconds,
                     )
-                await asyncio.wait_for(
-                    page.pdf(
-                        path=os.fspath(request.output_path),
-                        format="A4",
-                        landscape=True,
-                        print_background=True,
-                        prefer_css_page_size=False,
-                    ),
-                    timeout=request.timeout_ms / 1000,
-                )
+                except TimeoutError as exc:
+                    raise DashboardRenderError(
+                        "等待 report-ready 超时",
+                        error_code="report_ready_timeout",
+                    ) from exc
+                if signal.get("type") != "report-ready":
+                    stage, code = resolve_report_failed_semantics(signal)
+                    raise DashboardRenderContractError(
+                        widget_id=signal.get("widgetId"),
+                        error_code=code,
+                        failure_stage=stage,
+                    )
+                try:
+                    await asyncio.wait_for(
+                        page.pdf(
+                            path=os.fspath(request.output_path),
+                            format="A4",
+                            landscape=True,
+                            print_background=True,
+                            prefer_css_page_size=False,
+                        ),
+                        timeout=request.timeout_ms / 1000,
+                    )
+                except Exception as exc:
+                    raise DashboardRenderError(
+                        "PDF 生成失败",
+                        error_code="pdf_generate_failed",
+                    ) from exc
                 return signal
             finally:
                 await browser.close()

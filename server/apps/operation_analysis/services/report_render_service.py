@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 import os
 import re
 import tempfile
@@ -23,12 +24,11 @@ from apps.operation_analysis.services.dashboard_report_renderer import (
     DashboardRenderError,
     DashboardRenderRequest,
 )
-from apps.operation_analysis.services.report_display_time import (
-    format_report_local_time,
-)
 from apps.operation_analysis.services.render_token_service import (
     DashboardReportRenderTokenService,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class DashboardReportRenderService:
@@ -73,15 +73,27 @@ class DashboardReportRenderService:
     def _filename(
         dashboard_name: str,
         execution: DashboardReportExecution,
-        creator_timezone: str,
+        snapshot: DashboardReportExecutionSnapshot,
     ) -> str:
         safe_name = re.sub(r'[\\/:*?"<>|]+', "_", dashboard_name).strip()
-        time_str = format_report_local_time(
-            execution.created_at,
-            creator_timezone,
-            "%Y%m%d_%H%M%S",
-        )
-        return f"{safe_name or 'dashboard'}_{time_str}.pdf"
+        base = safe_name or "dashboard"
+        if (
+            execution.trigger_type
+            == DashboardReportExecution.TriggerType.SCHEDULED
+            or snapshot.trigger_type
+            == DashboardReportExecution.TriggerType.SCHEDULED
+        ):
+            local = (snapshot.scheduled_local_time or "").strip()
+            if local:
+                compact = re.sub(r"[^\d]", "", local)[:12]
+                if len(compact) >= 12:
+                    time_part = f"{compact[:8]}_{compact[8:12]}"
+                else:
+                    time_part = compact or "scheduled"
+            else:
+                time_part = "scheduled"
+            return f"{base}_{time_part}.pdf"
+        return f"{base}_手动测试.pdf"
 
     @classmethod
     def resolve_artifact_path(
@@ -111,16 +123,18 @@ class DashboardReportRenderService:
         snapshot: DashboardReportExecutionSnapshot,
         render_snapshot: DashboardReportRenderSnapshot,
     ) -> DashboardReportPdfArtifact:
-        try:
-            return execution.pdf_artifact
-        except DashboardReportPdfArtifact.DoesNotExist:
-            pass
+        existing = cls._reusable_artifact(execution)
+        if existing is not None:
+            return existing
 
         if (
             snapshot.execution_id != execution.id
             or render_snapshot.execution_id != execution.id
         ):
-            raise DashboardRenderError("Render Snapshot 与 Execution 不匹配")
+            raise DashboardRenderError(
+                "Render Snapshot 与 Execution 不匹配",
+                error_code="render_snapshot_corrupt",
+            )
 
         artifact_root = cls._artifact_root()
         artifact_root.mkdir(parents=True, exist_ok=True)
@@ -139,7 +153,8 @@ class DashboardReportRenderService:
             render_url=render_url,
             output_path=temporary_path,
             render_token=DashboardReportRenderTokenService.issue(
-                execution
+                execution,
+                attempt_no=execution.attempt_count or 1,
             ).plaintext,
         )
 
@@ -155,7 +170,7 @@ class DashboardReportRenderService:
                     filename=cls._filename(
                         render_snapshot.dashboard_name,
                         execution,
-                        snapshot.creator_timezone,
+                        snapshot,
                     ),
                     size_bytes=size_bytes,
                     sha256=sha256,
@@ -169,3 +184,39 @@ class DashboardReportRenderService:
             ).exists():
                 final_path.unlink(missing_ok=True)
             raise
+
+    @classmethod
+    def _reusable_artifact(
+        cls,
+        execution: DashboardReportExecution,
+    ) -> DashboardReportPdfArtifact | None:
+        """仅复用未过期且文件可读的 Artifact；不可用则清除后重渲。"""
+        try:
+            artifact = execution.pdf_artifact
+        except DashboardReportPdfArtifact.DoesNotExist:
+            return None
+        if artifact.expires_at <= timezone.now():
+            cls._discard_artifact(artifact)
+            return None
+        try:
+            cls.resolve_artifact_path(artifact)
+        except Exception:
+            cls._discard_artifact(artifact)
+            return None
+        return artifact
+
+    @classmethod
+    def _discard_artifact(
+        cls,
+        artifact: DashboardReportPdfArtifact,
+    ) -> None:
+        try:
+            path = cls._artifact_root() / artifact.storage_reference
+            path.unlink(missing_ok=True)
+        except Exception:
+            logger.warning(
+                "清理不可用 PDF 产物失败: artifact_id=%s",
+                artifact.id,
+                exc_info=True,
+            )
+        artifact.delete()

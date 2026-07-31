@@ -22,6 +22,7 @@ import { useDashboardSubscriptionApi } from '@/app/ops-analysis/api/dashboardSub
 import type {
   DashboardExecutionCreated,
   DashboardExecutionStatus,
+  DashboardScheduleType,
   DashboardSubscription,
   DashboardSubscriptionStatus,
 } from '@/app/ops-analysis/types/dashboardSubscription';
@@ -39,6 +40,12 @@ interface SubscriptionFormValues {
   recipient_email: string;
   email_channel?: number;
   status: DashboardSubscriptionStatus;
+  schedule_type?: DashboardScheduleType | null;
+  schedule_hour?: number | null;
+  schedule_minute?: number | null;
+  schedule_weekday?: number | null;
+  schedule_day_of_month?: number | null;
+  timezone?: string | null;
 }
 
 interface EmailChannelOption {
@@ -202,6 +209,12 @@ const DashboardSubscriptionModal = ({
       recipient_email: '',
       email_channel: undefined,
       status: 'active',
+      schedule_type: null,
+      schedule_hour: 9,
+      schedule_minute: 0,
+      schedule_weekday: 0,
+      schedule_day_of_month: 1,
+      timezone: 'Asia/Shanghai',
     });
     setFormVisible(true);
   };
@@ -215,6 +228,12 @@ const DashboardSubscriptionModal = ({
       recipient_email: subscription.recipient_email,
       email_channel: subscription.email_channel,
       status: subscription.status,
+      schedule_type: subscription.schedule_type,
+      schedule_hour: subscription.schedule_hour ?? 9,
+      schedule_minute: subscription.schedule_minute ?? 0,
+      schedule_weekday: subscription.schedule_weekday ?? 0,
+      schedule_day_of_month: subscription.schedule_day_of_month ?? 1,
+      timezone: subscription.timezone ?? 'Asia/Shanghai',
     });
     setFormVisible(true);
   };
@@ -227,11 +246,25 @@ const DashboardSubscriptionModal = ({
     setSaving(true);
     setError(null);
     try {
+      const hasSchedule = Boolean(values.schedule_type);
       const payload = {
         name: values.name,
         recipient_email: values.recipient_email,
         email_channel: values.email_channel,
         status: values.status ?? 'active',
+        schedule_type: hasSchedule ? values.schedule_type : null,
+        schedule_hour: hasSchedule ? values.schedule_hour ?? null : null,
+        schedule_minute: hasSchedule ? values.schedule_minute ?? null : null,
+        schedule_weekday:
+          hasSchedule && values.schedule_type === 'weekly'
+            ? values.schedule_weekday ?? null
+            : null,
+        schedule_day_of_month:
+          hasSchedule && values.schedule_type === 'monthly'
+            ? values.schedule_day_of_month ?? null
+            : null,
+        timezone: hasSchedule ? values.timezone ?? null : null,
+        ...(editing ? { version: editing.version } : {}),
       };
       if (editing) {
         await updateSubscription(editing.id, payload);
@@ -436,6 +469,152 @@ const DashboardSubscriptionModal = ({
               options={channelOptions}
             />
           </Form.Item>
+          <Form.Item
+            label={t('dashboard.subscriptionScheduleType')}
+            name="schedule_type"
+          >
+            <Select
+              allowClear
+              placeholder={t('dashboard.subscriptionScheduleNone')}
+              options={[
+                {
+                  value: 'daily',
+                  label: t('dashboard.subscriptionScheduleDaily'),
+                },
+                {
+                  value: 'weekly',
+                  label: t('dashboard.subscriptionScheduleWeekly'),
+                },
+                {
+                  value: 'monthly',
+                  label: t('dashboard.subscriptionScheduleMonthly'),
+                },
+              ]}
+            />
+          </Form.Item>
+          <Form.Item
+            noStyle
+            shouldUpdate={(prev, next) =>
+              prev.schedule_type !== next.schedule_type
+            }
+          >
+            {({ getFieldValue }) => {
+              const scheduleType = getFieldValue(
+                'schedule_type',
+              ) as DashboardScheduleType | null;
+              if (!scheduleType) {
+                return null;
+              }
+              return (
+                <>
+                  <Form.Item
+                    label={t('dashboard.subscriptionTimezone')}
+                    name="timezone"
+                    rules={[
+                      {
+                        required: true,
+                        message: t('dashboard.subscriptionTimezoneRequired'),
+                      },
+                    ]}
+                  >
+                    <Select
+                      showSearch
+                      options={[
+                        { value: 'Asia/Shanghai', label: 'Asia/Shanghai' },
+                        {
+                          value: 'America/New_York',
+                          label: 'America/New_York',
+                        },
+                        { value: 'UTC', label: 'UTC' },
+                      ]}
+                    />
+                  </Form.Item>
+                  <Space className="w-full" size="middle">
+                    <Form.Item
+                      label={t('dashboard.subscriptionScheduleHour')}
+                      name="schedule_hour"
+                      rules={[{ required: true }]}
+                      className="flex-1"
+                    >
+                      <Select
+                        options={Array.from({ length: 24 }, (_, hour) => ({
+                          value: hour,
+                          label: String(hour).padStart(2, '0'),
+                        }))}
+                      />
+                    </Form.Item>
+                    <Form.Item
+                      label={t('dashboard.subscriptionScheduleMinute')}
+                      name="schedule_minute"
+                      rules={[{ required: true }]}
+                      className="flex-1"
+                    >
+                      <Select
+                        options={Array.from({ length: 60 }, (_, minute) => ({
+                          value: minute,
+                          label: String(minute).padStart(2, '0'),
+                        }))}
+                      />
+                    </Form.Item>
+                  </Space>
+                  {scheduleType === 'weekly' ? (
+                    <Form.Item
+                      label={t('dashboard.subscriptionScheduleWeekday')}
+                      name="schedule_weekday"
+                      rules={[{ required: true }]}
+                    >
+                      <Select
+                        options={[
+                          {
+                            value: 0,
+                            label: t('dashboard.subscriptionWeekdayMon'),
+                          },
+                          {
+                            value: 1,
+                            label: t('dashboard.subscriptionWeekdayTue'),
+                          },
+                          {
+                            value: 2,
+                            label: t('dashboard.subscriptionWeekdayWed'),
+                          },
+                          {
+                            value: 3,
+                            label: t('dashboard.subscriptionWeekdayThu'),
+                          },
+                          {
+                            value: 4,
+                            label: t('dashboard.subscriptionWeekdayFri'),
+                          },
+                          {
+                            value: 5,
+                            label: t('dashboard.subscriptionWeekdaySat'),
+                          },
+                          {
+                            value: 6,
+                            label: t('dashboard.subscriptionWeekdaySun'),
+                          },
+                        ]}
+                      />
+                    </Form.Item>
+                  ) : null}
+                  {scheduleType === 'monthly' ? (
+                    <Form.Item
+                      label={t('dashboard.subscriptionScheduleDayOfMonth')}
+                      name="schedule_day_of_month"
+                      rules={[{ required: true }]}
+                    >
+                      <Select
+                        options={Array.from({ length: 31 }, (_, index) => ({
+                          value: index + 1,
+                          label: String(index + 1),
+                        }))}
+                      />
+                    </Form.Item>
+                  ) : null}
+                </>
+              );
+            }}
+          </Form.Item>
           {editing && (
             <Form.Item
               label={t('dashboard.subscriptionStatus')}
@@ -581,6 +760,12 @@ const DashboardSubscriptionModal = ({
                           {t('dashboard.subscriptionChannel')}：
                           {channelNameById.get(subscription.email_channel)
                             ?? subscription.email_channel}
+                        </Typography.Text>
+                        <Typography.Text type="secondary" className="block">
+                          {t('dashboard.subscriptionNextRunAt')}
+                          {': '}
+                          {subscription.next_run_at
+                            ?? t('dashboard.subscriptionScheduleNone')}
                         </Typography.Text>
                       </Space>
                     }
