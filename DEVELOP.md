@@ -50,6 +50,9 @@ pnpm storybook # :6006
 ```bash
 pnpm dev            # :3001
 pnpm dev:tauri      # Tauri 桌面
+pnpm test           # Node 核心流程 + Rust 单测
+pnpm test:node      # 登录、会话与 Tauri 流契约
+pnpm test:rust      # Tauri Rust 单测
 pnpm build          # Web 产物
 pnpm build:android  # Android release
 pnpm build:aab      # AAB

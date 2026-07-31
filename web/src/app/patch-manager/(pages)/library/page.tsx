@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { Tag, Button, Input, Select, Space, Tabs, Modal, Form, message, Popconfirm, Upload } from 'antd';
 import PermissionWrapper from '@/components/permission';
 import type { ColumnsType } from 'antd/es/table';
@@ -10,13 +10,20 @@ import type { FieldConfig, SearchFilters } from '@/components/search-combination
 import useApiClient from '@/utils/request';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import usePatchManagerApi from '@/app/patch-manager/api';
+import { createListRequestCoordinator } from '@/app/patch-manager/utils/list-request-coordinator';
 import type { Patch, PatchSeverity, OSType, PackageStatus, PatchParams, CandidateItem, PatchSource, IngestResult } from '@/app/patch-manager/types';
 import SeverityTag from '@/app/patch-manager/components/severity-tag';
 import ReadyTag from '@/app/patch-manager/components/ready-tag';
 import CustomTable from '@/components/custom-table';
 import OperateDrawer from '@/app/patch-manager/components/operate-drawer';
 import { getWindowsPackageUploadState } from '@/app/patch-manager/components/windows-package-upload-state';
+import {
+  createCandidateSelection,
+  reconcileCandidatePageSelection,
+  removeCandidateFromSelection,
+} from '@/app/patch-manager/components/candidate-selection';
 import { useTranslation } from '@/utils/i18n';
+import { PATCH_MANAGER_POLL_INTERVAL_MS } from '@/app/patch-manager/constants/polling';
 
 type TabKey = 'win' | 'linux';
 type SourceType = 'auto' | 'manual';
@@ -110,11 +117,12 @@ export default function LibraryPage() {
   const [activeTab, setActiveTab] = useState<TabKey>('win');
   const [data, setData] = useState<Patch[]>([]);
   const [loading, setLoading] = useState(false);
+  const listRequestCoordinatorRef = useRef(createListRequestCoordinator(setLoading));
   const [filters, setFilters] = useState<SearchFilters>({});
   const [createOpen, setCreateOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [candidateSearch, setCandidateSearch] = useState('');
-  const [selectedCandidates, setSelectedCandidates] = useState<React.Key[]>([]);
+  const [candidateSelection, setCandidateSelection] = useState(createCandidateSelection);
   const [editingPatch, setEditingPatch] = useState<Patch | null>(null);
   const [createSaving, setCreateSaving] = useState(false);
   const [editSaving, setEditSaving] = useState(false);
@@ -124,9 +132,12 @@ export default function LibraryPage() {
 
   // 同步入库抽屉
   const [sources, setSources] = useState<PatchSource[]>([]);
+  const sourceRequestCoordinatorRef = useRef(createListRequestCoordinator(() => undefined));
   const [selectedSourceId, setSelectedSourceId] = useState<number | null>(null);
   const [candidateData, setCandidateData] = useState<CandidateItem[]>([]);
   const [candidateLoading, setCandidateLoading] = useState(false);
+  const candidateRequestCoordinatorRef = useRef(createListRequestCoordinator(setCandidateLoading));
+  const [candidateActionLoading, setCandidateActionLoading] = useState(false);
   const [candidatePagination, setCandidatePagination] = useState({ current: 1, pageSize: 20, total: 0 });
   const [candidateSeverity, setCandidateSeverity] = useState<Record<string, string>>({});
   const [batchSeverityOpen, setBatchSeverityOpen] = useState(false);
@@ -171,26 +182,28 @@ export default function LibraryPage() {
     currentFilters?: SearchFilters,
     silent = false,
   ) => {
-    if (!silent) setLoading(true);
-    const requestedTab = activeTab;
+    const coordinator = listRequestCoordinatorRef.current;
+    const ticket = coordinator.begin({ visible: !silent });
+    if (!ticket) return;
     const targetPage = page ?? pagination.current;
     const targetSize = pageSize ?? pagination.pageSize;
     const targetFilters = currentFilters ?? filters;
     try {
-      const res = await api.getPatchList(buildParams(targetPage, targetSize, targetFilters));
-      if (requestedTab === activeTab) {
+      const res = await api.getPatchList(
+        buildParams(targetPage, targetSize, targetFilters),
+        { signal: ticket.signal },
+      );
+      if (coordinator.shouldApply(ticket)) {
         setData(res.items || []);
         setPagination((p) => ({ ...p, current: targetPage, pageSize: targetSize, total: res.count || 0 }));
       }
     } catch {
-      if (requestedTab === activeTab && !silent) {
+      if (coordinator.shouldApply(ticket)) {
         setData([]);
         setPagination((p) => ({ ...p, current: targetPage, pageSize: targetSize, total: 0 }));
       }
     } finally {
-      if (requestedTab === activeTab && !silent) {
-        setLoading(false);
-      }
+      coordinator.finish(ticket);
     }
   };
 
@@ -206,11 +219,17 @@ export default function LibraryPage() {
     if (!hasProcessingPackage) return;
     const timer = window.setInterval(
       () => loadData(undefined, undefined, undefined, true),
-      2000,
+      PATCH_MANAGER_POLL_INTERVAL_MS,
     );
     return () => window.clearInterval(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hasProcessingPackage, activeTab, pagination.current, pagination.pageSize, filters]);
+
+  useEffect(() => () => {
+    listRequestCoordinatorRef.current.invalidate();
+    sourceRequestCoordinatorRef.current.invalidate();
+    candidateRequestCoordinatorRef.current.invalidate();
+  }, []);
 
   const editPackageUploadState = useMemo(
     () => getWindowsPackageUploadState(editingPatch),
@@ -353,8 +372,15 @@ export default function LibraryPage() {
   };
 
   const loadSources = async () => {
+    const coordinator = sourceRequestCoordinatorRef.current;
+    const ticket = coordinator.begin({ visible: false });
+    if (!ticket) return;
     try {
-      const res = await api.getPatchSourceList({ page: 1, page_size: -1, is_enabled: true });
+      const res = await api.getPatchSourceList(
+        { page: 1, page_size: -1, is_enabled: true },
+        { signal: ticket.signal },
+      );
+      if (!coordinator.shouldApply(ticket)) return;
       const items = Array.isArray(res) ? res : (res.items || []);
       const osType = OS_TYPE_MAP[activeTab];
       const filtered = items.filter((s: PatchSource) =>
@@ -368,13 +394,22 @@ export default function LibraryPage() {
         setCandidateData([]);
       }
     } catch {
+    } finally {
+      coordinator.finish(ticket);
     }
   };
 
   const loadCandidates = async (sourceId: number, page = 1, pageSize = 20, search = '') => {
-    setCandidateLoading(true);
+    const coordinator = candidateRequestCoordinatorRef.current;
+    const ticket = coordinator.begin({ visible: true });
+    if (!ticket) return;
     try {
-      const res = await api.previewSyncPatchSource(sourceId, { search, page, page_size: pageSize });
+      const res = await api.previewSyncPatchSource(
+        sourceId,
+        { search, page, page_size: pageSize },
+        { signal: ticket.signal },
+      );
+      if (!coordinator.shouldApply(ticket)) return;
       const items = res.items || [];
       setCandidateData(items);
       setCandidatePagination({ current: res.page || page, pageSize: res.page_size || pageSize, total: res.total || 0 });
@@ -392,28 +427,37 @@ export default function LibraryPage() {
           sevMap[c.key] = 'moderate';
         }
       });
-      setCandidateSeverity(sevMap);
+      setCandidateSeverity((previous) => ({ ...previous, ...sevMap }));
     } catch {
+      if (!coordinator.shouldApply(ticket)) return;
       setCandidateData([]);
       setCandidatePagination({ current: 1, pageSize: 20, total: 0 });
     } finally {
-      setCandidateLoading(false);
+      coordinator.finish(ticket);
     }
+  };
+
+  const closeImportDrawer = () => {
+    setImportOpen(false);
+    sourceRequestCoordinatorRef.current.invalidate();
+    candidateRequestCoordinatorRef.current.invalidate();
   };
 
   const handleImportSearch = () => {
     setImportOpen(true);
-    setSelectedCandidates([]);
+    setCandidateSelection(createCandidateSelection());
+    setCandidateSeverity({});
     setCandidateSearch('');
     setCandidateData([]);
-    setCandidatePagination({ current: 1, pageSize: 10, total: 0 });
+    setCandidatePagination({ current: 1, pageSize: 20, total: 0 });
     setSelectedSourceId(null);
     loadSources();
   };
 
   const handleSourceChange = (id: number) => {
     setSelectedSourceId(id);
-    setSelectedCandidates([]);
+    setCandidateSelection(createCandidateSelection());
+    setCandidateSeverity({});
     setCandidateSearch('');
     loadCandidates(id, 1, candidatePagination.pageSize);
   };
@@ -429,32 +473,33 @@ export default function LibraryPage() {
     'accepted' in res && res.accepted === true;
 
   const handleImportSubmit = async () => {
-    if (!selectedSourceId || selectedCandidates.length === 0) return;
-    setCandidateLoading(true);
+    if (!selectedSourceId || candidateSelection.keys.length === 0) return;
+    setCandidateActionLoading(true);
     try {
       const severityOverrides: Record<string, string> = {};
-      selectedCandidates.forEach((k) => {
-        const sev = candidateSeverity[String(k)];
-        if (sev) severityOverrides[String(k)] = sev;
+      candidateSelection.keys.forEach((key) => {
+        const sev = candidateSeverity[key];
+        if (sev) severityOverrides[key] = sev;
       });
-      const res = await api.ingestPatchSource(selectedSourceId, selectedCandidates.map(String), severityOverrides);
+      const res = await api.ingestPatchSource(selectedSourceId, candidateSelection.keys, severityOverrides);
       if (isAsyncIngestResult(res)) {
         message.success(t('patchManager.libraryPage.ingestSubmitted'));
       } else {
         message.success(t('patchManager.libraryPage.ingestCompleted', undefined, { created: res.created, updated: res.updated }));
       }
-      setImportOpen(false);
-      setSelectedCandidates([]);
+      closeImportDrawer();
+      setCandidateSelection(createCandidateSelection());
       setCandidateSearch('');
       loadData(1);
     } catch {
     } finally {
-      setCandidateLoading(false);
+      setCandidateActionLoading(false);
     }
   };
 
   const handleSingleIngest = async (item: CandidateItem) => {
     if (!selectedSourceId) return;
+    setCandidateActionLoading(true);
     try {
       const severityOverrides: Record<string, string> = {};
       const sev = candidateSeverity[item.key];
@@ -468,6 +513,8 @@ export default function LibraryPage() {
       }
       loadData();
     } catch {
+    } finally {
+      setCandidateActionLoading(false);
     }
   };
 
@@ -490,15 +537,17 @@ export default function LibraryPage() {
     { title: t('patchManager.libraryPage.description'), dataIndex: 'title', ellipsis: true },
     ...(activeTab === 'win'
       ? [{ title: t('patchManager.libraryPage.applicableVersion'), dataIndex: 'version', width: 100 }, { title: t('patchManager.arch'), dataIndex: 'arch', width: 80 }]
-      : [{ title: t('patchManager.distro'), dataIndex: 'dist', width: 100 }, { title: t('patchManager.arch'), dataIndex: 'arch', width: 80 }]),
+      : [
+        { title: t('patchManager.pkgVersion'), dataIndex: 'version', width: 150, ellipsis: true },
+        { title: t('patchManager.distro'), dataIndex: 'dist', width: 100 },
+        { title: t('patchManager.arch'), dataIndex: 'arch', width: 80 },
+      ]),
     { title: t('patchManager.operation'), dataIndex: 'op', width: 90, fixed: 'right', render: (_: unknown, r: CandidateItem) => (
       r.added
         ? <Button type="link" disabled>{t('patchManager.libraryPage.ingested')}</Button>
         : <Button type="link" onClick={() => handleSingleIngest(r)}>{t('patchManager.libraryPage.ingest')}</Button>
     )},
   ];
-
-  const selectedItems = candidateData.filter((c) => selectedCandidates.includes(c.key));
 
   return (
     <div style={{ background: 'var(--color-bg-1, #fff)', border: '1px solid var(--color-border-1, #e8e8e8)', borderRadius: 10, padding: '16px', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
@@ -623,13 +672,13 @@ export default function LibraryPage() {
       <OperateDrawer
         title={t('patchManager.libraryPage.syncIngest')}
         open={importOpen}
-        onClose={() => setImportOpen(false)}
+        onClose={closeImportDrawer}
         width={900}
         bodyStyle={{ padding: 0, overflow: 'hidden' }}
         footer={
           <Space>
-            <Button onClick={() => setImportOpen(false)}>{t('patchManager.cancel')}</Button>
-            <Button type="primary" disabled={selectedCandidates.length === 0} icon={<CloudDownloadOutlined />} onClick={handleImportSubmit}>{t('patchManager.libraryPage.batchIngest', undefined, { count: selectedCandidates.length })}</Button>
+            <Button onClick={closeImportDrawer}>{t('patchManager.cancel')}</Button>
+            <Button type="primary" loading={candidateActionLoading} disabled={candidateSelection.keys.length === 0} icon={<CloudDownloadOutlined />} onClick={handleImportSubmit}>{t('patchManager.libraryPage.batchIngest', undefined, { count: candidateSelection.keys.length })}</Button>
           </Space>
         }
       >
@@ -655,8 +704,15 @@ export default function LibraryPage() {
             <div style={{ flex: 1, minHeight: 0 }}>
               <CustomTable<CandidateItem>
                 rowKey="key"
-                loading={candidateLoading}
-                rowSelection={{ selectedRowKeys: selectedCandidates, onChange: setSelectedCandidates, getCheckboxProps: (r) => ({ disabled: r.added }) }}
+                loading={candidateLoading || candidateActionLoading}
+                rowSelection={{
+                  selectedRowKeys: candidateSelection.keys,
+                  preserveSelectedRowKeys: true,
+                  onChange: (selectedRowKeys) => setCandidateSelection((previous) =>
+                    reconcileCandidatePageSelection(previous, candidateData, selectedRowKeys)
+                  ),
+                  getCheckboxProps: (r) => ({ disabled: r.added }),
+                }}
                 columns={candidateColumns}
                 dataSource={candidateData}
                 pagination={{
@@ -675,19 +731,19 @@ export default function LibraryPage() {
           </div>
           <div style={{ width: 220, display: 'flex', flexDirection: 'column', borderLeft: '1px solid var(--color-border-1, #e8e8e8)', paddingLeft: 16 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-              <span style={{ fontWeight: 500 }}>{t('patchManager.libraryPage.selectedCount', undefined, { count: selectedCandidates.length })}</span>
-              {selectedCandidates.length > 0 && (
-                <a style={{ color: '#ff4d4f', fontSize: 12 }} onClick={() => setSelectedCandidates([])}>{t('patchManager.common.clearAll')}</a>
+              <span style={{ fontWeight: 500 }}>{t('patchManager.libraryPage.selectedCount', undefined, { count: candidateSelection.keys.length })}</span>
+              {candidateSelection.keys.length > 0 && (
+                <a style={{ color: '#ff4d4f', fontSize: 12 }} onClick={() => setCandidateSelection(createCandidateSelection())}>{t('patchManager.common.clearAll')}</a>
               )}
             </div>
             <div style={{ flex: 1, overflowY: 'auto' }}>
-              {selectedItems.map((c) => (
+              {candidateSelection.items.map((c) => (
                 <div key={c.key} className="candidate-item" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 8px', borderRadius: 6, marginBottom: 4, background: 'var(--color-fill-1, #f4f6f9)', fontSize: 13 }}>
                   <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.name}</span>
-                  <CloseOutlined className="candidate-remove-btn" style={{ color: '#bfbfbf', fontSize: 12, cursor: 'pointer', opacity: 0, transition: 'opacity 0.2s' }} onClick={() => setSelectedCandidates((prev) => prev.filter((k) => k !== c.key))} />
+                  <CloseOutlined className="candidate-remove-btn" style={{ color: '#bfbfbf', fontSize: 12, cursor: 'pointer', opacity: 0, transition: 'opacity 0.2s' }} onClick={() => setCandidateSelection((previous) => removeCandidateFromSelection(previous, c.key))} />
                 </div>
               ))}
-              {selectedCandidates.length === 0 && (
+              {candidateSelection.keys.length === 0 && (
                 <div style={{ color: 'var(--color-text-3, #8c8c8c)', fontSize: 13, textAlign: 'center', marginTop: 40 }}>{t('patchManager.common.noSelection')}</div>
               )}
             </div>

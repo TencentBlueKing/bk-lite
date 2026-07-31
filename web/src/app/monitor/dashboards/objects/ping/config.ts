@@ -43,38 +43,58 @@ export const PING_DASHBOARD_CONFIG: SimpleDashboardConfig = {
     {
       name: 'ping_success_rate_avg',
       display_name: '连通成功率',
-      description: 'Ping 探测节点的平均连通成功率。',
+      description: '由丢包率换算的连通成功率（100−丢包率）。',
       unit: 'percent',
       query: 'clamp_max(100 - avg(ping_percent_packet_loss{__$labels__}), 100)',
       color: '#27c274'
     },
     {
-      name: 'ping_ttl_avg',
-      display_name: '平均 TTL',
-      description: 'Ping 探测节点的平均 TTL。',
-      unit: 'counts',
-      query: 'avg(ping_ttl{__$labels__})',
-      color: '#597ef7'
+      name: 'ping_result_success_rate',
+      display_name: '成功占比',
+      description: 'result_code=0 的探测占比。',
+      unit: 'percent',
+      query: 'avg(ping_result_code{__$labels__} == bool 0) * 100',
+      color: '#27c274'
     },
     {
-      name: 'ping_result_code_max',
-      display_name: '最差结果码',
-      description: 'Ping 探测节点当前最差结果码。',
-      unit: 'none',
-      query: 'max(ping_result_code{__$labels__})',
-      color: '#8a5cff'
+      name: 'ping_result_error_rate',
+      display_name: '错误占比',
+      description: 'result_code=1 的探测占比。',
+      unit: 'percent',
+      query: 'avg(ping_result_code{__$labels__} == bool 1) * 100',
+      color: '#ff4d4f'
+    },
+    {
+      name: 'ping_result_resolve_fail_rate',
+      display_name: '无法解析占比',
+      description: 'result_code=2 的探测占比。',
+      unit: 'percent',
+      query: 'avg(ping_result_code{__$labels__} == bool 2) * 100',
+      color: '#ff7875'
     }
   ],
+  // Layer0 + A 丢包（原生）+ B 延迟；C 结果码进分布环
   summaryCards: [
     {
-      title: '连通成功率',
-      metric: 'ping_success_rate_avg',
-      color: '#27c274',
+      title: '平均丢包率',
+      metric: 'ping_packet_loss_avg',
+      color: '#ff4d4f',
       icon: 'api',
       compare: true,
-      compareFavorableDirection: 'up',
-      guide: [{ label: '连通成功率', detail: '由丢包率换算；低于基线或持续下跌时优先查链路、中间设备与目标可达性。' }],
-      footer: [{ label: '平均丢包率', metric: 'ping_packet_loss_avg', unit: 'percent' }]
+      compareFavorableDirection: 'down',
+      guide: [
+        {
+          label: '平均丢包率',
+          detail: 'ICMP 丢包百分比，Ping 可用性的原生指标。非零表示链路不稳；持续升高优先查拥塞、错包与对端可达性。'
+        },
+        {
+          label: '连通成功率',
+          detail: '由 100−丢包率换算，与丢包互为镜像，故不单独占主卡。'
+        }
+      ],
+      footer: [
+        { label: '连通成功率', metric: 'ping_success_rate_avg', unit: 'percent' }
+      ]
     },
     {
       title: '平均延迟',
@@ -83,79 +103,53 @@ export const PING_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       icon: 'clock',
       compare: true,
       guide: [{ label: '平均延迟', detail: '往返时延均值；持续升高结合最大延迟判断是整体变慢还是尖刺抖动。' }],
-      footer: [{ label: '最大延迟', metric: 'ping_latency_max', unit: 'ms' }]
-    },
-    {
-      title: '平均丢包率',
-      metric: 'ping_packet_loss_avg',
-      color: '#ff4d4f',
-      icon: 'api',
-      compare: true,
-      compareFavorableDirection: 'down',
-      guide: [{ label: '平均丢包率', detail: '非零丢包表示链路不稳；持续升高优先查拥塞、错包与对端负载。' }],
-      footer: [{ label: '平均 TTL', metric: 'ping_ttl_avg', unit: 'counts' }],
-    },
-    {
-      title: '平均 TTL',
-      metric: 'ping_ttl_avg',
-      unit: 'counts',
-      color: '#597ef7',
-      icon: 'api',
-      compare: true,
-      guide: [{ label: '平均 TTL', detail: '回包剩余 TTL(路由跳数计数);数值突变常意味路由路径改变。' }],
-      footer: [{ label: '最差结果码', metric: 'ping_result_code_max', unit: 'none' }]
+      footer: [
+        { label: '最大延迟', metric: 'ping_latency_max', unit: 'ms' },
+        { label: '最小延迟', metric: 'ping_latency_min', unit: 'ms' }
+      ]
     }
   ],
   charts: [
     {
-      title: '延迟趋势',
-      subtitle: '平均、最小与最大',
-      metric: 'ping_latency_avg',
-      guide: [{ label: '延迟趋势', detail: '观察 Ping 平均、最小和最大延迟变化。' }],
-      series: [
-        { metric: 'ping_latency_avg', label: '平均延迟', color: '#2f6bff', unit: 'ms' },
-        { metric: 'ping_latency_min', label: '最小延迟', color: '#13c2c2', unit: 'ms' },
-        { metric: 'ping_latency_max', label: '最大延迟', color: '#ff8a1f', unit: 'ms' }
-      ]
-    },
-    {
       title: '丢包率趋势',
-      subtitle: '丢包率变化',
+      subtitle: '链路稳定性',
       metric: 'ping_packet_loss_avg',
-      guide: [{ label: '丢包趋势', detail: '观察 Ping 丢包率随时间变化。' }],
+      guide: [{ label: '丢包趋势', detail: '丢包升高时对照延迟与结果码分布；持续高位优先查链路与目标可达性。' }],
       series: [{ metric: 'ping_packet_loss_avg', label: '平均丢包率', color: '#ff4d4f', unit: 'percent' }]
     },
     {
-      title: 'TTL 趋势',
-      subtitle: 'TTL 变化',
-      metric: 'ping_ttl_avg',
-      guide: [{ label: 'TTL 趋势', detail: '回包剩余 TTL(路由跳数计数);数值突变常意味路由路径改变。' }],
-      series: [{ metric: 'ping_ttl_avg', label: '平均 TTL', color: '#597ef7', unit: 'counts' }]
+      title: '延迟趋势',
+      subtitle: '平均与最大',
+      metric: 'ping_latency_avg',
+      guide: [{ label: '延迟趋势', detail: '对比平均与最大延迟，判断整体变慢还是尖刺抖动。' }],
+      series: [
+        { metric: 'ping_latency_avg', label: '平均延迟', color: '#2f6bff', unit: 'ms' },
+        { metric: 'ping_latency_max', label: '最大延迟', color: '#ff8a1f', unit: 'ms' }
+      ]
     }
   ],
   ringPanels: [
     {
-      title: '连通质量分布',
-      subtitle: '成功与丢包占比',
-      centerMetric: 'ping_success_rate_avg',
-      centerCaption: '连通成功率',
+      title: '结果码分布',
+      subtitle: '失败形态归因',
+      guide: [
+        {
+          label: '结果码分布',
+          detail: '按 Telegraf ping result_code：成功、错误、无法解析。丢包升高时用于区分对端不可达与域名解析失败。'
+        }
+      ],
+      centerMetric: 'ping_result_success_rate',
+      centerCaption: '成功占比',
       centerUnit: 'percent',
-      guide: [{ label: '连通质量', detail: '展示 Ping 成功率与丢包率的当前结构。' }],
+      emptyWhenAllZero: true,
+      emptyDescription: '当前窗口无 Ping 探测结果码样本',
       segments: [
-        { label: '成功占比', metric: 'ping_success_rate_avg', color: '#27c274', unit: 'percent' },
-        { label: '丢包占比', metric: 'ping_packet_loss_avg', color: '#ffccc7', unit: 'percent' }
+        { label: '成功', metric: 'ping_result_success_rate', color: '#27c274', unit: 'percent' },
+        { label: '错误', metric: 'ping_result_error_rate', color: '#ff4d4f', unit: 'percent' },
+        { label: '无法解析', metric: 'ping_result_resolve_fail_rate', color: '#ff7875', unit: 'percent' }
       ]
     }
   ],
   barPanels: [],
-  details: [
-    {
-      title: '探测质量细节',
-      subtitle: '延迟下界与失败结果码',
-      rows: [
-        { label: '最小延迟', metric: 'ping_latency_min', unit: 'ms' },
-        { label: '最差结果码', metric: 'ping_result_code_max', unit: 'none' }
-      ]
-    }
-  ]
+  details: []
 };

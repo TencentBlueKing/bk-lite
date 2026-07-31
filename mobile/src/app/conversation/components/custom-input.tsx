@@ -384,9 +384,8 @@ export const CustomInput: React.FC<CustomInputProps> = ({
                     try {
                         // 异步转换文件
                         await convertFileToBase64(file, fileIndex);
-                        console.log(`文件 ${file.name} 转换完成`);
                     } catch (error) {
-                        console.error('File conversion failed.:', file.name, error);
+                        console.error('File conversion failed:', error);
                         Toast.show({
                             content: t('chat.fileConversionFailed'),
                             icon: 'fail',

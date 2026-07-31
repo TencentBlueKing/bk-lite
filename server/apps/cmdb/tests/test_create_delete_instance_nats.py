@@ -114,6 +114,24 @@ def test_delete_instance_by_ids(mock_im):
 
 
 @patch("apps.cmdb.nats.nats.InstanceManage")
+def test_delete_instance_with_service_scope(mock_im):
+    result = N.delete_instance({"inst_id": 9, "service_scope": {"allowed_org_ids": [4]}})
+
+    assert result == {"result": True, "deleted": [9]}
+    _, kwargs = mock_im.instance_batch_delete.call_args
+    assert kwargs["user_groups"] == [{"id": 4}]
+
+
+@patch("apps.cmdb.nats.nats.InstanceManage")
+def test_delete_instance_with_user_info_scope(mock_im):
+    result = N.delete_instance({"inst_id": 9, "user_info": {"allowed_org_ids": [5]}})
+
+    assert result == {"result": True, "deleted": [9]}
+    _, kwargs = mock_im.instance_batch_delete.call_args
+    assert kwargs["user_groups"] == [{"id": 5}]
+
+
+@patch("apps.cmdb.nats.nats.InstanceManage")
 def test_delete_instance_by_single_id(mock_im):
     result = N.delete_instance({"inst_id": 9, "allowed_org_ids": [1]})
 
@@ -146,6 +164,14 @@ def test_delete_instance_by_model_and_name(mock_im):
 def test_delete_instance_missing_auth_context_rejects(mock_im):
     with pytest.raises(ValueError, match="authorization scope"):
         N.delete_instance({"inst_id": 1})
+    mock_im.instance_batch_delete.assert_not_called()
+
+
+@patch("apps.cmdb.nats.nats.InstanceManage")
+def test_delete_instance_empty_auth_scope_rejects(mock_im):
+    with pytest.raises(ValueError, match="authorization scope"):
+        N.delete_instance({"inst_id": 1, "allowed_org_ids": []})
+    mock_im.search_inst.assert_not_called()
     mock_im.instance_batch_delete.assert_not_called()
 
 

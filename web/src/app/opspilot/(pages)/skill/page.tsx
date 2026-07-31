@@ -11,6 +11,18 @@ import { Button, Spin, Empty, message } from 'antd';
 import Icon from '@/components/icon';
 import { useSkillApi } from '@/app/opspilot/api/skill';
 
+type SkillModifyModalProps = Omit<
+  React.ComponentProps<typeof GenericModifyModal>,
+  'formType'
+>;
+
+const SkillModifyModal: React.FC<SkillModifyModalProps> = (props) => (
+  <GenericModifyModal
+    {...props}
+    formType="skill"
+  />
+);
+
 const SkillPage: React.FC = () => {
   const [isTemplateModalVisible, setIsTemplateModalVisible] = useState(false);
   const [templates, setTemplates] = useState<any[]>([]);
@@ -74,12 +86,7 @@ const SkillPage: React.FC = () => {
         endpoint="/opspilot/model_provider_mgmt/llm/"
         queryParams={{ is_template: 0 }}
         CardComponent={SkillCard}
-        ModifyModalComponent={(props) => (
-          <GenericModifyModal
-            {...props}
-            formType="skill"
-          />
-        )}
+        ModifyModalComponent={SkillModifyModal}
         itemTypeSingle="skill"
         onCreateFromTemplate={handleCreateFromTemplate}
         onTogglePin={handleTogglePin}

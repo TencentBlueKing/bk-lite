@@ -1,108 +1,79 @@
 # Kafka 监控接入指南
 
-本插件基于 WeOps 自研 kafka_exporter（基于 danielqsj/kafka_exporter fork）以 **Kafka 客户端协议** 方式连接 Broker，采集 broker / topic / consumer group 等核心指标。Telegraf `inputs.prometheus` 从 kafka_exporter 本地监听端口的 `/metrics` 抓取指标。**exporter 监听端口 ≠ Kafka Broker 端口**（默认 Kafka `9092`，exporter 默认 `9308`），请勿混淆。
+本能力通过 kafka_exporter 使用 Kafka 客户端协议访问 Broker，再由 Telegraf 从 exporter 本地 `/metrics` 端点拉取数据；它不使用 JMX。
 
 ## 前置要求
 
-- 目标 Kafka Broker（单机或集群）已启动，并监听 `9092`（默认）。
-- exporter 以 client 协议直连 Broker，**不是**拉取 JMX，所以无需 Kafka 节点开 JMX 端口。
-- Kafka Broker 启用 `advertised.listeners=PLAINTEXT://<reachable_ip>:9092`，**broker 必须能被访问到 advertised IP**——exporter 启动后只识别 broker 自己通告的地址。
-- 启用 SASL 时，账号需要在 Kafka 服务端创建（`bin/kafka-configs.sh` 或 KRaft 控制面）。
-- 启用 TLS 时，exporter 需要 `tls.ca-file` / `tls.cert-file` / `tls.key-file`；UI.json 当前未暴露 TLS 选项，仅支持明文或 SASL 明文。
-- 采集节点到 Kafka Broker 端口（默认 `9092`）网络可达（含安全组 / 防火墙 / 双向 NAT）。
-- exporter 进程能正常启动，采集节点可访问 `http://127.0.0.1:9308/metrics`。
-
-> `kafka.server` 字段填写 broker 的 `host:port`，**多个 broker 用多个 `--kafka.server` 标记**；当前 UI 只暴露一个连接地址，多节点需扩展。
-
-## 推荐账号权限
-
-监控账号建议仅授予最小权限：
-
-```text
-# 7.0+ 用 SASL/SCRAM 时，先 bin/kafka-configs.sh 创建 SCRAM 凭据
-# 监控账号仅授予 describe 权限即可，不需要 pub/sub 权限
-kafka-acls.sh --authorizer-properties zookeeper.connect=<zk:2181> \
-  --add --allow-principal User:'<monitor>' --operation Describe --topic '*'
-kafka-acls.sh --add --allow-principal User:'<monitor>' --operation Describe --group '*'
-kafka-acls.sh --add --allow-principal User:'<monitor>' --operation ClusterAction --cluster '*'
-```
-
-`Describe Topic` 与 `Describe Group` 是采集 Lag/Offset 所必需；`Cluster Action` 用于 `kafka_consumergroup_*` 维度。
+- 采集节点能够访问所填 Kafka Broker 的 `host:port`，并能继续访问 Broker 在 `advertised.listeners` 中通告的地址。
+- 当前页面只接收一个 Broker 地址；该地址用于发现集群，不支持在页面填写多个 Broker。
+- 当前页面支持明文连接以及 SASL 明文认证，不提供 TLS 证书或 TLS 开关字段。
+- 启用 SASL 时，准备匹配 Broker 配置的用户名、密码和机制，并确保账号可读取 Topic、分区与消费组元数据。
+- 在采集节点上准备一个未占用的 exporter 监听端口；它与 Kafka Broker 端口不是同一端口。
 
 ## 接入步骤
 
-1. 在采集节点验证 Kafka Broker 端口可达：
-
-   ```bash
-   nc -zv <broker_host> 9092
-   ```
-
-2. 在监控接入页填写：
-   - Kafka 版本（默认 `2.0.0`）
-   - 启用 SASL 认证（按需）
-   - SASL 用户名 / 密码 / 运行机制（按需；SCRAM-SHA-256 / SCRAM-SHA-512 / GSSAPI）
-   - kafka_exporter 监听端口（默认 `9308`）
-   - Kafka 服务器地址（`host:port`，如 `broker-1:9092`）
-   - Topic 包含 / 排除（按需；正则为 `.*` / `^$`）
-   - 消费组包含 / 排除（按需）
-   - 采集间隔（默认 `60s`）
-3. 在「监控对象」表格中填写节点、监听端口、Kafka 服务器地址、实例名称、所属组。
-4. 点击「确认」保存配置，等待至少一个采集周期。
-5. 到资产或指标页确认实例已上报数据。
+1. 从实际采集节点验证 Broker 地址和其通告地址均可达。
+2. 填写 Kafka 协议版本；按需开启认证并填写 SASL 用户名、密码和机制。
+3. 填写未占用的监听端口、单个 Kafka 服务器地址、Topic/消费组包含与排除正则，以及采集间隔（默认 `60` 秒）。
+4. 在监控对象表格中选择节点，填写监听端口、服务器地址、实例名称和可选分组。
+5. 保存后等待至少一个采集周期。
 
 ## 接入前校验
 
-Broker 端口可达：
+从采集节点检查所填 Broker 端口，例如：
 
 ```bash
-nc -zv <broker_host> 9092
+nc -vz broker.example.com 9092
 ```
 
-exporter 监听可达：
-
-```bash
-curl -sS http://127.0.0.1:9308/metrics | head
-```
-
-正常返回 `kafka_broker_info`、`kafka_topic_partition_*`、`kafka_consumergroup_*`、`kafka_exporter_build_info`。
+还应使用与页面相同的认证方式运行 Kafka 客户端元数据查询，确认返回的 Broker 通告地址对采集节点可达。仅初始端口连通不能证明集群发现链路完整。
 
 ## 页面字段说明
 
 | 页面字段 | 是否必填 | 说明 |
 | --- | --- | --- |
-| 版本 | 是 | Kafka Broker 协议版本，默认 `2.0.0`；不同版本在 idempotent / transactional 协议上有差异 |
-| 启用认证 | 否 | 开关；启用后下发 `sasl.enabled`，关闭时空字符串 |
-| 用户名 | 条件必填 | SASL 用户名；启用认证时必填 |
-| 密码 | 条件必填 | SASL 密码；启用认证时必填 |
-| 运行机制 | 否 | SASL 机制，如 `plain`/`sha256`/`sha512`/`gssapi`；不填走 SASL 默认（PLAIN） |
-| 监听端口 | 是 | exporter 本地暴露 `/metrics` 的端口，默认 `9308`，**不是** Kafka 服务端口 9092 |
-| 服务器地址 | 是 | Kafka broker 的 `host:port`，如 `kafka:9092`；broker 必须能被访问 advertised.listeners |
-| Topic 包含 | 否 | 采集 topic 正则，默认 `.*` |
-| Topic 排除 | 否 | 排除 topic 正则，默认 `^$` |
-| 消费组包含 | 否 | 采集消费组正则，默认 `.*` |
-| 消费组排除 | 否 | 排除消费组正则，默认 `^$` |
-| 间隔 | 是 | 采集周期，单位秒，默认 `60` |
-| 节点 | 是 | 负责采集的探针节点 |
-| 实例名称 | 是 | 平台内展示的实例名，默认由「Kafka 服务器地址」自动填充 |
-| 组 | 否 | 组织分组，便于权限与资产归属 |
+| 版本 | 是 | Kafka 客户端协议版本，例如 `2.0.0`，需与 Broker 兼容。 |
+| 启用认证 | 否 | SASL 开关，默认关闭。 |
+| 用户名、密码 | 条件必填 | 启用认证时填写。 |
+| 运行机制 | 否 | SASL 机制：`plain`、`sha256`、`sha512` 或 `gssapi`；留空时按当前 exporter 默认使用 PLAIN。 |
+| 监听端口 | 是 | exporter 在采集节点本地暴露 `/metrics` 的端口。 |
+| 服务器地址 | 是 | 单个 Broker 的 `host:port`。 |
+| Topic 包含 / 排除 | 否 | 正则默认分别为 `.*` 和 `^$`。 |
+| 消费组包含 / 排除 | 否 | 正则默认分别为 `.*` 和 `^$`。 |
+| 间隔 | 是 | 采集周期，单位秒，默认 `60`。 |
+| 节点 | 是 | 运行 exporter 的采集节点。 |
+| 实例名称 | 是 | 平台内展示的实例名称。 |
+| 组 | 否 | 实例所属分组。 |
+
+## 接入后验证
+
+保存并等待一个采集周期后，可按实际监听端口检查本地端点，例如：
+
+```bash
+curl --fail --silent --show-error "http://127.0.0.1:9308/metrics"
+```
+
+随后在平台确认以下指标可查询：
+
+- `kafka_up_gauge`
+- `kafka_brokers_gauge`
+- `kafka_topic_partition_count`
+- `kafka_consumergroup_lag`
 
 ## 常见问题
 
-### 1. 保存后长时间无数据
+### 初始 Broker 可达但无数据
 
-- 在采集节点本地执行 `curl http://127.0.0.1:9308/metrics`，确认 kafka_exporter 已监听并暴露指标。
-- 看 exporter 日志 `kafka_exporter.go:connection refused` 或 `no advertised brokers`：通常是 broker 的 `advertised.listeners` 用了内网 IP，外部访问被拒。
-- TLS 启用时检查 CA / 证书链是否正确；证书中 CN/SAN 必须匹配 `tls.server-name`。
-- 等待至少一个采集间隔后再查看。
+- 检查 exporter 日志中的实际 Broker 地址；`advertised.listeners` 通告了采集节点不可达的地址时仍会失败。
+- 确认所填版本与 Broker 协议兼容。
+- 当前页面不能配置 TLS；要求 TLS 的集群无法用此配置直接接入。
 
-### 2. 认证失败
+### SASL 认证失败
 
-- SASL 凭据（用户名 / 密码 / 运行机制）必须与 Broker 端 `bin/kafka-configs.sh` 创建的一致。
-- 含特殊字符的密码务必通过 password 字段下发，不要拼到 broker 地址或参数中。
-- ACR/AKS/Strimzi 部署下，KafkaUser 资源必须将 `authentication.type` 与 SASL 机制匹配。
+- 核对认证开关、用户名、密码和机制是否与 Broker 一致。
+- 密码只填写在密码字段，不要拼入服务器地址或其他字段。
 
-### 3. 部分指标缺失
+### Topic 或消费组数据缺失
 
-- `kafka_consumergroup_*` 需要 `Describe Group` 权限；不给则看不到维度。
-- `kafka_topic_partition_*` 在 topic 数量极多时会被 `topic.filter/exclude` 过滤；正则不匹配将不返回。
-- 老版本 broker (< 0.10.1) 上 `kafka_consumergroup` 不可用，请升级 broker。
+- 核对包含与排除正则，默认排除正则 `^$` 表示不排除。
+- 确认账号具有读取 Topic、分区和消费组元数据所需权限。

@@ -160,6 +160,9 @@
       "addMetric": "Add Metric"
     },
     "views": {
+      "assetIp": "IP Address",
+      "probeNodes": "Probe Nodes",
+      "probeTarget": "Target",
       "vmware_esxi_count": "Number of ESXi",
       "vmware_datastore_count": "Number of Datastores",
       "vmware_vm_count": "Number of VM",
@@ -535,6 +538,9 @@
       "ruleDescription": "Rule Description",
       "ruleName": "Rule Name",
       "batchDeleteConfirm": "Are you sure you want to delete the selected items?",
+      "assetBatchDeleteConfirm": "Delete the {count} selected monitoring assets? This action cannot be undone.",
+      "assetBatchDeleteSuccess": "Deleted {count} monitoring assets",
+      "assetDeleteRefreshFailed": "The assets were deleted, but the list could not be refreshed. Refresh it manually.",
       "optionsSuffix": "Options",
       "excelImportTips": "Only xlsx files can be uploaded, and no more than 20MB",
       "importSuccessCount": "Successfully imported {{count}} records",

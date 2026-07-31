@@ -26,6 +26,9 @@ DRF Router 注册 13 个路由组：`group`/`user`/`role`/`channel`/`group_data_
 
 ## 4. 认证与权限【已实现/已存在】
 - 真实 NATS handler 分布在 `nats/auth.py`、`nats/login.py`、`nats/otp.py`、`nats/settings.py`、`nats/wechat.py`、`nats/users.py` 等子模块；`nats_api.py` 现为旧导入路径兼容导出层，会同步 `_verify_token`、`_build_jwt_payload`、`create_challenge` 等 legacy helper，再转发到真实 handler。
+- `wechat_user_register` 只保留为同进程兼容导出：旧微信 HTTP 入口先校验微信 code，再由 `SystemMgmt` 的本地 `AppClient` 调用；它不注册为 NATS subject，远程请求按“无订阅者/无 handler”失败。
+- 仓库内 `server`、`web`、`agents`、`algorithms`、`mobile`、部署模板、配置样例和测试未发现该 subject 的合法远程生产者；部署若有仓外消费者，升级前须迁移到已校验 code 的 HTTP 登录链路。
+- 此边界调整不迁移数据库或角色数据，也不改变本地函数参数和响应。紧急回滚时可恢复 `nats/wechat.py` 的注册装饰器；回滚会重新暴露未校验调用方身份的入口，只可作为短期止血。
 - JWT（含 jti/exp）、OTP（二维码/挑战/限频）、token 黑名单。
 - 角色继承：`get_user_all_roles` 沿 `parent_id`+`allow_inherit_roles` 递归汇总；权限缓存 TTL 由 `PERMISSION_CACHE_TTL` 配置（默认 600s），token 信息缓存 TTL 由 `TOKEN_INFO_CACHE_TTL` 配置（默认 60s）。
 - 密码策略：`utils/password_validator.py`（失败锁定）。

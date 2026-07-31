@@ -10,6 +10,7 @@ call_command 序列 + 错误处理策略（默认失败即中断，启用 contin
 from types import SimpleNamespace
 
 import pytest
+from django.core.management.base import CommandError
 
 import apps.core.management.commands.batch_init as bi
 
@@ -162,6 +163,27 @@ class TestHandleDispatch:
 
 
 class TestErrorHandlingPolicy:
+    def test_invalid_default_namespace_config_warns_and_continues_operation_analysis_init(self, monkeypatch):
+        calls = []
+
+        def fake_call_command(name, *args, **kwargs):
+            calls.append(name)
+            if name == "init_default_namespace":
+                raise CommandError("NATS_SERVERS 配置非法")
+
+        monkeypatch.setattr(bi, "call_command", fake_call_command)
+        cmd = _make_command()
+
+        cmd._init_operation_analysis()
+
+        assert calls == [
+            "init_default_namespace",
+            "init_default_groups",
+            "init_source_api_data",
+            "init_builtin_canvases",
+        ]
+        assert any("WARN:默认命名空间初始化跳过（CommandError）: NATS_SERVERS 配置非法" in message for message in cmd.stdout.messages)
+
     def test_cmdb_reconcile_failure_obeys_continue_on_error(self, monkeypatch):
         calls = []
 

@@ -1,80 +1,80 @@
 # InfluxDB Monitoring Guide
 
+This capability uses Telegraf `inputs.influxdb` to read runtime statistics from the InfluxDB v1 `/debug/vars` endpoint.
+
 ## Prerequisites
 
-- The target InfluxDB v1 service is up (default port `8086`).
-- The InfluxDB v1 `/debug/vars` endpoint is exposed (Telegraf `inputs.influxdb` collects runtime metrics from it).
-- The collector node can reach the InfluxDB endpoint (security groups / firewalls opened).
-- If the endpoint has Basic Auth enabled, have the username and password ready; otherwise leave them empty.
-- The Server Address field must be a full URL starting with `http://` or `https://` and ending with `/debug/vars`, for example `http://10.0.0.10:8086/debug/vars`.
-
-## Recommended Permissions
-
-- InfluxDB v1 `/debug/vars` is a read-only runtime statistics endpoint and does not touch database data.
-- If the instance has no Basic Auth, no account is required for collection.
-- If Basic Auth is enabled, any read-only account that can pass authentication to `/debug/vars` is enough; avoid a high-privilege admin account.
+- The target is an InfluxDB v1 instance that exposes `/debug/vars`, and the collector node can reach its full HTTP(S) URL.
+- The server address includes the scheme, port, and `/debug/vars` path.
+- If Basic Auth is enabled, prepare a username and password; otherwise leave both fields empty.
+- Authenticated endpoints should use HTTPS and a server certificate whose chain is trusted by the collector node.
+- If the target supports only HTTP, use it only over an isolated, trusted path. Basic Auth credentials are merely reversibly encoded and cross the network without transport encryption.
+- HTTPS can use CA, client-certificate, and client-key paths. These files must exist on the actual collector node.
 
 ## Setup Steps
 
-1. Verify from the collector node that the target InfluxDB `/debug/vars` endpoint is reachable.
-2. On the configure page fill in the server address, username/password (if auth is enabled), interval (default `60s`), and timeout (default `30s`); for HTTPS, fill in certificate paths or enable Skip Certificate Verification as needed.
-3. Add rows in the monitored objects table for node, server address, instance name, and group.
-4. Click Confirm and wait for at least one collection interval.
-5. Check the asset or metrics page to confirm data is reporting.
+1. From the actual collector node, validate the `/debug/vars` URL and optional authentication.
+2. Enter the server address, optional username/password, interval (default `60` seconds), and timeout (default `30` seconds).
+3. For HTTPS, enter the CA, client certificate, client key, and verification switch as required.
+4. In the monitored objects table, select the node and enter the server address, instance name, and optional group.
+5. Save the configuration and wait for at least one collection interval.
 
-## Pre-check Commands
+## Pre-checks
 
-Without authentication (only if allowed):
+The following examples prefer HTTPS. The certificate chain must be trusted by the collector node. Do not use `-k` or `--insecure` as a routine workaround.
 
-```bash
-curl -sS "http://<host>:8086/debug/vars"
-```
-
-With Basic Auth:
+For an endpoint without authentication:
 
 ```bash
-curl -sS -u "<username>:<password>" "http://<host>:8086/debug/vars"
+curl --fail --silent --show-error "https://influxdb.example.com:8086/debug/vars"
 ```
 
-The endpoint is basically healthy when:
+For Basic Auth, the following command prompts for the password:
 
-- HTTP status is `200`
-- The body is JSON containing runtime stats fields such as `memstats` and `cmdline`
+```bash
+curl --fail --silent --show-error --user monitor "https://influxdb.example.com:8086/debug/vars"
+```
+
+The request must return `200` and JSON; `--fail` preserves `4xx/5xx` failures. Prompting only keeps the password out of command arguments and shell history; it does not replace TLS protection for network transport.
 
 ## Field Reference
 
 | Field | Required | Description |
 | --- | --- | --- |
-| Server Address | Yes | Full URL ending with `/debug/vars`, e.g. `http://localhost:8086/debug/vars` |
-| Username | No | Fill in when the endpoint has Basic Auth enabled, otherwise leave empty |
-| Password | No | Matches the username, required when Basic Auth is enabled |
-| Interval | Yes | Collection interval in seconds, default `60` |
-| Timeout | Yes | Timeout for a single `/debug/vars` request in seconds, default `30` |
-| CA Certificate Path | No | CA certificate path for HTTPS |
-| Client Certificate Path | No | Client certificate path for HTTPS mutual auth |
-| Client Key Path | No | Client key path for HTTPS mutual auth |
-| Skip Certificate Verification | No | Whether to skip server certificate verification for HTTPS |
-| Node | Yes | Collector node used for this instance |
-| Instance Name | Yes | Display name in the platform |
-| Group | No | Organization group for ownership/permission |
+| Server Address | Yes | Full URL, normally ending in `/debug/vars`. |
+| Username, Password | No | Enter both when Basic Auth is enabled; otherwise leave both empty. |
+| Interval | Yes | Collection interval in seconds; default `60`. |
+| Timeout | Yes | Per-request timeout in seconds; default `30`. |
+| CA Certificate Path | No | Path to a CA file on the collector node. |
+| Client Certificate Path | No | Client certificate path for mutual TLS. |
+| Client Key Path | No | Key path paired with the client certificate. |
+| Skip Certificate Verification | No | Whether to skip server-certificate verification; disabled by default. |
+| Node | Yes | Collector node that can reach the URL and contains the configured certificate files. |
+| Instance Name | Yes | Display name in the platform. |
+| Group | No | Optional instance group. |
+
+## Post-setup Verification
+
+After saving and waiting for one interval, confirm that these metrics are queryable in the platform:
+
+- `influxdb_database_numSeries`
+- `influxdb_httpd_writeReq_rate`
+- `influxdb_httpd_pointsWrittenFail_rate`
+- `influxdb_runtime_HeapAlloc`
 
 ## Troubleshooting
 
-### 1. No data after saving
+### The endpoint returns `401`, `403`, or `404`
 
-- Verify the protocol and port in the server address, and that it ends with `/debug/vars`.
-- Re-run the `curl` checks from the collector node, not only from your laptop.
-- Confirm the InfluxDB v1 `/debug/vars` endpoint is exposed (some versions or configs may disable it).
-- Wait for at least one collection interval, and confirm Telegraf / collection tasks are healthy on the node.
+- Check whether authentication is enabled and whether username and password are entered together.
+- Confirm that the URL targets InfluxDB v1 `/debug/vars`, not the root path or a v2 API.
 
-### 2. Authentication failures (401 / 403)
+### HTTPS fails
 
-- Confirm whether Basic Auth is actually enabled: supplying credentials when it is not may itself cause errors.
-- Check the username/password for accidental leading/trailing spaces or unescaped special characters.
-- Confirm the account can pass authentication to `/debug/vars`.
+- Certificate paths are read on the collector node; do not enter paths that exist only on another host.
+- Enable Skip Certificate Verification only for temporary troubleshooting in an isolated test environment when the risk is explicitly accepted; do not use it as a routine configuration.
 
-### 3. Partial missing metrics or insufficient permissions
+### Only some data is present
 
-- All InfluxDB runtime metrics come from the `/debug/vars` body; missing metrics usually mean an incomplete response or version differences.
-- Use `curl` to inspect the `/debug/vars` body directly and confirm the target fields exist.
-- For HTTPS, if the response is abnormal, verify the certificate paths, or temporarily enable Skip Certificate Verification in a test environment to isolate the issue.
+- All data comes from the `/debug/vars` body. Confirm that the target version actually returns the relevant statistics.
+- A timeout fails the whole request; adjust the page timeout based on observed endpoint latency.

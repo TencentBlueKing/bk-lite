@@ -45,6 +45,7 @@ class ObjectDetectionTrainData(TrainDataFileCleanupMixin, MaintainerInfo, TimeIn
         help_text="存储在 MinIO 中的 YOLO 格式 ZIP 压缩包（images/ + labels/ + classes.txt）",
         blank=True,
         null=True,
+        db_index=True,
     )
 
     is_train_data = models.BooleanField(

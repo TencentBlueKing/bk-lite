@@ -17,13 +17,16 @@ class DangerousRuleSerializer(serializers.ModelSerializer):
             "pattern",
             "level",
             "is_enabled",
+            "is_builtin",
             "team",
             "created_by",
             "created_at",
             "updated_by",
             "updated_at",
         ]
-        read_only_fields = ["id", "created_by", "created_at", "updated_by", "updated_at"]
+        read_only_fields = [
+            "id", "is_builtin", "created_by", "created_at", "updated_by", "updated_at",
+        ]
 
 
 class DangerousRuleCreateSerializer(serializers.ModelSerializer):

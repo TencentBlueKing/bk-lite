@@ -303,11 +303,18 @@ const AlarmTable: React.FC<AlarmTableProps> = ({
   };
 
   const renderDeclareIncident = declareIncidentProps
-    ? (alert: any, context: { onSuccess: (result: any) => void }) => (
+    ? (
+      alert: any,
+      context: {
+        onSuccess: (result: any) => void;
+        buttonSize: 'small';
+      }
+    ) => (
         <DeclareIncident
           rowData={[alert]}
           onSuccess={context.onSuccess}
           {...declareIncidentProps}
+          buttonSize={context.buttonSize}
         />
     )
     : undefined;

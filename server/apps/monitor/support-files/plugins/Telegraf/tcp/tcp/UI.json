@@ -6,7 +6,7 @@
     "net_response"
   ],
   "collector": "Telegraf",
-  "instance_id": "{{instance_type}}_{{host}}_{{port}}",
+  "instance_id": "{{uuid}}",
   "form_fields": [
     {
       "name": "host",

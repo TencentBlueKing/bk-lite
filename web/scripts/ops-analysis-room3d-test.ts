@@ -13,6 +13,7 @@ import {
   hasSupportedChartTypeForSurface,
 } from "../src/app/ops-analysis/utils/chartTypeSurface";
 import { shouldWaitForInitialWidgetData } from "../src/app/ops-analysis/utils/widgetRequestVersion";
+import { shouldShowInitialWidgetLoading } from "../src/app/ops-analysis/utils/widgetDataTransform";
 import {
   getDefaultScreenWidgetAppearance,
   normalizeScreenWidgetAppearance,
@@ -242,7 +243,18 @@ assert.deepEqual(
     },
     { rackId: "rack-a", target: "door" },
   ),
-  { selectedRackId: "rack-a", openRackId: "", selectedDeviceId: "" },
+  { selectedRackId: "", openRackId: "", selectedDeviceId: "" },
+);
+assert.deepEqual(
+  resolveRoomObjectClickState(
+    {
+      selectedRackId: "",
+      openRackId: "",
+      selectedDeviceId: "",
+    },
+    { rackId: "rack-a", target: "door" },
+  ),
+  { selectedRackId: "rack-a", openRackId: "rack-a", selectedDeviceId: "" },
 );
 
 const emptyResult = validateRoom3DData({
@@ -296,7 +308,8 @@ assert.equal(getRoom3DColumnLabel(27), "AA");
 assert.equal(ROOM3D_COL_GAP > 1, true);
 assert.equal(ROOM3D_COL_GAP < 1.4, true);
 assert.equal(ROOM3D_ROW_GAP > ROOM3D_COL_GAP * 2.5, true);
-assert.equal(ROOM3D_DEVICE_PULL_OUT_DISTANCE <= 0.28, true);
+assert.equal(ROOM3D_DEVICE_PULL_OUT_DISTANCE >= 0.3, true);
+assert.equal(ROOM3D_DEVICE_PULL_OUT_DISTANCE <= 0.4, true);
 const columnDominantFloor = buildRoomFloorSize(3, 8);
 assert.equal(
   columnDominantFloor.floorDepth > columnDominantFloor.floorWidth,
@@ -407,6 +420,28 @@ assert.equal(
     hasRequested: false,
   }),
   false,
+);
+assert.equal(
+  shouldWaitForInitialWidgetData({
+    isSceneWidget: false,
+    isTableLikeChart: true,
+    hasDataSourceId: true,
+    hasResolvedDataSource: true,
+    hasRawPayload: false,
+    hasDataValidation: false,
+    requestEnabled: true,
+    hasRequested: false,
+  }),
+  true,
+);
+assert.equal(
+  shouldShowInitialWidgetLoading({
+    loading: true,
+    isTableLikeChart: true,
+    hasRawPayload: false,
+    hasSettledRequest: false,
+  }),
+  true,
 );
 assert.equal(
   shouldWaitForInitialWidgetData({

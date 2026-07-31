@@ -367,7 +367,6 @@ export const decideWidgetRequest = ({
 
 export const shouldShowInitialWidgetLoading = ({
   loading,
-  isTableLikeChart,
   hasRawPayload,
   hasSettledRequest,
 }: {
@@ -376,7 +375,7 @@ export const shouldShowInitialWidgetLoading = ({
   hasRawPayload: boolean;
   hasSettledRequest: boolean;
 }): boolean =>
-  loading && !isTableLikeChart && !hasRawPayload && !hasSettledRequest;
+  loading && !hasRawPayload && !hasSettledRequest;
 
 export const hasActiveWidgetRuntimeParams = (
   chartType: string | undefined,

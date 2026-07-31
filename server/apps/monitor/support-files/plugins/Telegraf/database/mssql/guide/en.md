@@ -1,83 +1,66 @@
 # MSSQL Monitoring Guide
 
+This capability uses Telegraf `inputs.sqlserver` to connect to a specified host and TCP port with a SQL Server account.
+
 ## Prerequisites
 
-- The target SQL Server instance is up and reachable; default port is `1433` (named instances may use a dynamic port).
-- The collector node can reach SQL Server (security groups / firewalls opened for `1433` or the actual port).
-- A monitoring account with `VIEW SERVER STATE` permission is ready, along with its password.
-- Host field accepts either an IP or a hostname; port defaults to `1433` and may be adjusted per instance.
-
-## Recommended Permissions
-
-The monitoring account must have at least `VIEW SERVER STATE` to read `sys.dm_*` dynamic management views. An administrator can grant it on the target instance:
-
-```sql
-USE master;
-GRANT VIEW SERVER STATE TO monitor;
-```
-
-- Prefer a dedicated read-only monitoring account instead of `sa` or other high-privilege admin accounts.
-- If mixed-mode authentication is enabled, make sure SQL Server authentication is allowed and the login is enabled.
-- The template uses `encrypt=disable` by default; no extra certificate is required.
+- The collector node can reach the actual SQL Server TCP host and port.
+- Prepare an account that can log in to the `master` database and read the required dynamic management views; `VIEW SERVER STATE` is normally required.
+- The current page accepts a host and TCP port only. For a named instance, determine and fix its actual TCP port instead of entering instance-name syntax.
+- The connection always uses `encrypt=disable`; the page has no encryption or certificate fields.
+- The template explicitly excludes `SQLServerAvailabilityReplicaStates` and `SQLServerDatabaseReplicaStates`, so the corresponding replica-state data is not collected.
 
 ## Setup Steps
 
-1. Verify connectivity from the collector node to the target SQL Server (use the pre-check command below).
-2. Fill in username, password, host, port, and interval (default `60s`) on the configure page.
-3. Add rows in the monitored objects table for node, host, port, instance name, and group.
-4. Click Confirm and wait for at least one collection interval.
-5. Check the asset or metrics page to confirm data is reporting.
+1. From the actual collector node, validate the target TCP port and monitoring account.
+2. Enter the username, password, host, actual TCP port, and interval (default `60` seconds).
+3. In the monitored objects table, select the node and enter the host, port, instance name, and optional group.
+4. Save the configuration and wait for at least one collection interval.
 
-## Pre-check Commands
+## Pre-checks
 
-Validate connectivity and credentials from the collector node with `sqlcmd`:
+Use a `tcp:` address and fixed port. With `-P` omitted, `sqlcmd` prompts for the password:
 
 ```bash
-sqlcmd -S <host>,<port> -U <user> -P '<password>' -Q "SELECT @@VERSION"
+sqlcmd -S tcp:sql.example.com,1433 -U monitor -Q "SELECT @@VERSION"
 ```
 
-The endpoint is basically healthy when:
-
-- The command returns no authentication error and outputs the `SELECT @@VERSION` result (containing the SQL Server version).
-- For a named instance, connect using `-S <host>\<instance_name>`.
+The command must return the version. Enter the TCP host and actual port in their separate page fields.
 
 ## Field Reference
 
 | Field | Required | Description |
 | --- | --- | --- |
-| Username | Yes | SQL Server login, e.g. `monitor` |
-| Password | Yes | Password for the login |
-| Host | Yes | SQL Server address (IP or hostname) |
-| Port | Yes | SQL Server port, default `1433` |
-| Interval | Yes | Collection interval in seconds, default `60` |
-| Node | Yes | Collector node used for this instance |
-| Instance Name | Yes | Display name in the platform; auto-derived as `host:port` by default |
-| Group | No | Organization group for ownership / permission |
+| Username | Yes | SQL Server login. |
+| Password | Yes | Password for the login. |
+| Host | Yes | SQL Server hostname or IP address, without an instance name. |
+| Port | Yes | Actual TCP port. |
+| Interval | Yes | Collection interval in seconds; default `60`. |
+| Node | Yes | Collector node that can reach the target TCP port. |
+| Instance Name | Yes | Display name in the platform; it can be derived from host and port. |
+| Group | No | Optional instance group. |
+
+## Post-setup Verification
+
+After saving and waiting for one interval, confirm that these metrics are queryable in the platform:
+
+- `sqlserver_cpu_sqlserver_process_cpu_avg`
+- `sqlserver_server_properties_uptime`
+- `sqlserver_memory_total_server_memory_kb`
+- `sqlserver_page_life_expectancy`
 
 ## Troubleshooting
 
-### 1. No data after saving
+### A named instance cannot be reached
 
-- Re-run the `sqlcmd` check from the collector node to confirm host, port, and credentials work.
-- Confirm port `1433` (or the actual port) is open in security groups / firewalls.
-- Wait for at least one collection interval before checking.
-- Check whether Telegraf / collection tasks are healthy on the node and whether the `sqlserver` input reports errors.
+- Determine the named instance's actual TCP port on SQL Server, then enter the host and port separately.
+- The current connection does not use SQL Server Browser to resolve an instance name.
 
-### 2. Authentication failures (Login failed)
+### Login succeeds but data is incomplete
 
-- Confirm SQL Server is configured for SQL Server authentication (mixed mode).
-- Check username / password for accidental spaces; quoting `-P '<password>'` avoids shell escaping issues.
-- Confirm the account has `VIEW SERVER STATE`.
-- Make sure the account is not locked or disabled and the password has not expired.
+- Check the account's `VIEW SERVER STATE` access to dynamic management views.
+- The two replica-state queries are explicitly excluded by the template, so their absence is a current configuration boundary.
 
-### 3. Partial missing metrics or insufficient permissions
+### The target requires encryption
 
-- The Telegraf `sqlserver` input relies on `sys.dm_*` views; insufficient permissions can yield successful login but missing metrics.
-- Some metrics (availability groups, replication states) require additional permissions or AlwaysOn to be enabled; grant `VIEW SERVER STATE` and relevant DMV rights as needed.
-- If schemas or column names differ, verify the SQL Server version is compatible with the installed Telegraf `sqlserver` input plugin.
-
-### 4. Named instances or dynamic ports
-
-- Named SQL Server instances often use dynamic ports; fix the TCP port on the instance or rely on the SQL Server Browser (UDP `1434`).
-- If the collector node cannot reach SQL Server Browser, explicitly specify the actual TCP port for the named instance.
-- The connection string defaults to `encrypt=disable`; if the target enforces encryption, update the template accordingly.
+- The template always disables encryption and the page has no certificate fields. A target that enforces encryption cannot be integrated directly.

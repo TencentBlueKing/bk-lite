@@ -1,92 +1,71 @@
 # Tomcat Monitoring Guide
 
-This plugin uses Telegraf `inputs.tomcat` to periodically scrape the Tomcat Manager status page (`/manager/status/all?XML=true`) and collect JVM memory / memory pool / connector metrics. The endpoint requires a Manager-role account (`manager-gui` or `manager-jmx`); use a dedicated read-only account in production.
+This capability uses Telegraf `inputs.tomcat` to scrape the Tomcat Manager XML status endpoint.
 
 ## Prerequisites
 
-- The target Tomcat is running with the Manager enabled:
+- The target Tomcat enables Manager status and provides a full URL such as `http://tomcat.example.com:8080/manager/status/all?XML=true`.
+- Prepare a monitoring account with only the `manager-status` role. Do not grant extra management or scripting roles for collection.
+- The collector node can reach the Manager port, and RemoteAddrValve allows the actual collector source IP.
+- The current page requires URL, username, and password. The URL must return XML status content.
 
-  ```xml
-  <!-- conf/tomcat-users.xml -->
-  <role rolename="manager-gui"/>
-  <user username="monitor" password="monitor-pwd" roles="manager-gui"/>
-  ```
-
-- The status servlet is loaded in the Host (the default).
-- The collector node can reach the Manager port (security groups / firewalls opened).
-
-> Telegraf emits three measurements — `tomcat_jvm_memory`, `tomcat_jvm_memorypool`, `tomcat_connector` — tagged with `source`, `name`, `type`.
-
-## Recommended Permissions
-
-Tomcat Manager is controlled by `conf/tomcat-users.xml`. Grant only the read-only role (`manager-gui` or the stricter `manager-status`); avoid `manager-script`, `manager-jmx`, or `admin-gui`:
+Example four-octet regular expression that allows one collector IP:
 
 ```xml
-<role rolename="manager-gui"/>
-<role rolename="manager-status"/>
-<user username="monitor" password="monitor-pwd" roles="manager-status"/>
-```
-
-Tomcat 7+ provides RemoteAddrValve to restrict remote access. Whitelist only the collector node IP:
-
-```xml
-<Context antiResourceLocking="false" privileged="true">
-    <Valve className="org.apache.catalina.valves.RemoteAddrValve"
-           allow="10\.0\.0\.\d+\.\d+"/>
-</Context>
+<Valve className="org.apache.catalina.valves.RemoteAddrValve"
+       allow="10\.0\.0\.25"/>
 ```
 
 ## Setup Steps
 
-1. Verify the Manager status endpoint from the collector node:
+1. From the actual collector node, validate the XML status URL, `manager-status` account, and source-IP allow-list.
+2. Enter the full URL, username, password, and interval (default `60` seconds).
+3. In the monitored objects table, select the node and enter the URL, instance name, and optional group.
+4. Save the configuration and wait for at least one collection interval.
 
-   ```bash
-   curl -u monitor:monitor-pwd "http://<host>:8080/manager/status/all?XML=true"
-   ```
+## Pre-checks
 
-2. On the configure page, fill in the URL (default `http://<host>:8080/manager/status/all?XML=true`, must include `?XML=true`), username, password, and interval (default `60s`).
-3. Add rows in the monitored objects table for node, URL, instance name, and group.
-4. Click Confirm and wait for at least one collection interval.
-5. Check the asset or metrics page to confirm data is reporting.
-
-## Pre-check Commands
-
-Manager status reachability:
+This command prompts for the password:
 
 ```bash
-curl -u <user>:<pwd> "http://<host>:8080/manager/status/all?XML=true"
+curl --fail --silent --show-error --user monitor "http://tomcat.example.com:8080/manager/status/all?XML=true"
 ```
 
-HTTP 200 with an XML response indicates the endpoint is healthy.
+The request must return `200` and XML; `--fail` preserves `4xx/5xx` failures.
 
 ## Field Reference
 
 | Field | Required | Description |
 | --- | --- | --- |
-| URL | Yes | Tomcat Manager status URL, must include `?XML=true`, e.g. `http://10.0.0.5:8080/manager/status/all?XML=true` |
-| Username | Yes | Manager login account; prefer `manager-status` |
-| Password | Yes | Password for that account |
-| Interval | Yes | Collection interval in seconds, default `60` |
-| Node | Yes | Collector node used for this instance |
-| Instance Name | Yes | Display name in the platform; defaults to the URL |
-| Group | No | Organization group for ownership/permission |
+| URL | Yes | Full Tomcat Manager XML status URL including `?XML=true`. |
+| Username | Yes | Account with the `manager-status` role. |
+| Password | Yes | Password for the account. |
+| Interval | Yes | Collection interval in seconds; default `60`. |
+| Node | Yes | Collector node that can reach Manager status. |
+| Instance Name | Yes | Display name in the platform. |
+| Group | No | Optional instance group. |
+
+## Post-setup Verification
+
+After saving and waiting for one interval, confirm that these metrics are queryable in the platform:
+
+- `tomcat_jvm_memory_free`
+- `tomcat_jvm_memorypool_used`
+- `tomcat_connector_request_count_rate`
+- `tomcat_connector_current_thread_utilization`
 
 ## Troubleshooting
 
-### 1. No data after saving
+### The endpoint returns `401` or `403`
 
-- Confirm the URL ends with `?XML=true`; otherwise Telegraf fails to parse the HTML.
-- Confirm the Manager is enabled in `tomcat-users.xml` and that RemoteAddrValve has not blocked the collector node IP.
-- Run `curl /manager/status/all?XML=true` from the collector node and verify HTTP 200 + XML.
-- Wait for at least one collection interval.
+- Confirm that the account role is consistently `manager-status`.
+- Check that the RemoteAddrValve expression has four IP octets and includes the actual collector source address.
 
-### 2. Authentication failures / 403
+### The endpoint returns HTML or parsing fails
 
-- Tomcat 9+ restricts Manager to `127.0.0.1` / `::1` by default; edit `webapps/manager/META-INF/context.xml` to remove or widen RemoteAddrValve.
-- The account must have `manager-gui` or `manager-status`; `admin-gui` alone is not enough.
+- Confirm that the URL contains `?XML=true` and that a reverse proxy preserves the query string.
+- Reproduce with the pre-check command from the actual collector node.
 
-### 3. Partial missing metrics
+### Only some data is present
 
-- `tomcat_connector` only lists connectors configured in `server.xml`; new connectors require a Tomcat restart.
-- `tomcat_jvm_memorypool` pool names (`CodeCache`, `Metaspace`, ...) depend on the JVM (HotSpot / OpenJ9); non-HotSpot JVMs may have different dimensions.
-- AJP / HTTPS connectors also appear under `tomcat_connector` and can be distinguished via the `name` tag.
+- Connector and memory-pool dimensions depend on the target Tomcat and JVM configuration. Objects that do not exist produce no series.

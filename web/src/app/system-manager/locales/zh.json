@@ -676,6 +676,9 @@
         "viewNodeDetail": "查看对象节点明细",
         "configReminderPolicy": "可配置提醒策略",
         "nodeDetailHint": "可用节点数低于提醒阈值后，将沿用当前许可提醒策略发送提醒；专用节点支持按对象单独覆盖默认阈值。",
+        "generalUsedNodes": "已用节点",
+        "generalUsageMode": "直接使用通用节点",
+        "generalNodesEmpty": "暂无使用记录",
         "nodeReminderTitle": "设置节点提醒",
         "nodeReminderLoadFailed": "节点提醒加载失败",
         "nodeReminderSaveSuccess": "节点提醒保存成功",
@@ -750,6 +753,8 @@
           "es": "ES",
           "redis": "Redis",
           "mongo": "Mongo",
+          "tomcat": "Tomcat",
+          "kafka": "Kafka",
           "size": "存储容量"
         }
       },

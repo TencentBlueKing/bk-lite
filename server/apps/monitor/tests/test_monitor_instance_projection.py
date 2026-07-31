@@ -77,6 +77,7 @@ def test_monitor_instance_list_returns_flow_asset_fields(db, monkeypatch):
         "time": "",
         "cloud_region_id": 3,
         "ip": "10.0.0.12",
+        "summary_facts": {},
         "fallback_sampling_rate": 2000,
         "organizations": [7],
     }
@@ -302,6 +303,7 @@ def test_monitor_instance_list_item_serializer_includes_flow_asset_fields():
         interval=60,
         cloud_region_id=3,
         ip="10.0.0.12",
+        summary_facts={"asset.ip": "10.0.0.12"},
         fallback_sampling_rate=2000,
     )
 
@@ -318,6 +320,7 @@ def test_monitor_instance_list_item_serializer_includes_flow_asset_fields():
         "time": "",
         "cloud_region_id": 3,
         "ip": "10.0.0.12",
+        "summary_facts": {"asset.ip": "10.0.0.12"},
         "fallback_sampling_rate": 2000,
         "organizations": [7],
     }

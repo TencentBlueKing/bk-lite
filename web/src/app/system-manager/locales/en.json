@@ -676,6 +676,9 @@
         "viewNodeDetail": "View node quota details",
         "configReminderPolicy": "Reminder policy configurable",
         "nodeDetailHint": "When available nodes fall below the reminder threshold, reminders will be sent following the current license reminder policy. Dedicated nodes support per-object threshold overrides.",
+        "generalUsedNodes": "Used Nodes",
+        "generalUsageMode": "Uses General Pool",
+        "generalNodesEmpty": "No usage records yet",
         "nodeReminderTitle": "Set Node Reminder",
         "nodeReminderLoadFailed": "Failed to load node reminder",
         "nodeReminderSaveSuccess": "Node reminder saved",
@@ -750,6 +753,8 @@
           "es": "ES",
           "redis": "Redis",
           "mongo": "Mongo",
+          "tomcat": "Tomcat",
+          "kafka": "Kafka",
           "size": "Storage Capacity"
         }
       },

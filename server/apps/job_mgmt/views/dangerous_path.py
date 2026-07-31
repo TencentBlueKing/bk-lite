@@ -9,7 +9,6 @@ from apps.job_mgmt.filters.dangerous_path import DangerousPathFilter
 from apps.job_mgmt.models import DangerousPath
 from apps.job_mgmt.serializers.dangerous_path import DangerousPathCreateSerializer, DangerousPathSerializer, DangerousPathUpdateSerializer
 from apps.job_mgmt.views.dangerous_base import BaseDangerousItemViewSet
-from apps.core.utils.team_utils import get_current_team
 
 
 class DangerousPathViewSet(BaseDangerousItemViewSet):
@@ -46,10 +45,11 @@ class DangerousPathViewSet(BaseDangerousItemViewSet):
         return self.destroy_with_log(request, *args, **kwargs)
 
     @action(detail=False, methods=["GET"])
+    @HasPermission("dangerous_path-View")
     def enabled_paths(self, request):
         """获取当前组启用的所有高危路径规则"""
-        current_team = int(get_current_team(request, 0))
-        paths = DangerousPath.objects.filter(is_enabled=True, team__contains=current_team)
+        current_team = self._validate_current_team_permission(request)
+        paths = [path for path in DangerousPath.objects.filter(is_enabled=True) if not path.team or current_team in path.team]
 
         result = {
             DangerousLevel.CONFIRM: {MatchType.EXACT: [], MatchType.REGEX: []},

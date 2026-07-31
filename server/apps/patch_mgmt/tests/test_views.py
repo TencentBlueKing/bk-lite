@@ -7,6 +7,8 @@
   - 测试类名包含 View/Api/Export → 全部命中 -k "view or api or export" 过滤器。
 """
 
+import sys
+
 import pytest
 from rest_framework import status
 
@@ -218,6 +220,94 @@ class TestPatchSourceViewApi:
         data = {"name": "Bad", "source_type": "invalid_type", "team": [1]}
         resp = su_client.post(PATCH_SOURCE_URL, data, format="json")
         assert resp.status_code == status.HTTP_400_BAD_REQUEST
+
+    def test_linux_preview_does_not_require_wsus_dependency(
+        self, su_client, mocker, monkeypatch
+    ):
+        source = PatchSource.objects.create(
+            name="YUM-Test",
+            source_type=PatchSourceType.YUM_REPO,
+            url="https://repo.example.com",
+            team=[1],
+        )
+        preview = mocker.patch(
+            "apps.patch_mgmt.services.source_sync_service.SourceSyncService.preview_sync_candidates",
+            return_value=[],
+        )
+        monkeypatch.setitem(
+            sys.modules,
+            "apps.patch_mgmt.services.wsus_sync",
+            None,
+        )
+
+        resp = su_client.post(
+            f"{PATCH_SOURCE_URL}{source.id}/preview_sync/",
+            {"search": "", "page": 1, "page_size": 20},
+            format="json",
+        )
+
+        assert resp.status_code == status.HTTP_200_OK
+        assert resp.data == {"items": [], "total": 0, "page": 1, "page_size": 20}
+        preview.assert_called_once_with(source)
+
+    def test_linux_preview_search_matches_package_name_only(self, su_client, mocker):
+        source = PatchSource.objects.create(
+            name="YUM-Test",
+            source_type=PatchSourceType.YUM_REPO,
+            url="https://repo.example.com",
+            team=[1],
+        )
+        mocker.patch(
+            "apps.patch_mgmt.services.source_sync_service.SourceSyncService.preview_sync_candidates",
+            return_value=[
+                {
+                    "key": "RLSA-KERNEL",
+                    "name": "kernel",
+                    "title": "Important: kernel security update",
+                    "version": "1.0-1",
+                },
+                {
+                    "key": "RLSA-BPFTOOL",
+                    "name": "bpftool",
+                    "title": "Important: kernel security update",
+                    "version": "1.0-1",
+                },
+            ],
+        )
+
+        resp = su_client.post(
+            f"{PATCH_SOURCE_URL}{source.id}/preview_sync/",
+            {"search": "kernel", "page": 1, "page_size": 20},
+            format="json",
+        )
+
+        assert resp.status_code == status.HTTP_200_OK
+        assert resp.data["total"] == 1
+        assert [item["name"] for item in resp.data["items"]] == ["kernel"]
+
+    def test_wsus_preview_missing_dependency_returns_400(
+        self, su_client, monkeypatch
+    ):
+        source = PatchSource.objects.create(
+            name="WSUS-Test",
+            source_type=PatchSourceType.WSUS,
+            url="http://wsus.example.com",
+            team=[1],
+        )
+        monkeypatch.setitem(
+            sys.modules,
+            "apps.patch_mgmt.services.wsus_sync",
+            None,
+        )
+
+        resp = su_client.post(
+            f"{PATCH_SOURCE_URL}{source.id}/preview_sync/",
+            {"search": "", "page": 1, "page_size": 20},
+            format="json",
+        )
+
+        assert resp.status_code == status.HTTP_400_BAD_REQUEST
+        assert "error" in resp.data
 
     def test_catalog_actions_are_removed(self, su_client):
         source = PatchSource.objects.create(

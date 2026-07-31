@@ -45,6 +45,7 @@ class ImageClassificationTrainData(TrainDataFileCleanupMixin, MaintainerInfo, Ti
         help_text="存储在MinIO中的图片压缩包文件（ZIP格式）",
         blank=True,
         null=True,
+        db_index=True,
     )
 
     metadata = models.JSONField(

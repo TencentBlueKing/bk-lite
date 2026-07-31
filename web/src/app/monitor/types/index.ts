@@ -236,6 +236,11 @@ export interface ObjectItem {
     sort_order: number;
     metrics: { plugin: string; metric: string; field?: string }[];
   }[];
+  instance_summary_columns?: {
+    fact: string;
+    title: string;
+    order?: number;
+  }[];
   options?: ObjectItem[];
   label?: string;
   value?: string;

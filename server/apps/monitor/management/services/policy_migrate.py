@@ -20,21 +20,29 @@ def migrate_policy():
     path_list.extend(enterprise_path_list)
     logger.info(f'找到 {len(path_list)} 个策略配置文件')
 
-    success_count = 0
+    documents = []
     error_count = 0
-
-    for file_path in path_list:
+    for file_path in sorted(path_list):
         try:
             policy_data = json.loads(Path(file_path).read_text(encoding='utf-8'))
             if policy_data == []:
                 logger.info(f'跳过空策略配置: {file_path}')
                 continue
-            PolicyService.import_monitor_policy(policy_data)
-            logger.info(f'导入策略成功: {file_path}')
-            success_count += 1
-
+            documents.append(policy_data)
         except Exception as e:
-            logger.error(f'导入策略失败: {file_path}, 错误: {e}')
+            logger.error(f'读取策略配置失败: {file_path}, 错误: {e}')
             error_count += 1
-
-    logger.info(f'策略导入完成: 成功={success_count}, 失败={error_count}')
+    if error_count:
+        logger.error(f"策略配置读取失败，保留上一次有效内置模板: 失败={error_count}")
+        return
+    try:
+        result = PolicyService.sync_builtin_policy_templates(documents)
+    except Exception as e:
+        logger.error(f"策略模板校验或对账失败，保留上一次有效内置模板: {e}")
+        return
+    logger.info(
+        "策略模板对账完成: 创建=%s, 更新=%s, 删除=%s",
+        result["created_count"],
+        result["updated_count"],
+        result["deleted_count"],
+    )

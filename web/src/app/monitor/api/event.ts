@@ -50,6 +50,24 @@ const useEventApi = () => {
     return await post('/monitor/api/monitor_policy/bulk_create_from_templates/', data);
   };
 
+  const savePolicyTemplate = async (data: Record<string, unknown>) =>
+    post('/monitor/api/monitor_policy/template/save/', data);
+
+  const importPolicyTemplates = async (file: File, overwrite = false) => {
+    const data = new FormData();
+    data.append('file', file);
+    data.append('overwrite', String(overwrite));
+    return post('/monitor/api/monitor_policy/template/import/', data, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  };
+
+  const exportPolicyTemplates = async (keys: string[]) =>
+    post('/monitor/api/monitor_policy/template/export/', { keys }, { responseType: 'blob' });
+
+  const bulkDeletePolicyTemplates = async (keys: string[]) =>
+    post('/monitor/api/monitor_policy/template/bulk_delete/', { keys });
+
   const previewMonitorPolicy = async (
     data: Record<string, unknown>,
     config?: AxiosRequestConfig
@@ -102,6 +120,10 @@ const useEventApi = () => {
     getMonitorPolicy,
     getPolicyTemplate,
     bulkCreatePoliciesFromTemplates,
+    savePolicyTemplate,
+    importPolicyTemplates,
+    exportPolicyTemplates,
+    bulkDeletePolicyTemplates,
     previewMonitorPolicy,
     getSystemChannelList,
     patchMonitorPolicy,

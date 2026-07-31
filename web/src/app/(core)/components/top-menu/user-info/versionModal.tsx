@@ -5,8 +5,6 @@ import { useTranslation } from '@/utils/i18n';
 import OperateFormModal from '@/components/operate-form-modal';
 import { getClientIdFromRoute } from '@/utils/route';
 
-const { TabPane } = Tabs;
-
 interface VersionModalProps {
   visible: boolean;
   onClose: () => void;
@@ -74,7 +72,7 @@ const VersionModal: React.FC<VersionModalProps> = ({
     >
       {loading ? (
         <div className="min-h-[200px] flex items-center justify-center">
-          <Spin tip="Loading..." />
+          <Spin />
         </div>
       ) : versionFiles.length === 0 ? (
         <Result
@@ -87,9 +85,10 @@ const VersionModal: React.FC<VersionModalProps> = ({
           activeKey={activeKey}
           onChange={handleTabChange}
           className="h-full"
-        >
-          {versionFiles.map((versionFile) => (
-            <TabPane tab={versionFile} key={versionFile}>
+          items={versionFiles.map((versionFile) => ({
+            key: versionFile,
+            label: versionFile,
+            children: (
               <div className="p-4 overflow-y-auto h-full">
                 {activeKey === versionFile && (
                   renderVersionContent ? (
@@ -99,9 +98,9 @@ const VersionModal: React.FC<VersionModalProps> = ({
                   )
                 )}
               </div>
-            </TabPane>
-          ))}
-        </Tabs>
+            ),
+          }))}
+        />
       )}
     </OperateFormModal>
   );

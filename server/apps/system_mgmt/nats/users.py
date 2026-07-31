@@ -17,7 +17,6 @@ def _is_persisted_superuser(user_obj):
     return Role.objects.filter(id__in=role_ids, name="admin").filter(Q(app="") | Q(app="system-manager")).exists()
 
 
-@nats_client.register
 def get_group_users(group=None, include_children=False):
     """
     获取组织下的用户列表
@@ -77,7 +76,6 @@ def _get_actor_user_scope(actor_context, include_children=False):
     return user_obj, authorized_groups
 
 
-@nats_client.register
 def get_group_users_scoped(actor_context, group=None, include_children=False):
     """
     在调用方授权范围内查询组织用户列表。
@@ -150,7 +148,6 @@ def get_assignable_groups(actor_context):
     return {"result": True, "data": groups}
 
 
-@nats_client.register
 def get_all_users():
     data = User.objects.all().values(*User.display_fields())
     return {"result": True, "data": list(data)}
@@ -162,7 +159,6 @@ def search_groups(query_params):
     return {"result": True, "data": list(groups)}
 
 
-@nats_client.register
 def search_users(query_params):
     page = int(query_params.get("page", 1))
     page_size = int(query_params.get("page_size", 10))
@@ -242,7 +238,9 @@ def create_guest_role():
     return {"result": True, "data": {"group_id": app_guest_group.id}}
 
 
-@nats_client.register
+# This initializer is intentionally local-only: console_mgmt calls it through
+# AppClient, while exposing it on NATS would let unauthenticated publishers
+# create the built-in OpsPilot data rule when it is missing.
 def create_default_rule(llm_model, ocr_model, embed_model, rerank_model):
     guest_group = Group.objects.get(name="OpsPilotGuest", parent_id=0)
     GroupDataRule.objects.get_or_create(

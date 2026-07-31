@@ -67,6 +67,9 @@ const ICON_LIST = [
   'cc-dameng_达梦',
   'cc-db2_DB2',
   'cc-sql-server_MSSQL',
+  'cc-influxdb_InfluxDB',
+  'cc-haproxy_HAProxy',
+  'cc-consul_Consul',
   'cc-weblogic_WebLogic',
   'cc-websphere_websphere',
   'cc-iis_IIS',
@@ -107,7 +110,10 @@ const ICON_LIST = [
   'mm-vmware_Vmware',
   'mm-weblogic_Weblogic',
   'mm-website_网站',
-  'mm-zookeeper_Zookeeper'
+  'mm-zookeeper_Zookeeper',
+  'mm-influxdb_InfluxDB',
+  'mm-haproxy_HAProxy',
+  'mm-consul_Consul'
 ];
 
 interface ModalProps {

@@ -1,98 +1,72 @@
 # MongoDB Monitoring Guide
 
+This capability uses Telegraf `inputs.mongodb` to connect directly to one MongoDB `host:port`. The connection string always uses `connect=direct`.
+
 ## Prerequisites
 
-- The target MongoDB service is up and reachable on the default port `27017`.
-- The collector node can reach the MongoDB endpoint (security groups / firewalls opened).
-- Confirm whether authentication is enabled: when auth is disabled, username and password may be empty; when auth is enabled, an account with read access to `serverStatus` and `dbStats` is required.
-- Telegraf `inputs.mongodb` connects directly via `mongodb://user:pass@host:port/?connect=direct`. No external exporter needs to be deployed.
-
-## Recommended Permissions
-
-When authentication is enabled, create a dedicated read-only monitoring account with at least:
-
-- `clusterMonitor`: read access to `serverStatus`, `replSetGetStatus`, and other cluster-level metrics.
-- `read` (on target databases) or equivalent privileges to read `dbStats` / `collStats`.
-
-Example creation (run in mongosh; extend as needed for sharded or multi-tenant clusters):
-
-```javascript
-db.getSiblingDB("admin").createUser({
-  user: "monitor",
-  pwd: "<password>",
-  roles: [
-    { role: "clusterMonitor", db: "admin" }
-  ]
-})
-```
-
-When auth is disabled, leave username and password empty and the template will use a credential-less connection string.
+- The collector node can reach the target MongoDB host and port.
+- Leave both username and password empty when authentication is disabled; enter both when it is enabled.
+- The monitoring account can read the data required by `serverStatus`; use a dedicated least-privilege account.
+- The current template connects directly to one address and has no fields for a replica-set name, multiple servers, TLS, authentication database, or custom connection parameters.
 
 ## Setup Steps
 
-1. From the collector node, verify connectivity to the target MongoDB (use the pre-check commands below).
-2. On the configuration page, fill in host, port (default `27017`), and collection interval (default `60s`).
-3. If authentication is enabled, fill in the corresponding username and password; otherwise leave them empty.
-4. Add rows in the monitored objects table for node, host, port, instance name, and group.
-5. Click Confirm and wait for at least one collection interval.
-6. Check the asset or metrics page to confirm data is reporting.
+1. From the actual collector node, validate the target address and optional authentication account.
+2. Enter the optional username/password, host, port, and interval (default `60` seconds).
+3. In the monitored objects table, select the node and enter the host, port, instance name, and optional group.
+4. Save the configuration and wait for at least one collection interval.
 
-## Pre-check Commands
+## Pre-checks
 
-Without authentication:
+For an instance without authentication:
 
 ```bash
-mongosh "mongodb://<host>:<port>" --eval "db.serverStatus().ok"
+mongosh "mongodb://db.example.com:27017/?connect=direct" --eval "db.serverStatus().ok"
 ```
 
-With authentication:
+When authentication is enabled, use an interactive password prompt:
 
 ```bash
-mongosh "mongodb://<user>:<password>@<host>:<port>" --eval "db.serverStatus().ok"
+mongosh "mongodb://db.example.com:27017/?connect=direct" --username monitor --authenticationDatabase admin --password
 ```
 
-If mongosh is not available, confirm port reachability with:
-
-```bash
-nc -vz <host> 27017
-```
-
-The endpoint is basically healthy when:
-
-- `db.serverStatus().ok` returns `1`.
-- Port `27017` is reachable from the collector node.
+After login, run `db.serverStatus().ok`; it must return `1`. If the target uses a non-default authentication database, it cannot be selected on the current page.
 
 ## Field Reference
 
 | Field | Required | Description |
 | --- | --- | --- |
-| Username | No | Required only when authentication is enabled; leave empty otherwise |
-| Password | No | Password for the username; leave empty when authentication is disabled |
-| Host | Yes | MongoDB service address, e.g. `10.0.0.10` |
-| Port | Yes | MongoDB port, default `27017` |
-| Interval | Yes | Collection interval in seconds, default `60` |
-| Node | Yes | Collector node used for this instance |
-| Instance Name | Yes | Display name in the platform |
-| Group | No | Organization group for ownership/permission |
+| Username | No | Enter when authentication is enabled; otherwise leave empty. |
+| Password | No | Enter together with the username; otherwise leave empty. |
+| Host | Yes | MongoDB host without a scheme or connection parameters. |
+| Port | Yes | Actual MongoDB listener port. |
+| Interval | Yes | Collection interval in seconds; default `60`. |
+| Node | Yes | Collector node that can reach MongoDB. |
+| Instance Name | Yes | Display name in the platform. |
+| Group | No | Optional instance group. |
+
+## Post-setup Verification
+
+After saving and waiting for one interval, confirm that these metrics are queryable in the platform:
+
+- `mongodb_uptime_ns`
+- `mongodb_connections_current`
+- `mongodb_active_reads`
+- `mongodb_wtcache_current_bytes`
 
 ## Troubleshooting
 
-### 1. No data after saving
+### Authentication fails
 
-- Re-run the `mongosh` / `nc -vz` checks from the collector node, not only from your laptop.
-- Wait for at least one collection interval.
-- Confirm Telegraf / collection tasks are healthy on the node.
-- Make sure the firewall or security group allows the collector node IP on port `27017`.
+- Confirm that username and password are entered together, and check the account's actual authentication database.
+- The page cannot set `authSource` or x.509/TLS parameters. A target that requires those parameters cannot be integrated directly.
 
-### 2. Authentication failures
+### A replica-set address does not work
 
-- Check username/password for accidental spaces or character escaping issues.
-- Confirm the account has the `clusterMonitor` role and can read `serverStatus`.
-- If MongoDB uses SCRAM / x.509 or other auth mechanisms, verify the collector supports the configured mechanism.
-- When authentication is enabled but credentials are left blank, the collector falls back to an anonymous connection — always fill in both fields.
+- The template always uses `connect=direct` and one host/port; the page does not configure replica-set discovery.
+- Select a specific MongoDB member directly reachable from the collector node.
 
-### 3. Partial missing metrics or insufficient permissions
+### Only some data is present
 
-- The `mongodb` metrics (connections, replica set status, etc.) depend on `serverStatus`; without `clusterMonitor` this group may be empty.
-- Database-level metrics (`dbStats`) require `read` privileges on the target databases — grant them as needed.
-- When business database names vary widely, filter the metrics page by the `database_name` tag to confirm which databases are actually being collected.
+- A successful login does not prove permission for `serverStatus`. Use the actual command error in the Telegraf log.
+- Some statistics depend on the MongoDB version and storage engine.

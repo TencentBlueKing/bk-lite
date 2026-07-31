@@ -3,6 +3,8 @@
   "plugin_desc": "The host monitoring plugin is used to collect and analyze performance data of hosts, including CPU, memory, disk, and network usage.",
   "support_collect_detect": true,
   "status_query": "any({instance_type='os', collect_type='host'}) by (instance_id)",
+  "instance_fact_bindings": [{"fact":"asset.ip","value_type":"ip","resolver":"selected_node","options":{"selection_field":"node_ids","node_field":"ip","required":true}}],
+  "instance_summary_columns": [{"fact":"asset.ip","title":"monitor.views.assetIp","order":10}],
   "name": "Host",
   "icon": "mm-host_主机",
   "type": "OS",
@@ -688,5 +690,3 @@
     }
   ]
 }
-
-

@@ -443,8 +443,8 @@ test('request module defaults to no browser token before auth initialization', a
 });
 
 test('browser user cache removes the backend JWT', async () => {
-  const { sanitizeBrowserUserInfo } = await loadTypeScriptModule('src/utils/secureStorage.ts');
-  const cachedUser = sanitizeBrowserUserInfo({
+  const { sanitizeUserInfoForStorage } = await loadTypeScriptModule('src/utils/secureStorage.ts');
+  const cachedUser = sanitizeUserInfoForStorage({
     id: 7,
     username: 'alice',
     token: 'backend-jwt',

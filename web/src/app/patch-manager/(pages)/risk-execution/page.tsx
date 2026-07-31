@@ -22,6 +22,8 @@ import CustomTable from '@/components/custom-table';
 import PermissionWrapper from '@/components/permission';
 import OperateDrawer from '@/app/patch-manager/components/operate-drawer';
 import usePatchManagerApi from '@/app/patch-manager/api';
+import { createListRequestCoordinator } from '@/app/patch-manager/utils/list-request-coordinator';
+import { PATCH_MANAGER_POLL_INTERVAL_MS } from '@/app/patch-manager/constants/polling';
 import useApiClient from '@/utils/request';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import { useTranslation } from '@/utils/i18n';
@@ -162,7 +164,9 @@ export default function RiskExecutionPage() {
   const [pagination, setPagination] = useState({ current: 1, pageSize: 20, total: 0 });
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [detailTask, setDetailTask] = useState<any>();
-  const [detailLoading, setDetailLoading] = useState(false);
+  const [taskDetailLoading, setTaskDetailLoading] = useState(false);
+  const [riskDetailLoading, setRiskDetailLoading] = useState(false);
+  const detailLoading = taskDetailLoading || riskDetailLoading;
   const [riskSearch, setRiskSearch] = useState('');
   const [selectedRiskId, setSelectedRiskId] = useState<string>();
   const [riskDetail, setRiskDetail] = useState<any>();
@@ -170,7 +174,7 @@ export default function RiskExecutionPage() {
   const [cancelReason, setCancelReason] = useState('');
   const [cancelSubmitting, setCancelSubmitting] = useState(false);
   const [exporting, setExporting] = useState(false);
-  const listRequestSeq = useRef(0);
+  const listRequestCoordinatorRef = useRef(createListRequestCoordinator(setLoading));
   const listPollingRef = useRef<ReturnType<typeof createExecutionListPolling> | undefined>(undefined);
   const listQueryRef = useRef<ExecutionListQuery>({
     page: pagination.current,
@@ -184,9 +188,8 @@ export default function RiskExecutionPage() {
     search: appliedTaskSearch,
     taskType: taskType as ExecutionListQuery['taskType'],
   };
-  const detailRequestSeq = useRef(0);
-  const selectedRequestSeq = useRef(0);
-  const selectedAbortRef = useRef<AbortController | null>(null);
+  const taskDetailRequestCoordinatorRef = useRef(createListRequestCoordinator(setTaskDetailLoading));
+  const riskDetailRequestCoordinatorRef = useRef(createListRequestCoordinator(setRiskDetailLoading));
 
   const formatDateTime = useCallback((value?: string | null) => (
     value ? localizedTimeRef.current(value) : '—'
@@ -213,16 +216,21 @@ export default function RiskExecutionPage() {
     query: ExecutionListQuery,
     silent = false,
   ) => {
-    const seq = ++listRequestSeq.current;
-    if (!silent) setLoading(true);
+    const coordinator = listRequestCoordinatorRef.current;
+    if (!coordinator.canStart({ visible: !silent })) return;
+    const ticket = coordinator.begin({ visible: !silent });
+    if (!ticket) return;
     try {
-      const response = await apiRef.current.getGovernanceTaskList({
-        page: query.page,
-        page_size: query.pageSize,
-        search: query.search || undefined,
-        task_type: query.taskType,
-      });
-      if (seq !== listRequestSeq.current) return;
+      const response = await apiRef.current.getGovernanceTaskList(
+        {
+          page: query.page,
+          page_size: query.pageSize,
+          search: query.search || undefined,
+          task_type: query.taskType,
+        },
+        { signal: ticket.signal },
+      );
+      if (!coordinator.shouldApply(ticket)) return;
       const rows = mapTaskRows(response.items || []);
       setTasks(rows);
       setPagination({
@@ -230,8 +238,10 @@ export default function RiskExecutionPage() {
         pageSize: query.pageSize,
         total: response.count || 0,
       });
+    } catch (error) {
+      if (!ticket.signal.aborted) throw error;
     } finally {
-      if (!silent && seq === listRequestSeq.current) setLoading(false);
+      coordinator.finish(ticket);
     }
   }, [mapTaskRows]);
 
@@ -250,31 +260,34 @@ export default function RiskExecutionPage() {
   }, [isLoading, loadTasks]);
 
   const loadTaskDetail = useCallback(async (taskId: number, silent = false) => {
-    const seq = ++detailRequestSeq.current;
-    if (!silent) setDetailLoading(true);
+    const coordinator = taskDetailRequestCoordinatorRef.current;
+    if (!coordinator.canStart({ visible: !silent })) return;
+    const ticket = coordinator.begin({ visible: !silent });
+    if (!ticket) return;
     try {
-      const result = await apiRef.current.getGovernanceTaskDetail(taskId);
-      if (seq !== detailRequestSeq.current) return;
+      const result = await apiRef.current.getGovernanceTaskDetail(taskId, { signal: ticket.signal });
+      if (!coordinator.shouldApply(ticket)) return;
       setDetailTask(result);
       setSelectedRiskId((current) => current || result.risk_items?.[0]?.id);
+    } catch (error) {
+      if (!ticket.signal.aborted) throw error;
     } finally {
-      if (!silent && seq === detailRequestSeq.current) setDetailLoading(false);
+      coordinator.finish(ticket);
     }
   }, []);
 
   const loadSelectedRisk = useCallback(async (taskId: number, riskId: string, silent = false) => {
-    selectedAbortRef.current?.abort();
-    const controller = new AbortController();
-    selectedAbortRef.current = controller;
-    const seq = ++selectedRequestSeq.current;
-    if (!silent) setDetailLoading(true);
+    const coordinator = riskDetailRequestCoordinatorRef.current;
+    if (!coordinator.canStart({ visible: !silent })) return;
+    const ticket = coordinator.begin({ visible: !silent });
+    if (!ticket) return;
     try {
-      const result = await apiRef.current.getGovernanceRiskItemDetail(taskId, riskId, { signal: controller.signal });
-      if (seq === selectedRequestSeq.current) setRiskDetail(result);
+      const result = await apiRef.current.getGovernanceRiskItemDetail(taskId, riskId, { signal: ticket.signal });
+      if (coordinator.shouldApply(ticket)) setRiskDetail(result);
     } catch (error: any) {
-      if (error?.code !== 'ERR_CANCELED') throw error;
+      if (!ticket.signal.aborted && error?.code !== 'ERR_CANCELED') throw error;
     } finally {
-      if (!silent && seq === selectedRequestSeq.current) setDetailLoading(false);
+      coordinator.finish(ticket);
     }
   }, []);
 
@@ -292,13 +305,18 @@ export default function RiskExecutionPage() {
     void poll(false);
     const timer = window.setInterval(() => {
       void poll(true);
-    }, 2000);
+    }, PATCH_MANAGER_POLL_INTERVAL_MS);
     return () => {
       window.clearInterval(timer);
-      selectedAbortRef.current?.abort();
-      selectedRequestSeq.current += 1;
+      riskDetailRequestCoordinatorRef.current.invalidate();
     };
   }, [detailTask?.id, drawerOpen, loadSelectedRisk, loadTaskDetail, selectedRiskId]);
+
+  useEffect(() => () => {
+    listRequestCoordinatorRef.current.invalidate();
+    taskDetailRequestCoordinatorRef.current.invalidate();
+    riskDetailRequestCoordinatorRef.current.invalidate();
+  }, []);
 
   const openDetail = async (taskId: number) => {
     setDrawerOpen(true);
@@ -461,7 +479,11 @@ export default function RiskExecutionPage() {
       subTitle={detailTask ? <Tag color={detailTask.record_status_color || STATUS_COLOR[detailTask.record_status]}>{t(`patchManager.execution.statuses.${detailTask.record_status}`, detailTask.record_status_display)}</Tag> : null}
       extra={<Button type="link" icon={<ReloadOutlined />} onClick={() => detailTask?.id && loadTaskDetail(detailTask.id)}>{t('patchManager.refresh')}</Button>}
       open={drawerOpen}
-      onClose={() => { setDrawerOpen(false); selectedAbortRef.current?.abort(); }}
+      onClose={() => {
+        setDrawerOpen(false);
+        taskDetailRequestCoordinatorRef.current.invalidate();
+        riskDetailRequestCoordinatorRef.current.invalidate();
+      }}
       width={980}
       bodyStyle={{ padding: 0, display: 'flex', overflow: 'hidden' }}
     >

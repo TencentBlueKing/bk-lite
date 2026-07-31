@@ -427,7 +427,7 @@ def ingest_patch_source(source_id: int, keys: list) -> dict:
 
 @shared_task(max_retries=0)
 def probe_target_connectivity(target_id: int) -> None:
-    """异步探测目标主机连通性（TCP 端口可达），结果写回 connectivity_status。"""
+    """沿补丁真实执行链路异步探测目标，结果写回 connectivity_status。"""
     from apps.patch_mgmt.constants import ConnectivityStatus
     from apps.patch_mgmt.models import PatchTarget
     from apps.patch_mgmt.services.target_connectivity import probe_target
