@@ -57,6 +57,7 @@ interface UseUserModalDataReturn {
   organizationRoleIds: number[];
   organizationRoleSourceMap: Record<string, string>;
   isSuperuser: boolean;
+  isSyncedUser: boolean;
   currentUserId: string;
   setSelectedGroups: (groups: React.Key[]) => void;
   setSelectedRoles: (roles: number[]) => void;
@@ -91,6 +92,7 @@ export function useUserModalData(): UseUserModalDataReturn {
   const [organizationRoleIds, setOrganizationRoleIds] = useState<number[]>([]);
   const [organizationRoleSourceMap, setOrganizationRoleSourceMap] = useState<Record<string, string>>({});
   const [isSuperuser, setIsSuperuser] = useState<boolean>(false);
+  const [isSyncedUser, setIsSyncedUser] = useState(false);
   const [groupTreeData, setGroupTreeData] = useState<TreeSelectNode[]>([]);
   // 普通→超级管理员切换时缓存个人角色；切回普通时恢复，避免来回切换清空
   const cachedPersonalRoleIds = useRef<number[]>([]);
@@ -182,6 +184,7 @@ export function useUserModalData(): UseUserModalDataReturn {
           setPersonalRoleIds(personalRoles);
           setSelectedRoles(allRoles);
           setIsSuperuser(userDetail?.is_superuser || false);
+          setIsSyncedUser(userDetail.sync_source != null);
 
           const formValues = buildFormValuesFromUserDetail(userDetail, allRoles, userGroupIds);
           formRef.current?.setFieldsValue(formValues);
@@ -207,6 +210,7 @@ export function useUserModalData(): UseUserModalDataReturn {
       setGroupTreeData(nextGroupTreeData);
       formRef.current?.resetFields();
       setIsSuperuser(false);
+      setIsSyncedUser(false);
 
       if (modalType === 'edit' && userId) {
         setOrganizationRoleIds([]);
@@ -406,6 +410,7 @@ export function useUserModalData(): UseUserModalDataReturn {
     organizationRoleIds,
     organizationRoleSourceMap,
     isSuperuser,
+    isSyncedUser,
     currentUserId,
     setSelectedGroups,
     setSelectedRoles,

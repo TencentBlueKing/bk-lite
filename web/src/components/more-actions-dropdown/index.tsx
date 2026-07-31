@@ -73,31 +73,24 @@ const MoreActionsDropdown: React.FC<MoreActionsDropdownProps> = ({
               ? item.permission
               : [item.permission]
             : null;
-          const buttonNode = (
-            <Button
-              type="text"
-              size="small"
-              danger={item.danger}
-              disabled={item.disabled}
-              icon={item.icon}
-              className="w-full text-left"
-              onClick={(e) => {
-                e.stopPropagation();
-                runItem(item);
-              }}
-            >
+          const itemNode = (
+            <span className="flex w-full items-center justify-center gap-2 text-center">
+              {item.icon}
               {item.label}
-            </Button>
+            </span>
           );
           return {
             key: item.key,
             label: requiredPermissions ? (
               <PermissionWrapper requiredPermissions={requiredPermissions}>
-                {buttonNode}
+                {itemNode}
               </PermissionWrapper>
             ) : (
-              buttonNode
+              itemNode
             ),
+            disabled: item.disabled,
+            danger: item.danger,
+            onClick: () => runItem(item),
           };
         }),
       }}

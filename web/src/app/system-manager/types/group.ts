@@ -45,6 +45,7 @@ interface OriginalGroup {
   hasAuth: boolean;
   is_virtual?: boolean;
   role_ids?: number[];
+  sync_source?: number | null;
   subGroups: OriginalGroup[];
   access: {
     manage: boolean;

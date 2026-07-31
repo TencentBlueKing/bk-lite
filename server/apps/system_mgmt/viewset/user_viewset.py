@@ -65,6 +65,24 @@ def _validate_selected_groups(groups, loader):
     return None
 
 
+def _get_synced_group_ids(groups):
+    group_ids, _ = _normalize_group_ids(groups)
+    return set(Group.objects.filter(id__in=group_ids, sync_source__isnull=False).values_list("id", flat=True))
+
+
+def _validate_local_user_group_changes(groups, existing_groups=None):
+    selected_synced_group_ids = _get_synced_group_ids(groups)
+    if existing_groups is None:
+        if selected_synced_group_ids:
+            return "Synced groups cannot have locally managed users"
+        return None
+
+    existing_synced_group_ids = _get_synced_group_ids(existing_groups)
+    if selected_synced_group_ids != existing_synced_group_ids:
+        return "Synced group membership cannot be changed locally"
+    return None
+
+
 class UserViewSet(ViewSetUtils):
     """用户 ViewSet - 禁用所有内置 CRUD 接口，仅使用自定义 action
 
@@ -346,6 +364,9 @@ class UserViewSet(ViewSetUtils):
         if group_validation_error:
             return JsonResponse({"result": False, "message": group_validation_error})
         groups, _ = _normalize_group_ids(groups)
+        synced_group_error = _validate_local_user_group_changes(groups)
+        if synced_group_error:
+            return JsonResponse({"result": False, "message": synced_group_error})
         group_scope_error = self._validate_group_scope_for_request(request, groups, loader)
         if group_scope_error:
             return group_scope_error
@@ -570,18 +591,23 @@ class UserViewSet(ViewSetUtils):
         if not is_valid:
             return error_response
 
-        groups = params.get("groups", [])
+        is_synced_user = target_user.sync_source_id is not None
+        groups = target_user.group_list if is_synced_user else params.get("groups", [])
         group_validation_error = _validate_selected_groups(groups, loader)
         if group_validation_error:
             return JsonResponse({"result": False, "message": group_validation_error})
         groups, _ = _normalize_group_ids(groups)
+        if not is_synced_user:
+            synced_group_error = _validate_local_user_group_changes(groups, target_user.group_list)
+            if synced_group_error:
+                return JsonResponse({"result": False, "message": synced_group_error})
         group_scope_error = self._validate_group_scope_for_request(request, groups, loader)
         if group_scope_error:
             return group_scope_error
         params["groups"] = groups
         is_superuser = params.pop("is_superuser", False)
         admin_role_id = Role.objects.get(name="admin", app="").id
-        if not self._is_valid_phone(params.get("phone")):
+        if not is_synced_user and not self._is_valid_phone(params.get("phone")):
             return JsonResponse({"result": False, "message": "手机号格式不正确"})
         if is_superuser:
             params["roles"] = [admin_role_id]
@@ -606,16 +632,17 @@ class UserViewSet(ViewSetUtils):
                 ]
                 UserRule.objects.bulk_create(add_rule, batch_size=100)
             update_fields = {
-                "display_name": params.get("lastName"),
                 "locale": params.get("locale"),
                 "timezone": params.get("timezone"),
-                "group_list": params.get("groups"),
                 "role_list": params.get("roles"),
             }
-            if "email" in params:
-                update_fields["email"] = params["email"]
-            if "phone" in params:
-                update_fields["phone"] = params["phone"]
+            if not is_synced_user:
+                update_fields["display_name"] = params.get("lastName")
+                update_fields["group_list"] = params.get("groups")
+                if "email" in params:
+                    update_fields["email"] = params["email"]
+                if "phone" in params:
+                    update_fields["phone"] = params["phone"]
 
             User.objects.filter(id=pk).update(**update_fields)
             # 清除用户菜单缓存（缓存键格式为 menus-user:{user_id}）
@@ -623,7 +650,9 @@ class UserViewSet(ViewSetUtils):
 
             # 同步用户数据到 CMDB
             try:
-                CMDB().sync_display_fields(users=[{"id": pk, "username": params["username"], "display_name": params.get("lastName")}])
+                CMDB().sync_display_fields(
+                    users=[{"id": pk, "username": params["username"], "display_name": update_fields.get("display_name", target_user.display_name)}]
+                )
             except Exception as e:
                 logger.exception(e)
             # 记录操作日志

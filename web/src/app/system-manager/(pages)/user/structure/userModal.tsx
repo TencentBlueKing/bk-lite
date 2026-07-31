@@ -9,7 +9,11 @@ import { useTranslation } from '@/utils/i18n';
 import { ZONEINFO_OPTIONS, LOCALE_OPTIONS } from '@/app/system-manager/constants/userDropdowns';
 import RoleTransfer from '@/app/system-manager/components/user/roleTransfer';
 import { useUserModalData } from '@/app/system-manager/hooks/useUserModalData';
-import { transformTreeDataForSelect } from '@/app/system-manager/utils/userFormUtils';
+import {
+  filterSyncedGroupsForLocalUser,
+  flattenTreeSelectNodes,
+  transformTreeDataForSelect,
+} from '@/app/system-manager/utils/userFormUtils';
 import type { TreeSelectNode } from '@/app/system-manager/utils/userFormUtils';
 
 interface ModalProps {
@@ -46,6 +50,7 @@ const UserModal = forwardRef<ModalRef, ModalProps>(({ onSuccess, treeData }, ref
     organizationRoleIds,
     organizationRoleSourceMap,
     isSuperuser,
+    isSyncedUser,
     showModal,
     handleCancel,
     handleConfirm,
@@ -60,6 +65,24 @@ const UserModal = forwardRef<ModalRef, ModalProps>(({ onSuccess, treeData }, ref
     () => (treeData ? transformTreeDataForSelect(treeData) : []),
     [treeData]
   );
+
+  const historicalSyncedGroupIds = useMemo(() => {
+    const groupMap = new Map(flattenTreeSelectNodes(filteredTreeData).map((node) => [String(node.key), node]));
+    return selectedGroups.filter((groupId) => {
+      const group = groupMap.get(String(groupId));
+      return group?.syncSource !== null && group?.syncSource !== undefined;
+    });
+  }, [filteredTreeData, selectedGroups]);
+
+  const selectableGroupTreeData = useMemo(
+    () => filterSyncedGroupsForLocalUser(
+      filteredTreeData,
+      type === 'edit' ? historicalSyncedGroupIds : []
+    ),
+    [filteredTreeData, historicalSyncedGroupIds, type]
+  );
+
+  const isGroupSelectionLocked = isSyncedUser || historicalSyncedGroupIds.length > 0;
 
   useImperativeHandle(ref, () => ({
     showModal: (config) => showModal({
@@ -147,20 +170,24 @@ const UserModal = forwardRef<ModalRef, ModalProps>(({ onSuccess, treeData }, ref
             label={t('system.user.form.email')}
             rules={[{ required: true, message: t('common.inputRequired') }]}
           >
-            {renderSensitiveInput('email', `${t('common.inputMsg')}${t('system.user.form.email')}`)}
+            {type === 'edit' && isSyncedUser
+              ? <Input disabled />
+              : renderSensitiveInput('email', `${t('common.inputMsg')}${t('system.user.form.email')}`)}
           </Form.Item>
           <Form.Item
             name="phone"
             label={t('system.user.form.phone')}
           >
-            {renderSensitiveInput('phone', `${t('common.inputMsg')}${t('system.user.form.phone')}`)}
+            {type === 'edit' && isSyncedUser
+              ? <Input disabled />
+              : renderSensitiveInput('phone', `${t('common.inputMsg')}${t('system.user.form.phone')}`)}
           </Form.Item>
           <Form.Item
             name="lastName"
             label={t('system.user.form.lastName')}
             rules={[{ required: true, message: t('common.inputRequired') }]}
           >
-            <Input placeholder={`${t('common.inputMsg')}${t('system.user.form.lastName')}`} />
+            <Input placeholder={`${t('common.inputMsg')}${t('system.user.form.lastName')}`} disabled={type === 'edit' && isSyncedUser} />
           </Form.Item>
           <Form.Item
             name="zoneinfo"
@@ -199,10 +226,11 @@ const UserModal = forwardRef<ModalRef, ModalProps>(({ onSuccess, treeData }, ref
               mode="group"
               enableSubGroupSelect={true}
               groupRules={groupRules}
-              treeData={filteredTreeData}
+              treeData={selectableGroupTreeData}
               selectedKeys={selectedGroups}
               onChange={handleGroupChange}
               onChangeRule={handleChangeRule}
+              disabled={isGroupSelectionLocked}
             />
           </Form.Item>
           <Form.Item
