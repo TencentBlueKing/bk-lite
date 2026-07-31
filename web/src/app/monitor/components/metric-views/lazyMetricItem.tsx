@@ -112,29 +112,23 @@ const LazyMetricItem: React.FC<LazyMetricItemProps> = ({
       ref={ref}
       className="w-[49%] border border-[var(--color-border-1)] p-[10px] mb-[10px]"
     >
-      <div className="flex justify-between items-center">
-        <div className="flex items-center w-[calc(100%-36px)] text-[14px] pr-[15px]">
-          <div className="flex w-full box-border relative items-center min-w-0">
+      <div className="flex justify-between items-start gap-[8px]">
+        <div className="min-w-0 flex-1 text-[14px]">
+          <div className="flex items-center min-w-0">
             <span
-              className={`font-[600]  overflow-hidden text-ellipsis whitespace-nowrap`}
-              title={item.display_name}
+              className="font-[600] overflow-hidden text-ellipsis whitespace-nowrap"
+              title={`${item.display_name || ''}${item.name ? ` (${item.name})` : ''}`}
             >
               {item.display_name}
             </span>
-            <div className="text-[var(--color-text-3)] text-[12px] relative shrink-0">
+            <span className="text-[var(--color-text-3)] text-[12px] shrink-0 ml-[2px]">
               {getUnit(item)}
-              <Tooltip placement="topLeft" title={item.display_description}>
-                <div
-                  className="absolute cursor-pointer inline-block"
-                  style={{
-                    top: '-4px',
-                    right: '-6px'
-                  }}
-                >
-                  <Icon type="a-shuoming2" className="text-[14px]" />
-                </div>
-              </Tooltip>
-            </div>
+            </span>
+            <Tooltip placement="topLeft" title={item.display_description}>
+              <span className="inline-flex items-center shrink-0 ml-[2px] cursor-pointer text-[var(--color-text-3)] leading-none">
+                <Icon type="a-shuoming2" className="text-[14px]" />
+              </span>
+            </Tooltip>
             {item.seriesBudget?.truncated ? (
               <Tooltip
                 placement="top"
@@ -150,8 +144,16 @@ const LazyMetricItem: React.FC<LazyMetricItemProps> = ({
               </Tooltip>
             ) : null}
           </div>
+          {item.name ? (
+            <div
+              className="mt-[2px] text-[12px] leading-[18px] text-[var(--color-text-3)] overflow-hidden text-ellipsis whitespace-nowrap"
+              title={item.name}
+            >
+              {item.name}
+            </div>
+          ) : null}
         </div>
-        <div className="text-[var(--color-text-3)]">
+        <div className="shrink-0 text-[var(--color-text-3)] leading-none pt-[2px]">
           <Tooltip placement="topRight" title={t('monitor.views.quickSearch')}>
             <SearchOutlined
               className="cursor-pointer"

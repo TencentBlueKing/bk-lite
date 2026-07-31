@@ -27,6 +27,7 @@ import dayjs, { Dayjs } from 'dayjs';
 import { INIT_VIEW_MODAL_FORM } from '@/app/monitor/constants/view';
 import LazyMetricItem from '@/app/monitor/components/metric-views/lazyMetricItem';
 import { createMetricQueryWindow } from '@/app/monitor/components/metric-views/queryWindow';
+import { useMetricSelectOptions } from '@/app/monitor/components/metricSelectOptions';
 
 const MonitorView: React.FC<ViewModalProps> = ({
   monitorObject,
@@ -59,6 +60,7 @@ const MonitorView: React.FC<ViewModalProps> = ({
   const [originMetricData, setOriginMetricData] = useState<IndexViewItem[]>([]);
   const [activeTab, setActiveTab] = useState<string>('');
   const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
+  const metricSelect = useMetricSelectOptions(originMetricData);
   const [loadedMetricIds, setLoadedMetricIds] = useState<Set<number>>(
     new Set()
   );
@@ -643,18 +645,8 @@ const MonitorView: React.FC<ViewModalProps> = ({
           placeholder={t('common.searchPlaceHolder')}
           value={metricId}
           allowClear
-          showSearch
-          filterOption={(input, option) =>
-            (option?.label || '').toLowerCase().includes(input.toLowerCase())
-          }
-          options={originMetricData.map((item) => ({
-            label: item.display_name,
-            title: item.name,
-            options: (item.child || []).map((tex) => ({
-              label: tex.display_name,
-              value: tex.id,
-            })),
-          }))}
+          {...metricSelect.selectSearchProps}
+          options={metricSelect.options}
           onChange={handleMetricIdChange}
         ></Select>
         <TimeSelector

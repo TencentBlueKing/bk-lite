@@ -28,6 +28,7 @@ import { attachGapIntervals, buildGapDetectionParams } from '@/app/monitor/utils
 
 import dayjs, { Dayjs } from 'dayjs';
 import LazyMetricItem from './lazyMetricItem';
+import { useMetricSelectOptions } from '@/app/monitor/components/metricSelectOptions';
 
 const MYSQL_GROUP_NAME_MAP: Record<string, string> = {
   ConnStatus: '连接状态',
@@ -126,6 +127,7 @@ const MetricViews: React.FC<ViewDetailProps> = ({
   const [activeTab, setActiveTab] = useState<string>('');
   const [plugins, setPlugins] = useState<IntegrationItem[]>([]);
   const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
+  const metricSelect = useMetricSelectOptions(originMetricData);
 
   // 添加懒加载和请求管理相关状态
   const [loadedMetricIds, setLoadedMetricIds] = useState<Set<number>>(
@@ -297,7 +299,6 @@ const MetricViews: React.FC<ViewDetailProps> = ({
           setMetricData(_groupData);
           setOriginMetricData(_groupData);
           if (_groupData.length > 0) {
-            // 默认只展开第一个分组，降低首屏并发请求与 DOM 压力。
             // 默认展开全部分组，避免用户逐个点开；具体指标卡仍靠滚入视图懒加载。
             setExpandedIds(new Set(_groupData.map((group: IndexViewItem) => group.id)));
           }
@@ -346,7 +347,7 @@ const MetricViews: React.FC<ViewDetailProps> = ({
     }
 
     setMetricData(clearedData);
-    // 刷新时保留已展开分组；若为空则只展开第一个。
+    // 刷新时保留已展开分组；若为空则展开全部，继续靠卡片滚入视图加载。
     setExpandedIds((prev) => {
       if (prev.size > 0) {
         const kept = new Set(
@@ -769,18 +770,8 @@ const MetricViews: React.FC<ViewDetailProps> = ({
           placeholder={t('common.searchPlaceHolder')}
           value={metricId}
           allowClear
-          showSearch
-          filterOption={(input, option) =>
-            (option?.label || '').toLowerCase().includes(input.toLowerCase())
-          }
-          options={originMetricData.map((item) => ({
-            label: item.display_name,
-            title: item.name,
-            options: (item.child || []).map((tex) => ({
-              label: tex.display_name,
-              value: tex.id
-            }))
-          }))}
+          {...metricSelect.selectSearchProps}
+          options={metricSelect.options}
           onChange={handleMetricIdChange}
         ></Select>
         {!hideTimeSelector ? (
