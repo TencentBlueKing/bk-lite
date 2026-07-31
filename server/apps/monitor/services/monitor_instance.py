@@ -391,7 +391,11 @@ class InstanceSearch:
         return [best[key][1] for key in order]
 
     def get_objs(self):
-        qs = self.qs.filter(monitor_object_id=self.monitor_obj.id, is_deleted=False)
+        qs = self.qs.filter(
+            monitor_object_id=self.monitor_obj.id,
+            is_deleted=False,
+            is_active=True,
+        )
         name = self.query_data.get("name")
         if name:
             qs = qs.filter(name__icontains=name)
@@ -403,7 +407,11 @@ class InstanceSearch:
         return objs_map
 
     def get_objs_v2(self):
-        qs = self.qs.filter(monitor_object_id=self.monitor_obj.id, is_deleted=False)
+        qs = self.qs.filter(
+            monitor_object_id=self.monitor_obj.id,
+            is_deleted=False,
+            is_active=True,
+        )
         name = self.query_data.get("name")
         if name:
             qs = qs.filter(name__icontains=name)

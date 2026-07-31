@@ -55,6 +55,7 @@
     "test:monitor-asset-batch-delete": "pnpm exec tsx scripts/monitor-asset-batch-delete-test.ts",
     "test:monitor-host-deployment-option": "pnpm exec tsx scripts/monitor-host-deployment-option-test.ts",
     "test:monitor-view-column-preference": "pnpm exec tsx scripts/monitor-view-column-preference-test.ts",
+    "test:monitor-view-object-isolation": "pnpm exec tsx scripts/monitor-view-object-isolation-test.ts",
     "test:monitor-metric-value-format": "pnpm exec tsx scripts/monitor-metric-value-format-test.ts",
     "test:k8s-cluster-filter": "pnpm exec tsx scripts/k8s-cluster-filter-test.ts",
     "test:monitor-gap-interval": "pnpm exec tsx scripts/monitor-gap-interval-test.ts",
