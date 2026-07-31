@@ -7,6 +7,7 @@ from apps.mlops.models.anomaly_detection import *
 from apps.mlops.serializers.anomaly_detection import *
 from config.drf.pagination import CustomPageNumberPagination
 from rest_framework.response import Response
+from apps.mlops.utils.i18n import mlops_message
 from rest_framework import status
 from django.http import FileResponse
 import pandas as pd
@@ -1518,9 +1519,9 @@ class AnomalyDetectionAlgorithmConfigViewSet(ModelViewSet):
     def get_image(self, request):
         name = request.query_params.get("name")
         if not name:
-            return Response({"error": "name 参数必填"}, status=400)
+            return Response({"error": mlops_message(request, "error.algorithm_name_required")}, status=400)
         try:
             config = AlgorithmConfig.objects.get(algorithm_type="anomaly_detection", name=name, is_active=True)
             return Response({"image": config.image})
         except AlgorithmConfig.DoesNotExist:
-            return Response({"error": f"未找到算法配置: anomaly_detection/{name}"}, status=404)
+            return Response({"error": mlops_message(request, "error.algorithm_config_not_found", algorithm=f"anomaly_detection/{name}")}, status=404)

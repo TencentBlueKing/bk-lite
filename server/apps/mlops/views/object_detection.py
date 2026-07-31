@@ -9,6 +9,7 @@ from config.drf.pagination import CustomPageNumberPagination
 from apps.core.decorators.api_permission import HasPermission
 from rest_framework import status
 from rest_framework.response import Response
+from apps.mlops.utils.i18n import mlops_message
 from rest_framework.decorators import action
 from django.db import transaction
 from django.http import FileResponse
@@ -1489,9 +1490,9 @@ class ObjectDetectionAlgorithmConfigViewSet(ModelViewSet):
     def get_image(self, request):
         name = request.query_params.get("name")
         if not name:
-            return Response({"error": "name 参数必填"}, status=400)
+            return Response({"error": mlops_message(request, "error.algorithm_name_required")}, status=400)
         try:
             config = AlgorithmConfig.objects.get(algorithm_type="object_detection", name=name, is_active=True)
             return Response({"image": config.image})
         except AlgorithmConfig.DoesNotExist:
-            return Response({"error": f"未找到算法配置: object_detection/{name}"}, status=404)
+            return Response({"error": mlops_message(request, "error.algorithm_config_not_found", algorithm=f"object_detection/{name}")}, status=404)
