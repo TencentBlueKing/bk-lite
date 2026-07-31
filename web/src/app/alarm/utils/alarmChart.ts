@@ -2,90 +2,75 @@ import dayjs from 'dayjs';
 import type { AlarmTableDataItem } from '@/app/alarm/types/alarms';
 import type { LevelItem } from '@/app/alarm/types/index';
 
-type IntervalUnit = 'second' | 'minute' | 'hour' | 'day';
+type BucketUnit = 'day' | 'month';
 type ChartBucket = { time: string } & Record<string, string | number>;
 
-const UNIT_MILLISECONDS: Record<IntervalUnit, number> = {
-  second: 1000,
-  minute: 60 * 1000,
-  hour: 60 * 60 * 1000,
-  day: 24 * 60 * 60 * 1000,
-};
+const DAILY_BUCKET_MAX_SPAN_DAYS = 180;
 
-const formatBucketTime = (
-  time: dayjs.Dayjs,
-  intervalUnit: IntervalUnit,
-  convertToLocalizedTime: (iso: string) => string
-) => {
-  const localTime = convertToLocalizedTime(time.toISOString());
-  if (intervalUnit === 'day') return dayjs(localTime).format('YYYY-MM-DD');
-  if (intervalUnit === 'hour') {
-    return dayjs(localTime).format('YYYY-MM-DD HH:00');
-  }
-  if (intervalUnit === 'minute') {
-    return dayjs(localTime).format('YYYY-MM-DD HH:mm');
-  }
-  return dayjs(localTime).format('YYYY-MM-DD HH:mm:ss');
-};
+export function getChartAxisTicks(
+  data: Array<{ time?: unknown }>,
+  maxTicks = 12
+): string[] {
+  const times = data
+    .map(({ time }) => time)
+    .filter((time): time is string => typeof time === 'string');
+  const tickLimit = Math.max(2, Math.floor(maxTicks));
+
+  if (times.length <= tickLimit) return times;
+
+  const lastIndex = times.length - 1;
+  return Array.from(
+    { length: tickLimit },
+    (_, index) => times[Math.round((index * lastIndex) / (tickLimit - 1))]
+  );
+}
 
 /**
- * 将告警数据按动态时间区间（秒/分钟/小时/天）分桶，生成适合堆叠柱状图的格式
+ * 将告警数据按 created_at 所在的自然日或自然月分桶，生成适合堆叠柱状图的格式
  * @param data 原始告警列表
  * @param levelList 等级列表，用于初始化各级别统计字段
  * @param convertToLocalizedTime 本地化时间转换函数
- * @param desiredSegments 框定分段数量，默认 12
  */
 export function processDataForStackedBarChart(
   data: AlarmTableDataItem[],
   levelList: LevelItem[],
-  convertToLocalizedTime: (iso: string) => string,
-  desiredSegments = 12
+  convertToLocalizedTime: (iso: string) => string
 ) {
   if (!data?.length) return [];
 
   // 表格的时间筛选和排序均以 created_at 为准，图表也使用同一时间口径。
-  const validData = data.filter((item) => dayjs(item.created_at).isValid());
+  const validData = data
+    .map((item) => ({
+      item,
+      localCreatedAt: dayjs(convertToLocalizedTime(item.created_at)),
+    }))
+    .filter(({ localCreatedAt }) => localCreatedAt.isValid());
   if (!validData.length) return [];
 
-  const timestamps = validData.map((item) => dayjs(item.created_at));
-  const minTime = timestamps.reduce(
+  const timestamps = validData.map(({ localCreatedAt }) => localCreatedAt);
+  const earliestTime = timestamps.reduce(
     (min, cur) => (cur.isBefore(min) ? cur : min),
     timestamps[0]
   );
-  const maxTime = timestamps.reduce(
+  const latestTime = timestamps.reduce(
     (max, cur) => (cur.isAfter(max) ? cur : max),
     timestamps[0]
   );
 
-  const segmentTarget = Math.max(1, desiredSegments);
-  const totalMilliseconds = maxTime.valueOf() - minTime.valueOf();
-  const rawIntervalMilliseconds = Math.max(
-    UNIT_MILLISECONDS.second,
-    totalMilliseconds / segmentTarget
-  );
-  const intervalUnit: IntervalUnit =
-    rawIntervalMilliseconds < UNIT_MILLISECONDS.minute
-      ? 'second'
-      : rawIntervalMilliseconds < UNIT_MILLISECONDS.hour
-        ? 'minute'
-        : rawIntervalMilliseconds < UNIT_MILLISECONDS.day
-          ? 'hour'
-          : 'day';
-  const intervalCount = Math.max(
-    1,
-    Math.ceil(rawIntervalMilliseconds / UNIT_MILLISECONDS[intervalUnit])
-  );
-  const totalUnits = maxTime.diff(minTime, intervalUnit, true);
-  const segmentsCount = Math.floor(totalUnits / intervalCount) + 1;
+  const daySpan = latestTime
+    .startOf('day')
+    .diff(earliestTime.startOf('day'), 'day');
+  const bucketUnit: BucketUnit =
+    daySpan <= DAILY_BUCKET_MAX_SPAN_DAYS ? 'day' : 'month';
+  const bucketFormat = bucketUnit === 'day' ? 'YYYY-MM-DD' : 'YYYY-MM';
+  const minTime = earliestTime.startOf(bucketUnit);
+  const maxTime = latestTime.startOf(bucketUnit);
+
+  const segmentsCount = maxTime.diff(minTime, bucketUnit) + 1;
   const buckets: ChartBucket[] = Array.from(
     { length: segmentsCount },
     (_, index) => {
-      const bucketTime = minTime.add(index * intervalCount, intervalUnit);
-      const time = formatBucketTime(
-        bucketTime,
-        intervalUnit,
-        convertToLocalizedTime
-      );
+      const time = minTime.add(index, bucketUnit).format(bucketFormat);
       return {
         time,
         ...levelList.reduce(
@@ -99,10 +84,10 @@ export function processDataForStackedBarChart(
     }
   );
 
-  validData.forEach((item) => {
-    const bucketIndex = Math.floor(
-      dayjs(item.created_at).diff(minTime, intervalUnit, true) / intervalCount
-    );
+  validData.forEach(({ item, localCreatedAt }) => {
+    const bucketIndex = localCreatedAt
+      .startOf(bucketUnit)
+      .diff(minTime, bucketUnit);
     const level = levelList.find(
       (itemLevel) => itemLevel.level_id === Number(item.level)
     );
