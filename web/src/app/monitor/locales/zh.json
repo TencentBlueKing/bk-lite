@@ -569,11 +569,25 @@
       "collectDetectNodeRequired": "请先选择采集节点",
       "advancedConfiguration": "高级配置",
       "advancedConfigurationHint": "按需配置请求内容、认证方式与期望响应判断",
+      "advancedFilterConfiguration": "接口过滤",
+      "advancedFilterConfigurationHint": "按接口类型（ifType）和名称（ifDescr）配置排除或仅采集",
+      "filterMutexConflict": "「{left}」与「{right}」不能同时配置，请先清空其中一侧",
+      "filterMutexOptionDisabled": "「{peer}」已选中该值",
+      "filterMutexPeerOccupied": "「{peer}」已填写，不能同时配置",
+      "filterIfTypeTagsPlaceholder": "选择常用类型，或输入数字（如 22）后回车",
+      "filterIfTypeInvalid": "ifType 请填数字（如 22）；无效值：{values}",
+      "filterMutexFields": {
+        "iftype_exclude": "排除的接口类型",
+        "iftype_include": "仅采集的接口类型",
+        "ifdescr_exclude": "排除的接口名称",
+        "ifdescr_include": "仅采集的接口名称"
+      },
       "advancedSections": {
         "request": "请求内容",
         "auth": "认证凭据",
         "response": "期望响应",
         "tls": "证书校验",
+        "interface_filter": "接口过滤",
         "other": "其他"
       },
       "keyValueEmpty": "暂无条目，点击下方添加",
