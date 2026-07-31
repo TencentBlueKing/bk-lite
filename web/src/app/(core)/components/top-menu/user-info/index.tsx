@@ -296,8 +296,10 @@ const UserInfo: React.FC = () => {
             }}
           >
             <span>{t('common.organization')}</span>
-            <span className="flex items-center gap-1 text-xs text-[var(--color-text-4)]">
-              {selectedGroup?.name}
+            <span className="flex min-w-0 items-center gap-1 text-xs text-[var(--color-text-4)]">
+              <span className="max-w-[120px] truncate text-xs text-[var(--color-text-4)]">
+                {selectedGroup?.name}
+              </span>
               <RightOutlined className="text-[10px]" />
             </span>
           </div>

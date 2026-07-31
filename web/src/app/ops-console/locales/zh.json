@@ -1,6 +1,6 @@
 {
   "opsConsole": {
-    "console": "欢迎使用BlueKing Lite控制台",
+    "console": "欢迎使用{portalName}控制台",
     "user": "用户",
     "probeManagement": "探针管理",
     "associatedTopology": "关联拓扑",
