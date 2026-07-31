@@ -8,3 +8,7 @@ error:
   algorithm_in_use_cannot_delete: "无法删除：有 {task_count} 个训练任务正在使用此算法"
   algorithm_type_and_name_required: "algorithm_type 和 name 参数必填"
   algorithm_name_required: "name 参数必填"
+  training_task_already_running: "训练任务已在运行中"
+  training_task_not_running: "训练任务未在运行中"
+  dataset_file_not_found: "数据集文件不存在"
+  training_config_file_not_found: "训练配置文件不存在"

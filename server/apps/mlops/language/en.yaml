@@ -8,3 +8,7 @@ error:
   algorithm_in_use_cannot_delete: "Cannot delete the algorithm configuration because {task_count} training task(s) are using it"
   algorithm_type_and_name_required: "algorithm_type and name are required"
   algorithm_name_required: "name is required"
+  training_task_already_running: "Training task is already running"
+  training_task_not_running: "Training task is not running"
+  dataset_file_not_found: "Dataset file was not found"
+  training_config_file_not_found: "Training configuration file was not found"

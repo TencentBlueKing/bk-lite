@@ -214,7 +214,7 @@ class ImageClassificationDatasetReleaseViewSet(ModelViewSet):
             instance = self.get_object()
 
             if not instance.dataset_file:
-                return Response({"error": "数据集文件不存在"}, status=status.HTTP_404_NOT_FOUND)
+                return Response({"error": mlops_message(request, "error.dataset_file_not_found")}, status=status.HTTP_404_NOT_FOUND)
 
             file = instance.dataset_file.open("rb")
             filename = f"{instance.dataset.name}_{instance.version}.zip"
@@ -330,7 +330,7 @@ class ImageClassificationTrainJobViewSet(TeamModelViewSet):
 
             # 检查任务状态
             if train_job.status == TrainJobStatus.RUNNING:
-                return Response({"error": "训练任务已在运行中"}, status=status.HTTP_400_BAD_REQUEST)
+                return Response({"error": mlops_message(request, "error.training_task_already_running")}, status=status.HTTP_400_BAD_REQUEST)
 
             # 获取训练配置
             try:
@@ -344,10 +344,10 @@ class ImageClassificationTrainJobViewSet(TeamModelViewSet):
 
             # 检查必要字段
             if not train_job.dataset_version or not train_job.dataset_version.dataset_file:
-                return Response({"error": "数据集文件不存在"}, status=status.HTTP_400_BAD_REQUEST)
+                return Response({"error": mlops_message(request, "error.dataset_file_not_found")}, status=status.HTTP_400_BAD_REQUEST)
 
             if not train_job.config_url:
-                return Response({"error": "训练配置文件不存在"}, status=status.HTTP_400_BAD_REQUEST)
+                return Response({"error": mlops_message(request, "error.training_config_file_not_found")}, status=status.HTTP_400_BAD_REQUEST)
 
             scope_error = self.ensure_train_job_dataset_scope(request, train_job)
             if scope_error is not None:
@@ -390,7 +390,7 @@ class ImageClassificationTrainJobViewSet(TeamModelViewSet):
 
             previous_status = self.claim_train_job_running(train_job)
             if previous_status is None:
-                return Response({"error": "训练任务已在运行中"}, status=status.HTTP_400_BAD_REQUEST)
+                return Response({"error": mlops_message(request, "error.training_task_already_running")}, status=status.HTTP_400_BAD_REQUEST)
 
             # 启动前清理可能残留的旧训练容器
             try:
@@ -459,7 +459,7 @@ class ImageClassificationTrainJobViewSet(TeamModelViewSet):
 
             # 检查任务状态
             if train_job.status != TrainJobStatus.RUNNING:
-                return Response({"error": "训练任务未在运行中"}, status=status.HTTP_400_BAD_REQUEST)
+                return Response({"error": mlops_message(request, "error.training_task_not_running")}, status=status.HTTP_400_BAD_REQUEST)
 
             # 构建训练任务标识
             job_id = mlflow_service.build_job_id(
