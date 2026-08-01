@@ -105,7 +105,6 @@ class Migration(migrations.Migration):
                 ('filters', models.JSONField(blank=True, null=True, verbose_name='筛选配置')),
                 ('other', models.JSONField(blank=True, null=True, verbose_name='其他配置')),
                 ('widget_manifest', models.JSONField(default=list, verbose_name='Widget 清单')),
-                ('datasource_snapshots', models.JSONField(default=list, verbose_name='DataSource 运行快照（审计冻结，当前不驱动取数）')),
                 ('created_at', models.DateTimeField(auto_now_add=True, db_index=True, verbose_name='创建时间')),
                 ('execution', models.OneToOneField(on_delete=django.db.models.deletion.CASCADE, related_name='render_snapshot', to='operation_analysis.dashboardreportexecution', verbose_name='报告执行')),
             ],

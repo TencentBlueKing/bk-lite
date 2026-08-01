@@ -19,7 +19,7 @@
 | DashboardReportSubscription | `models/subscription_models.py` | Dashboard 报告订阅配置；绑定 Dashboard、创建者、名称、状态、单个接收邮箱、邮件渠道及预留 config |
 | DashboardReportExecution | `models/subscription_models.py` | 一次 Dashboard 报告订阅执行审计；支持 manual 触发及 pending/running/succeeded/failed/unknown；`pending→running` 仅经 Claim |
 | DashboardReportExecutionSnapshot | `models/subscription_models.py` | 一次订阅执行的不可变输入快照；冻结 Dashboard、Subscription、创建者标识/时区与已保存筛选值，不复制布局或 Widget |
-| DashboardReportRenderSnapshot | `models/subscription_models.py` | 一次执行的不可变渲染输入；冻结 Dashboard 名称、布局、筛选、其他展示配置、Widget 清单，以及非敏感 `datasource_snapshots` 审计冻结（当前不驱动取数，不含凭据） |
+| DashboardReportRenderSnapshot | `models/subscription_models.py` | 一次执行的不可变渲染输入；冻结 Dashboard 名称、布局、筛选、其他展示配置与 Widget 清单；清单只保留 DataSource identity，不复制运行配置或凭据 |
 | DashboardReportPdfArtifact | `models/subscription_models.py` | 一次执行生成的短期 PDF 元数据；保存附件文件名、受控共享存储引用、文件大小、SHA-256、生成时间与到期时间，不提供历史下载或长期归档 |
 | DashboardReportRenderToken | `models/subscription_models.py` | 一次 Execution 对应的一次性短时 Render Token 审计记录；数据库仅保存 SHA-256、到期与消费时间，明文只在 Worker 内存存在 |
 
@@ -36,7 +36,7 @@
 - `screen` / `report`【已实现/已存在】：通过 `CanvasModelViewSet` 复用画布类 CRUD、权限与内置对象保护逻辑，新增 `directory.screen` 与 `directory.report` 两类权限域（`views/view.py:347-423`）。
 - `dashboard_subscription`【已实现】：当前用户 Dashboard 报告订阅 GET/POST/PATCH/DELETE。创建与更新要求当前用户仍可查看目标 Dashboard；删除允许创建者在 Dashboard 查看权限丢失后清理；`terminated` 不可由 API 直接写入（证据：`views/subscription_view.py`、`services/subscription_service.py`、`serializers/subscription_serializers.py`）。
 - `dashboard_subscription/{id}/execute` 与 `dashboard_execution/{id}`【已实现】：前者为已保存订阅创建 manual Execution、冻结 Input Snapshot，支持 `request_id` 幂等与在途串行，立即返回 Execution；请求线程不调用 Orchestrator。后者只读返回当前用户自己的执行及双 Snapshot。异步 Render Worker Claim 后经 Orchestrator 完成 Render + Email Delivery，两端均明确完成后才进入 `succeeded`；主链路无 `not_ready` placeholder（证据：`views/{subscription_view,execution_view}.py`、`services/{execution_service,execution_orchestrator,delivery_service}.py`）。
-- `dashboard_execution/{id}/render-token-exchange` 与 `render-input`【已实现】：Worker 为 `running` Execution 签发一次性短时 Token，匿名 exchange 原子消费后建立绑定 Execution 的短时 Render Session；普通用户 Session、过期 Token、重复消费和跨 Execution 会话均不能读取 render-input。正式页面只使用双 Snapshot（布局/筛选），Widget 取数仍走实时 DataSource，不消费 `datasource_snapshots`。PDF artifact 按 Execution 隔离；生产环境强制配置 Render/Delivery 共同可见的 `DASHBOARD_REPORT_ARTIFACT_ROOT`（证据：`views/execution_view.py`、`services/{render_token_service,dashboard_report_renderer,report_render_service,render_snapshot_service}.py`）。
+- `dashboard_execution/{id}/render-token-exchange` 与 `render-input`【已实现】：Worker 为 `running` Execution 签发一次性短时 Token，匿名 exchange 原子消费后建立绑定 Execution 的短时 Render Session；普通用户 Session、过期 Token、重复消费和跨 Execution 会话均不能读取 render-input。正式页面使用双 Snapshot 冻结布局与筛选，Widget 根据 manifest 中的 DataSource identity 实时解析当前定义、权限和凭据；Render Snapshot 不复制 DataSource 运行配置。PDF artifact 按 Execution 隔离；生产环境强制配置 Render/Delivery 共同可见的 `DASHBOARD_REPORT_ARTIFACT_ROOT`（证据：`views/execution_view.py`、`services/{render_token_service,dashboard_report_renderer,report_render_service,render_snapshot_service}.py`）。
 - `open_api/import_export`：开放导入导出 API 通过 `api_pass`/API Token 校验，支持 `export`、`precheck_import`、`submit_import` 三类动作；授权服务解析组织、计算导入导出权限矩阵，并在实例/组织维度过滤对象（证据：`views/openapi_import_export_view.py:34,48,118,190,280`、`services/import_export/authorization_service.py:24,71,87,180`）。
 
 安全说明【已实现/已存在】：`NameSpace` 密码使用 AES（`PasswordCrypto`）加解密，密钥取自 `constants.constants.SECRET_KEY`；该密钥已移除源码内置硬编码值，仅从环境变量 `SECRET_KEY` 读取，未配置时为空串（`constants/constants.py:51-53`）。命名空间编辑时前端只回显掩码占位符；若用户未修改密码，提交时会省略 `password` 字段并以 PATCH 保留原密文，避免因重复提交掩码值而覆盖真实密码（`web/src/app/ops-analysis/(pages)/settings/namespace/operateModal.tsx:10-18,30-49,74-83`、`web/src/app/ops-analysis/api/namespace.ts:22-27`）。
@@ -104,14 +104,15 @@
 
 - `[operation_analysis#20260729-004]` 新增统一 Execution Orchestrator 和 Permission/Snapshot/Render/Delivery 步骤边界。Manual Execute API 委托同一 Orchestrator；权限或 Snapshot 校验失败分别记录 `permission_check` / `snapshot`。Render 与 Delivery 仍为无副作用 placeholder，未接入异步任务、Chromium、PDF 或邮件。
 - `[operation_analysis#20260729-005]` 修正 Manual Execute 异步边界与成功语义：POST 只创建并返回 `pending` Execution；View 不再同步调用 Orchestrator；未实现的 Render/Delivery 返回 `not_ready`，不得产生 `succeeded`。Subscription Modal 可查询并展示单条 Execution 状态。
-- `[operation_analysis#20260729-006]` 新增一对一不可变 Render Snapshot。Orchestrator 在 Input Snapshot 校验后、Render Step 前冻结 Dashboard 配置及 Widget manifest；创建失败记录 `failure_stage=render_snapshot`。未新增 Render Route，未接入 DataSource Runtime Snapshot、Chromium、PDF、Email 或 Scheduler。
+- `[operation_analysis#20260729-006]` 新增一对一不可变 Render Snapshot。Orchestrator 在 Input Snapshot 校验后、Render Step 前冻结 Dashboard 配置及 Widget manifest；创建失败记录 `failure_stage=render_snapshot`。未新增 Render Route，未冻结 DataSource 运行配置，也未接入 Chromium、PDF、Email 或 Scheduler。
 - `[operation_analysis#20260729-007]` 新增事务性 Execution Claim Service，通过条件更新及受影响行数保证同一 pending Execution 只被一个消费者领取并进入 running；公共 transition 禁止绕过 Claim。Orchestrator 改为只消费已领取的 running Execution，不再自行推进 pending。未新增 Worker、Chromium、PDF、Email、Scheduler 或 Retry。
 - `[operation_analysis#20260729-008]` 接入 Execution Render Vertical Slice：Manual Execute 提交后异步派发专用队列 Render Task，独立 Worker claim 后经统一 Orchestrator 加载双 Snapshot；正式 execution render route 注入冻结筛选与布局，Chromium 仅等待显式 ready/failed 并生成临时 PDF artifact。Render 成功保持 running 等待 Delivery，失败记录 `failure_stage=render`。本阶段未实现 Render Token，使用 Worker 新建的无登录审计副作用标准用户会话作为阶段性边界；未实现 Email/Retry。
 - `[operation_analysis#20260729-009]` Render 生产边界收口：新增一次性短时 Render Token 与匿名 exchange，明文不落库，短时渲染 JWT 绑定 Execution，普通登录 Session 与跨 Execution 会话不能读取 render-input；PDF artifact 增加附件文件名、到期时间和共享根目录硬约束。Release-image Chromium 回归增加 `fc-match`、版本与 PyMuPDF 中文文本提取断言；未实现 Email、Retry 或清理 Worker。
 
 ## 2026-07-30 MVP Closure 契约对齐
 
-- `[operation_analysis#20260730-001]` 手动主链路（含 Email Delivery）已落地；文档与测试不再宣称 DataSource Runtime Snapshot 已保证配置变更不影响历史 Execution（仅审计冻结、未接入取数消费）。清理过时的 Email 未实现 / `not_ready` placeholder / Phase 临时表述；`ALLOWED_TRANSITIONS` 去掉误导性的 `pending→running` 条目（Claim 仍为唯一入口）。
+- `[operation_analysis#20260730-001]` 手动主链路（含 Email Delivery）已落地；报告取数使用实时 DataSource，不保证配置变更不影响历史或在途 Execution。清理过时的 Email 未实现 / `not_ready` placeholder / Phase 临时表述；`ALLOWED_TRANSITIONS` 去掉误导性的 `pending→running` 条目（Claim 仍为唯一入口）。
+- `[operation_analysis#20260801-001]` 删除未被查询链路消费的 DataSource 配置审计副本；Render Snapshot 继续通过 Widget manifest 保留 DataSource identity，查询时实时解析当前定义、权限和凭据，不支持历史配置重放。
 - `[operation_analysis#20260730-002]` Retry Resume / Orphan 语义对齐（未编码）：Execution 重试期间保持 `running`、claim 一次、同 task 多 attempt；下一 attempt 起点按 InputSnapshot / RenderSnapshot / Artifact 资源状态决定。**修正**：Snapshot 创建阶段 transient failure 允许再 ensure/create；仅冻结成功后损坏才终结且禁止重建。Artifact 可在 Delivery retry 复用；不可用 Artifact 视为需重跑 Render。MVP 超时收敛为 `failed`；orphan running 不自动 reclaim，且继续占用 in-flight 阻塞同订阅新的 manual/scheduled。
 
 ## 6. 证据来源

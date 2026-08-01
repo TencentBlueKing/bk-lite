@@ -438,10 +438,6 @@ class DashboardReportRenderSnapshot(models.Model):
         default=list,
         verbose_name="Widget 清单",
     )
-    datasource_snapshots = models.JSONField(
-        default=list,
-        verbose_name="DataSource 运行快照（审计冻结，当前不驱动取数）",
-    )
     created_at = models.DateTimeField(
         auto_now_add=True,
         db_index=True,

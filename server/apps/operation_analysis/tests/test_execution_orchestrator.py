@@ -1,7 +1,6 @@
 import pytest
 from django.core.exceptions import ValidationError
 
-from apps.operation_analysis.models.datasource_models import DataSourceAPIModel
 from apps.operation_analysis.models.models import Dashboard, Directory
 from apps.operation_analysis.models.subscription_models import (
     DashboardReportExecution,
@@ -579,27 +578,17 @@ def test_render_snapshot_operational_error_can_retry(
     assert calls["n"] == 2
 
 
-def test_datasource_snapshot_persists_non_sensitive_audit_freeze(
+def test_render_snapshot_keeps_datasource_identity_without_runtime_config(
     execution,
     monkeypatch,
 ):
-    """MVP freezes DS metadata into Render Snapshot for audit only.
-
-    It does not guarantee runtime queries ignore later live DataSource edits.
-    """
-    datasource = DataSourceAPIModel.objects.create(
-        name="原始数据源",
-        source_type="nats",
-        query_config={"path": "get_alert_list"},
-        field_schema=[{"key": "name", "title": "名称"}],
-    )
     execution.dashboard.view_sets = [
         {
             "id": "widget-ds",
             "itemType": "widget",
             "valueConfig": {
                 "chartType": "table",
-                "dataSource": datasource.id,
+                "dataSource": 42,
             },
         }
     ]
@@ -612,31 +601,17 @@ def test_datasource_snapshot_persists_non_sensitive_audit_freeze(
     render_snapshot = DashboardReportRenderSnapshot.objects.get(
         execution=execution
     )
-    assert len(render_snapshot.datasource_snapshots) == 1
-    ds_snap = render_snapshot.datasource_snapshots[0]
-    assert ds_snap["datasource_id"] == datasource.id
-    assert ds_snap["source_type"] == "nats"
-    assert ds_snap["query_config"] == {"path": "get_alert_list"}
-    assert ds_snap["field_schema"] == [{"key": "name", "title": "名称"}]
-    assert "connection_config" not in ds_snap
-    assert "password" not in ds_snap
-    assert "token" not in ds_snap
-
-    datasource.query_config = {"path": "get_alert_list_v2"}
-    datasource.field_schema = [
-        {"key": "name", "title": "名称"},
-        {"key": "severity", "title": "严重度"},
+    assert render_snapshot.widget_manifest == [
+        {
+            "widget_id": "widget-ds",
+            "widget_type": "table",
+            "datasource_id": 42,
+        }
     ]
-    datasource.save(update_fields=["query_config", "field_schema"])
-    render_snapshot.refresh_from_db()
-
-    # Persisted snapshot rows stay immutable; runtime query path is unchanged.
-    ds_snap_after = render_snapshot.datasource_snapshots[0]
-    assert ds_snap_after["query_config"] == {"path": "get_alert_list"}
-    assert ds_snap_after["field_schema"] == [{"key": "name", "title": "名称"}]
+    assert not hasattr(render_snapshot, "datasource_snapshots")
 
 
-def test_datasource_snapshot_skips_missing_datasources(
+def test_widget_manifest_preserves_missing_datasource_reference(
     execution,
     monkeypatch,
 ):
@@ -663,7 +638,16 @@ def test_datasource_snapshot_skips_missing_datasources(
     stub_render_and_delivery(monkeypatch)
     ExecutionOrchestrator.execute(execution.id)
 
-    render_snapshot = DashboardReportRenderSnapshot.objects.get(
-        execution=execution
-    )
-    assert render_snapshot.datasource_snapshots == []
+    render_snapshot = DashboardReportRenderSnapshot.objects.get(execution=execution)
+    assert render_snapshot.widget_manifest == [
+        {
+            "widget_id": "widget-no-ds",
+            "widget_type": "single",
+            "datasource_id": None,
+        },
+        {
+            "widget_id": "widget-deleted-ds",
+            "widget_type": "table",
+            "datasource_id": 99999,
+        },
+    ]

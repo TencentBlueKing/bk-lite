@@ -16,7 +16,7 @@ Status: gap_closure_l4_missed_run_done
 - Subscription CRUD（`terminated` 不可由 API 直接写入）；
 - Manual Execute（`request_id` 幂等 + 在途串行）；
 - 双 Snapshot、Claim、Render Token、Chromium PDF、Email Delivery；
-- Render Snapshot 写入非敏感 `datasource_snapshots` **审计冻结**；
+- Render Snapshot 只冻结 Widget 的 DataSource identity；运行时定义、权限和凭据实时解析；
 - ScheduleCalculator、调度字段（可空，旧数据不回填）、DueSubscriptionScanner、
   每分钟 Beat、`create_scheduled` 专用入口；
 - 邮件计划时间使用 `scheduled_time_utc` + 订阅时区；手动测试邮件无时间语义；
@@ -47,8 +47,8 @@ Status: gap_closure_l4_missed_run_done
 
 明确非本版宣称能力（契约已排除或 §7 声明）：
 
-- **DataSource Runtime Snapshot 消费链路未接入**：渲染取数仍走实时 DataSource；
-  MVP **不保证**「DataSource 配置修改不影响历史 / 在途 Execution」；
+- **不冻结 DataSource 运行配置**：渲染取数走实时 DataSource；MVP **不保证**
+  「DataSource 配置修改不影响历史 / 在途 Execution」，也不支持历史配置重放；
 - 完整权限 Snapshot、对象存储长期归档、历史 PDF 下载；
 - 历史漏期**逐期**追发、创建后自动首发、暂停期间补发。
 
@@ -120,7 +120,7 @@ Phase 1B-2A 不从 Dashboard 页面临时 state 读取筛选值。当前 Subscri
 `filter_values`；浏览器当前 applied filters、namespace、Dashboard 布局与
 Widget/DataSource 配置分别留待后续 Subscription 输入和 Render Snapshot
 阶段。本阶段仍未接入 Celery、Chromium、PDF、Email、Retry、Render Token、
-完整权限 Snapshot 或 DataSource Runtime Snapshot。
+完整权限 Snapshot 或数据源配置冻结。
 
 ## Phase 1C 实现状态（2026-07-29）
 
@@ -151,7 +151,7 @@ PermissionStep 对同 username 存在多个有效账号的情况 fail closed，�
 
 Phase 1C 未新增 operation_analysis Celery Task，也未实现 Scheduler、Celery
 Beat、Chromium、PDF、Email、SMTP、Retry、Render Token、Share Token 或
-DataSource Runtime Snapshot。
+数据源配置冻结。
 
 ## Phase 1C.1 实现状态（2026-07-29）
 
@@ -195,8 +195,8 @@ PDF、Email、Scheduler、Retry、Render Token 或 Render Snapshot。
 - 未实现的 RenderStep 仍返回 `not_ready`，Execution 保持 `running`，不会
   伪造 `succeeded`。
 
-Phase 1D-0 没有新增 Render Route，也没有实现 DataSource Runtime Snapshot、
-Query Config Snapshot、Credential Snapshot、Chromium、PDF、Email 或
+Phase 1D-0 没有新增 Render Route，也没有实现 DataSource 配置、Query Config、
+Credential 的冻结，亦未实现 Chromium、PDF、Email 或
 Scheduler。后续正式 Render Route 只接受 `execution_id`，并从上述快照读取
 冻结配置，不以 `dashboard_id` 作为渲染输入。
 
@@ -257,7 +257,7 @@ Render Token 替换该阶段性会话边界。
 可通过 `DASHBOARD_REPORT_ARTIFACT_ROOT` 配置，未配置时使用系统临时目录。
 Render Task 固定进入 `dashboard_report_render` 队列，由独立 Supervisor Worker
 消费，默认并发为 2，不占用普通业务 Worker 资源池。本阶段尚未实现 Email、
-Scheduler、Retry、Render Token、Data Source Runtime Snapshot 或长期 PDF 归档。
+Scheduler、Retry、Render Token、数据源配置冻结或长期 PDF 归档。
 
 ## Phase 1D-1C 实现状态（2026-07-29）
 
@@ -305,7 +305,7 @@ MVP 只支持运营分析 `Dashboard`，只输出 PDF，只支持一个收件邮
 | 订阅执行（Execution） | 一次计划执行或手工测试产生的独立生成与投递单元，是状态、幂等、重试与审计边界。 |
 | Execution Input Snapshot | 执行开始时冻结的本次业务输入；后续订阅编辑不影响当前执行。 |
 | Render Snapshot | 执行开始时冻结的 Dashboard 布局、Widget、数据源引用和展示配置；不是复制出来的新 Dashboard。 |
-| Data Source Runtime Snapshot | 本次执行写入 Render Snapshot 的非敏感数据源配置审计冻结（如 `query_config` / `field_schema`）；不含凭据。当前 MVP 仅持久化，**不驱动**渲染取数；后续若接入消费链路，才可宣称配置变更不影响该次执行查询。 |
+| DataSource 运行上下文 | Widget 查询时按 DataSource identity 实时解析的当前定义、权限与凭据；不是 Snapshot，不支持历史配置重放。 |
 | Render Token | 每次渲染 attempt 使用的短时、一次性、仅限内部渲染会话的凭据；不是数据授权凭据。 |
 | 计划执行（scheduled） | 由统一扫描器针对某个 `scheduled_time_utc` 创建的执行。 |
 | 测试执行（manual_test） | 用户显式请求、基于已保存订阅创建且不影响调度计划的执行。 |
@@ -317,7 +317,7 @@ MVP 只支持运营分析 `Dashboard`，只输出 PDF，只支持一个收件邮
 2. 作为订阅创建者，我可以固定筛选口径，同时让后续报告自动采用仪表盘最新布局与 Widget 配置。
 3. 作为订阅创建者，我可以在保存订阅后手工测试发送，以便在等待下一个计划周期前验证权限、渲染和邮件配置。
 4. 作为订阅创建者，我可以暂停、恢复、编辑或删除自己的订阅，并清楚看到下一次执行和最近执行结果。
-5. 作为审计人员，我可以从执行记录判断某次报告使用了哪个订阅版本、画布版本、数据源版本、计划时间和创建者身份。
+5. 作为审计人员，我可以从执行记录判断某次报告使用了哪个订阅版本、画布版本、引用了哪些数据源、计划时间和创建者身份。
 6. 作为平台运维人员，我可以限制 Chromium 并发、执行时长、PDF 大小、扫描批量和审计保留期，避免报告任务拖垮普通业务任务。
 
 ## Behaviour Contract
@@ -497,24 +497,21 @@ Execution 开始时冻结 `Render Snapshot`：
 - Dashboard `updated_at` 或版本标识；
 - Snapshot 创建时间。
 
-按 Render Snapshot 引用写入 `Data Source Runtime Snapshot`（审计冻结）：
-
-- `datasource_id`；
-- `source_type`；
-- 非敏感 `query_config` / `field_schema`。
-
-任何 Snapshot 均不得保存密码、Token、Secret 或用户权限。
+Render Snapshot 的 `widget_manifest` 只保留 Widget 对 DataSource identity 的引用。
+不得复制 `source_type`、`query_config`、`field_schema`、`connection_config`、namespace
+配置或任何凭据。任何 Snapshot 均不得保存密码、Token、Secret 或用户权限。
 
 数据查询时（当前 MVP 实现）：
 
 - 根据 `creator_id` 获取当前用户上下文。
 - 沿用现有 `user_info` 权限链路向下游传递当前组织、用户、权限和组织树。
 - 从安全存储读取当前有效凭据。
-- **按 Widget 引用的实时 DataSource 定义取数**，不读取上述审计冻结驱动查询。
+- **按 Widget 引用的实时 DataSource 定义取数**。
 
-数据源在 Render Snapshot 创建时缺失则跳过写入对应审计项；渲染期若实时 DataSource
-不可访问或凭据无效，按既有数据加载失败处理。**当前不宣称**“冻结后修改数据源配置
-不影响当前执行”；该保证取决于尚未接入的消费链路。
+数据源在查询时不存在、不可访问、权限失效或当前凭据无效，按既有数据加载失败处理，
+不得发送部分报告。DataSource 配置在 Execution 创建前或执行期间发生变化，均可能影响
+本次报告；MVP 不保证同一 Execution 内多个 Widget 使用相同 DataSource 配置版本，
+不保存历史配置，也不支持根据 Execution 重放历史查询。已生成 PDF 是历史报告事实产物。
 
 ### 8. Dashboard 编辑与删除竞态
 
@@ -978,7 +975,7 @@ Execution 保存：
 - attempt count；
 - 使用的订阅版本；
 - Dashboard 版本或 `updated_at`；
-- 数据源版本信息；
+- Widget 引用的数据源 ID；
 - 文件名、大小、内容哈希和生成时间；
 - Dashboard 在执行期间删除等审计标记。
 
@@ -987,7 +984,6 @@ Execution 保存：
 - Execution；
 - Execution Input Snapshot；
 - Render Snapshot；
-- Data Source Runtime Snapshot；
 - Render Token 审计数据按其安全生命周期清理。
 
 独立运行期清理任务分批、幂等删除过期 Execution，并级联清理关联 Snapshot。清理失败不得影响 Server 启动。
@@ -1130,8 +1126,8 @@ Snapshot ID、版本、error code 等技术字段放在详情中，不挤占列�
 8. 暂停不补发，恢复从恢复时刻计算未来计划；运行中执行不受暂停、编辑或逻辑删除影响。
 9. Dashboard 删除使关联 Subscription terminated；Snapshot 前删除使当前执行失败，Snapshot 后删除使当前执行继续并记录标记。
 10. 静态筛选固定具体值；动态时间筛选按本次计划时间重新解析；失效筛选不回退默认值。
-11. Execution Input、Render、Data Source Runtime 三类 Snapshot 冻结正确字段，且不含密码、Token、Secret 或权限快照。
-12. 创建者权限在每次查询时实时获取；Dashboard View、数据源权限或下游业务权限失效均阻止发送。
+11. Execution Input 与 Render 两类 Snapshot 冻结正确字段；Render Snapshot 仅在 Widget manifest 保留 DataSource identity，不复制 DataSource 配置、凭据或权限。
+12. DataSource 定义、创建者权限与凭据在每次查询时实时获取；Dashboard View、数据源权限、当前配置或下游业务权限失效均阻止发送。
 13. 所有可见 Widget 均参与；折叠 Widget 被加载；隐藏和已删除 Widget 不参与；任一关键 Widget 失败不发送部分报告。
 14. 空数据 Widget 发布 empty 并成功生成 PDF；静态 Widget 不查询数据但必须渲染成功。
 15. 渲染页只通过显式 report-ready/report-failed 驱动；固定 sleep、networkidle 和 DOM 存在不构成成功条件。

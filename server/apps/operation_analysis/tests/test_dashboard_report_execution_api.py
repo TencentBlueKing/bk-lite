@@ -543,7 +543,6 @@ def test_running_execution_exposes_only_frozen_render_input(
                     "datasource_id": 17,
                 }
             ],
-            "datasource_snapshots": [],
             "created_at": response.data["render_snapshot"]["created_at"],
         },
     }

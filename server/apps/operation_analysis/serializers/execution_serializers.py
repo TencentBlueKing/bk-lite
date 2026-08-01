@@ -42,7 +42,6 @@ class DashboardReportRenderSnapshotSerializer(serializers.ModelSerializer):
             "filters",
             "other",
             "widget_manifest",
-            "datasource_snapshots",
             "created_at",
         ]
         read_only_fields = fields

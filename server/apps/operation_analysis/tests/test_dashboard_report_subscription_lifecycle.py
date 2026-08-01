@@ -361,7 +361,6 @@ def test_dashboard_delete_race_after_render_snapshot_continues(
         filters={},
         other={},
         widget_manifest=[],
-        datasource_snapshots=[],
     )
     frozen_dashboard_id = dashboard.id
 
