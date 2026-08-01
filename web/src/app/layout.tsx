@@ -251,27 +251,25 @@ const LayoutWithProviders = ({ children }: { children: React.ReactNode }) => {
   }
 
   const layoutContent = (
-    <AntdRegistry>
-      <div className={`flex flex-col ${isDashboardShareRoute ? 'h-screen overflow-hidden' : 'min-h-screen'} ${!isAuthRoute ? 'min-w-[1280px]' : ''}`}>
-        {isAuthenticated && hasResolvedPathname && !isAuthRoute && (
-          <header className="sticky top-0 left-0 right-0 flex justify-between items-center header-bg">
-            <TopMenu hideMainMenu={hideTopMenu} />
-          </header>
+    <div className={`flex flex-col ${isDashboardShareRoute ? 'h-screen overflow-hidden' : 'min-h-screen'} ${!isAuthRoute ? 'min-w-[1280px]' : ''}`}>
+      {isAuthenticated && hasResolvedPathname && !isAuthRoute && (
+        <header className="sticky top-0 left-0 right-0 flex justify-between items-center header-bg">
+          <TopMenu hideMainMenu={hideTopMenu} />
+        </header>
+      )}
+      <main className={`main-content flex-1 p-4 flex text-sm ${isDashboardShareRoute ? 'min-h-0 overflow-hidden' : ''} ${!isAuthenticated || isAuthRoute ? 'h-screen' : ''}`}>
+        {shouldRenderMenu ? (
+          <WithSideMenuLayout
+            layoutType="segmented"
+            menuLevel={1}
+          >
+            {children}
+          </WithSideMenuLayout>
+        ) : (
+          children
         )}
-        <main className={`main-content flex-1 p-4 flex text-sm ${isDashboardShareRoute ? 'min-h-0 overflow-hidden' : ''} ${!isAuthenticated || isAuthRoute ? 'h-screen' : ''}`}>
-          {shouldRenderMenu ? (
-            <WithSideMenuLayout
-              layoutType="segmented"
-              menuLevel={1}
-            >
-              {children}
-            </WithSideMenuLayout>
-          ) : (
-            children
-          )}
-        </main>
-      </div>
-    </AntdRegistry>
+      </main>
+    </div>
   );
 
   if (!isAuthenticated || !watermarkEnabled) {
@@ -311,27 +309,29 @@ export default function RootLayout({
         <Script src="/__enterprise-brands.js" strategy="beforeInteractive" />
       </head>
       <body>
-        {/* 全局 Context Provider 配置 */}
-        <SessionProvider refetchInterval={30 * 60}>
-          <LocaleProvider>
-            <ThemeProvider>
-              <AuthProvider>
-                <PortalBrandingHead />
-                <UserInfoProvider>
-                  <ClientProvider>
-                    <PortalTabTitle />
-                    <MenusProvider>
-                      <PermissionsProvider>
-                        {/* 渲染布局 */}
-                        <LayoutWithProviders>{children}</LayoutWithProviders>
-                      </PermissionsProvider>
-                    </MenusProvider>
-                  </ClientProvider>
-                </UserInfoProvider>
-              </AuthProvider>
-            </ThemeProvider>
-          </LocaleProvider>
-        </SessionProvider>
+        <AntdRegistry>
+          {/* 全局 Context Provider 配置 */}
+          <SessionProvider refetchInterval={30 * 60} refetchOnWindowFocus={false}>
+            <LocaleProvider>
+              <ThemeProvider>
+                <AuthProvider>
+                  <PortalBrandingHead />
+                  <UserInfoProvider>
+                    <ClientProvider>
+                      <PortalTabTitle />
+                      <MenusProvider>
+                        <PermissionsProvider>
+                          {/* 渲染布局 */}
+                          <LayoutWithProviders>{children}</LayoutWithProviders>
+                        </PermissionsProvider>
+                      </MenusProvider>
+                    </ClientProvider>
+                  </UserInfoProvider>
+                </AuthProvider>
+              </ThemeProvider>
+            </LocaleProvider>
+          </SessionProvider>
+        </AntdRegistry>
       </body>
     </html>
   );
