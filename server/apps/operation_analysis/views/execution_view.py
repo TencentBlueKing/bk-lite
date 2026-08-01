@@ -1,8 +1,6 @@
-import os
-
-import jwt
 from django.views.decorators.csrf import csrf_exempt
 from rest_framework import mixins, status, viewsets
+from rest_framework.authentication import BaseAuthentication
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.permissions import AllowAny
@@ -22,6 +20,24 @@ from apps.operation_analysis.services.render_token_service import (
     DashboardReportRenderTokenError,
     DashboardReportRenderTokenService,
 )
+from apps.operation_analysis.services.render_scope_service import (
+    DashboardReportRenderScopeError,
+    DashboardReportRenderScopeService,
+)
+
+
+class DashboardReportRenderPrincipalAuthentication(BaseAuthentication):
+    """把 middleware 已验证的 scoped principal 交给 DRF，不建立 Session。"""
+
+    def authenticate(self, request):
+        raw_request = request._request
+        claims = getattr(
+            raw_request, "dashboard_report_render_scope", None
+        )
+        user = getattr(raw_request, "user", None)
+        if claims is None or user is None or not user.is_authenticated:
+            return None
+        return user, claims
 
 
 class DashboardReportExecutionViewSet(
@@ -50,7 +66,10 @@ class DashboardReportExecutionViewSet(
     def get_authenticators(self):
         if getattr(self, "action", None) == "render_token_exchange":
             return []
-        return super().get_authenticators()
+        return [
+            DashboardReportRenderPrincipalAuthentication(),
+            *super().get_authenticators(),
+        ]
 
     def get_queryset(self):
         queryset = DashboardReportExecution.objects.select_related(
@@ -61,7 +80,10 @@ class DashboardReportExecutionViewSet(
             "pdf_artifact",
         )
         if not getattr(self.request.user, "is_superuser", False):
-            queryset = queryset.filter(creator=self.request.user.username)
+            queryset = queryset.filter(
+                creator=self.request.user.username,
+                creator_domain=self.request.user.domain,
+            )
         return queryset
 
     @HasPermission("view-View")
@@ -83,16 +105,16 @@ class DashboardReportExecutionViewSet(
             else ""
         )
         try:
-            claims = jwt.decode(
+            DashboardReportRenderScopeService.authorize_request(
+                request,
                 raw_token,
-                os.getenv("SECRET_KEY", ""),
-                algorithms=[os.getenv("JWT_ALGORITHM", "HS256")],
             )
-        except Exception as exc:
+        except DashboardReportRenderScopeError as exc:
             raise PermissionDenied("仅 Render Session 可读取渲染输入") from exc
-        if claims.get("render_execution_id") != execution.id:
-            raise PermissionDenied("Render Session 与 Execution 不匹配")
-        if execution.creator != request.user.username:
+        if (
+            execution.creator != request.user.username
+            or execution.creator_domain != request.user.domain
+        ):
             raise PermissionDenied("只能读取自己的报告渲染输入")
         if execution.status != DashboardReportExecution.Status.RUNNING:
             raise ValidationError(

@@ -24,7 +24,7 @@ from apps.operation_analysis.services.execution_service import (
     DashboardReportExecutionService,
 )
 from apps.operation_analysis.services.retry_types import AttemptResult
-from apps.system_mgmt.models import Channel
+from apps.system_mgmt.models import Channel, User as SystemUser
 
 
 pytestmark = pytest.mark.django_db
@@ -35,7 +35,13 @@ def email_channel(db):
     return Channel.objects.create(
         name="1B 邮件通道",
         channel_type="email",
-        config={},
+        config={
+            "smtp_server": "smtp.example.com",
+            "port": 587,
+            "smtp_user": "sender@example.com",
+            "smtp_pwd": "encrypted_pwd",
+            "mail_sender": "sender@example.com",
+        },
         description="测试",
         team=[1],
     )
@@ -43,6 +49,16 @@ def email_channel(db):
 
 @pytest.fixture
 def delivery_ready_execution(authenticated_user, email_channel, tmp_path, monkeypatch):
+    SystemUser.objects.get_or_create(
+        username=authenticated_user.username,
+        domain=authenticated_user.domain,
+        defaults={
+            "display_name": authenticated_user.username,
+            "email": "delivery-retry@example.com",
+            "password": "unused",
+            "group_list": [1],
+        },
+    )
     directory = Directory.objects.create(name="1B 目录", groups=[1])
     dashboard = Dashboard.objects.create(
         name="1B 仪表盘",
@@ -53,6 +69,8 @@ def delivery_ready_execution(authenticated_user, email_channel, tmp_path, monkey
     subscription = DashboardReportSubscription.objects.create(
         dashboard=dashboard,
         creator=authenticated_user.username,
+        creator_domain=authenticated_user.domain,
+        team_id=1,
         name="1B 订阅",
         recipient_email="ops@example.com",
         email_channel=email_channel,
@@ -61,11 +79,14 @@ def delivery_ready_execution(authenticated_user, email_channel, tmp_path, monkey
         subscription=subscription,
         dashboard=dashboard,
         creator=authenticated_user.username,
+        creator_domain=authenticated_user.domain,
     )
     DashboardReportExecutionSnapshot.objects.create(
         execution=execution,
         dashboard_id=dashboard.id,
         creator_id=authenticated_user.username,
+        creator_domain=authenticated_user.domain,
+        execution_team_id=1,
         subscription_id=subscription.id,
         subscription_name=subscription.name,
         recipient_email=subscription.recipient_email,

@@ -25,6 +25,8 @@ export interface DashboardSubscription {
   id: number;
   dashboard: number | null;
   creator: string;
+  creator_domain: string;
+  team_id: number;
   name: string;
   status: DashboardSubscriptionStatus;
   recipient_email: string;
@@ -37,9 +39,12 @@ export interface DashboardSubscription {
   timezone: string | null;
   next_run_at: string | null;
   version: number;
+  revision: number;
   config: Record<string, unknown>;
   latest_scheduled_execution: DashboardExecutionSummary | null;
   latest_manual_test_execution: DashboardExecutionSummary | null;
+  terminated_by_domain: string;
+  last_lifecycle_actor_domain: string;
   created_at: string;
   updated_at: string;
 }
@@ -57,6 +62,7 @@ export interface DashboardSubscriptionPayload {
   schedule_day_of_month?: number | null;
   timezone?: string | null;
   version?: number;
+  revision?: number;
   applied_filter_values?: Record<string, unknown>;
 }
 
@@ -75,6 +81,8 @@ export interface DashboardExecutionCreated {
 export interface DashboardReportExecutionSnapshot {
   dashboard_id: number;
   creator_id: string;
+  creator_domain: string;
+  execution_team_id: number;
   subscription_id: number;
   filter_values: Record<string, unknown>;
   filter_semantics?: Record<string, unknown>;
@@ -82,6 +90,7 @@ export interface DashboardReportExecutionSnapshot {
   schedule_timezone?: string;
   scheduled_local_time?: string;
   subscription_version?: number | null;
+  subscription_revision?: number | null;
   created_at: string;
 }
 
@@ -90,11 +99,20 @@ export interface DashboardReportExecution {
   subscription: number | null;
   dashboard: number | null;
   creator: string;
+  creator_domain: string;
   status: DashboardExecutionStatus;
   trigger_type: 'manual_test' | 'scheduled';
   scheduled_time_utc?: string | null;
   failure_stage: string;
+  error_code: string;
   error_message: string;
+  attempt_count: number;
+  delivery_outcome: 'not_delivered' | 'delivered' | 'smtp_unknown';
+  delivered_at: string | null;
+  reconciled_from_status: DashboardExecutionStatus | '';
+  reconciliation_reason: string;
+  reconciliation_source: string;
+  reconciled_at: string | null;
   created_at: string;
   started_at: string | null;
   finished_at: string | null;

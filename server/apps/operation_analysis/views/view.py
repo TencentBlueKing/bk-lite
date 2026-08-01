@@ -284,6 +284,7 @@ class DashboardModelViewSet(BuiltinVisibleMixin, AuthViewSet):
             DashboardSubscriptionService.terminate_for_dashboard_deletion(
                 instance,
                 actor=getattr(request.user, "username", "") or "",
+                actor_domain=getattr(request.user, "domain", "") or "",
             )
             self.perform_destroy(instance)
         response = Response(status=204)

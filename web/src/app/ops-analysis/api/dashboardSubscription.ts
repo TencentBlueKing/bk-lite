@@ -42,7 +42,8 @@ export const useDashboardSubscriptionApi = () => {
   );
 
   const deleteSubscription = useCallback(
-    (id: number) => del(`${SUBSCRIPTION_ENDPOINT}${id}/`),
+    (id: number, revision: number) =>
+      del(`${SUBSCRIPTION_ENDPOINT}${id}/`, { params: { revision } }),
     [del],
   );
 

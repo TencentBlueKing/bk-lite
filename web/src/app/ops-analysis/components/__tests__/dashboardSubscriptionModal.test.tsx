@@ -43,6 +43,8 @@ const makeSubscription = (
   id: 1,
   dashboard: 8,
   creator: 'test',
+  creator_domain: 'domain.com',
+  team_id: 1,
   name: '日报',
   status: 'active' as const,
   recipient_email: 'ops@example.com',
@@ -55,9 +57,12 @@ const makeSubscription = (
   timezone: null,
   next_run_at: null,
   version: 1,
+  revision: 1,
   config: {},
   latest_scheduled_execution: null,
   latest_manual_test_execution: null,
+  terminated_by_domain: '',
+  last_lifecycle_actor_domain: '',
   created_at: '2026-07-28T00:00:00Z',
   updated_at: '2026-07-28T00:00:00Z',
   ...overrides,
@@ -349,6 +354,7 @@ describe('DashboardSubscriptionModal', () => {
         timezone: null,
         applied_filter_values: {},
         version: 1,
+        revision: 1,
       });
     });
   });
@@ -372,7 +378,7 @@ describe('DashboardSubscriptionModal', () => {
     );
 
     await waitFor(() => {
-      expect(api.deleteSubscription).toHaveBeenCalledWith(1);
+      expect(api.deleteSubscription).toHaveBeenCalledWith(1, 1);
     });
   });
 

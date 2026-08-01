@@ -24,7 +24,7 @@ from apps.operation_analysis.services.execution_service import (
 from apps.operation_analysis.services.report_render_service import (
     DashboardReportRenderService,
 )
-from apps.system_mgmt.models import Channel
+from apps.system_mgmt.models import Channel, User as SystemUser
 
 
 pytestmark = pytest.mark.django_db
@@ -60,6 +60,16 @@ def wechat_channel(db):
 
 @pytest.fixture
 def subscription_with_channel(authenticated_user, email_channel):
+    SystemUser.objects.get_or_create(
+        username=authenticated_user.username,
+        domain=authenticated_user.domain,
+        defaults={
+            "display_name": authenticated_user.username,
+            "email": "delivery@example.com",
+            "password": "unused",
+            "group_list": [1],
+        },
+    )
     directory = Directory.objects.create(name="投递测试目录", groups=[1])
     dashboard = Dashboard.objects.create(
         name="投递测试仪表盘",
@@ -70,6 +80,8 @@ def subscription_with_channel(authenticated_user, email_channel):
     return DashboardReportSubscription.objects.create(
         dashboard=dashboard,
         creator=authenticated_user.username,
+        creator_domain=authenticated_user.domain,
+        team_id=1,
         name="投递测试订阅",
         recipient_email="recipient@example.com",
         email_channel=email_channel,
@@ -83,11 +95,14 @@ def running_execution(subscription_with_channel, email_channel):
         subscription=sub,
         dashboard=sub.dashboard,
         creator=sub.creator,
+        creator_domain=sub.creator_domain,
     )
     DashboardReportExecutionSnapshot.objects.create(
         execution=execution,
         dashboard_id=sub.dashboard_id,
         creator_id=sub.creator,
+        creator_domain=sub.creator_domain,
+        execution_team_id=sub.team_id,
         creator_timezone="Asia/Shanghai",
         subscription_id=sub.id,
         subscription_name=sub.name,
@@ -249,6 +264,108 @@ class TestDeliveryArtifactChecks:
 # --- SMTP 成功 -> succeeded / SMTP 失败 -> failed ---
 
 class TestDeliverySmtp:
+    def test_delivery_rejects_deleted_channel(
+        self, running_execution, artifact, email_channel
+    ):
+        email_channel.delete()
+
+        with pytest.raises(DashboardReportDeliveryError) as exc_info:
+            DashboardReportDeliveryService.deliver(
+                running_execution,
+                running_execution.snapshot,
+            )
+
+        assert exc_info.value.error_code == "channel_missing"
+
+    def test_delivery_rejects_non_email_channel_type(
+        self, running_execution, artifact, email_channel
+    ):
+        email_channel.channel_type = "enterprise_wechat"
+        email_channel.save(update_fields=["channel_type"])
+
+        with pytest.raises(DashboardReportDeliveryError) as exc_info:
+            DashboardReportDeliveryService.deliver(
+                running_execution,
+                running_execution.snapshot,
+            )
+
+        assert exc_info.value.error_code == "channel_not_email"
+
+    def test_delivery_rejects_invalid_live_channel_config(
+        self, running_execution, artifact, email_channel
+    ):
+        email_channel.config = {"smtp_server": "smtp.example.com"}
+        email_channel.save(update_fields=["config"])
+
+        with pytest.raises(DashboardReportDeliveryError) as exc_info:
+            DashboardReportDeliveryService.deliver(
+                running_execution,
+                running_execution.snapshot,
+            )
+
+        assert exc_info.value.error_code == "channel_config_invalid"
+
+    def test_delivery_rejects_undecryptable_encrypted_credential(
+        self, running_execution, artifact, email_channel
+    ):
+        email_channel.config = {
+            **email_channel.config,
+            "smtp_pwd": "gAAAA-invalid-fernet-token",
+        }
+        email_channel.save(update_fields=["config"])
+
+        with pytest.raises(DashboardReportDeliveryError) as exc_info:
+            DashboardReportDeliveryService.deliver(
+                running_execution,
+                running_execution.snapshot,
+            )
+
+        assert exc_info.value.error_code == "channel_config_invalid"
+
+    def test_delivery_rejects_non_string_smtp_credential(
+        self, running_execution, artifact, email_channel
+    ):
+        email_channel.config = {**email_channel.config, "smtp_pwd": 123456}
+        email_channel.save(update_fields=["config"])
+
+        with pytest.raises(DashboardReportDeliveryError) as exc_info:
+            DashboardReportDeliveryService.deliver(
+                running_execution,
+                running_execution.snapshot,
+            )
+
+        assert exc_info.value.error_code == "channel_config_invalid"
+
+    def test_delivery_rejects_channel_moved_to_other_team(
+        self, running_execution, artifact, email_channel
+    ):
+        email_channel.team = [999]
+        email_channel.save(update_fields=["team"])
+
+        with pytest.raises(DashboardReportDeliveryError) as exc_info:
+            DashboardReportDeliveryService.deliver(
+                running_execution,
+                running_execution.snapshot,
+            )
+
+        assert exc_info.value.error_code == "channel_team_denied"
+
+    def test_delivery_rejects_creator_who_left_execution_team(
+        self, running_execution, artifact, authenticated_user
+    ):
+        SystemUser.objects.filter(
+            username=authenticated_user.username,
+            domain=authenticated_user.domain,
+        ).update(group_list=[])
+
+        with pytest.raises(DashboardReportDeliveryError) as exc_info:
+            DashboardReportDeliveryService.deliver(
+                running_execution,
+                running_execution.snapshot,
+            )
+
+        assert exc_info.value.error_code == "channel_team_denied"
+
     def test_smtp_success_marks_delivered(
         self, running_execution, artifact, tmp_path
     ):
@@ -260,7 +377,7 @@ class TestDeliverySmtp:
             "DashboardReportRenderService.resolve_artifact_path",
             return_value=pdf_file,
         ), patch(
-            "apps.operation_analysis.services.delivery_service."
+            "apps.operation_analysis.services.delivery_channel_service."
             "Channel.decrypt_field",
         ), patch(
             "apps.system_mgmt.utils.channel_utils.send_email_to_user",
@@ -274,6 +391,39 @@ class TestDeliverySmtp:
         running_execution.refresh_from_db()
         assert running_execution.delivered_at is not None
 
+    def test_delivery_uses_latest_valid_channel_config(
+        self, running_execution, artifact, email_channel, tmp_path
+    ):
+        email_channel.config = {
+            **email_channel.config,
+            "mail_sender": "latest@example.com",
+        }
+        email_channel.save(update_fields=["config"])
+        pdf_file = tmp_path / "report.pdf"
+        pdf_file.write_bytes(b"%PDF-1.4 test content")
+        observed = {}
+
+        def fake_send(channel_config, *args, **kwargs):
+            observed.update(channel_config)
+            return {"result": True, "message": "ok"}
+
+        with patch(
+            "apps.operation_analysis.services.delivery_service."
+            "DashboardReportRenderService.resolve_artifact_path",
+            return_value=pdf_file,
+        ), patch(
+            "apps.operation_analysis.services.delivery_channel_service."
+            "Channel.decrypt_field",
+        ), patch(
+            "apps.system_mgmt.utils.channel_utils.send_email_to_user",
+            side_effect=fake_send,
+        ):
+            DashboardReportDeliveryService.deliver(
+                running_execution, running_execution.snapshot
+            )
+
+        assert observed["mail_sender"] == "latest@example.com"
+
     def test_smtp_failure_raises_error(
         self, running_execution, artifact, tmp_path
     ):
@@ -285,7 +435,7 @@ class TestDeliverySmtp:
             "DashboardReportRenderService.resolve_artifact_path",
             return_value=pdf_file,
         ), patch(
-            "apps.operation_analysis.services.delivery_service."
+            "apps.operation_analysis.services.delivery_channel_service."
             "Channel.decrypt_field",
         ), patch(
             "apps.system_mgmt.utils.channel_utils.send_email_to_user",
@@ -314,7 +464,7 @@ class TestDeliverySmtp:
             "DashboardReportRenderService.resolve_artifact_path",
             return_value=pdf_file,
         ), patch(
-            "apps.operation_analysis.services.delivery_service."
+            "apps.operation_analysis.services.delivery_channel_service."
             "Channel.decrypt_field",
         ), patch(
             "apps.system_mgmt.utils.channel_utils.send_email_to_user",

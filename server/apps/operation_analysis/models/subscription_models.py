@@ -39,7 +39,19 @@ class DashboardReportSubscription(TimeInfo):
         related_name="report_subscriptions",
         verbose_name="仪表盘",
     )
-    creator = models.CharField(max_length=32, db_index=True, verbose_name="创建者")
+    creator = models.CharField(max_length=100, db_index=True, verbose_name="创建者")
+    creator_domain = models.CharField(
+        max_length=100,
+        default="domain.com",
+        db_index=True,
+        verbose_name="创建者域",
+    )
+    team_id = models.BigIntegerField(
+        null=True,
+        blank=True,
+        db_index=True,
+        verbose_name="订阅所属组织 ID",
+    )
     name = models.CharField(max_length=128, verbose_name="订阅名称")
     status = models.CharField(
         max_length=16,
@@ -100,6 +112,10 @@ class DashboardReportSubscription(TimeInfo):
         default=1,
         verbose_name="调度配置版本",
     )
+    revision = models.PositiveIntegerField(
+        default=1,
+        verbose_name="订阅并发修订号",
+    )
     config = models.JSONField(default=dict, blank=True, verbose_name="扩展配置")
     deleted_at = models.DateTimeField(
         null=True,
@@ -108,10 +124,16 @@ class DashboardReportSubscription(TimeInfo):
         verbose_name="逻辑删除时间",
     )
     deleted_by = models.CharField(
-        max_length=32,
+        max_length=100,
         blank=True,
         default="",
         verbose_name="逻辑删除操作者",
+    )
+    deleted_by_domain = models.CharField(
+        max_length=100,
+        blank=True,
+        default="",
+        verbose_name="逻辑删除操作者域",
     )
     terminated_at = models.DateTimeField(
         null=True,
@@ -119,10 +141,16 @@ class DashboardReportSubscription(TimeInfo):
         verbose_name="终止时间",
     )
     terminated_by = models.CharField(
-        max_length=32,
+        max_length=100,
         blank=True,
         default="",
         verbose_name="终止操作者",
+    )
+    terminated_by_domain = models.CharField(
+        max_length=100,
+        blank=True,
+        default="",
+        verbose_name="终止操作者域",
     )
     termination_reason = models.CharField(
         max_length=64,
@@ -138,10 +166,16 @@ class DashboardReportSubscription(TimeInfo):
         verbose_name="最近生命周期操作",
     )
     last_lifecycle_actor = models.CharField(
-        max_length=32,
+        max_length=100,
         blank=True,
         default="",
         verbose_name="最近生命周期操作者",
+    )
+    last_lifecycle_actor_domain = models.CharField(
+        max_length=100,
+        blank=True,
+        default="",
+        verbose_name="最近生命周期操作者域",
     )
     last_lifecycle_at = models.DateTimeField(
         null=True,
@@ -157,6 +191,10 @@ class DashboardReportSubscription(TimeInfo):
         verbose_name = "仪表盘报告订阅"
         ordering = ["-id"]
         indexes = [
+            models.Index(
+                fields=["creator", "creator_domain"],
+                name="idx_drs_creator_identity",
+            ),
             models.Index(
                 fields=["status", "next_run_at"],
                 name="idx_drs_status_next_run",
@@ -240,7 +278,13 @@ class DashboardReportExecution(TimeInfo):
         related_name="report_executions",
         verbose_name="仪表盘",
     )
-    creator = models.CharField(max_length=32, db_index=True, verbose_name="创建者")
+    creator = models.CharField(max_length=100, db_index=True, verbose_name="创建者")
+    creator_domain = models.CharField(
+        max_length=100,
+        default="domain.com",
+        db_index=True,
+        verbose_name="创建者域",
+    )
     status = models.CharField(
         max_length=16,
         choices=Status.choices,
@@ -297,6 +341,29 @@ class DashboardReportExecution(TimeInfo):
         db_index=True,
         verbose_name="投递事实",
     )
+    reconciled_from_status = models.CharField(
+        max_length=16,
+        blank=True,
+        default="",
+        verbose_name="Delivery Fact 仲裁前状态",
+    )
+    reconciliation_reason = models.CharField(
+        max_length=64,
+        blank=True,
+        default="",
+        verbose_name="Delivery Fact 仲裁原因",
+    )
+    reconciliation_source = models.CharField(
+        max_length=64,
+        blank=True,
+        default="",
+        verbose_name="Delivery Fact 仲裁来源",
+    )
+    reconciled_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="Delivery Fact 仲裁时间",
+    )
     source_canvas_deleted_during_execution = models.BooleanField(
         default=False,
         verbose_name="执行期间源画布被删除",
@@ -306,6 +373,12 @@ class DashboardReportExecution(TimeInfo):
         db_table = "operation_analysis_dashboard_report_execution"
         verbose_name = "仪表盘报告执行"
         ordering = ["-id"]
+        indexes = [
+            models.Index(
+                fields=["creator", "creator_domain"],
+                name="idx_dre_creator_identity",
+            ),
+        ]
         constraints = [
             models.UniqueConstraint(
                 fields=["subscription", "request_id", "trigger_type"],
@@ -338,7 +411,12 @@ class DashboardReportExecutionSnapshot(models.Model):
         verbose_name="报告执行",
     )
     dashboard_id = models.BigIntegerField(verbose_name="仪表盘 ID")
-    creator_id = models.CharField(max_length=32, verbose_name="创建者 ID")
+    creator_id = models.CharField(max_length=100, verbose_name="创建者 ID")
+    creator_domain = models.CharField(
+        max_length=100,
+        default="domain.com",
+        verbose_name="创建者域",
+    )
     creator_timezone = models.CharField(
         max_length=64,
         default="Asia/Shanghai",
@@ -364,6 +442,11 @@ class DashboardReportExecutionSnapshot(models.Model):
         blank=True,
         verbose_name="邮件通道 ID",
     )
+    execution_team_id = models.BigIntegerField(
+        null=True,
+        blank=True,
+        verbose_name="执行组织 ID",
+    )
     scheduled_time_utc = models.DateTimeField(
         null=True,
         blank=True,
@@ -385,6 +468,11 @@ class DashboardReportExecutionSnapshot(models.Model):
         null=True,
         blank=True,
         verbose_name="调度配置版本",
+    )
+    subscription_revision = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        verbose_name="订阅修订号",
     )
     filter_values = models.JSONField(
         default=dict,

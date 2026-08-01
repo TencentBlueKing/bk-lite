@@ -20,8 +20,11 @@ from apps.operation_analysis.services.resource_state import (
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_EXECUTION_TIMEOUT_SECONDS = 300
+# 三次 Chromium 渲染每次最多 120 秒；额外一分钟留给 Snapshot、PDF 与投递。
+# 显式环境配置仍可按部署规模覆盖该默认值。
+DEFAULT_EXECUTION_TIMEOUT_SECONDS = 420
 DEFAULT_EXECUTION_TIMEOUT_GRACE_SECONDS = 30
+DEFAULT_CLAIM_TIMEOUT_SECONDS = 60
 
 
 def execution_timeout_seconds() -> int:
@@ -48,6 +51,18 @@ def execution_timeout_grace_seconds() -> int:
     return value if value >= 0 else DEFAULT_EXECUTION_TIMEOUT_GRACE_SECONDS
 
 
+def claim_timeout_seconds() -> int:
+    raw = os.getenv(
+        "DASHBOARD_REPORT_CLAIM_TIMEOUT_SECONDS",
+        str(DEFAULT_CLAIM_TIMEOUT_SECONDS),
+    )
+    try:
+        value = int(raw)
+    except ValueError:
+        return DEFAULT_CLAIM_TIMEOUT_SECONDS
+    return value if value > 0 else DEFAULT_CLAIM_TIMEOUT_SECONDS
+
+
 @dataclass(frozen=True)
 class TimeoutSweepStats:
     scanned: int = 0
@@ -71,7 +86,12 @@ class ExecutionTimeoutChecker:
         anchor = execution.started_at or execution.created_at
         if anchor is None:
             return False
-        budget = execution_timeout_seconds() + execution_timeout_grace_seconds()
+        timeout = (
+            claim_timeout_seconds()
+            if execution.attempt_count == 0
+            else execution_timeout_seconds()
+        )
+        budget = timeout + execution_timeout_grace_seconds()
         return anchor <= now - timedelta(seconds=budget)
 
     @classmethod
@@ -85,8 +105,9 @@ class ExecutionTimeoutChecker:
 
         # 投递事实优先于 timeout failed：CAS 前先按 outcome 对齐
         if resource.delivery_outcome == "delivered":
-            DashboardReportExecutionService.align_status_with_delivery_outcome(
-                execution
+            DashboardReportExecutionService.reconcile_delivery_fact(
+                execution,
+                source="timeout_checker",
             )
             execution.refresh_from_db()
             return (
@@ -96,8 +117,9 @@ class ExecutionTimeoutChecker:
                 else "skipped"
             )
         if resource.delivery_outcome == "smtp_unknown":
-            DashboardReportExecutionService.align_status_with_delivery_outcome(
-                execution
+            DashboardReportExecutionService.reconcile_delivery_fact(
+                execution,
+                source="timeout_checker",
             )
             execution.refresh_from_db()
             return (
@@ -134,8 +156,13 @@ class ExecutionTimeoutChecker:
     @classmethod
     def sweep(cls) -> TimeoutSweepStats:
         now = timezone.now()
-        budget = execution_timeout_seconds() + execution_timeout_grace_seconds()
-        cutoff = now - timedelta(seconds=budget)
+        grace = execution_timeout_grace_seconds()
+        execution_cutoff = now - timedelta(
+            seconds=execution_timeout_seconds() + grace
+        )
+        claim_cutoff = now - timedelta(
+            seconds=claim_timeout_seconds() + grace
+        )
         # running 超时候选 + 投递事实与 status 不一致的修复候选
         candidates = list(
             DashboardReportExecution.objects.filter(
@@ -143,8 +170,24 @@ class ExecutionTimeoutChecker:
                     status=DashboardReportExecution.Status.RUNNING,
                 )
                 & (
-                    Q(started_at__lte=cutoff)
-                    | Q(started_at__isnull=True, created_at__lte=cutoff)
+                    Q(
+                        attempt_count=0,
+                        started_at__lte=claim_cutoff,
+                    )
+                    | Q(
+                        attempt_count=0,
+                        started_at__isnull=True,
+                        created_at__lte=claim_cutoff,
+                    )
+                    | Q(
+                        attempt_count__gt=0,
+                        started_at__lte=execution_cutoff,
+                    )
+                    | Q(
+                        attempt_count__gt=0,
+                        started_at__isnull=True,
+                        created_at__lte=execution_cutoff,
+                    )
                 )
                 | Q(
                     delivery_outcome=(

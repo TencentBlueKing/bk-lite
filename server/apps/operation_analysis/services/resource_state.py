@@ -27,6 +27,7 @@ def _input_snapshot_state(
         and execution.subscription_id is not None
         and snapshot.dashboard_id == execution.dashboard_id
         and snapshot.creator_id == execution.creator
+        and snapshot.creator_domain == execution.creator_domain
         and snapshot.subscription_id == execution.subscription_id
         and isinstance(snapshot.filter_values, dict)
     )

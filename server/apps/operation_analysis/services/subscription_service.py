@@ -1,5 +1,8 @@
 from copy import deepcopy
 from django.db import DatabaseError, OperationalError, transaction
+from django.db.models import F
+from rest_framework import status
+from rest_framework.exceptions import APIException
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from django.utils import timezone
 import logging
@@ -36,7 +39,20 @@ SCHEDULE_FIELDS = frozenset(
 TERMINATION_REASON_DASHBOARD_DELETED = "dashboard_deleted"
 
 
+class SubscriptionRevisionConflict(APIException):
+    status_code = status.HTTP_409_CONFLICT
+    default_detail = "订阅已被其他请求修改，请刷新后重试"
+    default_code = "subscription_revision_conflict"
+
+
 class DashboardSubscriptionService:
+    @staticmethod
+    def require_current_team_id(request) -> int:
+        try:
+            return int(get_current_team(request))
+        except (TypeError, ValueError) as exc:
+            raise ValidationError({"team": "必须指定当前组织"}) from exc
+
     @staticmethod
     def can_view_dashboard(request, dashboard: Dashboard) -> bool:
         user = request.user
@@ -319,7 +335,13 @@ class DashboardSubscriptionService:
         return config
 
     @classmethod
-    def validate_email_channel(cls, request, channel: Channel | None) -> None:
+    def validate_email_channel(
+        cls,
+        request,
+        channel: Channel | None,
+        *,
+        required_team_id: int | None = None,
+    ) -> None:
         if channel is None:
             raise ValidationError(
                 {"email_channel": "报告订阅必须指定邮件通道"}
@@ -328,19 +350,19 @@ class DashboardSubscriptionService:
             raise ValidationError(
                 {"email_channel": "所选通道不是邮件类型"}
             )
-        if not getattr(request.user, "is_superuser", False):
-            current_team = get_current_team(request)
-            try:
-                current_team_id = int(current_team)
-            except (TypeError, ValueError):
-                raise ValidationError(
-                    {"email_channel": "无权使用该邮件通道"}
-                )
-            channel_teams = channel.team or []
-            if current_team_id not in channel_teams:
-                raise ValidationError(
-                    {"email_channel": "无权使用该邮件通道"}
-                )
+        current_team_id = cls.require_current_team_id(request)
+        resolved_team_id = required_team_id or current_team_id
+        if (
+            not getattr(request.user, "is_superuser", False)
+            and current_team_id != resolved_team_id
+        ):
+            raise ValidationError(
+                {"email_channel": "只能在订阅所属组织内修改邮件通道"}
+            )
+        if resolved_team_id not in (channel.team or []):
+            raise ValidationError(
+                {"email_channel": "无权使用该邮件通道"}
+            )
 
     @classmethod
     def build_schedule_spec(
@@ -472,6 +494,8 @@ class DashboardSubscriptionService:
         )
         return serializer.save(
             creator=request.user.username,
+            creator_domain=request.user.domain,
+            team_id=cls.require_current_team_id(request),
             next_run_at=next_run_at,
             version=1,
             config=config,
@@ -485,7 +509,10 @@ class DashboardSubscriptionService:
         serializer,
     ) -> DashboardReportSubscription:
         if (
-            subscription.creator != request.user.username
+            (
+                subscription.creator != request.user.username
+                or subscription.creator_domain != request.user.domain
+            )
             and not getattr(request.user, "is_superuser", False)
         ):
             raise PermissionDenied("只能修改自己的报告订阅")
@@ -497,15 +524,26 @@ class DashboardSubscriptionService:
             )
         if subscription.dashboard is None:
             raise PermissionDenied("源仪表盘已不存在，不能修改该订阅")
-        cls.require_dashboard_view(request, subscription.dashboard)
-        cls.validate_email_channel(
-            request,
-            serializer.validated_data.get(
-                "email_channel",
-                subscription.email_channel,
-            ),
-        )
 
+        requested_fields = set(serializer.validated_data)
+        pause_only = (
+            subscription.status == DashboardReportSubscription.Status.ACTIVE
+            and serializer.validated_data.get("status")
+            == DashboardReportSubscription.Status.PAUSED
+            and requested_fields <= {"status", "revision", "version"}
+        )
+        if not pause_only:
+            cls.require_dashboard_view(request, subscription.dashboard)
+            cls.validate_email_channel(
+                request,
+                serializer.validated_data.get(
+                    "email_channel",
+                    subscription.email_channel,
+                ),
+                required_team_id=subscription.team_id,
+            )
+
+        expected_revision = serializer.validated_data.pop("revision", None)
         expected_version = serializer.validated_data.pop("version", None)
         applied_provided = "applied_filter_values" in serializer.validated_data
         applied = serializer.validated_data.pop("applied_filter_values", None)
@@ -569,6 +607,7 @@ class DashboardSubscriptionService:
                 else DashboardReportSubscription.LifecycleAction.RESUME
             )
             extra["last_lifecycle_actor"] = request.user.username
+            extra["last_lifecycle_actor_domain"] = request.user.domain
             extra["last_lifecycle_at"] = timezone.now()
 
         if applied_provided:
@@ -578,7 +617,29 @@ class DashboardSubscriptionService:
                 existing_config=subscription.config,
             )
 
-        return serializer.save(**extra)
+        update_values = dict(serializer.validated_data)
+        update_values.update(extra)
+        normalized_updates = {}
+        for field_name, value in update_values.items():
+            field = DashboardReportSubscription._meta.get_field(field_name)
+            if field.is_relation:
+                normalized_updates[field.attname] = (
+                    value.pk if value is not None else None
+                )
+            else:
+                normalized_updates[field_name] = value
+        normalized_updates["revision"] = F("revision") + 1
+        normalized_updates["updated_at"] = timezone.now()
+        updated = DashboardReportSubscription.all_objects.filter(
+            pk=subscription.pk,
+            revision=expected_revision,
+            deleted_at__isnull=True,
+        ).update(**normalized_updates)
+        if updated != 1:
+            raise SubscriptionRevisionConflict
+        subscription.refresh_from_db()
+        serializer.instance = subscription
+        return subscription
 
     @classmethod
     @transaction.atomic
@@ -588,13 +649,12 @@ class DashboardSubscriptionService:
         subscription: DashboardReportSubscription,
     ) -> DashboardReportSubscription:
         """逻辑删除 Subscription；不取消已有 pending/running Execution。"""
-        locked = (
-            DashboardReportSubscription.all_objects.select_for_update().get(
-                pk=subscription.pk
-            )
-        )
+        locked = DashboardReportSubscription.all_objects.get(pk=subscription.pk)
         if (
-            locked.creator != request.user.username
+            (
+                locked.creator != request.user.username
+                or locked.creator_domain != request.user.domain
+            )
             and not getattr(request.user, "is_superuser", False)
         ):
             raise PermissionDenied("只能删除自己的报告订阅")
@@ -602,11 +662,26 @@ class DashboardSubscriptionService:
             return locked
 
         now = timezone.now()
-        locked.deleted_at = now
-        locked.deleted_by = request.user.username
-        locked.save(
-            update_fields=["deleted_at", "deleted_by", "updated_at"]
+        try:
+            expected_revision = int(request.query_params.get("revision", ""))
+        except (TypeError, ValueError) as exc:
+            raise ValidationError(
+                {"revision": "删除订阅必须携带当前 revision"}
+            ) from exc
+        updated = DashboardReportSubscription.all_objects.filter(
+            pk=locked.pk,
+            revision=expected_revision,
+            deleted_at__isnull=True,
+        ).update(
+            deleted_at=now,
+            deleted_by=request.user.username,
+            deleted_by_domain=request.user.domain,
+            revision=F("revision") + 1,
+            updated_at=now,
         )
+        if updated != 1:
+            raise SubscriptionRevisionConflict
+        locked.refresh_from_db()
         return locked
 
     @classmethod
@@ -616,6 +691,7 @@ class DashboardSubscriptionService:
         dashboard: Dashboard,
         *,
         actor: str,
+        actor_domain: str = "",
         reason: str = TERMINATION_REASON_DASHBOARD_DELETED,
     ) -> int:
         """Dashboard 删除前终止关联未删除订阅，并标记在途 Execution。
@@ -648,8 +724,10 @@ class DashboardSubscriptionService:
             status=DashboardReportSubscription.Status.TERMINATED,
             terminated_at=now,
             terminated_by=actor or "",
+            terminated_by_domain=actor_domain or "",
             termination_reason=reason,
             next_run_at=None,
+            revision=F("revision") + 1,
             updated_at=now,
         )
         return len(subscription_ids)

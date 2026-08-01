@@ -2,6 +2,11 @@
 
 Status: gap_closure_l4_missed_run_done
 
+Release Gate: [`release-review-remediation.md`](./release-review-remediation.md)
+
+> 当前发布结论及剩余 Blocker 状态以 Release Gate 为准；每完成一项
+> 修复，必须同步更新该文档的状态、验收清单和验证证据。
+
 ## Current MVP Closure Status（2026-07-31）
 
 手动与计划主链路已落地，并可诚实宣告成功（含 Scheduled E2E），不再依赖
@@ -14,6 +19,8 @@ Status: gap_closure_l4_missed_run_done
 当前已交付：
 
 - Subscription CRUD（`terminated` 不可由 API 直接写入）；
+- Subscription / Execution 以 `(username, domain)` 作为稳定创建者身份；
+- Subscription 以独立 `revision` 做全字段原子乐观锁，`version` 仅表示调度配置版本；
 - Manual Execute（`request_id` 幂等 + 在途串行）；
 - 双 Snapshot、Claim、Render Token、Chromium PDF、Email Delivery；
 - Render Snapshot 只冻结 Widget 的 DataSource identity；运行时定义、权限和凭据实时解析；
@@ -42,7 +49,7 @@ Status: gap_closure_l4_missed_run_done
 - **L4（2026-07-31）已实现**：A3 missed-run 只补最近一期（Calculator
   `catch_up_scheduled_time`；Scanner 不循环补偿；`create_scheduled` 锁内计算
   计划点并保证 `next_run_at > now`）。
-- **仍待实现（L5+）**：PDF cleanup、180 天 Execution/Snapshot 清理、列表
+- **L5 已实现**：PDF artifact cleanup、180 天 Execution/Snapshot 清理、列表
   scheduled/manual_test 双状态。
 
 明确非本版宣称能力（契约已排除或 §7 声明）：
@@ -439,6 +446,11 @@ Subscription 状态：
 - 周期、执行时间或时区变化时，旧计划立即失效，并从保存时刻重新计算未来 `next_run_at`。
 - 订阅名称、收件邮箱、邮件渠道或筛选快照变化时，保留现有 `next_run_at`。
 - 采用版本号和乐观锁防止并发编辑静默覆盖。
+- `revision` 覆盖名称、状态、邮箱、渠道、筛选和调度等全部用户修改；PATCH
+  与 DELETE 必须携带当前 `revision`，后端以
+  `id + revision + deleted_at is null` 单条条件更新并原子递增，冲突返回 409。
+- `version` 仅是 schedule configuration version，只在调度语义变化时递增；
+  不得用它替代全字段并发控制。
 - 已进入 `pending/running` 的 Execution 使用已冻结输入，不受编辑影响。
 
 ### 6. 权限模型
@@ -465,12 +477,16 @@ MVP 不新增“仪表盘管理员”或“订阅管理员”角色。
 - 具有各下游业务模块对实际数据查询要求的当前权限。
 
 Execution 不使用系统账号、不回退其他用户、不使用创建时权限快照。任何权限校验失败均不生成、不发送报告。
+创建者稳定身份固定为 `(username, domain)`；Subscription、Execution、Input
+Snapshot、API owner scope、PermissionStep 与 Render Token 必须使用同一二元身份，
+不得只按 username 查找或授权。
 
 ### 7. 双 Snapshot 与执行一致性
 
 Execution 开始时冻结 `Execution Input Snapshot`：
 
 - `subscription_version`（schedule configuration version；非调度字段变更不递增）；
+- `subscription_revision`（本次 Execution 创建时的 Subscription 全字段修订号）；
 - `subscription_name`；
 - `recipient_email`；
 - `email_channel_id`；
@@ -479,6 +495,8 @@ Execution 开始时冻结 `Execution Input Snapshot`：
 - `scheduled_local_time`（由 `scheduled_time_utc` + `schedule_timezone` 派生的本地审计表达；`manual_test` 可空）；
 - `trigger_type`；
 - `creator_id`；
+- `creator_domain`；
+- `execution_team_id`（本次执行冻结的组织 identity，不冻结组织权限）；
 - 筛选语义；
 - 本次解析后的筛选具体值。
 
@@ -604,22 +622,27 @@ MVP 只保证内容完整、不丢失 Widget 内容、不因分页失败；不�
 ### 12. 内部 Render Token
 
 Chromium 不复用用户 Cookie、登录 Session 或公开分享 Token。
+Render Session 是受限的 execution identity，不是创建者的普通登录身份。
 
 每个渲染 attempt 签发一个新 Render Token，并绑定：
 
 - `execution_id`；
 - `attempt_no`；
 - `render_snapshot_id`。
+- 创建者 `(username, domain)` 稳定身份、唯一 `jti` 与到期时间。
 
 Token：
 
 - 默认有效期 10 分钟，可系统级配置。
-- 仅允许访问该 Execution 的内部渲染页。
+- 默认拒绝普通业务 API；仅允许该 Execution 的内部渲染页、render-input，
+  其 Widget manifest 明确引用的数据源查询，以及这些数据源实时关联的
+  Namespace 只读查询；请求必须携带非空 ID 集合且不得越出上述关联范围。
 - 首次成功建立渲染会话后记录 `consumed_at`。
 - 同一会话内 Widget 数据请求继续有效。
 - 已消费 Token 不能再次建立新会话。
 - 同一 Execution 同一时刻只允许一个有效 Render Session。
 - 新 attempt 签发 Token 时废止上一 attempt 尚未过期的 Token。
+- 新 attempt 同时使上一 attempt 已建立的 Render Session 失效。
 - 数据库只保存 hash、`expires_at`、`consumed_at`、`revoked_at`，不保存明文。
 - 不包含用户权限，不作为数据授权凭证，不进入普通日志。
 
@@ -629,7 +652,15 @@ Token：
 
 用户必须从当前组织可用的 `email` 类型渠道中显式选择 `email_channel_id`。若只有一个可用渠道，UI 可以默认选中，但后端仍保存明确 ID。
 
-Execution 使用 Input Snapshot 中冻结的 `email_channel_id`，并在发送时动态读取当前渠道配置与凭据。渠道删除、组织范围失效或配置失效时：
+Execution 使用 Input Snapshot 中冻结的 `email_channel_id` 和
+`execution_team_id`，并在发送时动态读取当前渠道配置与凭据。发送前必须实时确认：
+
+- Channel 存在且仍为 email 类型；
+- Channel 仍属于冻结的 execution team；
+- 创建者 `(username, domain)` 账号有效且仍是该 team 成员；
+- 当前 Channel 配置可用。
+
+渠道删除、组织范围失效、创建者退出组织或配置失效时：
 
 - 不自动切换其他渠道；
 - 在 `email` 阶段失败并记录原因。
@@ -860,22 +891,38 @@ Orchestrator 在每次调用 Classifier / 计算 resume 前观测：
 
 ##### timeout 定义
 
-- 总预算从 claim 成功（`started_at`）起算，覆盖最多三个 attempt；默认与单次 Execution 总超时同量级（5 分钟级，可配置），可加短 grace。
-- 查询 orphan 候选：`status=running` 且 `started_at`（否则 `created_at`）早于 `now - execution_timeout`。
+- 总预算从 claim 成功（`started_at`）起算，覆盖最多三个 attempt；默认至少覆盖
+  `max_attempts × 单次 Render timeout`，并为 Snapshot、PDF 和 Delivery 预留余量，
+  当前默认 420 秒，可配置并可加短 grace。
+- claim 后尚未进入首个 attempt（`attempt_count=0`）使用独立短 deadline，当前默认
+  60 秒；已经进入 attempt 的执行使用上述总预算。查询均以 `started_at`（否则
+  `created_at`）为锚点。
 - timeout checker **不做**：重 claim、dispatch Render、新 attempt、重建 Snapshot、重发邮件、删 artifact、补漏期。
 
 ##### 并发保护与仲裁（必须）
 
-所有终态写入（含 timeout、`succeeded`/`failed`/`unknown`）必须带 **状态条件保护**：
+普通生命周期的所有终态写入（含 timeout、`succeeded`/`failed`/`unknown`）必须带 **状态条件保护**：
 
 - 仅当当前 `status=running` 时才允许迁移到终态（条件更新 / 等价 CAS；受影响行数 0 视为 no-op）。
-- **禁止** timeout 或任何 writer 覆盖已存在的 `succeeded` / `failed` / `unknown`。
+- **禁止** timeout、普通 `transition()` 或其他业务 writer 覆盖已存在的
+  `succeeded` / `failed` / `unknown`。
+
+唯一例外是持久化 Delivery Fact 的专用 `reconcile_delivery_fact()`。它不是通用
+状态迁移入口，只允许在 SMTP 外部副作用与 timeout 并发时进行单向仲裁：
+
+- `delivery_outcome=delivered` 可将 `execution_timeout` 导致的 `failed`，或
+  `smtp_result_unknown` 导致的 `unknown`，修正为 `succeeded`；
+- `delivery_outcome=smtp_unknown` 仅可将 `execution_timeout` 导致的 `failed`
+  修正为 `unknown`；
+- permission、snapshot、data_load、render 或其他业务失败禁止复活；
+- 终态修正必须以原状态和 Delivery Fact 做 CAS，并记录 previous status、
+  reason、source、time。`delivered` 事实不得被降级，也不得触发重复发送。
 
 仲裁：
 
 1. owning task 与 timeout checker 同时尝试终态化时：谁先成功把 `running` 改为终态，谁生效；另一方条件更新失败并停止。
-2. 若观测 `delivery_outcome=delivered`：timeout checker **不得**写 `failed`；应条件写 `succeeded`（若仍为 `running`），或 no-op（若已终态）。
-3. 若观测 `delivery_outcome=smtp_unknown`：timeout checker **不得**改写为 `failed`；应条件写 `unknown`（若仍为 `running`），或 no-op。
+2. 若观测 `delivery_outcome=delivered`：timeout checker **不得**写 `failed`；应条件写 `succeeded`（若仍为 `running`）；若竞态中已先写入允许修正的终态，则由专用 reconciliation 仲裁。
+3. 若观测 `delivery_outcome=smtp_unknown`：timeout checker **不得**改写为 `failed`；应条件写 `unknown`（若仍为 `running`）；若 timeout 已抢先写 `failed`，仅可由专用 reconciliation 修正为 `unknown`。
 4. owning task 在 SMTP 成功并标记 delivered 后写 `succeeded`：即使 checker 并发，条件保护保证不会出现「先 succeeded 再被 timeout 打成 failed」。
 
 ##### timeout 与 in-flight
@@ -1060,7 +1107,7 @@ Snapshot ID、版本、error code 等技术字段放在详情中，不挤占列�
    - 不执行权限查询、Chromium 或邮件发送。
 
 4. **Execution Orchestrator**
-   - 负责 Execution 状态机、实时权限校验、双 Snapshot、数据源运行 Snapshot、attempt、分级重试、临时文件和最终审计。
+   - 负责 Execution 状态机、实时权限校验、双 Snapshot、DataSource 实时运行上下文、attempt、分级重试、临时文件和最终审计。
    - Retry resume 按 InputSnapshot / RenderSnapshot / Artifact 资源状态决定起点，不按 failure_stage 硬编码路径。
    - scheduled 与 manual_test 共用该模块；Retry 不产生新 Execution，也不接管 orphan。
 

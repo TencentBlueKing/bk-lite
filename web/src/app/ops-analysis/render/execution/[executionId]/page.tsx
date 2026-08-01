@@ -2,7 +2,7 @@
 
 import { useParams } from 'next/navigation';
 
-import { OpsAnalysisProvider } from '@/app/ops-analysis/context/common';
+import { DashboardRenderOpsAnalysisProvider } from '@/app/ops-analysis/context/common';
 import { DashboardExecutionRenderPageContent } from './dashboardExecutionRenderPage';
 
 export default function DashboardExecutionRenderPage() {
@@ -10,8 +10,8 @@ export default function DashboardExecutionRenderPage() {
   const executionId = Number(params.executionId);
 
   return (
-    <OpsAnalysisProvider>
+    <DashboardRenderOpsAnalysisProvider>
       <DashboardExecutionRenderPageContent executionId={executionId} />
-    </OpsAnalysisProvider>
+    </DashboardRenderOpsAnalysisProvider>
   );
 }

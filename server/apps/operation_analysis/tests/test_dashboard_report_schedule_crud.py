@@ -122,7 +122,11 @@ def test_update_email_does_not_bump_version(
     next_run = created["next_run_at"]
     updated = api_client.patch(
         f"{subscription_url}{created['id']}/",
-        {"recipient_email": "new@example.com", "version": created["version"]},
+        {
+            "recipient_email": "new@example.com",
+            "version": created["version"],
+            "revision": created["revision"],
+        },
         format="json",
     )
     assert updated.status_code == 200
@@ -154,6 +158,7 @@ def test_update_schedule_bumps_version_and_recomputes(
         {
             "schedule_hour": 10,
             "version": created["version"],
+            "revision": created["revision"],
         },
         format="json",
     )

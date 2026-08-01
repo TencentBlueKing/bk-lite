@@ -350,7 +350,9 @@ const DashboardSubscriptionModal = ({
             : null,
         timezone: hasSchedule ? values.timezone ?? null : null,
         applied_filter_values: appliedFilterValues,
-        ...(editing ? { version: editing.version } : {}),
+        ...(editing
+          ? { version: editing.version, revision: editing.revision }
+          : {}),
       };
       if (editing) {
         await updateSubscription(editing.id, payload);
@@ -377,12 +379,12 @@ const DashboardSubscriptionModal = ({
     }
   };
 
-  const remove = async (id: number) => {
-    setDeletingId(id);
+  const remove = async (subscription: DashboardSubscription) => {
+    setDeletingId(subscription.id);
     setError(null);
     setLoadFailed(false);
     try {
-      await deleteSubscription(id);
+      await deleteSubscription(subscription.id, subscription.revision);
       await loadSubscriptions();
     } catch {
       setError(t('dashboard.subscriptionDeleteFailed'));
@@ -850,7 +852,7 @@ const DashboardSubscriptionModal = ({
                     <Popconfirm
                       key="delete"
                       title={t('dashboard.subscriptionDeleteConfirm')}
-                      onConfirm={() => remove(subscription.id)}
+                      onConfirm={() => remove(subscription)}
                     >
                       <Button
                         type="link"

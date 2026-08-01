@@ -145,7 +145,9 @@ def test_soft_delete_hides_from_api_and_stops_scanner(
         MagicMock(),
     )
 
-    delete_resp = api_client.delete(f"{subscription_url}{sub.id}/")
+    delete_resp = api_client.delete(
+        f"{subscription_url}{sub.id}/?revision={sub.revision}"
+    )
     # 项目 CustomRenderer 将 DELETE 204 规范为 200
     assert delete_resp.status_code == 200
 
@@ -192,7 +194,9 @@ def test_soft_delete_keeps_in_flight_execution_and_history(
     )
     snapshot = _create_input_snapshot(execution, sub)
 
-    delete_resp = api_client.delete(f"{subscription_url}{sub.id}/")
+    delete_resp = api_client.delete(
+        f"{subscription_url}{sub.id}/?revision={sub.revision}"
+    )
     # 项目 CustomRenderer 将 DELETE 204 规范为 200
     assert delete_resp.status_code == 200
 
@@ -243,6 +247,8 @@ def test_dashboard_delete_terminates_active_subscriptions(
         assert item.terminated_at is not None
         assert item.termination_reason == TERMINATION_REASON_DASHBOARD_DELETED
         assert item.terminated_by == authenticated_user.username
+        assert item.terminated_by_domain == authenticated_user.domain
+        assert item.revision == 2
         assert item.next_run_at is None
         assert item.dashboard_id is None
 
@@ -290,7 +296,7 @@ def test_terminated_subscription_not_scanned_and_not_resumable(
 
     resume = api_client.patch(
         f"{subscription_url}{sub.id}/",
-        {"status": "active"},
+        {"status": "active", "revision": sub.revision},
         format="json",
     )
     assert resume.status_code == 400
@@ -425,7 +431,7 @@ def test_pause_resume_records_audit_and_schedule_semantics(
 
     pause = api_client.patch(
         f"{subscription_url}{sub_id}/",
-        {"status": "paused"},
+        {"status": "paused", "revision": created.data["revision"]},
         format="json",
     )
     assert pause.status_code == 200
@@ -443,7 +449,7 @@ def test_pause_resume_records_audit_and_schedule_semantics(
     before_resume = timezone.now()
     resume = api_client.patch(
         f"{subscription_url}{sub_id}/",
-        {"status": "active"},
+        {"status": "active", "revision": pause.data["revision"]},
         format="json",
     )
     assert resume.status_code == 200
@@ -457,13 +463,46 @@ def test_pause_resume_records_audit_and_schedule_semantics(
     assert new_next > before_resume
     # resume 只重算未来周期，不回补 pause 期间的 past next_run_at
     assert new_next > past
-
     # resume 不立即创建 Execution
     assert not DashboardReportExecution.objects.filter(
         subscription_id=sub_id
     ).exists()
     stats_after = DueSubscriptionScanner.scan(now=before_resume)
     assert stats_after.created == 0
+
+
+def test_creator_can_pause_after_dashboard_view_is_lost(
+    api_client,
+    authenticated_user,
+    dashboard,
+    email_channel,
+    monkeypatch,
+):
+    grant_dashboard_view(monkeypatch)
+    created = api_client.post(
+        "/api/v1/operation_analysis/api/dashboard_subscription/",
+        {
+            "dashboard": dashboard.id,
+            "name": "可停用日报",
+            "recipient_email": "ops@example.com",
+            "email_channel": email_channel.id,
+        },
+        format="json",
+    )
+    monkeypatch.setattr(
+        "apps.operation_analysis.services.subscription_service."
+        "DashboardSubscriptionService.can_view_dashboard",
+        lambda request, target: False,
+    )
+
+    response = api_client.patch(
+        f"/api/v1/operation_analysis/api/dashboard_subscription/{created.data['id']}/",
+        {"status": "paused", "revision": created.data["revision"]},
+        format="json",
+    )
+
+    assert response.status_code == 200
+    assert response.data["status"] == "paused"
 
 
 def test_api_cannot_set_terminated_directly(
@@ -487,7 +526,10 @@ def test_api_cannot_set_terminated_directly(
     )
     resp = api_client.patch(
         f"{subscription_url}{created.data['id']}/",
-        {"status": "terminated"},
+        {
+            "status": "terminated",
+            "revision": created.data["revision"],
+        },
         format="json",
     )
     assert resp.status_code == 400

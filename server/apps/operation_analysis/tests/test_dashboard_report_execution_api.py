@@ -61,6 +61,8 @@ def subscription(authenticated_user, dashboard, email_channel):
     return DashboardReportSubscription.objects.create(
         dashboard=dashboard,
         creator=authenticated_user.username,
+        creator_domain=authenticated_user.domain,
+        team_id=1,
         name="日报",
         recipient_email="ops@example.com",
         email_channel=email_channel,
@@ -153,16 +155,19 @@ def test_creator_with_dashboard_view_can_execute_and_retrieve(
     assert retrieve_response.data["snapshot"] == {
         "dashboard_id": subscription.dashboard_id,
         "creator_id": authenticated_user.username,
+        "creator_domain": authenticated_user.domain,
         "creator_timezone": "Asia/Shanghai",
         "subscription_id": subscription.id,
         "subscription_name": "日报",
         "recipient_email": "ops@example.com",
         "trigger_type": "manual_test",
         "email_channel_id": subscription.email_channel_id,
+        "execution_team_id": subscription.team_id,
         "scheduled_time_utc": None,
         "schedule_timezone": "",
         "scheduled_local_time": "",
         "subscription_version": subscription.version,
+        "subscription_revision": subscription.revision,
         "filter_values": {
             "environment": "production",
             "time_range": "last_7_days",
@@ -179,6 +184,24 @@ def test_creator_with_dashboard_view_can_execute_and_retrieve(
         },
         "created_at": retrieve_response.data["snapshot"]["created_at"],
     }
+
+
+def test_same_username_in_other_domain_cannot_read_execution(
+    api_client,
+    authenticated_user,
+    subscription,
+    execution_url,
+):
+    execution = DashboardReportExecution.objects.create(
+        subscription=subscription,
+        dashboard=subscription.dashboard,
+        creator=authenticated_user.username,
+        creator_domain="other.example",
+    )
+
+    response = api_client.get(f"{execution_url}{execution.id}/")
+
+    assert response.status_code == 404
 
 
 def test_user_without_dashboard_view_cannot_execute(
@@ -451,12 +474,14 @@ def test_running_execution_exposes_only_frozen_render_input(
         subscription=subscription,
         dashboard=subscription.dashboard,
         creator=authenticated_user.username,
+        creator_domain=authenticated_user.domain,
         status=DashboardReportExecution.Status.RUNNING,
     )
     DashboardReportExecutionSnapshot.objects.create(
         execution=execution,
         dashboard_id=subscription.dashboard_id,
         creator_id=authenticated_user.username,
+        creator_domain=authenticated_user.domain,
         subscription_id=subscription.id,
         subscription_name=subscription.name,
         recipient_email=subscription.recipient_email,
@@ -466,6 +491,8 @@ def test_running_execution_exposes_only_frozen_render_input(
         schedule_timezone="",
         scheduled_local_time="",
         subscription_version=subscription.version,
+        subscription_revision=subscription.revision,
+        execution_team_id=subscription.team_id,
         filter_values={"environment": "production"},
     )
     DashboardReportRenderSnapshot.objects.create(
@@ -486,11 +513,11 @@ def test_running_execution_exposes_only_frozen_render_input(
     )
     SystemUser.objects.get_or_create(
         username=authenticated_user.username,
+        domain=authenticated_user.domain,
         defaults={
             "display_name": authenticated_user.username,
             "email": "render-session@example.com",
             "password": "unused",
-            "domain": authenticated_user.domain,
             "group_list": authenticated_user.group_list,
         },
     )
@@ -511,16 +538,19 @@ def test_running_execution_exposes_only_frozen_render_input(
         "input_snapshot": {
             "dashboard_id": subscription.dashboard_id,
             "creator_id": authenticated_user.username,
+            "creator_domain": authenticated_user.domain,
             "creator_timezone": "Asia/Shanghai",
             "subscription_id": subscription.id,
             "subscription_name": subscription.name,
             "recipient_email": subscription.recipient_email,
             "trigger_type": execution.trigger_type,
             "email_channel_id": subscription.email_channel_id,
+            "execution_team_id": subscription.team_id,
             "scheduled_time_utc": None,
             "schedule_timezone": "",
             "scheduled_local_time": "",
             "subscription_version": subscription.version,
+            "subscription_revision": subscription.revision,
             "filter_values": {"environment": "production"},
             "filter_semantics": {},
             "created_at": response.data["input_snapshot"]["created_at"],

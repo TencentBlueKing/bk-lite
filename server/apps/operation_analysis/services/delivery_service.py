@@ -10,13 +10,16 @@ from apps.operation_analysis.models.subscription_models import (
 from apps.operation_analysis.services.dashboard_report_renderer import (
     DashboardRenderError,
 )
+from apps.operation_analysis.services.delivery_channel_service import (
+    DashboardReportChannelError,
+    DashboardReportDeliveryChannelService,
+)
 from apps.operation_analysis.services.execution_service import (
     DashboardReportExecutionService,
 )
 from apps.operation_analysis.services.report_render_service import (
     DashboardReportRenderService,
 )
-from apps.system_mgmt.models import Channel
 
 logger = logging.getLogger(__name__)
 
@@ -104,13 +107,21 @@ class DashboardReportDeliveryService:
                 execution,
                 DashboardReportExecution.DeliveryOutcome.DELIVERED,
             )
-            DashboardReportExecutionService.align_status_with_delivery_outcome(
-                execution
+            DashboardReportExecutionService.reconcile_delivery_fact(
+                execution,
+                source="delivery_worker",
             )
             return
 
         artifact = cls._resolve_artifact(execution)
-        channel = cls._resolve_channel(snapshot)
+        try:
+            resolved_channel = DashboardReportDeliveryChannelService.resolve(
+                execution, snapshot
+            )
+        except DashboardReportChannelError as exc:
+            raise DashboardReportDeliveryError(
+                str(exc), error_code=exc.error_code
+            ) from exc
         try:
             pdf_path = DashboardReportRenderService.resolve_artifact_path(
                 artifact
@@ -126,8 +137,7 @@ class DashboardReportDeliveryService:
 
         from apps.system_mgmt.utils.channel_utils import send_email_to_user
 
-        channel_config = dict(channel.config or {})
-        Channel.decrypt_field("smtp_pwd", channel_config)
+        channel_config = resolved_channel.config
         try:
             result = send_email_to_user(
                 channel_config,
@@ -177,8 +187,9 @@ class DashboardReportDeliveryService:
                 execution,
                 DashboardReportExecution.DeliveryOutcome.DELIVERED,
             )
-            DashboardReportExecutionService.align_status_with_delivery_outcome(
-                execution
+            DashboardReportExecutionService.reconcile_delivery_fact(
+                execution,
+                source="delivery_worker",
             )
             return
 
@@ -205,30 +216,6 @@ class DashboardReportDeliveryService:
                 "PDF 产物不存在",
                 error_code="pdf_generate_failed",
             ) from exc
-
-    @staticmethod
-    def _resolve_channel(
-        snapshot: DashboardReportExecutionSnapshot,
-    ) -> Channel:
-        if snapshot.email_channel_id is None:
-            raise DashboardReportDeliveryError(
-                "邮件通道未配置",
-                error_code="channel_missing",
-            )
-        channel = Channel.objects.filter(
-            id=snapshot.email_channel_id,
-        ).first()
-        if channel is None:
-            raise DashboardReportDeliveryError(
-                "邮件通道不存在",
-                error_code="channel_missing",
-            )
-        if channel.channel_type != "email":
-            raise DashboardReportDeliveryError(
-                "邮件通道不存在或类型不是 email",
-                error_code="channel_not_email",
-            )
-        return channel
 
     @staticmethod
     def _is_scheduled(

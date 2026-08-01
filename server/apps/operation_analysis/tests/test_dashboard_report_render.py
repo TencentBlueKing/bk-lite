@@ -99,6 +99,8 @@ def pending_execution(authenticated_user, email_channel):
     subscription = DashboardReportSubscription.objects.create(
         dashboard=dashboard,
         creator=authenticated_user.username,
+        creator_domain=authenticated_user.domain,
+        team_id=1,
         name="日报",
         recipient_email="ops@example.com",
         email_channel=email_channel,
@@ -108,11 +110,14 @@ def pending_execution(authenticated_user, email_channel):
         subscription=subscription,
         dashboard=dashboard,
         creator=authenticated_user.username,
+        creator_domain=authenticated_user.domain,
     )
     DashboardReportExecutionSnapshot.objects.create(
         execution=execution,
         dashboard_id=dashboard.id,
         creator_id=authenticated_user.username,
+        creator_domain=authenticated_user.domain,
+        execution_team_id=1,
         subscription_id=subscription.id,
         subscription_name=subscription.name,
         recipient_email=subscription.recipient_email,
@@ -148,7 +153,7 @@ def test_render_task_claims_execution_and_records_pdf_artifact(
         render_pdf,
     )
     monkeypatch.setattr(
-        "apps.operation_analysis.services.delivery_service.Channel.decrypt_field",
+        "apps.operation_analysis.services.delivery_channel_service.Channel.decrypt_field",
         lambda *args, **kwargs: None,
     )
     monkeypatch.setattr(
@@ -302,7 +307,7 @@ def test_execution_cannot_render_twice(
         render_pdf,
     )
     monkeypatch.setattr(
-        "apps.operation_analysis.services.delivery_service.Channel.decrypt_field",
+        "apps.operation_analysis.services.delivery_channel_service.Channel.decrypt_field",
         lambda *args, **kwargs: None,
     )
     monkeypatch.setattr(

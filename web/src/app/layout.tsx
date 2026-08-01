@@ -9,10 +9,8 @@ import { SessionProvider, useSession } from 'next-auth/react';
 import { LocaleProvider } from '@/context/locale';
 import { useTranslation } from '@/utils/i18n';
 import { ThemeBootstrap, ThemeProvider } from '@/theme';
-import { MenusProvider, useMenus } from '@/context/menus';
-import { UserInfoProvider } from '@/context/userInfo';
-import { ClientProvider } from '@/context/client';
-import { PermissionsProvider, usePermissions } from '@/context/permissions';
+import { useMenus } from '@/context/menus';
+import { usePermissions } from '@/context/permissions';
 import AuthProvider from '@/context/auth';
 import TopMenu from '@/app/(core)/components/top-menu';
 import { Watermark, message } from 'antd';
@@ -26,6 +24,7 @@ import WithSideMenuLayout from '@/components/sub-layout'
 import { shouldRenderSecondLayerMenu } from '@/utils/menuHelpers'
 import { isSessionExpiredState } from '@/utils/sessionExpiry'
 import { useUserInfoContext } from '@/context/userInfo';
+import { RouteScopedLayout } from '@/app/routeScopedLayout';
 
 const Loader = () => (
   <div className="flex justify-center items-center h-screen">
@@ -301,16 +300,9 @@ export default function RootLayout({
             <ThemeProvider>
               <AuthProvider>
                 <PortalBrandingHead />
-                <UserInfoProvider>
-                  <ClientProvider>
-                    <MenusProvider>
-                      <PermissionsProvider>
-                        {/* 渲染布局 */}
-                        <LayoutWithProviders>{children}</LayoutWithProviders>
-                      </PermissionsProvider>
-                    </MenusProvider>
-                  </ClientProvider>
-                </UserInfoProvider>
+                <RouteScopedLayout StandardLayout={LayoutWithProviders}>
+                  {children}
+                </RouteScopedLayout>
               </AuthProvider>
             </ThemeProvider>
           </LocaleProvider>

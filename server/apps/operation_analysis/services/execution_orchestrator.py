@@ -131,6 +131,7 @@ class PermissionStep:
     ) -> AttemptResult:
         users = User.objects.filter(
             username=execution.creator,
+            domain=execution.creator_domain,
             is_active=True,
         )
         if users.count() != 1:
@@ -204,6 +205,7 @@ class SnapshotStep:
             is_valid = (
                 execution.subscription_id is not None
                 and snapshot.creator_id == execution.creator
+                and snapshot.creator_domain == execution.creator_domain
                 and snapshot.subscription_id == execution.subscription_id
                 and isinstance(snapshot.filter_values, dict)
             )
@@ -213,6 +215,7 @@ class SnapshotStep:
                 and execution.subscription_id is not None
                 and snapshot.dashboard_id == execution.dashboard_id
                 and snapshot.creator_id == execution.creator
+                and snapshot.creator_domain == execution.creator_domain
                 and snapshot.subscription_id == execution.subscription_id
                 and isinstance(snapshot.filter_values, dict)
             )
@@ -396,8 +399,9 @@ class ExecutionOrchestrator:
             )
             resource = observe_resource_state(execution)
             if resource.delivery_outcome == "delivered":
-                DashboardReportExecutionService.align_status_with_delivery_outcome(
-                    execution
+                DashboardReportExecutionService.reconcile_delivery_fact(
+                    execution,
+                    source="orchestrator",
                 )
                 execution.refresh_from_db()
                 if (
@@ -416,8 +420,9 @@ class ExecutionOrchestrator:
             )
             if result.ok:
                 # deliver() 可能已按 delivery_outcome 对齐 succeeded
-                DashboardReportExecutionService.align_status_with_delivery_outcome(
-                    execution
+                DashboardReportExecutionService.reconcile_delivery_fact(
+                    execution,
+                    source="orchestrator",
                 )
                 execution.refresh_from_db()
                 if (
@@ -456,8 +461,9 @@ class ExecutionOrchestrator:
                     execution,
                     DashboardReportExecution.DeliveryOutcome.SMTP_UNKNOWN,
                 )
-                DashboardReportExecutionService.align_status_with_delivery_outcome(
-                    execution
+                DashboardReportExecutionService.reconcile_delivery_fact(
+                    execution,
+                    source="orchestrator",
                 )
                 execution.refresh_from_db()
                 if (

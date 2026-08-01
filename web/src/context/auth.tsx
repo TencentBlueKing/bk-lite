@@ -22,6 +22,7 @@ import {
   shouldTriggerSessionExpiry,
 } from '@/utils/sessionExpiry';
 import { forceLogoutAndRedirect } from '@/utils/forceLogout';
+import { isDashboardExecutionRenderRoute } from '@/app/routeScope';
 
 // Type assertion helper for session
 type ExtendedSession = Session & {
@@ -75,6 +76,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const authPaths = ['/auth/signin', '/auth/signout', '/auth/callback', '/auth/signin/login-auth-result'];
   const isCurrentAuthPath = isAuthPath(pathname);
+  const isDashboardRenderRoute = isDashboardExecutionRenderRoute(pathname);
   const isSessionValid = extendedSession && extendedSession.user && (extendedSession.user.id || extendedSession.user.username);
   const authenticatedSessionIdentityRef = useRef<string | null>(null);
   authenticatedSessionIdentityRef.current = status === 'authenticated' && isSessionValid
@@ -256,7 +258,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     const performInitialAuthCheck = async () => {
       // Only check once and skip for auth pages
-      if (hasCheckedExistingAuth || isCurrentAuthPath) {
+      if (hasCheckedExistingAuth || isCurrentAuthPath || isDashboardRenderRoute) {
+        if (isDashboardRenderRoute) {
+          setHasCheckedExistingAuth(true);
+        }
         setIsCheckingAuth(false);
         return;
       }
@@ -277,7 +282,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
 
     performInitialAuthCheck();
-  }, [hasCheckedExistingAuth, isCurrentAuthPath, pathname]);
+  }, [hasCheckedExistingAuth, isCurrentAuthPath, isDashboardRenderRoute, pathname]);
 
   useEffect(() => {
     const handleSessionExpired = () => {

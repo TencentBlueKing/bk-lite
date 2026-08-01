@@ -155,8 +155,9 @@ class TestDeliveryOutcomeDurable:
             execution,
             DashboardReportExecution.DeliveryOutcome.DELIVERED,
         )
-        DashboardReportExecutionService.align_status_with_delivery_outcome(
-            execution
+        DashboardReportExecutionService.reconcile_delivery_fact(
+            execution,
+            source="delivery_worker",
         )
         execution.refresh_from_db()
         assert execution.status == DashboardReportExecution.Status.SUCCEEDED
@@ -166,6 +167,39 @@ class TestDeliveryOutcomeDurable:
         )
         assert execution.delivered_at is not None
         assert execution.error_code == ""
+        assert execution.reconciled_from_status == "failed"
+        assert (
+            execution.reconciliation_reason
+            == "delivery_confirmed_after_terminal"
+        )
+        assert execution.reconciliation_source == "delivery_worker"
+        assert execution.reconciled_at is not None
+
+    def test_delivery_fact_cannot_resurrect_permission_failure(
+        self, authenticated_user, email_channel
+    ):
+        execution = _running(authenticated_user, email_channel)
+        DashboardReportExecutionService.transition(
+            execution,
+            DashboardReportExecution.Status.FAILED,
+            failure_stage="permission_check",
+            error_code="dashboard_view_denied",
+            error_message="denied",
+        )
+        DashboardReportExecutionService.mark_delivery_outcome(
+            execution,
+            DashboardReportExecution.DeliveryOutcome.DELIVERED,
+        )
+
+        DashboardReportExecutionService.reconcile_delivery_fact(
+            execution,
+            source="delivery_worker",
+        )
+
+        execution.refresh_from_db()
+        assert execution.status == DashboardReportExecution.Status.FAILED
+        assert execution.error_code == "dashboard_view_denied"
+        assert execution.reconciled_at is None
 
     def test_timeout_does_not_fail_delivered_running(
         self, authenticated_user, email_channel, monkeypatch

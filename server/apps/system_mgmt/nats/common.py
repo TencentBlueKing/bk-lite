@@ -173,6 +173,13 @@ def _verify_token(token):
     secret_key = os.getenv("SECRET_KEY")
     algorithm = os.getenv("JWT_ALGORITHM", "HS256")
     user_info = jwt.decode(token, key=secret_key, algorithms=[algorithm], options={"verify_exp": False})
+    # Render JWT 只能经 AuthMiddleware + Render Scope 白名单使用，不得作为
+    # 普通登录 / api_exempt / NATS verify_token 凭证。
+    if (
+        user_info.get("token_type") == "dashboard_report_render"
+        or "render_execution_id" in user_info
+    ):
+        raise Exception("Render token is not accepted as a login credential")
     time_now = int(time.time())
 
     # New-format token (with jti + exp): use PyJWT exp validation + blacklist check

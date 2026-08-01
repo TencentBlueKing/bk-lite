@@ -372,7 +372,10 @@ def test_update_filters_does_not_change_next_run_at(
 
     updated = api_client.patch(
         f"{subscription_url}{created.data['id']}/",
-        {"applied_filter_values": {"env": "b"}},
+        {
+            "applied_filter_values": {"env": "b"},
+            "revision": created.data["revision"],
+        },
         format="json",
     )
     assert updated.status_code == 200
@@ -574,7 +577,7 @@ def test_resume_active_rechecks_datasource_permission(
     grant_datasource_view(monkeypatch, allowed=False)
     resume = api_client.patch(
         f"{subscription_url}{created.data['id']}/",
-        {"status": "active"},
+        {"status": "active", "revision": created.data["revision"]},
         format="json",
     )
     assert resume.status_code == 403

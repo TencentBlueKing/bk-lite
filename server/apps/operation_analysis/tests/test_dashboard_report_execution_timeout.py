@@ -18,7 +18,12 @@ from apps.operation_analysis.services.execution_service import (
 )
 from apps.operation_analysis.services.execution_timeout_checker import (
     ExecutionTimeoutChecker,
+    execution_timeout_seconds,
 )
+from apps.operation_analysis.services.dashboard_report_renderer import (
+    DEFAULT_TIMEOUT_MS,
+)
+from apps.operation_analysis.services.retry_classifier import MAX_ATTEMPTS
 from apps.operation_analysis.tasks.tasks import (
     converge_timed_out_dashboard_report_executions_task,
 )
@@ -39,10 +44,14 @@ def email_channel(db):
     )
 
 
-def _make_running(authenticated_user, email_channel, *, started_at):
-    directory = Directory.objects.create(name="Timeout 目录", groups=[1])
+def _make_running(
+    authenticated_user, email_channel, *, started_at, name_suffix=""
+):
+    directory = Directory.objects.create(
+        name=f"Timeout 目录{name_suffix}", groups=[1]
+    )
     dashboard = Dashboard.objects.create(
-        name="Timeout 仪表盘",
+        name=f"Timeout 仪表盘{name_suffix}",
         directory=directory,
         groups=[1],
         created_by=authenticated_user.username,
@@ -50,7 +59,7 @@ def _make_running(authenticated_user, email_channel, *, started_at):
     subscription = DashboardReportSubscription.objects.create(
         dashboard=dashboard,
         creator=authenticated_user.username,
-        name="Timeout 订阅",
+        name=f"Timeout 订阅{name_suffix}",
         recipient_email="ops@example.com",
         email_channel=email_channel,
         schedule_type=DashboardReportSubscription.ScheduleType.DAILY,
@@ -82,6 +91,49 @@ def _make_running(authenticated_user, email_channel, *, started_at):
 
 
 class TestExecutionTimeoutChecker:
+    def test_default_timeout_covers_all_render_attempts(self, monkeypatch):
+        monkeypatch.delenv(
+            "DASHBOARD_REPORT_EXECUTION_TIMEOUT_SECONDS", raising=False
+        )
+
+        assert execution_timeout_seconds() >= (
+            MAX_ATTEMPTS * DEFAULT_TIMEOUT_MS // 1000
+        )
+
+    def test_claimed_but_not_started_orphan_uses_shorter_deadline(
+        self, authenticated_user, email_channel, monkeypatch
+    ):
+        monkeypatch.delenv(
+            "DASHBOARD_REPORT_EXECUTION_TIMEOUT_SECONDS", raising=False
+        )
+        monkeypatch.delenv(
+            "DASHBOARD_REPORT_EXECUTION_TIMEOUT_GRACE_SECONDS", raising=False
+        )
+        monkeypatch.delenv(
+            "DASHBOARD_REPORT_CLAIM_TIMEOUT_SECONDS", raising=False
+        )
+        orphan, _ = _make_running(
+            authenticated_user,
+            email_channel,
+            started_at=timezone.now() - timedelta(minutes=2),
+        )
+        active, _ = _make_running(
+            authenticated_user,
+            email_channel,
+            started_at=timezone.now() - timedelta(minutes=2),
+            name_suffix=" active",
+        )
+        active.attempt_count = 1
+        active.save(update_fields=["attempt_count", "updated_at"])
+
+        stats = ExecutionTimeoutChecker.sweep()
+        orphan.refresh_from_db()
+        active.refresh_from_db()
+
+        assert stats.failed == 1
+        assert orphan.status == DashboardReportExecution.Status.FAILED
+        assert active.status == DashboardReportExecution.Status.RUNNING
+
     def test_not_delivered_converges_to_failed(
         self, authenticated_user, email_channel, monkeypatch
     ):

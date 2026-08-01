@@ -43,6 +43,8 @@ class DashboardReportSubscriptionSerializer(serializers.ModelSerializer):
             "id",
             "dashboard",
             "creator",
+            "creator_domain",
+            "team_id",
             "name",
             "status",
             "recipient_email",
@@ -55,15 +57,18 @@ class DashboardReportSubscriptionSerializer(serializers.ModelSerializer):
             "timezone",
             "next_run_at",
             "version",
+            "revision",
             "config",
             "applied_filter_values",
             "latest_scheduled_execution",
             "latest_manual_test_execution",
             "terminated_at",
             "terminated_by",
+            "terminated_by_domain",
             "termination_reason",
             "last_lifecycle_action",
             "last_lifecycle_actor",
+            "last_lifecycle_actor_domain",
             "last_lifecycle_at",
             "created_at",
             "updated_at",
@@ -71,15 +76,19 @@ class DashboardReportSubscriptionSerializer(serializers.ModelSerializer):
         read_only_fields = [
             "id",
             "creator",
+            "creator_domain",
+            "team_id",
             "next_run_at",
             "config",
             "latest_scheduled_execution",
             "latest_manual_test_execution",
             "terminated_at",
             "terminated_by",
+            "terminated_by_domain",
             "termination_reason",
             "last_lifecycle_action",
             "last_lifecycle_actor",
+            "last_lifecycle_actor_domain",
             "last_lifecycle_at",
             "created_at",
             "updated_at",
@@ -87,6 +96,7 @@ class DashboardReportSubscriptionSerializer(serializers.ModelSerializer):
         extra_kwargs = {
             # version 可读；写时仅用于调度变更乐观锁，不直接落库
             "version": {"required": False},
+            "revision": {"required": False},
         }
 
     def get_latest_scheduled_execution(self, obj):
@@ -148,6 +158,10 @@ class DashboardReportSubscriptionSerializer(serializers.ModelSerializer):
 
     def validate(self, attrs):
         attrs = super().validate(attrs)
+        if self.instance is not None and "revision" not in attrs:
+            raise serializers.ValidationError(
+                {"revision": "修改订阅必须携带当前 revision"}
+            )
         if (
             self.instance
             and self.instance.status

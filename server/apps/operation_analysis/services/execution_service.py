@@ -230,15 +230,18 @@ class DashboardReportExecutionService:
         return execution
 
     @classmethod
-    def align_status_with_delivery_outcome(
+    def reconcile_delivery_fact(
         cls,
         execution: DashboardReportExecution,
+        *,
+        source: str,
     ) -> DashboardReportExecution:
-        """按投递事实对齐生命周期 status。
+        """以持久化 Delivery Fact 仲裁 timeout/SMTP 竞态。
 
         不变量：
-        - delivery_outcome=delivered → 不得停留 failed/unknown/running
-        - delivery_outcome=smtp_unknown → 不得停留 failed/running（收敛为 unknown）
+        - running 可按 Delivery Fact 收敛到终态；
+        - 仅 execution_timeout / smtp_unknown 竞态允许受控终态修正；
+        - permission/snapshot/render 等业务失败不得复活。
         """
         execution.refresh_from_db()
         now = timezone.now()
@@ -247,14 +250,19 @@ class DashboardReportExecutionService:
             outcome == DashboardReportExecution.DeliveryOutcome.DELIVERED
             or execution.delivered_at is not None
         ):
-            updated = DashboardReportExecution.objects.filter(
-                pk=execution.pk,
-                status__in={
-                    DashboardReportExecution.Status.RUNNING,
-                    DashboardReportExecution.Status.FAILED,
-                    DashboardReportExecution.Status.UNKNOWN,
-                },
-            ).update(
+            original_status = execution.status
+            allowed = original_status == DashboardReportExecution.Status.RUNNING
+            allowed = allowed or (
+                original_status == DashboardReportExecution.Status.FAILED
+                and execution.error_code == "execution_timeout"
+            )
+            allowed = allowed or (
+                original_status == DashboardReportExecution.Status.UNKNOWN
+                and execution.error_code == "smtp_result_unknown"
+            )
+            if not allowed:
+                return execution
+            updates = dict(
                 status=DashboardReportExecution.Status.SUCCEEDED,
                 finished_at=now,
                 updated_at=now,
@@ -265,6 +273,18 @@ class DashboardReportExecutionService:
                     DashboardReportExecution.DeliveryOutcome.DELIVERED
                 ),
             )
+            if original_status in cls.TERMINAL_STATUSES:
+                updates.update(
+                    reconciled_from_status=original_status,
+                    reconciliation_reason="delivery_confirmed_after_terminal",
+                    reconciliation_source=source,
+                    reconciled_at=now,
+                )
+            updated = DashboardReportExecution.objects.filter(
+                pk=execution.pk,
+                status=original_status,
+                delivery_outcome=DashboardReportExecution.DeliveryOutcome.DELIVERED,
+            ).update(**updates)
             execution.refresh_from_db()
             if updated:
                 logger.info(
@@ -278,17 +298,15 @@ class DashboardReportExecutionService:
             outcome
             == DashboardReportExecution.DeliveryOutcome.SMTP_UNKNOWN
         ):
-            updated = DashboardReportExecution.objects.filter(
-                pk=execution.pk,
-                status__in={
-                    DashboardReportExecution.Status.RUNNING,
-                    DashboardReportExecution.Status.FAILED,
-                },
-            ).exclude(
-                delivery_outcome=(
-                    DashboardReportExecution.DeliveryOutcome.DELIVERED
-                )
-            ).update(
+            original_status = execution.status
+            allowed = original_status == DashboardReportExecution.Status.RUNNING
+            allowed = allowed or (
+                original_status == DashboardReportExecution.Status.FAILED
+                and execution.error_code == "execution_timeout"
+            )
+            if not allowed:
+                return execution
+            updates = dict(
                 status=DashboardReportExecution.Status.UNKNOWN,
                 finished_at=now,
                 updated_at=now,
@@ -299,6 +317,18 @@ class DashboardReportExecutionService:
                     DashboardReportExecution.DeliveryOutcome.SMTP_UNKNOWN
                 ),
             )
+            if original_status in cls.TERMINAL_STATUSES:
+                updates.update(
+                    reconciled_from_status=original_status,
+                    reconciliation_reason="smtp_unknown_after_terminal",
+                    reconciliation_source=source,
+                    reconciled_at=now,
+                )
+            updated = DashboardReportExecution.objects.filter(
+                pk=execution.pk,
+                status=original_status,
+                delivery_outcome=DashboardReportExecution.DeliveryOutcome.SMTP_UNKNOWN,
+            ).update(**updates)
             execution.refresh_from_db()
             if updated:
                 logger.info(
@@ -402,12 +432,15 @@ class DashboardReportExecutionService:
             execution=execution,
             dashboard_id=subscription.dashboard_id,
             creator_id=subscription.creator,
+            creator_domain=subscription.creator_domain,
             creator_timezone=creator_timezone,
             subscription_id=subscription.id,
             subscription_name=subscription.name,
             recipient_email=subscription.recipient_email,
             trigger_type=execution.trigger_type,
             email_channel_id=subscription.email_channel_id,
+            execution_team_id=subscription.team_id,
+            subscription_revision=subscription.revision,
             filter_values=filter_values,
             filter_semantics=filter_semantics,
             **schedule_fields,
@@ -479,7 +512,10 @@ class DashboardReportExecutionService:
         *,
         request_id: str | None = None,
     ) -> tuple[DashboardReportExecution, bool]:
-        if subscription.creator != request.user.username:
+        if (
+            subscription.creator != request.user.username
+            or subscription.creator_domain != request.user.domain
+        ):
             raise PermissionDenied("只能执行自己的报告订阅")
         if subscription.dashboard is None:
             raise PermissionDenied("源仪表盘已不存在，不能执行该订阅")
@@ -516,13 +552,14 @@ class DashboardReportExecutionService:
 
         creator_timezone = resolve_creator_timezone(
             locked_subscription.creator,
-            domain=getattr(request.user, "domain", None),
+            domain=locked_subscription.creator_domain,
         )
         try:
             execution = DashboardReportExecution.objects.create(
                 subscription=locked_subscription,
                 dashboard=locked_subscription.dashboard,
                 creator=locked_subscription.creator,
+                creator_domain=locked_subscription.creator_domain,
                 trigger_type=DashboardReportExecution.TriggerType.MANUAL_TEST,
                 request_id=normalized_request_id,
             )
@@ -649,13 +686,15 @@ class DashboardReportExecutionService:
             )
 
         creator_timezone = resolve_creator_timezone(
-            locked_subscription.creator
+            locked_subscription.creator,
+            domain=locked_subscription.creator_domain,
         )
         try:
             execution = DashboardReportExecution.objects.create(
                 subscription=locked_subscription,
                 dashboard=locked_subscription.dashboard,
                 creator=locked_subscription.creator,
+                creator_domain=locked_subscription.creator_domain,
                 trigger_type=DashboardReportExecution.TriggerType.SCHEDULED,
                 scheduled_time_utc=scheduled_time_utc,
             )

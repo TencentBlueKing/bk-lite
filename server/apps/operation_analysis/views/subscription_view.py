@@ -47,7 +47,10 @@ class DashboardReportSubscriptionViewSet(viewsets.ModelViewSet):
         )
         user = self.request.user
         if not getattr(user, "is_superuser", False):
-            queryset = queryset.filter(creator=user.username)
+            queryset = queryset.filter(
+                creator=user.username,
+                creator_domain=user.domain,
+            )
         dashboard_id = self.request.query_params.get("dashboard_id")
         if dashboard_id:
             queryset = queryset.filter(dashboard_id=dashboard_id)

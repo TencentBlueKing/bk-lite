@@ -164,6 +164,7 @@ class DashboardReportRenderTokenService:
         try:
             user = SystemUser.objects.get(
                 username=execution.creator,
+                domain=execution.creator_domain,
                 disabled=False,
             )
         except (
@@ -181,12 +182,16 @@ class DashboardReportRenderTokenService:
         record.save(update_fields=["consumed_at"])
         session_token = jwt.encode(
             {
+                "token_type": "dashboard_report_render",
                 "user_id": user.id,
                 "login_time": int(now.timestamp()),
                 "jti": secrets.token_hex(16),
                 "exp": int(record.expires_at.timestamp()),
                 "render_execution_id": execution.id,
+                "render_snapshot_id": execution.render_snapshot.id,
                 "render_attempt_no": record.attempt_no,
+                "creator_username": execution.creator,
+                "creator_domain": execution.creator_domain,
             },
             secret_key,
             algorithm=os.getenv("JWT_ALGORITHM", "HS256"),
