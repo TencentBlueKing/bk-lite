@@ -1314,6 +1314,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
           <DashboardSubscriptionModal
             open={subscriptionModalVisible}
             dashboardId={Number(selectedDashboard.data_id)}
+            appliedFilterValues={appliedFilterValues}
             onClose={() => setSubscriptionModalVisible(false)}
           />
         )}

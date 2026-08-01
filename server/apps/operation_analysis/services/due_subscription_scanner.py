@@ -1,6 +1,8 @@
 """DueSubscriptionScanner：发现到期订阅并创建 scheduled Execution。
 
 只负责扫描与调用 create_scheduled；不调用 Render / Delivery / Orchestrator。
+不负责补偿循环：每个 due subscription 最多一次 create_scheduled，
+catch_up 计划点由 create_scheduled 锁内计算。
 """
 
 from __future__ import annotations
@@ -44,12 +46,13 @@ class DueSubscriptionScanner:
         due_ids = list(
             DashboardReportSubscription.objects.filter(
                 status=DashboardReportSubscription.Status.ACTIVE,
+                deleted_at__isnull=True,
                 schedule_type__isnull=False,
                 next_run_at__isnull=False,
                 next_run_at__lte=moment,
             )
             .order_by("next_run_at", "id")
-            .values_list("id", "next_run_at")[:limit]
+            .values_list("id", flat=True)[:limit]
         )
 
         created = 0
@@ -57,10 +60,10 @@ class DueSubscriptionScanner:
         already_exists = 0
         skipped_other = 0
 
-        for subscription_id, scheduled_time_utc in due_ids:
+        for subscription_id in due_ids:
             result = DashboardReportExecutionService.create_scheduled(
                 subscription_id,
-                scheduled_time_utc=scheduled_time_utc,
+                now=moment,
             )
             if result.created:
                 created += 1

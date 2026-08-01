@@ -22,6 +22,7 @@ import { useDashboardSubscriptionApi } from '@/app/ops-analysis/api/dashboardSub
 import type {
   DashboardExecutionCreated,
   DashboardExecutionStatus,
+  DashboardExecutionSummary,
   DashboardScheduleType,
   DashboardSubscription,
   DashboardSubscriptionStatus,
@@ -32,6 +33,7 @@ import { useTranslation } from '@/utils/i18n';
 interface DashboardSubscriptionModalProps {
   open: boolean;
   dashboardId: number;
+  appliedFilterValues?: Record<string, unknown>;
   onClose: () => void;
 }
 
@@ -96,9 +98,87 @@ const normalizeChannelList = (response: unknown): EmailChannelOption[] => {
     .filter((item) => item.name && !Number.isNaN(item.id));
 };
 
+const WEEKDAY_LABEL_KEYS = [
+  'dashboard.subscriptionWeekdayMon',
+  'dashboard.subscriptionWeekdayTue',
+  'dashboard.subscriptionWeekdayWed',
+  'dashboard.subscriptionWeekdayThu',
+  'dashboard.subscriptionWeekdayFri',
+  'dashboard.subscriptionWeekdaySat',
+  'dashboard.subscriptionWeekdaySun',
+] as const;
+
+const padScheduleTime = (hour: number, minute: number): string =>
+  `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+
+type TranslateFn = (
+  id: string,
+  defaultMessage?: string,
+  values?: Record<string, string | number>,
+) => string;
+
+export const formatSubscriptionScheduleSummary = (
+  subscription: Pick<
+    DashboardSubscription,
+    | 'schedule_type'
+    | 'schedule_hour'
+    | 'schedule_minute'
+    | 'schedule_weekday'
+    | 'schedule_day_of_month'
+  >,
+  t: TranslateFn,
+): string | null => {
+  if (
+    !subscription.schedule_type
+    || subscription.schedule_hour == null
+    || subscription.schedule_minute == null
+  ) {
+    return null;
+  }
+  const time = padScheduleTime(
+    subscription.schedule_hour,
+    subscription.schedule_minute,
+  );
+  if (subscription.schedule_type === 'daily') {
+    return t('dashboard.subscriptionScheduleSummaryDaily', undefined, {
+      time,
+    });
+  }
+  if (subscription.schedule_type === 'weekly') {
+    const weekdayIndex = Math.min(
+      Math.max(subscription.schedule_weekday ?? 0, 0),
+      6,
+    );
+    return t('dashboard.subscriptionScheduleSummaryWeekly', undefined, {
+      weekday: t(WEEKDAY_LABEL_KEYS[weekdayIndex]),
+      time,
+    });
+  }
+  return t('dashboard.subscriptionScheduleSummaryMonthly', undefined, {
+    day: subscription.schedule_day_of_month ?? 1,
+    time,
+  });
+};
+
+const isInFlightExecutionStatus = (
+  status: DashboardExecutionStatus | undefined,
+): boolean => status === 'pending' || status === 'running';
+
+export const hasInFlightSubscriptionExecution = (
+  subscription: Pick<
+    DashboardSubscription,
+    'latest_scheduled_execution' | 'latest_manual_test_execution'
+  >,
+): boolean =>
+  isInFlightExecutionStatus(subscription.latest_scheduled_execution?.status)
+  || isInFlightExecutionStatus(
+    subscription.latest_manual_test_execution?.status,
+  );
+
 const DashboardSubscriptionModal = ({
   open,
   dashboardId,
+  appliedFilterValues = {},
   onClose,
 }: DashboardSubscriptionModalProps) => {
   const { t } = useTranslation();
@@ -136,21 +216,26 @@ const DashboardSubscriptionModal = ({
   const [executionResult, setExecutionResult] =
     useState<DashboardExecutionCreated | null>(null);
 
-  const loadSubscriptions = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    setLoadFailed(false);
-    setExecutionNotice(null);
-    setExecutionResult(null);
-    try {
-      setSubscriptions(await listSubscriptions(dashboardId));
-    } catch {
-      setError(t('dashboard.subscriptionLoadFailed'));
-      setLoadFailed(true);
-    } finally {
-      setLoading(false);
-    }
-  }, [dashboardId, listSubscriptions, t]);
+  const loadSubscriptions = useCallback(
+    async (options?: { preserveExecutionNotice?: boolean }) => {
+      setLoading(true);
+      setError(null);
+      setLoadFailed(false);
+      if (!options?.preserveExecutionNotice) {
+        setExecutionNotice(null);
+        setExecutionResult(null);
+      }
+      try {
+        setSubscriptions(await listSubscriptions(dashboardId));
+      } catch {
+        setError(t('dashboard.subscriptionLoadFailed'));
+        setLoadFailed(true);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [dashboardId, listSubscriptions, t],
+  );
 
   useEffect(() => {
     if (!open) return;
@@ -264,6 +349,7 @@ const DashboardSubscriptionModal = ({
             ? values.schedule_day_of_month ?? null
             : null,
         timezone: hasSchedule ? values.timezone ?? null : null,
+        applied_filter_values: appliedFilterValues,
         ...(editing ? { version: editing.version } : {}),
       };
       if (editing) {
@@ -315,6 +401,7 @@ const DashboardSubscriptionModal = ({
       const result = await executeSubscription(id, crypto.randomUUID());
       setExecutionResult(result);
       setExecutionNotice(t('dashboard.subscriptionExecuteCreated'));
+      await loadSubscriptions({ preserveExecutionNotice: true });
     } catch {
       setError(t('dashboard.subscriptionExecuteFailed'));
     } finally {
@@ -331,7 +418,10 @@ const DashboardSubscriptionModal = ({
       setExecutionResult({
         execution_id: execution.id,
         status: execution.status,
+        request_id: executionResult.request_id,
+        created: executionResult.created,
       });
+      await loadSubscriptions({ preserveExecutionNotice: true });
     } catch {
       setError(t('dashboard.subscriptionExecutionQueryFailed'));
     } finally {
@@ -341,6 +431,65 @@ const DashboardSubscriptionModal = ({
 
   const executionStatusLabel = (status: DashboardExecutionStatus) =>
     t(`dashboard.executionStatus${status[0].toUpperCase()}${status.slice(1)}`);
+
+  const executionStatusColor = (
+    status: DashboardExecutionStatus,
+  ): string => {
+    if (status === 'succeeded') return 'success';
+    if (status === 'failed') return 'error';
+    if (status === 'unknown') return 'warning';
+    if (status === 'running') return 'processing';
+    return 'default';
+  };
+
+  const renderExecutionSummary = (
+    summary: DashboardExecutionSummary | null,
+    kind: 'scheduled' | 'manual_test',
+  ) => {
+    if (!summary) {
+      return (
+        <Typography.Text type="secondary" className="block text-xs">
+          {t('dashboard.subscriptionExecutionEmpty')}
+        </Typography.Text>
+      );
+    }
+    const timeLabel =
+      kind === 'scheduled'
+        ? t('dashboard.subscriptionExecutionScheduledAt')
+        : t('dashboard.subscriptionExecutionTestedAt');
+    const timeValue =
+      kind === 'scheduled'
+        ? summary.scheduled_time_utc ?? summary.created_at
+        : summary.created_at;
+    return (
+      <Space direction="vertical" size={0} className="w-full">
+        <Space size={4} wrap>
+          <Tag color={executionStatusColor(summary.status)}>
+            {executionStatusLabel(summary.status)}
+          </Tag>
+        </Space>
+        <Typography.Text type="secondary" className="block text-xs">
+          {timeLabel}
+          {': '}
+          {timeValue}
+        </Typography.Text>
+        {summary.finished_at ? (
+          <Typography.Text type="secondary" className="block text-xs">
+            {t('dashboard.subscriptionExecutionFinishedAt')}
+            {': '}
+            {summary.finished_at}
+          </Typography.Text>
+        ) : null}
+        {summary.status === 'failed' && summary.error_message ? (
+          <Typography.Text type="danger" className="block text-xs">
+            {t('dashboard.subscriptionExecutionFailureReason')}
+            {': '}
+            {summary.error_message}
+          </Typography.Text>
+        ) : null}
+      </Space>
+    );
+  };
 
   const executionAlertType = (
     status: DashboardExecutionStatus,
@@ -361,7 +510,7 @@ const DashboardSubscriptionModal = ({
       title={t('dashboard.subscriptionTitle')}
       footer={null}
       onCancel={onClose}
-      width={640}
+      width={720}
       styles={{
         body: {
           maxHeight: 'calc(100vh - 240px)',
@@ -680,8 +829,11 @@ const DashboardSubscriptionModal = ({
                       size="small"
                       loading={executingId === subscription.id}
                       disabled={
-                        executingId !== null
-                        && executingId !== subscription.id
+                        hasInFlightSubscriptionExecution(subscription)
+                        || (
+                          executingId !== null
+                          && executingId !== subscription.id
+                        )
                       }
                       onClick={() => executeManualTest(subscription.id)}
                     >
@@ -740,7 +892,7 @@ const DashboardSubscriptionModal = ({
                       </Space>
                     }
                     description={
-                      <Space direction="vertical" size={0}>
+                      <Space direction="vertical" size={4} className="w-full">
                         <Typography.Text
                           type="secondary"
                           ellipsis={{ tooltip: subscription.recipient_email }}
@@ -767,6 +919,53 @@ const DashboardSubscriptionModal = ({
                           {subscription.next_run_at
                             ?? t('dashboard.subscriptionScheduleNone')}
                         </Typography.Text>
+                        <Typography.Text
+                          type="secondary"
+                          className="block"
+                          data-testid={`schedule-summary-${subscription.id}`}
+                        >
+                          {t('dashboard.subscriptionScheduleType')}
+                          {': '}
+                          {formatSubscriptionScheduleSummary(
+                            subscription,
+                            t,
+                          )
+                            ?? t('dashboard.subscriptionScheduleNone')}
+                        </Typography.Text>
+                        <Typography.Text
+                          type="secondary"
+                          className="block"
+                          data-testid={`schedule-timezone-${subscription.id}`}
+                        >
+                          {t('dashboard.subscriptionTimezone')}
+                          {': '}
+                          {subscription.timezone
+                            ?? t('dashboard.subscriptionScheduleNone')}
+                        </Typography.Text>
+                        <div
+                          data-testid={`latest-scheduled-${subscription.id}`}
+                          className="rounded border border-[var(--color-border-2)] bg-[var(--color-fill-1)] px-2 py-1"
+                        >
+                          <Typography.Text className="mb-1 block text-xs font-medium">
+                            {t('dashboard.subscriptionLatestScheduled')}
+                          </Typography.Text>
+                          {renderExecutionSummary(
+                            subscription.latest_scheduled_execution,
+                            'scheduled',
+                          )}
+                        </div>
+                        <div
+                          data-testid={`latest-manual-test-${subscription.id}`}
+                          className="rounded border border-[var(--color-border-2)] bg-[var(--color-fill-1)] px-2 py-1"
+                        >
+                          <Typography.Text className="mb-1 block text-xs font-medium">
+                            {t('dashboard.subscriptionLatestManualTest')}
+                          </Typography.Text>
+                          {renderExecutionSummary(
+                            subscription.latest_manual_test_execution,
+                            'manual_test',
+                          )}
+                        </div>
                       </Space>
                     }
                   />

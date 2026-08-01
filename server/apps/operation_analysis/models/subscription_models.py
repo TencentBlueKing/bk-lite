@@ -9,6 +9,13 @@ EXECUTION_SNAPSHOT_IMMUTABLE_ERROR = "Execution Input Snapshot 创建后不可�
 RENDER_SNAPSHOT_IMMUTABLE_ERROR = "Render Snapshot 创建后不可修改"
 
 
+class AliveSubscriptionManager(models.Manager):
+    """默认排除逻辑删除的 Subscription；审计/生命周期用 all_objects。"""
+
+    def get_queryset(self):
+        return super().get_queryset().filter(deleted_at__isnull=True)
+
+
 class DashboardReportSubscription(TimeInfo):
     class Status(models.TextChoices):
         ACTIVE = "active", "启用"
@@ -19,6 +26,10 @@ class DashboardReportSubscription(TimeInfo):
         DAILY = "daily", "每天"
         WEEKLY = "weekly", "每周"
         MONTHLY = "monthly", "每月"
+
+    class LifecycleAction(models.TextChoices):
+        PAUSE = "pause", "暂停"
+        RESUME = "resume", "恢复"
 
     dashboard = models.ForeignKey(
         Dashboard,
@@ -90,6 +101,56 @@ class DashboardReportSubscription(TimeInfo):
         verbose_name="调度配置版本",
     )
     config = models.JSONField(default=dict, blank=True, verbose_name="扩展配置")
+    deleted_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        db_index=True,
+        verbose_name="逻辑删除时间",
+    )
+    deleted_by = models.CharField(
+        max_length=32,
+        blank=True,
+        default="",
+        verbose_name="逻辑删除操作者",
+    )
+    terminated_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="终止时间",
+    )
+    terminated_by = models.CharField(
+        max_length=32,
+        blank=True,
+        default="",
+        verbose_name="终止操作者",
+    )
+    termination_reason = models.CharField(
+        max_length=64,
+        blank=True,
+        default="",
+        verbose_name="终止原因",
+    )
+    last_lifecycle_action = models.CharField(
+        max_length=16,
+        blank=True,
+        default="",
+        choices=LifecycleAction.choices,
+        verbose_name="最近生命周期操作",
+    )
+    last_lifecycle_actor = models.CharField(
+        max_length=32,
+        blank=True,
+        default="",
+        verbose_name="最近生命周期操作者",
+    )
+    last_lifecycle_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="最近生命周期操作时间",
+    )
+
+    objects = AliveSubscriptionManager()
+    all_objects = models.Manager()
 
     class Meta:
         db_table = "operation_analysis_dashboard_report_subscription"
@@ -236,6 +297,10 @@ class DashboardReportExecution(TimeInfo):
         db_index=True,
         verbose_name="投递事实",
     )
+    source_canvas_deleted_during_execution = models.BooleanField(
+        default=False,
+        verbose_name="执行期间源画布被删除",
+    )
 
     class Meta:
         db_table = "operation_analysis_dashboard_report_execution"
@@ -325,6 +390,11 @@ class DashboardReportExecutionSnapshot(models.Model):
         default=dict,
         blank=True,
         verbose_name="筛选值",
+    )
+    filter_semantics = models.JSONField(
+        default=dict,
+        blank=True,
+        verbose_name="筛选语义（未解析）",
     )
     created_at = models.DateTimeField(
         auto_now_add=True,

@@ -249,7 +249,7 @@ class TestDeliveryRetryIntegration:
         )
         created = DashboardReportExecutionService.create_scheduled(
             subscription.id,
-            scheduled_time_utc=due_at,
+            now=timezone.now(),
         )
         subscription.refresh_from_db()
         advanced = subscription.next_run_at

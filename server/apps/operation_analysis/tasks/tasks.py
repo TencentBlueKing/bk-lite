@@ -10,11 +10,17 @@ from apps.operation_analysis.services.due_subscription_scanner import (
 from apps.operation_analysis.services.execution_orchestrator import (
     ExecutionOrchestrator,
 )
+from apps.operation_analysis.services.execution_retention_cleanup_service import (
+    ExecutionRetentionCleanupService,
+)
 from apps.operation_analysis.services.execution_service import (
     DashboardReportExecutionService,
 )
 from apps.operation_analysis.services.execution_timeout_checker import (
     ExecutionTimeoutChecker,
+)
+from apps.operation_analysis.services.pdf_artifact_cleanup_service import (
+    PdfArtifactCleanupService,
 )
 
 
@@ -72,4 +78,34 @@ def converge_timed_out_dashboard_report_executions_task() -> dict:
         "succeeded": stats.succeeded,
         "unknown": stats.unknown,
         "skipped": stats.skipped,
+    }
+
+
+@shared_task(
+    name="operation_analysis.cleanup_expired_dashboard_report_pdf_artifacts",
+    max_retries=0,
+)
+def cleanup_expired_dashboard_report_pdf_artifacts_task() -> dict:
+    """清理已过期且所属 Execution 已终态的 PDF artifact（A7）。"""
+    stats = PdfArtifactCleanupService.cleanup()
+    return {
+        "scanned": stats.scanned,
+        "deleted": stats.deleted,
+        "file_missing": stats.file_missing,
+        "errors": stats.errors,
+    }
+
+
+@shared_task(
+    name="operation_analysis.cleanup_expired_dashboard_report_executions",
+    max_retries=0,
+)
+def cleanup_expired_dashboard_report_executions_task() -> dict:
+    """分批清理超过保留期的终态 Execution 及级联 Snapshot（A8）。"""
+    stats = ExecutionRetentionCleanupService.cleanup()
+    return {
+        "scanned": stats.scanned,
+        "deleted": stats.deleted,
+        "errors": stats.errors,
+        "retention_days": stats.retention_days,
     }

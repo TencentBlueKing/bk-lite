@@ -12,4 +12,14 @@ CELERY_BEAT_SCHEDULE = {
         ),
         "schedule": crontab(minute="*"),
     },
+    "cleanup_expired_dashboard_report_pdf_artifacts": {
+        "task": (
+            "operation_analysis.cleanup_expired_dashboard_report_pdf_artifacts"
+        ),
+        "schedule": crontab(minute="*/15"),
+    },
+    "cleanup_expired_dashboard_report_executions": {
+        "task": "operation_analysis.cleanup_expired_dashboard_report_executions",
+        "schedule": crontab(hour=3, minute=20),
+    },
 }

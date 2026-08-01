@@ -1,4 +1,4 @@
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone as dt_timezone
 from unittest.mock import MagicMock
 
 import pytest
@@ -14,6 +14,10 @@ from apps.operation_analysis.services.due_subscription_scanner import (
 )
 from apps.operation_analysis.services.execution_service import (
     DashboardReportExecutionService,
+)
+from apps.operation_analysis.services.schedule_calculator import (
+    ScheduleSpec,
+    catch_up_scheduled_time,
 )
 from apps.system_mgmt.models import Channel
 
@@ -57,6 +61,22 @@ def due_subscription(authenticated_user, email_channel):
     )
 
 
+def _catch_up_for(subscription, now):
+    spec = ScheduleSpec(
+        schedule_type=subscription.schedule_type,
+        hour=subscription.schedule_hour,
+        minute=subscription.schedule_minute,
+        weekday=subscription.schedule_weekday,
+        day_of_month=subscription.schedule_day_of_month,
+    )
+    return catch_up_scheduled_time(
+        spec,
+        subscription.timezone,
+        stored_next_run_at=subscription.next_run_at,
+        now=now,
+    )
+
+
 def test_create_scheduled_creates_execution_and_advances_next_run(
     due_subscription, monkeypatch, django_capture_on_commit_callbacks
 ):
@@ -66,24 +86,26 @@ def test_create_scheduled_creates_execution_and_advances_next_run(
         "_dispatch_render",
         dispatch,
     )
-    scheduled_time = due_subscription.next_run_at
+    now = timezone.now()
+    expected = _catch_up_for(due_subscription, now)
     with django_capture_on_commit_callbacks(execute=True):
         result = DashboardReportExecutionService.create_scheduled(
             due_subscription.id,
-            scheduled_time_utc=scheduled_time,
+            now=now,
         )
     assert result.created is True
     assert result.execution is not None
     assert result.execution.trigger_type == "scheduled"
-    assert result.execution.scheduled_time_utc == scheduled_time
+    assert result.execution.scheduled_time_utc == expected
     snapshot = result.execution.snapshot
-    assert snapshot.scheduled_time_utc == scheduled_time
+    assert snapshot.scheduled_time_utc == expected
     assert snapshot.schedule_timezone == "Asia/Shanghai"
     assert snapshot.scheduled_local_time
     assert snapshot.subscription_version == 1
 
     due_subscription.refresh_from_db()
-    assert due_subscription.next_run_at > scheduled_time
+    assert due_subscription.next_run_at > now
+    assert due_subscription.next_run_at > expected
     dispatch.assert_called_once_with(result.execution.id)
 
 
@@ -106,7 +128,7 @@ def test_create_scheduled_skips_when_in_flight(
     original_next = due_subscription.next_run_at
     result = DashboardReportExecutionService.create_scheduled(
         due_subscription.id,
-        scheduled_time_utc=original_next,
+        now=timezone.now(),
     )
     assert result.skipped_in_flight is True
     assert result.created is False
@@ -122,7 +144,7 @@ def test_snapshot_failure_marks_execution_failed_and_advances_next_run(
         "_dispatch_render",
         MagicMock(),
     )
-    original_next = due_subscription.next_run_at
+    now = timezone.now()
 
     def boom(*args, **kwargs):
         raise RuntimeError("snapshot broken")
@@ -135,7 +157,7 @@ def test_snapshot_failure_marks_execution_failed_and_advances_next_run(
 
     result = DashboardReportExecutionService.create_scheduled(
         due_subscription.id,
-        scheduled_time_utc=original_next,
+        now=now,
     )
 
     assert result.created is True
@@ -146,7 +168,7 @@ def test_snapshot_failure_marks_execution_failed_and_advances_next_run(
 
     due_subscription.refresh_from_db()
     assert due_subscription.next_run_at is not None
-    assert due_subscription.next_run_at > original_next
+    assert due_subscription.next_run_at > now
 
 
 def test_scanner_ignores_unscheduled_subscriptions(
@@ -216,7 +238,7 @@ def test_scanner_can_create_next_cycle_after_snapshot_failure(
         "_dispatch_render",
         MagicMock(),
     )
-    original_next = due_subscription.next_run_at
+    now = timezone.now()
 
     first_call = {"done": False}
     original_create_snapshot = DashboardReportExecutionService._create_snapshot
@@ -233,13 +255,13 @@ def test_scanner_can_create_next_cycle_after_snapshot_failure(
         flaky_snapshot,
     )
 
-    first = DueSubscriptionScanner.scan(now=timezone.now())
+    first = DueSubscriptionScanner.scan(now=now)
     assert first.created == 1
 
     due_subscription.refresh_from_db()
     next_cycle = due_subscription.next_run_at
     assert next_cycle is not None
-    assert next_cycle > original_next
+    assert next_cycle > now
 
     second = DueSubscriptionScanner.scan(now=next_cycle)
     assert second.created == 1
@@ -260,7 +282,8 @@ def test_same_scheduled_time_is_not_created_twice_after_snapshot_failure(
         "_dispatch_render",
         MagicMock(),
     )
-    original_next = due_subscription.next_run_at
+    now = timezone.now()
+    expected = _catch_up_for(due_subscription, now)
 
     monkeypatch.setattr(
         DashboardReportExecutionService,
@@ -272,20 +295,21 @@ def test_same_scheduled_time_is_not_created_twice_after_snapshot_failure(
 
     first = DashboardReportExecutionService.create_scheduled(
         due_subscription.id,
-        scheduled_time_utc=original_next,
+        now=now,
     )
     assert first.created is True
+    assert first.execution.scheduled_time_utc == expected
 
     second = DashboardReportExecutionService.create_scheduled(
         due_subscription.id,
-        scheduled_time_utc=original_next,
+        now=now,
     )
     assert second.created is False
     assert second.already_exists is False
     assert (
         DashboardReportExecution.objects.filter(
             subscription=due_subscription,
-            scheduled_time_utc=original_next,
+            scheduled_time_utc=expected,
             trigger_type=DashboardReportExecution.TriggerType.SCHEDULED,
         ).count()
         == 1
@@ -336,3 +360,270 @@ def test_manual_execute_does_not_change_next_run_at(
     )
     due_subscription.refresh_from_db()
     assert due_subscription.next_run_at == original
+
+
+def test_daily_outage_three_days_creates_only_one_execution(
+    authenticated_user, email_channel, monkeypatch
+):
+    monkeypatch.setattr(
+        DashboardReportExecutionService,
+        "_dispatch_render",
+        MagicMock(),
+    )
+    directory = Directory.objects.create(name="补偿目录", groups=[1])
+    dashboard = Dashboard.objects.create(
+        name="补偿仪表盘",
+        directory=directory,
+        groups=[1],
+        created_by=authenticated_user.username,
+    )
+    stored = datetime(2026, 8, 1, 1, 0, tzinfo=dt_timezone.utc)
+    now = datetime(2026, 8, 4, 2, 0, tzinfo=dt_timezone.utc)
+    sub = DashboardReportSubscription.objects.create(
+        dashboard=dashboard,
+        creator=authenticated_user.username,
+        name="三日停机",
+        recipient_email="ops@example.com",
+        email_channel=email_channel,
+        schedule_type=DashboardReportSubscription.ScheduleType.DAILY,
+        schedule_hour=9,
+        schedule_minute=0,
+        timezone="Asia/Shanghai",
+        next_run_at=stored,
+        version=1,
+    )
+
+    stats = DueSubscriptionScanner.scan(now=now)
+    assert stats.scanned == 1
+    assert stats.created == 1
+    executions = list(
+        DashboardReportExecution.objects.filter(
+            subscription=sub,
+            trigger_type=DashboardReportExecution.TriggerType.SCHEDULED,
+        )
+    )
+    assert len(executions) == 1
+    assert executions[0].scheduled_time_utc == datetime(
+        2026, 8, 4, 1, 0, tzinfo=dt_timezone.utc
+    )
+    sub.refresh_from_db()
+    assert sub.next_run_at == datetime(
+        2026, 8, 5, 1, 0, tzinfo=dt_timezone.utc
+    )
+    assert sub.next_run_at > now
+
+    # 同一次扫描语义：再次扫描不因陈旧历史再补多期
+    again = DueSubscriptionScanner.scan(now=now)
+    assert again.created == 0
+    assert (
+        DashboardReportExecution.objects.filter(subscription=sub).count()
+        == 1
+    )
+
+
+def test_weekly_outage_cross_week_creates_only_one_execution(
+    authenticated_user, email_channel, monkeypatch
+):
+    monkeypatch.setattr(
+        DashboardReportExecutionService,
+        "_dispatch_render",
+        MagicMock(),
+    )
+    directory = Directory.objects.create(name="周补偿目录", groups=[1])
+    dashboard = Dashboard.objects.create(
+        name="周补偿仪表盘",
+        directory=directory,
+        groups=[1],
+        created_by=authenticated_user.username,
+    )
+    stored = datetime(2026, 8, 3, 1, 0, tzinfo=dt_timezone.utc)
+    now = datetime(2026, 8, 13, 2, 0, tzinfo=dt_timezone.utc)
+    sub = DashboardReportSubscription.objects.create(
+        dashboard=dashboard,
+        creator=authenticated_user.username,
+        name="跨周停机",
+        recipient_email="ops@example.com",
+        email_channel=email_channel,
+        schedule_type=DashboardReportSubscription.ScheduleType.WEEKLY,
+        schedule_weekday=0,
+        schedule_hour=9,
+        schedule_minute=0,
+        timezone="Asia/Shanghai",
+        next_run_at=stored,
+        version=1,
+    )
+
+    stats = DueSubscriptionScanner.scan(now=now)
+    assert stats.created == 1
+    execution = DashboardReportExecution.objects.get(subscription=sub)
+    assert execution.scheduled_time_utc == datetime(
+        2026, 8, 10, 1, 0, tzinfo=dt_timezone.utc
+    )
+    sub.refresh_from_db()
+    assert sub.next_run_at == datetime(
+        2026, 8, 17, 1, 0, tzinfo=dt_timezone.utc
+    )
+
+
+def test_monthly_day_31_outage_creates_only_one_execution(
+    authenticated_user, email_channel, monkeypatch
+):
+    monkeypatch.setattr(
+        DashboardReportExecutionService,
+        "_dispatch_render",
+        MagicMock(),
+    )
+    directory = Directory.objects.create(name="月末补偿目录", groups=[1])
+    dashboard = Dashboard.objects.create(
+        name="月末补偿仪表盘",
+        directory=directory,
+        groups=[1],
+        created_by=authenticated_user.username,
+    )
+    stored = datetime(2026, 1, 31, 1, 0, tzinfo=dt_timezone.utc)
+    now = datetime(2026, 4, 15, 2, 0, tzinfo=dt_timezone.utc)
+    sub = DashboardReportSubscription.objects.create(
+        dashboard=dashboard,
+        creator=authenticated_user.username,
+        name="月末31",
+        recipient_email="ops@example.com",
+        email_channel=email_channel,
+        schedule_type=DashboardReportSubscription.ScheduleType.MONTHLY,
+        schedule_day_of_month=31,
+        schedule_hour=9,
+        schedule_minute=0,
+        timezone="Asia/Shanghai",
+        next_run_at=stored,
+        version=1,
+    )
+
+    stats = DueSubscriptionScanner.scan(now=now)
+    assert stats.created == 1
+    execution = DashboardReportExecution.objects.get(subscription=sub)
+    assert execution.scheduled_time_utc == datetime(
+        2026, 3, 31, 1, 0, tzinfo=dt_timezone.utc
+    )
+    sub.refresh_from_db()
+    assert sub.next_run_at > now
+    assert sub.next_run_at.astimezone(dt_timezone.utc).month == 4
+
+
+def test_dst_outage_creates_only_one_execution(
+    authenticated_user, email_channel, monkeypatch
+):
+    monkeypatch.setattr(
+        DashboardReportExecutionService,
+        "_dispatch_render",
+        MagicMock(),
+    )
+    directory = Directory.objects.create(name="DST目录", groups=[1])
+    dashboard = Dashboard.objects.create(
+        name="DST仪表盘",
+        directory=directory,
+        groups=[1],
+        created_by=authenticated_user.username,
+    )
+    stored = datetime(2026, 3, 7, 7, 30, tzinfo=dt_timezone.utc)
+    now = datetime(2026, 3, 9, 14, 0, tzinfo=dt_timezone.utc)
+    sub = DashboardReportSubscription.objects.create(
+        dashboard=dashboard,
+        creator=authenticated_user.username,
+        name="DST补偿",
+        recipient_email="ops@example.com",
+        email_channel=email_channel,
+        schedule_type=DashboardReportSubscription.ScheduleType.DAILY,
+        schedule_hour=2,
+        schedule_minute=30,
+        timezone="America/New_York",
+        next_run_at=stored,
+        version=1,
+    )
+
+    stats = DueSubscriptionScanner.scan(now=now)
+    assert stats.created == 1
+    assert (
+        DashboardReportExecution.objects.filter(subscription=sub).count()
+        == 1
+    )
+    execution = DashboardReportExecution.objects.get(subscription=sub)
+    assert execution.scheduled_time_utc == datetime(
+        2026, 3, 9, 6, 30, tzinfo=dt_timezone.utc
+    )
+    sub.refresh_from_db()
+    assert sub.next_run_at > now
+
+
+def test_dual_scanner_concurrent_create_only_one_execution(
+    due_subscription, monkeypatch
+):
+    monkeypatch.setattr(
+        DashboardReportExecutionService,
+        "_dispatch_render",
+        MagicMock(),
+    )
+    now = timezone.now()
+    first = DueSubscriptionScanner.scan(now=now)
+    second = DueSubscriptionScanner.scan(now=now)
+    assert first.created == 1
+    assert second.created == 0
+    assert (
+        DashboardReportExecution.objects.filter(
+            subscription=due_subscription,
+            trigger_type=DashboardReportExecution.TriggerType.SCHEDULED,
+        ).count()
+        == 1
+    )
+
+
+def test_scanner_skips_paused_and_deleted(
+    authenticated_user, email_channel, monkeypatch
+):
+    monkeypatch.setattr(
+        DashboardReportExecutionService,
+        "_dispatch_render",
+        MagicMock(),
+    )
+    directory = Directory.objects.create(name="跳过目录", groups=[1])
+    dashboard = Dashboard.objects.create(
+        name="跳过仪表盘",
+        directory=directory,
+        groups=[1],
+        created_by=authenticated_user.username,
+    )
+    due = timezone.now() - timedelta(hours=1)
+    paused = DashboardReportSubscription.objects.create(
+        dashboard=dashboard,
+        creator=authenticated_user.username,
+        name="已暂停",
+        recipient_email="ops@example.com",
+        email_channel=email_channel,
+        schedule_type=DashboardReportSubscription.ScheduleType.DAILY,
+        schedule_hour=9,
+        schedule_minute=0,
+        timezone="Asia/Shanghai",
+        next_run_at=due,
+        status=DashboardReportSubscription.Status.PAUSED,
+        version=1,
+    )
+    deleted = DashboardReportSubscription.all_objects.create(
+        dashboard=dashboard,
+        creator=authenticated_user.username,
+        name="已删除",
+        recipient_email="ops@example.com",
+        email_channel=email_channel,
+        schedule_type=DashboardReportSubscription.ScheduleType.DAILY,
+        schedule_hour=9,
+        schedule_minute=0,
+        timezone="Asia/Shanghai",
+        next_run_at=due,
+        deleted_at=timezone.now(),
+        version=1,
+    )
+    stats = DueSubscriptionScanner.scan(now=timezone.now())
+    assert stats.scanned == 0
+    assert (
+        DashboardReportExecution.objects.filter(
+            subscription_id__in=[paused.id, deleted.id]
+        ).count()
+        == 0
+    )

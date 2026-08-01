@@ -19,7 +19,8 @@ from apps.operation_analysis.services.report_display_time import (
 )
 from apps.operation_analysis.services.schedule_calculator import (
     ScheduleSpec,
-    next_after,
+    catch_up_scheduled_time,
+    next_run_strictly_after_now,
 )
 from apps.operation_analysis.services.subscription_service import (
     DashboardSubscriptionService,
@@ -310,13 +311,34 @@ class DashboardReportExecutionService:
         return execution
 
     @staticmethod
-    def _snapshot_filter_values(
+    def _snapshot_filter_payload(
         subscription: DashboardReportSubscription,
-    ) -> dict:
-        filter_values = (subscription.config or {}).get("filter_values", {})
-        if not isinstance(filter_values, dict):
-            raise ValidationError("filter_values 必须是对象")
-        return deepcopy(filter_values)
+        execution: DashboardReportExecution,
+    ) -> tuple[dict, dict]:
+        from apps.operation_analysis.services.filter_snapshot import (
+            FilterSnapshotError,
+        )
+        from apps.operation_analysis.services.filter_snapshot_resolver import (
+            resolve_filter_snapshot,
+        )
+
+        if (
+            execution.trigger_type
+            == DashboardReportExecution.TriggerType.SCHEDULED
+            and execution.scheduled_time_utc is not None
+        ):
+            reference_at = execution.scheduled_time_utc
+        else:
+            reference_at = timezone.now()
+
+        try:
+            return resolve_filter_snapshot(
+                subscription.config,
+                reference_at=reference_at,
+                timezone_name=subscription.timezone,
+            )
+        except FilterSnapshotError as exc:
+            raise ValidationError(str(exc)) from exc
 
     @staticmethod
     def _normalize_request_id(request_id: str | None) -> str:
@@ -373,6 +395,9 @@ class DashboardReportExecutionService:
         schedule_fields = cls._schedule_snapshot_fields(
             execution, subscription
         )
+        filter_semantics, filter_values = cls._snapshot_filter_payload(
+            subscription, execution
+        )
         return DashboardReportExecutionSnapshot.objects.create(
             execution=execution,
             dashboard_id=subscription.dashboard_id,
@@ -383,7 +408,8 @@ class DashboardReportExecutionService:
             recipient_email=subscription.recipient_email,
             trigger_type=execution.trigger_type,
             email_channel_id=subscription.email_channel_id,
-            filter_values=cls._snapshot_filter_values(subscription),
+            filter_values=filter_values,
+            filter_semantics=filter_semantics,
             **schedule_fields,
         )
 
@@ -432,12 +458,14 @@ class DashboardReportExecutionService:
         subscription: DashboardReportSubscription,
         *,
         scheduled_time_utc: datetime,
+        now: datetime,
     ) -> None:
         spec = cls._subscription_schedule_spec(subscription)
-        advanced = next_after(
+        advanced = next_run_strictly_after_now(
             spec,
             subscription.timezone,
-            scheduled_time_utc,
+            after_scheduled_time_utc=scheduled_time_utc,
+            now=now,
         )
         subscription.next_run_at = advanced.utc
         subscription.save(update_fields=["next_run_at", "updated_at"])
@@ -514,6 +542,25 @@ class DashboardReportExecutionService:
                     locked_subscription,
                     creator_timezone=creator_timezone,
                 )
+        except ValidationError as exc:
+            logger.exception(
+                "创建 Execution Input Snapshot 失败: execution_id=%s",
+                execution.id,
+            )
+            message = str(exc)
+            if hasattr(exc, "message_dict"):
+                message = "; ".join(
+                    f"{k}: {v}" for k, v in exc.message_dict.items()
+                )
+            elif getattr(exc, "messages", None):
+                message = "; ".join(str(m) for m in exc.messages)
+            cls.transition(
+                execution,
+                DashboardReportExecution.Status.FAILED,
+                failure_stage="snapshot",
+                error_code="filter_invalid",
+                error_message=message or cls.SNAPSHOT_FAILURE_MESSAGE,
+            )
         except Exception:
             logger.exception(
                 "创建 Execution Input Snapshot 失败: execution_id=%s",
@@ -537,18 +584,24 @@ class DashboardReportExecutionService:
         cls,
         subscription_id: int,
         *,
-        scheduled_time_utc: datetime,
+        now: datetime | None = None,
     ) -> CreateScheduledResult:
-        """创建 scheduled Execution。
+        """创建 scheduled Execution（含 missed-run 最近一期补偿）。
 
         仅供 DueSubscriptionScanner 调用；不是通用 Execution 创建入口。
         禁止 Retry / 补偿 / 其他模块直接复用本方法作为通用工厂。
+        最终 scheduled_time_utc 仅由锁内 catch_up_scheduled_time 决定。
         """
+        moment = now or timezone.now()
         locked_subscription = (
-            DashboardReportSubscription.objects.select_for_update().get(
+            DashboardReportSubscription.all_objects.select_for_update().get(
                 pk=subscription_id
             )
         )
+        if locked_subscription.deleted_at is not None:
+            return CreateScheduledResult(
+                execution=None, created=False
+            )
         if (
             locked_subscription.status
             != DashboardReportSubscription.Status.ACTIVE
@@ -560,10 +613,19 @@ class DashboardReportExecutionService:
                 execution=None, created=False
             )
 
-        if locked_subscription.next_run_at != scheduled_time_utc:
+        # 并发下可能已被推进到未来：不再 due，直接 skip（不推进）
+        if locked_subscription.next_run_at > moment:
             return CreateScheduledResult(
                 execution=None, created=False
             )
+
+        spec = cls._subscription_schedule_spec(locked_subscription)
+        scheduled_time_utc = catch_up_scheduled_time(
+            spec,
+            locked_subscription.timezone,
+            stored_next_run_at=locked_subscription.next_run_at,
+            now=moment,
+        )
 
         existing = cls._find_scheduled(
             subscription_id=locked_subscription.id,
@@ -617,6 +679,29 @@ class DashboardReportExecutionService:
                     locked_subscription,
                     creator_timezone=creator_timezone,
                 )
+        except ValidationError as exc:
+            logger.exception(
+                "创建 scheduled Execution Snapshot 失败: execution_id=%s",
+                execution.id,
+            )
+            message = str(exc)
+            if getattr(exc, "messages", None):
+                message = "; ".join(str(m) for m in exc.messages)
+            cls.transition(
+                execution,
+                DashboardReportExecution.Status.FAILED,
+                failure_stage="snapshot",
+                error_code="filter_invalid",
+                error_message=message or cls.SNAPSHOT_FAILURE_MESSAGE,
+            )
+            cls._advance_subscription_next_run(
+                locked_subscription,
+                scheduled_time_utc=scheduled_time_utc,
+                now=moment,
+            )
+            return CreateScheduledResult(
+                execution=execution, created=True
+            )
         except Exception:
             logger.exception(
                 "创建 scheduled Execution Snapshot 失败: execution_id=%s",
@@ -631,6 +716,7 @@ class DashboardReportExecutionService:
             cls._advance_subscription_next_run(
                 locked_subscription,
                 scheduled_time_utc=scheduled_time_utc,
+                now=moment,
             )
             return CreateScheduledResult(
                 execution=execution, created=True
@@ -639,6 +725,7 @@ class DashboardReportExecutionService:
         cls._advance_subscription_next_run(
             locked_subscription,
             scheduled_time_utc=scheduled_time_utc,
+            now=moment,
         )
 
         if execution.status == DashboardReportExecution.Status.PENDING:

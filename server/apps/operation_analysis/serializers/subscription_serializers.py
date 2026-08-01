@@ -1,11 +1,42 @@
 from rest_framework import serializers
 
 from apps.operation_analysis.models.subscription_models import (
+    DashboardReportExecution,
     DashboardReportSubscription,
 )
 
 
+class DashboardReportExecutionSummarySerializer(serializers.ModelSerializer):
+    """列表双状态摘要：scheduled / manual_test 各自最近一次。"""
+
+    execution_id = serializers.IntegerField(source="id", read_only=True)
+
+    class Meta:
+        model = DashboardReportExecution
+        fields = [
+            "execution_id",
+            "status",
+            "trigger_type",
+            "failure_stage",
+            "error_code",
+            "error_message",
+            "created_at",
+            "finished_at",
+            "scheduled_time_utc",
+        ]
+        read_only_fields = fields
+
+
 class DashboardReportSubscriptionSerializer(serializers.ModelSerializer):
+    applied_filter_values = serializers.JSONField(
+        required=False,
+        allow_null=True,
+        write_only=True,
+        help_text="Dashboard 当前已应用筛选（appliedFilterValues）",
+    )
+    latest_scheduled_execution = serializers.SerializerMethodField()
+    latest_manual_test_execution = serializers.SerializerMethodField()
+
     class Meta:
         model = DashboardReportSubscription
         fields = [
@@ -25,6 +56,15 @@ class DashboardReportSubscriptionSerializer(serializers.ModelSerializer):
             "next_run_at",
             "version",
             "config",
+            "applied_filter_values",
+            "latest_scheduled_execution",
+            "latest_manual_test_execution",
+            "terminated_at",
+            "terminated_by",
+            "termination_reason",
+            "last_lifecycle_action",
+            "last_lifecycle_actor",
+            "last_lifecycle_at",
             "created_at",
             "updated_at",
         ]
@@ -33,6 +73,14 @@ class DashboardReportSubscriptionSerializer(serializers.ModelSerializer):
             "creator",
             "next_run_at",
             "config",
+            "latest_scheduled_execution",
+            "latest_manual_test_execution",
+            "terminated_at",
+            "terminated_by",
+            "termination_reason",
+            "last_lifecycle_action",
+            "last_lifecycle_actor",
+            "last_lifecycle_at",
             "created_at",
             "updated_at",
         ]
@@ -40,6 +88,37 @@ class DashboardReportSubscriptionSerializer(serializers.ModelSerializer):
             # version 可读；写时仅用于调度变更乐观锁，不直接落库
             "version": {"required": False},
         }
+
+    def get_latest_scheduled_execution(self, obj):
+        execution = self._latest_execution(
+            obj,
+            trigger_type=DashboardReportExecution.TriggerType.SCHEDULED,
+            prefetch_attr="_latest_scheduled_executions",
+        )
+        if execution is None:
+            return None
+        return DashboardReportExecutionSummarySerializer(execution).data
+
+    def get_latest_manual_test_execution(self, obj):
+        execution = self._latest_execution(
+            obj,
+            trigger_type=DashboardReportExecution.TriggerType.MANUAL_TEST,
+            prefetch_attr="_latest_manual_test_executions",
+        )
+        if execution is None:
+            return None
+        return DashboardReportExecutionSummarySerializer(execution).data
+
+    @staticmethod
+    def _latest_execution(obj, *, trigger_type: str, prefetch_attr: str):
+        prefetched = getattr(obj, prefetch_attr, None)
+        if prefetched is not None:
+            return prefetched[0] if prefetched else None
+        return (
+            obj.executions.filter(trigger_type=trigger_type)
+            .order_by("-id")
+            .first()
+        )
 
     def validate_status(self, value):
         if value == DashboardReportSubscription.Status.TERMINATED:
@@ -60,8 +139,23 @@ class DashboardReportSubscriptionSerializer(serializers.ModelSerializer):
         except ValueError as exc:
             raise serializers.ValidationError(str(exc)) from exc
 
+    def validate_applied_filter_values(self, value):
+        if value is None:
+            return {}
+        if not isinstance(value, dict):
+            raise serializers.ValidationError("已应用筛选必须是对象")
+        return value
+
     def validate(self, attrs):
         attrs = super().validate(attrs)
+        if (
+            self.instance
+            and self.instance.status
+            == DashboardReportSubscription.Status.TERMINATED
+        ):
+            raise serializers.ValidationError(
+                {"status": "已终止的报告订阅不可修改或恢复"}
+            )
         if (
             self.instance
             and "dashboard" in attrs

@@ -230,3 +230,97 @@ def next_after(
 ) -> NextRun:
     """返回某次计划时刻之后的下一期（用于推进 next_run_at）。"""
     return next_run(spec, timezone_name, after=scheduled_time_utc)
+
+
+def latest_run_at_or_before(
+    spec: ScheduleSpec,
+    timezone_name: str,
+    now: datetime,
+) -> NextRun:
+    """返回 <= now 的最近一个合法计划点（与 next_run 同源日历/DST/月末规则）。"""
+    spec.validate()
+    tz_name = validate_iana_timezone(timezone_name)
+    tz = ZoneInfo(tz_name)
+    now_utc = _ensure_aware_utc(now)
+    now_local = now_utc.astimezone(tz)
+
+    def _try(year: int, month: int, day: int) -> NextRun | None:
+        local_aware = _resolve_local_wall_time(
+            year, month, day, spec.hour, spec.minute, tz
+        )
+        if local_aware.astimezone(dt_timezone.utc) <= now_utc:
+            return _build_next_run(local_aware, tz_name)
+        return None
+
+    if spec.schedule_type == SCHEDULE_TYPE_DAILY:
+        current = now_local.date()
+        for _ in range(800):
+            found = _try(current.year, current.month, current.day)
+            if found is not None:
+                return found
+            current -= timedelta(days=1)
+
+    elif spec.schedule_type == SCHEDULE_TYPE_WEEKLY:
+        assert spec.weekday is not None
+        current = now_local.date()
+        while current.weekday() != spec.weekday:
+            current -= timedelta(days=1)
+        for _ in range(120):
+            found = _try(current.year, current.month, current.day)
+            if found is not None:
+                return found
+            current -= timedelta(days=7)
+
+    else:
+        assert spec.day_of_month is not None
+        year = now_local.year
+        month = now_local.month
+        for _ in range(36):
+            day = _clamp_month_day(year, month, spec.day_of_month)
+            found = _try(year, month, day)
+            if found is not None:
+                return found
+            if month == 1:
+                year -= 1
+                month = 12
+            else:
+                month -= 1
+
+    raise RuntimeError("无法计算 <= now 的最近计划时间")
+
+
+def catch_up_scheduled_time(
+    spec: ScheduleSpec,
+    timezone_name: str,
+    *,
+    stored_next_run_at: datetime,
+    now: datetime,
+) -> datetime:
+    """漏期补偿：返回本次唯一 scheduled_time_utc（只补最近一期）。
+
+    - stored_next_run_at > now：防御性原样返回（本不应被 Scanner 选中）
+    - 否则：latest_run_at_or_before（跳过中间未执行计划点；catch_up <= now）
+    """
+    stored = _ensure_aware_utc(stored_next_run_at)
+    now_utc = _ensure_aware_utc(now)
+    if stored > now_utc:
+        return stored
+
+    return latest_run_at_or_before(spec, timezone_name, now_utc).utc
+
+
+def next_run_strictly_after_now(
+    spec: ScheduleSpec,
+    timezone_name: str,
+    *,
+    after_scheduled_time_utc: datetime,
+    now: datetime,
+) -> NextRun:
+    """从某计划点推进到严格晚于 now 的下一期（防止 next_run_at 停在过去）。"""
+    now_utc = _ensure_aware_utc(now)
+    advanced = next_after(spec, timezone_name, after_scheduled_time_utc)
+    for _ in range(64):
+        if advanced.utc > now_utc:
+            return advanced
+        advanced = next_after(spec, timezone_name, advanced.utc)
+    raise RuntimeError("无法将 next_run_at 推进到未来")

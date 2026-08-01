@@ -25,6 +25,7 @@ class DashboardReportExecutionSnapshotSerializer(serializers.ModelSerializer):
             "scheduled_local_time",
             "subscription_version",
             "filter_values",
+            "filter_semantics",
             "created_at",
         ]
         read_only_fields = fields
@@ -80,6 +81,7 @@ class DashboardReportExecutionSerializer(serializers.ModelSerializer):
             "error_code",
             "error_message",
             "attempt_count",
+            "source_canvas_deleted_during_execution",
             "created_at",
             "started_at",
             "finished_at",

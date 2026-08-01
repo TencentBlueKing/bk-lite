@@ -117,6 +117,14 @@ class PermissionStep:
     failure_stage = "permission_check"
 
     @classmethod
+    def _has_render_snapshot(cls, execution: DashboardReportExecution) -> bool:
+        try:
+            execution.render_snapshot
+            return True
+        except DashboardReportRenderSnapshot.DoesNotExist:
+            return False
+
+    @classmethod
     def execute(
         cls,
         execution: DashboardReportExecution,
@@ -125,15 +133,25 @@ class PermissionStep:
             username=execution.creator,
             is_active=True,
         )
-        if users.count() != 1 or execution.dashboard is None:
+        if users.count() != 1:
             return AttemptResult(
                 ok=False,
                 failure_stage=cls.failure_stage,
-                error_code=(
-                    "dashboard_missing"
-                    if execution.dashboard is None
-                    else "creator_inactive"
-                ),
+                error_code="creator_inactive",
+                error_message="Execution 创建者无权查看仪表盘",
+            )
+
+        # Render Snapshot 冻结后 Dashboard 删除：不因存在性再次阻断当前执行
+        if execution.dashboard is None:
+            if (
+                execution.source_canvas_deleted_during_execution
+                and cls._has_render_snapshot(execution)
+            ):
+                return AttemptResult(ok=True)
+            return AttemptResult(
+                ok=False,
+                failure_stage=cls.failure_stage,
+                error_code="dashboard_missing",
                 error_message="Execution 创建者无权查看仪表盘",
             )
 
@@ -179,14 +197,25 @@ class SnapshotStep:
                 error_message="Execution Snapshot 不存在",
             )
 
-        is_valid = (
-            execution.dashboard_id is not None
-            and execution.subscription_id is not None
-            and snapshot.dashboard_id == execution.dashboard_id
-            and snapshot.creator_id == execution.creator
-            and snapshot.subscription_id == execution.subscription_id
-            and isinstance(snapshot.filter_values, dict)
-        )
+        if (
+            execution.source_canvas_deleted_during_execution
+            and execution.dashboard_id is None
+        ):
+            is_valid = (
+                execution.subscription_id is not None
+                and snapshot.creator_id == execution.creator
+                and snapshot.subscription_id == execution.subscription_id
+                and isinstance(snapshot.filter_values, dict)
+            )
+        else:
+            is_valid = (
+                execution.dashboard_id is not None
+                and execution.subscription_id is not None
+                and snapshot.dashboard_id == execution.dashboard_id
+                and snapshot.creator_id == execution.creator
+                and snapshot.subscription_id == execution.subscription_id
+                and isinstance(snapshot.filter_values, dict)
+            )
         if not is_valid:
             return AttemptResult(
                 ok=False,

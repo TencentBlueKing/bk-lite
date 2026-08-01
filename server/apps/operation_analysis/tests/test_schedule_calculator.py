@@ -7,8 +7,11 @@ from apps.operation_analysis.services.schedule_calculator import (
     SCHEDULE_TYPE_MONTHLY,
     SCHEDULE_TYPE_WEEKLY,
     ScheduleSpec,
+    catch_up_scheduled_time,
+    latest_run_at_or_before,
     next_after,
     next_run,
+    next_run_strictly_after_now,
     validate_iana_timezone,
 )
 
@@ -146,3 +149,98 @@ class TestSpecValidation:
                 "Asia/Shanghai",
                 after=_utc(2026, 8, 1, 0, 0),
             )
+
+
+class TestCatchUp:
+    def test_daily_skips_three_missed_days(self):
+        spec = ScheduleSpec(SCHEDULE_TYPE_DAILY, hour=9, minute=0)
+        stored = _utc(2026, 8, 1, 1, 0)  # 08-01 09:00 Shanghai
+        now = _utc(2026, 8, 4, 2, 0)  # 08-04 10:00 Shanghai
+        catch_up = catch_up_scheduled_time(
+            spec,
+            "Asia/Shanghai",
+            stored_next_run_at=stored,
+            now=now,
+        )
+        assert catch_up == _utc(2026, 8, 4, 1, 0)
+        latest = latest_run_at_or_before(spec, "Asia/Shanghai", now)
+        assert latest.utc == catch_up
+        assert latest.scheduled_local_time == "2026-08-04 09:00"
+        advanced = next_run_strictly_after_now(
+            spec,
+            "Asia/Shanghai",
+            after_scheduled_time_utc=catch_up,
+            now=now,
+        )
+        assert advanced.utc == _utc(2026, 8, 5, 1, 0)
+        assert advanced.utc > now
+
+    def test_weekly_cross_week(self):
+        # Monday 09:00；stored=Mon 08-03，now=Thu 08-13 → catch_up=Mon 08-10
+        spec = ScheduleSpec(
+            SCHEDULE_TYPE_WEEKLY, hour=9, minute=0, weekday=0
+        )
+        stored = _utc(2026, 8, 3, 1, 0)
+        now = _utc(2026, 8, 13, 2, 0)
+        catch_up = catch_up_scheduled_time(
+            spec,
+            "Asia/Shanghai",
+            stored_next_run_at=stored,
+            now=now,
+        )
+        assert catch_up == _utc(2026, 8, 10, 1, 0)
+        advanced = next_run_strictly_after_now(
+            spec,
+            "Asia/Shanghai",
+            after_scheduled_time_utc=catch_up,
+            now=now,
+        )
+        assert advanced.utc == _utc(2026, 8, 17, 1, 0)
+
+    def test_monthly_day_31_across_short_months(self):
+        spec = ScheduleSpec(
+            SCHEDULE_TYPE_MONTHLY, hour=9, minute=0, day_of_month=31
+        )
+        # stored=Jan 31；now=Apr 15 → catch_up=Mar 31（跳过 Feb 28）
+        stored = _utc(2026, 1, 31, 1, 0)
+        now = _utc(2026, 4, 15, 2, 0)
+        catch_up = catch_up_scheduled_time(
+            spec,
+            "Asia/Shanghai",
+            stored_next_run_at=stored,
+            now=now,
+        )
+        assert catch_up == _utc(2026, 3, 31, 1, 0)
+        latest = latest_run_at_or_before(spec, "Asia/Shanghai", now)
+        assert latest.scheduled_local_time == "2026-03-31 09:00"
+
+    def test_dst_spring_forward_latest(self):
+        from zoneinfo import ZoneInfo
+
+        spec = ScheduleSpec(SCHEDULE_TYPE_DAILY, hour=2, minute=30)
+        # 停机跨过春天跳时日；恢复于 03-09 10:00 EDT
+        stored = _utc(2026, 3, 7, 7, 30)  # 03-07 02:30 EST
+        now = _utc(2026, 3, 9, 14, 0)  # 03-09 10:00 EDT
+        catch_up = catch_up_scheduled_time(
+            spec,
+            "America/New_York",
+            stored_next_run_at=stored,
+            now=now,
+        )
+        local = catch_up.astimezone(ZoneInfo("America/New_York"))
+        assert local.date().isoformat() == "2026-03-09"
+        assert (local.hour, local.minute) == (2, 30)
+
+    def test_stored_in_future_returns_stored(self):
+        spec = ScheduleSpec(SCHEDULE_TYPE_DAILY, hour=9, minute=0)
+        stored = _utc(2026, 8, 5, 1, 0)
+        now = _utc(2026, 8, 4, 2, 0)
+        assert (
+            catch_up_scheduled_time(
+                spec,
+                "Asia/Shanghai",
+                stored_next_run_at=stored,
+                now=now,
+            )
+            == stored
+        )

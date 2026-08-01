@@ -351,7 +351,7 @@ class TestScheduledRetryDoesNotTouchNextRun:
         )
         created = DashboardReportExecutionService.create_scheduled(
             subscription.id,
-            scheduled_time_utc=due_at,
+            now=timezone.now(),
         )
         assert created.created is True
         subscription.refresh_from_db()

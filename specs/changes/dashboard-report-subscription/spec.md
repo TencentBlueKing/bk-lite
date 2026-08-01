@@ -1,14 +1,13 @@
 # 仪表盘报告订阅 MVP
 
-Status: mvp_closure_aligned
+Status: gap_closure_l4_missed_run_done
 
-## Current MVP Closure Status（2026-07-30）
+## Current MVP Closure Status（2026-07-31）
 
-手动主链路已落地并可诚实宣告成功，不再依赖 `not_ready` / placeholder 假成功：
+手动与计划主链路已落地，并可诚实宣告成功（含 Scheduled E2E），不再依赖
+`not_ready` / placeholder 假成功：
 
 `Subscription → Execution → Input Snapshot → Render Snapshot → Claim → Render Worker → PDF Artifact → Email Delivery → succeeded`
-
-Scheduler 阶段已接入计划执行创建边界（不含 missed-run compensation）：
 
 `Subscription(active + schedule) → Due Scanner → create_scheduled → on_commit(_dispatch_render) → Render Worker → Orchestrator → Email`
 
@@ -20,20 +19,45 @@ Scheduler 阶段已接入计划执行创建边界（不含 missed-run compensati
 - Render Snapshot 写入非敏感 `datasource_snapshots` **审计冻结**；
 - ScheduleCalculator、调度字段（可空，旧数据不回填）、DueSubscriptionScanner、
   每分钟 Beat、`create_scheduled` 专用入口；
-- 邮件计划时间使用 `scheduled_time_utc` + 订阅时区；手动测试邮件无时间语义。
+- 邮件计划时间使用 `scheduled_time_utc` + 订阅时区；手动测试邮件无时间语义；
+- Execution Retry（同 owning task attempt loop、RetryClassifier、Render/Delivery
+  retry、SMTP unknown、Timeout CAS；见第 14 节）；Scheduled E2E 已实跑验证。
 
-明确未交付 / 非本 Closure 宣称能力：
+### Gap Closure
 
-- Retry/Attempt 代码实现、Cleanup Worker、软删除生命周期、missed-run compensation；
+进入 **MVP Gap Closure**（A1–A9 仍为 Behaviour Contract / UI / Acceptance
+**必须项**，不得降级为 post-MVP）。
+
+- **L1（2026-07-31）设计已冻结**：见
+  [`gap-closure-l1-design.md`](./gap-closure-l1-design.md)
+  （D1 Filter 契约、D2 missed-run 最近一期、D3 创建期 DS 扫描边界、
+  D4 Cleanup 安全谓词）。L2+ 编码须遵守该文件；改语义先改设计再改代码。
+- **L2（2026-07-31）已实现**：A1 逻辑删除、A2 Dashboard 删除 → `terminated`、
+  A6 pause/resume 生命周期审计（生命周期集中在 Subscription Service；
+  Scanner/`create_scheduled` 排除 deleted；Render Snapshot 冻结后存在性检查
+  尊重 `source_canvas_deleted_during_execution`）。
+- **L3（2026-07-31）已实现**：A4 Filter Snapshot 静/动态规范化与执行期解析；
+  A5 创建/resume active 时 DataSource 已知权限扫描（复用 `_widget_manifest`；
+  瞬时错误不阻断保存；执行期 PermissionStep 保留）。
+- **L4（2026-07-31）已实现**：A3 missed-run 只补最近一期（Calculator
+  `catch_up_scheduled_time`；Scanner 不循环补偿；`create_scheduled` 锁内计算
+  计划点并保证 `next_run_at > now`）。
+- **仍待实现（L5+）**：PDF cleanup、180 天 Execution/Snapshot 清理、列表
+  scheduled/manual_test 双状态。
+
+明确非本版宣称能力（契约已排除或 §7 声明）：
+
 - **DataSource Runtime Snapshot 消费链路未接入**：渲染取数仍走实时 DataSource；
   MVP **不保证**「DataSource 配置修改不影响历史 / 在途 Execution」；
-- 完整权限 Snapshot、对象存储长期归档、历史 PDF 下载。
+- 完整权限 Snapshot、对象存储长期归档、历史 PDF 下载；
+- 历史漏期**逐期**追发、创建后自动首发、暂停期间补发。
 
-Retry 执行语义已对齐（尚未编码）：见第 14 节修正版 Resume Matrix 与 Orphan/in-flight 边界；
-不新增 `retrying` 状态，不产生新 Execution，不接管 orphan；orphan `running` 仍占用 in-flight。
+Retry 边界（已实现）：不新增 `retrying`；不产生新 Execution；不接管 orphan；
+orphan `running` 仍占用 in-flight。
 
 以下 Phase 1A–1D 小节为历史推进记录，其中“Email 未实现”“`not_ready` placeholder”
-等表述已被本段覆盖；以本节与代码/测试为当前事实。
+“Retry 尚未编码”等表述已被本节覆盖；以本节、`gap-closure-l1-design.md`
+与代码/测试为当前事实。
 
 ## Phase 1A 实现状态（2026-07-28）
 

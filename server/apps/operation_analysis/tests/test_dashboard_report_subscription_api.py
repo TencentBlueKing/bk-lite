@@ -199,6 +199,15 @@ def test_creator_can_delete_after_dashboard_view_is_lost(
     response = api_client.delete(f"{subscription_url}{created.data['id']}/")
 
     assert response.status_code == 200
+    from apps.operation_analysis.models.subscription_models import (
+        DashboardReportSubscription,
+    )
+
+    assert not DashboardReportSubscription.objects.filter(
+        pk=created.data["id"]
+    ).exists()
+    soft = DashboardReportSubscription.all_objects.get(pk=created.data["id"])
+    assert soft.deleted_at is not None
 
 
 def test_other_user_cannot_update_or_delete_subscription(

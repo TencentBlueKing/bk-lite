@@ -3,7 +3,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
-import type { DashboardSubscription } from '@/app/ops-analysis/types/dashboardSubscription';
+import type {
+  DashboardExecutionSummary,
+  DashboardSubscription,
+} from '@/app/ops-analysis/types/dashboardSubscription';
 import DashboardSubscriptionModal from '../dashboardSubscriptionModal';
 
 const api = {
@@ -19,6 +22,21 @@ const channelApi = {
   getChannelData: vi.fn(),
 };
 
+const makeExecutionSummary = (
+  overrides: Partial<DashboardExecutionSummary> = {},
+): DashboardExecutionSummary => ({
+  execution_id: 100,
+  status: 'succeeded',
+  trigger_type: 'scheduled',
+  failure_stage: '',
+  error_code: '',
+  error_message: '',
+  created_at: '2026-07-28T01:00:00Z',
+  finished_at: '2026-07-28T01:05:00Z',
+  scheduled_time_utc: '2026-07-28T01:00:00Z',
+  ...overrides,
+});
+
 const makeSubscription = (
   overrides: Partial<DashboardSubscription> = {},
 ): DashboardSubscription => ({
@@ -29,7 +47,17 @@ const makeSubscription = (
   status: 'active' as const,
   recipient_email: 'ops@example.com',
   email_channel: 11,
+  schedule_type: null,
+  schedule_hour: null,
+  schedule_minute: null,
+  schedule_weekday: null,
+  schedule_day_of_month: null,
+  timezone: null,
+  next_run_at: null,
+  version: 1,
   config: {},
+  latest_scheduled_execution: null,
+  latest_manual_test_execution: null,
   created_at: '2026-07-28T00:00:00Z',
   updated_at: '2026-07-28T00:00:00Z',
   ...overrides,
@@ -43,8 +71,12 @@ vi.mock('@/app/system-manager/api/channel', () => ({
   useChannelApi: () => channelApi,
 }));
 
-const translate = (key: string) =>
-  ({
+const translate = (
+  key: string,
+  _defaultMessage?: string,
+  values?: Record<string, string | number>,
+) => {
+  const messages: Record<string, string> = {
     'dashboard.subscriptionTitle': '报告订阅',
     'dashboard.subscriptionCreate': '创建订阅',
     'dashboard.subscriptionName': '订阅名称',
@@ -60,18 +92,52 @@ const translate = (key: string) =>
     'dashboard.subscriptionStatusActive': '启用',
     'dashboard.subscriptionStatusPaused': '暂停',
     'dashboard.subscriptionDeleteConfirm': '确认删除该报告订阅？',
+    'dashboard.subscriptionScheduleType': '发送周期',
+    'dashboard.subscriptionScheduleNone': '暂不调度（仅手动测试）',
+    'dashboard.subscriptionScheduleDaily': '每天',
+    'dashboard.subscriptionScheduleWeekly': '每周',
+    'dashboard.subscriptionScheduleMonthly': '每月',
+    'dashboard.subscriptionScheduleSummaryDaily': '每天 {time}',
+    'dashboard.subscriptionScheduleSummaryWeekly': '每{weekday} {time}',
+    'dashboard.subscriptionScheduleSummaryMonthly': '每月 {day} 日 {time}',
+    'dashboard.subscriptionTimezone': '订阅时区',
+    'dashboard.subscriptionWeekdayMon': '周一',
+    'dashboard.subscriptionWeekdayTue': '周二',
+    'dashboard.subscriptionWeekdayWed': '周三',
+    'dashboard.subscriptionWeekdayThu': '周四',
+    'dashboard.subscriptionWeekdayFri': '周五',
+    'dashboard.subscriptionWeekdaySat': '周六',
+    'dashboard.subscriptionWeekdaySun': '周日',
+    'dashboard.subscriptionNextRunAt': '下次计划',
+    'dashboard.subscriptionLatestScheduled': '最近计划执行',
+    'dashboard.subscriptionLatestManualTest': '最近测试执行',
+    'dashboard.subscriptionExecutionEmpty': '暂无记录',
+    'dashboard.subscriptionExecutionFinishedAt': '完成时间',
+    'dashboard.subscriptionExecutionScheduledAt': '计划时间',
+    'dashboard.subscriptionExecutionTestedAt': '测试时间',
+    'dashboard.subscriptionExecutionFailureReason': '失败原因',
     'dashboard.subscriptionExecute': '立即测试',
     'dashboard.subscriptionExecuteCreated': '测试执行已创建',
     'dashboard.subscriptionExecuteFailed': '测试执行创建失败',
     'dashboard.subscriptionExecutionStatus': '状态',
     'dashboard.executionStatusPending': '等待执行',
+    'dashboard.executionStatusRunning': '执行中',
+    'dashboard.executionStatusSucceeded': '执行成功',
     'dashboard.executionStatusFailed': '执行失败',
     'dashboard.subscriptionExecutionRefresh': '刷新状态',
     'dashboard.subscriptionExecutionQueryFailed': '查询执行状态失败',
     'common.edit': '编辑',
     'common.delete': '删除',
     'common.cancel': '取消',
-  })[key] ?? key;
+  };
+  let message = messages[key] ?? key;
+  if (values) {
+    Object.entries(values).forEach(([name, value]) => {
+      message = message.replaceAll(`{${name}}`, String(value));
+    });
+  }
+  return message;
+};
 
 vi.mock('@/utils/i18n', () => ({
   useTranslation: () => ({
@@ -188,6 +254,13 @@ describe('DashboardSubscriptionModal', () => {
         recipient_email: 'ops@example.com',
         email_channel: 11,
         status: 'active',
+        schedule_type: null,
+        schedule_hour: null,
+        schedule_minute: null,
+        schedule_weekday: null,
+        schedule_day_of_month: null,
+        timezone: null,
+        applied_filter_values: {},
       });
     });
   });
@@ -268,6 +341,14 @@ describe('DashboardSubscriptionModal', () => {
         recipient_email: 'ops@example.com',
         email_channel: 12,
         status: 'active',
+        schedule_type: null,
+        schedule_hour: null,
+        schedule_minute: null,
+        schedule_weekday: null,
+        schedule_day_of_month: null,
+        timezone: null,
+        applied_filter_values: {},
+        version: 1,
       });
     });
   });
@@ -393,5 +474,269 @@ describe('DashboardSubscriptionModal', () => {
     );
 
     expect(await screen.findByText('测试执行创建失败')).not.toBeNull();
+  });
+
+  it('shows independent scheduled and manual_test statuses', async () => {
+    api.listSubscriptions.mockResolvedValue([
+      makeSubscription({
+        latest_scheduled_execution: makeExecutionSummary({
+          execution_id: 11,
+          status: 'succeeded',
+          trigger_type: 'scheduled',
+        }),
+        latest_manual_test_execution: makeExecutionSummary({
+          execution_id: 12,
+          status: 'failed',
+          trigger_type: 'manual_test',
+          error_message: 'SMTP 失败',
+          scheduled_time_utc: null,
+        }),
+      }),
+    ]);
+    render(
+      <DashboardSubscriptionModal
+        open
+        dashboardId={8}
+        onClose={vi.fn()}
+      />,
+    );
+
+    const scheduled = await screen.findByTestId('latest-scheduled-1');
+    const manual = screen.getByTestId('latest-manual-test-1');
+    expect(within(scheduled).getByText('最近计划执行')).not.toBeNull();
+    expect(within(scheduled).getByText('执行成功')).not.toBeNull();
+    expect(within(manual).getByText('最近测试执行')).not.toBeNull();
+    expect(within(manual).getByText('执行失败')).not.toBeNull();
+    expect(within(manual).getByText(/SMTP 失败/)).not.toBeNull();
+  });
+
+  it('shows empty state for missing manual_test summary', async () => {
+    api.listSubscriptions.mockResolvedValue([
+      makeSubscription({
+        latest_scheduled_execution: makeExecutionSummary(),
+        latest_manual_test_execution: null,
+      }),
+    ]);
+    render(
+      <DashboardSubscriptionModal
+        open
+        dashboardId={8}
+        onClose={vi.fn()}
+      />,
+    );
+
+    const manual = await screen.findByTestId('latest-manual-test-1');
+    expect(within(manual).getByText('暂无记录')).not.toBeNull();
+    expect(
+      within(screen.getByTestId('latest-scheduled-1')).getByText('执行成功'),
+    ).not.toBeNull();
+  });
+
+  it('shows empty state for missing scheduled summary', async () => {
+    api.listSubscriptions.mockResolvedValue([
+      makeSubscription({
+        latest_scheduled_execution: null,
+        latest_manual_test_execution: makeExecutionSummary({
+          trigger_type: 'manual_test',
+          status: 'pending',
+          scheduled_time_utc: null,
+        }),
+      }),
+    ]);
+    render(
+      <DashboardSubscriptionModal
+        open
+        dashboardId={8}
+        onClose={vi.fn()}
+      />,
+    );
+
+    const scheduled = await screen.findByTestId('latest-scheduled-1');
+    expect(within(scheduled).getByText('暂无记录')).not.toBeNull();
+    expect(
+      within(screen.getByTestId('latest-manual-test-1')).getByText('等待执行'),
+    ).not.toBeNull();
+  });
+
+  it('keeps scheduled summary unchanged after manual_test refresh', async () => {
+    const scheduled = makeExecutionSummary({
+      execution_id: 11,
+      status: 'succeeded',
+      trigger_type: 'scheduled',
+    });
+    api.listSubscriptions
+      .mockResolvedValueOnce([
+        makeSubscription({
+          latest_scheduled_execution: scheduled,
+          latest_manual_test_execution: null,
+        }),
+      ])
+      .mockResolvedValueOnce([
+        makeSubscription({
+          latest_scheduled_execution: scheduled,
+          latest_manual_test_execution: makeExecutionSummary({
+            execution_id: 22,
+            status: 'pending',
+            trigger_type: 'manual_test',
+            scheduled_time_utc: null,
+          }),
+        }),
+      ]);
+    const user = userEvent.setup();
+    render(
+      <DashboardSubscriptionModal
+        open
+        dashboardId={8}
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(
+      within(await screen.findByTestId('latest-scheduled-1')).getByText(
+        '执行成功',
+      ),
+    ).not.toBeNull();
+
+    await user.click(
+      await screen.findByRole('button', { name: '立即测试' }),
+    );
+
+    await waitFor(() => {
+      expect(api.listSubscriptions).toHaveBeenCalledTimes(2);
+    });
+    expect(
+      within(screen.getByTestId('latest-scheduled-1')).getByText('执行成功'),
+    ).not.toBeNull();
+    expect(
+      within(screen.getByTestId('latest-manual-test-1')).getByText('等待执行'),
+    ).not.toBeNull();
+  });
+
+  it('renders daily/weekly/monthly schedule summaries and timezone', async () => {
+    api.listSubscriptions.mockResolvedValue([
+      makeSubscription({
+        id: 1,
+        name: '日报',
+        schedule_type: 'daily',
+        schedule_hour: 9,
+        schedule_minute: 0,
+        timezone: 'Asia/Shanghai',
+      }),
+      makeSubscription({
+        id: 2,
+        name: '周报',
+        schedule_type: 'weekly',
+        schedule_hour: 9,
+        schedule_minute: 0,
+        schedule_weekday: 0,
+        timezone: 'Asia/Shanghai',
+      }),
+      makeSubscription({
+        id: 3,
+        name: '月报',
+        schedule_type: 'monthly',
+        schedule_hour: 9,
+        schedule_minute: 0,
+        schedule_day_of_month: 31,
+        timezone: 'Asia/Shanghai',
+      }),
+    ]);
+    render(
+      <DashboardSubscriptionModal
+        open
+        dashboardId={8}
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(await screen.findByText('日报')).not.toBeNull();
+    expect(screen.getByTestId('schedule-summary-1').textContent).toContain(
+      '发送周期: 每天 09:00',
+    );
+    expect(screen.getByTestId('schedule-summary-2').textContent).toContain(
+      '发送周期: 每周一 09:00',
+    );
+    expect(screen.getByTestId('schedule-summary-3').textContent).toContain(
+      '发送周期: 每月 31 日 09:00',
+    );
+    expect(screen.getByTestId('schedule-timezone-1').textContent).toContain(
+      '订阅时区: Asia/Shanghai',
+    );
+    expect(screen.getByTestId('schedule-timezone-2').textContent).toContain(
+      '订阅时区: Asia/Shanghai',
+    );
+    expect(screen.getByTestId('schedule-timezone-3').textContent).toContain(
+      '订阅时区: Asia/Shanghai',
+    );
+  });
+
+  it('disables test button when scheduled execution is pending', async () => {
+    api.listSubscriptions.mockResolvedValue([
+      makeSubscription({
+        latest_scheduled_execution: makeExecutionSummary({
+          status: 'pending',
+        }),
+      }),
+    ]);
+    render(
+      <DashboardSubscriptionModal
+        open
+        dashboardId={8}
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(
+      await screen.findByRole('button', { name: '立即测试' }),
+    ).toHaveProperty('disabled', true);
+  });
+
+  it('disables test button when manual_test execution is running', async () => {
+    api.listSubscriptions.mockResolvedValue([
+      makeSubscription({
+        latest_manual_test_execution: makeExecutionSummary({
+          status: 'running',
+          trigger_type: 'manual_test',
+          scheduled_time_utc: null,
+        }),
+      }),
+    ]);
+    render(
+      <DashboardSubscriptionModal
+        open
+        dashboardId={8}
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(
+      await screen.findByRole('button', { name: '立即测试' }),
+    ).toHaveProperty('disabled', true);
+  });
+
+  it('keeps test button enabled for succeeded and failed summaries', async () => {
+    api.listSubscriptions.mockResolvedValue([
+      makeSubscription({
+        latest_scheduled_execution: makeExecutionSummary({
+          status: 'succeeded',
+        }),
+        latest_manual_test_execution: makeExecutionSummary({
+          status: 'failed',
+          trigger_type: 'manual_test',
+          scheduled_time_utc: null,
+        }),
+      }),
+    ]);
+    render(
+      <DashboardSubscriptionModal
+        open
+        dashboardId={8}
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(
+      await screen.findByRole('button', { name: '立即测试' }),
+    ).toHaveProperty('disabled', false);
   });
 });

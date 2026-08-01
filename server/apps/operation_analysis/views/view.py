@@ -271,10 +271,22 @@ class DashboardModelViewSet(BuiltinVisibleMixin, AuthViewSet):
 
     @HasPermission("view-DeleteChart")
     def destroy(self, request, *args, **kwargs):
+        from django.db import transaction
+
+        from apps.operation_analysis.services.subscription_service import (
+            DashboardSubscriptionService,
+        )
+
         instance = self.get_object()
         _raise_if_builtin(instance, "删除")
         name = instance.name
-        response = super(DashboardModelViewSet, self).destroy(request, *args, **kwargs)
+        with transaction.atomic():
+            DashboardSubscriptionService.terminate_for_dashboard_deletion(
+                instance,
+                actor=getattr(request.user, "username", "") or "",
+            )
+            self.perform_destroy(instance)
+        response = Response(status=204)
         log_ops_analysis_success(request, response, "delete", f"删除仪表盘: {name}")
         return response
 

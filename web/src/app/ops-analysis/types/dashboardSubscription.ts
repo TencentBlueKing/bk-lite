@@ -2,6 +2,25 @@ export type DashboardSubscriptionStatus = 'active' | 'paused';
 
 export type DashboardScheduleType = 'daily' | 'weekly' | 'monthly';
 
+export type DashboardExecutionStatus =
+  | 'pending'
+  | 'running'
+  | 'succeeded'
+  | 'failed'
+  | 'unknown';
+
+export interface DashboardExecutionSummary {
+  execution_id: number;
+  status: DashboardExecutionStatus;
+  trigger_type: 'manual_test' | 'scheduled';
+  failure_stage: string;
+  error_code: string;
+  error_message: string;
+  created_at: string;
+  finished_at: string | null;
+  scheduled_time_utc: string | null;
+}
+
 export interface DashboardSubscription {
   id: number;
   dashboard: number | null;
@@ -19,6 +38,8 @@ export interface DashboardSubscription {
   next_run_at: string | null;
   version: number;
   config: Record<string, unknown>;
+  latest_scheduled_execution: DashboardExecutionSummary | null;
+  latest_manual_test_execution: DashboardExecutionSummary | null;
   created_at: string;
   updated_at: string;
 }
@@ -36,19 +57,13 @@ export interface DashboardSubscriptionPayload {
   schedule_day_of_month?: number | null;
   timezone?: string | null;
   version?: number;
+  applied_filter_values?: Record<string, unknown>;
 }
 
 export type DashboardSubscriptionUpdatePayload = Omit<
   DashboardSubscriptionPayload,
   'dashboard'
 >;
-
-export type DashboardExecutionStatus =
-  | 'pending'
-  | 'running'
-  | 'succeeded'
-  | 'failed'
-  | 'unknown';
 
 export interface DashboardExecutionCreated {
   execution_id: number;
@@ -62,6 +77,7 @@ export interface DashboardReportExecutionSnapshot {
   creator_id: string;
   subscription_id: number;
   filter_values: Record<string, unknown>;
+  filter_semantics?: Record<string, unknown>;
   scheduled_time_utc?: string | null;
   schedule_timezone?: string;
   scheduled_local_time?: string;

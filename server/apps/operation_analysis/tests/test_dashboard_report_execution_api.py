@@ -167,6 +167,16 @@ def test_creator_with_dashboard_view_can_execute_and_retrieve(
             "environment": "production",
             "time_range": "last_7_days",
         },
+        "filter_semantics": {
+            "environment": {
+                "value_kind": "static",
+                "value": "production",
+            },
+            "time_range": {
+                "value_kind": "static",
+                "value": "last_7_days",
+            },
+        },
         "created_at": retrieve_response.data["snapshot"]["created_at"],
     }
 
@@ -244,7 +254,8 @@ def test_snapshot_creation_failure_marks_execution_failed(
         id=response.data["execution_id"]
     )
     assert execution.failure_stage == "snapshot"
-    assert execution.error_message == "Execution Input Snapshot 创建失败"
+    assert execution.error_code == "filter_invalid"
+    assert "filter_values" in execution.error_message
     assert execution.started_at is None
     assert execution.finished_at is not None
     assert not hasattr(execution, "snapshot")
@@ -511,6 +522,7 @@ def test_running_execution_exposes_only_frozen_render_input(
             "scheduled_local_time": "",
             "subscription_version": subscription.version,
             "filter_values": {"environment": "production"},
+            "filter_semantics": {},
             "created_at": response.data["input_snapshot"]["created_at"],
         },
         "render_snapshot": {
