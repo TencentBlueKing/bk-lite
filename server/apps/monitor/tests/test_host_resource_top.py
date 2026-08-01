@@ -114,8 +114,9 @@ def test_service_queries_authorized_instances_and_returns_latest_cpu_rows():
                 "status": "success",
                 "data": {
                     "result": [
-                        {"metric": {"instance_id": "host-1"}, "value": [NOW.timestamp(), "77.125"]},
-                        {"metric": {"instance_id": "not-authorized"}, "value": [NOW.timestamp(), "99"]},
+                        # Agent reports idle%; service converts to usage%.
+                        {"metric": {"instance_id": "host-1"}, "value": [NOW.timestamp(), "22.875"]},
+                        {"metric": {"instance_id": "not-authorized"}, "value": [NOW.timestamp(), "1"]},
                     ]
                 },
             }
@@ -129,8 +130,7 @@ def test_service_queries_authorized_instances_and_returns_latest_cpu_rows():
 
     assert rows[0]["instance_id"] == "host-1"
     assert rows[0]["usage_percent"] == 77.12
-    assert "host_cpu_usage_percent" in vm.queries[0][0]
-    assert "host_cpu_usage_percent_gauge" in vm.queries[0][0]
+    assert vm.queries[0][0] == '{__name__="cpu_usage_idle",cpu="cpu-total"}'
     assert vm.queries[0][1]["lookback_delta"] == "600s"
 
 
@@ -141,7 +141,7 @@ def test_service_matches_tuple_storage_id_with_raw_metric_instance_id():
                 "status": "success",
                 "data": {
                     "result": [
-                        {"metric": {"instance_id": "host-1"}, "value": [NOW.timestamp(), "42"]},
+                        {"metric": {"instance_id": "host-1"}, "value": [NOW.timestamp(), "58"]},
                     ]
                 },
             }
