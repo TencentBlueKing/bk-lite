@@ -17,6 +17,8 @@ from pathlib import Path
 import pytest
 import yaml
 
+from apps.core.utils.loader import LanguageLoader
+
 SERVER_ROOT = Path(__file__).resolve().parents[3]
 PLUGINS = SERVER_ROOT / "apps" / "monitor" / "support-files" / "plugins" / "Telegraf"
 BRAND_DIR = PLUGINS / "snmp" / "network_service_zdns"
@@ -90,7 +92,7 @@ def toml_text():
 @pytest.fixture(scope="module")
 def languages():
     return {
-        lang: yaml.safe_load((LANGUAGE_DIR / f"{lang}.yaml").read_text(encoding="utf-8"))
+        lang: LanguageLoader("monitor", lang).translations
         for lang in ("zh-Hans", "en")
     }
 
@@ -173,10 +175,9 @@ def test_business_counters_not_promoted_to_health_metrics(metrics):
 
 
 @pytest.mark.unit
-def test_metrics_json_is_brand_delta_without_base_metrics(metrics):
+def test_metrics_json_embeds_deployed_snmp_floor(metrics):
     names = {m["name"] for m in metrics["metrics"]}
-    leaked = [name for name in BASE_METRICS if name in names]
-    assert leaked == [], f"ZDNS child metrics.json must not redeclare base metrics: {leaked}"
+    assert {"snmp_uptime", "interface_ifHCInOctets", "interface_ifHCOutOctets"} <= names
 
 
 @pytest.mark.unit
@@ -188,9 +189,8 @@ def test_toml_collects_uptime_and_64bit_ifhc_counters(toml_text):
 
 
 @pytest.mark.unit
-def test_supplementary_indicators_do_not_reference_base_metrics(metrics):
-    leaked = [s for s in metrics.get("supplementary_indicators", []) if s in BASE_METRICS]
-    assert leaked == []
+def test_supplementary_indicators_include_deployed_uptime(metrics):
+    assert "snmp_uptime" in metrics.get("supplementary_indicators", [])
 
 
 @pytest.mark.unit

@@ -13,7 +13,7 @@ import { MenusProvider, useMenus } from '@/context/menus';
 import { UserInfoProvider } from '@/context/userInfo';
 import { ClientProvider, useClientData } from '@/context/client';
 import { PermissionsProvider, usePermissions } from '@/context/permissions';
-import AuthProvider from '@/context/auth';
+import AuthProvider, { useAuth } from '@/context/auth';
 import TopMenu from '@/app/(core)/components/top-menu';
 import { Watermark, message } from 'antd';
 import Spin from '@/components/spin';
@@ -135,6 +135,7 @@ const PortalTabTitle = () => {
 const LayoutWithProviders = ({ children }: { children: React.ReactNode }) => {
   const { loading: permissionsLoading, hasPermission, menus } = usePermissions();
   const { data: session, status } = useSession();
+  const { isAuthenticated: authContextAuthenticated } = useAuth();
   const { loading: menusLoading, configMenus } = useMenus();
   const { username, displayName } = useUserInfoContext();
   const { portalName, watermarkEnabled, watermarkText } = usePortalBranding();
@@ -142,8 +143,9 @@ const LayoutWithProviders = ({ children }: { children: React.ReactNode }) => {
   const pathname = usePathname();
   const [isAllowed, setIsAllowed] = useState(false);
 
-  const isAuthenticated = status === 'authenticated' && !!session && !(session.user as any)?.temporary_pwd;
-  const isAuthLoading = status === 'loading';
+  const isAuthenticated = authContextAuthenticated
+    && !(session?.user as any)?.temporary_pwd;
+  const isAuthLoading = status === 'loading' && !authContextAuthenticated;
 
   const isLoading = isAuthLoading || (isAuthenticated && (permissionsLoading || menusLoading));
   const authPaths = ['/auth/signin', '/auth/signout', '/auth/signin/login-auth-result'];

@@ -85,6 +85,7 @@ app:
   system-manager: 涵盖用户和组织角色权限管理，通过精细化权限控制，确保资源访问安全，同时提升操作效率。提供灵活的配置和管理，满足不同业务需求
   node: 用于集中管理各个云区域下的节点，为各个节点安装各类探针，以便进行监控数据、配置信息、日志等信息的采集
   job: 快速创建并执行作业，统一管理脚本执行、文件分发和定时任务
+  patch: 集中管理系统补丁，支持补丁扫描、安装与补丁库维护，帮助持续降低安全风险。
 action_type:
   create: 创建
   delete: 删除
@@ -99,3 +100,7 @@ tag:
   script_management: 脚本管理
   file_distribution: 文件分发
   scheduled_task: 定时任务
+  # patch
+  patch_scan: 补丁扫描
+  patch_install: 补丁安装
+  patch_library: 补丁库

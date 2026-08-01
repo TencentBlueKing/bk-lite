@@ -36,6 +36,10 @@ import {
   GroupInfo
 } from '@/app/monitor/types';
 import {
+  buildGroupedMetricSelectOptions,
+  METRIC_SELECT_POPUP_CLASSNAME,
+} from '@/app/monitor/components/metricSelectOptions';
+import {
   InstanceItem,
   PluginItem,
   QueryGroup,
@@ -112,6 +116,9 @@ const QueryPanel = forwardRef<QueryPanelRef, QueryPanelProps>(
     );
     const [metricsGroupMap, setMetricsGroupMap] = useState<
       Record<string, IndexViewItem[]>
+    >({});
+    const [metricSearchMap, setMetricSearchMap] = useState<
+      Record<string, string>
     >({});
     const [instancesMap, setInstancesMap] = useState<
       Record<string, InstanceItem[]>
@@ -874,19 +881,27 @@ const QueryPanel = forwardRef<QueryPanelRef, QueryPanelProps>(
                 loading={isMetricsLoading}
                 disabled={!group.object || !group.plugin}
                 showSearch
-                filterOption={(input, option) =>
-                  String(option?.label || '')
-                    .toLowerCase()
-                    .includes(input.toLowerCase())
-                }
-                options={groupMetrics.map((item) => ({
-                  label: item.display_name,
-                  title: item.name,
-                  options: (item.child || []).map((tex) => ({
-                    label: tex.display_name,
-                    value: tex.id
+                filterOption={false}
+                optionLabelProp="displayLabel"
+                popupClassName={METRIC_SELECT_POPUP_CLASSNAME}
+                options={buildGroupedMetricSelectOptions(
+                  groupMetrics,
+                  metricSearchMap[group.id] || '',
+                )}
+                onSearch={(value) =>
+                  setMetricSearchMap((prev) => ({
+                    ...prev,
+                    [group.id]: value,
                   }))
-                }))}
+                }
+                onDropdownVisibleChange={(open) => {
+                  if (!open) {
+                    setMetricSearchMap((prev) => ({
+                      ...prev,
+                      [group.id]: '',
+                    }));
+                  }
+                }}
                 onChange={(val) => handleMetricChange(group.id, val)}
               />
             </div>

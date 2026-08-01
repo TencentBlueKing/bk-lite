@@ -56,7 +56,8 @@ const LazyMetricItem: React.FC<LazyMetricItemProps> = ({
   const observerOptions = useMemo(
     () => ({
       threshold: 0.1,
-      rootMargin: '50px'
+      // 两列卡片高度约 220px；预取下一行，避免滚动到卡片后才开始等待请求。
+      rootMargin: '240px 0px'
     }),
     []
   );
@@ -111,32 +112,48 @@ const LazyMetricItem: React.FC<LazyMetricItemProps> = ({
       ref={ref}
       className="w-[49%] border border-[var(--color-border-1)] p-[10px] mb-[10px]"
     >
-      <div className="flex justify-between items-center">
-        <div className="flex items-center w-[calc(100%-36px)] text-[14px] pr-[15px]">
-          <div className="flex w-full box-border relative">
+      <div className="flex justify-between items-start gap-[8px]">
+        <div className="min-w-0 flex-1 text-[14px]">
+          <div className="flex items-center min-w-0">
             <span
-              className={`font-[600]  overflow-hidden text-ellipsis whitespace-nowrap`}
-              title={item.display_name}
+              className="font-[600] overflow-hidden text-ellipsis whitespace-nowrap"
+              title={`${item.display_name || ''}${item.name ? ` (${item.name})` : ''}`}
             >
               {item.display_name}
             </span>
-            <div className="text-[var(--color-text-3)] text-[12px] relative">
+            <span className="text-[var(--color-text-3)] text-[12px] shrink-0 ml-[2px]">
               {getUnit(item)}
-              <Tooltip placement="topLeft" title={item.display_description}>
-                <div
-                  className="absolute cursor-pointer inline-block"
-                  style={{
-                    top: '-4px',
-                    right: '-6px'
-                  }}
-                >
-                  <Icon type="a-shuoming2" className="text-[14px]" />
-                </div>
+            </span>
+            <Tooltip placement="topLeft" title={item.display_description}>
+              <span className="inline-flex items-center shrink-0 ml-[2px] cursor-pointer text-[var(--color-text-3)] leading-none">
+                <Icon type="a-shuoming2" className="text-[14px]" />
+              </span>
+            </Tooltip>
+            {item.seriesBudget?.truncated ? (
+              <Tooltip
+                placement="top"
+                title={t('monitor.views.seriesTruncated', '', {
+                  limit: item.seriesBudget.limit
+                })}
+              >
+                <span className="ml-[8px] shrink-0 text-[12px] text-[var(--color-warning)] cursor-default whitespace-nowrap">
+                  {t('monitor.views.seriesTruncatedShort', '', {
+                    limit: item.seriesBudget.limit
+                  })}
+                </span>
               </Tooltip>
-            </div>
+            ) : null}
           </div>
+          {item.name ? (
+            <div
+              className="mt-[2px] text-[12px] leading-[18px] text-[var(--color-text-3)] overflow-hidden text-ellipsis whitespace-nowrap"
+              title={item.name}
+            >
+              {item.name}
+            </div>
+          ) : null}
         </div>
-        <div className="text-[var(--color-text-3)]">
+        <div className="shrink-0 text-[var(--color-text-3)] leading-none pt-[2px]">
           <Tooltip placement="topRight" title={t('monitor.views.quickSearch')}>
             <SearchOutlined
               className="cursor-pointer"

@@ -8,6 +8,7 @@ from langgraph.types import Overwrite
 
 from apps.opspilot.metis.llm.chain.entity import BasicLLMRequest
 from apps.opspilot.metis.llm.chain.graph import BasicGraph
+from apps.opspilot.metis.llm.common.token_usage import TokenUsageAccumulator
 
 
 class _FakeCompiledGraph:
@@ -111,6 +112,56 @@ def test_agui_stream_stops_forwarding_text_after_tool_call_chunks(monkeypatch):
 
     assert event_types.count("TEXT_MESSAGE_CONTENT") == 1
     assert [payload["delta"] for payload in payloads if payload["type"] == "TEXT_MESSAGE_CONTENT"] == ["第一段检查结果"]
+
+
+def test_agui_stream_collects_all_llm_token_usage_once_per_run(monkeypatch):
+    async def _never_interrupted(_execution_id):
+        return False
+
+    monkeypatch.setattr(
+        "apps.opspilot.metis.llm.chain.graph.is_interrupt_requested_async",
+        _never_interrupted,
+    )
+    accumulator = TokenUsageAccumulator()
+    first_output = SimpleNamespace(
+        content="",
+        tool_calls=[],
+        usage_metadata={"input_tokens": 10, "output_tokens": 2, "total_tokens": 12},
+    )
+    second_output = SimpleNamespace(
+        content="",
+        tool_calls=[],
+        usage_metadata=None,
+        response_metadata={"token_usage": {"prompt_tokens": 20, "completion_tokens": 4}},
+    )
+    graph = _FakeBasicGraph(
+        [
+            {"event": "on_chat_model_end", "run_id": "run-1", "data": {"output": first_output}},
+            {"event": "on_chat_model_end", "run_id": "run-2", "data": {"output": second_output}},
+            {"event": "on_chat_model_end", "run_id": "run-1", "data": {"output": first_output}},
+        ]
+    )
+    request = BasicLLMRequest(
+        thread_id="thread-token-usage",
+        extra_config={},
+    )
+
+    async def _consume():
+        return [
+            line
+            async for line in graph.agui_stream(
+                request,
+                token_usage_accumulator=accumulator,
+            )
+        ]
+
+    asyncio.run(_consume())
+
+    assert accumulator.as_openai_usage() == {
+        "prompt_tokens": 30,
+        "completion_tokens": 6,
+        "total_tokens": 36,
+    }
 
 
 def test_no_duplicate_message_when_streaming_and_chat_model_end_has_text(monkeypatch):

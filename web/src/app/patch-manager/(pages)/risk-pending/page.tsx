@@ -6,6 +6,8 @@ import PermissionWrapper from '@/components/permission';
 import { ToolOutlined, ExportOutlined, ReloadOutlined, DownOutlined, CloseOutlined } from '@ant-design/icons';
 import useApiClient from '@/utils/request';
 import usePatchManagerApi from '@/app/patch-manager/api';
+import { createListRequestCoordinator } from '@/app/patch-manager/utils/list-request-coordinator';
+import { PATCH_MANAGER_POLL_INTERVAL_MS } from '@/app/patch-manager/constants/polling';
 import RemediationTag from '@/app/patch-manager/components/remediation-tag';
 import ExcelJS from 'exceljs';
 import SeverityTag from '@/app/patch-manager/components/severity-tag';
@@ -97,6 +99,12 @@ export default function RiskPendingPage() {
   const [scopeSelected, setScopeSelected] = useState<React.Key[]>([]);
   const [scopeRows, setScopeRows] = useState<SelectedRow[]>([]);
   const [rebootRows, setRebootRows] = useState<SelectedRow[]>([]);
+  const [rebootScope, setRebootScope] = useState<{
+    target_ids: number[];
+    scope_token: string;
+    items: Array<Record<string, any>>;
+  }>();
+  const [rebootScopeLoading, setRebootScopeLoading] = useState(false);
   const [detailRecord, setDetailRecord] = useState<{ name: string; items: RiskItem[] } | null>(null);
   const [filters, setFilters] = useState<{
     host_name?: string;
@@ -117,6 +125,7 @@ export default function RiskPendingPage() {
   const api = usePatchManagerApi();
   const { isLoading } = useApiClient();
   const [loading, setLoading] = useState(false);
+  const listRequestCoordinatorRef = useRef(createListRequestCoordinator(setLoading));
   const [riskData, setRiskData] = useState<any[]>([]);
   const [pagination, setPagination] = useState({ current: 1, pageSize: 20, total: 0 });
   const [hostIdFilter, setHostIdFilter] = useState<number | undefined>(routeHostId);
@@ -124,7 +133,9 @@ export default function RiskPendingPage() {
   const viewParam = view;
 
   const loadRisk = async (page = 1, pageSize = pagination.pageSize, silent = false) => {
-    if (!silent) setLoading(true);
+    const coordinator = listRequestCoordinatorRef.current;
+    const ticket = coordinator.begin({ visible: !silent });
+    if (!ticket) return;
     try {
       const params: any = { view: viewParam, page, page_size: pageSize };
       if (view === 'host') {
@@ -138,14 +149,16 @@ export default function RiskPendingPage() {
         if (filters.baseline_name) params.baseline_name = filters.baseline_name;
       }
       if (filters.remediation) params.remediation = filters.remediation;
-      const res = await api.getRiskList(params);
+      const res = await api.getRiskList(params, { signal: ticket.signal });
+      if (!coordinator.shouldApply(ticket)) return;
       setRiskData(res.results || []);
       setPagination({ current: page, pageSize, total: res.count || 0 });
     } catch {
+      if (!coordinator.shouldApply(ticket)) return;
       setRiskData([]);
       setPagination({ current: page, pageSize, total: 0 });
     } finally {
-      if (!silent) setLoading(false);
+      coordinator.finish(ticket);
     }
   };
 
@@ -155,18 +168,22 @@ export default function RiskPendingPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoading, view, filters]);
 
-  // 轮询：抽屉关闭时每 2 秒静默刷新
+  // 外层列表持续静默轮询；抽屉打开不会停止轮询。
   const silentRefreshRef = useRef<() => void>(() => {});
   silentRefreshRef.current = () => {
     loadRisk(pagination.current, pagination.pageSize, true);
   };
   useEffect(() => {
     const interval = setInterval(() => {
-      if (document.hidden || scopeOpen || rebootOpen || detailRecord) return;
+      if (document.hidden) return;
       silentRefreshRef.current();
-    }, 2000);
+    }, PATCH_MANAGER_POLL_INTERVAL_MS);
     return () => clearInterval(interval);
-  }, [scopeOpen, rebootOpen, detailRecord, view]);
+  }, [view]);
+
+  useEffect(() => () => {
+    listRequestCoordinatorRef.current.invalidate();
+  }, []);
 
   const getRowName = (r: unknown) => {
     const row = r as { patch?: string; host?: string; baseline?: string };
@@ -189,6 +206,28 @@ export default function RiskPendingPage() {
     setScopeOpen(true);
   };
 
+  const loadRebootScope = async (rows: SelectedRow[]) => {
+    const targetIds = Array.from(new Set(
+      rows.flatMap((row) => (row.items || []))
+        .filter((item) => item.remediation === 'pending_reboot')
+        .map((item) => item.host_id),
+    ));
+    if (!targetIds.length) return;
+    setRebootScopeLoading(true);
+    try {
+      setRebootScope(await api.previewRebootRisk(targetIds));
+    } finally {
+      setRebootScopeLoading(false);
+    }
+  };
+
+  const openReboot = (rows: SelectedRow[]) => {
+    setRebootRows(rows);
+    setRebootScope(undefined);
+    setRebootOpen(true);
+    void loadRebootScope(rows);
+  };
+
   const opCell = (r: unknown) => {
     const row = r as { key: string; items?: RiskItem[] };
     const items = row.items || [];
@@ -202,7 +241,7 @@ export default function RiskPendingPage() {
           <Tooltip title={t('patchManager.risk.noRemediableItems')}><Button type="link" size="small" disabled>{t('patchManager.risk.remediate')}</Button></Tooltip>
         )}
         {rebootable && (
-          <PermissionWrapper requiredPermissions={['Add']}><Button type="link" size="small" onClick={() => { setRebootRows([row]); setRebootOpen(true); }}>{t('patchManager.risk.reboot')}</Button></PermissionWrapper>
+          <PermissionWrapper requiredPermissions={['Add']}><Button type="link" size="small" onClick={() => openReboot([row])}>{t('patchManager.risk.reboot')}</Button></PermissionWrapper>
         )}
         <Button type="link" size="small" onClick={() => setDetailRecord({ name: getRowName(r), items })}>{t('patchManager.risk.details')}</Button>
       </Space>
@@ -377,11 +416,7 @@ export default function RiskPendingPage() {
   };
 
   const handleRebootSubmit = async () => {
-    const hosts = Array.from(new Set(
-      rebootRows.flatMap((r) => (r.items || [])
-        .filter((i: RiskItem) => i.remediation === 'pending_reboot')
-        .map((i: RiskItem) => i.host_id)),
-    ));
+    const hosts = rebootScope?.target_ids || [];
     if (hosts.length === 0) {
       message.error(t('patchManager.risk.noRebootHosts'));
       return;
@@ -395,34 +430,37 @@ export default function RiskPendingPage() {
         target_ids: hosts,
         execution_window_start: rebootRange[0].toISOString(),
         execution_window_end: rebootRange[1].toISOString(),
+        scope_token: rebootScope?.scope_token || '',
       });
       message.success(t('patchManager.risk.rebootCreated', undefined, { count: hosts.length }));
       setRebootOpen(false);
       setSelected([]);
       loadRisk(pagination.current, pagination.pageSize);
-    } catch {
+    } catch (error: any) {
+      const code = error?.response?.data?.code || error?.code;
+      if (code === 'reboot_scope_changed') {
+        message.warning(t('patchManager.risk.rebootScopeChanged'));
+        setRebootScope(undefined);
+        await loadRebootScope(rebootRows);
+      }
     }
   };
 
   const rebootHosts = useMemo(() => {
     const sevRank: Record<string, number> = { critical: 4, important: 3, moderate: 2, low: 1 };
     const hostMap = new Map<number, { host: string; patches: string[]; maxSev: string }>();
-    rebootRows.forEach((r) => {
-      (r.items || [])
-        .filter((i: RiskItem) => i.remediation === 'pending_reboot')
-        .forEach((i: RiskItem) => {
-          const patchLabel = i.kb_number || i.pkg_name || i.patch_title || i.patch || t('patchManager.risk.unknownPatch');
-          const sev = i.patch_severity || 'moderate';
-          const existing = hostMap.get(i.host_id);
-          if (existing) {
-            existing.patches.push(patchLabel);
-            if ((sevRank[sev] || 0) > (sevRank[existing.maxSev] || 0)) {
-              existing.maxSev = sev;
-            }
-          } else {
-            hostMap.set(i.host_id, { host: i.host_name || i.host, patches: [patchLabel], maxSev: sev });
-          }
-        });
+    (rebootScope?.items || []).forEach((i: any) => {
+      const patchLabel = i.patch_name || t('patchManager.risk.unknownPatch');
+      const sev = i.patch_severity || 'moderate';
+      const existing = hostMap.get(i.host_id);
+      if (existing) {
+        existing.patches.push(patchLabel);
+        if ((sevRank[sev] || 0) > (sevRank[existing.maxSev] || 0)) {
+          existing.maxSev = sev;
+        }
+      } else {
+        hostMap.set(i.host_id, { host: i.host_name, patches: [patchLabel], maxSev: sev });
+      }
     });
     return Array.from(hostMap.entries()).map(([id, v]) => ({
       key: String(id),
@@ -430,7 +468,7 @@ export default function RiskPendingPage() {
       patches: v.patches.join('、'),
       sev: v.maxSev,
     }));
-  }, [rebootRows, t]);
+  }, [rebootScope?.items, t]);
 
   const formatDist = (dist: RiskRow['dist']) => (dist || []).map((d) => `${t(`patchManager.remediationStatus.${d.status}`, d.status)} ${d.count}`).join('、');
 
@@ -563,7 +601,7 @@ export default function RiskPendingPage() {
                   ),
                   icon: <ReloadOutlined />,
                   disabled: !batchCanReboot,
-                  onClick: () => { setRebootRows(selectedRows); setRebootOpen(true); },
+                  onClick: () => openReboot(selectedRows),
                 },
               ],
             }}
@@ -841,12 +879,13 @@ export default function RiskPendingPage() {
             okText={t('patchManager.confirm')}
             cancelText={t('patchManager.cancel')}
           >
-            <Button type="primary">{t('patchManager.risk.confirmCreateReboot')}</Button>
+            <Button type="primary" disabled={rebootScopeLoading || !rebootScope}>{t('patchManager.risk.confirmCreateReboot')}</Button>
           </Popconfirm>,
         ]}
       >
         <div style={{ fontWeight: 500, marginBottom: 6 }}>{t('patchManager.risk.pendingRebootHosts')}</div>
         <Table
+          loading={rebootScopeLoading}
           size="small"
           rowKey="key"
           pagination={false}

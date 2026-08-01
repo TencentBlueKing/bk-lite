@@ -56,3 +56,34 @@ def test_seed_does_not_overwrite_user_customized():
     MonitorPluginService.import_basic_monitor_object(_base_data())
     obj.refresh_from_db()
     assert obj.display_fields[0]["name"] == "用户列"
+
+
+@pytest.mark.django_db
+def test_imports_instance_fact_contract_and_summary_columns():
+    bindings = [{
+        "fact": "asset.ip",
+        "value_type": "ip",
+        "resolver": "input",
+        "options": {"field": "host"},
+    }]
+    columns = [{"fact": "asset.ip", "title": "monitor.views.assetIp", "order": 10}]
+
+    MonitorPluginService.import_basic_monitor_object(
+        _base_data(instance_fact_bindings=bindings, instance_summary_columns=columns)
+    )
+
+    obj = MonitorObject.objects.get(name="SeedHost")
+    plugin = obj.monitorplugin_set.get(name="SeedPlugin")
+    assert plugin.instance_fact_bindings == bindings
+    assert obj.instance_summary_columns == columns
+
+
+@pytest.mark.django_db
+def test_rejects_summary_column_without_plugin_fact_binding():
+    with pytest.raises(Exception, match="插件未绑定的事实"):
+        MonitorPluginService.import_basic_monitor_object(
+            _base_data(instance_summary_columns=[{
+                "fact": "asset.ip",
+                "title": "monitor.views.assetIp",
+            }])
+        )

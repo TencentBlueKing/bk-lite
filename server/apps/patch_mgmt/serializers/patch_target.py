@@ -7,6 +7,7 @@ from rest_framework import serializers
 
 from apps.core.mixinx import EncryptMixin
 from apps.core.utils.serializers import TeamSerializer
+from apps.patch_mgmt.constants import PatchTargetSource
 from apps.patch_mgmt.models import GovernanceTask, GovernanceTaskHost, PatchTarget
 from apps.patch_mgmt.utils.i18n import serializer_message
 
@@ -16,6 +17,13 @@ class PatchTargetConnectivitySerializer(serializers.Serializer):
 
     ip = serializers.IPAddressField()
     os_type = serializers.ChoiceField(choices=("linux", "windows"))
+    source_type = serializers.ChoiceField(
+        choices=PatchTargetSource.CHOICES,
+        required=False,
+        default=PatchTargetSource.MANUAL,
+    )
+    node_id = serializers.CharField(required=False, allow_blank=True, default="")
+    cloud_region_id = serializers.IntegerField(required=False, allow_null=True)
     ssh_port = serializers.IntegerField(required=False, default=22, min_value=1, max_value=65535)
     ssh_user = serializers.CharField(required=False, allow_blank=True, default="")
     ssh_credential_type = serializers.ChoiceField(
@@ -32,6 +40,16 @@ class PatchTargetConnectivitySerializer(serializers.Serializer):
     winrm_user = serializers.CharField(required=False, allow_blank=True, default="")
     winrm_password = serializers.CharField(required=False, allow_blank=True, default="")
     winrm_cert_validation = serializers.BooleanField(required=False, default=True)
+
+    def validate(self, attrs):
+        if self.partial:
+            return attrs
+        if attrs.get("source_type") == PatchTargetSource.NODE_MGMT:
+            if not attrs.get("node_id"):
+                raise serializers.ValidationError({"node_id": "节点管理目标缺少 node_id"})
+        elif not attrs.get("cloud_region_id"):
+            raise serializers.ValidationError({"cloud_region_id": "手动目标必须选择云区域"})
+        return attrs
 
 
 class PatchTargetSerializer(TeamSerializer):

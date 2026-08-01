@@ -33,6 +33,9 @@ class PatchTargetViewSet(AuthViewSet):
     CONNECTION_FIELDS = {
         "ip",
         "os_type",
+        "source_type",
+        "node_id",
+        "cloud_region_id",
         "ssh_port",
         "ssh_user",
         "ssh_credential_type",
@@ -154,6 +157,9 @@ class PatchTargetViewSet(AuthViewSet):
             ),
             "port": result.port,
             "detail": result.detail,
+            "transport": result.transport,
+            "stage": result.stage,
+            "reason_code": result.reason_code,
         })
 
     @action(
@@ -194,4 +200,7 @@ class PatchTargetViewSet(AuthViewSet):
             "connectivity_status": target.connectivity_status,
             "port": result.port,
             "detail": result.detail,
+            "transport": result.transport,
+            "stage": result.stage,
+            "reason_code": result.reason_code,
         })

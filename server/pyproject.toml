@@ -63,6 +63,7 @@ dependencies = [
     "cryptography==45.0.0",
     "django-yaml-field==0.1.0",
     "pyjwt==2.10.1",
+    "pywinrm==0.5.0",
     "openpyxl==3.1.5",
     "setuptools==80.9.0",
     "attrs==25.3.0",

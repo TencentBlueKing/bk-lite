@@ -35,9 +35,12 @@ from apps.patch_mgmt.constants import (
 )
 from apps.patch_mgmt.models import GovernanceTask, GovernanceTaskHost, HostBaselineBinding, HostComplianceSnapshot, Patch, PatchTarget
 from apps.patch_mgmt.services.assess_parsers import assess_requirements
+from apps.patch_mgmt.services.target_execution_route import (
+    TargetTransport,
+    resolve_target_execution_route,
+)
 from apps.rpc.ansible import AnsibleExecutor
 from apps.rpc.executor import Executor
-from apps.rpc.node_mgmt import NodeMgmt
 
 logger = logging.getLogger('app')
 
@@ -64,54 +67,6 @@ def _read_ssh_key(target: PatchTarget) -> Optional[str]:
         return None
 
 
-def _get_cloud_region_name(cloud_region_id: Optional[int]) -> str:
-    from apps.node_mgmt.models import CloudRegion
-
-    if not cloud_region_id:
-        raise ValueError('目标未配置云区域')
-    try:
-        return CloudRegion.objects.get(pk=cloud_region_id).name
-    except CloudRegion.DoesNotExist as exc:
-        raise ValueError(f'云区域 {cloud_region_id} 不存在') from exc
-
-
-def _get_nats_executor_instance_id(target: PatchTarget) -> str:
-    '''返回可用于 Executor 的 instance_id。'''
-    if target.source_type == PatchTargetSource.NODE_MGMT and target.node_id:
-        return target.node_id
-
-    if target.source_type == PatchTargetSource.MANUAL:
-        from apps.node_mgmt.constants.cloudregion_service import CloudRegionServiceConstants
-        from apps.node_mgmt.services.cloudregion import RegionService
-
-        region_name = _get_cloud_region_name(target.cloud_region_id)
-        return RegionService.get_region_service_instance_id(
-            region_name, CloudRegionServiceConstants.NATS_EXECUTOR_SERVICE_NAME
-        )
-
-    raise ValueError(f'目标 {target.id} 无法确定执行器实例')
-
-
-def _get_ansible_executor_instance_id(cloud_region_id: Optional[int]) -> str:
-    '''获取云区域内的 Ansible Executor 容器节点 ID。'''
-    if not cloud_region_id:
-        raise ValueError('manual Windows 目标必须配置云区域')
-    node_mgmt = NodeMgmt()
-    result = node_mgmt.node_list(
-        {
-            'cloud_region_id': cloud_region_id,
-            'is_container': True,
-            'page': 1,
-            'page_size': 1,
-            'skip_permission': True,
-        }
-    )
-    nodes = (result or {}).get('nodes', []) if isinstance(result, dict) else []
-    if not nodes:
-        raise ValueError(f'云区域 {cloud_region_id} 下未找到可用的 Ansible 执行节点')
-    return nodes[0]['id']
-
-
 def _execute_windows_manual(
     target: PatchTarget,
     command: str,
@@ -129,8 +84,10 @@ def _execute_windows_manual(
     if mode != 'executor':
         raise RuntimeError(f'不支持的 Windows 执行模式: {mode}')
 
-    ansible_node_id = _get_ansible_executor_instance_id(target.cloud_region_id)
-    executor = AnsibleExecutor(ansible_node_id)
+    route = resolve_target_execution_route(target)
+    if route.transport != TargetTransport.ANSIBLE_WINRM:
+        raise RuntimeError(f'Windows 手动目标路由异常: {route.transport}')
+    executor = AnsibleExecutor(route.instance_id)
     password = _decrypt_password(target.winrm_password)
     host_credentials = [
         {
@@ -249,7 +206,10 @@ def _stage_windows_package(target: PatchTarget, detail, *, timeout: int) -> str:
 
     if mode != 'executor':
         raise RuntimeError(f'不支持的 Windows 执行模式: {mode}')
-    executor = AnsibleExecutor(_get_ansible_executor_instance_id(target.cloud_region_id))
+    route = resolve_target_execution_route(target)
+    if route.transport != TargetTransport.ANSIBLE_WINRM:
+        raise RuntimeError(f'Windows 手动目标路由异常: {route.transport}')
+    executor = AnsibleExecutor(route.instance_id)
     task_id = f'patch-file-{target.id}-{uuid.uuid4().hex[:8]}'
     accepted = executor.playbook(
         host_credentials=_windows_host_credentials(target),
@@ -303,10 +263,10 @@ def _execute_command(
             )
         )
 
-    instance_id = _get_nats_executor_instance_id(target)
-    executor = Executor(instance_id)
+    route = resolve_target_execution_route(target)
+    executor = Executor(route.instance_id)
 
-    if target.source_type == PatchTargetSource.NODE_MGMT:
+    if route.transport == TargetTransport.NODE_EXECUTOR:
         return _normalize_result(
             executor.execute_local_stream(
                 command,
@@ -316,6 +276,9 @@ def _execute_command(
                 stream_log_topic=stream_log_topic,
             )
         )
+
+    if route.transport != TargetTransport.NATS_SSH:
+        raise RuntimeError(f'不支持的目标执行链路: {route.transport}')
 
     password = _decrypt_password(target.ssh_password)
     private_key = _read_ssh_key(target)
@@ -800,6 +763,78 @@ def _is_assess_success(result: dict[str, Any]) -> bool:
     return True
 
 
+def _persist_verification_snapshot(
+    task: GovernanceTask | None,
+    target: PatchTarget,
+    *,
+    evaluated_at,
+    requirements=None,
+    assessments=None,
+    failure_reason: str = "",
+) -> None:
+    """把 verify 的主机-补丁结果冻结在当次任务。"""
+    if task is None or task.task_type != GovernanceTaskType.VERIFY:
+        return
+    items = [
+        item
+        for item in (task.risk_snapshot or [])
+        if int(item.get("host_id") or 0) == target.id
+    ]
+    if not items:
+        return
+    assessment_by_patch = {}
+    if requirements is not None and assessments is not None:
+        for requirement in requirements:
+            assessment = assessments.get(requirement.id)
+            if assessment is not None:
+                assessment_by_patch[int(requirement.patch_id)] = assessment
+
+    entries = []
+    for item in items:
+        patch_id = int(item.get("patch_id") or 0)
+        assessment = assessment_by_patch.get(patch_id)
+        if failure_reason or assessment is None:
+            entries.append(
+                {
+                    "risk_item_id": str(item.get("id") or ""),
+                    "host_id": target.id,
+                    "patch_id": patch_id,
+                    "status": "failed",
+                    "satisfied": None,
+                    "reason": failure_reason or "未获取到该补丁的验证结果",
+                    "evidence": {},
+                    "evaluated_at": evaluated_at.isoformat(),
+                }
+            )
+            continue
+        entries.append(
+            {
+                "risk_item_id": str(item.get("id") or ""),
+                "host_id": target.id,
+                "patch_id": patch_id,
+                "status": "completed",
+                "satisfied": bool(assessment.satisfied),
+                "reason": assessment.reason or "",
+                "evidence": dict(assessment.evidence or {}),
+                "evaluated_at": evaluated_at.isoformat(),
+            }
+        )
+
+    # 同一 verify 任务的多台主机可并行回写，必须加锁合并，避免 JSON 覆盖。
+    with transaction.atomic():
+        locked = GovernanceTask.objects.select_for_update().get(pk=task.pk)
+        item_ids = {entry["risk_item_id"] for entry in entries}
+        merged = [
+            entry
+            for entry in (locked.result_snapshot or [])
+            if str(entry.get("risk_item_id") or "") not in item_ids
+        ]
+        merged.extend(entries)
+        locked.result_snapshot = merged
+        locked.save(update_fields=["result_snapshot", "updated_at"])
+    task.result_snapshot = merged
+
+
 def _update_binding_after_assess(
     target: PatchTarget,
     success: bool,
@@ -808,13 +843,20 @@ def _update_binding_after_assess(
 ) -> None:
     '''评估完成后把结果写回 HostBaselineBinding 与 HostComplianceSnapshot。'''
     binding = getattr(target, 'baseline_binding', None)
-    if binding is None:
-        return
     try:
         task_id = int(str(execution_id).split(':', 1)[0])
     except (TypeError, ValueError):
         task_id = 0
     task = GovernanceTask.objects.filter(pk=task_id).first() if task_id else None
+    now = timezone.now()
+    if binding is None:
+        _persist_verification_snapshot(
+            task,
+            target,
+            evaluated_at=now,
+            failure_reason="主机未绑定基线，无法验证",
+        )
+        return
     if task and task.status == GovernanceTaskStatus.CANCELLED:
         logger.info('忽略已取消评估结果 task=%s target=%s', task.id, target.id)
         return
@@ -852,10 +894,19 @@ def _update_binding_after_assess(
                 expected_baseline_id,
             )
             return
-    now = timezone.now()
     binding.last_evaluated_at = now
 
     if not success:
+        _persist_verification_snapshot(
+            task,
+            target,
+            evaluated_at=now,
+            failure_reason=_result_reason(result) or "验证命令执行失败",
+        )
+        if task and task.task_type == GovernanceTaskType.VERIFY:
+            # 验证本身失败时保留上一次合规事实，风险状态由 verify
+            # 执行结果标记为治理失败，避免风险项因 binding=failed 消失。
+            return
         binding.compliance_status = ComplianceStatus.FAILED
         binding.missing_count = 0
         binding.save(update_fields=['compliance_status', 'missing_count', 'last_evaluated_at', 'updated_at'])
@@ -869,6 +920,14 @@ def _update_binding_after_assess(
         assessments = assess_requirements(target.os_type, stdout, requirements)
     except Exception as exc:  # noqa: BLE001
         logger.exception('解析目标 %s 评估输出失败: %s', target.id, exc)
+        _persist_verification_snapshot(
+            task,
+            target,
+            evaluated_at=now,
+            failure_reason=f"验证结果解析失败: {exc}",
+        )
+        if task and task.task_type == GovernanceTaskType.VERIFY:
+            return
         binding.compliance_status = ComplianceStatus.FAILED
         binding.missing_count = 0
         binding.save(update_fields=['compliance_status', 'missing_count', 'last_evaluated_at', 'updated_at'])
@@ -912,6 +971,13 @@ def _update_binding_after_assess(
             )
         )
     HostComplianceSnapshot.objects.bulk_create(snapshots)
+    _persist_verification_snapshot(
+        task,
+        target,
+        evaluated_at=now,
+        requirements=requirements,
+        assessments=assessments,
+    )
 
     binding.missing_count = missing_count
     binding.compliance_status = (
@@ -1760,7 +1826,14 @@ def _schedule_auto_reboot(install_task: GovernanceTask) -> None:
         execution_mode='now',
         status=GovernanceTaskStatus.PENDING,
         target_list=successful_target_ids,
-        patch_list=[],
+        patch_list=list(
+            dict.fromkeys(
+                int(item['patch_id'])
+                for item in (install_task.risk_snapshot or [])
+                if int(item.get('host_id') or 0) in successful_target_ids
+                and item.get('patch_id')
+            )
+        ),
         risk_snapshot=[
             item
             for item in (install_task.risk_snapshot or [])
@@ -1801,11 +1874,8 @@ def _schedule_auto_reboot(install_task: GovernanceTask) -> None:
 
 
 def _schedule_post_install_verify(install_task: GovernanceTask) -> None:
-    '''无需重启或安装失败的主机进入验证，以最终合规结果作为业务事实。'''
-    verify_hosts = list(
-        install_task.host_results.filter(stage__in=('completed', 'failed'))
-        .exclude(failed_stage='dispatch')
-    )
+    '''仅无需重启且安装成功的主机直接进入验证。'''
+    verify_hosts = list(install_task.host_results.filter(stage='completed'))
     if not verify_hosts:
         return
 

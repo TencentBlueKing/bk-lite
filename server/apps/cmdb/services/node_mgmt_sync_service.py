@@ -1532,7 +1532,9 @@ class NodeMgmtSyncService:
                 return False, None
             task.node_mgmt_config_id = config_id
             task.node_mgmt_config_version = config_version
-            return True, cls._execute_collect_task(task, operator)
+        # 远程下发不得占用配置行锁；claim 已持久化，配置更新可在 RPC
+        # 期间读取它并稳定返回 CONFIG_UPDATE_CONTENDED。
+        return True, cls._execute_collect_task(task, operator)
 
     @classmethod
     def _build_collect_display_payload(cls, source: str) -> dict[str, Any] | None:

@@ -595,6 +595,8 @@ def delete_instance(params):
     -> {"result": True, "deleted": [<inst_ids>]}
     """
     allowed_org_ids = _resolve_allowed_org_ids(params)
+    if not allowed_org_ids:
+        raise ValueError("authorization scope is required for CMDB NATS writes")
     inst_ids = _normalize_to_list(params.get("inst_ids"))
 
     if not inst_ids:

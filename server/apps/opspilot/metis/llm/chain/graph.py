@@ -28,6 +28,7 @@ from langgraph.constants import START
 
 from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.metis.llm.chain.entity import BasicLLMRequest, BasicLLMResponse
+from apps.opspilot.metis.llm.common.token_usage import TokenUsageAccumulator
 from apps.opspilot.metis.llm.chain.report_renderers import (
     find_unclosed_phantom_tool_call_start,
     strip_phantom_tool_calls,
@@ -1115,7 +1116,11 @@ class BasicGraph(ABC):
                 current_tool_calls[tool_call_id]["args"] = tool_args
         return events
 
-    async def agui_stream(self, request: BasicLLMRequest) -> AsyncGenerator[str, None]:
+    async def agui_stream(
+        self,
+        request: BasicLLMRequest,
+        token_usage_accumulator: Optional[TokenUsageAccumulator] = None,
+    ) -> AsyncGenerator[str, None]:
         """
         使用 agui 协议以 SSE 格式流式输出事件
 
@@ -1124,6 +1129,7 @@ class BasicGraph(ABC):
 
         Args:
             request: 基础 LLM 请求对象
+            token_usage_accumulator: 可选的整轮 LLM token 用量聚合器
 
         Yields:
             SSE 格式的事件字符串: "data: {json}\\n\\n"
@@ -1148,6 +1154,8 @@ class BasicGraph(ABC):
         emitted_text_signatures: set[str] = set()
         show_think = bool((request.extra_config or {}).get("show_think", True))
         execution_id = (request.extra_config or {}).get("execution_id") or request.thread_id
+        if not isinstance(token_usage_accumulator, TokenUsageAccumulator):
+            token_usage_accumulator = None
         # 创建浏览器步骤事件队列和回调
         browser_event_queue: asyncio.Queue[str] = asyncio.Queue(maxsize=100)
         browser_step_callback = create_browser_step_callback(browser_event_queue, encoder)
@@ -1245,6 +1253,13 @@ class BasicGraph(ABC):
                     tool_result_seen_since_model_end = True
 
                 elif event_type == "on_chat_model_end":
+                    if token_usage_accumulator is not None:
+                        added, reported = token_usage_accumulator.add(event.get("run_id"), event_data.get("output"))
+                        if added and not reported:
+                            logger.warning(
+                                "AGUI LLM call did not report token usage: run_id=%s",
+                                event.get("run_id"),
+                            )
                     chat_model_end_events = self._handle_chat_model_end_event(
                         event_data,
                         encoder,
@@ -1440,21 +1455,23 @@ class BasicGraph(ABC):
             if last_evaluation:
                 browser_steps_collector.append(f"最终结果: {last_evaluation}")
 
-            prompt_token = 0
-            completion_token = 0
-
+            token_usage_accumulator = TokenUsageAccumulator()
             for message in result["messages"]:
-                if isinstance(message, AIMessage) and "token_usage" in message.response_metadata:
-                    token_usage = message.response_metadata["token_usage"]
-                    prompt_token += token_usage["prompt_tokens"]
-                    completion_token += token_usage["completion_tokens"]
+                if isinstance(message, AIMessage):
+                    token_usage_accumulator.add(None, message)
 
+            if token_usage_accumulator.missing_usage_calls:
+                logger.warning(
+                    "Synchronous Agent LLM calls did not report token usage: missing_usage_calls=%s",
+                    token_usage_accumulator.missing_usage_calls,
+                )
+            usage = token_usage_accumulator.as_openai_usage()
             last_message_content = result["messages"][-1].content if result["messages"] else ""
             return BasicLLMResponse(
                 message=last_message_content,
-                total_tokens=prompt_token + completion_token,
-                prompt_tokens=prompt_token,
-                completion_tokens=completion_token,
+                total_tokens=usage["total_tokens"],
+                prompt_tokens=usage["prompt_tokens"],
+                completion_tokens=usage["completion_tokens"],
                 browser_steps=browser_steps_collector,
             )
         except Exception as e:

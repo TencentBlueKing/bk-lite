@@ -10,6 +10,8 @@ from pathlib import Path
 import pytest
 import yaml
 
+from apps.core.utils.loader import LanguageLoader
+
 SERVER_ROOT = Path(__file__).resolve().parents[3]
 PLUGINS = SERVER_ROOT / "apps" / "monitor" / "support-files" / "plugins" / "Telegraf"
 BRAND_DIR = PLUGINS / "snmp" / "access_arris"
@@ -86,7 +88,7 @@ def toml_text():
 @pytest.fixture(scope="module")
 def languages():
     return {
-        lang: yaml.safe_load((LANGUAGE_DIR / f"{lang}.yaml").read_text(encoding="utf-8"))
+        lang: LanguageLoader("monitor", lang).translations
         for lang in ("zh-Hans", "en")
     }
 
@@ -131,8 +133,9 @@ def test_ui_is_pure_snmp_form(ui):
 @pytest.mark.unit
 def test_metrics_json_declares_only_vendor_delta_child(metrics):
     names = {metric["name"] for metric in metrics["metrics"]}
-    assert names == VENDOR_METRICS
-    assert names & BASE_METRICS == set()
+    floor = {"snmp_uptime", "interface_ifHCInOctets", "interface_ifHCOutOctets"}
+    assert names - floor == VENDOR_METRICS
+    assert floor <= names
     assert names & UNSUPPORTED_METRICS == set()
     assert set(metrics["supplementary_indicators"]) <= names
 

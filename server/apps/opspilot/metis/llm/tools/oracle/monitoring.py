@@ -93,7 +93,11 @@ def get_table_metrics(
                 WHERE SEGMENT_NAME = :1 AND OWNER = :2
             """
             size_rows = execute_readonly_query(conn, size_query, (upper_table, owner))
-            table_size = int(size_rows[0].get("TABLE_SIZE", 0)) if size_rows else 0
+            table_size = (
+                int(size_rows[0].get("TABLE_SIZE") or 0)
+                if size_rows
+                else 0
+            )
 
             # 获取表基本信息
             info_query = """

@@ -130,6 +130,12 @@ class DataSourceDetailSerializer(DataSourceAPIModelSerializer):
 
 
 class NameSpaceModelSerializer(BaseFormatTimeSerializer):
+    def update(self, instance, validated_data):
+        password = validated_data.pop("password", serializers.empty)
+        if password is not serializers.empty:
+            instance.set_password(password)
+        return super().update(instance, validated_data)
+
     class Meta:
         model = NameSpace
         fields = "__all__"

@@ -123,7 +123,15 @@ def test_node_service_superuser_scope_intersects_object_permission(monkeypatch):
         },
     )
 
-    assert [item["id"] for item in result] == [current_node.id]
+    assert result == [
+        {
+            "id": current_node.id,
+            "name": current_node.name,
+            "ip": current_node.ip,
+            "node_type": current_node.node_type,
+            "organization_ids": [1],
+        }
+    ]
 
 
 @pytest.mark.django_db

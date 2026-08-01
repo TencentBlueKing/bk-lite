@@ -25,6 +25,10 @@ urlpatterns = [
 def open_api_test_urlconf(settings, monkeypatch):
     settings.ROOT_URLCONF = __name__
     monkeypatch.setattr("apps.cmdb.open_api.services.get_default_group_id", lambda: [1])
+    monkeypatch.setattr(
+        "apps.cmdb.open_api.services.ModelManage.search_model_info",
+        lambda model_id: {"model_id": model_id, "group": [7], "is_visible": True},
+    )
     settings.MIDDLEWARE = tuple(
         middleware
         for middleware in settings.MIDDLEWARE

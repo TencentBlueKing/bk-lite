@@ -56,12 +56,11 @@ def build_bulk_policy_payloads(
 ) -> list[dict[str, Any]]:
     payloads: list[dict[str, Any]] = []
     name_prefix = (config.get("name_prefix") or "").strip()
-    group_by = config.get("group_by") or ["instance_id"]
-
     for template in templates:
         group_algorithm, algorithm = normalize_template_algorithms(template)
         metric_unit = template.get("metric_unit") or ""
         default_calculation_unit = normalize_default_calculation_unit(metric_unit)
+        group_by = config.get("group_by") or template.get("group_by") or ["instance_id"]
         for asset in assets:
             instance_id = str(asset["instance_id"])
             display_instance = _display_asset_id(instance_id)
@@ -74,7 +73,7 @@ def build_bulk_policy_payloads(
                 "monitor_object": monitor_object_id,
                 "organizations": asset.get("organizations") or [],
                 "collect_type": template.get("collect_type"),
-                "query_condition": {
+                "query_condition": template.get("query_condition") or {
                     "type": "metric",
                     "metric_id": template.get("metric_id"),
                     "filter": template.get("filter") or [],
@@ -83,14 +82,14 @@ def build_bulk_policy_payloads(
                     "type": "instance",
                     "values": [instance_id],
                 },
-                "schedule": config.get("schedule") or {},
-                "period": config.get("period") or {},
+                "schedule": config.get("schedule") or template.get("schedule") or {},
+                "period": config.get("period") or template.get("period") or {},
                 "group_algorithm": group_algorithm,
                 "algorithm": algorithm,
                 "group_by": group_by,
                 "threshold": template.get("threshold") or [],
                 "trigger_count": config.get("trigger_count", template.get("trigger_count", 1)),
-                "recovery_condition": config.get("recovery_condition", 5),
+                "recovery_condition": config.get("recovery_condition", template.get("recovery_condition", 5)),
                 "metric_unit": metric_unit,
                 "calculation_unit": template.get("calculation_unit") or default_calculation_unit,
                 "threshold_unit": (template.get("threshold_unit") or template.get("calculation_unit") or default_calculation_unit or ""),

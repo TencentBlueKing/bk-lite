@@ -162,7 +162,27 @@ export const usePluginFromJson = () => {
       const formFields = getFieldsForMode(config.form_fields || [], extra.mode);
       const advancedFields = formFields?.filter((field: any) => field.advanced) || [];
       const basicFields = formFields?.filter((field: any) => !field.advanced) || [];
-      const ADVANCED_SECTION_ORDER = ['request', 'auth', 'response', 'tls'];
+      const ADVANCED_SECTION_ORDER = ['request', 'auth', 'response', 'tls', 'interface_filter'];
+      const advancedPanel = config.advanced_panel || {};
+      const isInterfaceFilterAdvanced =
+        Boolean(advancedPanel.title) ||
+        (advancedFields.length > 0 &&
+          advancedFields.every(
+            (field: any) =>
+              field.section === 'interface_filter' ||
+              ['iftype_exclude', 'iftype_include', 'ifdescr_exclude', 'ifdescr_include'].includes(
+                field.name
+              )
+          ));
+      const advancedTitle =
+        advancedPanel.title ||
+        (isInterfaceFilterAdvanced
+          ? t('monitor.integrations.advancedFilterConfiguration')
+          : t('monitor.integrations.advancedConfiguration'));
+      // 接口过滤只展示功能说明；互斥提示放在字段旁，避免顶部残留旧文案
+      const advancedHint = isInterfaceFilterAdvanced
+        ? t('monitor.integrations.advancedFilterConfigurationHint')
+        : (advancedPanel.hint || t('monitor.integrations.advancedConfigurationHint'));
 
       const renderAdvancedFieldGroups = (fields: any[]) => {
         const hasSections = fields.some((field) => field.section);
@@ -188,11 +208,14 @@ export const usePluginFromJson = () => {
           <div className="space-y-5">
             {orderedSections.map((section) => (
               <section key={section} className="space-y-3">
-                <div className="border-b border-[var(--color-border-1)] pb-2">
-                  <h4 className="m-0 text-[13px] font-medium leading-5 text-[var(--color-text-1)]">
-                    {t(`monitor.integrations.advancedSections.${section}`)}
-                  </h4>
-                </div>
+                {/* 仅网站等多分组高级区展示小节标题；单一接口过滤组不再重复标题 */}
+                {orderedSections.length > 1 && (
+                  <div className="border-b border-[var(--color-border-1)] pb-2">
+                    <h4 className="m-0 text-[13px] font-medium leading-5 text-[var(--color-text-1)]">
+                      {t(`monitor.integrations.advancedSections.${section}`)}
+                    </h4>
+                  </div>
+                )}
                 <div className="space-y-1">
                   {(sectionMap.get(section) || []).map((fieldConfig: any) =>
                     renderFormField(fieldConfig, extra.mode)
@@ -220,11 +243,13 @@ export const usePluginFromJson = () => {
                 label: (
                   <div>
                     <div className="text-[13px] font-medium leading-5 text-[var(--color-text-1)]">
-                      {t('monitor.integrations.advancedConfiguration')}
+                      {advancedTitle}
                     </div>
-                    <div className="mt-0.5 text-[12px] font-normal leading-[18px] text-[var(--color-text-3)]">
-                      {t('monitor.integrations.advancedConfigurationHint')}
-                    </div>
+                    {advancedHint ? (
+                      <div className="mt-0.5 text-[12px] font-normal leading-[18px] text-[var(--color-text-3)]">
+                        {advancedHint}
+                      </div>
+                    ) : null}
                   </div>
                 ),
                 forceRender: true,
@@ -400,6 +425,89 @@ export const usePluginFromJson = () => {
                 }
               }
             });
+            // SNMP 接口黑白名单：空数组/空串不得写成 []（会误杀全部接口），改为删除对应键
+            if (
+              String(config.collect_type || '').startsWith('snmp') &&
+              result?.child?.content?.config
+            ) {
+              const snmpFilterNames = new Set(
+                (formFields || [])
+                  .map((field: any) => field?.name)
+                  .filter((name: string) =>
+                    [
+                      'iftype_include',
+                      'iftype_exclude',
+                      'ifdescr_include',
+                      'ifdescr_exclude'
+                    ].includes(name)
+                  )
+              );
+              if (snmpFilterNames.size) {
+                const snmpConfig = result.child.content.config;
+                const pruneFilterKey = (
+                  tableName: 'tagpass' | 'tagdrop',
+                  key: string,
+                  value: any
+                ) => {
+                  const empty =
+                    value == null ||
+                    value === '' ||
+                    (Array.isArray(value) && value.length === 0);
+                  if (!snmpConfig[tableName]) {
+                    return;
+                  }
+                  if (empty) {
+                    delete snmpConfig[tableName][key];
+                    if (Object.keys(snmpConfig[tableName]).length === 0) {
+                      delete snmpConfig[tableName];
+                    }
+                  }
+                };
+                if (snmpFilterNames.has('iftype_include')) {
+                  pruneFilterKey(
+                    'tagpass',
+                    'ifType',
+                    filledFormData.iftype_include
+                  );
+                }
+                if (snmpFilterNames.has('iftype_exclude')) {
+                  pruneFilterKey(
+                    'tagdrop',
+                    'ifType',
+                    filledFormData.iftype_exclude
+                  );
+                }
+                if (snmpFilterNames.has('ifdescr_include')) {
+                  const descrInclude = DataMapper.transformValue(
+                    filledFormData.ifdescr_include,
+                    {
+                      origin_path: 'child.content.config.tagpass.ifDescr',
+                      to_api: { split: ',' }
+                    },
+                    'toApi',
+                    undefined,
+                    filledFormData
+                  );
+                  pruneFilterKey('tagpass', 'ifDescr', descrInclude);
+                }
+                if (snmpFilterNames.has('ifdescr_exclude')) {
+                  const descrExclude = DataMapper.transformValue(
+                    filledFormData.ifdescr_exclude,
+                    {
+                      origin_path: 'child.content.config.tagdrop.ifDescr',
+                      to_api: { split: ',' }
+                    },
+                    'toApi',
+                    undefined,
+                    filledFormData
+                  );
+                  pruneFilterKey('tagdrop', 'ifDescr', descrExclude);
+                }
+                if (!snmpConfig.tagexclude) {
+                  snmpConfig.tagexclude = ['ifType'];
+                }
+              }
+            }
             // 处理额外字段（extra_edit_fields）
             if (config.extra_edit_fields) {
               Object.entries(config.extra_edit_fields).forEach(

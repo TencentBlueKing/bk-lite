@@ -21,6 +21,7 @@ from apps.core.exceptions.base_app_exception import BaseAppException
 
 FEATURE = str(Path(__file__).parent / "instance_crud.feature")
 scenarios(FEATURE)
+pytestmark = pytest.mark.django_db
 
 MODULE = "apps.cmdb.services.instance"
 
