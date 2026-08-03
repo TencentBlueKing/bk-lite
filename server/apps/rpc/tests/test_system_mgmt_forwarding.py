@@ -212,6 +212,90 @@ def test_search_channel_list_scoped_默认值(client):
     )
 
 
+def test_search_channel_list_scoped_转发NATS方法过滤(client):
+    ctx = {"user": "a"}
+
+    client.search_channel_list_scoped(
+        ctx,
+        channel_type="nats",
+        teams=[1],
+        channel_method="receive_alert_events",
+    )
+    assert _last(client) == (
+        "search_channel_list_scoped",
+        (),
+        {
+            "actor_context": ctx,
+            "channel_type": "nats",
+            "teams": [1],
+            "include_children": False,
+            "channel_method": "receive_alert_events",
+        },
+    )
+
+
+def test_list_notification_channels_scoped_转发能力目录参数(client):
+    ctx = {"username": "a"}
+    client.list_notification_channels_scoped(ctx, teams=[1], include_children=True)
+    assert _last(client) == (
+        "list_notification_channels_scoped",
+        (),
+        {"actor_context": ctx, "teams": [1], "include_children": True},
+    )
+
+
+def test_search_notification_recipients_scoped_转发组织内用户查询(client):
+    ctx = {"username": "a"}
+    client.search_notification_recipients_scoped(
+        ctx,
+        teams=[1],
+        include_children=True,
+        search="alice",
+        limit=20,
+    )
+    assert _last(client) == (
+        "search_notification_recipients_scoped",
+        (),
+        {
+            "actor_context": ctx,
+            "teams": [1],
+            "include_children": True,
+            "search": "alice",
+            "limit": 20,
+        },
+    )
+
+
+def test_dispatch_notification_转发稳定投递契约(client):
+    client.dispatch_notification(
+        delivery_key="event:1",
+        channel_id=7,
+        organization_ids=[1],
+        recipients=["42"],
+        title="标题",
+        body="正文",
+        event_payload={"event_key": "event"},
+    )
+    assert _last(client) == (
+        "dispatch_notification",
+        (),
+        {
+            "delivery_key": "event:1",
+            "channel_id": 7,
+            "organization_ids": [1],
+            "recipients": ["42"],
+            "title": "标题",
+            "body": "正文",
+            "event_payload": {"event_key": "event"},
+        },
+    )
+
+
+def test_probe_notification_channel_转发渠道探针(client):
+    client.probe_notification_channel(7)
+    assert _last(client) == ("probe_notification_channel", (), {"channel_id": 7})
+
+
 def test_search_groups_转发query_params(client):
     client.search_groups({"search": "x"})
     assert _last(client) == ("search_groups", (), {"query_params": {"search": "x"}})

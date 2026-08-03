@@ -1,0 +1,79 @@
+{
+  "client_id": "apm",
+  "name": "APM",
+  "url": "/apm/services",
+  "icon": "monitor",
+  "tags": [
+    "tag.apm_integration",
+    "tag.service_red",
+    "tag.trace_explore",
+    "tag.alert_center"
+  ],
+  "description": "app.apm",
+  "menus": [
+    {
+      "name": "Integration",
+      "children": [
+        {
+          "id": "integration_add",
+          "name": "Add integration",
+          "operation": ["View", "Operate"]
+        },
+        {
+          "id": "integration_instances",
+          "name": "Reporting instances",
+          "operation": ["View", "Operate"]
+        }
+      ]
+    },
+    {
+      "name": "Explore",
+      "children": [
+        {
+          "id": "services",
+          "name": "Services",
+          "operation": ["View", "Operate"]
+        },
+        {
+          "id": "traces",
+          "name": "Traces",
+          "operation": ["View"]
+        }
+      ]
+    },
+    {
+      "name": "Alert",
+      "children": [
+        {
+          "id": "events",
+          "name": "Events",
+          "operation": ["View"]
+        },
+        {
+          "id": "policies",
+          "name": "Policies",
+          "operation": ["View", "Operate"]
+        }
+      ]
+    }
+  ],
+  "roles": [
+    {
+      "name": "admin",
+      "role_name": "apm_admin",
+      "menus": []
+    },
+    {
+      "name": "normal",
+      "role_name": "apm_normal",
+      "menus": [
+        "integration_add-View",
+        "integration_instances-View",
+        "services-View",
+        "traces-View",
+        "events-View",
+        "policies-View"
+      ]
+    }
+  ]
+}

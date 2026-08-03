@@ -1,7 +1,7 @@
 'use client';
 import React, { useRef, useState } from 'react';
 import { Descriptions } from 'antd';
-import { TableDataItem, Organization, UserItem } from '@/app/monitor/types';
+import { TableDataItem, Organization } from '@/app/monitor/types';
 import { useTranslation } from '@/utils/i18n';
 import informationStyle from './index.module.scss';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
@@ -15,6 +15,7 @@ import useMonitorApi from '@/app/monitor/api';
 import { useLevelList } from '@/app/monitor/hooks';
 import { OBJECT_DEFAULT_ICON, LEVEL_MAP } from '@/app/monitor/constants';
 import Permission from '@/components/permission';
+import { formatUserDisplayName } from '@/utils/userDisplay';
 
 interface InformationProps extends TableDataItem {
   eventData?: TableDataItem[];
@@ -71,17 +72,12 @@ const Information: React.FC<InformationProps> = ({
     }
   };
 
-  const getUsers = (id: string) => {
-    const user = userList.find((item: UserItem) => item.id === id);
-    return user?.display_name || '--';
-  };
-
   const showNotifiers = (row: TableDataItem) => {
     const users = row.policy?.notice_users;
     if (!Array.isArray(users)) return users;
     return (
       (row.policy?.notice_users || [])
-        .map((item: string) => getUsers(item))
+        .map((item: string) => formatUserDisplayName(item, userList))
         .join(',') || '--'
     );
   };
@@ -162,7 +158,7 @@ const Information: React.FC<InformationProps> = ({
           )}
         </Descriptions.Item>
         <Descriptions.Item label={t('common.operator')}>
-          {formData.operator || '--'}
+          {formatUserDisplayName(formData.operator, userList)}
         </Descriptions.Item>
         <Descriptions.Item label={t('monitor.events.notifier')}>
           {showNotifiers(formData)}

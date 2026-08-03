@@ -346,7 +346,11 @@ class MonitorInstanceViewSet(viewsets.ViewSet):
             actor_context,
             allow_missing=True,
         )
-        MonitorInstanceRemovalService.remove(instance_ids)
+        MonitorInstanceRemovalService.remove(
+            instance_ids,
+            operator=actor_context.get("username") or getattr(request.user, "username", "system"),
+            reason="manual_instance_deleted",
+        )
 
         return WebUtils.response_success()
 

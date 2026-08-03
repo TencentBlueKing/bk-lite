@@ -354,6 +354,7 @@ def test_send_nats_message_成功透传payload(mocker):
     args, kwargs = req.call_args
     assert args == ("ns", "trigger_workflow_by_nats")
     assert kwargs["_timeout"] == 30
+    assert "_raw" not in kwargs
     assert kwargs["bot_id"] == 7 and kwargs["node_id"] == "n1"
     assert kwargs["content"] == "x"
 

@@ -26,6 +26,12 @@ class MonitorObject(TimeInfo, MaintainerInfo):
         (CLEANUP_POLICY_NO_CLEANUP, "No cleanup"),
         (CLEANUP_POLICY_TIMEOUT, "Timeout cleanup"),
     ]
+    CLEANUP_TIMEOUT_UNIT_DAY = "day"
+    CLEANUP_TIMEOUT_UNIT_MINUTE = "minute"
+    CLEANUP_TIMEOUT_UNIT_CHOICES = [
+        (CLEANUP_TIMEOUT_UNIT_DAY, "Day"),
+        (CLEANUP_TIMEOUT_UNIT_MINUTE, "Minute"),
+    ]
 
     name = models.CharField(unique=True, max_length=100, verbose_name='监控对象')
     display_name = models.CharField(max_length=100, blank=True, default='', verbose_name='监控对象显示名称')
@@ -59,8 +65,14 @@ class MonitorObject(TimeInfo, MaintainerInfo):
     )
     cleanup_timeout_days = models.PositiveSmallIntegerField(
         default=1,
-        validators=[MinValueValidator(1), MaxValueValidator(365)],
-        verbose_name='自动发现资产超时清理天数',
+        validators=[MinValueValidator(1), MaxValueValidator(1440)],
+        verbose_name='自动发现资产超时清理时长数值',
+    )
+    cleanup_timeout_unit = models.CharField(
+        max_length=10,
+        choices=CLEANUP_TIMEOUT_UNIT_CHOICES,
+        default=CLEANUP_TIMEOUT_UNIT_DAY,
+        verbose_name='自动发现资产超时清理时长单位',
     )
     cleanup_policy_effective_at = models.DateTimeField(null=True, blank=True, verbose_name='清理策略生效时间')
     last_discovery_success_at = models.DateTimeField(null=True, blank=True, verbose_name='最近一次自动发现查询成功时间')
@@ -69,6 +81,17 @@ class MonitorObject(TimeInfo, MaintainerInfo):
         verbose_name = '监控对象'
         verbose_name_plural = '监控对象'
         ordering = ['type__order', 'order', 'id']
+
+    @property
+    def cleanup_timeout_value(self):
+        """新 API 的时长数值；底层列名为兼容旧版本暂保留 days 后缀。"""
+        return self.cleanup_timeout_days
+
+    @property
+    def cleanup_timeout_seconds(self):
+        if self.cleanup_timeout_unit == self.CLEANUP_TIMEOUT_UNIT_MINUTE:
+            return self.cleanup_timeout_days * 60
+        return self.cleanup_timeout_days * 24 * 60 * 60
 
 
 class MonitorInstance(TimeInfo, MaintainerInfo):

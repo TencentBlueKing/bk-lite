@@ -5,6 +5,50 @@ import base64
 from typing import Any, Union
 
 
+class ScopedInstanceMatcher:
+    """把指标维度在策略已选实例范围内唯一解析为监控实例 ID。"""
+
+    def __init__(self, object_instance_id_keys: list, scoped_instance_ids):
+        self.object_instance_id_keys = list(object_instance_id_keys or [])
+        self.scoped_instance_values = {
+            instance_id: parse_instance_id(instance_id)
+            for instance_id in scoped_instance_ids
+        }
+        self._indexes = {}
+
+    def resolve(self, instance_values: tuple, instance_value_keys: list) -> str:
+        dimensions = build_dimensions(instance_values, instance_value_keys)
+        comparable_keys = [
+            key for key in dimensions if key in self.object_instance_id_keys
+        ]
+        if not comparable_keys:
+            return ""
+
+        index_key = tuple(comparable_keys)
+        match_index = self._indexes.get(index_key)
+        if match_index is None:
+            match_index = self._build_index(comparable_keys)
+            self._indexes[index_key] = match_index
+
+        identity = tuple(str(dimensions[key]) for key in comparable_keys)
+        return match_index.get(identity, "")
+
+    def _build_index(self, comparable_keys: list) -> dict:
+        match_index = {}
+        positions = [
+            self.object_instance_id_keys.index(key) for key in comparable_keys
+        ]
+        for candidate_id, candidate_values in self.scoped_instance_values.items():
+            if any(position >= len(candidate_values) for position in positions):
+                continue
+            identity = tuple(
+                str(candidate_values[position]) for position in positions
+            )
+            # 空字符串是歧义哨兵；同一身份出现两次后不再猜测归属。
+            match_index[identity] = "" if identity in match_index else candidate_id
+        return match_index
+
+
 def build_safe_instance_id(*parts: Any) -> str:
     """Encode identity parts into a stable label-safe instance id."""
     normalized_parts = [str(part).strip() for part in parts]

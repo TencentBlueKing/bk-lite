@@ -3,8 +3,7 @@ import React, { useRef, useState, useMemo } from 'react';
 import { Descriptions } from 'antd';
 import {
   TableDataItem,
-  Organization,
-  UserItem
+  Organization
 } from '@/app/log/types';
 import { useTranslation } from '@/utils/i18n';
 import informationStyle from './index.module.scss';
@@ -19,6 +18,7 @@ import Permission from '@/components/permission';
 import CustomTable from '@/components/custom-table';
 import { FilterItem } from '@/app/log/types/integration';
 import { buildLogAlertRawColumns } from './rawLogColumns';
+import { formatUserDisplayName } from '@/utils/userDisplay';
 
 const Information: React.FC<TableDataItem> = ({
   formData,
@@ -214,15 +214,10 @@ const Information: React.FC<TableDataItem> = ({
     }
   };
 
-  const getUsers = (id: string) => {
-    const user = userList.find((item: UserItem) => item.id === id);
-    return user?.display_name || '--';
-  };
-
   const showNotifiers = (row: TableDataItem) => {
     return (
       (row.notice_users || [])
-        .map((item: string) => getUsers(item))
+        .map((item: string) => formatUserDisplayName(item, userList))
         .join(',') || '--'
     );
   };
@@ -287,7 +282,7 @@ const Information: React.FC<TableDataItem> = ({
           {t(`log.event.${formData.notice ? 'notified' : 'unnotified'}`)}
         </Descriptions.Item>
         <Descriptions.Item label={t('common.operator')}>
-          {formData.operator || '--'}
+          {formatUserDisplayName(formData.operator, userList)}
         </Descriptions.Item>
         <Descriptions.Item label={t('log.event.notifier')}>
           {showNotifiers(formData)}

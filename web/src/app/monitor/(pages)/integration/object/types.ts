@@ -18,6 +18,8 @@ export interface ChildObject {
 }
 
 // 监控对象
+export type CleanupTimeoutUnit = 'day' | 'minute';
+
 export interface MonitorObjectItem {
   id: number;
   name: string;
@@ -31,6 +33,9 @@ export interface MonitorObjectItem {
   is_visible: boolean;
   is_builtin?: boolean; // 是否内置对象（仅清理策略可编辑）
   cleanup_policy?: 'no_cleanup' | 'timeout';
+  cleanup_timeout_value?: number;
+  cleanup_timeout_unit?: CleanupTimeoutUnit;
+  // 兼容升级前的接口返回；新请求使用 cleanup_timeout_value。
   cleanup_timeout_days?: number;
   order: number;
   description?: string;
@@ -59,6 +64,8 @@ export interface ObjectFormData {
   children?: ChildObject[];
   is_builtin?: boolean;
   cleanup_policy?: 'no_cleanup' | 'timeout';
+  cleanup_timeout_value?: number;
+  cleanup_timeout_unit?: CleanupTimeoutUnit;
   cleanup_timeout_days?: number;
 }
 

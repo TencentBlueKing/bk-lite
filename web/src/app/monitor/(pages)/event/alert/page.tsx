@@ -14,7 +14,7 @@ import {
 import useApiClient from '@/utils/request';
 import { useTranslation } from '@/utils/i18n';
 import Icon from '@/components/icon';
-import { getRandomColor, getRecentTimeRange } from '@/app/monitor/utils/common';
+import { getRecentTimeRange } from '@/app/monitor/utils/common';
 import {
   ColumnItem,
   ModalRef,
@@ -30,7 +30,6 @@ import {
 import { AlertOutlined } from '@ant-design/icons';
 import { FiltersConfig } from '@/app/monitor/types/event';
 import CustomTable from '@/components/custom-table';
-import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import TimeSelector from '@/components/time-selector';
 import Permission from '@/components/permission';
 import StackedBarChart from '@/app/monitor/components/charts/stackedBarChart';
@@ -50,6 +49,8 @@ import useMonitorApi from '@/app/monitor/api/index';
 import TreeSelector from '@/app/monitor/components/treeSelector';
 import ResizableSidebar from '@/app/monitor/components/resizableSidebar';
 import { cloneDeep } from 'lodash';
+import UserAvatar from '@/components/user-avatar';
+import { formatUserDisplayName } from '@/utils/userDisplay';
 const { Search } = Input;
 const { Option } = Select;
 
@@ -174,26 +175,15 @@ const Alert: React.FC = () => {
       title: t('common.operator'),
       dataIndex: 'operator',
       key: 'operator',
-      render: (_, { operator }) => {
-        return operator ? (
-          <div className="column-user" title={operator}>
-            <span
-              className="user-avatar"
-              style={{ background: getRandomColor() }}
-            >
-              {operator.slice(0, 1).toLocaleUpperCase()}
-            </span>
-            <span className="user-name">
-              <EllipsisWithTooltip
-                className="w-full overflow-hidden text-ellipsis whitespace-nowrap"
-                text={operator}
-              />
-            </span>
-          </div>
+      render: (_, { operator }) =>
+        operator ? (
+          <UserAvatar
+            userName={formatUserDisplayName(operator, userList)}
+            size="small"
+          />
         ) : (
           <>--</>
-        );
-      }
+        )
     },
     {
       title: t('common.action'),

@@ -29,9 +29,24 @@ const VariablesTable: React.FC<VariablesTableProps> = ({
         description: t('monitor.events.variableMonitorObject')
       },
       {
+        key: 'resource_id',
+        variable: '${resource_id}',
+        description: t('monitor.events.variableResourceId')
+      },
+      {
         key: 'resource_name',
         variable: '${resource_name}',
         description: t('monitor.events.variableResourceName')
+      },
+      {
+        key: 'parent_resource_id',
+        variable: '${parent_resource_id}',
+        description: t('monitor.events.variableParentResourceId')
+      },
+      {
+        key: 'parent_resource_name',
+        variable: '${parent_resource_name}',
+        description: t('monitor.events.variableParentResourceName')
       },
       {
         key: 'level',
