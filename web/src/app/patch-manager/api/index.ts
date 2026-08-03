@@ -64,9 +64,10 @@ const usePatchManagerApi = () => {
   // 预览补丁源候选补丁（不写库），供「同步入库」抽屉展示
   const previewSyncPatchSource = async (
     id: number,
-    params: { search?: string; page?: number; page_size?: number }
+    params: { search?: string; page?: number; page_size?: number },
+    config?: AxiosRequestConfig,
   ): Promise<{ items: CandidateItem[]; total: number; page: number; page_size: number }> =>
-    post(`${BASE}/patch_source/${id}/preview_sync/`, params, { timeout: 60000 });
+    post(`${BASE}/patch_source/${id}/preview_sync/`, params, { timeout: 60000, ...config });
 
   // 将选中的候选补丁入库
   const ingestPatchSource = async (
@@ -119,8 +120,8 @@ const usePatchManagerApi = () => {
   const updatePatch = async (id: number, data: Partial<Patch>): Promise<Patch> =>
     put(`${BASE}/patch/${id}/`, data);
 
-  const deletePatch = async (id: number): Promise<void> =>
-    del(`${BASE}/patch/${id}/`);
+  const deletePatches = async (ids: number[]): Promise<{ deleted_count: number }> =>
+    post(`${BASE}/patch/batch_delete/`, { ids });
 
   // ── 目标管理 ────────────────────────────────────────────────────────────────
 
@@ -168,27 +169,39 @@ const usePatchManagerApi = () => {
     return post(`/node_mgmt/api/node/search/${suffix}`, body, config);
   };
 
-  // 目标机连通性探测(TCP 端口可达);同步执行,超时放宽到 20s
+  interface TargetConnectivityResult {
+    target_id?: number;
+    connectivity_status: string;
+    port: number | null;
+    detail: string;
+    transport: 'node_executor' | 'nats_ssh' | 'ansible_winrm' | 'unknown';
+    stage: string;
+    reason_code: string;
+  }
+
+  // 沿补丁真实执行链路同步探测；Windows Ansible win_ping 最长约 30s。
   const checkPatchTargetConnectivity = async (
     id: number,
     data?: FormData | Partial<PatchTarget>,
-  ): Promise<{ target_id: number; connectivity_status: string; port: number; detail: string }> =>
+  ): Promise<TargetConnectivityResult> =>
     post(`${BASE}/patch_target/${id}/check_connectivity/`, data, {
-      timeout: 20000,
+      timeout: 45000,
       ...(data instanceof FormData ? { headers: { 'Content-Type': undefined } } : {}),
     });
 
   const testPatchTargetConnectivity = async (
     data: FormData | Partial<PatchTarget>,
-  ): Promise<{ connectivity_status: string; port: number; detail: string }> =>
+  ): Promise<TargetConnectivityResult> =>
     post(`${BASE}/patch_target/test_connectivity/`, data, {
-      timeout: 20000,
+      timeout: 45000,
       ...(data instanceof FormData ? { headers: { 'Content-Type': undefined } } : {}),
     });
 
   // 已纳入节点列表（轻量：仅 node_id + name），不受分页限制
-  const getImportedNodeIds = async (): Promise<{ items: Array<{ node_id: string; name: string }> }> =>
-    get(`${BASE}/patch_target/imported-node-ids/`);
+  const getImportedNodeIds = async (
+    config?: AxiosRequestConfig,
+  ): Promise<{ items: Array<{ node_id: string; name: string }> }> =>
+    get(`${BASE}/patch_target/imported-node-ids/`, config);
 
   // 查询节点管理云区域列表（用于手动录入选择云区域）
   const getCloudRegionList = async (
@@ -231,8 +244,8 @@ const usePatchManagerApi = () => {
   const deleteBaseline = async (id: number): Promise<void> =>
     del(`${BASE}/baseline/${id}/`);
 
-  const getBaselineRequirements = async (id: number): Promise<any[]> =>
-    get(`${BASE}/baseline/${id}/requirements/`);
+  const getBaselineRequirements = async (id: number, config?: AxiosRequestConfig): Promise<any[]> =>
+    get(`${BASE}/baseline/${id}/requirements/`, config);
 
   const addBaselineRequirements = async (id: number, data: { patch_ids: number[]; condition?: string }): Promise<any> =>
     post(`${BASE}/baseline/${id}/requirements/`, data);
@@ -243,8 +256,8 @@ const usePatchManagerApi = () => {
   const bindHostsToBaseline = async (id: number, targetIds: number[]): Promise<any> =>
     post(`${BASE}/baseline/${id}/bind_hosts/`, { target_ids: targetIds });
 
-  const getBaselineHosts = async (id: number): Promise<any[]> =>
-    get(`${BASE}/baseline/${id}/hosts/`);
+  const getBaselineHosts = async (id: number, config?: AxiosRequestConfig): Promise<any[]> =>
+    get(`${BASE}/baseline/${id}/hosts/`, config);
 
   const assessBaseline = async (id: number): Promise<any> =>
     post(`${BASE}/baseline/${id}/assess/`);
@@ -278,8 +291,8 @@ const usePatchManagerApi = () => {
   const cancelGovernanceTask = async (id: number, reason: string): Promise<any> =>
     post(`${BASE}/governance/${id}/cancel/`, { reason });
 
-  const retryGovernanceTaskHost = async (taskId: number, targetId: number): Promise<any> =>
-    post(`${BASE}/governance/${taskId}/retry-host/`, { target_id: targetId });
+  const retryGovernanceTaskHost = async (taskId: number, riskItemId: string): Promise<any> =>
+    post(`${BASE}/governance/${taskId}/retry-host/`, { risk_item_id: riskItemId });
 
   // ── 风险治理 ──────────────────────────────────────────────────────────────────
 
@@ -318,7 +331,14 @@ const usePatchManagerApi = () => {
     execution_window_start?: string;
     execution_window_end?: string;
     name?: string;
+    scope_token: string;
   }): Promise<any> => post(`${BASE}/risk/reboot/`, data);
+
+  const previewRebootRisk = async (targetIds: number[]): Promise<{
+    target_ids: number[];
+    scope_token: string;
+    items: Array<Record<string, any>>;
+  }> => post(`${BASE}/risk/reboot_preview/`, { target_ids: targetIds });
 
   return {
     getPatchSourceList,
@@ -338,7 +358,7 @@ const usePatchManagerApi = () => {
     saveManualWindowsPatch,
     uploadWindowsPatchPackage,
     updatePatch,
-    deletePatch,
+    deletePatches,
     getPatchTargetList,
     createPatchTarget,
     createPatchTargetBatch,
@@ -377,6 +397,7 @@ const usePatchManagerApi = () => {
     getRiskSummary,
     remediateRisk,
     rebootRisk,
+    previewRebootRisk,
   };
 };
 

@@ -143,6 +143,12 @@ def _request_tenant_access_token(config: dict, capability_key: str):
     )
 
 
+class FeishuBaseConnectionAdapter:
+    @classmethod
+    def test_connection(cls, config: dict, provider_key: str, capability_key: str, **kwargs):
+        return _request_tenant_access_token(config, capability_key)
+
+
 def _fetch_tenant_access_token(config: dict, force_refresh: bool = False):
     app_id = (config or {}).get("app_id", "")
     app_secret = (config or {}).get("app_secret", "")
@@ -513,41 +519,63 @@ class FeishuUserSyncAdapter(BaseUserSyncAdapter):
         if error:
             return error
 
-        user_params: dict = {
-            "department_id": root_department_id,
-            "fetch_child": "true",
-            "page_size": 50,
-            "fields": "department_ids,user_id,open_id,name,email,mobile",
-        }
-        if user_id_type:
-            user_params["user_id_type"] = user_id_type
-        if department_id_type:
-            user_params["department_id_type"] = department_id_type
-
-        user_payload, error = _feishu_get_paginated(
-            _get_config_value(config, "user_sync_users_url", FEISHU_USERS_BY_DEPARTMENT_URL),
-            tenant_access_token,
-            params=user_params,
-            config=config,
-        )
-        if error:
-            return error
-
         group_list = []
+        department_ids = [str(root_department_id)]
         for item in department_payload["items"]:
             department_id = _get_feishu_department_identifier(item, department_id_type)
             if not department_id:
                 continue
+            department_id = str(department_id)
             group_list.append(
                 {
-                    "id": str(department_id),
+                    "id": department_id,
                     "parent_id": str(item.get("parent_department_id") or root_department_id),
                     "name": item.get("name") or str(department_id),
                 }
             )
+            if department_id not in department_ids:
+                department_ids.append(department_id)
+
+        users_by_identity = {}
+        external_request_id = department_payload.get("request_id") or ""
+        for department_id in department_ids:
+            user_params: dict = {
+                "department_id": department_id,
+                "fetch_child": "true",
+                "page_size": 50,
+                "fields": "department_ids,user_id,open_id,name,email,mobile",
+            }
+            if user_id_type:
+                user_params["user_id_type"] = user_id_type
+            if department_id_type:
+                user_params["department_id_type"] = department_id_type
+
+            user_payload, error = _feishu_get_paginated(
+                _get_config_value(config, "user_sync_users_url", FEISHU_USERS_BY_DEPARTMENT_URL),
+                tenant_access_token,
+                params=user_params,
+                config=config,
+            )
+            if error:
+                return error
+
+            external_request_id = user_payload.get("request_id") or external_request_id
+            for item in user_payload["items"]:
+                user_identity = item.get("user_id") or item.get("open_id")
+                if not user_identity:
+                    continue
+                user_identity = str(user_identity)
+                existing_user = users_by_identity.get(user_identity)
+                if existing_user is None:
+                    users_by_identity[user_identity] = dict(item)
+                    continue
+
+                existing_department_ids = existing_user.get("department_ids") or []
+                merged_department_ids = dict.fromkeys([*existing_department_ids, *(item.get("department_ids") or [])])
+                existing_user["department_ids"] = list(merged_department_ids)
 
         user_list = []
-        for item in user_payload["items"]:
+        for item in users_by_identity.values():
             user_id = item.get("user_id") or item.get("open_id")
             if not user_id:
                 continue
@@ -567,7 +595,7 @@ class FeishuUserSyncAdapter(BaseUserSyncAdapter):
             payload={
                 "group_list": group_list,
                 "user_list": user_list,
-                "external_request_id": user_payload.get("request_id") or department_payload.get("request_id") or "",
+                "external_request_id": external_request_id,
             },
         )
 

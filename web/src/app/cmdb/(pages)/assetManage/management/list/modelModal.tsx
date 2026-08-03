@@ -8,13 +8,16 @@ import React, {
   useImperativeHandle,
 } from 'react';
 import { Input, Button, Form, message, Select } from 'antd';
-import Image from 'next/image';
 import OperateModal from '@/components/operate-modal';
 import GroupTreeSelector from '@/components/group-tree-select';
 import SelectIcon from './selectIcon';
-import { getIconUrl } from '@/app/cmdb/utils/common';
+import ModelIcon from '@/app/cmdb/components/model-icon';
 import type { FormInstance } from 'antd';
-import { ModelItem, ModelConfig } from '@/app/cmdb/types/assetManage';
+import {
+  ModelItem,
+  ModelConfig,
+  ModelIconItem,
+} from '@/app/cmdb/types/assetManage';
 import { deepClone } from '@/app/cmdb/utils/common';
 const { Option } = Select;
 import { useTranslation } from '@/utils/i18n';
@@ -43,7 +46,10 @@ const ModelModal = forwardRef<ModelModalRef, ModelModalProps>(
     const [type, setType] = useState<string>('');
     const [confirmLoading, setConfirmLoading] = useState<boolean>(false);
     const [modelInfo, setModelInfo] = useState<any>({});
-    const [modelIcon, setModelIcon] = useState<any>('');
+    const [modelIcon, setModelIcon] = useState<ModelIconItem>({
+      icn: '',
+      model_id: '',
+    });
     const [iconId, setIconId] = useState<any>('');
 
     useEffect(() => {
@@ -72,14 +78,14 @@ const ModelModal = forwardRef<ModelModalRef, ModelModalProps>(
         setSubTitle(subTitle);
         setType(type);
         setTitle(title);
-        let icon = getIconUrl({ model_id: '', icn: '' });
-        if (type === 'edit') {
-          icon = getIconUrl({
-            model_id: resolvedForm.model_id,
-            icn: resolvedForm.icn,
-          });
-        }
-        setModelIcon(icon);
+        setModelIcon(
+          type === 'edit'
+            ? {
+              model_id: resolvedForm.model_id,
+              icn: resolvedForm.icn,
+            }
+            : { model_id: '', icn: '' }
+        );
         setIconId(resolvedForm.icn || 'icon-cc-host');
         setModelInfo(resolvedForm);
       },
@@ -132,15 +138,8 @@ const ModelModal = forwardRef<ModelModalRef, ModelModalProps>(
     };
 
     const onConfirmSelectIcon = (icon: string) => {
-      const objId = icon.replace('cc-', '');
-      const _iconId = 'icon-' + icon;
-      setModelIcon(
-        getIconUrl({
-          icn: _iconId,
-          model_id: objId,
-        })
-      );
-      setIconId(_iconId);
+      setModelIcon({ icn: icon, model_id: modelInfo.model_id });
+      setIconId(icon);
     };
 
     const onSelectIcon = () => {
@@ -176,8 +175,9 @@ const ModelModal = forwardRef<ModelModalRef, ModelModalProps>(
               className="flex items-center justify-center cursor-pointer w-[80px] h-[80px] rounded-full border-solid border-[1px] border-[var(--color-border)]"
               onClick={onSelectIcon}
             >
-              <Image
-                src={modelIcon}
+              <ModelIcon
+                icon={modelIcon.icn}
+                modelId={modelIcon.model_id}
                 className="block w-auto h-10"
                 alt={t('picture')}
                 width={60}

@@ -11,6 +11,8 @@ import {
   Input,
   InputNumber,
   Radio,
+  Select,
+  Space,
   Button,
   Form,
   message,
@@ -24,6 +26,10 @@ import { ModalRef } from '@/app/monitor/types';
 import { ObjectFormData, ChildObject, MonitorObjectItem } from './types';
 import { useTranslation } from '@/utils/i18n';
 import useObjectApi from './api';
+import {
+  getCleanupTimeoutMax,
+  normalizeCleanupTimeout
+} from './cleanupTimeout';
 
 // 默认图标
 const DEFAULT_ICON = 'cc-default_默认';
@@ -67,6 +73,9 @@ const ICON_LIST = [
   'cc-dameng_达梦',
   'cc-db2_DB2',
   'cc-sql-server_MSSQL',
+  'cc-influxdb_InfluxDB',
+  'cc-haproxy_HAProxy',
+  'cc-consul_Consul',
   'cc-weblogic_WebLogic',
   'cc-websphere_websphere',
   'cc-iis_IIS',
@@ -107,7 +116,10 @@ const ICON_LIST = [
   'mm-vmware_Vmware',
   'mm-weblogic_Weblogic',
   'mm-website_网站',
-  'mm-zookeeper_Zookeeper'
+  'mm-zookeeper_Zookeeper',
+  'mm-influxdb_InfluxDB',
+  'mm-haproxy_HAProxy',
+  'mm-consul_Consul'
 ];
 
 interface ModalProps {
@@ -166,12 +178,14 @@ const ObjectModal = forwardRef<ModalRef, ModalProps>(
 
     useEffect(() => {
       if (visible) {
+        const cleanupTimeout = normalizeCleanupTimeout(formData);
         formRef.current?.resetFields();
         formRef.current?.setFieldsValue({
           ...formData,
           display_name: formData.display_name || formData.name,
           cleanup_policy: formData.cleanup_policy || 'no_cleanup',
-          cleanup_timeout_days: formData.cleanup_timeout_days || 1
+          cleanup_timeout_value: cleanupTimeout.value,
+          cleanup_timeout_unit: cleanupTimeout.unit
         });
       }
     }, [visible, formData]);
@@ -190,7 +204,8 @@ const ObjectModal = forwardRef<ModalRef, ModalProps>(
           const submitData = (isBuiltin
             ? {
               cleanup_policy: values.cleanup_policy,
-              cleanup_timeout_days: values.cleanup_timeout_days
+              cleanup_timeout_value: values.cleanup_timeout_value,
+              cleanup_timeout_unit: values.cleanup_timeout_unit
             }
             : {
               ...values,
@@ -395,29 +410,65 @@ const ObjectModal = forwardRef<ModalRef, ModalProps>(
               noStyle
               shouldUpdate={(previous, current) =>
                 previous.cleanup_policy !== current.cleanup_policy ||
-                previous.cleanup_timeout_days !== current.cleanup_timeout_days
+                previous.cleanup_timeout_value !== current.cleanup_timeout_value ||
+                previous.cleanup_timeout_unit !== current.cleanup_timeout_unit
               }
             >
               {({ getFieldValue }) =>
-                getFieldValue('cleanup_policy') === 'timeout' && (
-                  <Form.Item<ObjectFormData>
-                    label={t('monitor.object.timeoutDays')}
-                    name="cleanup_timeout_days"
-                    extra={t('monitor.object.cleanupPolicyHint', undefined, {
-                      days: getFieldValue('cleanup_timeout_days') || 1
-                    })}
-                    rules={[
-                      { required: true, message: t('common.inputRequired') }
-                    ]}
-                  >
-                    <InputNumber
-                      min={1}
-                      max={365}
-                      precision={0}
-                      className="w-full"
-                    />
-                  </Form.Item>
-                )
+                getFieldValue('cleanup_policy') === 'timeout' && (() => {
+                  const timeoutUnit = getFieldValue('cleanup_timeout_unit') ?? 'day';
+                  const timeoutValue = getFieldValue('cleanup_timeout_value') ?? 1;
+                  const unitLabel = t(`monitor.object.${timeoutUnit}`);
+                  return (
+                    <Form.Item
+                      label={t('monitor.object.timeout')}
+                      extra={t('monitor.object.cleanupPolicyHint', undefined, {
+                        value: timeoutValue,
+                        unit: unitLabel
+                      })}
+                    >
+                      <Space.Compact block>
+                        <Form.Item<ObjectFormData>
+                          name="cleanup_timeout_value"
+                          noStyle
+                          rules={[
+                            { required: true, message: t('common.inputRequired') },
+                            {
+                              type: 'number',
+                              min: 1,
+                              max: getCleanupTimeoutMax(timeoutUnit),
+                              message: t('monitor.object.timeoutRange', undefined, {
+                                max: getCleanupTimeoutMax(timeoutUnit),
+                                unit: unitLabel
+                              })
+                            }
+                          ]}
+                        >
+                          <InputNumber
+                            min={1}
+                            max={getCleanupTimeoutMax(timeoutUnit)}
+                            precision={0}
+                            className="flex-1"
+                          />
+                        </Form.Item>
+                        <Form.Item<ObjectFormData>
+                          name="cleanup_timeout_unit"
+                          noStyle
+                          rules={[{ required: true }]}
+                        >
+                          <Select
+                            aria-label={t('monitor.object.timeoutUnit')}
+                            className="w-28 shrink-0"
+                            options={[
+                              { value: 'day', label: t('monitor.object.day') },
+                              { value: 'minute', label: t('monitor.object.minute') }
+                            ]}
+                          />
+                        </Form.Item>
+                      </Space.Compact>
+                    </Form.Item>
+                  );
+                })()
               }
             </Form.Item>
 

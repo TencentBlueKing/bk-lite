@@ -17,6 +17,7 @@ export interface UserSyncSource {
   name: string;
   integration_instance: number;
   integration_instance_name: string;
+  integration_provider_key: string;
   enabled: boolean;
   description: string;
   root_group_name: string;
@@ -156,6 +157,8 @@ export interface PhaseProgressEntry {
     updated_users?: number;
     conflict_users?: number;
     // reconcile
+    deleted_users?: number;
+    /** 兼容历史同步记录；新记录使用 deleted_users。 */
     disabled_users?: number;
     deleted_group_count?: number;
     // sync_groups

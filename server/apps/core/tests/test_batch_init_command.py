@@ -10,10 +10,12 @@ call_command 序列 + 错误处理策略（默认失败即中断，启用 contin
 from types import SimpleNamespace
 
 import pytest
+from django.core.management.base import CommandError
 
 import apps.core.management.commands.batch_init as bi
 
 pytestmark = pytest.mark.unit
+_verify_critical_schema = bi.Command._verify_critical_schema
 
 
 class _Style:
@@ -38,12 +40,65 @@ def calls(monkeypatch):
 
     monkeypatch.setattr(bi, "call_command", fake_call_command)
     monkeypatch.setattr(
-        bi, "preload_language_cache", lambda *a, **k: {"loaded": [1], "skipped": [], "failed": []},
+        bi,
+        "preload_language_cache",
+        lambda *a, **k: {"loaded": [1], "skipped": [], "failed": []},
     )
     return recorded
 
 
+@pytest.fixture(autouse=True)
+def _stub_critical_schema_gate(monkeypatch):
+    monkeypatch.setattr(bi.Command, "_verify_critical_schema", lambda self: None)
+
+
 class TestHandleDispatch:
+    def test_critical_schema_is_verified_before_preload_and_dispatch(self, monkeypatch):
+        events = []
+        monkeypatch.setattr(bi.Command, "_verify_critical_schema", lambda self: events.append("schema"))
+        monkeypatch.setattr(
+            bi,
+            "preload_language_cache",
+            lambda: events.append("preload") or {"loaded": [], "skipped": [], "failed": []},
+        )
+        monkeypatch.setattr(bi, "call_command", lambda name, *args, **kwargs: events.append(name))
+
+        _make_command().handle(apps="node_mgmt", continue_on_error=False)
+
+        assert events == ["schema", "preload", "node_init"]
+
+    def test_critical_schema_failure_is_always_a_hard_gate(self, monkeypatch):
+        calls = []
+
+        def fail_schema():
+            calls.append("schema")
+            raise RuntimeError("permission version table missing")
+
+        cmd = _make_command()
+        monkeypatch.setattr(cmd, "_verify_critical_schema", fail_schema)
+        monkeypatch.setattr(bi, "preload_language_cache", lambda: calls.append("preload"))
+        monkeypatch.setattr(bi, "call_command", lambda *args, **kwargs: calls.append("dispatch"))
+
+        with pytest.raises(RuntimeError, match="permission version table missing"):
+            cmd.handle(apps="node_mgmt", continue_on_error=True)
+
+        assert calls == ["schema"]
+
+    def test_critical_schema_check_queries_permission_version_table(self, monkeypatch):
+        calls = []
+        queryset = SimpleNamespace(first=lambda: calls.append("first"))
+        manager = SimpleNamespace(values_list=lambda *args, **kwargs: calls.append(("values_list", args, kwargs)) or queryset)
+        model = SimpleNamespace(objects=manager)
+        monkeypatch.setattr(bi.django_apps, "get_model", lambda *args: calls.append(("get_model", args)) or model)
+
+        _verify_critical_schema()
+
+        assert calls == [
+            ("get_model", ("system_mgmt", "UserPermissionVersion")),
+            ("values_list", ("id",), {"flat": True}),
+            "first",
+        ]
+
     def test_single_known_app_runs_its_command_sequence(self, calls):
         cmd = _make_command()
         cmd.handle(apps="node_mgmt", continue_on_error=False)
@@ -108,6 +163,27 @@ class TestHandleDispatch:
 
 
 class TestErrorHandlingPolicy:
+    def test_invalid_default_namespace_config_warns_and_continues_operation_analysis_init(self, monkeypatch):
+        calls = []
+
+        def fake_call_command(name, *args, **kwargs):
+            calls.append(name)
+            if name == "init_default_namespace":
+                raise CommandError("NATS_SERVERS 配置非法")
+
+        monkeypatch.setattr(bi, "call_command", fake_call_command)
+        cmd = _make_command()
+
+        cmd._init_operation_analysis()
+
+        assert calls == [
+            "init_default_namespace",
+            "init_default_groups",
+            "init_source_api_data",
+            "init_builtin_canvases",
+        ]
+        assert any("WARN:默认命名空间初始化跳过（CommandError）: NATS_SERVERS 配置非法" in message for message in cmd.stdout.messages)
+
     def test_cmdb_reconcile_failure_obeys_continue_on_error(self, monkeypatch):
         calls = []
 
@@ -118,7 +194,9 @@ class TestErrorHandlingPolicy:
 
         monkeypatch.setattr(bi, "call_command", fake_call_command)
         monkeypatch.setattr(
-            bi, "preload_language_cache", lambda *a, **k: {"loaded": [], "skipped": [], "failed": []},
+            bi,
+            "preload_language_cache",
+            lambda *a, **k: {"loaded": [], "skipped": [], "failed": []},
         )
         cmd = _make_command()
 

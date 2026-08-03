@@ -31,13 +31,15 @@ CONTAINER_NAME="${ID}"
 
 # 检查容器是否存在（幂等设计：不存在时返回成功）
 if ! docker ps -a --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
-    json_success "$ID" "Container does not exist (already stopped or removed)"
+    json_success "$ID" "Container does not exist (already stopped or removed)" "state" "removed"
     exit 0
 fi
 
 # 停止容器（5秒超时，避免 webhookd 总超时）
+set +e
 STOP_OUTPUT=$(docker stop --time=5 "$CONTAINER_NAME" 2>&1)
 DOCKER_STATUS=$?
+set -e
 
 if [ $DOCKER_STATUS -ne 0 ]; then
     json_error "CONTAINER_STOP_FAILED" "$ID" "Failed to stop container" "$STOP_OUTPUT"
@@ -46,10 +48,17 @@ fi
 
 # 根据 remove 参数决定是否删除容器
 if [ "$REMOVE" = "true" ]; then
-    docker rm "$CONTAINER_NAME" >/dev/null 2>&1 || true
-    json_success "$ID" "Container stopped and removed"
+    set +e
+    REMOVE_OUTPUT=$(docker rm "$CONTAINER_NAME" 2>&1)
+    REMOVE_STATUS=$?
+    set -e
+    if [ $REMOVE_STATUS -ne 0 ]; then
+        json_error "CONTAINER_REMOVE_FAILED" "$ID" "Container stopped but could not be removed" "$REMOVE_OUTPUT"
+        exit 1
+    fi
+    json_success "$ID" "Container stopped and removed" "state" "removed"
 else
-    json_success "$ID" "Container stopped (use remove.sh to delete)"
+    json_success "$ID" "Container stopped (use remove.sh to delete)" "state" "stopped"
 fi
 
 exit 0

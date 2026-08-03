@@ -2,12 +2,19 @@
 
 import json
 
+from django.db import transaction
+
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.utils.viewset_utils import AuthViewSet
 from apps.patch_mgmt.constants import GovernanceTaskStatus, OSType, PackageStatus
+from apps.patch_mgmt.exceptions import PatchBusinessError
 from apps.patch_mgmt.filters.patch import PatchFilter
 from apps.patch_mgmt.models import GovernanceTask, Patch, WindowsPatchDetail
-from apps.patch_mgmt.serializers.patch import PatchDetailSerializer, PatchListSerializer
+from apps.patch_mgmt.serializers.patch import (
+    PatchBatchDeleteSerializer,
+    PatchDetailSerializer,
+    PatchListSerializer,
+)
 from apps.patch_mgmt.services.manual_windows_patch_write import (
     ManualWindowsPatchStorageFailure,
     create_manual_windows_patch,
@@ -18,7 +25,9 @@ from apps.patch_mgmt.services.windows_package import (
     replace_failed_windows_package,
     store_windows_package,
 )
+from apps.patch_mgmt.utils.data_permissions import require_authorized_ids
 from apps.patch_mgmt.utils.operation_log import log_patch_created, log_patch_deleted, log_patch_updated
+from apps.patch_mgmt.utils.i18n import patch_message, render_business_error
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
@@ -47,9 +56,9 @@ class PatchViewSet(AuthViewSet):
                 else json.loads(raw_metadata or "")
             )
         except (TypeError, ValueError) as exc:
-            raise ValidationError({"metadata": "补丁元数据必须是有效的 JSON 对象"}) from exc
+            raise ValidationError({"metadata": patch_message(request, "error.invalid_metadata_json", "Patch metadata must be a valid JSON object")}) from exc
         if not isinstance(metadata, dict):
-            raise ValidationError({"metadata": "补丁元数据必须是 JSON 对象"})
+            raise ValidationError({"metadata": patch_message(request, "error.metadata_must_be_object", "Patch metadata must be a JSON object")})
 
         if not metadata.get("team"):
             current_team = self._parse_current_team_cookie(request)
@@ -103,6 +112,8 @@ class PatchViewSet(AuthViewSet):
             except ManualWindowsPatchStorageFailure as failure:
                 log_patch_created(request, metadata.get("title", ""))
                 return self._storage_failure_response(failure)
+            except PatchBusinessError as exc:
+                raise ValidationError({exc.field or "detail": render_business_error(request, exc)}) from exc
             log_patch_created(request, metadata.get("title", ""))
             return self._patch_response(
                 patch,
@@ -136,6 +147,8 @@ class PatchViewSet(AuthViewSet):
             except ManualWindowsPatchStorageFailure as failure:
                 log_patch_updated(request, metadata.get("title", ""))
                 return self._storage_failure_response(failure)
+            except PatchBusinessError as exc:
+                raise ValidationError({exc.field or "detail": render_business_error(request, exc)}) from exc
             log_patch_updated(request, metadata.get("title", ""))
             return self._patch_response(patch)
 
@@ -146,53 +159,99 @@ class PatchViewSet(AuthViewSet):
     @HasPermission("patch-Delete")
     def destroy(self, request, *args, **kwargs):
         patch = self.get_object()
-        if patch.baseline_requirements.exists():
+        return self._delete_patches(request, [patch])
+
+    def _delete_patches(self, request, patches):
+        for patch in patches:
+            access_error = self._validate_destroy_access(request, patch)
+            if access_error is not None:
+                return access_error
+
+        patch_ids = {patch.id for patch in patches}
+        if Patch.objects.filter(
+            id__in=patch_ids,
+            baseline_requirements__isnull=False,
+        ).exists():
             return Response(
-                {"detail": "该补丁已被基线引用，请先从基线中移除"},
+                {"detail": patch_message(request, "error.patch_referenced", "Remove this patch from all baselines before deleting it")},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+
+        patch_id_strings = {str(patch_id) for patch_id in patch_ids}
         active_tasks = GovernanceTask.objects.filter(
             status__in=GovernanceTaskStatus.ACTIVE_STATES,
         ).only("patch_list", "risk_snapshot")
         if any(
-            str(patch.id) in {str(value) for value in (task.patch_list or [])}
+            patch_id_strings & {str(value) for value in (task.patch_list or [])}
             or any(
-                str(item.get("patch_id") or "") == str(patch.id)
+                str(item.get("patch_id") or "") in patch_id_strings
                 for item in (task.risk_snapshot or [])
                 if isinstance(item, dict)
             )
             for task in active_tasks
         ):
             return Response(
-                {"detail": "该补丁正在执行任务中，暂不能删除"},
+                {"detail": patch_message(request, "error.patch_in_active_task", "This patch is in an active task and cannot be deleted")},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        title = patch.title
-        if patch.os_type == OSType.WINDOWS:
+        for patch in patches:
+            if patch.os_type != OSType.WINDOWS:
+                continue
             try:
                 detail = patch.windows_detail
             except WindowsPatchDetail.DoesNotExist:
                 detail = None
-            if detail and detail.package_file:
-                try:
-                    detail.package_file.delete(save=False)
-                except Exception:
-                    return Response(
-                        {"detail": "补丁文件删除失败，请稍后重试"},
-                        status=status.HTTP_400_BAD_REQUEST,
+            if not detail or not detail.package_file:
+                continue
+            try:
+                detail.package_file.delete(save=False)
+            except Exception:
+                return Response(
+                    {"detail": patch_message(request, "error.patch_file_delete_failed", "Failed to delete the patch file; try again later")},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+        deleted_count = len(patches)
+        with transaction.atomic():
+            for patch in patches:
+                title = patch.title
+                patch.delete()
+                log_patch_deleted(request, title)
+        return Response({"deleted_count": deleted_count}, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=["post"], url_path="batch_delete")
+    @HasPermission("patch-Delete")
+    def batch_delete(self, request):
+        serializer = PatchBatchDeleteSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        ids = serializer.validated_data["ids"]
+        patches_by_id = self.get_queryset().in_bulk(ids)
+        missing_ids = [patch_id for patch_id in ids if patch_id not in patches_by_id]
+        if missing_ids:
+            return Response(
+                {
+                    "detail": patch_message(
+                        request,
+                        "error.patch_not_found",
+                        "Some selected patches do not exist: {ids}",
+                        ids=", ".join(str(value) for value in missing_ids),
                     )
-        response = super().destroy(request, *args, **kwargs)
-        log_patch_deleted(request, title)
-        return response
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return self._delete_patches(request, [patches_by_id[patch_id] for patch_id in ids])
 
     @action(detail=True, methods=["post"], parser_classes=[MultiPartParser])
-    @HasPermission("patch-Add")
+    @HasPermission("patch-Edit")
     def upload_package(self, request, pk=None):
         patch = self.get_object()
+        require_authorized_ids(
+            self, request, Patch.objects.all(), [patch.id], "patch"
+        )
         uploaded_file = request.FILES.get("file")
         if uploaded_file is None:
-            return Response({"detail": "请选择补丁包"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"detail": patch_message(request, "error.patch_package_required", "Select a patch package")}, status=status.HTTP_400_BAD_REQUEST)
         try:
             store_windows_package(patch, uploaded_file)
         except WindowsPackageError as exc:
@@ -204,9 +263,12 @@ class PatchViewSet(AuthViewSet):
     @HasPermission("patch-Edit")
     def replace_package(self, request, pk=None):
         patch = self.get_object()
+        require_authorized_ids(
+            self, request, Patch.objects.all(), [patch.id], "patch"
+        )
         uploaded_file = request.FILES.get("file")
         if uploaded_file is None:
-            return Response({"detail": "请选择补丁包"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"detail": patch_message(request, "error.patch_package_required", "Select a patch package")}, status=status.HTTP_400_BAD_REQUEST)
         try:
             replace_failed_windows_package(patch, uploaded_file)
         except WindowsPackageError as exc:

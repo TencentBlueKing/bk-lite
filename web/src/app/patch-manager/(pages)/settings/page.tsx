@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Tag, Button, Tabs, Input, Select, Space, TimePicker, Alert, message, Form, Switch, Modal, InputNumber, Spin, Popconfirm } from 'antd';
 import PermissionWrapper from '@/components/permission';
 import Password from '@/components/password';
@@ -14,6 +14,8 @@ import usePatchManagerApi from '@/app/patch-manager/api';
 import type { PatchSource, PatchSourceType } from '@/app/patch-manager/types';
 import styles from './page.module.scss';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
+import { useTranslation } from '@/utils/i18n';
+import { createListRequestCoordinator } from '@/app/patch-manager/utils/list-request-coordinator';
 
 const SOURCE_TYPE_OPTIONS: { label: string; value: PatchSourceType }[] = [
   { label: 'WSUS', value: 'wsus' },
@@ -24,10 +26,10 @@ const SOURCE_TYPE_OPTIONS: { label: string; value: PatchSourceType }[] = [
 
 const SAVED_SECRET = '********';
 
-function formatConnStatus(status?: string) {
-  if (status === 'connected') return '连通';
-  if (status === 'failed') return '失败';
-  return '未检测';
+function getConnStatusKey(status?: string) {
+  if (status === 'connected') return 'connected';
+  if (status === 'failed') return 'failed';
+  return 'undetected';
 }
 
 function getConnColor(status?: string) {
@@ -45,15 +47,18 @@ function inferDistro(type: PatchSourceType, url: string) {
   if (lower.includes('rhel') || lower.includes('redhat')) return 'RHEL';
   if (lower.includes('ubuntu')) return 'Ubuntu';
   if (lower.includes('debian')) return 'Debian';
-  return '未识别';
+  return '';
 }
 
 function SourcesTab({ activeKey }: { activeKey: string }) {
+  const { t } = useTranslation();
   const api = usePatchManagerApi();
   const { isLoading: authLoading } = useApiClient();
   const [selectedSources, setSelectedSources] = useState<React.Key[]>([]);
   const [sources, setSources] = useState<PatchSource[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [listLoading, setListLoading] = useState(false);
+  const [actionLoading, setActionLoading] = useState(false);
+  const listRequestCoordinatorRef = useRef(createListRequestCoordinator(setListLoading));
   const [sourceModalOpen, setSourceModalOpen] = useState(false);
   const [editingSource, setEditingSource] = useState<PatchSource | null>(null);
   const [form] = Form.useForm();
@@ -67,20 +72,24 @@ function SourcesTab({ activeKey }: { activeKey: string }) {
   const { convertToLocalizedTime } = useLocalizedTime();
 
   const loadSources = async (page = pagination.current, pageSize = pagination.pageSize, search = sourceSearch) => {
-    setLoading(true);
+    const coordinator = listRequestCoordinatorRef.current;
+    const ticket = coordinator.begin({ visible: true });
+    if (!ticket) return;
     try {
       const params: any = { page, page_size: pageSize };
       if (search.trim()) {
         params.search = search.trim();
       }
-      const res = await api.getPatchSourceList(params);
+      const res = await api.getPatchSourceList(params, { signal: ticket.signal });
+      if (!coordinator.shouldApply(ticket)) return;
       setSources(res.items || []);
       setPagination({ current: page, pageSize, total: res.count || 0 });
     } catch {
+      if (!coordinator.shouldApply(ticket)) return;
       setSources([]);
       setPagination((prev) => ({ ...prev, total: 0 }));
     } finally {
-      setLoading(false);
+      coordinator.finish(ticket);
     }
   };
 
@@ -96,6 +105,10 @@ function SourcesTab({ activeKey }: { activeKey: string }) {
     loadSources(1, pagination.pageSize);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authLoading, activeKey]);
+
+  useEffect(() => () => {
+    listRequestCoordinatorRef.current.invalidate();
+  }, []);
 
   const openSourceModal = (record?: PatchSource) => {
     setEditingSource(record || null);
@@ -153,66 +166,69 @@ function SourcesTab({ activeKey }: { activeKey: string }) {
 
   const runConnectionTest = async (ids: number[]) => {
     if (ids.length === 0) return;
-    setLoading(true);
+    setActionLoading(true);
     try {
       const results = await api.checkPatchSourceConnectivity(ids);
       const successCount = results.filter((r) => r.connectivity_status === 'connected').length;
-      message.success(`连通性检测完成：${successCount}/${results.length} 个源连通`);
+      message.success(t('patchManager.settingsPage.connectivityCompleted', undefined, { success: successCount, total: results.length }));
       await loadSources();
     } catch {
-      setLoading(false);
+    } finally {
+      setActionLoading(false);
     }
   };
 
   const handleToggleEnabled = async (record: PatchSource, checked: boolean) => {
-    setLoading(true);
+    setActionLoading(true);
     try {
       await api.setPatchSourceEnabled(record.id, checked);
-      message.success(`已${checked ? '启用' : '停用'}补丁源：${record.name}`);
+      message.success(t(checked ? 'patchManager.settingsPage.sourceEnabled' : 'patchManager.settingsPage.sourceDisabled', undefined, { name: record.name }));
       await loadSources();
     } catch {
-      setLoading(false);
+    } finally {
+      setActionLoading(false);
     }
   };
 
   const handleSaveSource = async () => {
     const values = await form.validateFields();
-    setLoading(true);
+    setActionLoading(true);
     try {
       const payload = buildSourcePayload(values);
       if (editingSource) {
         await api.updatePatchSource(editingSource.id, payload);
-        message.success(`已更新补丁源：${values.name}`);
+        message.success(t('patchManager.settingsPage.sourceUpdated', undefined, { name: values.name }));
       } else {
         if (!payload.distro_name) {
           payload.distro_name = inferDistro(values.source_type, values.url);
         }
         await api.createPatchSource(payload);
-        message.success(`已新增补丁源：${values.name}`);
+        message.success(t('patchManager.settingsPage.sourceCreated', undefined, { name: values.name }));
       }
       setSourceModalOpen(false);
       await loadSources();
     } catch {
     } finally {
-      setLoading(false);
+      setActionLoading(false);
     }
   };
 
   const handleDeleteSource = async (record: PatchSource) => {
-    setLoading(true);
+    setActionLoading(true);
     try {
       await api.deletePatchSource(record.id);
-      message.success('已删除');
+      message.success(t('patchManager.settingsPage.sourceDeleted'));
       await loadSources();
     } catch {
-      setLoading(false);
+    } finally {
+      setActionLoading(false);
     }
   };
 
   const cols: ColumnsType<PatchSource> = [
-    { title: '名称', dataIndex: 'name', width: 150 },
+    { title: t('patchManager.pluginName'), dataIndex: 'name', width: 150 },
     {
-      title: '类型',
+      title: t('patchManager.settingsPage.type'),
       dataIndex: 'source_type',
       minWidth: 100,
       render: (_: unknown, r: PatchSource) => (
@@ -221,7 +237,7 @@ function SourcesTab({ activeKey }: { activeKey: string }) {
     },
     { title: 'URL', dataIndex: 'url', ellipsis: true },
     {
-      title: '代理',
+      title: t('patchManager.settingsPage.proxy'),
       width: 140,
       render: (_: unknown, r: PatchSource) => {
         const proxy = r.proxy_host ? `http://${r.proxy_host}${r.proxy_port ? ':' + r.proxy_port : ''}` : '';
@@ -229,33 +245,37 @@ function SourcesTab({ activeKey }: { activeKey: string }) {
       },
     },
     {
-      title: '启用',
+      title: t('patchManager.enable'),
       width: 90,
-      render: (_: unknown, r: PatchSource) => <Switch size="small" checked={r.is_enabled} onChange={(checked) => handleToggleEnabled(r, checked)} />,
-    },
-    {
-      title: '连通性',
-      width: 120,
       render: (_: unknown, r: PatchSource) => (
-        <span style={{ color: getConnColor(r.connectivity_status) }}>● {formatConnStatus(r.connectivity_status)}</span>
+        <PermissionWrapper requiredPermissions={['Edit']} instPermissions={r.permission}>
+          <Switch size="small" checked={r.is_enabled} onChange={(checked) => handleToggleEnabled(r, checked)} />
+        </PermissionWrapper>
       ),
     },
     {
-      title: '适用发行版/系统',
+      title: t('patchManager.connectivity'),
+      width: 120,
+      render: (_: unknown, r: PatchSource) => (
+        <span style={{ color: getConnColor(r.connectivity_status) }}>● {t(`patchManager.settingsPage.connectivity.${getConnStatusKey(r.connectivity_status)}`)}</span>
+      ),
+    },
+    {
+      title: t('patchManager.settingsPage.applicableSystem'),
       width: 180,
       ellipsis: true,
       render: (_: unknown, r: PatchSource) => r.distro_name || r.os_version || r.arch || '—',
     },
     {
-      title: '操作',
+      title: t('patchManager.operation'),
       width: 220,
       fixed: 'right',
       render: (_: unknown, r: PatchSource) => (
         <Space size={10}>
-          <PermissionWrapper requiredPermissions={['Edit']}><a style={{ color: 'var(--color-primary, #1677ff)' }} onClick={() => openSourceModal(r)}>编辑</a></PermissionWrapper>
-          <PermissionWrapper requiredPermissions={['Edit']}><a style={{ color: 'var(--color-primary, #1677ff)' }} onClick={() => runConnectionTest([r.id])}>测试连接</a></PermissionWrapper>
-          <PermissionWrapper requiredPermissions={['Delete']}><Popconfirm title="确定删除该补丁源？" onConfirm={() => handleDeleteSource(r)} okText="删除" cancelText="取消">
-            <a style={{ color: '#ff4d4f' }}>删除</a>
+          <PermissionWrapper requiredPermissions={['Edit']} instPermissions={r.permission}><a style={{ color: 'var(--color-primary, #1677ff)' }} onClick={() => openSourceModal(r)}>{t('patchManager.edit')}</a></PermissionWrapper>
+          <PermissionWrapper requiredPermissions={['Edit']} instPermissions={r.permission}><a style={{ color: 'var(--color-primary, #1677ff)' }} onClick={() => runConnectionTest([r.id])}>{t('patchManager.testConnection')}</a></PermissionWrapper>
+          <PermissionWrapper requiredPermissions={['Delete']} instPermissions={r.permission}><Popconfirm title={t('patchManager.settingsPage.confirmDeleteSource')} onConfirm={() => handleDeleteSource(r)} okText={t('patchManager.delete')} cancelText={t('patchManager.cancel')}>
+            <a style={{ color: '#ff4d4f' }}>{t('patchManager.delete')}</a>
           </Popconfirm></PermissionWrapper>
         </Space>
       ),
@@ -267,7 +287,7 @@ function SourcesTab({ activeKey }: { activeKey: string }) {
       <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12, flexShrink: 0 }}>
           <Input.Search
-            placeholder="源名称"
+            placeholder={t('patchManager.patchSourceName')}
             value={sourceSearch}
             onChange={(e) => handleSearchChange(e.target.value)}
             onSearch={() => loadSources(1)}
@@ -275,15 +295,20 @@ function SourcesTab({ activeKey }: { activeKey: string }) {
             style={{ width: 200 }}
           />
           <Space>
-            <PermissionWrapper requiredPermissions={['Add']}><Button type="primary" icon={<PlusOutlined />} onClick={() => openSourceModal()}>新增补丁源</Button></PermissionWrapper>
+            <PermissionWrapper requiredPermissions={['Add']}><Button type="primary" icon={<PlusOutlined />} onClick={() => openSourceModal()}>{t('patchManager.settingsPage.addSource')}</Button></PermissionWrapper>
           </Space>
         </div>
         <div style={{ flex: 1, minHeight: 0 }}>
           <CustomTable
-            loading={loading}
+            loading={listLoading || actionLoading}
             size="middle"
             rowKey="id"
-            rowSelection={{ type: 'checkbox', selectedRowKeys: selectedSources, onChange: setSelectedSources }}
+            rowSelection={{
+              type: 'checkbox',
+              selectedRowKeys: selectedSources,
+              onChange: setSelectedSources,
+              getCheckboxProps: (record: PatchSource) => ({ disabled: !record.permission?.includes('Operate') }),
+            }}
             columns={cols}
             dataSource={sources}
             pagination={{
@@ -291,7 +316,7 @@ function SourcesTab({ activeKey }: { activeKey: string }) {
               pageSize: pagination.pageSize,
               total: pagination.total,
               showSizeChanger: true,
-              showTotal: (t) => `共 ${t} 条`,
+              showTotal: (total) => t('patchManager.common.totalItems', undefined, { count: total }),
               onChange: (page, pageSize) => loadSources(page, pageSize),
             }}
           />
@@ -299,42 +324,42 @@ function SourcesTab({ activeKey }: { activeKey: string }) {
       </div>
 
       <Modal
-        title={editingSource ? '编辑补丁源' : '新增补丁源'}
+        title={editingSource ? t('patchManager.settingsPage.editSource') : t('patchManager.settingsPage.addSource')}
         open={sourceModalOpen}
         onCancel={() => setSourceModalOpen(false)}
         footer={
           <Space style={{ width: '100%', justifyContent: 'flex-end' }}>
-            <Button onClick={() => setSourceModalOpen(false)}>取消</Button>
-            <PermissionWrapper requiredPermissions={[editingSource ? 'Edit' : 'Add']}>
-              <Button loading={testingConnectivity} onClick={handleSourceFormTest}>测试连通性</Button>
+            <Button onClick={() => setSourceModalOpen(false)}>{t('patchManager.cancel')}</Button>
+            <PermissionWrapper requiredPermissions={[editingSource ? 'Edit' : 'Add']} instPermissions={editingSource?.permission}>
+              <Button loading={testingConnectivity} onClick={handleSourceFormTest}>{t('patchManager.testConnection')}</Button>
             </PermissionWrapper>
-            <PermissionWrapper requiredPermissions={[editingSource ? 'Edit' : 'Add']}>
-              <Button type="primary" loading={loading} onClick={handleSaveSource}>保存</Button>
+            <PermissionWrapper requiredPermissions={[editingSource ? 'Edit' : 'Add']} instPermissions={editingSource?.permission}>
+              <Button type="primary" loading={actionLoading} onClick={handleSaveSource}>{t('patchManager.save')}</Button>
             </PermissionWrapper>
           </Space>
         }
       >
         <Form form={form} layout="vertical" style={{ marginTop: 8 }}>
-          <Form.Item label="名称" name="name" rules={[{ required: true, message: '请输入名称' }]}>
-            <Input placeholder="例如：公司 WSUS" />
+          <Form.Item label={t('patchManager.pluginName')} name="name" rules={[{ required: true, message: t('patchManager.settingsPage.nameRequired') }]}>
+            <Input placeholder={t('patchManager.settingsPage.namePlaceholder')} />
           </Form.Item>
-          <Form.Item label="类型" name="source_type" rules={[{ required: true, message: '请选择类型' }]}>
+          <Form.Item label={t('patchManager.settingsPage.type')} name="source_type" rules={[{ required: true, message: t('patchManager.settingsPage.typeRequired') }]}>
             <Select options={SOURCE_TYPE_OPTIONS} />
           </Form.Item>
-          <Form.Item label="URL" name="url" rules={[{ required: true, message: '请输入 URL' }]}>
+          <Form.Item label="URL" name="url" rules={[{ required: true, message: t('patchManager.settingsPage.urlRequired') }]}>
             <Input placeholder="https://..." />
           </Form.Item>
-          <Form.Item label="代理" name="proxy">
-            <Input placeholder="可选，如 http://proxy.intranet:8080" />
+          <Form.Item label={t('patchManager.settingsPage.proxy')} name="proxy">
+            <Input placeholder={t('patchManager.settingsPage.proxyPlaceholder')} />
           </Form.Item>
           {sourceType === 'wsus' && (
             <>
-              <Form.Item label="认证用户名" name="auth_user">
-                <Input placeholder="可选，如 DOMAIN\\svc-wsus" />
+              <Form.Item label={t('patchManager.authUser')} name="auth_user">
+                <Input placeholder={t('patchManager.settingsPage.authUserPlaceholder')} />
               </Form.Item>
-              <Form.Item label="认证密码" name="auth_password">
+              <Form.Item label={t('patchManager.authPassword')} name="auth_password">
                 <Password
-                  placeholder="请输入认证密码"
+                  placeholder={t('patchManager.settingsPage.authPasswordPlaceholder')}
                   clickToEdit={Boolean(editingSource?.has_auth_password)}
                 />
               </Form.Item>
@@ -342,18 +367,18 @@ function SourcesTab({ activeKey }: { activeKey: string }) {
           )}
           {sourceType !== 'wsus' && (
             <>
-              <Form.Item label="适用发行版/系统" name="distro_name" rules={[{ required: true, message: '请输入适用发行版或系统' }]}> 
-                <Input placeholder="如 Ubuntu / Rocky Linux" />
+              <Form.Item label={t('patchManager.settingsPage.applicableSystem')} name="distro_name" rules={[{ required: true, message: t('patchManager.settingsPage.applicableSystemRequired') }]}>
+                <Input placeholder={t('patchManager.settingsPage.applicableSystemPlaceholder')} />
               </Form.Item>
-              <Form.Item label="系统版本" name="os_version">
-                <Input placeholder="如 22.04 / 9（apt 源必填，用于映射代号）" />
+              <Form.Item label={t('patchManager.osVersion')} name="os_version">
+                <Input placeholder={t('patchManager.settingsPage.osVersionPlaceholder')} />
               </Form.Item>
             </>
           )}
-          <Form.Item label="架构" name="arch">
-            <Input placeholder="如 x86_64 / amd64（可选）" />
+          <Form.Item label={t('patchManager.arch')} name="arch">
+            <Input placeholder={t('patchManager.settingsPage.archPlaceholder')} />
           </Form.Item>
-          <Form.Item label="启用状态" name="is_enabled" valuePropName="checked">
+          <Form.Item label={t('patchManager.enabled')} name="is_enabled" valuePropName="checked">
             <Switch />
           </Form.Item>
           {connectivityResult && (
@@ -363,7 +388,7 @@ function SourcesTab({ activeKey }: { activeKey: string }) {
               showIcon
               style={{ marginBottom: 16 }}
               type={connectivityResult.status === 'connected' ? 'success' : 'error'}
-              message={connectivityResult.status === 'connected' ? '连通性测试通过' : '连通性测试失败'}
+              message={t(connectivityResult.status === 'connected' ? 'patchManager.settingsPage.connectivityPassed' : 'patchManager.settingsPage.connectivityFailed')}
               description={`${connectivityResult.detail} · ${convertToLocalizedTime(connectivityResult.checkedAt)}`}
             />
           )}
@@ -374,6 +399,7 @@ function SourcesTab({ activeKey }: { activeKey: string }) {
 }
 
 function ScanSettingTab({ activeKey }: { activeKey: string }) {
+  const { t } = useTranslation();
   const api = usePatchManagerApi();
   const { isLoading: authLoading } = useApiClient();
   const [loading, setLoading] = useState(false);
@@ -415,7 +441,7 @@ function ScanSettingTab({ activeKey }: { activeKey: string }) {
         time: time.format('HH:mm'),
         is_enabled: isEnabled,
       });
-      message.success('扫描设置已保存');
+      message.success(t('patchManager.settingsPage.scanSaved'));
     } catch {
     } finally {
       setSaving(false);
@@ -424,41 +450,41 @@ function ScanSettingTab({ activeKey }: { activeKey: string }) {
 
   const triggerText =
     freq === 'hourly'
-      ? `全局周期到达（每 ${hourInterval} 小时）自动评估所有主机`
+      ? t('patchManager.settingsPage.hourlyTrigger', undefined, { count: hourInterval })
       : freq === 'daily'
-        ? `全局周期到达（每天 ${time.format('HH:mm')}）自动评估所有主机`
-        : `全局周期到达（每周${['日', '一', '二', '三', '四', '五', '六'][weekday % 7]} ${time.format('HH:mm')}）自动评估所有主机`;
+        ? t('patchManager.settingsPage.dailyTrigger', undefined, { time: time.format('HH:mm') })
+        : t('patchManager.settingsPage.weeklyTrigger', undefined, { weekday: t(`patchManager.settingsPage.weekday.${weekday}`), time: time.format('HH:mm') });
 
   const triggers = [
     { icon: <ClockCircleOutlined />, text: triggerText },
-    { icon: <LinkOutlined />, text: '主机首次绑定基线后进入待评估' },
-    { icon: <EditOutlined />, text: '主机更换基线或基线补丁要求变更后重置为待评估' },
-    { icon: <PlayCircleOutlined />, text: '页面点击「立即评估」立即执行' },
-    { icon: <CheckCircleOutlined />, text: '安装或重启完成后自动验证' },
+    { icon: <LinkOutlined />, text: t('patchManager.settingsPage.triggerBaselineBound') },
+    { icon: <EditOutlined />, text: t('patchManager.settingsPage.triggerBaselineChanged') },
+    { icon: <PlayCircleOutlined />, text: t('patchManager.settingsPage.triggerManual') },
+    { icon: <CheckCircleOutlined />, text: t('patchManager.settingsPage.triggerPostRemediation') },
   ];
 
   return (
-    <Spin spinning={loading} tip="加载中...">
+    <Spin spinning={loading} tip={t('patchManager.settingsPage.loading')}>
       <div>
-        <div style={{ fontWeight: 500, marginBottom: 8 }}>全局评估周期</div>
+        <div style={{ fontWeight: 500, marginBottom: 8 }}>{t('patchManager.settingsPage.globalSchedule')}</div>
         <Space style={{ marginBottom: 16, alignItems: 'flex-start' }}>
           <Select
             value={freq}
             style={{ width: 120 }}
             onChange={setFreq}
-            options={[{ label: '每小时', value: 'hourly' }, { label: '每天', value: 'daily' }, { label: '每周', value: 'weekly' }]}
+            options={['hourly', 'daily', 'weekly'].map((value) => ({ label: t(`patchManager.settingsPage.frequency.${value}`), value }))}
           />
           {freq === 'hourly' && (
             <Space>
-              <span>每</span>
+              <span>{t('patchManager.settingsPage.every')}</span>
               <InputNumber min={1} max={24} value={hourInterval} onChange={(v) => setHourInterval(v || 1)} style={{ width: 70 }} />
-              <span>小时执行一次</span>
+              <span>{t('patchManager.settingsPage.hoursOnce')}</span>
             </Space>
           )}
           {(freq === 'daily' || freq === 'weekly') && (
             <Space>
               {freq === 'weekly' && (
-                <Select value={weekday} onChange={setWeekday} style={{ width: 100 }} options={[{ label: '周一', value: 1 }, { label: '周二', value: 2 }, { label: '周三', value: 3 }, { label: '周四', value: 4 }, { label: '周五', value: 5 }, { label: '周六', value: 6 }, { label: '周日', value: 7 }]} />
+                <Select value={weekday} onChange={setWeekday} style={{ width: 100 }} options={[1, 2, 3, 4, 5, 6, 7].map((value) => ({ label: t(`patchManager.settingsPage.weekday.${value}`), value }))} />
               )}
               <TimePicker value={time} format="HH:mm" onChange={(v) => v && setTime(v)} placeholder="02:00" />
             </Space>
@@ -466,13 +492,13 @@ function ScanSettingTab({ activeKey }: { activeKey: string }) {
         </Space>
 
         <div style={{ marginBottom: 12 }}>
-          <span style={{ marginRight: 8 }}>启用周期评估</span>
+          <span style={{ marginRight: 8 }}>{t('patchManager.settingsPage.enableScheduledAssessment')}</span>
           <Switch checked={isEnabled} onChange={setIsEnabled} />
         </div>
 
-        <Alert style={{ marginBottom: 18 }} type="info" showIcon message="启用后系统将按周期自动评估所有主机合规状态。关闭后不会自动创建周期评估任务，手动评估不受影响。" />
+        <Alert style={{ marginBottom: 18 }} type="info" showIcon message={t('patchManager.settingsPage.scheduleHelp')} />
 
-        <div style={{ fontWeight: 500, marginBottom: 8 }}>什么时候会触发评估</div>
+        <div style={{ fontWeight: 500, marginBottom: 8 }}>{t('patchManager.settingsPage.triggerTitle')}</div>
         <div style={{ background: 'var(--color-fill-1, #f4f6f9)', borderRadius: 8, padding: '4px 14px', marginBottom: 16 }}>
           {triggers.map((t, i) => (
             <div key={i} style={{ padding: '9px 0', borderBottom: i < triggers.length - 1 ? '1px solid var(--color-border-1, #e8e8e8)' : 'none', fontSize: 13 }}>
@@ -482,7 +508,7 @@ function ScanSettingTab({ activeKey }: { activeKey: string }) {
         </div>
 
         <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-          <PermissionWrapper requiredPermissions={['Edit']}><Button type="primary" loading={saving} onClick={handleSave}>保存设置</Button></PermissionWrapper>
+          <PermissionWrapper requiredPermissions={['Edit']}><Button type="primary" loading={saving} onClick={handleSave}>{t('patchManager.settingsPage.saveSettings')}</Button></PermissionWrapper>
         </div>
       </div>
     </Spin>
@@ -490,6 +516,7 @@ function ScanSettingTab({ activeKey }: { activeKey: string }) {
 }
 
 export default function SettingsPage() {
+  const { t } = useTranslation();
   const [activeKey, setActiveKey] = useState('source');
 
   return (
@@ -499,8 +526,8 @@ export default function SettingsPage() {
         onChange={setActiveKey}
         className={styles.settingsTabs}
         items={[
-          { key: 'source', label: '补丁源', children: <SourcesTab activeKey={activeKey} /> },
-          { key: 'scan', label: '扫描设置', children: <ScanSettingTab activeKey={activeKey} /> },
+          { key: 'source', label: t('patchManager.patchSource'), children: <SourcesTab activeKey={activeKey} /> },
+          { key: 'scan', label: t('patchManager.settingsPage.scanSettings'), children: <ScanSettingTab activeKey={activeKey} /> },
         ]}
       />
     </div>

@@ -7,6 +7,8 @@
 - 非 form_fields/table_columns 内的 label 字段不受影响
 """
 
+import json
+
 import pytest
 
 pytestmark = pytest.mark.unit
@@ -103,3 +105,76 @@ class TestLocalizeUiTemplate:
         out = localize_ui_template(content, "en")
         assert out["sections"][0]["title"]["label"] == "Title"
         assert out["sections"][0]["fields"][0]["label"] == "Sub Field"
+
+
+class TestEnrichUiTemplateFromPluginFiles:
+    def test_overlays_guide_short_and_section_from_disk(self, tmp_path, monkeypatch):
+        from apps.monitor.services import ui_template_locale as locale_mod
+        from apps.monitor.services.plugin_guide import PluginGuideService
+
+        plugin_dir = tmp_path / "web"
+        plugin_dir.mkdir()
+        (plugin_dir / "UI.json").write_text(
+            json.dumps(
+                {
+                    "form_fields": [
+                        {
+                            "name": "auth_type",
+                            "guide_short": "认证方式悬浮说明",
+                            "section": "auth",
+                        },
+                        {
+                            "name": "response_timeout",
+                            "guide_short": "超时悬浮说明",
+                            "section": "response",
+                        },
+                    ]
+                }
+            ),
+            encoding="utf-8",
+        )
+        monkeypatch.setattr(PluginGuideService, "resolve_plugin_dir", staticmethod(lambda plugin: plugin_dir))
+
+        content = {
+            "form_fields": [
+                {"name": "auth_type", "label": "认证方式"},
+                {"name": "response_timeout", "label": "请求超时"},
+                {"name": "interval", "label": "间隔", "guide_short": "旧说明"},
+            ]
+        }
+        out = locale_mod.enrich_ui_template_from_plugin_files(content, plugin=object())
+        fields = {item["name"]: item for item in out["form_fields"]}
+
+        assert fields["auth_type"]["guide_short"] == "认证方式悬浮说明"
+        assert fields["auth_type"]["section"] == "auth"
+        assert fields["response_timeout"]["guide_short"] == "超时悬浮说明"
+        assert fields["response_timeout"]["section"] == "response"
+        # 磁盘未声明的字段保留原值
+        assert fields["interval"]["guide_short"] == "旧说明"
+
+
+class TestResolveSupportCollectDetect:
+    def test_prefers_metrics_json_over_fallback(self, tmp_path, monkeypatch):
+        from apps.monitor.services import ui_template_locale as locale_mod
+        from apps.monitor.services.plugin_guide import PluginGuideService
+
+        plugin_dir = tmp_path / "web"
+        plugin_dir.mkdir()
+        (plugin_dir / "metrics.json").write_text(
+            json.dumps({"support_collect_detect": False}),
+            encoding="utf-8",
+        )
+        monkeypatch.setattr(PluginGuideService, "resolve_plugin_dir", staticmethod(lambda plugin: plugin_dir))
+
+        assert locale_mod.resolve_support_collect_detect(object(), fallback=True) is False
+
+    def test_falls_back_when_metrics_missing(self, tmp_path, monkeypatch):
+        from apps.monitor.services import ui_template_locale as locale_mod
+        from apps.monitor.services.plugin_guide import PluginGuideService
+
+        plugin_dir = tmp_path / "web"
+        plugin_dir.mkdir()
+        monkeypatch.setattr(PluginGuideService, "resolve_plugin_dir", staticmethod(lambda plugin: plugin_dir))
+
+        assert locale_mod.resolve_support_collect_detect(object(), fallback=True) is True
+        assert locale_mod.resolve_support_collect_detect(None, fallback=False) is False

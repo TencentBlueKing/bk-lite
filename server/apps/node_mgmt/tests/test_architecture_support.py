@@ -987,7 +987,15 @@ def test_get_authorized_nodes_by_ids_uses_scoped_current_team(monkeypatch):
         },
     )
 
-    assert result == [{"id": "node-scoped", "node_type": "os", "organization_ids": [1]}]
+    assert result == [
+        {
+            "id": "node-scoped",
+            "name": "name-node-scoped",
+            "ip": "127.0.0.1",
+            "node_type": "os",
+            "organization_ids": [1],
+        }
+    ]
     assert captured == {
         "is_local_client": True,
         "actor_context": {
@@ -1271,6 +1279,10 @@ def test_build_session_config_resolves_package_and_installer_by_architecture(mon
         "apps.node_mgmt.services.installer_session.PackageService.resolve_existing_file_path",
         lambda obj: PackageService.build_file_path(obj),
     )
+    monkeypatch.setattr(
+        "apps.node_mgmt.services.installer_session.time.time_ns",
+        lambda: 1785168000123456789,
+    )
 
     config = InstallerSessionService.build_session_config(token_value, NodeConstants.ARM64_ARCH)
 
@@ -1278,7 +1290,15 @@ def test_build_session_config_resolves_package_and_installer_by_architecture(mon
     assert config["storage"]["file_key"] == PackageService.build_file_path(arm_package)
     assert config["installer"]["architecture"] == NodeConstants.ARM64_ARCH
     assert f"/{NodeConstants.ARM64_ARCH}/" in config["installer"]["object_key"]
+    assert config["clock_validation"] == {
+        "server_time_unix_ms": 1785168000123,
+        "max_skew_seconds": 300,
+    }
     assert x86_package.id != arm_package.id
+
+    monkeypatch.setattr(InstallerConstants, "CONTROLLER_INSTALL_MAX_CLOCK_SKEW_SECONDS", 0)
+    with pytest.raises(BaseAppException, match="must be a positive integer"):
+        InstallerSessionService.build_session_config(token_value, NodeConstants.ARM64_ARCH)
 
 
 @pytest.mark.django_db
@@ -3164,8 +3184,8 @@ def test_controller_install_view_rejects_windows_arm64_payload():
                     "node_name": "windows-arm",
                     "os": NodeConstants.WINDOWS_OS,
                     "organizations": [1],
-                    "port": 22,
-                    "username": "root",
+                    "port": 5986,
+                    "username": "Administrator",
                     "password": "secret",
                     "private_key": "",
                     "passphrase": "",
@@ -4817,7 +4837,9 @@ def test_trigger_converge_tasks_if_needed_schedules_legacy_install_task_without_
 
 
 @pytest.mark.django_db
-def test_converge_controller_install_connectivity_for_node_prefers_install_node_id_with_shared_ip():
+def test_converge_controller_install_connectivity_for_node_prefers_install_node_id_with_shared_ip(
+    monkeypatch,
+):
     cloud_region = CloudRegion.objects.create(
         name="shared-ip-converge-region",
         introduction="test",
@@ -4881,6 +4903,7 @@ def test_converge_controller_install_connectivity_for_node_prefers_install_node_
         created_by="tester",
         updated_by="tester",
     )
+    monkeypatch.setattr(installer_tasks.discover_node_versions, "delay", lambda: None)
 
     installer_tasks.converge_controller_install_connectivity_for_node("current-install-node")
 
@@ -4946,7 +4969,9 @@ def test_converge_controller_install_connectivity_triggers_version_discovery_whe
 
 
 @pytest.mark.django_db
-def test_converge_controller_install_connectivity_for_node_falls_back_for_legacy_task_without_install_node_id():
+def test_converge_controller_install_connectivity_for_node_falls_back_for_legacy_task_without_install_node_id(
+    monkeypatch,
+):
     cloud_region = CloudRegion.objects.create(
         name="legacy-converge-region",
         introduction="test",
@@ -5010,6 +5035,7 @@ def test_converge_controller_install_connectivity_for_node_falls_back_for_legacy
         created_by="tester",
         updated_by="tester",
     )
+    monkeypatch.setattr(installer_tasks.discover_node_versions, "delay", lambda: None)
 
     installer_tasks.converge_controller_install_connectivity_for_node("legacy-install-node")
 
@@ -5020,7 +5046,7 @@ def test_converge_controller_install_connectivity_for_node_falls_back_for_legacy
 
 
 @pytest.mark.django_db
-def test_install_connectivity_converge_matches_generated_node_id_not_ip():
+def test_install_connectivity_converge_matches_generated_node_id_not_ip(monkeypatch):
     cloud_region = CloudRegion.objects.create(
         name="connectivity-region",
         introduction="test",
@@ -5084,6 +5110,7 @@ def test_install_connectivity_converge_matches_generated_node_id_not_ip():
         created_by="tester",
         updated_by="tester",
     )
+    monkeypatch.setattr(installer_tasks.discover_node_versions, "delay", lambda: None)
 
     installer_tasks.converge_controller_install_connectivity_for_node("current-install-node")
 

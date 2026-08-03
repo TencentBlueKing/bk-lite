@@ -24,6 +24,10 @@ import Permission from '@/components/permission';
 import { cloneDeep } from 'lodash';
 import { usePluginFromJson } from '@/app/monitor/hooks/integration/usePluginFromJson';
 import { useConfigRenderer } from '@/app/monitor/hooks/integration/useConfigRenderer';
+import {
+  getSnmpFilterMutexConflicts,
+  trackSnmpFilterMutexLastChanged
+} from '@/app/monitor/hooks/integration/snmpFilterMutex';
 import { toMonitorNodeOption } from '@/app/monitor/hooks/integration/nodeOptions';
 import BatchEditModal from './batchEditModal';
 import ExcelImportModal from './excelImportModal';
@@ -206,11 +210,12 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
         acc[key] = record[key];
         return acc;
       }, {} as Record<string, any>);
-    return {
+    const instance: Record<string, any> = {
       ...formValues,
       ...rowValues,
       instance_type: configsInfo?.instance_type
     };
+    return instance;
   };
 
   const buildCollectDetectFingerprint = (record: IntegrationMonitoredObject) =>
@@ -275,6 +280,16 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
             </div>
           </div>
           <div className="mt-[12px] space-y-[10px]">
+            {result.request_url && (
+              <div className="overflow-hidden rounded-[6px] border border-[var(--color-border)]">
+                <div className="border-b border-[var(--color-border)] bg-[var(--color-fill-1)] px-[12px] py-[8px] text-[12px] text-[var(--color-text-2)]">
+                  {t('monitor.integrations.collectDetectRequestUrl')}
+                </div>
+                <div className="break-all bg-[var(--color-bg)] px-[12px] py-[10px] font-mono text-[12px] leading-[18px] text-[var(--color-text-1)]">
+                  {String(result.request_url)}
+                </div>
+              </div>
+            )}
             {outputBlocks.length ? (
               outputBlocks.map((item) => (
                 <div
@@ -698,6 +713,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     form.setFieldsValue({
       ...(formConfig?.defaultForm || {})
     });
+    trackSnmpFilterMutexLastChanged({}, form.getFieldsValue(true), form);
   };
 
   const getNodeList = async () => {
@@ -793,6 +809,11 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     }
     form.validateFields().then((values) => {
       try {
+        const mutexErrors = getSnmpFilterMutexConflicts(values, t);
+        if (mutexErrors.length) {
+          mutexErrors.forEach((msg) => message.error(msg));
+          return;
+        }
         const row = cloneDeep(values);
         delete row.nodes;
         const params =
@@ -820,6 +841,12 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
       });
       const targetUrl = `/monitor/integration/list?${searchParams.toString()}`;
       router.push(targetUrl);
+    } catch (error: any) {
+      message.error(
+        error?.response?.data?.message ||
+          error?.message ||
+          t('common.operationFailed')
+      );
     } finally {
       setConfirmLoading(false);
     }
@@ -841,7 +868,10 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
       form={form}
       name="basic"
       layout="vertical"
-      onValuesChange={clearCollectDetectState}
+      onValuesChange={(changed, all) => {
+        clearCollectDetectState();
+        trackSnmpFilterMutexLastChanged(changed, all, form);
+      }}
     >
       <div className="flex items-center justify-between mb-[10px]">
         <b className="text-[14px] ml-[-10px]">

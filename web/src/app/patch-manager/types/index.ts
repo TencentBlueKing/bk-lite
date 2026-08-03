@@ -55,6 +55,7 @@ export interface PatchSource {
   team: number[];
   created_at: string;
   updated_at: string;
+  permission?: string[];
 }
 
 export interface PatchSourceParams {
@@ -96,11 +97,13 @@ export interface Patch {
   linux_detail?: LinuxPatchDetail | null;
   sources: number[];
   source_type: PatchSourceType | null;
+  baseline_requirement_count?: number;
   released_at: string | null;
   last_synced_at: string | null;
   team: number[];
   created_at: string;
   updated_at: string;
+  permission?: string[];
   package_info?: {
     file_name: string;
     file_size: number;
@@ -180,6 +183,7 @@ export interface PatchTarget {
   team: number[];
   created_at: string;
   updated_at: string;
+  permission?: string[];
 }
 
 export interface PatchTargetParams {
@@ -213,10 +217,14 @@ export interface ComplianceDistributionItem {
 export interface RecentTaskItem {
   id: number;
   name: string;
+  task_type: 'install' | 'reboot';
+  task_type_display: string;
+  execution_mode: 'now' | 'window';
+  execution_window_start?: string | null;
+  execution_window_end?: string | null;
   status: string;
+  status_code?: string;
   status_color: string;
-  progress: string;
-  time: string;
   created_at: string | null;
 }
 

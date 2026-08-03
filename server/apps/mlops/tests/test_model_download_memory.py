@@ -12,6 +12,8 @@ from django.http import FileResponse
 
 from apps.mlops.utils import mlflow_service as ms
 
+pytestmark = pytest.mark.django_db
+
 
 async def _consume_response(response):
     total_size = 0

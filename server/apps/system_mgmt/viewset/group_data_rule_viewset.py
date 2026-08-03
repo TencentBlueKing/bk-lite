@@ -1,4 +1,5 @@
 from django.http import JsonResponse
+from django.db import transaction
 from django_filters import filters
 from django_filters.rest_framework import FilterSet
 from rest_framework.decorators import action
@@ -27,13 +28,19 @@ from apps.system_mgmt.utils.operation_log_utils import log_operation
 def _build_actor_context(request, loader=None):
     current_team = get_current_team(request)
     if current_team in (None, ""):
-        message = loader.get("error.current_team_required") if loader else "缺少 current_team 参数"
+        message = (
+            (loader.get("error.current_team_required") if loader else None)
+            or "缺少 current_team 参数"
+        )
         return None, JsonResponse({"result": False, "message": message}, status=400)
 
     try:
         current_team = int(current_team)
     except (TypeError, ValueError):
-        message = loader.get("error.invalid_current_team") if loader else "current_team 参数非法"
+        message = (
+            (loader.get("error.invalid_current_team") if loader else None)
+            or "current_team 参数非法"
+        )
         return None, JsonResponse({"result": False, "message": message}, status=400)
 
     return {
@@ -130,14 +137,14 @@ class GroupDataRuleViewSet(LanguageViewSet):
         # 获取绑定到此规则的用户，在删除前获取
         affected_users = list(UserRule.objects.filter(group_rule_id=rule_id).values("username", "domain"))
 
-        response = super().destroy(request, *args, **kwargs)
+        with transaction.atomic():
+            response = super().destroy(request, *args, **kwargs)
+            if response.status_code == 204 and affected_users:
+                clear_users_permission_cache(affected_users)
 
         # 记录操作日志
         if response.status_code == 204:
             log_operation(request, "delete", "system-manager", f"删除数据权限: {rule_name}")
-            # 清除受影响用户的权限缓存
-            if affected_users:
-                clear_users_permission_cache(affected_users)
 
         return response
 
@@ -177,16 +184,17 @@ class GroupDataRuleViewSet(LanguageViewSet):
 
         rule_id = obj.id
 
-        response = super().update(request, *args, **kwargs)
+        with transaction.atomic():
+            response = super().update(request, *args, **kwargs)
+            if response.status_code == 200:
+                affected_users = list(UserRule.objects.filter(group_rule_id=rule_id).values("username", "domain"))
+                if affected_users:
+                    clear_users_permission_cache(affected_users)
 
         # 记录操作日志
         if response.status_code == 200:
             rule_name = response.data.get("name", "")
             log_operation(request, "update", "system-manager", f"编辑数据权限: {rule_name}")
-            # 清除绑定到此规则的用户的权限缓存
-            affected_users = list(UserRule.objects.filter(group_rule_id=rule_id).values("username", "domain"))
-            if affected_users:
-                clear_users_permission_cache(affected_users)
 
         return response
 
@@ -210,7 +218,7 @@ class GroupDataRuleViewSet(LanguageViewSet):
         params = request.GET.dict()
         # 记录 app 值（get_client 会从 params 中弹出），用于后续判断是否注入上下文
         app = params.get("app", "")
-        if app in {"job", "mlops"}:
+        if app in {"job", "log", "mlops", "patch"}:
             try:
                 group_id = int(params.get("group_id"))
             except (TypeError, ValueError):
@@ -225,7 +233,7 @@ class GroupDataRuleViewSet(LanguageViewSet):
                 if error_response:
                     return error_response
                 params["actor_context"] = actor_context
-            else:
+            elif app in {"job", "patch"}:
                 user_group_ids = self._get_user_group_ids(request.user)
                 params["team"] = [group_id] if user_group_ids is None else sorted(user_group_ids)
 
@@ -243,7 +251,10 @@ class GroupDataRuleViewSet(LanguageViewSet):
             try:
                 team = int(current_team) if current_team not in (None, "") else None
             except (TypeError, ValueError):
-                message = self.loader.get("error.invalid_current_team") if self.loader else "current_team 参数非法"
+                message = (
+                    (self.loader.get("error.invalid_current_team") if self.loader else None)
+                    or "current_team 参数非法"
+                )
                 return JsonResponse({"result": False, "message": message}, status=400)
             params["user_info"] = {
                 "user": getattr(user, "username", ""),

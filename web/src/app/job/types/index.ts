@@ -20,6 +20,7 @@ export interface DangerousRule {
   match_type?: DangerousRuleMatchType;
   level: 'confirm' | 'forbidden';
   is_enabled: boolean;
+  is_builtin: boolean;
   team: number[];
   created_by: string;
   created_at: string;
@@ -94,6 +95,9 @@ export interface Target {
   ssh_user: string;
   ssh_key_file: string | null;
   ssh_key_file_name: string;
+  has_ssh_password: boolean;
+  has_ssh_key: boolean;
+  has_winrm_password: boolean;
   credential_id: string;
   winrm_port: number;
   winrm_scheme: string;

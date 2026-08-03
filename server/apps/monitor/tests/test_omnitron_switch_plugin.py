@@ -21,6 +21,8 @@ from pathlib import Path
 import pytest
 import yaml
 
+from apps.core.utils.loader import LanguageLoader
+
 SERVER_ROOT = Path(__file__).resolve().parents[3]
 REPO_ROOT = SERVER_ROOT.parent
 PLUGINS = SERVER_ROOT / "apps" / "monitor" / "support-files" / "plugins" / "Telegraf"
@@ -102,7 +104,7 @@ def toml_text():
 @pytest.fixture(scope="module")
 def languages():
     return {
-        lang: yaml.safe_load((LANGUAGE_DIR / f"{lang}.yaml").read_text(encoding="utf-8"))
+        lang: LanguageLoader("monitor", lang).translations
         for lang in ("zh-Hans", "en")
     }
 
@@ -137,19 +139,14 @@ def test_ui_is_pure_snmp_form_with_sidecar_secret_fields(ui):
 
 
 @pytest.mark.unit
-def test_metrics_json_declares_only_vendor_delta_with_zero_child_baseline(metrics):
-    """Omnitron has no stable, row-free chassis-level scalar health
-    object that bk-lite can promote to a single device_* metric, so
-    this plugin follows the conservative zero-vendor-child baseline.
-    """
+def test_metrics_json_embeds_floor_without_unverified_vendor_health(metrics):
     names = {metric["name"] for metric in metrics["metrics"]}
-    assert names == set()
-    # Anti-baseline-metric assertions
-    assert names & BASE_METRICS == set()
+    floor = {"snmp_uptime", "interface_ifHCInOctets", "interface_ifHCOutOctets"}
+    assert names == floor
     # Anti-fabricated-health assertions: per-port / per-management-module
     # leaves must NOT be promoted as scalar bk-lite metrics.
     assert names & HEALTH_METRICS == set()
-    assert metrics["supplementary_indicators"] == []
+    assert metrics["supplementary_indicators"] == ["snmp_uptime"]
 
 
 @pytest.mark.unit

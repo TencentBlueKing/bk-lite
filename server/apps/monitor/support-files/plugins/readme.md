@@ -321,7 +321,50 @@ apps/monitor/support-files/plugins/<collector>/<collect_type>/<instance_type>/
 | instance_id_keys | array | 指标实例键 |
 | description | string | 指标描述 |
 
-### 6.5 实例身份约定
+### 6.5 实例事实与摘要列
+
+插件需要在实例列表展示 IP、端点、采集节点等识别信息时，必须在 `metrics.json` 显式声明
+`instance_fact_bindings`，并由对应对象的 `instance_summary_columns` 选择展示列。禁止依赖系统
+猜测 `host`、`url` 等字段名。
+
+```json
+{
+  "instance_fact_bindings": [
+    {
+      "fact": "asset.ip",
+      "value_type": "ip",
+      "resolver": "input",
+      "options": {"field": "host"}
+    }
+  ],
+  "instance_summary_columns": [
+    {"fact": "asset.ip", "title": "monitor.views.assetIp", "order": 10}
+  ]
+}
+```
+
+内置 resolver：
+
+| resolver | 用途 |
+|---|---|
+| `input` | 从明确声明的接入字段读取值 |
+| `selected_node` | 从所选 NodeMgmt 节点读取一个权威属性 |
+| `selected_nodes` | 生成所选节点的 ID、名称和 IP 引用列表 |
+| `compose_endpoint` | 从主机和端口组合端点，自动处理 IPv6 方括号 |
+| `constant` | 生成固定的非敏感事实 |
+
+内置 value type：`text`、`ip`、`endpoint`、`node_ref`、`node_ref_list`。事实绑定不得读取
+密码、令牌、私钥、凭据等敏感字段。摘要列引用未绑定事实、使用未知 resolver/type 或绑定敏感字段时，
+插件导入会失败。
+
+常用示例：
+
+- 本地主机：`selected_node + node_ids + node.ip -> asset.ip`；
+- 远程主机：`input + host -> asset.ip`；
+- Web/Ping：`selected_nodes -> collector.nodes`，目标输入 -> `probe.target`；
+- TCP：`selected_nodes -> collector.nodes`，`compose_endpoint(host, port) -> probe.target`。
+
+### 6.6 实例身份约定
 
 VictoriaMetrics / Prometheus 中的实例身份不是数据库中的 tuple 字符串，而是多个 label 维度。`MonitorObject.instance_id_keys` 和 `Metric.instance_id_keys` 定义了从 VM labels 到 BK-Lite `MonitorInstance.id` 的投影顺序。
 
@@ -345,7 +388,7 @@ instance_id="cluster-a", pod="pod-1"
 
 因此，涉及实例匹配、权限过滤、插件状态、告警归属或实例详情查询的逻辑，都必须按 `instance_id_keys` 从 VM labels 重建完整实例 ID，不能直接把 VM label 中的 `instance_id` 当作完整数据库 ID。基础对象通常只有 `["instance_id"]`；派生对象通常使用 `["instance_id", "<child_label>"]`，其中第二个字段必须与真实上报 label 名一致。
 
-### 6.6 隐式规则
+### 6.7 隐式规则
 
 - `collector` 与 `collect_type` 的最终导入值优先取 `metrics.json` 显式声明；字段缺失或为空时，再回退到文件路径。
 - 路径回退是逐字段生效的：只声明 `collect_type` 时，`collector` 仍可从路径回退。

@@ -2,6 +2,8 @@
   "plugin": "Ping",
   "plugin_desc": "The Ping plugin is used to test the reachability of network connections and measure the round-trip time of sending data packets to a target address and back.",
   "status_query": "any({instance_type='ping', collect_type='ping'}) by (instance_id)",
+  "instance_fact_bindings": [{"fact":"collector.nodes","value_type":"node_ref_list","resolver":"selected_nodes","options":{"selection_field":"node_ids"}},{"fact":"probe.target","value_type":"endpoint","resolver":"input","options":{"field":"url"}}],
+  "instance_summary_columns": [{"fact":"collector.nodes","title":"monitor.views.probeNodes","order":10},{"fact":"probe.target","title":"monitor.views.probeTarget","order":20}],
   "name": "Ping",
   "icon": "mm-website_网站",
   "type": "Web",

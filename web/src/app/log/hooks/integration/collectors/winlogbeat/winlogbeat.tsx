@@ -9,7 +9,8 @@ export const useWinlogbeatConfig = () => {
   const pluginConfig = {
     collector: 'Winlogbeat',
     collect_type: 'winlogbeat',
-    icon: 'll-winlogbeat_Windows事件日志'
+    icon: 'll-winlogbeat_Windows事件日志',
+    nodeOperatingSystem: 'windows' as const
   };
 
   const defaultLevels = ['critical', 'error', 'warning'];

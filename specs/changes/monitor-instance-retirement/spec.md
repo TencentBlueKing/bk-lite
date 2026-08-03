@@ -4,7 +4,7 @@ Status: accepted
 
 ## 1. 决定
 
-用户删除监控实例时执行物理删除。停止产生新的 `is_deleted=True` 墓碑，不引入退役状态、退役操作表、Outbox 或专用 worker。
+用户删除监控实例时执行物理删除。删除前关闭关联活动告警并清理策略实例基准；停止产生新的 `is_deleted=True` 墓碑，不引入退役状态、退役操作表、Outbox 或专用 worker。
 
 删除流程收口到一个深模块：
 
@@ -30,13 +30,14 @@ MonitorInstanceRemovalService.remove(instance_ids)
 - `server/apps/monitor/services/node_mgmt.py:499-505,596-603`
 - `server/apps/monitor/services/flow_onboarding.py:22-105,218-256`
 
-物理删除不会级联删除告警历史。`MonitorAlert`、`MonitorEvent` 和快照保存字符串实例 ID；真正指向 `MonitorInstance` 的强外键只有 `CollectConfig` 和 `MonitorInstanceOrganization`，两者均为 `CASCADE`。
+物理删除不会级联删除告警历史。关联活动 `MonitorAlert` 在删除事务中置为 `closed`，历史 `MonitorAlert`、`MonitorEvent` 和快照继续保留；真正指向 `MonitorInstance` 的强外键只有 `CollectConfig` 和 `MonitorInstanceOrganization`，两者均为 `CASCADE`。
 
 ## 3. 范围
 
 本变更包括：
 
 - 用户删除监控实例时物理删除；
+- 资产列表支持勾选多个有操作权限的实例后批量删除，提交前展示选中数量和不可恢复提示；
 - 删除流程的权限、锁、NodeMgmt 配置清理、本地引用清理和 Flow 刷新；
 - 创建流程的全局 ID 查重、请求内去重和业务错误转换；
 - 创建时按需回收历史软删除墓碑；
@@ -60,6 +61,7 @@ class RemovalResult:
     missing_ids: tuple[str, ...]
     cleaned_policy_ids: tuple[int, ...]
     disabled_policy_ids: tuple[int, ...]
+    closed_alert_count: int
 
 
 class MonitorInstanceRemovalService:
@@ -67,6 +69,9 @@ class MonitorInstanceRemovalService:
     def remove(
         cls,
         instance_ids: Iterable[str],
+        *,
+        operator: str = "system",
+        reason: str = "instance_deleted",
     ) -> RemovalResult:
         ...
 ```
@@ -88,10 +93,12 @@ class MonitorInstanceRemovalService:
 3. 快照 child/base 配置 ID 和 Flow 云区域。
 4. 调用 NodeMgmt 幂等删除 child/base 配置。
 5. 在同一数据库事务内：
+   - 分批关闭实例关联的活动阈值/无数据 Alert；
+   - 删除实例关联的 `PolicyInstanceBaseline`；
    - 从按实例选择的策略来源中移除实例，来源为空时禁用策略；
    - 删除 `MonitorObjectOrganizationRule`；
    - 物理删除 `MonitorInstance`。
-6. 数据库提交后刷新受影响的 Flow 云区域。
+6. 数据库提交后按策略发送告警关闭生命周期通知，并刷新受影响的 Flow 云区域。
 
 `CollectConfig` 和 `MonitorInstanceOrganization` 依赖数据库级联删除。告警、事件和快照历史保留。
 
@@ -106,6 +113,7 @@ NodeMgmt 当前使用 `filter(id__in=...).delete()`，重复调用没有副作�
 - NodeMgmt 成功、数据库事务失败：数据库实例仍存在且继续占用 ID；重试时远端删除为空操作，再完成本地删除。
 - 进程在远端清理后崩溃：效果同上，用户再次删除即可完成。
 - Flow 刷新失败：不回滚已经完成的删除；记录错误并允许后续刷新或对账修复。
+- 告警关闭通知失败：实例删除和告警关闭保持已提交，沿用告警中心补偿机制重试。
 
 为了避免长事务影响，删除批次必须有上限。该方案接受失败窗口内“实例仍显示但远端配置已不存在”的短暂不一致，不接受“数据库已删除但旧远端配置仍运行”或“旧配置未清理就释放实例 ID”。
 
@@ -176,11 +184,14 @@ uv run python manage.py purge_deleted_monitor_instances --execute --batch-size 5
 - 数据库事务失败后重复删除可完成；
 - CollectConfig 和组织关系级联删除；
 - 策略来源和组织规则被正确处理；
-- 告警、事件和快照历史保留；
+- 活动告警在实例删除前关闭，人工删除与自动清理记录不同原因；
+- 告警、事件和快照历史保留，已恢复/已关闭历史告警状态不变；
+- 仅标记实例不活跃或自动发现查询失败时不关闭告警；
 - 删除后相同 ID 可重新创建；
 - 其他对象的历史墓碑可按需回收后创建；
 - 其他对象的有效实例返回业务冲突；
 - 请求内重复 ID 和并发唯一键竞争不暴露数据库错误；
 - 删除数量超过批量上限时在调用 NodeMgmt 前拒绝整批请求；
+- 批量删除成功后清空列表选择并刷新资产数量；删除分页末尾数据时回到有效页；
 - Flow 只在数据库提交后刷新；
 - 自动发现既有同步行为不受影响。

@@ -54,6 +54,9 @@ error:
   invalid_group_ids: '组织ID不存在: {ids}'
   group_selection_required: 至少选择一个组织
   normal_group_required: 至少选择一个普通组织
+  no_permission_access_group: 无权访问该组织
+  no_permission_access_user: 无权访问该用户
+  system_error: 系统错误，请联系管理员
 success:
   menu_group_disabled: 菜单组已禁用
   batch_create: 批量创建成功
@@ -66,6 +69,7 @@ success:
 login:
   incorrect_password_with_attempts: 用户名或密码错误。剩余尝试次数:{attempts} 次。
   password_expired: 您的密码已过期,请立即修改密码。
+  password_expired_contact_admin: 您的密码已过期,请联系管理员重置密码。
   password_expiring_soon: 您的密码将在 {days} 天后过期,请尽快修改密码。
   account_locked: 账号已被锁定,请在 {minutes} 分钟后重试。
   account_locked_too_many_attempts: 由于登录失败次数过多,账号已被锁定。请在 {minutes} 分钟后重试。
@@ -81,6 +85,7 @@ app:
   system-manager: 涵盖用户和组织角色权限管理，通过精细化权限控制，确保资源访问安全，同时提升操作效率。提供灵活的配置和管理，满足不同业务需求
   node: 用于集中管理各个云区域下的节点，为各个节点安装各类探针，以便进行监控数据、配置信息、日志等信息的采集
   job: 快速创建并执行作业，统一管理脚本执行、文件分发和定时任务
+  patch: 集中管理系统补丁，支持补丁扫描、安装与补丁库维护，帮助持续降低安全风险。
 action_type:
   create: 创建
   delete: 删除
@@ -95,3 +100,7 @@ tag:
   script_management: 脚本管理
   file_distribution: 文件分发
   scheduled_task: 定时任务
+  # patch
+  patch_scan: 补丁扫描
+  patch_install: 补丁安装
+  patch_library: 补丁库

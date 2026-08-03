@@ -1,85 +1,61 @@
 # Consul 监控接入指南
 
-本插件通过 Telegraf `inputs.consul` 调用 HashiCorp Consul 的 HTTP API，仅采集健康检查（health checks）状态，不采集 Consul telemetry。如需 telemetry 请自行启用 StatsD 协议将指标外发。Consul API 默认端口 `8500`。
+本能力通过 Telegraf `inputs.consul` 访问 Consul HTTP API，当前指标范围是健康检查状态。
 
 ## 前置要求
 
-- 目标 Consul 集群已启动，HTTP API 默认端口 `8500`。
-- 采集节点到 Consul 主机网络可达（含安全组 / 防火墙放通）。
-- Consul 已启用必要的健康检查 / 服务注册（`consul_health_checks` 表来自 `/v1/health/service/:name` + `/v1/health/state/:state`）。
-- 如启用了 ACL，需要为监控账号准备 `token`。
-
-> Telegraf 输出 `consul_health_checks` 一张指标表，维度包含 `node`、`service_name`、`check_id`、`check_name`、`service_id`、`status`，并以 `passing`/`critical`/`warning` 的 int 计数表示状态。
-
-## 推荐账号权限
-
-Consul 健康检查默认对所有 HTTP 客户端开放读取，无需 ACL。如启用 ACL：
-
-```hcl
-# 监控 token 只需 health 相关读权限
-acl = "write"
-```
-
-```bash
-# 推荐做法：使用只读策略
-consul acl policy create -name monitor-read -rules - <<EOF
-service ".*" {
-  policy = "read"
-}
-operator = "read"
-EOF
-
-consul acl token create -description "monitor" -policy-name monitor-read
-```
+- 采集节点能够访问 Consul HTTP API 的完整基地址。
+- 目标已注册需要观察的健康检查。
+- 当前页面和模板只有 URL 与间隔字段，不会发送认证凭据，也没有其他插件选项。
+- 因此 API 必须允许采集节点直接读取健康检查；要求认证的目标无法用当前配置直接接入。
 
 ## 接入步骤
 
-1. 在采集节点验证 Consul API 可达：
-
-   ```bash
-   curl http://<host>:8500/v1/status/leader
-   ```
-
-2. 在监控接入页填写 URL（默认 `http://<host>:8500`）、采集间隔（默认 `60s`）。
-3. 在「监控对象」表格中填写节点、URL、实例名称和所属组。
-4. 点击「确认」保存配置，等待至少一个采集周期。
-5. 到资产或指标页确认实例已上报数据。
+1. 从实际采集节点验证 Consul 基地址和健康检查接口可直接读取。
+2. 填写完整 URL 和采集间隔（默认 `60` 秒）。
+3. 在监控对象表格中选择节点，填写 URL、实例名称和可选分组。
+4. 保存后等待至少一个采集周期。
 
 ## 接入前校验
 
-Consul API 可达性：
-
 ```bash
-curl http://<host>:8500/v1/health/service/consul
+curl --fail --silent --show-error "http://consul.example.com:8500/v1/agent/checks"
 ```
 
-返回 200 + JSON 数组即视为正常。
+请求应返回 `200` 和 JSON；`--fail` 会保留 `4xx/5xx` 失败状态。空对象表示当前 Agent 没有已注册检查，不代表采集器故障。
 
 ## 页面字段说明
 
 | 页面字段 | 是否必填 | 说明 |
 | --- | --- | --- |
-| URL | 是 | Consul HTTP API 地址，例如 `http://10.0.0.5:8500` |
-| 间隔 | 是 | 采集周期，单位秒，默认 `60` |
-| 节点 | 是 | 负责采集的探针节点 |
-| 实例名称 | 是 | 平台内展示的实例名，默认由 URL 自动填充 |
-| 组 | 否 | 组织分组，便于权限与资产归属 |
+| URL | 是 | Consul HTTP API 完整基地址，例如 `http://consul.example.com:8500`。 |
+| 间隔 | 是 | 采集周期，单位秒，默认 `60`。 |
+| 节点 | 是 | 能够直接访问 API 的采集节点。 |
+| 实例名称 | 是 | 平台内展示的实例名称。 |
+| 组 | 否 | 实例所属分组。 |
+
+## 接入后验证
+
+保存并等待一个采集周期后，在平台确认以下指标可查询：
+
+- `consul_health_checks_passing`
+- `consul_health_checks_critical`
+- `consul_health_checks_warning`
+- `consul_health_checks_status`
 
 ## 常见问题
 
-### 1. 保存后长时间无数据
+### 返回 `403` 或要求认证
 
-- 确认 Consul 服务已启动且 HTTP API 端口 `8500` 可达。
-- 在采集节点直接用 `curl /v1/status/leader` 验证。
-- 等待至少一个采集间隔后再查看；检查节点上 Telegraf / 采集任务是否正常运行。
+- 当前页面和模板不能配置或发送认证凭据。
+- 不要把敏感凭据拼进 URL；要求认证的目标需等能力实现对应安全字段后再接入。
 
-### 2. 认证失败
+### 没有健康检查数据
 
-- Consul 启用 ACL 后需要在 `inputs.consul` 增加 `token = "<token>"` 字段，当前 Telegraf 模板未启用；如启用 ACL，请同步调整模板并把 token 注入到 env_config 中。
-- 检查 Consul 主配置 `acl.tokens.default` 与 `acl.enabled` 是否一致。
+- 确认目标 Agent 实际注册了健康检查，并用接入前命令查看返回体。
+- 当前能力只覆盖健康检查状态，不承诺 Consul telemetry 或运行时指标。
 
-### 3. 部分指标缺失
+### URL 可达但采集失败
 
-- `consul_health_checks` 仅采集健康检查状态，不包括 telemetry / runtime metrics；运行时数据请用 `inputs.prometheus` 抓取 Consul 自暴露的 `/v1/agent/metrics`（如有开启）。
-- 不同 Consul 版本的字段可能略有差异，`metric_version = 2`（v1.16+ 默认）会把字符串字段移到 tag 上，建议升级到该版本以上。
-- 没有注册任何 service 时，`consul_health_checks` 只会剩下 `serfHealth` 等节点级检查，属正常现象。
+- 核对 URL 是 HTTP API 基地址，不要填写具体健康检查路径。
+- 查看 Telegraf 日志中的实际 HTTP 状态和解析错误。

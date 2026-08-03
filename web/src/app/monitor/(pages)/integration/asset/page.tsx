@@ -8,7 +8,8 @@ import {
   Tag,
   Popconfirm,
   Space,
-  Tooltip
+  Tooltip,
+  Modal
 } from 'antd';
 import useApiClient from '@/utils/request';
 import { useSearchParams, useRouter } from 'next/navigation';
@@ -93,8 +94,13 @@ const Asset = () => {
   const [frequence, setFrequence] = useState<number>(0);
   const [confirmLoading, setConfirmLoading] = useState(false);
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
+  const [modal, modalContextHolder] = Modal.useModal();
 
   const handleAssetMenuClick: MenuProps['onClick'] = (e) => {
+    if (e.key === 'batchDelete') {
+      showBatchDeleteConfirm();
+      return;
+    }
     openInstanceModal(
       {
         keys: selectedRowKeys
@@ -353,6 +359,7 @@ const Asset = () => {
   const handleObjectChange = (id: string) => {
     cancelAllRequests();
     setTableData([]);
+    setSelectedRowKeys([]);
     setObjectId(id);
   };
 
@@ -466,11 +473,70 @@ const Asset = () => {
       };
       await deleteMonitorInstance(data);
       message.success(t('common.successfullyDeleted'));
-      getObjects();
-      getAssetInsts(objectId);
+      setSelectedRowKeys((keys) =>
+        keys.filter((key) => key !== row.instance_id)
+      );
+      await refreshAfterDeletionSafely(1);
     } finally {
       setConfirmLoading(false);
     }
+  };
+
+  const refreshAfterDeletion = async (deletedCount: number) => {
+    const remainingTotal = Math.max(0, pagination.total - deletedCount);
+    const lastPage = Math.max(1, Math.ceil(remainingTotal / pagination.pageSize));
+    const targetPage = Math.min(pagination.current, lastPage);
+
+    setPagination((prev) => ({
+      ...prev,
+      current: targetPage,
+      total: remainingTotal
+    }));
+
+    if (targetPage === pagination.current) {
+      await Promise.all([getObjects(), getAssetInsts(objectId)]);
+      return;
+    }
+    await getObjects();
+  };
+
+  const refreshAfterDeletionSafely = async (deletedCount: number) => {
+    try {
+      await refreshAfterDeletion(deletedCount);
+    } catch {
+      message.warning(
+        `${t('common.successfullyDeleted')} ${t('common.fetchFailed')}`
+      );
+    }
+  };
+
+  const batchDeleteInstConfirm = async () => {
+    const instanceIds = [...selectedRowKeys];
+    const data = {
+      instance_ids: instanceIds,
+      clean_child_config: true
+    };
+    await deleteMonitorInstance(data);
+    setSelectedRowKeys([]);
+    message.success(t('common.successfullyDeleted'));
+    await refreshAfterDeletionSafely(instanceIds.length);
+  };
+
+  const showBatchDeleteConfirm = () => {
+    const selectedCount = selectedRowKeys.length;
+    if (!selectedCount) return;
+
+    modal.confirm({
+      title: t('common.batchDelete'),
+      content: `${t('common.selected')} ${selectedCount} ${t(
+        'common.items'
+      )} · ${t('common.deleteContent')}`,
+      centered: true,
+      okText: t('common.confirm'),
+      cancelText: t('common.cancel'),
+      okButtonProps: { danger: true },
+      onOk: batchDeleteInstConfirm
+    });
   };
 
   const clearText = () => {
@@ -503,6 +569,7 @@ const Asset = () => {
 
   return (
     <div className={assetStyle.asset}>
+      {modalContextHolder}
       <ResizableSidebar collapseStorageKey="monitor.integration.asset.sidebarCollapsed">
         <div className={assetStyle.tree}>
           <TreeSelector

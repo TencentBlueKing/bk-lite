@@ -1,7 +1,10 @@
 {
   "plugin": "Website",
   "plugin_desc": "The purpose of the website monitoring plugin is to periodically check the availability and performance of HTTP/HTTPS connections.",
+  "support_collect_detect": false,
   "status_query": "any(http_response_result_type{instance_type='web', collect_type='web', result='success'}) by (instance_id)",
+  "instance_fact_bindings": [{"fact":"collector.nodes","value_type":"node_ref_list","resolver":"selected_nodes","options":{"selection_field":"node_ids"}},{"fact":"probe.target","value_type":"endpoint","resolver":"input","options":{"field":"request_url"}}],
+  "instance_summary_columns": [{"fact":"collector.nodes","title":"monitor.views.probeNodes","order":10},{"fact":"probe.target","title":"monitor.views.probeTarget","order":20}],
   "name": "Website",
   "icon": "mm-website_网站",
   "type": "Web",

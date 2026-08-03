@@ -10,7 +10,7 @@ import os
 os.environ.setdefault(
     "INSTALL_APPS",
     "system_mgmt,alerts,console_mgmt,job_mgmt,log,"
-    "monitor,node_mgmt,operation_analysis,opspilot,cmdb",
+    "monitor,node_mgmt,operation_analysis,opspilot,cmdb,apm",
 )
 
 # Prevent django_minio_backend.apps.ready() from calling

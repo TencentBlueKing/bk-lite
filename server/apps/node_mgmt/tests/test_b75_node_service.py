@@ -515,6 +515,8 @@ def test_get_nodes_by_ids_returns_full_info(setup):
     result = NodeService.get_nodes_by_ids([node.id])
     assert len(result) == 1
     item = result[0]
+    assert item["name"] == "alpha"
+    assert item["ip"] == "10.1.1.1"
     assert item["cloud_region_name"] == "cr-node-svc"
     assert item["operating_system"] == "linux"
     assert 3 in item["organization_ids"]

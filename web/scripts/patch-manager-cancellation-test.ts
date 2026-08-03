@@ -23,25 +23,25 @@ assertPresent(
 assertPresent(api, /governance\/\$\{id\}\/cancel\/`,\s*\{\s*reason\s*\}/, '取消 API 请求体');
 assertPresent(page, /partial_cancelled:\s*'warning'/, '部分取消状态颜色');
 assertPresent(page, /api\.cancelGovernanceTask\([^,]+,\s*cancelReason\.trim\(\)\)/, '取消提交');
-assertPresent(page, /取消原因/, '取消原因输入');
+assertPresent(page, /patchManager\.execution\.cancelReason/, '取消原因双语输入');
 assertPresent(page, /cancelled_by/, '取消人展示');
 assertPresent(page, /cancelled_at/, '取消时间展示');
 assertPresent(page, /cancel_reason/, '取消原因展示');
 assertPresent(
   page,
-  /message="取消信息"[\s\S]{0,800}取消人：[\s\S]{0,300}取消时间：[\s\S]{0,300}取消原因：/,
+  /patchManager\.execution\.cancelInfo[\s\S]{0,800}patchManager\.execution\.cancelledBy[\s\S]{0,300}patchManager\.execution\.cancelledAt[\s\S]{0,300}patchManager\.execution\.cancelReason/,
   '取消信息归入当前风险项执行详情',
 );
-assertPresent(page, /okText="确认"/, '取消弹窗确认按钮文案');
-assertPresent(page, /cancelText="取消"/, '取消弹窗返回按钮文案');
-assertPresent(page, /message="仅取消尚未执行的主机"/, '取消弹窗安全提示');
-assertPresent(page, /已开始执行的主机不会被中断/, '取消弹窗安全说明');
+assertPresent(page, /okText=\{t\('patchManager\.confirm'\)\}/, '取消弹窗确认按钮文案');
+assertPresent(page, /cancelText=\{t\('patchManager\.cancel'\)\}/, '取消弹窗返回按钮文案');
+assertPresent(page, /patchManager\.execution\.cancelWaitingOnly/, '取消弹窗安全提示');
+assertPresent(page, /patchManager\.execution\.cancelHelp/, '取消弹窗安全说明');
 assertAbsent(page, /<Input\.TextArea[\s\S]{0,500}\bshowCount\b/, '取消原因字数统计');
 assertPresent(page, /canCancel:\s*Boolean\(task\.can_cancel\)/, '取消资格由后端主机状态决定');
-assertPresent(page, /row\.canCancel[\s\S]{0,700}>\s*取消\s*</, '可取消任务按钮');
+assertPresent(page, /row\.canCancel[\s\S]{0,700}patchManager\.cancel/, '可取消任务按钮');
 
-assertPresent(page, /setInterval\(\(\) => \{[\s\S]{0,300}\},\s*2000\);/, '执行记录 2 秒轮询');
-assertPresent(riskPendingPage, /setInterval\(\(\) => \{[\s\S]{0,300}\},\s*2000\);/, '待治理风险 2 秒轮询');
-assertPresent(targetPage, /setInterval\(\(\) => \{[\s\S]{0,300}\},\s*2000\);/, '目标管理 2 秒轮询');
+assertPresent(page, /setInterval\(\(\) => \{[\s\S]{0,300}\},\s*PATCH_MANAGER_POLL_INTERVAL_MS\);/, '执行记录统一 5 秒轮询');
+assertPresent(riskPendingPage, /setInterval\(\(\) => \{[\s\S]{0,300}\},\s*PATCH_MANAGER_POLL_INTERVAL_MS\);/, '待治理风险统一 5 秒轮询');
+assertPresent(targetPage, /setInterval\(\(\) => \{[\s\S]{0,300}\},\s*pollIntervalMs\);/, '目标管理由刷新选择器控制轮询');
 
 console.log('补丁治理取消前端约束通过');

@@ -2,7 +2,6 @@
 
 from rest_framework import serializers
 
-from apps.core.utils.serializers import TeamSerializer
 from apps.patch_mgmt.constants import ComplianceStatus, GovernanceTaskStatus, GovernanceTaskType
 from apps.patch_mgmt.models import (
     BaselineRequirement,
@@ -10,6 +9,8 @@ from apps.patch_mgmt.models import (
     HostBaselineBinding,
     PatchBaseline,
 )
+from apps.patch_mgmt.serializers.permission import PatchPermissionSerializer
+from apps.patch_mgmt.utils.i18n import serializer_message
 
 
 class BaselineRequirementSerializer(serializers.ModelSerializer):
@@ -88,14 +89,14 @@ class BaselineRequirementSerializer(serializers.ModelSerializer):
         patch = obj.patch
         if patch.os_type == "windows":
             kb = self.get_patch_kb_number(obj)
-            return f"装 {kb} 或有效替代 KB" if kb else ""
+            return serializer_message(self, "message.windows_requirement", "Install {kb} or a valid superseding KB", kb=kb) if kb else ""
         else:
             pkg = self.get_patch_pkg_name(obj)
             ver = self.get_patch_pkg_version(obj)
-            return f"包版本 ≥ {ver}" if pkg and ver else ""
+            return serializer_message(self, "message.linux_requirement", "Package version ≥ {version}", version=ver) if pkg and ver else ""
 
 
-class PatchBaselineListSerializer(TeamSerializer):
+class PatchBaselineListSerializer(PatchPermissionSerializer):
     """基线列表序列化器"""
 
     os_type_display = serializers.CharField(source="get_os_type_display", read_only=True)
@@ -106,6 +107,7 @@ class PatchBaselineListSerializer(TeamSerializer):
     is_assessing = serializers.SerializerMethodField()
     can_assess = serializers.SerializerMethodField()
     assess_disabled_reason = serializers.SerializerMethodField()
+    permission_key = "patch_baseline"
 
     class Meta:
         model = PatchBaseline
@@ -124,6 +126,7 @@ class PatchBaselineListSerializer(TeamSerializer):
             "assess_disabled_reason",
             "team",
             "team_name",
+            "permission",
             "created_by",
             "created_at",
             "updated_at",
@@ -145,7 +148,7 @@ class PatchBaselineListSerializer(TeamSerializer):
         if self.instance:
             qs = qs.exclude(pk=self.instance.pk)
         if qs.exists():
-            raise serializers.ValidationError("同名基线已存在")
+            raise serializers.ValidationError(serializer_message(self, "error.duplicate_baseline_name", "A baseline with the same name already exists"))
         return value
 
     def create(self, validated_data):
@@ -183,11 +186,11 @@ class PatchBaselineListSerializer(TeamSerializer):
         )
 
         status_meta = {
-            ComplianceStatus.COMPLIANT: ("合规", "success", "compliant"),
-            ComplianceStatus.NON_COMPLIANT: ("不合规", "error", "non_compliant"),
-            ComplianceStatus.PENDING: ("待评估", "default", "pending"),
-            ComplianceStatus.EVALUATING: ("评估中", "processing", "evaluating"),
-            ComplianceStatus.FAILED: ("评估失败", "default", "failed"),
+            ComplianceStatus.COMPLIANT: (serializer_message(self, "status.compliance.compliant", "Compliant"), "success", "compliant"),
+            ComplianceStatus.NON_COMPLIANT: (serializer_message(self, "status.compliance.non_compliant", "Non-compliant"), "error", "non_compliant"),
+            ComplianceStatus.PENDING: (serializer_message(self, "status.compliance.pending", "Pending assessment"), "default", "pending"),
+            ComplianceStatus.EVALUATING: (serializer_message(self, "status.compliance.evaluating", "Assessing"), "processing", "evaluating"),
+            ComplianceStatus.FAILED: (serializer_message(self, "status.compliance.failed", "Assessment failed"), "default", "failed"),
         }
         counts = {key: 0 for key in status_meta}
         for binding in bindings:
@@ -241,11 +244,11 @@ class PatchBaselineListSerializer(TeamSerializer):
 
     def get_assess_disabled_reason(self, obj):
         if not obj.requirements.exists():
-            return "基线没有补丁要求"
+            return serializer_message(self, "error.baseline_no_requirements", "The baseline has no patch requirements")
         if not obj.host_bindings.exists():
-            return "基线没有绑定主机"
+            return serializer_message(self, "error.baseline_no_targets", "The baseline has no bound targets")
         if self.get_is_assessing(obj):
-            return "基线正在评估中"
+            return serializer_message(self, "error.baseline_assessing", "The baseline is being assessed")
         return ""
 
 
@@ -258,12 +261,16 @@ class PatchBaselineDetailSerializer(PatchBaselineListSerializer):
         fields = PatchBaselineListSerializer.Meta.fields + ["requirements"]
 
 
-class HostBaselineBindingSerializer(serializers.ModelSerializer):
+class HostBaselineBindingSerializer(PatchPermissionSerializer):
     """主机基线绑定序列化器"""
 
     target_name = serializers.CharField(source="target.name", read_only=True)
     target_ip = serializers.CharField(source="target.ip", read_only=True)
     baseline_name = serializers.CharField(source="baseline.name", read_only=True)
+    permission_key = "patch_target"
+
+    def get_permission(self, instance):
+        return super().get_permission(instance.target)
 
     class Meta:
         model = HostBaselineBinding
@@ -274,6 +281,7 @@ class HostBaselineBindingSerializer(serializers.ModelSerializer):
             "target_ip",
             "baseline",
             "baseline_name",
+            "permission",
             "created_by",
             "created_at",
         ]

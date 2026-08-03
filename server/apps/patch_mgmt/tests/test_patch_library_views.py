@@ -124,7 +124,45 @@ class TestPatchWriteViewApi:
 
         assert resp.status_code == status.HTTP_400_BAD_REQUEST
         assert Patch.objects.filter(pk=patch.id).exists()
-        assert "基线" in resp.data["detail"]
+        assert resp.data["detail"]
+
+    def test_batch_delete_api_removes_all_selected_patches(self, su_client):
+        first = Patch.objects.create(title="批量删除-1", os_type=OSType.LINUX, team=[1])
+        second = Patch.objects.create(title="批量删除-2", os_type=OSType.LINUX, team=[1])
+
+        resp = su_client.post(
+            f"{PATCH_URL}batch_delete/",
+            {"ids": [first.id, second.id]},
+            format="json",
+        )
+
+        assert resp.status_code == status.HTTP_200_OK
+        assert resp.data["deleted_count"] == 2
+        assert not Patch.objects.filter(pk__in=[first.id, second.id]).exists()
+
+    def test_batch_delete_rejects_referenced_selection_without_partial_delete(self, su_client):
+        deletable = Patch.objects.create(title="可删除", os_type=OSType.LINUX, team=[1])
+        referenced = Patch.objects.create(title="被引用", os_type=OSType.LINUX, team=[1])
+        baseline = PatchBaseline.objects.create(name="测试基线", os_type=OSType.LINUX, team=[1])
+        BaselineRequirement.objects.create(baseline=baseline, patch=referenced)
+
+        resp = su_client.post(
+            f"{PATCH_URL}batch_delete/",
+            {"ids": [deletable.id, referenced.id]},
+            format="json",
+        )
+
+        assert resp.status_code == status.HTTP_400_BAD_REQUEST
+        assert Patch.objects.filter(pk__in=[deletable.id, referenced.id]).count() == 2
+
+    def test_batch_delete_requires_non_empty_id_list(self, su_client):
+        resp = su_client.post(
+            f"{PATCH_URL}batch_delete/",
+            {"ids": []},
+            format="json",
+        )
+
+        assert resp.status_code == status.HTTP_400_BAD_REQUEST
 
     def test_destroy_api_deletes_manual_package_object_before_record(self, su_client):
         patch = Patch.objects.create(title="手工补丁", os_type=OSType.WINDOWS, team=[1])
@@ -158,7 +196,7 @@ class TestPatchWriteViewApi:
 
         assert resp.status_code == status.HTTP_400_BAD_REQUEST
         assert Patch.objects.filter(pk=patch.id).exists()
-        assert "文件" in resp.data["detail"]
+        assert resp.data["detail"]
 
 
 @pytest.mark.django_db

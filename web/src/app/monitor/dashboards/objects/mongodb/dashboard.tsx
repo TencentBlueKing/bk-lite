@@ -722,8 +722,8 @@ export default function MongoDashboardPage() {
                   metric={buildMetricItem(metricMap.mongodb_latency_reads_avg || { ...DASHBOARD_METRICS[7], viewData: [], loadState: 'success' })}
                   unit="ns"
                   seriesStyles={[
-                    { color: TREND_LEGENDS.latency[0].color, unit: 'ns' },
-                    { color: TREND_LEGENDS.latency[1].color, unit: 'ns' }
+                    { color: TREND_LEGENDS.latency[0].color, unit: 'ms' },
+                    { color: TREND_LEGENDS.latency[1].color, unit: 'ms' }
                   ]}
                   onXRangeChange={onXRangeChange}
                 />

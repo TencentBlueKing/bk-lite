@@ -6,6 +6,8 @@
 - 触发异步任务（Celery / NATS 调度）
 """
 
+import hashlib
+import json
 import logging
 from datetime import datetime
 
@@ -19,6 +21,7 @@ from apps.patch_mgmt.constants import (
     RemediationStatus,
     RebootPolicy,
 )
+from apps.patch_mgmt.exceptions import PatchBusinessError
 from apps.patch_mgmt.models import (
     BaselineRequirement,
     GovernanceTask,
@@ -31,12 +34,16 @@ from apps.patch_mgmt.models import (
 logger = logging.getLogger("app")
 
 
-class HostBusyError(ValueError):
+class HostBusyError(PatchBusinessError):
     """立即执行请求命中了正在运行补丁任务的主机。"""
 
     def __init__(self, target_ids: list[int]):
         self.target_ids = sorted(set(target_ids))
-        super().__init__(f"以下主机正在执行补丁任务: {self.target_ids}")
+        super().__init__(
+            "hosts_busy",
+            "The following targets are running patch tasks: {ids}",
+            params={"ids": self.target_ids},
+        )
 
 
 def _now():
@@ -51,14 +58,14 @@ def _validate_window(data: dict) -> tuple[datetime | None, datetime | None]:
     start_raw = data.get("execution_window_start")
     end_raw = data.get("execution_window_end")
     if not start_raw or not end_raw:
-        raise ValueError("执行窗口模式下必须提供开始/结束时间")
+        raise PatchBusinessError("execution_window_required", "Start and end times are required in execution-window mode")
     try:
         start = datetime.fromisoformat(str(start_raw).replace("Z", "+00:00"))
         end = datetime.fromisoformat(str(end_raw).replace("Z", "+00:00"))
     except (TypeError, ValueError) as exc:
-        raise ValueError(f"执行窗口时间格式错误: {exc}") from exc
+        raise PatchBusinessError("invalid_execution_window", "Invalid execution-window time", raw_detail=str(exc)) from exc
     if end <= start:
-        raise ValueError("执行窗口结束时间必须晚于开始时间")
+        raise PatchBusinessError("execution_window_order", "Execution-window end time must be later than its start time")
     return start, end
 
 
@@ -190,6 +197,88 @@ def _build_task(
     return task
 
 
+def _source_record_by_pair(items) -> dict[tuple[int, int], int]:
+    """找到每个待重启风险项最新的安装根记录。"""
+    wanted = {(int(item.host_id), int(item.patch_id)) for item in items}
+    result: dict[tuple[int, int], int] = {}
+    if not wanted:
+        return result
+    for install_task in GovernanceTask.objects.filter(
+        parent_task__isnull=True,
+        task_type=GovernanceTaskType.INSTALL,
+        host_results__stage="pending_reboot",
+    ).distinct().order_by("-created_at", "-id"):
+        for snapshot in install_task.risk_snapshot or []:
+            pair = (
+                int(snapshot.get("host_id") or 0),
+                int(snapshot.get("patch_id") or 0),
+            )
+            if pair in wanted and pair not in result:
+                result[pair] = install_task.id
+        if len(result) == len(wanted):
+            break
+    return result
+
+
+def _build_reboot_scope(target_ids: list[int]) -> tuple[list[dict], str]:
+    """生成主机级待重启范围及可校验的快照指纹。"""
+    from apps.patch_mgmt.services.risk_service import compute_risk_items
+
+    pending_items = sorted(
+        (
+            item
+            for item in compute_risk_items()
+            if item.remediation == RemediationStatus.PENDING_REBOOT
+            and item.host_id in target_ids
+        ),
+        key=lambda item: (item.host_id, item.patch_id, item.baseline_id),
+    )
+    source_by_pair = _source_record_by_pair(pending_items)
+    snapshot = [
+        {
+            "id": f"{item.host_id}:{item.patch_id}:{item.baseline_id}",
+            "host_id": item.host_id,
+            "host_name": item.host_name,
+            "host_ip": item.host_ip,
+            "patch_id": item.patch_id,
+            "patch_name": item.patch_title,
+            "patch_severity": item.patch_severity,
+            "baseline_id": item.baseline_id,
+            "baseline_name": item.baseline_name,
+            "source_record_id": source_by_pair.get((item.host_id, item.patch_id)),
+        }
+        for item in pending_items
+    ]
+    canonical = json.dumps(snapshot, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    token = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+    return snapshot, token
+
+
+def get_reboot_scope(target_ids: list) -> dict:
+    """返回重启确认弹窗必须展示的完整主机-补丁范围。"""
+    normalized = sorted({int(target_id) for target_id in target_ids if target_id})
+    if not normalized:
+        raise PatchBusinessError("target_ids_required", "target_ids is required")
+    existing = set(
+        PatchTarget.objects.filter(pk__in=normalized).values_list("id", flat=True)
+    )
+    missing = [target_id for target_id in normalized if target_id not in existing]
+    if missing:
+        raise PatchBusinessError(
+            "targets_not_found", "Targets not found: {ids}", params={"ids": missing}
+        )
+    snapshot, token = _build_reboot_scope(normalized)
+    covered = {int(item["host_id"]) for item in snapshot}
+    not_pending = sorted(set(normalized) - covered)
+    if not_pending:
+        raise PatchBusinessError(
+            "targets_not_pending_reboot",
+            "The following targets are not pending reboot: {ids}",
+            params={"ids": not_pending},
+        )
+    return {"target_ids": normalized, "items": snapshot, "scope_token": token}
+
+
 @transaction.atomic
 def create_remediation_task(request, items: list[dict], data: dict) -> GovernanceTask:
     """一键治理：按 (host_id, patch_id) 对创建 install 任务。
@@ -198,7 +287,7 @@ def create_remediation_task(request, items: list[dict], data: dict) -> Governanc
     自动去重并校验所有 host/patch 必须存在且已绑定基线（未绑定时拒绝）。
     """
     if not items:
-        raise ValueError("items 不能为空")
+        raise PatchBusinessError("items_required", "items is required")
 
     # 去重 + 类型转换；保留用户选择顺序，供详情左侧风险项稳定展示。
     pairs: list[tuple[int, int]] = []
@@ -220,7 +309,7 @@ def create_remediation_task(request, items: list[dict], data: dict) -> Governanc
             seen_pairs.add(pair)
 
     if invalid:
-        raise ValueError(f"items 含非法项: {invalid[:3]}{'...' if len(invalid) > 3 else ''}")
+        raise PatchBusinessError("invalid_items", "items contains invalid entries: {items}", params={"items": invalid[:3]})
 
     target_ids = list(dict.fromkeys(h for h, _ in pairs))
     patch_ids = list(dict.fromkeys(p for _, p in pairs))
@@ -229,7 +318,7 @@ def create_remediation_task(request, items: list[dict], data: dict) -> Governanc
     existing_targets = set(PatchTarget.objects.filter(pk__in=target_ids).values_list("id", flat=True))
     missing_targets = [h for h in target_ids if h not in existing_targets]
     if missing_targets:
-        raise ValueError(f"目标主机不存在: {missing_targets}")
+        raise PatchBusinessError("targets_not_found", "Targets not found: {ids}", params={"ids": missing_targets})
 
     # 校验所有目标必须已绑定基线
     bindings = {
@@ -241,13 +330,13 @@ def create_remediation_task(request, items: list[dict], data: dict) -> Governanc
     bound = set(bindings)
     unbound = [h for h in target_ids if h not in bound]
     if unbound:
-        raise ValueError(f"以下主机未绑定基线: {unbound}")
+        raise PatchBusinessError("targets_without_baseline", "The following targets have no baseline: {ids}", params={"ids": unbound})
     _lock_and_assert_hosts_available(target_ids, data.get("execution_mode", "now"))
 
     patches = Patch.objects.in_bulk(patch_ids)
     missing_patches = [patch_id for patch_id in patch_ids if patch_id not in patches]
     if missing_patches:
-        raise ValueError(f"补丁不存在: {missing_patches}")
+        raise PatchBusinessError("patches_not_found", "Patches not found: {ids}", params={"ids": missing_patches})
 
     valid_requirements = set(
         BaselineRequirement.objects.filter(
@@ -261,7 +350,7 @@ def create_remediation_task(request, items: list[dict], data: dict) -> Governanc
         if (bindings[host_id].baseline_id, patch_id) not in valid_requirements
     ]
     if invalid_pairs:
-        raise ValueError(f"所选补丁不属于对应主机的当前基线: {invalid_pairs}")
+        raise PatchBusinessError("patches_not_in_baseline", "Selected patches are not in the targets' current baselines: {pairs}", params={"pairs": invalid_pairs})
 
     risk_snapshot = [
         {
@@ -298,58 +387,34 @@ def create_remediation_task(request, items: list[dict], data: dict) -> Governanc
 @transaction.atomic
 def create_reboot_task(request, target_ids: list, data: dict) -> GovernanceTask:
     """一键重启：创建 reboot 任务。重启任务必须设置窗口。"""
-    from apps.patch_mgmt.services.risk_service import compute_risk_items
-
     target_ids = sorted({int(t) for t in target_ids if t})
     if not target_ids:
-        raise ValueError("target_ids 不能为空")
+        raise PatchBusinessError("target_ids_required", "target_ids is required")
 
     existing = set(PatchTarget.objects.filter(pk__in=target_ids).values_list("id", flat=True))
     missing = [h for h in target_ids if h not in existing]
     if missing:
-        raise ValueError(f"目标主机不存在: {missing}")
-
-    pending_items = [
-        item
-        for item in compute_risk_items()
-        if item.remediation == RemediationStatus.PENDING_REBOOT
-        and item.host_id in target_ids
-    ]
-    pending_reboot_target_ids = {item.host_id for item in pending_items}
-    not_pending_reboot = sorted(set(target_ids) - pending_reboot_target_ids)
-    if not_pending_reboot:
-        raise ValueError(f"以下主机当前不是待重启状态: {not_pending_reboot}")
+        raise PatchBusinessError("targets_not_found", "Targets not found: {ids}", params={"ids": missing})
 
     # 重启必须有窗口
     if data.get("execution_mode") != "window":
         data = {**data, "execution_mode": "window"}
     _lock_and_assert_hosts_available(target_ids, data.get("execution_mode", "window"))
+    reboot_snapshot, scope_token = _build_reboot_scope(target_ids)
+    covered = {int(item["host_id"]) for item in reboot_snapshot}
+    not_pending_reboot = sorted(set(target_ids) - covered)
+    if not_pending_reboot:
+        raise PatchBusinessError("targets_not_pending_reboot", "The following targets are not pending reboot: {ids}", params={"ids": not_pending_reboot})
+    expected_token = str(data.get("scope_token") or "")
+    if not expected_token or expected_token != scope_token:
+        raise PatchBusinessError(
+            "reboot_scope_changed",
+            "The pending-reboot scope has changed. Refresh and confirm it again",
+        )
 
-    source_task_by_pair: dict[tuple[int, int], int] = {}
-    for install_task in GovernanceTask.objects.filter(
-        parent_task__isnull=True,
-        task_type=GovernanceTaskType.INSTALL,
-    ).order_by("-created_at"):
-        for snapshot in install_task.risk_snapshot or []:
-            pair = (int(snapshot.get("host_id") or 0), int(snapshot.get("patch_id") or 0))
-            source_task_by_pair.setdefault(pair, install_task.id)
-
-    reboot_snapshot = [
-        {
-            "id": f"{item.host_id}:{item.patch_id}:{item.baseline_id}",
-            "host_id": item.host_id,
-            "host_name": item.host_name,
-            "host_ip": item.host_ip,
-            "patch_id": item.patch_id,
-            "patch_name": item.patch_title,
-            "baseline_id": item.baseline_id,
-            "baseline_name": item.baseline_name,
-            "source_task_id": source_task_by_pair.get((item.host_id, item.patch_id)),
-        }
-        for item in pending_items
-    ]
+    pending_items = reboot_snapshot
     default_name = (
-        f"重启 · {pending_items[0].host_name}"
+        f"重启 · {pending_items[0]['host_name']}"
         if len(target_ids) == 1 and pending_items
         else f"一键重启 · {len(target_ids)}台"
     )
@@ -359,9 +424,21 @@ def create_reboot_task(request, target_ids: list, data: dict) -> GovernanceTask:
         name=name,
         task_type=GovernanceTaskType.REBOOT,
         target_ids=target_ids,
-        patch_ids=[],
+        patch_ids=list(
+            dict.fromkeys(
+                int(item["patch_id"])
+                for item in reboot_snapshot
+                if item.get("patch_id")
+            )
+        ),
         data={**data, "risk_snapshot": reboot_snapshot},
     )
+    source_ids = {
+        int(item.get("source_record_id") or 0) for item in reboot_snapshot
+    } - {0}
+    if len(source_ids) == 1:
+        task.source_record_id = source_ids.pop()
+        task.save(update_fields=["source_record", "updated_at"])
     _trigger_async(task.id)
     return task
 
@@ -378,7 +455,7 @@ def _create_evaluation_task(
     """评估/验证任务创建公共逻辑。"""
     target_ids = [int(t) for t in target_ids if t]
     if not target_ids:
-        raise ValueError("target_ids 不能为空")
+        raise PatchBusinessError("target_ids_required", "target_ids is required")
     _lock_and_assert_hosts_available(target_ids, data.get("execution_mode", "now"))
 
     name = (data.get("name") or "").strip() or f"{default_name_prefix} · {len(target_ids)} 台 · {_now().strftime('%m-%d %H:%M')}"
@@ -417,57 +494,65 @@ def create_verify_task(request, target_ids: list, data: dict) -> GovernanceTask:
 
 
 @transaction.atomic
-def create_retry_task(request, original_task: GovernanceTask, target_id: int) -> GovernanceTask:
-    """重试失败主机：在同一可见根记录下创建内部步骤尝试。
-
-    - install 任务保留原 patch_list
-    - 标记原主机 can_retry=False 防止重复重试
-    """
+def create_retry_task(
+    request,
+    original_task: GovernanceTask,
+    risk_item_id: str,
+) -> GovernanceTask:
+    """重试单个风险项，并创建独立的新根执行记录。"""
     from apps.patch_mgmt.services.execution_record_service import (
-        _task_chain,
         build_risk_item_summaries,
     )
 
     original_task = GovernanceTask.objects.select_for_update().get(pk=original_task.pk)
-    chain = _task_chain(original_task)
-    retryable_host = GovernanceTaskHost.objects.filter(
-        task__in=chain,
-        target_id=target_id,
-        can_retry=True,
-    ).order_by("-created_at").first()
-    has_unmet_item = any(
-        item["host_id"] == target_id and item["status"] == "unmet"
-        for item in build_risk_item_summaries(original_task)
+    item = next(
+        (
+            snapshot
+            for snapshot in (original_task.risk_snapshot or [])
+            if str(snapshot.get("id")) == str(risk_item_id)
+        ),
+        None,
     )
-    if retryable_host is None and not has_unmet_item:
-        raise ValueError("该主机不可重试或不存在")
+    summary = next(
+        (
+            current
+            for current in build_risk_item_summaries(original_task)
+            if str(current["id"]) == str(risk_item_id)
+        ),
+        None,
+    )
+    if item is None or summary is None or not summary.get("can_retry"):
+        raise PatchBusinessError(
+            "risk_item_not_retryable",
+            "The risk item does not exist or cannot be retried",
+        )
+    target_id = int(item["host_id"])
     if not PatchTarget.objects.filter(pk=target_id).exists():
-        raise ValueError("目标不存在或已删除，无法重试")
+        raise PatchBusinessError("target_deleted", "The target does not exist or has been deleted and cannot be retried")
 
     _lock_and_assert_hosts_available([target_id], "now")
-    host = original_task.host_results.filter(target_id=target_id).first() or retryable_host
-
-    # 防止重复重试
-    GovernanceTaskHost.objects.filter(
-        task__in=chain,
-        target_id=target_id,
-        can_retry=True,
-    ).update(can_retry=False, updated_at=_now())
+    if GovernanceTask.objects.filter(
+        parent_task__isnull=True,
+        source_record=original_task,
+        source_risk_item_id=str(risk_item_id),
+    ).exists():
+        raise PatchBusinessError(
+            "risk_item_already_retried",
+            "A new retry record has already been created for this risk item",
+        )
+    host = original_task.host_results.filter(target_id=target_id).first()
 
     task_type = original_task.task_type
-    target_snapshot = [
-        item
-        for item in (original_task.risk_snapshot or [])
-        if int(item.get("host_id") or 0) == target_id
-    ]
-    patch_ids = (
-        list(dict.fromkeys(int(item["patch_id"]) for item in target_snapshot if item.get("patch_id")))
-        if task_type == GovernanceTaskType.INSTALL
-        else []
+    target_snapshot = [{**item, "source_record_id": original_task.id}]
+    patch_ids = list(
+        dict.fromkeys(
+            int(snapshot["patch_id"])
+            for snapshot in target_snapshot
+            if snapshot.get("patch_id")
+        )
     )
-    if task_type == GovernanceTaskType.INSTALL and not patch_ids:
-        patch_ids = list(original_task.patch_list or [])
-    name = f"重试 · {host.target_name or str(target_id)} · {_now().strftime('%m-%d %H:%M')}"
+    host_name = item.get("host_name") or (host.target_name if host else str(target_id))
+    name = f"重试 · {host_name} · {_now().strftime('%m-%d %H:%M')}"
 
     task = _build_task(
         request,
@@ -482,7 +567,8 @@ def create_retry_task(request, original_task: GovernanceTask, target_id: int) ->
             "risk_snapshot": target_snapshot,
         },
     )
-    task.parent_task = original_task
-    task.save(update_fields=["parent_task", "updated_at"])
+    task.source_record = original_task
+    task.source_risk_item_id = str(risk_item_id)
+    task.save(update_fields=["source_record", "source_risk_item_id", "updated_at"])
     _trigger_async(task.id)
     return task

@@ -148,7 +148,9 @@ const UserSyncPage: React.FC = () => {
   const entityListItems = useMemo<UserSyncEntityItem[]>(() => {
     return sources.map((source) => {
       const providerKey =
-        availableInstances.find((item) => item.id === source.integration_instance)?.provider_key || '';
+        source.integration_provider_key
+        || availableInstances.find((item) => item.id === source.integration_instance)?.provider_key
+        || '';
       const latestStatus = source.latest_run?.status;
       const latestSyncTimeText = source.latest_run?.started_at
         ? convertToLocalizedTime(source.latest_run.started_at, 'YYYY-MM-DD HH:mm')

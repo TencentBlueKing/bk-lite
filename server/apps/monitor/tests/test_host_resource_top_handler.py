@@ -21,7 +21,7 @@ def test_host_resource_top_handler_returns_data(monkeypatch):
         def query(self, query):
             return {
                 "status": "success",
-                "data": {"result": [{"metric": {"instance_id": "host-1"}, "value": [time.time(), "42"]}]},
+                "data": {"result": [{"metric": {"instance_id": "host-1"}, "value": [time.time(), "58"]}]},
             }
 
     monkeypatch.setattr(nm, "VictoriaMetricsAPI", FakeVM)

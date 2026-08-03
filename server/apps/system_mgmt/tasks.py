@@ -3,6 +3,8 @@ from datetime import timedelta
 
 from celery import shared_task
 from celery.exceptions import MaxRetriesExceededError
+from django.db import transaction
+from django.db.models import Q
 from django.utils import timezone as django_timezone
 
 from apps.core.logger import system_mgmt_logger as logger
@@ -11,6 +13,7 @@ from apps.rpc.base import RpcClient
 from apps.system_mgmt.models import Channel, ErrorLog, Group, LoginModule, SystemSettings, User
 from apps.system_mgmt.models.channel import ChannelChoices
 from apps.system_mgmt.utils.channel_utils import send_email_to_user
+from apps.system_mgmt.utils.group_utils import GroupUtils
 
 
 @shared_task(bind=True, max_retries=3, default_retry_delay=60)
@@ -99,7 +102,25 @@ def _sync_groups(group_list, parent_group, parent_group_id):
     # 处理需要删除的组
     delete_groups = [group.id for group in existing_groups if group.external_id and group.external_id not in current_external_ids]
     if delete_groups:
-        Group.objects.filter(id__in=delete_groups).delete()
+        with transaction.atomic():
+            affected_identities = set()
+            affected_group_ids = GroupUtils.get_group_with_descendants(delete_groups)
+            for offset in range(0, len(affected_group_ids), 100):
+                affected_query = Q()
+                for group_id in affected_group_ids[offset : offset + 100]:
+                    affected_query |= Q(group_list__contains=[group_id])
+                affected_identities.update(
+                    User.objects.filter(affected_query)
+                    .values_list("username", "domain")
+                    .iterator(chunk_size=1000)
+                )
+            affected_users = [
+                {"username": username, "domain": domain}
+                for username, domain in sorted(affected_identities)
+            ]
+            Group.objects.filter(id__in=delete_groups).delete()
+            if affected_users:
+                clear_users_permission_cache(affected_users)
         logger.info(f"Deleted {len(delete_groups)} groups under parent {parent_group.name}")
 
     # 处理当前层级的组
@@ -234,19 +255,21 @@ def _sync_users(user_list, group_id_mapping, domain, default_role):
             new_user = User(**user_defaults)
             create_users.append(new_user)
 
-    # 批量创建新用户
+    affected_users = create_users + update_users
+    if affected_users:
+        with transaction.atomic():
+            if create_users:
+                User.objects.bulk_create(create_users, batch_size=100)
+            if update_users:
+                update_fields = ["display_name", "group_list"]
+                if any(hasattr(user, "domain") for user in update_users):
+                    update_fields.append("domain")
+                User.objects.bulk_update(update_users, update_fields, batch_size=100)
+            clear_users_permission_cache([{"username": user.username, "domain": user.domain} for user in affected_users])
+
     if create_users:
-        User.objects.bulk_create(create_users, batch_size=100)
         logger.info(f"Created {len(create_users)} new users")
-
-    # 批量更新已存在的用户
     if update_users:
-        update_fields = ["display_name", "group_list"]
-        if any(hasattr(user, "domain") for user in update_users):
-            update_fields.append("domain")
-
-        User.objects.bulk_update(update_users, update_fields, batch_size=100)
-        clear_users_permission_cache([{"username": user.username, "domain": user.domain} for user in update_users])
         logger.info(f"Updated {len(update_users)} existing users")
 
     return list(user_data_map.keys())

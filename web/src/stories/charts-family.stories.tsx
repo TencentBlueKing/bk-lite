@@ -118,6 +118,23 @@ const areaCanvasData = [
   { timestamp: 1717214400, value1: 35, value2: 26 },
 ];
 
+interface AreaCanvasTooltipPayloadItem {
+  color?: string;
+  dataKey?: React.Key;
+  value?: unknown;
+}
+
+const getAreaCanvasTooltipItems = (payload: unknown[]) =>
+  payload.map((item) => {
+    const payloadItem = item as AreaCanvasTooltipPayloadItem;
+    return {
+      key: payloadItem.dataKey,
+      color: payloadItem.color,
+      value: Number(payloadItem.value ?? 0).toFixed(2),
+      sortValue: Number(payloadItem.value ?? 0),
+    };
+  });
+
 const stepAxisAreaCanvasData = [
   { step: 1, loss: 0.98, accuracy: 0.72 },
   { step: 2, loss: 0.81, accuracy: 0.78 },
@@ -1336,21 +1353,14 @@ const FamilyOverview = () => {
                   <ChartSeriesTooltip
                     visible={visible}
                     renderTitle={(label) => dayjs(Number(label) * 1000).format('YYYY-MM-DD HH:mm')}
-                    getItems={(payload) =>
-                      payload.map((item: any) => ({
-                        key: item.dataKey,
-                        color: item.color,
-                        value: Number(item.value ?? 0).toFixed(2),
-                        sortValue: Number(item.value ?? 0),
-                      }))
-                    }
+                    getItems={getAreaCanvasTooltipItems}
                   />
                 )}
                 series={[
                   {
                     dataKey: 'value1',
-                    stroke: '#3b82f6',
-                    fill: '#3b82f6',
+                    stroke: 'var(--color-primary)',
+                    fill: 'var(--color-primary)',
                     fillOpacity: 0,
                     strokeWidth: 2.5,
                     type: 'monotone',
@@ -1436,6 +1446,40 @@ const FamilyOverview = () => {
                 }}
                 toRangeValue={(label) => dayjs(label * 1000)}
                 xAxisDataKey="timestamp"
+                xAxisTickFormatter={(tick) => dayjs(tick * 1000).format('HH:mm')}
+              />
+            </div>
+          </div>
+
+          <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-2)] p-4 xl:col-span-2">
+            <SectionHeader spacing="compact" title="Fixed domain with clipped overflow" titleClassName="text-sm font-medium" />
+            <div className="h-[240px]">
+              <TimeSeriesAreaChartCanvas
+                className="h-full w-full"
+                data={areaCanvasData}
+                margin={{ top: 10, right: 0, left: 0, bottom: 0 }}
+                renderTooltip={(visible) => (
+                  <ChartSeriesTooltip
+                    visible={visible}
+                    renderTitle={(label) => dayjs(Number(label) * 1000).format('YYYY-MM-DD HH:mm')}
+                    getItems={getAreaCanvasTooltipItems}
+                  />
+                )}
+                series={[
+                  {
+                    dataKey: 'value1',
+                    stroke: 'var(--color-primary)',
+                    fill: 'var(--color-primary)',
+                    fillOpacity: 0,
+                    strokeWidth: 2.5,
+                    type: 'monotone',
+                    isAnimationActive: false,
+                  },
+                ]}
+                toRangeValue={(label) => dayjs(label * 1000)}
+                xAxisAllowDataOverflow
+                xAxisDataKey="timestamp"
+                xAxisDomain={[1717196400, 1717218000]}
                 xAxisTickFormatter={(tick) => dayjs(tick * 1000).format('HH:mm')}
               />
             </div>

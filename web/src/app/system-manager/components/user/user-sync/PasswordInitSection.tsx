@@ -71,7 +71,6 @@ const PasswordInitSection: React.FC<PasswordInitSectionProps> = ({
     <div className="mt-6 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-4 py-4">
       <div className="mb-1 text-[var(--color-text)]">
         {t('system.user.userSyncPage.passwordInit.sectionTitle')}
-        <span className="ml-1 text-[var(--color-primary)]">*</span>
       </div>
       <div className="flex flex-col gap-2">
         <Select

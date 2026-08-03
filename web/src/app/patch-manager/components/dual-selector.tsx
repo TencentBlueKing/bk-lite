@@ -3,6 +3,7 @@
 import React from 'react';
 import { CloseOutlined } from '@ant-design/icons';
 import CustomTable from '@/components/custom-table';
+import { useTranslation } from '@/utils/i18n';
 import type { ColumnsType, TablePaginationConfig } from 'antd/es/table';
 
 interface DualSelectorProps<T extends object> {
@@ -38,6 +39,7 @@ export default function DualSelector<T extends object>({
   selectedRecordsData,
   renderSelectedLabel,
 }: DualSelectorProps<T>) {
+  const { t } = useTranslation();
   const getRecordKey = (record: T): React.Key => {
     if (typeof rowKey === 'function') {
       return rowKey(record);
@@ -51,7 +53,7 @@ export default function DualSelector<T extends object>({
     total: dataSource.length,
     pageSize: 10,
     showSizeChanger: true,
-    showTotal: (t) => `共 ${t} 条`,
+    showTotal: (total) => t('patchManager.common.totalItems', 'Total {count} items', { count: total }),
   };
 
   return (
@@ -94,10 +96,10 @@ export default function DualSelector<T extends object>({
             marginBottom: 12,
           }}
         >
-          <span style={{ fontWeight: 500 }}>{rightTitle || `已选 ${selectedRecords.length} 项`}</span>
+          <span style={{ fontWeight: 500 }}>{rightTitle || t('patchManager.common.selectedItems', 'Selected {count} items', { count: selectedRecords.length })}</span>
           {selectedRecords.length > 0 && (
             <a style={{ color: '#ff4d4f', fontSize: 12 }} onClick={() => onChange([])}>
-              全部清除
+              {t('patchManager.common.clearAll', 'Clear all')}
             </a>
           )}
         </div>
@@ -145,7 +147,7 @@ export default function DualSelector<T extends object>({
                 marginTop: 40,
               }}
             >
-              暂未选择
+              {t('patchManager.common.noSelection', 'No selection')}
             </div>
           )}
         </div>

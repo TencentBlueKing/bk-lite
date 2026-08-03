@@ -302,6 +302,23 @@ def test_ad_connection_test_returns_failure_without_adapter_error_log(mock_probe
 
 
 @patch("apps.system_mgmt.providers.adapters.ad.probe_root_dse")
+def test_ad_connection_test_exposes_sanitized_ldap_bind_diagnostics(mock_probe_root_dse):
+    mock_probe_root_dse.side_effect = LDAPBindError("LDAP result 49: invalidCredentials")
+
+    result = ADLoginAuthAdapter.test_connection(
+        config=_base_config(),
+        provider_key="ad",
+        capability_key="login_auth",
+    )
+
+    assert result.success is False
+    assert result.errors[0].code == "provider.auth_failed"
+    assert result.errors[0].field == ""
+    assert result.errors[0].external_code == "49"
+    assert result.errors[0].detail == "LDAP bind rejected the configured credentials"
+
+
+@patch("apps.system_mgmt.providers.adapters.ad.probe_root_dse")
 @patch("apps.system_mgmt.providers.adapters.ad.build_connection_config")
 def test_ad_user_sync_test_connection_succeeds_without_base_dn(
     mock_build_connection_config,
@@ -400,3 +417,61 @@ def test_ad_authenticate_returns_invalid_config_when_base_dn_missing():
     assert result.success is False
     assert result.errors[0].code == "provider.invalid_config"
     assert "base_dn" in result.errors[0].message.lower()
+
+
+# ---------------------------------------------------------------------------
+# AD LDAP 属性白名单：仅请求当前同步源映射所需字段及组织结构必需字段。
+# ---------------------------------------------------------------------------
+
+
+@patch("apps.system_mgmt.providers.adapters.ad.search_entries")
+def test_ad_user_sync_requests_only_mapped_external_fields(mock_search_entries):
+    """用户同步不请求未被当前源映射的可选 LDAP 字段。"""
+    mock_search_entries.side_effect = [
+        [
+            {
+                "sAMAccountName": "alice",
+                "displayName": "Alice",
+                "distinguishedName": "CN=Alice,OU=PAAS,DC=corp,DC=example,DC=com",
+            },
+            {
+                "sAMAccountName": "bob",
+                "displayName": "Bob",
+                "distinguishedName": "CN=Bob,OU=PAAS,DC=corp,DC=example,DC=com",
+                "telephoneNumber": "13800000002",
+            },
+        ],
+        [],
+    ]
+
+    result = ADUserSyncAdapter.sync_users(
+        config=_base_config(),
+        provider_key="ad",
+        capability_key="user_sync",
+        source=type(
+            "Source",
+            (),
+            {
+                "business_config": {
+                    "root_dn": "OU=PAAS,DC=corp,DC=example,DC=com",
+                    "user_object_class": "user",
+                    "user_filter": "(&(objectCategory=Person)(sAMAccountName=*))",
+                    "organization_object_class": "organizationalUnit",
+                },
+                "field_mapping": {
+                    "username": "sAMAccountName",
+                    "display_name": "displayName",
+                    "email": "mail",
+                    "phone": "telephoneNumber",
+                },
+            },
+        )(),
+    )
+
+    assert result.success is True
+    users_by_name = {u["sAMAccountName"]: u for u in result.payload["user_list"]}
+    # 兼容性：telephoneNumber 仍可读
+    assert users_by_name["bob"]["telephoneNumber"] == "13800000002"
+    # 仅请求配置映射字段和构建组织关系所需的 distinguishedName。
+    attributes_arg = mock_search_entries.call_args_list[0].args[3]
+    assert attributes_arg == ["sAMAccountName", "displayName", "mail", "telephoneNumber", "distinguishedName"]

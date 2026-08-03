@@ -27,6 +27,7 @@ from apps.patch_mgmt.serializers.baseline import (
     PatchBaselineListSerializer,
 )
 from apps.patch_mgmt.utils.data_permissions import require_authorized_ids
+from apps.patch_mgmt.utils.i18n import patch_message, render_business_error
 
 
 class PatchBaselineViewSet(AuthViewSet):
@@ -62,9 +63,9 @@ class PatchBaselineViewSet(AuthViewSet):
     @HasPermission("patch_baseline-Delete")
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
-        self._assert_not_locked(instance)
+        self._assert_not_locked(request, instance)
         if instance.host_bindings.exists():
-            raise DRFValidationError("该基线已绑定主机，需先解绑才能删除")
+            raise DRFValidationError(patch_message(request, "error.baseline_bound", "Unbind all targets before deleting this baseline"))
         instance.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
@@ -73,6 +74,10 @@ class PatchBaselineViewSet(AuthViewSet):
     def requirements(self, request, pk=None):
         """查询补丁要求清单。"""
         baseline = self.get_object()
+        require_authorized_ids(
+            self, request, PatchBaseline.objects.all(), [baseline.id],
+            "patch_baseline", operation="View"
+        )
         reqs = baseline.requirements.select_related(
             "patch__windows_detail", "patch__linux_detail"
         )
@@ -84,6 +89,10 @@ class PatchBaselineViewSet(AuthViewSet):
     def add_requirements(self, request, pk=None):
         """添加补丁要求。"""
         baseline = self.get_object()
+        require_authorized_ids(
+            self, request, PatchBaseline.objects.all(), [baseline.id],
+            "patch_baseline"
+        )
         patch_ids = request.data.get("patch_ids", [])
         require_authorized_ids(self, request, Patch.objects.all(), patch_ids, "patch")
         condition = request.data.get("condition", "")
@@ -106,6 +115,10 @@ class PatchBaselineViewSet(AuthViewSet):
     def delete_requirements(self, request, pk=None):
         """移除补丁要求。"""
         baseline = self.get_object()
+        require_authorized_ids(
+            self, request, PatchBaseline.objects.all(), [baseline.id],
+            "patch_baseline"
+        )
         req_ids = request.data.get("requirement_ids", [])
         deleted_count, _ = BaselineRequirement.objects.filter(
             id__in=req_ids, baseline=baseline
@@ -120,6 +133,10 @@ class PatchBaselineViewSet(AuthViewSet):
     def bind_hosts(self, request, pk=None):
         """绑定主机到基线"""
         baseline = self.get_object()
+        require_authorized_ids(
+            self, request, PatchBaseline.objects.all(), [baseline.id],
+            "patch_baseline"
+        )
         target_ids = sorted(
             {
                 int(target_id)
@@ -128,7 +145,7 @@ class PatchBaselineViewSet(AuthViewSet):
             }
         )
         if not target_ids:
-            raise DRFValidationError("请至少选择一台主机")
+            raise DRFValidationError(patch_message(request, "error.target_ids_required", "Select at least one target"))
         require_authorized_ids(
             self,
             request, PatchTarget.objects.all(), target_ids, "patch_target"
@@ -194,6 +211,10 @@ class PatchBaselineViewSet(AuthViewSet):
     def hosts(self, request, pk=None):
         """已绑定主机列表"""
         baseline = self.get_object()
+        require_authorized_ids(
+            self, request, PatchBaseline.objects.all(), [baseline.id],
+            "patch_baseline", operation="View"
+        )
         bindings = baseline.host_bindings.select_related("target", "baseline")
         serializer = HostBaselineBindingSerializer(bindings, many=True)
         return Response(serializer.data)
@@ -208,10 +229,14 @@ class PatchBaselineViewSet(AuthViewSet):
         )
 
         baseline = self.get_object()
+        require_authorized_ids(
+            self, request, PatchBaseline.objects.all(), [baseline.id],
+            "patch_baseline"
+        )
         requirements = list(baseline.requirements.order_by("id"))
         if not requirements:
             return Response(
-                {"code": "no_requirements", "detail": "基线没有补丁要求，无法评估"},
+                {"code": "no_requirements", "detail": patch_message(request, "error.baseline_no_requirements", "The baseline has no patch requirements and cannot be assessed")},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         bindings = list(
@@ -219,7 +244,7 @@ class PatchBaselineViewSet(AuthViewSet):
         )
         if not bindings:
             return Response(
-                {"code": "no_hosts", "detail": "基线没有绑定主机，无法评估"},
+                {"code": "no_hosts", "detail": patch_message(request, "error.baseline_no_targets", "The baseline has no bound targets and cannot be assessed")},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -246,7 +271,7 @@ class PatchBaselineViewSet(AuthViewSet):
             return Response(
                 {
                     "code": "host_busy",
-                    "detail": "部分主机正在执行补丁任务，本次评估未创建",
+                    "detail": patch_message(request, "error.assessment_hosts_busy", "Some targets are running patch tasks; the assessment was not created"),
                     "target_ids": busy_target_ids,
                 },
                 status=status.HTTP_409_CONFLICT,
@@ -280,7 +305,7 @@ class PatchBaselineViewSet(AuthViewSet):
                 target_ids,
                 {
                     "execution_mode": "now",
-                    "name": f"评估 · {baseline.name} · {len(target_ids)}台",
+                    "name": patch_message(request, "message.baseline_assessment_name", "Assessment · {name} · {count} targets", name=baseline.name, count=len(target_ids)),
                     "risk_snapshot": snapshot,
                 },
             )
@@ -288,7 +313,7 @@ class PatchBaselineViewSet(AuthViewSet):
             return Response(
                 {
                     "code": "host_busy",
-                    "detail": str(exc),
+                    "detail": render_business_error(request, exc),
                     "target_ids": exc.target_ids,
                 },
                 status=status.HTTP_409_CONFLICT,
@@ -309,16 +334,19 @@ class PatchBaselineViewSet(AuthViewSet):
         )
 
     @staticmethod
-    def _assert_not_locked(baseline: PatchBaseline):
+    def _assert_not_locked(request, baseline: PatchBaseline):
         """有进行中治理任务时禁止修改"""
         active_count = GovernanceTask.objects.filter(
             risk_snapshot__contains=[{"baseline_id": baseline.id}],
             status__in=GovernanceTaskStatus.ACTIVE_STATES,
         ).count()
         if active_count > 0:
-            raise DRFValidationError(
-                f"该基线有 {active_count} 个进行中治理任务，完成后可操作"
-            )
+            raise DRFValidationError(patch_message(
+                request,
+                "error.baseline_locked",
+                "The baseline has {count} active governance tasks; try again after they finish",
+                count=active_count,
+            ))
 
     @staticmethod
     def _reset_bindings_to_pending(baseline: PatchBaseline) -> int:

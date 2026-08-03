@@ -94,6 +94,17 @@ def test_parse_client_datetime_plain():
     assert isinstance(dt, datetime.datetime)
 
 
+@pytest.mark.parametrize("raw_value", ["", "not-a-number", "0", "-1"])
+def test_positive_int_env_invalid_value_falls_back(monkeypatch, raw_value):
+    monkeypatch.setenv("ALERT_TREND_TEST_SPAN", raw_value)
+    assert N._positive_int_env("ALERT_TREND_TEST_SPAN", 60) == 60
+
+
+def test_positive_int_env_accepts_override(monkeypatch):
+    monkeypatch.setenv("ALERT_TREND_TEST_SPAN", "120")
+    assert N._positive_int_env("ALERT_TREND_TEST_SPAN", 60) == 120
+
+
 def test_generate_time_periods_day():
     tz = timezone.get_current_timezone()
     start = timezone.make_aware(datetime.datetime(2026, 1, 1), tz)
@@ -433,6 +444,111 @@ def test_get_alert_level_trend_returns_multiseries_by_level(user_info):
 
 
 @pytest.mark.django_db
+@pytest.mark.parametrize(
+    "group_by",
+    ["minute", "hour", "day", "week", "month"],
+)
+def test_get_alert_level_trend_span_over_limit_rejected_before_period_generation(monkeypatch, user_info, group_by):
+    """超限区间必须在生成完整时间序列前被拒绝。"""
+    start = datetime.datetime(2025, 1, 1)
+    end = start + datetime.timedelta(seconds=N._MAX_SPAN_SECONDS[group_by] + 1)
+    monkeypatch.setattr(
+        N,
+        "_generate_time_periods",
+        lambda *_args, **_kwargs: pytest.fail("超限请求不应生成时间序列"),
+    )
+
+    result = N.get_alert_level_trend(
+        user_info=user_info,
+        time=[start.isoformat(), end.isoformat()],
+        group_by=group_by,
+    )
+
+    assert result["result"] is False
+    assert result["data"] == {}
+    assert group_by in result["message"]
+
+
+@pytest.mark.django_db
+def test_get_alert_level_trend_exact_span_limit_is_accepted(monkeypatch, user_info):
+    start = datetime.datetime(2025, 1, 1)
+    end = start + datetime.timedelta(seconds=N._MAX_SPAN_SECONDS["minute"])
+    monkeypatch.setattr(N, "_generate_time_periods", lambda *_args, **_kwargs: [])
+
+    result = N.get_alert_level_trend(
+        user_info=user_info,
+        time=[start.isoformat(), end.isoformat()],
+        group_by="minute",
+    )
+
+    assert result["result"] is True
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("handler", "empty_data"),
+    [
+        (N.get_alert_trend_data, []),
+        (N.get_alert_level_trend, {}),
+    ],
+)
+@pytest.mark.parametrize(
+    "time_values",
+    [
+        "2025-01-01",
+        ["not-a-datetime", "2025-01-02 00:00:00"],
+        [None, "2025-01-02 00:00:00"],
+    ],
+)
+def test_alert_trend_rejects_malformed_time(user_info, handler, empty_data, time_values):
+    result = handler(user_info=user_info, time=time_values)
+
+    assert result["result"] is False
+    assert result["data"] == empty_data
+    assert result["message"]
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("handler", "empty_data"),
+    [
+        (N.get_alert_trend_data, []),
+        (N.get_alert_level_trend, {}),
+    ],
+)
+def test_alert_trend_rejects_reversed_time(user_info, handler, empty_data):
+    result = handler(
+        user_info=user_info,
+        time=["2025-01-02 00:00:00", "2025-01-01 00:00:00"],
+    )
+
+    assert result["result"] is False
+    assert result["data"] == empty_data
+    assert "later" in result["message"]
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("handler", "empty_data"),
+    [
+        (N.get_alert_trend_data, []),
+        (N.get_alert_level_trend, {}),
+    ],
+)
+@pytest.mark.parametrize("group_by", ["level", ["day"]])
+def test_alert_trend_rejects_unsupported_group(user_info, handler, empty_data, group_by):
+    result = handler(
+        user_info=user_info,
+        time=["2025-01-01 00:00:00", "2025-01-02 00:00:00"],
+        group_by=group_by,
+    )
+
+    assert result["result"] is False
+    assert result["data"] == empty_data
+    assert "group_by" in result["message"]
+
+
+@pytest.mark.django_db
 def test_get_alert_level_distribution(user_info):
     Level.objects.create(level_id=0, level_name="Critical", level_display_name="严重", level_type="alert")
     Alert.objects.create(alert_id="A1", level="0", title="t", content="c", fingerprint="fp", team=[1])
@@ -560,7 +676,7 @@ def test_get_alert_source_event_top(user_info):
 @pytest.mark.django_db
 def test_get_alert_source_distribution_returns_full_distribution_and_unknown():
     for index in range(12):
-        alert = Alert.objects.create(
+        Alert.objects.create(
             alert_id=f"DIST-{index}",
             level="0",
             title="t",
@@ -574,7 +690,8 @@ def test_get_alert_source_distribution_returns_full_distribution_and_unknown():
     assert result["result"] is True
     assert result["data"] == [
         {"name": "zabbix", "value": 3},
-        *[{"name": f"source-{index}", "value": 1} for index in range(3, 11)],
+        {"name": "source-10", "value": 1},
+        *[{"name": f"source-{index}", "value": 1} for index in range(3, 10)],
         {"name": "未知来源", "value": 1},
     ]
 
@@ -765,6 +882,17 @@ def test_alert_test():
 
 
 @pytest.mark.django_db
+def test_receive_alert_events_health_probe_has_no_event_side_effects():
+    from apps.alerts.models.models import Event
+
+    before = Event.objects.count()
+    result = N.receive_alert_events(health_probe=True)
+
+    assert result == {"result": True, "data": {"status": "ok"}, "message": ""}
+    assert Event.objects.count() == before
+
+
+@pytest.mark.django_db
 def test_receive_alert_events_missing_source_id():
     result = N.receive_alert_events(events=[{}], pusher="p")
     assert result["result"] is False
@@ -816,7 +944,7 @@ def test_receive_alert_events_success():
     assert Event.objects.filter(title="事件A").exists()
 
 
-@pytest.mark.parametrize("pusher", ["lite-monitor", "lite-log"])
+@pytest.mark.parametrize("pusher", ["lite-monitor", "lite-log", "lite-apm"])
 @pytest.mark.django_db
 def test_receive_alert_events_allows_whitelisted_internal_organizations_without_source_registration(pusher):
     """内部白名单来源直推不依赖 NATS 告警源预先登记组织。"""

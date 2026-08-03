@@ -1,9 +1,15 @@
 import type { ChartData, GapInterval } from './types';
 
 export const GAP_INTERVAL_AREA_STYLE = {
-  fill: 'rgba(245, 63, 63, 0.18)',
+  fill: 'var(--color-chart-gap-fill)',
   fillOpacity: 1,
   strokeOpacity: 0,
+} as const;
+
+export const GAP_INTERVAL_BOUNDARY_STYLE = {
+  stroke: 'var(--color-chart-gap-boundary)',
+  strokeDasharray: '3 3',
+  strokeWidth: 1,
 } as const;
 
 const normalizeCollectionIntervalSeconds = (value: unknown): number => {
@@ -14,7 +20,7 @@ const normalizeCollectionIntervalSeconds = (value: unknown): number => {
   return Math.ceil(numericValue);
 };
 
-export const buildGapDetectionParams = <T extends Record<string, unknown>>(
+export const buildGapDetectionParams = <T extends object>(
   params: T,
   collectionIntervalSeconds: unknown,
 ): T & { detect_gaps?: boolean; collection_interval?: number } => {
@@ -122,6 +128,43 @@ const getFinitePointTimes = (data: ChartData[], valueKeys?: Set<string>): number
   return Array.from(times).sort((left, right) => left - right);
 };
 
+const resolveVisibleXAxisDomain = (
+  data: ChartData[],
+  xAxisDomain?: [number, number],
+): [number, number] | undefined => {
+  if (xAxisDomain) {
+    return xAxisDomain;
+  }
+  const times = data
+    .map((item) => Number(item.time))
+    .filter((time) => Number.isFinite(time));
+  return times.length ? [Math.min(...times), Math.max(...times)] : undefined;
+};
+
+const alignReportedGapToSampleBoundaries = (
+  data: ChartData[],
+  gap: GapInterval,
+  xAxisDomain?: [number, number],
+): GapInterval => {
+  const gapValueKeys = getGapValueKeys(data, gap);
+  const times = gapValueKeys.size
+    ? getFinitePointTimes(data, gapValueKeys)
+    : getFinitePointTimes(data);
+  const previousPoint = [...times].reverse().find((time) => time < gap.start);
+  const nextPoint = times.find((time) => time > gap.end);
+  const start = previousPoint === undefined ? gap.start : (previousPoint + gap.start) / 2;
+  const end = nextPoint === undefined ? gap.end : (gap.end + nextPoint) / 2;
+  const clampedStart = xAxisDomain ? Math.max(xAxisDomain[0], start) : start;
+  const clampedEnd = xAxisDomain ? Math.min(xAxisDomain[1], end) : end;
+
+  return {
+    ...gap,
+    start: clampedStart,
+    end: clampedEnd,
+    duration: clampedEnd - clampedStart,
+  };
+};
+
 const getChartValueKeys = (data: ChartData[]): string[] => {
   const keys = new Set<string>();
   data.forEach((item) => {
@@ -218,8 +261,18 @@ export const deriveVisibleGapIntervalsFromChartData = (
 export const getChartDataWithGapBreaks = (
   data: ChartData[],
   gaps: GapInterval[] = [],
+  xAxisDomain?: [number, number],
 ): ChartData[] => {
-  const breakPoints = new Map<number, Set<string>>();
+  const visibleXAxisDomain = resolveVisibleXAxisDomain(data, xAxisDomain);
+  const syntheticPoints = new Map<number, ChartData>();
+  const setSyntheticValue = (time: number, key: string, value: number | null) => {
+    if (visibleXAxisDomain && (time < visibleXAxisDomain[0] || time > visibleXAxisDomain[1])) {
+      return;
+    }
+    const row = syntheticPoints.get(time) || { time };
+    row[key] = value;
+    syntheticPoints.set(time, row);
+  };
 
   getChartValueKeys(data).forEach((key) => {
     const times = getFinitePointTimes(data, new Set([key]));
@@ -232,9 +285,7 @@ export const getChartDataWithGapBreaks = (
       const previousTime = times[index];
       if (time - previousTime > medianInterval * 2) {
         const breakTime = (previousTime + time) / 2;
-        const keys = breakPoints.get(breakTime) || new Set<string>();
-        keys.add(key);
-        breakPoints.set(breakTime, keys);
+        setSyntheticValue(breakTime, key, null);
       }
     });
   });
@@ -244,23 +295,32 @@ export const getChartDataWithGapBreaks = (
     if (!valueKeys.size) {
       return;
     }
-    const breakTime = (gap.start + gap.end) / 2;
-    const keys = breakPoints.get(breakTime) || new Set<string>();
-    valueKeys.forEach((key) => keys.add(key));
-    breakPoints.set(breakTime, keys);
+    const alignedGap = alignReportedGapToSampleBoundaries(data, gap, visibleXAxisDomain);
+    if (alignedGap.end < alignedGap.start) {
+      return;
+    }
+    valueKeys.forEach((key) => {
+      const points = data
+        .filter((item) => isPresentChartValue(item[key]))
+        .sort((left, right) => Number(left.time) - Number(right.time));
+      const previousPoint = [...points].reverse().find((item) => Number(item.time) < gap.start);
+      const nextPoint = points.find((item) => Number(item.time) > gap.end);
+
+      if (previousPoint) {
+        setSyntheticValue(alignedGap.start, key, previousPoint[key] as number);
+      }
+      setSyntheticValue((alignedGap.start + alignedGap.end) / 2, key, null);
+      if (nextPoint) {
+        setSyntheticValue(alignedGap.end, key, nextPoint[key] as number);
+      }
+    });
   });
 
-  if (!breakPoints.size) {
+  if (!syntheticPoints.size) {
     return data;
   }
 
-  const breakRows = Array.from(breakPoints.entries()).map(([time, keys]) => {
-    const row: ChartData = { time };
-    keys.forEach((key) => {
-      row[key] = null;
-    });
-    return row;
-  });
+  const breakRows = Array.from(syntheticPoints.values());
 
   return [...data, ...breakRows].sort((left, right) => left.time - right.time);
 };
@@ -298,11 +358,19 @@ export const expandGapIntervalsToChartPoints = (
 export const getRenderedGapIntervals = (
   data: ChartData[],
   gaps: GapInterval[] = [],
-): GapInterval[] =>
-  mergeGapIntervalsForDisplay([
-    ...expandGapIntervalsToChartPoints(data, gaps),
-    ...deriveFinitePointGapIntervals(data),
-  ]);
+  xAxisDomain?: [number, number],
+): GapInterval[] => {
+  const visibleXAxisDomain = resolveVisibleXAxisDomain(data, xAxisDomain);
+  const reportedGaps = mergeGapIntervalsForDisplay(
+    normalizeGapIntervals(gaps).map((gap) =>
+      alignReportedGapToSampleBoundaries(data, gap, visibleXAxisDomain)
+    ),
+  );
+  // 后端区间是缺失采样点；视觉边界取有效点与缺失点的中点，避免背景压住折线或留下生硬白缝。
+  return reportedGaps.length
+    ? reportedGaps
+    : deriveFinitePointGapIntervals(data);
+};
 
 export const attachGapIntervals = (
   data: ChartData[],

@@ -30,7 +30,9 @@ from apps.monitor.tasks.grouping_rule import sync_instance_and_group
 class MonitorObjectService:
     @staticmethod
     def _project_instance_identity(qs):
-        return qs.only("id", "name", "interval", "cloud_region_id", "ip", "fallback_sampling_rate")
+        return qs.only(
+            "id", "name", "interval", "cloud_region_id", "ip", "summary_facts", "fallback_sampling_rate",
+        )
 
     @staticmethod
     def validate_new_instance_name_unique(monitor_object_id, monitor_instance_name):
@@ -131,7 +133,11 @@ class MonitorObjectService:
         visible_organization_ids=None,
     ):
         """获取监控对象实例"""
-        qs = qs.filter(monitor_object_id=monitor_object_id, is_deleted=False)
+        qs = qs.filter(
+            monitor_object_id=monitor_object_id,
+            is_deleted=False,
+            is_active=True,
+        )
         if name:
             qs = qs.filter(name__icontains=name)
 
@@ -465,6 +471,7 @@ class MonitorObjectService:
             "time": instance_map.get(obj.id, {}).get("time", ""),
             "cloud_region_id": obj.cloud_region_id,
             "ip": obj.ip,
+            "summary_facts": obj.summary_facts,
             "fallback_sampling_rate": obj.fallback_sampling_rate,
             "organizations": list(org_map.get(obj.id, [])),
         }

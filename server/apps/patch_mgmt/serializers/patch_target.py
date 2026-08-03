@@ -6,8 +6,10 @@ from pathlib import PurePosixPath
 from rest_framework import serializers
 
 from apps.core.mixinx import EncryptMixin
-from apps.core.utils.serializers import TeamSerializer
+from apps.patch_mgmt.constants import PatchTargetSource
 from apps.patch_mgmt.models import GovernanceTask, GovernanceTaskHost, PatchTarget
+from apps.patch_mgmt.serializers.permission import PatchPermissionSerializer
+from apps.patch_mgmt.utils.i18n import serializer_message
 
 
 class PatchTargetConnectivitySerializer(serializers.Serializer):
@@ -15,6 +17,13 @@ class PatchTargetConnectivitySerializer(serializers.Serializer):
 
     ip = serializers.IPAddressField()
     os_type = serializers.ChoiceField(choices=("linux", "windows"))
+    source_type = serializers.ChoiceField(
+        choices=PatchTargetSource.CHOICES,
+        required=False,
+        default=PatchTargetSource.MANUAL,
+    )
+    node_id = serializers.CharField(required=False, allow_blank=True, default="")
+    cloud_region_id = serializers.IntegerField(required=False, allow_null=True)
     ssh_port = serializers.IntegerField(required=False, default=22, min_value=1, max_value=65535)
     ssh_user = serializers.CharField(required=False, allow_blank=True, default="")
     ssh_credential_type = serializers.ChoiceField(
@@ -32,8 +41,18 @@ class PatchTargetConnectivitySerializer(serializers.Serializer):
     winrm_password = serializers.CharField(required=False, allow_blank=True, default="")
     winrm_cert_validation = serializers.BooleanField(required=False, default=True)
 
+    def validate(self, attrs):
+        if self.partial:
+            return attrs
+        if attrs.get("source_type") == PatchTargetSource.NODE_MGMT:
+            if not attrs.get("node_id"):
+                raise serializers.ValidationError({"node_id": "节点管理目标缺少 node_id"})
+        elif not attrs.get("cloud_region_id"):
+            raise serializers.ValidationError({"cloud_region_id": "手动目标必须选择云区域"})
+        return attrs
 
-class PatchTargetSerializer(TeamSerializer):
+
+class PatchTargetSerializer(PatchPermissionSerializer):
     """补丁管理目标序列化器"""
 
     os_type_display = serializers.CharField(source="get_os_type_display", read_only=True)
@@ -59,6 +78,7 @@ class PatchTargetSerializer(TeamSerializer):
     has_winrm_password = serializers.SerializerMethodField()
     has_ssh_key = serializers.SerializerMethodField()
     ssh_key_file_name = serializers.SerializerMethodField()
+    permission_key = "patch_target"
 
     # 运行时聚合字段（列表/详情均返回，便于前端目标管理页展示）
     baseline_name = serializers.SerializerMethodField()
@@ -87,7 +107,7 @@ class PatchTargetSerializer(TeamSerializer):
         if self.instance:
             qs = qs.exclude(pk=self.instance.pk)
         if qs.exists():
-            raise serializers.ValidationError("同名目标主机已存在")
+            raise serializers.ValidationError(serializer_message(self, "error.duplicate_target_name", "A target with the same name already exists"))
         return value
 
     def create(self, validated_data):
@@ -166,7 +186,8 @@ class PatchTargetSerializer(TeamSerializer):
             task__task_type__in=("assess", "verify"),
             stage__in=("failed", "pending_confirmation"),
         ).order_by("-created_at").first()
-        reason = (host.reason or host.timeout_reason or "评估执行失败") if host else "评估执行失败"
+        fallback = serializer_message(self, "error.assessment_execution_failed", "Assessment execution failed")
+        reason = (host.reason or host.timeout_reason or fallback) if host else fallback
         return re.sub(
             r"(?i)(password|passwd|pwd|token|secret)\s*[:=]\s*\S+",
             r"\1=***",
@@ -261,6 +282,7 @@ class PatchTargetSerializer(TeamSerializer):
             "arch",
             "team",
             "team_name",
+            "permission",
             "created_by",
             "created_at",
             "updated_by",

@@ -343,6 +343,14 @@ def _process_ui_templates(plugin_dir, plugin_obj, db_ui_template):
     if ui_file.exists() and ui_file.is_file():
         try:
             ui_data = json.loads(ui_file.read_text(encoding="utf-8"))
+            # SNMP：入库前合并接口过滤字段，避免仅依赖读时 enrich
+            if (
+                getattr(plugin_obj, "collect_type", None) == "snmp"
+                or plugin_dir.parent.name == "snmp"
+            ):
+                from apps.monitor.utils.snmp_interface_template import merge_snmp_interface_filter_ui
+
+                ui_data = merge_snmp_interface_filter_ui(ui_data) or ui_data
 
             if db_ui_template:
                 if db_ui_template.content != ui_data:

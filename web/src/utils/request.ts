@@ -15,10 +15,15 @@ import {
   renderRequestErrorPresentation,
   type RequestErrorPresentation,
 } from '@/utils/requestErrorPresentation';
+import {
+  getProxyTimeoutHeaderValue,
+  PROXY_TIMEOUT_HEADER,
+} from '@/utils/proxyTimeout';
+import { resolveAuthToken } from '@/utils/authRecovery';
 
 const apiClient = axios.create({
   baseURL: '/api/proxy',
-  timeout: 300000,
+  timeout: 60000,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -34,11 +39,18 @@ const setToken = (token: string | null) => {
 /** Error already shown to user by the request interceptor — callers should stay silent. */
 export class HandledRequestError extends Error {
   readonly presentation?: RequestErrorPresentation;
+  status?: number;
 
-  constructor(message: string, presentation?: RequestErrorPresentation) {
+  constructor(message: string, presentation?: RequestErrorPresentation, status?: number) {
     super(message);
     this.name = 'HandledRequestError';
     this.presentation = presentation;
+    this.status = status;
+  }
+
+  withStatus(status: number) {
+    this.status = status;
+    return this;
   }
 }
 
@@ -62,6 +74,12 @@ apiClient.interceptors.request.use(
     }
 
     config.headers.Authorization = `Bearer ${tokenRef.current}`;
+    const proxyTimeoutHeaderValue = getProxyTimeoutHeaderValue(config.timeout);
+    if (proxyTimeoutHeaderValue) {
+      config.headers.set(PROXY_TIMEOUT_HEADER, proxyTimeoutHeaderValue);
+    } else {
+      config.headers.delete(PROXY_TIMEOUT_HEADER);
+    }
     return config;
   },
   (error) => {
@@ -95,13 +113,17 @@ apiClient.interceptors.response.use(
         } else {
           message.error(messageText);
         }
-        return Promise.reject(new HandledRequestError(messageText, presentation ?? undefined));
+        return Promise.reject(
+          new HandledRequestError(messageText, presentation ?? undefined).withStatus(status)
+        );
       } else if (status === 500) {
         message.error(messageText);
-        return Promise.reject(new HandledRequestError(messageText || 'Internal Server Error'));
+        return Promise.reject(
+          new HandledRequestError(messageText || 'Internal Server Error').withStatus(status)
+        );
       } else {
         message.error(messageText);
-        return Promise.reject(new HandledRequestError(messageText));
+        return Promise.reject(new HandledRequestError(messageText).withStatus(status));
       }
     }
 
@@ -130,7 +152,7 @@ export const isSilentRequestError = (error: unknown) => {
 const useApiClient = () => {
   const authContext = useAuth();
   const { data: session } = useSession();
-  const token = (session?.user as any)?.token || authContext?.token || null;
+  const token = resolveAuthToken(authContext?.token, (session?.user as any)?.token);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {

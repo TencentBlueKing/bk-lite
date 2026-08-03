@@ -16,6 +16,8 @@ from apps.monitor.models import (
     MonitorPlugin,
 )
 from apps.monitor.services.host_deployment import HostDeploymentStatus
+from apps.monitor.services.instance_facts import InstanceFactResolver
+from apps.monitor.services.website_config import validate_rendered_website_config
 from apps.monitor.utils.config_format import ConfigFormat
 from apps.monitor.utils.dimension import build_safe_instance_id, normalize_instance_identity, parse_instance_id
 from apps.monitor.utils.node_selector import normalize_node_selector
@@ -168,6 +170,7 @@ class InstanceConfigService:
         sanitized_instances = []
         for instance in instances:
             node_ids = []
+            trusted_nodes = []
             group_ids = set()
             for raw_node_id in instance.get("node_ids", []):
                 node_id = str(raw_node_id)
@@ -175,6 +178,7 @@ class InstanceConfigService:
                 if not node_info:
                     raise UnauthorizedException(f"节点 {node_id} 无权限访问")
                 node_ids.append(node_id)
+                trusted_nodes.append(node_info)
                 node_groups = set(node_info.get("organization_ids", []))
                 node_groups &= authorized_scope_groups
                 if not node_groups:
@@ -183,6 +187,7 @@ class InstanceConfigService:
 
             sanitized_instance = {**instance}
             sanitized_instance["node_ids"] = node_ids
+            sanitized_instance["_trusted_nodes"] = trusted_nodes
             sanitized_instance["group_ids"] = sorted(group_ids)
             sanitized_instances.append(sanitized_instance)
         return sanitized_instances
@@ -246,11 +251,22 @@ class InstanceConfigService:
             return 0
 
         instances_to_update = []
+        existing_map = {
+            obj.id: obj
+            for obj in MonitorInstance.objects.filter(id__in=[item["instance_id"] for item in existing_instances])
+        }
         for instance in existing_instances:
+            current = existing_map[instance["instance_id"]]
+            summary_facts = InstanceFactResolver.merge(
+                current.summary_facts,
+                instance.get("summary_facts", {}),
+                instance.get("_summary_fact_source"),
+            )
             instances_to_update.append(
                 MonitorInstance(
                     id=instance["instance_id"],
                     name=instance.get("instance_name", ""),
+                    summary_facts=summary_facts,
                     auto=False,
                     is_deleted=False,
                     is_active=True,
@@ -259,7 +275,7 @@ class InstanceConfigService:
 
         MonitorInstance.objects.bulk_update(
             instances_to_update,
-            ["name", "auto", "is_active"],
+            ["name", "summary_facts", "auto", "is_active"],
             batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE,
         )
         return len(instances_to_update)
@@ -632,6 +648,11 @@ class InstanceConfigService:
                     id=instance_id,
                     name=instance["instance_name"],
                     monitor_object_id=monitor_object_id,
+                    summary_facts=InstanceFactResolver.merge(
+                        {},
+                        instance.get("summary_facts", {}),
+                        instance.get("_summary_fact_source"),
+                    ),
                 )
             )
 
@@ -763,6 +784,33 @@ class InstanceConfigService:
         if actor_context is not None:
             sanitized_instances = InstanceConfigService._sanitize_instances_for_onboarding(instances, actor_context)
 
+        plugin = (
+            MonitorPlugin.objects.filter(id=monitor_plugin_id).first()
+            if monitor_plugin_id not in (None, "")
+            else MonitorPlugin.objects.filter(
+                monitor_object=monitor_object_id,
+                collector=collector,
+                collect_type=collect_type,
+            ).order_by("id").first()
+        )
+        if monitor_plugin_id not in (None, "") and not plugin:
+            raise BaseAppException("监控插件不存在")
+        requires_nodes = bool(plugin) and any(
+            binding.get("resolver") in {"selected_node", "selected_nodes"}
+            for binding in (plugin.instance_fact_bindings or [])
+        )
+        prepared_fact_instances = []
+        for instance in sanitized_instances:
+            trusted_nodes = instance.get("_trusted_nodes", [])
+            if requires_nodes and not trusted_nodes:
+                trusted_nodes = NodeMgmt().get_nodes_by_ids(instance.get("node_ids", []))
+            summary_facts = InstanceFactResolver.resolve(plugin, instance, {"nodes": trusted_nodes}) if plugin else {}
+            clean_instance = {key: value for key, value in instance.items() if key != "_trusted_nodes"}
+            clean_instance["summary_facts"] = summary_facts
+            clean_instance["_summary_fact_source"] = (plugin.template_id or plugin.name) if plugin else ""
+            prepared_fact_instances.append(clean_instance)
+        sanitized_instances = prepared_fact_instances
+
         InstanceConfigService._validate_instances_with_plugin_selector(
             sanitized_instances,
             monitor_plugin_id,
@@ -847,7 +895,14 @@ class InstanceConfigService:
                 # 阶段3：调用 Controller 创建采集配置（使用外层事务）
                 # 注意：所有实例（新建+已存在）都需要创建采集配置
                 sanitized_data = {**data}
-                sanitized_data["instances"] = new_instances + existing_instances
+                sanitized_data["instances"] = [
+                    {
+                        key: value
+                        for key, value in instance.items()
+                        if key not in {"_summary_fact_source", "summary_facts"}
+                    }
+                    for instance in new_instances + existing_instances
+                ]
                 sanitized_data["monitor_plugin_id"] = monitor_plugin_id
                 Controller(sanitized_data).controller()
                 InstanceConfigService._validate_expected_collect_configs(
@@ -907,5 +962,30 @@ class InstanceConfigService:
             if not config_obj:
                 return
             env_config = child_info.get("env_config")
+            if config_obj.collect_type == "web":
+                try:
+                    validate_rendered_website_config(child_info.get("content") or {}, env_config)
+                except ValueError as exc:
+                    raise BaseAppException(str(exc)) from exc
+            if (config_obj.collect_type or "").startswith("snmp"):
+                from apps.monitor.utils.snmp_interface_filters import normalize_snmp_interface_filter_config
+
+                child_info["content"] = normalize_snmp_interface_filter_config(child_info.get("content"))
+            if (config_obj.config_type or "").lower() == "kafka":
+                from apps.monitor.utils.kafka_collect_timeouts import (
+                    assert_kafka_group_metrics_timeout_lt_interval,
+                    extract_group_metrics_timeout_from_env,
+                )
+
+                child_content = child_info.get("content") or {}
+                child_interval = (
+                    (child_content.get("config") or {}).get("interval")
+                    if isinstance(child_content, dict)
+                    else None
+                )
+                assert_kafka_group_metrics_timeout_lt_interval(
+                    extract_group_metrics_timeout_from_env(env_config),
+                    child_interval,
+                )
             content = ConfigFormat.json_to_toml(child_info["content"]) if child_info else None
             NodeMgmt().update_child_config_content(child_info["id"], content, env_config)

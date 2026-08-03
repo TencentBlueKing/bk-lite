@@ -66,19 +66,11 @@ export const REDIS_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       color: '#faad14'
     },
     {
-      name: 'redis_instantaneous_ops_per_sec',
-      display_name: '实时 OPS',
-      description: 'Redis 实例当前每秒处理的命令数量。',
-      unit: 'cps',
-      query: 'redis_instantaneous_ops_per_sec{__$labels__}',
-      color: '#27c274'
-    },
-    {
       name: 'redis_total_commands_processed_rate',
       display_name: '命令处理速率',
       description: 'Redis 实例处理命令的平均速率。',
       unit: 'cps',
-      query: 'rate(redis_total_commands_processed{__$labels__}[5m])',
+      query: 'rate(redis_total_commands_processed{__$labels__}[__$window__])',
       color: '#13c2c2'
     },
     {
@@ -86,7 +78,7 @@ export const REDIS_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '键命中频率',
       description: '键空间成功命中的频率，反映缓存命中效率。',
       unit: 'cps',
-      query: 'rate(redis_keyspace_hits{__$labels__}[5m])',
+      query: 'rate(redis_keyspace_hits{__$labels__}[__$window__])',
       color: '#2f6bff'
     },
     {
@@ -94,7 +86,7 @@ export const REDIS_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '键未命中频率',
       description: '键空间未命中的频率，高频率可能需要优化缓存策略。',
       unit: 'cps',
-      query: 'rate(redis_keyspace_misses{__$labels__}[5m])',
+      query: 'rate(redis_keyspace_misses{__$labels__}[__$window__])',
       color: '#ff4d4f'
     },
     {
@@ -110,7 +102,7 @@ export const REDIS_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '网络入流量',
       description: 'Redis 实例接收网络数据的速率。',
       unit: 'byteps',
-      query: 'rate(redis_total_net_input_bytes{__$labels__}[5m])',
+      query: 'rate(redis_total_net_input_bytes{__$labels__}[__$window__])',
       color: '#2f6bff'
     },
     {
@@ -118,7 +110,7 @@ export const REDIS_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '网络出流量',
       description: 'Redis 实例发送网络数据的速率。',
       unit: 'byteps',
-      query: 'rate(redis_total_net_output_bytes{__$labels__}[5m])',
+      query: 'rate(redis_total_net_output_bytes{__$labels__}[__$window__])',
       color: '#27c274'
     },
     {
@@ -142,7 +134,7 @@ export const REDIS_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '键过期频率',
       description: '键因到期自动删除的频率。',
       unit: 'cps',
-      query: 'rate(redis_expired_keys{__$labels__}[5m])',
+      query: 'rate(redis_expired_keys{__$labels__}[__$window__])',
       color: '#faad14'
     },
     {
@@ -150,7 +142,7 @@ export const REDIS_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '键驱逐频率',
       description: '因内存达到上限而被主动淘汰的键频率，非零说明内存压力大。',
       unit: 'cps',
-      query: 'rate(redis_evicted_keys{__$labels__}[5m])',
+      query: 'rate(redis_evicted_keys{__$labels__}[__$window__])',
       color: '#ff4d4f'
     },
     {
@@ -158,7 +150,7 @@ export const REDIS_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '连接拒绝频率',
       description: '因达到最大连接数而被拒绝的连接请求频率。',
       unit: 'cps',
-      query: 'rate(redis_rejected_connections{__$labels__}[5m])',
+      query: 'rate(redis_rejected_connections{__$labels__}[__$window__])',
       color: '#ff4d4f'
     }
   ],
@@ -209,8 +201,10 @@ export const REDIS_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       metric: 'redis_clients',
       color: '#2f6bff',
       icon: 'node',
-      guide: [{ label: '客户端连接', detail: '当前活跃的客户端连接数量。' }],
-      footer: [{ label: '阻塞客户端', metric: 'redis_blocked_clients', unit: 'counts' }]
+      guide: [{ label: '客户端连接', detail: '当前活跃的客户端连接数量。阻塞非零常见于 BLPOP/BRPOP 等待；连接拒绝非零说明触及 maxclients。' }],
+      footer: [
+        { label: '连接拒绝', metric: 'redis_rejected_connections_rate', unit: 'cps' }
+      ]
     }
   ],
   charts: [
@@ -228,8 +222,8 @@ export const REDIS_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       ]
     },
     {
-      title: '命中未命中趋势',
-      subtitle: '键命中与未命中',
+      title: '缓存命中趋势',
+      subtitle: '键命中与未命中频率',
       metric: 'redis_keyspace_hits_rate',
       guide: [
         { label: '键命中', detail: '键空间成功命中频率。' },
@@ -242,30 +236,26 @@ export const REDIS_DASHBOARD_CONFIG: SimpleDashboardConfig = {
     },
     {
       title: '命令吞吐趋势',
-      subtitle: '实时 OPS 与命令速率',
-      metric: 'redis_instantaneous_ops_per_sec',
+      subtitle: '命令处理平均速率',
+      metric: 'redis_total_commands_processed_rate',
       guide: [
-        { label: '实时 OPS', detail: '当前每秒处理命令数(瞬时)。' },
-        { label: '命令速率', detail: '过去 5 分钟命令处理平均速率。' }
+        { label: '命令速率', detail: '所选时间窗口内命令处理平均速率；与其他 rate 指标口径一致。' }
       ],
       series: [
-        { metric: 'redis_instantaneous_ops_per_sec', label: '实时 OPS', color: '#27c274', unit: 'cps' },
         { metric: 'redis_total_commands_processed_rate', label: '命令速率', color: '#13c2c2', unit: 'cps' }
       ]
     },
     {
       title: '键生命周期',
-      subtitle: '过期、驱逐与连接拒绝',
+      subtitle: '过期与驱逐',
       metric: 'redis_expired_keys_rate',
       guide: [
         { label: '键过期频率', detail: '键到期被自动清除的速率。' },
-        { label: '键驱逐频率', detail: '内存压力下被驱逐键的速率,非零说明内存吃紧。' },
-        { label: '连接拒绝频率', detail: '因超出 maxclients 被拒绝的连接速率。' }
+        { label: '键驱逐频率', detail: '内存压力下被驱逐键的速率,非零说明内存吃紧。连接拒绝见连接数 KPI 副文案。' }
       ],
       series: [
         { metric: 'redis_expired_keys_rate', label: '键过期频率', color: '#2f6bff', unit: 'cps' },
-        { metric: 'redis_evicted_keys_rate', label: '键驱逐频率', color: '#ff4d4f', unit: 'cps' },
-        { metric: 'redis_rejected_connections_rate', label: '连接拒绝频率', color: '#faad14', unit: 'cps' }
+        { metric: 'redis_evicted_keys_rate', label: '键驱逐频率', color: '#ff4d4f', unit: 'cps' }
       ]
     },
     {
@@ -291,35 +281,23 @@ export const REDIS_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       series: [
         { metric: 'redis_mem_fragmentation_ratio', label: '内存碎片率', color: '#8a5cff', unit: 'none' }
       ]
-    }
-  ],
-  ringPanels: [
+    },
     {
-      title: '命中分布',
-      subtitle: '命中与未命中',
-      centerMetric: 'redis_keyspace_hitrate',
-      centerCaption: '缓存命中率',
-      centerUnit: 'percent',
-      guide: [{ label: '命中结构', detail: '对比键空间命中与未命中频率,直观看出缓存有效性。' }],
-      segments: [
-        { label: '命中', metric: 'redis_keyspace_hits_rate', color: '#27c274', unit: 'cps' },
-        { label: '未命中', metric: 'redis_keyspace_misses_rate', color: '#ff4d4f', unit: 'cps' }
+      title: '客户端连接趋势',
+      subtitle: '活跃与阻塞',
+      metric: 'redis_clients',
+      guide: [
+        { label: '活跃连接', detail: '当前客户端连接数变化。' },
+        { label: '阻塞客户端', detail: '处于阻塞等待的客户端数；持续非零优先查阻塞命令（如 BLPOP）与慢消费。连接拒绝见连接数 KPI 副文案。' }
+      ],
+      series: [
+        { metric: 'redis_clients', label: '活跃连接', color: '#2f6bff', unit: 'counts' },
+        { metric: 'redis_blocked_clients', label: '阻塞客户端', color: '#ff8a1f', unit: 'counts' }
       ]
     }
   ],
-  barPanels: [
-    {
-      title: '客户端状态',
-      subtitle: '连接、阻塞与拒绝',
-      showTrend: true,
-      guide: [{ label: '客户端状态', detail: '汇总客户端连接、阻塞等待与连接拒绝。阻塞或拒绝非零即需排查。' }],
-      items: [
-        { label: '客户端连接', metric: 'redis_clients', color: '#2f6bff', unit: 'counts' },
-        { label: '阻塞客户端', metric: 'redis_blocked_clients', color: '#ff8a1f', unit: 'counts' },
-        { label: '连接拒绝', metric: 'redis_rejected_connections_rate', color: '#ff4d4f', unit: 'cps' }
-      ]
-    }
-  ],
-  // 键生命周期 / 网络流量 / 内存碎片 已改为 charts(折线图),不再用 detail 缩略图。
+  ringPanels: [],
+  barPanels: [],
+  // 键生命周期 / 网络流量 / 内存碎片 / 客户端连接 已改为 charts(折线图),不再用 detail 缩略图或条形卡。
   details: []
 };

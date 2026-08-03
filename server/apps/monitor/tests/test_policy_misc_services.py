@@ -93,14 +93,22 @@ class TestPolicyService:
         PolicyService.import_monitor_policy(data)
         data["templates"] = [{"name": "b"}, {"name": "c"}]
         PolicyService.import_monitor_policy(data)
-        assert PolicyTemplate.objects.filter(monitor_object__name="ImpObj2").count() == 1
+        assert PolicyTemplate.objects.filter(monitor_object__name="ImpObj2").count() == 2
         templates = PolicyService.get_policy_templates("ImpObj2")
         assert {t["name"] for t in templates} == {"b", "c"}
 
     def test_get_template_monitor_objects(self):
         obj = MonitorObject.objects.create(name="ImpObj3", level="base")
         plugin = MonitorPlugin.objects.create(name="ImpPlugin3", collector="Telegraf")
-        PolicyTemplate.objects.create(monitor_object=obj, plugin=plugin, templates=[])
+        PolicyTemplate.objects.create(
+            key="builtin:test",
+            scope_key="builtin",
+            template_type="builtin",
+            monitor_object=obj,
+            plugin=plugin,
+            name="test",
+            config={},
+        )
         assert obj.id in PolicyService.get_policy_templates_monitor_object()
 
 

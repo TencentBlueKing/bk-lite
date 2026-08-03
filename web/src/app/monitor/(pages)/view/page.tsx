@@ -13,6 +13,7 @@ import ViewHive from './viewHive';
 import ResizableSidebar from '@/app/monitor/components/resizableSidebar';
 import { cloneDeep } from 'lodash';
 import { getMonitorViewObjectUrl } from '@/app/monitor/dashboards/shared/utils';
+import { getProfessionalObjectDisplayName } from '@/app/monitor/dashboards/registry';
 
 const Integration = () => {
   const { isLoading } = useApiClient();
@@ -82,7 +83,7 @@ const Integration = () => {
         };
       }
       acc[item.type].children.push({
-        title: item.display_name || '--',
+        title: getProfessionalObjectDisplayName(item.name, item.display_name) || '--',
         label: item.name || '--',
         key: item.id,
         icon: item.icon,
@@ -126,6 +127,7 @@ const Integration = () => {
         )}
         {displayType === 'list' ? (
           <ViewList
+            key={objectId}
             objects={objects}
             objectId={objectId}
             showTab={showTab}

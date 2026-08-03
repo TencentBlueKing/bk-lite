@@ -59,6 +59,8 @@ class LogHitsSerializer(serializers.Serializer):
 
 
 class LogTopStatsSerializer(serializers.Serializer):
+    NON_AGGREGATABLE_META_FIELDS = {"_stream", "_stream_id", "_time"}
+
     query = serializers.CharField(required=False, allow_blank=True, default="*")
     start_time = serializers.CharField(required=False, allow_blank=True, default="")
     end_time = serializers.CharField(required=False, allow_blank=True, default="")
@@ -74,3 +76,8 @@ class LogTopStatsSerializer(serializers.Serializer):
         allow_empty=False,
         error_messages={"required": "缺少日志分组", "empty": "缺少日志分组"},
     )
+
+    def validate(self, attrs):
+        if attrs["attr"] in self.NON_AGGREGATABLE_META_FIELDS:
+            raise serializers.ValidationError({"attr": "该字段不支持 TopN 统计"})
+        return attrs

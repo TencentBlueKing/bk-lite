@@ -92,61 +92,12 @@ export const HOST_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       color: '#faad14'
     },
     {
-      name: 'host_cpu_core_count',
-      display_name: 'CPU 核数',
-      description: '主机逻辑 CPU 核数，用作负载对照基线。',
-      unit: 'counts',
-      // ①HTTP Remote 直采；②Telegraf system.n_cpus；③按非汇总 CPU 序列计数兜底。
-      query: 'host_cpu_core_count_gauge{instance_type="os", __$labels__} or system_n_cpus{instance_type="os", __$labels__} or count by (instance_id) (cpu_usage_idle{cpu!="cpu-total", instance_type="os", __$labels__})',
-      color: '#597ef7'
-    },
-    {
-      name: 'mem_total',
-      display_name: '总内存',
-      description: '主机总内存容量。',
-      unit: 'bytes',
-      query: 'mem_total{instance_type="os", __$labels__} or host_mem_total_bytes_gauge{instance_type="os", __$labels__} or mem_total_gauge_value{instance_type="os", config_type="windows_wmi", __$labels__}',
-      color: '#2f6bff'
-    },
-    {
       name: 'mem_available',
       display_name: '可用内存',
       description: '主机当前可用内存。',
       unit: 'bytes',
       query: 'mem_available{instance_type="os", __$labels__} or host_mem_available_bytes_gauge{instance_type="os", __$labels__} or mem_available_gauge_value{instance_type="os", config_type="windows_wmi", __$labels__}',
       color: '#13c2c2'
-    },
-    {
-      name: 'mem_cached',
-      display_name: '缓存内存',
-      description: '主机页缓存占用的内存。',
-      unit: 'bytes',
-      query: 'mem_cached{instance_type="os", __$labels__} or mem_cached_gauge{instance_type="os", __$labels__}',
-      color: '#597ef7'
-    },
-    {
-      name: 'mem_buffered',
-      display_name: '缓冲内存',
-      description: '主机缓冲区占用的内存。',
-      unit: 'bytes',
-      query: 'mem_buffered{instance_type="os", __$labels__} or mem_buffered_gauge{instance_type="os", __$labels__}',
-      color: '#ff8a1f'
-    },
-    {
-      name: 'mem_used_bytes',
-      display_name: '已用内存',
-      description: '主机当前已使用的内存。',
-      unit: 'bytes',
-      query: 'host_mem_used_bytes_gauge{instance_type="os", __$labels__} or clamp_min(mem_total{instance_type="os", __$labels__} - mem_available{instance_type="os", __$labels__}, 0) or clamp_min(host_mem_total_bytes_gauge{instance_type="os", __$labels__} - host_mem_available_bytes_gauge{instance_type="os", __$labels__}, 0) or clamp_min(mem_total_gauge_value{instance_type="os", config_type="windows_wmi", __$labels__} - mem_available_gauge_value{instance_type="os", config_type="windows_wmi", __$labels__}, 0)',
-      color: '#27c274'
-    },
-    {
-      name: 'processes_running',
-      display_name: '运行进程数',
-      description: '当前正在运行的进程数量。',
-      unit: 'counts',
-      query: 'processes_running{instance_type="os", __$labels__} or processes_running_gauge{instance_type="os", __$labels__} or processes_running_gauge_value{instance_type="os", config_type="windows_wmi", __$labels__}',
-      color: '#2f6bff'
     },
     {
       name: 'processes_blocked',
@@ -157,28 +108,12 @@ export const HOST_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       color: '#ff8a1f'
     },
     {
-      name: 'processes_sleeping',
-      display_name: '休眠进程数',
-      description: '当前处于休眠状态的进程数量。',
-      unit: 'counts',
-      query: 'processes_sleeping{instance_type="os", __$labels__} or processes_sleeping_gauge{instance_type="os", __$labels__} or processes_sleeping_gauge_value{instance_type="os", config_type="windows_wmi", __$labels__}',
-      color: '#13c2c2'
-    },
-    {
       name: 'processes_zombies',
       display_name: '僵尸进程数',
       description: '当前处于僵尸状态的进程数量。',
       unit: 'counts',
       query: 'processes_zombies{instance_type="os", __$labels__} or processes_zombies_gauge{instance_type="os", __$labels__} or processes_zombies_gauge_value{instance_type="os", config_type="windows_wmi", __$labels__}',
       color: '#8a5cff'
-    },
-    {
-      name: 'processes_total',
-      display_name: '总进程数',
-      description: '当前主机进程总量。',
-      unit: 'counts',
-      query: '(processes_running{instance_type="os", __$labels__} + processes_sleeping{instance_type="os", __$labels__} + processes_blocked{instance_type="os", __$labels__} + processes_zombies{instance_type="os", __$labels__}) or (processes_running_gauge{instance_type="os", __$labels__} + processes_sleeping_gauge{instance_type="os", __$labels__} + processes_blocked_gauge{instance_type="os", __$labels__} + processes_zombies_gauge{instance_type="os", __$labels__}) or (processes_running_gauge_value{instance_type="os", config_type="windows_wmi", __$labels__} + processes_sleeping_gauge_value{instance_type="os", config_type="windows_wmi", __$labels__} + processes_blocked_gauge_value{instance_type="os", config_type="windows_wmi", __$labels__} + processes_zombies_gauge_value{instance_type="os", config_type="windows_wmi", __$labels__})',
-      color: '#13c2c2'
     },
     {
       name: 'net_bytes_recv_rate',
@@ -277,10 +212,9 @@ export const HOST_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       icon: 'node',
       guide: [{
         label: '系统负载',
-        detail: '主机最近 1 分钟平均负载（可运行 + 不可中断等待的进程数）。对照脚注 CPU 核数：负载持续高于核数即偏高；再结合 CPU 使用率与 I/O Wait 区分算力打满还是卡在 I/O。'
+        detail: '主机最近 1 分钟平均负载（可运行 + 不可中断等待的进程数）。结合 CPU 使用率与 I/O Wait 区分算力打满还是卡在 I/O。'
       }],
       footer: [
-        { label: 'CPU 核数', metric: 'host_cpu_core_count', unit: 'counts' },
         { label: '5 分钟负载', metric: 'system_load5', unit: 'none' }
       ]
     }
@@ -302,7 +236,7 @@ export const HOST_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       title: '系统负载趋势',
       subtitle: '1 / 5 / 15 分钟',
       metric: 'system_load1',
-      guide: [{ label: '系统负载', detail: '1 / 5 / 15 分钟平均负载（运行 + 等待的进程数）。对照健康概览中的 CPU 核数：持续超过核数即偏高。' }],
+      guide: [{ label: '系统负载', detail: '1 / 5 / 15 分钟平均负载（运行 + 等待的进程数）。持续偏高时结合 CPU 使用率与 I/O Wait 判断是算力不足还是等待 I/O。' }],
       series: [
         { metric: 'system_load1', label: '1 分钟', color: '#27c274', unit: 'none' },
         { metric: 'system_load5', label: '5 分钟', color: '#13c2c2', unit: 'none' },
@@ -354,7 +288,7 @@ export const HOST_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       metric: 'processes_blocked',
       guide: [{
         label: '进程异常',
-        detail: '阻塞进程持续非零多与慢 I/O / 不可中断等待相关；僵尸进程非零查父进程未回收。I/O Wait 见上方 KPI 与资源趋势（Linux）；运行/休眠等结构见「进程状态分布」。'
+        detail: '阻塞进程持续非零多与慢 I/O / 不可中断等待相关；僵尸进程非零查父进程未回收。I/O Wait 见上方 KPI 与资源趋势（Linux）。'
       }],
       series: [
         { metric: 'processes_blocked', label: '阻塞进程', color: '#ff8a1f', unit: 'counts' },
@@ -362,6 +296,8 @@ export const HOST_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       ]
     }
   ],
+  // 内存占用环与进程状态环已砍：前者与内存 KPI 镜像，后者常态被休眠进程淹没；
+  // 进程异常看「进程异常趋势」，内存看 KPI 与资源使用趋势。
   ringPanels: [
     {
       title: 'CPU 时间分布',
@@ -375,32 +311,6 @@ export const HOST_DASHBOARD_CONFIG: SimpleDashboardConfig = {
         { label: '内核态', metric: 'cpu_usage_system_total', color: '#597ef7', unit: 'percent' },
         { label: 'I/O Wait 占比', metric: 'cpu_usage_iowait_total', color: '#ff8a1f', unit: 'percent' },
         { label: '其他', metric: 'cpu_usage_other_total', color: '#e8f0fe', unit: 'percent' }
-      ]
-    },
-    {
-      title: '内存占用分布',
-      subtitle: '已用与可用内存',
-      centerMetric: 'mem_used_percent',
-      centerCaption: '内存使用率',
-      centerUnit: 'percent',
-      guide: [{ label: '内存结构', detail: '对比当前已用内存与可用内存容量。' }],
-      segments: [
-        { label: '已用内存', metric: 'mem_used_bytes', color: '#27c274', unit: 'bytes' },
-        { label: '可用内存', metric: 'mem_available', color: '#e8f0fe', unit: 'bytes' }
-      ]
-    },
-    {
-      title: '进程状态分布',
-      subtitle: '运行、休眠、阻塞、僵尸',
-      centerMetric: 'processes_total',
-      centerCaption: '总进程数',
-      centerUnit: 'counts',
-      guide: [{ label: '进程结构', detail: '对比主机当前运行、休眠、阻塞和僵尸进程的数量分布。' }],
-      segments: [
-        { label: '运行中', metric: 'processes_running', color: '#2f6bff', unit: 'counts' },
-        { label: '休眠中', metric: 'processes_sleeping', color: '#27c274', unit: 'counts' },
-        { label: '阻塞中', metric: 'processes_blocked', color: '#ff8a1f', unit: 'counts' },
-        { label: '僵尸', metric: 'processes_zombies', color: '#8a5cff', unit: 'counts' }
       ]
     }
   ],

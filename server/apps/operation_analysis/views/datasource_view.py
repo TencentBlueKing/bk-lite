@@ -17,7 +17,7 @@ from apps.core.utils.viewset_utils import AuthViewSet
 from apps.operation_analysis.common.audit_log import get_response_name, log_ops_analysis_success
 from apps.operation_analysis.common.get_nats_source_data import GetNatsData
 from apps.operation_analysis.filters.datasource_filters import DataSourceAPIModelFilter, DataSourceTagModelFilter, NameSpaceModelFilter
-from apps.operation_analysis.models.datasource_models import DataSourceAPIModel, DataSourceTag, NameSpace
+from apps.operation_analysis.models.datasource_models import DataSourceAPIModel, DataSourceTag, NameSpace, NamespacePasswordDecryptionError
 from apps.operation_analysis.serializers.datasource_serializers import (
     DataSourceAPIModelSerializer,
     DataSourceBriefSerializer,
@@ -107,6 +107,8 @@ def _get_downstream_failure_status(result):
 
 def _classify_runtime_exception(error):
     message = str(error).strip()
+    if isinstance(error, NamespacePasswordDecryptionError):
+        return status.HTTP_500_INTERNAL_SERVER_ERROR, message
     if message == "未找到可用的命名空间":
         return status.HTTP_500_INTERNAL_SERVER_ERROR, "未找到可用命名空间"
     if message == "数据源未关联命名空间":

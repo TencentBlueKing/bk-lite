@@ -13,6 +13,7 @@ from django.utils.timezone import now
 from apps.cmdb.constants.constants import OPERATOR_COLLECT_TASK, CollectPluginTypes, CollectRunStatusType, DataCleanupStrategy
 from apps.cmdb.models import CREATE_INST, DELETE_INST, EXECUTE, UPDATE_INST
 from apps.cmdb.models.change_record import COLLECT_AUTOMATION_CHANGE
+from apps.cmdb.models.collect_model import CollectModels
 from apps.cmdb.node_configs.config_factory import NodeParamsFactory
 from apps.cmdb.services.collect_credential_pool_service import CollectCredentialPoolService
 from apps.cmdb.services.collect_hit_state_service import CollectHitStateService
@@ -717,6 +718,14 @@ class CollectModelService(object):
         """
         执行任务
         """
+        if isinstance(instance, CollectModels) and instance.pk:
+            with transaction.atomic():
+                locked_instance = CollectModels.objects.select_for_update().get(pk=instance.pk)
+                return cls._exec_task_after_lock(locked_instance, operator)
+        return cls._exec_task_after_lock(instance, operator)
+
+    @classmethod
+    def _exec_task_after_lock(cls, instance, operator):
         if instance.exec_status == CollectRunStatusType.RUNNING:
             return WebUtils.response_error(error_message="任务正在执行中!无法重复执行！", status_code=400)
 
@@ -734,7 +743,7 @@ class CollectModelService(object):
         node_config_version = getattr(instance, "node_mgmt_config_version", None)
         if not settings.DEBUG:
             transaction.on_commit(
-                lambda task_id=instance.id, token=execution_id: sync_collect_task.delay(
+                lambda task_id=instance.id, token=execution_id: cls._dispatch_manual_execution(
                     task_id,
                     token,
                     node_config_id,
@@ -763,3 +772,28 @@ class CollectModelService(object):
         )
 
         return WebUtils.response_success(instance.id)
+
+    @staticmethod
+    def _dispatch_manual_execution(task_id, execution_id, node_config_id, node_config_version):
+        try:
+            sync_collect_task.delay(
+                task_id,
+                execution_id,
+                node_config_id,
+                node_config_version,
+            )
+        except Exception:
+            CollectModels.objects.filter(
+                id=task_id,
+                task_id=execution_id,
+                exec_status=CollectRunStatusType.RUNNING,
+            ).update(
+                exec_status=CollectRunStatusType.ERROR,
+                execution_claim_token=None,
+                collect_digest={"message": "采集任务下发失败，请稍后重试"},
+            )
+            logger.exception(
+                "[CollectTask] 手动采集任务下发失败 task_id=%s execution_id=%s",
+                task_id,
+                execution_id,
+            )

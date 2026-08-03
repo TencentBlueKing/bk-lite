@@ -8,8 +8,18 @@ UI.json 的 form_fields/table_columns 中每条带 label 字段(中文)。
 """
 from __future__ import annotations
 
+import json
 from copy import deepcopy
-from typing import Any
+from pathlib import Path
+from typing import Any, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from apps.monitor.models import MonitorPlugin
+
+
+# 磁盘 UI.json 相对 DB 模板可热更新的展示字段（无需等 plugin_init）。
+_FILE_OVERLAY_FIELD_KEYS = ("guide_short", "section", "rules")
+_FILE_OVERLAY_TOP_KEYS = ("advanced_panel",)
 
 
 _EN_LOCALES = {"en", "en-us", "en-gb"}
@@ -94,7 +104,7 @@ _EN_FALLBACKS = {
     "HTTPS 场景下使用的 CA 证书路径": "CA certificate path used for HTTPS.",
     "用于连接 MySQL 数据库的用户名": "Username used to connect to the MySQL database.",
     "用于连接 MySQL 数据库的密码": "Password used to connect to the MySQL database.",
-    "Docker 守护进程连接地址，例如 unix:///var/run/docker.sock 或 tcp://host:2375，用于定位采集目标": "Docker daemon endpoint, for example unix:///var/run/docker.sock or tcp://host:2375, used to locate the collection target.",
+    "监控的Docker容器所在主机的网络地址，用于准确定位和采集性能数据": "Network address of the host running the monitored Docker container, used to locate it and collect performance data.",
     "监控CPU使用情况，包括利用率百分比、平均负载以及系统时间与用户时间的占比": "Monitors CPU usage, including utilization percentage, average load, and system versus user time.",
     "监控磁盘使用情况，包括磁盘空间、读/写速率以及其他相关指标": "Monitors disk usage, including disk space, read/write rates, and other related metrics.",
     "监控磁盘输入/输出操作的性能和活动情况": "Monitors disk input/output performance and activity.",
@@ -218,6 +228,96 @@ def _localize_node(node: Any, locale: str) -> Any:
         for item in node:
             _localize_node(item, locale)
     return node
+
+
+def enrich_ui_template_from_plugin_files(content: dict | None, plugin: MonitorPlugin | None) -> dict | None:
+    """用插件目录 UI.json 覆盖 DB 模板中的悬浮提示等展示字段。
+
+    内置插件以 support-files 下的 UI.json 为展示文案真相源；一般仅同步 guide_short /
+    section 等不影响已下发配置语义的字段，避免每次改提示都强制跑 plugin_init。
+
+    SNMP 接口过滤四字段与 advanced_panel 由常量运行时注入（见 snmp_interface_template），
+    各插件 UI.json 不再复制该块。
+    """
+    if content is None or not plugin:
+        return content
+    if not isinstance(content, dict):
+        return content
+
+    from apps.monitor.services.plugin_guide import PluginGuideService
+    from apps.monitor.utils.snmp_interface_template import (
+        merge_snmp_interface_filter_ui,
+        should_inject_snmp_interface_filters,
+    )
+
+    enriched = deepcopy(content)
+
+    plugin_dir = PluginGuideService.resolve_plugin_dir(plugin)
+    if plugin_dir is not None:
+        ui_file = Path(plugin_dir) / "UI.json"
+        if ui_file.is_file():
+            try:
+                file_ui = json.loads(ui_file.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError, TypeError):
+                file_ui = None
+
+            if isinstance(file_ui, dict):
+                file_fields = {
+                    str(field.get("name")): field
+                    for field in (file_ui.get("form_fields") or [])
+                    if isinstance(field, dict) and field.get("name")
+                }
+                for key in _FILE_OVERLAY_TOP_KEYS:
+                    value = file_ui.get(key)
+                    if value not in (None, ""):
+                        enriched[key] = value
+
+                form_fields = enriched.get("form_fields")
+                if isinstance(form_fields, list) and file_fields:
+                    for field in form_fields:
+                        if not isinstance(field, dict):
+                            continue
+                        name = str(field.get("name") or "")
+                        source = file_fields.get(name)
+                        if not source:
+                            continue
+                        for key in _FILE_OVERLAY_FIELD_KEYS:
+                            if key not in source:
+                                continue
+                            value = source.get(key)
+                            if value in (None, ""):
+                                continue
+                            field[key] = deepcopy(value)
+
+    if should_inject_snmp_interface_filters(plugin, enriched):
+        enriched = merge_snmp_interface_filter_ui(enriched)
+
+    return enriched
+
+
+def resolve_support_collect_detect(plugin: MonitorPlugin | None, fallback: bool = False) -> bool:
+    """Prefer metrics.json support_collect_detect when present on disk."""
+    if plugin is None:
+        return fallback
+
+    from apps.monitor.services.plugin_guide import PluginGuideService
+
+    plugin_dir = PluginGuideService.resolve_plugin_dir(plugin)
+    if plugin_dir is None:
+        return fallback
+
+    metrics_file = Path(plugin_dir) / "metrics.json"
+    if not metrics_file.is_file():
+        return fallback
+
+    try:
+        metrics = json.loads(metrics_file.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError, TypeError):
+        return fallback
+
+    if isinstance(metrics, dict) and "support_collect_detect" in metrics:
+        return bool(metrics.get("support_collect_detect"))
+    return fallback
 
 
 def localize_ui_template(content: dict, locale: str) -> dict:

@@ -1,14 +1,31 @@
 from rest_framework import mixins
 from rest_framework.decorators import action
+from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.viewsets import GenericViewSet
 
 from apps.core.utils.web_utils import WebUtils
+from apps.node_mgmt.constants.node import NodeConstants
+from apps.node_mgmt.constants.package import PackageConstants
 from apps.node_mgmt.filters.package import PackageVersionFilter
 from apps.node_mgmt.models.package import PackageVersion
 from apps.node_mgmt.serializers.package import PackageVersionSerializer
 from apps.node_mgmt.services.package import PackageService
-from apps.node_mgmt.constants.node import NodeConstants
 from config.drf.pagination import CustomPageNumberPagination
+
+
+PACKAGE_WRITE_PERMISSIONS = {
+    (PackageConstants.TYPE_CONTROLLER, "create"): {
+        "controller_list-AddPacket",
+        "controller_packet-AddPacket",
+    },
+    (PackageConstants.TYPE_CONTROLLER, "destroy"): {"controller_packet-Delete"},
+    (PackageConstants.TYPE_COLLECTOR, "create"): {
+        "collector_list-AddPacket",
+        "collector_packet-AddPacket",
+    },
+    (PackageConstants.TYPE_COLLECTOR, "destroy"): {"collector_packet-Delete"},
+}
+NODE_APP_ADMIN_ROLE = "node--admin"
 
 
 class PackageMgmtView(
@@ -28,9 +45,27 @@ class PackageMgmtView(
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
 
+    @staticmethod
+    def _require_write_permission(request, package_type, action):
+        required_permissions = PACKAGE_WRITE_PERMISSIONS.get((package_type, action))
+        if not required_permissions:
+            raise ValidationError({"type": ["不支持的包类型"]})
+
+        user_roles = getattr(request.user, "roles", ()) or ()
+        if getattr(request.user, "is_superuser", False) or NODE_APP_ADMIN_ROLE in user_roles:
+            return
+
+        user_permissions = getattr(request.user, "permission", set()) or set()
+        if isinstance(user_permissions, dict):
+            user_permissions = user_permissions.get("node", set())
+
+        if required_permissions.isdisjoint(user_permissions):
+            raise PermissionDenied()
+
     def destroy(self, request, *args, **kwargs):
         # 删除文件，成功了再删除数据
         obj = self.get_object()
+        self._require_write_permission(request, obj.type, "destroy")
         PackageService.delete_file(obj)
         return super().destroy(request, *args, **kwargs)
 
@@ -47,6 +82,8 @@ class PackageMgmtView(
         # 校验必填参数
         if not all([package_type, os_type, object_name]):
             return WebUtils.response_error(error_message="请填写完整的包类型、操作系统和对象名称")
+
+        self._require_write_permission(request, package_type, "create")
 
         # 校验包并自动识别版本
         is_valid, error_message, parsed_info = PackageService.validate_package(

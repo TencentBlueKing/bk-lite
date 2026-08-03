@@ -65,6 +65,11 @@ Supervisor 启动；启动期不得投递任务并等待它消费。
 入口，例如幂等的后台任务、定时任务或带重试和补偿的对账流程。必要时启动期只
 记录“待处理”状态，由运行期消费者接管，不得同步等待处理完成。
 
+APM 的 Collector、Trace/Metric Store 和通知 responder 健康检查属于这类运行期
+任务。通知 responder 必须通过 System Management 公开探针实际确认消费者已注册；
+探针超时或 responder 缺失只更新 `notification_responder=degraded`，不得退出或重启
+API、Worker、Listener，也不得被移动到 `batch_init`。
+
 ## 已知故障链
 
 下面的依赖会形成自锁，禁止重新引入：

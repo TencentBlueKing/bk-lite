@@ -26,6 +26,7 @@ from apps.cmdb.constants.field_constraints import TAG_ATTR_ID, TAG_MODE_FREE
 from apps.cmdb.custom_reporting.extensions import get_custom_reporting_extension
 from apps.cmdb.display_field.constants import DISPLAY_FIELD_TYPES, DISPLAY_SUFFIX
 from apps.cmdb.graph.drivers.graph_client import GraphClient
+from apps.cmdb.graph.validators import MAX_BATCH_UPDATE_PROPERTY_VALUES
 from apps.cmdb.language.service import SettingLanguage
 from apps.cmdb.model_ops.extensions import get_model_enterprise_extension, is_file_attr_type
 from apps.cmdb.models import CREATE_INST, DELETE_INST, UPDATE_INST, FieldGroup
@@ -43,6 +44,7 @@ from apps.cmdb.services.auto_relation_rule import (
     validate_auto_relation_rule_set_payload,
 )
 from apps.cmdb.services.classification import ClassificationManage
+from apps.cmdb.services.model_visibility import BusinessModelVisibility
 from apps.cmdb.services.unique_rule import (
     UniqueRulePayload,
     apply_unique_rules_to_attr_export_rows,
@@ -885,6 +887,16 @@ class ModelManage(object):
                 organization_field="group",
             )
             models, _ = ag.query_entity(**query)
+            if not include_hidden:
+                visible_models = BusinessModelVisibility.filter_models(
+                    models,
+                    graph=ag,
+                )
+                models = [
+                    model
+                    for model in models
+                    if model["model_id"] in visible_models
+                ]
 
         lan = SettingLanguage(language)
 
@@ -895,9 +907,6 @@ class ModelManage(object):
                 model["order_id"] = 0
             if "is_visible" not in model:
                 model["is_visible"] = True
-
-        if not include_hidden:
-            models = [m for m in models if m.get("is_visible", True)]
 
         return models
 
@@ -1169,15 +1178,56 @@ class ModelManage(object):
 
         try:
             with GraphClient() as ag:
-                instances, _ = ag.query_entity(INSTANCE, [{"field": "model_id", "type": "str=", "value": model_id}])
+                last_instance_id = None
+                property_values = []
+                while True:
+                    query_params = [{"field": "model_id", "type": "str=", "value": model_id}]
+                    if last_instance_id is not None:
+                        query_params.append(
+                            {
+                                "field": "id",
+                                "type": "id>",
+                                "value": last_instance_id,
+                            }
+                        )
+                    instances, _ = ag.query_entity(
+                        INSTANCE,
+                        query_params,
+                        page={"skip": 0, "limit": MAX_BATCH_UPDATE_PROPERTY_VALUES},
+                        include_count=False,
+                    )
+                    if not instances:
+                        break
 
-                for instance in instances:
-                    # 仅处理含该文件字段值的实例
-                    if attr_id in instance and instance[attr_id]:
-                        new_display_value = DisplayFieldConverter.convert_file(instance[attr_id])
-                        update_data = {display_field_id: new_display_value}
-                        ag.batch_update_node_properties(INSTANCE, [instance["_id"]], update_data)
-                        updated_count += 1
+                    for instance in instances:
+                        if attr_id not in instance or not instance[attr_id]:
+                            continue
+                        property_values.append(
+                            {
+                                "id": instance["_id"],
+                                "value": DisplayFieldConverter.convert_file(instance[attr_id]),
+                            }
+                        )
+                        if len(property_values) == MAX_BATCH_UPDATE_PROPERTY_VALUES:
+                            ag.batch_update_node_property_values(
+                                INSTANCE,
+                                display_field_id,
+                                property_values,
+                            )
+                            updated_count += len(property_values)
+                            property_values = []
+
+                    if len(instances) < MAX_BATCH_UPDATE_PROPERTY_VALUES:
+                        break
+                    last_instance_id = instances[-1]["_id"]
+
+                if property_values:
+                    ag.batch_update_node_property_values(
+                        INSTANCE,
+                        display_field_id,
+                        property_values,
+                    )
+                    updated_count += len(property_values)
 
                 if updated_count > 0:
                     logger.info(
@@ -1488,7 +1538,12 @@ class ModelManage(object):
         return edges[0]
 
     @staticmethod
-    def model_association_search(model_id: str):
+    def model_association_search(
+        model_id: str,
+        *,
+        business_only: bool = False,
+        language: str = "en",
+    ):
         """
         查询模型所有的关联
         """
@@ -1499,6 +1554,11 @@ class ModelManage(object):
         with GraphClient() as ag:
             edges = ag.query_edge(MODEL_ASSOCIATION, query_list, param_type="OR")
 
+        if business_only:
+            return BusinessModelVisibility.filter_associations(
+                edges,
+                language=language,
+            )
         return edges
 
     @staticmethod
@@ -2074,7 +2134,11 @@ class ModelManage(object):
             for row in attr_rows:
                 ws_attr.append([row.get(header, "") for header in ATTR_HEADERS_EN])
 
-            associations = ModelManage.model_association_search(model_id)
+            associations = ModelManage.model_association_search(
+                model_id,
+                business_only=True,
+                language=language,
+            )
             if associations:
                 if selected_ids is not None:
                     associations = [

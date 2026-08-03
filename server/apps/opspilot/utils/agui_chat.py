@@ -13,6 +13,7 @@ from asgiref.sync import sync_to_async
 from django.http import StreamingHttpResponse
 
 from apps.core.logger import opspilot_logger as logger
+from apps.opspilot.metis.llm.common.token_usage import TokenUsageAccumulator
 from apps.opspilot.models import LLMModel, SkillRequestLog
 from apps.opspilot.services.chat_service import chat_service
 from apps.opspilot.utils.agent_factory import create_agent_instance, create_sse_response_headers
@@ -432,6 +433,7 @@ async def _generate_agui_stream(params, skill_name, skill_type, show_think, fina
         # 仍处于 try 内，任何异常仍以原有 ERROR 事件形状返回，线缆形状不变。
         chat_kwargs = await sync_to_async(_prepare_agui_chat_kwargs, thread_sensitive=True)(params)
         graph, request = await sync_to_async(create_agent_instance, thread_sensitive=True)(skill_type, chat_kwargs)
+        token_usage_accumulator = TokenUsageAccumulator()
         accumulated_content = []
         state = _init_agui_stream_state()
         enable_thinking_split = _supports_thinking_events(request)
@@ -465,7 +467,10 @@ async def _generate_agui_stream(params, skill_name, skill_type, show_think, fina
 
         logger.info(f"[AGUI Chat] 开始 graph.agui_stream, request_id={getattr(request, 'thread_id', '?')}")
         try:
-            async for sse_line in graph.agui_stream(request):
+            async for sse_line in graph.agui_stream(
+                request,
+                token_usage_accumulator=token_usage_accumulator,
+            ):
                 if execution_id and await is_interrupt_requested_async(execution_id):
                     interrupt_data = {
                         "type": "INTERRUPTED",
@@ -496,6 +501,9 @@ async def _generate_agui_stream(params, skill_name, skill_type, show_think, fina
             raise
 
         final_stats["content"] = accumulated_content
+        final_stats["usage"] = token_usage_accumulator.as_openai_usage()
+        final_stats["llm_call_count"] = token_usage_accumulator.call_count
+        final_stats["usage_calls"] = token_usage_accumulator.as_call_details()
         if final_stats["content"]:
 
             def log_in_background():
@@ -517,12 +525,21 @@ def _log_and_update_tokens_agui(final_stats, skill_name, skill_id, current_ip, k
         final_content = final_stats.get("content", "")
         if not final_content:
             return
+        usage = final_stats.get("usage") or {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0,
+        }
+        usage_calls = final_stats.get("usage_calls") or []
+        llm_call_count = final_stats.get("llm_call_count")
+        if not isinstance(llm_call_count, int) or llm_call_count < 0:
+            llm_call_count = len(usage_calls)
 
         # 创建或更新日志
         if history_log:
-            history_log.completion_tokens = 0
-            history_log.prompt_tokens = 0
-            history_log.total_tokens = 0
+            history_log.completion_tokens = usage["completion_tokens"]
+            history_log.prompt_tokens = usage["prompt_tokens"]
+            history_log.total_tokens = usage["total_tokens"]
             history_log.response = final_content
             history_log.save()
         else:
@@ -533,9 +550,9 @@ def _log_and_update_tokens_agui(final_stats, skill_name, skill_id, current_ip, k
 
             # 构建response_detail，包含token统计和响应内容
             response_detail = {
-                "completion_tokens": 0,
-                "prompt_tokens": 0,
-                "total_tokens": 0,
+                "usage": usage,
+                "llm_call_count": llm_call_count,
+                "usage_calls": usage_calls,
                 "response": final_content,
             }
 
@@ -555,7 +572,30 @@ def _log_and_update_tokens_agui(final_stats, skill_name, skill_id, current_ip, k
                 user_message=user_message,
             )
 
-        logger.info(f"AGUI log created/updated for skill: {skill_name}")
+        for call in usage_calls:
+            logger.info(
+                "AGUI token usage call recorded: skill_id=%s, skill_name=%s, "
+                "call_index=%s, visible_tool_count=%s, visible_tools=%s, "
+                "prompt_tokens=%s, completion_tokens=%s, total_tokens=%s",
+                skill_id,
+                skill_name,
+                call.get("call_index"),
+                call.get("visible_tool_count", 0),
+                call.get("visible_tools", []),
+                call.get("prompt_tokens", 0),
+                call.get("completion_tokens", 0),
+                call.get("total_tokens", 0),
+            )
+        logger.info(
+            "AGUI token usage recorded: skill_id=%s, skill_name=%s, llm_call_count=%s, "
+            "prompt_tokens=%s, completion_tokens=%s, total_tokens=%s",
+            skill_id,
+            skill_name,
+            llm_call_count,
+            usage["prompt_tokens"],
+            usage["completion_tokens"],
+            usage["total_tokens"],
+        )
     except Exception as e:
         logger.error(f"AGUI log update error: {e}")
 
@@ -584,7 +624,16 @@ def stream_agui_chat(params, skill_name, kwargs, current_ip, user_message, skill
     params["execution_id"] = params.get("execution_id") or params.get("thread_id") or str(int(time.time() * 1000))
 
     # 用于存储最终统计信息的共享变量
-    final_stats = {"content": []}
+    final_stats = {
+        "content": [],
+        "usage": {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0,
+        },
+        "llm_call_count": 0,
+        "usage_calls": [],
+    }
     response = StreamingHttpResponse(
         _generate_agui_stream(
             params,

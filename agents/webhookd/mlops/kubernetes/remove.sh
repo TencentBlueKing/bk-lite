@@ -55,15 +55,27 @@ fi
 # 检查资源类型
 set +e
 JOB_EXISTS=$(kubectl get job "$K8S_NAME" -n "$NAMESPACE" --ignore-not-found 2>/dev/null)
+JOB_GET_STATUS=$?
 DEPLOYMENT_EXISTS=$(kubectl get deployment "$K8S_NAME" -n "$NAMESPACE" --ignore-not-found 2>/dev/null)
+DEPLOYMENT_GET_STATUS=$?
+SERVICE_NAME="${K8S_NAME}-svc"
+SERVICE_EXISTS=$(kubectl get service "$SERVICE_NAME" -n "$NAMESPACE" --ignore-not-found 2>/dev/null)
+SERVICE_GET_STATUS=$?
 set -e
+
+if [ $JOB_GET_STATUS -ne 0 ] || [ $DEPLOYMENT_GET_STATUS -ne 0 ] || [ $SERVICE_GET_STATUS -ne 0 ]; then
+    json_error "RESOURCE_QUERY_FAILED" "$ID" "Failed to query Kubernetes resources before removal"
+    exit 1
+fi
 
 DELETED_RESOURCES=""
 
 if [ -n "$JOB_EXISTS" ]; then
     # 删除 Job
+    set +e
     DELETE_OUTPUT=$(kubectl delete job "$K8S_NAME" -n "$NAMESPACE" 2>&1)
     DELETE_STATUS=$?
+    set -e
     
     if [ $DELETE_STATUS -ne 0 ]; then
         json_error "JOB_DELETE_FAILED" "$ID" "Failed to delete job" "$DELETE_OUTPUT"
@@ -79,8 +91,10 @@ fi
 
 if [ -n "$DEPLOYMENT_EXISTS" ]; then
     # 删除 Deployment
+    set +e
     DELETE_OUTPUT=$(kubectl delete deployment "$K8S_NAME" -n "$NAMESPACE" 2>&1)
     DELETE_STATUS=$?
+    set -e
     
     if [ $DELETE_STATUS -ne 0 ]; then
         json_error "DEPLOYMENT_DELETE_FAILED" "$ID" "Failed to delete deployment" "$DELETE_OUTPUT"
@@ -92,17 +106,45 @@ if [ -n "$DEPLOYMENT_EXISTS" ]; then
     else
         DELETED_RESOURCES="Deployment"
     fi
-    
-    # 删除 Service
-    SERVICE_NAME="${K8S_NAME}-svc"
+fi
+
+# Service 可能在 Deployment 创建失败或已被单独删除后独立残留，必须单独处理。
+if [ -n "$SERVICE_EXISTS" ]; then
     set +e
-    SERVICE_EXISTS=$(kubectl get svc "$SERVICE_NAME" -n "$NAMESPACE" --ignore-not-found 2>/dev/null)
+    DELETE_OUTPUT=$(kubectl delete service "$SERVICE_NAME" -n "$NAMESPACE" 2>&1)
+    DELETE_STATUS=$?
     set -e
-    
-    if [ -n "$SERVICE_EXISTS" ]; then
-        kubectl delete svc "$SERVICE_NAME" -n "$NAMESPACE" >/dev/null 2>&1 || true
-        DELETED_RESOURCES="$DELETED_RESOURCES, Service"
+
+    if [ $DELETE_STATUS -ne 0 ]; then
+        json_error "SERVICE_DELETE_FAILED" "$ID" "Failed to delete service" "$DELETE_OUTPUT"
+        exit 1
     fi
+
+    if [ -n "$DELETED_RESOURCES" ]; then
+        DELETED_RESOURCES="$DELETED_RESOURCES, Service"
+    else
+        DELETED_RESOURCES="Service"
+    fi
+fi
+
+# 删除命令成功后再次查询，只有目标资源全部消失才允许复用同一运行时 ID。
+set +e
+REMAINING_JOB=$(kubectl get job "$K8S_NAME" -n "$NAMESPACE" --ignore-not-found 2>/dev/null)
+JOB_VERIFY_STATUS=$?
+REMAINING_DEPLOYMENT=$(kubectl get deployment "$K8S_NAME" -n "$NAMESPACE" --ignore-not-found 2>/dev/null)
+DEPLOYMENT_VERIFY_STATUS=$?
+REMAINING_SERVICE=$(kubectl get service "$SERVICE_NAME" -n "$NAMESPACE" --ignore-not-found 2>/dev/null)
+SERVICE_VERIFY_STATUS=$?
+set -e
+
+if [ $JOB_VERIFY_STATUS -ne 0 ] || [ $DEPLOYMENT_VERIFY_STATUS -ne 0 ] || [ $SERVICE_VERIFY_STATUS -ne 0 ]; then
+    json_error "RESOURCE_VERIFY_FAILED" "$ID" "Failed to verify Kubernetes resources after removal"
+    exit 1
+fi
+
+if [ -n "$REMAINING_JOB" ] || [ -n "$REMAINING_DEPLOYMENT" ] || [ -n "$REMAINING_SERVICE" ]; then
+    json_error "RESOURCE_DELETE_INCOMPLETE" "$ID" "Kubernetes resources still exist after removal"
+    exit 1
 fi
 
 if [ -z "$DELETED_RESOURCES" ]; then

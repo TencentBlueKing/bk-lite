@@ -9,7 +9,10 @@ CQL参数验证器
 """
 import re
 from typing import Any, List
+
 from apps.core.exceptions.base_app_exception import BaseAppException
+
+MAX_BATCH_UPDATE_PROPERTY_VALUES = 1000
 
 
 class CQLValidator:
@@ -64,6 +67,28 @@ class CQLValidator:
             raise BaseAppException("ID list cannot be empty")
         
         return [CQLValidator.validate_id(v) for v in value]
+
+    @staticmethod
+    def validate_property_values(value: Any) -> list[dict]:
+        """校验并规范化逐节点属性值批量写入参数。"""
+        if not isinstance(value, list):
+            raise BaseAppException("property_values must be a list")
+        if len(value) > MAX_BATCH_UPDATE_PROPERTY_VALUES:
+            raise BaseAppException(
+                f"property_values cannot exceed {MAX_BATCH_UPDATE_PROPERTY_VALUES} items"
+            )
+
+        normalized = []
+        for item in value:
+            if not isinstance(item, dict) or "id" not in item or "value" not in item:
+                raise BaseAppException("property_values items must contain id and value")
+            normalized.append(
+                {
+                    "id": CQLValidator.validate_id(item["id"]),
+                    "value": item["value"],
+                }
+            )
+        return normalized
     
     @staticmethod
     def validate_label(label: str) -> str:

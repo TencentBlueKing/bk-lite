@@ -86,7 +86,7 @@
 .pageTitle {
   margin: 0 0 14px;
   color: #172b4d;
-  font-size: 18px;
+  font-size: 14px;
   font-weight: 650;
 }
 
@@ -119,8 +119,8 @@
   }
 }
 
-.metricLabel { color: #60708a; font-size: 13px; }
-.metricValue { margin-top: 8px; color: #101828; font-size: 28px; font-weight: 650; line-height: 1; }
+.metricLabel { color: #60708a; font-size: 12px; }
+.metricValue { margin-top: 8px; color: #101828; font-size: 14px; font-weight: 650; line-height: 1.5; font-variant-numeric: tabular-nums; }
 .metricDetail { margin-top: 7px; color: #7b8ba3; font-size: 12px; }
 
 .topologyCard {

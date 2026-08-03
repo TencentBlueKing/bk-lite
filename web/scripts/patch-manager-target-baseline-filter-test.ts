@@ -28,8 +28,8 @@ const page = readFileSync(
   resolve(process.cwd(), 'src/app/patch-manager/(pages)/target/page.tsx'),
   'utf8',
 );
-assert.match(page, /placeholder="基线"[\s\S]{0,500}allowClear/, '目标管理应提供可清空的基线下拉');
-assert.match(page, /placeholder="基线"[\s\S]{0,500}showSearch/, '基线下拉应支持搜索');
+assert.match(page, /placeholder=\{t\('patchManager\.targetPage\.baseline'\)\}[\s\S]{0,500}allowClear/, '目标管理应提供可清空的双语基线下拉');
+assert.match(page, /placeholder=\{t\('patchManager\.targetPage\.baseline'\)\}[\s\S]{0,500}showSearch/, '基线下拉应支持搜索');
 assert.match(page, /page_size:\s*-1/, '基线选项应一次查询全部');
 assert.match(page, /baseline_id:[\s\S]{0,150}baselineFilter/, '目标列表请求应携带当前基线条件');
 

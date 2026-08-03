@@ -18,6 +18,7 @@ from apps.patch_mgmt.serializers.patch_source import (
 from apps.patch_mgmt.services.connectivity_prober import probe_source
 from apps.patch_mgmt.utils.operation_log import log_source_changed
 from apps.patch_mgmt.utils.data_permissions import require_authorized_ids
+from apps.patch_mgmt.utils.i18n import patch_message
 
 
 class PatchSourceViewSet(AuthViewSet):
@@ -128,7 +129,7 @@ class PatchSourceViewSet(AuthViewSet):
             "connectivity_status": (
                 "connected" if result and result.reachable else "failed"
             ),
-            "detail": result.detail if result else "缺少可测试的源地址",
+            "detail": result.detail if result else patch_message(request, "error.source_address_required", "No source address is available for testing"),
             "status_code": result.status_code if result else None,
         })
 
@@ -146,9 +147,12 @@ class PatchSourceViewSet(AuthViewSet):
         from rest_framework.exceptions import ValidationError as DRFValidationError
 
         instance = self.get_object()
+        require_authorized_ids(
+            self, request, PatchSource.objects.all(), [instance.id], "patch_source"
+        )
         is_enabled = request.data.get("is_enabled")
         if not isinstance(is_enabled, bool):
-            raise DRFValidationError({"is_enabled": ["该字段必填且为布尔值"]})
+            raise DRFValidationError({"is_enabled": [patch_message(request, "error.boolean_required", "This field is required and must be a boolean")]})
         instance.is_enabled = is_enabled
         instance.save(update_fields=["is_enabled", "updated_at", "updated_by"])
         log_source_changed(request, "update", instance.name)
@@ -176,6 +180,9 @@ class PatchSourceViewSet(AuthViewSet):
         )
 
         source = self.get_object()
+        require_authorized_ids(
+            self, request, PatchSource.objects.all(), [source.id], "patch_source"
+        )
         try:
             if source.is_linux_source:
                 result = SourceSyncService.sync_linux_repo(source)
@@ -183,14 +190,14 @@ class PatchSourceViewSet(AuthViewSet):
                 result = SourceSyncService.sync_wsus(source)
             else:
                 return Response(
-                    {"error": "当前源类型不支持同步（仅支持 yum/dnf/apt/WSUS）"},
+                    {"error": patch_message(request, "error.source_sync_unsupported", "This source type does not support synchronization (yum/dnf/apt/WSUS only)")},
                     status=drf_status.HTTP_400_BAD_REQUEST,
                 )
         except (SourceSyncError, RepoSyncError) as exc:
             return Response({"error": str(exc)}, status=drf_status.HTTP_400_BAD_REQUEST)
         except Exception as exc:  # noqa: BLE001 兜底,避免 500
             logger.warning("sync 失败 source_id=%s: %s", source.id, exc, exc_info=True)
-            return Response({"error": f"同步失败: {exc}"}, status=drf_status.HTTP_400_BAD_REQUEST)
+            return Response({"error": patch_message(request, "error.sync_failed", "Sync failed: {detail}", detail=str(exc))}, status=drf_status.HTTP_400_BAD_REQUEST)
         log_source_changed(request, "sync", source.name)
         return Response(result)
 
@@ -206,25 +213,28 @@ class PatchSourceViewSet(AuthViewSet):
 
         from apps.patch_mgmt.services.linux_repo_sync import RepoSyncError
         from apps.patch_mgmt.services.source_sync_service import SourceSyncError, SourceSyncService
-        from apps.patch_mgmt.services.wsus_sync import WsusSyncError
 
         source = self.get_object()
+        require_authorized_ids(
+            self, request, PatchSource.objects.all(), [source.id],
+            "patch_source", operation="View"
+        )
         search = (request.data.get("search") or "").strip().lower()
         page = int(request.data.get("page") or 1)
         page_size = int(request.data.get("page_size") or 20)
 
         try:
             candidates = SourceSyncService.preview_sync_candidates(source)
-        except (SourceSyncError, RepoSyncError, WsusSyncError) as exc:
+        except (SourceSyncError, RepoSyncError) as exc:
             return Response({"error": str(exc)}, status=drf_status.HTTP_400_BAD_REQUEST)
         except Exception as exc:  # noqa: BLE001
             logger.warning("preview_sync 失败 source_id=%s: %s", source.id, exc, exc_info=True)
-            return Response({"error": f"拉取失败: {exc}"}, status=drf_status.HTTP_400_BAD_REQUEST)
+            return Response({"error": patch_message(request, "error.fetch_failed", "Fetch failed: {detail}", detail=str(exc))}, status=drf_status.HTTP_400_BAD_REQUEST)
 
         if search:
             candidates = [
                 c for c in candidates
-                if search in c.get("name", "").lower() or search in c.get("title", "").lower()
+                if search in c.get("name", "").lower()
             ]
 
         total = len(candidates)
@@ -257,10 +267,13 @@ class PatchSourceViewSet(AuthViewSet):
         from apps.patch_mgmt.tasks import ingest_patch_source
 
         source = self.get_object()
+        require_authorized_ids(
+            self, request, PatchSource.objects.all(), [source.id], "patch_source"
+        )
         keys = request.data.get("keys") or []
         severity_overrides = request.data.get("severity_overrides") or {}
         if not isinstance(keys, list) or not keys:
-            raise DRFValidationError({"keys": ["至少选择一条补丁"]})
+            raise DRFValidationError({"keys": [patch_message(request, "error.patch_keys_required", "Select at least one patch")]})
 
         # WSUS 需远程获取并批量写入元数据，继续走异步任务。
         if source.source_type == "wsus":
@@ -276,7 +289,7 @@ class PatchSourceViewSet(AuthViewSet):
             return Response({"error": str(exc)}, status=drf_status.HTTP_400_BAD_REQUEST)
         except Exception as exc:  # noqa: BLE001
             logger.warning("ingest 失败 source_id=%s: %s", source.id, exc, exc_info=True)
-            return Response({"error": f"入库失败: {exc}"}, status=drf_status.HTTP_400_BAD_REQUEST)
+            return Response({"error": patch_message(request, "error.ingest_failed", "Ingestion failed: {detail}", detail=str(exc))}, status=drf_status.HTTP_400_BAD_REQUEST)
         log_source_changed(request, "sync", source.name)
         return Response(result)
 
@@ -285,6 +298,9 @@ class PatchSourceViewSet(AuthViewSet):
     def check_connectivity(self, request, pk=None):
         """用编辑表单参数测试连接；缺省字段复用库中配置且不写回。"""
         source = self.get_object()
+        require_authorized_ids(
+            self, request, PatchSource.objects.all(), [source.id], "patch_source"
+        )
         submitted = dict(request.data)
         if hasattr(request.data, "dict"):
             submitted = request.data.dict()
@@ -303,7 +319,7 @@ class PatchSourceViewSet(AuthViewSet):
             "source_id": source.id,
             "connectivity_status": "connected" if result and result.reachable else "failed",
             "last_checked_at": None,
-            "detail": result.detail if result else "缺少可测试的源地址",
+            "detail": result.detail if result else patch_message(request, "error.source_address_required", "No source address is available for testing"),
             "status_code": result.status_code if result else None,
         })
 
@@ -322,7 +338,7 @@ class PatchSourceViewSet(AuthViewSet):
 
         source_ids = request.data.get("source_ids") or []
         if not isinstance(source_ids, list) or not source_ids:
-            raise DRFValidationError({"source_ids": ["至少选择一个补丁源"]})
+            raise DRFValidationError({"source_ids": [patch_message(request, "error.source_ids_required", "Select at least one patch source")]})
 
         results = []
         allowed_source_ids = require_authorized_ids(
@@ -344,7 +360,7 @@ class PatchSourceViewSet(AuthViewSet):
                     "source_id": source_id,
                     "connectivity_status": "unknown",
                     "last_checked_at": None,
-                    "error": "补丁源不存在",
+                    "error": patch_message(request, "error.source_not_found", "Patch source not found"),
                 })
 
         return Response(results, status=drf_status.HTTP_200_OK)

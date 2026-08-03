@@ -5,8 +5,9 @@
 
 import os
 
+from django.apps import apps as django_apps
 from django.core.management import call_command
-from django.core.management.base import BaseCommand
+from django.core.management.base import BaseCommand, CommandError
 
 from apps.core.utils.loader import preload_language_cache
 
@@ -17,10 +18,14 @@ class Command(BaseCommand):
     def add_arguments(self, parser):
         parser.add_argument("--apps", type=str, default="", help="逗号分隔的应用列表，为空则初始化所有应用")
         parser.add_argument(
-            "--continue-on-error", action="store_true", help="初始化失败时继续执行后续模块，并在末尾输出失败列表",
+            "--continue-on-error",
+            action="store_true",
+            help="初始化失败时继续执行后续模块，并在末尾输出失败列表",
         )
 
     def handle(self, *args, **options):
+        self._verify_critical_schema()
+
         apps = options["apps"].strip()
         continue_on_error = options["continue_on_error"]
 
@@ -74,6 +79,15 @@ class Command(BaseCommand):
             return
 
         self.stdout.write(self.style.SUCCESS("批量初始化完成"))
+
+    @staticmethod
+    def _verify_critical_schema():
+        """确保被权限读写链路硬依赖的表已完成迁移。"""
+        try:
+            permission_version_model = django_apps.get_model("system_mgmt", "UserPermissionVersion")
+        except LookupError as error:
+            raise RuntimeError("关键应用 system_mgmt 未安装，无法启动权限服务") from error
+        permission_version_model.objects.values_list("id", flat=True).first()
 
     def _init_system_mgmt(self):
         """系统管理资源初始化"""
@@ -132,7 +146,10 @@ class Command(BaseCommand):
     def _init_operation_analysis(self):
         """运营分析系统资源初始化"""
         self.stdout.write("运营分析系统资源初始化...")
-        call_command("init_default_namespace")
+        try:
+            call_command("init_default_namespace")
+        except CommandError as error:
+            self.stdout.write(self.style.WARNING(f"默认命名空间初始化跳过（{type(error).__name__}）: {error}"))
         call_command("init_default_groups")
         call_command("init_source_api_data", force_update=True)
         call_command("init_builtin_canvases")
@@ -159,6 +176,8 @@ class Command(BaseCommand):
         self.stdout.write("预热语言缓存...")
         try:
             result = preload_language_cache()
-            self.stdout.write(self.style.SUCCESS(f"语言缓存预热完成: {len(result['loaded'])} 已加载, {len(result['skipped'])} 已跳过, {len(result['failed'])} 失败"))
+            self.stdout.write(
+                self.style.SUCCESS(f"语言缓存预热完成: {len(result['loaded'])} 已加载, {len(result['skipped'])} 已跳过, {len(result['failed'])} 失败")
+            )
         except Exception as e:
             self.stdout.write(self.style.WARNING(f"语言缓存预热失败: {str(e)}"))

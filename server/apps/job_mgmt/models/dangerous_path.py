@@ -40,6 +40,9 @@ class DangerousPath(TimeInfo, MaintainerInfo):
     # 是否启用
     is_enabled = models.BooleanField(default=True, verbose_name="是否启用")
 
+    # 系统内置规则全局可见，只有平台超级管理员可以修改。
+    is_builtin = models.BooleanField(default=False, db_index=True, verbose_name="是否内置")
+
     # 组织归属
     team = models.JSONField(default=list, verbose_name="团队ID列表")
 

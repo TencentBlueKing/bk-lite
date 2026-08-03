@@ -24,6 +24,42 @@ class InstallerService:
     MANUAL_INSTALL_MODE = "manual"
 
     @staticmethod
+    def validate_controller_package_os(package_version_id: int, target_os: str) -> PackageVersion | None:
+        if target_os not in {NodeConstants.WINDOWS_OS, NodeConstants.LINUX_OS}:
+            raise BaseAppException(f"Unsupported operating system: {target_os}")
+        package_obj = PackageVersion.objects.filter(id=package_version_id).first()
+        if not package_obj:
+            # Preserve the existing not-found handling at the task boundary; this
+            # guard is specifically responsible for rejecting an existing package
+            # that would route the batch through the wrong operating-system path.
+            return None
+        if package_obj.os != target_os:
+            raise BaseAppException(
+                f"Controller package operating system mismatch: package={package_obj.os}, target={target_os}"
+            )
+        return package_obj
+
+    @staticmethod
+    def requires_manual_recovery(result) -> bool:
+        if not isinstance(result, dict):
+            return False
+        failure = result.get("failure")
+        if isinstance(failure, dict) and failure.get("type") == "manual_recovery_required":
+            return True
+        for step in result.get("steps") or []:
+            if not isinstance(step, dict):
+                continue
+            details = step.get("details")
+            if not isinstance(details, dict):
+                continue
+            step_failure = details.get("failure")
+            if details.get("error_type") == "manual_recovery_required" or (
+                isinstance(step_failure, dict) and step_failure.get("type") == "manual_recovery_required"
+            ):
+                return True
+        return False
+
+    @staticmethod
     def normalize_required_cpu_architecture(os_name: str, cpu_architecture: str) -> str:
         normalized_arch = normalize_cpu_architecture(cpu_architecture)
         if not normalized_arch:
@@ -90,6 +126,10 @@ class InstallerService:
         node_name,
         install_mode=MANUAL_INSTALL_MODE,
         cpu_architecture: str = "",
+        task_node_id: int | None = None,
+        execution_id: str = "",
+        execution_attempt: int | None = None,
+        execution_deadline_unix: int | None = None,
     ):
         """
         获取安装命令（生成包含临时 token 的 curl 命令）
@@ -128,6 +168,11 @@ class InstallerService:
             organizations=organizations,
             node_name=node_name,
             cpu_architecture=normalized_arch,
+            install_mode=install_mode,
+            task_node_id=task_node_id,
+            execution_id=execution_id,
+            execution_attempt=execution_attempt,
+            execution_deadline_unix=execution_deadline_unix,
         )
 
         # 根据操作系统生成不同的安装命令
@@ -153,6 +198,10 @@ class InstallerService:
         domain: str = "domain.com",
     ):
         """安装控制器"""
+        node_operating_systems = {node.get("os") or NodeConstants.LINUX_OS for node in nodes}
+        if len(node_operating_systems) != 1:
+            raise BaseAppException("A controller installation batch must use one operating system")
+        InstallerService.validate_controller_package_os(package_version_id, node_operating_systems.pop())
         task_obj = ControllerTask.objects.create(
             cloud_region_id=cloud_region_id,
             work_node=work_node,
@@ -192,6 +241,9 @@ class InstallerService:
                     password=password,
                     private_key=private_key,
                     passphrase=passphrase,
+                    winrm_scheme=node.get("winrm_scheme", "https"),
+                    winrm_transport=node.get("winrm_transport", "ntlm"),
+                    winrm_cert_validation=node.get("winrm_cert_validation", True),
                     status="waiting",
                 )
             )
@@ -419,7 +471,7 @@ class InstallerService:
                 "else echo 'Error: root or sudo is required to install controller'; exit 1; fi; "
             )
 
-        return (
+        command = (
             f"{shell_detection}{privilege_detection}"
             'umask 077; bootstrap_file="$(mktemp)" || exit 1; '
             'cleanup_bootstrap() { rm -f "$bootstrap_file"; }; '
@@ -432,3 +484,8 @@ class InstallerService:
             'else sudo "$bootstrap_shell" "$bootstrap_file" || bootstrap_status=$?; fi; '
             'exit "$bootstrap_status"'
         )
+        if install_mode == InstallerService.MANUAL_INSTALL_MODE:
+            # 手动命令会直接粘贴到用户当前的登录 Shell 中执行。使用子 Shell
+            # 隔离内部 exit，既保留安装退出码，也不结束用户的登录会话。
+            return f"( {command} )"
+        return command

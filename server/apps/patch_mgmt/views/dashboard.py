@@ -1,8 +1,8 @@
 """补丁管理 Dashboard 视图"""
 
 from django.db.models import Count, Exists, OuterRef
-from django.utils import timezone
 from rest_framework.decorators import action
+from rest_framework.exceptions import MethodNotAllowed
 from rest_framework.response import Response
 
 from collections import defaultdict
@@ -28,44 +28,24 @@ from apps.patch_mgmt.serializers.governance import GovernanceTaskListSerializer
 from apps.patch_mgmt.services.risk_service import compute_risk_items
 
 
-def _relative_time(value):
-    """返回中文相对时间（用于最近执行记录）"""
-    if not value:
-        return "—"
-    now = timezone.now()
-    if value > now:
-        return "刚刚"
-    diff = now - value
-    seconds = diff.total_seconds()
-    if seconds < 60:
-        return "刚刚"
-    if seconds < 3600:
-        return f"{int(seconds // 60)} 分钟前"
-    if seconds < 86400:
-        return f"{int(seconds // 3600)} 小时前"
-    if seconds < 172800:
-        return "昨天"
-    return value.strftime("%m-%d")
-
-
-def _task_status_color(status):
-    """治理任务状态 → Ant Design Tag color"""
-    return {
-        GovernanceTaskStatus.PENDING: "default",
-        GovernanceTaskStatus.RUNNING: "processing",
-        GovernanceTaskStatus.COMPLETED: "success",
-        GovernanceTaskStatus.PARTIAL_SUCCESS: "warning",
-        GovernanceTaskStatus.FAILED: "error",
-        GovernanceTaskStatus.CANCELLED: "default",
-    }.get(status, "default")
-
-
 class PatchDashboardViewSet(AuthViewSet):
     """补丁管理 Dashboard 视图集"""
 
     queryset = GovernanceTask.objects.none()
     serializer_class = GovernanceTaskListSerializer
     permission_key = "patch_dashboard"
+
+    def create(self, request, *args, **kwargs):
+        raise MethodNotAllowed(request.method)
+
+    def update(self, request, *args, **kwargs):
+        raise MethodNotAllowed(request.method)
+
+    def partial_update(self, request, *args, **kwargs):
+        raise MethodNotAllowed(request.method)
+
+    def destroy(self, request, *args, **kwargs):
+        raise MethodNotAllowed(request.method)
 
     @action(detail=False, methods=["get"])
     @HasPermission("patch_dashboard-View")
@@ -174,35 +154,37 @@ class PatchDashboardViewSet(AuthViewSet):
             {"label": "未配置", "count": unconfigured_hosts, "color": "warning", "filter": "unconfigured"},
         ]
 
-        # 最近执行记录（按团队过滤）
-        recent_tasks_qs = task_qs.prefetch_related("host_results").order_by("-created_at")[:10]
-
-        def _task_in_scope(task):
-            listed_target_ids = set(task.target_list or [])
-            if listed_target_ids & target_ids:
-                return True
-            return any(hr.target_id in target_ids for hr in task.host_results.all())
-
-        recent_tasks_qs = [task for task in recent_tasks_qs if _task_in_scope(task)]
-
-        recent_tasks = []
-        for task in recent_tasks_qs[:10]:
-            total = len(task.target_list or []) or task.host_results.count() or 1
-            completed = sum(1 for hr in task.host_results.all() if hr.exit_code == 0)
-            if task.status == GovernanceTaskStatus.COMPLETED:
-                completed = total
-            elif task.status == GovernanceTaskStatus.PENDING:
-                completed = 0
-            status_display = dict(GovernanceTaskStatus.CHOICES).get(task.status, task.status)
-            recent_tasks.append({
-                "id": task.id,
-                "name": task.name,
-                "status": status_display,
-                "status_color": _task_status_color(task.status),
-                "progress": f"{completed} / {total}",
-                "time": _relative_time(task.created_at),
-                "created_at": task.created_at.isoformat() if task.created_at else None,
-            })
+        # 与「风险治理 / 执行记录」使用同一根记录、权限、排序和状态口径。
+        recent_roots = list(
+            task_qs.filter(
+                parent_task__isnull=True,
+                task_type__in=(GovernanceTaskType.INSTALL, GovernanceTaskType.REBOOT),
+            )
+            .select_related("source_record")
+            .prefetch_related("host_results")
+            .order_by("-created_at")[:10]
+        )
+        serialized_recent = GovernanceTaskListSerializer(
+            recent_roots,
+            many=True,
+            context={"request": request},
+        ).data
+        recent_tasks = [
+            {
+                "id": task["id"],
+                "name": task["name"],
+                "task_type": task["task_type"],
+                "task_type_display": task["task_type_display"],
+                "execution_mode": task["execution_mode"],
+                "execution_window_start": task["execution_window_start"],
+                "execution_window_end": task["execution_window_end"],
+                "status": task["record_status_display"],
+                "status_code": task["record_status"],
+                "status_color": task["record_status_color"],
+                "created_at": task["created_at"],
+            }
+            for task in serialized_recent
+        ]
 
         # TOP 风险补丁：基于真实缺失风险项聚合
         severity_rank = {

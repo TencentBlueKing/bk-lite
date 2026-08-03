@@ -7,6 +7,7 @@ import importlib
 import json
 
 import pytest
+from django.db import transaction
 
 from apps.cmdb.models.public_enum_library import PublicEnumLibrary
 from apps.cmdb.services import public_enum_library as svc
@@ -109,6 +110,36 @@ def test_update_library_name_team(monkeypatch):
 
 
 @pytest.mark.django_db
+def test_update_library_locks_before_authorization(monkeypatch):
+    library = _make()
+    called = []
+    select_for_update = svc.PUBLIC_ENUM_LIBRARY_MANAGER.select_for_update
+
+    def _select_for_update():
+        called.append("locked")
+        return select_for_update()
+
+    def _authorize(target):
+        called.append("authorized")
+        assert target.pk == library.pk
+
+    monkeypatch.setattr(
+        svc.PUBLIC_ENUM_LIBRARY_MANAGER,
+        "select_for_update",
+        _select_for_update,
+    )
+
+    svc.update_library(
+        "lib_1",
+        {"name": "新名"},
+        "bob",
+        authorize=_authorize,
+    )
+
+    assert called == ["locked", "authorized"]
+
+
+@pytest.mark.django_db
 def test_update_library_empty_name():
     _make()
     with pytest.raises(BaseAppException):
@@ -116,16 +147,51 @@ def test_update_library_empty_name():
 
 
 @pytest.mark.django_db
-def test_update_library_options_enqueues(monkeypatch):
+def test_update_library_options_enqueues(
+    monkeypatch,
+    django_capture_on_commit_callbacks,
+):
     _make()
     called = {}
     monkeypatch.setattr(
         f"{MODULE}.enqueue_library_snapshot_refresh",
         lambda library_id, trigger, operator: called.setdefault("hit", True),
     )
-    result = svc.update_library("lib_1", {"options": [{"id": "2", "name": "停止"}]}, "admin")
+    with django_capture_on_commit_callbacks(execute=True):
+        result = svc.update_library(
+            "lib_1",
+            {"options": [{"id": "2", "name": "停止"}]},
+            "admin",
+        )
     assert result["options"][0]["id"] == "2"
     assert called.get("hit") is True
+
+
+@pytest.mark.django_db
+def test_update_library_options_does_not_enqueue_after_outer_rollback(
+    monkeypatch,
+    django_capture_on_commit_callbacks,
+):
+    _make()
+    called = {}
+    monkeypatch.setattr(
+        f"{MODULE}.enqueue_library_snapshot_refresh",
+        lambda library_id, trigger, operator: called.setdefault(
+            "hit", True
+        ),
+    )
+
+    with django_capture_on_commit_callbacks(execute=True):
+        with pytest.raises(RuntimeError, match="rollback"):
+            with transaction.atomic():
+                svc.update_library(
+                    "lib_1",
+                    {"options": [{"id": "2", "name": "停止"}]},
+                    "admin",
+                )
+                raise RuntimeError("rollback")
+
+    assert called == {}
 
 
 # --------------------------------------------------------------------------
@@ -207,6 +273,45 @@ def test_delete_library_ok(monkeypatch):
     monkeypatch.setattr(f"{MODULE}.find_library_references", lambda lib: [])
     svc.delete_library("lib_1", "admin")
     assert not PublicEnumLibrary.objects.filter(library_id="lib_1").exists()
+
+
+@pytest.mark.django_db
+def test_delete_library_locks_and_authorizes_before_reference_scan(
+    monkeypatch,
+):
+    library = _make()
+    called = []
+    select_for_update = svc.PUBLIC_ENUM_LIBRARY_MANAGER.select_for_update
+
+    def _select_for_update():
+        called.append("locked")
+        return select_for_update()
+
+    def _authorize(target):
+        called.append("authorized")
+        assert target.pk == library.pk
+
+    def _find_references(library_id):
+        called.append("references")
+        return []
+
+    monkeypatch.setattr(
+        svc.PUBLIC_ENUM_LIBRARY_MANAGER,
+        "select_for_update",
+        _select_for_update,
+    )
+    monkeypatch.setattr(
+        f"{MODULE}.find_library_references",
+        _find_references,
+    )
+
+    svc.delete_library(
+        "lib_1",
+        "admin",
+        authorize=_authorize,
+    )
+
+    assert called == ["locked", "authorized", "references"]
 
 
 @pytest.mark.django_db

@@ -8,8 +8,8 @@ from typing import Any, Dict, Tuple
 from apps.core.logger import opspilot_logger as logger
 from apps.core.mixinx import EncryptMixin
 from apps.core.utils.loader import LanguageLoader
-from apps.opspilot.models import LLMModel, SkillTools, SkillTypeChoices
 from apps.opspilot.metis.llm.chain.report_renderers import strip_phantom_tool_calls
+from apps.opspilot.models import LLMModel, SkillTools, SkillTypeChoices
 from apps.opspilot.services.builtin_tools import (
     BUILTIN_ATTACHMENT_FILE_TOOL_NAME,
     BUILTIN_MONITOR_TOOL_NAME,
@@ -217,9 +217,19 @@ class ChatService:
 
             # 整轮 agent 执行预算（含多轮 LLM + 工具调用），独立于单次 LLM 调用超时
             _agent_timeout = _resolve_agent_execute_timeout()
-            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+            pool = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+            timed_out = False
+            try:
                 future = pool.submit(_run_in_new_loop)
                 response = future.result(timeout=_agent_timeout)
+            except concurrent.futures.TimeoutError:
+                timed_out = True
+                # Python 无法强制终止已运行的线程；先尽力取消尚未启动的任务，
+                # 再让工作流立即收敛到失败，不能在 shutdown(wait=True) 中继续阻塞。
+                future.cancel()
+                raise
+            finally:
+                pool.shutdown(wait=not timed_out, cancel_futures=timed_out)
 
             # 构建返回结果
             result = {
@@ -228,6 +238,8 @@ class ChatService:
                 "total_tokens": response.total_tokens,
                 "prompt_tokens": response.prompt_tokens,
                 "completion_tokens": response.completion_tokens,
+                "llm_call_count": response.llm_call_count,
+                "token_usage_calls": response.token_usage_calls,
                 "browser_steps": response.browser_steps,
             }
 
@@ -251,7 +263,7 @@ class ChatService:
             return result, doc_map, title_map
 
         except concurrent.futures.TimeoutError:
-            # 整轮 agent 执行超时，worker 线程已放弃等待
+            # 整轮 agent 执行超时，调用方已放弃等待
             _agent_timeout = _resolve_agent_execute_timeout()
             logger.error(f"invoke_chat agent 执行超时（>{_agent_timeout}s）: skill_type={skill_type}")
             loader = LanguageLoader(app="opspilot", default_lang="en")
@@ -394,6 +406,8 @@ class ChatService:
             extra_config["node_id"] = kwargs["node_id"]
         if kwargs.get("trigger_type"):
             extra_config["trigger_type"] = kwargs["trigger_type"]
+        if kwargs.get("entry_type"):
+            extra_config["entry_type"] = kwargs["entry_type"]
 
         # 当 attachment_file 工具被启用时，向系统提示词末尾注入强制调用指令，
         # 防止用户 skill_prompt 中的"直接输出"类指令覆盖工具调用意图。
@@ -511,6 +525,8 @@ class ChatService:
                 extra_config["node_id"] = kwargs["node_id"]
             if kwargs.get("trigger_type"):
                 extra_config["trigger_type"] = kwargs["trigger_type"]
+            if kwargs.get("entry_type"):
+                extra_config["entry_type"] = kwargs["entry_type"]
             chat_kwargs.update({"extra_config": extra_config})
         return chat_kwargs, doc_map, title_map
 

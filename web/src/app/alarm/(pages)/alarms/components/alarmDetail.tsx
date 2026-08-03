@@ -45,7 +45,6 @@ import {
   Pagination,
   TimeLineItem,
 } from '@/app/alarm/types/types';
-
 const AlertDetail = forwardRef<ModalRef, ModalConfig & { readonly?: boolean }>(
   ({ handleAction, readonly = false }, ref) => {
     const STATE_MAP = useStateMap();
@@ -246,9 +245,12 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig & { readonly?: boolean }>(
     return (
       <Drawer
         title={
-          <div className="flex items-center">
-            <span>{t('alarms.alertDetail')} </span>
-            <span className="text-[var(--color-text-2)] text-sm">-{title}</span>
+          <div className="flex min-w-0 items-center">
+            <span className="shrink-0">{t('alarms.alertDetail')} </span>
+            <EllipsisWithTooltip
+              className="min-w-0 truncate text-sm text-[var(--color-text-2)]"
+              text={`-${title}`}
+            />
           </div>
         }
         open={groupVisible}
@@ -262,9 +264,9 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig & { readonly?: boolean }>(
         }
       >
         <div>
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <Tag color={levelMap[formData.level] as string}>
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="flex min-w-0 flex-1 items-center gap-2">
+              <Tag className="shrink-0" color={levelMap[formData.level] as string}>
                 <div className="flex items-center">
                   <Icon
                     type={
@@ -279,13 +281,17 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig & { readonly?: boolean }>(
                   )?.level_display_name || '--'}
                 </div>
               </Tag>
-              <b>{formData.content || '--'}</b>
+              <EllipsisWithTooltip
+                className="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap font-semibold"
+                text={formData.content || '--'}
+              />
             </div>
             {!readonly && (
               <div className="flex shrink-0 items-center gap-2">
                 {!formData.incident_name && (
                   <DeclareIncident
                     rowData={[formData]}
+                    buttonSize="small"
                     onSuccess={() => {
                       handleAction();
                       setGroupVisible(false);
@@ -294,6 +300,7 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig & { readonly?: boolean }>(
                 )}
                 <AlarmAction
                   rowData={[formData]}
+                  btnSize="small"
                   displayMode="dropdown"
                   onAction={() => {
                     // 修复：原 onAction 里还调 handleCancel()，会让用户点完执行动作时
@@ -356,22 +363,6 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig & { readonly?: boolean }>(
           {isBaseInfo && (
             <div className="flex flex-col gap-4">
               <BaseInfo detail={formData} />
-              {formData?.enrichment && Object.keys(formData.enrichment).length > 0 && (
-                <div className="mt-2">
-                  <div className="font-medium mb-2">{t('settings.enrichmentTitle')}</div>
-                  {Object.entries(formData.enrichment as Record<string, Record<string, any>>).map(([ns, fields]) => (
-                    <div key={ns} className="mb-2">
-                      <div className="text-[var(--color-text-3)] mb-1">{ns}</div>
-                      {Object.entries(fields || {}).map(([k, v]) => (
-                        <div key={k} className="flex gap-2 text-sm">
-                          <span className="text-[var(--color-text-3)]">{k}:</span>
-                          <span>{typeof v === 'object' ? JSON.stringify(v) : String(v)}</span>
-                        </div>
-                      ))}
-                    </div>
-                  ))}
-                </div>
-              )}
               <RelatedAlertsPanel alert={formData} onRefresh={handleAction} />
             </div>
           )}

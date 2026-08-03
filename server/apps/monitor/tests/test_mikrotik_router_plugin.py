@@ -5,6 +5,8 @@ from pathlib import Path
 import pytest
 import yaml
 
+from apps.core.utils.loader import LanguageLoader
+
 SERVER_ROOT = Path(__file__).resolve().parents[3]
 PLUGINS = SERVER_ROOT / "apps" / "monitor" / "support-files" / "plugins" / "Telegraf"
 PLUGIN_DIR = PLUGINS / "snmp" / "router_mikrotik"
@@ -88,7 +90,7 @@ def toml_text():
 @pytest.fixture(scope="module")
 def languages():
     return {
-        lang: yaml.safe_load((LANGUAGE_DIR / f"{lang}.yaml").read_text(encoding="utf-8"))
+        lang: LanguageLoader("monitor", lang).translations
         for lang in ("zh-Hans", "en")
     }
 
@@ -122,9 +124,9 @@ def test_ui_is_pure_snmp_form(ui):
 @pytest.mark.unit
 def test_metrics_json_declares_only_routeros_health_deltas(metrics):
     names = {metric["name"] for metric in metrics["metrics"]}
-    assert names == EXPECTED_HEALTH_METRICS
-    leaked_floor = sorted(names & BASE_METRICS)
-    assert leaked_floor == [], f"SNMP floor metrics must stay in generic snmp/router: {leaked_floor}"
+    floor = {"snmp_uptime", "interface_ifHCInOctets", "interface_ifHCOutOctets"}
+    assert names - floor == EXPECTED_HEALTH_METRICS
+    assert floor <= names
     leaked_unsupported = sorted(names & UNSUPPORTED_HEALTH_METRICS)
     assert leaked_unsupported == [], f"unsupported health metrics should not be modelled: {leaked_unsupported}"
 

@@ -32,7 +32,6 @@ export const buildWidgetRequestVersionKey = ({
 
 export const shouldWaitForInitialWidgetData = ({
   isSceneWidget,
-  isTableLikeChart,
   hasDataSourceId,
   hasResolvedDataSource,
   hasRawPayload,
@@ -42,7 +41,6 @@ export const shouldWaitForInitialWidgetData = ({
 }: WidgetInitialDataWaitOptions) => {
   if (
     isSceneWidget ||
-    isTableLikeChart ||
     !hasDataSourceId ||
     hasRawPayload ||
     hasDataValidation

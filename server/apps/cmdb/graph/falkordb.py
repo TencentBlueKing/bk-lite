@@ -1105,6 +1105,24 @@ class FalkorDBClient:
 
         return nodes
 
+    def batch_update_node_property_values(self, label: str, field: str, property_values: list[dict]):
+        """在一次图查询中为不同节点写入同一字段的不同值。"""
+        validated_label = CQLValidator.validate_label(label)
+        validated_field = CQLValidator.validate_field(field)
+        validated_property_values = CQLValidator.validate_property_values(property_values)
+        if not validated_property_values:
+            return []
+
+        query = (
+            f"UNWIND $property_values AS row "
+            f"MATCH (n:{validated_label}) WHERE ID(n) = row.id "
+            f"SET n.{validated_field} = row.value RETURN n"
+        )
+        return self._execute_query(
+            query,
+            params={"property_values": validated_property_values},
+        )
+
     def format_properties_remove(self, attrs: list):
         """格式化properties的remove数据，验证字段名防止注入"""
         properties_str = ""

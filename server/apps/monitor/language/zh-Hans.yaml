@@ -11,6 +11,10 @@ monitor_object_type:
   Tencent Cloud: 腾讯云
   Other: 其他
 
+# 对象展示名兜底：插件语言未合并时仍显示「TCP」而非技术名 TCPPort
+monitor_object:
+  TCPPort: TCP
+
 flow_onboarding_ui:
   accessAsset: 接入资产
   accessGuide: 接入指引

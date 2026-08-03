@@ -55,6 +55,8 @@ class RiskItem:
     deps: str = ""
     install_impact: dict = field(default_factory=dict)
     evaluated_at: Any = None
+    can_remediate: bool = False
+    can_reboot: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -79,6 +81,8 @@ class RiskItem:
             "deps": self.deps,
             "install_impact": self.install_impact,
             "evaluated_at": self.evaluated_at.isoformat() if self.evaluated_at else None,
+            "can_remediate": self.can_remediate,
+            "can_reboot": self.can_reboot,
         }
 
 
@@ -180,13 +184,17 @@ def _compute_remediation(target_id: int, patch_id: int, compliance: str, evaluat
         ).values_list('stage', flat=True).first()
         return RemediationStatus.SCHEDULED if host_stage == 'waiting' else 'installing'
 
-    rebooting = GovernanceTaskHost.objects.filter(
-        target_id=target_id,
-        task__task_type=GovernanceTaskType.REBOOT,
-        task__status__in=GovernanceTaskStatus.ACTIVE_STATES,
-    ).exists()
-    if rebooting:
-        return 'rebooting'
+    reboot_task = _latest_task_for_pair(GovernanceTask.objects.filter(
+        task_type=GovernanceTaskType.REBOOT,
+        status__in=GovernanceTaskStatus.ACTIVE_STATES,
+        target_list__contains=[target_id],
+        patch_list__contains=[patch_id],
+    ), target_id, patch_id)
+    if reboot_task:
+        reboot_stage = GovernanceTaskHost.objects.filter(
+            task=reboot_task, target_id=target_id
+        ).values_list('stage', flat=True).first()
+        return RemediationStatus.SCHEDULED if reboot_stage == 'waiting' else 'rebooting'
 
     # 安装后无需重启会直接创建验证任务；验证完成前仍属于治理中。
     verifying = _latest_task_for_pair(GovernanceTask.objects.filter(
@@ -197,6 +205,16 @@ def _compute_remediation(target_id: int, patch_id: int, compliance: str, evaluat
     ), target_id, patch_id)
     if verifying:
         return 'verifying'
+
+    # 技术性验证失败不覆盖当前合规快照，但风险项必须明确显示治理失败。
+    failed_verify = _latest_task_for_pair(GovernanceTask.objects.filter(
+        task_type=GovernanceTaskType.VERIFY,
+        status__in=(GovernanceTaskStatus.FAILED, GovernanceTaskStatus.PARTIAL_SUCCESS),
+        target_list__contains=[target_id],
+        patch_list__contains=[patch_id],
+    ), target_id, patch_id)
+    if failed_verify:
+        return RemediationStatus.FAILED
 
     # 已完成的安装任务按 host stage 推断下一步
     install_task = _latest_task_for_pair(GovernanceTask.objects.filter(
@@ -442,37 +460,24 @@ def _latest_evaluated_at(items: list[RiskItem]) -> str | None:
 
 def _compute_dist(items: list[RiskItem]) -> list[dict]:
     """计算治理状态分布"""
-    status_labels = {
-        RemediationStatus.UNPLANNED: "待修复",
-        RemediationStatus.SCHEDULED: "已计划",
-        RemediationStatus.REMEDIATING: "修复中",
-        "installing": "安装中",
-        "rebooting": "重启中",
-        "verifying": "验证中",
-        RemediationStatus.PENDING_REBOOT: "待重启",
-        RemediationStatus.FAILED: "修复失败",
-        RemediationStatus.FIXED: "已修复",
+    supported_statuses = {
+        RemediationStatus.UNPLANNED, RemediationStatus.SCHEDULED,
+        RemediationStatus.REMEDIATING, "installing", "rebooting", "verifying",
+        RemediationStatus.PENDING_REBOOT, RemediationStatus.FAILED, RemediationStatus.FIXED,
     }
     counts: dict[str, int] = defaultdict(int)
     for item in items:
         if item.compliance == RiskCompliance.INVALIDATED:
-            counts["已失效"] += 1
+            counts["invalidated"] += 1
         else:
-            counts[status_labels.get(item.remediation, "待修复")] += 1
+            counts[item.remediation if item.remediation in supported_statuses else RemediationStatus.UNPLANNED] += 1
 
     color_map = {
-        "待修复": "warning",
-        "已计划": "processing",
-        "修复中": "purple",
-        "安装中": "processing",
-        "重启中": "processing",
-        "验证中": "processing",
-        "待重启": "default",
-        "修复失败": "error",
-        "已修复": "success",
-        "已失效": "default",
+        "unplanned": "warning", "scheduled": "processing", "remediating": "purple",
+        "installing": "processing", "rebooting": "processing", "verifying": "processing",
+        "pending_reboot": "default", "failed": "error", "fixed": "success", "invalidated": "default",
     }
-    return [{"label": f"{label} {count}", "color": color_map.get(label, "default")} for label, count in counts.items()]
+    return [{"status": status_code, "count": count, "color": color_map.get(status_code, "default")} for status_code, count in counts.items()]
 
 
 def _has_active_assessment(target_id: int) -> bool:

@@ -48,7 +48,7 @@ def _install_module(monkeypatch, name, **attrs):
 def _load_policy_scan_module(monkeypatch, transaction_mock):
     """加载 policy_scan.py，注入伪依赖（无 Django settings / ORM）。"""
     _install_module(monkeypatch, "django", db=types.SimpleNamespace(transaction=transaction_mock))
-    _install_module(monkeypatch, "django.db", transaction=transaction_mock)
+    _install_module(monkeypatch, "django.db", IntegrityError=Exception, transaction=transaction_mock)
 
     _install_module(monkeypatch, "apps.core.exceptions.base_app_exception", BaseAppException=Exception)
     _install_module(

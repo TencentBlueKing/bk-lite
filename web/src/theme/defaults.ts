@@ -73,6 +73,8 @@ export const defaultLightTokens: SemanticColorTokens = {
   chartSuccess: '#52c41a',
   chartWarning: '#faad14',
   chartError: '#f5222d',
+  chartGapFill: 'rgba(244, 59, 44, 0.07)',
+  chartGapBoundary: 'rgba(244, 59, 44, 0.3)',
 };
 
 export const defaultDarkTokens: SemanticColorTokens = {
@@ -148,6 +150,8 @@ export const defaultDarkTokens: SemanticColorTokens = {
   chartSuccess: '#4ade80',
   chartWarning: '#fbbf24',
   chartError: '#ef4444',
+  chartGapFill: 'rgba(255, 119, 107, 0.09)',
+  chartGapBoundary: 'rgba(255, 137, 126, 0.38)',
 };
 
 export const defaultTheme: ResolvedTheme = {

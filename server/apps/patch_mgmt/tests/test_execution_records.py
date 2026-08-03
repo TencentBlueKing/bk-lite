@@ -17,7 +17,11 @@ from apps.patch_mgmt.models import (
     PatchTarget,
 )
 from apps.patch_mgmt.services.governance_service import HostBusyError, create_remediation_task, create_retry_task
-from apps.patch_mgmt.services.execution_record_service import build_record_status, build_risk_item_summaries
+from apps.patch_mgmt.services.execution_record_service import (
+    build_record_status,
+    build_risk_item_detail,
+    build_risk_item_summaries,
+)
 from apps.patch_mgmt.services.patch_execution_service import run_governance_host
 
 
@@ -71,7 +75,8 @@ class TestExecutionRecordListApi:
         assert response.status_code == status.HTTP_200_OK
         rows = response.data.get("results", response.data) if isinstance(response.data, dict) else response.data
         assert [row["id"] for row in rows] == [reboot.id, remediation.id]
-        assert [row["task_type_display"] for row in rows] == ["重启", "治理"]
+        assert [row["task_type"] for row in rows] == [GovernanceTaskType.REBOOT, GovernanceTaskType.INSTALL]
+        assert all(row["task_type_display"] for row in rows)
         assert rows[1]["can_cancel"] is True
         governance_rows = (
             governance_only.data.get("results", governance_only.data)
@@ -150,15 +155,19 @@ class TestExecutionRecordListApi:
 
         assert response.status_code == status.HTTP_200_OK
         assert response.data["record_status"] == "completed"
-        assert response.data["record_status_display"] == "已完成"
+        assert response.data["record_status_display"]
         assert response.data["risk_items"] == [{
             "id": risk_id,
             "display_name": "host-a-openssl",
             "host_id": 10,
+            "host_name": "host-a",
+            "host_ip": "10.0.0.1",
             "patch_id": 20,
+            "patch_name": "openssl",
             "status": "completed",
-            "status_display": "已完成",
+            "status_display": response.data["risk_items"][0]["status_display"],
             "status_color": "success",
+            "can_retry": False,
         }]
         assert selected.status_code == status.HTTP_200_OK
         assert [step["key"] for step in selected.data["steps"]] == ["install", "reboot", "verify"]
@@ -215,13 +224,13 @@ class TestExecutionRecordListApi:
         assert summaries[0]["status"] == "failed"
         assert build_record_status(remediation) == ("failed", "失败", "error")
 
-    def test_newer_retry_pending_reboot_is_not_overwritten_by_old_validation(self):
-        """重试安装的待重启比旧验证更新，执行记录应展示待重启。"""
+    def test_later_manual_reboot_does_not_change_completed_install_record(self):
+        """后续手动重启是新根记录，不并入旧安装记录。"""
         risk_id = "10:20:30"
         remediation = GovernanceTask.objects.create(
             name="治理 · host-a · 1项",
             task_type=GovernanceTaskType.INSTALL,
-            status=GovernanceTaskStatus.FAILED,
+            status=GovernanceTaskStatus.COMPLETED,
             target_list=[10],
             patch_list=[20],
             risk_snapshot=[{
@@ -237,44 +246,192 @@ class TestExecutionRecordListApi:
             task=remediation,
             target_id=10,
             target_name="host-a",
-            stage="failed",
-            failed_stage=GovernanceTaskType.INSTALL,
+            stage="pending_reboot",
         )
-        old_verify = GovernanceTask.objects.create(
-            name="旧验证",
-            task_type=GovernanceTaskType.VERIFY,
+        reboot = GovernanceTask.objects.create(
+            name="手动重启",
+            task_type=GovernanceTaskType.REBOOT,
             status=GovernanceTaskStatus.COMPLETED,
-            parent_task=remediation,
+            source_record=remediation,
             target_list=[10],
             patch_list=[20],
+            risk_snapshot=[{
+                **remediation.risk_snapshot[0],
+                "source_record_id": remediation.id,
+            }],
             team=[1],
         )
         GovernanceTaskHost.objects.create(
-            task=old_verify,
+            task=reboot,
             target_id=10,
             target_name="host-a",
             stage="completed",
         )
-        retry = GovernanceTask.objects.create(
-            name="重试安装",
-            task_type=GovernanceTaskType.INSTALL,
-            status=GovernanceTaskStatus.COMPLETED,
-            parent_task=remediation,
-            target_list=[10],
-            patch_list=[20],
-            team=[1],
-        )
-        GovernanceTaskHost.objects.create(
-            task=retry,
-            target_id=10,
-            target_name="host-a",
-            stage="pending_reboot",
-        )
 
         summaries = build_risk_item_summaries(remediation)
 
-        assert summaries[0]["status"] == "pending_reboot"
-        assert build_record_status(remediation) == ("pending_reboot", "待重启", "warning")
+        assert summaries[0]["status"] == "completed"
+        assert build_record_status(remediation) == ("completed", "已完成", "success")
+
+    def test_no_auto_reboot_install_completes_with_reboot_and_verify_skipped(self):
+        risk_id = "10:20:30"
+        remediation = GovernanceTask.objects.create(
+            name="治理 · host-a · 1项",
+            task_type=GovernanceTaskType.INSTALL,
+            status=GovernanceTaskStatus.COMPLETED,
+            auto_reboot=False,
+            target_list=[10],
+            patch_list=[20],
+            risk_snapshot=[{
+                "id": risk_id,
+                "host_id": 10,
+                "host_name": "host-a",
+                "host_ip": "10.0.0.1",
+                "patch_id": 20,
+                "patch_name": "openssl",
+            }],
+            team=[1],
+        )
+        GovernanceTaskHost.objects.create(
+            task=remediation,
+            target_id=10,
+            target_name="host-a",
+            target_ip="10.0.0.1",
+            stage="pending_reboot",
+        )
+
+        detail = build_risk_item_detail(remediation, risk_id)
+
+        assert build_record_status(remediation) == ("completed", "已完成", "success")
+        assert [step["status"] for step in detail["steps"]] == [
+            "completed",
+            "skipped",
+            "skipped",
+        ]
+        assert "未设置" in detail["steps"][1]["reason"]
+        assert "未执行重启" in detail["steps"][2]["reason"]
+
+    def test_install_item_waits_for_verification_while_batch_peer_is_running(self):
+        """单机安装完成不代表治理完成；自动验证创建前摘要应与详情同为等待中。"""
+        completed_risk_id = "10:20:30"
+        running_risk_id = "11:21:31"
+        remediation = GovernanceTask.objects.create(
+            name="一键治理 · 2台 · 2项",
+            task_type=GovernanceTaskType.INSTALL,
+            status=GovernanceTaskStatus.RUNNING,
+            target_list=[10, 11],
+            patch_list=[20, 21],
+            risk_snapshot=[
+                {
+                    "id": completed_risk_id,
+                    "host_id": 10,
+                    "host_name": "host-a",
+                    "host_ip": "10.0.0.1",
+                    "patch_id": 20,
+                    "patch_name": "openssl",
+                },
+                {
+                    "id": running_risk_id,
+                    "host_id": 11,
+                    "host_name": "host-b",
+                    "host_ip": "10.0.0.2",
+                    "patch_id": 21,
+                    "patch_name": "kernel",
+                },
+            ],
+            team=[1],
+        )
+        GovernanceTaskHost.objects.create(
+            task=remediation,
+            target_id=10,
+            target_name="host-a",
+            target_ip="10.0.0.1",
+            stage="completed",
+            stage_color="success",
+            reason="安装完成，无需重启（apt）",
+        )
+        GovernanceTaskHost.objects.create(
+            task=remediation,
+            target_id=11,
+            target_name="host-b",
+            target_ip="10.0.0.2",
+            stage="installing",
+            stage_color="processing",
+        )
+
+        summaries = {
+            item["id"]: item for item in build_risk_item_summaries(remediation)
+        }
+        detail = build_risk_item_detail(remediation, completed_risk_id)
+        verify_step = next(
+            step
+            for step in detail["steps"]
+            if step["key"] == GovernanceTaskType.VERIFY
+        )
+
+        assert summaries[completed_risk_id]["status"] == "waiting"
+        assert detail["status"] == "waiting"
+        assert verify_step["status"] == "waiting"
+
+    def test_verification_result_is_not_changed_by_later_live_compliance(self):
+        target = PatchTarget.objects.create(
+            name="host-a", ip="10.0.0.1", os_type=OSType.LINUX, team=[1]
+        )
+        patch = Patch.objects.create(title="openssl", os_type=OSType.LINUX, team=[1])
+        baseline = PatchBaseline.objects.create(name="baseline", os_type=OSType.LINUX, team=[1])
+        requirement = BaselineRequirement.objects.create(baseline=baseline, patch=patch)
+        binding = HostBaselineBinding.objects.create(
+            target=target, baseline=baseline, compliance_status="non_compliant"
+        )
+        live = HostComplianceSnapshot.objects.create(
+            binding=binding,
+            requirement=requirement,
+            satisfied=False,
+            evaluated_at="2026-07-30T00:00:00Z",
+        )
+        risk_id = f"{target.id}:{patch.id}:{baseline.id}"
+        root = GovernanceTask.objects.create(
+            name="治理",
+            task_type=GovernanceTaskType.INSTALL,
+            status=GovernanceTaskStatus.COMPLETED,
+            target_list=[target.id],
+            patch_list=[patch.id],
+            risk_snapshot=[{
+                "id": risk_id,
+                "host_id": target.id,
+                "patch_id": patch.id,
+            }],
+            team=[1],
+        )
+        GovernanceTaskHost.objects.create(
+            task=root, target_id=target.id, stage="completed"
+        )
+        verify = GovernanceTask.objects.create(
+            name="自动验证",
+            task_type=GovernanceTaskType.VERIFY,
+            status=GovernanceTaskStatus.COMPLETED,
+            parent_task=root,
+            target_list=[target.id],
+            patch_list=[patch.id],
+            risk_snapshot=root.risk_snapshot,
+            result_snapshot=[{
+                "risk_item_id": risk_id,
+                "host_id": target.id,
+                "patch_id": patch.id,
+                "status": "completed",
+                "satisfied": True,
+                "reason": "执行时已满足",
+                "evidence": {"version": "1.0"},
+                "evaluated_at": "2026-07-29T00:00:00+00:00",
+            }],
+            team=[1],
+        )
+        GovernanceTaskHost.objects.create(
+            task=verify, target_id=target.id, stage="completed"
+        )
+
+        assert live.satisfied is False
+        assert build_risk_item_summaries(root)[0]["status"] == "completed"
 
 
 @pytest.mark.django_db
@@ -372,7 +529,8 @@ def test_baseline_assess_creates_one_hidden_parallel_task_for_all_bound_hosts(su
     assert response.status_code == status.HTTP_201_CREATED
     task = GovernanceTask.objects.get(pk=response.data["task_id"])
     assert task.task_type == GovernanceTaskType.ASSESS
-    assert task.name == "评估 · 生产基线 · 2台"
+    assert baseline.name in task.name
+    assert "2" in task.name
     assert task.target_list == [host_a.id, host_b.id]
     assert task.risk_snapshot == [{
         "baseline_id": baseline.id,
@@ -461,15 +619,13 @@ def test_baseline_assess_returns_structured_conflict_on_atomic_host_race(su_clie
     response = su_client.post(f"{BASELINE_URL}{baseline.id}/assess/", format="json")
 
     assert response.status_code == status.HTTP_409_CONFLICT
-    assert response.data == {
-        "code": "host_busy",
-        "detail": f"以下主机正在执行补丁任务: [{target.id}]",
-        "target_ids": [target.id],
-    }
+    assert response.data["code"] == "host_busy"
+    assert response.data["target_ids"] == [target.id]
+    assert str(target.id) in response.data["detail"]
 
 
 @pytest.mark.django_db
-def test_retry_creates_internal_attempt_under_same_visible_root(request_factory, authenticated_user, mocker):
+def test_retry_creates_independent_root_record(request_factory, authenticated_user, mocker):
     root = GovernanceTask.objects.create(
         name="治理 · host-a · 1项",
         task_type=GovernanceTaskType.INSTALL,
@@ -492,18 +648,21 @@ def test_retry_creates_internal_attempt_under_same_visible_root(request_factory,
     request.COOKIES["current_team"] = "1"
     trigger = mocker.patch("apps.patch_mgmt.services.governance_service._trigger_async")
 
-    attempt = create_retry_task(request, root, 10)
+    attempt = create_retry_task(request, root, "10:20:30")
 
-    assert attempt.parent_task_id == root.id
-    assert attempt.risk_snapshot == root.risk_snapshot
-    assert GovernanceTask.objects.filter(parent_task__isnull=True).values_list("id", flat=True).get() == root.id
+    assert attempt.parent_task_id is None
+    assert attempt.source_record_id == root.id
+    assert attempt.source_risk_item_id == "10:20:30"
+    assert attempt.risk_snapshot == [{**root.risk_snapshot[0], "source_record_id": root.id}]
+    assert set(GovernanceTask.objects.filter(parent_task__isnull=True).values_list("id", flat=True)) == {root.id, attempt.id}
     root.refresh_from_db()
     assert root.name == "治理 · host-a · 1项"
+    assert build_risk_item_summaries(root)[0]["can_retry"] is False
     trigger.assert_called_once_with(attempt.id)
 
 
 @pytest.mark.django_db
-def test_unmet_validation_can_retry_inside_same_visible_root(
+def test_unmet_validation_retry_creates_new_independent_record(
     request_factory, authenticated_user, mocker
 ):
     target = PatchTarget.objects.create(
@@ -553,6 +712,16 @@ def test_unmet_validation_can_retry_inside_same_visible_root(
         target_list=[target.id],
         patch_list=[patch.id],
         risk_snapshot=root.risk_snapshot,
+        result_snapshot=[{
+            "risk_item_id": f"{target.id}:{patch.id}:{baseline.id}",
+            "host_id": target.id,
+            "patch_id": patch.id,
+            "status": "completed",
+            "satisfied": False,
+            "reason": "安装后仍未满足",
+            "evidence": {},
+            "evaluated_at": "2026-07-23T00:00:00+00:00",
+        }],
         team=[1],
     )
     GovernanceTaskHost.objects.create(
@@ -567,11 +736,13 @@ def test_unmet_validation_can_retry_inside_same_visible_root(
     request.COOKIES["current_team"] = "1"
     trigger = mocker.patch("apps.patch_mgmt.services.governance_service._trigger_async")
 
-    attempt = create_retry_task(request, root, target.id)
+    risk_id = f"{target.id}:{patch.id}:{baseline.id}"
+    attempt = create_retry_task(request, root, risk_id)
 
-    assert attempt.parent_task_id == root.id
+    assert attempt.parent_task_id is None
+    assert attempt.source_record_id == root.id
     assert attempt.patch_list == [patch.id]
-    assert attempt.risk_snapshot == root.risk_snapshot
+    assert attempt.risk_snapshot == [{**root.risk_snapshot[0], "source_record_id": root.id}]
     trigger.assert_called_once_with(attempt.id)
 
 

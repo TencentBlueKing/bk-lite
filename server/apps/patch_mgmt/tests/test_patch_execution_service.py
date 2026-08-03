@@ -36,6 +36,7 @@ from apps.patch_mgmt.models import (
     WindowsPatchDetail,
 )
 from apps.patch_mgmt.services import patch_execution_service as pes
+from apps.patch_mgmt.services import target_execution_route as ter
 
 
 APT_SAMPLE = """
@@ -622,16 +623,12 @@ def test_run_reboot_manual_windows_target(monkeypatch):
     task = _make_task(GovernanceTaskType.REBOOT, [target.id])
     calls = []
 
-    class FakeNodeMgmt:
-        def node_list(self, query):
-            return {'nodes': [{'id': 'ansible-node-1'}]}
-
     class FakeAnsibleExecutor:
         def adhoc(self, **kwargs):
             calls.append(kwargs)
             return {'exit_code': 0}
 
-    monkeypatch.setattr(pes, 'NodeMgmt', FakeNodeMgmt)
+    monkeypatch.setattr(ter.AnsibleExecutorResolver, 'resolve', lambda cloud_region_id: 'ansible-node-1')
     monkeypatch.setattr(pes, 'AnsibleExecutor', lambda instance_id: FakeAnsibleExecutor())
     pes.run_governance_task(task)
 
@@ -685,10 +682,18 @@ def test_run_missing_target_marks_host_and_task_failed():
 
 @pytest.mark.django_db
 def test_retry_deleted_target_is_rejected_without_consuming_retry(monkeypatch):
+    from apps.patch_mgmt.exceptions import PatchBusinessError
     from apps.patch_mgmt.services import governance_service
 
     target = _make_node_mgmt_target()
-    original_task = _make_task(GovernanceTaskType.ASSESS, [target.id])
+    original_task = _make_task(GovernanceTaskType.INSTALL, [target.id], [20])
+    risk_item_id = f"{target.id}:20:30"
+    original_task.risk_snapshot = [{
+        "id": risk_item_id,
+        "host_id": target.id,
+        "patch_id": 20,
+    }]
+    original_task.save(update_fields=["risk_snapshot", "updated_at"])
     original_host = GovernanceTaskHost.objects.create(
         task=original_task,
         target_id=target.id,
@@ -701,12 +706,13 @@ def test_retry_deleted_target_is_rejected_without_consuming_retry(monkeypatch):
     target.delete()
     monkeypatch.setattr(governance_service, '_trigger_async', lambda task_id: None)
 
-    with pytest.raises(ValueError, match='目标不存在或已删除'):
+    with pytest.raises(PatchBusinessError) as exc_info:
         governance_service.create_retry_task(
             RequestFactory().post('/'),
             original_task,
-            target_id,
+            risk_item_id,
         )
+    assert exc_info.value.code == 'target_deleted'
 
     original_host.refresh_from_db()
     assert original_host.can_retry is True
@@ -806,6 +812,44 @@ def test_run_assess_success_parses_output_and_writes_snapshot(monkeypatch):
     assert binding.missing_count == 0
     assert binding.last_evaluated_at is not None
     assert HostComplianceSnapshot.objects.filter(binding=binding).count() == 1
+
+
+@pytest.mark.django_db
+def test_run_verify_freezes_pair_result_snapshot(monkeypatch):
+    baseline = PatchBaseline.objects.create(name='verify-baseline', os_type=OSType.LINUX, team=[1])
+    target = _make_node_mgmt_target()
+    HostBaselineBinding.objects.create(target=target, baseline=baseline)
+    patch = Patch.objects.create(title='gzip update', os_type=OSType.LINUX, team=[1])
+    LinuxPatchDetail.objects.create(patch=patch, pkg_name='gzip')
+    BaselineRequirement.objects.create(baseline=baseline, patch=patch)
+    risk_item_id = f'{target.id}:{patch.id}:{baseline.id}'
+    task = _make_task(GovernanceTaskType.VERIFY, [target.id], [patch.id])
+    task.risk_snapshot = [{
+        'id': risk_item_id,
+        'host_id': target.id,
+        'patch_id': patch.id,
+        'baseline_id': baseline.id,
+    }]
+    task.save(update_fields=['risk_snapshot', 'updated_at'])
+
+    class FakeExecutor:
+        def execute_local_stream(self, command, **kwargs):
+            return {'exit_code': 0, 'stdout': APT_SAMPLE}
+
+    monkeypatch.setattr(pes, 'Executor', lambda instance_id: FakeExecutor())
+    pes.run_governance_task(task)
+
+    task.refresh_from_db()
+    assert len(task.result_snapshot) == 1
+    result = task.result_snapshot[0]
+    assert result['risk_item_id'] == risk_item_id
+    assert result['host_id'] == target.id
+    assert result['patch_id'] == patch.id
+    assert result['status'] == 'completed'
+    assert result['satisfied'] is True
+    assert result['reason']
+    assert result['evidence']
+    assert result['evaluated_at']
 
 
 @pytest.mark.django_db
@@ -929,10 +973,6 @@ def test_run_install_windows_success_creates_reboot_task(monkeypatch):
     task.team = [1]
     task.save(update_fields=['auto_reboot', 'team'])
 
-    class FakeNodeMgmt:
-        def node_list(self, query):  # noqa: ARG002
-            return {'nodes': [{'id': 'ansible-node-1'}]}
-
     class FakeAnsibleExecutor:
         def adhoc(self, **kwargs):
             return {'exit_code': 0, 'stdout': 'InstallResult=2 RebootRequired=True'}
@@ -942,7 +982,7 @@ def test_run_install_windows_success_creates_reboot_task(monkeypatch):
         def delay(task_id):  # noqa: ARG004
             pass
 
-    monkeypatch.setattr(pes, 'NodeMgmt', FakeNodeMgmt)
+    monkeypatch.setattr(ter.AnsibleExecutorResolver, 'resolve', lambda cloud_region_id: 'ansible-node-1')
     monkeypatch.setattr(pes, 'AnsibleExecutor', lambda instance_id: FakeAnsibleExecutor())
     monkeypatch.setattr('apps.patch_mgmt.tasks.execute_governance_task', FakeCeleryTask)
 
@@ -967,10 +1007,6 @@ def test_run_install_windows_without_reboot_creates_verify_only(monkeypatch):
     task.save(update_fields=['auto_reboot'])
     delayed_ids = []
 
-    class FakeNodeMgmt:
-        def node_list(self, query):  # noqa: ARG002
-            return {'nodes': [{'id': 'ansible-node-1'}]}
-
     class FakeAnsibleExecutor:
         def adhoc(self, **kwargs):  # noqa: ARG002
             return {'exit_code': 0, 'stdout': 'InstallResult=2 RebootRequired=False'}
@@ -980,7 +1016,7 @@ def test_run_install_windows_without_reboot_creates_verify_only(monkeypatch):
         def delay(task_id):
             delayed_ids.append(task_id)
 
-    monkeypatch.setattr(pes, 'NodeMgmt', FakeNodeMgmt)
+    monkeypatch.setattr(ter.AnsibleExecutorResolver, 'resolve', lambda cloud_region_id: 'ansible-node-1')
     monkeypatch.setattr(pes, 'AnsibleExecutor', lambda instance_id: FakeAnsibleExecutor())
     monkeypatch.setattr('apps.patch_mgmt.tasks.execute_governance_task', FakeCeleryTask)
 
@@ -1007,15 +1043,11 @@ def test_run_install_windows_unknown_reboot_stays_pending_without_auto_reboot(mo
     task.auto_reboot = True
     task.save(update_fields=['auto_reboot'])
 
-    class FakeNodeMgmt:
-        def node_list(self, query):  # noqa: ARG002
-            return {'nodes': [{'id': 'ansible-node-1'}]}
-
     class FakeAnsibleExecutor:
         def adhoc(self, **kwargs):  # noqa: ARG002
             return {'exit_code': 0, 'stdout': 'InstallResult=2'}
 
-    monkeypatch.setattr(pes, 'NodeMgmt', FakeNodeMgmt)
+    monkeypatch.setattr(ter.AnsibleExecutorResolver, 'resolve', lambda cloud_region_id: 'ansible-node-1')
     monkeypatch.setattr(pes, 'AnsibleExecutor', lambda instance_id: FakeAnsibleExecutor())
 
     pes.run_governance_task(task)
@@ -1104,15 +1136,11 @@ def test_run_install_windows_failure_marks_failed_can_retry(monkeypatch):
     task.team = [1]
     task.save(update_fields=['team'])
 
-    class FakeNodeMgmt:
-        def node_list(self, query):  # noqa: ARG002
-            return {'nodes': [{'id': 'ansible-node-1'}]}
-
     class FakeAnsibleExecutor:
         def adhoc(self, **kwargs):
             return {'exit_code': 0, 'stdout': 'InstallResult=4 RebootRequired=False'}
 
-    monkeypatch.setattr(pes, 'NodeMgmt', FakeNodeMgmt)
+    monkeypatch.setattr(ter.AnsibleExecutorResolver, 'resolve', lambda cloud_region_id: 'ansible-node-1')
     monkeypatch.setattr(pes, 'AnsibleExecutor', lambda instance_id: FakeAnsibleExecutor())
 
     pes.run_governance_task(task)
@@ -1136,15 +1164,11 @@ def test_run_install_windows_no_matching_marks_failed_no_retry(monkeypatch):
     task.team = [1]
     task.save(update_fields=['team'])
 
-    class FakeNodeMgmt:
-        def node_list(self, query):  # noqa: ARG002
-            return {'nodes': [{'id': 'ansible-node-1'}]}
-
     class FakeAnsibleExecutor:
         def adhoc(self, **kwargs):
             return {'exit_code': 0, 'stdout': 'No matching updates found'}
 
-    monkeypatch.setattr(pes, 'NodeMgmt', FakeNodeMgmt)
+    monkeypatch.setattr(ter.AnsibleExecutorResolver, 'resolve', lambda cloud_region_id: 'ansible-node-1')
     monkeypatch.setattr(pes, 'AnsibleExecutor', lambda instance_id: FakeAnsibleExecutor())
 
     pes.run_governance_task(task)

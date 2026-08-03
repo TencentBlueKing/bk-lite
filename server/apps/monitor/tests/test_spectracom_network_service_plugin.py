@@ -11,6 +11,8 @@ from pathlib import Path
 import pytest
 import yaml
 
+from apps.core.utils.loader import LanguageLoader
+
 SERVER_ROOT = Path(__file__).resolve().parents[3]
 PLUGINS = SERVER_ROOT / "apps" / "monitor" / "support-files" / "plugins" / "Telegraf"
 BRAND_DIR = PLUGINS / "snmp" / "network_service_spectracom"
@@ -78,7 +80,7 @@ def toml_text():
 @pytest.fixture(scope="module")
 def languages():
     return {
-        lang: yaml.safe_load((LANGUAGE_DIR / f"{lang}.yaml").read_text(encoding="utf-8"))
+        lang: LanguageLoader("monitor", lang).translations
         for lang in ("zh-Hans", "en")
     }
 
@@ -135,9 +137,9 @@ def test_snmpv3_passwords_use_runtime_env_placeholders(toml_text):
 @pytest.mark.unit
 def test_metrics_json_declares_only_vendor_delta_metrics(metrics):
     names = {m["name"] for m in metrics["metrics"]}
-    assert names == EXPECTED_METRICS
-    leaked = [name for name in BASE_METRICS if name in names]
-    assert leaked == []
+    floor = {"snmp_uptime", "interface_ifHCInOctets", "interface_ifHCOutOctets"}
+    assert names - floor == EXPECTED_METRICS
+    assert floor <= names
 
 
 @pytest.mark.unit

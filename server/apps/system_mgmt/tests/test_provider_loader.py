@@ -33,7 +33,7 @@ def test_system_mgmt_ready_does_not_load_providers(monkeypatch):
 def test_provider_registry_list_lazily_loads_builtin_providers():
     manifests = provider_registry.list()
 
-    assert {manifest.key for manifest in manifests} == {"ad", "feishu", "wechat"}
+    assert {manifest.key for manifest in manifests} == {"ad", "feishu", "wechat", "wecom"}
 
 
 def test_adapter_registry_get_lazily_loads_builtin_providers():
@@ -95,7 +95,7 @@ def test_provider_read_waits_for_force_reload(monkeypatch):
         reload_future.result(timeout=1)
         manifests = read_future.result(timeout=1)
 
-    assert {manifest.key for manifest in manifests} == {"ad", "feishu", "wechat"}
+    assert {manifest.key for manifest in manifests} == {"ad", "feishu", "wechat", "wecom"}
 
 
 def test_builtin_provider_loading_rolls_back_all_registries_on_failure(monkeypatch):
