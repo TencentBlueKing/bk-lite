@@ -6,6 +6,7 @@ tools/MCP、knowledge_retrieve 工具、SKILL.md 技能（MinIO backend）、人
 """
 
 import asyncio
+import json
 import os
 import subprocess
 import sys
@@ -13,7 +14,12 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
+from langchain_core.messages import HumanMessage
 
+from apps.opspilot.metis.llm.middleware.tool_runtime import (
+    PLANNED_EXECUTION_HIDDEN_DEEPAGENT_TOOLS,
+    ToolVisibilityMiddleware,
+)
 from apps.opspilot.metis.llm.chain.node import ToolsNodes
 
 
@@ -109,7 +115,6 @@ class TestSkillBackendSources:
         assert kwargs["inherit_env"] is False
         n._cleanup_sandbox(sandbox_dir)
 
-    @pytest.mark.skip(reason="依赖 production minio_backend 用新 deepagents API 重写后重启用——目前 conftest 顶部 mock 替换 deepagents.backends.*,production 行为与测试期望不一致")
     def test_single_package_materialize_failure_is_isolated(self):
         n = ToolsNodes()
         pkgs = [{"name": "a"}, {"name": "b"}]
@@ -124,7 +129,6 @@ class TestSkillBackendSources:
         assert backend is not None and sources == ["/skills/"]
         n._cleanup_sandbox(sandbox_dir)
 
-    @pytest.mark.skip(reason="依赖 production minio_backend 用新 deepagents API 重写后重启用——目前 conftest 顶部 mock 替换 deepagents.backends.*,production 行为与测试期望不一致")
     def test_sandbox_env_excludes_host_secrets(self):
         n = ToolsNodes()
         os.environ["DB_PASSWORD"] = "should-not-leak"
@@ -133,7 +137,7 @@ class TestSkillBackendSources:
         finally:
             os.environ.pop("DB_PASSWORD", None)
         assert "DB_PASSWORD" not in env
-        assert set(env).issubset({"PATH", "LANG", "LC_ALL", "TMPDIR", "HOME"})
+        assert set(env).issubset({"PATH", "LANG", "LC_ALL", "TMPDIR", "HOME", "KUBECONFIG"})
         assert env["TMPDIR"] == "/tmp/run-xyz"
 
     def test_cleanup_sandbox_removes_dir(self):
@@ -173,7 +177,16 @@ class _FakeGraphBuilder:
 
 
 class TestBuildDeepagentNodes:
-    def _run_wrapper(self, node, req, captured):
+    def _run_wrapper(
+        self,
+        node,
+        req,
+        captured,
+        *,
+        plan_payload=None,
+        plan_payloads=None,
+        failing_agent_calls=(),
+    ):
         gb = _FakeGraphBuilder()
 
         async def _build():
@@ -191,8 +204,45 @@ class TestBuildDeepagentNodes:
         fake_agent = MagicMock()
 
         async def _ainvoke(payload, config=None):
-            captured["ainvoke_messages"] = payload["messages"]
-            return {"messages": list(payload["messages"]) + [AIMessage(content="已定位")]}
+            captured.setdefault("ainvoke_messages", []).append(payload["messages"])
+            visibility = next(
+                middleware
+                for middleware in captured["create_kwargs"]["middleware"]
+                if isinstance(middleware, ToolVisibilityMiddleware)
+            )
+            visible_request = visibility._filter_request(
+                SimpleNamespace(
+                    tools=[
+                        *captured["create_kwargs"]["tools"],
+                        _tool("write_todos"),
+                        _tool("task"),
+                        _tool("execute"),
+                    ],
+                    override=lambda **changes: SimpleNamespace(**changes),
+                )
+            )
+            captured.setdefault("visible_tool_calls", []).append(
+                [tool.name for tool in visible_request.tools]
+            )
+            call_index = len(captured["visible_tool_calls"])
+            appended_messages = [AIMessage(content=f"执行结果 {call_index}")]
+            if call_index in failing_agent_calls:
+                from langchain_core.messages import ToolMessage
+
+                appended_messages.insert(
+                    0,
+                    ToolMessage(
+                        content="connection refused",
+                        name="diagnose_kubernetes_pod_issues",
+                        tool_call_id=f"failed-{call_index}",
+                        status="error",
+                    ),
+                )
+            return {
+                **payload,
+                "messages": list(payload["messages"])
+                + appended_messages,
+            }
 
         fake_agent.ainvoke = _ainvoke
 
@@ -200,8 +250,30 @@ class TestBuildDeepagentNodes:
             captured["create_kwargs"] = kwargs
             return fake_agent
 
+        planned_responses = iter(plan_payloads or [])
+
+        class _FakeLLM:
+            async def ainvoke(self, messages, config=None):
+                captured.setdefault("planner_calls", []).append(messages)
+                payload = (
+                    next(planned_responses)
+                    if plan_payloads is not None
+                    else plan_payload or {"goal": "直接回答", "steps": []}
+                )
+                return AIMessage(
+                    content=json.dumps(
+                        payload,
+                        ensure_ascii=False,
+                    ),
+                    usage_metadata={
+                        "input_tokens": 100,
+                        "output_tokens": 20,
+                        "total_tokens": 120,
+                    },
+                )
+
         with patch("apps.opspilot.metis.llm.chain.node.create_deep_agent", side_effect=_create), patch.object(
-            ToolsNodes, "get_llm_client", return_value="LLM"
+            ToolsNodes, "get_llm_client", return_value=_FakeLLM()
         ):
             config = {"configurable": {"graph_request": req}}
             # 主线程无 event loop 时 `asyncio.get_event_loop()` 抛 RuntimeError;
@@ -217,7 +289,7 @@ class TestBuildDeepagentNodes:
         with patch.object(ToolsNodes, "_build_knowledge_retrieve_tool", return_value=None):
             result = self._run_wrapper(node, req, captured)
         kwargs = captured["create_kwargs"]
-        assert kwargs["model"] == "LLM"
+        assert kwargs["model"].__class__.__name__ == "_FakeLLM"
         assert [t.name for t in kwargs["tools"]] == ["shell"]
         assert "system_prompt" in kwargs
         # 无技能/审批时不传 backend/skills/interrupt_on
@@ -226,7 +298,154 @@ class TestBuildDeepagentNodes:
         assert "interrupt_on" not in kwargs
         # 只返回 deepagent 新增消息
         assert len(result["messages"]) == 1
-        assert result["messages"][0].content == "已定位"
+        assert result["messages"][0].content == "执行结果 1"
+
+    def test_planned_execution_reuses_agent_and_replaces_tools_per_step(self):
+        node = ToolsNodes()
+        node._dynamic_mode = True
+        node.all_tools = [
+            _tool("current_time"),
+            _tool("diagnose_kubernetes_pod_issues"),
+            _tool("restart_pod"),
+        ]
+        node.active_tools = []
+        req = _request(user_message="检查 Pod 故障")
+        captured = {}
+
+        with patch.object(ToolsNodes, "_build_knowledge_retrieve_tool", return_value=None):
+            result = self._run_wrapper(
+                node,
+                req,
+                captured,
+                plan_payload={
+                    "goal": "定位 Pod 故障",
+                    "steps": [
+                        {"objective": "确认当前时间", "tools": ["current_time"]},
+                        {
+                            "objective": "诊断 Pod",
+                            "tools": ["diagnose_kubernetes_pod_issues"],
+                        },
+                    ],
+                },
+            )
+
+        kwargs = captured["create_kwargs"]
+        assert [tool.name for tool in kwargs["tools"]] == [
+            "current_time",
+            "diagnose_kubernetes_pod_issues",
+            "restart_pod",
+        ]
+        assert captured["visible_tool_calls"] == [
+            ["current_time"],
+            ["diagnose_kubernetes_pod_issues"],
+            [],
+        ]
+        assert len(captured["ainvoke_messages"]) == 3
+        assert len(result["messages"]) == 3
+        assert all(
+            not isinstance(message, HumanMessage)
+            for message in result["messages"]
+        )
+
+    def test_planned_execution_hides_deepagent_builtin_tools(self):
+        from langchain.agents.middleware import ModelCallLimitMiddleware
+
+        node = ToolsNodes()
+        node._dynamic_mode = True
+        node.all_tools = [_tool("list_kubernetes_events"), _tool("restart_pod")]
+        node.active_tools = []
+        req = _request(
+            user_message="告警：K8s Warning Failed on Pod/ns/pod-1",
+            extra_config={"entry_type": "nats"},
+        )
+        captured = {}
+
+        with patch.object(ToolsNodes, "_build_knowledge_retrieve_tool", return_value=None):
+            self._run_wrapper(
+                node,
+                req,
+                captured,
+                plan_payload={
+                    "goal": "检查事件",
+                    "steps": [
+                        {
+                            "objective": "读取事件",
+                            "tools": ["list_kubernetes_events"],
+                        }
+                    ],
+                },
+            )
+
+        kwargs = captured["create_kwargs"]
+        visibility = next(
+            middleware
+            for middleware in kwargs["middleware"]
+            if isinstance(middleware, ToolVisibilityMiddleware)
+        )
+        assert visibility._hidden_tools == PLANNED_EXECUTION_HIDDEN_DEEPAGENT_TOOLS
+        assert captured["visible_tool_calls"] == [
+            ["list_kubernetes_events"],
+            [],
+        ]
+        call_limit = next(
+            middleware
+            for middleware in kwargs["middleware"]
+            if isinstance(middleware, ModelCallLimitMiddleware)
+        )
+        assert call_limit.run_limit == 3
+        assert call_limit.thread_limit == 10
+
+    def test_tool_failure_replans_only_unfinished_steps(self):
+        node = ToolsNodes()
+        node.all_tools = [
+            _tool("current_time"),
+            _tool("diagnose_kubernetes_pod_issues"),
+            _tool("list_kubernetes_events"),
+        ]
+        req = _request(user_message="定位 Pod 告警")
+        captured = {}
+
+        with patch.object(ToolsNodes, "_build_knowledge_retrieve_tool", return_value=None):
+            self._run_wrapper(
+                node,
+                req,
+                captured,
+                plan_payloads=[
+                    {
+                        "goal": "定位 Pod 告警",
+                        "steps": [
+                            {"objective": "确认时间", "tools": ["current_time"]},
+                            {
+                                "objective": "诊断 Pod",
+                                "tools": ["diagnose_kubernetes_pod_issues"],
+                            },
+                        ],
+                    },
+                    {
+                        "goal": "改用事件定位",
+                        "steps": [
+                            {
+                                "objective": "读取事件",
+                                "tools": ["list_kubernetes_events"],
+                            }
+                        ],
+                    },
+                ],
+                failing_agent_calls={2},
+            )
+
+        assert captured["visible_tool_calls"] == [
+            ["current_time"],
+            ["diagnose_kubernetes_pod_issues"],
+            ["list_kubernetes_events"],
+            [],
+        ]
+        assert len(captured["planner_calls"]) == 2
+        replan_prompt = "\n".join(
+            str(message.content) for message in captured["planner_calls"][1]
+        )
+        assert "确认时间: 执行结果 1" in replan_prompt
+        assert "connection refused" in replan_prompt
 
     def test_wires_skills_and_approval_when_configured(self):
         node = ToolsNodes()

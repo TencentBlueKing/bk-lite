@@ -2,7 +2,7 @@ import uuid
 
 from jinja2 import BaseLoader, DebugUndefined, Environment
 
-from apps.core.exceptions.base_app_exception import BaseAppException
+from apps.core.exceptions.base_app_exception import BaseAppException, ValidationAppException
 from apps.core.utils.safe_template import (
     TemplateSecurityError,
     build_sandboxed_env,
@@ -23,6 +23,7 @@ _MONITOR_TEMPLATE_ALLOWED_FILTERS = (
     "lower",
     "urlencode",
     "replace",
+    "to_toml_str_array",
 )
 _MONITOR_TEMPLATE_ALLOWED_VARIABLES = {
     "ENV_BEARER_TOKEN",
@@ -44,6 +45,10 @@ _MONITOR_TEMPLATE_ALLOWED_VARIABLES = {
     "endpoint",
     "expect",
     "host",
+    "ifdescr_exclude",
+    "ifdescr_include",
+    "iftype_exclude",
+    "iftype_include",
     "insecure_skip_verify",
     "instance_id",
     "instance_type",
@@ -112,6 +117,22 @@ def to_toml_dict(d):
     return "{ " + ", ".join(f'"{_escape_toml_string(k)}" = "{_escape_toml_string(v)}"' for k, v in d.items()) + " }"
 
 
+def to_toml_str_array(value):
+    """将列表或逗号分隔字符串转为 TOML 字符串数组字面量，如 ["24", "53"]。"""
+    from apps.monitor.utils.snmp_interface_filters import normalize_filter_list
+
+    items = normalize_filter_list(value)
+    return "[" + ", ".join(f'"{_escape_toml_string(item)}"' for item in items) + "]"
+
+
+def normalize_filter_list(value):
+    """兼容旧导入路径；实现见 snmp_interface_filters.normalize_filter_list。"""
+    from apps.monitor.utils.snmp_interface_filters import (
+        normalize_filter_list as _normalize_filter_list,
+    )
+
+    return _normalize_filter_list(value)
+
 def _escape_toml_context_strings(value):
     if isinstance(value, str):
         return _escape_toml_string(value)
@@ -146,14 +167,25 @@ class Controller:
             env = build_sandboxed_env(
                 loader=BaseLoader(),
                 undefined=DebugUndefined,
-                extra_filters={"to_toml": to_toml_dict},
+                extra_filters={
+                    "to_toml": to_toml_dict,
+                    "to_toml_str_array": to_toml_str_array,
+                },
             )
             missing_filters = [
-                name for name in _MONITOR_TEMPLATE_ALLOWED_FILTERS if name not in _DEFAULT_JINJA_ENV.filters
+                name
+                for name in _MONITOR_TEMPLATE_ALLOWED_FILTERS
+                if name not in _DEFAULT_JINJA_ENV.filters and name not in env.filters
             ]
             if missing_filters:
                 raise BaseAppException(f"Missing default Jinja filters: {', '.join(missing_filters)}")
-            env.filters.update({name: _DEFAULT_JINJA_ENV.filters[name] for name in _MONITOR_TEMPLATE_ALLOWED_FILTERS})
+            env.filters.update(
+                {
+                    name: _DEFAULT_JINJA_ENV.filters[name]
+                    for name in _MONITOR_TEMPLATE_ALLOWED_FILTERS
+                    if name in _DEFAULT_JINJA_ENV.filters
+                }
+            )
             self._jinja_env = env
         return self._jinja_env
 
@@ -220,6 +252,15 @@ class Controller:
                 except Exception as e:
                     logger.error(f"解析 instance_id 失败: {instance_id}, 错误: {e}")
                     raise ValueError(f"无效的 instance_id 格式: {instance_id}") from e
+
+        from apps.monitor.utils.snmp_interface_template import (
+            ensure_snmp_interface_filter_jinja,
+            needs_snmp_interface_filter_jinja,
+        )
+
+        # SNMP 接口过滤 Jinja 单一真相源：渲染前幂等注入，插件 child 模板无需复制
+        if needs_snmp_interface_filter_jinja(template_content):
+            template_content = ensure_snmp_interface_filter_jinja(template_content)
 
         safe_context = sanitize_template_context(_context)
         if escape_toml_strings:
@@ -343,16 +384,44 @@ class Controller:
                 config_id = str(uuid.uuid4().hex)
 
                 try:
+                    render_context = {
+                        **config_info,
+                        "config_id": config_id.upper(),
+                        "plugin_id": plugin_template_id or plugin_id,
+                        "monitor_plugin_id": plugin_id,
+                    }
+                    if collect_type == "snmp" and "iftype_exclude" not in render_context:
+                        from apps.monitor.constants.snmp_interface import DEFAULT_IFTYPE_EXCLUDE
+
+                        render_context["iftype_exclude"] = list(DEFAULT_IFTYPE_EXCLUDE)
+                    if collect_type == "snmp" and is_child:
+                        from apps.monitor.utils.snmp_interface_filters import (
+                            assert_snmp_interface_filter_mutex_from_values,
+                        )
+
+                        # 互斥校验放在模板渲染前，避免被包装成「渲染采集模板失败」
+                        assert_snmp_interface_filter_mutex_from_values(render_context)
+                    if (
+                        is_child
+                        and str(collect_type or "") == "exporter"
+                        and str(type_name or "").lower() == "kafka"
+                    ):
+                        from apps.monitor.utils.kafka_collect_timeouts import (
+                            assert_kafka_group_metrics_timeout_lt_interval,
+                        )
+
+                        assert_kafka_group_metrics_timeout_lt_interval(
+                            config_info.get("ENV_GROUP_METRICS_TIMEOUT")
+                            or env_config.get("GROUP_METRICS_TIMEOUT"),
+                            config_info.get("interval"),
+                        )
                     template_config = self.render_template(
                         template["content"],
-                        {
-                            **config_info,
-                            "config_id": config_id.upper(),
-                            "plugin_id": plugin_template_id or plugin_id,
-                            "monitor_plugin_id": plugin_id,
-                        },
+                        render_context,
                         escape_toml_strings=template["file_type"] == "toml",
                     )
+                except ValidationAppException:
+                    raise
                 except ValueError as e:
                     raw_id = config_info.get("instance_id")
                     logical_id = config_info.get("logical_instance_value")

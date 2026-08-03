@@ -1,0 +1,122 @@
+{
+  "zh": [
+    {
+      "title": "接入",
+      "icon": "zichan-quanbushebei",
+      "url": "/apm/integration",
+      "name": "Integration",
+      "children": [
+        {
+          "title": "添加接入",
+          "icon": "settings-fill",
+          "url": "/apm/integration/add",
+          "name": "integration_add"
+        },
+        {
+          "title": "接入实例",
+          "icon": "caijiqi",
+          "url": "/apm/integration/instances",
+          "name": "integration_instances"
+        }
+      ]
+    },
+    {
+      "title": "服务",
+      "icon": "daohang-yunyingfenxishi",
+      "url": "/apm/services",
+      "name": "services",
+      "children": [
+        {
+          "url": "/apm/services/[serviceId]",
+          "name": "service_detail",
+          "isNotMenuItem": true
+        }
+      ]
+    },
+    {
+      "title": "Trace",
+      "icon": "search-f",
+      "url": "/apm/traces",
+      "name": "traces",
+      "children": [
+        {
+          "url": "/apm/traces/[traceId]",
+          "name": "trace_detail",
+          "isNotMenuItem": true
+        }
+      ]
+    },
+    {
+      "title": "事件",
+      "icon": "weiwangguanicon-defuben-",
+      "url": "/apm/events",
+      "name": "events"
+    },
+    {
+      "title": "策略",
+      "icon": "mulu",
+      "url": "/apm/policies",
+      "name": "policies"
+    }
+  ],
+  "en": [
+    {
+      "title": "Integration",
+      "icon": "zichan-quanbushebei",
+      "url": "/apm/integration",
+      "name": "Integration",
+      "children": [
+        {
+          "title": "Add integration",
+          "icon": "settings-fill",
+          "url": "/apm/integration/add",
+          "name": "integration_add"
+        },
+        {
+          "title": "Reporting instances",
+          "icon": "caijiqi",
+          "url": "/apm/integration/instances",
+          "name": "integration_instances"
+        }
+      ]
+    },
+    {
+      "title": "Services",
+      "icon": "daohang-yunyingfenxishi",
+      "url": "/apm/services",
+      "name": "services",
+      "children": [
+        {
+          "url": "/apm/services/[serviceId]",
+          "name": "service_detail",
+          "isNotMenuItem": true
+        }
+      ]
+    },
+    {
+      "title": "Traces",
+      "icon": "search-f",
+      "url": "/apm/traces",
+      "name": "traces",
+      "children": [
+        {
+          "url": "/apm/traces/[traceId]",
+          "name": "trace_detail",
+          "isNotMenuItem": true
+        }
+      ]
+    },
+    {
+      "title": "Events",
+      "icon": "weiwangguanicon-defuben-",
+      "url": "/apm/events",
+      "name": "events"
+    },
+    {
+      "title": "Policies",
+      "icon": "mulu",
+      "url": "/apm/policies",
+      "name": "policies"
+    }
+  ]
+}

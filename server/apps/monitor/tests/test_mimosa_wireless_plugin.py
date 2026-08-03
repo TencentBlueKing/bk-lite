@@ -14,6 +14,8 @@ from pathlib import Path
 import pytest
 import yaml
 
+from apps.core.utils.loader import LanguageLoader
+
 SERVER_ROOT = Path(__file__).resolve().parents[3]
 PLUGINS = SERVER_ROOT / "apps" / "monitor" / "support-files" / "plugins" / "Telegraf"
 BRAND_DIR = PLUGINS / "snmp" / "wireless_mimosa"
@@ -86,7 +88,7 @@ def toml_text():
 @pytest.fixture(scope="module")
 def languages():
     return {
-        lang: yaml.safe_load((LANGUAGE_DIR / f"{lang}.yaml").read_text(encoding="utf-8"))
+        lang: LanguageLoader("monitor", lang).translations
         for lang in ("zh-Hans", "en")
     }
 
@@ -132,10 +134,11 @@ def test_ui_is_pure_snmp_form(ui):
 def test_metrics_json_declares_only_temperature_vendor_delta_child(metrics):
     by_name = {metric["name"]: metric for metric in metrics["metrics"]}
     names = set(by_name)
-    assert names == {"device_temperature_celsius"}
-    assert names & BASE_METRICS == set()
+    floor = {"snmp_uptime", "interface_ifHCInOctets", "interface_ifHCOutOctets"}
+    assert names - floor == {"device_temperature_celsius"}
+    assert floor <= names
     assert names & UNSUPPORTED_HEALTH_METRICS == set()
-    assert metrics["supplementary_indicators"] == ["device_temperature_celsius"]
+    assert set(metrics["supplementary_indicators"]) == {"snmp_uptime", "device_temperature_celsius"}
     temp = by_name["device_temperature_celsius"]
     assert temp["metric_group"] == "Temperature"
     assert temp["unit"] == "celsius"

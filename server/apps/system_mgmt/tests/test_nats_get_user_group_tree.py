@@ -73,7 +73,7 @@ def _collect_tree_keys(nodes, acc):
 def test_case_01_normal_returns_tree_with_auth_leaf():
     """用例 1:单一命中,group_list 包含 1 个组,该组父级也在树中,叶子 hasAuth=True,父级 False。"""
     src = _make_sync_source()
-    parent = Group.objects.create(name="Default", parent_id=0)
+    parent, _ = Group.objects.get_or_create(name="Default", parent_id=0)
     child = Group.objects.create(name="Ops", parent_id=parent.id)
     user = _make_user("alice", group_list=[child.id], sync_source=src)
 

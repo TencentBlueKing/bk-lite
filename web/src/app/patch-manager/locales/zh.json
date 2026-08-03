@@ -213,7 +213,7 @@
     },
     "remediationStatus": {
       "unplanned": "待修复",
-      "scheduled": "已计划",
+      "scheduled": "已调度",
       "remediating": "修复中",
       "installing": "安装中",
       "rebooting": "重启中",
@@ -261,7 +261,7 @@
       "taskTypes": { "assess": "评估", "install": "治理", "reboot": "重启", "verify": "验证" },
       "statuses": { "waiting": "等待中", "pending": "等待中", "running": "执行中", "pending_reboot": "待重启", "completed": "已完成", "partial_success": "部分失败", "partial_cancelled": "部分取消", "failed": "失败", "cancelled": "已取消", "skipped": "已跳过", "unknown": "未知", "unmet": "未满足" },
       "steps": { "install": "安装补丁", "reboot": "重启主机", "verify": "验证结果" },
-      "records": "执行记录", "exportHeaders": "任务名称|类型|执行方式|创建时间|主机|补丁|安装状态|安装时间|重启状态|重启时间|验证状态|验证时间|最终结果|原因|重试次数", "retryStarted": "已在当前执行记录中开始重试", "cancelHandled": "取消请求已处理", "taskName": "任务名称", "type": "类型", "status": "执行状态", "taskType": "任务类型", "details": "执行详情", "riskSearch": "主机名-补丁名", "noMatchingRisk": "没有匹配的风险项", "cancelInfo": "取消信息", "cancelledBy": "取消人", "cancelledAt": "取消时间", "cancelReason": "取消原因", "retry": "重试", "attempt": "第 {count} 次尝试", "selectRisk": "请选择风险项", "cancelTask": "取消任务{name}", "cancelWaitingOnly": "仅取消尚未执行的主机", "cancelHelp": "已开始执行的主机不会被中断；已安装待重启的主机不会撤销安装。", "cancelReasonPlaceholder": "请输入取消原因"
+      "records": "执行记录", "exportHeaders": "任务名称|类型|执行方式|创建时间|主机|补丁|安装状态|安装时间|重启状态|重启时间|验证状态|验证时间|最终结果|原因|重试次数", "retryStarted": "已创建新的重试执行记录", "cancelHandled": "取消请求已处理", "taskName": "任务名称", "type": "类型", "status": "执行状态", "taskType": "任务类型", "details": "执行详情", "riskSearch": "名称 / IP", "noMatchingRisk": "没有匹配的风险项", "sourceRecord": "来源记录", "cancelInfo": "取消信息", "cancelledBy": "取消人", "cancelledAt": "取消时间", "cancelReason": "取消原因", "retry": "重试", "attempt": "第 {count} 次尝试", "selectRisk": "请选择风险项", "cancelTask": "取消任务{name}", "cancelWaitingOnly": "仅取消尚未执行的主机", "cancelHelp": "已开始执行的主机不会被中断；已安装待重启的主机不会撤销安装。", "cancelReasonPlaceholder": "请输入取消原因"
     },
     "risk": {
       "view": { "host": "主机视角", "patch": "补丁视角", "baseline": "基线视角" },
@@ -272,10 +272,10 @@
       "exportDetailHeaders": "聚合KEY|主机|补丁要求|严重级别|合规要求|治理状态|更新时间", "exportHostHeaders": "主机|操作系统|当前基线|缺失要求|治理状态|更新时间|查看明细", "exportPatchHeaders": "补丁|描述|严重级别|影响主机|治理状态|更新时间|查看明细", "exportBaselineHeaders": "基线|适用|治理状态|更新时间|查看明细", "detailSheet": "明细", "noExportData": "暂无数据可导出", "exportFilePrefix": "待治理风险", "selected": "选中", "exportSucceeded": "导出成功", "exportSelectedSucceeded": "导出选中成功",
       "exportAll": "导出全部", "exportSelected": "导出选中", "oneClickRemediation": "一键治理", "rebootSelectionBlocked": "所选范围包含非待重启主机", "oneClickReboot": "一键重启", "batchActions": "批量操作", "hostName": "主机名称", "patchSearch": "补丁名称/KB/包名", "detailTitle": "风险项明细 - {name}",
       "next": "下一步", "previous": "上一步", "confirmCreateRemediation": "确认创建治理任务", "createRemediationConfirm": "将对 {count} 台主机执行补丁安装，{reboot}。", "onlyRequiredReboot": "仅自动重启检测为需要重启的主机", "noAutomaticReboot": "安装完成后不自动重启", "confirmRiskItems": "确认风险项", "executionSettings": "执行设置", "executionMode": "执行方式", "executeNow": "立即执行", "executionWindow": "执行窗口", "windowStart": "窗口开始", "windowEnd": "窗口结束", "autoReboot": "自动重启", "autoRebootTitle": "仅自动重启明确需要重启的主机", "autoRebootHelp": "补丁安装完成后检测重启需求；无需重启的主机将跳过重启，无法确认的主机将进入待重启并等待人工处理。重启可能导致业务短暂中断。",
-      "rebootScopeTitle": "提交前范围确认 · 重启", "confirmCreateReboot": "确认创建重启任务", "rebootConfirm": "将对 {count} 台主机执行重启，可能导致业务短暂中断。", "pendingRebootHosts": "待重启主机", "rebootWindowHelp": "重启任务必须设置执行窗口，重启策略固定为「窗口内自动重启」"
+      "rebootScopeTitle": "提交前范围确认 · 重启", "confirmCreateReboot": "确认创建重启任务", "rebootConfirm": "将对 {count} 台主机执行重启，可能导致业务短暂中断。", "pendingRebootHosts": "待重启主机", "rebootWindowHelp": "重启任务必须设置执行窗口，重启策略固定为「窗口内自动重启」", "rebootScopeChanged": "待重启范围已变化，请重新确认"
     },
     "libraryPage": {
-      "description": "描述", "applicableVersion": "适用版本", "readyStatus": "就绪状态", "source": "来源", "sourceType": "来源类型", "automatic": "自动", "deleted": "已删除", "baselineReferences": "被基线引用", "lastUpdated": "最近更新", "deleteConfirm": "确定删除该补丁？",
+      "description": "描述", "applicableVersion": "适用版本", "readyStatus": "就绪状态", "source": "来源", "sourceType": "来源类型", "automatic": "自动", "deleted": "已删除", "batchDeleted": "已删除 {count} 个补丁", "baselineReferences": "被基线引用", "lastUpdated": "最近更新", "deleteConfirm": "确定删除该补丁？", "deleteReferenced": "该补丁已被基线引用，请先从所有基线中移除", "batchDeleteConfirm": "确定删除选中的 {count} 个补丁？", "batchDeleteDescription": "删除后无法恢复。", "batchDeleteReferenced": "选中项中包含已被基线引用的补丁，请先从基线中移除",
       "validationFailed": "表单校验失败", "packageFileRequired": "请上传 MSU 或 CAB 补丁文件", "created": "新增成功", "ingestSubmitted": "已提交后台入库任务，完成后补丁状态将自动更新", "ingestCompleted": "入库完成：新增 {created}，更新 {updated}", "ingested": "已入库", "ingest": "入库", "syncIngest": "同步入库", "addPatch": "新增补丁",
       "kbRequired": "请输入 KB 号", "packageNameRequired": "请输入包名", "kbPlaceholder": "例如 KB5034441", "packagePlaceholder": "例如 openssl", "patchFile": "补丁文件", "fileDrop": "点击或拖拽 MSU / CAB 文件到此处", "descriptionPlaceholder": "请输入补丁描述", "severityRequired": "请选择严重级别", "select": "请选择", "versionPlaceholder": "例如 Windows Server 2019", "distroRequired": "请输入发行版", "distroPlaceholder": "例如 Rocky 8", "minimumVersion": "最低版本要求", "minimumVersionRequired": "请输入最低版本要求", "minimumVersionPlaceholder": "例如 1.1.1k-7.el8", "archRequired": "请选择架构",
       "batchIngest": "批量入库 ({count})", "selectSource": "请选择补丁源", "selectedCount": "已选 {count} 条", "batchSeverity": "批量修改严重级别", "batchSeverityUpdated": "已批量修改当前页严重级别", "batchSeverityHelp": "将当前页所有候选补丁的严重级别统一修改为所选值。", "editPatch": "编辑补丁", "saved": "已保存", "packageNotReplaceable": "补丁包已就绪或正在处理中，暂不能替换", "packageRetryHelp": "上次上传失败，可删除旧文件后重新选择 MSU 或 CAB 文件", "packageReuploadRequired": "请重新上传 MSU 或 CAB 补丁文件", "selectFile": "选择文件"

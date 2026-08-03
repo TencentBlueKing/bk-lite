@@ -35,9 +35,12 @@ assertPresent(page, /rebootable\s*&&\s*\([\s\S]{0,400}patchManager\.risk\.reboot
 assertAbsent(page, /patchManager\.risk\.noRebootableHosts[\s\S]{0,150}patchManager\.risk\.reboot/, '行内废弃的置灰重启按钮');
 assertPresent(
   page,
-  /filter\(\(i:\s*RiskItem\)\s*=>\s*i\.remediation\s*===\s*'pending_reboot'\)[\s\S]{0,120}i\.host_id/,
-  '重启请求仅携带待重启主机',
+  /api\.previewRebootRisk\(targetIds\)/,
+  '重启弹窗从后端获取完整主机补丁范围',
 );
+assertPresent(page, /rebootScope\?\.items/, '重启确认表格使用冻结范围');
+assertPresent(page, /scope_token:\s*rebootScope\?\.scope_token/, '重启提交携带范围指纹');
+assertPresent(page, /code\s*===\s*'reboot_scope_changed'/, '范围变化后刷新并要求重新确认');
 assertPresent(page, /patchManager\.risk\.autoRebootTitle/, '自动重启精确范围提示');
 assertPresent(page, /patchManager\.risk\.autoRebootHelp/, '自动重启分支提示');
 assertPresent(page, /patchManager\.risk\.onlyRequiredReboot/, '提交确认提示');

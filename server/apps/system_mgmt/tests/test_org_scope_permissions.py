@@ -147,6 +147,44 @@ def test_group_data_rule_job_get_app_data_injects_authorized_team(monkeypatch):
     assert captured["team"] == [7]
 
 
+def test_group_data_rule_patch_get_app_data_injects_authorized_team(monkeypatch):
+    captured = {}
+
+    class FakeClient:
+        def get_module_data(self, **kwargs):
+            captured.update(kwargs)
+            return {"count": 0, "items": []}
+
+    def fake_get_client(params):
+        params.pop("app")
+        return FakeClient()
+
+    monkeypatch.setattr(
+        GroupDataRuleViewSet, "get_client", staticmethod(fake_get_client)
+    )
+    request = APIRequestFactory().get(
+        "/system_mgmt/api/group_data_rule/get_app_data/",
+        {
+            "app": "patch",
+            "module": "patch_target",
+            "child_module": "",
+            "page": "1",
+            "page_size": "10",
+            "group_id": "7",
+        },
+    )
+    force_authenticate(
+        request, user=_request_user([7], {"data_permission-View"})
+    )
+
+    response = GroupDataRuleViewSet.as_view(
+        {"get": "get_app_data"}
+    )(request)
+
+    assert response.status_code == 200
+    assert captured["team"] == [7]
+
+
 def test_group_data_rule_job_get_app_data_rejects_unauthorized_group(monkeypatch):
     class FakeClient:
         def get_module_data(self, **kwargs):
@@ -175,7 +213,10 @@ def test_group_data_rule_job_get_app_data_rejects_unauthorized_group(monkeypatch
     payload = _json_payload(response)
 
     assert response.status_code == 403
-    assert payload == {"result": False, "message": "无权访问该组织"}
+    assert payload == {
+        "result": False,
+        "message": "You do not have permission to access this group.",
+    }
 
 
 @pytest.mark.django_db

@@ -120,8 +120,8 @@ const usePatchManagerApi = () => {
   const updatePatch = async (id: number, data: Partial<Patch>): Promise<Patch> =>
     put(`${BASE}/patch/${id}/`, data);
 
-  const deletePatch = async (id: number): Promise<void> =>
-    del(`${BASE}/patch/${id}/`);
+  const deletePatches = async (ids: number[]): Promise<{ deleted_count: number }> =>
+    post(`${BASE}/patch/batch_delete/`, { ids });
 
   // ── 目标管理 ────────────────────────────────────────────────────────────────
 
@@ -291,8 +291,8 @@ const usePatchManagerApi = () => {
   const cancelGovernanceTask = async (id: number, reason: string): Promise<any> =>
     post(`${BASE}/governance/${id}/cancel/`, { reason });
 
-  const retryGovernanceTaskHost = async (taskId: number, targetId: number): Promise<any> =>
-    post(`${BASE}/governance/${taskId}/retry-host/`, { target_id: targetId });
+  const retryGovernanceTaskHost = async (taskId: number, riskItemId: string): Promise<any> =>
+    post(`${BASE}/governance/${taskId}/retry-host/`, { risk_item_id: riskItemId });
 
   // ── 风险治理 ──────────────────────────────────────────────────────────────────
 
@@ -331,7 +331,14 @@ const usePatchManagerApi = () => {
     execution_window_start?: string;
     execution_window_end?: string;
     name?: string;
+    scope_token: string;
   }): Promise<any> => post(`${BASE}/risk/reboot/`, data);
+
+  const previewRebootRisk = async (targetIds: number[]): Promise<{
+    target_ids: number[];
+    scope_token: string;
+    items: Array<Record<string, any>>;
+  }> => post(`${BASE}/risk/reboot_preview/`, { target_ids: targetIds });
 
   return {
     getPatchSourceList,
@@ -351,7 +358,7 @@ const usePatchManagerApi = () => {
     saveManualWindowsPatch,
     uploadWindowsPatchPackage,
     updatePatch,
-    deletePatch,
+    deletePatches,
     getPatchTargetList,
     createPatchTarget,
     createPatchTargetBatch,
@@ -390,6 +397,7 @@ const usePatchManagerApi = () => {
     getRiskSummary,
     remediateRisk,
     rebootRisk,
+    previewRebootRisk,
   };
 };
 

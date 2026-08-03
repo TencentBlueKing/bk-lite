@@ -133,7 +133,11 @@ class MonitorObjectService:
         visible_organization_ids=None,
     ):
         """获取监控对象实例"""
-        qs = qs.filter(monitor_object_id=monitor_object_id, is_deleted=False)
+        qs = qs.filter(
+            monitor_object_id=monitor_object_id,
+            is_deleted=False,
+            is_active=True,
+        )
         if name:
             qs = qs.filter(name__icontains=name)
 

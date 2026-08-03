@@ -331,8 +331,8 @@ def check_configuration_tuning(instance_name: str = None, instance_id: str = Non
             param_map = {row["NAME"]: row for row in params}
 
             # SGA 自动调优检查
-            sga_target = int(param_map.get("sga_target", {}).get("VALUE", 0))
-            memory_target = int(param_map.get("memory_target", {}).get("VALUE", 0))
+            sga_target = int(param_map.get("sga_target", {}).get("VALUE") or 0)
+            memory_target = int(param_map.get("memory_target", {}).get("VALUE") or 0)
             if memory_target > 0:
                 recommendations.append(
                     {
@@ -365,7 +365,9 @@ def check_configuration_tuning(instance_name: str = None, instance_id: str = Non
                 )
 
             # PGA 自动调优检查
-            pga_target = int(param_map.get("pga_aggregate_target", {}).get("VALUE", 0))
+            pga_target = int(
+                param_map.get("pga_aggregate_target", {}).get("VALUE") or 0
+            )
             if memory_target == 0:
                 if pga_target > 0:
                     recommendations.append(
@@ -424,8 +426,10 @@ def check_configuration_tuning(instance_name: str = None, instance_id: str = Non
                 """
                 sp_result = execute_readonly_query(conn, shared_pool_query)
                 if sp_result:
-                    free_mem = int(sp_result[0].get("BYTES", 0))
-                    shared_pool_size = int(param_map.get("shared_pool_size", {}).get("VALUE", 0))
+                    free_mem = int(sp_result[0].get("BYTES") or 0)
+                    shared_pool_size = int(
+                        param_map.get("shared_pool_size", {}).get("VALUE") or 0
+                    )
                     if shared_pool_size > 0:
                         free_pct = calculate_percentage(free_mem, shared_pool_size)
                     else:
@@ -461,7 +465,7 @@ def check_configuration_tuning(instance_name: str = None, instance_id: str = Non
                 """
                 redo_result = execute_readonly_query(conn, redo_query)
                 if redo_result:
-                    log_sizes = [int(row.get("BYTES", 0)) for row in redo_result]
+                    log_sizes = [int(row.get("BYTES") or 0) for row in redo_result]
                     min_log_size = min(log_sizes) if log_sizes else 0
                     recommended_min = 200 * 1024 * 1024  # 200MB
 
@@ -480,15 +484,19 @@ def check_configuration_tuning(instance_name: str = None, instance_id: str = Non
                 pass
 
             # 进程/会话参数
-            processes_val = int(param_map.get("processes", {}).get("VALUE", 0))
-            sessions_val = int(param_map.get("sessions", {}).get("VALUE", 0))
+            processes_val = int(param_map.get("processes", {}).get("VALUE") or 0)
+            sessions_val = int(param_map.get("sessions", {}).get("VALUE") or 0)
             if processes_val > 0:
                 try:
                     active_query = """
                     SELECT COUNT(*) AS CNT FROM v$process
                     """
                     active_result = execute_readonly_query(conn, active_query)
-                    active_count = int(active_result[0].get("CNT", 0)) if active_result else 0
+                    active_count = (
+                        int(active_result[0].get("CNT") or 0)
+                        if active_result
+                        else 0
+                    )
                     usage_pct = calculate_percentage(active_count, processes_val)
                     severity = "info" if usage_pct < 80 else ("warning" if usage_pct < 90 else "critical")
                     recommendations.append(

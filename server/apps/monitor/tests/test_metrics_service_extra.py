@@ -68,7 +68,7 @@ class TestGetMetrics:
         vm = mocker.patch("apps.monitor.services.metrics.VictoriaMetricsAPI")
         vm.return_value.query.return_value = {"data": {"result": [1]}}
         assert Metrics.get_metrics("up") == {"data": {"result": [1]}}
-        vm.return_value.query.assert_called_once_with("up")
+        vm.return_value.query.assert_called_once_with("up", time=None)
 
 
 class TestQueryMetricByInstance:

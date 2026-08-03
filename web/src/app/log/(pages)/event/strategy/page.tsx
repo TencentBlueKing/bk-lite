@@ -10,11 +10,11 @@ import {
   ColumnItem,
   Pagination,
   TableDataItem,
-  ListItem
+  ListItem,
+  UserItem
 } from '@/app/log/types';
 import CustomTable from '@/components/custom-table';
-import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
-import { getRandomColor } from '@/app/log/utils/common';
+import UserAvatar from '@/components/user-avatar';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import {
   BarChartOutlined,
@@ -27,6 +27,8 @@ import {
   buildStrategyDetailUrl,
   LogPolicyType
 } from './policyRouteUtils';
+import { useCommon } from '@/app/log/context/common';
+import { formatUserDisplayName } from '@/utils/userDisplay';
 
 const Strategy: React.FC = () => {
   const { t } = useTranslation();
@@ -34,6 +36,8 @@ const Strategy: React.FC = () => {
   const { getPolicy, patchPolicy, deletePolicy } = useLogEventApi();
   const ALGORITHM_LIST = useAlgorithmList();
   const { convertToLocalizedTime } = useLocalizedTime();
+  const commonContext = useCommon();
+  const userList: UserItem[] = commonContext?.userList || [];
   const router = useRouter();
   const tableAbortControllerRef = useRef<AbortController | null>(null);
   const tableRequestIdRef = useRef<number>(0);
@@ -71,26 +75,15 @@ const Strategy: React.FC = () => {
       title: t('common.creator'),
       dataIndex: 'created_by',
       key: 'created_by',
-      render: (_, { created_by }) => {
-        return created_by ? (
-          <div className="column-user" title={created_by}>
-            <span
-              className="user-avatar"
-              style={{ background: getRandomColor() }}
-            >
-              {created_by.slice(0, 1).toLocaleUpperCase()}
-            </span>
-            <span className="user-name">
-              <EllipsisWithTooltip
-                className="w-full overflow-hidden text-ellipsis whitespace-nowrap"
-                text={created_by}
-              />
-            </span>
-          </div>
+      render: (_, { created_by }) =>
+        created_by ? (
+          <UserAvatar
+            userName={formatUserDisplayName(created_by, userList)}
+            size="small"
+          />
         ) : (
           <>--</>
-        );
-      }
+        )
     },
     {
       title: t('common.createTime'),

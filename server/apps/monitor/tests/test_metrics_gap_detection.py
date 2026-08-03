@@ -511,6 +511,7 @@ def test_metrics_range_view_passes_gap_detection_query_params(monkeypatch):
         step,
         detect_gaps=False,
         collection_interval_seconds=None,
+        card_budget=False,
     ):
         captured.update(
             {
@@ -520,6 +521,7 @@ def test_metrics_range_view_passes_gap_detection_query_params(monkeypatch):
                 "step": step,
                 "detect_gaps": detect_gaps,
                 "collection_interval_seconds": collection_interval_seconds,
+                "card_budget": card_budget,
             }
         )
         return {"status": "success", "data": {"result": []}}
@@ -554,4 +556,5 @@ def test_metrics_range_view_passes_gap_detection_query_params(monkeypatch):
         "step": "1h",
         "detect_gaps": True,
         "collection_interval_seconds": "60",
+        "card_budget": False,
     }

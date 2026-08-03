@@ -275,8 +275,8 @@ export default function BaselineManagementPage() {
       render: (_: unknown, r: any) => {
         const deleteBlocked = (r.bound_host_count || 0) > 0;
         const deleteTip = deleteBlocked ? t('patchManager.baseline.deleteBlocked') : '';
-        const editEl = <PermissionWrapper requiredPermissions={['Edit']}><Button type="link" size="small" onClick={() => { setEditing(r); setDraftOs(r.os_type === 'windows' ? 'win' : 'linux'); form.setFieldsValue({ name: r.name, description: r.description }); setEditOpen(true); }}>{t('patchManager.edit')}</Button></PermissionWrapper>;
-        const bindEl = <PermissionWrapper requiredPermissions={['Edit']}><Button type="link" size="small" onClick={async () => {
+        const editEl = <PermissionWrapper requiredPermissions={['Edit']} instPermissions={r.permission}><Button type="link" size="small" onClick={() => { setEditing(r); setDraftOs(r.os_type === 'windows' ? 'win' : 'linux'); form.setFieldsValue({ name: r.name, description: r.description }); setEditOpen(true); }}>{t('patchManager.edit')}</Button></PermissionWrapper>;
+        const bindEl = <PermissionWrapper requiredPermissions={['Edit']} instPermissions={r.permission}><Button type="link" size="small" onClick={async () => {
           setBindTarget(r);
           setSelectedHosts([]);
           setOriginalSelectedHosts([]);
@@ -306,6 +306,7 @@ export default function BaselineManagementPage() {
                   name: b.target_name,
                   ip: b.target_ip,
                   os_type_display: r.os_type === 'windows' ? 'Windows' : 'Linux',
+                  permission: b.permission,
                 });
               }
             });
@@ -321,11 +322,11 @@ export default function BaselineManagementPage() {
         }}>{t('patchManager.baseline.bindTargets')}</Button></PermissionWrapper>;
         const deleteEl = deleteBlocked
           ? <Button type="link" size="small" danger disabled>{t('patchManager.delete')}</Button>
-          : <PermissionWrapper requiredPermissions={['Delete']}><Popconfirm title={t('patchManager.baseline.deleteTitle')} description={t('patchManager.baseline.deleteConfirm', undefined, { name: r.name })} onConfirm={async () => { await api.deleteBaseline(r.id); message.success(t('patchManager.baseline.deleted')); await loadData(); }} okText={t('patchManager.delete')} cancelText={t('patchManager.cancel')}>
+          : <PermissionWrapper requiredPermissions={['Delete']} instPermissions={r.permission}><Popconfirm title={t('patchManager.baseline.deleteTitle')} description={t('patchManager.baseline.deleteConfirm', undefined, { name: r.name })} onConfirm={async () => { await api.deleteBaseline(r.id); message.success(t('patchManager.baseline.deleted')); await loadData(); }} okText={t('patchManager.delete')} cancelText={t('patchManager.cancel')}>
               <Button type="link" size="small" danger>{t('patchManager.delete')}</Button>
             </Popconfirm></PermissionWrapper>;
         const assessEl = (
-          <PermissionWrapper requiredPermissions={['Edit']}>
+          <PermissionWrapper requiredPermissions={['Edit']} instPermissions={r.permission}>
             <Popconfirm
               title={t('patchManager.baseline.assessTitle')}
               description={t('patchManager.baseline.assessConfirm', undefined, { name: r.name, count: r.bound_host_count || 0 })}
@@ -388,6 +389,9 @@ export default function BaselineManagementPage() {
       .map((key) => recordMap.get(Number(key)))
       .filter(Boolean);
   }, [selectedHosts, bindHostList]);
+  const bindPermissionBlocked = selectedHostRecords.some(
+    (record) => !record.permission?.includes('Operate'),
+  );
 
   const selectedPatchRecords = useMemo(() => {
     const recordMap = new Map<number, any>();
@@ -422,6 +426,10 @@ export default function BaselineManagementPage() {
       .map((key) => recordMap.get(Number(key)))
       .filter(Boolean);
   }, [pickerSelected, patchList, requirements, draftOs]);
+  const pickerPermissionBlocked = selectedPatchRecords.some(
+    (record) => !requirements.some((item) => item.patch === record.id)
+      && !record.permission?.includes('Operate'),
+  );
 
   return (
     <div style={{ background: 'var(--color-bg-1, #fff)', border: '1px solid var(--color-border-1, #e8e8e8)', borderRadius: 10, padding: '16px', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
@@ -471,44 +479,46 @@ export default function BaselineManagementPage() {
             <Button onClick={() => setEditOpen(false)}>{t('patchManager.cancel')}</Button>
             <Tooltip title={requirements.length === 0 ? t('patchManager.baseline.requirementRequired') : ''}>
               <span>
-                <Button
-                  type="primary"
-                  disabled={requirements.length === 0 || reqLoading}
-                  loading={saving}
-                  onClick={async () => {
-                    const values = await form.validateFields();
-                    const payload = { name: values.name, os_type: draftOs === 'win' ? 'windows' : 'linux', description: values.description || '' };
-                    const currentPatchIds = requirements.map((r) => r.patch);
-                    const originalPatchIds = new Set(originalRequirements.map((r) => r.patch));
-                    const toAdd = currentPatchIds.filter((id) => !originalPatchIds.has(id));
-                    const toRemoveIds = originalRequirements.filter((r) => !currentPatchIds.includes(r.patch)).map((r) => r.id);
-                    const latestEditing = data.find((item) => item.id === editing?.id) || editing;
-                    if (
-                      latestEditing?.is_assessing
+                <PermissionWrapper requiredPermissions={[editing ? 'Edit' : 'Add']} instPermissions={editing?.permission}>
+                  <Button
+                    type="primary"
+                    disabled={requirements.length === 0 || reqLoading}
+                    loading={saving}
+                    onClick={async () => {
+                      const values = await form.validateFields();
+                      const payload = { name: values.name, os_type: draftOs === 'win' ? 'windows' : 'linux', description: values.description || '' };
+                      const currentPatchIds = requirements.map((r) => r.patch);
+                      const originalPatchIds = new Set(originalRequirements.map((r) => r.patch));
+                      const toAdd = currentPatchIds.filter((id) => !originalPatchIds.has(id));
+                      const toRemoveIds = originalRequirements.filter((r) => !currentPatchIds.includes(r.patch)).map((r) => r.id);
+                      const latestEditing = data.find((item) => item.id === editing?.id) || editing;
+                      if (
+                        latestEditing?.is_assessing
                       && (toAdd.length > 0 || toRemoveIds.length > 0)
                       && !(await confirmInvalidateAssessment(editing.name))
-                    ) return;
-                    setSaving(true);
-                    try {
-                      let baseline = editing;
-                      if (editing) {
-                        await api.updateBaseline(editing.id, payload);
-                      } else {
-                        baseline = await api.createBaseline(payload);
-                        setEditing(baseline);
-                      }
-                      const baselineId = baseline?.id || editing?.id;
-                      if (toAdd.length) await api.addBaselineRequirements(baselineId, { patch_ids: toAdd });
-                      if (toRemoveIds.length) await api.removeBaselineRequirements(baselineId, toRemoveIds);
-                      setOriginalRequirements(requirements);
-                      message.success(t('patchManager.baseline.saved'));
-                      setEditOpen(false);
-                      await loadData();
-                    } catch { } finally { setSaving(false); }
-                  }}
-                >
-                  {t('patchManager.save')}
-                </Button>
+                      ) return;
+                      setSaving(true);
+                      try {
+                        let baseline = editing;
+                        if (editing) {
+                          await api.updateBaseline(editing.id, payload);
+                        } else {
+                          baseline = await api.createBaseline(payload);
+                          setEditing(baseline);
+                        }
+                        const baselineId = baseline?.id || editing?.id;
+                        if (toAdd.length) await api.addBaselineRequirements(baselineId, { patch_ids: toAdd });
+                        if (toRemoveIds.length) await api.removeBaselineRequirements(baselineId, toRemoveIds);
+                        setOriginalRequirements(requirements);
+                        message.success(t('patchManager.baseline.saved'));
+                        setEditOpen(false);
+                        await loadData();
+                      } catch { } finally { setSaving(false); }
+                    }}
+                  >
+                    {t('patchManager.save')}
+                  </Button>
+                </PermissionWrapper>
               </span>
             </Tooltip>
           </Space>
@@ -549,38 +559,40 @@ export default function BaselineManagementPage() {
           <Space>
             <Button onClick={closeBindDrawer}>{t('patchManager.cancel')}</Button>
             <Tooltip title={selectedHosts.length === 0 ? t('patchManager.baseline.targetRequired') : ''}>
-              <Button
-                type="primary"
-                disabled={selectedHosts.length === 0 || bindDrawerLoading}
-                loading={bindSaving}
-                onClick={async () => {
-                  if (!bindTarget || selectedHosts.length === 0) return;
-                  const hostIds = selectedHosts.map((k) => Number(k)).filter((id) => !isNaN(id));
-                  const originalHostIds = originalSelectedHosts
-                    .map((k) => Number(k))
-                    .filter((id) => !isNaN(id));
-                  const bindingChanged = hostIds.length !== originalHostIds.length
+              <PermissionWrapper requiredPermissions={['Edit']} instPermissions={bindTarget?.permission}>
+                <Button
+                  type="primary"
+                    disabled={selectedHosts.length === 0 || bindDrawerLoading || bindPermissionBlocked}
+                  loading={bindSaving}
+                  onClick={async () => {
+                    if (!bindTarget || selectedHosts.length === 0) return;
+                    const hostIds = selectedHosts.map((k) => Number(k)).filter((id) => !isNaN(id));
+                    const originalHostIds = originalSelectedHosts
+                      .map((k) => Number(k))
+                      .filter((id) => !isNaN(id));
+                    const bindingChanged = hostIds.length !== originalHostIds.length
                     || hostIds.some((id) => !originalHostIds.includes(id));
-                  const latestBaseline = data.find((item) => item.id === bindTarget.id) || bindTarget;
-                  setBindSaving(true);
-                  try {
-                    if (
-                      latestBaseline.is_assessing
+                    const latestBaseline = data.find((item) => item.id === bindTarget.id) || bindTarget;
+                    setBindSaving(true);
+                    try {
+                      if (
+                        latestBaseline.is_assessing
                       && bindingChanged
                       && !(await confirmInvalidateAssessment(bindTarget.name))
-                    ) return;
-                    await api.bindHostsToBaseline(bindTarget.id, hostIds);
-                    message.success(t('patchManager.baseline.targetsBound', undefined, { count: hostIds.length }));
-                    closeBindDrawer();
-                    await loadData();
-                  } catch {
-                  } finally {
-                    setBindSaving(false);
-                  }
-                }}
-              >
-                {t('patchManager.baseline.confirmBind')}
-              </Button>
+                      ) return;
+                      await api.bindHostsToBaseline(bindTarget.id, hostIds);
+                      message.success(t('patchManager.baseline.targetsBound', undefined, { count: hostIds.length }));
+                      closeBindDrawer();
+                      await loadData();
+                    } catch {
+                    } finally {
+                      setBindSaving(false);
+                    }
+                  }}
+                >
+                  {t('patchManager.baseline.confirmBind')}
+                </Button>
+              </PermissionWrapper>
             </Tooltip>
           </Space>
         }
@@ -604,6 +616,7 @@ export default function BaselineManagementPage() {
           ]}
           selectedKeys={selectedHosts}
           onChange={setSelectedHosts}
+          getCheckboxProps={(record) => ({ disabled: !record.permission?.includes('Operate') })}
           selectedRecordsData={selectedHostRecords}
           renderSelectedLabel={(r) => r.name}
           leftTitle={<Input.Search placeholder={t('patchManager.baseline.targetSearch')} value={hostSearch} onSearch={(v) => { setBindHostPagination((p) => ({ ...p, current: 1 })); loadBindHosts(1, bindHostPagination.pageSize, v); }} onChange={(e) => setHostSearch(e.target.value)} allowClear style={{ width: 240, marginBottom: 12 }} />}
@@ -624,7 +637,7 @@ export default function BaselineManagementPage() {
               <span>
                 <Button
                   type="primary"
-                  disabled={pickerSelected.length === 0}
+                  disabled={pickerSelected.length === 0 || pickerPermissionBlocked}
                   onClick={() => {
                     const recordMap = new Map<number, any>();
                     patchCacheRef.current.forEach((p, id) => recordMap.set(id, p));
@@ -692,6 +705,7 @@ export default function BaselineManagementPage() {
           ]}
           selectedKeys={pickerSelected}
           onChange={setPickerSelected}
+          getCheckboxProps={(record) => ({ disabled: !record.permission?.includes('Operate') })}
           selectedRecordsData={selectedPatchRecords}
           renderSelectedLabel={(r) => r.windows_detail?.kb_number || r.linux_detail?.pkg_name || r.title}
           leftTitle={

@@ -4,8 +4,8 @@
         "{{ server_url }}",
     ]
     interval = "{{ interval }}s"
-    timeout = "30s"
-    response_timeout = "30s"
+    timeout = "{{ interval }}s"
+    response_timeout = "{{ interval }}s"
     {% if tls_ca %}
     tls_ca = "{{ tls_ca }}"
     {% endif %}

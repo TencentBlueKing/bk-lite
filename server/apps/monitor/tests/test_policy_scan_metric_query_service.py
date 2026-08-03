@@ -265,6 +265,20 @@ class TestEnumHelpers:
 
 
 class TestFormatAggregationMetrics:
+    def test_derivative_dimension_resolves_selected_child_instance(self):
+        monitor_object = SimpleNamespace(
+            instance_id_keys=["instance_id", "pod"]
+        )
+        child_id = "('cluster-a', 'orders-7f9')"
+        svc = MetricQueryService(
+            _policy(group_by=["pod"], monitor_object=monitor_object),
+            {child_id: "orders-7f9"},
+        )
+
+        assert svc.get_monitor_instance_id_from_tuple(
+            ("orders-7f9",), ["pod"]
+        ) == child_id
+
     def test_groups_by_keys_and_takes_last_value(self):
         svc = MetricQueryService(_policy(group_by=["instance_id"]), {})
         metrics = {

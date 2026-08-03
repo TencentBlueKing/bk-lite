@@ -61,6 +61,24 @@ class GovernanceTask(TimeInfo, MaintainerInfo):
         related_name="child_tasks",
         verbose_name="来源任务",
     )
+    source_record = models.ForeignKey(
+        "self",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="derived_records",
+        verbose_name="来源执行记录",
+    )
+    source_risk_item_id = models.CharField(
+        max_length=256,
+        blank=True,
+        default="",
+        verbose_name="来源风险项ID",
+    )
+    result_snapshot = models.JSONField(
+        default=list,
+        verbose_name="执行结果快照",
+    )
     chain_started_at = models.DateTimeField(null=True, blank=True, verbose_name="治理链路开始时间")
     chain_deadline_at = models.DateTimeField(null=True, blank=True, verbose_name="治理链路超期时间")
     overdue_at = models.DateTimeField(null=True, blank=True, verbose_name="首次超期时间")

@@ -1,8 +1,8 @@
 @use '../common/simple-dashboard.module.scss';
 
 .sectionLabel {
-  margin: 2px 2px 4px;
-  padding-bottom: 4px;
+  margin: 16px 2px 8px;
+  padding-bottom: 6px;
   border-bottom: 1px solid #eceff4;
   color: #8c95a8;
   font-size: 12px;
@@ -11,15 +11,30 @@
   text-transform: uppercase;
 }
 
-.dashboardSection + .sectionLabel {
-  margin-top: 8px;
+.sectionLabel:first-child {
+  margin-top: 2px;
+}
+
+.dashboardSection + .sectionLabel,
+.kpiGrid + .sectionLabel {
+  margin-top: 20px;
 }
 
 :global(html.dark) .sectionLabel {
   border-bottom-color: rgba(255, 255, 255, 0.08);
 }
 
-.riskPanel {
+.lagRankSection {
+  margin-top: 4px;
+}
+
+.riskLayout {
+  align-items: stretch;
+  gap: 14px;
+}
+
+.riskTablePanel,
+.riskTrendPanel {
   margin-top: 0;
 }
 
@@ -29,6 +44,18 @@
   :global(.ant-table) {
     min-width: 720px;
   }
+
+  :global(.ant-table-tbody) > .riskRowClickable {
+    cursor: pointer;
+  }
+
+  :global(.ant-table-tbody) > .riskRowClickable:hover > :global(td) {
+    background: rgba(47, 107, 255, 0.04);
+  }
+
+  :global(.ant-table-tbody) > .riskRowSelected > :global(td) {
+    background: rgba(47, 107, 255, 0.08);
+  }
 }
 
 .riskLag {
@@ -37,8 +64,56 @@
   font-weight: 600;
 }
 
+.riskRank {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.riskRankDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.riskRankDotPlaceholder {
+  width: 8px;
+  height: 8px;
+  flex-shrink: 0;
+  visibility: hidden;
+}
+
+.riskRankNum {
+  color: #8092ad;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  min-width: 1.25em;
+  text-align: right;
+}
+
+.riskTrendPanel {
+  :global(.chartLegendHeader),
+  .chartLegendHeader {
+    flex-wrap: nowrap;
+    gap: 8px 12px;
+  }
+}
+
+.riskTrendChart {
+  height: 260px;
+}
+
 @media (max-width: 768px) {
   .chartWrap {
     height: 150px;
+  }
+
+  .riskTrendChart {
+    height: 200px;
+  }
+
+  .sectionLabel {
+    margin-top: 12px;
   }
 }

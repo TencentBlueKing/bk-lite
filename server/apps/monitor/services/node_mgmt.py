@@ -967,5 +967,25 @@ class InstanceConfigService:
                     validate_rendered_website_config(child_info.get("content") or {}, env_config)
                 except ValueError as exc:
                     raise BaseAppException(str(exc)) from exc
+            if (config_obj.collect_type or "").startswith("snmp"):
+                from apps.monitor.utils.snmp_interface_filters import normalize_snmp_interface_filter_config
+
+                child_info["content"] = normalize_snmp_interface_filter_config(child_info.get("content"))
+            if (config_obj.config_type or "").lower() == "kafka":
+                from apps.monitor.utils.kafka_collect_timeouts import (
+                    assert_kafka_group_metrics_timeout_lt_interval,
+                    extract_group_metrics_timeout_from_env,
+                )
+
+                child_content = child_info.get("content") or {}
+                child_interval = (
+                    (child_content.get("config") or {}).get("interval")
+                    if isinstance(child_content, dict)
+                    else None
+                )
+                assert_kafka_group_metrics_timeout_lt_interval(
+                    extract_group_metrics_timeout_from_env(env_config),
+                    child_interval,
+                )
             content = ConfigFormat.json_to_toml(child_info["content"]) if child_info else None
             NodeMgmt().update_child_config_content(child_info["id"], content, env_config)

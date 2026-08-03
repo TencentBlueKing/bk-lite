@@ -9,6 +9,26 @@ from apps.system_mgmt.utils import channel_utils
 pytestmark = pytest.mark.django_db
 
 
+@pytest.fixture(autouse=True)
+def _use_builtin_webhook_allowlist(mocker):
+    """渠道单测固定生产内置域名，不依赖其它用例写入的动态白名单缓存。"""
+    mocker.patch.object(
+        channel_utils,
+        "get_network_whitelist_domains",
+        return_value=[
+            "qyapi.weixin.qq.com",
+            "open.feishu.cn",
+            "open.larksuite.com",
+            "oapi.dingtalk.com",
+        ],
+    )
+    mocker.patch.object(
+        channel_utils,
+        "get_network_whitelist_cidrs",
+        return_value=[],
+    )
+
+
 # ----------------------- is_valid_webhook_url (纯函数) -----------------------
 
 
@@ -334,6 +354,7 @@ def test_send_nats_message_成功透传payload(mocker):
     args, kwargs = req.call_args
     assert args == ("ns", "trigger_workflow_by_nats")
     assert kwargs["_timeout"] == 30
+    assert "_raw" not in kwargs
     assert kwargs["bot_id"] == 7 and kwargs["node_id"] == "n1"
     assert kwargs["content"] == "x"
 

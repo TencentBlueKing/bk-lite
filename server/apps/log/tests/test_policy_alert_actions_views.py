@@ -73,18 +73,14 @@ def _invoke_alert_view(user, alert_id, method, action, data=None):
         data or {},
         format="json",
     )
+    request.COOKIES["current_team"] = "1"
     force_authenticate(request, user=user)
     view = AlertViewSet.as_view({method: action})
     return view(request, pk=alert_id)
 
 
 def _allow_alert_view(mocker, policy_id):
-    mocker.patch.object(
-        AlertViewSet,
-        "_get_all_accessible_policy_ids",
-        return_value=[policy_id],
-    )
-    mocker.patch.object(AlertViewSet, "_authorize_alert_operate", return_value=None)
+    _mock_policy_permission(mocker, policy_id=policy_id, organization=1)
 
 
 # --------------------------- format_crontab (纯逻辑) ---------------------------
@@ -389,11 +385,7 @@ def test_legacy_closed_action_reuses_alert_lifecycle(authenticated_user, mocker)
 def test_patch_close_denied_by_operate_permission(authenticated_user, mocker):
     policy = _create_policy("patch-close-denied", organization=1)
     alert = _create_alert(policy, "patch-close-denied-alert")
-    mocker.patch.object(
-        AlertViewSet,
-        "_get_all_accessible_policy_ids",
-        return_value=[policy.id],
-    )
+    _allow_alert_view(mocker, policy.id)
     mocker.patch.object(
         AlertViewSet,
         "_authorize_alert_operate",

@@ -142,6 +142,7 @@ def test_newer_install_and_active_reboot_override_satisfied_snapshot():
         task_type=GovernanceTaskType.REBOOT,
         status=GovernanceTaskStatus.RUNNING,
         target_list=[target.id],
+        patch_list=[patch.id],
         risk_snapshot=[{"host_id": target.id, "patch_id": patch.id}],
         team=[1],
     )

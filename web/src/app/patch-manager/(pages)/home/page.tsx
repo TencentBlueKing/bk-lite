@@ -25,6 +25,12 @@ import { PatchDashboardStats, ComplianceDistributionItem, RecentTaskItem, TopRis
 import { useTranslation } from '@/utils/i18n';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import SeverityTag from '@/app/patch-manager/components/severity-tag';
+import styles from './page.module.scss';
+import {
+  DASHBOARD_MIN_SECTION_HEIGHT,
+  resolveDashboardSectionHeight,
+  resolveDashboardTableScrollY,
+} from './tableLayout';
 
 interface KpiProps {
   label: string;
@@ -77,14 +83,14 @@ export default function HomePage() {
   const [assessLoading, setAssessLoading] = useState(false);
   const [pageLoading, setPageLoading] = useState(true);
   const bottomRef = useRef<HTMLDivElement>(null);
-  const [tableHeight, setTableHeight] = useState(300);
+  const [tableHeight, setTableHeight] = useState(DASHBOARD_MIN_SECTION_HEIGHT);
 
   useEffect(() => {
     const updateHeight = () => {
       if (!bottomRef.current) return;
       const rect = bottomRef.current.getBoundingClientRect();
       const height = window.innerHeight - rect.top - 24;
-      setTableHeight(Math.max(160, height));
+      setTableHeight(resolveDashboardSectionHeight(height));
     };
     updateHeight();
     window.addEventListener('resize', updateHeight);
@@ -109,7 +115,8 @@ export default function HomePage() {
     setAssessLoading(true);
     try {
       const res = await api.getPatchTargetList({ page: 1, page_size: -1 });
-      const targets = Array.isArray(res) ? res : (res.items || []);
+      const visibleTargets = Array.isArray(res) ? res : (res.items || []);
+      const targets = visibleTargets.filter((target: any) => target.permission?.includes('Operate'));
       if (targets.length === 0) {
         message.info(t('patchManager.dashboard.noManagedTargets'));
         return;
@@ -146,6 +153,16 @@ export default function HomePage() {
   const assessedCount = compliantCount + nonCompliantCount + failedCount;
   const targetTotal = stats?.target_total ?? 0;
   const coverageHint = targetTotal > 0 ? ` = ${assessedCount} / ${targetTotal} ≈ ${Math.round(assessedCount / targetTotal * 100)}%` : '';
+  const recentExecutionText = (record: RecentTaskItem) => {
+    if (record.execution_mode !== 'window') return t('patchManager.risk.executeNow');
+    const start = record.execution_window_start ? convertToLocalizedTime(record.execution_window_start) : '—';
+    const end = record.execution_window_end ? convertToLocalizedTime(record.execution_window_end) : '—';
+    return `${t('patchManager.risk.executionWindow')} ${start}–${end}`;
+  };
+  const tableScrollY = resolveDashboardTableScrollY(tableHeight);
+  const tableBodyStyle = {
+    '--dashboard-table-body-height': `${tableScrollY}px`,
+  } as React.CSSProperties;
 
   const FILTER_COLORS: Record<string, string> = {
     compliant: '#1D9E75',
@@ -282,19 +299,22 @@ export default function HomePage() {
           styles={{ body: { padding: '10px 10px', flex: 1, overflow: 'hidden' } }}
           extra={<Button type="link" size="small" onClick={() => router.push('/patch-manager/risk-execution')}>{t('patchManager.dashboard.viewMore')}</Button>}
         >
-          <CustomTable<RecentTaskItem>
-            size="small"
-            pagination={false}
-            rowKey="id"
-            dataSource={stats?.recent_tasks || []}
-            scroll={{ y: Math.max(120, tableHeight - 76) }}
-            columns={[
-              { title: t('patchManager.dashboard.taskName'), dataIndex: 'name', ellipsis: true },
-              { title: t('patchManager.statusLabel'), dataIndex: 'status', width: 100, render: (_: unknown, r: RecentTaskItem) => <Tag color={r.status_color}>{t(`patchManager.execution.statuses.${r.status_code}`, r.status)}</Tag> },
-              { title: t('patchManager.dashboard.progress'), dataIndex: 'progress', width: 80 },
-              { title: t('patchManager.dashboard.time'), dataIndex: 'time', width: 150, render: (_: string, r: RecentTaskItem) => <span style={{ color: 'var(--color-text-3, #8c8c8c)' }}>{convertToLocalizedTime(r.created_at) || '—'}</span> },
-            ]}
-          />
+          <div className={styles.dashboardTable} style={tableBodyStyle}>
+            <CustomTable<RecentTaskItem>
+              size="small"
+              pagination={false}
+              rowKey="id"
+              dataSource={stats?.recent_tasks || []}
+              scroll={{ y: tableScrollY }}
+              columns={[
+                { title: t('patchManager.dashboard.taskName'), dataIndex: 'name', ellipsis: true },
+                { title: t('patchManager.execution.type'), dataIndex: 'task_type_display', width: 90, render: (value: string) => <Tag>{value}</Tag> },
+                { title: t('patchManager.risk.executionMode'), dataIndex: 'execution_mode', width: 210, render: (_: unknown, r: RecentTaskItem) => recentExecutionText(r) },
+                { title: t('patchManager.execution.status'), dataIndex: 'status', width: 110, render: (_: unknown, r: RecentTaskItem) => <Tag color={r.status_color}>{t(`patchManager.execution.statuses.${r.status_code}`, r.status)}</Tag> },
+                { title: t('patchManager.createTime'), dataIndex: 'created_at', width: 170, render: (_: string, r: RecentTaskItem) => <span style={{ color: 'var(--color-text-3, #8c8c8c)' }}>{convertToLocalizedTime(r.created_at) || '—'}</span> },
+              ]}
+            />
+          </div>
         </Card>
 
         <Card
@@ -303,18 +323,20 @@ export default function HomePage() {
           styles={{ body: { padding: '10px 10px', flex: 1, overflow: 'hidden' } }}
           extra={<Button type="link" size="small" onClick={() => router.push('/patch-manager/risk-pending')}>{t('patchManager.dashboard.viewAll')}</Button>}
         >
-          <CustomTable<TopRiskItem>
-            size="small"
-            pagination={false}
-            rowKey="id"
-            dataSource={stats?.top_risks || []}
-            scroll={{ y: Math.max(120, tableHeight - 76) }}
-            columns={[
-              { title: t('patchManager.dashboard.patchRequirement'), dataIndex: 'patch', ellipsis: true },
-              { title: t('patchManager.dashboard.affectedTargets'), dataIndex: 'hosts', width: 90, render: (v: number) => t('patchManager.dashboard.targetCount', undefined, { count: v }) },
-              { title: t('patchManager.severity'), dataIndex: 'severity', width: 90, render: (v: string) => <SeverityTag severity={v} /> },
-            ]}
-          />
+          <div className={styles.dashboardTable} style={tableBodyStyle}>
+            <CustomTable<TopRiskItem>
+              size="small"
+              pagination={false}
+              rowKey="id"
+              dataSource={stats?.top_risks || []}
+              scroll={{ y: tableScrollY }}
+              columns={[
+                { title: t('patchManager.dashboard.patchRequirement'), dataIndex: 'patch', ellipsis: true },
+                { title: t('patchManager.dashboard.affectedTargets'), dataIndex: 'hosts', width: 90, render: (v: number) => t('patchManager.dashboard.targetCount', undefined, { count: v }) },
+                { title: t('patchManager.severity'), dataIndex: 'severity', width: 90, render: (v: string) => <SeverityTag severity={v} /> },
+              ]}
+            />
+          </div>
         </Card>
       </div>
     </div>

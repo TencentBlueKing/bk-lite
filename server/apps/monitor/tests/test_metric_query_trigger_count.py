@@ -36,6 +36,7 @@ def _load_metric_query_module(monkeypatch):
         "apps.monitor.tasks.utils.policy_methods",
         METHOD={},
         period_to_seconds=lambda period: period["value"] * 60,
+        query_formula_policy_metrics=lambda *args, **kwargs: {"data": {"result": []}},
     )
     _install_module(
         monkeypatch,

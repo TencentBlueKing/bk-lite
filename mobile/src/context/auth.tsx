@@ -249,10 +249,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   useEffect(() => {
     if (isInitializing || initializationError) return;
+    if (isAuthenticated && pathname === '/login') {
+      navigateAfterLogin();
+      return;
+    }
     if (!isAuthenticated && !isPublicPath && pathname) {
       router.replace('/login');
     }
-  }, [initializationError, isAuthenticated, isInitializing, isPublicPath, pathname, router]);
+  }, [
+    initializationError,
+    isAuthenticated,
+    isInitializing,
+    isPublicPath,
+    navigateAfterLogin,
+    pathname,
+    router,
+  ]);
 
   const login = async (credentials: AuthLoginCredentials): Promise<AuthLoginResult> => {
     if (isInitializing) {

@@ -46,6 +46,10 @@ def _perm(monkeypatch):
     monkeypatch.setattr(f"{VIEWS}.InstanceViewSet.check_instance_permission", lambda self, r, i, operator=None: True)
     monkeypatch.setattr(f"{VIEWS}.InstanceViewSet.require_instance_permission", lambda self, r, i, operator=None: None)
     monkeypatch.setattr(f"{VIEWS}.InstanceViewSet._get_allowed_org_ids", staticmethod(lambda request: [1]))
+    monkeypatch.setattr(
+        f"{VIEWS}.ModelManage.search_model_info",
+        lambda model_id: {"model_id": model_id, "model_name": model_id, "is_visible": True},
+    )
 
 
 def _req(method, user, data=None, team="1", include_children="0"):
@@ -544,7 +548,7 @@ def test_association_instance_list_ok(superuser, monkeypatch):
     monkeypatch.setattr(f"{VIEWS}.InstanceManage.query_entity_by_id", lambda pk: {"_id": 5, "organization": [1]})
     monkeypatch.setattr(
         f"{VIEWS}.InstanceManage.instance_association_instance_list",
-        lambda model_id, inst_id: [{"_id": 9}],
+        lambda model_id, inst_id, **kwargs: [{"_id": 9}],
     )
     request = _req("get", superuser)
     response = _call({"get": "instance_association_instance_list"}, request, model_id="host", inst_id="5")
@@ -556,7 +560,7 @@ def test_instance_association_ok(superuser, monkeypatch):
     monkeypatch.setattr(f"{VIEWS}.InstanceManage.query_entity_by_id", lambda pk: {"_id": 5, "organization": [1]})
     monkeypatch.setattr(
         f"{VIEWS}.InstanceManage.instance_association",
-        lambda model_id, inst_id: [{"_id": 9}],
+        lambda model_id, inst_id, **kwargs: [{"_id": 9}],
     )
     request = _req("get", superuser)
     response = _call({"get": "instance_association"}, request, model_id="host", inst_id="5")
