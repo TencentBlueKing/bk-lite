@@ -17,8 +17,8 @@ export const useSecurityApi = () => {
    * @param enableOtp - "1" to enable OTP, "0" to disable
    * @returns Promise with updated settings
    */
-  async function updateOtpSettings({ 
-    enableOtp, 
+  async function updateOtpSettings({
+    enableOtp,
     loginExpiredTime,
     pwdSetValidityPeriod,
     pwdSetRequiredCharTypes,
@@ -27,10 +27,11 @@ export const useSecurityApi = () => {
     pwdSetMaxRetryCount,
     pwdSetLockDuration,
     pwdSetExpiryReminderDays,
-    userCreateInitialPasswordEnabled,
     userCreateInitialPassword,
-  }: { 
-    enableOtp: string; 
+    userCreateInitialPasswordMode,
+    userCreateInitialPasswordEmailChannelId,
+  }: {
+    enableOtp: string;
     loginExpiredTime: string;
     pwdSetValidityPeriod?: string;
     pwdSetRequiredCharTypes?: string;
@@ -39,10 +40,11 @@ export const useSecurityApi = () => {
     pwdSetMaxRetryCount?: string;
     pwdSetLockDuration?: string;
     pwdSetExpiryReminderDays?: string;
-    userCreateInitialPasswordEnabled?: string;
     userCreateInitialPassword?: string;
+    userCreateInitialPasswordMode?: 'fixed' | 'random' | 'none' | string;
+    userCreateInitialPasswordEmailChannelId?: string | number;
   }): Promise<any> {
-    return await post('/system_mgmt/system_settings/update_sys_set/', {
+    const payload: Record<string, unknown> = {
       enable_otp: enableOtp,
       login_expired_time: loginExpiredTime,
       pwd_set_validity_period: pwdSetValidityPeriod,
@@ -52,9 +54,17 @@ export const useSecurityApi = () => {
       pwd_set_max_retry_count: pwdSetMaxRetryCount,
       pwd_set_lock_duration: pwdSetLockDuration,
       pwd_set_expiry_reminder_days: pwdSetExpiryReminderDays,
-      user_create_initial_password_enabled: userCreateInitialPasswordEnabled,
-      ...(userCreateInitialPassword ? { user_create_initial_password: userCreateInitialPassword } : {}),
-    });
+    };
+    if (userCreateInitialPassword) {
+      payload.user_create_initial_password = userCreateInitialPassword;
+    }
+    if (userCreateInitialPasswordMode) {
+      payload.user_create_initial_password_mode = userCreateInitialPasswordMode;
+    }
+    if (userCreateInitialPasswordEmailChannelId !== undefined && userCreateInitialPasswordEmailChannelId !== '') {
+      payload.user_create_initial_password_random_email_channel_id = String(userCreateInitialPasswordEmailChannelId);
+    }
+    return await post('/system_mgmt/system_settings/update_sys_set/', payload);
   }
 
   /**
