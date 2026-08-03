@@ -57,6 +57,25 @@ def _mock_request(username="testuser", domain="test.com"):
 
 @pytest.mark.django_db
 class TestPatchPermissionApiBoundaries:
+    def test_patch_batch_delete_requires_delete_permission(
+        self, api_client, authenticated_user, mocker
+    ):
+        from apps.patch_mgmt.constants import OSType
+        from apps.patch_mgmt.models import Patch
+
+        patch = Patch.objects.create(title="protected", os_type=OSType.LINUX, team=[1])
+        client = _permission_client(api_client, authenticated_user, {"patch-View"})
+        _team_rule(mocker)
+
+        response = client.post(
+            f"{_BASE}/api/patch/batch_delete/",
+            {"ids": [patch.id]},
+            format="json",
+        )
+
+        assert response.status_code == status.HTTP_403_FORBIDDEN
+        assert Patch.objects.filter(pk=patch.id).exists()
+
     def test_patch_source_view_permission_uses_patch_application_id(
         self, api_client, authenticated_user, mocker
     ):
