@@ -4,6 +4,7 @@
 """
 
 import json
+from pathlib import Path
 
 import pytest
 from rest_framework import status
@@ -12,6 +13,8 @@ from rest_framework.test import APIRequestFactory, force_authenticate
 from apps.alerts.models.alert_source import AlertSource
 from apps.alerts.models.models import Level
 from apps.alerts.views.alert_source import AlertSourceModelViewSet
+from apps.system_mgmt.management.commands.init_realm_resource import create_default_roles, create_resource
+from apps.system_mgmt.models import App, Menu, Role
 
 
 @pytest.fixture
@@ -46,9 +49,265 @@ def _make_source(source_id="s1", source_type="restful", **over):
     return AlertSource.objects.create(**defaults)
 
 
+@pytest.fixture
+def permission_user(authenticated_user):
+    authenticated_user.is_superuser = False
+    authenticated_user.permission = {}
+    return authenticated_user
+
+
 # --------------------------------------------------------------------------
 # CRUD
 # --------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("method", "action", "path", "data"),
+    [
+        ("get", "list", "/alert_source/", None),
+        ("get", "retrieve", "/alert_source/{id}/", None),
+        (
+            "post",
+            "create",
+            "/alert_source/",
+            {"name": "new", "source_id": "new-source", "source_type": "restful"},
+        ),
+        (
+            "put",
+            "update",
+            "/alert_source/{id}/",
+            {"name": "updated", "source_id": "s1", "source_type": "restful"},
+        ),
+        ("patch", "partial_update", "/alert_source/{id}/", {"name": "patched"}),
+        ("delete", "destroy", "/alert_source/{id}/", None),
+        ("get", "integration_guide", "/alert_source/{id}/integration-guide/", None),
+    ],
+)
+def test_alert_source_endpoints_reject_user_without_integration_permission(
+    permission_user,
+    event_level,
+    method,
+    action,
+    path,
+    data,
+):
+    source = _make_source("s1", source_type="zabbix")
+    request = _request(method, path.format(id=source.id), permission_user, data=data)
+    kwargs = {"pk": str(source.id)} if "{id}" in path else {}
+
+    response = AlertSourceModelViewSet.as_view({method: action})(request, **kwargs)
+
+    assert response.status_code == status.HTTP_403_FORBIDDEN
+
+
+@pytest.mark.django_db
+def test_integration_view_preserves_read_and_guide_access(permission_user, event_level):
+    source = _make_source("s1", source_type="zabbix")
+    permission_user.permission = {"alarm": {"Integration-View"}}
+
+    list_response = AlertSourceModelViewSet.as_view({"get": "list"})(
+        _request("get", "/alert_source/", permission_user)
+    )
+    retrieve_response = AlertSourceModelViewSet.as_view({"get": "retrieve"})(
+        _request("get", f"/alert_source/{source.id}/", permission_user),
+        pk=str(source.id),
+    )
+    guide_response = AlertSourceModelViewSet.as_view({"get": "integration_guide"})(
+        _request("get", f"/alert_source/{source.id}/integration-guide/", permission_user),
+        pk=str(source.id),
+    )
+
+    assert list_response.status_code == status.HTTP_200_OK
+    assert retrieve_response.status_code == status.HTTP_200_OK
+    assert guide_response.status_code == status.HTTP_200_OK
+    assert guide_response.data["headers"] == {"SECRET": source.secret}
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("method", "action", "permission", "data", "expected_status"),
+    [
+        (
+            "post",
+            "create",
+            "Integration-Add",
+            {"name": "new", "source_id": "new-source", "source_type": "restful"},
+            status.HTTP_201_CREATED,
+        ),
+        (
+            "put",
+            "update",
+            "Integration-Edit",
+            {"name": "updated", "source_id": "s1", "source_type": "restful"},
+            status.HTTP_200_OK,
+        ),
+        ("patch", "partial_update", "Integration-Edit", {"name": "patched"}, status.HTTP_200_OK),
+        ("delete", "destroy", "Integration-Delete", None, status.HTTP_204_NO_CONTENT),
+    ],
+)
+def test_alert_source_write_actions_accept_matching_permissions(
+    permission_user,
+    method,
+    action,
+    permission,
+    data,
+    expected_status,
+):
+    source = _make_source("s1")
+    permission_user.permission = {"alarm": {permission}}
+    path = "/alert_source/" if action == "create" else f"/alert_source/{source.id}/"
+    request = _request(method, path, permission_user, data=data)
+    kwargs = {} if action == "create" else {"pk": str(source.id)}
+
+    response = AlertSourceModelViewSet.as_view({method: action})(request, **kwargs)
+
+    assert response.status_code == expected_status
+    if action == "create":
+        assert AlertSource.objects.filter(source_id="new-source", name="new").exists()
+    elif action == "destroy":
+        assert not AlertSource.all_objects.filter(pk=source.pk).exists()
+    else:
+        source.refresh_from_db()
+        assert source.name == ("patched" if action == "partial_update" else "updated")
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("method", "action", "permission", "data"),
+    [
+        (
+            "post",
+            "create",
+            "Integration-View",
+            {"name": "new", "source_id": "new-source", "source_type": "restful"},
+        ),
+        ("patch", "partial_update", "Integration-Add", {"name": "patched"}),
+        ("delete", "destroy", "Integration-Edit", None),
+    ],
+)
+def test_alert_source_write_actions_reject_mismatched_permissions(
+    permission_user,
+    method,
+    action,
+    permission,
+    data,
+):
+    source = _make_source("s1")
+    permission_user.permission = {"alarm": {permission}}
+    path = "/alert_source/" if action == "create" else f"/alert_source/{source.id}/"
+    request = _request(method, path, permission_user, data=data)
+    kwargs = {} if action == "create" else {"pk": str(source.id)}
+
+    response = AlertSourceModelViewSet.as_view({method: action})(request, **kwargs)
+
+    assert response.status_code == status.HTTP_403_FORBIDDEN
+
+
+def test_alarm_menu_defines_alert_source_crud_permissions():
+    menu_path = Path(__file__).resolve().parents[3] / "support-files/system_mgmt/menus/alarm.json"
+    menu_data = json.loads(menu_path.read_text(encoding="utf-8"))
+    integration = next(
+        child
+        for group in menu_data["menus"]
+        for child in group["children"]
+        if child["id"] == "Integration"
+    )
+
+    assert integration["operation"] == ["View", "Detail", "Add", "Edit", "Delete"]
+
+
+@pytest.mark.django_db
+def test_new_integration_permissions_preserve_existing_roles():
+    menu_path = Path(__file__).resolve().parents[3] / "support-files/system_mgmt/menus/alarm.json"
+    menu_data = json.loads(menu_path.read_text(encoding="utf-8"))
+    legacy_menus = json.loads(json.dumps(menu_data["menus"]))
+    legacy_integration = next(
+        child
+        for group in legacy_menus
+        for child in group["children"]
+        if child["id"] == "Integration"
+    )
+    legacy_integration["operation"] = ["View", "Detail"]
+    app = App.objects.create(name="alarm", display_name="Alarm", url="/alarm", is_build_in=True)
+
+    create_resource(app, legacy_menus)
+    create_default_roles(app, menu_data["roles"])
+    detail_id = Menu.objects.get(app="alarm", name="Integration-Detail").id
+    custom_role = Role.objects.create(name="custom", app="alarm", menu_list=[detail_id])
+
+    create_resource(app, menu_data["menus"])
+    create_default_roles(app, menu_data["roles"])
+
+    normal_role = Role.objects.get(name="normal", app="alarm")
+    manager_role = Role.objects.get(name="manager", app="alarm")
+    normal_permissions = set(Menu.objects.filter(id__in=normal_role.menu_list).values_list("name", flat=True))
+    manager_permissions = set(Menu.objects.filter(id__in=manager_role.menu_list).values_list("name", flat=True))
+    custom_role.refresh_from_db()
+    assert "Integration-View" in normal_permissions
+    assert not {"Integration-Add", "Integration-Edit", "Integration-Delete"} & normal_permissions
+    assert {"Integration-Add", "Integration-Edit", "Integration-Delete"} <= manager_permissions
+    assert custom_role.menu_list == [detail_id]
+
+    menu_snapshot = dict(Menu.objects.filter(app="alarm").values_list("name", "id"))
+    role_snapshot = {
+        role.name: tuple(role.menu_list)
+        for role in Role.objects.filter(app="alarm").order_by("name")
+    }
+    create_resource(app, menu_data["menus"])
+    create_default_roles(app, menu_data["roles"])
+
+    assert dict(Menu.objects.filter(app="alarm").values_list("name", "id")) == menu_snapshot
+    assert {
+        role.name: tuple(role.menu_list)
+        for role in Role.objects.filter(app="alarm").order_by("name")
+    } == role_snapshot
+
+
+@pytest.mark.django_db
+def test_integration_permission_initialization_rolls_back_on_failure(monkeypatch):
+    from apps.system_mgmt.management.commands import init_realm_resource
+
+    menu_path = Path(__file__).resolve().parents[3] / "support-files/system_mgmt/menus/alarm.json"
+    menu_data = json.loads(menu_path.read_text(encoding="utf-8"))
+    legacy_menus = json.loads(json.dumps(menu_data["menus"]))
+    legacy_integration = next(
+        child
+        for group in legacy_menus
+        for child in group["children"]
+        if child["id"] == "Integration"
+    )
+    legacy_integration["operation"] = ["View", "Detail"]
+    app = App.objects.create(name="alarm", display_name="Alarm", url="/alarm", is_build_in=True)
+    create_resource(app, legacy_menus)
+    create_default_roles(app, menu_data["roles"])
+    menu_snapshot = dict(Menu.objects.filter(app="alarm").values_list("name", "id"))
+    role_snapshot = {
+        role.name: tuple(role.menu_list)
+        for role in Role.objects.filter(app="alarm").order_by("name")
+    }
+    real_create_default_roles = init_realm_resource.create_default_roles
+
+    def fail_after_role_update(app_inst, roles):
+        real_create_default_roles(app_inst, roles)
+        raise RuntimeError("injected role initialization failure")
+
+    monkeypatch.setattr(init_realm_resource, "get_install_apps", lambda: set())
+    monkeypatch.setattr(
+        init_realm_resource.os,
+        "walk",
+        lambda _: [("support-files/system_mgmt/menus", [], ["alarm.json"])],
+    )
+    monkeypatch.setattr(init_realm_resource, "create_default_roles", fail_after_role_update)
+
+    with pytest.raises(RuntimeError, match="injected role initialization failure"):
+        init_realm_resource.Command().handle()
+
+    assert dict(Menu.objects.filter(app="alarm").values_list("name", "id")) == menu_snapshot
+    assert {
+        role.name: tuple(role.menu_list)
+        for role in Role.objects.filter(app="alarm").order_by("name")
+    } == role_snapshot
 
 
 @pytest.mark.django_db

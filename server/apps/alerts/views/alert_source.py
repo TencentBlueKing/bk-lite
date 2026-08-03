@@ -69,6 +69,31 @@ class AlertSourceModelViewSet(ModelViewSet):
     filterset_class = AlertSourceModelFilter
     pagination_class = CustomPageNumberPagination
 
+    @HasPermission("Integration-View")
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+
+    @HasPermission("Integration-View")
+    def retrieve(self, request, *args, **kwargs):
+        return super().retrieve(request, *args, **kwargs)
+
+    @HasPermission("Integration-Add")
+    def create(self, request, *args, **kwargs):
+        return super().create(request, *args, **kwargs)
+
+    @HasPermission("Integration-Edit")
+    def update(self, request, *args, **kwargs):
+        return super().update(request, *args, **kwargs)
+
+    @HasPermission("Integration-Edit")
+    def partial_update(self, request, *args, **kwargs):
+        return super().partial_update(request, *args, **kwargs)
+
+    @HasPermission("Integration-Delete")
+    def destroy(self, request, *args, **kwargs):
+        return super().destroy(request, *args, **kwargs)
+
+    @HasPermission("Integration-View")
     @action(detail=True, methods=["get"], url_path="integration-guide")
     def integration_guide(self, request, pk=None):
         alert_source = self.get_object()
