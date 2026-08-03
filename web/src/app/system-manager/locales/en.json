@@ -91,7 +91,8 @@
       "functionList": "Function List",
       "updatedAt": "Updated At",
       "deleteConfirm": "Are you sure you want to delete this menu?",
-      "name": "Menu Name"
+      "name": "Menu Name",
+      "nameMaxLength": "Menu name cannot exceed 100 characters"
     },
     "application": {
       "searchIcon": "Search Icon",
@@ -583,7 +584,16 @@
       "scenario": "Scenario",
       "modelObject": "Model",
       "operatorObject": "Operator Object",
-      "beforeAfter": "Before vs. After Comparison"
+      "beforeAfter": "Before vs. After Comparison",
+      "authSourceBkLite": "BK-Lite Authentication Source",
+      "authSourceBlueking": "BlueKing Authentication Source",
+      "authSourceUrl": "Authentication URL",
+      "authSourceWechatDescription": "Supports WeChat QR-code sign-in",
+      "authSourceBkLiteDescription": "Supports the BK-Lite authentication source",
+      "authSourceBluekingDescription": "Supports the BlueKing platform authentication source",
+      "exportSheetName": "Login Logs",
+      "exportExcel": "Excel (.xlsx)",
+      "exportCsv": "CSV (.csv)"
     },
     "settings": {
       "tabs": {

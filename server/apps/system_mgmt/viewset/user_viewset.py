@@ -41,16 +41,16 @@ class InitialPasswordDeliveryError(Exception):
     """初始密码邮件未投递，创建事务必须回滚。"""
 
 
-def _generate_random_initial_password():
+def _generate_random_initial_password(locale="zh-Hans"):
     """生成满足当前密码策略的随机初始密码。"""
     policy = PasswordValidator.get_password_settings()
     token_bytes = max(12, (policy["min_length"] * 3 + 3) // 4)
     for _ in range(20):
         candidate = secrets.token_urlsafe(token_bytes)
-        is_valid, _ = PasswordValidator.validate_password_with_config(candidate, policy)
+        is_valid, _ = PasswordValidator.validate_password_with_config(candidate, policy, locale=locale)
         if is_valid:
             return candidate
-    raise ValueError("无法生成符合当前密码策略的随机初始密码")
+    raise ValueError(LanguageLoader(app="system_mgmt", default_lang=locale).get("error.initial_password_generation_failed"))
 
 
 def _normalize_group_ids(groups):
@@ -88,16 +88,17 @@ def _get_synced_group_ids(groups):
     return set(Group.objects.filter(id__in=group_ids, sync_source__isnull=False).values_list("id", flat=True))
 
 
-def _validate_local_user_group_changes(groups, existing_groups=None):
+def _validate_local_user_group_changes(groups, existing_groups=None, loader=None):
+    loader = loader or LanguageLoader(app="system_mgmt", default_lang="en")
     selected_synced_group_ids = _get_synced_group_ids(groups)
     if existing_groups is None:
         if selected_synced_group_ids:
-            return "Synced groups cannot have locally managed users"
+            return loader.get("error.synced_groups_local_users_forbidden")
         return None
 
     existing_synced_group_ids = _get_synced_group_ids(existing_groups)
     if selected_synced_group_ids != existing_synced_group_ids:
-        return "Synced group membership cannot be changed locally"
+        return loader.get("error.synced_group_membership_immutable")
     return None
 
 
@@ -176,27 +177,27 @@ class UserViewSet(ViewSetUtils):
 
     def list(self, request, *args, **kwargs):
         """禁用内置 list 接口 - 使用 search_user_list action"""
-        return JsonResponse({"result": False, "message": "接口未启用"}, status=405)
+        return JsonResponse({"result": False, "message": self._get_loader(request).get("error.api_not_enabled")}, status=405)
 
     def retrieve(self, request, *args, **kwargs):
         """禁用内置 retrieve 接口 - 使用 get_user_detail action"""
-        return JsonResponse({"result": False, "message": "接口未启用"}, status=405)
+        return JsonResponse({"result": False, "message": self._get_loader(request).get("error.api_not_enabled")}, status=405)
 
     def create(self, request, *args, **kwargs):
         """禁用内置 create 接口 - 使用 create_user action"""
-        return JsonResponse({"result": False, "message": "接口未启用"}, status=405)
+        return JsonResponse({"result": False, "message": self._get_loader(request).get("error.api_not_enabled")}, status=405)
 
     def update(self, request, *args, **kwargs):
         """禁用内置 update 接口 - 使用 update_user action"""
-        return JsonResponse({"result": False, "message": "接口未启用"}, status=405)
+        return JsonResponse({"result": False, "message": self._get_loader(request).get("error.api_not_enabled")}, status=405)
 
     def partial_update(self, request, *args, **kwargs):
         """禁用内置 partial_update 接口 - 使用 update_user action"""
-        return JsonResponse({"result": False, "message": "接口未启用"}, status=405)
+        return JsonResponse({"result": False, "message": self._get_loader(request).get("error.api_not_enabled")}, status=405)
 
     def destroy(self, request, *args, **kwargs):
         """禁用内置 destroy 接口 - 使用 delete_user action"""
-        return JsonResponse({"result": False, "message": "接口未启用"}, status=405)
+        return JsonResponse({"result": False, "message": self._get_loader(request).get("error.api_not_enabled")}, status=405)
 
     @staticmethod
     def _is_valid_phone(phone):
@@ -382,7 +383,7 @@ class UserViewSet(ViewSetUtils):
         if group_validation_error:
             return JsonResponse({"result": False, "message": group_validation_error})
         groups, _ = _normalize_group_ids(groups)
-        synced_group_error = _validate_local_user_group_changes(groups)
+        synced_group_error = _validate_local_user_group_changes(groups, loader=loader)
         if synced_group_error:
             return JsonResponse({"result": False, "message": synced_group_error})
         group_scope_error = self._validate_group_scope_for_request(request, groups, loader)
@@ -398,7 +399,7 @@ class UserViewSet(ViewSetUtils):
                 message = loader.get("error.invalid_role_ids", "Invalid role IDs: {ids}").format(ids=list(invalid_role_ids))
                 return JsonResponse({"result": False, "message": message})
         if not self._is_valid_phone(kwargs.get("phone")):
-            return JsonResponse({"result": False, "message": "手机号格式不正确"})
+            return JsonResponse({"result": False, "message": loader.get("error.invalid_phone")})
         is_superuser = kwargs.pop("is_superuser", False)
         if is_superuser:
             roles = [Role.objects.get(name="admin", app="").id]
@@ -420,23 +421,23 @@ class UserViewSet(ViewSetUtils):
 
         initial_password_active = initial_password_mode in ("fixed", "random")
         if initial_password_mode == "fixed" and not initial_password_hash:
-            return JsonResponse({"result": False, "message": "本地用户初始密码未配置"}, status=400)
+            return JsonResponse({"result": False, "message": loader.get("error.initial_password_not_configured")}, status=400)
         if initial_password_mode == "fixed" and not initial_password_encrypted:
-            return JsonResponse({"result": False, "message": "本地用户初始密码未配置"}, status=400)
+            return JsonResponse({"result": False, "message": loader.get("error.initial_password_not_configured")}, status=400)
         if initial_password_active:
             try:
                 email_channel = Channel.objects.get(id=int(random_email_channel_id))
             except (Channel.DoesNotExist, ValueError, TypeError):
-                return JsonResponse({"result": False, "message": "初始密码邮件通道不存在或不可用"}, status=400)
+                return JsonResponse({"result": False, "message": loader.get("error.initial_password_email_channel_unavailable")}, status=400)
             if email_channel.channel_type != ChannelChoices.EMAIL:
-                return JsonResponse({"result": False, "message": "初始密码邮件通道不是 email 类型"}, status=400)
+                return JsonResponse({"result": False, "message": loader.get("error.initial_password_email_channel_invalid")}, status=400)
             if not kwargs.get("email"):
-                return JsonResponse({"result": False, "message": "初始密码邮件通知需要用户邮箱"}, status=400)
+                return JsonResponse({"result": False, "message": loader.get("error.initial_password_email_required")}, status=400)
 
         # 准备本地用户初始密码:三种模式与用户同步处的 random/uniform/none 对齐。
         if initial_password_mode == "random":
             try:
-                raw_password = _generate_random_initial_password()
+                raw_password = _generate_random_initial_password(locale)
             except ValueError as error:
                 return JsonResponse({"result": False, "message": str(error)}, status=400)
             initial_password_value = make_password(raw_password)
@@ -456,7 +457,7 @@ class UserViewSet(ViewSetUtils):
             try:
                 email_password = decrypt_from_vault(initial_password_encrypted)
             except ValueError:
-                return JsonResponse({"result": False, "message": "统一初始密码解密失败，请重新设置初始密码"}, status=400)
+                return JsonResponse({"result": False, "message": loader.get("error.initial_password_decrypt_failed")}, status=400)
 
         try:
             with transaction.atomic():
@@ -503,10 +504,11 @@ class UserViewSet(ViewSetUtils):
 
         # 校验密码是否为空
         if not password:
-            return JsonResponse({"result": False, "message": "密码不能为空"}, status=400)
+            return JsonResponse({"result": False, "message": self._get_loader(request).get("error.password_required")}, status=400)
 
         # 校验密码复杂度
-        is_valid, error_message = PasswordValidator.validate_password(password)
+        locale = getattr(request.user, "locale", "en") if hasattr(request, "user") else "en"
+        is_valid, error_message = PasswordValidator.validate_password(password, locale=locale)
         if not is_valid:
             return JsonResponse({"result": False, "message": error_message}, status=400)
 
@@ -542,7 +544,7 @@ class UserViewSet(ViewSetUtils):
             return JsonResponse(
                 {
                     "result": False,
-                    "message": "Synced users cannot be deleted directly. Please delete them from the user sync source.",
+                    "message": self._get_loader(request).get("error.synced_users_delete_forbidden"),
                 }
             )
 
@@ -579,15 +581,18 @@ class UserViewSet(ViewSetUtils):
         action_name = request.data.get("action")
 
         if not isinstance(user_ids, list) or not user_ids:
-            return JsonResponse({"result": False, "message": "user_ids must be a non-empty list"}, status=400)
+            return JsonResponse({"result": False, "message": self._get_loader(request).get("error.user_ids_list_required")}, status=400)
 
         if action_name not in {"enable", "disable", "unlock"}:
-            return JsonResponse({"result": False, "message": "action must be one of: enable, disable, unlock"}, status=400)
+            return JsonResponse({"result": False, "message": self._get_loader(request).get("error.invalid_user_status_action")}, status=400)
 
         normalized_user_ids, invalid_user_ids = self._normalize_user_ids(user_ids)
         if invalid_user_ids:
             return JsonResponse(
-                {"result": False, "message": f"Invalid user IDs: {invalid_user_ids}"},
+                {
+                    "result": False,
+                    "message": self._get_loader(request).get("error.invalid_user_ids").format(ids=invalid_user_ids),
+                },
                 status=400,
             )
 
@@ -674,7 +679,7 @@ class UserViewSet(ViewSetUtils):
             return JsonResponse({"result": False, "message": group_validation_error})
         groups, _ = _normalize_group_ids(groups)
         if not is_synced_user:
-            synced_group_error = _validate_local_user_group_changes(groups, target_user.group_list)
+            synced_group_error = _validate_local_user_group_changes(groups, target_user.group_list, loader=loader)
             if synced_group_error:
                 return JsonResponse({"result": False, "message": synced_group_error})
         group_scope_error = self._validate_group_scope_for_request(request, groups, loader)
@@ -684,7 +689,7 @@ class UserViewSet(ViewSetUtils):
         is_superuser = params.pop("is_superuser", False)
         admin_role_id = Role.objects.get(name="admin", app="").id
         if not is_synced_user and not self._is_valid_phone(params.get("phone")):
-            return JsonResponse({"result": False, "message": "手机号格式不正确"})
+            return JsonResponse({"result": False, "message": loader.get("error.invalid_phone")})
         if is_superuser:
             params["roles"] = [admin_role_id]
         else:

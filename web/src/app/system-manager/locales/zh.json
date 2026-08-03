@@ -91,7 +91,8 @@
       "functionList": "功能列表",
       "updatedAt": "更新时间",
       "deleteConfirm": "确定要删除此菜单吗？",
-      "name": "菜单名称"
+      "name": "菜单名称",
+      "nameMaxLength": "菜单名称不能超过 100 个字符"
     },
     "application": {
       "searchIcon": "搜索图标",
@@ -583,7 +584,16 @@
       "scenario": "场景",
       "modelObject": "模型",
       "operatorObject": "操作对象",
-      "beforeAfter": "变更前后对比"
+      "beforeAfter": "变更前后对比",
+      "authSourceBkLite": "BK-Lite 认证源",
+      "authSourceBlueking": "蓝鲸认证源",
+      "authSourceUrl": "认证 URL",
+      "authSourceWechatDescription": "支持微信平台扫码登录",
+      "authSourceBkLiteDescription": "支持 BK-Lite 认证源",
+      "authSourceBluekingDescription": "支持蓝鲸平台认证源",
+      "exportSheetName": "登录日志",
+      "exportExcel": "Excel (.xlsx)",
+      "exportCsv": "CSV (.csv)"
     },
     "settings": {
       "tabs": {
