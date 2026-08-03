@@ -1,4 +1,8 @@
-"""Monitor built-in toolset backed by Monitor RPC/NATS."""
+"""Monitor built-in toolset backed by Monitor RPC/NATS.
+
+查询 BK-Lite 已纳管监控数据（对象/实例/指标/告警），用于主机 CPU 等场景；
+不提供 SSH 或本机命令采集能力。
+"""
 
 from apps.opspilot.metis.llm.tools.monitor.alerts import monitor_list_active_alerts, monitor_query_alert_segments
 from apps.opspilot.metis.llm.tools.monitor.metrics import monitor_list_instance_metrics, monitor_list_object_metrics, monitor_query_metric_data

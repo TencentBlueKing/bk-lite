@@ -37,6 +37,28 @@ def _monitor_tools():
     ]
 
 
+def test_monitor_tool_descriptions_guide_host_metric_queries():
+    """规划器只看短描述；前 120 字须能表达 BK-Lite 监控与主机/CPU 场景。"""
+    tools = {tool.name: tool for tool in _monitor_tools()}
+    for name, tool in tools.items():
+        text = " ".join((tool.description or "").split())
+        assert "BK-Lite" in text, name
+        assert "监控" in text, name
+
+    objects = tools["monitor_list_objects"].description
+    assert "主机" in objects
+    assert "CPU" in objects
+    assert "SSH" in objects or "top" in objects or "htop" in objects
+
+    query = tools["monitor_query_metric_data"].description
+    assert "CPU" in query
+    assert "instance_ids" in query
+    assert "top" in query or "htop" in query or "SSH" in query
+
+    instances = tools["monitor_list_object_instances"].description
+    assert "主机名" in instances or "名称" in instances
+
+
 def test_monitor_constructor_has_no_identity_params():
     from apps.opspilot.metis.llm.tools.monitor import CONSTRUCTOR_PARAMS
 
