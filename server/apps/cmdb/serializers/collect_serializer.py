@@ -30,6 +30,42 @@ COLLECT_RESULT_PAYLOAD_FIELDS = (
     "topology_snapshot",
 )
 
+COLLECT_MODEL_DETAIL_FIELDS = (
+    "id",
+    "name",
+    "task_type",
+    "driver_type",
+    "model_id",
+    "is_interval",
+    "cycle_value_type",
+    "cycle_value",
+    "scan_cycle",
+    "ip_range",
+    "instances",
+    "access_point",
+    "credential",
+    "timeout",
+    "exec_status",
+    "exec_time",
+    "task_id",
+    "params",
+    "plugin_id",
+    "input_method",
+    "data_cleanup_strategy",
+    "expire_days",
+    "team",
+    "is_system",
+    "is_visible",
+    "system_code",
+    "created_at",
+    "updated_at",
+    "created_by",
+    "updated_by",
+    "domain",
+    "updated_by_domain",
+    "permissions",
+)
+
 
 class CollectModelSerializer(AuthSerializer):
     permission_key = PERMISSION_TASK
@@ -229,8 +265,9 @@ class CollectModelSerializer(AuthSerializer):
 class CollectModelDetailSerializer(CollectModelSerializer):
     """采集任务配置详情，不内联可通过 ``info`` 接口读取的结果数据。"""
 
-    class Meta(CollectModelSerializer.Meta):
-        exclude = ("execution_claim_token", *COLLECT_RESULT_PAYLOAD_FIELDS)
+    class Meta:
+        model = CollectModels
+        fields = COLLECT_MODEL_DETAIL_FIELDS
 
 
 class CollectModelIdStatusSerializer(AuthSerializer):

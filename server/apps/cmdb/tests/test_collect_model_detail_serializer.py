@@ -64,6 +64,7 @@ def test_collect_model_detail_serializer_bounds_default_payload_and_keeps_masked
     detail_data = CollectModelDetailSerializer(instance=instance, context={"request": request}).data
 
     assert RESULT_PAYLOAD_FIELDS.isdisjoint(detail_data)
+    assert set(detail_data) == set(legacy_data) - RESULT_PAYLOAD_FIELDS
     assert detail_data["credential"] == [{"credential_id": "cred-1", "username": "admin", "password": "******"}]
     assert len(json.dumps(legacy_data)) > len(json.dumps(detail_data)) + 1_000_000
 
