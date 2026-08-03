@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta
 
+from apps.apm.models import ApmIngestSource
 from apps.apm.services.catalog import DjangoTelemetryCatalogService
 from apps.apm.services.contracts import (
     CatalogDiscovery,
@@ -23,18 +24,23 @@ class TelemetryCatalogReconciler:
         service_ids = set()
         instance_ids = set()
         missing_identities = 0
+        missing_ingest_sources = set()
         for activity in activities:
-            result = self.catalog.discover(
-                CatalogDiscovery(
-                    ingest_source_id=activity.ingest_source_id,
-                    service_namespace=activity.service_namespace,
-                    service_name=activity.service_name,
-                    instance_id=activity.instance_id,
-                    environment=activity.environment,
-                    version=activity.version,
-                    seen_at=activity.last_seen_at,
+            try:
+                result = self.catalog.discover(
+                    CatalogDiscovery(
+                        ingest_source_id=activity.ingest_source_id,
+                        service_namespace=activity.service_namespace,
+                        service_name=activity.service_name,
+                        instance_id=activity.instance_id,
+                        environment=activity.environment,
+                        version=activity.version,
+                        seen_at=activity.last_seen_at,
+                    )
                 )
-            )
+            except ApmIngestSource.DoesNotExist:
+                missing_ingest_sources.add(activity.ingest_source_id)
+                continue
             if result.missing_instance_identity:
                 missing_identities += 1
                 continue
@@ -48,4 +54,5 @@ class TelemetryCatalogReconciler:
             missing_instance_identities=missing_identities,
             archived_services=archived_services,
             archived_instances=archived_instances,
+            missing_ingest_sources=len(missing_ingest_sources),
         )

@@ -59,6 +59,7 @@ class CatalogReconcileResult:
     missing_instance_identities: int
     archived_services: int
     archived_instances: int
+    missing_ingest_sources: int = 0
 
 
 @dataclass(frozen=True)

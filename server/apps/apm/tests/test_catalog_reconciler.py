@@ -1,4 +1,5 @@
 from datetime import timedelta
+from uuid import uuid4
 
 import pytest
 from django.utils import timezone
@@ -56,6 +57,24 @@ def test_reconciler_keeps_pod_instances_distinct_and_reports_missing_identity(ap
     assert source.last_received_at == observed_at
     sources = apm_api_client.get("/api/v1/apm/ingest-sources/")
     assert sources.data[0]["missing_instance_identity"] is True
+
+
+def test_reconciler_skips_stale_metrics_from_a_deleted_ingest_source():
+    observed_at = timezone.now()
+    source = _source()
+    metric_store = InMemoryMetricStore(
+        activities=[
+            _activity(uuid4(), "stale-pod", observed_at - timedelta(minutes=1)),
+            _activity(source.id, "live-pod", observed_at),
+        ]
+    )
+
+    result = TelemetryCatalogReconciler(metric_store).reconcile(observed_at=observed_at)
+
+    assert result.discovered_services == 1
+    assert result.discovered_instances == 1
+    assert result.missing_ingest_sources == 1
+    assert list(ApmServiceInstance.objects.values_list("instance_id", flat=True)) == ["live-pod"]
 
 
 def test_stale_instances_archive_and_new_activity_unarchives_without_replacing_history():

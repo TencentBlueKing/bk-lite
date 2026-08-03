@@ -382,7 +382,7 @@ def send_nats_message(channel_obj: Channel, content: dict, *, timeout_override=N
         payload.update({"bot_id": bot_id, "node_id": node_id})
 
     try:
-        result = nats_client.request_sync(namespace, method_name, _timeout=timeout, _raw=True, **payload)
+        result = nats_client.request_sync(namespace, method_name, _timeout=timeout, **payload)
         return result
     except Exception as e:
         logger.exception(e)
