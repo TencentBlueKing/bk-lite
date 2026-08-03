@@ -2,7 +2,6 @@
 
 from rest_framework import serializers
 
-from apps.core.utils.serializers import TeamSerializer
 from apps.patch_mgmt.constants import GovernanceTaskStatus, GovernanceTaskType
 from apps.patch_mgmt.models import (
     BaselineRequirement,
@@ -11,6 +10,7 @@ from apps.patch_mgmt.models import (
     HostBaselineBinding,
     HostComplianceSnapshot,
 )
+from apps.patch_mgmt.serializers.permission import PatchPermissionSerializer
 from apps.patch_mgmt.utils.i18n import serializer_message
 
 
@@ -83,7 +83,7 @@ class GovernanceTaskHostSerializer(serializers.ModelSerializer):
         ]
 
 
-class GovernanceTaskListSerializer(TeamSerializer):
+class GovernanceTaskListSerializer(PatchPermissionSerializer):
     """治理任务列表序列化器"""
 
     name = serializers.CharField(required=False, allow_blank=True)
@@ -97,6 +97,7 @@ class GovernanceTaskListSerializer(TeamSerializer):
     record_status_display = serializers.SerializerMethodField()
     record_status_color = serializers.SerializerMethodField()
     source_record_name = serializers.SerializerMethodField()
+    permission_key = "patch_governance"
 
     class Meta:
         model = GovernanceTask
@@ -128,6 +129,7 @@ class GovernanceTaskListSerializer(TeamSerializer):
             "cancel_reason",
             "team",
             "team_name",
+            "permission",
             "created_by",
             "created_at",
             "parent_task",

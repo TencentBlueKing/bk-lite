@@ -147,6 +147,9 @@ class PatchSourceViewSet(AuthViewSet):
         from rest_framework.exceptions import ValidationError as DRFValidationError
 
         instance = self.get_object()
+        require_authorized_ids(
+            self, request, PatchSource.objects.all(), [instance.id], "patch_source"
+        )
         is_enabled = request.data.get("is_enabled")
         if not isinstance(is_enabled, bool):
             raise DRFValidationError({"is_enabled": [patch_message(request, "error.boolean_required", "This field is required and must be a boolean")]})
@@ -177,6 +180,9 @@ class PatchSourceViewSet(AuthViewSet):
         )
 
         source = self.get_object()
+        require_authorized_ids(
+            self, request, PatchSource.objects.all(), [source.id], "patch_source"
+        )
         try:
             if source.is_linux_source:
                 result = SourceSyncService.sync_linux_repo(source)
@@ -209,6 +215,10 @@ class PatchSourceViewSet(AuthViewSet):
         from apps.patch_mgmt.services.source_sync_service import SourceSyncError, SourceSyncService
 
         source = self.get_object()
+        require_authorized_ids(
+            self, request, PatchSource.objects.all(), [source.id],
+            "patch_source", operation="View"
+        )
         search = (request.data.get("search") or "").strip().lower()
         page = int(request.data.get("page") or 1)
         page_size = int(request.data.get("page_size") or 20)
@@ -257,6 +267,9 @@ class PatchSourceViewSet(AuthViewSet):
         from apps.patch_mgmt.tasks import ingest_patch_source
 
         source = self.get_object()
+        require_authorized_ids(
+            self, request, PatchSource.objects.all(), [source.id], "patch_source"
+        )
         keys = request.data.get("keys") or []
         severity_overrides = request.data.get("severity_overrides") or {}
         if not isinstance(keys, list) or not keys:
@@ -285,6 +298,9 @@ class PatchSourceViewSet(AuthViewSet):
     def check_connectivity(self, request, pk=None):
         """用编辑表单参数测试连接；缺省字段复用库中配置且不写回。"""
         source = self.get_object()
+        require_authorized_ids(
+            self, request, PatchSource.objects.all(), [source.id], "patch_source"
+        )
         submitted = dict(request.data)
         if hasattr(request.data, "dict"):
             submitted = request.data.dict()

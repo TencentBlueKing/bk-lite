@@ -58,4 +58,38 @@ if (homePage.includes('<Spin size="large" />')) {
   throw new Error('首页居中加载指示器应与表格使用相同的默认尺寸');
 }
 
+const instancePermissionPages = ['library', 'baseline', 'target', 'settings', 'risk-execution'];
+for (const page of instancePermissionPages) {
+  const content = read(`src/app/patch-manager/(pages)/${page}/page.tsx`);
+  if (!content.includes('instPermissions=')) {
+    throw new Error(`${page} 页面实例操作未传入后端 permission 字段`);
+  }
+}
+
+const libraryPage = read('src/app/patch-manager/(pages)/library/page.tsx');
+if (!libraryPage.includes('permissionPath="/patch-manager/settings"')) {
+  throw new Error('补丁库同步入库应检查补丁源 Edit 权限');
+}
+if (!libraryPage.includes("getCheckboxProps: (record) => ({ disabled: !record.permission?.includes('Operate') })")) {
+  throw new Error('补丁库批量选择应排除无实例操作权限的数据');
+}
+
+const targetPage = read('src/app/patch-manager/(pages)/target/page.tsx');
+if (!targetPage.includes('permissionPath="/patch-manager/baseline"')) {
+  throw new Error('目标绑定基线应检查基线 Edit 权限');
+}
+if (!targetPage.includes('permissionPath="/patch-manager/risk-execution"')) {
+  throw new Error('目标立即评估应检查治理任务 Add 权限');
+}
+
+const settingsPage = read('src/app/patch-manager/(pages)/settings/page.tsx');
+if (!settingsPage.includes("requiredPermissions={['Edit']} instPermissions={r.permission}")) {
+  throw new Error('补丁源启停及行操作应检查实例操作权限');
+}
+
+const permissionWrapper = read('src/components/permission/index.tsx');
+if (!permissionWrapper.includes('prevProps.instPermissions === nextProps.instPermissions')) {
+  throw new Error('PermissionWrapper memo 比较必须包含实例权限，避免权限状态陈旧');
+}
+
 console.log('补丁管理菜单与按钮权限约束通过');

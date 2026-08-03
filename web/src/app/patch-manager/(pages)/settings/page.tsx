@@ -247,7 +247,11 @@ function SourcesTab({ activeKey }: { activeKey: string }) {
     {
       title: t('patchManager.enable'),
       width: 90,
-      render: (_: unknown, r: PatchSource) => <Switch size="small" checked={r.is_enabled} onChange={(checked) => handleToggleEnabled(r, checked)} />,
+      render: (_: unknown, r: PatchSource) => (
+        <PermissionWrapper requiredPermissions={['Edit']} instPermissions={r.permission}>
+          <Switch size="small" checked={r.is_enabled} onChange={(checked) => handleToggleEnabled(r, checked)} />
+        </PermissionWrapper>
+      ),
     },
     {
       title: t('patchManager.connectivity'),
@@ -268,9 +272,9 @@ function SourcesTab({ activeKey }: { activeKey: string }) {
       fixed: 'right',
       render: (_: unknown, r: PatchSource) => (
         <Space size={10}>
-          <PermissionWrapper requiredPermissions={['Edit']}><a style={{ color: 'var(--color-primary, #1677ff)' }} onClick={() => openSourceModal(r)}>{t('patchManager.edit')}</a></PermissionWrapper>
-          <PermissionWrapper requiredPermissions={['Edit']}><a style={{ color: 'var(--color-primary, #1677ff)' }} onClick={() => runConnectionTest([r.id])}>{t('patchManager.testConnection')}</a></PermissionWrapper>
-          <PermissionWrapper requiredPermissions={['Delete']}><Popconfirm title={t('patchManager.settingsPage.confirmDeleteSource')} onConfirm={() => handleDeleteSource(r)} okText={t('patchManager.delete')} cancelText={t('patchManager.cancel')}>
+          <PermissionWrapper requiredPermissions={['Edit']} instPermissions={r.permission}><a style={{ color: 'var(--color-primary, #1677ff)' }} onClick={() => openSourceModal(r)}>{t('patchManager.edit')}</a></PermissionWrapper>
+          <PermissionWrapper requiredPermissions={['Edit']} instPermissions={r.permission}><a style={{ color: 'var(--color-primary, #1677ff)' }} onClick={() => runConnectionTest([r.id])}>{t('patchManager.testConnection')}</a></PermissionWrapper>
+          <PermissionWrapper requiredPermissions={['Delete']} instPermissions={r.permission}><Popconfirm title={t('patchManager.settingsPage.confirmDeleteSource')} onConfirm={() => handleDeleteSource(r)} okText={t('patchManager.delete')} cancelText={t('patchManager.cancel')}>
             <a style={{ color: '#ff4d4f' }}>{t('patchManager.delete')}</a>
           </Popconfirm></PermissionWrapper>
         </Space>
@@ -299,7 +303,12 @@ function SourcesTab({ activeKey }: { activeKey: string }) {
             loading={listLoading || actionLoading}
             size="middle"
             rowKey="id"
-            rowSelection={{ type: 'checkbox', selectedRowKeys: selectedSources, onChange: setSelectedSources }}
+            rowSelection={{
+              type: 'checkbox',
+              selectedRowKeys: selectedSources,
+              onChange: setSelectedSources,
+              getCheckboxProps: (record: PatchSource) => ({ disabled: !record.permission?.includes('Operate') }),
+            }}
             columns={cols}
             dataSource={sources}
             pagination={{
@@ -321,10 +330,10 @@ function SourcesTab({ activeKey }: { activeKey: string }) {
         footer={
           <Space style={{ width: '100%', justifyContent: 'flex-end' }}>
             <Button onClick={() => setSourceModalOpen(false)}>{t('patchManager.cancel')}</Button>
-            <PermissionWrapper requiredPermissions={[editingSource ? 'Edit' : 'Add']}>
+            <PermissionWrapper requiredPermissions={[editingSource ? 'Edit' : 'Add']} instPermissions={editingSource?.permission}>
               <Button loading={testingConnectivity} onClick={handleSourceFormTest}>{t('patchManager.testConnection')}</Button>
             </PermissionWrapper>
-            <PermissionWrapper requiredPermissions={[editingSource ? 'Edit' : 'Add']}>
+            <PermissionWrapper requiredPermissions={[editingSource ? 'Edit' : 'Add']} instPermissions={editingSource?.permission}>
               <Button type="primary" loading={actionLoading} onClick={handleSaveSource}>{t('patchManager.save')}</Button>
             </PermissionWrapper>
           </Space>

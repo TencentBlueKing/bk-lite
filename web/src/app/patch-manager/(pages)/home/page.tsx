@@ -115,7 +115,8 @@ export default function HomePage() {
     setAssessLoading(true);
     try {
       const res = await api.getPatchTargetList({ page: 1, page_size: -1 });
-      const targets = Array.isArray(res) ? res : (res.items || []);
+      const visibleTargets = Array.isArray(res) ? res : (res.items || []);
+      const targets = visibleTargets.filter((target: any) => target.permission?.includes('Operate'));
       if (targets.length === 0) {
         message.info(t('patchManager.dashboard.noManagedTargets'));
         return;
