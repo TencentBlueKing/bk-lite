@@ -44,6 +44,7 @@ import {
 } from "@/app/ops-analysis/utils/widgetRequestCache";
 import {
   buildWidgetRequestVersionKey,
+  resolveWidgetDataSourceState,
   shouldWaitForInitialWidgetData,
 } from "@/app/ops-analysis/utils/widgetRequestVersion";
 import WidgetRenderer from "@/app/ops-analysis/components/widgetRenderer";
@@ -52,6 +53,7 @@ import { useWidgetHeaderRuntimeSlot } from "@/app/ops-analysis/components/widget
 import ComponentParamSwitchControl from "@/app/ops-analysis/components/componentParamSwitchControl";
 import { getDateRangeTimezone } from "@/app/ops-analysis/utils/dateRange";
 import { validateMultiValueData } from "@/app/ops-analysis/utils/multiValueData";
+import { useOpsAnalysis } from "@/app/ops-analysis/context/common";
 import {
   hasRenderableWidgetData,
   type DashboardWidgetRenderResult,
@@ -267,6 +269,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
   const [tableQueryParams, setTableQueryParams] = useState<Record<string, any>>(
     { page: 1, page_size: 20 },
   );
+  const { canvasDataSourceLookupStatus } = useOpsAnalysis();
   const { getSourceDataByApiId } = useDataSourceApi();
   const isSceneWidget = config?.sceneWidgetType === "networkStatusTopology";
   const effectiveComponentParams = useMemo(() => {
@@ -396,6 +399,11 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     }
     return config?.dataSource;
   }, [config?.dataSource]);
+  const widgetDataSourceState = resolveWidgetDataSourceState({
+    hasDataSourceId: Boolean(normalizedDataSourceId),
+    hasResolvedDataSource: Boolean(dataSource),
+    lookupStatus: canvasDataSourceLookupStatus,
+  });
   const isTableLikeChart = chartType === "table" || chartType === "eventTable";
   const widgetUsesNamespace = useMemo(
     () =>
@@ -715,7 +723,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
 
     if (!dataSource) {
       setRawData(null);
-      setLoading(false);
+      setLoading(widgetDataSourceState === "loading");
       setTableLoading(false);
       setDataValidation({
         isValid: false,
@@ -741,6 +749,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     normalizedDataSourceId,
     dataSource,
     dataSource?.hasAuth,
+    widgetDataSourceState,
     t,
   ]);
 
@@ -893,6 +902,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     isTableLikeChart,
     hasDataSourceId: Boolean(normalizedDataSourceId),
     hasResolvedDataSource: Boolean(dataSource),
+    dataSourceLookupLoading: widgetDataSourceState === "loading",
     hasRawPayload,
     hasDataValidation: Boolean(dataValidation),
     requestEnabled,
@@ -962,6 +972,24 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
         <div className="h-full flex items-center justify-center">
           <Spin spinning />
         </div>
+      </>
+    );
+  }
+
+  if (widgetDataSourceState === "data-source-load-error") {
+    return (
+      <>
+        {runtimeHeaderControl}
+        {renderError(t("dashboard.dataSourceLoadFailed"))}
+      </>
+    );
+  }
+
+  if (widgetDataSourceState === "data-source-not-found") {
+    return (
+      <>
+        {runtimeHeaderControl}
+        {renderError(t("dashboard.dataSourceNotFound"))}
       </>
     );
   }

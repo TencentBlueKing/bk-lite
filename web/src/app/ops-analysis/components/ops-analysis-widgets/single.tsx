@@ -1,6 +1,6 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import ReactEcharts from 'echarts-for-react';
-import AutoFitMetricValue from '@/components/auto-fit-metric-value';
+import OpsAnalysisMetricValue from '@/app/ops-analysis/components/ops-analysis-metric-value';
 import {
   DEFAULT_THRESHOLD_COLORS,
   applyValueMapping,
@@ -22,10 +22,8 @@ import ChartSurface from '@/components/chart-surface';
 import { useTranslation } from '@/utils/i18n';
 
 const MAX_SPARKLINE_POINTS = 24;
-const MIN_VALUE_FONT_SIZE = 18;
 const UNIT_FONT_SCALE = 0.48;
-const MIN_UNIT_GAP = 8;
-const MAX_UNIT_GAP = 12;
+const COMPARE_METRIC_HEIGHT_FILL_RATIO = 0.7;
 
 const toAlphaColor = (color: string, alpha: number) => {
   const normalized = color.trim();
@@ -72,16 +70,6 @@ const limitSparklinePoints = (values: number[], maxPoints = MAX_SPARKLINE_POINTS
 
   sampled.push(values[lastIndex]);
   return sampled;
-};
-
-const getBaseFontSizeByWidth = (width: number) => {
-  const safeWidth = Math.max(width, 120);
-  return Math.max(24, Math.min(52, safeWidth / 4.75));
-};
-
-const getBaseFontSizeByHeight = (height: number, hasCompare: boolean) => {
-  const safeHeight = Math.max(height, 120);
-  return Math.max(MIN_VALUE_FONT_SIZE, Math.min(58, safeHeight * (hasCompare ? 0.29 : 0.36)));
 };
 
 const splitValueAndUnit = (value: string) => {
@@ -151,7 +139,6 @@ const OpsAnalysisSingle: React.FC<OpsAnalysisSingleProps> = ({
   const { t } = useTranslation();
   const chartTheme = getOpsChartTheme(resolveOpsChartThemeName());
   const contentAreaRef = useRef<HTMLDivElement>(null);
-  const [valueFontSize, setValueFontSize] = useState(36);
   const [compareSpacing, setCompareSpacing] = useState(10);
   const [contentAreaHeight, setContentAreaHeight] = useState(0);
 
@@ -269,21 +256,18 @@ const OpsAnalysisSingle: React.FC<OpsAnalysisSingleProps> = ({
     changePercent === null
       ? '--'
       : `${changePercent > 0 ? '↑' : changePercent < 0 ? '↓' : ''}${Math.abs(changePercent).toFixed(1)}%`;
-  const heightDrivenCompareSize = Math.max(12, Math.min(20, Math.round(contentAreaHeight * 0.1)));
+  const heightDrivenCompareSize = Math.round(Math.max(contentAreaHeight, 0) * 0.1);
   const compareLabelFontSize = Math.max(
     11,
-    Math.min(16, Math.max(Math.round(valueFontSize * 0.27), heightDrivenCompareSize - 3)),
+    Math.min(16, heightDrivenCompareSize - 3),
   );
   const compareValueFontSize = Math.max(
     13,
-    Math.min(22, Math.max(Math.round(valueFontSize * 0.38), heightDrivenCompareSize)),
+    Math.min(22, heightDrivenCompareSize),
   );
   const sparklineTrendColor = config?.compare ? compareTextColor : metricColor;
   const shownMainValue = valueMappingResult?.text !== undefined ? valueMappingResult.text : displayMainValue;
   const unitLabel = valueMappingResult?.text !== undefined ? '' : displayUnit || unitText;
-  const valueGap = unitLabel
-    ? Math.min(MAX_UNIT_GAP, Math.max(MIN_UNIT_GAP, Math.round(valueFontSize * 0.14)))
-    : 0;
   const sparklineLineColor = {
     type: 'linear' as const,
     x: 0,
@@ -351,8 +335,8 @@ const OpsAnalysisSingle: React.FC<OpsAnalysisSingleProps> = ({
       emptyClassName="flex h-full w-full items-center justify-center"
     >
       <div ref={contentAreaRef} className="flex min-h-0 flex-1 flex-col justify-center">
-        <div className="min-w-0">
-          <AutoFitMetricValue
+        <div className="min-h-0 w-full flex-1">
+          <OpsAnalysisMetricValue
             main={shownMainValue}
             unit={unitLabel || undefined}
             color={metricColor}
@@ -360,49 +344,44 @@ const OpsAnalysisSingle: React.FC<OpsAnalysisSingleProps> = ({
             valueClassName="font-semibold"
             unitClassName="font-medium"
             fontVariantNumeric="tabular-nums"
-            gap={valueGap}
             textShadow={chartTheme.singleValueGlow}
             unitScale={UNIT_FONT_SCALE}
             unitTransform="translateY(-0.02em)"
-            resolveFontSize={({ width, height }) =>
-              Math.min(
-                getBaseFontSizeByWidth(width),
-                getBaseFontSizeByHeight(height, Boolean(config?.compare)),
-              )
+            heightFillRatio={
+              config?.compare ? COMPARE_METRIC_HEIGHT_FILL_RATIO : undefined
             }
-            onFontSizeChange={setValueFontSize}
           />
+        </div>
 
-          {config?.compare && (
-            <div
-              className="flex flex-wrap items-center gap-1"
+        {config?.compare && (
+          <div
+            className="flex shrink-0 flex-wrap items-center gap-1"
+            style={{
+              marginTop: compareSpacing,
+              color: chartTheme.singleValueMetaColor,
+              lineHeight: 1.2,
+            }}
+          >
+            <span
               style={{
-                marginTop: compareSpacing,
                 color: chartTheme.singleValueMetaColor,
-                lineHeight: 1.2,
+                fontSize: compareLabelFontSize,
               }}
             >
-              <span
-                style={{
-                  color: chartTheme.singleValueMetaColor,
-                  fontSize: compareLabelFontSize,
-                }}
-              >
-                {t('dashboard.comparePreviousShortLabel')}
-              </span>
-              <span
-                className="font-semibold"
-                style={{
-                  color: compareTextColor,
-                  fontSize: compareValueFontSize,
-                  lineHeight: 1,
-                }}
-              >
-                {compareDisplayText}
-              </span>
-            </div>
-          )}
-        </div>
+              {t('dashboard.comparePreviousShortLabel')}
+            </span>
+            <span
+              className="font-semibold"
+              style={{
+                color: compareTextColor,
+                fontSize: compareValueFontSize,
+                lineHeight: 1,
+              }}
+            >
+              {compareDisplayText}
+            </span>
+          </div>
+        )}
 
         {showSparkline ? (
           <div className="mt-1.5 h-7 w-full shrink-0">
