@@ -84,6 +84,10 @@ class TestAlertTypeHelpers:
     def test_build_alert_key(self):
         mgr = EventAlertManager(_policy(), {}, [])
         assert mgr._build_alert_key("('h1',)", "alert") == ("('h1',)", "alert")
+        assert mgr._build_alert_key("metric-1", "no_data", "host-1") == (
+            "host-1",
+            "no_data",
+        )
 
 
 class TestCreateEventsAndAlerts:
@@ -146,6 +150,92 @@ class TestCreateEventsAndAlerts:
         assert new_alerts[0].alert_type == "no_data"
         assert new_alerts[0].level == "error"
         assert new_alerts[0].value is None
+
+    def test_no_data_events_for_same_instance_share_one_alert(self, stub_s3, mocker):
+        mocker.patch(
+            "apps.monitor.tasks.services.policy_scan.event_alert_manager.AlertLifecycleNotifier"
+        )
+        mgr = EventAlertManager(_policy(), {"pod-1": "orders-7f9"}, [])
+        events = [
+            {
+                "monitor_instance_id": "pod-1",
+                "metric_instance_id": "('pod-1', 'api')",
+                "dimensions": {"pod": "pod-1", "container": "api"},
+                "value": None,
+                "level": "no_data",
+                "content": "api 无数据",
+            },
+            {
+                "monitor_instance_id": "pod-1",
+                "metric_instance_id": "('pod-1', 'worker')",
+                "dimensions": {"pod": "pod-1", "container": "worker"},
+                "value": None,
+                "level": "no_data",
+                "content": "worker 无数据",
+            },
+        ]
+
+        event_objs, new_alerts = mgr.create_events_and_alerts(events)
+
+        assert len(new_alerts) == 1
+        assert len(event_objs) == 2
+        assert {event.alert_id for event in event_objs} == {new_alerts[0].id}
+
+    def test_no_data_event_reuses_active_alert_for_same_instance(self, stub_s3, mocker):
+        mocker.patch(
+            "apps.monitor.tasks.services.policy_scan.event_alert_manager.AlertLifecycleNotifier"
+        )
+        existing = MonitorAlert.objects.create(
+            policy_id=1,
+            monitor_instance_id="pod-1",
+            metric_instance_id="('pod-1', 'api')",
+            alert_type="no_data",
+            level="warning",
+            status="new",
+        )
+        mgr = EventAlertManager(_policy(), {"pod-1": "orders-7f9"}, [existing])
+        events = [{
+            "monitor_instance_id": "pod-1",
+            "metric_instance_id": "('pod-1', 'worker')",
+            "dimensions": {"pod": "pod-1", "container": "worker"},
+            "value": None,
+            "level": "no_data",
+            "content": "worker 无数据",
+        }]
+
+        event_objs, new_alerts = mgr.create_events_and_alerts(events)
+
+        assert new_alerts == []
+        assert event_objs[0].alert_id == existing.id
+
+    def test_threshold_events_keep_metric_instance_granularity(self, stub_s3, mocker):
+        mocker.patch(
+            "apps.monitor.tasks.services.policy_scan.event_alert_manager.AlertLifecycleNotifier"
+        )
+        mgr = EventAlertManager(_policy(), {"host-1": "主机1"}, [])
+        events = [
+            {
+                "monitor_instance_id": "host-1",
+                "metric_instance_id": "('host-1', '/data')",
+                "dimensions": {"mount": "/data"},
+                "value": 95,
+                "level": "critical",
+                "content": "/data 超阈值",
+            },
+            {
+                "monitor_instance_id": "host-1",
+                "metric_instance_id": "('host-1', '/logs')",
+                "dimensions": {"mount": "/logs"},
+                "value": 96,
+                "level": "critical",
+                "content": "/logs 超阈值",
+            },
+        ]
+
+        event_objs, new_alerts = mgr.create_events_and_alerts(events)
+
+        assert len(new_alerts) == 2
+        assert len(event_objs) == 2
 
 
 class TestUpdateExistingAlerts:
