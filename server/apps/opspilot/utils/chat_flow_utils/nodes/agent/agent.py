@@ -262,6 +262,7 @@ class AgentNode(BaseNodeExecutor):
             "node_id": effective_node_id,
             "flow_id": self.variable_manager.get_variable("flow_id", ""),
             "trigger_type": self._resolve_trigger_type(flow_input),
+            "entry_type": flow_input.get("entry_type", ""),
             # Wiki 知识库复用:把 skill 上勾选的 wiki KB id 列表透传给 chat_service,
             # 触发 augment_prompt 路径,自动检索并把相关页面片段注入系统提示词。
             # 与 /opspilot/skill/detail 路径行为一致,Issue #3919。
@@ -366,6 +367,8 @@ class AgentNode(BaseNodeExecutor):
                         "message": "",
                         "success": True,
                         **usage,
+                        "llm_call_count": token_usage_accumulator.call_count,
+                        "token_usage_calls": token_usage_accumulator.as_call_details(),
                     },
                     user_message=user_message,
                     nats_only=False,
@@ -497,6 +500,10 @@ class AgentNode(BaseNodeExecutor):
             bot_id = flow_input.get("bot_id") or variable_manager.get_variable("bot_id", "")
             execution_id = variable_manager.get_variable("execution_id", "") or flow_input.get("execution_id", "")
             usage = _openai_usage(chat_result)
+            usage_calls = chat_result.get("token_usage_calls") or []
+            llm_call_count = chat_result.get("llm_call_count")
+            if not isinstance(llm_call_count, int) or llm_call_count < 0:
+                llm_call_count = len(usage_calls)
             SkillRequestLog.objects.create(
                 skill_id=skill_id,
                 current_ip="0.0.0.0",
@@ -510,13 +517,34 @@ class AgentNode(BaseNodeExecutor):
                 },
                 response_detail={
                     "usage": usage,
+                    "llm_call_count": llm_call_count,
+                    "usage_calls": usage_calls,
                     "response": chat_result.get("message", ""),
                 },
                 user_message=user_message,
             )
+            for call in usage_calls:
+                logger.info(
+                    "%s token usage call recorded: entry_type=%s, bot_id=%s, execution_id=%s, "
+                    "node_id=%s, skill_id=%s, call_index=%s, visible_tool_count=%s, "
+                    "visible_tools=%s, prompt_tokens=%s, completion_tokens=%s, total_tokens=%s",
+                    log_source,
+                    entry_type,
+                    bot_id,
+                    execution_id,
+                    node_id,
+                    skill_id,
+                    call.get("call_index"),
+                    call.get("visible_tool_count", 0),
+                    call.get("visible_tools", []),
+                    call.get("prompt_tokens", 0),
+                    call.get("completion_tokens", 0),
+                    call.get("total_tokens", 0),
+                )
             logger.info(
                 "%s token usage recorded: entry_type=%s, bot_id=%s, execution_id=%s, node_id=%s, "
-                "skill_id=%s, skill_name=%s, prompt_tokens=%s, completion_tokens=%s, total_tokens=%s",
+                "skill_id=%s, skill_name=%s, llm_call_count=%s, prompt_tokens=%s, "
+                "completion_tokens=%s, total_tokens=%s",
                 log_source,
                 entry_type,
                 bot_id,
@@ -524,6 +552,7 @@ class AgentNode(BaseNodeExecutor):
                 node_id,
                 skill_id,
                 skill_name,
+                llm_call_count,
                 usage["prompt_tokens"],
                 usage["completion_tokens"],
                 usage["total_tokens"],

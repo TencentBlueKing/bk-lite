@@ -2,6 +2,7 @@
 
 from rest_framework import status
 from rest_framework.decorators import action
+from rest_framework.exceptions import MethodNotAllowed
 from rest_framework.response import Response
 
 from apps.core.decorators.api_permission import HasPermission
@@ -16,6 +17,18 @@ class ScanSettingViewSet(AuthViewSet):
     queryset = ScanSetting.objects.all()
     serializer_class = ScanSettingSerializer
     permission_key = "patch_source"
+
+    def create(self, request, *args, **kwargs):
+        raise MethodNotAllowed(request.method)
+
+    def update(self, request, *args, **kwargs):
+        raise MethodNotAllowed(request.method)
+
+    def partial_update(self, request, *args, **kwargs):
+        raise MethodNotAllowed(request.method)
+
+    def destroy(self, request, *args, **kwargs):
+        raise MethodNotAllowed(request.method)
 
     def get_object(self):
         return ScanSetting.get_singleton()

@@ -39,6 +39,7 @@ import {
   PolicyTemplateItem
 } from './templateBulkUtils';
 import templateStyle from './index.module.scss';
+import { formatUserName } from '@/utils/userDisplay';
 
 interface BulkApplyModalProps {
   visible: boolean;
@@ -511,7 +512,7 @@ const BulkApplyModal: React.FC<BulkApplyModalProps> = ({
                                 maxTagCount="responsive"
                                 optionFilterProp="label"
                                 options={userList.map((user) => ({
-                                  label: user.display_name || user.username || user.id,
+                                  label: formatUserName(user),
                                   value: user.id
                                 }))}
                               />

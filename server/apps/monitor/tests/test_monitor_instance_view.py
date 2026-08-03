@@ -167,6 +167,41 @@ def test_remove_monitor_instance_always_cleans_configs(db, monkeypatch):
     assert CollectConfig.objects.filter(monitor_instance_id=instance.id).count() == 0
 
 
+def test_remove_monitor_instance_passes_manual_lifecycle_context(db, monkeypatch):
+    remove_calls = []
+    monkeypatch.setattr(
+        monitor_instance_view,
+        "_build_actor_context",
+        lambda request: {"current_team": 1, "username": "page-operator"},
+    )
+    monkeypatch.setattr(
+        monitor_instance_view,
+        "_ensure_operate_instances",
+        lambda request, instance_ids, actor_context=None, allow_missing=False: instance_ids,
+    )
+    monkeypatch.setattr(
+        monitor_instance_view.MonitorInstanceRemovalService,
+        "remove",
+        lambda instance_ids, **kwargs: remove_calls.append((instance_ids, kwargs)),
+    )
+    request = types.SimpleNamespace(
+        data={"instance_ids": ["manual-instance"]},
+        user=types.SimpleNamespace(username="fallback-operator"),
+    )
+
+    monitor_instance_view.MonitorInstanceViewSet().remove_monitor_instance(request)
+
+    assert remove_calls == [
+        (
+            ["manual-instance"],
+            {
+                "operator": "page-operator",
+                "reason": "manual_instance_deleted",
+            },
+        )
+    ]
+
+
 def _create_effective_plugin_fixture():
     monitor_object = MonitorObject.objects.create(
         name="Host",

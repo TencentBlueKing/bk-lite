@@ -14,6 +14,7 @@ from apps.monitor.tasks.services.policy_scan.event_alert_manager import (
     EventAlertManager,
 )
 from apps.monitor.tasks.services.policy_scan.snapshot_recorder import SnapshotRecorder
+from apps.monitor.utils.dimension import parse_instance_id
 from apps.core.logger import celery_logger as logger
 
 
@@ -23,6 +24,7 @@ class MonitorPolicyScan:
     def __init__(self, policy):
         self.policy = policy
         self.instances_map = self._build_instances_map()
+        self.parent_instances_map = self._build_parent_instances_map()
         self.baselines_map = self._build_baselines_map()
         self.active_alerts = self._get_active_alerts()
 
@@ -33,6 +35,7 @@ class MonitorPolicyScan:
             self.baselines_map,
             self.active_alerts,
             self.metric_query_service,
+            parent_instances_map=self.parent_instances_map,
         )
         self.event_alert_manager = EventAlertManager(policy, self.instances_map, self.active_alerts)
         self.snapshot_recorder = SnapshotRecorder(policy, self.instances_map, self.active_alerts, self.metric_query_service)
@@ -60,6 +63,30 @@ class MonitorPolicyScan:
             is_deleted=False,
         )
         return {instance.id: instance.name for instance in instances}
+
+    def _build_parent_instances_map(self):
+        """构建子对象所属父实例映射，供告警模板展示父对象身份。"""
+        monitor_object = self.policy.monitor_object
+        parent = getattr(monitor_object, "parent", None)
+        if not getattr(monitor_object, "parent_id", None) or parent is None:
+            return {}
+
+        parent_key_count = len(parent.instance_id_keys or [])
+        if not parent_key_count:
+            return {}
+
+        parent_ids = set()
+        for instance_id in self.instances_map:
+            instance_values = parse_instance_id(instance_id)
+            if len(instance_values) >= parent_key_count:
+                parent_ids.add(str(tuple(instance_values[:parent_key_count])))
+        return dict(
+            MonitorInstance.objects.filter(
+                monitor_object_id=monitor_object.parent_id,
+                id__in=parent_ids,
+                is_deleted=False,
+            ).values_list("id", "name")
+        )
 
     def _build_baselines_map(self):
         """构建基准映射: {metric_instance_id: monitor_instance_id}"""

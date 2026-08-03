@@ -218,7 +218,7 @@ class GroupDataRuleViewSet(LanguageViewSet):
         params = request.GET.dict()
         # 记录 app 值（get_client 会从 params 中弹出），用于后续判断是否注入上下文
         app = params.get("app", "")
-        if app in {"job", "log", "mlops"}:
+        if app in {"job", "log", "mlops", "patch"}:
             try:
                 group_id = int(params.get("group_id"))
             except (TypeError, ValueError):
@@ -233,7 +233,7 @@ class GroupDataRuleViewSet(LanguageViewSet):
                 if error_response:
                     return error_response
                 params["actor_context"] = actor_context
-            elif app == "job":
+            elif app in {"job", "patch"}:
                 user_group_ids = self._get_user_group_ids(request.user)
                 params["team"] = [group_id] if user_group_ids is None else sorted(user_group_ids)
 

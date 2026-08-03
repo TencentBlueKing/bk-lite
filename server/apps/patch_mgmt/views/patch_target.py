@@ -13,6 +13,7 @@ from apps.patch_mgmt.serializers.patch_target import (
     PatchTargetSerializer,
 )
 from apps.patch_mgmt.services.target_connectivity import probe_target_data, target_connection_data
+from apps.patch_mgmt.utils.data_permissions import require_authorized_ids
 from apps.patch_mgmt.utils.i18n import patch_message
 from apps.patch_mgmt.utils.operation_log import (
     log_target_created,
@@ -104,9 +105,13 @@ class PatchTargetViewSet(AuthViewSet):
         """返回已纳入的节点列表（轻量：仅 node_id + name），不受分页限制。"""
         from apps.patch_mgmt.constants import PatchTargetSource
 
-        qs = self.get_queryset().filter(
-            source_type=PatchTargetSource.NODE_MGMT,
-            node_id__isnull=False,
+        qs = self.get_queryset_by_permission(
+            request,
+            self.get_queryset().filter(
+                source_type=PatchTargetSource.NODE_MGMT,
+                node_id__isnull=False,
+            ),
+            permission_key="patch_target",
         ).values("node_id", "name")
         items = [{"node_id": str(o["node_id"]), "name": o["name"]} for o in qs]
         return Response({"items": items})
@@ -123,6 +128,8 @@ class PatchTargetViewSet(AuthViewSet):
             raise DRFValidationError({"targets": [patch_message(request, "error.nodes_required", "Select at least one node")]})
         serializer = self.get_serializer(data=targets, many=True)
         serializer.is_valid(raise_exception=True)
+        for item in serializer.validated_data:
+            self._validate_org_field_permission(request, item.get("team", []))
         created = serializer.save()
         for t in created:
             log_target_created(request, t.name)
@@ -176,6 +183,9 @@ class PatchTargetViewSet(AuthViewSet):
         from apps.patch_mgmt.services.target_connectivity import probe_target
 
         target = self.get_object()
+        require_authorized_ids(
+            self, request, PatchTarget.objects.all(), [target.id], "patch_target"
+        )
         if request.data:
             serializer = PatchTargetConnectivitySerializer(data=request.data, partial=True)
             serializer.is_valid(raise_exception=True)

@@ -4,6 +4,7 @@ import { useMenus } from '@/context/menus';
 import { MenuItem } from '@/types/index';
 import { getClientIdFromRoute, mapClientName } from '@/utils/route';
 import { isSessionExpiredState } from '@/utils/sessionExpiry';
+import { hasRoutePermission } from '@/context/permission-path';
 
 interface Permissions {
   [url: string]: string[];
@@ -188,7 +189,7 @@ export const PermissionsProvider = ({ children }: { children: ReactNode }) => {
 
   const hasPermission = useCallback(
     (url: string) => {
-      return Object.keys(permissions).some((permissionUrl) => permissionUrl.startsWith(url));
+      return hasRoutePermission(permissions, url);
     },
     [permissions]
   );

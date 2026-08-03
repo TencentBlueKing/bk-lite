@@ -2,7 +2,6 @@
 
 from rest_framework import serializers
 
-from apps.core.utils.serializers import TeamSerializer
 from apps.patch_mgmt.constants import ComplianceStatus, GovernanceTaskStatus, GovernanceTaskType
 from apps.patch_mgmt.models import (
     BaselineRequirement,
@@ -10,6 +9,7 @@ from apps.patch_mgmt.models import (
     HostBaselineBinding,
     PatchBaseline,
 )
+from apps.patch_mgmt.serializers.permission import PatchPermissionSerializer
 from apps.patch_mgmt.utils.i18n import serializer_message
 
 
@@ -96,7 +96,7 @@ class BaselineRequirementSerializer(serializers.ModelSerializer):
             return serializer_message(self, "message.linux_requirement", "Package version ≥ {version}", version=ver) if pkg and ver else ""
 
 
-class PatchBaselineListSerializer(TeamSerializer):
+class PatchBaselineListSerializer(PatchPermissionSerializer):
     """基线列表序列化器"""
 
     os_type_display = serializers.CharField(source="get_os_type_display", read_only=True)
@@ -107,6 +107,7 @@ class PatchBaselineListSerializer(TeamSerializer):
     is_assessing = serializers.SerializerMethodField()
     can_assess = serializers.SerializerMethodField()
     assess_disabled_reason = serializers.SerializerMethodField()
+    permission_key = "patch_baseline"
 
     class Meta:
         model = PatchBaseline
@@ -125,6 +126,7 @@ class PatchBaselineListSerializer(TeamSerializer):
             "assess_disabled_reason",
             "team",
             "team_name",
+            "permission",
             "created_by",
             "created_at",
             "updated_at",
@@ -259,12 +261,16 @@ class PatchBaselineDetailSerializer(PatchBaselineListSerializer):
         fields = PatchBaselineListSerializer.Meta.fields + ["requirements"]
 
 
-class HostBaselineBindingSerializer(serializers.ModelSerializer):
+class HostBaselineBindingSerializer(PatchPermissionSerializer):
     """主机基线绑定序列化器"""
 
     target_name = serializers.CharField(source="target.name", read_only=True)
     target_ip = serializers.CharField(source="target.ip", read_only=True)
     baseline_name = serializers.CharField(source="baseline.name", read_only=True)
+    permission_key = "patch_target"
+
+    def get_permission(self, instance):
+        return super().get_permission(instance.target)
 
     class Meta:
         model = HostBaselineBinding
@@ -275,6 +281,7 @@ class HostBaselineBindingSerializer(serializers.ModelSerializer):
             "target_ip",
             "baseline",
             "baseline_name",
+            "permission",
             "created_by",
             "created_at",
         ]

@@ -28,6 +28,46 @@ class _FakeBasicGraph(BasicGraph):
         return _FakeCompiledGraph(self._events)
 
 
+class _FakeExecuteGraph(BasicGraph):
+    async def compile_graph(self, _request):
+        return object()
+
+    async def invoke(
+        self,
+        _graph,
+        _request,
+        stream_mode="values",
+        extra_configurable=None,
+    ):
+        accumulator = extra_configurable["token_usage_accumulator"]
+        accumulator.middleware_tracking = True
+        accumulator.add(
+            "call-1",
+            AIMessage(
+                content="先查询事件",
+                usage_metadata={
+                    "input_tokens": 100,
+                    "output_tokens": 10,
+                    "total_tokens": 110,
+                },
+            ),
+            visible_tools=["list_kubernetes_events"],
+        )
+        accumulator.add(
+            "call-2",
+            AIMessage(
+                content="根因分析完成",
+                usage_metadata={
+                    "input_tokens": 160,
+                    "output_tokens": 30,
+                    "total_tokens": 190,
+                },
+            ),
+            visible_tools=["get_kubernetes_pod_logs"],
+        )
+        return {"messages": [AIMessage(content="根因分析完成")]}
+
+
 def _parse_sse_payloads(lines):
     payloads = []
     for line in lines:
@@ -162,6 +202,48 @@ def test_agui_stream_collects_all_llm_token_usage_once_per_run(monkeypatch):
         "completion_tokens": 6,
         "total_tokens": 36,
     }
+    assert accumulator.call_count == 2
+    assert [
+        {
+            "call_index": call["call_index"],
+            "total_tokens": call["total_tokens"],
+        }
+        for call in accumulator.as_call_details()
+    ] == [
+        {"call_index": 1, "total_tokens": 12},
+        {"call_index": 2, "total_tokens": 24},
+    ]
+
+
+def test_execute_returns_per_call_token_usage():
+    response = asyncio.run(
+        _FakeExecuteGraph().execute(
+            BasicLLMRequest(thread_id="thread-sync-token", extra_config={})
+        )
+    )
+
+    assert response.llm_call_count == 2
+    assert response.total_tokens == 300
+    assert response.token_usage_calls == [
+        {
+            "call_index": 1,
+            "prompt_tokens": 100,
+            "completion_tokens": 10,
+            "total_tokens": 110,
+            "reported": True,
+            "visible_tool_count": 1,
+            "visible_tools": ["list_kubernetes_events"],
+        },
+        {
+            "call_index": 2,
+            "prompt_tokens": 160,
+            "completion_tokens": 30,
+            "total_tokens": 190,
+            "reported": True,
+            "visible_tool_count": 1,
+            "visible_tools": ["get_kubernetes_pod_logs"],
+        },
+    ]
 
 
 def test_no_duplicate_message_when_streaming_and_chat_model_end_has_text(monkeypatch):

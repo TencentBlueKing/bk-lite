@@ -392,6 +392,30 @@ class TestMonitorObjectUpdate:
         obj.refresh_from_db()
         assert obj.display_name == "内置对象"
 
+    def test_builtin_object_accepts_minute_cleanup_timeout(self, api_client):
+        obj = MonitorObject.objects.create(
+            name="BuiltinMinuteCleanup",
+            level="base",
+            is_builtin=True,
+        )
+
+        resp = api_client.patch(
+            f"{BASE}/api/monitor_object/{obj.id}/",
+            {
+                "cleanup_policy": "timeout",
+                "cleanup_timeout_value": 30,
+                "cleanup_timeout_unit": "minute",
+            },
+            format="json",
+        )
+
+        assert resp.status_code == 200, resp.content
+        assert resp.json()["data"]["cleanup_timeout_value"] == 30
+        assert resp.json()["data"]["cleanup_timeout_unit"] == "minute"
+        obj.refresh_from_db()
+        assert obj.cleanup_timeout_days == 30
+        assert obj.cleanup_timeout_unit == MonitorObject.CLEANUP_TIMEOUT_UNIT_MINUTE
+
 
 class TestMonitorObjectActions:
     def test_order(self, api_client, mocker):

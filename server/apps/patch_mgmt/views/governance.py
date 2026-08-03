@@ -5,6 +5,7 @@ from django.utils import timezone
 
 from rest_framework import status
 from rest_framework.decorators import action
+from rest_framework.exceptions import MethodNotAllowed
 from rest_framework.response import Response
 
 from apps.core.decorators.api_permission import HasPermission
@@ -35,6 +36,15 @@ class GovernanceTaskViewSet(AuthViewSet):
     search_fields = ["name"]
     ORGANIZATION_FIELD = "team"
     permission_key = "patch_governance"
+
+    def update(self, request, *args, **kwargs):
+        raise MethodNotAllowed(request.method)
+
+    def partial_update(self, request, *args, **kwargs):
+        raise MethodNotAllowed(request.method)
+
+    def destroy(self, request, *args, **kwargs):
+        raise MethodNotAllowed(request.method)
 
     def get_queryset(self):
         """执行记录只暴露用户直接创建的治理与重启根任务。"""
@@ -124,6 +134,10 @@ class GovernanceTaskViewSet(AuthViewSet):
     def cancel(self, request, pk=None):
         """取消尚未开始执行的主机，不中断已经下发的操作。"""
         scoped_task = self.get_object()
+        require_authorized_ids(
+            self, request, GovernanceTask.objects.all(), [scoped_task.id],
+            "patch_governance"
+        )
         reason = str(request.data.get("reason") or "").strip()
         if not reason:
             return Response(
@@ -194,6 +208,10 @@ class GovernanceTaskViewSet(AuthViewSet):
     def retry_host(self, request, pk=None):
         """重试选中的风险项，创建独立根执行记录。"""
         task = self.get_object()
+        require_authorized_ids(
+            self, request, GovernanceTask.objects.all(), [task.id],
+            "patch_governance"
+        )
         risk_item_id = str(request.data.get("risk_item_id") or "")
         if not risk_item_id:
             return Response({"detail": patch_message(request, "error.risk_item_id_required", "risk_item_id is required")}, status=status.HTTP_400_BAD_REQUEST)
@@ -234,7 +252,12 @@ class GovernanceTaskViewSet(AuthViewSet):
         risk_item_id = request.query_params.get("risk_item_id")
         if not risk_item_id:
             return Response({"detail": patch_message(request, "error.risk_item_id_required", "risk_item_id is required")}, status=status.HTTP_400_BAD_REQUEST)
-        detail = build_risk_item_detail(self.get_object(), risk_item_id)
+        task = self.get_object()
+        require_authorized_ids(
+            self, request, GovernanceTask.objects.all(), [task.id],
+            "patch_governance", operation="View"
+        )
+        detail = build_risk_item_detail(task, risk_item_id)
         if detail is None:
             return Response({"detail": patch_message(request, "error.risk_item_not_found", "Risk item not found")}, status=status.HTTP_404_NOT_FOUND)
         return Response(detail)
