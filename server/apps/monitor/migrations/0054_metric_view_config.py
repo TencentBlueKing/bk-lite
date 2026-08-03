@@ -3,7 +3,7 @@ from django.db import migrations, models
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("monitor", "0052_merge_metric_view_query_and_policy_template"),
+        ("monitor", "0053_monitor_object_cleanup_timeout_unit"),
     ]
 
     operations = [
