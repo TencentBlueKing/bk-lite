@@ -240,12 +240,13 @@ def chat_flow_celery_task(bot_id, node_id, message):
             logger.error(f"Bot {bot_id} 没有配置ChatFlow")
             return
         try:
-            engine = create_chat_flow_engine(bot_chat_flow, node_id)
+            engine = create_chat_flow_engine(bot_chat_flow, node_id, entry_type="celery")
             input_data = {
                 "last_message": message,
                 "user_id": bot_obj.created_by,
                 "bot_id": bot_id,
                 "node_id": node_id,
+                "entry_type": "celery",
             }
             result = engine.execute(input_data)
             logger.info(f"ChatFlow周期任务执行完成: bot_id={bot_id}, node_id={node_id}, 执行结果为{result}")

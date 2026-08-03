@@ -3,15 +3,11 @@ from typing import Any, Dict, List, Optional
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 
-from apps.opspilot.metis.llm.tools.monitor.utils import call_monitor_rpc, resolve_monitor_runtime_params, wrap_error
+from apps.opspilot.metis.llm.tools.monitor.utils import call_monitor_rpc, wrap_error
 
 
 @tool(description="List latest active monitor alerts.")
 def monitor_list_active_alerts(
-    username: Optional[str] = None,
-    password: Optional[str] = None,
-    domain: Optional[str] = None,
-    team_id: Optional[int] = None,
     config: RunnableConfig = None,
     monitor_obj_id: Optional[str] = None,
     limit: int = 10,
@@ -19,7 +15,6 @@ def monitor_list_active_alerts(
     level: Optional[Any] = None,
     alert_type: Optional[Any] = None,
 ) -> Dict[str, Any]:
-    runtime_params = resolve_monitor_runtime_params(config, username=username, password=password, domain=domain, team_id=team_id)
     query_data = {
         "monitor_obj_id": monitor_obj_id,
         "limit": limit,
@@ -29,7 +24,7 @@ def monitor_list_active_alerts(
     }
     return call_monitor_rpc(
         "query_latest_active_alerts",
-        **runtime_params,
+        config,
         query_data=query_data,
     )
 
@@ -39,10 +34,6 @@ def monitor_query_alert_segments(
     monitor_obj_id: Optional[str] = None,
     start: Optional[Any] = None,
     end: Optional[Any] = None,
-    username: Optional[str] = None,
-    password: Optional[str] = None,
-    domain: Optional[str] = None,
-    team_id: Optional[int] = None,
     config: RunnableConfig = None,
     instance_ids: Optional[List[str]] = None,
     status: Optional[Any] = None,
@@ -57,7 +48,6 @@ def monitor_query_alert_segments(
         return wrap_error("start is required")
     if end in (None, ""):
         return wrap_error("end is required")
-    runtime_params = resolve_monitor_runtime_params(config, username=username, password=password, domain=domain, team_id=team_id)
     query_data = {
         "monitor_obj_id": monitor_obj_id,
         "start": start,
@@ -71,6 +61,6 @@ def monitor_query_alert_segments(
     }
     return call_monitor_rpc(
         "query_monitor_alert_segments",
-        **runtime_params,
+        config,
         query_data=query_data,
     )

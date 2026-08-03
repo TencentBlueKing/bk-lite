@@ -569,6 +569,10 @@
     "description": "描述",
     "checkbox": "复选框",
     "number": "数字",
+    "monitor": {
+      "callerIdentityTitle": "使用调用方身份",
+      "callerIdentityDescription": "Monitor 工具会使用当前登录用户与当前组执行查询。不会保存或发送密码、API Secret 等认证凭据。"
+    },
     "redis": {
       "instances": "Redis实例",
       "noInstances": "暂无 Redis 实例",

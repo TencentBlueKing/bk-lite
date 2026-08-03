@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Button, Tooltip, Form, Input, Empty, InputNumber, Switch, message } from 'antd';
+import { Alert, Button, Tooltip, Form, Input, Empty, InputNumber, Switch, message } from 'antd';
 
 const { TextArea } = Input;
 import { DeleteOutlined, EditOutlined } from '@ant-design/icons';
@@ -11,7 +11,11 @@ import { SelectTool, ToolVariable } from '@/app/opspilot/types/tool';
 import { useSkillApi } from '@/app/opspilot/api/skill';
 import OperateModal from '@/components/operate-modal';
 import EditablePasswordField from '@/components/dynamic-form/editPasswordField';
-import GroupTreeSelect from '@/components/group-tree-select';
+import {
+  isMonitorToolConfig,
+  normalizeMonitorToolConfig,
+  normalizeMonitorToolConfigs,
+} from '@/app/opspilot/utils/monitorToolConfig';
 import RedisToolEditor, { RedisInstanceFormValue } from './redisToolEditor';
 import MysqlToolEditor, { MysqlInstanceFormValue } from './mysqlToolEditor';
 import OracleToolEditor, { OracleInstanceFormValue } from './oracleToolEditor';
@@ -385,7 +389,6 @@ const serializeOracleToolConfig = (instances: OracleInstanceFormValue[]): ToolVa
 const isOracleTool = (tool?: SelectTool | null) => (tool?.rawName || tool?.name) === ORACLE_TOOL_NAME;
 
 const MSSQL_TOOL_NAME = 'mssql';
-const MONITOR_TOOL_NAME = 'monitor';
 const MSSQL_INSTANCES_KEY = 'mssql_instances';
 const MSSQL_DEFAULT_INSTANCE_ID_KEY = 'mssql_default_instance_id';
 const MSSQL_AUTO_NAME_PREFIX = 'MSSQL - ';
@@ -490,7 +493,6 @@ const serializeMssqlToolConfig = (instances: MssqlInstanceFormValue[]): ToolVari
 };
 
 const isMssqlTool = (tool?: SelectTool | null) => (tool?.rawName || tool?.name) === MSSQL_TOOL_NAME;
-const isMonitorTool = (tool?: SelectTool | null) => (tool?.rawName || tool?.name) === MONITOR_TOOL_NAME;
 
 // ── PostgreSQL ────────────────────────────────────────────────────────────────
 
@@ -891,6 +893,12 @@ const ToolSelector: React.FC<ToolSelectorProps> = ({ defaultTools, onChange }) =
   const [testingKubernetesConnection, setTestingKubernetesConnection] = useState(false);
   const [form] = Form.useForm();
 
+  const commitSelectedTools = (nextTools: SelectTool[]) => {
+    const normalizedTools = normalizeMonitorToolConfigs(nextTools);
+    setSelectedTools(normalizedTools);
+    onChange(normalizedTools);
+  };
+
   useEffect(() => {
     fetchData();
   }, []);
@@ -899,15 +907,16 @@ const ToolSelector: React.FC<ToolSelectorProps> = ({ defaultTools, onChange }) =
     setLoading(true);
     try {
       const data = await fetchSkillTools();
-      const defaultToolMap = new Map(defaultTools.map((tool) => [tool.id, tool]));
-      const defaultRedisTool = defaultTools.find((tool) => isRedisTool(tool));
-      const defaultMysqlTool = defaultTools.find((tool) => isMysqlTool(tool));
-      const defaultOracleTool = defaultTools.find((tool) => isOracleTool(tool));
-      const defaultMssqlTool = defaultTools.find((tool) => isMssqlTool(tool));
-      const defaultPostgresTool = defaultTools.find((tool) => isPostgresTool(tool));
-      const defaultEsTool = defaultTools.find((tool) => isEsTool(tool));
-      const defaultJenkinsTool = defaultTools.find((tool) => isJenkinsTool(tool));
-      const defaultKubernetesTool = defaultTools.find((tool) => isKubernetesTool(tool));
+      const normalizedDefaultTools = normalizeMonitorToolConfigs(defaultTools);
+      const defaultToolMap = new Map(normalizedDefaultTools.map((tool) => [tool.id, tool]));
+      const defaultRedisTool = normalizedDefaultTools.find((tool) => isRedisTool(tool));
+      const defaultMysqlTool = normalizedDefaultTools.find((tool) => isMysqlTool(tool));
+      const defaultOracleTool = normalizedDefaultTools.find((tool) => isOracleTool(tool));
+      const defaultMssqlTool = normalizedDefaultTools.find((tool) => isMssqlTool(tool));
+      const defaultPostgresTool = normalizedDefaultTools.find((tool) => isPostgresTool(tool));
+      const defaultEsTool = normalizedDefaultTools.find((tool) => isEsTool(tool));
+      const defaultJenkinsTool = normalizedDefaultTools.find((tool) => isJenkinsTool(tool));
+      const defaultKubernetesTool = normalizedDefaultTools.find((tool) => isKubernetesTool(tool));
       const fetchedTools = data.map((tool) => {
         const defaultTool = defaultToolMap.get(tool.id);
         const kwargs = (tool.params.kwargs || [])
@@ -916,14 +925,14 @@ const ToolSelector: React.FC<ToolSelectorProps> = ({ defaultTools, onChange }) =
             ...kwarg,
             value: (defaultTool?.kwargs ?? []).find((dk) => dk.key === kwarg.key)?.value ?? kwarg.value,
           }));
-        return {
+        return normalizeMonitorToolConfig({
           id: tool.id,
           name: tool.display_name || tool.name,
           rawName: tool.name,
           icon: tool.icon || 'gongjuji',
           description: tool.description_tr || tool.description || '',
           kwargs,
-        };
+        });
       });
       setTools(fetchedTools);
 
@@ -955,8 +964,7 @@ const ToolSelector: React.FC<ToolSelectorProps> = ({ defaultTools, onChange }) =
             kwargs: matchedDefaultTool.kwargs?.length ? matchedDefaultTool.kwargs : tool.kwargs,
           };
         });
-      setSelectedTools(initialSelectedTools);
-      onChange(initialSelectedTools);
+      commitSelectedTools(initialSelectedTools);
     } catch (error) {
       console.error(t('common.fetchFailed'), error);
     } finally {
@@ -970,8 +978,7 @@ const ToolSelector: React.FC<ToolSelectorProps> = ({ defaultTools, onChange }) =
 
   const handleModalConfirm = (selectedIds: number[]) => {
     const updatedSelectedTools = tools.filter((tool) => selectedIds.includes(tool.id));
-    setSelectedTools(updatedSelectedTools);
-    onChange(updatedSelectedTools);
+    commitSelectedTools(updatedSelectedTools);
     setModalVisible(false);
   };
 
@@ -981,53 +988,67 @@ const ToolSelector: React.FC<ToolSelectorProps> = ({ defaultTools, onChange }) =
 
   const removeSelectedTool = (toolId: number) => {
     const updatedSelectedTools = selectedTools.filter((tool) => tool.id !== toolId);
-    setSelectedTools(updatedSelectedTools);
-    onChange(updatedSelectedTools);
+    commitSelectedTools(updatedSelectedTools);
   };
 
   const openEditModal = (tool: SelectTool) => {
-    setEditingTool(tool);
-    if (isRedisTool(tool)) {
-      const instances = parseRedisToolConfig(tool.kwargs);
+    const normalizedTool = normalizeMonitorToolConfig(tool);
+    setEditingTool(normalizedTool);
+    if (isMonitorToolConfig(normalizedTool)) {
+      form.setFieldsValue({ kwargs: [] });
+    } else if (isRedisTool(normalizedTool)) {
+      const instances = parseRedisToolConfig(normalizedTool.kwargs);
       setRedisInstances(instances);
       setSelectedRedisInstanceId(instances[0]?.id || null);
-    } else if (isMysqlTool(tool)) {
-      const instances = parseMysqlToolConfig(tool.kwargs);
+    } else if (isMysqlTool(normalizedTool)) {
+      const instances = parseMysqlToolConfig(normalizedTool.kwargs);
       setMysqlInstances(instances);
       setSelectedMysqlInstanceId(instances[0]?.id || null);
-    } else if (isOracleTool(tool)) {
-      const instances = parseOracleToolConfig(tool.kwargs);
+    } else if (isOracleTool(normalizedTool)) {
+      const instances = parseOracleToolConfig(normalizedTool.kwargs);
       setOracleInstances(instances);
       setSelectedOracleInstanceId(instances[0]?.id || null);
-    } else if (isMssqlTool(tool)) {
-      const instances = parseMssqlToolConfig(tool.kwargs);
+    } else if (isMssqlTool(normalizedTool)) {
+      const instances = parseMssqlToolConfig(normalizedTool.kwargs);
       setMssqlInstances(instances);
       setSelectedMssqlInstanceId(instances[0]?.id || null);
-    } else if (isPostgresTool(tool)) {
-      const instances = parsePostgresToolConfig(tool.kwargs);
+    } else if (isPostgresTool(normalizedTool)) {
+      const instances = parsePostgresToolConfig(normalizedTool.kwargs);
       setPostgresInstances(instances);
       setSelectedPostgresInstanceId(instances[0]?.id || null);
-    } else if (isEsTool(tool)) {
-      const instances = parseEsToolConfig(tool.kwargs);
+    } else if (isEsTool(normalizedTool)) {
+      const instances = parseEsToolConfig(normalizedTool.kwargs);
       setEsInstances(instances);
       setSelectedEsInstanceId(instances[0]?.id || null);
-    } else if (isJenkinsTool(tool)) {
-      const instances = parseJenkinsToolConfig(tool.kwargs);
+    } else if (isJenkinsTool(normalizedTool)) {
+      const instances = parseJenkinsToolConfig(normalizedTool.kwargs);
       setJenkinsInstances(instances);
       setSelectedJenkinsInstanceId(instances[0]?.id || null);
-    } else if (isKubernetesTool(tool)) {
-      const instances = parseKubernetesToolConfig(tool.kwargs);
+    } else if (isKubernetesTool(normalizedTool)) {
+      const instances = parseKubernetesToolConfig(normalizedTool.kwargs);
       setKubernetesInstances(instances);
       setSelectedKubernetesInstanceId(instances[0]?.id || null);
     } else {
       form.setFieldsValue({
-        kwargs: tool.kwargs?.map((item) => ({ key: item.key, value: item.value, type: item.type, isRequired: item.isRequired })) || [],
+        kwargs: normalizedTool.kwargs?.map((item) => ({ key: item.key, value: item.value, type: item.type, isRequired: item.isRequired })) || [],
       });
     }
     setEditModalVisible(true);
   };
 
   const handleEditModalOk = () => {
+    if (isMonitorToolConfig(editingTool)) {
+      if (editingTool) {
+        const updatedSelectedTools = selectedTools.map((tool) => (
+          tool.id === editingTool.id ? normalizeMonitorToolConfig(editingTool) : tool
+        ));
+        commitSelectedTools(updatedSelectedTools);
+      }
+      setEditModalVisible(false);
+      setEditingTool(null);
+      return;
+    }
+
     if (isRedisTool(editingTool)) {
       const trimmedNames = redisInstances.map((instance) => instance.name.trim()).filter(Boolean);
       if (redisInstances.length === 0) {
@@ -1052,8 +1073,7 @@ const ToolSelector: React.FC<ToolSelectorProps> = ({ defaultTools, onChange }) =
           kwargs: serializeRedisToolConfig(redisInstances.map((instance) => ({ ...instance, name: instance.name.trim(), url: instance.url.trim() }))),
         };
         const updatedSelectedTools = selectedTools.map((tool) => (tool.id === editingTool.id ? updatedTool : tool));
-        setSelectedTools(updatedSelectedTools);
-        onChange(updatedSelectedTools);
+        commitSelectedTools(updatedSelectedTools);
       }
       setEditModalVisible(false);
       setEditingTool(null);
@@ -1084,8 +1104,7 @@ const ToolSelector: React.FC<ToolSelectorProps> = ({ defaultTools, onChange }) =
           kwargs: serializeMysqlToolConfig(mysqlInstances.map((instance) => ({ ...instance, name: instance.name.trim(), host: instance.host.trim() }))),
         };
         const updatedSelectedTools = selectedTools.map((tool) => (tool.id === editingTool.id ? updatedTool : tool));
-        setSelectedTools(updatedSelectedTools);
-        onChange(updatedSelectedTools);
+        commitSelectedTools(updatedSelectedTools);
       }
       setEditModalVisible(false);
       setEditingTool(null);
@@ -1116,8 +1135,7 @@ const ToolSelector: React.FC<ToolSelectorProps> = ({ defaultTools, onChange }) =
           kwargs: serializeOracleToolConfig(oracleInstances.map((instance) => ({ ...instance, name: instance.name.trim(), host: instance.host.trim() }))),
         };
         const updatedSelectedTools = selectedTools.map((tool) => (tool.id === editingTool.id ? updatedTool : tool));
-        setSelectedTools(updatedSelectedTools);
-        onChange(updatedSelectedTools);
+        commitSelectedTools(updatedSelectedTools);
       }
       setEditModalVisible(false);
       setEditingTool(null);
@@ -1148,8 +1166,7 @@ const ToolSelector: React.FC<ToolSelectorProps> = ({ defaultTools, onChange }) =
           kwargs: serializeMssqlToolConfig(mssqlInstances.map((instance) => ({ ...instance, name: instance.name.trim(), host: instance.host.trim() }))),
         };
         const updatedSelectedTools = selectedTools.map((tool) => (tool.id === editingTool.id ? updatedTool : tool));
-        setSelectedTools(updatedSelectedTools);
-        onChange(updatedSelectedTools);
+        commitSelectedTools(updatedSelectedTools);
       }
       setEditModalVisible(false);
       setEditingTool(null);
@@ -1180,8 +1197,7 @@ const ToolSelector: React.FC<ToolSelectorProps> = ({ defaultTools, onChange }) =
           kwargs: serializePostgresToolConfig(postgresInstances.map((instance) => ({ ...instance, name: instance.name.trim(), host: instance.host.trim() }))),
         };
         const updatedSelectedTools = selectedTools.map((tool) => (tool.id === editingTool.id ? updatedTool : tool));
-        setSelectedTools(updatedSelectedTools);
-        onChange(updatedSelectedTools);
+        commitSelectedTools(updatedSelectedTools);
       }
       setEditModalVisible(false);
       setEditingTool(null);
@@ -1212,8 +1228,7 @@ const ToolSelector: React.FC<ToolSelectorProps> = ({ defaultTools, onChange }) =
           kwargs: serializeEsToolConfig(esInstances.map((instance) => ({ ...instance, name: instance.name.trim(), url: instance.url.trim() }))),
         };
         const updatedSelectedTools = selectedTools.map((tool) => (tool.id === editingTool.id ? updatedTool : tool));
-        setSelectedTools(updatedSelectedTools);
-        onChange(updatedSelectedTools);
+        commitSelectedTools(updatedSelectedTools);
       }
       setEditModalVisible(false);
       setEditingTool(null);
@@ -1244,8 +1259,7 @@ const ToolSelector: React.FC<ToolSelectorProps> = ({ defaultTools, onChange }) =
           kwargs: serializeJenkinsToolConfig(jenkinsInstances.map((instance) => ({ ...instance, name: instance.name.trim(), jenkins_url: instance.jenkins_url.trim() }))),
         };
         const updatedSelectedTools = selectedTools.map((tool) => (tool.id === editingTool.id ? updatedTool : tool));
-        setSelectedTools(updatedSelectedTools);
-        onChange(updatedSelectedTools);
+        commitSelectedTools(updatedSelectedTools);
       }
       setEditModalVisible(false);
       setEditingTool(null);
@@ -1280,8 +1294,7 @@ const ToolSelector: React.FC<ToolSelectorProps> = ({ defaultTools, onChange }) =
           }))),
         };
         const updatedSelectedTools = selectedTools.map((tool) => (tool.id === editingTool.id ? updatedTool : tool));
-        setSelectedTools(updatedSelectedTools);
-        onChange(updatedSelectedTools);
+        commitSelectedTools(updatedSelectedTools);
       }
       setEditModalVisible(false);
       setEditingTool(null);
@@ -1295,8 +1308,7 @@ const ToolSelector: React.FC<ToolSelectorProps> = ({ defaultTools, onChange }) =
           kwargs: values.kwargs,
         };
         const updatedSelectedTools = selectedTools.map((tool) => (tool.id === editingTool.id ? updatedTool : tool));
-        setSelectedTools(updatedSelectedTools);
-        onChange(updatedSelectedTools);
+        commitSelectedTools(updatedSelectedTools);
       }
       setEditModalVisible(false);
       setEditingTool(null);
@@ -1758,7 +1770,14 @@ const ToolSelector: React.FC<ToolSelectorProps> = ({ defaultTools, onChange }) =
         width={isRedisTool(editingTool) || isMysqlTool(editingTool) || isOracleTool(editingTool) || isMssqlTool(editingTool) || isPostgresTool(editingTool) || isEsTool(editingTool) || isJenkinsTool(editingTool) || isKubernetesTool(editingTool) ? 800 : undefined}
       >
         <Form form={form} layout="vertical">
-          {isRedisTool(editingTool) ? (
+          {isMonitorToolConfig(editingTool) ? (
+            <Alert
+              type="info"
+              showIcon
+              message={t('tool.monitor.callerIdentityTitle')}
+              description={t('tool.monitor.callerIdentityDescription')}
+            />
+          ) : isRedisTool(editingTool) ? (
             <RedisToolEditor
               instances={redisInstances}
               selectedInstanceId={selectedRedisInstanceId}
@@ -1859,16 +1878,6 @@ const ToolSelector: React.FC<ToolSelectorProps> = ({ defaultTools, onChange }) =
                     const isRequired = form.getFieldValue(['kwargs', name, 'isRequired']);
 
                     const renderInput = () => {
-                      if (isMonitorTool(editingTool) && fieldLabel === 'team_id') {
-                        return (
-                          <GroupTreeSelect
-                            multiple={false}
-                            showSearch
-                            placeholder={t('common.pleaseSelect')}
-                          />
-                        );
-                      }
-
                       switch (fieldType) {
                         case 'text':
                           return <Input />;

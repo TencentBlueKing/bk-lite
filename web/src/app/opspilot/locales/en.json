@@ -553,6 +553,10 @@
     "description": "Description",
     "checkbox": "Checkbox",
     "number": "Number",
+    "monitor": {
+      "callerIdentityTitle": "Uses the caller identity",
+      "callerIdentityDescription": "Monitor queries use the currently signed-in user and current group. No password, API secret, or other authentication credential is saved or sent."
+    },
     "redis": {
       "instances": "Redis Instances",
       "noInstances": "No Redis instances",

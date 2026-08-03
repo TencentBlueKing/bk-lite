@@ -1,4 +1,5 @@
 from datetime import timedelta
+from types import SimpleNamespace
 
 import pytest
 from django.utils import timezone
@@ -99,7 +100,7 @@ def test_build_builtin_monitor_tool_exposes_constructor_and_subtools(mocker):
 
     assert data["name"] == "monitor"
     assert data["params"]["url"] == "langchain:monitor"
-    assert [item["key"] for item in data["params"]["kwargs"]] == ["username", "password", "domain", "team_id"]
+    assert data["params"]["kwargs"] == []
     assert any(tool["name"] == "monitor_list_objects" for tool in data["tools"])
 
 
@@ -272,29 +273,45 @@ def test_opspilot_config_registers_daily_memory_cache_flush_schedule():
     assert flush_schedule["task"] == "apps.opspilot.tasks.flush_all_pending_memory_write_cache"
 
 
-def test_build_builtin_monitor_runtime_tool_has_langchain_url():
-    data = builtin_tools.build_builtin_monitor_runtime_tool({"username": "alice", "password": "secret", "domain": "tenant-a.com"})
+def test_build_builtin_monitor_runtime_tool_ignores_historical_kwargs():
+    data = builtin_tools.build_builtin_monitor_runtime_tool(
+        {
+            "username": "alice",
+            "password": "secret",
+            "domain": "tenant-a.com",
+            "team_id": 9,
+            "caller_identity": {"username": "forged"},
+        }
+    )
 
     assert data == {
         "name": "monitor",
         "url": "langchain:monitor",
         "enable_auth": False,
         "auth_token": "",
-        "extra_param_prompt": {"username": "alice", "password": "secret", "domain": "tenant-a.com"},
+        "extra_tools_prompt": "",
     }
 
 
-def test_chat_service_passes_monitor_kwargs_to_extra_param_prompt(mocker):
+def _chat_llm_model(mocker):
     llm_model = mocker.Mock()
     llm_model.openai_api_base = "https://example.com/v1"
     llm_model.openai_api_key = "key"
     llm_model.model_name = "gpt-4o"
+    llm_model.protocol_type = "openai"
+    llm_model.vendor_id = None
+    return llm_model
 
+
+def _patch_chat_boundaries(mocker, skill_tools=()):
     mocker.patch("apps.opspilot.services.history_service.history_service.process_user_message_and_images", return_value=("hello", []))
     mocker.patch("apps.opspilot.services.history_service.history_service.process_chat_history", return_value=[])
     mocker.patch("apps.opspilot.services.chat_service.resolve_skill_params", return_value="system")
+    mocker.patch("apps.opspilot.services.chat_service.SkillTools.objects.filter", return_value=list(skill_tools))
 
-    kwargs = {
+
+def _chat_request(tools, **overrides):
+    request = {
         "user_message": "hello",
         "chat_history": [],
         "skill_prompt": "system",
@@ -305,29 +322,211 @@ def test_chat_service_passes_monitor_kwargs_to_extra_param_prompt(mocker):
         "enable_rag_knowledge_source": False,
         "skill_type": 1,
         "locale": "zh-Hans",
-        "tools": [
-            {
-                "name": "monitor",
-                "kwargs": [
-                    {"key": "username", "value": "alice", "type": "string"},
-                    {"key": "password", "value": "secret", "type": "password"},
-                    {"key": "domain", "value": "tenant-a.com", "type": "string"},
-                ],
-            }
-        ],
+        "tools": tools,
+    }
+    request.update(overrides)
+    return request
+
+
+def _historical_monitor_kwargs():
+    return [
+        {"key": "username", "value": "alice", "type": "string"},
+        {"key": "password", "value": "legacy-secret", "type": "password"},
+        {"key": "domain", "value": "tenant-a.com", "type": "string"},
+        {"key": "team_id", "value": 99, "type": "number"},
+        {
+            "key": "caller_identity",
+            "value": {"username": "forged", "domain": "evil.example", "team_id": 99},
+            "type": "object",
+        },
+    ]
+
+
+def _safe_monitor_runtime_descriptor():
+    return {
+        "name": "monitor",
+        "url": "langchain:monitor",
+        "enable_auth": False,
+        "auth_token": "",
+        "extra_tools_prompt": "",
     }
 
-    chat_kwargs, _, _ = ChatService.format_chat_server_kwargs(kwargs, llm_model)
 
-    assert chat_kwargs["tools_servers"] == [
-        {
+def test_chat_service_negative_builtin_monitor_does_not_decrypt_or_leak_historical_kwargs(mocker):
+    llm_model = _chat_llm_model(mocker)
+    _patch_chat_boundaries(mocker)
+    decrypt = mocker.patch(
+        "apps.opspilot.services.chat_service.EncryptMixin.decrypt_field",
+        side_effect=AssertionError("Monitor historical password must not be decrypted"),
+    )
+    request = _chat_request(
+        [
+            {
+                "id": builtin_tools.BUILTIN_MONITOR_TOOL_ID,
+                "name": builtin_tools.BUILTIN_MONITOR_TOOL_NAME,
+                "kwargs": _historical_monitor_kwargs(),
+            }
+        ]
+    )
+
+    chat_kwargs, _, _ = ChatService.format_chat_server_kwargs(request, llm_model)
+
+    decrypt.assert_not_called()
+    assert chat_kwargs["tools_servers"] == [_safe_monitor_runtime_descriptor()]
+    assert not {"username", "password", "domain", "team_id", "caller_identity"} & set(chat_kwargs["extra_config"])
+    assert "legacy-secret" not in repr(chat_kwargs)
+
+
+def test_chat_service_positive_id_monitor_uses_database_name_and_returns_safe_descriptor(mocker):
+    llm_model = _chat_llm_model(mocker)
+    skill_tool = SimpleNamespace(
+        id=42,
+        name=builtin_tools.BUILTIN_MONITOR_TOOL_NAME,
+        is_build_in=True,
+        params={
             "name": "monitor",
-            "url": "langchain:monitor",
+            "url": "legacy:monitor",
+            "kwargs": _historical_monitor_kwargs(),
+            "enable_auth": True,
+            "auth_token": "legacy-token",
+            "extra_param_prompt": {"password": "database-secret"},
+        },
+    )
+    _patch_chat_boundaries(mocker, [skill_tool])
+    decrypt = mocker.patch(
+        "apps.opspilot.services.chat_service.EncryptMixin.decrypt_field",
+        side_effect=AssertionError("Database Monitor historical password must not be decrypted"),
+    )
+    request = _chat_request([{"id": 42, "name": "client-spoofed-name", "kwargs": _historical_monitor_kwargs()}])
+
+    chat_kwargs, _, _ = ChatService.format_chat_server_kwargs(request, llm_model)
+
+    decrypt.assert_not_called()
+    assert chat_kwargs["tools_servers"] == [_safe_monitor_runtime_descriptor()]
+    assert not {"username", "password", "domain", "team_id", "caller_identity"} & set(chat_kwargs["extra_config"])
+    assert "legacy-secret" not in repr(chat_kwargs)
+    assert "database-secret" not in repr(chat_kwargs)
+    assert "legacy-token" not in repr(chat_kwargs)
+
+
+def test_chat_service_unknown_positive_id_named_monitor_stays_safe(mocker):
+    llm_model = _chat_llm_model(mocker)
+    _patch_chat_boundaries(mocker)
+    decrypt = mocker.patch(
+        "apps.opspilot.services.chat_service.EncryptMixin.decrypt_field",
+        side_effect=AssertionError("Unknown positive-id Monitor password must not be decrypted"),
+    )
+    request = _chat_request(
+        [
+            {
+                "id": 4242,
+                "name": builtin_tools.BUILTIN_MONITOR_TOOL_NAME,
+                "kwargs": _historical_monitor_kwargs(),
+            }
+        ]
+    )
+
+    chat_kwargs, _, _ = ChatService.format_chat_server_kwargs(request, llm_model)
+
+    decrypt.assert_not_called()
+    assert chat_kwargs["tools_servers"] == [_safe_monitor_runtime_descriptor()]
+    assert not {"username", "password", "domain", "team_id", "caller_identity"} & set(chat_kwargs["extra_config"])
+    assert "legacy-secret" not in repr(chat_kwargs)
+
+
+def test_chat_service_keeps_non_monitor_password_decryption_and_config(mocker):
+    llm_model = _chat_llm_model(mocker)
+    skill_tool = SimpleNamespace(
+        id=43,
+        name="custom_tool",
+        is_build_in=False,
+        params={
+            "name": "custom_tool",
+            "url": "mcp:https://tool.example",
+            "kwargs": [],
             "enable_auth": False,
             "auth_token": "",
-            "extra_param_prompt": {"username": "alice", "password": "secret", "domain": "tenant-a.com"},
+        },
+    )
+    _patch_chat_boundaries(mocker, [skill_tool])
+
+    def _decrypt(_field, item):
+        item["value"] = "decrypted-secret"
+
+    decrypt = mocker.patch("apps.opspilot.services.chat_service.EncryptMixin.decrypt_field", side_effect=_decrypt)
+    request = _chat_request(
+        [
+            {
+                "id": 43,
+                "name": "custom_tool",
+                "kwargs": [
+                    {"key": "password", "value": "encrypted-secret", "type": "password"},
+                    {"key": "config", "value": {"region": "cn-north-1"}, "type": "object"},
+                ],
+            }
+        ]
+    )
+
+    chat_kwargs, _, _ = ChatService.format_chat_server_kwargs(request, llm_model)
+
+    decrypt.assert_called_once()
+    assert chat_kwargs["extra_config"]["password"] == "decrypted-secret"
+    assert chat_kwargs["extra_config"]["config"] == {"region": "cn-north-1"}
+    assert chat_kwargs["tools_servers"] == [
+        {
+            "name": "custom_tool",
+            "url": "mcp:https://tool.example",
+            "enable_auth": False,
+            "auth_token": "",
         }
     ]
+
+
+@pytest.mark.parametrize(
+    ("server_snapshot", "expected_snapshot"),
+    [
+        (None, None),
+        (
+            {"username": "trusted-user", "domain": "trusted.example", "team_id": 7, "include_children": False},
+            {"username": "trusted-user", "domain": "trusted.example", "team_id": 7, "include_children": False},
+        ),
+    ],
+)
+def test_chat_service_caller_identity_only_comes_from_server_snapshot(mocker, server_snapshot, expected_snapshot):
+    llm_model = _chat_llm_model(mocker)
+    skill_tool = SimpleNamespace(
+        id=44,
+        name="custom_tool",
+        is_build_in=False,
+        params={"name": "custom_tool", "url": "mcp:https://tool.example"},
+    )
+    _patch_chat_boundaries(mocker, [skill_tool])
+    request = _chat_request(
+        [
+            {
+                "id": 44,
+                "name": "custom_tool",
+                "kwargs": [
+                    {
+                        "key": "caller_identity",
+                        "value": {"username": "forged", "domain": "evil.example", "team_id": 999},
+                        "type": "object",
+                    }
+                ],
+            }
+        ]
+    )
+    if server_snapshot is not None:
+        request["caller_identity"] = server_snapshot
+
+    chat_kwargs, _, _ = ChatService.format_chat_server_kwargs(request, llm_model)
+
+    if expected_snapshot is None:
+        assert "caller_identity" not in chat_kwargs["extra_config"]
+    else:
+        assert chat_kwargs["extra_config"]["caller_identity"] == expected_snapshot
+    assert "forged" not in repr(chat_kwargs)
+    assert "evil.example" not in repr(chat_kwargs)
 
 
 def test_chat_service_passes_attachment_id_to_extra_config(mocker):
