@@ -165,7 +165,10 @@
     "views": {
       "assetIp": "IP信息",
       "hostIp": "主机IP",
-      "processNameRuleHint": "进程实例名称按「主机名-进程别名」拼接，例如 host-01-java。进程别名来自接入配置中的进程名称。",
+      "hostName": "主机名称",
+      "processNameRuleHint": "名称列展示接入配置中的进程别名（process_name），与主机名称分列展示。",
+      "filterProcess": "过滤进程",
+      "filterProcessPlaceholder": "选择进程名称（可多选）",
       "processAlive": "进程存活",
       "processAliveUp": "存活",
       "processAliveDown": "失活",
@@ -376,7 +379,8 @@
       "controlledViewModeTop": "前",
       "controlledViewModeBottom": "后",
       "dimensionPreviewTruncated": "序列过多，仅展示 {limit} 条，其余请前往数据查询",
-      "dimensionPreviewMore": "前往数据查询"
+      "dimensionPreviewMore": "前往数据查询",
+      "processMetrics": "进程 (Telegraf)"
     },
     "integrations": {
       "hostMonitoringAlreadyConfigured": "已接入主机监控",
@@ -1052,7 +1056,8 @@
   "home": "首页",
   "about": "关于",
   "cutomTable": {
-    "fieldSetting": "列表字段设置"
+    "fieldSetting": "列表字段设置",
+    "pinHint": "点击图钉可固定列，横向滚动时保持在左侧；名称默认固定。"
   },
   "contact": "联系"
 }

@@ -34,9 +34,13 @@ import { ListItem } from '@/types';
 import { OBJECT_DEFAULT_ICON } from '@/app/monitor/constants';
 import { getProfessionalDashboardUrl } from '@/app/monitor/dashboards/registry';
 import { withDashboardReturnContext } from '@/app/monitor/dashboards/shared/utils';
+import { encodeInstanceIdValuesParam } from '@/app/monitor/dashboards/shared/utils/instance';
 import { getDerivativeObjectNames } from '@/app/monitor/utils/monitorObject';
 import { cloneDeep } from 'lodash';
-import { resolveViewColumns } from './viewColumnPreference';
+import {
+  DEFAULT_VIEW_FIXED_FIELD_KEYS,
+  resolveViewColumns
+} from './viewColumnPreference';
 const { Option } = Select;
 
 // 视图列表的展示列类型（来自对象的 display_fields 配置）
@@ -169,12 +173,16 @@ const ViewList: React.FC<ViewListProps> = ({
   const [columnPreference, setColumnPreference] = useState<string[] | null>(
     null
   );
+  const [fixedColumnPreference, setFixedColumnPreference] = useState<
+    string[] | null
+  >(null);
   const [metrics, setMetrics] = useState<MetricItem[]>([]);
   const [node, setNode] = useState<string | null>(null);
   const [colony, setColony] = useState<string[]>([]);
   const [columnFilters, setColumnFilters] = useState<Record<string, string[]>>(
     {}
   );
+  const [ipFilterOptions, setIpFilterOptions] = useState<string[]>([]);
   const [queryData, setQueryData] = useState<any[]>([]);
   const [nodeList, setNodeList] = useState<ListItem[]>([]);
 
@@ -242,6 +250,13 @@ const ViewList: React.FC<ViewListProps> = ({
     return currentObjectName === 'Process';
   }, [currentObjectName]);
 
+  const needsAssetIpFilter = useMemo(() => {
+    const summaryColumns =
+      objects.find((item) => item.id === objectId)?.instance_summary_columns ||
+      [];
+    return summaryColumns.some((column) => column.fact === 'asset.ip');
+  }, [objects, objectId]);
+
   const showMultipleConditions = useMemo(() => {
     const derivativeNames = getDerivativeObjectNames(objects).filter(
       (name) => !['Pod', 'Node'].includes(name)
@@ -251,21 +266,51 @@ const ViewList: React.FC<ViewListProps> = ({
     );
   }, [objects, currentObjectName, showTab, isProcess]);
 
-  // 顶栏只放「列头没有」的维度：Process 主机、Pod 节点；其它非 K8S 衍生对象仍用顶栏集群。
+  // 顶栏只放「列头没有」的维度：Pod 节点；Process 主机已迁到列头；其它非 K8S 衍生对象仍用顶栏集群。
   const showTopFilterBar = useMemo(() => {
-    if (isProcess) return true;
+    if (isProcess) return false;
     if (showTab && isPod) return true;
     if (showTab && isNode) return false;
     return showMultipleConditions && !showTab;
   }, [isProcess, showTab, isPod, isNode, showMultipleConditions]);
 
   const resolvedColumns = useMemo(
-    () => resolveViewColumns(tableColumn, columnPreference),
-    [tableColumn, columnPreference]
+    () =>
+      resolveViewColumns(
+        tableColumn,
+        columnPreference,
+        ['action'],
+        fixedColumnPreference,
+        DEFAULT_VIEW_FIXED_FIELD_KEYS
+      ),
+    [tableColumn, columnPreference, fixedColumnPreference]
   );
 
   // 动态处理进度条列宽度；列头过滤的 filteredValue 与状态同步（服务端过滤）。
   const displayColumns = useMemo(() => {
+    const mergedIpOptions = Array.from(
+      new Set(
+        [
+          ...ipFilterOptions,
+          ...(columnFilters['asset.ip'] || []),
+          ...tableData.flatMap((row) => {
+            const facts = row?.summary_facts as
+              | Record<string, unknown>
+              | undefined;
+            const factIp = facts?.['asset.ip'];
+            const fallbackIp = row?.ip;
+            return [factIp, fallbackIp]
+              .filter((item) => item != null && item !== '')
+              .map((item) => String(item).trim());
+          })
+        ].filter(Boolean)
+      )
+    ).sort();
+    const assetIpFilters = mergedIpOptions.map((ip) => ({
+      text: ip,
+      value: ip
+    }));
+
     return resolvedColumns.columns.map((col: ColumnItem) => {
       let next: ColumnItem = col;
       if (col.type === 'progress') {
@@ -277,10 +322,21 @@ const ViewList: React.FC<ViewListProps> = ({
       if (col.key === 'base_instance_name') {
         next = {
           ...next,
+          filterMultiple: true,
+          filterSearch: true,
           filteredValue: colony.length ? colony : null
         };
       }
-      const filterParam = col.filterParam as string | undefined;
+      if (String(col.key) === 'summary_fact:asset.ip') {
+        next = {
+          ...next,
+          filterMultiple: true,
+          filterSearch: true,
+          filterParam: 'asset.ip',
+          filters: assetIpFilters.length ? assetIpFilters : undefined
+        };
+      }
+      const filterParam = next.filterParam as string | undefined;
       if (filterParam) {
         const selected = columnFilters[filterParam] || [];
         next = {
@@ -290,7 +346,13 @@ const ViewList: React.FC<ViewListProps> = ({
       }
       return next;
     });
-  }, [resolvedColumns.columns, tableData.length, colony, columnFilters]);
+  }, [
+    resolvedColumns.columns,
+    tableData,
+    colony,
+    columnFilters,
+    ipFilterOptions
+  ]);
 
   const fieldGroups = useMemo(() => {
     const metricKeys = new Set(
@@ -322,6 +384,7 @@ const ViewList: React.FC<ViewListProps> = ({
       currentObjectIdRef.current = objectId;
       cancelAllRequests();
       setColumnPreference(null);
+      setFixedColumnPreference(null);
       setTableColumn(columns);
       setTableData([]);
       setPagination((prev: Pagination) => ({
@@ -339,6 +402,7 @@ const ViewList: React.FC<ViewListProps> = ({
       colonyRef.current = nextColony;
       setColumnFilters({});
       columnFiltersRef.current = {};
+      setIpFilterOptions([]);
       getColoumnAndData();
     }
     // searchParams host 过滤变更时也要重载（同对象再次跳转）
@@ -431,11 +495,13 @@ const ViewList: React.FC<ViewListProps> = ({
     const objName = targetObject?.name;
     const config = { signal: abortController.signal };
     const getMetrics = getMonitorMetrics(objParams, config);
+    const shouldFetchQueryParams =
+      showMultipleConditions || needsAssetIpFilter;
     setTableLoading(true);
     try {
       const res = await Promise.all([
         getMetrics,
-        showMultipleConditions &&
+        shouldFetchQueryParams &&
           getInstanceQueryParams(objName as string, objParams, config),
         getViewColumnPreference(objectId, config).catch(() => null)
       ]);
@@ -445,12 +511,19 @@ const ViewList: React.FC<ViewListProps> = ({
       }
       const k8sQuery = res[1];
       setColumnPreference(res[2]?.field_keys || null);
+      setFixedColumnPreference(
+        res[2] == null
+          ? null
+          : Array.isArray(res[2].fixed_field_keys)
+            ? res[2].fixed_field_keys
+            : null
+      );
       let queryForm: any[] = [];
       if (k8sQuery?.cluster) {
         queryForm = k8sQuery?.cluster || [];
         setNodeList(k8sQuery?.node || []);
-      } else {
-        queryForm = (k8sQuery || []).map((item: any) => {
+      } else if (Array.isArray(k8sQuery)) {
+        queryForm = k8sQuery.map((item: any) => {
           if (typeof item === 'string') {
             return { id: item, child: [] };
           }
@@ -460,7 +533,15 @@ const ViewList: React.FC<ViewListProps> = ({
             child: []
           };
         });
+      } else {
+        queryForm = [];
       }
+      const nextIpOptions = Array.isArray(k8sQuery?.asset_ips)
+        ? k8sQuery.asset_ips
+            .map((ip: unknown) => String(ip || '').trim())
+            .filter(Boolean)
+        : [];
+      setIpFilterOptions(nextIpOptions);
       setQueryData(queryForm);
       if (objName === 'Process' && colonyRef.current.length) {
         const resolved = resolveProcessHostFilterIds(
@@ -579,7 +660,7 @@ const ViewList: React.FC<ViewListProps> = ({
                   plugin: cell.pluginName,
                   metric: cell.metricName
                 }) || primaryMeta;
-                const hasDimensions = (meta?.dimensions?.length ?? 0) > 0;
+                const hasDimensions = (meta?.dimensions?.length ?? 0) > 1;
                 const size: [number, number] = hasDimensions ? [220, 20] : [240, 20];
                 const metricUnit = cell.unit || meta?.unit || '';
                 return (
@@ -638,7 +719,7 @@ const ViewList: React.FC<ViewListProps> = ({
                 metric: cell.metricName
               }) || primaryMeta;
               const color = getEnumColor(meta, cell.value);
-              const hasDimensions = (meta?.dimensions?.length ?? 0) > 0;
+              const hasDimensions = (meta?.dimensions?.length ?? 0) > 1;
               const metricUnit = cell.unit || meta?.unit || '';
               const metricItem: any = {
                 unit: metricUnit,
@@ -670,7 +751,8 @@ const ViewList: React.FC<ViewListProps> = ({
             objects,
             row: targetObject,
             t,
-            queryData: queryForm
+            queryData: queryForm,
+            ipFilterOptions: nextIpOptions
           }),
           ...columns
         ]);
@@ -810,14 +892,17 @@ const ViewList: React.FC<ViewListProps> = ({
     const monitorItem = objects.find(
       (item: ObjectItem) => item.id === objectId
     );
-    const row: any = {
-      monitorObjId: objectId || '',
+    const encodedIdValues = encodeInstanceIdValuesParam(
+      app.instance_id_values
+    );
+    const row: Record<string, string> = {
+      monitorObjId: String(objectId || ''),
       name: monitorItem?.name || '',
       monitorObjDisplayName: monitorItem?.display_name || '',
       icon: monitorItem?.icon || OBJECT_DEFAULT_ICON,
-      instance_id: app.instance_id,
-      instance_name: app.instance_name,
-      instance_id_values: app.instance_id_values,
+      instance_id: String(app.instance_id || ''),
+      instance_name: String(app.instance_name || ''),
+      instance_id_values: encodedIdValues,
       instance_id_keys: Array.isArray(monitorItem?.instance_id_keys)
         ? monitorItem.instance_id_keys.join(',')
         : 'instance_id'
@@ -844,11 +929,19 @@ const ViewList: React.FC<ViewListProps> = ({
     getAssetInsts(objectId);
   };
 
-  const handleSelectFields = async (fieldKeys: string[]) => {
+  const handleSelectFields = async (
+    fieldKeys: string[],
+    fixedFieldKeys: string[] = []
+  ) => {
     const targetObjectId = objectId;
-    await saveViewColumnPreference(targetObjectId, fieldKeys);
+    await saveViewColumnPreference(
+      targetObjectId,
+      fieldKeys,
+      fixedFieldKeys
+    );
     if (currentObjectIdRef.current === targetObjectId) {
       setColumnPreference(fieldKeys);
+      setFixedColumnPreference(fixedFieldKeys);
       message.success(t('common.saveSuccess'));
     }
   };
@@ -915,22 +1008,6 @@ const ViewList: React.FC<ViewListProps> = ({
               <span className="text-[14px] mr-[10px]">
                 {t('monitor.views.filterOptions')}
               </span>
-              {isProcess && (
-                <Select
-                  value={colony[0] || null}
-                  allowClear
-                  showSearch
-                  style={{ width: 240 }}
-                  placeholder={instNamePlaceholder}
-                  onChange={handleColonyChange}
-                >
-                  {queryData.map((item) => (
-                    <Option key={item.id} value={item.id}>
-                      {item.name || item.id}
-                    </Option>
-                  ))}
-                </Select>
-              )}
               {showTab && isPod && (
                 <Select
                   value={node}
@@ -947,7 +1024,7 @@ const ViewList: React.FC<ViewListProps> = ({
                   ))}
                 </Select>
               )}
-              {!isProcess && !showTab && (
+              {!showTab && (
                 <Select
                   value={colony[0] || null}
                   allowClear
@@ -997,7 +1074,11 @@ const ViewList: React.FC<ViewListProps> = ({
           choosableFields: fieldGroups.choosableFields,
           groupFields: fieldGroups.groups,
           searchable: true,
-          modalWidth: 900
+          modalWidth: 900,
+          enableFixedFields: true,
+          fixedFieldKeys:
+            fixedColumnPreference == null ? undefined : fixedColumnPreference,
+          defaultFixedFieldKeys: DEFAULT_VIEW_FIXED_FIELD_KEYS
         }}
         onSelectFields={handleSelectFields}
         onChange={handleTableChange}

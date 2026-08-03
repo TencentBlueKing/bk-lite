@@ -28,7 +28,7 @@ from apps.monitor.utils.victoriametrics_api import VictoriaMetricsAPI
 PLUGIN_STATUS_QUERY_MAX_WORKERS = int(os.getenv("MONITOR_PLUGIN_STATUS_QUERY_MAX_WORKERS", "8"))
 
 # vm_params 中非 Enum 指标名的保留键（不参与通用 Enum 过滤）。
-_VM_PARAM_RESERVED_KEYS = frozenset({"instance_id", "node", "status"})
+_VM_PARAM_RESERVED_KEYS = frozenset({"instance_id", "node", "status", "asset.ip"})
 
 
 class InstanceSearch:
@@ -102,12 +102,34 @@ class InstanceSearch:
                     "name": host_name_map.get(host_id, host_id),
                 }
                 for host_id in sorted(host_ids)
-            ]
+            ],
+            "asset_ips": InstanceSearch.collect_asset_ip_options("Process"),
         }
+
+    @staticmethod
+    def collect_asset_ip_options(monitor_obj_name):
+        """收集监控对象实例的去重 asset.ip（摘要事实优先，其次模型 ip 字段）。"""
+        if not monitor_obj_name:
+            return []
+        ips = set()
+        for ip, facts in MonitorInstance.objects.filter(
+            monitor_object__name=monitor_obj_name,
+            is_deleted=False,
+        ).values_list("ip", "summary_facts"):
+            if isinstance(facts, dict):
+                fact_ip = facts.get("asset.ip")
+                if fact_ip not in (None, ""):
+                    ips.add(str(fact_ip).strip())
+                    continue
+            if ip not in (None, ""):
+                ips.add(str(ip).strip())
+        return sorted(ip for ip in ips if ip)
 
     @staticmethod
     def get_query_params_enum(monitor_obj_name, monitor_object_id=None):
         """获取查询参数枚举"""
+        if monitor_obj_name == "Host":
+            return {"asset_ips": InstanceSearch.collect_asset_ip_options("Host")}
         if monitor_obj_name == "Pod":
             query = "count(prometheus_remote_write_kube_pod_info{}) by (instance_id, node)"
             metrics = VictoriaMetricsAPI().query(query)
@@ -446,7 +468,7 @@ class InstanceSearch:
         return [best[key][1] for key in order]
 
     def _apply_process_filters(self, qs):
-        """列表/搜索共用：主机归属 + Enum 指标多值过滤。"""
+        """列表/搜索共用：主机归属 + asset.ip + Enum 指标多值过滤。"""
         return InstanceSearch.apply_process_instance_filters(
             qs,
             getattr(self.monitor_obj, "name", None),
@@ -458,8 +480,9 @@ class InstanceSearch:
     def apply_process_instance_filters(
         qs, monitor_obj_name, vm_params, monitor_object_id=None
     ):
-        """按 vm_params 过滤实例：Process 主机多选 + 任意 Enum 指标多选。"""
+        """按 vm_params 过滤实例：Process 主机多选 + asset.ip 多选 + Enum 指标多选。"""
         qs = InstanceSearch.apply_process_host_filters(qs, monitor_obj_name, vm_params)
+        qs = InstanceSearch.apply_asset_ip_filters(qs, vm_params)
         object_id = monitor_object_id
         if object_id is None and monitor_obj_name:
             object_id = (
@@ -490,6 +513,26 @@ class InstanceSearch:
             parts = parse_instance_id(process_id)
             if parts and str(parts[0]) in host_ids:
                 matching_ids.append(process_id)
+        return qs.filter(id__in=matching_ids)
+
+    @staticmethod
+    def apply_asset_ip_filters(qs, vm_params):
+        """按 summary_facts['asset.ip']（缺省回落模型 ip）多值过滤。"""
+        if not isinstance(vm_params, dict):
+            return qs
+        ips = InstanceSearch.normalize_csv_values(vm_params.get("asset.ip"))
+        if not ips:
+            return qs
+        matching_ids = []
+        for instance_id, ip, facts in qs.values_list("id", "ip", "summary_facts"):
+            fact_ip = None
+            if isinstance(facts, dict):
+                raw = facts.get("asset.ip")
+                if raw not in (None, ""):
+                    fact_ip = str(raw).strip()
+            candidate = fact_ip or (str(ip).strip() if ip not in (None, "") else "")
+            if candidate and candidate in ips:
+                matching_ids.append(instance_id)
         return qs.filter(id__in=matching_ids)
 
     @staticmethod

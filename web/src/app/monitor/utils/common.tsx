@@ -23,8 +23,6 @@ import {
 import { isDerivativeObject } from '@/app/monitor/utils/monitorObject';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
-import { Tooltip } from 'antd';
-import { QuestionCircleOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 
 // EE 端运行时注入的 BRANDS:由 web/scripts/prepare-enterprise.mjs 生成
@@ -473,6 +471,13 @@ export const showInstName = (
   row: TableDataItem,
   objects?: ObjectItem[]
 ) => {
+  // Process 列表已有「主机名称」列，名称列只展示指标维度 process_name。
+  if (objectItem?.name === 'Process') {
+    const processName = row?.instance_id_values?.[1];
+    if (processName != null && String(processName).trim() !== '') {
+      return String(processName);
+    }
+  }
   const isDerivative = objects
     ? isDerivativeObject(objectItem, objects)
     : isDerivativeObject(objectItem);
@@ -487,6 +492,7 @@ export const getBaseInstanceColumn = (config: {
   objects: ObjectItem[];
   t: any;
   queryData?: any[];
+  ipFilterOptions?: string[];
 }) => {
   const baseTarget = config.objects
     .filter((item) => item.type === config.row?.type)
@@ -512,17 +518,7 @@ export const getBaseInstanceColumn = (config: {
   };
   const columnItems: any = [
     {
-      title:
-        config.row?.name === 'Process' ? (
-          <span className="inline-flex items-center gap-1">
-            <span>{config.t('common.name')}</span>
-            <Tooltip title={config.t('monitor.views.processNameRuleHint')}>
-              <QuestionCircleOutlined className="text-[12px] text-[var(--color-text-3)]" />
-            </Tooltip>
-          </span>
-        ) : (
-          config.t('common.name')
-        ),
+      title: config.t('common.name'),
       dataIndex: 'instance_name',
       onCell: () => ({
         style: {
@@ -545,15 +541,59 @@ export const getBaseInstanceColumn = (config: {
     (left, right) => (left.order || 0) - (right.order || 0)
   );
   summaryColumns.forEach((column) => {
+    const isAssetIp = column.fact === 'asset.ip';
+    const ipFilters = (config.ipFilterOptions || [])
+      .map((ip) => String(ip || '').trim())
+      .filter(Boolean)
+      .map((ip) => ({ text: ip, value: ip }));
     columnItems.push({
       title: config.t(column.title),
       dataIndex: ['summary_facts', column.fact],
       key: `summary_fact:${column.fact}`,
       onCell: () => ({ style: { minWidth: 150 } }),
+      ...(isAssetIp
+        ? {
+            filterMultiple: true,
+            filterSearch: true,
+            filterParam: 'asset.ip',
+            filters: ipFilters.length ? ipFilters : undefined
+          }
+        : {}),
       render: (_: unknown, record: TableDataItem) =>
         renderAssetText(formatSummaryFact(record.summary_facts?.[column.fact]))
     });
   });
+  // Process：归属主机作为列头多选过滤，替代顶栏「过滤项」。
+  if (config.row?.name === 'Process') {
+    const hostFilters = (config.queryData || [])
+      .map((item: TableDataItem) => ({
+        text: String(item.name || item.id || ''),
+        value: String(item.id ?? '')
+      }))
+      .filter((item) => item.value);
+    columnItems.splice(1, 0, {
+      title: config.t('monitor.views.hostName'),
+      dataIndex: 'base_instance_name',
+      key: 'base_instance_name',
+      onCell: () => ({ style: { minWidth: 150 } }),
+      filterMultiple: true,
+      filterSearch: true,
+      filters: hostFilters.length ? hostFilters : undefined,
+      render: (_: unknown, record: TableDataItem) => {
+        const instanceIdValue = record.instance_id_values?.[0];
+        let displayName = instanceIdValue || '--';
+        if (config.queryData && instanceIdValue) {
+          const matchedItem = config.queryData.find(
+            (item: TableDataItem) => item.id === instanceIdValue
+          );
+          if (matchedItem) {
+            displayName = matchedItem.name || matchedItem.id;
+          }
+        }
+        return renderAssetText(displayName);
+      }
+    });
+  }
   if (isDerivative) {
     const clusterFilters = (config.queryData || [])
       .map((item: TableDataItem) => ({

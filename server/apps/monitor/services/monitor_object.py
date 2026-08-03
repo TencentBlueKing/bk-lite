@@ -151,7 +151,7 @@ class MonitorObjectService:
         if not obj_metric_map:
             raise BaseAppException("Monitor object default metric does not exist")
 
-        # Process 主机 / Enum 指标过滤在 list 与 search 共用同一套规则。
+        # Process 主机 / asset.ip / Enum 指标过滤在 list 与 search 共用同一套规则。
         from apps.monitor.services.monitor_instance import InstanceSearch
 
         qs = InstanceSearch.apply_process_instance_filters(

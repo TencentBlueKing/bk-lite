@@ -165,7 +165,10 @@
     "views": {
       "assetIp": "IP Address",
       "hostIp": "Host IP",
-      "processNameRuleHint": "Process instance name is joined as hostName-processAlias, e.g. host-01-java. The alias comes from the process name in the integration config.",
+      "hostName": "Host Name",
+      "processNameRuleHint": "The name column shows the process alias (process_name) from integration config, separate from the host name column.",
+      "filterProcess": "Filter processes",
+      "filterProcessPlaceholder": "Select process names (multi-select)",
       "processAlive": "Process Alive",
       "processAliveUp": "Alive",
       "processAliveDown": "Inactive",
@@ -376,7 +379,8 @@
       "controlledViewModeTop": "top",
       "controlledViewModeBottom": "bottom",
       "dimensionPreviewTruncated": "Too many series; showing {limit}. Use Data Query for the rest.",
-      "dimensionPreviewMore": "Go to Data Query"
+      "dimensionPreviewMore": "Go to Data Query",
+      "processMetrics": "Process (Telegraf)"
     },
     "integrations": {
       "hostMonitoringAlreadyConfigured": "Host monitoring already configured",
@@ -1052,7 +1056,8 @@
   "home": "Home",
   "about": "About",
   "cutomTable": {
-    "fieldSetting": "List field settings"
+    "fieldSetting": "List field settings",
+    "pinHint": "Pin columns to keep them on the left while scrolling. Name is pinned by default."
   },
   "contact": "Contact"
 }
