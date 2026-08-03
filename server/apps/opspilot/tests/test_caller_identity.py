@@ -243,16 +243,7 @@ def test_api_secret_identity_uses_bound_team_and_never_leaks_credentials():
     assert all("secret" not in key and "token" not in key for key in result)
 
 
-def test_unsaved_user_api_secret_fallback_still_requires_team_membership():
-    contract = _contract()
-    request = _request(cookies={"current_team": "7", "include_children": "1"})
-    bearer_identity = UserAPISecret(username="bearer-user", domain="api.example", team=7)
-    bearer_identity.group_list = [8]
-
-    _assert_error(contract, 403, "not a member", request, bearer_identity)
-
-
-def test_unsaved_user_api_secret_fallback_uses_current_team_and_include_children():
+def test_unsaved_user_api_secret_uses_bound_team_and_ignores_cookies():
     contract = _contract()
     request = _request(cookies={"current_team": "7", "include_children": "1"})
     bearer_identity = UserAPISecret(username="bearer-user", domain="api.example", team=999)
@@ -263,12 +254,21 @@ def test_unsaved_user_api_secret_fallback_uses_current_team_and_include_children
     assert result == {
         "username": "bearer-user",
         "domain": "api.example",
-        "team_id": 7,
-        "include_children": True,
+        "team_id": 999,
+        "include_children": False,
     }
 
 
-def test_persisted_user_api_secret_without_auth_source_uses_login_scope():
+def test_unsaved_user_api_secret_rejects_invalid_bound_team():
+    contract = _contract()
+    request = _request(cookies={"current_team": "7", "include_children": "1"})
+    bearer_identity = UserAPISecret(username="bearer-user", domain="api.example", team=0)
+    bearer_identity.group_list = [7]
+
+    _assert_error(contract, 400, "API Secret bound team", request, bearer_identity)
+
+
+def test_persisted_user_api_secret_without_auth_source_uses_bound_team():
     contract = _contract()
     request = _request(cookies={"current_team": "7", "include_children": "1"})
     bearer_identity = UserAPISecret(
@@ -284,8 +284,8 @@ def test_persisted_user_api_secret_without_auth_source_uses_login_scope():
     assert result == {
         "username": "bearer-user",
         "domain": "api.example",
-        "team_id": 7,
-        "include_children": True,
+        "team_id": 23,
+        "include_children": False,
     }
 
 

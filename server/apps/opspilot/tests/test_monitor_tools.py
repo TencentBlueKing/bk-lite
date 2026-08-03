@@ -125,9 +125,34 @@ def test_monitor_without_snapshot_reports_unsupported_trigger_and_never_starts_r
     )
 
     assert result["success"] is False
-    assert "authenticated caller" in result["error"]
-    assert "interactive HTTP" in result["error"]
-    assert "current trigger" in result["error"]
+    assert "监控工具仅支持已登录的交互式 HTTP 调用" in result["error"]
+    assert "caller_identity" in result["error"]
+    assert "无法使用监控工具" in result["error"]
+    rpc_cls.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("configurable", "expected_source"),
+    [
+        ({"entry_type": "celery", "trigger_type": "unattended"}, "Celery 定时任务"),
+        ({"entry_type": "nats", "trigger_type": "third_party"}, "NATS 触发"),
+        ({"entry_type": "dingtalk", "trigger_type": "third_party"}, "钉钉"),
+        ({"entry_type": "enterprise_wechat_aibot", "trigger_type": "third_party"}, "企业微信智能机器人"),
+        ({"trigger_type": "unattended"}, "定时任务/无人值守触发"),
+        ({"trigger_type": "third_party"}, "第三方渠道触发"),
+        ({}, "当前触发方式"),
+    ],
+)
+def test_monitor_missing_identity_error_names_non_a_trigger_source(configurable, expected_source, mocker):
+    from apps.opspilot.metis.llm.tools.monitor import utils
+    from apps.opspilot.metis.llm.tools.monitor.objects import monitor_list_objects
+
+    rpc_cls = mocker.patch.object(utils, "MonitorOperationAnaRpc")
+    result = monitor_list_objects.invoke({}, config={"configurable": dict(configurable)})
+
+    assert result["success"] is False
+    assert expected_source in result["error"]
+    assert "未提供调用方身份快照" in result["error"]
     rpc_cls.assert_not_called()
 
 

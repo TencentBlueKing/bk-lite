@@ -3,6 +3,7 @@
 import re
 from typing import Any
 
+from apps.base.models import UserAPISecret
 from apps.core.utils.team_utils import get_current_team
 
 CALLER_IDENTITY_CONFIG_KEY = "caller_identity"
@@ -62,6 +63,11 @@ def _member_team_ids(identity: Any) -> set[int]:
 def _api_secret_bound_team(request: Any, identity: Any) -> tuple[bool, Any]:
     explicitly_authenticated = getattr(identity, _API_SECRET_AUTHENTICATED_ATTR, False) is True
     if explicitly_authenticated:
+        return True, getattr(identity, "team", None)
+
+    # Any UserAPISecret instance is treated as API-secret scope: use its bound team.
+    # JWT/session callers must not reuse this model as a DTO.
+    if isinstance(identity, UserAPISecret):
         return True, getattr(identity, "team", None)
 
     # APISecretAuthBackend stores the validated bound team on request.user.

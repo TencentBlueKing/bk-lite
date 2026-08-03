@@ -430,6 +430,8 @@ class ChatService:
             extra_config["node_id"] = kwargs["node_id"]
         if kwargs.get("trigger_type"):
             extra_config["trigger_type"] = kwargs["trigger_type"]
+        if kwargs.get("entry_type"):
+            extra_config["entry_type"] = kwargs["entry_type"]
 
         # 当 attachment_file 工具被启用时，向系统提示词末尾注入强制调用指令，
         # 防止用户 skill_prompt 中的"直接输出"类指令覆盖工具调用意图。
@@ -547,6 +549,8 @@ class ChatService:
                 extra_config["node_id"] = kwargs["node_id"]
             if kwargs.get("trigger_type"):
                 extra_config["trigger_type"] = kwargs["trigger_type"]
+            if kwargs.get("entry_type"):
+                extra_config["entry_type"] = kwargs["entry_type"]
             chat_kwargs.update({"extra_config": extra_config})
 
         # caller_identity 是服务端受理快照的保留键。工具 kwargs 无权创建或

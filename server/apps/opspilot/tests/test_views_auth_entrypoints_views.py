@@ -3,7 +3,7 @@
 These tests pin the security behavior recently hardened across the opspilot
 auth entrypoints (F001/F020/F021 and the new request serializers):
 
-- ``openai_completions`` / ``lobe_skill_execute``: invalid/missing token is
+- ``openai_completions``: invalid/missing token is
   rejected; a valid token proceeds (downstream chat mocked, no real LLM call);
   both stream and non-stream paths.
 - ``skill_execute`` (@api_exempt): the bot is resolved by ``(bot_id, api_token)``;
@@ -101,9 +101,37 @@ def test_validate_openai_token_fallback_is_not_marked_as_api_secret(request_fact
     request = _make_request(request_factory, cookies={"current_team": "7"})
 
     assert is_valid is True
+    assert not isinstance(identity, views.UserAPISecret)
     with pytest.raises(caller_identity.CallerIdentityError, match="not a member") as exc_info:
         caller_identity.capture_caller_identity(request, identity)
     assert exc_info.value.status_code == 403
+
+
+def test_validate_openai_token_jwt_fallback_uses_cookie_scope_when_member(request_factory, mocker):
+    mocker.patch.object(views.UserAPISecret, "find_by_api_secret", return_value=None)
+    system_mgmt = mocker.patch.object(views, "SystemMgmt").return_value
+    system_mgmt.verify_token.return_value = {
+        "result": True,
+        "data": {
+            "username": "bearer-user",
+            "domain": "login.example",
+            "group_list": [{"id": 7}],
+        },
+    }
+
+    is_valid, identity = views.validate_openai_token("bearer-token", team=7)
+    request = _make_request(
+        request_factory,
+        cookies={"current_team": "7", "include_children": "1"},
+    )
+
+    assert is_valid is True
+    assert caller_identity.capture_caller_identity(request, identity) == {
+        "username": "bearer-user",
+        "domain": "login.example",
+        "team_id": 7,
+        "include_children": True,
+    }
 
 
 # --------------------------------------------------------------------------- #
@@ -435,65 +463,6 @@ def test_chat_completion_successful_enrich_resolves_and_invokes_with_server_over
     assert forwarded_params["caller_identity"] == {"team_id": 7}
     assert "forged" not in repr(forwarded_params)
     stream.assert_not_called()
-
-
-# --------------------------------------------------------------------------- #
-# lobe_skill_execute
-# --------------------------------------------------------------------------- #
-class TestLobeSkillExecute:
-    def test_invalid_token_rejected(self, request_factory, mocker):
-        mocker.patch.object(
-            views,
-            "validate_header_token",
-            return_value=(False, {"choices": [{"message": {"role": "assistant", "content": "No authorization"}}]}),
-        )
-        invoke = mocker.patch.object(views, "invoke_chat")
-
-        request = _make_request(request_factory, body={"studio_id": 1, "model": "s", "messages": []})
-        resp = views.lobe_skill_execute(request)
-
-        assert resp.status_code == 200
-        assert json.loads(resp.content)["choices"][0]["message"]["content"] == "No authorization"
-        invoke.assert_not_called()
-
-    def test_valid_token_proceeds_and_persists_history(self, request_factory, mocker):
-        mocker.patch.object(views, "validate_header_token", return_value=(True, {"username": "bob"}))
-        skill_obj = SimpleNamespace(id=3, name="skill", enable_km_route=False, km_llm_model=None, enable_suggest=False, enable_query_rewrite=False)
-        params = {"user_message": "hello"}
-        mocker.patch.object(views, "get_skill_and_params", return_value=(skill_obj, params, None))
-        hook = mocker.patch.object(views, "_lobe_persist_history", return_value="history_log")
-        sentinel = object()
-        invoke = mocker.patch.object(views, "invoke_chat", return_value=sentinel)
-
-        request = _make_request(
-            request_factory,
-            body={"studio_id": 1, "model": "skill", "messages": [{"role": "user", "content": "hi"}]},
-            token="Bearer good",
-        )
-        resp = views.lobe_skill_execute(request)
-
-        assert resp is sentinel
-        hook.assert_called_once()
-        invoke.assert_called_once()
-        assert "caller_identity" not in params
-
-    def test_valid_token_stream_path(self, request_factory, mocker):
-        mocker.patch.object(views, "validate_header_token", return_value=(True, {"username": "bob"}))
-        skill_obj = SimpleNamespace(id=3, name="skill", enable_km_route=False, km_llm_model=None, enable_suggest=False, enable_query_rewrite=False)
-        mocker.patch.object(views, "get_skill_and_params", return_value=(skill_obj, {"user_message": "hi"}, None))
-        mocker.patch.object(views, "_lobe_persist_history", return_value=None)
-        sentinel = object()
-        stream = mocker.patch.object(views, "stream_chat", return_value=sentinel)
-
-        request = _make_request(
-            request_factory,
-            body={"studio_id": 1, "stream": True, "model": "skill", "messages": [{"role": "user", "content": "hi"}]},
-            token="Bearer good",
-        )
-        resp = views.lobe_skill_execute(request)
-
-        assert resp is sentinel
-        stream.assert_called_once()
 
 
 # --------------------------------------------------------------------------- #

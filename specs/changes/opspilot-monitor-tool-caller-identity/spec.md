@@ -22,7 +22,7 @@ OpsPilot Skill 内置 Monitor 工具当前要求在 Skill 配置中填写登录�
 
 - 第一版覆盖范围仅限交互式 HTTP 入口（含 Web Chat、Mobile、Embedded、AGUI、OpenAI 兼容、Restful、Studio 试跑）以及 Skill 详情页直接执行；Celery、企微、钉钉、公众号、NATS 等不纳入身份注入。
 - 身份材料为入口已校验结果，不下传原始 Bearer/JWT/API Secret。快照字段至少包括用户名、域、当前组 ID，以及是否包含子组。
-- 「当前组」来源：常规登录以请求当前组（如 `current_team`）为准，并校验该用户属于该组；缺组或校验失败则拒绝受理，不入队、不回落到 Skill/Bot 归属组。OpenAPI 以 `UserAPISecret` 解析出的用户与绑定组为准，不再另取 cookie 当前组。
+- 「当前组」来源：常规登录以请求当前组（如 `current_team`）为准，并校验该用户属于该组；缺组或校验失败则拒绝受理，不入队、不回落到 Skill/Bot 归属组。OpenAPI 以 `UserAPISecret` 实例（含未显式 mark）解析出的绑定组为准，不再另取 cookie 当前组；JWT/会话身份不得复用 `UserAPISecret` 作为 DTO。
 - `include_children`：常规登录若能读到对应 cookie 则写入快照；读不到或非常规登录（含 API Secret）默认不包含子组。
 - 身份必须在 HTTP 受理成功时写入 `flow_input` / Agent 运行时 `extra_config`（或等价可传递上下文），随异步 worker 执行；工具执行阶段不得再依赖原始 HTTP 请求。
 - 删除 Monitor 内置工具构造参数中的账号、密码、域、组织 ID；已保存的旧 kwargs 忽略（可打日志），不作为运行时凭据。
@@ -30,12 +30,12 @@ OpsPilot Skill 内置 Monitor 工具当前要求在 Skill 配置中填写登录�
 - Monitor 调用 Monitor RPC 时仍使用既有 `user_info` 形状（用户、域、组、是否含子组），但由运行时身份组装，不再 `check_password` 二次登录。
 - 须保证 `langchain:monitor` 可被工具加载器正确注册与加载；builtin 负 ID 工具的运行时参数须能进入 configurable，而不是只进 prompt 描述。
 - Skill 工具选择 UI：去掉 Monitor 的凭据与组织选择器，仅展示「使用调用方登录身份与当前组」说明；保存时不再写入旧凭据字段。
-- 非覆盖范围内的触发类型若执行到 Monitor：返回明确、可理解的错误（说明当前触发方式不支持），禁止静默空结果、禁止回退已删除的密码配置。
+- 非覆盖范围内的触发类型若执行到 Monitor：返回明确、可理解的中文错误，尽量点名触发来源（Celery / NATS / 企微 / 钉钉等），说明缺少调用方身份快照；禁止静默空结果、禁止回退已删除的密码配置。Celery 周期任务须在 `flow_input` 写入 `entry_type=celery`，便于 Agent 映射 `trigger_type=unattended` 与报错归因。
 
 ## Testing Decisions
 
 - 好测试只断言外部行为：给定入口身份与组，工具组装出的 Monitor `user_info` 是否正确；缺身份/缺组/非成员/非 A 入口是否失败；模型侧参数无法覆盖身份。
-- 优先接缝：Monitor 运行时身份解析（由 configurable 组装 `user_info`，替代原密码鉴权）；交互式入口受理时的身份快照（含 JWT 当前组与 API Secret 绑定组、`include_children` 缺省）；非 A 触发调用 Monitor 的错误路径；builtin 工具描述不再要求凭据参数。
+- 优先接缝：Monitor 运行时身份解析（由 configurable 组装 `user_info`，替代原密码鉴权）；交互式入口受理时的身份快照（含 JWT 当前组与 API Secret 绑定组、`include_children` 缺省）；非 A 触发调用 Monitor 的错误路径（含按 entry/trigger 点名的文案，以及 Agent 不合成身份）；builtin 工具描述不再要求凭据参数。
 - 既有 `test_monitor_tools` 中基于 username/password 的鉴权用例应改为运行时身份场景，并保留失败路径覆盖。
 - 入口快照与 Agent/chat 透传优先用现有 workflow / chat flow / OpenAPI token 校验测试风格做聚焦单测或轻量集成，不要求首期全渠道 E2E。
 

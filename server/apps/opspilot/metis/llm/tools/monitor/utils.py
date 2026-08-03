@@ -5,18 +5,56 @@ from langchain_core.runnables import RunnableConfig
 from apps.opspilot.services.caller_identity import CALLER_IDENTITY_CONFIG_KEY
 from apps.rpc.monitor import MonitorOperationAnaRpc
 
-MONITOR_CALLER_IDENTITY_REQUIRED = (
-    "Monitor only supports interactive HTTP calls with an authenticated caller; "
-    "the current trigger does not provide caller_identity and is not supported."
-)
+_TRIGGER_SOURCE_LABELS = {
+    "unattended": "定时任务/无人值守触发",
+    "third_party": "第三方渠道触发",
+    "interactive": "当前交互式调用",
+}
+
+_ENTRY_SOURCE_LABELS = {
+    "celery": "Celery 定时任务",
+    "nats": "NATS 触发",
+    "enterprise_wechat": "企业微信",
+    "enterprise_wechat_aibot": "企业微信智能机器人",
+    "dingtalk": "钉钉",
+    "wechat_official": "微信公众号",
+}
+
+
+def _configurable_from_config(config: Optional[RunnableConfig]) -> Dict[str, Any]:
+    if not isinstance(config, dict):
+        return {}
+    configurable = config.get("configurable")
+    return configurable if isinstance(configurable, dict) else {}
+
+
+def format_monitor_caller_identity_required_error(config: Optional[RunnableConfig] = None) -> str:
+    """Build a clear operator-facing error when Monitor lacks caller_identity."""
+
+    configurable = _configurable_from_config(config)
+    entry_type = configurable.get("entry_type")
+    trigger_type = configurable.get("trigger_type")
+
+    if isinstance(entry_type, str) and entry_type in _ENTRY_SOURCE_LABELS:
+        source = _ENTRY_SOURCE_LABELS[entry_type]
+    elif isinstance(trigger_type, str) and trigger_type in _TRIGGER_SOURCE_LABELS:
+        source = _TRIGGER_SOURCE_LABELS[trigger_type]
+    else:
+        source = "当前触发方式"
+
+    return "监控工具仅支持已登录的交互式 HTTP 调用（Web/Mobile/OpenAPI/Skill 执行等）。" f"{source}未提供调用方身份快照（caller_identity），无法使用监控工具。"
+
+
+# Backward-compatible constant for imports/tests that still reference the name.
+MONITOR_CALLER_IDENTITY_REQUIRED = format_monitor_caller_identity_required_error()
 
 
 def resolve_monitor_user_info(config: Optional[RunnableConfig]) -> Dict[str, Any]:
     """Build Monitor RPC identity from the validated runtime snapshot only."""
 
-    configurable = config.get("configurable") if isinstance(config, dict) else None
-    if not isinstance(configurable, dict) or CALLER_IDENTITY_CONFIG_KEY not in configurable:
-        raise ValueError(MONITOR_CALLER_IDENTITY_REQUIRED)
+    configurable = _configurable_from_config(config)
+    if CALLER_IDENTITY_CONFIG_KEY not in configurable:
+        raise ValueError(format_monitor_caller_identity_required_error(config))
 
     identity = configurable[CALLER_IDENTITY_CONFIG_KEY]
     if not isinstance(identity, dict):

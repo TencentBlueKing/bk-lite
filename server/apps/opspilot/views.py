@@ -2,6 +2,7 @@ import datetime
 import json
 import time
 import uuid
+from types import SimpleNamespace
 from typing import Any
 
 from asgiref.sync import sync_to_async
@@ -165,14 +166,16 @@ def validate_openai_token(token, team=None, is_mobile=False):
         if not result.get("result"):  # pragma: no cover
             return False, {"choices": [{"message": {"role": "assistant", "content": loader.get("error.no_authorization", "No authorization")}}]}
         user_info = result.get("data")  # pragma: no cover
-        user = UserAPISecret(  # pragma: no cover
+        # JWT/session identity must not be a UserAPISecret instance: capture_caller_identity
+        # treats that model as API-secret scope (bound team, no include_children cookie).
+        user = SimpleNamespace(  # pragma: no cover
             username=user_info["username"],
             domain=user_info["domain"],
             team=int(team),
+            locale=user_info.get("locale", "en"),
+            group_list=user_info.get("group_list", []),
+            is_authenticated=True,
         )
-        # Token 认证：从 verify_token 结果获取 locale 和 group_list
-        user.locale = user_info.get("locale", "en")  # pragma: no cover
-        user.group_list = user_info.get("group_list", [])  # pragma: no cover
     else:
         # UserAPISecret 认证：查询用户信息获取 locale
         mark_api_secret_identity(user)
@@ -200,22 +203,6 @@ def _get_user_locale(username: str, domain: str) -> str:
     except Exception as e:
         logger.warning(f"Failed to get user locale for {username}@{domain}: {e}")  # pragma: no cover
     return "en"
-
-
-def validate_header_token(token, bot_id):
-    loader = LanguageLoader(app="opspilot", default_lang="en")
-    if not token:
-        return False, {"choices": [{"message": {"role": "assistant", "content": loader.get("error.no_authorization", "No authorization")}}]}
-    bot_obj = Bot.objects.filter(id=bot_id, online=True).first()  # pragma: no cover
-    if not bot_obj:  # pragma: no cover
-        return False, {"choices": [{"message": {"role": "assistant", "content": loader.get("error.bot_not_online", "No bot online")}}]}
-    token = token.split("Bearer ")[-1]  # pragma: no cover
-    client = SystemMgmt()  # pragma: no cover
-    # res = client.verify_token(token)
-    res = client.get_pilot_permission_by_token(token, bot_id, bot_obj.team)  # pragma: no cover
-    if not res.get("result"):  # pragma: no cover
-        return False, {"choices": [{"message": {"role": "assistant", "content": loader.get("error.no_authorization", "No authorization")}}]}
-    return True, {"username": res["data"]["username"]}  # pragma: no cover
 
 
 def get_skill_and_params(kwargs, team, bot_id=None):
@@ -362,44 +349,6 @@ def openai_completions(request):  # pragma: no cover
         resolve_skill=lambda kwargs, user: get_skill_and_params(kwargs, user.team),
         get_user_id=lambda user: user.username,
         enrich_params=_enrich_openai_params,
-    )
-
-
-def _lobe_persist_history(params, skill_obj, user_message, user, kwargs):  # pragma: no cover
-    """Persist the inbound user turn and build the bot-side history log.
-
-    Mirrors the legacy ``lobe_skill_execute`` side effects exactly: it creates a
-    ``user`` conversation row and returns an unsaved ``bot`` conversation row to
-    be filled in once the assistant response is produced.
-    """
-    bot = Bot.objects.get(id=kwargs["studio_id"])
-    BotConversationHistory.objects.create(
-        bot_id=kwargs.get("studio_id"),
-        channel_user_id=user["username"],
-        created_by=bot.created_by,
-        domain=bot.domain,
-        conversation_role="user",
-        conversation=user_message,
-    )
-    return BotConversationHistory(
-        bot_id=kwargs.get("studio_id"),
-        channel_user_id=user["username"],
-        created_by=bot.created_by,
-        domain=bot.domain,
-        conversation_role="bot",
-        conversation="",
-    )
-
-
-@api_exempt
-def lobe_skill_execute(request):  # pragma: no cover
-    service = _build_chat_completion_service()
-    return service.run(
-        request,
-        validate=lambda token, kwargs: validate_header_token(token, int(kwargs["studio_id"])),
-        resolve_skill=lambda kwargs, user: get_skill_and_params(kwargs, "", kwargs.get("studio_id")),
-        get_user_id=lambda user: user["username"],
-        post_resolve_hook=_lobe_persist_history,
     )
 
 

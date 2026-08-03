@@ -1,15 +1,9 @@
 """Shared business logic for OpenAI-compatible chat completion endpoints.
 
-`openai_completions` (v1/chat/completions) and `lobe_skill_execute`
-(lobe_chat/v1/chat/completions) share ~80% of their flow: parse the JSON body,
-resolve the caller IP, detect stream mode, validate the API token, resolve the
-target skill + invocation params, enrich the params with skill-level toggles,
-then dispatch to either the non-streaming JSON response or the streaming SSE
-response.
-
-This module extracts that shared flow into ``ChatCompletionService`` so both
-views become thin adapters. The request/response/stream behavior is preserved
-byte-for-byte; the OpenAI ``{"choices": [...]}`` envelope is untouched.
+``openai_completions`` (v1/chat/completions) uses this service to parse the JSON
+body, resolve the caller IP, detect stream mode, validate the API token, resolve
+the target skill + invocation params, enrich params, then dispatch to either the
+non-streaming JSON response or the streaming SSE response.
 
 The service intentionally delegates token validation, skill resolution and
 chat invocation back through the callables supplied by the view layer. This
@@ -30,15 +24,14 @@ logger = logging.getLogger(__name__)
 
 class ChatCompletionService:
     """Holds the shared token-validation / skill-resolution / stream logic
-    used by the OpenAI-compatible chat completion endpoints.
+    used by the OpenAI-compatible chat completion endpoint.
 
-    The two endpoints differ only in:
+    Callers customize behavior via injected callables:
 
-    * how the caller token is validated (``validate_fn``) and how the resulting
-      identity exposes its ``username`` (``user_id_getter``);
-    * the arguments passed to skill resolution (``skill_resolver``);
-    * an optional post-resolution hook (``post_resolve_hook``) that lobe uses to
-      persist conversation history and build a ``history_log``.
+    * how the caller token is validated (``validate``) and how the resulting
+      identity exposes its ``username`` (``get_user_id``);
+    * the arguments passed to skill resolution (``resolve_skill``);
+    * optional post-resolution hooks (``enrich_params`` / ``post_resolve_hook``).
 
     Everything else — JSON parsing, stream-mode detection, error envelopes,
     common param enrichment, and dispatch to invoke/stream — is identical and

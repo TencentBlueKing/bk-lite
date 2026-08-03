@@ -140,3 +140,56 @@ def test_agent_node_ignores_explicit_none_caller_identity(agent_node):
     )
 
     assert CALLER_IDENTITY_CONFIG_KEY not in params
+
+
+@pytest.mark.parametrize(
+    ("entry_type", "expected_trigger"),
+    [
+        ("celery", "unattended"),
+        ("nats", "third_party"),
+        ("dingtalk", "third_party"),
+        ("enterprise_wechat_aibot", "third_party"),
+    ],
+)
+def test_agent_node_non_a_entry_omits_identity_and_labels_trigger(agent_node, entry_type, expected_trigger):
+    """非 A 入口不得合成身份，但必须透传 entry/trigger 供 Monitor 报错说明。"""
+    skill = _make_skill_with_kb(team=99, kb_ids=[])
+
+    params = agent_node._build_llm_params(
+        skill,
+        final_message="hi",
+        flow_input={"user_id": "bot-owner", "entry_type": entry_type},
+    )
+
+    assert CALLER_IDENTITY_CONFIG_KEY not in params
+    assert params["entry_type"] == entry_type
+    assert params["trigger_type"] == expected_trigger
+
+
+def test_agent_celery_path_monitor_tool_fails_with_celery_message(agent_node, mocker):
+    """Celery 风格运行时配置调用 Monitor 时，应返回点名 Celery 的明确错误。"""
+    from apps.opspilot.metis.llm.tools.monitor import utils
+    from apps.opspilot.metis.llm.tools.monitor.objects import monitor_list_objects
+
+    skill = _make_skill_with_kb(team=99, kb_ids=[])
+    params = agent_node._build_llm_params(
+        skill,
+        final_message="查告警",
+        flow_input={"user_id": "bot-owner", "entry_type": "celery"},
+    )
+    rpc_cls = mocker.patch.object(utils, "MonitorOperationAnaRpc")
+
+    result = monitor_list_objects.invoke(
+        {},
+        config={
+            "configurable": {
+                "trigger_type": params["trigger_type"],
+                "entry_type": params["entry_type"],
+            }
+        },
+    )
+
+    assert result["success"] is False
+    assert "Celery 定时任务" in result["error"]
+    assert "caller_identity" in result["error"]
+    rpc_cls.assert_not_called()

@@ -241,6 +241,9 @@ class AgentNode(BaseNodeExecutor):
             # 与 /opspilot/skill/detail 路径行为一致,Issue #3919。
             "wiki_kb_ids": list(skill.wiki_knowledge_bases.values_list("id", flat=True)),
         }
+        entry_type = flow_input.get("entry_type")
+        if isinstance(entry_type, str) and entry_type.strip():
+            params["entry_type"] = entry_type
         caller_identity = flow_input.get(CALLER_IDENTITY_CONFIG_KEY)
         if caller_identity is not None:
             # 只透传 HTTP 入口已经校验并捕获的快照。不要从 Skill 的 team
@@ -340,10 +343,15 @@ class AgentNode(BaseNodeExecutor):
         entry_type = flow_input.get("entry_type", "")
         if entry_type in ("celery", "test"):
             return "unattended"
-        elif entry_type in ("enterprise_wechat", "dingtalk", "wechat_official"):
+        if entry_type in (
+            "enterprise_wechat",
+            "enterprise_wechat_aibot",
+            "dingtalk",
+            "wechat_official",
+            "nats",
+        ):
             return "third_party"
-        else:
-            return "interactive"
+        return "interactive"
 
     def set_llm_params(self, node_id: str, config: Dict[str, Any], input_data: Dict[str, Any]):
         """设置LLM参数

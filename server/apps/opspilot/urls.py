@@ -78,11 +78,6 @@ urlpatterns += [
         name="openai_completions",
     ),
     path(
-        r"bot_mgmt/lobe_chat/v1/chat/completions",
-        views.lobe_skill_execute,
-        name="lobe_openai_completions",
-    ),
-    path(
         r"bot_mgmt/get_active_users_line_data/",
         views.get_active_users_line_data,
         name="get_active_users_line_data",
