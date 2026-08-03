@@ -1,4 +1,5 @@
 import re
+import secrets
 import uuid
 
 from django.contrib.auth.hashers import make_password
@@ -21,7 +22,7 @@ from apps.core.logger import system_mgmt_logger as logger
 from apps.core.utils.loader import LanguageLoader
 from apps.core.utils.permission_cache import clear_user_permission_cache, clear_users_permission_cache
 from apps.rpc.cmdb import CMDB
-from apps.system_mgmt.models import Group, Role, SystemSettings, User, UserRule
+from apps.system_mgmt.models import Channel, ChannelChoices, Group, Role, SystemSettings, User, UserRule
 from apps.system_mgmt.serializers.user_serializer import UserSerializer
 from apps.system_mgmt.utils.group_filter_mixin import (
     filter_queryset_by_group_ids,
@@ -31,8 +32,25 @@ from apps.system_mgmt.utils.group_filter_mixin import (
 )
 from apps.system_mgmt.utils.operation_log_utils import log_operation
 from apps.system_mgmt.utils.password_validator import PasswordValidator
+from apps.system_mgmt.utils.password_vault import decrypt_from_vault
 from apps.system_mgmt.utils.user_status import is_user_locked
 from apps.system_mgmt.utils.viewset_utils import ViewSetUtils
+
+
+class InitialPasswordDeliveryError(Exception):
+    """初始密码邮件未投递，创建事务必须回滚。"""
+
+
+def _generate_random_initial_password():
+    """生成满足当前密码策略的随机初始密码。"""
+    policy = PasswordValidator.get_password_settings()
+    token_bytes = max(12, (policy["min_length"] * 3 + 3) // 4)
+    for _ in range(20):
+        candidate = secrets.token_urlsafe(token_bytes)
+        is_valid, _ = PasswordValidator.validate_password_with_config(candidate, policy)
+        if is_valid:
+            return candidate
+    raise ValueError("无法生成符合当前密码策略的随机初始密码")
 
 
 def _normalize_group_ids(groups):
@@ -387,35 +405,93 @@ class UserViewSet(ViewSetUtils):
 
         initial_password_settings = dict(
             SystemSettings.objects.filter(
-                key__in=["user_create_initial_password_enabled", "user_create_initial_password_hash"]
+                key__in=[
+                    "user_create_initial_password_hash",
+                    "user_create_initial_password_encrypted",
+                    "user_create_initial_password_mode",
+                    "user_create_initial_password_random_email_channel_id",
+                ]
             ).values_list("key", "value")
         )
-        initial_password_enabled = initial_password_settings.get("user_create_initial_password_enabled") == "1"
+        initial_password_mode = initial_password_settings.get("user_create_initial_password_mode", "none")
         initial_password_hash = initial_password_settings.get("user_create_initial_password_hash", "")
-        if initial_password_enabled and not initial_password_hash:
+        initial_password_encrypted = initial_password_settings.get("user_create_initial_password_encrypted", "")
+        random_email_channel_id = initial_password_settings.get("user_create_initial_password_random_email_channel_id", "")
+
+        initial_password_active = initial_password_mode in ("fixed", "random")
+        if initial_password_mode == "fixed" and not initial_password_hash:
             return JsonResponse({"result": False, "message": "本地用户初始密码未配置"}, status=400)
+        if initial_password_mode == "fixed" and not initial_password_encrypted:
+            return JsonResponse({"result": False, "message": "本地用户初始密码未配置"}, status=400)
+        if initial_password_active:
+            try:
+                email_channel = Channel.objects.get(id=int(random_email_channel_id))
+            except (Channel.DoesNotExist, ValueError, TypeError):
+                return JsonResponse({"result": False, "message": "初始密码邮件通道不存在或不可用"}, status=400)
+            if email_channel.channel_type != ChannelChoices.EMAIL:
+                return JsonResponse({"result": False, "message": "初始密码邮件通道不是 email 类型"}, status=400)
+            if not kwargs.get("email"):
+                return JsonResponse({"result": False, "message": "初始密码邮件通知需要用户邮箱"}, status=400)
 
-        with transaction.atomic():
-            User.objects.create(
-                user_id=str(uuid.uuid4()),
-                username=kwargs["username"],
-                display_name=kwargs["lastName"],
-                email=kwargs["email"],
-                phone=kwargs.get("phone"),
-                disabled=False,
-                locale=kwargs["locale"],
-                timezone=kwargs["timezone"],
-                group_list=groups,
-                role_list=roles,
-                temporary_pwd=initial_password_enabled,
-                password=initial_password_hash if initial_password_enabled else make_password(None),
-            )
-            if rules:
-                add_rule = [UserRule(username=kwargs["username"], group_rule_id=i) for i in rules]
-                UserRule.objects.bulk_create(add_rule, batch_size=100)
+        # 准备本地用户初始密码:三种模式与用户同步处的 random/uniform/none 对齐。
+        if initial_password_mode == "random":
+            try:
+                raw_password = _generate_random_initial_password()
+            except ValueError as error:
+                return JsonResponse({"result": False, "message": str(error)}, status=400)
+            initial_password_value = make_password(raw_password)
+            temporary_pwd = True
+        elif initial_password_mode == "fixed":
+            raw_password = None
+            initial_password_value = initial_password_hash
+            temporary_pwd = True
+        else:
+            # mode=none
+            raw_password = None
+            initial_password_value = make_password(None)
+            temporary_pwd = False
 
-            # 记录操作日志
-            log_operation(request, "create", "system-manager", f"新增用户: {kwargs['username']} ({kwargs['lastName']})")
+        email_password = raw_password
+        if initial_password_mode == "fixed":
+            try:
+                email_password = decrypt_from_vault(initial_password_encrypted)
+            except ValueError:
+                return JsonResponse({"result": False, "message": "统一初始密码解密失败，请重新设置初始密码"}, status=400)
+
+        try:
+            with transaction.atomic():
+                user = User.objects.create(
+                    user_id=str(uuid.uuid4()),
+                    username=kwargs["username"],
+                    display_name=kwargs["lastName"],
+                    email=kwargs["email"],
+                    phone=kwargs.get("phone"),
+                    disabled=False,
+                    locale=kwargs["locale"],
+                    timezone=kwargs["timezone"],
+                    group_list=groups,
+                    role_list=roles,
+                    temporary_pwd=temporary_pwd,
+                    password=initial_password_value,
+                )
+                if rules:
+                    add_rule = [UserRule(username=kwargs["username"], group_rule_id=i) for i in rules]
+                    UserRule.objects.bulk_create(add_rule, batch_size=100)
+
+                if initial_password_active:
+                    from apps.system_mgmt.services.password_init_email import send_local_user_initial_password_email
+
+                    email_result = send_local_user_initial_password_email(user, email_password, str(email_channel.id))
+                    if not email_result.get("result"):
+                        raise InitialPasswordDeliveryError(email_result.get("message") or "邮件发送失败")
+
+                # 记录操作日志
+                log_operation(request, "create", "system-manager", f"新增用户: {kwargs['username']} ({kwargs['lastName']})")
+        except InitialPasswordDeliveryError as error:
+            return JsonResponse({"result": False, "message": str(error)}, status=400)
+
+        if initial_password_active:
+            return JsonResponse({"result": True, "data": {"email_sent": True}})
         return JsonResponse({"result": True})
 
     @action(detail=False, methods=["POST"])

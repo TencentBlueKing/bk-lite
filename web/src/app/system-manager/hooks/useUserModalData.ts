@@ -295,8 +295,19 @@ export function useUserModalData(): UseUserModalDataReturn {
         }
 
         if (type === 'add') {
-          await addUser(payload);
-          message.success(t('common.addSuccess'));
+          // addUser 成功时若返回 data.email_sent / data.email_error,表示初始密码通知链路有附加状态。
+          // 注意:request 工具已解包 result 字段,addResult 直接是 data 子对象。
+          const addResult: any = await addUser(payload);
+          if (addResult?.email_sent === true) {
+            message.success(`${t('common.addSuccess')}\n${t('system.user.form.initialPasswordEmailSent')}`, 6);
+          } else if (addResult?.email_sent === false) {
+            message.warning(
+              `${t('common.addSuccess')}\n${t('system.user.form.initialPasswordEmailFailed')}：${addResult.email_error || t('common.saveFailed')}`,
+              8
+            );
+          } else {
+            message.success(t('common.addSuccess'));
+          }
         } else {
           await editUser({ user_id: currentUserId, ...payload });
           message.success(t('common.updateSuccess'));
