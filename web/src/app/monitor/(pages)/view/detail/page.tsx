@@ -9,6 +9,7 @@ import { ArrowLeftOutlined } from '@ant-design/icons';
 import Overview from './overview';
 import Metric from '@/app/monitor/components/metric-views';
 import { getDashboardReturnNavigation } from '@/app/monitor/dashboards/shared/utils';
+import { resolveDashboardInstanceIdentity } from '@/app/monitor/dashboards/shared/utils/instance';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 
 const ViewDetail = () => {
@@ -21,16 +22,14 @@ const ViewDetail = () => {
     searchParams.get('monitorObjDisplayName') || '';
   const monitorObjectId: React.Key = searchParams.get('monitorObjId') || '';
   const monitorObjectName: string = searchParams.get('name') || '';
-  const instanceId: React.Key = searchParams.get('instance_id') || '';
   const instanceName: string = searchParams.get('instance_name') || '';
   const detailTitle = `${monitorObjDisplayName || monitorObjectName || '监控对象'}指标详情`;
   const returnNavigation = getDashboardReturnNavigation(
     searchParams,
     detailTitle
   );
-  const idValues: string[] = (
-    searchParams.get('instance_id_values') || ''
-  ).split(',');
+  // 列表入口已用 JSON 编码 instance_id_values；不可再 split(',')，否则所有进程身份都会被拆坏。
+  const { instanceId, idValues } = resolveDashboardInstanceIdentity(searchParams);
   const [activeMenu, setActiveMenu] = useState<string>('metrics');
 
   const onTabChange = (val: string) => {

@@ -715,6 +715,12 @@ class InstanceConfigService:
             host_identity = normalize_instance_identity(instance.get("instance_id"))
             host_logical_id = host_identity["logical_instance_value"]
             identity = normalize_instance_identity((host_logical_id, process_name))
+            storage_key = identity["storage_instance_key"]
+            if len(storage_key) > 200:
+                raise ValueError(
+                    "process instance id too long "
+                    f"({len(storage_key)} > 200); shorten process_name or host id"
+                )
             prepared.append(
                 {
                     **instance,
