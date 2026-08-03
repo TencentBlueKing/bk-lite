@@ -1,9 +1,11 @@
 'use client';
 
 import React from 'react';
-import { Switch, Input, InputNumber, Button, Select, Checkbox } from 'antd';
+import { Alert, Switch, Input, InputNumber, Button, Select, Checkbox, Radio } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import PermissionWrapper from '@/components/permission';
+
+type InitialPasswordMode = 'fixed' | 'random' | 'none';
 
 interface LoginSettingsProps {
   otpEnabled: boolean;
@@ -15,12 +17,15 @@ interface LoginSettingsProps {
   loginAttempts: string;
   lockDuration: string;
   reminderDays: string;
-  initialPasswordEnabled: boolean;
   initialPasswordConfigured: boolean;
   initialPasswordRequired: boolean;
   initialPasswordEditing: boolean;
   initialPassword: string;
   confirmInitialPassword: string;
+  initialPasswordMode: InitialPasswordMode;
+  initialPasswordEmailChannelId: string;
+  emailChannels: Array<{ id: number; name: string }>;
+  emailChannelsError: boolean;
   loading: boolean;
   disabled?: boolean;
   onOtpChange: (checked: boolean) => void;
@@ -32,7 +37,9 @@ interface LoginSettingsProps {
   onLoginAttemptsChange: (value: string) => void;
   onLockDurationChange: (value: string) => void;
   onReminderDaysChange: (value: string) => void;
-  onInitialPasswordEnabledChange: (checked: boolean) => void;
+  onInitialPasswordModeChange: (mode: InitialPasswordMode) => void;
+  onInitialPasswordEmailChannelChange: (value: string) => void;
+  onRetryEmailChannels: () => void;
   onStartInitialPasswordChange: () => void;
   onInitialPasswordChange: (value: string) => void;
   onConfirmInitialPasswordChange: (value: string) => void;
@@ -49,12 +56,15 @@ const LoginSettings: React.FC<LoginSettingsProps> = ({
   loginAttempts,
   lockDuration,
   reminderDays,
-  initialPasswordEnabled,
   initialPasswordConfigured,
   initialPasswordRequired,
   initialPasswordEditing,
   initialPassword,
   confirmInitialPassword,
+  initialPasswordMode,
+  initialPasswordEmailChannelId,
+  emailChannels,
+  emailChannelsError,
   loading,
   disabled = false,
   onOtpChange,
@@ -66,22 +76,55 @@ const LoginSettings: React.FC<LoginSettingsProps> = ({
   onLoginAttemptsChange,
   onLockDurationChange,
   onReminderDaysChange,
-  onInitialPasswordEnabledChange,
+  onInitialPasswordModeChange,
+  onInitialPasswordEmailChannelChange,
+  onRetryEmailChannels,
   onStartInitialPasswordChange,
   onInitialPasswordChange,
   onConfirmInitialPasswordChange,
   onSave
 }) => {
   const { t } = useTranslation();
+  const initialPasswordEmailChannelSelector = (
+    <>
+      <div className="flex items-center">
+        <span className="text-xs mr-4 w-40 shrink-0">{t('system.security.initialPasswordEmailChannel')}</span>
+        <Select
+          style={{ width: 288 }}
+          value={initialPasswordEmailChannelId || undefined}
+          onChange={onInitialPasswordEmailChannelChange}
+          disabled={disabled || loading}
+          placeholder={t('system.security.initialPasswordEmailChannelPlaceholder')}
+          options={emailChannels.map((channel) => ({ value: String(channel.id), label: channel.name }))}
+        />
+      </div>
+      {emailChannelsError && (
+        <div className="ml-44" style={{ maxWidth: 288 }}>
+          <Alert
+            type="error"
+            showIcon
+            message={t('system.security.initialPasswordEmailChannelLoadFailed')}
+            action={<Button type="link" size="small" onClick={onRetryEmailChannels}>{t('system.security.initialPasswordEmailChannelRetry')}</Button>}
+          />
+        </div>
+      )}
+      <div className="flex">
+        <span className="text-xs mr-4 w-40 shrink-0" />
+        <p className="text-xs text-[var(--color-text-2)] leading-5">
+          {t('system.security.initialPasswordEmailChannelNotice')}
+        </p>
+      </div>
+    </>
+  );
 
   return (
     <div className="bg-(--color-bg) p-4 rounded-lg shadow-sm mb-4">
       <h3 className="text-base font-semibold mb-4">{t('system.security.loginSettings')}</h3>
       <div className="flex items-center mb-4">
         <span className="text-xs mr-4">{t('system.security.otpSetting')}</span>
-        <Switch 
-          size="small" 
-          checked={otpEnabled} 
+        <Switch
+          size="small"
+          checked={otpEnabled}
           onChange={onOtpChange}
           loading={loading}
           disabled={disabled}
@@ -97,7 +140,7 @@ const LoginSettings: React.FC<LoginSettingsProps> = ({
           onChange={(value) => onLoginExpiredTimeChange(value || '24')}
           disabled={disabled || loading}
           addonAfter={t('system.security.hours')}
-          style={{ width: '180px' }}                           
+          style={{ width: '180px' }}
         />
       </div>
 
@@ -180,7 +223,7 @@ const LoginSettings: React.FC<LoginSettingsProps> = ({
             />
           </div>
         </div>
-        
+
         {/* 右列 */}
         <div className="flex-1">
           <div className="flex items-center mb-4">
@@ -209,66 +252,102 @@ const LoginSettings: React.FC<LoginSettingsProps> = ({
         </div>
       </div>
 
-      <section className="mt-6 border-t border-[var(--color-border-1)] pt-4" aria-labelledby="initial-password-heading">
-        <h4 id="initial-password-heading" className="text-sm font-semibold text-[var(--color-text-1)]">
-          {t('system.security.newUserInitialPassword')}
-        </h4>
-        <p className="mt-1 text-xs text-[var(--color-text-2)]">
-          {t('system.security.newUserInitialPasswordDescription')}
-        </p>
-        <div className="mt-3 flex items-center gap-3">
-          <Switch
-            size="small"
-            checked={initialPasswordEnabled}
-            onChange={onInitialPasswordEnabledChange}
-            disabled={disabled || loading}
-          />
-          <span className="text-xs text-[var(--color-text-1)]">{t('system.security.enableInitialPassword')}</span>
-          {initialPasswordEnabled && initialPasswordConfigured && !initialPasswordRequired && !initialPasswordEditing && (
-            <>
-              <span className="text-xs text-[var(--color-text-2)]">{t('system.security.initialPasswordConfigured')}</span>
-              <Button type="link" size="small" className="p-0" onClick={onStartInitialPasswordChange}>
-                {t('system.security.changeInitialPassword')}
-              </Button>
-            </>
-          )}
+      <section className="mt-6 border-t border-[var(--color-border-1)] pt-4 space-y-4" aria-labelledby="initial-password-heading">
+        <div>
+          <h4 id="initial-password-heading" className="text-sm font-semibold text-[var(--color-text-1)]">
+            {t('system.security.newUserInitialPassword')}
+          </h4>
+          <p className="mt-1 text-xs text-[var(--color-text-2)]">
+            {t('system.security.newUserInitialPasswordDescription')}
+          </p>
         </div>
-        {initialPasswordEnabled && (initialPasswordRequired || !initialPasswordConfigured || initialPasswordEditing) && (
-          <div className="mt-3 w-72 space-y-2">
-            {initialPasswordRequired && (
-              <div className="text-xs text-[var(--color-warning)]">{t('system.security.initialPasswordReentryRequired')}</div>
+
+        <div className="flex items-center">
+          <span className="text-xs mr-4 w-40 shrink-0">{t('system.security.initialPasswordModeLabel')}</span>
+          <Radio.Group
+            value={initialPasswordMode}
+            onChange={(event) => onInitialPasswordModeChange(event.target.value as InitialPasswordMode)}
+            disabled={disabled || loading}
+          >
+            <Radio value="fixed">{t('system.security.initialPasswordModeFixed')}</Radio>
+            <Radio value="random">{t('system.security.initialPasswordModeRandom')}</Radio>
+            <Radio value="none">{t('system.security.initialPasswordModeNone')}</Radio>
+          </Radio.Group>
+        </div>
+
+        {initialPasswordMode === 'random' && (
+          initialPasswordEmailChannelSelector
+        )}
+
+        {initialPasswordMode === 'fixed' && (
+          <>
+            {initialPasswordConfigured && !initialPasswordRequired && !initialPasswordEditing && (
+              <div className="flex items-center">
+                <span className="text-xs mr-4 w-40 shrink-0">{t('system.security.initialPassword')}</span>
+                <span className="inline-flex items-center gap-2 text-xs text-[var(--color-text-2)]">
+                  <span>{t('system.security.initialPasswordConfigured')}</span>
+                  <Button type="link" size="small" className="p-0" onClick={onStartInitialPasswordChange}>
+                    {t('system.security.changeInitialPassword')}
+                  </Button>
+                </span>
+              </div>
             )}
-            <label className="block text-xs text-[var(--color-text-1)]">
-              <span>{t('system.security.initialPassword')}</span>
-              <Input.Password
-                value={initialPassword}
-                onChange={(event) => onInitialPasswordChange(event.target.value)}
-                disabled={disabled || loading}
-                autoComplete="new-password"
-                placeholder={t('system.security.initialPasswordPlaceholder')}
-                className="mt-1"
-              />
-            </label>
-            <label className="block text-xs text-[var(--color-text-1)]">
-              <span>{t('system.security.confirmInitialPassword')}</span>
-              <Input.Password
-                value={confirmInitialPassword}
-                onChange={(event) => onConfirmInitialPasswordChange(event.target.value)}
-                disabled={disabled || loading}
-                autoComplete="new-password"
-                placeholder={t('system.security.confirmInitialPasswordPlaceholder')}
-                className="mt-1"
-              />
-            </label>
-            <div className="text-xs text-[var(--color-text-2)]">{t('system.security.initialPasswordOfflineNotice')}</div>
+            {initialPasswordEmailChannelSelector}
+            {(initialPasswordRequired || !initialPasswordConfigured || initialPasswordEditing) && (
+              <>
+                {initialPasswordRequired && (
+                  <div className="flex">
+                    <span className="text-xs mr-4 w-40 shrink-0" />
+                    <div className="text-xs text-[var(--color-warning)]">{t('system.security.initialPasswordReentryRequired')}</div>
+                  </div>
+                )}
+                <div className="flex items-center">
+                  <span className="text-xs mr-4 w-40 shrink-0">{t('system.security.initialPassword')}</span>
+                  <Input.Password
+                    style={{ width: 288 }}
+                    value={initialPassword}
+                    onChange={(event) => onInitialPasswordChange(event.target.value)}
+                    disabled={disabled || loading}
+                    autoComplete="new-password"
+                    placeholder={t('system.security.initialPasswordPlaceholder')}
+                  />
+                </div>
+                <div className="flex items-center">
+                  <span className="text-xs mr-4 w-40 shrink-0">{t('system.security.confirmInitialPassword')}</span>
+                  <Input.Password
+                    style={{ width: 288 }}
+                    value={confirmInitialPassword}
+                    onChange={(event) => onConfirmInitialPasswordChange(event.target.value)}
+                    disabled={disabled || loading}
+                    autoComplete="new-password"
+                    placeholder={t('system.security.confirmInitialPasswordPlaceholder')}
+                  />
+                </div>
+                <div className="flex">
+                  <span className="text-xs mr-4 w-40 shrink-0" />
+                  <p className="text-xs text-[var(--color-text-2)] leading-5">
+                    {t('system.security.initialPasswordDeliveryNotice')}
+                  </p>
+                </div>
+              </>
+            )}
+          </>
+        )}
+
+        {initialPasswordMode === 'none' && (
+          <div className="flex">
+            <span className="text-xs mr-4 w-40 shrink-0" />
+            <p className="text-xs text-[var(--color-text-2)] leading-5">
+              {t('system.security.initialPasswordNoneNotice')}
+            </p>
           </div>
         )}
       </section>
 
       <div className="mt-6">
         <PermissionWrapper requiredPermissions={['Edit']}>
-          <Button 
-            type="primary" 
+          <Button
+            type="primary"
             onClick={onSave}
             loading={loading}
           >

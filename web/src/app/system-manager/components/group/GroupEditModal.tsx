@@ -40,6 +40,7 @@ interface ModalConfig {
   groupId: string | number;
   groupName?: string;
   roleIds?: number[];
+  canRename?: boolean;
 }
 
 export interface GroupModalRef {
@@ -66,6 +67,7 @@ const GroupEditModal = forwardRef<GroupModalRef, ModalProps>(({
   const [inheritedRoleIds, setInheritedRoleIds] = useState<number[]>([]);
   const [inheritedRoleSourceMap, setInheritedRoleSourceMap] = useState<Record<string, string>>({});
   const [allowInheritRoles, setAllowInheritRoles] = useState(false);
+  const [canRename, setCanRename] = useState(true);
 
   const { updateGroup, getGroupDetailWithRoles } = useGroupApi();
   const { getRoleList } = useUserApi();
@@ -130,11 +132,12 @@ const GroupEditModal = forwardRef<GroupModalRef, ModalProps>(({
   };
 
   useImperativeHandle(ref, () => ({
-    showModal: ({ type, groupId, groupName }) => {
+    showModal: ({ type, groupId, groupName, canRename: nextCanRename = true }) => {
       setVisible(true);
       setCurrentGroupId(groupId);
       setCurrentGroupName(groupName || '');
       setAllowInheritRoles(false);
+      setCanRename(nextCanRename);
       formRef.current?.resetFields();
 
       if (type === 'edit') {
@@ -213,6 +216,7 @@ const GroupEditModal = forwardRef<GroupModalRef, ModalProps>(({
         >
           <Input
             placeholder={`${t('common.inputMsg')}${t('system.group.form.name')}`}
+            disabled={!canRename}
           />
         </Form.Item>
 

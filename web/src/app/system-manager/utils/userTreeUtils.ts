@@ -10,6 +10,8 @@ export interface ExtendedTreeDataNode extends TreeDataNode {
   hasAuth?: boolean;
   isVirtual?: boolean;
   roleIds?: number[];
+  syncSource?: number | null;
+  parentId?: number;
   children?: ExtendedTreeDataNode[];
 }
 
@@ -25,6 +27,8 @@ export function convertGroupsToTreeData(groups: OriginalGroup[]): ExtendedTreeDa
       hasAuth: group.hasAuth,
       isVirtual: currentIsVirtual,
       roleIds: group.role_ids || [],
+      syncSource: group.sync_source ?? null,
+      parentId: (group as OriginalGroup & { parentId?: number }).parentId,
       children: group.subGroups ? convertGroupsToTreeData(group.subGroups) : [],
     };
   });

@@ -14,7 +14,7 @@ from apps.mlops.utils import group_scope as gs
 pytestmark = [pytest.mark.django_db, pytest.mark.integration]
 
 
-def _req(team=None, superuser=False):
+def _req(team=None, superuser=False, group_list=None):
     request = APIRequestFactory().get("/")
     if team is not None:
         request._api_current_team = team
@@ -43,7 +43,9 @@ def test_filter_queryset_by_parent_team_scopes_to_current_team():
     ClassificationTrainData.objects.create(name="drop", dataset=ds2, is_train_data=True)
 
     qs = ClassificationTrainData.objects.all()
-    filtered = gs.filter_queryset_by_parent_team(qs, _req(team="1"), "dataset__team")
+    filtered = gs.filter_queryset_by_parent_team(
+        qs, _req(team="1", group_list=[1]), "dataset__team"
+    )
     ids = list(filtered.values_list("id", flat=True))
     assert ids == [keep.id]
 
@@ -52,6 +54,6 @@ def test_filter_queryset_by_parent_team_root_team_lookup():
     ClassificationDataset.objects.create(name="root1", description="", team=[1])
     ClassificationDataset.objects.create(name="root2", description="", team=[2])
     qs = ClassificationDataset.objects.all()
-    filtered = gs.filter_queryset_by_parent_team(qs, _req(team="2"), "team")
+    filtered = gs.filter_queryset_by_parent_team(qs, _req(team="2", group_list=[2]), "team")
     names = list(filtered.values_list("name", flat=True))
     assert names == ["root2"]
