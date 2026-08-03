@@ -12,6 +12,13 @@
   维度仍分别保留 MonitorEvent，并关联到该 Alert，避免丢失审计证据。
 - 聚合后的无数据 Alert 只有在该监控实例的全部策略实例基准均恢复数据后才
   自动恢复；部分维度恢复时 Alert 保持活动。
+- 用户页面删除、自动发现超时清理和历史墓碑回收都通过统一实例移除入口；
+  实例物理删除前必须把关联的活动阈值/无数据 Alert 置为 `closed`，并清理该
+  实例的策略基准，避免留下活动孤儿告警或下一轮重新打开。
+- 自动发现仅把实例标记为 `is_active=False` 时不关闭告警；VictoriaMetrics
+  查询失败也不得触发实例移除或告警关闭。
+- 实例移除只关闭活动 Alert，不物理删除历史 Alert、MonitorEvent 和快照；
+  关闭原因区分页面人工删除与自动清理，生命周期通知在数据库事务提交后发送。
 
 ## 兼容性
 
@@ -25,3 +32,6 @@
 - `server/apps/monitor/tests/test_policy_scan_event_alert_manager.py`
 - `server/apps/monitor/tests/test_policy_scan_metric_query_service.py`
 - `server/apps/monitor/tests/test_policy_scan_scanner.py`
+- `server/apps/monitor/tests/test_monitor_instance_removal_service.py`
+- `server/apps/monitor/tests/test_monitor_instance_view.py`
+- `server/apps/monitor/tests/test_sync_instance_service.py`

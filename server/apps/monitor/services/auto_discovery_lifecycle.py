@@ -88,7 +88,11 @@ class AutoDiscoveryLifecycleService:
 
         for offset in range(0, len(removal_ids), MonitorInstanceRemovalService.MAX_BATCH_SIZE):
             batch = removal_ids[offset:offset + MonitorInstanceRemovalService.MAX_BATCH_SIZE]
-            MonitorInstanceRemovalService.remove(batch)
+            MonitorInstanceRemovalService.remove(
+                batch,
+                operator="system",
+                reason="auto_cleanup_instance_deleted",
+            )
         logger.info(
             "监控实例自动发现生命周期同步完成: 成功对象数=%s, 发现实例数=%s, 清理实例数=%s",
             len(successful_monitor_object_ids),
