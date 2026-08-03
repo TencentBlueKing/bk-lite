@@ -312,8 +312,9 @@ def get_cmdb_module_data(module, child_module, page, page_size, group_id, user_i
         instances = CollectModels.objects.filter(
             task_type=child_module,
             is_system=False,
-        ).values("id", "name", "model_id")[start:end]
+        )
         count = instances.count()
+        instances = instances.values("id", "name", "model_id")[start:end]
         queryset = [{"id": str(i["id"]), "name": f"{i['model_id']}_{i['name']}"} for i in instances]
     elif module == PERMISSION_INSTANCES:
         # 构建真实权限 map：根据调用方传入的 user_info 查询用户在目标模型上的权限范围
