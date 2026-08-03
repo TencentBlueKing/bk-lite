@@ -4,9 +4,9 @@ import re
 
 from rest_framework import serializers
 
-from apps.core.utils.serializers import TeamSerializer
 from apps.patch_mgmt.constants import PackageManagerType
 from apps.patch_mgmt.models import LinuxPatchDetail, Patch, WindowsPatchDetail
+from apps.patch_mgmt.serializers.permission import PatchPermissionSerializer
 from apps.patch_mgmt.utils.i18n import serializer_message
 
 
@@ -36,7 +36,7 @@ class LinuxPatchDetailSerializer(serializers.ModelSerializer):
         fields = ["pkg_name", "pkg_version", "distro_name", "os_version_range", "architectures", "repo_type"]
 
 
-class PatchListSerializer(TeamSerializer):
+class PatchListSerializer(PatchPermissionSerializer):
     """补丁列表序列化器
 
     列表即返回 windows_detail/linux_detail（KB/产品/架构、包版本/系统版本/repo 类型等），
@@ -54,6 +54,7 @@ class PatchListSerializer(TeamSerializer):
     source_type = serializers.SerializerMethodField()
     baseline_requirement_count = serializers.SerializerMethodField()
     package_info = serializers.SerializerMethodField()
+    permission_key = "patch"
 
     class Meta:
         model = Patch
@@ -79,6 +80,7 @@ class PatchListSerializer(TeamSerializer):
             "last_synced_at",
             "team",
             "team_name",
+            "permission",
             "created_by",
             "created_at",
             "updated_at",
@@ -170,3 +172,16 @@ class PatchDetailSerializer(PatchListSerializer):
             "updated_by",
             "updated_at",
         ]
+
+
+class PatchBatchDeleteSerializer(serializers.Serializer):
+    """批量删除补丁入参。"""
+
+    ids = serializers.ListField(
+        child=serializers.IntegerField(min_value=1),
+        allow_empty=False,
+        max_length=500,
+    )
+
+    def validate_ids(self, value):
+        return list(dict.fromkeys(value))

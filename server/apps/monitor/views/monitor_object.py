@@ -315,11 +315,12 @@ class MonitorObjectViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(data=data)
         serializer.is_valid(raise_exception=True)
         parent_obj = serializer.save()
-        if "cleanup_policy" in data or "cleanup_timeout_days" in data:
+        if {"cleanup_policy", "cleanup_timeout_days", "cleanup_timeout_value", "cleanup_timeout_unit"} & set(data):
             parent_obj = MonitorObjectCleanupPolicyService.configure(
                 parent_obj,
                 policy=parent_obj.cleanup_policy,
-                timeout_days=parent_obj.cleanup_timeout_days,
+                timeout_value=parent_obj.cleanup_timeout_days,
+                timeout_unit=parent_obj.cleanup_timeout_unit,
             )
 
         # 批量创建子对象
@@ -356,7 +357,12 @@ class MonitorObjectViewSet(viewsets.ModelViewSet):
         instance = self.get_object()
         data = request.data.copy()
         children = data.pop("children", None)
-        cleanup_keys = {"cleanup_policy", "cleanup_timeout_days"}
+        cleanup_keys = {
+            "cleanup_policy",
+            "cleanup_timeout_days",
+            "cleanup_timeout_value",
+            "cleanup_timeout_unit",
+        }
         requested_cleanup = cleanup_keys & set(data.keys())
 
         if instance.is_builtin:
@@ -364,16 +370,25 @@ class MonitorObjectViewSet(viewsets.ModelViewSet):
             if children is not None or disallowed_keys:
                 raise ValidationAppException("内置监控对象只能修改清理策略")
             policy = data.get("cleanup_policy", instance.cleanup_policy)
-            timeout_days = data.get("cleanup_timeout_days", instance.cleanup_timeout_days)
+            timeout_value = data.get(
+                "cleanup_timeout_value",
+                data.get("cleanup_timeout_days", instance.cleanup_timeout_days),
+            )
+            timeout_unit = data.get("cleanup_timeout_unit", instance.cleanup_timeout_unit)
             instance = MonitorObjectCleanupPolicyService.configure(
                 instance,
                 policy=policy,
-                timeout_days=timeout_days,
+                timeout_value=timeout_value,
+                timeout_unit=timeout_unit,
             )
             return WebUtils.response_success(self.get_serializer(instance).data)
 
         cleanup_policy = data.pop("cleanup_policy", instance.cleanup_policy)
-        cleanup_timeout_days = data.pop("cleanup_timeout_days", instance.cleanup_timeout_days)
+        cleanup_timeout_value = data.pop(
+            "cleanup_timeout_value",
+            data.pop("cleanup_timeout_days", instance.cleanup_timeout_days),
+        )
+        cleanup_timeout_unit = data.pop("cleanup_timeout_unit", instance.cleanup_timeout_unit)
 
         # 父对象自动补充 instance_id_keys
         data["instance_id_keys"] = resolve_monitor_object_instance_id_keys(
@@ -395,7 +410,8 @@ class MonitorObjectViewSet(viewsets.ModelViewSet):
                 instance = MonitorObjectCleanupPolicyService.configure(
                     instance,
                     policy=cleanup_policy,
-                    timeout_days=cleanup_timeout_days,
+                    timeout_value=cleanup_timeout_value,
+                    timeout_unit=cleanup_timeout_unit,
                 )
 
         # 处理子对象

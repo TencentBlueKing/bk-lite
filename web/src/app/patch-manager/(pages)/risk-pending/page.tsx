@@ -16,6 +16,7 @@ import OperateDrawer from '@/app/patch-manager/components/operate-drawer';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import { useSearchParams } from 'next/navigation';
 import { useTranslation } from '@/utils/i18n';
+import usePermissions from '@/hooks/usePermissions';
 
 const { RangePicker } = DatePicker;
 
@@ -42,6 +43,8 @@ interface RiskItem {
   compliance: Compliance;
   remediation: Remediation;
   inOtherTask: boolean;
+  can_remediate?: boolean;
+  can_reboot?: boolean;
 }
 
 interface RiskRow {
@@ -85,6 +88,7 @@ const InstallImpactColumnTitle = () => {
 
 export default function RiskPendingPage() {
   const { t } = useTranslation();
+  const { hasPermission } = usePermissions();
   const searchParams = useSearchParams();
   const routeHostId = Number(searchParams.get('host_id')) || undefined;
   const routeHostName = searchParams.get('host_name') || undefined;
@@ -190,13 +194,15 @@ export default function RiskPendingPage() {
     return row.patch || row.host || row.baseline || '';
   };
 
-  const canRemediate = (items: RiskItem[]) => items.some((i) => (i.remediation === 'unplanned' || i.remediation === 'failed') && !i.inOtherTask && i.compliance !== 'invalidated');
+  const hasRemediableState = (items: RiskItem[]) => items.some((i) => (i.remediation === 'unplanned' || i.remediation === 'failed') && !i.inOtherTask && i.compliance !== 'invalidated');
+  const canRemediate = (items: RiskItem[]) => items.some((i) => i.can_remediate && (i.remediation === 'unplanned' || i.remediation === 'failed') && !i.inOtherTask && i.compliance !== 'invalidated');
   const canReboot = (items: RiskItem[]) => {
     const hostIds = new Set(items.map((i) => i.host_id));
     const pendingRebootHostIds = new Set(
       items.filter((i) => i.remediation === 'pending_reboot').map((i) => i.host_id),
     );
-    return hostIds.size > 0 && Array.from(hostIds).every((hostId) => pendingRebootHostIds.has(hostId));
+    const operableHostIds = new Set(items.filter((i) => i.can_reboot).map((i) => i.host_id));
+    return hostIds.size > 0 && Array.from(hostIds).every((hostId) => pendingRebootHostIds.has(hostId) && operableHostIds.has(hostId));
   };
 
   const openScope = (rows?: SelectedRow[]) => {
@@ -231,17 +237,18 @@ export default function RiskPendingPage() {
   const opCell = (r: unknown) => {
     const row = r as { key: string; items?: RiskItem[] };
     const items = row.items || [];
+    const hasRemediable = hasRemediableState(items);
     const remediable = canRemediate(items);
     const rebootable = canReboot(items);
     return (
       <Space size={4}>
-        {remediable ? (
-          <PermissionWrapper requiredPermissions={['Add']}><Button type="link" size="small" onClick={() => openScope([row])}>{t('patchManager.risk.remediate')}</Button></PermissionWrapper>
+        {hasRemediable ? (
+          <PermissionWrapper requiredPermissions={['Add']} instPermissions={remediable ? ['Operate'] : []}><Button type="link" size="small" onClick={() => openScope([row])}>{t('patchManager.risk.remediate')}</Button></PermissionWrapper>
         ) : (
           <Tooltip title={t('patchManager.risk.noRemediableItems')}><Button type="link" size="small" disabled>{t('patchManager.risk.remediate')}</Button></Tooltip>
         )}
         {rebootable && (
-          <PermissionWrapper requiredPermissions={['Add']}><Button type="link" size="small" onClick={() => openReboot([row])}>{t('patchManager.risk.reboot')}</Button></PermissionWrapper>
+          <PermissionWrapper requiredPermissions={['Add']} instPermissions={rebootable ? ['Operate'] : []}><Button type="link" size="small" onClick={() => openReboot([row])}>{t('patchManager.risk.reboot')}</Button></PermissionWrapper>
         )}
         <Button type="link" size="small" onClick={() => setDetailRecord({ name: getRowName(r), items })}>{t('patchManager.risk.details')}</Button>
       </Space>
@@ -363,7 +370,7 @@ export default function RiskPendingPage() {
     const items: ScopeItem[] = [];
     rows.forEach((row) => {
       (row.items || []).forEach((it: RiskItem) => {
-        const disabled = it.inOtherTask || it.compliance === 'invalidated' || (it.remediation !== 'unplanned' && it.remediation !== 'failed');
+        const disabled = !it.can_remediate || it.inOtherTask || it.compliance === 'invalidated' || (it.remediation !== 'unplanned' && it.remediation !== 'failed');
         const sevDisplay = it.patch_severity || 'unspecified';
         const status = it.remediation === 'failed' ? 'failed' : it.inOtherTask ? 'scheduled' : 'unplanned';
         const patchLabel = it.kb_number || it.pkg_name || it.patch_title || it.patch || t('patchManager.risk.unknownPatch');
@@ -583,12 +590,18 @@ export default function RiskPendingPage() {
         <Segmented options={(['host', 'patch', 'baseline'] as const).map((value) => ({ label: t(`patchManager.risk.view.${value}`), value }))} value={view} onChange={(v) => { setView(v as typeof view); setSelected([]); setFilters({}); setSearchInputs({}); }} />
         <Space>
           <Button icon={<ExportOutlined />} onClick={handleExportAll}>{t('patchManager.risk.exportAll')}</Button>
-          <PermissionWrapper requiredPermissions={['Add']}><Dropdown
+          <Dropdown
             disabled={selected.length === 0}
             menu={{
               items: [
                 { key: 'export', label: t('patchManager.risk.exportSelected'), icon: <ExportOutlined />, onClick: handleExportSelected },
-                { key: 'remediate', label: t('patchManager.risk.oneClickRemediation'), icon: <ToolOutlined />, disabled: !batchCanRemediate, onClick: () => openScope() },
+                {
+                  key: 'remediate',
+                  label: <PermissionWrapper requiredPermissions={['Add']} instPermissions={batchCanRemediate ? ['Operate'] : []}>{t('patchManager.risk.oneClickRemediation')}</PermissionWrapper>,
+                  icon: <ToolOutlined />,
+                  disabled: !batchCanRemediate || !hasPermission(['Add']),
+                  onClick: () => openScope(),
+                },
                 {
                   key: 'reboot',
                   label: (
@@ -596,11 +609,11 @@ export default function RiskPendingPage() {
                       title={!batchCanReboot ? t('patchManager.risk.rebootSelectionBlocked') : undefined}
                       zIndex={10001}
                     >
-                      <span style={{ display: 'block' }}>{t('patchManager.risk.oneClickReboot')}</span>
+                      <PermissionWrapper requiredPermissions={['Add']} instPermissions={batchCanReboot ? ['Operate'] : []}><span style={{ display: 'block' }}>{t('patchManager.risk.oneClickReboot')}</span></PermissionWrapper>
                     </Tooltip>
                   ),
                   icon: <ReloadOutlined />,
-                  disabled: !batchCanReboot,
+                  disabled: !batchCanReboot || !hasPermission(['Add']),
                   onClick: () => openReboot(selectedRows),
                 },
               ],
@@ -609,7 +622,7 @@ export default function RiskPendingPage() {
             <Button type="primary" icon={<ToolOutlined />}>
               {t('patchManager.risk.batchActions')}{selected.length ? `(${selected.length})` : ''} <DownOutlined />
             </Button>
-          </Dropdown></PermissionWrapper>
+          </Dropdown>
         </Space>
       </div>
       <Row gutter={[12, 12]} style={{ marginBottom: 12 }} align="middle">

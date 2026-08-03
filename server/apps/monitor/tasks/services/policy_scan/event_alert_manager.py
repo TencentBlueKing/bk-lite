@@ -89,12 +89,21 @@ class EventAlertManager:
         existing_alert_events = []
 
         active_alerts_map = {
-            self._build_alert_key(self._get_alert_metric_instance_id(alert), alert.alert_type): alert for alert in self.active_alerts
+            self._build_alert_key(
+                self._get_alert_metric_instance_id(alert),
+                alert.alert_type,
+                alert.monitor_instance_id,
+            ): alert
+            for alert in self.active_alerts
         }
 
         for event in events:
             metric_instance_id = event.get("metric_instance_id", "")
-            alert_key = self._build_alert_key(metric_instance_id, self._get_event_alert_type(event))
+            alert_key = self._build_alert_key(
+                metric_instance_id,
+                self._get_event_alert_type(event),
+                event.get("monitor_instance_id", ""),
+            )
             if alert_key in active_alerts_map:
                 alert = active_alerts_map[alert_key]
                 event["alert_id"] = alert.id
@@ -109,19 +118,27 @@ class EventAlertManager:
         # 「有告警无事件」的半截数据；通知改到事务提交后（on_commit）发出，保证通知永不早于事件落库。
         with transaction.atomic():
             if new_alert_events:
-                new_alerts = self._create_alerts_from_events(new_alert_events)
-
-                if len(new_alerts) != len(new_alert_events):
-                    logger.error(f"Alert creation mismatch: expected {len(new_alert_events)}, got {len(new_alerts)} for policy {self.policy.id}")
-
-                alert_map = {self._build_alert_key(alert.metric_instance_id, alert.alert_type): alert for alert in new_alerts}
+                representative_events_by_key = {}
                 for event in new_alert_events:
-                    alert = alert_map.get(
-                        self._build_alert_key(
-                            event.get("metric_instance_id", ""),
-                            self._get_event_alert_type(event),
-                        )
+                    representative_events_by_key.setdefault(
+                        self._get_event_alert_key(event), event
                     )
+                representative_events = list(representative_events_by_key.values())
+                new_alerts = self._create_alerts_from_events(representative_events)
+
+                if len(new_alerts) != len(representative_events):
+                    logger.error(f"Alert creation mismatch: expected {len(representative_events)}, got {len(new_alerts)} for policy {self.policy.id}")
+
+                alert_map = {
+                    self._build_alert_key(
+                        alert.metric_instance_id,
+                        alert.alert_type,
+                        alert.monitor_instance_id,
+                    ): alert
+                    for alert in new_alerts
+                }
+                for event in new_alert_events:
+                    alert = alert_map.get(self._get_event_alert_key(event))
                     if alert:
                         event["alert_id"] = alert.id
                         event["_alert_obj"] = alert
@@ -144,7 +161,7 @@ class EventAlertManager:
 
             logger.info(
                 f"Created events and alerts: "
-                f"{len(new_alert_events)} new alerts, "
+                f"{len(new_alerts)} new alerts, "
                 f"{len(existing_alert_events)} existing alerts, "
                 f"{len(event_objs)} events created"
             )
@@ -173,8 +190,25 @@ class EventAlertManager:
     def _get_event_alert_type(self, event) -> str:
         return "no_data" if event.get("level") == "no_data" else "alert"
 
-    def _build_alert_key(self, metric_instance_id: str, alert_type: str) -> tuple:
-        return metric_instance_id, alert_type
+    def _build_alert_key(
+        self,
+        metric_instance_id: str,
+        alert_type: str,
+        monitor_instance_id: str = "",
+    ) -> tuple:
+        identity = (
+            monitor_instance_id
+            if alert_type == "no_data" and monitor_instance_id
+            else metric_instance_id
+        )
+        return identity, alert_type
+
+    def _get_event_alert_key(self, event) -> tuple:
+        return self._build_alert_key(
+            event.get("metric_instance_id", ""),
+            self._get_event_alert_type(event),
+            event.get("monitor_instance_id", ""),
+        )
 
     def _create_alerts_from_events(self, events):
         if not events:

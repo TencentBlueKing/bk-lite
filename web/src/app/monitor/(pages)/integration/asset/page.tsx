@@ -504,7 +504,9 @@ const Asset = () => {
     try {
       await refreshAfterDeletion(deletedCount);
     } catch {
-      message.warning(t('monitor.integrations.assetDeleteRefreshFailed'));
+      message.warning(
+        `${t('common.successfullyDeleted')} ${t('common.fetchFailed')}`
+      );
     }
   };
 
@@ -516,11 +518,7 @@ const Asset = () => {
     };
     await deleteMonitorInstance(data);
     setSelectedRowKeys([]);
-    message.success(
-      t('monitor.integrations.assetBatchDeleteSuccess', undefined, {
-        count: instanceIds.length
-      })
-    );
+    message.success(t('common.successfullyDeleted'));
     await refreshAfterDeletionSafely(instanceIds.length);
   };
 
@@ -530,11 +528,9 @@ const Asset = () => {
 
     modal.confirm({
       title: t('common.batchDelete'),
-      content: t(
-        'monitor.integrations.assetBatchDeleteConfirm',
-        undefined,
-        { count: selectedCount }
-      ),
+      content: `${t('common.selected')} ${selectedCount} ${t(
+        'common.items'
+      )} · ${t('common.deleteContent')}`,
       centered: true,
       okText: t('common.confirm'),
       cancelText: t('common.cancel'),

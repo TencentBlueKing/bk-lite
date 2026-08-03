@@ -14,7 +14,7 @@ import {
 import useApiClient from '@/utils/request';
 import { useTranslation } from '@/utils/i18n';
 import Icon from '@/components/icon';
-import { getRandomColor, getRecentTimeRange } from '@/app/log/utils/common';
+import { getRecentTimeRange } from '@/app/log/utils/common';
 import {
   ColumnItem,
   ModalRef,
@@ -117,11 +117,6 @@ const Alert: React.FC = () => {
       key: 'alert_name'
     },
     {
-      title: t('log.integration.collectType'),
-      dataIndex: 'collect_type_name',
-      key: 'collect_type_name'
-    },
-    {
       title: t('log.event.alertType'),
       dataIndex: 'alert_type',
       key: 'alert_type',
@@ -153,31 +148,6 @@ const Alert: React.FC = () => {
       render: (_, record) => (
         <>{t(`log.event.${record.notice ? 'notified' : 'unnotified'}`)}</>
       )
-    },
-    {
-      title: t('common.operator'),
-      dataIndex: 'operator',
-      key: 'operator',
-      render: (_, { operator }) => {
-        return operator ? (
-          <div className="column-user" title={operator}>
-            <span
-              className="user-avatar"
-              style={{ background: getRandomColor() }}
-            >
-              {operator.slice(0, 1).toLocaleUpperCase()}
-            </span>
-            <span className="user-name">
-              <EllipsisWithTooltip
-                className="w-full overflow-hidden text-ellipsis whitespace-nowrap"
-                text={operator}
-              />
-            </span>
-          </div>
-        ) : (
-          <>--</>
-        );
-      }
     },
     {
       title: t('common.action'),

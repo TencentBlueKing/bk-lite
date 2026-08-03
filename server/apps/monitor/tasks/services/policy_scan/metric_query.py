@@ -9,7 +9,7 @@ from apps.monitor.expression.conditions import compile_filter_to_query
 from apps.monitor.expression.query import build_formula_query
 from apps.monitor.models import Metric
 from apps.monitor.tasks.utils.policy_methods import METHOD, period_to_seconds, query_formula_policy_metrics
-from apps.monitor.utils.dimension import parse_instance_id
+from apps.monitor.utils.dimension import parse_instance_id, ScopedInstanceMatcher
 from apps.monitor.utils.victoriametrics_api import VictoriaMetricsAPI
 from apps.monitor.utils.unit_converter import UnitConverter
 from apps.core.logger import celery_logger as logger
@@ -47,6 +47,11 @@ class MetricQueryService:
         self.instance_id_keys = None
         self.metric = None
         self.compiled_formula = None
+        self._scoped_instance_matcher = ScopedInstanceMatcher(
+            getattr(getattr(self.policy, "monitor_object", None), "instance_id_keys", None)
+            or [],
+            self.instances_map,
+        )
         # 单位转换配置
         self._unit_conversion_enabled = bool(
             self.policy.metric_unit
@@ -401,6 +406,12 @@ class MetricQueryService:
             return ""
 
         group_by_keys = group_by_keys or self.get_result_group_by()
+        scoped_instance_id = self._scoped_instance_matcher.resolve(
+            instance_id_tuple, group_by_keys
+        )
+        if scoped_instance_id:
+            return scoped_instance_id
+
         monitor_key = self.get_monitor_instance_id_key()
         if monitor_key in group_by_keys:
             index = group_by_keys.index(monitor_key)

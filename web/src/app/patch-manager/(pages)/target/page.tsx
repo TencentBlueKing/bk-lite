@@ -40,6 +40,7 @@ interface HostRow {
   hasActiveTask?: boolean;
   hasPendingReboot?: boolean;
   complianceFailureReason?: string;
+  permission?: string[];
 }
 
 const CONN_TAG: Record<HostRow['connectivity'], { color: string }> = {
@@ -105,6 +106,7 @@ function mapTargetToRow(item: PatchTargetItem): HostRow {
     hasActiveTask: item.has_active_task ?? false,
     hasPendingReboot: item.has_pending_reboot ?? false,
     complianceFailureReason: item.compliance_failure_reason || '',
+    permission: item.permission,
   };
 }
 
@@ -372,7 +374,7 @@ export default function TargetPage() {
     if (selectedKeys.length === 0) return true;
     return selectedKeys.some((key) => {
       const row = rows.find((r) => r.key === String(key));
-      return !!row && (row.hasActiveTask || row.hasPendingReboot);
+      return !!row && (row.hasActiveTask || row.hasPendingReboot || !row.permission?.includes('Operate'));
     });
   }, [selectedKeys, rows]);
 
@@ -668,7 +670,7 @@ export default function TargetPage() {
         return (
           <Space size={10}>
             {isManual ? (
-              <PermissionWrapper requiredPermissions={['Edit']}><a style={{ color: 'var(--color-primary, #1677ff)' }} onClick={() => {
+              <PermissionWrapper requiredPermissions={['Edit']} instPermissions={r.permission}><a style={{ color: 'var(--color-primary, #1677ff)' }} onClick={() => {
                 const target = data.find((t) => String(t.id) === r.key);
                 if (!target) return;
                 openManualTarget(target);
@@ -678,7 +680,7 @@ export default function TargetPage() {
                 <span style={{ color: 'var(--color-text-4, #bfbfbf)', cursor: 'not-allowed' }}><EditOutlined /> {t('patchManager.edit')}</span>
               </Tooltip>
             )}
-            <PermissionWrapper requiredPermissions={['Edit']}><a style={{ color: 'var(--color-primary, #1677ff)' }} onClick={async () => {
+            <PermissionWrapper requiredPermissions={['Edit']} instPermissions={r.permission}><a style={{ color: 'var(--color-primary, #1677ff)' }} onClick={async () => {
               setActionLoading(true);
               try {
                 const result = await api.checkPatchTargetConnectivity(Number(r.key));
@@ -698,7 +700,7 @@ export default function TargetPage() {
                 <span style={{ color: 'var(--color-text-4, #bfbfbf)', cursor: 'not-allowed' }}>{t('patchManager.targetPage.bindBaseline')}</span>
               </Tooltip>
             ) : (
-              <PermissionWrapper requiredPermissions={['Edit']}><a style={{ color: 'var(--color-primary, #1677ff)' }} onClick={() => { setSelectedKeys([r.key]); setBindBaseline(r.baseline_id ?? undefined); setBindOpen(true); }}>
+              <PermissionWrapper requiredPermissions={['Edit']} permissionPath="/patch-manager/baseline" instPermissions={r.permission}><a style={{ color: 'var(--color-primary, #1677ff)' }} onClick={() => { setSelectedKeys([r.key]); setBindBaseline(r.baseline_id ?? undefined); setBindOpen(true); }}>
                 {t('patchManager.targetPage.bindBaseline')}
               </a></PermissionWrapper>
             )}
@@ -707,7 +709,7 @@ export default function TargetPage() {
                 <span style={{ color: 'var(--color-text-4, #bfbfbf)', cursor: 'not-allowed' }}>{t('patchManager.dashboard.assessNow')}</span>
               </Tooltip>
             ) : (
-              <PermissionWrapper requiredPermissions={['Add']}><a style={{ color: 'var(--color-primary, #1677ff)' }} onClick={async () => {
+              <PermissionWrapper requiredPermissions={['Add']} permissionPath="/patch-manager/risk-execution" instPermissions={r.permission}><a style={{ color: 'var(--color-primary, #1677ff)' }} onClick={async () => {
                 setActionLoading(true);
                 try {
                   await api.createGovernanceTask({
@@ -729,7 +731,7 @@ export default function TargetPage() {
                 <span style={{ color: 'var(--color-text-4, #bfbfbf)', cursor: 'not-allowed' }}>{t('patchManager.delete')}</span>
               </Tooltip>
             ) : (
-              <PermissionWrapper requiredPermissions={['Delete']}><Popconfirm title={t('patchManager.targetPage.deleteConfirm')} onConfirm={() => handleDelete(r.key)} okText={t('patchManager.delete')} cancelText={t('patchManager.cancel')}>
+              <PermissionWrapper requiredPermissions={['Delete']} instPermissions={r.permission}><Popconfirm title={t('patchManager.targetPage.deleteConfirm')} onConfirm={() => handleDelete(r.key)} okText={t('patchManager.delete')} cancelText={t('patchManager.cancel')}>
                 <a style={{ color: '#ff4d4f' }}>{t('patchManager.delete')}</a>
               </Popconfirm></PermissionWrapper>
             )}
@@ -790,7 +792,7 @@ export default function TargetPage() {
                   : ''
               }
             >
-              <PermissionWrapper requiredPermissions={['Edit']}><Button icon={<LinkOutlined />} disabled={bulkBindDisabled} onClick={() => { setBindBaseline(undefined); setBindOpen(true); }}>
+              <PermissionWrapper requiredPermissions={['Edit']} permissionPath="/patch-manager/baseline"><Button icon={<LinkOutlined />} disabled={bulkBindDisabled} onClick={() => { setBindBaseline(undefined); setBindOpen(true); }}>
                 {t('patchManager.targetPage.bulkBind')}{selectedKeys.length ? `(${selectedKeys.length})` : ''}
               </Button></PermissionWrapper>
             </Tooltip>
@@ -812,7 +814,12 @@ export default function TargetPage() {
           dataSource={rows}
           rowKey="key"
           loading={listLoading || actionLoading}
-          rowSelection={{ type: 'checkbox', selectedRowKeys: selectedKeys, onChange: setSelectedKeys }}
+          rowSelection={{
+            type: 'checkbox',
+            selectedRowKeys: selectedKeys,
+            onChange: setSelectedKeys,
+            getCheckboxProps: (record) => ({ disabled: !record.permission?.includes('Operate') }),
+          }}
           scroll={{ x: 1280 }}
           pagination={{
             current: pagination.current,
@@ -826,13 +833,13 @@ export default function TargetPage() {
         />
       </div>
 
-      <Modal title={t('patchManager.targetPage.bulkBind')} open={bindOpen} onCancel={() => setBindOpen(false)} onOk={handleBind} okText={t('patchManager.confirm')} cancelText={t('patchManager.cancel')} confirmLoading={actionLoading}>
+      <Modal title={t('patchManager.targetPage.bulkBind')} open={bindOpen} onCancel={() => setBindOpen(false)} onOk={handleBind} okText={t('patchManager.confirm')} cancelText={t('patchManager.cancel')} confirmLoading={actionLoading} okButtonProps={{ disabled: !bindBaseline || !baselines.find((item) => item.id === bindBaseline)?.permission?.includes('Operate') }}>
         <p style={{ color: 'var(--color-text-2, #595959)' }}>{t('patchManager.targetPage.bindSelection', undefined, { count: selectedKeys.length })}</p>
         <Select
           style={{ width: '100%' }}
           placeholder={t('patchManager.targetPage.selectBaseline')}
           virtual
-          options={baselines.map((b) => ({ label: b.name, value: b.id }))}
+          options={baselines.map((b) => ({ label: b.name, value: b.id, disabled: !b.permission?.includes('Operate') }))}
           value={bindBaseline}
           onChange={setBindBaseline}
         />
@@ -892,10 +899,10 @@ export default function TargetPage() {
               setCred('password');
               setConnectivityResult(undefined);
             }}>{t('patchManager.cancel')}</Button>
-            <PermissionWrapper requiredPermissions={[editingTarget ? 'Edit' : 'Add']}>
+            <PermissionWrapper requiredPermissions={[editingTarget ? 'Edit' : 'Add']} instPermissions={editingTarget?.permission}>
               <Button loading={testingConnectivity} onClick={handleFormConnectivityTest}>{t('patchManager.testConnection')}</Button>
             </PermissionWrapper>
-            <PermissionWrapper requiredPermissions={[editingTarget ? 'Edit' : 'Add']}>
+            <PermissionWrapper requiredPermissions={[editingTarget ? 'Edit' : 'Add']} instPermissions={editingTarget?.permission}>
               <Button type="primary" loading={actionLoading} onClick={handleCreate}>{editingTarget ? t('patchManager.save') : t('patchManager.targetPage.create')}</Button>
             </PermissionWrapper>
           </Space>
@@ -1036,7 +1043,9 @@ export default function TargetPage() {
               nodeRequestCoordinatorRef.current.invalidate();
               importedNodeRequestCoordinatorRef.current.invalidate();
             }}>{t('patchManager.cancel')}</Button>
-            <Button type="primary" loading={actionLoading} onClick={handleNodeSave}>{t('patchManager.save')}</Button>
+            <PermissionWrapper requiredPermissions={['Add']}>
+              <Button type="primary" loading={actionLoading} onClick={handleNodeSave}>{t('patchManager.save')}</Button>
+            </PermissionWrapper>
           </Space>
         }
       >

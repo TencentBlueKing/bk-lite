@@ -358,7 +358,7 @@ def send_by_dingtalk_bot(channel_obj: Channel, title, content, receivers):
         return {"result": False, "message": "failed to send dingtalk bot message"}
 
 
-def send_nats_message(channel_obj: Channel, content: dict):
+def send_nats_message(channel_obj: Channel, content: dict, *, timeout_override=None):
     """
     发送 NATS 消息（Request 模式）
     :param channel_obj: NATS Channel 对象
@@ -370,7 +370,7 @@ def send_nats_message(channel_obj: Channel, content: dict):
     method_name = config.get("method_name")
     bot_id = config.get("bot_id")
     node_id = config.get("node_id")
-    timeout = config.get("timeout", 60)
+    timeout = timeout_override if timeout_override is not None else config.get("timeout", 60)
 
     if not namespace or not method_name:
         return {"result": False, "message": "NATS channel config missing namespace or method_name"}
@@ -382,7 +382,7 @@ def send_nats_message(channel_obj: Channel, content: dict):
         payload.update({"bot_id": bot_id, "node_id": node_id})
 
     try:
-        result = nats_client.request_sync(namespace, method_name, _timeout=timeout, _raw=True, **payload)
+        result = nats_client.request_sync(namespace, method_name, _timeout=timeout, **payload)
         return result
     except Exception as e:
         logger.exception(e)

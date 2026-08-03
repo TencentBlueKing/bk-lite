@@ -55,6 +55,7 @@ export interface PatchSource {
   team: number[];
   created_at: string;
   updated_at: string;
+  permission?: string[];
 }
 
 export interface PatchSourceParams {
@@ -102,6 +103,7 @@ export interface Patch {
   team: number[];
   created_at: string;
   updated_at: string;
+  permission?: string[];
   package_info?: {
     file_name: string;
     file_size: number;
@@ -181,6 +183,7 @@ export interface PatchTarget {
   team: number[];
   created_at: string;
   updated_at: string;
+  permission?: string[];
 }
 
 export interface PatchTargetParams {

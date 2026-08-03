@@ -74,6 +74,7 @@ cd algorithms/<svc> && make install && make serving  # BentoML :3000；uv run py
 - release 容器执行 `support-files/release/startup.sh`(migrate/createcachetable/collectstatic/supervisord)
 - 常见失败:`.env` 缺 DB/NATS/Redis;迁移冲突;依赖安装失败
 - 回滚:`git revert` / `manage.py migrate <app> <target>` / 回退镜像 tag
+- 本地验证 APM 告警中心事件副本时，`INSTALL_APPS` 必须同时包含 `apm`、`system_mgmt`、`alerts`，并分别启动 API、Celery Worker、Celery Beat 和 NATS Listener。一个本地环境只运行一组 Worker/Beat/Listener；重复进程会造成任务重复领取或 responder 归属不明确，先用 `pgrep -af 'celery|nats_listener'` 对账后再排查业务逻辑。
 
 ### Web
 - dev `pnpm dev`(:3000)/ test `pnpm lint && pnpm type-check` / build `pnpm build`(`next build --turbo`)/ release 镜像 `pnpm run start`

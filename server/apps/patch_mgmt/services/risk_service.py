@@ -55,6 +55,8 @@ class RiskItem:
     deps: str = ""
     install_impact: dict = field(default_factory=dict)
     evaluated_at: Any = None
+    can_remediate: bool = False
+    can_reboot: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -79,6 +81,8 @@ class RiskItem:
             "deps": self.deps,
             "install_impact": self.install_impact,
             "evaluated_at": self.evaluated_at.isoformat() if self.evaluated_at else None,
+            "can_remediate": self.can_remediate,
+            "can_reboot": self.can_reboot,
         }
 
 
