@@ -2,6 +2,7 @@ import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { message } from 'antd';
 
 import type {
   DashboardExecutionSummary,
@@ -126,6 +127,11 @@ const translate = (
     'dashboard.subscriptionExecute': '立即测试',
     'dashboard.subscriptionExecuteCreated': '测试执行已创建',
     'dashboard.subscriptionExecuteFailed': '测试执行创建失败',
+    'dashboard.subscriptionSnapshotUpdate': '更新快照',
+    'dashboard.subscriptionSnapshotUpdateConfirm':
+      '确认使用当前画布和筛选更新订阅快照？',
+    'dashboard.subscriptionSnapshotUpdateSuccess': '订阅快照更新成功',
+    'dashboard.subscriptionSnapshotUpdateFailed': '更新订阅快照失败',
     'dashboard.subscriptionExecutionStatus': '状态',
     'dashboard.executionStatusPending': '等待执行',
     'dashboard.executionStatusRunning': '执行中',
@@ -399,7 +405,6 @@ describe('DashboardSubscriptionModal', () => {
         schedule_weekday: null,
         schedule_day_of_month: null,
         timezone: null,
-        applied_filter_values: {},
         version: 1,
         revision: 1,
       });
@@ -427,6 +432,35 @@ describe('DashboardSubscriptionModal', () => {
     await waitFor(() => {
       expect(api.deleteSubscription).toHaveBeenCalledWith(1, 1);
     });
+  });
+
+  it('updates the snapshot separately with current filter values', async () => {
+    api.listSubscriptions.mockResolvedValue([makeSubscription()]);
+    api.updateSubscription.mockResolvedValue(makeSubscription({ revision: 2 }));
+    const successSpy = vi.spyOn(message, 'success');
+    const user = userEvent.setup();
+    render(
+      <DashboardSubscriptionModal
+        open
+        dashboardId={8}
+        appliedFilterValues={{ region: 'shanghai' }}
+        onClose={vi.fn()}
+      />,
+    );
+
+    await user.click(
+      await screen.findByRole('button', { name: '更新快照' }),
+    );
+    await user.click(await screen.findByRole('button', { name: 'OK' }));
+
+    await waitFor(() => {
+      expect(api.updateSubscription).toHaveBeenCalledWith(1, {
+        applied_filter_values: { region: 'shanghai' },
+        version: 1,
+        revision: 1,
+      });
+    });
+    expect(successSpy).toHaveBeenCalledWith('订阅快照更新成功');
   });
 
   it('creates a pending manual test execution without showing a header alert', async () => {

@@ -8,6 +8,7 @@ import {
   Empty,
   Form,
   Input,
+  message,
   Popconfirm,
   Select,
   Space,
@@ -215,6 +216,9 @@ const DashboardSubscriptionModal = ({
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [executingId, setExecutingId] = useState<number | null>(null);
+  const [updatingSnapshotId, setUpdatingSnapshotId] = useState<number | null>(
+    null,
+  );
   const [error, setError] = useState<string | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
   const [executionResult, setExecutionResult] =
@@ -399,7 +403,6 @@ const DashboardSubscriptionModal = ({
             ? values.schedule_day_of_month ?? null
             : null,
         timezone: hasSchedule ? values.timezone ?? null : null,
-        applied_filter_values: appliedFilterValues,
         ...(editing
           ? { version: editing.version, revision: editing.revision }
           : {}),
@@ -410,11 +413,13 @@ const DashboardSubscriptionModal = ({
         await createSubscription({
           resource_type: 'screen',
           resource_id: resolvedResourceId!,
+          applied_filter_values: appliedFilterValues,
           ...payload,
         });
       } else {
         await createSubscription({
           dashboard: resolvedResourceId!,
+          applied_filter_values: appliedFilterValues,
           ...payload,
         });
       }
@@ -446,6 +451,25 @@ const DashboardSubscriptionModal = ({
       setError(t('dashboard.subscriptionDeleteFailed'));
     } finally {
       setDeletingId(null);
+    }
+  };
+
+  const updateSnapshot = async (subscription: DashboardSubscription) => {
+    setUpdatingSnapshotId(subscription.id);
+    setError(null);
+    setLoadFailed(false);
+    try {
+      await updateSubscription(subscription.id, {
+        applied_filter_values: appliedFilterValues,
+        version: subscription.version,
+        revision: subscription.revision,
+      });
+      await loadSubscriptions();
+      message.success(t('dashboard.subscriptionSnapshotUpdateSuccess'));
+    } catch {
+      setError(t('dashboard.subscriptionSnapshotUpdateFailed'));
+    } finally {
+      setUpdatingSnapshotId(null);
     }
   };
 
@@ -590,7 +614,7 @@ const DashboardSubscriptionModal = ({
     {
       title: t('common.actions'),
       fixed: 'right',
-      width: 190,
+      width: 260,
       render: (_, subscription) => (
         <Space size={0}>
           <Button
@@ -602,6 +626,22 @@ const DashboardSubscriptionModal = ({
           >
             {t('dashboard.subscriptionExecute')}
           </Button>
+          <Popconfirm
+            title={t('dashboard.subscriptionSnapshotUpdateConfirm')}
+            onConfirm={() => updateSnapshot(subscription)}
+          >
+            <Button
+              type="link"
+              size="small"
+              loading={updatingSnapshotId === subscription.id}
+              disabled={
+                updatingSnapshotId !== null
+                && updatingSnapshotId !== subscription.id
+              }
+            >
+              {t('dashboard.subscriptionSnapshotUpdate')}
+            </Button>
+          </Popconfirm>
           <Button type="link" size="small" onClick={() => openEditForm(subscription)}>
             {t('common.edit')}
           </Button>
@@ -893,7 +933,7 @@ const DashboardSubscriptionModal = ({
               columns={columns}
               dataSource={subscriptions}
               pagination={false}
-              scroll={{ x: 1140 }}
+              scroll={{ x: 1210 }}
               locale={{
                 emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t('dashboard.subscriptionEmpty')} />,
               }}

@@ -71,7 +71,7 @@ export interface DashboardSubscriptionPayload {
 }
 
 export type DashboardSubscriptionUpdatePayload = Omit<
-  DashboardSubscriptionPayload,
+  Partial<DashboardSubscriptionPayload>,
   'dashboard' | 'resource_type' | 'resource_id'
 >;
 
