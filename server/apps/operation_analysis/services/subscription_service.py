@@ -55,31 +55,71 @@ class DashboardSubscriptionService:
 
     @staticmethod
     def can_view_dashboard(request, dashboard: Dashboard) -> bool:
-        user = request.user
-        if getattr(user, "is_superuser", False):
-            return True
+        from apps.operation_analysis.services.canvas_report.permissions import (
+            can_view_canvas,
+        )
+        from apps.operation_analysis.services.canvas_report.types import (
+            RESOURCE_TYPE_DASHBOARD,
+        )
 
-        current_team = get_current_team(request)
-        try:
-            current_team_id = int(current_team)
-        except (TypeError, ValueError):
-            return False
-
-        from apps.operation_analysis.views.view import DashboardModelViewSet
-
-        viewset = DashboardModelViewSet()
-        return viewset.get_has_permission(
-            user,
-            dashboard,
-            current_team_id,
-            is_check=True,
-            include_children=request.COOKIES.get("include_children", "0") == "1",
+        return can_view_canvas(
+            request,
+            RESOURCE_TYPE_DASHBOARD,
+            dashboard.id,
         )
 
     @classmethod
     def require_dashboard_view(cls, request, dashboard: Dashboard) -> None:
         if not cls.can_view_dashboard(request, dashboard):
             raise PermissionDenied("无权查看该仪表盘")
+
+    @classmethod
+    def can_view_resource(
+        cls,
+        request,
+        resource_type: str,
+        resource_id: int,
+    ) -> bool:
+        """统一画布查看入口。
+
+        Dashboard 仍经 can_view_dashboard，以保留 MVP 测试缝与既有错误语义；
+        其他类型一律走 can_view_canvas → Adapter → ViewSet。
+        """
+        from apps.operation_analysis.services.canvas_report.permissions import (
+            can_view_canvas,
+        )
+        from apps.operation_analysis.services.canvas_report.types import (
+            RESOURCE_TYPE_DASHBOARD,
+        )
+
+        if resource_type == RESOURCE_TYPE_DASHBOARD:
+            try:
+                dashboard = Dashboard.objects.get(pk=resource_id)
+            except Dashboard.DoesNotExist:
+                return False
+            return cls.can_view_dashboard(request, dashboard)
+        return can_view_canvas(request, resource_type, resource_id)
+
+    @classmethod
+    def require_canvas_view(
+        cls,
+        request,
+        resource_type: str,
+        resource_id: int | None,
+        *,
+        missing_message: str = "源画布已不存在，不能执行该操作",
+        denied_message: str = "无权查看该画布",
+    ) -> None:
+        from apps.operation_analysis.services.canvas_report.permissions import (
+            canvas_resource_exists,
+        )
+
+        if resource_id is None or not canvas_resource_exists(
+            resource_type, resource_id
+        ):
+            raise PermissionDenied(missing_message)
+        if not cls.can_view_resource(request, resource_type, resource_id):
+            raise PermissionDenied(denied_message)
 
     @classmethod
     def can_view_datasource(cls, request, datasource) -> bool:
@@ -241,21 +281,29 @@ class DashboardSubscriptionService:
         return "denied"
 
     @classmethod
-    def scan_dashboard_datasources(cls, request, dashboard: Dashboard) -> None:
+    def scan_resource_datasources(
+        cls,
+        request,
+        *,
+        resource_type: str,
+        resource,
+    ) -> None:
         """创建期 DS 权限扫描（D3 / A5）。
 
         明确无权限/不存在 → 拒绝；瞬时网络/DB/权限规则 RPC 错误 → 允许保存并记 warning。
-        不发起真实业务查询。复用 Render Snapshot 的 widget→datasource 解析。
+        不发起真实业务查询。复用 Adapter widget→datasource 解析。
         """
         from apps.operation_analysis.models.datasource_models import (
             DataSourceAPIModel,
         )
-        from apps.operation_analysis.services.render_snapshot_service import (
-            _widget_manifest,
+        from apps.operation_analysis.services.canvas_report.registry import (
+            get_canvas_report_adapter,
         )
 
+        resource_id = getattr(resource, "id", None)
         try:
-            manifest = _widget_manifest(dashboard.view_sets or [])
+            adapter = get_canvas_report_adapter(resource_type)
+            manifest = adapter.build_manifest(resource)
             ds_ids = {
                 entry["datasource_id"]
                 for entry in manifest
@@ -270,8 +318,10 @@ class DashboardSubscriptionService:
             }
         except (OperationalError, DatabaseError, ConnectionError, TimeoutError) as exc:
             logger.warning(
-                "创建期 DataSource 扫描瞬时失败，允许保存: dashboard_id=%s err=%s",
-                dashboard.id,
+                "创建期 DataSource 扫描瞬时失败，允许保存: "
+                "resource_type=%s resource_id=%s err=%s",
+                resource_type,
+                resource_id,
                 type(exc).__name__,
             )
             return
@@ -280,8 +330,8 @@ class DashboardSubscriptionService:
         if missing:
             raise ValidationError(
                 {
-                    "dashboard": (
-                        f"仪表盘引用的数据源不存在: {', '.join(map(str, missing))}"
+                    "resource_id": (
+                        f"画布引用的数据源不存在: {', '.join(map(str, missing))}"
                     )
                 }
             )
@@ -299,8 +349,9 @@ class DashboardSubscriptionService:
             ) as exc:
                 logger.warning(
                     "创建期 DataSource 权限检查瞬时失败，允许保存: "
-                    "dashboard_id=%s err=%s",
-                    dashboard.id,
+                    "resource_type=%s resource_id=%s err=%s",
+                    resource_type,
+                    resource_id,
                     type(exc).__name__,
                 )
                 return
@@ -308,28 +359,45 @@ class DashboardSubscriptionService:
             if outcome == "transient":
                 logger.warning(
                     "创建期 DataSource 权限依赖不可用，允许保存: "
-                    "dashboard_id=%s datasource_id=%s",
-                    dashboard.id,
+                    "resource_type=%s resource_id=%s datasource_id=%s",
+                    resource_type,
+                    resource_id,
                     ds_id,
                 )
                 return
             if outcome == "denied":
                 raise PermissionDenied(
-                    f"无权查看仪表盘引用的数据源: {ds_id}"
+                    f"无权查看画布引用的数据源: {ds_id}"
                 )
+
+    @classmethod
+    def scan_dashboard_datasources(cls, request, dashboard: Dashboard) -> None:
+        from apps.operation_analysis.services.canvas_report.types import (
+            RESOURCE_TYPE_DASHBOARD,
+        )
+
+        cls.scan_resource_datasources(
+            request,
+            resource_type=RESOURCE_TYPE_DASHBOARD,
+            resource=dashboard,
+        )
 
     @classmethod
     def build_filter_config(
         cls,
         *,
-        dashboard: Dashboard,
+        filter_definitions,
         applied_filter_values,
         existing_config: dict | None = None,
+        dashboard: Dashboard | None = None,
     ) -> dict:
         config = deepcopy(existing_config or {})
+        definitions = filter_definitions
+        if definitions is None and dashboard is not None:
+            definitions = dashboard.filters
         snapshot = normalize_applied_filter_values(
             applied_filter_values if applied_filter_values is not None else {},
-            dashboard.filters,
+            definitions,
         )
         config["filter_snapshot"] = snapshot
         return config
@@ -471,14 +539,49 @@ class DashboardSubscriptionService:
 
     @classmethod
     def create(cls, request, serializer) -> DashboardReportSubscription:
-        dashboard = serializer.validated_data["dashboard"]
-        cls.require_dashboard_view(request, dashboard)
+        from apps.operation_analysis.services.canvas_report.registry import (
+            get_canvas_report_adapter,
+        )
+        from apps.operation_analysis.services.canvas_report.types import (
+            RESOURCE_TYPE_DASHBOARD,
+        )
+
+        resource_type = (
+            serializer.validated_data.get("resource_type")
+            or RESOURCE_TYPE_DASHBOARD
+        )
+        resource_id = serializer.validated_data.get("resource_id")
+        if resource_id is None and serializer.validated_data.get("dashboard"):
+            resource_id = serializer.validated_data["dashboard"].id
+        adapter = get_canvas_report_adapter(resource_type)
+        cls.require_canvas_view(
+            request,
+            resource_type,
+            resource_id,
+            missing_message="源画布已不存在，不能创建该订阅",
+            denied_message=(
+                "无权查看该仪表盘"
+                if resource_type == RESOURCE_TYPE_DASHBOARD
+                else "无权查看该画布"
+            ),
+        )
+        from django.core.exceptions import ObjectDoesNotExist
+
+        try:
+            resource = adapter.load_resource(resource_id)
+        except ObjectDoesNotExist as exc:
+            # 与 require_canvas_view 之间的竞态或 Adapter 加载失败：不得泄漏为 500
+            raise PermissionDenied("源画布已不存在，不能创建该订阅") from exc
         cls.validate_email_channel(
             request,
             serializer.validated_data.get("email_channel"),
         )
         applied = serializer.validated_data.pop("applied_filter_values", {})
-        cls.scan_dashboard_datasources(request, dashboard)
+        cls.scan_resource_datasources(
+            request,
+            resource_type=resource_type,
+            resource=resource,
+        )
         schedule = cls._merge_schedule_values(None, serializer.validated_data)
         next_run_at = cls.compute_next_run_at(
             schedule_type=schedule["schedule_type"],
@@ -489,7 +592,7 @@ class DashboardSubscriptionService:
             timezone_name=schedule["timezone"],
         )
         config = cls.build_filter_config(
-            dashboard=dashboard,
+            filter_definitions=adapter.load_filters(resource),
             applied_filter_values=applied,
         )
         return serializer.save(
@@ -522,8 +625,22 @@ class DashboardSubscriptionService:
             raise ValidationError(
                 {"status": "已终止的报告订阅不可修改或恢复"}
             )
-        if subscription.dashboard is None:
-            raise PermissionDenied("源仪表盘已不存在，不能修改该订阅")
+        if subscription.resource_id is None and subscription.dashboard is None:
+            raise PermissionDenied("源画布已不存在，不能修改该订阅")
+
+        from apps.operation_analysis.services.canvas_report.registry import (
+            get_canvas_report_adapter,
+        )
+        from apps.operation_analysis.services.canvas_report.types import (
+            RESOURCE_TYPE_DASHBOARD,
+        )
+
+        resource_type = subscription.resource_type or RESOURCE_TYPE_DASHBOARD
+        resource_id = (
+            subscription.resource_id
+            if subscription.resource_id is not None
+            else subscription.dashboard_id
+        )
 
         requested_fields = set(serializer.validated_data)
         pause_only = (
@@ -533,7 +650,17 @@ class DashboardSubscriptionService:
             and requested_fields <= {"status", "revision", "version"}
         )
         if not pause_only:
-            cls.require_dashboard_view(request, subscription.dashboard)
+            cls.require_canvas_view(
+                request,
+                resource_type,
+                resource_id,
+                missing_message="源画布已不存在，不能修改该订阅",
+                denied_message=(
+                    "无权查看该仪表盘"
+                    if resource_type == RESOURCE_TYPE_DASHBOARD
+                    else "无权查看该画布"
+                ),
+            )
             cls.validate_email_channel(
                 request,
                 serializer.validated_data.get(
@@ -573,7 +700,13 @@ class DashboardSubscriptionService:
 
         # 重新启用 active 时重跑 DS 扫描；改名/筛选等不强制扫描
         if resuming:
-            cls.scan_dashboard_datasources(request, subscription.dashboard)
+            adapter = get_canvas_report_adapter(resource_type)
+            resource = adapter.load_resource(resource_id)
+            cls.scan_resource_datasources(
+                request,
+                resource_type=resource_type,
+                resource=resource,
+            )
 
         schedule = cls._merge_schedule_values(
             subscription, serializer.validated_data
@@ -611,8 +744,10 @@ class DashboardSubscriptionService:
             extra["last_lifecycle_at"] = timezone.now()
 
         if applied_provided:
+            adapter = get_canvas_report_adapter(resource_type)
+            resource = adapter.load_resource(resource_id)
             extra["config"] = cls.build_filter_config(
-                dashboard=subscription.dashboard,
+                filter_definitions=adapter.load_filters(resource),
                 applied_filter_values=applied,
                 existing_config=subscription.config,
             )
@@ -686,23 +821,24 @@ class DashboardSubscriptionService:
 
     @classmethod
     @transaction.atomic
-    def terminate_for_dashboard_deletion(
+    def terminate_for_resource_deletion(
         cls,
-        dashboard: Dashboard,
         *,
+        resource_type: str,
+        resource_id: int,
         actor: str,
         actor_domain: str = "",
-        reason: str = TERMINATION_REASON_DASHBOARD_DELETED,
+        reason: str,
     ) -> int:
-        """Dashboard 删除前终止关联未删除订阅，并标记在途 Execution。
-
-        必须在同一事务内于 Dashboard.delete() 之前调用，避免出现
-        active + dashboard=null 的悬空状态。
-        """
+        """画布删除前终止关联未删除订阅，并标记在途 Execution。"""
         now = timezone.now()
         subscriptions = list(
             DashboardReportSubscription.all_objects.select_for_update()
-            .filter(dashboard_id=dashboard.pk, deleted_at__isnull=True)
+            .filter(
+                resource_type=resource_type,
+                resource_id=resource_id,
+                deleted_at__isnull=True,
+            )
             .exclude(status=DashboardReportSubscription.Status.TERMINATED)
         )
         if not subscriptions:
@@ -731,3 +867,26 @@ class DashboardSubscriptionService:
             updated_at=now,
         )
         return len(subscription_ids)
+
+    @classmethod
+    @transaction.atomic
+    def terminate_for_dashboard_deletion(
+        cls,
+        dashboard: Dashboard,
+        *,
+        actor: str,
+        actor_domain: str = "",
+        reason: str = TERMINATION_REASON_DASHBOARD_DELETED,
+    ) -> int:
+        """Dashboard 删除前终止关联未删除订阅（兼容入口）。"""
+        from apps.operation_analysis.services.canvas_report.types import (
+            RESOURCE_TYPE_DASHBOARD,
+        )
+
+        return cls.terminate_for_resource_deletion(
+            resource_type=RESOURCE_TYPE_DASHBOARD,
+            resource_id=dashboard.pk,
+            actor=actor,
+            actor_domain=actor_domain,
+            reason=reason,
+        )

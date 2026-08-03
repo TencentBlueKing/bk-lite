@@ -32,7 +32,10 @@ import { useTranslation } from '@/utils/i18n';
 
 interface DashboardSubscriptionModalProps {
   open: boolean;
-  dashboardId: number;
+  /** @deprecated Prefer resourceType + resourceId; kept for Dashboard callers */
+  dashboardId?: number;
+  resourceType?: 'dashboard' | 'screen';
+  resourceId?: number;
   appliedFilterValues?: Record<string, unknown>;
   onClose: () => void;
 }
@@ -178,9 +181,13 @@ export const hasInFlightSubscriptionExecution = (
 const DashboardSubscriptionModal = ({
   open,
   dashboardId,
+  resourceType = 'dashboard',
+  resourceId,
   appliedFilterValues = {},
   onClose,
 }: DashboardSubscriptionModalProps) => {
+  const resolvedResourceType = resourceType;
+  const resolvedResourceId = resourceId ?? dashboardId;
   const { t } = useTranslation();
   const {
     listSubscriptions,
@@ -226,7 +233,12 @@ const DashboardSubscriptionModal = ({
         setExecutionResult(null);
       }
       try {
-        setSubscriptions(await listSubscriptions(dashboardId));
+        setSubscriptions(
+          await listSubscriptions({
+            resourceType: resolvedResourceType,
+            resourceId: resolvedResourceId!,
+          }),
+        );
       } catch {
         setError(t('dashboard.subscriptionLoadFailed'));
         setLoadFailed(true);
@@ -234,7 +246,7 @@ const DashboardSubscriptionModal = ({
         setLoading(false);
       }
     },
-    [dashboardId, listSubscriptions, t],
+    [listSubscriptions, resolvedResourceId, resolvedResourceType, t],
   );
 
   useEffect(() => {
@@ -356,9 +368,15 @@ const DashboardSubscriptionModal = ({
       };
       if (editing) {
         await updateSubscription(editing.id, payload);
+      } else if (resolvedResourceType === 'screen') {
+        await createSubscription({
+          resource_type: 'screen',
+          resource_id: resolvedResourceId!,
+          ...payload,
+        });
       } else {
         await createSubscription({
-          dashboard: dashboardId,
+          dashboard: resolvedResourceId!,
           ...payload,
         });
       }

@@ -1,46 +1,16 @@
-from copy import deepcopy
-
 from django.db import transaction
 
 from apps.operation_analysis.models.subscription_models import (
     DashboardReportExecution,
     DashboardReportRenderSnapshot,
 )
-
-
-def _widget_manifest(view_sets: list) -> list[dict]:
-    manifest = []
-
-    def collect(items):
-        for item in items:
-            if not isinstance(item, dict):
-                continue
-            children = (item.get("subGridOpts") or {}).get("children") or []
-            if children:
-                collect(children)
-            if item.get("itemType") == "group":
-                continue
-
-            value_config = item.get("valueConfig") or {}
-            widget_id = item.get("id", item.get("i"))
-            if widget_id is None:
-                continue
-            manifest.append(
-                {
-                    "widget_id": widget_id,
-                    "widget_type": value_config.get(
-                        "chartType",
-                        item.get("chartType"),
-                    ),
-                    "datasource_id": value_config.get(
-                        "dataSource",
-                        item.get("dataSource"),
-                    ),
-                }
-            )
-
-    collect(view_sets)
-    return manifest
+from apps.operation_analysis.services.canvas_report.registry import (
+    get_canvas_report_adapter,
+)
+from apps.operation_analysis.services.canvas_report.types import (
+    DEFAULT_RENDER_SCHEMA_VERSION,
+    RESOURCE_TYPE_DASHBOARD,
+)
 
 
 class DashboardReportRenderSnapshotService:
@@ -54,20 +24,23 @@ class DashboardReportRenderSnapshotService:
         except DashboardReportRenderSnapshot.DoesNotExist:
             pass
 
-        dashboard = execution.dashboard
-        if dashboard is None:
-            raise ValueError("Dashboard 不存在")
+        resource_type = execution.resource_type or RESOURCE_TYPE_DASHBOARD
+        resource_id = (
+            execution.resource_id
+            if execution.resource_id is not None
+            else execution.dashboard_id
+        )
+        if resource_id is None:
+            raise ValueError("画布资源不存在")
 
-        view_sets = deepcopy(dashboard.view_sets or [])
-        manifest = _widget_manifest(view_sets)
+        adapter = get_canvas_report_adapter(resource_type)
+        resource = adapter.load_resource(resource_id)
+        fields = adapter.build_render_snapshot_fields(resource)
+        fields["resource_type"] = resource_type
+        fields["resource_id"] = resource_id
+        fields["render_schema_version"] = DEFAULT_RENDER_SCHEMA_VERSION
         with transaction.atomic():
             return DashboardReportRenderSnapshot.objects.create(
                 execution=execution,
-                dashboard_id=dashboard.id,
-                dashboard_name=dashboard.name,
-                dashboard_updated_at=dashboard.updated_at,
-                view_sets=view_sets,
-                filters=deepcopy(dashboard.filters),
-                other=deepcopy(dashboard.other),
-                widget_manifest=manifest,
+                **fields,
             )

@@ -1,8 +1,15 @@
 from rest_framework import serializers
 
+from apps.operation_analysis.models.models import Dashboard
 from apps.operation_analysis.models.subscription_models import (
     DashboardReportExecution,
     DashboardReportSubscription,
+)
+from apps.operation_analysis.services.canvas_report.binding import (
+    normalize_resource_binding,
+)
+from apps.operation_analysis.services.canvas_report.types import (
+    RESOURCE_TYPE_DASHBOARD,
 )
 
 
@@ -42,6 +49,8 @@ class DashboardReportSubscriptionSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "dashboard",
+            "resource_type",
+            "resource_id",
             "creator",
             "creator_domain",
             "team_id",
@@ -97,6 +106,9 @@ class DashboardReportSubscriptionSerializer(serializers.ModelSerializer):
             # version 可读；写时仅用于调度变更乐观锁，不直接落库
             "version": {"required": False},
             "revision": {"required": False},
+            "dashboard": {"required": False, "allow_null": True},
+            "resource_type": {"required": False},
+            "resource_id": {"required": False, "allow_null": True},
         }
 
     def get_latest_scheduled_execution(self, obj):
@@ -156,6 +168,53 @@ class DashboardReportSubscriptionSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("已应用筛选必须是对象")
         return value
 
+    def _apply_resource_binding(self, attrs: dict) -> dict:
+        binding_keys = {"dashboard", "resource_type", "resource_id"}
+        provided = binding_keys & attrs.keys()
+        if self.instance is None:
+            binding = normalize_resource_binding(
+                dashboard=attrs.get("dashboard"),
+                resource_type=attrs.get("resource_type"),
+                resource_id=attrs.get("resource_id"),
+                require_binding=True,
+            )
+        elif provided:
+            binding = normalize_resource_binding(
+                dashboard=attrs.get("dashboard", self.instance.dashboard),
+                resource_type=attrs.get(
+                    "resource_type", self.instance.resource_type
+                ),
+                resource_id=attrs.get(
+                    "resource_id", self.instance.resource_id
+                ),
+                require_binding=True,
+            )
+            if (
+                binding.resource_type != self.instance.resource_type
+                or binding.resource_id != self.instance.resource_id
+                or binding.dashboard_id != self.instance.dashboard_id
+            ):
+                raise serializers.ValidationError(
+                    {"dashboard": "报告订阅创建后不可更换画布资源绑定"}
+                )
+        else:
+            return attrs
+
+        attrs["resource_type"] = binding.resource_type
+        attrs["resource_id"] = binding.resource_id
+        if binding.resource_type == RESOURCE_TYPE_DASHBOARD:
+            try:
+                attrs["dashboard"] = Dashboard.objects.get(
+                    pk=binding.dashboard_id
+                )
+            except Dashboard.DoesNotExist as exc:
+                raise serializers.ValidationError(
+                    {"dashboard": "仪表盘不存在"}
+                ) from exc
+        else:
+            attrs["dashboard"] = None
+        return attrs
+
     def validate(self, attrs):
         attrs = super().validate(attrs)
         if self.instance is not None and "revision" not in attrs:
@@ -170,22 +229,21 @@ class DashboardReportSubscriptionSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 {"status": "已终止的报告订阅不可修改或恢复"}
             )
-        if (
-            self.instance
-            and "dashboard" in attrs
-            and attrs["dashboard"] != self.instance.dashboard
-        ):
-            raise serializers.ValidationError(
-                {"dashboard": "报告订阅创建后不可更换仪表盘"}
-            )
+
+        attrs = self._apply_resource_binding(attrs)
+
         dashboard = attrs.get(
             "dashboard",
             self.instance.dashboard if self.instance else None,
         )
-        if self.instance is None and dashboard is None:
-            raise serializers.ValidationError(
-                {"dashboard": "创建报告订阅必须指定仪表盘"}
-            )
+        resource_type = attrs.get(
+            "resource_type",
+            self.instance.resource_type if self.instance else "dashboard",
+        )
+        resource_id = attrs.get(
+            "resource_id",
+            self.instance.resource_id if self.instance else None,
+        )
         status = attrs.get(
             "status",
             self.instance.status
@@ -196,13 +254,15 @@ class DashboardReportSubscriptionSerializer(serializers.ModelSerializer):
             "email_channel",
             self.instance.email_channel if self.instance else None,
         )
-        if (
-            status == DashboardReportSubscription.Status.ACTIVE
-            and dashboard is None
-        ):
-            raise serializers.ValidationError(
-                {"dashboard": "启用状态的报告订阅必须关联仪表盘"}
-            )
+        if status == DashboardReportSubscription.Status.ACTIVE:
+            if resource_id is None:
+                raise serializers.ValidationError(
+                    {"resource_id": "启用状态的报告订阅必须关联画布资源"}
+                )
+            if resource_type == RESOURCE_TYPE_DASHBOARD and dashboard is None:
+                raise serializers.ValidationError(
+                    {"dashboard": "启用状态的报告订阅必须关联仪表盘"}
+                )
         if email_channel is None:
             raise serializers.ValidationError(
                 {"email_channel": "报告订阅必须指定邮件通道"}

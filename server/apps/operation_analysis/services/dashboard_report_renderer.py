@@ -12,6 +12,11 @@ from urllib.parse import urlsplit
 import fitz
 from playwright.async_api import async_playwright
 
+from apps.operation_analysis.services.canvas_report.types import (
+    SCREEN_PDF_FORMAT,
+    SCREEN_PDF_LANDSCAPE,
+)
+
 
 MIN_PDF_BYTES = 1_024
 MAX_PDF_BYTES = 20 * 1024 * 1024
@@ -111,6 +116,45 @@ class DashboardRenderRequest:
     render_token: str | None = None
     timeout_ms: int = DEFAULT_TIMEOUT_MS
     executable_path: str | None = None
+    resource_type: str = "dashboard"
+    viewport_width: int | None = None
+    viewport_height: int | None = None
+
+
+def resolve_render_viewport(
+    *,
+    resource_type: str,
+    viewport_width: int | None = None,
+    viewport_height: int | None = None,
+) -> dict[str, int]:
+    """Dashboard 固定视口；Screen 使用 snapshot viewport。"""
+    if resource_type == "screen":
+        width = int(viewport_width or VIEWPORT["width"])
+        height = int(viewport_height or VIEWPORT["height"])
+        if width <= 0 or height <= 0:
+            return dict(VIEWPORT)
+        return {"width": width, "height": height}
+    return dict(VIEWPORT)
+
+
+def resolve_screen_pdf_scale(
+    viewport_width: int,
+    viewport_height: int,
+) -> float:
+    """策略 2：等比缩放完整落入 A4 landscape 单页。"""
+    from apps.operation_analysis.services.canvas_report.types import (
+        SCREEN_PDF_PAGE_HEIGHT_PX,
+        SCREEN_PDF_PAGE_WIDTH_PX,
+    )
+
+    if viewport_width <= 0 or viewport_height <= 0:
+        return 1.0
+    scale = min(
+        SCREEN_PDF_PAGE_WIDTH_PX / viewport_width,
+        SCREEN_PDF_PAGE_HEIGHT_PX / viewport_height,
+    )
+    # Playwright scale 允许约 0.1–2.0
+    return max(0.1, min(float(scale), 2.0))
 
 
 def validate_pdf(path: Path) -> dict[str, int]:
@@ -186,8 +230,13 @@ class DashboardChromiumRenderer:
                     error_code="chromium_launch_failed",
                 ) from exc
             try:
+                viewport = resolve_render_viewport(
+                    resource_type=request.resource_type,
+                    viewport_width=request.viewport_width,
+                    viewport_height=request.viewport_height,
+                )
                 context = await browser.new_context(
-                    viewport=VIEWPORT,
+                    viewport=viewport,
                     color_scheme="light",
                     locale="zh-CN",
                 )
@@ -251,14 +300,20 @@ class DashboardChromiumRenderer:
                         failure_stage=stage,
                     )
                 try:
+                    pdf_kwargs: dict[str, Any] = {
+                        "path": os.fspath(request.output_path),
+                        "format": SCREEN_PDF_FORMAT,
+                        "landscape": SCREEN_PDF_LANDSCAPE,
+                        "print_background": True,
+                        "prefer_css_page_size": False,
+                    }
+                    if request.resource_type == "screen":
+                        pdf_kwargs["scale"] = resolve_screen_pdf_scale(
+                            viewport["width"],
+                            viewport["height"],
+                        )
                     await asyncio.wait_for(
-                        page.pdf(
-                            path=os.fspath(request.output_path),
-                            format="A4",
-                            landscape=True,
-                            print_background=True,
-                            prefer_css_page_size=False,
-                        ),
+                        page.pdf(**pdf_kwargs),
                         timeout=request.timeout_ms / 1000,
                     )
                 except Exception as exc:

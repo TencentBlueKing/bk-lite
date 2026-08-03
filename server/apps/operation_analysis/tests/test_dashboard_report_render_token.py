@@ -595,6 +595,71 @@ def test_render_session_allows_only_manifest_datasource(
         )
 
 
+def test_render_session_allows_frozen_network_status_topology(
+    running_execution,
+    monkeypatch,
+):
+    monkeypatch.setenv("SECRET_KEY", "render-token-test-secret")
+    old = running_execution.render_snapshot
+    DashboardReportRenderSnapshot.objects.filter(pk=old.pk).delete()
+    DashboardReportRenderSnapshot.objects.create(
+        execution=running_execution,
+        dashboard_id=old.dashboard_id,
+        dashboard_name=old.dashboard_name,
+        dashboard_updated_at=old.dashboard_updated_at,
+        view_sets={
+            "items": [
+                {
+                    "id": "topo-1",
+                    "chartType": "networkStatusTopology",
+                    "valueConfig": {
+                        "sceneWidgetType": "networkStatusTopology",
+                        "networkStatusTopology": {
+                            "modelId": "router",
+                            "instId": "335",
+                            "depth": 4,
+                        },
+                    },
+                }
+            ]
+        },
+        filters=[],
+        other={},
+        widget_manifest=[
+            {
+                "widget_id": "topo-1",
+                "widget_type": "networkStatusTopology",
+                "datasource_id": None,
+            }
+        ],
+    )
+
+    issued = DashboardReportRenderTokenService.issue(running_execution)
+    session = DashboardReportRenderTokenService.consume(
+        execution_id=running_execution.id,
+        plaintext=issued.plaintext,
+    )
+    factory = APIRequestFactory()
+
+    DashboardReportRenderScopeService.authorize_request(
+        factory.post(
+            "/api/v1/operation_analysis/api/scene_widgets/network_status_topology/",
+            {"model_id": "router", "inst_id": "335", "depth": 4},
+            format="json",
+        ),
+        session["token"],
+    )
+    with pytest.raises(DashboardReportRenderScopeError):
+        DashboardReportRenderScopeService.authorize_request(
+            factory.post(
+                "/api/v1/operation_analysis/api/scene_widgets/network_status_topology/",
+                {"model_id": "router", "inst_id": "999", "depth": 4},
+                format="json",
+            ),
+            session["token"],
+        )
+
+
 def test_render_session_allows_only_namespaces_of_manifest_datasources(
     running_execution,
     monkeypatch,

@@ -1,6 +1,7 @@
 from django.db.models import Prefetch
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
 from apps.core.decorators.api_permission import HasPermission
@@ -10,6 +11,9 @@ from apps.operation_analysis.models.subscription_models import (
 )
 from apps.operation_analysis.serializers.subscription_serializers import (
     DashboardReportSubscriptionSerializer,
+)
+from apps.operation_analysis.services.canvas_report.types import (
+    RESOURCE_TYPE_DASHBOARD,
 )
 from apps.operation_analysis.services.execution_service import (
     DashboardReportExecutionService,
@@ -51,9 +55,47 @@ class DashboardReportSubscriptionViewSet(viewsets.ModelViewSet):
                 creator=user.username,
                 creator_domain=user.domain,
             )
+
         dashboard_id = self.request.query_params.get("dashboard_id")
+        resource_type = self.request.query_params.get("resource_type")
+        resource_id = self.request.query_params.get("resource_id")
+
+        if dashboard_id and (resource_type or resource_id):
+            if resource_type and resource_type != RESOURCE_TYPE_DASHBOARD:
+                raise ValidationError(
+                    {
+                        "detail": (
+                            "dashboard_id 与 resource_type/resource_id 冲突"
+                        )
+                    }
+                )
+            if resource_id and str(resource_id) != str(dashboard_id):
+                raise ValidationError(
+                    {
+                        "detail": (
+                            "dashboard_id 与 resource_type/resource_id 冲突"
+                        )
+                    }
+                )
+
         if dashboard_id:
-            queryset = queryset.filter(dashboard_id=dashboard_id)
+            queryset = queryset.filter(
+                resource_type=RESOURCE_TYPE_DASHBOARD,
+                dashboard_id=dashboard_id,
+            )
+        elif resource_type or resource_id:
+            if not resource_type or not resource_id:
+                raise ValidationError(
+                    {
+                        "detail": (
+                            "resource_type 与 resource_id 必须同时提供"
+                        )
+                    }
+                )
+            queryset = queryset.filter(
+                resource_type=resource_type,
+                resource_id=resource_id,
+            )
         return queryset.order_by("-id")
 
     @HasPermission("view-View")

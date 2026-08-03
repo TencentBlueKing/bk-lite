@@ -16,10 +16,10 @@
 | NameSpace | `models/datasource_models.py` | NATS 连接配置（域/账号/密码加密/TLS）；含 `namespace`（NATS 命名空间标识，消息主题前缀，default=`bklite`）；含 `is_active`（内部预留，前端不暴露、运行时不校验） |
 | DataSourceAPIModel | `models/datasource_models.py` | 数据源定义；含 `source_type`（NATS/MySQL/PostgreSQL/REST API/Excel）、`connection_config`（连接配置）、`query_config`（取数配置）、`chart_type`（JSON，图表类型，default=list）、`field_schema`（JSON，接口返回字段定义，default=list）、`is_active`（内部预留） |
 | DataSourceTag | `models/datasource_models.py` | 数据源标签；含 `build_in`（是否内置） |
-| DashboardReportSubscription | `models/subscription_models.py` | Dashboard 报告订阅配置；绑定 Dashboard、创建者 `(username, domain)`、组织、名称、状态、单个接收邮箱、邮件渠道及预留 config；`revision` 提供全字段 CAS，`version` 仅表示调度配置版本 |
-| DashboardReportExecution | `models/subscription_models.py` | 一次 Dashboard 报告订阅执行审计；支持 manual 触发及 pending/running/succeeded/failed/unknown；`pending→running` 仅经 Claim；Delivery Fact 终态修正使用独立审计字段 |
-| DashboardReportExecutionSnapshot | `models/subscription_models.py` | 一次订阅执行的不可变输入快照；冻结 Dashboard、Subscription revision/schedule version、创建者 `(username, domain)`、执行组织、时区与已保存筛选值，不复制布局或 Widget |
-| DashboardReportRenderSnapshot | `models/subscription_models.py` | 一次执行的不可变渲染输入；冻结 Dashboard 名称、布局、筛选、其他展示配置与 Widget 清单；清单只保留 DataSource identity，不复制运行配置或凭据 |
+| DashboardReportSubscription | `models/subscription_models.py` | 画布报告订阅配置；绑定 Dashboard FK（兼容，Screen 可空）与 `resource_type`/`resource_id`、创建者 `(username, domain)`、组织、名称、状态、单个接收邮箱、邮件渠道及预留 config；`revision` 提供全字段 CAS，`version` 仅表示调度配置版本 |
+| DashboardReportExecution | `models/subscription_models.py` | 一次 Dashboard 报告订阅执行审计；含 `resource_type`/`resource_id`；支持 manual 触发及 pending/running/succeeded/failed/unknown；`pending→running` 仅经 Claim；Delivery Fact 终态修正使用独立审计字段 |
+| DashboardReportExecutionSnapshot | `models/subscription_models.py` | 一次订阅执行的不可变输入快照；冻结 `resource_type`/`resource_id`、Dashboard id、Subscription revision/schedule version、创建者 `(username, domain)`、执行组织、时区与已保存筛选值，不复制布局或 Widget |
+| DashboardReportRenderSnapshot | `models/subscription_models.py` | 一次执行的不可变渲染输入；冻结 Dashboard 名称、布局、筛选、其他展示配置、`resource_type`/`resource_id`、`render_schema_version` 与 Widget 清单；清单只保留 DataSource identity，不复制运行配置或凭据 |
 | DashboardReportPdfArtifact | `models/subscription_models.py` | 一次执行生成的短期 PDF 元数据；保存附件文件名、受控共享存储引用、文件大小、SHA-256、生成时间与到期时间，不提供历史下载或长期归档 |
 | DashboardReportRenderToken | `models/subscription_models.py` | 一次 Execution 对应的一次性短时 Render Token 审计记录；数据库仅保存 SHA-256、到期与消费时间，明文只在 Worker 内存存在 |
 
@@ -34,7 +34,7 @@
 - `directory` 的 `tree`（GET）：返回目录树（`views/view.py:148`）。
 - `scene_widgets/network_status_topology`（POST）：按 `model_id`、`inst_id`、`depth` 构建网络状态拓扑场景数据，是网络状态拓扑组件的专用后端入口；复用 CMDB network_topology/实例权限并汇总 Alerts 活跃告警，权限动作 `view`（证据：`urls.py:23`、`views/scene_widget_view.py:10-23,10,12`、`services/network_status_topology.py:5,65,87`）。
 - `screen` / `report`【已实现/已存在】：通过 `CanvasModelViewSet` 复用画布类 CRUD、权限与内置对象保护逻辑，新增 `directory.screen` 与 `directory.report` 两类权限域（`views/view.py:347-423`）。
-- `dashboard_subscription`【已实现】：当前用户 Dashboard 报告订阅 GET/POST/PATCH/DELETE。owner scope 使用 `(username, domain)`；创建与更新要求当前用户仍可查看目标 Dashboard；PATCH/DELETE 使用 `revision` 原子 CAS；删除允许创建者在 Dashboard 查看权限丢失后清理；`terminated` 不可由 API 直接写入（证据：`views/subscription_view.py`、`services/subscription_service.py`、`serializers/subscription_serializers.py`）。
+- `dashboard_subscription`【已实现】：当前用户画布报告订阅 GET/POST/PATCH/DELETE。owner scope 使用 `(username, domain)`；创建与更新要求当前用户仍可查看目标画布（Dashboard 或 Screen）；写入支持 `dashboard` 或 `resource_type`+`resource_id`（`dashboard` 双写旧 FK；`screen` 无 dashboard FK）；响应返回 `resource_type`/`resource_id`；列表支持 `?dashboard_id=` 与 `?resource_type=&resource_id=`；PATCH/DELETE 使用 `revision` 原子 CAS；删除允许创建者在画布查看权限丢失后清理；`terminated` 不可由 API 直接写入（证据：`views/subscription_view.py`、`services/subscription_service.py`、`services/canvas_report/binding.py`、`serializers/subscription_serializers.py`）。
 - `dashboard_subscription/{id}/execute` 与 `dashboard_execution/{id}`【已实现】：前者为已保存订阅创建 manual Execution、冻结 Input Snapshot，支持 `request_id` 幂等与在途串行，立即返回 Execution；请求线程不调用 Orchestrator。后者只读返回当前用户自己的执行及双 Snapshot。异步 Render Worker Claim 后经 Orchestrator 完成 Render + Email Delivery，两端均明确完成后才进入 `succeeded`；主链路无 `not_ready` placeholder（证据：`views/{subscription_view,execution_view}.py`、`services/{execution_service,execution_orchestrator,delivery_service}.py`）。
 - `dashboard_execution/{id}/render-token-exchange` 与 `render-input`【已实现】：Worker 为 `running` Execution 签发一次性短时 Token，匿名 exchange 原子消费后建立绑定 Execution/Snapshot/attempt 的受限 Render Session；该会话默认拒绝普通 API，仅允许本 Execution 的 render-input 与 manifest 数据源查询，新 attempt 使旧会话失效。正式页面使用双 Snapshot 冻结布局与筛选，Widget 根据 manifest 中的 DataSource identity 实时解析当前定义、权限和凭据；Render Snapshot 不复制 DataSource 运行配置。PDF artifact 按 Execution 隔离；生产环境强制配置 Render/Delivery 共同可见的 `DASHBOARD_REPORT_ARTIFACT_ROOT`（证据：`views/execution_view.py`、`services/{render_token_service,render_scope_service,dashboard_report_renderer,report_render_service,render_snapshot_service}.py`）。
 - `open_api/import_export`：开放导入导出 API 通过 `api_pass`/API Token 校验，支持 `export`、`precheck_import`、`submit_import` 三类动作；授权服务解析组织、计算导入导出权限矩阵，并在实例/组织维度过滤对象（证据：`views/openapi_import_export_view.py:34,48,118,190,280`、`services/import_export/authorization_service.py:24,71,87,180`）。
@@ -70,6 +70,7 @@
 - 非 NATS 数据源预览执行器【已实现/已存在】：`services/datasource_preview/` 按 `source_type` 分派到数据库、REST API、Excel 执行器；数据库预览只允许单条 `SELECT` 或按表限量拉取，Excel 仅支持 `.xlsx` 且单文件不超过 2MB；预览结果会推断字段结构并回传给前端，供数据源默认字段定义复用（`services/datasource_preview/{registry,database,excel,schema}.py`）。
   - 更正：operation_analysis **Python 代码中未硬编码调用** alerts 的 `get_alert_*`；这些是 alerts 独立的 NATS 端点，经通用取数器按 `path` 动态解析调用，非代码级内置依赖（证据：`grep -rn "get_alert_\|alerts\." --include=*.py` 在本模块无命中）。需注意：内置画布 YAML `support-files/builtin_canvases.yaml` 中确以 dataSource 字符串形式配置了 `get_alert_*`/`alert/get_alert_*` 等取数路径（约 37 处），即 alerts 是**配置态数据源**而非代码态依赖。
 - 服务：`services/directory_service.py`（目录树）、`services/node_tree.py`、`services/import_export/*`（YAML 导入导出）。
+- 画布报告订阅 Adapter【Phase 3 已实现】：`services/canvas_report/` 注册 `dashboard` 与 `screen`；隔离布局 walker、Render Snapshot、权限与删除终止；Screen PDF 为 A4 landscape 单页等比 fit（策略 2）；Scheduler / Delivery / Claim 不感知布局（证据：`services/canvas_report/{registry,dashboard,screen,permissions}.py`、`services/{render_snapshot_service,subscription_service,dashboard_report_renderer,execution_orchestrator}.py`）。
 - 依赖 `apps.core` 装饰器/视图工具；RPC 经 `OperationAnalysisRpc`（独立 server/namespace，`apps/rpc/base.py`）。
 - 初始化/导出 management commands【已实现/已存在】：`init_builtin_canvases`（内置画布落地）、`init_default_namespace`（默认命名空间）、`init_default_groups`（默认分组）、`init_source_api_data`（内置数据源导入）、`export_source_api_data`（数据源导出），是内置画布与默认数据源/命名空间的落地机制（`management/commands/`）。
 
@@ -114,6 +115,18 @@
 - `[operation_analysis#20260730-001]` 手动主链路（含 Email Delivery）已落地；报告取数使用实时 DataSource，不保证配置变更不影响历史或在途 Execution。清理过时的 Email 未实现 / `not_ready` placeholder / Phase 临时表述；`ALLOWED_TRANSITIONS` 去掉误导性的 `pending→running` 条目（Claim 仍为唯一入口）。
 - `[operation_analysis#20260801-001]` 删除未被查询链路消费的 DataSource 配置审计副本；Render Snapshot 继续通过 Widget manifest 保留 DataSource identity，查询时实时解析当前定义、权限和凭据，不支持历史配置重放。
 - `[operation_analysis#20260730-002]` Retry Resume / Orphan 语义对齐（未编码）：Execution 重试期间保持 `running`、claim 一次、同 task 多 attempt；下一 attempt 起点按 InputSnapshot / RenderSnapshot / Artifact 资源状态决定。**修正**：Snapshot 创建阶段 transient failure 允许再 ensure/create；仅冻结成功后损坏才终结且禁止重建。Artifact 可在 Delivery retry 复用；不可用 Artifact 视为需重跑 Render。MVP 超时收敛为 `failed`；orphan running 不自动 reclaim，且继续占用 in-flight 阻塞同订阅新的 manual/scheduled。
+
+## 2026-08-01 多画布报告订阅 Phase 1
+
+- `[operation_analysis#20260801-002]` 抽取 `CanvasReportAdapter` 边界（`services/canvas_report/`）：仅注册 `dashboard`；Render Snapshot / widget manifest、画布查看权限、PermissionStep 与 Dashboard 删除终止经 Adapter 分派。无 migration、无 `resource_type`/`resource_id` 落库、无对外 API 契约变更；`screen` 未注册。演进契约见 `specs/changes/canvas-report-subscription/spec.md`。
+
+## 2026-08-03 多画布报告订阅 Phase 2
+
+- `[operation_analysis#20260803-001]` Subscription / Execution / 双 Snapshot 落库 `resource_type`/`resource_id`（Render Snapshot 另加 `render_schema_version=1`）；migration `0020` 回填；写入归一化双写旧 `dashboard` FK；API 返回新字段并兼容 `?dashboard_id=` / `?resource_type=&resource_id=`；仍拒绝 Screen 订阅创建。
+
+## 2026-08-03 多画布报告订阅 Phase 3
+
+- `[operation_analysis#20260803-002]` 注册 `ScreenCanvasReportAdapter`；开放 `screen` 订阅写入（无 dashboard FK）；migration `0021` 快照 `dashboard_id` 可空；Screen 删除终止订阅；PDF 策略 2（viewport 来自 snapshot + A4 landscape 等比 fit）；前端 Screen 订阅入口与 render 分支。PermissionStep 经 Adapter 存在性判断支持删除后在途继续；Screen render-input HTTP 合同已覆盖。migration `0022` 冻结 `resource_display_label`；Delivery 消费展示标签而非 `resource_type` 分支；订阅/执行入口统一 `require_canvas_view`。演进契约见 `specs/changes/canvas-report-subscription/spec.md`。
 
 ## 6. 证据来源
 `server/apps/operation_analysis/{urls.py,models/*,views/datasource_view.py,views/view.py,nats/nats.py,common/get_nats_source_data.py,constants/constants.py,tasks/tasks.py,management/commands/*,services/*}`、`apps/operation_analysis/migrations/0010_remove_namespace_groups.py`、`apps/rpc/base.py:OperationAnalysisRpc`、`web/src/app/ops-analysis/{utils/widgetRequestCache.ts,components/widgetDataRenderer.tsx,api/namespace.ts,(pages)/settings/namespace/operateModal.tsx}`。

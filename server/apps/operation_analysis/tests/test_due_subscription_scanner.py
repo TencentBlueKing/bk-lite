@@ -347,7 +347,7 @@ def test_manual_execute_does_not_change_next_run_at(
     )
     monkeypatch.setattr(
         "apps.operation_analysis.services.subscription_service."
-        "DashboardSubscriptionService.require_dashboard_view",
+        "DashboardSubscriptionService.require_canvas_view",
         lambda *args, **kwargs: None,
     )
     original = due_subscription.next_run_at

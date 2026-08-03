@@ -7,6 +7,18 @@ from apps.system_mgmt.models import Channel
 
 EXECUTION_SNAPSHOT_IMMUTABLE_ERROR = "Execution Input Snapshot 创建后不可修改"
 RENDER_SNAPSHOT_IMMUTABLE_ERROR = "Render Snapshot 创建后不可修改"
+_RESOURCE_TYPE_DASHBOARD = "dashboard"
+_DEFAULT_RENDER_SCHEMA_VERSION = 1
+
+
+def _sync_dashboard_resource_fields(instance) -> None:
+    """ORM 兼容：仅有 dashboard FK 时回填 resource_*（测试与内部创建）。"""
+    if instance.dashboard_id is None or instance.resource_id is not None:
+        return
+    if not instance.resource_type:
+        instance.resource_type = _RESOURCE_TYPE_DASHBOARD
+    if instance.resource_type == _RESOURCE_TYPE_DASHBOARD:
+        instance.resource_id = instance.dashboard_id
 
 
 class AliveSubscriptionManager(models.Manager):
@@ -38,6 +50,18 @@ class DashboardReportSubscription(TimeInfo):
         on_delete=models.SET_NULL,
         related_name="report_subscriptions",
         verbose_name="仪表盘",
+    )
+    resource_type = models.CharField(
+        max_length=32,
+        default=_RESOURCE_TYPE_DASHBOARD,
+        db_index=True,
+        verbose_name="画布资源类型",
+    )
+    resource_id = models.BigIntegerField(
+        null=True,
+        blank=True,
+        db_index=True,
+        verbose_name="画布资源 ID",
     )
     creator = models.CharField(max_length=100, db_index=True, verbose_name="创建者")
     creator_domain = models.CharField(
@@ -203,35 +227,42 @@ class DashboardReportSubscription(TimeInfo):
 
     def clean(self):
         super().clean()
-        if self.status == self.Status.ACTIVE and self.dashboard_id is None:
-            raise ValidationError(
-                {"dashboard": "启用状态的报告订阅必须关联仪表盘"}
-            )
-        if self.schedule_type is None:
-            return
         errors = {}
-        if self.schedule_hour is None or not (0 <= self.schedule_hour <= 23):
-            errors["schedule_hour"] = "已配置调度时必须指定 0–23 小时"
-        if self.schedule_minute is None or not (
-            0 <= self.schedule_minute <= 59
-        ):
-            errors["schedule_minute"] = "已配置调度时必须指定 0–59 分钟"
-        if not self.timezone:
-            errors["timezone"] = "已配置调度时必须指定 IANA 时区"
-        if self.schedule_type == self.ScheduleType.WEEKLY and (
-            self.schedule_weekday is None
-            or not (0 <= self.schedule_weekday <= 6)
-        ):
-            errors["schedule_weekday"] = "每周调度必须指定 weekday（0–6）"
-        if self.schedule_type == self.ScheduleType.MONTHLY and (
-            self.schedule_day_of_month is None
-            or not (1 <= self.schedule_day_of_month <= 31)
-        ):
-            errors["schedule_day_of_month"] = (
-                "每月调度必须指定 day_of_month（1–31）"
-            )
+        if self.status == self.Status.ACTIVE:
+            if self.resource_id is None:
+                errors["resource_id"] = "启用状态的报告订阅必须关联画布资源"
+            if (
+                self.resource_type == _RESOURCE_TYPE_DASHBOARD
+                and self.dashboard_id is None
+            ):
+                errors["dashboard"] = "启用状态的报告订阅必须关联仪表盘"
+        if self.schedule_type is not None:
+            if self.schedule_hour is None or not (0 <= self.schedule_hour <= 23):
+                errors["schedule_hour"] = "已配置调度时必须指定 0–23 小时"
+            if self.schedule_minute is None or not (
+                0 <= self.schedule_minute <= 59
+            ):
+                errors["schedule_minute"] = "已配置调度时必须指定 0–59 分钟"
+            if not self.timezone:
+                errors["timezone"] = "已配置调度时必须指定 IANA 时区"
+            if self.schedule_type == self.ScheduleType.WEEKLY and (
+                self.schedule_weekday is None
+                or not (0 <= self.schedule_weekday <= 6)
+            ):
+                errors["schedule_weekday"] = "每周调度必须指定 weekday（0–6）"
+            if self.schedule_type == self.ScheduleType.MONTHLY and (
+                self.schedule_day_of_month is None
+                or not (1 <= self.schedule_day_of_month <= 31)
+            ):
+                errors["schedule_day_of_month"] = (
+                    "每月调度必须指定 day_of_month（1–31）"
+                )
         if errors:
             raise ValidationError(errors)
+
+    def save(self, *args, **kwargs):
+        _sync_dashboard_resource_fields(self)
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return self.name
@@ -277,6 +308,18 @@ class DashboardReportExecution(TimeInfo):
         on_delete=models.SET_NULL,
         related_name="report_executions",
         verbose_name="仪表盘",
+    )
+    resource_type = models.CharField(
+        max_length=32,
+        default=_RESOURCE_TYPE_DASHBOARD,
+        db_index=True,
+        verbose_name="画布资源类型",
+    )
+    resource_id = models.BigIntegerField(
+        null=True,
+        blank=True,
+        db_index=True,
+        verbose_name="画布资源 ID",
     )
     creator = models.CharField(max_length=100, db_index=True, verbose_name="创建者")
     creator_domain = models.CharField(
@@ -395,6 +438,11 @@ class DashboardReportExecution(TimeInfo):
             ),
         ]
 
+    def save(self, *args, **kwargs):
+        _sync_dashboard_resource_fields(self)
+        super().save(*args, **kwargs)
+
+
 class DashboardReportExecutionSnapshotQuerySet(models.QuerySet):
     def update(self, **kwargs):
         raise ValidationError(EXECUTION_SNAPSHOT_IMMUTABLE_ERROR)
@@ -410,7 +458,26 @@ class DashboardReportExecutionSnapshot(models.Model):
         related_name="snapshot",
         verbose_name="报告执行",
     )
-    dashboard_id = models.BigIntegerField(verbose_name="仪表盘 ID")
+    dashboard_id = models.BigIntegerField(
+        null=True,
+        blank=True,
+        verbose_name="仪表盘 ID",
+    )
+    resource_type = models.CharField(
+        max_length=32,
+        default=_RESOURCE_TYPE_DASHBOARD,
+        verbose_name="画布资源类型",
+    )
+    resource_id = models.BigIntegerField(
+        null=True,
+        blank=True,
+        verbose_name="画布资源 ID",
+    )
+    resource_display_label = models.CharField(
+        max_length=32,
+        default="仪表盘",
+        verbose_name="画布类型展示标签",
+    )
     creator_id = models.CharField(max_length=100, verbose_name="创建者 ID")
     creator_domain = models.CharField(
         max_length=100,
@@ -498,6 +565,11 @@ class DashboardReportExecutionSnapshot(models.Model):
     def save(self, *args, **kwargs):
         if self.pk is not None and type(self).objects.filter(pk=self.pk).exists():
             raise ValidationError(EXECUTION_SNAPSHOT_IMMUTABLE_ERROR)
+        if self.resource_id is None and self.dashboard_id is not None:
+            if not self.resource_type:
+                self.resource_type = _RESOURCE_TYPE_DASHBOARD
+            if self.resource_type == _RESOURCE_TYPE_DASHBOARD:
+                self.resource_id = self.dashboard_id
         super().save(*args, **kwargs)
 
 
@@ -516,9 +588,32 @@ class DashboardReportRenderSnapshot(models.Model):
         related_name="render_snapshot",
         verbose_name="报告执行",
     )
-    dashboard_id = models.BigIntegerField(verbose_name="仪表盘 ID")
+    dashboard_id = models.BigIntegerField(
+        null=True,
+        blank=True,
+        verbose_name="仪表盘 ID",
+    )
     dashboard_name = models.CharField(max_length=128, verbose_name="仪表盘名称")
     dashboard_updated_at = models.DateTimeField(verbose_name="仪表盘更新时间")
+    resource_type = models.CharField(
+        max_length=32,
+        default=_RESOURCE_TYPE_DASHBOARD,
+        verbose_name="画布资源类型",
+    )
+    resource_id = models.BigIntegerField(
+        null=True,
+        blank=True,
+        verbose_name="画布资源 ID",
+    )
+    resource_display_label = models.CharField(
+        max_length=32,
+        default="仪表盘",
+        verbose_name="画布类型展示标签",
+    )
+    render_schema_version = models.PositiveIntegerField(
+        default=_DEFAULT_RENDER_SCHEMA_VERSION,
+        verbose_name="渲染快照 schema 版本",
+    )
     view_sets = models.JSONField(default=list, verbose_name="仪表盘布局")
     filters = models.JSONField(null=True, blank=True, verbose_name="筛选配置")
     other = models.JSONField(null=True, blank=True, verbose_name="其他配置")
@@ -540,6 +635,11 @@ class DashboardReportRenderSnapshot(models.Model):
     def save(self, *args, **kwargs):
         if self.pk is not None and type(self).objects.filter(pk=self.pk).exists():
             raise ValidationError(RENDER_SNAPSHOT_IMMUTABLE_ERROR)
+        if self.resource_id is None and self.dashboard_id is not None:
+            if not self.resource_type:
+                self.resource_type = _RESOURCE_TYPE_DASHBOARD
+            if self.resource_type == _RESOURCE_TYPE_DASHBOARD:
+                self.resource_id = self.dashboard_id
         super().save(*args, **kwargs)
 
 

@@ -428,9 +428,22 @@ class DashboardReportExecutionService:
         filter_semantics, filter_values = cls._snapshot_filter_payload(
             subscription, execution
         )
+        from apps.operation_analysis.services.canvas_report.registry import (
+            get_canvas_report_adapter,
+        )
+
+        resource_type = subscription.resource_type or "dashboard"
+        adapter = get_canvas_report_adapter(resource_type)
         return DashboardReportExecutionSnapshot.objects.create(
             execution=execution,
             dashboard_id=subscription.dashboard_id,
+            resource_type=resource_type,
+            resource_id=(
+                subscription.resource_id
+                if subscription.resource_id is not None
+                else subscription.dashboard_id
+            ),
+            resource_display_label=adapter.resource_display_label(),
             creator_id=subscription.creator,
             creator_domain=subscription.creator_domain,
             creator_timezone=creator_timezone,
@@ -517,12 +530,25 @@ class DashboardReportExecutionService:
             or subscription.creator_domain != request.user.domain
         ):
             raise PermissionDenied("只能执行自己的报告订阅")
-        if subscription.dashboard is None:
-            raise PermissionDenied("源仪表盘已不存在，不能执行该订阅")
+        resource_type = subscription.resource_type or "dashboard"
+        resource_id = (
+            subscription.resource_id
+            if subscription.resource_id is not None
+            else subscription.dashboard_id
+        )
+        if resource_id is None:
+            raise PermissionDenied("源画布已不存在，不能执行该订阅")
 
-        DashboardSubscriptionService.require_dashboard_view(
+        DashboardSubscriptionService.require_canvas_view(
             request,
-            subscription.dashboard,
+            resource_type,
+            resource_id,
+            missing_message="源画布已不存在，不能执行该订阅",
+            denied_message=(
+                "无权查看该仪表盘"
+                if resource_type == "dashboard"
+                else "无权查看该画布"
+            ),
         )
         normalized_request_id = cls._normalize_request_id(
             request_id
@@ -558,6 +584,14 @@ class DashboardReportExecutionService:
             execution = DashboardReportExecution.objects.create(
                 subscription=locked_subscription,
                 dashboard=locked_subscription.dashboard,
+                resource_type=(
+                    locked_subscription.resource_type or "dashboard"
+                ),
+                resource_id=(
+                    locked_subscription.resource_id
+                    if locked_subscription.resource_id is not None
+                    else locked_subscription.dashboard_id
+                ),
                 creator=locked_subscription.creator,
                 creator_domain=locked_subscription.creator_domain,
                 trigger_type=DashboardReportExecution.TriggerType.MANUAL_TEST,
@@ -644,7 +678,10 @@ class DashboardReportExecutionService:
             != DashboardReportSubscription.Status.ACTIVE
             or locked_subscription.schedule_type is None
             or locked_subscription.next_run_at is None
-            or locked_subscription.dashboard_id is None
+            or (
+                locked_subscription.resource_id is None
+                and locked_subscription.dashboard_id is None
+            )
         ):
             return CreateScheduledResult(
                 execution=None, created=False
@@ -693,6 +730,14 @@ class DashboardReportExecutionService:
             execution = DashboardReportExecution.objects.create(
                 subscription=locked_subscription,
                 dashboard=locked_subscription.dashboard,
+                resource_type=(
+                    locked_subscription.resource_type or "dashboard"
+                ),
+                resource_id=(
+                    locked_subscription.resource_id
+                    if locked_subscription.resource_id is not None
+                    else locked_subscription.dashboard_id
+                ),
                 creator=locked_subscription.creator,
                 creator_domain=locked_subscription.creator_domain,
                 trigger_type=DashboardReportExecution.TriggerType.SCHEDULED,

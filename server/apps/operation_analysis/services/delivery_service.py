@@ -261,15 +261,24 @@ class DashboardReportDeliveryService:
         execution: DashboardReportExecution,
     ) -> str:
         render_snapshot = getattr(execution, "render_snapshot", None)
-        dashboard_name = (
+        canvas_name = (
             render_snapshot.dashboard_name
             if render_snapshot
-            else str(snapshot.dashboard_id)
+            else str(
+                snapshot.resource_id
+                if snapshot.resource_id is not None
+                else snapshot.dashboard_id
+            )
         )
-        safe_name = re.sub(r"[<>&]", "", dashboard_name)
+        canvas_label = (
+            getattr(render_snapshot, "resource_display_label", None)
+            if render_snapshot
+            else None
+        ) or getattr(snapshot, "resource_display_label", None) or "仪表盘"
+        safe_name = re.sub(r"[<>&]", "", canvas_name)
         safe_sub = re.sub(r"[<>&]", "", snapshot.subscription_name or "")
         parts = [
-            f"<p>仪表盘：{safe_name}</p>",
+            f"<p>{canvas_label}：{safe_name}</p>",
             f"<p>订阅名称：{safe_sub}</p>",
         ]
         if cls._is_scheduled(snapshot, execution):

@@ -19,10 +19,20 @@ export const useDashboardSubscriptionApi = () => {
   const { get, post, patch, del } = useApiClient();
 
   const listSubscriptions = useCallback(
-    (dashboardId: number) =>
-      get<DashboardSubscription[]>(SUBSCRIPTION_ENDPOINT, {
-        params: { dashboard_id: dashboardId },
-      }),
+    (filter: number | { resourceType: string; resourceId: number }) => {
+      const params =
+        typeof filter === 'number'
+          ? { dashboard_id: filter }
+          : filter.resourceType === 'dashboard'
+            ? { dashboard_id: filter.resourceId }
+            : {
+                resource_type: filter.resourceType,
+                resource_id: filter.resourceId,
+              };
+      return get<DashboardSubscription[]>(SUBSCRIPTION_ENDPOINT, {
+        params,
+      });
+    },
     [get],
   );
 

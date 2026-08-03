@@ -14,6 +14,16 @@ from apps.operation_analysis.services.report_render_service import (
 from apps.operation_analysis.services.retry_types import ResourceState
 
 
+def _resolve_resource_id(
+    *,
+    resource_id: int | None,
+    dashboard_id: int | None,
+) -> int | None:
+    if resource_id is not None:
+        return resource_id
+    return dashboard_id
+
+
 def _input_snapshot_state(
     execution: DashboardReportExecution,
 ) -> str:
@@ -22,10 +32,18 @@ def _input_snapshot_state(
     except DashboardReportExecutionSnapshot.DoesNotExist:
         return "absent"
 
+    exec_resource_id = _resolve_resource_id(
+        resource_id=execution.resource_id,
+        dashboard_id=execution.dashboard_id,
+    )
+    snap_resource_id = _resolve_resource_id(
+        resource_id=snapshot.resource_id,
+        dashboard_id=snapshot.dashboard_id,
+    )
     is_valid = (
-        execution.dashboard_id is not None
+        exec_resource_id is not None
+        and snap_resource_id == exec_resource_id
         and execution.subscription_id is not None
-        and snapshot.dashboard_id == execution.dashboard_id
         and snapshot.creator_id == execution.creator
         and snapshot.creator_domain == execution.creator_domain
         and snapshot.subscription_id == execution.subscription_id
@@ -43,8 +61,23 @@ def _render_snapshot_state(
         return "absent"
     if render_snapshot.execution_id != execution.id:
         return "corrupt"
+    exec_resource_id = _resolve_resource_id(
+        resource_id=execution.resource_id,
+        dashboard_id=execution.dashboard_id,
+    )
+    snap_resource_id = _resolve_resource_id(
+        resource_id=render_snapshot.resource_id,
+        dashboard_id=render_snapshot.dashboard_id,
+    )
+    if (
+        exec_resource_id is not None
+        and snap_resource_id is not None
+        and snap_resource_id != exec_resource_id
+    ):
+        return "corrupt"
     if (
         execution.dashboard_id is not None
+        and render_snapshot.dashboard_id is not None
         and render_snapshot.dashboard_id != execution.dashboard_id
     ):
         return "corrupt"

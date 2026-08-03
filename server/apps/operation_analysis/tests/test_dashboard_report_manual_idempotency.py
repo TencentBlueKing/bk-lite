@@ -57,7 +57,7 @@ def mock_request(authenticated_user):
 def allow_view_and_skip_dispatch(monkeypatch):
     monkeypatch.setattr(
         "apps.operation_analysis.services.subscription_service."
-        "DashboardSubscriptionService.require_dashboard_view",
+        "DashboardSubscriptionService.require_canvas_view",
         lambda *args, **kwargs: None,
     )
     monkeypatch.setattr(
@@ -164,7 +164,7 @@ def test_concurrent_different_request_ids_allow_only_one(
 ):
     monkeypatch.setattr(
         "apps.operation_analysis.services.subscription_service."
-        "DashboardSubscriptionService.require_dashboard_view",
+        "DashboardSubscriptionService.require_canvas_view",
         lambda *args, **kwargs: None,
     )
     monkeypatch.setattr(
@@ -224,7 +224,7 @@ def test_concurrent_same_request_id_creates_one_execution(
 ):
     monkeypatch.setattr(
         "apps.operation_analysis.services.subscription_service."
-        "DashboardSubscriptionService.require_dashboard_view",
+        "DashboardSubscriptionService.require_canvas_view",
         lambda *args, **kwargs: None,
     )
     monkeypatch.setattr(

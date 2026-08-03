@@ -34,6 +34,9 @@ class DashboardReportRenderScopeService:
     _NAMESPACE_LIST = re.compile(
         r"^(?:/api/v1)?/operation_analysis/api/namespace/$"
     )
+    _NETWORK_STATUS_TOPOLOGY = re.compile(
+        r"^(?:/api/v1)?/operation_analysis/api/scene_widgets/network_status_topology/$"
+    )
 
     @classmethod
     def decode_if_render(cls, token: str) -> dict | None:
@@ -221,4 +224,73 @@ class DashboardReportRenderScopeService:
             if requested_ids and requested_ids <= allowed_namespace_ids:
                 return claims
 
+        if cls._NETWORK_STATUS_TOPOLOGY.match(path) and method == "POST":
+            allowed_targets = cls._collect_network_status_topology_targets(
+                execution.render_snapshot.view_sets
+            )
+            body = cls._read_json_body(request)
+            model_id = body.get("model_id")
+            inst_id = body.get("inst_id")
+            if (
+                model_id is not None
+                and inst_id is not None
+                and (str(model_id), str(inst_id)) in allowed_targets
+            ):
+                return claims
+
         raise DashboardReportRenderScopeError("Render Session 不允许访问该接口")
+
+    @staticmethod
+    def _read_json_body(request) -> dict:
+        data = getattr(request, "data", None)
+        if isinstance(data, dict):
+            return data
+        try:
+            import json
+
+            raw = getattr(request, "body", b"") or b""
+            if not raw:
+                return {}
+            parsed = json.loads(raw)
+            return parsed if isinstance(parsed, dict) else {}
+        except Exception:
+            return {}
+
+    @classmethod
+    def _collect_network_status_topology_targets(
+        cls,
+        view_sets,
+    ) -> set[tuple[str, str]]:
+        """从冻结 view_sets 收集允许的 (model_id, inst_id)。"""
+        targets: set[tuple[str, str]] = set()
+
+        def visit(item) -> None:
+            if not isinstance(item, dict):
+                return
+            value_config = item.get("valueConfig") or {}
+            scene_type = (
+                value_config.get("sceneWidgetType")
+                or item.get("sceneWidgetType")
+                or value_config.get("chartType")
+                or item.get("chartType")
+            )
+            config = (
+                value_config.get("networkStatusTopology")
+                or item.get("networkStatusTopology")
+            )
+            if scene_type == "networkStatusTopology" and isinstance(config, dict):
+                model_id = config.get("modelId")
+                inst_id = config.get("instId")
+                if model_id is not None and inst_id is not None:
+                    targets.add((str(model_id), str(inst_id)))
+            children = (item.get("subGridOpts") or {}).get("children") or []
+            for child in children:
+                visit(child)
+
+        if isinstance(view_sets, dict):
+            for item in view_sets.get("items") or []:
+                visit(item)
+        elif isinstance(view_sets, list):
+            for item in view_sets:
+                visit(item)
+        return targets

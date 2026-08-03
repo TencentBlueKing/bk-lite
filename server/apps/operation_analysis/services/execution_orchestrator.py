@@ -142,8 +142,23 @@ class PermissionStep:
                 error_message="Execution 创建者无权查看仪表盘",
             )
 
-        # Render Snapshot 冻结后 Dashboard 删除：不因存在性再次阻断当前执行
-        if execution.dashboard is None:
+        # Render Snapshot 冻结后源画布删除：不因存在性再次阻断当前执行
+        resource_type = execution.resource_type or "dashboard"
+        resource_id = (
+            execution.resource_id
+            if execution.resource_id is not None
+            else execution.dashboard_id
+        )
+        from apps.operation_analysis.services.canvas_report.permissions import (
+            canvas_resource_exists,
+            can_view_canvas,
+        )
+
+        live_missing = resource_id is None or not canvas_resource_exists(
+            resource_type,
+            resource_id,
+        )
+        if live_missing:
             if (
                 execution.source_canvas_deleted_during_execution
                 and cls._has_render_snapshot(execution)
@@ -158,15 +173,12 @@ class PermissionStep:
 
         user = users.get()
         if not user.is_superuser:
-            from apps.operation_analysis.views.view import DashboardModelViewSet
-
-            viewset = DashboardModelViewSet()
             can_view = any(
-                viewset.get_has_permission(
+                can_view_canvas(
                     user,
-                    execution.dashboard,
-                    team_id,
-                    is_check=True,
+                    resource_type,
+                    resource_id,
+                    team_id=team_id,
                 )
                 for team_id in _user_team_ids(user)
             )
@@ -200,6 +212,7 @@ class SnapshotStep:
 
         if (
             execution.source_canvas_deleted_during_execution
+            and execution.resource_id is None
             and execution.dashboard_id is None
         ):
             is_valid = (
@@ -210,10 +223,25 @@ class SnapshotStep:
                 and isinstance(snapshot.filter_values, dict)
             )
         else:
+            exec_resource_id = (
+                execution.resource_id
+                if execution.resource_id is not None
+                else execution.dashboard_id
+            )
+            snap_resource_id = (
+                snapshot.resource_id
+                if snapshot.resource_id is not None
+                else snapshot.dashboard_id
+            )
             is_valid = (
-                execution.dashboard_id is not None
+                exec_resource_id is not None
                 and execution.subscription_id is not None
-                and snapshot.dashboard_id == execution.dashboard_id
+                and snap_resource_id == exec_resource_id
+                and (
+                    not snapshot.resource_type
+                    or not execution.resource_type
+                    or snapshot.resource_type == execution.resource_type
+                )
                 and snapshot.creator_id == execution.creator
                 and snapshot.creator_domain == execution.creator_domain
                 and snapshot.subscription_id == execution.subscription_id

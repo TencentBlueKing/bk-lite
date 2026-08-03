@@ -148,6 +148,9 @@ class DashboardReportRenderService:
             f"{cls._web_base_url()}/ops-analysis/render/execution/"
             f"{execution.id}"
         )
+        viewport = {}
+        if isinstance(render_snapshot.view_sets, dict):
+            viewport = render_snapshot.view_sets.get("viewport") or {}
         request = DashboardRenderRequest(
             execution_id=execution.id,
             render_url=render_url,
@@ -156,6 +159,21 @@ class DashboardReportRenderService:
                 execution,
                 attempt_no=execution.attempt_count or 1,
             ).plaintext,
+            resource_type=(
+                execution.resource_type
+                or render_snapshot.resource_type
+                or "dashboard"
+            ),
+            viewport_width=(
+                int(viewport["width"])
+                if viewport.get("width") is not None
+                else None
+            ),
+            viewport_height=(
+                int(viewport["height"])
+                if viewport.get("height") is not None
+                else None
+            ),
         )
 
         try:

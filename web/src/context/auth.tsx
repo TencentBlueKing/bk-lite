@@ -286,7 +286,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   useEffect(() => {
     const handleSessionExpired = () => {
-      if (isCurrentAuthPath) {
+      if (isCurrentAuthPath || isDashboardRenderRoute) {
         return;
       }
 
@@ -299,7 +299,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => {
       window.removeEventListener(SESSION_EXPIRED_EVENT, handleSessionExpired as EventListener);
     };
-  }, [isCurrentAuthPath]);
+  }, [isCurrentAuthPath, isDashboardRenderRoute]);
 
   useEffect(() => {
     const handleAuthPopupMessage = (event: MessageEvent) => {
@@ -350,6 +350,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setIsAuthenticated(false);
       setIsCheckingAuth(false);
 
+      // Render Session 路由由 Chromium 先换票再建会话，禁止踢去普通登录页
+      if (isDashboardRenderRoute) {
+        return;
+      }
+
       // Only redirect if:
       // 1. Not currently auto signing in
       // 2. Not on auth pages
@@ -379,7 +384,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       localStorage.setItem('locale', userLocale);
       localStorage.setItem('timezone', userTimezone);
     }
-  }, [status, session, pathname, setLocale, router, isAutoSigningIn, hasCheckedExistingAuth, isCheckingExistingAuth, isCurrentAuthPath, sessionExpiredOpen]);
+  }, [status, session, pathname, setLocale, router, isAutoSigningIn, hasCheckedExistingAuth, isCheckingExistingAuth, isCurrentAuthPath, isDashboardRenderRoute, sessionExpiredOpen]);
 
   const handleReloginSuccess = () => {
     setSessionExpiredOpen(false);
@@ -407,7 +412,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   return (
     <AuthContext.Provider value={{ token, isAuthenticated, isCheckingAuth }}>
       {children}
-      {sessionExpiredOpen && !isCurrentAuthPath && (
+      {sessionExpiredOpen && !isCurrentAuthPath && !isDashboardRenderRoute && (
         <div
           className="fixed inset-0 z-1200 flex items-center justify-center bg-[rgba(15,23,42,0.52)] px-4 py-8"
           style={{ backdropFilter: 'blur(4px)' }}

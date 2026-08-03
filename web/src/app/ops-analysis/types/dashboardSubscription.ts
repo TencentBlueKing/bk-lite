@@ -24,6 +24,8 @@ export interface DashboardExecutionSummary {
 export interface DashboardSubscription {
   id: number;
   dashboard: number | null;
+  resource_type: string;
+  resource_id: number | null;
   creator: string;
   creator_domain: string;
   team_id: number;
@@ -50,7 +52,9 @@ export interface DashboardSubscription {
 }
 
 export interface DashboardSubscriptionPayload {
-  dashboard: number;
+  dashboard?: number;
+  resource_type?: string;
+  resource_id?: number;
   name: string;
   recipient_email: string;
   email_channel: number;
@@ -68,7 +72,7 @@ export interface DashboardSubscriptionPayload {
 
 export type DashboardSubscriptionUpdatePayload = Omit<
   DashboardSubscriptionPayload,
-  'dashboard'
+  'dashboard' | 'resource_type' | 'resource_id'
 >;
 
 export interface DashboardExecutionCreated {
@@ -80,6 +84,8 @@ export interface DashboardExecutionCreated {
 
 export interface DashboardReportExecutionSnapshot {
   dashboard_id: number;
+  resource_type: string;
+  resource_id: number | null;
   creator_id: string;
   creator_domain: string;
   execution_team_id: number;
@@ -98,6 +104,8 @@ export interface DashboardReportExecution {
   id: number;
   subscription: number | null;
   dashboard: number | null;
+  resource_type: string;
+  resource_id: number | null;
   creator: string;
   creator_domain: string;
   status: DashboardExecutionStatus;
@@ -124,6 +132,9 @@ export interface DashboardReportRenderSnapshot {
   dashboard_id: number;
   dashboard_name: string;
   dashboard_updated_at: string;
+  resource_type: string;
+  resource_id: number | null;
+  render_schema_version: number;
   view_sets: unknown[];
   filters: unknown;
   other: Record<string, unknown> | null;

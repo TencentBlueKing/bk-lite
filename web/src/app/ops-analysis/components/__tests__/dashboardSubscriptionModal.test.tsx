@@ -270,6 +270,50 @@ describe('DashboardSubscriptionModal', () => {
     });
   });
 
+  it('creates a screen subscription with resource_type and resource_id', async () => {
+    const user = userEvent.setup();
+    render(
+      <DashboardSubscriptionModal
+        open
+        resourceType="screen"
+        resourceId={42}
+        onClose={vi.fn()}
+      />,
+    );
+
+    await user.click(
+      await screen.findByRole('button', { name: '创建订阅' }),
+    );
+    await user.type(screen.getByLabelText('订阅名称'), '大屏日报');
+    await user.type(screen.getByLabelText('接收邮箱'), 'ops@example.com');
+    await selectEmailChannel(user);
+    await user.click(
+      screen.getByRole('button', { name: /保\s*存/ }),
+    );
+
+    await waitFor(() => {
+      expect(api.listSubscriptions).toHaveBeenCalledWith({
+        resourceType: 'screen',
+        resourceId: 42,
+      });
+      expect(api.createSubscription).toHaveBeenCalledWith({
+        resource_type: 'screen',
+        resource_id: 42,
+        name: '大屏日报',
+        recipient_email: 'ops@example.com',
+        email_channel: 11,
+        status: 'active',
+        schedule_type: null,
+        schedule_hour: null,
+        schedule_minute: null,
+        schedule_weekday: null,
+        schedule_day_of_month: null,
+        timezone: null,
+        applied_filter_values: {},
+      });
+    });
+  });
+
   it('shows an error when creation fails', async () => {
     api.createSubscription.mockRejectedValueOnce(new Error('boom'));
     const user = userEvent.setup();

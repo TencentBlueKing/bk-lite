@@ -154,6 +154,9 @@ def test_creator_with_dashboard_view_can_execute_and_retrieve(
     assert retrieve_response.data["attempt_count"] == 0
     assert retrieve_response.data["snapshot"] == {
         "dashboard_id": subscription.dashboard_id,
+        "resource_type": "dashboard",
+        "resource_id": subscription.dashboard_id,
+        "resource_display_label": "仪表盘",
         "creator_id": authenticated_user.username,
         "creator_domain": authenticated_user.domain,
         "creator_timezone": "Asia/Shanghai",
@@ -537,6 +540,9 @@ def test_running_execution_exposes_only_frozen_render_input(
         "execution_id": execution.id,
         "input_snapshot": {
             "dashboard_id": subscription.dashboard_id,
+            "resource_type": "dashboard",
+            "resource_id": subscription.dashboard_id,
+            "resource_display_label": "仪表盘",
             "creator_id": authenticated_user.username,
             "creator_domain": authenticated_user.domain,
             "creator_timezone": "Asia/Shanghai",
@@ -561,6 +567,10 @@ def test_running_execution_exposes_only_frozen_render_input(
             "dashboard_updated_at": (
                 response.data["render_snapshot"]["dashboard_updated_at"]
             ),
+            "resource_type": "dashboard",
+            "resource_id": subscription.dashboard_id,
+            "render_schema_version": 1,
+            "resource_display_label": "仪表盘",
             "view_sets": [
                 {"i": "chart-1", "valueConfig": {"chartType": "line"}}
             ],

@@ -70,4 +70,35 @@ describe('AuthProvider render route', () => {
     });
     expect(nativeFetch).not.toHaveBeenCalled();
   });
+
+  it('does not open session-expired overlay for 401 on render route', async () => {
+    vi.stubGlobal('fetch', nativeFetch);
+    vi.stubGlobal('localStorage', {
+      getItem: vi.fn(() => 'en'),
+      setItem: vi.fn(),
+      removeItem: vi.fn(),
+      clear: vi.fn(),
+      key: vi.fn(),
+      length: 0,
+    });
+
+    const { emitSessionExpired, resetSessionExpiredState } = await import(
+      '@/utils/sessionExpiry'
+    );
+    resetSessionExpiredState();
+
+    render(
+      <AuthProvider>
+        <div>scoped-render-child</div>
+      </AuthProvider>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('scoped-render-child')).toBeTruthy();
+    });
+
+    emitSessionExpired({ reason: 'test-render-401', status: 401 });
+
+    expect(screen.queryByText('common.sessionExpiredTitle')).toBeNull();
+  });
 });

@@ -389,6 +389,161 @@ def test_dashboard_delete_race_after_render_snapshot_continues(
     assert render.dashboard_id == frozen_dashboard_id
 
 
+def _make_screen_subscription(authenticated_user, screen, email_channel):
+    return DashboardReportSubscription.objects.create(
+        name="Screen 生命周期订阅",
+        resource_type="screen",
+        resource_id=screen.id,
+        dashboard=None,
+        creator=authenticated_user.username,
+        creator_domain=getattr(authenticated_user, "domain", "") or "",
+        team_id=1,
+        recipient_email="ops@example.com",
+        email_channel=email_channel,
+        status=DashboardReportSubscription.Status.ACTIVE,
+    )
+
+
+def test_screen_delete_race_before_render_snapshot_fails_permission(
+    authenticated_user,
+    email_channel,
+):
+    from apps.operation_analysis.models.models import Screen
+
+    screen = Screen.objects.create(
+        name="删除竞态大屏-前",
+        groups=[1],
+        view_sets={"viewport": {"width": 1920, "height": 1080}, "items": []},
+    )
+    sub = _make_screen_subscription(authenticated_user, screen, email_channel)
+    execution = DashboardReportExecution.objects.create(
+        subscription=sub,
+        dashboard=None,
+        resource_type="screen",
+        resource_id=screen.id,
+        creator=sub.creator,
+        creator_domain=sub.creator_domain,
+        trigger_type=DashboardReportExecution.TriggerType.SCHEDULED,
+        scheduled_time_utc=timezone.now(),
+        status=DashboardReportExecution.Status.RUNNING,
+    )
+    DashboardReportExecutionSnapshot.objects.create(
+        execution=execution,
+        dashboard_id=None,
+        resource_type="screen",
+        resource_id=screen.id,
+        creator_id=sub.creator,
+        creator_domain=sub.creator_domain,
+        subscription_id=sub.id,
+        subscription_name=sub.name,
+        recipient_email=sub.recipient_email,
+        trigger_type=execution.trigger_type,
+        email_channel_id=sub.email_channel_id,
+        execution_team_id=sub.team_id,
+        subscription_revision=sub.revision,
+        filter_values={},
+    )
+
+    DashboardSubscriptionService.terminate_for_resource_deletion(
+        resource_type="screen",
+        resource_id=screen.id,
+        actor="deleter",
+        reason="screen_deleted",
+    )
+    screen.delete()
+    execution.refresh_from_db()
+    assert execution.source_canvas_deleted_during_execution is True
+    assert execution.resource_id == sub.resource_id
+
+    result = PermissionStep.execute(execution)
+    assert result.ok is False
+    assert result.error_code == "dashboard_missing"
+
+
+def test_screen_delete_race_after_render_snapshot_continues(
+    authenticated_user,
+    email_channel,
+):
+    from apps.operation_analysis.models.models import Screen
+
+    screen = Screen.objects.create(
+        name="删除竞态大屏-后",
+        groups=[1],
+        view_sets={
+            "viewport": {"width": 1920, "height": 1080},
+            "items": [{"id": "s1"}],
+            "filters": [],
+        },
+    )
+    sub = _make_screen_subscription(authenticated_user, screen, email_channel)
+    execution = DashboardReportExecution.objects.create(
+        subscription=sub,
+        dashboard=None,
+        resource_type="screen",
+        resource_id=screen.id,
+        creator=sub.creator,
+        creator_domain=sub.creator_domain,
+        trigger_type=DashboardReportExecution.TriggerType.SCHEDULED,
+        scheduled_time_utc=timezone.now(),
+        status=DashboardReportExecution.Status.RUNNING,
+    )
+    DashboardReportExecutionSnapshot.objects.create(
+        execution=execution,
+        dashboard_id=None,
+        resource_type="screen",
+        resource_id=screen.id,
+        creator_id=sub.creator,
+        creator_domain=sub.creator_domain,
+        subscription_id=sub.id,
+        subscription_name=sub.name,
+        recipient_email=sub.recipient_email,
+        trigger_type=execution.trigger_type,
+        email_channel_id=sub.email_channel_id,
+        execution_team_id=sub.team_id,
+        subscription_revision=sub.revision,
+        filter_values={},
+    )
+    frozen_viewport = {"width": 1920, "height": 1080}
+    DashboardReportRenderSnapshot.objects.create(
+        execution=execution,
+        dashboard_id=None,
+        dashboard_name=screen.name,
+        dashboard_updated_at=screen.updated_at,
+        resource_type="screen",
+        resource_id=screen.id,
+        view_sets={
+            "viewport": frozen_viewport,
+            "items": [{"id": "s1"}],
+            "filters": [],
+        },
+        filters=[],
+        other={},
+        widget_manifest=[],
+    )
+    frozen_resource_id = screen.id
+
+    DashboardSubscriptionService.terminate_for_resource_deletion(
+        resource_type="screen",
+        resource_id=screen.id,
+        actor="deleter",
+        reason="screen_deleted",
+    )
+    screen.delete()
+    execution.refresh_from_db()
+    assert execution.source_canvas_deleted_during_execution is True
+    assert execution.resource_id == frozen_resource_id
+
+    perm = PermissionStep.execute(execution)
+    assert perm.ok is True
+    snap = SnapshotStep.execute(execution)
+    assert isinstance(snap, DashboardReportExecutionSnapshot)
+    assert snap.resource_id == frozen_resource_id
+    render = RenderSnapshotStep.execute(execution)
+    assert isinstance(render, DashboardReportRenderSnapshot)
+    assert render.resource_type == "screen"
+    assert render.view_sets["viewport"] == frozen_viewport
+
+
 # --- A6 pause / resume audit ---
 
 

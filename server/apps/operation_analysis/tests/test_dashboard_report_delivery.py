@@ -603,7 +603,7 @@ class TestCreatorTimezoneFreeze:
         )
         monkeypatch.setattr(
             "apps.operation_analysis.services.subscription_service."
-            "DashboardSubscriptionService.require_dashboard_view",
+            "DashboardSubscriptionService.require_canvas_view",
             lambda *args, **kwargs: None,
         )
         monkeypatch.setattr(
@@ -643,7 +643,7 @@ class TestCreatorTimezoneFreeze:
         )
         monkeypatch.setattr(
             "apps.operation_analysis.services.subscription_service."
-            "DashboardSubscriptionService.require_dashboard_view",
+            "DashboardSubscriptionService.require_canvas_view",
             lambda *args, **kwargs: None,
         )
         monkeypatch.setattr(
