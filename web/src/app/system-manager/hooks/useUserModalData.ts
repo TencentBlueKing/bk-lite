@@ -57,6 +57,7 @@ interface UseUserModalDataReturn {
   organizationRoleIds: number[];
   organizationRoleSourceMap: Record<string, string>;
   isSuperuser: boolean;
+  isSyncedUser: boolean;
   currentUserId: string;
   setSelectedGroups: (groups: React.Key[]) => void;
   setSelectedRoles: (roles: number[]) => void;
@@ -91,6 +92,7 @@ export function useUserModalData(): UseUserModalDataReturn {
   const [organizationRoleIds, setOrganizationRoleIds] = useState<number[]>([]);
   const [organizationRoleSourceMap, setOrganizationRoleSourceMap] = useState<Record<string, string>>({});
   const [isSuperuser, setIsSuperuser] = useState<boolean>(false);
+  const [isSyncedUser, setIsSyncedUser] = useState(false);
   const [groupTreeData, setGroupTreeData] = useState<TreeSelectNode[]>([]);
   // 普通→超级管理员切换时缓存个人角色；切回普通时恢复，避免来回切换清空
   const cachedPersonalRoleIds = useRef<number[]>([]);
@@ -182,6 +184,7 @@ export function useUserModalData(): UseUserModalDataReturn {
           setPersonalRoleIds(personalRoles);
           setSelectedRoles(allRoles);
           setIsSuperuser(userDetail?.is_superuser || false);
+          setIsSyncedUser(userDetail.sync_source != null);
 
           const formValues = buildFormValuesFromUserDetail(userDetail, allRoles, userGroupIds);
           formRef.current?.setFieldsValue(formValues);
@@ -207,6 +210,7 @@ export function useUserModalData(): UseUserModalDataReturn {
       setGroupTreeData(nextGroupTreeData);
       formRef.current?.resetFields();
       setIsSuperuser(false);
+      setIsSyncedUser(false);
 
       if (modalType === 'edit' && userId) {
         setOrganizationRoleIds([]);
@@ -291,8 +295,19 @@ export function useUserModalData(): UseUserModalDataReturn {
         }
 
         if (type === 'add') {
-          await addUser(payload);
-          message.success(t('common.addSuccess'));
+          // addUser 成功时若返回 data.email_sent / data.email_error,表示初始密码通知链路有附加状态。
+          // 注意:request 工具已解包 result 字段,addResult 直接是 data 子对象。
+          const addResult: any = await addUser(payload);
+          if (addResult?.email_sent === true) {
+            message.success(`${t('common.addSuccess')}\n${t('system.user.form.initialPasswordEmailSent')}`, 6);
+          } else if (addResult?.email_sent === false) {
+            message.warning(
+              `${t('common.addSuccess')}\n${t('system.user.form.initialPasswordEmailFailed')}：${addResult.email_error || t('common.saveFailed')}`,
+              8
+            );
+          } else {
+            message.success(t('common.addSuccess'));
+          }
         } else {
           await editUser({ user_id: currentUserId, ...payload });
           message.success(t('common.updateSuccess'));
@@ -406,6 +421,7 @@ export function useUserModalData(): UseUserModalDataReturn {
     organizationRoleIds,
     organizationRoleSourceMap,
     isSuperuser,
+    isSyncedUser,
     currentUserId,
     setSelectedGroups,
     setSelectedRoles,

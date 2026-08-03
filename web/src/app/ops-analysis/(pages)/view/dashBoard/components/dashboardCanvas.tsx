@@ -36,6 +36,7 @@ import WidgetWrapper from '@/app/ops-analysis/components/widgetDataRenderer';
 import { WidgetHeaderRuntimeSlotProvider } from '@/app/ops-analysis/components/widgetHeaderRuntimeSlot';
 
 import 'gridstack/dist/gridstack.min.css';
+import type { DashboardWidgetRenderResult } from '@/app/ops-analysis/renderContract';
 
 const DASHBOARD_GRID_COLS = 12;
 const DASHBOARD_GRID_ROW_HEIGHT = 60;
@@ -75,6 +76,8 @@ interface DashboardCanvasProps {
   onDeleteEntireGroup: (groupId: string) => void;
   onEditWidget: (id: string) => void;
   onDeleteWidget: (id: string) => void;
+  renderMode?: boolean;
+  onWidgetRenderStatus?: (result: DashboardWidgetRenderResult) => void;
 }
 
 const DashboardCanvas: React.FC<DashboardCanvasProps> = ({
@@ -102,6 +105,8 @@ const DashboardCanvas: React.FC<DashboardCanvasProps> = ({
   onDeleteEntireGroup,
   onEditWidget,
   onDeleteWidget,
+  renderMode = false,
+  onWidgetRenderStatus,
 }) => {
   const { t } = useTranslation();
   const gridRootRef = useRef<HTMLDivElement>(null);
@@ -537,6 +542,7 @@ const DashboardCanvas: React.FC<DashboardCanvasProps> = ({
                   unifiedFilterValues={appliedFilterValues}
                   filterDefinitions={appliedFilterDefinitions}
                   builtinNamespaceId={appliedNamespaceId}
+                  onRenderStatus={onWidgetRenderStatus}
                 />
               </div>
             </div>
@@ -559,6 +565,7 @@ const DashboardCanvas: React.FC<DashboardCanvasProps> = ({
       onEditWidget,
       t,
       widgetReloadVersions,
+      onWidgetRenderStatus,
     ],
   );
 
@@ -913,7 +920,7 @@ const DashboardCanvas: React.FC<DashboardCanvasProps> = ({
       )
       .map((node) => ({ id: node.id, item: node.item })),
     ...gridStackLayout.groupNodes.flatMap((node) =>
-      collapsedGroups[node.id]
+      !renderMode && collapsedGroups[node.id]
         ? []
         : node.children.map((child) => ({ id: child.id, item: child.item })),
     ),

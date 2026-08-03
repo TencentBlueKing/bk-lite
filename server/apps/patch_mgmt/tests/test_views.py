@@ -604,9 +604,12 @@ class TestRiskViewApi:
         assert resp.status_code == status.HTTP_200_OK
         assert resp.data["total"] >= 1
 
-    def test_risk_remediate_creates_install_task(self, su_client):
+    def test_risk_remediate_creates_install_task(self, su_client, mocker):
         from apps.patch_mgmt.models import GovernanceTask
 
+        trigger = mocker.patch(
+            "apps.patch_mgmt.services.governance_service._trigger_async"
+        )
         target, patch, _baseline = self._setup()
         resp = su_client.post(
             f"{RISK_URL}remediate/",
@@ -614,7 +617,8 @@ class TestRiskViewApi:
             format="json",
         )
         assert resp.status_code == status.HTTP_201_CREATED
-        assert GovernanceTask.objects.filter(task_type="install").count() == 1
+        task = GovernanceTask.objects.get(task_type="install")
+        trigger.assert_called_once_with(task.id)
 
     def test_risk_reboot_requires_window(self, su_client):
         target, _patch, _baseline = self._setup()
@@ -677,9 +681,12 @@ class TestRiskViewApi:
         assert str(target.id) in resp.data["detail"]
         assert not GovernanceTask.objects.filter(task_type="reboot").exists()
 
-    def test_risk_reboot_accepts_pending_reboot_host(self, su_client):
+    def test_risk_reboot_accepts_pending_reboot_host(self, su_client, mocker):
         from apps.patch_mgmt.models import GovernanceTask
 
+        trigger = mocker.patch(
+            "apps.patch_mgmt.services.governance_service._trigger_async"
+        )
         target, patch, _baseline = self._setup()
         self._mark_pending_reboot(target, patch)
 
@@ -705,7 +712,8 @@ class TestRiskViewApi:
         )
 
         assert resp.status_code == status.HTTP_201_CREATED
-        assert GovernanceTask.objects.filter(task_type="reboot", target_list=[target.id]).exists()
+        task = GovernanceTask.objects.get(task_type="reboot", target_list=[target.id])
+        trigger.assert_called_once_with(task.id)
 
     def test_risk_reboot_rejects_stale_scope_token(self, su_client):
         target, patch, _baseline = self._setup()
@@ -850,7 +858,10 @@ class TestGovernanceTaskViewApi:
 
         assert data["progress"] == "1 / 1"
 
-    def test_create_assess_task_without_name_succeeds(self, su_client):
+    def test_create_assess_task_without_name_succeeds(self, su_client, mocker):
+        trigger = mocker.patch(
+            "apps.patch_mgmt.services.governance_service._trigger_async"
+        )
         target = PatchTarget.objects.create(name="web-01", ip="10.0.0.1", os_type=OSType.WINDOWS, team=[1])
         resp = su_client.post(
             GOVERNANCE_URL,
@@ -859,6 +870,7 @@ class TestGovernanceTaskViewApi:
         )
         assert resp.status_code == status.HTTP_201_CREATED
         assert "id" in resp.data
+        trigger.assert_called_once_with(resp.data["id"])
 
     def test_manual_verify_task_is_rejected(self, su_client):
         target = PatchTarget.objects.create(

@@ -1187,6 +1187,7 @@ class BasicGraph(ABC):
                     **request.extra_config,
                     "browser_step_callback": browser_step_callback,
                     "browser_custom_event_callback": browser_custom_event_callback,
+                    "token_usage_accumulator": token_usage_accumulator,
                 },
             }
 
@@ -1253,7 +1254,10 @@ class BasicGraph(ABC):
                     tool_result_seen_since_model_end = True
 
                 elif event_type == "on_chat_model_end":
-                    if token_usage_accumulator is not None:
+                    if (
+                        token_usage_accumulator is not None
+                        and not token_usage_accumulator.middleware_tracking
+                    ):
                         added, reported = token_usage_accumulator.add(event.get("run_id"), event_data.get("output"))
                         if added and not reported:
                             logger.warning(
@@ -1445,20 +1449,27 @@ class BasicGraph(ABC):
                     last_evaluation = evaluation
 
             graph = await self.compile_graph(request)
+            token_usage_accumulator = TokenUsageAccumulator()
             result = await self.invoke(
                 graph,
                 request,
-                extra_configurable={"browser_step_callback": sync_step_callback},
+                extra_configurable={
+                    "browser_step_callback": sync_step_callback,
+                    "token_usage_accumulator": token_usage_accumulator,
+                },
             )
 
             # 添加最终结果
             if last_evaluation:
                 browser_steps_collector.append(f"最终结果: {last_evaluation}")
 
-            token_usage_accumulator = TokenUsageAccumulator()
-            for message in result["messages"]:
-                if isinstance(message, AIMessage):
-                    token_usage_accumulator.add(None, message)
+            if token_usage_accumulator.call_count == 0:
+                for message in result["messages"]:
+                    if isinstance(message, AIMessage):
+                        token_usage_accumulator.add(
+                            getattr(message, "id", None),
+                            message,
+                        )
 
             if token_usage_accumulator.missing_usage_calls:
                 logger.warning(
@@ -1472,6 +1483,8 @@ class BasicGraph(ABC):
                 total_tokens=usage["total_tokens"],
                 prompt_tokens=usage["prompt_tokens"],
                 completion_tokens=usage["completion_tokens"],
+                llm_call_count=token_usage_accumulator.call_count,
+                token_usage_calls=token_usage_accumulator.as_call_details(),
                 browser_steps=browser_steps_collector,
             )
         except Exception as e:

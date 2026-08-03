@@ -120,8 +120,8 @@ const usePatchManagerApi = () => {
   const updatePatch = async (id: number, data: Partial<Patch>): Promise<Patch> =>
     put(`${BASE}/patch/${id}/`, data);
 
-  const deletePatch = async (id: number): Promise<void> =>
-    del(`${BASE}/patch/${id}/`);
+  const deletePatches = async (ids: number[]): Promise<{ deleted_count: number }> =>
+    post(`${BASE}/patch/batch_delete/`, { ids });
 
   // ── 目标管理 ────────────────────────────────────────────────────────────────
 
@@ -358,7 +358,7 @@ const usePatchManagerApi = () => {
     saveManualWindowsPatch,
     uploadWindowsPatchPackage,
     updatePatch,
-    deletePatch,
+    deletePatches,
     getPatchTargetList,
     createPatchTarget,
     createPatchTargetBatch,

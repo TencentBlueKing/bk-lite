@@ -15,6 +15,7 @@ from apps.monitor.models.monitor_object import (
     MonitorInstance,
     MonitorInstanceOrganization,
 )
+from apps.monitor.models.monitor_policy import MonitorAlert
 from apps.monitor.tasks.services.sync_instance import SyncInstance
 
 pytestmark = pytest.mark.django_db
@@ -101,15 +102,24 @@ class TestSyncMonitorInstances:
 
     def test_marks_missing_instance_inactive(self, mocker):
         obj = _make_obj()
-        MonitorInstance.objects.create(
+        instance = MonitorInstance.objects.create(
             id="('gone',)", name="gone", monitor_object=obj, auto=True,
             is_deleted=False, is_active=True,
+        )
+        alert = MonitorAlert.objects.create(
+            policy_id=0,
+            monitor_instance_id=instance.id,
+            metric_instance_id="('gone', 'status')",
+            alert_type="no_data",
+            status="new",
         )
         vm = mocker.patch("apps.monitor.tasks.services.sync_instance.VictoriaMetricsAPI")
         vm.return_value.query.return_value = _vm_result()  # VM 中无任何实例
         SyncInstance().run()
         inst = MonitorInstance.objects.get(id="('gone',)")
+        alert.refresh_from_db()
         assert inst.is_active is False
+        assert alert.status == "new"
 
     def test_no_cleanup_keeps_continuous_inactive(self, mocker):
         obj = _make_obj()
@@ -128,9 +138,16 @@ class TestSyncMonitorInstances:
         obj.cleanup_timeout_days = 1
         obj.last_discovery_success_at = timezone.now() - timedelta(minutes=10)
         obj.save()
-        MonitorInstance.objects.create(
+        instance = MonitorInstance.objects.create(
             id="('dead',)", name="dead", monitor_object=obj, auto=True,
             is_deleted=False, is_active=False, missing_duration_seconds=24 * 60 * 60 - 600,
+        )
+        alert = MonitorAlert.objects.create(
+            policy_id=0,
+            monitor_instance_id=instance.id,
+            metric_instance_id="('dead', 'status')",
+            alert_type="no_data",
+            status="new",
         )
         vm = mocker.patch("apps.monitor.tasks.services.sync_instance.VictoriaMetricsAPI")
         vm.return_value.query.return_value = _vm_result()
@@ -138,6 +155,9 @@ class TestSyncMonitorInstances:
         SyncInstance().run()
 
         assert not MonitorInstance.objects.filter(id="('dead',)").exists()
+        alert.refresh_from_db()
+        assert alert.status == "closed"
+        assert alert.operation_logs[-1]["reason"] == "auto_cleanup_instance_deleted"
 
     def test_failed_query_does_not_advance_or_delete(self, mocker):
         obj = _make_obj()

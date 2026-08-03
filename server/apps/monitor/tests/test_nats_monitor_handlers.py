@@ -150,7 +150,7 @@ class TestHostResourceTop:
         vm = mocker.patch("apps.monitor.nats.monitor.VictoriaMetricsAPI")
         vm.return_value.query.return_value = {
             "status": "success",
-            "data": {"result": [{"metric": {"instance_id": "host-1"}, "value": [time.time(), "42"]}]},
+            "data": {"result": [{"metric": {"instance_id": "host-1"}, "value": [time.time(), "58"]}]},
         }
 
         out = nm.get_host_resource_top("cpu", user_info={"user": "u", "team": 1})

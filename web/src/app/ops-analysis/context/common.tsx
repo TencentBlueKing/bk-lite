@@ -38,7 +38,17 @@ const OpsAnalysisContext = createContext<OpsAnalysisContextType | undefined>(
   undefined
 );
 
-export const OpsAnalysisProvider = ({ children }: { children: ReactNode }) => {
+interface OpsAnalysisProviderCoreProps {
+  children: ReactNode;
+  selectedGroupId?: number | string;
+  trustBackendAuthorization?: boolean;
+}
+
+const OpsAnalysisProviderCore = ({
+  children,
+  selectedGroupId,
+  trustBackendAuthorization = false,
+}: OpsAnalysisProviderCoreProps) => {
   const sharedAccess = useSharedDataSourceQuery();
   const [rawNamespaces, setRawNamespaces] = useState<NamespaceItem[]>([]);
   const [namespacesLoading, setNamespacesLoading] = useState(false);
@@ -59,8 +69,6 @@ export const OpsAnalysisProvider = ({ children }: { children: ReactNode }) => {
 
   const { getDataSourceDetails } = useDataSourceApi();
   const { getNamespaceList } = useNamespaceApi();
-  const { selectedGroup } = useUserInfoContext();
-
   const normalizeDataSources = useCallback((response: any): DatasourceItem[] => {
     if (Array.isArray(response)) {
       return response;
@@ -89,10 +97,10 @@ export const OpsAnalysisProvider = ({ children }: { children: ReactNode }) => {
 
   const applyDataSourceAuth = useCallback(
     (list: DatasourceItem[]) =>
-      sharedAccess
+      sharedAccess || trustBackendAuthorization
         ? (list || []).map((item) => ({ ...item, hasAuth: true }))
-        : addAuthToDataSources(list || [], selectedGroup?.id),
-    [selectedGroup?.id, sharedAccess],
+        : addAuthToDataSources(list || [], selectedGroupId),
+    [selectedGroupId, sharedAccess, trustBackendAuthorization],
   );
 
   const mergeDataSources = useCallback((incoming: DatasourceItem[]) => {
@@ -398,6 +406,26 @@ export const OpsAnalysisProvider = ({ children }: { children: ReactNode }) => {
     </OpsAnalysisContext.Provider>
   );
 };
+
+export const OpsAnalysisProvider = ({ children }: { children: ReactNode }) => {
+  const { selectedGroup } = useUserInfoContext();
+
+  return (
+    <OpsAnalysisProviderCore selectedGroupId={selectedGroup?.id}>
+      {children}
+    </OpsAnalysisProviderCore>
+  );
+};
+
+export const DashboardRenderOpsAnalysisProvider = ({
+  children,
+}: {
+  children: ReactNode;
+}) => (
+  <OpsAnalysisProviderCore trustBackendAuthorization>
+    {children}
+  </OpsAnalysisProviderCore>
+);
 
 export const useOpsAnalysis = (): OpsAnalysisContextType => {
   const context = useContext(OpsAnalysisContext);

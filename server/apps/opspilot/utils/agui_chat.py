@@ -502,6 +502,8 @@ async def _generate_agui_stream(params, skill_name, skill_type, show_think, fina
 
         final_stats["content"] = accumulated_content
         final_stats["usage"] = token_usage_accumulator.as_openai_usage()
+        final_stats["llm_call_count"] = token_usage_accumulator.call_count
+        final_stats["usage_calls"] = token_usage_accumulator.as_call_details()
         if final_stats["content"]:
 
             def log_in_background():
@@ -528,6 +530,10 @@ def _log_and_update_tokens_agui(final_stats, skill_name, skill_id, current_ip, k
             "completion_tokens": 0,
             "total_tokens": 0,
         }
+        usage_calls = final_stats.get("usage_calls") or []
+        llm_call_count = final_stats.get("llm_call_count")
+        if not isinstance(llm_call_count, int) or llm_call_count < 0:
+            llm_call_count = len(usage_calls)
 
         # 创建或更新日志
         if history_log:
@@ -545,6 +551,8 @@ def _log_and_update_tokens_agui(final_stats, skill_name, skill_id, current_ip, k
             # 构建response_detail，包含token统计和响应内容
             response_detail = {
                 "usage": usage,
+                "llm_call_count": llm_call_count,
+                "usage_calls": usage_calls,
                 "response": final_content,
             }
 
@@ -564,10 +572,26 @@ def _log_and_update_tokens_agui(final_stats, skill_name, skill_id, current_ip, k
                 user_message=user_message,
             )
 
+        for call in usage_calls:
+            logger.info(
+                "AGUI token usage call recorded: skill_id=%s, skill_name=%s, "
+                "call_index=%s, visible_tool_count=%s, visible_tools=%s, "
+                "prompt_tokens=%s, completion_tokens=%s, total_tokens=%s",
+                skill_id,
+                skill_name,
+                call.get("call_index"),
+                call.get("visible_tool_count", 0),
+                call.get("visible_tools", []),
+                call.get("prompt_tokens", 0),
+                call.get("completion_tokens", 0),
+                call.get("total_tokens", 0),
+            )
         logger.info(
-            "AGUI token usage recorded: skill_id=%s, skill_name=%s, prompt_tokens=%s, completion_tokens=%s, total_tokens=%s",
+            "AGUI token usage recorded: skill_id=%s, skill_name=%s, llm_call_count=%s, "
+            "prompt_tokens=%s, completion_tokens=%s, total_tokens=%s",
             skill_id,
             skill_name,
+            llm_call_count,
             usage["prompt_tokens"],
             usage["completion_tokens"],
             usage["total_tokens"],
@@ -607,6 +631,8 @@ def stream_agui_chat(params, skill_name, kwargs, current_ip, user_message, skill
             "completion_tokens": 0,
             "total_tokens": 0,
         },
+        "llm_call_count": 0,
+        "usage_calls": [],
     }
     response = StreamingHttpResponse(
         _generate_agui_stream(

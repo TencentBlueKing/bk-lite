@@ -23,8 +23,12 @@ urlpatterns = [
 
 
 @pytest.fixture(autouse=True)
-def open_api_test_urlconf(settings):
+def open_api_test_urlconf(settings, monkeypatch):
     settings.ROOT_URLCONF = __name__
+    monkeypatch.setattr(
+        "apps.cmdb.open_api.services.ModelManage.search_model_info",
+        lambda model_id: {"model_id": model_id, "group": [7], "is_visible": True},
+    )
     settings.MIDDLEWARE = tuple(
         middleware
         for middleware in settings.MIDDLEWARE
@@ -75,7 +79,7 @@ def test_list_associations_requires_visible_source(
 
     assert response.status_code == 200
     assert response.json()["data"] == [{"model_asst_id": "host_run_app", "inst_list": []}]
-    mock_list.assert_called_once_with("host", 1)
+    mock_list.assert_called_once_with("host", 1, business_only=True)
 
 
 @patch("apps.cmdb.open_api.views.CMDBOpenAPIContext.from_request")

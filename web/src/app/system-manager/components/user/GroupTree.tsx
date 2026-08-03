@@ -11,6 +11,7 @@ interface ExtendedTreeDataNode extends TreeDataNode {
   hasAuth?: boolean;
   isVirtual?: boolean;
   parentIsVirtual?: boolean;
+  syncSource?: number | null;
   children?: ExtendedTreeDataNode[];
 }
 
@@ -75,38 +76,30 @@ const GroupTree: React.FC<GroupTreeProps> = ({
     
     // 判断是否为顶层虚拟团队（自己是虚拟团队且父节点不是虚拟团队）
     const isVirtual = node?.isVirtual === true;
+    const isSyncedGroup = node?.syncSource != null;
     const hasVirtualParent = isNodeChildOfVirtual(treeData, groupKey);
     const isTopLevelVirtualGroup = isVirtual && !hasVirtualParent;
     
     // 虚拟团队的子级不能再添加子级
-    const canAddSubGroup = !hasVirtualParent;
+    const canAddSubGroup = !hasVirtualParent && !isSyncedGroup;
 
     const menuItems = [
       ...(canAddSubGroup ? [{
         key: 'addSubGroup',
-        label: (
-          <PermissionWrapper requiredPermissions={['Add Group']}>
-            {t('system.group.addSubGroups')}
-          </PermissionWrapper>
-        ),
+        label: t('system.group.addSubGroups'),
+        permission: 'Add Group',
       }] : []),
       {
         key: 'edit',
-        label: (
-          <PermissionWrapper requiredPermissions={['Edit Group']}>
-            {t('common.edit')}
-          </PermissionWrapper>
-        ),
+        label: t('common.edit'),
+        permission: 'Edit Group',
       },
-      {
+      ...(node?.syncSource == null ? [{
         key: 'delete',
         disabled: isDefaultGroup || isTopLevelVirtualGroup,
-        label: (
-          <PermissionWrapper requiredPermissions={['Delete Group']}>
-            {t('common.delete')}
-          </PermissionWrapper>
-        ),
-      },
+        label: t('common.delete'),
+        permission: 'Delete Group',
+      }] : []),
     ];
 
     return (
@@ -114,6 +107,7 @@ const GroupTree: React.FC<GroupTreeProps> = ({
         items={menuItems.map((item) => ({
           key: String(item.key),
           label: item.label,
+          permission: item.permission,
           disabled: 'disabled' in item ? item.disabled : undefined,
           onClick: () => onGroupAction(String(item.key), groupKey),
         }))}

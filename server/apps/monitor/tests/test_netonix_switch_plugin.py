@@ -26,6 +26,8 @@ from pathlib import Path
 import pytest
 import yaml
 
+from apps.core.utils.loader import LanguageLoader
+
 SERVER_ROOT = Path(__file__).resolve().parents[3]
 PLUGINS = SERVER_ROOT / "apps" / "monitor" / "support-files" / "plugins" / "Telegraf"
 NETONIX_DIR = PLUGINS / "snmp" / "switch_netonix"
@@ -82,7 +84,7 @@ def toml_text():
 @pytest.fixture(scope="module")
 def languages():
     return {
-        lang: yaml.safe_load((LANGUAGE_DIR / f"{lang}.yaml").read_text(encoding="utf-8"))
+        lang: LanguageLoader("monitor", lang).translations
         for lang in ("zh-Hans", "en")
     }
 
@@ -174,7 +176,7 @@ def test_cpu_mem_fan_psu_not_modelled(metrics):
 @pytest.mark.unit
 def test_only_temperature_and_traffic_groups(metrics):
     groups = {m["metric_group"] for m in metrics["metrics"]}
-    assert groups == {"Temperature", "Traffic"}, f"unexpected metric groups: {groups}"
+    assert groups == {"Base", "Temperature", "Traffic"}, f"unexpected metric groups: {groups}"
 
 
 # --------------------------------------------------------------------------- #

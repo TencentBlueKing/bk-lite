@@ -29,7 +29,7 @@ from apps.core.utils.time_util import parse_rfc3339_range_utc, parse_rfc3339_utc
 from apps.core.utils.viewset_utils import GenericViewSetFun
 
 ALERT_LEVEL_DISPLAY_MAP = dict(EventLevel.CHOICES)
-TRUSTED_INTERNAL_PUSHERS = {"lite-monitor", "lite-log"}
+TRUSTED_INTERNAL_PUSHERS = {"lite-monitor", "lite-log", "lite-apm"}
 
 
 def _positive_int_env(name, default):
@@ -746,6 +746,9 @@ def receive_alert_events(*args, **kwargs) -> Dict[str, Any]:
               }
             }
     """
+    if kwargs.pop("health_probe", False) is True:
+        return {"result": True, "data": {"status": "ok"}, "message": ""}
+
     logger.info(
         "[AlertEvent] receive_alert_events source_id=%s pusher=%s event_count=%s",
         kwargs.get("source_id", ""),

@@ -24,23 +24,24 @@ Blueking Lite 是一个 **AI First** 的**轻量版**运维产品，具有部署
 
 ## 🧪 测试覆盖率
 
-![coverage](https://img.shields.io/badge/coverage-74.4%25-green)
+![coverage](https://img.shields.io/badge/coverage-82.7%25-green)
 ![tests](https://img.shields.io/badge/tests-passing-brightgreen)
-![modules≥75%](https://img.shields.io/badge/modules%20%E2%89%A575%25-13%2F14-blue)
-![fake tests](https://img.shields.io/badge/fake%20tests-0-brightgreen)
-![infra](https://img.shields.io/badge/tested%20on-real%20PG%2FRedis%2FMinIO%2FFalkorDB%2FNATS-informational)
+![modules≥80%](https://img.shields.io/badge/modules%20%E2%89%A580%25-15%2F15-blue)
+![new tests](https://img.shields.io/badge/new%20tests-339-brightgreen)
+![infra](https://img.shields.io/badge/tested%20with-local%20containers-informational)
 
-> 统计口径：`apps/<module>` 业务源码覆盖率，排除 `tests/` 与 `migrations/`；本次 `pytest` 原始 TOTAL（含测试文件）为 86%。
+> 统计口径：`apps/<module>` 业务源码覆盖率，排除 `tests/`、模块根目录 `tests.py` 与 `migrations/`。相对原始全量快照的 79.95%，本次严格业务源码覆盖率为 82.66%；新增 339 个测试用例的独立合并执行结果为 339 passed、0 failed、0 errors，最终全量结果为 26,255 passed、0 failed、0 errors。
 
 | 模块 | 覆盖率 | 模块 | 覆盖率 |
 |------|-------:|------|-------:|
-| rpc | 98.6% | log | 84.3% |
-| base | 99.3% | operation_analysis | 82.4% |
-| job_mgmt | 95.6% | core | 80.3% |
-| console_mgmt | 89.7% | mlops | 76.3% |
-| alerts | 84.3% | system_mgmt | 76.1% |
-| monitor | 76.0% | node_mgmt | 75.3% |
-| cmdb | 75.5% | opspilot | 63.3% |
+| rpc | 99.44% | log | 87.48% |
+| base | 98.95% | operation_analysis | 83.97% |
+| job_mgmt | 95.64% | core | 83.20% |
+| console_mgmt | 90.47% | mlops | 81.24% |
+| alerts | 85.80% | system_mgmt | 82.40% |
+| monitor | 80.17% | node_mgmt | 80.21% |
+| cmdb | 82.54% | opspilot | 80.74% |
+| patch_mgmt | 81.13% | | |
 
 ## 🛣️ 路线图
 

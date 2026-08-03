@@ -13,12 +13,12 @@ import {
   Space,
   Spin,
   Tag,
-  Tooltip,
 } from 'antd';
 import { DownOutlined, ExportOutlined, ReloadOutlined } from '@ant-design/icons';
 import ExcelJS from 'exceljs';
 
 import CustomTable from '@/components/custom-table';
+import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import PermissionWrapper from '@/components/permission';
 import OperateDrawer from '@/app/patch-manager/components/operate-drawer';
 import usePatchManagerApi from '@/app/patch-manager/api';
@@ -45,6 +45,7 @@ interface TaskRow {
   createdAt: string;
   canCancel: boolean;
   canRetry: boolean;
+  permission?: string[];
   raw: any;
 }
 
@@ -86,6 +87,8 @@ const STEP_BORDER: Record<string, string> = {
   cancelled: '#bfbfbf',
   unknown: '#faad14',
 };
+
+const ACTIVE_RECORD_STATUSES = new Set(['waiting', 'running']);
 
 function executionText(task: any, formatTime: (value: string) => string, translate: (key: string) => string) {
   if (task.execution_mode !== 'window') return translate('patchManager.risk.executeNow');
@@ -169,6 +172,8 @@ export default function RiskExecutionPage() {
   const [taskDetailLoading, setTaskDetailLoading] = useState(false);
   const [riskDetailLoading, setRiskDetailLoading] = useState(false);
   const detailLoading = taskDetailLoading || riskDetailLoading;
+  const [detailTransitionLoading, setDetailTransitionLoading] = useState(false);
+  const [detailReloadVersion, setDetailReloadVersion] = useState(0);
   const [riskSearch, setRiskSearch] = useState('');
   const [selectedRiskId, setSelectedRiskId] = useState<string>();
   const [riskDetail, setRiskDetail] = useState<any>();
@@ -192,6 +197,18 @@ export default function RiskExecutionPage() {
   };
   const taskDetailRequestCoordinatorRef = useRef(createListRequestCoordinator(setTaskDetailLoading));
   const riskDetailRequestCoordinatorRef = useRef(createListRequestCoordinator(setRiskDetailLoading));
+  const initialDetailSelectionRef = useRef(false);
+  const detailLoadGenerationRef = useRef(0);
+  const detailPollingGenerationRef = useRef(0);
+  const detailPollingTimerRef = useRef<number | undefined>(undefined);
+
+  const stopDetailPolling = useCallback(() => {
+    detailPollingGenerationRef.current += 1;
+    if (detailPollingTimerRef.current !== undefined) {
+      window.clearInterval(detailPollingTimerRef.current);
+      detailPollingTimerRef.current = undefined;
+    }
+  }, []);
 
   const formatDateTime = useCallback((value?: string | null) => (
     value ? localizedTimeRef.current(value) : '—'
@@ -210,6 +227,7 @@ export default function RiskExecutionPage() {
       createdAt: formatDateTime(task.created_at),
       canCancel: Boolean(task.can_cancel),
       canRetry: Boolean(task.can_retry),
+      permission: task.permission,
       raw: task,
     }))
   ), [formatDateTime, t]);
@@ -261,7 +279,7 @@ export default function RiskExecutionPage() {
     };
   }, [isLoading, loadTasks]);
 
-  const loadTaskDetail = useCallback(async (taskId: number, silent = false) => {
+  const loadTaskDetail = useCallback(async (taskId: number, silent = false, applyResult = true) => {
     const coordinator = taskDetailRequestCoordinatorRef.current;
     if (!coordinator.canStart({ visible: !silent })) return;
     const ticket = coordinator.begin({ visible: !silent });
@@ -269,8 +287,11 @@ export default function RiskExecutionPage() {
     try {
       const result = await apiRef.current.getGovernanceTaskDetail(taskId, { signal: ticket.signal });
       if (!coordinator.shouldApply(ticket)) return;
-      setDetailTask(result);
-      setSelectedRiskId((current) => current || result.risk_items?.[0]?.id);
+      if (applyResult) {
+        setDetailTask(result);
+        setSelectedRiskId((current) => current || result.risk_items?.[0]?.id);
+      }
+      return result;
     } catch (error) {
       if (!ticket.signal.aborted) throw error;
     } finally {
@@ -278,14 +299,16 @@ export default function RiskExecutionPage() {
     }
   }, []);
 
-  const loadSelectedRisk = useCallback(async (taskId: number, riskId: string, silent = false) => {
+  const loadSelectedRisk = useCallback(async (taskId: number, riskId: string, silent = false, applyResult = true) => {
     const coordinator = riskDetailRequestCoordinatorRef.current;
     if (!coordinator.canStart({ visible: !silent })) return;
     const ticket = coordinator.begin({ visible: !silent });
     if (!ticket) return;
     try {
       const result = await apiRef.current.getGovernanceRiskItemDetail(taskId, riskId, { signal: ticket.signal });
-      if (coordinator.shouldApply(ticket)) setRiskDetail(result);
+      if (!coordinator.shouldApply(ticket)) return;
+      if (applyResult) setRiskDetail(result);
+      return result;
     } catch (error: any) {
       if (!ticket.signal.aborted && error?.code !== 'ERR_CANCELED') throw error;
     } finally {
@@ -295,38 +318,155 @@ export default function RiskExecutionPage() {
 
   useEffect(() => {
     if (!drawerOpen || !detailTask?.id || !selectedRiskId) return;
-    let polling = false;
-    const poll = async (includeTask: boolean) => {
-      if (polling) return;
-      polling = true;
-      const requests = [loadSelectedRisk(detailTask.id, selectedRiskId, includeTask)];
-      if (includeTask) requests.unshift(loadTaskDetail(detailTask.id, true));
-      await Promise.allSettled(requests);
-      polling = false;
+    const taskId = detailTask.id;
+    const riskId = selectedRiskId;
+    const generation = ++detailLoadGenerationRef.current;
+    const initialSelection = initialDetailSelectionRef.current;
+    initialDetailSelectionRef.current = false;
+
+    setDetailTransitionLoading(true);
+    const refreshDetail = async () => {
+      try {
+        if (initialSelection) {
+          const [riskResponse] = await Promise.allSettled([
+            loadSelectedRisk(taskId, riskId, false, false),
+          ]);
+          if (
+            generation === detailLoadGenerationRef.current
+            && riskResponse.status === 'fulfilled'
+            && riskResponse.value
+          ) {
+            setRiskDetail(riskResponse.value);
+          }
+          return;
+        }
+
+        const [taskResponse, riskResponse] = await Promise.allSettled([
+          loadTaskDetail(taskId, false, false),
+          loadSelectedRisk(taskId, riskId, false, false),
+        ]);
+        if (generation !== detailLoadGenerationRef.current) return;
+        if (
+          taskResponse.status === 'fulfilled'
+          && taskResponse.value
+          && riskResponse.status === 'fulfilled'
+          && riskResponse.value
+        ) {
+          setDetailTask(taskResponse.value);
+          setRiskDetail(riskResponse.value);
+        }
+      } finally {
+        if (generation === detailLoadGenerationRef.current) {
+          setDetailTransitionLoading(false);
+        }
+      }
     };
-    void poll(false);
-    const timer = window.setInterval(() => {
-      void poll(true);
-    }, PATCH_MANAGER_POLL_INTERVAL_MS);
+    void refreshDetail();
+
     return () => {
-      window.clearInterval(timer);
+      if (generation === detailLoadGenerationRef.current) {
+        detailLoadGenerationRef.current += 1;
+      }
+      taskDetailRequestCoordinatorRef.current.invalidate();
       riskDetailRequestCoordinatorRef.current.invalidate();
     };
-  }, [detailTask?.id, drawerOpen, loadSelectedRisk, loadTaskDetail, selectedRiskId]);
+  }, [detailReloadVersion, detailTask?.id, drawerOpen, loadSelectedRisk, loadTaskDetail, selectedRiskId]);
+
+  useEffect(() => {
+    stopDetailPolling();
+    if (
+      !drawerOpen
+      || !detailTask?.id
+      || !selectedRiskId
+      || detailTransitionLoading
+      || detailLoading
+      || !riskDetail
+      || String(riskDetail.id) !== String(selectedRiskId)
+      || !ACTIVE_RECORD_STATUSES.has(detailTask.record_status)
+    ) return;
+
+    const generation = detailPollingGenerationRef.current;
+    let polling = false;
+    const poll = async () => {
+      if (polling || generation !== detailPollingGenerationRef.current) return;
+      polling = true;
+      try {
+        const [taskResponse, riskResponse] = await Promise.allSettled([
+          loadTaskDetail(detailTask.id, true, false),
+          loadSelectedRisk(detailTask.id, selectedRiskId, true, false),
+        ]);
+        if (generation !== detailPollingGenerationRef.current) return;
+        if (
+          taskResponse.status === 'fulfilled'
+          && taskResponse.value
+          && riskResponse.status === 'fulfilled'
+          && riskResponse.value
+        ) {
+          setDetailTask(taskResponse.value);
+          setRiskDetail(riskResponse.value);
+        }
+      } finally {
+        polling = false;
+      }
+    };
+    detailPollingTimerRef.current = window.setInterval(() => {
+      void poll();
+    }, PATCH_MANAGER_POLL_INTERVAL_MS);
+    return stopDetailPolling;
+  }, [detailLoading, detailTask?.id, detailTask?.record_status, detailTransitionLoading, drawerOpen, loadSelectedRisk, loadTaskDetail, riskDetail, selectedRiskId, stopDetailPolling]);
 
   useEffect(() => () => {
+    stopDetailPolling();
     listRequestCoordinatorRef.current.invalidate();
     taskDetailRequestCoordinatorRef.current.invalidate();
     riskDetailRequestCoordinatorRef.current.invalidate();
-  }, []);
+  }, [stopDetailPolling]);
 
   const openDetail = async (taskId: number) => {
+    const openingDrawer = !drawerOpen;
+    stopDetailPolling();
+    detailLoadGenerationRef.current += 1;
+    taskDetailRequestCoordinatorRef.current.invalidate();
+    riskDetailRequestCoordinatorRef.current.invalidate();
     setDrawerOpen(true);
-    setDetailTask(undefined);
+    if (openingDrawer) {
+      setDetailTask(undefined);
+      setSelectedRiskId(undefined);
+    }
     setRiskDetail(undefined);
-    setSelectedRiskId(undefined);
+    setDetailTransitionLoading(true);
     setRiskSearch('');
-    await loadTaskDetail(taskId);
+    initialDetailSelectionRef.current = true;
+    const result = await loadTaskDetail(taskId, false, false);
+    if (!result) {
+      setDetailTransitionLoading(false);
+      return;
+    }
+    setDetailTask(result);
+    setSelectedRiskId(result.risk_items?.[0]?.id);
+    if (!result.risk_items?.[0]?.id) setDetailTransitionLoading(false);
+  };
+
+  const handleSelectRisk = (riskId: string) => {
+    if (riskId === selectedRiskId) return;
+    stopDetailPolling();
+    detailLoadGenerationRef.current += 1;
+    taskDetailRequestCoordinatorRef.current.invalidate();
+    riskDetailRequestCoordinatorRef.current.invalidate();
+    setDetailTransitionLoading(true);
+    setRiskDetail(undefined);
+    setSelectedRiskId(riskId);
+  };
+
+  const handleRefreshDetail = () => {
+    if (!detailTask?.id || !selectedRiskId) return;
+    stopDetailPolling();
+    detailLoadGenerationRef.current += 1;
+    taskDetailRequestCoordinatorRef.current.invalidate();
+    riskDetailRequestCoordinatorRef.current.invalidate();
+    setDetailTransitionLoading(true);
+    setRiskDetail(undefined);
+    setDetailReloadVersion((current) => current + 1);
   };
 
   const filteredRiskItems = useMemo(() => {
@@ -416,7 +556,7 @@ export default function RiskExecutionPage() {
       width: 150,
       render: (_: unknown, row: TaskRow) => <Space size={12}>
         <Button type="link" size="small" onClick={() => openDetail(row.id)}>{t('patchManager.risk.details')}</Button>
-        {row.canCancel && <PermissionWrapper requiredPermissions={['Edit']}><Button type="link" size="small" danger onClick={() => setCancelTask(row)}>{t('patchManager.cancel')}</Button></PermissionWrapper>}
+        {row.canCancel && <PermissionWrapper requiredPermissions={['Edit']} instPermissions={row.permission}><Button type="link" size="small" danger onClick={() => setCancelTask(row)}>{t('patchManager.cancel')}</Button></PermissionWrapper>}
       </Space>,
     },
   ];
@@ -485,10 +625,13 @@ export default function RiskExecutionPage() {
     <OperateDrawer
       title={detailTask?.name || t('patchManager.execution.details')}
       subTitle={detailTask ? <Tag color={detailTask.record_status_color || STATUS_COLOR[detailTask.record_status]}>{t(`patchManager.execution.statuses.${detailTask.record_status}`, detailTask.record_status_display)}</Tag> : null}
-      extra={<Button type="link" icon={<ReloadOutlined />} onClick={() => detailTask?.id && loadTaskDetail(detailTask.id)}>{t('patchManager.refresh')}</Button>}
+      extra={<Button type="link" icon={<ReloadOutlined />} onClick={handleRefreshDetail}>{t('patchManager.refresh')}</Button>}
       open={drawerOpen}
       onClose={() => {
+        stopDetailPolling();
+        detailLoadGenerationRef.current += 1;
         setDrawerOpen(false);
+        setDetailTransitionLoading(false);
         taskDetailRequestCoordinatorRef.current.invalidate();
         riskDetailRequestCoordinatorRef.current.invalidate();
       }}
@@ -500,19 +643,23 @@ export default function RiskExecutionPage() {
           <Input.Search placeholder={t('patchManager.execution.riskSearch')} value={riskSearch} onChange={(event) => setRiskSearch(event.target.value)} style={{ marginBottom: 12 }} />
           {filteredRiskItems.length ? filteredRiskItems.map((item) => {
             const selected = item.id === selectedRiskId;
-            return <div key={item.id} onClick={() => setSelectedRiskId(item.id)} style={{ padding: '10px 12px', marginBottom: 8, cursor: 'pointer', borderRadius: 7, border: '1px solid var(--color-border-1, #e8e8e8)', borderLeft: `3px solid ${STEP_BORDER[item.status] || '#d9d9d9'}`, background: selected ? 'var(--color-fill-1, #f4f6f9)' : 'var(--color-bg-1, #fff)' }}>
-              <Tooltip title={`${item.host_name || ''}-${item.patch_name || t('patchManager.risk.patch')}`}><div style={{ fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.host_name || ''}-{item.patch_name || t('patchManager.risk.patch')}</div></Tooltip>
+            return <div key={item.id} onClick={() => handleSelectRisk(item.id)} style={{ padding: '10px 12px', marginBottom: 8, cursor: 'pointer', borderRadius: 7, border: '1px solid var(--color-border-1, #e8e8e8)', borderLeft: `3px solid ${STEP_BORDER[item.status] || '#d9d9d9'}`, background: selected ? 'var(--color-fill-1, #f4f6f9)' : 'var(--color-bg-1, #fff)' }}>
+              <EllipsisWithTooltip
+                className="overflow-hidden text-ellipsis whitespace-nowrap font-medium"
+                text={`${item.host_name || ''}-${item.patch_name || t('patchManager.risk.patch')}`}
+              />
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6, minWidth: 0 }}>
                 <Tag color={item.status_color} style={{ marginInlineEnd: 0, flexShrink: 0 }}>{t(`patchManager.execution.statuses.${item.status}`, item.status_display)}</Tag>
-                <Tooltip title={item.host_ip || '—'}>
-                  <span style={{ color: 'var(--color-text-3, #8c8c8c)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.host_ip || '—'}</span>
-                </Tooltip>
+                <EllipsisWithTooltip
+                  className="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-(--color-text-3)"
+                  text={item.host_ip || '—'}
+                />
               </div>
             </div>;
           }) : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t('patchManager.execution.noMatchingRisk')} />}
         </div>
         <div style={{ flex: 1, padding: '16px 20px', overflow: 'auto' }}>
-          {detailLoading && !riskDetail ? <Spin /> : riskDetail ? <>
+          {riskDetail?.id ? <>
             {detailTask?.cancelled_at && <Alert
               type="info"
               showIcon
@@ -535,7 +682,7 @@ export default function RiskExecutionPage() {
                 <div style={{ fontSize: 16, fontWeight: 600 }}>{riskDetail.display_name}</div>
                 <div style={{ color: 'var(--color-text-3, #8c8c8c)', marginTop: 4 }}>{riskDetail.host_ip || '—'} · {riskDetail.baseline_name || '—'}</div>
               </div>
-              {riskDetail.can_retry && <PermissionWrapper requiredPermissions={['Edit']}><Button type="link" size="small" onClick={handleRetry}>{t('patchManager.execution.retry')}</Button></PermissionWrapper>}
+              {riskDetail.can_retry && <PermissionWrapper requiredPermissions={['Edit']} instPermissions={detailTask?.permission}><Button type="link" size="small" onClick={handleRetry}>{t('patchManager.execution.retry')}</Button></PermissionWrapper>}
             </div>
             {(riskDetail.steps || []).map((step: any, stepIndex: number) => <div key={step.key} style={{ position: 'relative', paddingLeft: 28, paddingBottom: stepIndex === riskDetail.steps.length - 1 ? 0 : 18 }}>
               {stepIndex < riskDetail.steps.length - 1 && <div style={{ position: 'absolute', left: 9, top: 20, bottom: -2, width: 2, background: STEP_BORDER[step.status] || '#d9d9d9' }} />}
@@ -548,12 +695,21 @@ export default function RiskExecutionPage() {
                       <span>{step.attempts?.length > 1 ? t('patchManager.execution.attempt', undefined, { count: attemptIndex + 1 }) : t(`patchManager.execution.steps.${step.key}`, step.name)}</span>
                       <span style={{ color: 'var(--color-text-3, #8c8c8c)' }}>{formatDateTime(attempt.started_at)}{attempt.finished_at ? ` ～ ${formatDateTime(attempt.finished_at)}` : ''}</span>
                     </div>
-                    {attempt.reason && <Alert type={attempt.status === 'failed' ? 'error' : 'info'} showIcon={false} message={attempt.reason} style={{ marginTop: 8 }} />}
+                    {attempt.reason && <Alert
+                      type={attempt.status === 'failed' ? 'error' : 'info'}
+                      showIcon={false}
+                      message={<span style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{attempt.reason}</span>}
+                      style={{ marginTop: 8 }}
+                    />}
                   </div>;
                 })}
               </div>
             </div>)}
-          </> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t('patchManager.execution.selectRisk')} />}
+          </> : <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <Spin spinning={detailTransitionLoading || detailLoading}>
+              <Empty description={t('patchManager.noData')} />
+            </Spin>
+          </div>}
         </div>
       </>}
     </OperateDrawer>

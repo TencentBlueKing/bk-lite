@@ -14,6 +14,7 @@ import logging
 from rest_framework import serializers
 from rest_framework.exceptions import PermissionDenied
 from apps.core.utils.team_utils import get_current_team as _get_current_team_str
+from apps.mlops.utils.i18n import mlops_message
 
 logger = logging.getLogger(__name__)
 
@@ -67,18 +68,18 @@ def get_allowed_team_ids(request):
 def validate_requested_teams(request, team_ids, field_name="team"):
     """Validate an explicit list of teams submitted for a root-owned resource."""
     if not isinstance(team_ids, list) or not team_ids:
-        raise serializers.ValidationError({field_name: "必须选择至少一个组织"})
+        raise serializers.ValidationError({field_name: mlops_message(request, "error.team_selection_required")})
 
     normalized = []
     for team_id in team_ids:
         try:
             normalized.append(int(team_id))
         except (TypeError, ValueError):
-            raise serializers.ValidationError({field_name: "组织ID必须为整数"})
+            raise serializers.ValidationError({field_name: mlops_message(request, "error.team_id_must_be_integer")})
 
     allowed_team_ids = get_allowed_team_ids(request)
     if allowed_team_ids is not None and not set(normalized).issubset(allowed_team_ids):
-        raise serializers.ValidationError({field_name: "只能选择当前用户所属组织"})
+        raise serializers.ValidationError({field_name: mlops_message(request, "error.team_selection_not_allowed")})
 
     return normalized
 
@@ -109,7 +110,7 @@ def filter_queryset_by_parent_team(queryset, request, parent_team_lookup):
     current_team = get_current_team(request, default=None)
     allowed_team_ids = get_allowed_team_ids(request)
     if not current_team or current_team not in allowed_team_ids:
-        raise PermissionDenied("无权访问该团队数据")
+        raise PermissionDenied(mlops_message(request, "error.team_data_access_denied"))
 
     return queryset.filter(**{f"{parent_team_lookup}__contains": current_team})
 
@@ -122,15 +123,15 @@ def assert_team_ownership(team_owned_obj, current_team, field_name, request=None
 
     owned_teams = getattr(team_owned_obj, "team", None) or []
     if current_team not in owned_teams:
-        raise serializers.ValidationError({field_name: "所选资源不属于当前组"})
+        raise serializers.ValidationError({field_name: mlops_message(request, "error.team_resource_not_owned")})
 
 
-def assert_parent_team_matches(team_owned_obj, parent_obj, field_name):
+def assert_parent_team_matches(team_owned_obj, parent_obj, field_name, request=None):
     """Raise ``ValidationError`` when a root-owned object does not match its parent's team."""
     owner_team = getattr(team_owned_obj, "team", None) or []
     parent_team = getattr(parent_obj, "team", None) or []
     if set(owner_team) != set(parent_team):
-        raise serializers.ValidationError({field_name: "关联资源与当前对象的组归属不一致"})
+        raise serializers.ValidationError({field_name: mlops_message(request, "error.team_assignment_mismatch")})
 
 
 def assert_dataset_version_scope(dataset_version, team, request, field_name="dataset_version"):
@@ -144,9 +145,9 @@ def assert_dataset_version_scope(dataset_version, team, request, field_name="dat
 
     dataset = getattr(dataset_version, "dataset", None)
     if dataset is None:
-        raise serializers.ValidationError({field_name: "所选数据集版本无关联数据集"})
+        raise serializers.ValidationError({field_name: mlops_message(request, "error.dataset_version_no_dataset")})
 
     assert_team_ownership(dataset, get_current_team(request), field_name, request=request)
 
     if team is not None:
-        assert_parent_team_matches(SimpleNamespace(team=team), dataset, field_name)
+        assert_parent_team_matches(SimpleNamespace(team=team), dataset, field_name, request=request)

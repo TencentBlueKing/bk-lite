@@ -1,6 +1,11 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import {
+  PORTAL_BRANDING_CACHE_KEY,
+  readJsonCache,
+  writeJsonCache,
+} from '@/utils/portalTabTitle';
 
 const DEFAULT_PORTAL_NAME = 'BlueKing Lite';
 const DEFAULT_PORTAL_LOGO_URL = '/logo-site.png';
@@ -43,6 +48,21 @@ const normalizeBranding = (settings?: {
   watermarkText: settings?.watermark_text?.trim() || DEFAULT_WATERMARK_TEXT,
 });
 
+const readCachedBranding = (): PortalBrandingState | null => {
+  const cached = readJsonCache<Partial<PortalBrandingState>>(PORTAL_BRANDING_CACHE_KEY);
+  if (!cached?.portalName) {
+    return null;
+  }
+  return {
+    ...DEFAULT_STATE,
+    ...cached,
+  };
+};
+
+const persistBranding = (branding: PortalBrandingState) => {
+  writeJsonCache(PORTAL_BRANDING_CACHE_KEY, branding);
+};
+
 export const emitPortalBrandingUpdated = (branding: Partial<PortalBrandingState>) => {
   if (typeof window === 'undefined') {
     return;
@@ -55,9 +75,16 @@ export const emitPortalBrandingUpdated = (branding: Partial<PortalBrandingState>
 
 export const usePortalBranding = () => {
   const [branding, setBranding] = useState<PortalBrandingState>(DEFAULT_STATE);
+  const [ready, setReady] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
+
+    const cachedBranding = readCachedBranding();
+    if (cachedBranding) {
+      setBranding(cachedBranding);
+      setReady(true);
+    }
 
     const fetchBranding = async () => {
       try {
@@ -68,6 +95,8 @@ export const usePortalBranding = () => {
         if (!response.ok) {
           if (!cancelled) {
             setBranding(DEFAULT_STATE);
+            persistBranding(DEFAULT_STATE);
+            setReady(true);
           }
           return;
         }
@@ -76,13 +105,21 @@ export const usePortalBranding = () => {
         const settings = payload?.data || {};
 
         if (!payload?.result || cancelled) {
+          if (!cancelled) {
+            setReady(true);
+          }
           return;
         }
 
-        setBranding(normalizeBranding(settings));
+        const nextBranding = normalizeBranding(settings);
+        setBranding(nextBranding);
+        persistBranding(nextBranding);
+        setReady(true);
       } catch {
         if (!cancelled) {
           setBranding(DEFAULT_STATE);
+          persistBranding(DEFAULT_STATE);
+          setReady(true);
         }
       }
     };
@@ -95,10 +132,15 @@ export const usePortalBranding = () => {
         return;
       }
 
-      setBranding((previousBranding) => ({
-        ...previousBranding,
-        ...nextBranding,
-      }));
+      setBranding((previousBranding) => {
+        const merged = {
+          ...previousBranding,
+          ...nextBranding,
+        };
+        persistBranding(merged);
+        return merged;
+      });
+      setReady(true);
     };
 
     window.addEventListener(PORTAL_BRANDING_EVENT, handleBrandingUpdated as EventListener);
@@ -109,7 +151,7 @@ export const usePortalBranding = () => {
     };
   }, []);
 
-  return useMemo(() => branding, [branding]);
+  return useMemo(() => ({ ...branding, ready }), [branding, ready]);
 };
 
 export const portalBrandingDefaults = {

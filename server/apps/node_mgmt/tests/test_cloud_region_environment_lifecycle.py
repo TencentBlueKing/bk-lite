@@ -51,7 +51,10 @@ def test_default_region_is_system_managed():
 
 @pytest.mark.django_db
 def test_user_managed_region_reports_deployment_and_health_separately():
-    region = CloudRegion.objects.create(name="lifecycle-region")
+    region = CloudRegion.objects.create(
+        id=CloudRegionConstants.DEFAULT_CLOUD_REGION_ID + 100,
+        name="lifecycle-region",
+    )
     _add_service(
         region,
         CloudRegionServiceConstants.STARGAZER_SERVICE_NAME,
@@ -79,7 +82,10 @@ def test_user_managed_region_reports_deployment_and_health_separately():
 
 @pytest.mark.django_db
 def test_missing_required_service_cannot_report_deployed_and_healthy():
-    region = CloudRegion.objects.create(name="missing-required-service")
+    region = CloudRegion.objects.create(
+        id=CloudRegionConstants.DEFAULT_CLOUD_REGION_ID + 100,
+        name="missing-required-service",
+    )
     _add_service(
         region,
         CloudRegionServiceConstants.STARGAZER_SERVICE_NAME,
@@ -137,6 +143,7 @@ def test_default_region_rejects_proxy_lifecycle_operations(
 @pytest.mark.django_db
 def test_first_deployment_proxy_update_rolls_back_when_env_sync_fails():
     region = CloudRegion.objects.create(
+        id=CloudRegionConstants.DEFAULT_CLOUD_REGION_ID + 100,
         name="atomic-first-deployment",
         proxy_address="old.proxy.example.com",
     )
@@ -197,7 +204,10 @@ def test_create_payload_cannot_set_pending_proxy_state():
 
 @pytest.mark.django_db
 def test_environment_editor_can_generate_deploy_script():
-    region = CloudRegion.objects.create(name="permission-region")
+    region = CloudRegion.objects.create(
+        id=CloudRegionConstants.DEFAULT_CLOUD_REGION_ID + 100,
+        name="permission-region",
+    )
     request = APIRequestFactory().post(
         "/node_mgmt/api/cloud_region/deploy_command/",
         {"cloud_region_id": region.id},

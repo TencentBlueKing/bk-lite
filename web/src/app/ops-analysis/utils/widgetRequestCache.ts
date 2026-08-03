@@ -2,6 +2,7 @@ export interface WidgetRequestCacheEntry {
   rawData: any;
   baselineData: any;
   errorMessage?: string;
+  errorCode?: string;
 }
 
 const widgetRequestCache = new Map<string, WidgetRequestCacheEntry>();
@@ -30,10 +31,12 @@ export const setWidgetRequestSuccessCache = (
 export const setWidgetRequestFailureCache = (
   requestKey: string,
   message: string,
+  errorCode?: string,
 ) => {
   widgetRequestCache.set(requestKey, {
     rawData: null,
     baselineData: null,
     errorMessage: message,
+    ...(errorCode ? { errorCode } : {}),
   });
 };

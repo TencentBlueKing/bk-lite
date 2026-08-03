@@ -27,12 +27,12 @@ class LLMClientFactory:
             raw_timeout = timeout
         else:
             extra_config = request.extra_config if request and request.extra_config else {}
-            raw_timeout = (
-                extra_config.get("timeout")
-                or extra_config.get("request_timeout")
-                or extra_config.get("llm_timeout")
-                or os.getenv("LLM_INVOKE_TIMEOUT", "300")
-            )
+            raw_timeout = os.getenv("LLM_INVOKE_TIMEOUT", "300")
+            for config_key in ("timeout", "request_timeout", "llm_timeout"):
+                configured_timeout = extra_config.get(config_key)
+                if configured_timeout is not None:
+                    raw_timeout = configured_timeout
+                    break
         try:
             resolved_timeout = float(raw_timeout)
         except (TypeError, ValueError):

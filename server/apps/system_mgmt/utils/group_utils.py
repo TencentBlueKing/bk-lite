@@ -180,6 +180,7 @@ class GroupUtils(object):
                 "hasAuth": is_superuser or group.id in user_groups,
                 "role_ids": role_ids,
                 "is_virtual": group.is_virtual,
+                "sync_source": group.sync_source_id,
             }
 
             if hasattr(group, "parent_id") and group.parent_id:

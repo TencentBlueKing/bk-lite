@@ -932,6 +932,17 @@ def test_alert_test():
 
 
 @pytest.mark.django_db
+def test_receive_alert_events_health_probe_has_no_event_side_effects():
+    from apps.alerts.models.models import Event
+
+    before = Event.objects.count()
+    result = N.receive_alert_events(health_probe=True)
+
+    assert result == {"result": True, "data": {"status": "ok"}, "message": ""}
+    assert Event.objects.count() == before
+
+
+@pytest.mark.django_db
 def test_receive_alert_events_missing_source_id():
     result = N.receive_alert_events(events=[{}], pusher="p")
     assert result["result"] is False
@@ -983,7 +994,7 @@ def test_receive_alert_events_success():
     assert Event.objects.filter(title="事件A").exists()
 
 
-@pytest.mark.parametrize("pusher", ["lite-monitor", "lite-log"])
+@pytest.mark.parametrize("pusher", ["lite-monitor", "lite-log", "lite-apm"])
 @pytest.mark.django_db
 def test_receive_alert_events_allows_whitelisted_internal_organizations_without_source_registration(pusher):
     """内部白名单来源直推不依赖 NATS 告警源预先登记组织。"""

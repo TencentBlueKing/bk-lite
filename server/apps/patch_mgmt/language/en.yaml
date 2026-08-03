@@ -61,6 +61,7 @@ error:
   duplicate_kb: "{kb} already exists and cannot be created again"
   patch_referenced: "Remove this patch from all baselines before deleting it"
   patch_in_active_task: "This patch is in an active task and cannot be deleted"
+  patch_not_found: "Some selected patches do not exist: {ids}"
   source_address_required: "No source address is available for testing"
   assessment_execution_failed: "Assessment execution failed"
 message:

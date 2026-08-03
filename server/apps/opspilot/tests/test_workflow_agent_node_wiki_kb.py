@@ -93,3 +93,15 @@ def test_agent_node_wiki_kb_ids_preserves_int_type(agent_node, db):
     # wiki_context_service.augment_prompt 内部 WikiKnowledgeBase.objects.filter(id=kb_ids[0]),
     # 若被强转 str 会导致查询空结果或类型错误。
     assert isinstance(out_ids[0], int)
+
+
+def test_agent_node_passes_nats_entry_type(agent_node):
+    skill = _make_skill_with_kb(team=1, kb_ids=[])
+
+    params = agent_node._build_llm_params(
+        skill,
+        final_message="K8s Warning Failed on Pod/ns/pod-1",
+        flow_input={"user_id": "u1", "entry_type": "nats"},
+    )
+
+    assert params["entry_type"] == "nats"

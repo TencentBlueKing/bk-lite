@@ -8,6 +8,7 @@ from datetime import datetime, timedelta, timezone
 from django.http import Http404
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 
 from apps.core.decorators.api_permission import HasPermission
@@ -389,13 +390,38 @@ class DataSourceAPIModelViewSet(AuthViewSet):
                 status.HTTP_404_NOT_FOUND,
             )
 
-        # 组织校验：当前组织必须在数据源的 groups 中
-        current_team = self._parse_current_team_cookie(request)
-        if current_team not in (instance.groups or []):
-            return _build_error_response(
-                "无权访问当前数据源",
-                status.HTTP_403_FORBIDDEN,
-            )
+        raw_request = getattr(request, "_request", request)
+        render_scoped = (
+            getattr(raw_request, "dashboard_report_render_scope", None) is not None
+        )
+        if render_scoped:
+            # Render Session：实时复核创建者组织成员资格与实例级权限，
+            # 不能只依赖冻结的 execution_team_id ∈ datasource.groups。
+            try:
+                current_team = self._validate_current_team_permission(request)
+            except PermissionDenied:
+                return _build_error_response(
+                    "无权访问当前数据源",
+                    status.HTTP_403_FORBIDDEN,
+                )
+            if not self.get_has_permission(
+                request.user,
+                instance,
+                current_team,
+                is_check=True,
+            ):
+                return _build_error_response(
+                    "无权访问当前数据源",
+                    status.HTTP_403_FORBIDDEN,
+                )
+        else:
+            # 组织校验：当前组织必须在数据源的 groups 中
+            current_team = self._parse_current_team_cookie(request)
+            if current_team not in (instance.groups or []):
+                return _build_error_response(
+                    "无权访问当前数据源",
+                    status.HTTP_403_FORBIDDEN,
+                )
 
         try:
             params = _resolve_request_params(instance, dict(request.data))

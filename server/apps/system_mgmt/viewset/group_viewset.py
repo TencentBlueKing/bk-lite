@@ -9,7 +9,7 @@ from apps.core.logger import system_mgmt_logger as logger
 from apps.core.utils.permission_cache import clear_users_permission_cache
 from apps.core.utils.viewset_utils import LanguageViewSet
 from apps.rpc.cmdb import CMDB
-from apps.system_mgmt.models import Group, User
+from apps.system_mgmt.models import Group, User, UserSyncSource
 from apps.system_mgmt.serializers.group_serializer import GroupSerializer
 from apps.system_mgmt.utils.group_filter_mixin import get_user_group_ids
 from apps.system_mgmt.utils.group_utils import GroupUtils
@@ -119,6 +119,8 @@ class GroupViewSet(LanguageViewSet, ViewSetUtils):
         if not self._check_create_permission(request.user, parent_id):
             message = self.loader.get("error.no_permission_create_group")
             return JsonResponse({"result": False, "message": message})
+        if parent_id and Group.objects.filter(id=parent_id, sync_source__isnull=False).exists():
+            return JsonResponse({"result": False, "message": "Synced groups cannot have manually created child groups"})
 
         # 虚拟组校验并确定新组的虚拟属性
         is_virtual, error_response = self._validate_virtual_group_creation(parent_id, params.get("is_virtual", False))
@@ -210,9 +212,12 @@ class GroupViewSet(LanguageViewSet, ViewSetUtils):
     def update_group(self, request):
         obj = Group.objects.get(id=request.data.get("group_id"))
         role_ids = request.data.get("role_ids", [])
+        group_name = request.data.get("group_name")
         if obj.name == "Default" and obj.parent_id == 0:
             message = self.loader.get("error.default_group_cannot_modify")
             return JsonResponse({"result": False, "message": message})
+        if obj.sync_source_id and obj.parent_id != 0 and group_name != obj.name:
+            return JsonResponse({"result": False, "message": "Synced child group name cannot be changed"})
         if not request.user.is_superuser:
             groups = [i["id"] for i in request.user.group_list]
             if request.data.get("group_id") not in groups:
@@ -220,7 +225,7 @@ class GroupViewSet(LanguageViewSet, ViewSetUtils):
                 return JsonResponse({"result": False, "message": message})
 
         # 准备更新的字段
-        update_fields = {"name": request.data.get("group_name")}
+        update_fields = {"name": group_name}
 
         # 如果请求中包含 is_virtual 字段，则更新
         if "is_virtual" in request.data:
@@ -232,6 +237,8 @@ class GroupViewSet(LanguageViewSet, ViewSetUtils):
 
         with transaction.atomic():
             Group.objects.filter(id=request.data.get("group_id")).update(**update_fields)
+            if obj.sync_source_id and obj.parent_id == 0 and group_name != obj.name:
+                UserSyncSource.objects.filter(id=obj.sync_source_id).update(root_group_name=group_name)
 
             # 更新组的角色
             if isinstance(role_ids, list):
@@ -251,12 +258,12 @@ class GroupViewSet(LanguageViewSet, ViewSetUtils):
 
         # 同步组织数据到CMDB
         try:
-            CMDB().sync_display_fields(organizations=[{"id": request.data.get("group_id"), "name": request.data.get("group_name")}])
+            CMDB().sync_display_fields(organizations=[{"id": request.data.get("group_id"), "name": group_name}])
         except Exception as e:
             logger.exception(e)
 
         # 记录操作日志
-        log_operation(request, "update", "system-manager", f"编辑组织: {request.data.get('group_name')}")
+        log_operation(request, "update", "system-manager", f"编辑组织: {group_name}")
 
         return JsonResponse({"result": True})
 
@@ -266,6 +273,8 @@ class GroupViewSet(LanguageViewSet, ViewSetUtils):
         kwargs = request.data
         group_id = int(kwargs["id"])
         obj = Group.objects.get(id=group_id)
+        if obj.sync_source_id:
+            return JsonResponse({"result": False, "message": "Synced groups cannot be deleted directly"})
         if obj.name == "Default" and obj.parent_id == 0:
             message = self.loader.get("error.default_group_cannot_delete")
             return JsonResponse({"result": False, "message": message})

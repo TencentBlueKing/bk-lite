@@ -3,9 +3,9 @@
 from rest_framework import serializers
 
 from apps.core.mixinx import EncryptMixin
-from apps.core.utils.serializers import TeamSerializer
 from apps.patch_mgmt.constants import PatchSourceType
 from apps.patch_mgmt.models import PatchSource
+from apps.patch_mgmt.serializers.permission import PatchPermissionSerializer
 from apps.patch_mgmt.utils.i18n import serializer_message
 
 
@@ -62,7 +62,7 @@ def infer_distro_name(source_type: str, url: str) -> str:
     return ""
 
 
-class PatchSourceSerializer(TeamSerializer):
+class PatchSourceSerializer(PatchPermissionSerializer):
     """补丁源序列化器"""
 
     source_type_display = serializers.CharField(source="get_source_type_display", read_only=True)
@@ -71,6 +71,7 @@ class PatchSourceSerializer(TeamSerializer):
     )
     auth_password = serializers.CharField(write_only=True, required=False, allow_blank=True)
     has_auth_password = serializers.SerializerMethodField()
+    permission_key = "patch_source"
 
     class Meta:
         model = PatchSource
@@ -94,6 +95,7 @@ class PatchSourceSerializer(TeamSerializer):
             "last_checked_at",
             "team",
             "team_name",
+            "permission",
             "created_by",
             "created_at",
             "updated_by",

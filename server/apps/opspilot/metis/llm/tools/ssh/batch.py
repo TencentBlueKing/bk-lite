@@ -88,15 +88,17 @@ def batch_execute_commands(
 
     def execute_on_host(host):
         try:
-            result = ssh_execute_command(
-                host=host,
-                username=username,
-                command=command,
-                password=password,
-                private_key_path=private_key_path,
-                port=port,
-                timeout=timeout,
-                config=config
+            result = ssh_execute_command.invoke(
+                {
+                    "host": host,
+                    "username": username,
+                    "command": command,
+                    "password": password,
+                    "private_key_path": private_key_path,
+                    "port": port,
+                    "timeout": timeout,
+                },
+                config=config,
             )
             return host, result
         except Exception as e:
@@ -194,15 +196,17 @@ def batch_upload_files(
 
     def upload_to_host(host):
         try:
-            result = upload_file(
-                host=host,
-                username=username,
-                local_path=local_path,
-                remote_path=remote_path,
-                password=password,
-                private_key_path=private_key_path,
-                port=port,
-                config=config
+            result = upload_file.invoke(
+                {
+                    "host": host,
+                    "username": username,
+                    "local_path": local_path,
+                    "remote_path": remote_path,
+                    "password": password,
+                    "private_key_path": private_key_path,
+                    "port": port,
+                },
+                config=config,
             )
             return host, result
         except Exception as e:
@@ -290,14 +294,16 @@ def check_hosts_availability(
 
     def check_host(host):
         try:
-            result = test_ssh_connection(
-                host=host,
-                username=username,
-                password=password,
-                private_key_path=private_key_path,
-                port=port,
-                timeout=timeout,
-                config=config
+            result = test_ssh_connection.invoke(
+                {
+                    "host": host,
+                    "username": username,
+                    "password": password,
+                    "private_key_path": private_key_path,
+                    "port": port,
+                    "timeout": timeout,
+                },
+                config=config,
             )
             return host, result
         except Exception as e:
