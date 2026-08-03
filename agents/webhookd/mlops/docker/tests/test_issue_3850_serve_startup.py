@@ -73,7 +73,8 @@ class DockerServingStartupContractTest(unittest.TestCase):
                     esac
                     ;;
                 logs)
-                    echo "model load failed: dependency unavailable"
+                    message="${FAKE_DOCKER_LOG_MESSAGE:-model load failed: dependency unavailable}"
+                    echo "$message"
                     ;;
                 update)
                     exit "${FAKE_DOCKER_UPDATE_STATUS:-0}"
@@ -91,6 +92,9 @@ class DockerServingStartupContractTest(unittest.TestCase):
             "curl",
             """
             #!/bin/bash
+            if [ -n "${FAKE_CURL_DELAY_SECONDS:-}" ]; then
+                /bin/sleep "$FAKE_CURL_DELAY_SECONDS"
+            fi
             count=0
             if [ -f "$FAKE_CURL_LOG" ]; then
                 count=$(wc -l < "$FAKE_CURL_LOG" | tr -d ' ')
@@ -111,7 +115,13 @@ class DockerServingStartupContractTest(unittest.TestCase):
         path.write_text(textwrap.dedent(content).lstrip(), encoding="utf-8")
         path.chmod(0o755)
 
-    def _run_serve(self, startup_timeout_seconds=3, **extra_env):
+    def _run_serve(
+        self,
+        startup_timeout_seconds=3,
+        network_mode=None,
+        port=None,
+        **extra_env,
+    ):
         env = os.environ.copy()
         env.update(
             {
@@ -130,6 +140,10 @@ class DockerServingStartupContractTest(unittest.TestCase):
         }
         if startup_timeout_seconds is not None:
             payload_data["startup_timeout_seconds"] = startup_timeout_seconds
+        if network_mode is not None:
+            payload_data["network_mode"] = network_mode
+        if port is not None:
+            payload_data["port"] = port
         payload = json.dumps(payload_data)
         return subprocess.run(
             ["bash", str(SCRIPT_PATH), payload],
@@ -201,6 +215,60 @@ class DockerServingStartupContractTest(unittest.TestCase):
         self.assertIn("rm -f fake-container-id", docker_calls)
         self.assertFalse(self.container_state.exists())
 
+    def test_startup_timeout_uses_wall_clock_deadline(self):
+        result = self._run_serve(
+            startup_timeout_seconds=2,
+            FAKE_DOCKER_STATE="running",
+            FAKE_CURL_DELAY_SECONDS="2",
+            FAKE_CURL_SUCCEED_AFTER="999",
+        )
+
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(
+            json.loads(result.stdout)["code"],
+            "CONTAINER_NOT_READY",
+        )
+        self.assertEqual(
+            len(self.curl_log.read_text(encoding="utf-8").splitlines()),
+            1,
+        )
+
+    def test_host_network_uses_requested_unique_readiness_port(self):
+        result = self._run_serve(
+            network_mode="host",
+            port=39001,
+            FAKE_DOCKER_STATE="running",
+            FAKE_CURL_SUCCEED_AFTER="1",
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout)["port"], "39001")
+        docker_calls = self.docker_log.read_text(encoding="utf-8")
+        self.assertIn("--network host", docker_calls)
+        self.assertIn("-e BENTOML_PORT=39001", docker_calls)
+        self.assertNotIn(" -p ", f" {docker_calls} ")
+        self.assertIn(
+            "http://127.0.0.1:39001/readyz",
+            self.curl_log.read_text(encoding="utf-8"),
+        )
+
+    def test_host_network_allocates_unique_readiness_port_when_unspecified(self):
+        result = self._run_serve(
+            network_mode="host",
+            FAKE_DOCKER_STATE="running",
+            FAKE_CURL_SUCCEED_AFTER="1",
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        port = json.loads(result.stdout)["port"]
+        self.assertNotEqual(port, "3000")
+        docker_calls = self.docker_log.read_text(encoding="utf-8")
+        self.assertIn(f"-e BENTOML_PORT={port}", docker_calls)
+        self.assertIn(
+            f"http://127.0.0.1:{port}/readyz",
+            self.curl_log.read_text(encoding="utf-8"),
+        )
+
     def test_failed_startup_can_be_retried_after_rollback(self):
         first_result = self._run_serve(
             FAKE_DOCKER_STATE="exited",
@@ -229,6 +297,46 @@ class DockerServingStartupContractTest(unittest.TestCase):
         self.assertNotIn("\nrun ", f"\n{docker_calls}")
         self.assertNotIn("\nrm ", f"\n{docker_calls}")
         self.assertTrue(self.container_state.exists())
+
+    def test_reports_rollback_failure_without_claiming_success(self):
+        result = self._run_serve(
+            FAKE_DOCKER_STATE="exited",
+            FAKE_DOCKER_EXIT_CODE="42",
+            FAKE_DOCKER_REMOVE_FAIL="1",
+        )
+
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(
+            json.loads(result.stdout)["code"],
+            "CONTAINER_ROLLBACK_FAILED",
+        )
+        self.assertTrue(self.container_state.exists())
+
+    def test_restart_policy_update_failure_rolls_back(self):
+        result = self._run_serve(
+            FAKE_DOCKER_STATE="running",
+            FAKE_CURL_SUCCEED_AFTER="1",
+            FAKE_DOCKER_UPDATE_STATUS="1",
+        )
+
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(
+            json.loads(result.stdout)["code"],
+            "RESTART_POLICY_UPDATE_FAILED",
+        )
+        self.assertFalse(self.container_state.exists())
+
+    def test_container_logs_are_returned_as_valid_json(self):
+        result = self._run_serve(
+            FAKE_DOCKER_STATE="exited",
+            FAKE_DOCKER_EXIT_CODE="42",
+            FAKE_DOCKER_LOG_MESSAGE='loader failed at C:\\models\\bad "format"',
+        )
+
+        self.assertEqual(result.returncode, 1)
+        response = json.loads(result.stdout)
+        self.assertEqual(response["code"], "CONTAINER_EXITED")
+        self.assertIn(r'C:\models\bad "format"', response["detail"])
 
     def test_rejects_invalid_startup_timeout(self):
         result = self._run_serve(startup_timeout_seconds=0)

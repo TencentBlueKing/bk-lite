@@ -75,16 +75,21 @@ if ! docker images --format '{{.Repository}}:{{.Tag}}' | grep -q "^${TRAIN_IMAGE
     exit 1
 fi
 
-# 容器内固定端口 3000
+# bridge 模式继续使用容器端口 3000；host 模式必须使用本次启动独占的
+# 宿主端口，避免 readiness 命中宿主上另一个服务。
 CONTAINER_PORT="3000"
+PORT_ARGS=()
 
-# 构建端口映射参数
-if [ -n "$PORT" ]; then
-    # 用户指定端口：映射到指定端口
-    PORT_MAPPING="${PORT}:${CONTAINER_PORT}"
+# 构建端口映射参数。host 网络不接受 -p，BentoML 直接监听独占宿主端口。
+if [ "$NETWORK_MODE" = "host" ]; then
+    if [ -z "$PORT" ]; then
+        PORT=$(python3 -c 'import socket; s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1]); s.close()')
+    fi
+    CONTAINER_PORT="$PORT"
+elif [ -n "$PORT" ]; then
+    PORT_ARGS=(-p "${PORT}:${CONTAINER_PORT}")
 else
-    # Docker 自动分配：只指定容器端口，宿主机端口由 Docker 随机分配
-    PORT_MAPPING="${CONTAINER_PORT}"
+    PORT_ARGS=(-p "${CONTAINER_PORT}")
 fi
 
 # 配置设备参数
@@ -111,7 +116,7 @@ DOCKER_OUTPUT=$(docker run -d \
     --name "$ID" \
     --cidfile "$CID_FILE" \
     --network "$NETWORK_MODE" \
-    -p "${PORT_MAPPING}" \
+    "${PORT_ARGS[@]}" \
     $DEVICE_ARGS \
     --restart no \
     --log-driver json-file \
@@ -176,10 +181,8 @@ if [ "$INITIAL_STATE" = "exited" ] || [ "$INITIAL_STATE" = "dead" ]; then
         "Container exited with code $EXIT_CODE before readiness and was rolled back"
 fi
 
-# 获取实际分配的宿主机端口（readiness 探测需要）
-if [ "$NETWORK_MODE" = "host" ]; then
-    PORT="$CONTAINER_PORT"
-elif [ -z "$PORT" ]; then
+# 获取 bridge 模式下 Docker 自动分配的宿主机端口。
+if [ "$NETWORK_MODE" != "host" ] && [ -z "$PORT" ]; then
     PORT=$(docker inspect "$CREATED_CONTAINER_ID" -f '{{(index (index .NetworkSettings.Ports "3000/tcp") 0).HostPort}}' 2>/dev/null || echo "")
 fi
 
@@ -191,10 +194,10 @@ fi
 
 # 必须等模型加载完成且 BentoML readiness 成功，不能只看容器进程存在。
 READY_URL="http://127.0.0.1:${PORT}/readyz"
-ELAPSED_SECONDS=0
+STARTUP_DEADLINE=$((SECONDS + STARTUP_TIMEOUT_SECONDS))
 LAST_STATE="unknown"
 
-while [ "$ELAPSED_SECONDS" -lt "$STARTUP_TIMEOUT_SECONDS" ]; do
+while [ "$SECONDS" -lt "$STARTUP_DEADLINE" ]; do
     LAST_STATE=$(docker inspect -f '{{.State.Status}}' "$CREATED_CONTAINER_ID" 2>/dev/null || echo "unknown")
 
     if [ "$LAST_STATE" = "exited" ] || [ "$LAST_STATE" = "dead" ]; then
@@ -204,7 +207,13 @@ while [ "$ELAPSED_SECONDS" -lt "$STARTUP_TIMEOUT_SECONDS" ]; do
             "Container exited with code $EXIT_CODE before readiness and was rolled back"
     fi
 
-    if [ "$LAST_STATE" = "running" ] && curl --fail --silent --show-error --max-time 2 "$READY_URL" >/dev/null 2>&1; then
+    REMAINING_SECONDS=$((STARTUP_DEADLINE - SECONDS))
+    CURL_TIMEOUT_SECONDS=2
+    if [ "$REMAINING_SECONDS" -lt "$CURL_TIMEOUT_SECONDS" ]; then
+        CURL_TIMEOUT_SECONDS="$REMAINING_SECONDS"
+    fi
+
+    if [ "$LAST_STATE" = "running" ] && curl --fail --silent --show-error --max-time "$CURL_TIMEOUT_SECONDS" "$READY_URL" >/dev/null 2>&1; then
         if ! docker update --restart unless-stopped "$CREATED_CONTAINER_ID" >/dev/null 2>&1; then
             rollback_failed_startup \
                 "RESTART_POLICY_UPDATE_FAILED" \
@@ -215,8 +224,9 @@ while [ "$ELAPSED_SECONDS" -lt "$STARTUP_TIMEOUT_SECONDS" ]; do
         exit 0
     fi
 
-    sleep 1
-    ELAPSED_SECONDS=$((ELAPSED_SECONDS + 1))
+    if [ "$SECONDS" -lt "$STARTUP_DEADLINE" ]; then
+        sleep 1
+    fi
 done
 
 rollback_failed_startup \

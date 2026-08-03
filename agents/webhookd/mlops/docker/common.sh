@@ -23,9 +23,17 @@ json_success() {
     local value="$4"
     
     if [ -n "$key" ] && [ -n "$value" ]; then
-        echo "{\"status\":\"success\",\"id\":\"$id\",\"message\":\"$message\",\"$key\":\"$value\"}"
+        jq -cn \
+            --arg id "$id" \
+            --arg message "$message" \
+            --arg key "$key" \
+            --arg value "$value" \
+            '{status:"success", id:$id, message:$message} + {($key):$value}'
     else
-        echo "{\"status\":\"success\",\"id\":\"$id\",\"message\":\"$message\"}"
+        jq -cn \
+            --arg id "$id" \
+            --arg message "$message" \
+            '{status:"success", id:$id, message:$message}'
     fi
 }
 
@@ -37,11 +45,18 @@ json_error() {
     local detail="$4"
     
     if [ -n "$detail" ]; then
-        # 转义双引号和换行符
-        detail=$(echo "$detail" | sed 's/"/\\"/g' | tr '\n' ' ')
-        echo "{\"status\":\"error\",\"code\":\"$code\",\"id\":\"$id\",\"message\":\"$message\",\"detail\":\"$detail\"}"
+        jq -cn \
+            --arg code "$code" \
+            --arg id "$id" \
+            --arg message "$message" \
+            --arg detail "$detail" \
+            '{status:"error", code:$code, id:$id, message:$message, detail:$detail}'
     else
-        echo "{\"status\":\"error\",\"code\":\"$code\",\"id\":\"$id\",\"message\":\"$message\"}"
+        jq -cn \
+            --arg code "$code" \
+            --arg id "$id" \
+            --arg message "$message" \
+            '{status:"error", code:$code, id:$id, message:$message}'
     fi
 }
 

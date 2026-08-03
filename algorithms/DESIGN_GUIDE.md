@@ -784,9 +784,9 @@ classify_{domain}_server train \
 **核心配置**：
 - 基础镜像：`python:3.12`
 - 包管理：`pip`（Docker 构建阶段用于安装项目依赖）
-- 系统组件：`supervisor`（进程管理）、`fonts-wqy-zenhei`（中文字体）
+- 系统组件：`fonts-wqy-zenhei`（中文字体）；旧镜像中的 Supervisor 仅为待清理构建依赖
 - 构建参数：`NEXUS_PYTHON_REPOSITY`（可选，私有镜像源）
-- 入口点：`startup.sh`（启动 BentoML + MLflow UI）
+- 入口点：`startup.sh` 通过 `exec` 启动 BentoML，使退出码和终止信号直达容器运行时
 
 **安装方式说明**：
 - Dockerfile 中统一通过 `pip3 config set ...` 配置可选镜像源
@@ -794,10 +794,8 @@ classify_{domain}_server train \
 - `uv` 仍可用于本地开发与测试流程，但当前不用于 release Dockerfile 内的依赖安装
 
 **部署结构**：
-- Supervisor 管理多进程：
-  - `supervisord.conf`: 主配置
-  - `conf.d/bentoml.conf`: BentoML 服务
-  - `conf.d/mlflow.conf`: MLflow UI
+- release 容器仅运行一个 BentoML 主进程，不在 serving 镜像中启动 MLflow UI
+- `startup.sh` 必须让 BentoML 成为 PID 1；生产加载失败由容器退出和编排 readiness 直接感知
 
 ---
 
@@ -921,4 +919,3 @@ export MLFLOW_TRACKING_URI=http://mlflow:15000  # ⚠️ 训练脚本必需，�
 6. **容错机制**：启动时配置验证，运行时异常处理
 7. **可观测性**：Prometheus 指标 + 详细日志
 ---
-
