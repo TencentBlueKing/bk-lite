@@ -1126,22 +1126,52 @@ class ModelManage(object):
 
         try:
             with GraphClient() as ag:
-                # 查询该模型的所有实例
-                instances, _ = ag.query_entity(INSTANCE, [{"field": "model_id", "type": "str=", "value": model_id}])
+                last_instance_id = None
+                property_values = []
+                while True:
+                    query_params = [{"field": "model_id", "type": "str=", "value": model_id}]
+                    if last_instance_id is not None:
+                        query_params.append(
+                            {
+                                "field": "id",
+                                "type": "id>",
+                                "value": last_instance_id,
+                            }
+                        )
+                    instances, _ = ag.query_entity(
+                        INSTANCE,
+                        query_params,
+                        page={"skip": 0, "limit": MAX_BATCH_UPDATE_PROPERTY_VALUES},
+                        include_count=False,
+                    )
+                    if not instances:
+                        break
 
-                # 批量更新实例的 _display 字段
-                for instance in instances:
-                    # 检查实例是否有该枚举字段
-                    if attr_id in instance and instance[attr_id]:
-                        enum_value = instance[attr_id]
+                    for instance in instances:
+                        if attr_id not in instance or not instance[attr_id]:
+                            continue
+                        property_values.append(
+                            {
+                                "id": instance["_id"],
+                                "value": DisplayFieldConverter.convert_enum(instance[attr_id], new_options),
+                            }
+                        )
+                        if len(property_values) == MAX_BATCH_UPDATE_PROPERTY_VALUES:
+                            ag.batch_update_node_property_values(
+                                INSTANCE,
+                                display_field_id,
+                                property_values,
+                            )
+                            updated_count += len(property_values)
+                            property_values = []
 
-                        # 使用统一的转换器生成新的 _display 值
-                        new_display_value = DisplayFieldConverter.convert_enum(enum_value, new_options)
+                    if len(instances) < MAX_BATCH_UPDATE_PROPERTY_VALUES:
+                        break
+                    last_instance_id = instances[-1]["_id"]
 
-                        # 更新实例的 _display 字段
-                        update_data = {display_field_id: new_display_value}
-                        ag.batch_update_node_properties(INSTANCE, [instance["_id"]], update_data)
-                        updated_count += 1
+                if property_values:
+                    ag.batch_update_node_property_values(INSTANCE, display_field_id, property_values)
+                    updated_count += len(property_values)
 
                 if updated_count > 0:
                     logger.info(
