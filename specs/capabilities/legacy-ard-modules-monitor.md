@@ -44,6 +44,7 @@
 - NATS【已实现/已存在】：`nats/monitor.py` 注册大量 handler，经 `apps/rpc/monitor.py` 暴露并被 operation_analysis、opspilot 消费：
   - 创建类（`monitor.py:537-583`）：`create_monitor_object_type`（:538）/ `create_monitor_object`（:552）/ `create_monitor_plugin`（:557）/ `create_metric_group`（:571）/ `create_metric`（:576）/ `create_monitor_policy`（:581）。
   - 查询类（`monitor.py:585-1153`）：`monitor_objects`（:586）/ `monitor_object_instance_count`（:596）/ `monitor_metrics`（:609）/ `monitor_object_instances`（:633）/ `query_monitor_data_by_metric`（:685）/ `monitor_instance_metrics`（:796）/ `query_monitor_alert_segments`（:918）/ `query_latest_active_alerts`（:1004）/ `mm_query_range`（:1103）/ `mm_query`（:1123）/ `get_monitor_statistics`（:1153）。
+    - `query_monitor_data_by_metric` 以“监控对象 + 指标名”查询时，会对所有匹配的插件指标定义分别执行 PromQL 并合并序列；每条序列附加 `metric_id` 和 `monitor_plugin`（`id/name/display_name/template_id/template_type/collector/collect_type`）以标识来源，同时保留原 VictoriaMetrics 外层返回结构。
   - 权限授权类：`_get_authorized_monitor_instances` 等内部辅助（`monitor.py:491-...`）；`nats/permission.py:7,33` 另注册 `get_monitor_module_data` / `get_monitor_module_list`，按组织过滤实例/策略/条件。
 - 流量监控接入（NetFlow/sFlow）【已实现/已存在】：服务层 `services/flow_*.py` 承载流量接入能力，对应 PRD「集成·流量监控接入」：
   - `flow_access_guide.py:10-18` 定义协议监听端口：NetFlow 默认接入端点为 2056，同时明确列出 NetFlow v5=2055、NetFlow v9=2056、sFlow=6343；依赖 `apps/rpc/node_mgmt` 拼接云区域接入地址。
