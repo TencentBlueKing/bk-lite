@@ -310,12 +310,75 @@ def test_delete_model_attr_rejects_organization(fake_graph, patch_side_effects, 
 def test_update_enum_instances_display(fake_graph):
     fg = fake_graph(
         MODULE,
-        query_entity=([{"_id": 1, "status": "1"}, {"_id": 2}], 2),
+        query_entity=(
+            [
+                {"_id": 1, "status": "1"},
+                {"_id": 2},
+                {"_id": 3, "status": None},
+                {"_id": 4, "status": ""},
+                {"_id": 5, "status": []},
+            ],
+            5,
+        ),
     )
     count = ModelManage.update_enum_instances_display("host", "status", [{"id": "1", "name": "运行"}])
     # 只有实例 1 含 status → 更新 1 个
     assert count == 1
-    assert any(c[0] == "batch_update_node_properties" for c in fg.calls)
+    update_call = next(c for c in fg.calls if c[0] == "batch_update_node_property_values")
+    assert update_call[1] == (
+        "instance",
+        "status_display",
+        [{"id": 1, "value": "运行"}],
+    )
+
+
+def test_update_enum_instances_display_backend_failure_is_non_blocking(fake_graph):
+    def _raise(*args, **kwargs):
+        raise RuntimeError("graph unavailable")
+
+    fake_graph(
+        MODULE,
+        query_entity=([{"_id": 1, "status": "1"}, {"_id": 2, "status": "2"}], 2),
+        batch_update_node_property_values=_raise,
+    )
+
+    count = ModelManage.update_enum_instances_display(
+        "host",
+        "status",
+        [{"id": "1", "name": "运行"}, {"id": "2", "name": "停止"}],
+    )
+
+    assert count == 0
+
+
+def test_update_enum_instances_display_batches_1000_values_once(fake_graph):
+    instances = [{"_id": index, "status": "1" if index % 2 else ["2", "1"]} for index in range(1, 1001)]
+    fg = fake_graph(
+        MODULE,
+        query_entity=_paged_query_entity(instances),
+    )
+
+    count = ModelManage.update_enum_instances_display(
+        "host",
+        "status",
+        [{"id": "1", "name": "运行"}, {"id": "2", "name": "停止"}],
+    )
+
+    assert count == 1000
+    update_calls = [call for call in fg.calls if call[0] in {"batch_update_node_properties", "batch_update_node_property_values"}]
+    assert len(update_calls) == 1
+    assert update_calls[0][0] == "batch_update_node_property_values"
+    assert update_calls[0][1] == (
+        "instance",
+        "status_display",
+        [
+            {
+                "id": index,
+                "value": "运行" if index % 2 else "停止, 运行",
+            }
+            for index in range(1, 1001)
+        ],
+    )
 
 
 def _paged_query_entity(instances, delete_after_first=False):
@@ -341,6 +404,59 @@ def _paged_query_entity(instances, delete_after_first=False):
         return result, None
 
     return _query
+
+
+def test_update_enum_instances_display_pages_without_unbounded_graph_writes(
+    fake_graph,
+):
+    instances = [{"_id": 1}]
+    instances.extend({"_id": index, "status": "1"} for index in range(2, 1003))
+    fg = fake_graph(
+        MODULE,
+        query_entity=_paged_query_entity(instances),
+    )
+
+    count = ModelManage.update_enum_instances_display(
+        "host",
+        "status",
+        [{"id": "1", "name": "运行"}],
+    )
+
+    assert count == 1001
+    update_calls = [call for call in fg.calls if call[0] == "batch_update_node_property_values"]
+    assert [len(call[1][2]) for call in update_calls] == [1000, 1]
+    query_calls = [call for call in fg.calls if call[0] == "query_entity"]
+    assert len(query_calls) == 2
+    assert query_calls[0][2] == {
+        "page": {"skip": 0, "limit": 1000},
+        "include_count": False,
+    }
+    assert query_calls[1][1][1][-1] == {
+        "field": "id",
+        "type": "id>",
+        "value": 1000,
+    }
+
+
+def test_update_enum_instances_display_keyset_does_not_skip_after_delete(
+    fake_graph,
+):
+    instances = [{"_id": index, "status": "1"} for index in range(1, 1002)]
+    fg = fake_graph(
+        MODULE,
+        query_entity=_paged_query_entity(instances, delete_after_first=True),
+    )
+
+    count = ModelManage.update_enum_instances_display(
+        "host",
+        "status",
+        [{"id": "1", "name": "运行"}],
+    )
+
+    assert count == 1001
+    update_calls = [call for call in fg.calls if call[0] == "batch_update_node_property_values"]
+    assert [len(call[1][2]) for call in update_calls] == [1000, 1]
+    assert update_calls[-1][1][2] == [{"id": 1001, "value": "运行"}]
 
 
 def test_rebuild_file_instances_display_backfills_stem(fake_graph):
