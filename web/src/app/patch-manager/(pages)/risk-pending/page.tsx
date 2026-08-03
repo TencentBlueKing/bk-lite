@@ -24,9 +24,9 @@ type Compliance = 'missing' | 'satisfied' | 'invalidated';
 type Remediation = 'unplanned' | 'scheduled' | 'remediating' | 'installing' | 'pending_reboot' | 'rebooting' | 'verifying' | 'failed' | 'fixed';
 
 interface RiskItem {
-  key: string;
   host_id: number;
   host_name: string;
+  host_ip?: string;
   host: string;
   patch: string;
   patch_id: number;
@@ -266,9 +266,25 @@ export default function RiskPendingPage() {
   ];
   const hostCols = [
     { title: t('patchManager.risk.host'), dataIndex: 'host', width: 140 },
+    { title: t('patchManager.risk.ipAddress'), dataIndex: 'host_ip', width: 140, render: (v: string) => v || '—' },
     { title: t('patchManager.osType'), dataIndex: 'os_type', width: 100, render: (v: string) => v === 'windows' ? 'Windows' : v === 'linux' ? 'Linux' : v || '—' },
     { title: t('patchManager.risk.currentBaseline'), dataIndex: 'baseline', width: 180 },
-    { title: t('patchManager.risk.missingRequirements'), dataIndex: 'missing', width: 100, render: (v: number) => <Tag color="error">{t('patchManager.risk.missingCount', undefined, { count: v })}</Tag> },
+    {
+      title: t('patchManager.risk.missingPatchCount'),
+      dataIndex: 'missing',
+      width: 110,
+      render: (v: number, r: any) => (
+        <Button
+          type="link"
+          size="small"
+          aria-label={`${t('patchManager.risk.missingPatchCount')} ${v}`}
+          style={{ height: 'auto', paddingInline: 0, fontVariantNumeric: 'tabular-nums' }}
+          onClick={() => setDetailRecord({ name: getRowName(r), items: r.items || [] })}
+        >
+          {v}
+        </Button>
+      ),
+    },
     { title: t('patchManager.risk.remediationStatus'), dataIndex: 'dist', render: (_: unknown, r: { dist: RiskRow['dist'] }) => <DistRender dist={r.dist} /> },
     { title: t('patchManager.updateTime'), dataIndex: 'evaluated_at', width: 180, render: (v: string | null) => convertToLocalizedTime(v) || '—' },
     { title: t('patchManager.operation'), dataIndex: 'op', width: 240, fixed: 'right' as const, render: (_: unknown, r: any) => opCell(r) },
@@ -511,6 +527,7 @@ export default function RiskPendingPage() {
       headers = t('patchManager.risk.exportHostHeaders').split('|');
       rowToArray = (r) => [
         r.host,
+        r.host_ip || '—',
         r.os_type === 'windows' ? 'Windows' : r.os_type === 'linux' ? 'Linux' : r.os_type || '—',
         r.baseline,
         r.missing,
@@ -748,7 +765,7 @@ export default function RiskPendingPage() {
       >
         <Table
           size="small"
-          rowKey="key"
+          rowKey={(item: RiskItem) => `${item.host_id}-${item.patch_id}`}
           pagination={false}
           dataSource={detailRecord?.items || []}
           columns={detailColumns as never}
