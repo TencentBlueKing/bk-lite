@@ -285,6 +285,10 @@ export interface MetricItem {
   dimensions: Dimension[];
   query?: string;
   view_query?: string;
+  view_config?: {
+    mode: 'top' | 'bottom' | 'limited';
+    limit?: number;
+  };
   unit?: string;
   displayType?: string;
   description?: string;

@@ -269,7 +269,8 @@ const MonitorView: React.FC<ViewModalProps> = ({
 
   const getParams = (item: MetricItem, ids: string[]) => {
     const params: SearchParams = {
-      query: ((item.view_query as string | undefined) || item.query || '').replace(
+      // 卡片统一用完整 query + 通用序列预算；不再走 per-metric view_query。
+      query: (item.query || '').replace(
         /__\$labels__/g,
         mergeViewQueryKeyValues([
           { keys: item.instance_id_keys || [], values: ids },
