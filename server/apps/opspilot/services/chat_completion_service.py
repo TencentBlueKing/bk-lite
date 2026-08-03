@@ -12,14 +12,12 @@ keeps the existing patch targets (e.g. ``apps.opspilot.views.validate_openai_tok
 authoritative and avoids any behavior drift.
 """
 
-import logging
 from typing import Any, Callable, Optional
 
 from django.http import JsonResponse
 
+from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.services.caller_identity import CallerIdentityError
-
-logger = logging.getLogger(__name__)
 
 
 class ChatCompletionService:
