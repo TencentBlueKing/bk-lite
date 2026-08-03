@@ -200,7 +200,7 @@ export const Chat = React.forwardRef<any, ChatProps>((props, ref) => {
 
       case 'RUN_ERROR':
         setIsThinking(false);
-        const error = (event as any).error || 'Unknown error';
+        const error = 'message' in event ? event.message : 'Unknown error';
         const errorContent = `\n\n❌ **错误**: ${error}`;
         
         // 如果有当前消息，追加错误信息到末尾
