@@ -70,6 +70,8 @@ export interface ViewInstanceSearchProps {
   instance_id: string;
   metric_id: React.Key;
   auto_convert: boolean;
+  limit?: number;
+  mode?: 'top' | 'bottom' | 'limited' | string;
 }
 
 export interface TooltipMetricDataItem {

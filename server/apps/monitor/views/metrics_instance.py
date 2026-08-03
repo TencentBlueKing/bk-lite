@@ -320,14 +320,43 @@ class MetricsInstanceViewSet(viewsets.ViewSet):
 
         effective_instance_id_keys = MetricsService.get_effective_metric_instance_id_keys(metric)
 
+        series_limit = request.GET.get("limit")
+        series_mode = request.GET.get("mode")
+        # 列表维度预览与指标卡共用通用序列预算；不读 per-metric view_config。
+        if series_limit is None and metric.dimensions:
+            series_limit = MetricsService.CARD_QUERY_MAX_SERIES
+            series_mode = series_mode or "limited"
+
+        preview_limit = None
+        try:
+            preview_limit = int(series_limit) if series_limit is not None else None
+        except (TypeError, ValueError):
+            preview_limit = None
+
+        # 多取 1 条用于判断是否截断。
+        fetch_limit = preview_limit + 1 if preview_limit and preview_limit > 0 else series_limit
+
         data = MetricsService.query_metric_by_instance(
             metric_query=metric.query,
             instance_id=instance_id,
             instance_id_keys=effective_instance_id_keys,
             dimensions=metric.dimensions,
+            series_limit=fetch_limit,
+            series_mode=series_mode or "limited",
         )
 
         if auto_convert and metric.unit:
             data = self._apply_unit_conversion(data, metric.unit)
+
+        if preview_limit and preview_limit > 0:
+            result = (data.get("data") or {}).get("result") or []
+            truncated = len(result) > preview_limit
+            if truncated:
+                data.setdefault("data", {})["result"] = result[:preview_limit]
+            data.setdefault("data", {})["series_budget"] = {
+                "truncated": truncated,
+                "limit": preview_limit,
+                "applied": True,
+            }
 
         return WebUtils.response_success(data)

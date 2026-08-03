@@ -136,7 +136,7 @@ const LazyMetricItem: React.FC<LazyMetricItemProps> = ({
                   limit: item.seriesBudget.limit
                 })}
               >
-                <span className="ml-[8px] shrink-0 text-[12px] text-[var(--color-warning)] cursor-default whitespace-nowrap">
+                <span className="ml-[8px] shrink-0 text-[12px] text-[var(--color-primary)] cursor-default whitespace-nowrap">
                   {t('monitor.views.seriesTruncatedShort', '', {
                     limit: item.seriesBudget.limit
                   })}
@@ -153,12 +153,15 @@ const LazyMetricItem: React.FC<LazyMetricItemProps> = ({
             </div>
           ) : null}
         </div>
-        <div className="shrink-0 text-[var(--color-text-3)] leading-none pt-[2px]">
+        <div className="shrink-0 text-[var(--color-text-3)] leading-none pt-[2px] flex items-center">
           <Tooltip placement="topRight" title={t('monitor.views.quickSearch')}>
-            <SearchOutlined
-              className="cursor-pointer"
+            <button
+              type="button"
+              className="cursor-pointer text-[12px] hover:text-[var(--color-primary)] inline-flex items-center"
               onClick={() => onSearchClick(item)}
-            />
+            >
+              <SearchOutlined />
+            </button>
           </Tooltip>
           <Tooltip
             placement="topRight"

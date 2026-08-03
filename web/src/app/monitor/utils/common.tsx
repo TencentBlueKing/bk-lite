@@ -269,14 +269,21 @@ export const isStringArray = (input: string): boolean => {
   }
 };
 
+const matchEnumOption = (options: ListItem[], id: number | string) => {
+  const numericId = Number(id);
+  return options.find((item: ListItem) => {
+    if (item.id === id) return true;
+    if (!Number.isFinite(numericId)) return false;
+    return Number(item.id) === numericId;
+  });
+};
+
 // 根据指标枚举获取值
 export const getEnumValue = (metric: MetricItem, id: number | string) => {
   const { unit: input = '', name } = metric || {};
   if (!id && id !== 0) return '--';
   if (isStringArray(input)) {
-    return (
-      JSON.parse(input).find((item: ListItem) => item.id === id)?.name || id
-    );
+    return matchEnumOption(JSON.parse(input), id)?.name || id;
   }
   return isNaN(+id) || APPOINT_METRIC_IDS.includes(name)
     ? id
@@ -287,9 +294,7 @@ export const getEnumValue = (metric: MetricItem, id: number | string) => {
 export const getEnumColor = (metric: MetricItem, id: number | string) => {
   const { unit: input = '' } = metric || {};
   if (isStringArray(input)) {
-    return (
-      JSON.parse(input).find((item: ListItem) => item.id === +id)?.color || ''
-    );
+    return matchEnumOption(JSON.parse(input), id)?.color || '';
   }
   return '';
 };
@@ -538,6 +543,12 @@ export const getBaseInstanceColumn = (config: {
     });
   });
   if (isDerivative) {
+    const clusterFilters = (config.queryData || [])
+      .map((item: TableDataItem) => ({
+        text: String(item.name || item.id || ''),
+        value: String(item.id ?? '')
+      }))
+      .filter((item) => item.value);
     columnItems.unshift({
       title: title,
       dataIndex: 'base_instance_name',
@@ -548,6 +559,8 @@ export const getBaseInstanceColumn = (config: {
         }
       }),
       key: 'base_instance_name',
+      filterMultiple: true,
+      filters: clusterFilters.length ? clusterFilters : undefined,
       render: (_: unknown, record: TableDataItem) => {
         const instanceIdValue = record.instance_id_values?.[0];
         let displayName = instanceIdValue || '--';
