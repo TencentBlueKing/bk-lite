@@ -741,6 +741,8 @@
           "system_mgmtDesc": "Multi-tenant permission management and audit trails, ensuring secure and controllable system access with full traceability.",
           "cmdb": "CMDB",
           "cmdbDesc": "Build a trusted IT asset map. Comprehensive collection and architecture restoration, providing data foundation for operations decisions and compliance management.",
+          "patch": "Patch Management",
+          "patchDesc": "Centrally manage system patches with scanning, installation, and patch library maintenance to continuously reduce security risks.",
           "monitor": "Monitor Center",
           "monitorDesc": "Full-domain monitoring system with sub-second collection and precise alerting to ensure stable system operation.",
           "log": "Log Center",
