@@ -1,16 +1,20 @@
 import { AuthSourceTypeConfig } from '@/app/system-manager/types/security';
 
-export const AUTH_SOURCE_TYPE_MAP: Record<string, AuthSourceTypeConfig> = {
+export const getAuthSourceTypeMap = (t: (key: string) => string): Record<string, AuthSourceTypeConfig> => ({
   wechat: {
     icon: 'weixingongzhonghao',
-    description: '支持微信平台扫码登录'
+    description: t('system.security.authSourceWechatDescription')
   },
   'bk_lite': {
     icon: 'dengdeng',
-    description: '支持BK-Lite认证源'
+    description: t('system.security.authSourceBkLiteDescription')
+  },
+  bk_login: {
+    icon: 'blueking-icon',
+    description: t('system.security.authSourceBluekingDescription')
   },
   'blueking': {
     icon: 'blueking-icon',
-    description: '支持蓝鲸平台认证源'
+    description: t('system.security.authSourceBluekingDescription')
   },
-};
+});

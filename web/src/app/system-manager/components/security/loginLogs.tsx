@@ -147,7 +147,7 @@ const UserLoginLogs: React.FC = () => {
 
       if (exportFormats.includes('excel')) {
         const workbook = new ExcelJS.Workbook();
-        const worksheet = workbook.addWorksheet('Login Logs');
+        const worksheet = workbook.addWorksheet(t('system.security.exportSheetName'));
         const headers = Object.keys(exportData[0]);
         worksheet.addRow(headers);
         worksheet.getRow(1).font = { bold: true };
@@ -353,8 +353,8 @@ const UserLoginLogs: React.FC = () => {
               onChange={(values) => setExportFormats(values as string[])}
             >
               <Space direction="vertical">
-                <Checkbox value="excel">Excel (.xlsx)</Checkbox>
-                <Checkbox value="csv">CSV (.csv)</Checkbox>
+                <Checkbox value="excel">{t('system.security.exportExcel')}</Checkbox>
+                <Checkbox value="csv">{t('system.security.exportCsv')}</Checkbox>
               </Space>
             </Checkbox.Group>
           </div>

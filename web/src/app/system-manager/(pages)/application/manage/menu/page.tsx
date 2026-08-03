@@ -61,7 +61,7 @@ const CustomMenuPage = () => {
         placeholder: `${t('common.inputMsg')}${t('system.menu.name')}`,
         rules: [
           { required: true, message: `${t('common.inputMsg')}${t('system.menu.name')}` },
-          { max: 100, message: 'Max length 100' },
+          { max: 100, message: t('system.menu.nameMaxLength') },
         ],
       },
     ],
