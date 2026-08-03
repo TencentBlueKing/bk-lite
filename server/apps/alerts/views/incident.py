@@ -12,15 +12,14 @@ from apps.alerts.constants import PERMISSION_ALERT, PERMISSION_INCIDENT
 from apps.alerts.constants.constants import LogAction, LogTargetType
 from apps.alerts.filters import IncidentModelFilter
 from apps.alerts.models.models import Alert, Incident
-from apps.alerts.utils.operator_log import record_operator_log
 from apps.alerts.serializers import AlertModelSerializer, IncidentModelSerializer
 from apps.alerts.service.incident_operator import IncidentOperator
+from apps.alerts.utils.operator_log import record_operator_log
 from apps.alerts.utils.operator_scope import normalize_usernames
 from apps.alerts.utils.permission_scope import normalize_team_ids
 from apps.core.decorators.api_permission import HasPermission
-from apps.core.logger import alert_logger as logger
-from apps.core.utils.web_utils import WebUtils
 from apps.core.utils.viewset_utils import AuthViewSet
+from apps.core.utils.web_utils import WebUtils
 from apps.system_mgmt.models.user import User
 from config.drf.pagination import CustomPageNumberPagination
 
@@ -50,17 +49,14 @@ class IncidentModelViewSet(AuthViewSet):
         context = super().get_serializer_context()
         request = context.get("request")
         if request is not None:
-            context["allowed_alert_queryset"] = self.get_queryset_by_permission(request, Alert.objects.all(),
-                                                                                permission_key=PERMISSION_ALERT)
+            context["allowed_alert_queryset"] = self.get_queryset_by_permission(request, Alert.objects.all(), permission_key=PERMISSION_ALERT)
         return context
 
     def _get_allowed_alert_ids(self):
         request = getattr(self, "request", None)
         if request is None:
             return set()
-        return set(
-            self.get_queryset_by_permission(request, Alert.objects.all(), permission_key=PERMISSION_ALERT).values_list(
-                "id", flat=True))
+        return set(self.get_queryset_by_permission(request, Alert.objects.all(), permission_key=PERMISSION_ALERT).values_list("id", flat=True))
 
     def _validate_alert_access(self, alert_ids):
         unauthorized_alert_ids = set(alert_ids) - self._get_allowed_alert_ids()
@@ -329,8 +325,7 @@ class IncidentModelViewSet(AuthViewSet):
             return WebUtils.response_error(error_message="incident_id参数不能为空")
 
         allowed_incident_ids = set(
-            self._get_permission_filtered_queryset(request).filter(incident_id__in=incident_id_list).values_list(
-                "incident_id", flat=True)
+            self._get_permission_filtered_queryset(request).filter(incident_id__in=incident_id_list).values_list("incident_id", flat=True)
         )
         operator = IncidentOperator(
             user=self.request.user.username,
@@ -439,11 +434,12 @@ class IncidentModelViewSet(AuthViewSet):
             return error_response
         queryset = self.get_queryset_by_permission(
             request,
-            Alert.objects.filter(incident=incident).prefetch_related("events__source", "incident_set"),
+            Alert.objects.filter(incident=incident).annotate(event_count_annotated=Count("events", distinct=True)).prefetch_related("incident_set"),
             permission_key=PERMISSION_ALERT,
         ).order_by("-created_at")
 
         from apps.alerts.views import AlertModelViewSet
+
         page = self.paginate_queryset(queryset)
         if page is not None:
             operator_user_map = AlertModelViewSet._build_operator_user_map(page)
