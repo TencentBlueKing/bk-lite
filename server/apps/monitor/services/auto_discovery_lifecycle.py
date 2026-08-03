@@ -79,7 +79,7 @@ class AutoDiscoveryLifecycleService:
                     missing_qs.update(
                         missing_duration_seconds=F("missing_duration_seconds") + elapsed_seconds
                     )
-                threshold_seconds = policy_owner.cleanup_timeout_days * 24 * 60 * 60
+                threshold_seconds = policy_owner.cleanup_timeout_seconds
                 removal_ids.extend(
                     missing_qs.filter(missing_duration_seconds__gte=threshold_seconds).values_list(
                         "id", flat=True

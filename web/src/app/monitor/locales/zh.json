@@ -904,8 +904,12 @@
       "cleanupPolicy": "清理策略",
       "noCleanup": "不清理",
       "timeoutCleanup": "超时清理",
-      "timeoutDays": "超时天数",
-      "cleanupPolicyHint": "超过 {days} 天无数据上报则自动删除资产，仅作用于自动发现资产"
+      "timeout": "超时时间",
+      "timeoutUnit": "超时时间单位",
+      "day": "天",
+      "minute": "分钟",
+      "timeoutRange": "请输入 1～{max} {unit}的整数",
+      "cleanupPolicyHint": "连续 {value} {unit}无数据上报后自动删除资产，仅作用于自动发现资产"
     },
     "selectObject": "选择对象",
     "aggregation": "汇聚方法",

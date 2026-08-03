@@ -904,8 +904,12 @@
       "cleanupPolicy": "Cleanup Policy",
       "noCleanup": "No cleanup",
       "timeoutCleanup": "Timeout cleanup",
-      "timeoutDays": "Timeout (days)",
-      "cleanupPolicyHint": "Automatically delete auto-discovered assets after {days} days without data"
+      "timeout": "Timeout",
+      "timeoutUnit": "Timeout unit",
+      "day": "day(s)",
+      "minute": "minute(s)",
+      "timeoutRange": "Enter an integer from 1 to {max} {unit}",
+      "cleanupPolicyHint": "Automatically delete auto-discovered assets after {value} {unit} without data"
     },
     "selectObject": "Select Object",
     "aggregation": "Aggregation",
