@@ -2,29 +2,70 @@
 # @File: collect_serializer.py
 # @Time: 2025/3/3 13:58
 # @Author: windyzhao
-from rest_framework import serializers
 import copy
 
-from apps.cmdb.constants.constants import CollectDriverTypes, CollectPluginTypes, PERMISSION_TASK
+from rest_framework import serializers
+
+from apps.cmdb.constants.constants import PERMISSION_TASK, CollectDriverTypes, CollectPluginTypes
 from apps.cmdb.models.collect_model import (
     ALLOWED_TOPOLOGY_FALLBACK_STRATEGIES,
     ALLOWED_TOPOLOGY_PROTOCOLS,
-    CollectModels,
     DEFAULT_TOPOLOGY_FALLBACK_STRATEGY,
     DEFAULT_TOPOLOGY_MIN_CONFIDENCE,
     DEFAULT_TOPOLOGY_PROTOCOLS,
+    CollectModels,
     OidMapping,
     normalize_topology_contract,
 )
 from apps.cmdb.services.collect_credential_pool_service import CollectCredentialPoolService
 from apps.cmdb.services.encrypt_collect_password import get_collect_model_passwords
-from apps.cmdb.services.network_config_file_policy import (
-    normalize_network_config_instance,
-    validate_commands,
-    validate_network_config_instance,
-)
+from apps.cmdb.services.network_config_file_policy import normalize_network_config_instance, validate_commands, validate_network_config_instance
 from apps.cmdb.utils.config_file_path import validate_absolute_path
-from apps.core.utils.serializers import UsernameSerializer, AuthSerializer
+from apps.core.utils.serializers import AuthSerializer, UsernameSerializer
+
+COLLECT_RESULT_PAYLOAD_FIELDS = (
+    "collect_data",
+    "collect_digest",
+    "format_data",
+    "topology_snapshot",
+)
+
+COLLECT_MODEL_DETAIL_FIELDS = (
+    "id",
+    "name",
+    "task_type",
+    "driver_type",
+    "model_id",
+    "is_interval",
+    "cycle_value_type",
+    "cycle_value",
+    "scan_cycle",
+    "ip_range",
+    "instances",
+    "access_point",
+    "credential",
+    "timeout",
+    "exec_status",
+    "exec_time",
+    "task_id",
+    "params",
+    "plugin_id",
+    "input_method",
+    "data_cleanup_strategy",
+    "expire_days",
+    "team",
+    "is_system",
+    "is_visible",
+    "system_code",
+    "created_at",
+    "updated_at",
+    "created_by",
+    "updated_by",
+    "domain",
+    "updated_by_domain",
+    "permissions",
+)
+
 
 class CollectModelSerializer(AuthSerializer):
     permission_key = PERMISSION_TASK
@@ -82,13 +123,9 @@ class CollectModelSerializer(AuthSerializer):
             if invalid_protocols:
                 errors["topology_protocols"] = f"仅支持以下拓扑协议: {', '.join(ALLOWED_TOPOLOGY_PROTOCOLS)}"
 
-        topology_fallback_strategy = params.get(
-            "topology_fallback_strategy", DEFAULT_TOPOLOGY_FALLBACK_STRATEGY
-        )
+        topology_fallback_strategy = params.get("topology_fallback_strategy", DEFAULT_TOPOLOGY_FALLBACK_STRATEGY)
         if topology_fallback_strategy not in ALLOWED_TOPOLOGY_FALLBACK_STRATEGIES:
-            errors["topology_fallback_strategy"] = (
-                "拓扑回退策略不合法"
-            )
+            errors["topology_fallback_strategy"] = "拓扑回退策略不合法"
 
         raw_min_confidence = params.get("min_confidence", DEFAULT_TOPOLOGY_MIN_CONFIDENCE)
         try:
@@ -162,11 +199,7 @@ class CollectModelSerializer(AuthSerializer):
             if credential_items is None and self.instance is not None:
                 credential_items = self.instance.credential
             credential_pool = CollectCredentialPoolService.normalize_pool(copy.deepcopy(credential_items))
-            need_enable = any(
-                bool(item.get("enable_password"))
-                for item in credential_pool
-                if isinstance(item, dict)
-            )
+            need_enable = any(bool(item.get("enable_password")) for item in credential_pool if isinstance(item, dict))
 
             attrs["instances"] = validated_instances
             attrs["ip_range"] = ""
@@ -227,6 +260,14 @@ class CollectModelSerializer(AuthSerializer):
             representation["params"] = self._normalize_topology_params(raw_params)
 
         return representation
+
+
+class CollectModelDetailSerializer(CollectModelSerializer):
+    """采集任务配置详情，不内联可通过 ``info`` 接口读取的结果数据。"""
+
+    class Meta:
+        model = CollectModels
+        fields = COLLECT_MODEL_DETAIL_FIELDS
 
 
 class CollectModelIdStatusSerializer(AuthSerializer):
