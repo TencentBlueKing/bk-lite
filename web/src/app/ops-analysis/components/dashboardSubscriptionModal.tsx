@@ -4,18 +4,19 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Button,
+  Drawer,
   Empty,
   Form,
   Input,
-  List,
-  Modal,
   Popconfirm,
   Select,
   Space,
   Spin,
+  Table,
   Tag,
-  Typography,
+  Tooltip,
 } from 'antd';
+import type { TableColumnsType } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 
 import { useDashboardSubscriptionApi } from '@/app/ops-analysis/api/dashboardSubscription';
@@ -214,24 +215,16 @@ const DashboardSubscriptionModal = ({
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [executingId, setExecutingId] = useState<number | null>(null);
-  const [queryingExecution, setQueryingExecution] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
-  const [executionNotice, setExecutionNotice] = useState<string | null>(
-    null,
-  );
   const [executionResult, setExecutionResult] =
     useState<DashboardExecutionCreated | null>(null);
 
   const loadSubscriptions = useCallback(
-    async (options?: { preserveExecutionNotice?: boolean }) => {
-      setLoading(true);
+    async (options?: { silent?: boolean }) => {
+      if (!options?.silent) setLoading(true);
       setError(null);
       setLoadFailed(false);
-      if (!options?.preserveExecutionNotice) {
-        setExecutionNotice(null);
-        setExecutionResult(null);
-      }
       try {
         setSubscriptions(
           await listSubscriptions({
@@ -243,7 +236,7 @@ const DashboardSubscriptionModal = ({
         setError(t('dashboard.subscriptionLoadFailed'));
         setLoadFailed(true);
       } finally {
-        setLoading(false);
+        if (!options?.silent) setLoading(false);
       }
     },
     [listSubscriptions, resolvedResourceId, resolvedResourceType, t],
@@ -251,8 +244,53 @@ const DashboardSubscriptionModal = ({
 
   useEffect(() => {
     if (!open) return;
+    setExecutionResult(null);
     void loadSubscriptions();
   }, [loadSubscriptions, open]);
+
+  useEffect(() => {
+    if (!open || !executionResult || !isInFlightExecutionStatus(executionResult.status)) {
+      return;
+    }
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+
+    const poll = async () => {
+      try {
+        const execution = await getExecution(executionResult.execution_id);
+        if (cancelled) return;
+        setExecutionResult((current) => current ? {
+          ...current,
+          status: execution.status,
+        } : current);
+        await loadSubscriptions({ silent: true });
+        if (!cancelled && isInFlightExecutionStatus(execution.status)) {
+          timer = setTimeout(poll, 2000);
+        }
+      } catch {
+        if (!cancelled) {
+          setError(t('dashboard.subscriptionExecutionQueryFailed'));
+          timer = setTimeout(poll, 2000);
+        }
+      }
+    };
+
+    timer = setTimeout(poll, 2000);
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [executionResult, getExecution, loadSubscriptions, open, t]);
+
+  useEffect(() => {
+    if (!open || !subscriptions.some(hasInFlightSubscriptionExecution)) {
+      return;
+    }
+    const timer = setInterval(() => {
+      void loadSubscriptions({ silent: true });
+    }, 2000);
+    return () => clearInterval(timer);
+  }, [loadSubscriptions, open, subscriptions]);
 
   useEffect(() => {
     if (!open) return;
@@ -415,37 +453,15 @@ const DashboardSubscriptionModal = ({
     setExecutingId(id);
     setError(null);
     setLoadFailed(false);
-    setExecutionNotice(null);
     setExecutionResult(null);
     try {
       const result = await executeSubscription(id, crypto.randomUUID());
       setExecutionResult(result);
-      setExecutionNotice(t('dashboard.subscriptionExecuteCreated'));
-      await loadSubscriptions({ preserveExecutionNotice: true });
+      await loadSubscriptions({ silent: true });
     } catch {
       setError(t('dashboard.subscriptionExecuteFailed'));
     } finally {
       setExecutingId(null);
-    }
-  };
-
-  const refreshExecutionStatus = async () => {
-    if (!executionResult) return;
-    setQueryingExecution(true);
-    setError(null);
-    try {
-      const execution = await getExecution(executionResult.execution_id);
-      setExecutionResult({
-        execution_id: execution.id,
-        status: execution.status,
-        request_id: executionResult.request_id,
-        created: executionResult.created,
-      });
-      await loadSubscriptions({ preserveExecutionNotice: true });
-    } catch {
-      setError(t('dashboard.subscriptionExecutionQueryFailed'));
-    } finally {
-      setQueryingExecution(false);
     }
   };
 
@@ -467,11 +483,7 @@ const DashboardSubscriptionModal = ({
     kind: 'scheduled' | 'manual_test',
   ) => {
     if (!summary) {
-      return (
-        <Typography.Text type="secondary" className="block text-xs">
-          {t('dashboard.subscriptionExecutionEmpty')}
-        </Typography.Text>
-      );
+      return '-';
     }
     const timeLabel =
       kind === 'scheduled'
@@ -481,62 +493,135 @@ const DashboardSubscriptionModal = ({
       kind === 'scheduled'
         ? summary.scheduled_time_utc ?? summary.created_at
         : summary.created_at;
-    return (
-      <Space direction="vertical" size={0} className="w-full">
-        <Space size={4} wrap>
-          <Tag color={executionStatusColor(summary.status)}>
-            {executionStatusLabel(summary.status)}
-          </Tag>
-        </Space>
-        <Typography.Text type="secondary" className="block text-xs">
+    const detail = (
+      <Space direction="vertical" size={2} className="max-w-80 text-xs">
+        <span className="block text-white/90">
           {timeLabel}
           {': '}
           {timeValue}
-        </Typography.Text>
+        </span>
         {summary.finished_at ? (
-          <Typography.Text type="secondary" className="block text-xs">
+          <span className="block text-white/90">
             {t('dashboard.subscriptionExecutionFinishedAt')}
             {': '}
             {summary.finished_at}
-          </Typography.Text>
+          </span>
         ) : null}
         {summary.status === 'failed' && summary.error_message ? (
-          <Typography.Text type="danger" className="block text-xs">
+          <span className="block text-red-200">
             {t('dashboard.subscriptionExecutionFailureReason')}
             {': '}
             {summary.error_message}
-          </Typography.Text>
+          </span>
         ) : null}
       </Space>
     );
-  };
-
-  const executionAlertType = (
-    status: DashboardExecutionStatus,
-  ): 'success' | 'info' | 'warning' | 'error' => {
-    if (status === 'succeeded') return 'success';
-    if (status === 'failed') return 'error';
-    if (status === 'unknown') return 'warning';
-    return 'info';
+    return (
+      <Tooltip title={detail} placement="topLeft">
+        <Tag color={executionStatusColor(summary.status)} className="cursor-help">
+          {executionStatusLabel(summary.status)}
+        </Tag>
+      </Tooltip>
+    );
   };
 
   const channelNameById = useMemo(() => {
     return new Map(emailChannels.map((channel) => [channel.id, channel.name]));
   }, [emailChannels]);
 
+  const columns: TableColumnsType<DashboardSubscription> = [
+    {
+      title: t('dashboard.subscriptionName'),
+      dataIndex: 'name',
+      width: 150,
+      ellipsis: { showTitle: false },
+      render: (name: string) => <Tooltip title={name}>{name}</Tooltip>,
+    },
+    {
+      title: t('dashboard.subscriptionStatus'),
+      dataIndex: 'status',
+      width: 90,
+      render: (status: DashboardSubscriptionStatus) => (
+        <Tag color={status === 'active' ? 'success' : 'default'}>
+          {t(status === 'active' ? 'dashboard.subscriptionStatusActive' : 'dashboard.subscriptionStatusPaused')}
+        </Tag>
+      ),
+    },
+    {
+      title: t('dashboard.subscriptionEmail'),
+      dataIndex: 'recipient_email',
+      width: 190,
+      ellipsis: { showTitle: false },
+      render: (email: string) => <Tooltip title={email}>{email}</Tooltip>,
+    },
+    {
+      title: t('dashboard.subscriptionChannel'),
+      dataIndex: 'email_channel',
+      width: 130,
+      ellipsis: { showTitle: false },
+      render: (channelId: number) => {
+        const name = channelNameById.get(channelId) ?? String(channelId);
+        return <Tooltip title={name}>{name}</Tooltip>;
+      },
+    },
+    {
+      title: t('dashboard.subscriptionScheduleType'),
+      width: 150,
+      render: (_, subscription) => formatSubscriptionScheduleSummary(subscription, t) ?? '-',
+    },
+    {
+      title: t('dashboard.subscriptionLatestScheduled'),
+      width: 120,
+      render: (_, subscription) => (
+        <span data-testid={`latest-scheduled-${subscription.id}`}>
+          {renderExecutionSummary(subscription.latest_scheduled_execution, 'scheduled')}
+        </span>
+      ),
+    },
+    {
+      title: t('dashboard.subscriptionLatestManualTest'),
+      width: 120,
+      render: (_, subscription) => (
+        <span data-testid={`latest-manual-test-${subscription.id}`}>
+          {renderExecutionSummary(subscription.latest_manual_test_execution, 'manual_test')}
+        </span>
+      ),
+    },
+    {
+      title: t('common.actions'),
+      fixed: 'right',
+      width: 190,
+      render: (_, subscription) => (
+        <Space size={0}>
+          <Button
+            type="link"
+            size="small"
+            loading={executingId === subscription.id}
+            disabled={hasInFlightSubscriptionExecution(subscription) || (executingId !== null && executingId !== subscription.id)}
+            onClick={() => void executeManualTest(subscription.id)}
+          >
+            {t('dashboard.subscriptionExecute')}
+          </Button>
+          <Button type="link" size="small" onClick={() => openEditForm(subscription)}>
+            {t('common.edit')}
+          </Button>
+          <Popconfirm title={t('dashboard.subscriptionDeleteConfirm')} onConfirm={() => remove(subscription)}>
+            <Button type="link" size="small" danger loading={deletingId === subscription.id} disabled={deletingId !== null && deletingId !== subscription.id}>
+              {t('common.delete')}
+            </Button>
+          </Popconfirm>
+        </Space>
+      ),
+    },
+  ];
+
   return (
-    <Modal
+    <Drawer
       open={open}
       title={t('dashboard.subscriptionTitle')}
-      footer={null}
-      onCancel={onClose}
-      width={720}
-      styles={{
-        body: {
-          maxHeight: 'calc(100vh - 240px)',
-          overflowY: 'auto',
-        },
-      }}
+      onClose={onClose}
+      width={830}
+      destroyOnHidden
     >
       {error && (
         <Alert
@@ -552,33 +637,6 @@ const DashboardSubscriptionModal = ({
                 onClick={() => void loadSubscriptions()}
               >
                 {t('common.retry')}
-              </Button>
-            ) : undefined
-          }
-        />
-      )}
-      {executionNotice && (
-        <Alert
-          className="mb-4"
-          type={
-            executionResult
-              ? executionAlertType(executionResult.status)
-              : 'info'
-          }
-          showIcon
-          message={
-            executionResult
-              ? `${executionNotice} · ${t('dashboard.subscriptionExecutionStatus')}：${executionStatusLabel(executionResult.status)}`
-              : executionNotice
-          }
-          action={
-            executionResult ? (
-              <Button
-                size="small"
-                loading={queryingExecution}
-                onClick={() => void refreshExecutionStatus()}
-              >
-                {t('dashboard.subscriptionExecutionRefresh')}
               </Button>
             ) : undefined
           }
@@ -830,172 +888,20 @@ const DashboardSubscriptionModal = ({
             </Button>
           </div>
           <Spin spinning={loading}>
-            <List
+            <Table
+              rowKey="id"
+              columns={columns}
               dataSource={subscriptions}
+              pagination={false}
+              scroll={{ x: 1140 }}
               locale={{
-                emptyText: (
-                  <Empty
-                    image={Empty.PRESENTED_IMAGE_SIMPLE}
-                    description={t('dashboard.subscriptionEmpty')}
-                  />
-                ),
+                emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t('dashboard.subscriptionEmpty')} />,
               }}
-              renderItem={(subscription) => (
-                <List.Item
-                  actions={[
-                    <Button
-                      key="execute"
-                      type="link"
-                      size="small"
-                      loading={executingId === subscription.id}
-                      disabled={
-                        hasInFlightSubscriptionExecution(subscription)
-                        || (
-                          executingId !== null
-                          && executingId !== subscription.id
-                        )
-                      }
-                      onClick={() => executeManualTest(subscription.id)}
-                    >
-                      {t('dashboard.subscriptionExecute')}
-                    </Button>,
-                    <Button
-                      key="edit"
-                      type="link"
-                      size="small"
-                      onClick={() => openEditForm(subscription)}
-                    >
-                      {t('common.edit')}
-                    </Button>,
-                    <Popconfirm
-                      key="delete"
-                      title={t('dashboard.subscriptionDeleteConfirm')}
-                      onConfirm={() => remove(subscription)}
-                    >
-                      <Button
-                        type="link"
-                        size="small"
-                        danger
-                        loading={deletingId === subscription.id}
-                        disabled={
-                          deletingId !== null
-                          && deletingId !== subscription.id
-                        }
-                      >
-                        {t('common.delete')}
-                      </Button>
-                    </Popconfirm>,
-                  ]}
-                >
-                  <List.Item.Meta
-                    title={
-                      <Space>
-                        <Typography.Text
-                          ellipsis={{ tooltip: subscription.name }}
-                          className="max-w-64"
-                        >
-                          {subscription.name}
-                        </Typography.Text>
-                        <Tag
-                          color={
-                            subscription.status === 'active'
-                              ? 'success'
-                              : 'default'
-                          }
-                        >
-                          {t(
-                            subscription.status === 'active'
-                              ? 'dashboard.subscriptionStatusActive'
-                              : 'dashboard.subscriptionStatusPaused',
-                          )}
-                        </Tag>
-                      </Space>
-                    }
-                    description={
-                      <Space direction="vertical" size={4} className="w-full">
-                        <Typography.Text
-                          type="secondary"
-                          ellipsis={{ tooltip: subscription.recipient_email }}
-                          className="block max-w-96"
-                        >
-                          {subscription.recipient_email}
-                        </Typography.Text>
-                        <Typography.Text
-                          type="secondary"
-                          ellipsis={{
-                            tooltip:
-                              channelNameById.get(subscription.email_channel)
-                              ?? String(subscription.email_channel),
-                          }}
-                          className="block max-w-96"
-                        >
-                          {t('dashboard.subscriptionChannel')}：
-                          {channelNameById.get(subscription.email_channel)
-                            ?? subscription.email_channel}
-                        </Typography.Text>
-                        <Typography.Text type="secondary" className="block">
-                          {t('dashboard.subscriptionNextRunAt')}
-                          {': '}
-                          {subscription.next_run_at
-                            ?? t('dashboard.subscriptionScheduleNone')}
-                        </Typography.Text>
-                        <Typography.Text
-                          type="secondary"
-                          className="block"
-                          data-testid={`schedule-summary-${subscription.id}`}
-                        >
-                          {t('dashboard.subscriptionScheduleType')}
-                          {': '}
-                          {formatSubscriptionScheduleSummary(
-                            subscription,
-                            t,
-                          )
-                            ?? t('dashboard.subscriptionScheduleNone')}
-                        </Typography.Text>
-                        <Typography.Text
-                          type="secondary"
-                          className="block"
-                          data-testid={`schedule-timezone-${subscription.id}`}
-                        >
-                          {t('dashboard.subscriptionTimezone')}
-                          {': '}
-                          {subscription.timezone
-                            ?? t('dashboard.subscriptionScheduleNone')}
-                        </Typography.Text>
-                        <div
-                          data-testid={`latest-scheduled-${subscription.id}`}
-                          className="rounded border border-[var(--color-border-2)] bg-[var(--color-fill-1)] px-2 py-1"
-                        >
-                          <Typography.Text className="mb-1 block text-xs font-medium">
-                            {t('dashboard.subscriptionLatestScheduled')}
-                          </Typography.Text>
-                          {renderExecutionSummary(
-                            subscription.latest_scheduled_execution,
-                            'scheduled',
-                          )}
-                        </div>
-                        <div
-                          data-testid={`latest-manual-test-${subscription.id}`}
-                          className="rounded border border-[var(--color-border-2)] bg-[var(--color-fill-1)] px-2 py-1"
-                        >
-                          <Typography.Text className="mb-1 block text-xs font-medium">
-                            {t('dashboard.subscriptionLatestManualTest')}
-                          </Typography.Text>
-                          {renderExecutionSummary(
-                            subscription.latest_manual_test_execution,
-                            'manual_test',
-                          )}
-                        </div>
-                      </Space>
-                    }
-                  />
-                </List.Item>
-              )}
             />
           </Spin>
         </>
       )}
-    </Modal>
+    </Drawer>
   );
 };
 

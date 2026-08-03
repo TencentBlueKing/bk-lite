@@ -11,7 +11,7 @@ class Migration(migrations.Migration):
 
     dependencies = [
         ('system_mgmt', '0041_networkwhitelist_domain_build_in'),
-        ('operation_analysis', '0018_dashboardsharelink_resource_type'),
+        ('operation_analysis', '0019_set_cloud_cost_distribution_field_schema'),
     ]
 
     operations = [

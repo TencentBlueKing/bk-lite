@@ -42,6 +42,8 @@ const makeSubscription = (
 ): DashboardSubscription => ({
   id: 1,
   dashboard: 8,
+  resource_type: 'dashboard',
+  resource_id: 8,
   creator: 'test',
   creator_domain: 'domain.com',
   team_id: 1,
@@ -133,6 +135,7 @@ const translate = (
     'dashboard.subscriptionExecutionQueryFailed': '查询执行状态失败',
     'common.edit': '编辑',
     'common.delete': '删除',
+    'common.actions': '操作',
     'common.cancel': '取消',
   };
   let message = messages[key] ?? key;
@@ -370,7 +373,7 @@ describe('DashboardSubscriptionModal', () => {
 
     expect(await screen.findByText('日报')).not.toBeNull();
     expect(screen.getByText('启用')).not.toBeNull();
-    expect(screen.getByText('邮件渠道：运营邮件通道')).not.toBeNull();
+    expect(screen.getByText('运营邮件通道')).not.toBeNull();
     await user.click(screen.getByRole('button', { name: '编辑' }));
 
     const channelSelect = screen.getByLabelText('邮件渠道');
@@ -426,7 +429,7 @@ describe('DashboardSubscriptionModal', () => {
     });
   });
 
-  it('creates a pending manual test execution and displays its status', async () => {
+  it('creates a pending manual test execution without showing a header alert', async () => {
     api.listSubscriptions.mockResolvedValue([makeSubscription()]);
     const user = userEvent.setup();
     render(
@@ -447,9 +450,8 @@ describe('DashboardSubscriptionModal', () => {
         expect.any(String),
       );
     });
-    expect(
-      await screen.findByText('测试执行已创建 · 状态：等待执行'),
-    ).not.toBeNull();
+    expect(screen.queryByText(/测试执行已创建/)).toBeNull();
+    expect(screen.queryByRole('button', { name: '刷新状态' })).toBeNull();
   });
 
   it('shows an error when querying execution status fails', async () => {
@@ -467,13 +469,9 @@ describe('DashboardSubscriptionModal', () => {
     await user.click(
       await screen.findByRole('button', { name: '立即测试' }),
     );
-    await user.click(
-      await screen.findByRole('button', { name: '刷新状态' }),
-    );
-
     await waitFor(() => {
       expect(api.getExecution).toHaveBeenCalledWith(10);
-    });
+    }, { timeout: 3000 });
     expect(await screen.findByText('查询执行状态失败')).not.toBeNull();
   });
 
@@ -483,6 +481,17 @@ describe('DashboardSubscriptionModal', () => {
       id: 10,
       status: 'failed',
     });
+    api.listSubscriptions
+      .mockResolvedValueOnce([makeSubscription()])
+      .mockResolvedValue([
+        makeSubscription({
+          latest_manual_test_execution: makeExecutionSummary({
+            status: 'failed',
+            trigger_type: 'manual_test',
+            scheduled_time_utc: null,
+          }),
+        }),
+      ]);
     const user = userEvent.setup();
     render(
       <DashboardSubscriptionModal
@@ -495,16 +504,12 @@ describe('DashboardSubscriptionModal', () => {
     await user.click(
       await screen.findByRole('button', { name: '立即测试' }),
     );
-    await user.click(
-      await screen.findByRole('button', { name: '刷新状态' }),
-    );
-
-    const executionAlert = await screen.findByText(
-      '测试执行已创建 · 状态：执行失败',
-    );
-    expect(executionAlert.closest('[role="alert"]')?.className).toContain(
-      'ant-alert-error',
-    );
+    await waitFor(() => {
+      expect(
+        within(screen.getByTestId('latest-manual-test-1')).getByText('执行失败'),
+      ).not.toBeNull();
+    }, { timeout: 3000 });
+    expect(screen.queryByText(/测试执行已创建/)).toBeNull();
   });
 
   it('shows an error when manual execution creation fails', async () => {
@@ -553,11 +558,10 @@ describe('DashboardSubscriptionModal', () => {
 
     const scheduled = await screen.findByTestId('latest-scheduled-1');
     const manual = screen.getByTestId('latest-manual-test-1');
-    expect(within(scheduled).getByText('最近计划执行')).not.toBeNull();
     expect(within(scheduled).getByText('执行成功')).not.toBeNull();
-    expect(within(manual).getByText('最近测试执行')).not.toBeNull();
     expect(within(manual).getByText('执行失败')).not.toBeNull();
-    expect(within(manual).getByText(/SMTP 失败/)).not.toBeNull();
+    await userEvent.hover(within(manual).getByText('执行失败'));
+    expect(await screen.findByText(/SMTP 失败/)).not.toBeNull();
   });
 
   it('shows empty state for missing manual_test summary', async () => {
@@ -576,7 +580,7 @@ describe('DashboardSubscriptionModal', () => {
     );
 
     const manual = await screen.findByTestId('latest-manual-test-1');
-    expect(within(manual).getByText('暂无记录')).not.toBeNull();
+    expect(manual.textContent).toBe('-');
     expect(
       within(screen.getByTestId('latest-scheduled-1')).getByText('执行成功'),
     ).not.toBeNull();
@@ -602,7 +606,7 @@ describe('DashboardSubscriptionModal', () => {
     );
 
     const scheduled = await screen.findByTestId('latest-scheduled-1');
-    expect(within(scheduled).getByText('暂无记录')).not.toBeNull();
+    expect(scheduled.textContent).toBe('-');
     expect(
       within(screen.getByTestId('latest-manual-test-1')).getByText('等待执行'),
     ).not.toBeNull();
@@ -700,24 +704,9 @@ describe('DashboardSubscriptionModal', () => {
     );
 
     expect(await screen.findByText('日报')).not.toBeNull();
-    expect(screen.getByTestId('schedule-summary-1').textContent).toContain(
-      '发送周期: 每天 09:00',
-    );
-    expect(screen.getByTestId('schedule-summary-2').textContent).toContain(
-      '发送周期: 每周一 09:00',
-    );
-    expect(screen.getByTestId('schedule-summary-3').textContent).toContain(
-      '发送周期: 每月 31 日 09:00',
-    );
-    expect(screen.getByTestId('schedule-timezone-1').textContent).toContain(
-      '订阅时区: Asia/Shanghai',
-    );
-    expect(screen.getByTestId('schedule-timezone-2').textContent).toContain(
-      '订阅时区: Asia/Shanghai',
-    );
-    expect(screen.getByTestId('schedule-timezone-3').textContent).toContain(
-      '订阅时区: Asia/Shanghai',
-    );
+    expect(screen.getByText('每天 09:00')).not.toBeNull();
+    expect(screen.getByText('每周一 09:00')).not.toBeNull();
+    expect(screen.getByText('每月 31 日 09:00')).not.toBeNull();
   });
 
   it('disables test button when scheduled execution is pending', async () => {
