@@ -90,6 +90,55 @@ def test_service_red_uses_environment_scoped_entry_spans_and_histogram_quantiles
     assert "by (le,span_name)" in queries[10]
 
 
+def test_service_red_preserves_no_samples_instead_of_fabricating_zero_metrics():
+    now = timezone.now()
+    session = Mock()
+    session.get.side_effect = [_response([]), _response([]), _response([]), _response([])]
+    store = VictoriaMetricsMetricStore(endpoint="http://metrics.test", session=session)
+
+    red = store.service_red(
+        ServiceMetricQuery(
+            service_namespace="shop",
+            service_name="checkout",
+            environment="production",
+            started_at=now - timedelta(minutes=1),
+            ended_at=now,
+        )
+    )
+
+    assert red.request_rate is None
+    assert red.error_rate is None
+    assert red.p95_ms is None
+    assert red.p99_ms is None
+
+
+def test_service_red_treats_missing_error_series_as_zero_when_requests_exist():
+    now = timezone.now()
+    session = Mock()
+    session.get.side_effect = [
+        _response([{"value": [0, "20"]}]),
+        _response([]),
+        _response([{"value": [0, "125"]}]),
+        _response([{"value": [0, "250"]}]),
+    ]
+    store = VictoriaMetricsMetricStore(endpoint="http://metrics.test", session=session)
+
+    red = store.service_red(
+        ServiceMetricQuery(
+            service_namespace="shop",
+            service_name="checkout",
+            environment="production",
+            started_at=now - timedelta(minutes=1),
+            ended_at=now,
+        )
+    )
+
+    assert red.request_rate == 20
+    assert red.error_rate == 0
+    assert red.p95_ms == 125
+    assert red.p99_ms == 250
+
+
 def test_instance_activity_only_accepts_complete_trusted_catalog_dimensions():
     now = timezone.now()
     session = Mock()

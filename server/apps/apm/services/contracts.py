@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime
 from decimal import Decimal
+from enum import StrEnum
 from typing import Mapping, Protocol, Sequence
 from uuid import UUID
 
@@ -135,27 +136,27 @@ class ServiceMetricQuery:
 @dataclass(frozen=True)
 class ServiceRedPoint:
     timestamp: datetime
-    request_rate: float
-    error_rate: float
-    p95_ms: float
-    p99_ms: float
+    request_rate: float | None
+    error_rate: float | None
+    p95_ms: float | None
+    p99_ms: float | None
 
 
 @dataclass(frozen=True)
 class ServiceEndpointRed:
     endpoint: str
     request_rate: float
-    error_rate: float
-    p95_ms: float
-    p99_ms: float
+    error_rate: float | None
+    p95_ms: float | None
+    p99_ms: float | None
 
 
 @dataclass(frozen=True)
 class ServiceRed:
-    request_rate: float
-    error_rate: float
-    p95_ms: float
-    p99_ms: float
+    request_rate: float | None
+    error_rate: float | None
+    p95_ms: float | None
+    p99_ms: float | None
     timeseries: tuple[ServiceRedPoint, ...] = ()
     top_endpoints: tuple[ServiceEndpointRed, ...] = ()
 
@@ -185,11 +186,17 @@ class PublishResult:
     failed: int = 0
 
 
+class MetricDataState(StrEnum):
+    AVAILABLE = "available"
+    NO_DATA = "no_data"
+
+
 @dataclass(frozen=True)
 class PolicyQueryResult:
-    value: Decimal
-    breached: bool
+    value: Decimal | None
+    breached: bool | None
     evaluated_at: datetime
+    data_state: MetricDataState = MetricDataState.AVAILABLE
 
 
 @dataclass(frozen=True)

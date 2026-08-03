@@ -6,6 +6,9 @@ from urllib.parse import urlsplit, urlunsplit
 import requests
 from django.utils import timezone
 
+from apps.apm.models import ApmPolicyNotificationTarget
+from apps.rpc.system_mgmt import SystemMgmt
+
 
 CATALOG_RECONCILE_HEALTH_KEY = "apm:catalog:reconcile:health"
 RUNTIME_DEPENDENCIES_HEALTH_KEY = "apm:runtime:dependencies:health"
@@ -32,8 +35,41 @@ def _origin_health_url(endpoint: str) -> str:
 class RuntimeDependencyHealthProbe:
     """只在运行期执行的有界健康探测，不参与 Server 启动。"""
 
-    def __init__(self, *, session=None):
+    def __init__(self, *, session=None, notification_client=None):
         self.session = session or requests.Session()
+        self.notification_client = notification_client or SystemMgmt()
+
+    @staticmethod
+    def _alert_copy_channel_ids() -> list[int]:
+        return list(
+            ApmPolicyNotificationTarget.objects.filter(
+                delivery_mode=ApmPolicyNotificationTarget.DeliveryMode.ALERT_EVENT_COPY,
+                policy__is_enabled=True,
+            )
+            .order_by("channel_id")
+            .values_list("channel_id", flat=True)
+            .distinct()[:20]
+        )
+
+    def _probe_notification_responder(self, checked_at: str) -> dict[str, str]:
+        channel_ids = self._alert_copy_channel_ids()
+        if not channel_ids:
+            return {"status": "pending", "last_checked_at": checked_at}
+        try:
+            responses = [self.notification_client.probe_notification_channel(channel_id) for channel_id in channel_ids]
+        except Exception:
+            return {
+                "status": "degraded",
+                "last_failed_at": checked_at,
+                "error_code": "notification_responder_unavailable",
+            }
+        if not all(isinstance(response, dict) and response.get("result") is True for response in responses):
+            return {
+                "status": "degraded",
+                "last_failed_at": checked_at,
+                "error_code": "notification_responder_unavailable",
+            }
+        return {"status": "ok", "last_succeeded_at": checked_at}
 
     @staticmethod
     def _dependencies() -> dict[str, tuple[str, tuple[str, str] | None]]:
@@ -73,6 +109,7 @@ class RuntimeDependencyHealthProbe:
                 }
             else:
                 result[name] = {"status": "ok", "last_succeeded_at": checked_at}
+        result["notification_responder"] = self._probe_notification_responder(checked_at)
         return result
 
 
@@ -81,4 +118,5 @@ def pending_runtime_dependencies_health() -> dict[str, dict[str, str]]:
         "collector": {"status": "pending"},
         "trace_store": {"status": "pending"},
         "metric_store": {"status": "pending"},
+        "notification_responder": {"status": "pending"},
     }

@@ -66,6 +66,7 @@ def test_red_endpoint_requires_one_environment_and_does_not_mix_views(apm_api_cl
     assert missing.status_code == 400
     assert missing.data["code"] == "invalid_query"
     assert response.status_code == 200
+    assert response.data["data_state"] == "available"
     assert response.data["environment"] == "production"
     assert response.data["error_rate"] == 0.04
     assert response.data["timeseries"][0]["request_rate"] == 10
@@ -137,7 +138,7 @@ def test_storage_failure_is_distinct_from_legal_empty_metrics(apm_api_client, mo
         f"/api/v1/apm/services/{service.id}/metrics/?environment=production"
     )
     metric_query.side_effect = None
-    metric_query.return_value = ServiceRed(request_rate=0, error_rate=0, p95_ms=0, p99_ms=0)
+    metric_query.return_value = ServiceRed(request_rate=None, error_rate=None, p95_ms=None, p99_ms=None)
     empty = apm_api_client.get(
         f"/api/v1/apm/services/{service.id}/metrics/?environment=production"
     )
@@ -146,4 +147,6 @@ def test_storage_failure_is_distinct_from_legal_empty_metrics(apm_api_client, mo
     assert degraded.data["code"] == "telemetry_unavailable"
     assert degraded.json()["code"] == "telemetry_unavailable"
     assert empty.status_code == 200
-    assert empty.data["request_rate"] == 0
+    assert empty.data["data_state"] == "no_data"
+    assert empty.data["request_rate"] is None
+    assert empty.data["error_rate"] is None

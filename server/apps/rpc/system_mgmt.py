@@ -310,6 +310,9 @@ class SystemMgmt(object):
             event_payload=event_payload,
         )
 
+    def probe_notification_channel(self, channel_id):
+        return self.client.run("probe_notification_channel", channel_id=channel_id)
+
     def search_groups(self, query_params):
         """
         :param query_params: {"search": ""}

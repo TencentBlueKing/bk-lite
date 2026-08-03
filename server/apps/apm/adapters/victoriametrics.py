@@ -118,6 +118,16 @@ class VictoriaMetricsMetricStore:
         return value if math.isfinite(value) else 0.0
 
     @staticmethod
+    def _optional_scalar(result: list[dict]) -> float | None:
+        if not result:
+            return None
+        try:
+            value = float(result[0]["value"][1])
+        except (KeyError, IndexError, TypeError, ValueError) as exc:
+            raise TelemetryStoreUnavailable("VictoriaMetrics 标量格式无效") from exc
+        return value if math.isfinite(value) else None
+
+    @staticmethod
     def _range_values(result: list[dict]) -> dict[float, float]:
         if not result:
             return {}
@@ -173,18 +183,26 @@ class VictoriaMetricsMetricStore:
             f"{entry_selector}"
             f"}}[{window}s])) by (le)"
         )
-        request_rate = self._scalar(self._query(rate, evaluated_at=query.ended_at))
-        error_rate_value = self._scalar(self._query(errors, evaluated_at=query.ended_at))
-        p95_ms = self._scalar(
+        request_rate = self._optional_scalar(self._query(rate, evaluated_at=query.ended_at))
+        error_rate_value = self._optional_scalar(self._query(errors, evaluated_at=query.ended_at))
+        p95_ms = self._optional_scalar(
             self._query(f"histogram_quantile(0.95, {buckets})", evaluated_at=query.ended_at)
         )
-        p99_ms = self._scalar(
+        p99_ms = self._optional_scalar(
             self._query(f"histogram_quantile(0.99, {buckets})", evaluated_at=query.ended_at)
         )
+        error_rate = (
+            (error_rate_value or 0.0) / request_rate
+            if request_rate is not None and request_rate > 0
+            else None
+        )
+        if request_rate is None or request_rate <= 0:
+            p95_ms = None
+            p99_ms = None
         if not query.include_breakdown:
             return ServiceRed(
                 request_rate=request_rate,
-                error_rate=error_rate_value / request_rate if request_rate > 0 else 0.0,
+                error_rate=error_rate,
                 p95_ms=p95_ms,
                 p99_ms=p99_ms,
             )
@@ -217,9 +235,9 @@ class VictoriaMetricsMetricStore:
             ServiceRedPoint(
                 timestamp=datetime.fromtimestamp(timestamp, tz=timezone.utc),
                 request_rate=value,
-                error_rate=trend_error_rates.get(timestamp, 0.0) / value if value > 0 else 0.0,
-                p95_ms=trend_p95.get(timestamp, 0.0),
-                p99_ms=trend_p99.get(timestamp, 0.0),
+                error_rate=trend_error_rates.get(timestamp, 0.0) / value if value > 0 else None,
+                p95_ms=trend_p95.get(timestamp) if value > 0 else None,
+                p99_ms=trend_p99.get(timestamp) if value > 0 else None,
             )
             for timestamp, value in trend_rates.items()
         )
@@ -261,9 +279,9 @@ class VictoriaMetricsMetricStore:
             ServiceEndpointRed(
                 endpoint=endpoint,
                 request_rate=value,
-                error_rate=endpoint_errors.get(endpoint, 0.0) / value if value > 0 else 0.0,
-                p95_ms=endpoint_p95.get(endpoint, 0.0),
-                p99_ms=endpoint_p99.get(endpoint, 0.0),
+                error_rate=endpoint_errors.get(endpoint, 0.0) / value if value > 0 else None,
+                p95_ms=endpoint_p95.get(endpoint) if value > 0 else None,
+                p99_ms=endpoint_p99.get(endpoint) if value > 0 else None,
             )
             for endpoint, value in sorted(
                 endpoint_rates.items(), key=lambda item: (-item[1], item[0])
@@ -271,7 +289,7 @@ class VictoriaMetricsMetricStore:
         )
         return ServiceRed(
             request_rate=request_rate,
-            error_rate=error_rate_value / request_rate if request_rate > 0 else 0.0,
+            error_rate=error_rate,
             p95_ms=p95_ms,
             p99_ms=p99_ms,
             timeseries=timeseries,

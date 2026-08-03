@@ -44,6 +44,7 @@ def test_nats_api_compat_exports_local_and_nats_entrypoints():
         "list_notification_channels_scoped",
         "search_notification_recipients_scoped",
         "dispatch_notification",
+        "probe_notification_channel",
         "send_msg_with_channel",
         "_list_opspilot_nats_channels",
         "sync_opspilot_nats_channels",
@@ -530,6 +531,28 @@ def test_public_notification_directory_exposes_capabilities_without_private_conf
     ]
     assert "config" not in str(response)
     assert "secret" not in str(response)
+
+
+def test_probe_notification_channel_checks_alert_copy_responder(monkeypatch):
+    group = Group.objects.create(name="probe-team", parent_id=0)
+    channel = Channel.objects.create(
+        name="告警中心",
+        channel_type=ChannelChoices.NATS,
+        config={"namespace": "bklite", "method_name": "receive_alert_events", "timeout": 60},
+        team=[group.id],
+    )
+    captured = {}
+
+    def probe(channel_obj, content, *, timeout_override=None):
+        captured.update({"channel": channel_obj.id, "content": content, "timeout": timeout_override})
+        return {"result": True, "data": {"status": "ok"}, "message": ""}
+
+    monkeypatch.setattr("apps.system_mgmt.nats.channels.send_nats_message", probe)
+
+    response = nats_api.probe_notification_channel(channel.id)
+
+    assert response == {"result": True, "code": "available", "retryable": False, "message": "success"}
+    assert captured == {"channel": channel.id, "content": {"health_probe": True}, "timeout": 2}
 
 
 def test_public_notification_recipient_search_is_scoped_and_bounded():

@@ -10,6 +10,7 @@ from django.utils import timezone
 
 from apps.apm.models import ApmAlert, ApmAlertOutbox, ApmEvent, ApmPolicy, ApmPolicyState
 from apps.apm.services.contracts import (
+    MetricDataState,
     MetricStore,
     NotificationDelivery,
     NotificationDeliveryResult,
@@ -45,7 +46,7 @@ class DjangoApmPolicyService:
         return evaluated_at.replace(second=0, microsecond=0).isoformat()
 
     @staticmethod
-    def _value(policy: ApmPolicy, red) -> Decimal:
+    def _value(policy: ApmPolicy, red) -> Decimal | None:
         values = {
             ApmPolicy.MetricType.ERROR_RATE: red.error_rate,
             ApmPolicy.MetricType.P95: red.p95_ms,
@@ -53,7 +54,10 @@ class DjangoApmPolicyService:
             ApmPolicy.MetricType.THROUGHPUT: red.request_rate,
             ApmPolicy.MetricType.NO_TRAFFIC: red.request_rate,
         }
-        return Decimal(str(values[policy.metric_type]))
+        value = values[policy.metric_type]
+        if policy.metric_type == ApmPolicy.MetricType.NO_TRAFFIC and value is None:
+            value = 0
+        return Decimal(str(value)) if value is not None else None
 
     @staticmethod
     def _breached(policy: ApmPolicy, value: Decimal) -> bool:
@@ -77,10 +81,18 @@ class DjangoApmPolicyService:
             )
         )
         value = self._value(policy, red)
+        if value is None:
+            return PolicyQueryResult(
+                value=None,
+                breached=None,
+                evaluated_at=evaluated_at,
+                data_state=MetricDataState.NO_DATA,
+            )
         return PolicyQueryResult(
             value=value,
             breached=self._breached(policy, value),
             evaluated_at=evaluated_at,
+            data_state=MetricDataState.AVAILABLE,
         )
 
     def evaluate(self, policy_id: UUID, *, evaluated_at: datetime) -> None:
@@ -113,6 +125,9 @@ class DjangoApmPolicyService:
             state.evaluation_cursor = cursor
             state.last_succeeded_at = evaluated_at
             state.last_failed_at = None
+            if result.data_state == MetricDataState.NO_DATA:
+                state.save()
+                return
             if state.status == ApmPolicyState.Status.NORMAL:
                 state.consecutive_recoveries = 0
                 state.consecutive_hits = state.consecutive_hits + 1 if result.breached else 0

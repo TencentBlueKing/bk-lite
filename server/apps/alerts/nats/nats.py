@@ -742,6 +742,9 @@ def receive_alert_events(*args, **kwargs) -> Dict[str, Any]:
               }
             }
     """
+    if kwargs.pop("health_probe", False) is True:
+        return {"result": True, "data": {"status": "ok"}, "message": ""}
+
     logger.info(
         "[AlertEvent] receive_alert_events source_id=%s pusher=%s event_count=%s",
         kwargs.get("source_id", ""),

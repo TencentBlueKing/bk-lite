@@ -80,6 +80,7 @@ def test_health_endpoint_exposes_reconcile_degradation_without_storage_details(a
     assert response.data["collector"]["status"] == "pending"
     assert response.data["trace_store"]["status"] == "pending"
     assert response.data["metric_store"]["status"] == "pending"
+    assert response.data["notification_responder"]["status"] == "pending"
     assert response.data["policy_evaluation"]["status"] == "pending"
     assert response.data["notification_delivery"]["status"] == "pending"
 
@@ -118,6 +119,24 @@ def test_runtime_dependency_probe_is_bounded_and_hides_endpoints(monkeypatch):
     assert result["metric_store"]["status"] == "ok"
     assert all(call[2] == (1, 2) for call in session.calls)
     assert "endpoint" not in str(result)
+
+
+def test_runtime_dependency_probe_marks_missing_alert_responder_degraded(monkeypatch):
+    class NotificationClient:
+        def probe_notification_channel(self, channel_id):
+            assert channel_id == 7
+            return {"result": False, "code": "responder_unavailable"}
+
+    monkeypatch.setattr(RuntimeDependencyHealthProbe, "_alert_copy_channel_ids", staticmethod(lambda: [7]))
+
+    result = RuntimeDependencyHealthProbe(
+        session=FakeSession(),
+        notification_client=NotificationClient(),
+    ).probe()
+
+    assert result["notification_responder"]["status"] == "degraded"
+    assert result["notification_responder"]["error_code"] == "notification_responder_unavailable"
+    assert "last_failed_at" in result["notification_responder"]
 
 
 def test_runtime_dependency_probe_task_only_updates_runtime_cache(mocker):

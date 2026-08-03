@@ -301,6 +301,26 @@ def _notification_failure(code, message, *, retryable=False):
     }
 
 
+@nats_client.register
+def probe_notification_channel(channel_id):
+    """探测内部通知 responder；普通外部渠道只校验公开能力是否仍存在。"""
+    channel = Channel.objects.filter(id=channel_id).first()
+    if channel is None:
+        return _notification_failure("channel_not_found", "通知渠道不存在。")
+    capability = _notification_channel_capabilities(channel)
+    if capability["delivery_mode"] != "alert_event_copy":
+        return {"result": True, "code": "available", "retryable": False, "message": "success"}
+
+    response = send_nats_message(channel, {"health_probe": True}, timeout_override=2)
+    if isinstance(response, dict) and response.get("result") is True:
+        return {"result": True, "code": "available", "retryable": False, "message": "success"}
+    return _notification_failure(
+        "responder_unavailable",
+        "通知 responder 暂不可用。",
+        retryable=True,
+    )
+
+
 def _validate_notification_recipients(recipient_mode, recipients):
     if not isinstance(recipients, list) or len(recipients) > MAX_NOTIFICATION_RECIPIENTS:
         return None

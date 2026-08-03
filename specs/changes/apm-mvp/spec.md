@@ -216,6 +216,7 @@ bk.ingest_source.id（受信来源）
 - HTTP 端点优先使用低基数 `http.route`；缺失时使用经规范化的 span name，不得直接使用含路径参数或查询串的 URL。
 - 请求量使用入口 SERVER/CONSUMER Span；错误按 `span.status=ERROR` 或协议明确的服务端错误状态统一计算；延迟使用直方图，P95/P99 必须由分布聚合，不能平均各实例百分位。
 - 服务 RED 查询必须携带环境和时间窗。实例视图额外按 `service.instance.id` 过滤。
+- VictoriaMetrics 查询返回空向量时，`MetricStore` 必须保留“无样本”语义：请求率、错误率和延迟使用 `null`，API 返回 `data_state=no_data`，页面显示缺省值而不是伪造 `0`。只有查询确实返回数值 `0` 时才视为可用的零值。
 
 ### 5. 采样与保留
 
@@ -291,7 +292,7 @@ class NotificationDispatcher(Protocol):
 | `/api/v1/apm/notification-recipients/` | 有界搜索当前组织内可用于 `system_user` 渠道的稳定用户 ID 与显示名 |
 | `/api/v1/apm/notification-deliveries/` | 查询逐渠道投递状态，并对终止失败执行有权限的人工重投 |
 | `/api/v1/apm/machine-auth/` | 仅供 edge 使用的 Bearer Token 校验与受信来源 Header |
-| `/api/v1/apm/health/` | 查询目录、Collector、TraceStore、MetricStore、策略评估和通知投递的分项运行期状态 |
+| `/api/v1/apm/health/` | 查询目录、Collector、TraceStore、MetricStore、通知 responder、策略评估和通知投递的分项运行期状态 |
 
 - APM 菜单声明独立 View/Operate 权限；读取要求 View，接入、组织、归档和策略变更要求对应 Operate。
 - 服务 API 按 `ApmServiceOrganization` 与当前团队授权；实例和 Trace API 按 `ApmServiceInstanceOrganization` 授权。通过 trace ID 直接访问也必须先解析实例并鉴权。
@@ -303,6 +304,7 @@ class NotificationDispatcher(Protocol):
 
 - `apps.apm` 保存并评估错误率、P95/P99、吞吐异常/无流量三类基础策略，评估维度为服务 + 环境。
 - 评估任务查询 VictoriaMetrics；查询失败时保持上次状态，记录“评估失败”并重试，不产生触发、恢复或无数据误报。
+- 一般指标窗口没有样本时，测试查询返回 `value=null`、`breached=null`、`data_state=no_data`；后台评估只推进幂等游标和成功探测时间，不改变连续命中/恢复计数、状态或事件。专门的“无流量”指标是唯一例外：缺失请求样本按请求率 `0` 参与比较，以便检测完全停止上报。
 - 连续命中、恢复窗口和事件 external ID 必须幂等，任务重复执行不能创建重复告警。
 - `apps.apm` 保存自身事件与告警生命周期；事件页面只查询 APM 模型，不读取其他 App 的表。
 - 策略可选择当前组织有权使用的一个或多个系统管理通知渠道。普通渠道发送 APM 通知；`delivery_mode=alert_event_copy` 的渠道发送标准事件副本，用于告警中心跨源聚合与事故协同，但不反向拥有 APM 告警事实。
@@ -330,6 +332,7 @@ class NotificationDispatcher(Protocol):
 - `NotificationDispatcher` 在 APM 的系统管理适配器内根据公开 `delivery_mode` 选择语义：普通消息使用统一消息接口；`alert_event_copy` 使用 `lite-apm` 标识和标准事件契约。策略服务本身不包含渠道类型分支。
 - 系统管理负责把统一消息映射到邮件、企业微信机器人、飞书、钉钉、自定义 Webhook 或普通 NATS 所需格式，并返回统一结果；渠道供应商的原始响应不能泄漏到 APM 领域层。
 - 告警中心未安装、未迁移或 NATS responder 不可用时，只有相应 `alert_event_copy` 投递失败；邮件、机器人、Webhook、普通 NATS 以及 APM 自有功能继续工作。
+- System Management 提供有界的公开渠道探针：普通外部渠道只确认能力仍存在；`alert_event_copy` 通过无副作用的 `health_probe` 实际确认 Alerts responder 已注册。探针响应不暴露渠道配置、endpoint 或原始异常。
 
 #### 9.4 失败分类与补偿
 
@@ -369,6 +372,7 @@ class NotificationDispatcher(Protocol):
 - VictoriaTraces 是默认 Trace Store，但 `apps.apm` 只依赖 `TraceStore` 接口。外部部署可以提供兼容适配器，不把 VictoriaTraces SDK 类型泄漏到领域层。
 - `batch_init` 不探测、不创建、不等待 Collector、VictoriaTraces、VictoriaMetrics、NATS listener 或通知渠道 responder。非关键外部声明和对账全部在 Supervisor 启动后的运行期执行。
 - APM 外部依赖缺失时，BK-Lite Server 正常启动；APM 健康接口和页面返回明确 degraded 状态。元数据 CRUD 仍可用，遥测查询返回可重试的 503。
+- APM 仅在运行期定时任务中通过 System Management 公开协议探测已启用策略引用的 `alert_event_copy` responder，单次请求超时上限为 2 秒。未配置相关渠道时为 `pending`；responder 缺失或超时只把 `notification_responder` 标为 `degraded`，不得阻断 API、Worker、Listener 或 Server 启动。
 - Collector、VictoriaTraces 和边缘代理各自提供健康检查、资源限制和持久卷；“端口可连接”不等同于数据可写，接入自检以成功认证和最近落库事实为准。
 - 不使用 `sleep`、无限重试或延长启动超时掩盖依赖顺序。
 
@@ -492,7 +496,7 @@ class NotificationDispatcher(Protocol):
 9. RED 查询不平均实例百分位；无界属性不进入指标标签；动态 URL 不导致指标基数无界增长。
 10. 缺少 instance ID 的 Span 可在服务和 Trace 中出现，但不生成伪实例，并可观察身份诊断。
 11. Trace 直接访问经过实例组织鉴权；越权和不存在返回不可枚举结果；敏感属性不回传。
-12. 评估重复执行不重复告警；VictoriaMetrics 查询失败不误触发或误恢复；通知渠道投递失败按错误类型有界补偿并可审计。
+12. 评估重复执行不重复告警；VictoriaMetrics 查询失败或一般指标无样本不误触发或误恢复；只有专门的无流量策略把缺失样本按零计算；通知渠道投递失败按错误类型有界补偿并可审计。
 13. Collector、VictoriaTraces、VictoriaMetrics、NATS 或通知渠道不可用均不阻断 Server 启动；未安装 Alerts 时 APM 全部领域功能仍可用；`batch_init` 不调用任何运行期进程。
 14. 外部存储失败与合法空数据在 API 和 UI 中有不同状态；查询时间窗、分页和响应大小都有硬限制。
 15. 生产页面使用真实 API，无 Storybook fixture 泄漏；中英文菜单、权限和主要空/错/加载态均有覆盖。
@@ -508,7 +512,7 @@ class NotificationDispatcher(Protocol):
 | Django 模型/领域 | 接入 Token 生命周期；服务/实例身份；组织继承/自定义；归档/解档；策略状态机；Alert/Event/outbox 幂等 | 新鲜聚焦测试全通过；不使用 raw SQL；时钟、并发和重放均有覆盖 |
 | APM API/权限 | 本规格全部 API；serializer 边界；当前组织；View/Operate；不可枚举；空数据与 503；分页/窗口/响应上限 | 每个写操作有成功、无权限、越权对象、非法输入；每个存储查询有 empty/degraded |
 | Trace/Metric adapter | VictoriaTraces 受控查询/映射/脱敏；VictoriaMetrics RED summary/timeseries/Top endpoint/活动/策略值 | transport error 稳定映射；无 TraceQL/PromQL 透传；真实存储契约与单元测试都通过 |
-| System Management/RPC | 组织范围渠道目录；能力推导；普通消息/NATS/`alert_event_copy`；`code/retryable`；旧调用兼容 | APM 只依赖公开 DTO/RPC；目录与投递的成功、超时、越权、失效均覆盖 |
+| System Management/RPC | 组织范围渠道目录；能力推导；普通消息/NATS/`alert_event_copy`；无副作用 responder 探针；`code/retryable`；旧调用兼容 | APM 只依赖公开 DTO/RPC；目录、投递和探针的成功、超时、越权、失效均覆盖 |
 | 数据迁移 | 全新安装；0001–最新升级；旧通知字段到 target；outbox 字段；重复/反向；迁移一致性 | PostgreSQL 实跑成功；`makemigrations --check --dry-run` 无漂移；迁移过程零 RPC/外部依赖 |
 | 架构边界 | APM 不 import System Management、Monitor、Log、Alerts 的模型/内部服务；运行期任务不进入 `batch_init` | 静态架构测试覆盖四个产品域；Alerts 未安装的 Django test collection 与关键场景通过 |
 | Web 单元/交互 | 接入创建/一次性 Token/片段；源/实例/服务管理；RED/Trace；策略多渠道；事件/重投；所有加载/空/错/权限态 | APM 聚焦脚本与组件测试全通过；生产代码零 story fixture；按钮均对应真实 API 或明确 disabled |

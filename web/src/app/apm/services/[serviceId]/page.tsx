@@ -22,11 +22,15 @@ type PageState = CatalogStateKind | 'ready';
 type TimeRange = '15m' | '1h' | '4h' | '24h';
 type RedChartPoint = Record<string, unknown> & {
   timestamp: string;
-  request_rate: number;
-  error_rate_percent: number;
-  p95_ms: number;
-  p99_ms: number;
+  request_rate: number | null;
+  error_rate_percent: number | null;
+  p95_ms: number | null;
+  p99_ms: number | null;
 };
+
+const formatMetricValue = (value: number | null, digits: number) => (
+  value == null ? '—' : value.toFixed(digits)
+);
 
 const RANGE_MS: Record<TimeRange, number> = {
   '15m': 15 * 60 * 1000,
@@ -106,7 +110,7 @@ export default function ApmServiceDetailPage() {
     () => (red?.timeseries ?? []).map((point) => ({
       timestamp: point.timestamp,
       request_rate: point.request_rate,
-      error_rate_percent: point.error_rate * 100,
+      error_rate_percent: point.error_rate == null ? null : point.error_rate * 100,
       p95_ms: point.p95_ms,
       p99_ms: point.p99_ms,
     })),
@@ -124,28 +128,28 @@ export default function ApmServiceDetailPage() {
       dataIndex: 'request_rate',
       width: 130,
       align: 'right',
-      render: (value) => <span className="tabular-nums">{value.toFixed(2)} req/s</span>,
+      render: (value) => <span className="tabular-nums">{formatMetricValue(value, 2)} req/s</span>,
     },
     {
       title: '错误率',
       dataIndex: 'error_rate',
       width: 110,
       align: 'right',
-      render: (value) => <span className="tabular-nums">{(value * 100).toFixed(2)}%</span>,
+      render: (value) => <span className="tabular-nums">{value == null ? '—' : `${(value * 100).toFixed(2)}%`}</span>,
     },
     {
       title: 'P95',
       dataIndex: 'p95_ms',
       width: 110,
       align: 'right',
-      render: (value) => <span className="tabular-nums">{value.toFixed(1)} ms</span>,
+      render: (value) => <span className="tabular-nums">{formatMetricValue(value, 1)} ms</span>,
     },
     {
       title: 'P99',
       dataIndex: 'p99_ms',
       width: 110,
       align: 'right',
-      render: (value) => <span className="tabular-nums">{value.toFixed(1)} ms</span>,
+      render: (value) => <span className="tabular-nums">{formatMetricValue(value, 1)} ms</span>,
     },
   ];
 
@@ -210,7 +214,7 @@ export default function ApmServiceDetailPage() {
                   <SummaryMetricCard
                     layout="vertical"
                     label="请求速率"
-                    value={red.request_rate.toFixed(2)}
+                    value={formatMetricValue(red.request_rate, 2)}
                     unit="req/s"
                     className="h-full bg-[var(--color-bg)] p-4"
                   />
@@ -219,9 +223,9 @@ export default function ApmServiceDetailPage() {
                   <SummaryMetricCard
                     layout="vertical"
                     label="错误率"
-                    value={(red.error_rate * 100).toFixed(2)}
+                    value={formatMetricValue(red.error_rate == null ? null : red.error_rate * 100, 2)}
                     unit="%"
-                    valueColor={red.error_rate > 0.05 ? 'var(--color-fail)' : 'var(--color-text-1)'}
+                    valueColor={red.error_rate != null && red.error_rate > 0.05 ? 'var(--color-fail)' : 'var(--color-text-1)'}
                     className="h-full bg-[var(--color-bg)] p-4"
                   />
                 </Col>
@@ -229,7 +233,7 @@ export default function ApmServiceDetailPage() {
                   <SummaryMetricCard
                     layout="vertical"
                     label="P95 延迟"
-                    value={red.p95_ms.toFixed(1)}
+                    value={formatMetricValue(red.p95_ms, 1)}
                     unit="ms"
                     className="h-full bg-[var(--color-bg)] p-4"
                   />
@@ -238,7 +242,7 @@ export default function ApmServiceDetailPage() {
                   <SummaryMetricCard
                     layout="vertical"
                     label="P99 延迟"
-                    value={red.p99_ms.toFixed(1)}
+                    value={formatMetricValue(red.p99_ms, 1)}
                     unit="ms"
                     className="h-full bg-[var(--color-bg)] p-4"
                   />

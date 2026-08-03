@@ -195,6 +195,7 @@ def test_policy_test_query_uses_controlled_metric_service(apm_api_client, mocker
         value=Decimal("0.125"),
         breached=True,
         evaluated_at=timezone.now(),
+        data_state="available",
     )
     service = mocker.Mock()
     service.test_query.return_value = query_result
@@ -205,6 +206,26 @@ def test_policy_test_query_uses_controlled_metric_service(apm_api_client, mocker
     assert response.status_code == 200
     assert response.data["value"] == "0.125"
     assert response.data["breached"] is True
+    assert response.data["data_state"] == "available"
+
+
+def test_policy_test_query_exposes_no_data_without_fabricating_a_zero(apm_api_client, mocker):
+    created = apm_api_client.post("/api/v1/apm/policies/", _payload(_service(10)), format="json")
+    service = mocker.Mock()
+    service.test_query.return_value = SimpleNamespace(
+        value=None,
+        breached=None,
+        evaluated_at=timezone.now(),
+        data_state="no_data",
+    )
+    mocker.patch("apps.apm.views.control_plane.ApmPolicyViewSet._service", return_value=service)
+
+    response = apm_api_client.post(f"/api/v1/apm/policies/{created.data['id']}/test-query/")
+
+    assert response.status_code == 200
+    assert response.data["data_state"] == "no_data"
+    assert response.data["value"] is None
+    assert response.data["breached"] is None
 
 
 def test_event_view_uses_current_organization_and_apm_reader(apm_api_client, mocker):

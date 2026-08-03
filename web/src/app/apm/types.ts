@@ -42,28 +42,28 @@ export interface ApmServiceRed {
   environment: string;
   started_at: string;
   ended_at: string;
-  request_rate: number;
-  error_rate: number;
-  p95_ms: number;
-  p99_ms: number;
+  request_rate: number | null;
+  error_rate: number | null;
+  p95_ms: number | null;
+  p99_ms: number | null;
   timeseries: ApmServiceRedPoint[];
   top_endpoints: ApmServiceEndpointRed[];
 }
 
 export interface ApmServiceRedPoint {
   timestamp: string;
-  request_rate: number;
-  error_rate: number;
-  p95_ms: number;
-  p99_ms: number;
+  request_rate: number | null;
+  error_rate: number | null;
+  p95_ms: number | null;
+  p99_ms: number | null;
 }
 
 export interface ApmServiceEndpointRed {
   endpoint: string;
   request_rate: number;
-  error_rate: number;
-  p95_ms: number;
-  p99_ms: number;
+  error_rate: number | null;
+  p95_ms: number | null;
+  p99_ms: number | null;
 }
 
 export interface ApmIngestSource {
@@ -117,6 +117,7 @@ export interface ApmHealth {
   collector: ApmHealthComponent;
   trace_store: ApmHealthComponent;
   metric_store: ApmHealthComponent;
+  notification_responder: ApmHealthComponent;
   policy_evaluation: ApmHealthComponent;
   notification_delivery: ApmHealthComponent & { failed_deliveries?: number };
 }
@@ -229,9 +230,10 @@ export interface ApmPolicy extends Omit<ApmPolicyInput, 'threshold'> {
 }
 
 export interface ApmPolicyQueryResult {
-  value: string;
-  breached: boolean;
+  value: string | null;
+  breached: boolean | null;
   evaluated_at: string;
+  data_state: 'available' | 'no_data';
 }
 
 export interface ApmEvent {

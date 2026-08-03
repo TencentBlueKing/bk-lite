@@ -15,7 +15,7 @@ from apps.apm.models import (
     ApmServiceOrganization,
 )
 from apps.apm.services import DjangoApmPolicyService
-from apps.apm.services.contracts import NotificationDeliveryResult, ServiceRed
+from apps.apm.services.contracts import MetricDataState, NotificationDeliveryResult, ServiceRed
 
 
 pytestmark = pytest.mark.django_db
@@ -152,6 +152,27 @@ def test_metric_failure_keeps_last_state_and_produces_no_event(policy):
     assert ApmEvent.objects.count() == 0
 
 
+def test_firing_policy_does_not_recover_when_metric_window_has_no_samples(policy):
+    policy.duration_window = 1
+    policy.recovery_window = 1
+    policy.save()
+    metric_store = MutableMetricStore(ServiceRed(20, 0.10, 100, 150))
+    service = DjangoApmPolicyService(metric_store, InMemoryNotificationDispatcher())
+    evaluated_at = timezone.now().replace(second=0, microsecond=0)
+
+    service.evaluate(policy.id, evaluated_at=evaluated_at)
+    metric_store.red = ServiceRed(None, None, None, None)
+    service.evaluate(policy.id, evaluated_at=evaluated_at + timedelta(minutes=1))
+
+    state = ApmPolicyState.objects.get(policy=policy)
+    alert = ApmAlert.objects.get()
+    assert state.status == ApmPolicyState.Status.FIRING
+    assert state.consecutive_recoveries == 0
+    assert state.evaluation_cursor.endswith((evaluated_at + timedelta(minutes=1)).isoformat())
+    assert alert.status == ApmAlert.Status.FIRING
+    assert list(alert.events.values_list("action", flat=True)) == [ApmEvent.Action.CREATED]
+
+
 def test_failed_delivery_remains_pending_for_bounded_compensation(policy):
     metric_store = MutableMetricStore(ServiceRed(20, 0.10, 100, 150))
     evaluator = DjangoApmPolicyService(metric_store, InMemoryNotificationDispatcher())
@@ -220,3 +241,21 @@ def test_policy_metric_types_use_controlled_red_values(policy, metric_type, red,
     assert result.value == expected
     assert result.breached is True
     assert metric_store.queries[-1].include_breakdown is False
+
+
+def test_no_traffic_policy_treats_missing_request_samples_as_zero(policy):
+    policy.metric_type = ApmPolicy.MetricType.NO_TRAFFIC
+    policy.comparator = ApmPolicy.Comparator.LESS_THAN_OR_EQUAL
+    policy.threshold = 0
+    policy.duration_window = 1
+    policy.save()
+    service = DjangoApmPolicyService(
+        MutableMetricStore(ServiceRed(None, None, None, None)),
+        InMemoryNotificationDispatcher(),
+    )
+
+    result = service.test_query(policy, evaluated_at=timezone.now())
+
+    assert result.value == 0
+    assert result.breached is True
+    assert result.data_state == MetricDataState.AVAILABLE

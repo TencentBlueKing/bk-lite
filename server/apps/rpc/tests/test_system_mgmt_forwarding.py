@@ -290,6 +290,12 @@ def test_dispatch_notification_转发稳定投递契约(client):
         },
     )
 
+
+def test_probe_notification_channel_转发渠道探针(client):
+    client.probe_notification_channel(7)
+    assert _last(client) == ("probe_notification_channel", (), {"channel_id": 7})
+
+
 def test_search_groups_转发query_params(client):
     client.search_groups({"search": "x"})
     assert _last(client) == ("search_groups", (), {"query_params": {"search": "x"}})

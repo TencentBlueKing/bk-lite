@@ -53,7 +53,7 @@ from apps.apm.services.access import (
     filter_current_organization,
     validate_assignable_organizations,
 )
-from apps.apm.services.contracts import IngestSnippetRequest, ServiceMetricQuery
+from apps.apm.services.contracts import IngestSnippetRequest, MetricDataState, ServiceMetricQuery
 from apps.apm.services.status import ACTIVE_WINDOW, ARCHIVE_WINDOW
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.utils.user_group import normalize_user_group_ids
@@ -279,6 +279,9 @@ class ApmServiceViewSet(viewsets.ReadOnlyModelViewSet):
                 "environment": data["environment"],
                 "started_at": data["started_at"],
                 "ended_at": data["ended_at"],
+                "data_state": str(
+                    MetricDataState.NO_DATA if red.request_rate is None else MetricDataState.AVAILABLE
+                ),
                 "request_rate": red.request_rate,
                 "error_rate": red.error_rate,
                 "p95_ms": red.p95_ms,
@@ -599,9 +602,10 @@ class ApmPolicyViewSet(viewsets.GenericViewSet):
             )
         return Response(
             {
-                "value": str(result.value),
+                "value": str(result.value) if result.value is not None else None,
                 "breached": result.breached,
                 "evaluated_at": result.evaluated_at,
+                "data_state": str(result.data_state),
             }
         )
 

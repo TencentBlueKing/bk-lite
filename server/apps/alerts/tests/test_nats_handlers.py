@@ -882,6 +882,17 @@ def test_alert_test():
 
 
 @pytest.mark.django_db
+def test_receive_alert_events_health_probe_has_no_event_side_effects():
+    from apps.alerts.models.models import Event
+
+    before = Event.objects.count()
+    result = N.receive_alert_events(health_probe=True)
+
+    assert result == {"result": True, "data": {"status": "ok"}, "message": ""}
+    assert Event.objects.count() == before
+
+
+@pytest.mark.django_db
 def test_receive_alert_events_missing_source_id():
     result = N.receive_alert_events(events=[{}], pusher="p")
     assert result["result"] is False

@@ -254,7 +254,11 @@ export default function ApmPoliciesPage() {
               setTestingId(policy.id);
               try {
                 const result = await testPolicy(policy.id);
-                message.info(`当前值 ${result.value}，${result.breached ? '已命中阈值' : '未命中阈值'}`);
+                if (result.data_state === 'no_data') {
+                  message.info('当前时间窗无数据，策略状态不会变化');
+                } else {
+                  message.info(`当前值 ${result.value}，${result.breached ? '已命中阈值' : '未命中阈值'}`);
+                }
               } finally {
                 setTestingId(null);
               }
