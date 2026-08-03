@@ -23,6 +23,8 @@ import {
 import { isDerivativeObject } from '@/app/monitor/utils/monitorObject';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
+import { Tooltip } from 'antd';
+import { QuestionCircleOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 
 // EE 端运行时注入的 BRANDS:由 web/scripts/prepare-enterprise.mjs 生成
@@ -510,7 +512,17 @@ export const getBaseInstanceColumn = (config: {
   };
   const columnItems: any = [
     {
-      title: config.t('common.name'),
+      title:
+        config.row?.name === 'Process' ? (
+          <span className="inline-flex items-center gap-1">
+            <span>{config.t('common.name')}</span>
+            <Tooltip title={config.t('monitor.views.processNameRuleHint')}>
+              <QuestionCircleOutlined className="text-[12px] text-[var(--color-text-3)]" />
+            </Tooltip>
+          </span>
+        ) : (
+          config.t('common.name')
+        ),
       dataIndex: 'instance_name',
       onCell: () => ({
         style: {

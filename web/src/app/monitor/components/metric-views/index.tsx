@@ -96,6 +96,7 @@ const MetricViews: React.FC<ViewDetailProps> = ({
   instanceId,
   instanceName,
   idValues,
+  queryInstanceIdKeys,
   externalTimeValues,
   externalTimeDefaultValue,
   externalFrequence,
@@ -105,8 +106,12 @@ const MetricViews: React.FC<ViewDetailProps> = ({
   onExternalXRangeChange
 }) => {
   const { isLoading } = useApiClient();
-  const { getEffectivePlugins, getMonitorMetrics, getMetricsGroup } =
-    useMonitorApi();
+  const {
+    getEffectivePlugins,
+    getMonitorPlugin,
+    getMonitorMetrics,
+    getMetricsGroup
+  } = useMonitorApi();
   const { get } = useApiClient();
   const { t } = useTranslation();
   const timerRef = useRef<NodeJS.Timeout | null>(null);
@@ -228,29 +233,61 @@ const MetricViews: React.FC<ViewDetailProps> = ({
     }
 
     setLoading(true);
-    const responseData = await getEffectivePlugins(monitorObjectId, {
-      instance_id: instanceId
-    });
-    const _plugins = responseData
-      .sort((a: IntegrationItem, b: IntegrationItem) => {
-        const order = (item: IntegrationItem) =>
-          item.is_pre ? 0 : !item.is_custom ? 1 : 2;
-        return order(a) - order(b);
-      })
-      .map((item: IntegrationItem) => ({
-        label: item.display_name || item.name || '--',
-        value: item.id
-      }));
-    setPlugins(_plugins);
-    const _activeTab = _plugins[0]?.value || '';
-    setActiveTab(_activeTab);
-    if (!_activeTab) {
+    try {
+      let responseData: IntegrationItem[] = [];
+
+      // 主机详情→进程指标：用主机 instance_id 打 Process effective_plugins 会触发
+      // 全量/慢 VM status_query，且前端会一直等；直接拉对象插件列表即可。
+      if (queryInstanceIdKeys?.length) {
+        try {
+          const pluginResp = await getMonitorPlugin({
+            monitor_object_id: monitorObjectId
+          });
+          const list = Array.isArray(pluginResp)
+            ? pluginResp
+            : pluginResp?.items || pluginResp?.results || [];
+          responseData = list as IntegrationItem[];
+        } catch {
+          responseData = [];
+        }
+      } else {
+        try {
+          const effective = await getEffectivePlugins(monitorObjectId, {
+            instance_id: instanceId
+          });
+          responseData = Array.isArray(effective) ? effective : [];
+        } catch {
+          responseData = [];
+        }
+      }
+
+      const _plugins = responseData
+        .sort((a: IntegrationItem, b: IntegrationItem) => {
+          const order = (item: IntegrationItem) =>
+            item.is_pre ? 0 : !item.is_custom ? 1 : 2;
+          return order(a) - order(b);
+        })
+        .map((item: IntegrationItem) => ({
+          label: item.display_name || item.name || '--',
+          value: item.id
+        }));
+      setPlugins(_plugins);
+      const _activeTab = _plugins[0]?.value || '';
+      setActiveTab(_activeTab);
+      if (!_activeTab) {
+        setMetricData([]);
+        setOriginMetricData([]);
+        return;
+      }
+      await getInitData(_activeTab);
+    } catch {
+      setPlugins([]);
+      setActiveTab('');
       setMetricData([]);
       setOriginMetricData([]);
+    } finally {
       setLoading(false);
-      return;
     }
-    getInitData(_activeTab);
   };
 
   const onTabChange = (val: string) => {
@@ -268,49 +305,48 @@ const MetricViews: React.FC<ViewDetailProps> = ({
       monitor_object_id: monitorObjectId,
       monitor_plugin_id: tab
     };
-    const getGroupList = getMetricsGroup(params);
-    const getMetrics = getMonitorMetrics(params);
     setLoading(true);
     try {
-      Promise.all([getGroupList, getMetrics])
-        .then((res) => {
-          const groupData = res[0].map((item: GroupInfo) => ({
-            ...item,
-            display_name: getDisplayName(item),
-            isLoading: false,
-            child: []
-          }));
-          const metricData = res[1];
-          metricData.forEach((metric: MetricItem) => {
-            const target = groupData.find(
-              (item: GroupInfo) => item.id === metric.metric_group
-            );
-            if (target) {
-              target.child.push({
-                ...metric,
-                display_name: getDisplayName(metric),
-                viewData: []
-              });
-            }
+      const res = await Promise.all([
+        getMetricsGroup(params),
+        getMonitorMetrics(params)
+      ]);
+      const groupData = res[0].map((item: GroupInfo) => ({
+        ...item,
+        display_name: getDisplayName(item),
+        isLoading: false,
+        child: []
+      }));
+      const metricsList = res[1];
+      metricsList.forEach((metric: MetricItem) => {
+        const target = groupData.find(
+          (item: GroupInfo) => item.id === metric.metric_group
+        );
+        if (target) {
+          target.child.push({
+            ...metric,
+            display_name: getDisplayName(metric),
+            viewData: []
           });
-          const _groupData = groupData.filter(
-            (item: IndexViewItem) => !!item.child?.length
-          );
-          setMetricData(_groupData);
-          setOriginMetricData(_groupData);
-          if (_groupData.length > 0) {
-            // 默认展开全部分组，避免用户逐个点开；具体指标卡仍靠滚入视图懒加载。
-            setExpandedIds(new Set(_groupData.map((group: IndexViewItem) => group.id)));
-          }
-          setLoadedMetricIds(new Set());
-          setLoadingMetricIds(new Set());
-          setCancelledMetricIds(new Set());
-          setVisibleMetricIds(new Set());
-        })
-        .finally(() => {
-          setLoading(false);
-        });
+        }
+      });
+      const _groupData = groupData.filter(
+        (item: IndexViewItem) => !!item.child?.length
+      );
+      setMetricData(_groupData);
+      setOriginMetricData(_groupData);
+      if (_groupData.length > 0) {
+        // 默认展开全部分组，避免用户逐个点开；具体指标卡仍靠滚入视图懒加载。
+        setExpandedIds(new Set(_groupData.map((group: IndexViewItem) => group.id)));
+      }
+      setLoadedMetricIds(new Set());
+      setLoadingMetricIds(new Set());
+      setCancelledMetricIds(new Set());
+      setVisibleMetricIds(new Set());
     } catch {
+      setMetricData([]);
+      setOriginMetricData([]);
+    } finally {
       setLoading(false);
     }
   };
@@ -368,16 +404,21 @@ const MetricViews: React.FC<ViewDetailProps> = ({
   };
 
   const getParams = (item: MetricItem, ids: string[]) => {
+    const labelKeys =
+      queryInstanceIdKeys?.length
+        ? queryInstanceIdKeys
+        : item.instance_id_keys || [];
     const params: SearchParams = {
-      query: ((item.view_query as string | undefined) || item.query || '').replace(
+      // 卡片统一用完整 query + 通用序列预算；不再走 per-metric view_query。
+      query: (item.query || '').replace(
         /__\$labels__/g,
         mergeViewQueryKeyValues([
-          { keys: item.instance_id_keys || [], values: ids }
+          { keys: labelKeys, values: ids }
         ])
       ),
       source_unit: item.unit || ''
     };
-    // 指标卡使用受限视图查询；完整明细仍由搜索页按维度选择后查询。
+    // 完整明细仍由搜索页查询（不带 query_budget）。
     params.query_budget = 'card';
     const recentTimeRange = getRecentTimeRange(activeTimeValues);
     const startTime = recentTimeRange.at(0);
@@ -450,7 +491,10 @@ const MetricViews: React.FC<ViewDetailProps> = ({
         {
           instance_id_values: idValues,
           instance_name: instanceName,
-          instance_id_keys: metric?.instance_id_keys || [],
+          instance_id_keys:
+            queryInstanceIdKeys?.length
+              ? queryInstanceIdKeys
+              : metric?.instance_id_keys || [],
           dimensions: metric?.dimensions || [],
           title: metric?.display_name || '--'
         }

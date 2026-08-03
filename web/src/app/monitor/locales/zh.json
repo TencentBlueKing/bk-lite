@@ -164,6 +164,11 @@
     },
     "views": {
       "assetIp": "IP信息",
+      "hostIp": "主机IP",
+      "processNameRuleHint": "进程实例名称按「主机名-进程别名」拼接，例如 host-01-java。进程别名来自接入配置中的进程名称。",
+      "processAlive": "进程存活",
+      "processAliveUp": "存活",
+      "processAliveDown": "失活",
       "probeNodes": "拨测节点",
       "probeTarget": "目标",
       "vmware_esxi_count": "ESXI数量",

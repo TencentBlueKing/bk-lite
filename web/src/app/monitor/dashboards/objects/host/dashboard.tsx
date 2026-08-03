@@ -14,6 +14,8 @@ import {
   TrendChartPanel
 } from '../../shared/widgets';
 import { HOST_DASHBOARD_CONFIG } from './config';
+import { HostProcessViewTable } from './process-view-table';
+import { HostMetricsSection } from './host-metrics-section';
 import styles from './index.module.scss';
 
 const TOP_CHART_TITLES = ['资源使用趋势', '系统负载趋势'];
@@ -37,6 +39,9 @@ export default function HostDashboardPage() {
     <DashboardShell
       dashboard={dashboard}
       styles={styles}
+      metricsContent={
+        <HostMetricsSection dashboard={dashboard} styles={styles} />
+      }
       dashboardContent={
         <>
           <div className={styles.sectionLabel}>健康概览</div>
@@ -117,6 +122,11 @@ export default function HostDashboardPage() {
                 styles={styles}
               />
             ) : null)}
+          </FlexiblePanelSection>
+
+          <div className={styles.sectionLabel}>进程视图</div>
+          <FlexiblePanelSection styles={styles}>
+            <HostProcessViewTable dashboard={dashboard} styles={styles} />
           </FlexiblePanelSection>
         </>
       }

@@ -164,6 +164,11 @@
     },
     "views": {
       "assetIp": "IP Address",
+      "hostIp": "Host IP",
+      "processNameRuleHint": "Process instance name is joined as hostName-processAlias, e.g. host-01-java. The alias comes from the process name in the integration config.",
+      "processAlive": "Process Alive",
+      "processAliveUp": "Alive",
+      "processAliveDown": "Inactive",
       "probeNodes": "Probe Nodes",
       "probeTarget": "Target",
       "vmware_esxi_count": "Number of ESXi",
