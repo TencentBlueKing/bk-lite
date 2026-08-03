@@ -594,6 +594,8 @@ export interface DashboardShellProps {
   dashboard: ReturnType<typeof useSimpleDashboardData>;
   /** Dashboard content (only shown in dashboard display mode). */
   dashboardContent: React.ReactNode;
+  /** 覆盖默认全量指标区（如主机需叠加进程指标页签）。 */
+  metricsContent?: React.ReactNode;
   /** 可选品牌标签（如 'Cisco'）：共享对象仪表盘按实例品牌在头部高亮显示，便于辨认当前盘属于哪个品牌。 */
   brandLabel?: string;
   styles: DashboardStyles;
@@ -606,6 +608,7 @@ export interface DashboardShellProps {
 export const DashboardShell = ({
   dashboard,
   dashboardContent,
+  metricsContent,
   brandLabel,
   styles
 }: DashboardShellProps) => (
@@ -661,7 +664,7 @@ export const DashboardShell = ({
       {dashboard.displayMode === 'dashboard' ? (
         <>{dashboardContent}</>
       ) : (
-        <MetricsSection dashboard={dashboard} styles={styles} />
+        metricsContent || <MetricsSection dashboard={dashboard} styles={styles} />
       )}
     </div>
   </div>

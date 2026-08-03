@@ -56,6 +56,11 @@ export interface ViewDetailProps {
   monitorObjectName: string;
   idValues: string[];
   instanceName: string;
+  /**
+   * 查询标签键覆盖。例如主机全量指标下钻进程时，只用 instance_id
+   * 过滤，避免把 process_name 拼进 __$labels__。
+   */
+  queryInstanceIdKeys?: string[];
   externalTimeValues?: TimeValuesProps;
   externalTimeDefaultValue?: TimeSelectorDefaultValue;
   externalFrequence?: number;

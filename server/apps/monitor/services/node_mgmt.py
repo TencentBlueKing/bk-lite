@@ -33,6 +33,7 @@ class InstanceConfigService:
         "Node": "node_status_condition",
     }
     _HOST_MONITOR_OBJECT_NAME = "Host"
+    _PROCESS_MONITOR_OBJECT_NAME = "Process"
     _NETWORK_DEVICE_MONITOR_OBJECT_NAMES = {"Switch", "Router", "Firewall", "Loadbalance"}
 
     @staticmethod
@@ -668,6 +669,11 @@ class InstanceConfigService:
         return monitor_object_name == InstanceConfigService._HOST_MONITOR_OBJECT_NAME
 
     @staticmethod
+    def _should_use_process_identity_adapter(monitor_object_name: str) -> bool:
+        """Process 接入：storage 用 (host_instance_id, process_name)，指标标签用主机 instance_id。"""
+        return monitor_object_name == InstanceConfigService._PROCESS_MONITOR_OBJECT_NAME
+
+    @staticmethod
     def _should_use_network_device_identity_adapter(monitor_object_name: str) -> bool:
         """判断当前监控对象是否为网络设备，网络设备接入需要跨插件统一实例ID。"""
         return monitor_object_name in InstanceConfigService._NETWORK_DEVICE_MONITOR_OBJECT_NAMES
@@ -694,6 +700,29 @@ class InstanceConfigService:
                     "logical_instance_value": identity["logical_instance_value"],
                     "storage_instance_key": identity["storage_instance_key"],
                     "instance_id": identity["storage_instance_key"],
+                }
+            )
+        return prepared
+
+    @staticmethod
+    def _prepare_process_identity_instances(instances: list) -> list:
+        """Process 实例：与 Host 共用 logical instance_id，storage 追加 process_name 避免主键冲突。"""
+        prepared = []
+        for instance in instances:
+            process_name = str(instance.get("process_name") or "").strip()
+            if not process_name:
+                raise ValueError("process instance requires process_name")
+            host_identity = normalize_instance_identity(instance.get("instance_id"))
+            host_logical_id = host_identity["logical_instance_value"]
+            identity = normalize_instance_identity((host_logical_id, process_name))
+            prepared.append(
+                {
+                    **instance,
+                    "raw_instance_id": instance.get("instance_id"),
+                    "logical_instance_value": identity["logical_instance_value"],
+                    "storage_instance_key": identity["storage_instance_key"],
+                    "instance_id": identity["storage_instance_key"],
+                    "process_name": process_name,
                 }
             )
         return prepared
@@ -843,6 +872,12 @@ class InstanceConfigService:
         if InstanceConfigService._should_use_host_identity_adapter(monitor_object_name):
             try:
                 prepared_instances = InstanceConfigService._prepare_host_identity_instances(sanitized_instances)
+            except ValueError as e:
+                logger.error(f"实例识别失败: {e}")
+                raise BaseAppException(f"实例识别失败：{e}")
+        elif InstanceConfigService._should_use_process_identity_adapter(monitor_object_name):
+            try:
+                prepared_instances = InstanceConfigService._prepare_process_identity_instances(sanitized_instances)
             except ValueError as e:
                 logger.error(f"实例识别失败: {e}")
                 raise BaseAppException(f"实例识别失败：{e}")

@@ -7,11 +7,12 @@ import useViewApi from '@/app/monitor/api/view';
 import { useTranslation } from '@/utils/i18n';
 import {
   getEnumColor,
-  getBaseInstanceColumn
+  getBaseInstanceColumn,
+  isStringArray
 } from '@/app/monitor/utils/common';
 import { useUnitTransform } from '@/app/monitor/hooks/useUnitTransform';
 import { getDisplayFieldType } from '@/app/monitor/utils/displayFieldType';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import ViewModal from './viewModal';
 import MetricDimensionTooltip from './metricDimensionTooltip';
 import { resolveDisplayMetric } from './displayFieldMetric';
@@ -73,6 +74,7 @@ const ViewList: React.FC<ViewListProps> = ({
   } = useViewApi();
   const { t } = useTranslation();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { convertToLocalizedTime } = useLocalizedTime();
   const { getEnumValueUnit } = useUnitTransform();
   const viewRef = useRef<ModalRef>(null);
@@ -82,6 +84,15 @@ const ViewList: React.FC<ViewListProps> = ({
   const columnAbortControllerRef = useRef<AbortController | null>(null);
   const columnRequestIdRef = useRef<number>(0);
   const currentObjectIdRef = useRef<React.Key>(objectId);
+  const colonyRef = useRef<string[]>([]);
+  const nodeRef = useRef<string | null>(null);
+  const columnFiltersRef = useRef<Record<string, string[]>>({});
+  const searchTextRef = useRef('');
+  const paginationRef = useRef<Pagination>({
+    current: 1,
+    total: 0,
+    pageSize: 20
+  });
   const [searchText, setSearchText] = useState<string>('');
   const [tableLoading, setTableLoading] = useState<boolean>(false);
   const [tableData, setTableData] = useState<TableDataItem[]>([]);
@@ -108,6 +119,18 @@ const ViewList: React.FC<ViewListProps> = ({
       dataIndex: 'status',
       key: 'status',
       onCell: () => ({ style: { minWidth: 100 } }),
+      filterMultiple: true,
+      filterParam: 'status',
+      filters: [
+        {
+          text: t('monitor.integrations.normal'),
+          value: 'normal'
+        },
+        {
+          text: t('monitor.integrations.unavailable'),
+          value: 'unavailable'
+        }
+      ],
       render: (_, record) => {
         if (!record?.status) return <>--</>;
         const isNormal = record.status === 'normal';
@@ -148,9 +171,55 @@ const ViewList: React.FC<ViewListProps> = ({
   );
   const [metrics, setMetrics] = useState<MetricItem[]>([]);
   const [node, setNode] = useState<string | null>(null);
-  const [colony, setColony] = useState<string | null>(null);
+  const [colony, setColony] = useState<string[]>([]);
+  const [columnFilters, setColumnFilters] = useState<Record<string, string[]>>(
+    {}
+  );
   const [queryData, setQueryData] = useState<any[]>([]);
   const [nodeList, setNodeList] = useState<ListItem[]>([]);
+
+  // 异步列加载收尾可能晚于 colony 更新；请求参数一律读 ref，避免跳转过滤被空闭包冲掉。
+  useEffect(() => {
+    colonyRef.current = colony;
+  }, [colony]);
+  useEffect(() => {
+    nodeRef.current = node;
+  }, [node]);
+  useEffect(() => {
+    columnFiltersRef.current = columnFilters;
+  }, [columnFilters]);
+  useEffect(() => {
+    searchTextRef.current = searchText;
+  }, [searchText]);
+  useEffect(() => {
+    paginationRef.current = pagination;
+  }, [pagination]);
+
+  const sameStringArray = (left: string[], right: string[]) =>
+    left.length === right.length && left.every((item) => right.includes(item));
+
+  const resolveProcessHostFilterIds = (
+    rawIds: string[],
+    hostOptions: Array<{ id?: string; name?: string }>
+  ) => {
+    if (!rawIds.length) return rawIds;
+    if (!hostOptions.length) return rawIds;
+    const byId = new Map(
+      hostOptions
+        .filter((item) => item?.id != null && item.id !== '')
+        .map((item) => [String(item.id), String(item.id)])
+    );
+    const byName = new Map(
+      hostOptions
+        .filter((item) => item?.name != null && item.name !== '' && item?.id != null)
+        .map((item) => [String(item.name), String(item.id)])
+    );
+    return rawIds.map((raw) => byId.get(raw) || byName.get(raw) || raw);
+  };
+
+  const currentObjectName = useMemo(() => {
+    return objects.find((item) => item.id === objectId)?.name || '';
+  }, [objects, objectId]);
 
   const instNamePlaceholder = useMemo(() => {
     const type = objects.find((item) => item.id === objectId)?.type || '';
@@ -162,36 +231,66 @@ const ViewList: React.FC<ViewListProps> = ({
   }, [objects, objectId]);
 
   const isPod = useMemo(() => {
-    return objects.find((item) => item.id === objectId)?.name === 'Pod';
-  }, [objects, objectId]);
+    return currentObjectName === 'Pod';
+  }, [currentObjectName]);
+
+  const isNode = useMemo(() => {
+    return currentObjectName === 'Node';
+  }, [currentObjectName]);
+
+  const isProcess = useMemo(() => {
+    return currentObjectName === 'Process';
+  }, [currentObjectName]);
 
   const showMultipleConditions = useMemo(() => {
     const derivativeNames = getDerivativeObjectNames(objects).filter(
       (name) => !['Pod', 'Node'].includes(name)
     );
-    const currentObjectName = objects.find(
-      (item) => item.id === objectId
-    )?.name;
-    return derivativeNames.includes(currentObjectName as string) || showTab;
-  }, [objects, objectId, showTab]);
+    return (
+      derivativeNames.includes(currentObjectName) || showTab || isProcess
+    );
+  }, [objects, currentObjectName, showTab, isProcess]);
+
+  // 顶栏只放「列头没有」的维度：Process 主机、Pod 节点；其它非 K8S 衍生对象仍用顶栏集群。
+  const showTopFilterBar = useMemo(() => {
+    if (isProcess) return true;
+    if (showTab && isPod) return true;
+    if (showTab && isNode) return false;
+    return showMultipleConditions && !showTab;
+  }, [isProcess, showTab, isPod, isNode, showMultipleConditions]);
 
   const resolvedColumns = useMemo(
     () => resolveViewColumns(tableColumn, columnPreference),
     [tableColumn, columnPreference]
   );
 
-  // 动态处理进度条列宽度：有数据时固定300，无数据时自适应
+  // 动态处理进度条列宽度；列头过滤的 filteredValue 与状态同步（服务端过滤）。
   const displayColumns = useMemo(() => {
     return resolvedColumns.columns.map((col: ColumnItem) => {
+      let next: ColumnItem = col;
       if (col.type === 'progress') {
-        return {
-          ...col,
+        next = {
+          ...next,
           width: tableData.length > 0 ? 300 : undefined
         };
       }
-      return col;
+      if (col.key === 'base_instance_name') {
+        next = {
+          ...next,
+          filteredValue: colony.length ? colony : null
+        };
+      }
+      const filterParam = col.filterParam as string | undefined;
+      if (filterParam) {
+        const selected = columnFilters[filterParam] || [];
+        next = {
+          ...next,
+          filteredValue: selected.length ? selected : null
+        };
+      }
+      return next;
     });
-  }, [resolvedColumns.columns, tableData.length]);
+  }, [resolvedColumns.columns, tableData.length, colony, columnFilters]);
 
   const fieldGroups = useMemo(() => {
     const metricKeys = new Set(
@@ -229,9 +328,27 @@ const ViewList: React.FC<ViewListProps> = ({
         ...prev,
         current: 1
       }));
+      const hostFromUrl =
+        objects.find((item) => item.id === objectId)?.name === 'Process'
+          ? searchParams.get('vm_params.instance_id')
+          : null;
+      const nextColony = hostFromUrl ? [hostFromUrl] : [];
+      setNode(null);
+      nodeRef.current = null;
+      setColony(nextColony);
+      colonyRef.current = nextColony;
+      setColumnFilters({});
+      columnFiltersRef.current = {};
       getColoumnAndData();
     }
-  }, [objectId, objects, isLoading]);
+    // searchParams host 过滤变更时也要重载（同对象再次跳转）
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    objectId,
+    objects,
+    isLoading,
+    searchParams.get('vm_params.instance_id')
+  ]);
 
   useEffect(() => {
     if (objectId && objects?.length && !isLoading) {
@@ -263,7 +380,7 @@ const ViewList: React.FC<ViewListProps> = ({
     if (objectId && objects?.length && !isLoading) {
       onRefresh();
     }
-  }, [colony, node]);
+  }, [colony, node, columnFilters]);
 
   // 组件卸载时取消未完成的请求
   useEffect(() => {
@@ -283,15 +400,21 @@ const ViewList: React.FC<ViewListProps> = ({
   };
 
   const getParams = () => {
-    return {
-      page: pagination.current,
-      page_size: pagination.pageSize,
-      add_metrics: true,
-      name: searchText,
-      vm_params: {
-        instance_id: colony || '',
-        node: node || ''
+    const vm_params: Record<string, string> = {
+      instance_id: colonyRef.current.join(','),
+      node: nodeRef.current || ''
+    };
+    Object.entries(columnFiltersRef.current).forEach(([key, values]) => {
+      if (values?.length) {
+        vm_params[key] = values.join(',');
       }
+    });
+    return {
+      page: paginationRef.current.current,
+      page_size: paginationRef.current.pageSize,
+      add_metrics: true,
+      name: searchTextRef.current,
+      vm_params
     };
   };
 
@@ -339,6 +462,16 @@ const ViewList: React.FC<ViewListProps> = ({
         });
       }
       setQueryData(queryForm);
+      if (objName === 'Process' && colonyRef.current.length) {
+        const resolved = resolveProcessHostFilterIds(
+          colonyRef.current,
+          queryForm
+        );
+        if (!sameStringArray(resolved, colonyRef.current)) {
+          colonyRef.current = resolved;
+          setColony(resolved);
+        }
+      }
       setMetrics(res[0] || []);
       if (objName) {
         const allMetrics: MetricItem[] = res[0] || [];
@@ -484,6 +617,20 @@ const ViewList: React.FC<ViewListProps> = ({
             key: dataKey,
             onCell: () => ({ style: { minWidth: 150 } }),
             ...(colType === 'value' ? { sorter: baseSorter } : {}),
+            ...(colType === 'enum' &&
+            primaryMeta?.name &&
+            isStringArray(primaryMeta?.unit || '')
+              ? {
+                  filterMultiple: true,
+                  filterParam: primaryMeta.name,
+                  filters: (
+                    JSON.parse(primaryMeta.unit || '[]') as ListItem[]
+                  ).map((item) => ({
+                    text: String(item.name ?? item.id ?? ''),
+                    value: String(item.id ?? '')
+                  }))
+                }
+              : {}),
             render: (_: unknown, record: TableDataItem) => {
               const cell = resolveCell(record, col);
               const meta = resolveDisplayMetric(allMetrics, {
@@ -533,14 +680,18 @@ const ViewList: React.FC<ViewListProps> = ({
         if (currentRequestId !== columnRequestIdRef.current) {
           return;
         }
-        if (!colony) {
+        if (!colonyRef.current.length || objName === 'Process') {
           onRefresh();
         } else {
-          setColony(null);
+          setColony([]);
+          colonyRef.current = [];
         }
       }
     } finally {
-      if (currentRequestId === columnRequestIdRef.current && colony) {
+      if (
+        currentRequestId === columnRequestIdRef.current &&
+        colonyRef.current.length
+      ) {
         setTableLoading(false);
       }
     }
@@ -554,7 +705,60 @@ const ViewList: React.FC<ViewListProps> = ({
     timerRef.current = null;
   };
 
-  const handleTableChange = (pagination: any) => {
+  const handleTableChange = (
+    pagination: any,
+    filters?: Record<string, (React.Key | boolean)[] | null>
+  ) => {
+    let filterChanged = false;
+    if (filters) {
+      if ('base_instance_name' in filters) {
+        const raw = filters.base_instance_name;
+        const next = Array.isArray(raw)
+          ? raw.map((item) => String(item))
+          : [];
+        if (!sameStringArray(next, colony)) {
+          setColony(next);
+          colonyRef.current = next;
+          setNode(null);
+          nodeRef.current = null;
+          filterChanged = true;
+        }
+      }
+      const nextColumnFilters = { ...columnFilters };
+      let columnFilterChanged = false;
+      tableColumn.forEach((col) => {
+        const filterParam = col.filterParam as string | undefined;
+        if (!filterParam || !(String(col.key) in filters)) {
+          return;
+        }
+        const raw = filters[String(col.key)];
+        const next = Array.isArray(raw)
+          ? raw.map((item) => String(item))
+          : [];
+        const prev = nextColumnFilters[filterParam] || [];
+        if (!sameStringArray(next, prev)) {
+          if (next.length) {
+            nextColumnFilters[filterParam] = next;
+          } else {
+            delete nextColumnFilters[filterParam];
+          }
+          columnFilterChanged = true;
+        }
+      });
+      if (columnFilterChanged) {
+        setColumnFilters(nextColumnFilters);
+        columnFiltersRef.current = nextColumnFilters;
+        filterChanged = true;
+      }
+    }
+    if (filterChanged) {
+      setTableData([]);
+      setPagination((prev: Pagination) => ({
+        ...prev,
+        current: 1
+      }));
+      return;
+    }
     setPagination(pagination);
   };
 
@@ -579,12 +783,13 @@ const ViewList: React.FC<ViewListProps> = ({
       const data = await request(objectId, params, {
         signal: abortController.signal
       });
-      // 检查是否是最新的请求且 objectId 仍然匹配
-      if (
+      const results = data.results || [];
+      const applied =
         currentRequestId === requestIdRef.current &&
-        objectId === currentObjectIdRef.current
-      ) {
-        setTableData(data.results || []);
+        objectId === currentObjectIdRef.current;
+      // 检查是否是最新的请求且 objectId 仍然匹配
+      if (applied) {
+        setTableData(results);
         setPagination((prev: Pagination) => ({
           ...prev,
           total: data.count || 0
@@ -650,6 +855,7 @@ const ViewList: React.FC<ViewListProps> = ({
 
   const clearText = () => {
     setSearchText('');
+    searchTextRef.current = '';
     getAssetInsts(objectId, 'clear');
   };
 
@@ -678,8 +884,11 @@ const ViewList: React.FC<ViewListProps> = ({
   };
 
   const handleColonyChange = (id: string) => {
-    setColony(id);
+    const next = id ? [id] : [];
+    colonyRef.current = next;
+    setColony(next);
     setNode(null);
+    nodeRef.current = null;
     setTableData([]);
     setPagination((prev: Pagination) => ({
       ...prev,
@@ -689,6 +898,7 @@ const ViewList: React.FC<ViewListProps> = ({
 
   const handleNodeChange = (id: string) => {
     setNode(id);
+    nodeRef.current = id;
     setTableData([]);
     setPagination((prev: Pagination) => ({
       ...prev,
@@ -700,49 +910,64 @@ const ViewList: React.FC<ViewListProps> = ({
     <div className="w-full">
       <div className="flex justify-between mb-[10px]">
         <div className="flex items-center">
-          {showMultipleConditions && (
-            <div>
+          {showTopFilterBar && (
+            <div className="flex items-center flex-wrap gap-y-[8px]">
               <span className="text-[14px] mr-[10px]">
                 {t('monitor.views.filterOptions')}
               </span>
-              <Select
-                value={colony}
-                allowClear
-                showSearch
-                style={{ width: 240 }}
-                placeholder={instNamePlaceholder}
-                onChange={handleColonyChange}
-              >
-                {queryData.map((item) => (
-                  <Option key={item.id} value={item.id}>
-                    {item.name || item.id}
-                  </Option>
-                ))}
-              </Select>
+              {isProcess && (
+                <Select
+                  value={colony[0] || null}
+                  allowClear
+                  showSearch
+                  style={{ width: 240 }}
+                  placeholder={instNamePlaceholder}
+                  onChange={handleColonyChange}
+                >
+                  {queryData.map((item) => (
+                    <Option key={item.id} value={item.id}>
+                      {item.name || item.id}
+                    </Option>
+                  ))}
+                </Select>
+              )}
               {showTab && isPod && (
-                <>
-                  <Select
-                    className="ml-[8px]"
-                    value={node}
-                    allowClear
-                    showSearch
-                    style={{ width: 240 }}
-                    placeholder={t('monitor.views.node')}
-                    onChange={handleNodeChange}
-                  >
-                    {nodeList.map((item: ListItem, index: number) => (
-                      <Option key={index} value={item.id}>
-                        {item.name}
-                      </Option>
-                    ))}
-                  </Select>
-                </>
+                <Select
+                  value={node}
+                  allowClear
+                  showSearch
+                  style={{ width: 240 }}
+                  placeholder={t('monitor.views.node')}
+                  onChange={handleNodeChange}
+                >
+                  {nodeList.map((item: ListItem, index: number) => (
+                    <Option key={index} value={item.id}>
+                      {item.name}
+                    </Option>
+                  ))}
+                </Select>
+              )}
+              {!isProcess && !showTab && (
+                <Select
+                  value={colony[0] || null}
+                  allowClear
+                  showSearch
+                  style={{ width: 240 }}
+                  placeholder={instNamePlaceholder}
+                  onChange={handleColonyChange}
+                >
+                  {queryData.map((item) => (
+                    <Option key={item.id} value={item.id}>
+                      {item.name || item.id}
+                    </Option>
+                  ))}
+                </Select>
               )}
             </div>
           )}
           <Input
             allowClear
-            className="w-[240px] ml-[8px]"
+            className={`w-[240px] ${showTopFilterBar ? 'ml-[8px]' : ''}`}
             placeholder={t('common.searchPlaceHolder')}
             value={searchText}
             onChange={(e) => setSearchText(e.target.value)}
