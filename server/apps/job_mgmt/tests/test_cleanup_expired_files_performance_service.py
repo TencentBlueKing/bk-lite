@@ -5,12 +5,13 @@ import pytest
 from django.db import connection
 from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
+from nats.js.errors import ObjectNotFoundError
 
 from apps.job_mgmt import tasks
 from apps.job_mgmt.models import DistributionFile
 from apps.job_mgmt.tasks import cleanup_expired_distribution_files_task
 
-pytestmark = [pytest.mark.unit, pytest.mark.django_db]
+pytestmark = [pytest.mark.integration, pytest.mark.django_db]
 
 
 def test_batches_remote_cleanup_and_database_delete_while_preserving_failures():
@@ -60,6 +61,80 @@ def test_batches_remote_cleanup_and_database_delete_while_preserving_failures():
     assert not DistributionFile.objects.filter(id__in=[row.id for row in expired_rows[:3]]).exists()
     assert DistributionFile.objects.filter(id=expired_rows[3].id).exists()
     assert DistributionFile.objects.filter(id=fresh.id).exists()
+
+
+def test_cleanup_runtime_chain_reuses_connection_and_preserves_remote_failures(monkeypatch):
+    rows = [
+        DistributionFile.objects.create(
+            original_name=f"{file_key}.rpm",
+            file_key=file_key,
+            team=1,
+            expire_at=timezone.now() - timedelta(minutes=1),
+        )
+        for file_key in ("success", "failed")
+    ]
+    instances = []
+
+    class FakeJetStreamService:
+        def __init__(self):
+            self.deleted_keys = []
+            self.close_count = 0
+            instances.append(self)
+
+        async def connect(self):
+            pass
+
+        async def delete(self, key):
+            self.deleted_keys.append(key)
+            if key == "failed":
+                raise RuntimeError("object store unavailable")
+
+        async def close(self):
+            self.close_count += 1
+
+    monkeypatch.setattr("apps.node_mgmt.utils.s3.JetStreamService", FakeJetStreamService)
+
+    cleanup_expired_distribution_files_task()
+
+    assert len(instances) == 1
+    assert instances[0].deleted_keys == ["failed", "success"]
+    assert instances[0].close_count == 1
+    assert not DistributionFile.objects.filter(id=rows[0].id).exists()
+    assert DistributionFile.objects.filter(id=rows[1].id).exists()
+
+
+def test_cleanup_retry_converges_after_remote_success_and_database_failure(monkeypatch):
+    row = DistributionFile.objects.create(
+        original_name="retry.rpm",
+        file_key="retry",
+        team=1,
+        expire_at=timezone.now() - timedelta(minutes=1),
+    )
+    attempts = 0
+
+    class FakeJetStreamService:
+        async def connect(self):
+            pass
+
+        async def delete(self, key):
+            nonlocal attempts
+            attempts += 1
+            if attempts > 1:
+                raise ObjectNotFoundError()
+
+        async def close(self):
+            pass
+
+    monkeypatch.setattr("apps.node_mgmt.utils.s3.JetStreamService", FakeJetStreamService)
+
+    with patch("django.db.models.query.QuerySet.delete", side_effect=RuntimeError("database unavailable")):
+        cleanup_expired_distribution_files_task()
+    assert DistributionFile.objects.filter(id=row.id).exists()
+
+    cleanup_expired_distribution_files_task()
+
+    assert attempts == 2
+    assert not DistributionFile.objects.filter(id=row.id).exists()
 
 
 def test_limits_rows_and_delete_parameters_per_cleanup_batch(monkeypatch):

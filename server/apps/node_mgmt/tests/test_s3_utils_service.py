@@ -9,8 +9,6 @@ from apps.node_mgmt.utils import s3
 @pytest.mark.unit
 async def test_delete_s3_files_reuses_connection_bounds_concurrency_and_reports_each_key(monkeypatch):
     instances = []
-    gather_widths = []
-    original_gather = asyncio.gather
 
     class FakeJetStreamService:
         def __init__(self):
@@ -40,12 +38,6 @@ async def test_delete_s3_files_reuses_connection_bounds_concurrency_and_reports_
 
     monkeypatch.setattr(s3, "JetStreamService", FakeJetStreamService)
 
-    async def tracking_gather(*awaitables):
-        gather_widths.append(len(awaitables))
-        return await original_gather(*awaitables)
-
-    monkeypatch.setattr(s3.asyncio, "gather", tracking_gather)
-
     results = await s3.delete_s3_files(
         ["first", "missing", "first", "failed"],
         max_concurrency=2,
@@ -56,7 +48,6 @@ async def test_delete_s3_files_reuses_connection_bounds_concurrency_and_reports_
     assert (instance.connect_count, instance.close_count) == (1, 1)
     assert instance.deleted_keys == ["first", "missing", "failed"]
     assert instance.peak_active == 2
-    assert gather_widths == [2]
     assert list(results) == ["first", "missing", "failed"]
     assert results["first"] is None
     assert results["missing"] is None

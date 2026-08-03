@@ -63,7 +63,7 @@ async def delete_s3_files(s3_file_paths: list[str], max_concurrency: int) -> dic
 
     jetstream = JetStreamService()
     connection_ready = False
-    errors = {}
+    results = {}
     file_paths = iter(unique_file_paths)
 
     async def delete_worker():
@@ -71,11 +71,11 @@ async def delete_s3_files(s3_file_paths: list[str], max_concurrency: int) -> dic
             try:
                 await jetstream.delete(file_path)
             except ObjectNotFoundError:
-                errors[file_path] = None
+                results[file_path] = None
             except Exception as error:
-                errors[file_path] = error
+                results[file_path] = error
             else:
-                errors[file_path] = None
+                results[file_path] = None
 
     try:
         await jetstream.connect()
@@ -85,7 +85,7 @@ async def delete_s3_files(s3_file_paths: list[str], max_concurrency: int) -> dic
     finally:
         if connection_ready or getattr(jetstream, "nc", None) is not None:
             await jetstream.close()
-    return {file_path: errors[file_path] for file_path in unique_file_paths}
+    return {file_path: results[file_path] for file_path in unique_file_paths}
 
 
 # 文件列表

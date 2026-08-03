@@ -316,7 +316,10 @@ def _dispatch_execution_job(job_type: str, execution_id: int) -> bool:
     try:
         updated = JobExecution.objects.filter(id=execution_id).update(celery_task_id=celery_task_id)
     except Exception as e:
-        logger.exception(f"[_dispatch_execution_job] Celery 任务ID持久化失败: " f"execution_id={execution_id}, job_type={job_type}, error={e}")
+        logger.exception(
+            f"[_dispatch_execution_job] Celery 任务ID持久化失败: "
+            f"execution_id={execution_id}, job_type={job_type}, error={e}"
+        )
         return False
     if not updated:
         logger.error(f"[_dispatch_execution_job] 执行记录不存在: execution_id={execution_id}, job_type={job_type}")
@@ -331,7 +334,8 @@ def _dispatch_execution_job(job_type: str, execution_id: int) -> bool:
             current_app.control.revoke(celery_task_id)
         except Exception as revoke_error:
             logger.exception(
-                f"[_dispatch_execution_job] Celery 任务撤销失败: " f"execution_id={execution_id}, task_id={celery_task_id}, error={revoke_error}"
+                f"[_dispatch_execution_job] Celery 任务撤销失败: "
+                f"execution_id={execution_id}, task_id={celery_task_id}, error={revoke_error}"
             )
         return False
 
