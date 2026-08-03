@@ -558,14 +558,36 @@ export interface MetricsSectionProps {
   styles: DashboardStyles;
 }
 
-export const MetricsSection = ({ dashboard, styles }: MetricsSectionProps) => (
+export const MetricsSection = ({ dashboard, styles }: MetricsSectionProps) => {
+  const isHost = String(dashboard.monitorObjectName || '').toLowerCase() === 'host';
+  return (
   <div className={styles.metricsMode}>
     <div className={`${styles.panel} ${styles.fullPanel}`}>
       <div className={styles.sectionHeading}>
         <h3 className={styles.panelTitle}>
           <TitleWithGuide
             title="监控指标全量"
-            items={[{ label: '监控指标全景', detail: '承载完整原始监控视图，适合在仪表盘发现异常后继续下钻排查。' }]}
+            items={
+              isHost
+                ? [
+                    {
+                      label: '主机指标',
+                      detail: '通过插件页签切换主机采集来源，查看完整 OS 指标历史曲线。'
+                    },
+                    {
+                      label: '进程 (Telegraf)',
+                      detail:
+                        '在同一插件页签中切换「进程 (Telegraf)」，按主机 instance_id 查看该主机下进程历史折线。'
+                    }
+                  ]
+                : [
+                    {
+                      label: '监控指标全景',
+                      detail:
+                        '承载完整原始监控视图，适合在仪表盘发现异常后继续下钻排查。'
+                    }
+                  ]
+            }
             styles={styles}
           />
         </h3>
@@ -586,7 +608,8 @@ export const MetricsSection = ({ dashboard, styles }: MetricsSectionProps) => (
       />
     </div>
   </div>
-);
+  );
+};
 
 // ─── DashboardShell ───────────────────────────────────────────────────────────
 

@@ -28,6 +28,14 @@ import { INIT_VIEW_MODAL_FORM } from '@/app/monitor/constants/view';
 import LazyMetricItem from '@/app/monitor/components/metric-views/lazyMetricItem';
 import { createMetricQueryWindow } from '@/app/monitor/components/metric-views/queryWindow';
 import { useMetricSelectOptions } from '@/app/monitor/components/metricSelectOptions';
+import {
+  buildHostProcessLabelPairs,
+  isHostMonitorObject,
+  isHostProcessMetricsTab,
+  resolveHostProcessMetricsTarget,
+  resolveProcessNameFromInstance,
+  withHostProcessMetricsTab
+} from '@/app/monitor/dashboards/objects/host/host-process-metrics-tab';
 
 const MonitorView: React.FC<ViewModalProps> = ({
   monitorObject,
@@ -37,7 +45,8 @@ const MonitorView: React.FC<ViewModalProps> = ({
 }) => {
   const { isLoading } = useApiClient();
   const { get } = useApiClient();
-  const { getMetricsGroup, getMonitorMetrics } = useMonitorApi();
+  const { getMetricsGroup, getMonitorMetrics, getMonitorObject, getMonitorPlugin, getInstanceList } =
+    useMonitorApi();
   const { t } = useTranslation();
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
@@ -59,6 +68,14 @@ const MonitorView: React.FC<ViewModalProps> = ({
   const [metricData, setMetricData] = useState<IndexViewItem[]>([]);
   const [originMetricData, setOriginMetricData] = useState<IndexViewItem[]>([]);
   const [activeTab, setActiveTab] = useState<string>('');
+  const [tabOptions, setTabOptions] = useState(plugins);
+  const [processObjectId, setProcessObjectId] = useState('');
+  const [processPluginId, setProcessPluginId] = useState('');
+  const [processFilterNames, setProcessFilterNames] = useState<string[]>([]);
+  const [processFilterOptions, setProcessFilterOptions] = useState<
+    { label: string; value: string }[]
+  >([]);
+  const [processFilterLoading, setProcessFilterLoading] = useState(false);
   const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
   const metricSelect = useMetricSelectOptions(originMetricData);
   const [loadedMetricIds, setLoadedMetricIds] = useState<Set<number>>(
@@ -89,6 +106,9 @@ const MonitorView: React.FC<ViewModalProps> = ({
   visibleMetricIdsRef.current = visibleMetricIds;
   metricDataRef.current = metricData;
 
+  const isProcessMetricsView = isHostProcessMetricsTab(activeTab);
+  const hostLogicalId = String(form?.instance_id_values?.[0] || '').trim();
+
   const snapshotActiveQueryWindow = () => {
     const nextQueryWindow = createMetricQueryWindow(timeValues);
     activeQueryWindowRef.current = nextQueryWindow;
@@ -117,8 +137,36 @@ const MonitorView: React.FC<ViewModalProps> = ({
     if (isLoading) {
       return;
     }
-    if (form?.instance_id_values.length) {
-      const _activeTab = plugins[0]?.value || '';
+    if (!form?.instance_id_values.length) {
+      return;
+    }
+
+    let active = true;
+    const bootstrap = async () => {
+      let nextOptions = plugins;
+      let nextProcessObjectId = '';
+      let nextProcessPluginId = '';
+      if (isHostMonitorObject(monitorName)) {
+        const target = await resolveHostProcessMetricsTarget({
+          getMonitorObject,
+          getMonitorPlugin
+        });
+        if (target) {
+          nextProcessObjectId = target.processObjectId;
+          nextProcessPluginId = target.processPluginId;
+          nextOptions = withHostProcessMetricsTab(
+            plugins,
+            true,
+            target.processPluginLabel
+          );
+        }
+      }
+      if (!active) return;
+      setProcessObjectId(nextProcessObjectId);
+      setProcessPluginId(nextProcessPluginId);
+      setTabOptions(nextOptions);
+
+      const _activeTab = nextOptions[0]?.value || '';
       setActiveTab(_activeTab);
       if (!_activeTab) {
         setMetricData([]);
@@ -127,9 +175,17 @@ const MonitorView: React.FC<ViewModalProps> = ({
         return;
       }
       setNeedsRefreshOnExpand(true);
-      getInitData(_activeTab);
-    }
-  }, [isLoading, form]);
+      getInitData(_activeTab, {
+        processObjectId: nextProcessObjectId,
+        processPluginId: nextProcessPluginId
+      });
+    };
+
+    void bootstrap();
+    return () => {
+      active = false;
+    };
+  }, [isLoading, form, plugins, monitorName]);
 
   useEffect(() => {
     clearTimer();
@@ -153,9 +209,48 @@ const MonitorView: React.FC<ViewModalProps> = ({
     };
   }, []);
 
+  useEffect(() => {
+    if (!isProcessMetricsView || !processObjectId || !hostLogicalId) {
+      setProcessFilterOptions([]);
+      return;
+    }
+    let active = true;
+    setProcessFilterNames([]);
+    const loadProcessOptions = async () => {
+      setProcessFilterLoading(true);
+      try {
+        const data = await getInstanceList(processObjectId, {
+          page_size: -1,
+          vm_params: { instance_id: hostLogicalId },
+        });
+        if (!active) return;
+        const options: { label: string; value: string }[] = [];
+        const seen = new Set<string>();
+        (data?.results || []).forEach((item: any) => {
+          const name = resolveProcessNameFromInstance(item);
+          if (!name || seen.has(name)) return;
+          seen.add(name);
+          options.push({ label: name, value: name });
+        });
+        options.sort((a, b) => a.label.localeCompare(b.label));
+        setProcessFilterOptions(options);
+      } catch {
+        if (active) setProcessFilterOptions([]);
+      } finally {
+        if (active) setProcessFilterLoading(false);
+      }
+    };
+    loadProcessOptions();
+    return () => {
+      active = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isProcessMetricsView, processObjectId, hostLogicalId]);
+
   const onTabChange = (val: string) => {
     setActiveTab(val);
     setMetricId(null);
+    setProcessFilterNames([]);
     cancelAllRequests();
     setResetCounter((prev) => prev + 1);
     setNeedsRefreshOnExpand(true);
@@ -166,10 +261,22 @@ const MonitorView: React.FC<ViewModalProps> = ({
   };
 
   // 初始化数据，包括分组和指标列表（只在弹窗时调用一次）
-  const getInitData = async (tab: string) => {
+  const getInitData = async (
+    tab: string,
+    processTarget?: { processObjectId: string; processPluginId: string }
+  ) => {
+    const processOid = processTarget?.processObjectId || processObjectId;
+    const processPid = processTarget?.processPluginId || processPluginId;
+    const processTab = isHostProcessMetricsTab(tab);
+    if (processTab && (!processOid || !processPid)) {
+      setMetricData([]);
+      setOriginMetricData([]);
+      setLoading(false);
+      return;
+    }
     const params = {
-      monitor_object_id: monitorObject,
-      monitor_plugin_id: tab,
+      monitor_object_id: processTab ? processOid : monitorObject,
+      monitor_plugin_id: processTab ? processPid : tab,
     };
     const getGroupList = getMetricsGroup(params);
     const getMetrics = getMonitorMetrics(params);
@@ -250,16 +357,20 @@ const MonitorView: React.FC<ViewModalProps> = ({
     setMetricData(clearedData);
     setExpandedIds((prev) => {
       if (prev.size > 0) {
-        const kept = new Set(
+        const kept = new Set<number>(
           clearedData
             .map((group) => group.id)
-            .filter((id) => prev.has(id))
+            .filter((id): id is number => typeof id === 'number' && prev.has(id))
         );
         if (kept.size > 0) {
           return kept;
         }
       }
-      return new Set(clearedData.map((group) => group.id));
+      return new Set<number>(
+        clearedData
+          .map((group) => group.id)
+          .filter((id): id is number => typeof id === 'number')
+      );
     });
     setLoadedMetricIds(new Set());
     setLoadingMetricIds(new Set());
@@ -268,12 +379,16 @@ const MonitorView: React.FC<ViewModalProps> = ({
   };
 
   const getParams = (item: MetricItem, ids: string[]) => {
+    const labelKeys = isHostProcessMetricsTab(activeTab)
+      ? ['instance_id']
+      : item.instance_id_keys || [];
+    const labelPairs = isHostProcessMetricsTab(activeTab)
+      ? buildHostProcessLabelPairs(hostLogicalId || ids[0] || '', processFilterNames)
+      : [{ keys: labelKeys, values: ids }];
     const params: SearchParams = {
       query: ((item.view_query as string | undefined) || item.query || '').replace(
         /__\$labels__/g,
-        mergeViewQueryKeyValues([
-          { keys: item.instance_id_keys || [], values: ids },
-        ])
+        mergeViewQueryKeyValues(labelPairs)
       ),
       source_unit: item.unit || '',
     };
@@ -349,7 +464,9 @@ const MonitorView: React.FC<ViewModalProps> = ({
         {
           instance_id_values: form.instance_id_values,
           instance_name: form.instance_name,
-          instance_id_keys: metric?.instance_id_keys || [],
+          instance_id_keys: isHostProcessMetricsTab(activeTab)
+            ? ['instance_id']
+            : metric?.instance_id_keys || [],
           dimensions: metric?.dimensions || [],
           title: metric?.display_name || '--',
         },
@@ -533,6 +650,17 @@ const MonitorView: React.FC<ViewModalProps> = ({
     }
   };
 
+  const handleProcessFilterChange = (names: string[]) => {
+    setProcessFilterNames(names);
+    cancelAllRequests();
+    setLoadedMetricIds(new Set());
+    setLoadingMetricIds(new Set());
+    setVisibleMetricIds(new Set());
+    setResetCounter((prev) => prev + 1);
+    setNeedsRefreshOnExpand(true);
+    clearAllMetricData();
+  };
+
   const handleMetricVisible = useCallback(
     (metric: MetricItem) => {
       fetchSingleMetricData(metric);
@@ -619,9 +747,12 @@ const MonitorView: React.FC<ViewModalProps> = ({
   };
 
   const linkToSearch = (row: TableDataItem) => {
+    const processTab = isHostProcessMetricsTab(activeTab);
     const _row = {
-      monitor_object: monitorObject + '',
-      plugin_id: activeTab,
+      monitor_object: String(
+        processTab ? processObjectId || monitorObject : monitorObject
+      ),
+      plugin_id: processTab ? processPluginId || activeTab : activeTab,
       instance_id: form?.instance_id || '',
       metric_id: row.id ? String(row.id) : row.name,
     };
@@ -645,16 +776,34 @@ const MonitorView: React.FC<ViewModalProps> = ({
 
   return (
     <div>
-      <div className="flex justify-between mb-[15px]">
-        <Select
-          className="w-[250px]"
-          placeholder={t('common.searchPlaceHolder')}
-          value={metricId}
-          allowClear
-          {...metricSelect.selectSearchProps}
-          options={metricSelect.options}
-          onChange={handleMetricIdChange}
-        ></Select>
+      <div className="flex justify-between mb-[15px] gap-3">
+        <div className="flex flex-wrap gap-2 min-w-0">
+          <Select
+            className="w-[250px]"
+            placeholder={t('common.searchPlaceHolder')}
+            value={metricId}
+            allowClear
+            {...metricSelect.selectSearchProps}
+            options={metricSelect.options}
+            onChange={handleMetricIdChange}
+          />
+          {isProcessMetricsView ? (
+            <Select
+              className="min-w-[220px] max-w-[360px]"
+              mode="multiple"
+              allowClear
+              showSearch
+              optionFilterProp="label"
+              maxTagCount="responsive"
+              loading={processFilterLoading}
+              placeholder={t('monitor.views.filterProcessPlaceholder')}
+              value={processFilterNames}
+              options={processFilterOptions}
+              onChange={handleProcessFilterChange}
+              aria-label={t('monitor.views.filterProcess')}
+            />
+          ) : null}
+        </div>
         <TimeSelector
           defaultValue={timeDefaultValue}
           onChange={onTimeChange}
@@ -665,7 +814,7 @@ const MonitorView: React.FC<ViewModalProps> = ({
       <Segmented
         className="mb-[20px]"
         value={activeTab}
-        options={plugins}
+        options={tabOptions}
         onChange={onTabChange}
       />
       <div className="groupList">
