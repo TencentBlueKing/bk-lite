@@ -374,6 +374,7 @@ class NotificationDispatcher(Protocol):
 - `batch_init` 不探测、不创建、不等待 Collector、VictoriaTraces、VictoriaMetrics、NATS listener 或通知渠道 responder。非关键外部声明和对账全部在 Supervisor 启动后的运行期执行。
 - APM 外部依赖缺失时，BK-Lite Server 正常启动；APM 健康接口和页面返回明确 degraded 状态。元数据 CRUD 仍可用，遥测查询返回可重试的 503。
 - APM 仅在运行期定时任务中通过 System Management 公开协议探测已启用策略引用的 `alert_event_copy` responder，单次请求超时上限为 2 秒。未配置相关渠道时为 `pending`；responder 缺失或超时只把 `notification_responder` 标为 `degraded`，不得阻断 API、Worker、Listener 或 Server 启动。
+- 显式 `INSTALL_APPS` 排除 Alerts 等 App 时，Celery 运行期对账必须自动暂停数据库中归属该 App 的历史周期任务，避免向未注册消费者投递；暂停必须可逆，App 恢复后只恢复由安装集合自动暂停的任务，不能覆盖用户手工禁用状态或改写原说明。
 - Collector、VictoriaTraces 和边缘代理各自提供健康检查、资源限制和持久卷；“端口可连接”不等同于数据可写，接入自检以成功认证和最近落库事实为准。
 - 不使用 `sleep`、无限重试或延长启动超时掩盖依赖顺序。
 

@@ -1,8 +1,8 @@
 """apps.core.celery.setup_periodic_tasks 单元测试。
 
-该回调把 CELERY_BEAT_SCHEDULE 同步到 django_celery_beat 表。
+该回调先按当前安装 App 对账已有任务，再把 CELERY_BEAT_SCHEDULE 同步到 django_celery_beat 表。
 仅 mock 真实外部边界（django_celery_beat ORM 模型、settings），断言：
-- pytest 环境/未开启 celery/空 schedule 时早退；
+- pytest 环境/未开启 celery 时早退，空 schedule 时不创建新任务；
 - crontab 与 interval 两种调度类型分别走不同的 ORM 写入分支，
   且写入参数契约正确（args/kwargs 经 json.dumps）。
 """
