@@ -5,17 +5,39 @@
         width: 100%;
         .calenIcon {
             position: absolute;
-            top: 9px;
+            top: 50%;
             right: 10px;
+            transform: translateY(-50%);
             cursor: pointer;
             color: var(--color-text-4);
             font-size: 14px;
+            z-index: 2;
+        }
+        .clearCustomIcon {
+            color: var(--color-text-4);
+            font-size: 12px;
+
+            &:hover {
+                color: var(--color-text-3);
+            }
         }
         .rangePicker {
             position: absolute;
             z-index: -1;
             top: 0;
+            left: 0;
             right: 0;
+            width: 100% !important;
+            // 预设模式下彻底隐藏，避免边框从 Select 右侧/日历旁透出形成「双层方框」。
+            opacity: 0;
+            pointer-events: none;
+            border-color: transparent !important;
+            box-shadow: none !important;
+
+            :global(.ant-picker-suffix),
+            :global(.ant-picker-clear) {
+                display: none !important;
+            }
         }
     }
 
@@ -39,4 +61,51 @@
 
 .timeSelector .refreshBox .frequence :global(.ant-select-selector) {
     border-radius: 0 6px 6px 0;
+}
+
+// 供仪表盘等外层识别「已选自定义区间」并加宽展示。
+.customActive {
+    --time-selector-custom: 1;
+}
+
+// 自定义面板打开中 / 已确认自定义：只露一层 RangePicker，Select 让位。
+.pickerVisible {
+    .customSlect :global(.ant-select) {
+        opacity: 0;
+        pointer-events: none;
+    }
+
+    .customSlect .rangePicker {
+        z-index: 1;
+        opacity: 1;
+        pointer-events: auto;
+        border-color: var(--color-border) !important;
+    }
+
+    // 固定高度下 active-bar 易错位，隐藏以免出现「内部蓝线」。
+    .customSlect .rangePicker :global(.ant-picker-active-bar) {
+        display: none !important;
+    }
+
+    .customSlect .calenIcon {
+        z-index: 3;
+    }
+}
+
+// 弹出层：去掉可能叠在 panel-container 外的多余底/边，只保留单层面板。
+.rangePickerDropdown {
+    padding: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    border: none !important;
+
+    :global(.ant-picker-panel-container) {
+        border-radius: 8px;
+        overflow: hidden;
+    }
+
+    :global(.ant-picker-range-wrapper) {
+        box-shadow: none !important;
+        background: transparent !important;
+    }
 }
