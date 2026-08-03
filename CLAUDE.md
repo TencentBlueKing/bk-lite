@@ -8,6 +8,8 @@
 |---|---|
 | 领域术语与产品取舍 | `CONTEXT.md`、`PRODUCT.md` |
 | 长期业务与工程事实 | `specs/capabilities/` |
+| 后端编码与高风险规则 | `specs/capabilities/backend-engineering.md` |
+| 安全、可靠性与质量红线 | `specs/capabilities/{platform-security,platform-reliability,engineering-quality}.md` |
 | 当前跨会话变更 | `specs/changes/<feature>/spec.md` |
 | UI 与组件约定 | `DESIGN.md`、`web/DESIGN.md`、`web/COMPONENT_GOVERNANCE.md` |
 | 开发、验证与运行命令 | `DEVELOP.md` |
@@ -15,7 +17,9 @@
 | 长期架构决定 | `docs/adr/` |
 | 发布记录 | `docs/changelog/` |
 
-按任务读取相关入口，并以当前代码、配置和测试为最终证据。
+按任务读取相关入口，并以当前代码、配置和测试为最终证据。修改 `server/` 或
+`agents/` 前，按影响范围阅读后端工程、安全、可靠性和质量 capability；只读取
+本次任务相关章节。
 
 ## Server 启动硬约束
 
