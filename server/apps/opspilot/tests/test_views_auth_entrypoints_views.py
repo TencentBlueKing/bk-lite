@@ -367,7 +367,7 @@ def test_chat_completion_unexpected_enrich_exception_is_generic_500(
     def enrich_params(request, user, params):
         raise unexpected_error
 
-    with caplog.at_level(logging.ERROR, logger="apps.opspilot.services.chat_completion_service"):
+    with caplog.at_level(logging.ERROR, logger="opspilot"):
         response = service.run(
             _make_request(request_factory),
             validate=lambda token, kwargs: (True, SimpleNamespace(username="alice")),
@@ -403,7 +403,7 @@ def test_chat_completion_unexpected_stream_enrich_exception_is_generic_500(reque
     def enrich_params(request, user, params):
         raise RuntimeError("sensitive stream enrichment detail")
 
-    with caplog.at_level(logging.ERROR, logger="apps.opspilot.services.chat_completion_service"):
+    with caplog.at_level(logging.ERROR, logger="opspilot"):
         response = service.run(
             _make_request(request_factory),
             validate=lambda token, kwargs: (True, SimpleNamespace(username="alice")),
