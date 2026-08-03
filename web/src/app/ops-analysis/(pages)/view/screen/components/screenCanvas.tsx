@@ -13,6 +13,7 @@ import type {
   ScreenViewSets,
   ScreenWidgetItem,
 } from "@/app/ops-analysis/types/screen";
+import type { DashboardWidgetRenderResult } from "@/app/ops-analysis/renderContract";
 import {
   formatScreenClock,
   getScreenRndNodeClassName,
@@ -38,6 +39,7 @@ interface ScreenCanvasProps {
   dataSourceResolver?: (
     dataSource?: string | number,
   ) => DatasourceItem | undefined;
+  onWidgetRenderStatus?: (result: DashboardWidgetRenderResult) => void;
   onSelectItem?: (itemId: string | null) => void;
   onMoveItem?: (itemId: string, position: { x: number; y: number }) => void;
   onResizeItem?: (itemId: string, size: { w: number; h: number }) => void;
@@ -405,6 +407,7 @@ const ScreenCanvas: React.FC<ScreenCanvasProps> = ({
   namespaceSearchVersion = 0,
   builtinNamespaceId,
   dataSourceResolver,
+  onWidgetRenderStatus,
   onSelectItem,
   onMoveItem,
   onResizeItem,
@@ -493,6 +496,7 @@ const ScreenCanvas: React.FC<ScreenCanvasProps> = ({
         filterSearchVersion={filterSearchVersion}
         namespaceSearchVersion={namespaceSearchVersion}
         builtinNamespaceId={builtinNamespaceId}
+        onRenderStatus={onWidgetRenderStatus}
         onEditConfig={() => onEditItem?.(item.id)}
         onDelete={onDeleteItem}
       />
