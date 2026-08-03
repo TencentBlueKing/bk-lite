@@ -466,6 +466,7 @@
             "filterType": "params",
             "inputConfig": {
                 "control": "select",
+                "componentSwitch": true,
                 "optionsSource": {
                     "type": "dynamic",
                     "sourceRef": {

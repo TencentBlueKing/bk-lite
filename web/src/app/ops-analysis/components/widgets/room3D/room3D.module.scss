@@ -12,7 +12,6 @@
   --room3d-shadow: var(--screen-room3d-shadow, 0 10px 26px rgba(0, 0, 0, 0.26));
   --room3d-accent-soft: var(--screen-room3d-accent-soft, rgba(94, 234, 212, 0.32));
   --room3d-accent-border: var(--screen-room3d-accent-border, rgba(94, 234, 212, 0.48));
-
   position: relative;
   width: 100%;
   height: 100%;
@@ -56,6 +55,67 @@
   width: min(560px, 100%);
 }
 
+.stateBoxWithControl {
+  position: relative;
+}
+
+.roomSwitch {
+  flex: 0 0 auto;
+  pointer-events: auto;
+}
+
+.stateBox > .roomSwitch {
+  position: absolute;
+  top: calc(10px * var(--room3d-readable-scale));
+  left: calc(10px * var(--room3d-readable-scale));
+}
+
+.roomSwitch :global(.ant-select) {
+  min-width: calc(168px * var(--room3d-readable-scale));
+  max-width: calc(260px * var(--room3d-readable-scale));
+}
+
+.roomSwitch :global(.ant-select-selector) {
+  min-height: calc(28px * var(--room3d-readable-scale)) !important;
+  color: var(--room3d-text) !important;
+  background: var(--room3d-surface) !important;
+  border-color: var(--room3d-border) !important;
+  border-radius: calc(6px * var(--room3d-readable-scale)) !important;
+}
+
+.roomSwitch :global(.ant-select-selection-item) {
+  font-size: calc(13px * var(--room3d-readable-scale));
+  line-height: calc(26px * var(--room3d-readable-scale)) !important;
+  color: var(--room3d-strong-text);
+}
+
+.roomSwitchOverlay {
+  position: absolute;
+  top: calc(10px * var(--room3d-readable-scale));
+  left: calc(10px * var(--room3d-readable-scale));
+  z-index: 12;
+  pointer-events: auto;
+}
+
+.roomSwitchOverlay :global(.ant-select) {
+  min-width: calc(168px * var(--room3d-readable-scale));
+  max-width: calc(260px * var(--room3d-readable-scale));
+}
+
+.roomSwitchOverlay :global(.ant-select-selector) {
+  min-height: calc(28px * var(--room3d-readable-scale)) !important;
+  color: var(--room3d-text) !important;
+  background: var(--room3d-surface) !important;
+  border-color: var(--room3d-border) !important;
+  border-radius: calc(6px * var(--room3d-readable-scale)) !important;
+}
+
+.roomSwitchOverlay :global(.ant-select-selection-item) {
+  font-size: calc(13px * var(--room3d-readable-scale));
+  line-height: calc(26px * var(--room3d-readable-scale)) !important;
+  color: var(--room3d-strong-text);
+}
+
 .topBar {
   position: absolute;
   top: calc(10px * var(--room3d-readable-scale));
@@ -94,6 +154,7 @@
 
 .topBar :global(.ant-btn) {
   pointer-events: auto;
+  margin-left: auto;
   width: calc(28px * var(--room3d-readable-scale));
   min-width: calc(28px * var(--room3d-readable-scale));
   height: calc(28px * var(--room3d-readable-scale));

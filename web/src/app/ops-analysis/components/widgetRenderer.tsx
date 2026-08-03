@@ -5,6 +5,7 @@ import type {
   ValueConfig,
 } from '@/app/ops-analysis/types/dashBoard';
 import { getWidgetComponent } from './widgetRegistry';
+import { supportsComponentSwitch } from '@/app/ops-analysis/utils/componentParamSwitch';
 
 interface WidgetRendererProps {
   chartType?: string;
@@ -53,7 +54,7 @@ const WidgetRenderer: React.FC<WidgetRendererProps> = ({
       screenRenderContext={screenRenderContext}
       onReady={onReady}
       onQueryChange={onQueryChange}
-      {...(chartType === 'topN' ? { componentSwitchControl, errorMessage } : {})}
+      {...(supportsComponentSwitch(chartType) ? { componentSwitchControl, errorMessage } : {})}
     />
   );
 };
