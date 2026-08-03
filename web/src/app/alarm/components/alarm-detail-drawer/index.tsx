@@ -23,11 +23,9 @@ import AlarmEventTable, {
 } from '@/app/alarm/components/alarm-event-table';
 import AlarmAction from '@/app/alarm/components/alarm-action';
 import CompactEmptyState from '@/components/compact-empty-state';
-import DetailListPanel from '@/components/detail-list-panel';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import EventLevelTag from '@/app/alarm/components/event-level-tag';
 import Icon from '@/components/icon';
-import StructuredDataPreview from '@/components/structured-data-preview';
 import { useCopy } from '@/hooks/useCopy';
 import { useTranslation } from '@/utils/i18n';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
@@ -67,7 +65,7 @@ export interface AlarmDetailDrawerData extends AlarmActionRowData {
   alert_id?: string | number;
   content?: string;
   duration?: string;
-  enrichment?: Record<string, Record<string, unknown>>;
+  enrichment?: Record<string, unknown>;
   first_event_time?: string | null;
   incident_name?: string;
   last_event_time?: string | null;
@@ -109,6 +107,7 @@ interface AlarmDetailDrawerSharedProps {
     alert: AlarmDetailDrawerData,
     context: {
       onSuccess: () => void;
+      buttonSize: 'small';
     }
   ) => React.ReactNode;
   renderRelatedAlerts?: (
@@ -348,9 +347,12 @@ const AlarmDetailDrawer = forwardRef<
     return (
       <ContentFormDrawer
         title={
-          <div className="flex items-center">
-            <span>{t('alarms.alertDetail')} </span>
-            <span className="text-sm text-[var(--color-text-2)]">-{title}</span>
+          <div className="flex min-w-0 items-center">
+            <span className="shrink-0">{t('alarms.alertDetail')} </span>
+            <EllipsisWithTooltip
+              className="min-w-0 truncate text-sm text-[var(--color-text-2)]"
+              text={`-${title}`}
+            />
           </div>
         }
         open={groupVisible}
@@ -361,8 +363,8 @@ const AlarmDetailDrawer = forwardRef<
         onCancel={handleCancel}
       >
         <div>
-          <div className="flex justify-between">
-            <div>
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="flex min-w-0 flex-1 items-center gap-2">
               <EventLevelTag
                 color={levelMeta?.color}
                 label={levelMeta?.label || '--'}
@@ -373,23 +375,28 @@ const AlarmDetailDrawer = forwardRef<
                   />
                 }
               />
-              <b>{formData.content || '--'}</b>
+              <EllipsisWithTooltip
+                className="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap font-semibold"
+                text={formData.content || '--'}
+              />
             </div>
             {!readonly && (
-              <div>
-                <span className="mr-2">
+              <div className="flex shrink-0 items-center gap-2">
+                <>
                   {!formData.incident_name &&
                     renderDeclareIncident?.(formData, {
                       onSuccess: () => {
                         handleAction?.();
                         setGroupVisible(false);
                       },
+                      buttonSize: 'small',
                     })}
-                </span>
+                </>
                 <AlarmAction
                   rowData={[formData]}
                   displayMode="dropdown"
                   {...alarmActionProps}
+                  btnSize="small"
                   onAction={() => {
                     handleAction?.();
                     handleCancel();
@@ -452,46 +459,6 @@ const AlarmDetailDrawer = forwardRef<
           {isBaseInfo && (
             <div className="flex flex-col gap-4">
               <AlarmBaseInfo detail={formData} />
-              {formData?.enrichment &&
-                Object.keys(formData.enrichment).length > 0 && (
-                  <div className="mt-2">
-                    <div className="mb-2 font-medium">
-                      {t('settings.enrichmentTitle')}
-                    </div>
-                    {Object.entries(
-                      formData.enrichment as Record<string, Record<string, any>>
-                    ).map(([ns, fields]) => (
-                      <div key={ns} className="mb-2">
-                        <div className="mb-1 text-[var(--color-text-3)]">
-                          {ns}
-                        </div>
-                        <DetailListPanel
-                          className="rounded-[12px] border border-[var(--color-border-1)] bg-[var(--color-fill-1)]"
-                          labelWidthClassName="w-32"
-                          items={Object.entries(fields || {}).map(([k, v]) => {
-                            const isObjectValue =
-                              v !== null && typeof v === 'object';
-                            return {
-                              key: `${ns}-${k}`,
-                              label: k,
-                              value: isObjectValue ? JSON.stringify(v, null, 2) : String(v ?? ''),
-                              displayValue: isObjectValue ? (
-                                <StructuredDataPreview
-                                  value={v}
-                                  maxHeight="10rem"
-                                  className="!bg-transparent !p-0 !text-xs"
-                                />
-                              ) : (
-                                String(v ?? '--')
-                              ),
-                              copyable: !isObjectValue,
-                            };
-                          })}
-                        />
-                      </div>
-                    ))}
-                  </div>
-              )}
               {renderRelatedAlerts?.(formData, { onRefresh: handleAction })}
             </div>
           )}

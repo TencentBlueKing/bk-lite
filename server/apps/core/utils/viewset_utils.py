@@ -542,10 +542,19 @@ class AuthViewSet(MaintainerViewSet):
         return serializer
 
     def destroy(self, request, *args, **kwargs):
-        user = getattr(request, "user", None)
         instance = self.get_object()
+        destroy_access_prechecked = kwargs.pop("_destroy_access_prechecked", False)
+        if not destroy_access_prechecked:
+            access_error = self._validate_destroy_access(request, instance)
+            if access_error is not None:
+                return access_error
+        return super().destroy(request, *args, **kwargs)
+
+    def _validate_destroy_access(self, request, instance):
+        """在删除产生外部副作用前执行完整、无副作用的实例授权校验。"""
+        user = getattr(request, "user", None)
         if getattr(user, "is_superuser", False):
-            return super().destroy(request, *args, **kwargs)
+            return None
         # 验证 current_team 权限
         current_team = self._parse_current_team_cookie(request)
         user_group_ids = {g["id"] for g in getattr(user, "group_list", [])}
@@ -557,12 +566,46 @@ class AuthViewSet(MaintainerViewSet):
             if not has_permission:
                 message = self.loader.get("error.no_permission_delete") if self.loader else "User does not have permission to delete this instance"
                 return self.value_error(message)
-        return super().destroy(request, *args, **kwargs)
+        return None
+
+    def _validate_update_access(self, request, instance, data):
+        """在更新产生外部副作用前执行完整、无副作用的实例授权校验。"""
+        user = getattr(request, "user", None)
+        if getattr(user, "is_superuser", False):
+            return None
+
+        org_field = self.ORGANIZATION_FIELD
+        instance_org_value = getattr(instance, org_field, [])
+        if not isinstance(instance_org_value, list):
+            instance_org_value = []
+
+        current_team = self._parse_current_team_cookie(request, default=None)
+        if current_team is None:
+            message = self.loader.get("error.invalid_current_team") if self.loader else "Invalid current_team cookie"
+            return self.value_error(message)
+        if current_team not in instance_org_value:
+            message = self.loader.get("error.no_permission_update") if self.loader else "User does not have permission to update this instance"
+            return self.value_error(message)
+        if hasattr(self, "permission_key"):
+            include_children = request.COOKIES.get("include_children", "0") == "1"
+            if not self.get_has_permission(user, instance, current_team, include_children=include_children):
+                message = (
+                    self.loader.get("error.no_permission_update") if self.loader else "User does not have permission to update this instance"
+                )
+                return self.value_error(message)
+        if org_field in data:
+            org_values = self._normalize_org_values(data, org_field)
+            new_groups = set(org_values) - set(instance_org_value)
+            if new_groups:
+                self._validate_org_field_permission(request, list(new_groups))
+        return None
 
     def update(self, request, *args, **kwargs):
         """重写更新方法以支持权限控制"""
         try:
             user = getattr(request, "user", None)
+            update_access_prechecked = kwargs.pop("_update_access_prechecked", False)
+            skip_rule_cleanup = kwargs.pop("_skip_rule_cleanup", False)
             partial = kwargs.pop("partial", False)
             data = request.data
             instance = self.get_object()
@@ -575,32 +618,19 @@ class AuthViewSet(MaintainerViewSet):
                 if org_field in data:
                     org_values = self._normalize_org_values(data, org_field)
                     delete_team = [i for i in instance_org_value if i not in org_values]
-                    self.delete_rules(instance.id, delete_team)
+                    if not skip_rule_cleanup:
+                        self.delete_rules(instance.id, delete_team)
                 return super().update(request, *args, **kwargs)
 
-            current_team = self._parse_current_team_cookie(request, default=None)
-            if current_team is None:
-                message = self.loader.get("error.invalid_current_team") if self.loader else "Invalid current_team cookie"
-                return self.value_error(message)
-            if current_team not in instance_org_value:
-                message = self.loader.get("error.no_permission_update") if self.loader else "User does not have permission to update this instance"
-                return self.value_error(message)
-            if hasattr(self, "permission_key"):
-                include_children = request.COOKIES.get("include_children", "0") == "1"
-                has_permission = self.get_has_permission(user, instance, current_team, include_children=include_children)
-                if not has_permission:
-                    message = (
-                        self.loader.get("error.no_permission_update") if self.loader else "User does not have permission to update this instance"
-                    )
-                    return self.value_error(message)
+            if not update_access_prechecked:
+                access_error = self._validate_update_access(request, instance, data)
+                if access_error is not None:
+                    return access_error
             if org_field in data:
                 org_values = self._normalize_org_values(data, org_field)
-                # 校验新增的组织是否在用户可管理范围内
-                new_groups = set(org_values) - set(instance_org_value)
-                if new_groups:
-                    self._validate_org_field_permission(request, list(new_groups))
                 delete_team = [i for i in instance_org_value if i not in org_values]
-                self.delete_rules(instance.id, delete_team)
+                if not skip_rule_cleanup:
+                    self.delete_rules(instance.id, delete_team)
             serializer = self.get_serializer(instance, data=data, partial=partial)
             serializer.is_valid(raise_exception=True)
             self.perform_update(serializer)

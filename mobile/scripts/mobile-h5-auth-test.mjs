@@ -443,8 +443,8 @@ test('request module defaults to no browser token before auth initialization', a
 });
 
 test('browser user cache removes the backend JWT', async () => {
-  const { sanitizeBrowserUserInfo } = await loadTypeScriptModule('src/utils/secureStorage.ts');
-  const cachedUser = sanitizeBrowserUserInfo({
+  const { sanitizeUserInfoForStorage } = await loadTypeScriptModule('src/utils/secureStorage.ts');
+  const cachedUser = sanitizeUserInfoForStorage({
     id: 7,
     username: 'alice',
     token: 'backend-jwt',
@@ -452,4 +452,13 @@ test('browser user cache removes the backend JWT', async () => {
 
   assert.equal(cachedUser.token, '');
   assert.equal(JSON.stringify(cachedUser).includes('backend-jwt'), false);
+});
+
+test('restored authentication redirects the public login page to the workbench', async () => {
+  const source = await readFile(new URL('src/context/auth.tsx', projectRoot), 'utf8');
+
+  assert.match(
+    source,
+    /if \(isAuthenticated && pathname === '\/login'\) \{\s*navigateAfterLogin\(\);\s*return;\s*\}/,
+  );
 });

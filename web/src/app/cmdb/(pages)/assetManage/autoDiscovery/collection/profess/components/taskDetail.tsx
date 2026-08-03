@@ -80,7 +80,7 @@ const StatisticCard: React.FC<StatisticCardConfig> = ({
   return (
     <Card size="small" className={`${bgColor} ${borderColor}`}>
       <div className="text-gray-600 text-xs mb-0.5">{title}</div>
-      <div className={`text-2xl font-bold ${valueColor} mb-1`}>{value}</div>
+      <div className={`text-sm font-bold tabular-nums ${valueColor} mb-1`}>{value}</div>
       {showFailed && failedCount !== undefined && (
         <div className="text-xs font-medium text-red-600">
           {t('Collection.taskDetail.writeFailed')} {failedCount}{' '}

@@ -1,5 +1,5 @@
 import { tauriFetch, isTauriApp } from '../utils/tauriFetch';
-import { tauriApiStream } from '../utils/tauriApiProxy';
+import { TauriStreamError, tauriApiStream } from '../utils/tauriApiProxy';
 import { getTokenSync, clearAuthData } from '../utils/secureStorage';
 import { withBasePath } from '../utils/basePath';
 import { clearCurrentTeamCookie } from '../utils/teamCookie';
@@ -9,6 +9,7 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, '') || '';
 const TARGET_SERVER = `${API_BASE_URL}${API_PROXY_PREFIX}`;
 let runtimeAuthToken: string | null | undefined = null;
 let unauthorizedHandler: (() => void | Promise<void>) | null = null;
+let unauthorizedHandling: Promise<void> | null = null;
 
 export class UnauthorizedRequestError extends Error {
   constructor() {
@@ -58,21 +59,35 @@ function buildTargetUrl(endpoint: string): string {
  * 处理 401 未授权错误
  * 清空认证信息并跳转到登录页
  */
-async function handle401Error() {
-  console.warn('检测到 401 未授权，清空认证信息并跳转到登录页');
-
-  if (unauthorizedHandler) {
-    await unauthorizedHandler();
+async function handle401Error(requestToken: string | null) {
+  const currentToken = resolveApiAuthToken(runtimeAuthToken, getTokenSync());
+  if (requestToken !== currentToken) {
     return;
   }
 
-  // 清空存储的认证信息
-  await clearAuthData();
-  clearCurrentTeamCookie();
+  if (unauthorizedHandling) {
+    await unauthorizedHandling;
+    return;
+  }
 
-  // 跳转到登录页
-  if (typeof window !== 'undefined') {
-    window.location.href = withBasePath('/login');
+  unauthorizedHandling = (async () => {
+    if (unauthorizedHandler) {
+      await unauthorizedHandler();
+      return;
+    }
+
+    await clearAuthData();
+    clearCurrentTeamCookie();
+
+    if (typeof window !== 'undefined') {
+      window.location.href = withBasePath('/login');
+    }
+  })();
+
+  try {
+    await unauthorizedHandling;
+  } finally {
+    unauthorizedHandling = null;
   }
 }
 
@@ -101,7 +116,7 @@ export async function apiRequest<T = any>(
 
     // 检查 401 未授权错误
     if (response.status === 401) {
-      await handle401Error();
+      await handle401Error(token);
       throw new UnauthorizedRequestError();
     }
 
@@ -125,8 +140,11 @@ export async function apiRequest<T = any>(
     // 返回文本响应
     return await response.text() as any;
 
-  } catch (error: any) {
-    if (error && (error.name === 'AbortError')) {
+  } catch (error: unknown) {
+    if (
+      error instanceof UnauthorizedRequestError
+      || (error instanceof Error && error.name === 'AbortError')
+    ) {
       throw error;
     }
 
@@ -219,6 +237,81 @@ export async function apiPatch<T = any>(
   });
 }
 
+class SseDataDecoder {
+  private buffer = '';
+  private waitingForDataValue = false;
+
+  push(chunk: string, flush = false): string[] {
+    this.buffer += chunk;
+    const lines = this.buffer.split('\n');
+    this.buffer = flush ? '' : (lines.pop() ?? '');
+    const payloads: string[] = [];
+
+    for (const rawLine of lines) {
+      const line = rawLine.trim();
+      if (!line || line.startsWith(':')) {
+        continue;
+      }
+
+      if (line.startsWith('data:')) {
+        const payload = line.slice(5).trim();
+        if (payload) {
+          this.waitingForDataValue = false;
+          payloads.push(payload);
+        } else {
+          // 兼容服务端将 `data:` 与 JSON 放在相邻两行的历史格式。
+          this.waitingForDataValue = true;
+        }
+        continue;
+      }
+
+      if (
+        this.waitingForDataValue
+        && (line.startsWith('{') || line.startsWith('['))
+      ) {
+        this.waitingForDataValue = false;
+        payloads.push(line);
+      }
+    }
+
+    return payloads;
+  }
+
+  finish(): string[] {
+    return this.push('', true);
+  }
+}
+
+function parseSsePayload<T>(payload: string): T | null {
+  if (payload === '[DONE]') {
+    return null;
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(payload);
+  } catch {
+    throw new Error('Invalid SSE JSON payload');
+  }
+
+  if (typeof parsed !== 'object' || parsed === null) {
+    throw new Error('Invalid SSE event payload');
+  }
+
+  const event = parsed as Record<string, unknown>;
+  if (
+    event.result === false
+    || (event.error && !event.type)
+    || event.type === 'ERROR'
+    || event.type === 'RUN_ERROR'
+  ) {
+    const message = event.error ?? event.message ?? 'Server returned an error';
+    throw new Error(String(message));
+  }
+
+  return parsed as T;
+}
+
 /**
  * SSE 流式请求
  * 返回一个异步生成器，用于处理服务器发送事件(Server-Sent Events)
@@ -248,97 +341,25 @@ export async function* apiStream<T = any>(
 
   // Tauri 环境下使用 Rust 原生流式处理
   if (isTauriApp()) {
-    let buffer = '';
+    const decoder = new SseDataDecoder();
     let hasReceivedValidEvent = false;
 
     try {
-
       for await (const chunk of tauriApiStream(targetUrl, config)) {
-        buffer += chunk;
-
-        // 按行分割处理 SSE 数据
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || ''; // 保留最后一个不完整的行
-
-        for (let i = 0; i < lines.length; i++) {
-          const line = lines[i];
-          const trimmedLine = line.trim();
-
-          // 跳过空行和注释
-          if (!trimmedLine || trimmedLine.startsWith(':')) {
-            continue;
-          }
-
-          // 处理 SSE 数据行
-          let jsonStr = '';
-
-          if (trimmedLine === 'data:') {
-            // data: 单独一行，下一行是 JSON
-            if (i + 1 < lines.length) {
-              const nextLine = lines[i + 1].trim();
-              if (nextLine && !nextLine.startsWith(':')) {
-                jsonStr = nextLine;
-                i++; // 跳过下一行
-              }
-            }
-          } else if (trimmedLine.startsWith('data:')) {
-            // data: 和 JSON 在同一行
-            jsonStr = trimmedLine.slice(5).trim();
-          } else {
-            // 不是标准 SSE 格式，跳过
-            continue;
-          }
-
-          // 跳过 [DONE] 标记
-          if (jsonStr === '[DONE]') {
-            continue;
-          }
-
-          if (jsonStr) {
-            try {
-              const parsed = JSON.parse(jsonStr);
-
-              // 检查是否是错误响应格式
-              if (parsed.result === false || (parsed.error && !parsed.type) || parsed.type === 'ERROR' || parsed.type === 'RUN_ERROR') {
-                throw new Error(parsed.error || parsed.message || 'Server returned an error');
-              }
-
-              // 正常的事件
-              hasReceivedValidEvent = true;
-              yield parsed as T;
-            } catch (e) {
-              if (e instanceof Error && e.message) {
-                throw e;
-              }
-              console.warn('[API Stream] Failed to parse SSE event:', jsonStr.substring(0, 100), e);
-            }
+        for (const payload of decoder.push(chunk)) {
+          const event = parseSsePayload<T>(payload);
+          if (event !== null) {
+            hasReceivedValidEvent = true;
+            yield event;
           }
         }
       }
 
-      // 处理剩余的缓冲区
-      if (buffer.trim()) {
-        const trimmedLine = buffer.trim();
-        if (trimmedLine.startsWith('data:')) {
-          const jsonStr = trimmedLine.slice(5).trim();
-
-          if (jsonStr !== '[DONE]' && jsonStr) {
-            try {
-              const parsed = JSON.parse(jsonStr);
-
-              if (parsed.result === false || (parsed.error && !parsed.type)) {
-                throw new Error(parsed.error || 'Server returned an error');
-              }
-
-              hasReceivedValidEvent = true;
-              yield parsed as T;
-            } catch (e) {
-              if (e instanceof Error && e.message) {
-                throw e;
-              }
-              console.warn('[API Stream] Failed to parse final SSE event:', jsonStr, e);
-            }
-          }
+      for (const payload of decoder.finish()) {
+        const event = parseSsePayload<T>(payload);
+        if (event !== null) {
+          hasReceivedValidEvent = true;
+          yield event;
         }
       }
 
@@ -355,6 +376,10 @@ export async function* apiStream<T = any>(
       if (config.signal?.aborted || (error instanceof Error && error.name === 'AbortError')) {
         return;
       }
+      if (error instanceof TauriStreamError && error.status === 401) {
+        await handle401Error(token);
+        throw new UnauthorizedRequestError();
+      }
       console.error('[API Stream] Tauri streaming error:', error);
       throw error;
     }
@@ -363,7 +388,7 @@ export async function* apiStream<T = any>(
   const response = await tauriFetch(targetUrl, config);
 
   if (response.status === 401) {
-    await handle401Error();
+    await handle401Error(token);
     throw new UnauthorizedRequestError();
   }
 
@@ -390,8 +415,8 @@ export async function* apiStream<T = any>(
     throw new Error('Response body is not readable');
   }
 
-  const decoder = new TextDecoder();
-  let buffer = '';
+  const textDecoder = new TextDecoder();
+  const sseDecoder = new SseDataDecoder();
   let hasReceivedValidEvent = false;
 
   try {
@@ -400,80 +425,25 @@ export async function* apiStream<T = any>(
 
       if (done) break;
 
-      buffer += decoder.decode(value, { stream: true });
-
-      // 按行分割处理 SSE 数据
-      const lines = buffer.split('\n');
-      buffer = lines.pop() || ''; // 保留最后一个不完整的行
-
-      for (const line of lines) {
-        const trimmedLine = line.trim();
-
-        // 跳过空行和注释
-        if (!trimmedLine || trimmedLine.startsWith(':')) continue;
-
-        // 解析 SSE 数据行
-        if (trimmedLine.startsWith('data:')) {
-          const jsonStr = trimmedLine.slice(5).trim();
-
-          // 跳过 [DONE] 标记
-          if (jsonStr === '[DONE]') {
-            continue;
-          }
-
-          if (jsonStr) {
-            try {
-              const parsed = JSON.parse(jsonStr);
-
-              // 检查是否是错误响应格式 (result: false 或有 error 字段)
-              if (parsed.result === false || (parsed.error && !parsed.type) || parsed.type === 'ERROR' || parsed.type === 'RUN_ERROR') {
-                throw new Error(parsed.error || parsed.message || 'Server returned an error');
-              }
-
-              // 正常的事件
-              hasReceivedValidEvent = true;
-              yield parsed as T;
-            } catch (e) {
-              // 如果是我们自己抛出的 Error，继续向上抛出
-              if (e instanceof Error && e.message) {
-                throw e;
-              }
-              console.warn('[API Stream Browser] ❌ Failed to parse SSE event:', jsonStr, e);
-            }
-          }
-        } else {
-          console.warn('[API Stream Browser] ⚠️ Line does not start with "data:":', trimmedLine.substring(0, 100));
+      const text = textDecoder.decode(value, { stream: true });
+      for (const payload of sseDecoder.push(text)) {
+        const event = parseSsePayload<T>(payload);
+        if (event !== null) {
+          hasReceivedValidEvent = true;
+          yield event;
         }
       }
     }
 
-    // 处理剩余的缓冲区
-    if (buffer.trim()) {
-      const trimmedLine = buffer.trim();
-      if (trimmedLine.startsWith('data:')) {
-        const jsonStr = trimmedLine.slice(5).trim();
-
-        // 跳过 [DONE] 标记
-        if (jsonStr === '[DONE]') {
-          // do nothing
-        } else if (jsonStr) {
-          try {
-            const parsed = JSON.parse(jsonStr);
-
-            // 检查是否是错误响应格式
-            if (parsed.result === false || (parsed.error && !parsed.type)) {
-              throw new Error(parsed.error || 'Server returned an error');
-            }
-
-            hasReceivedValidEvent = true;
-            yield parsed as T;
-          } catch (e) {
-            if (e instanceof Error && e.message) {
-              throw e;
-            }
-            console.warn('Failed to parse final SSE event:', jsonStr, e);
-          }
-        }
+    const finalText = textDecoder.decode();
+    for (const payload of [
+      ...sseDecoder.push(finalText),
+      ...sseDecoder.finish(),
+    ]) {
+      const event = parseSsePayload<T>(payload);
+      if (event !== null) {
+        hasReceivedValidEvent = true;
+        yield event;
       }
     }
 

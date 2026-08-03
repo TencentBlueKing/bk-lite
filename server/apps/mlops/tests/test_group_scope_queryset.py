@@ -18,7 +18,10 @@ def _req(team=None, superuser=False):
     request = APIRequestFactory().get("/")
     if team is not None:
         request._api_current_team = team
-    request.user = SimpleNamespace(is_superuser=superuser)
+    request.user = SimpleNamespace(
+        is_superuser=superuser,
+        group_list=[] if team is None else [{"id": int(team)}],
+    )
     return request
 
 

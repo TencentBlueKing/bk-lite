@@ -5,9 +5,9 @@ import assetsOverviewStyle from './index.module.scss';
 import useApiClient from '@/utils/request';
 import { useTranslation } from '@/utils/i18n';
 import { GroupItem, ModelItem } from '@/app/cmdb/types/assetManage';
-import { deepClone, getIconUrl } from '@/app/cmdb/utils/common';
+import { deepClone } from '@/app/cmdb/utils/common';
 import { useRouter } from 'next/navigation';
-import Image from 'next/image';
+import ModelIcon from '@/app/cmdb/components/model-icon';
 import { Spin, Input, Empty } from 'antd';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import { useClassificationApi, useInstanceApi } from '@/app/cmdb/api';
@@ -22,7 +22,6 @@ const AssetsOverview: React.FC = () => {
   const [loading, setLoading] = useState<boolean>(false);
   const [overViewList, setOverViewList] = useState<GroupItem[]>([]);
   const [allOverViewList, setAllOverViewList] = useState<GroupItem[]>([]);
-  const [searchText, setSearchText] = useState<string>('');
 
   const { getClassificationList } = useClassificationApi();
   const { getModelInstanceCount } = useInstanceApi();
@@ -41,14 +40,16 @@ const AssetsOverview: React.FC = () => {
     500: 1,
   };
 
-  const handleTextChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setSearchText(e.target.value);
-  };
+  const handleSearch = (value: string) => {
+    const keyword = value.trim().toLowerCase();
+    if (!keyword) {
+      setOverViewList(allOverViewList);
+      return;
+    }
 
-  const handleSearch = () => {
     const list = allOverViewList.filter((item) =>
       item.list.find((tex) =>
-        tex.model_name.toLowerCase().includes(searchText.toLowerCase())
+        tex.model_name.toLowerCase().includes(keyword)
       )
     );
     setOverViewList(list);
@@ -60,11 +61,6 @@ const AssetsOverview: React.FC = () => {
       classificationId: item.classification_id,
     }).toString();
     router.push(`/cmdb/assetData?${params}`);
-  };
-
-  const handleClear = () => {
-    setSearchText('');
-    setOverViewList(allOverViewList);
   };
 
   const fetchAssetsOverviewList = async () => {
@@ -103,14 +99,14 @@ const AssetsOverview: React.FC = () => {
   return (
     <div className={assetsOverviewStyle.assetsOverview}>
       <Spin spinning={loading}>
-        <Input
-          className="w-[320px]"
-          value={searchText}
+        <Input.Search
+          className={assetsOverviewStyle.searchInput}
           allowClear
+          size="large"
           placeholder={t('common.search')}
-          onPressEnter={handleSearch}
-          onClear={handleClear}
-          onChange={handleTextChange}
+          aria-label={t('common.search')}
+          onSearch={handleSearch}
+          onClear={() => setOverViewList(allOverViewList)}
         />
         {overViewList.length ? (
           <Masonry
@@ -119,42 +115,55 @@ const AssetsOverview: React.FC = () => {
             columnClassName="my-masonry-grid_column"
           >
             {overViewList.map((item) => (
-              <div
+              <section
                 key={item.classification_id}
-                className={`bg-[var(--color-bg-1)] p-[10px] mb-[20px] rounded`}
+                className={assetsOverviewStyle.card}
               >
-                <h2
-                  className={`${assetsOverviewStyle.title} text-[16px] font-[600]`}
-                >
-                  {item.classification_name}
-                </h2>
+                <EllipsisWithTooltip
+                  text={item.classification_name}
+                  className={assetsOverviewStyle.title}
+                />
                 <ul className={assetsOverviewStyle.list}>
                   {item.list.map((sec) => (
-                    <li
-                      className={assetsOverviewStyle.listItem}
-                      key={sec.model_id}
-                      onClick={() => linkToDetial(sec)}
-                    >
-                      <span className={assetsOverviewStyle.leftSide}>
-                        <Image
-                          src={getIconUrl(sec)}
-                          className="block w-auto h-10"
-                          alt={t('picture')}
-                          width={20}
-                          height={20}
-                        />
-                        <EllipsisWithTooltip
-                          text={sec.model_name}
-                          className="overflow-hidden text-ellipsis whitespace-nowrap"
-                        />
-                      </span>
-                      <span className={assetsOverviewStyle.rightSide}>
-                        {sec.count}
-                      </span>
+                    <li key={sec.model_id}>
+                      <div
+                        className={assetsOverviewStyle.listItem}
+                        onClick={() => linkToDetial(sec)}
+                      >
+                        <div className={assetsOverviewStyle.leftSide}>
+                          <span
+                            className={assetsOverviewStyle.modelIcon}
+                            aria-hidden="true"
+                          >
+                            <ModelIcon
+                              icon={sec.icn}
+                              modelId={sec.model_id}
+                              alt=""
+                              width={18}
+                              height={18}
+                            />
+                          </span>
+                          <EllipsisWithTooltip
+                            text={sec.model_name}
+                            className={assetsOverviewStyle.modelName}
+                          />
+                        </div>
+                        <span className={assetsOverviewStyle.countGroup}>
+                          <span
+                            className={`${assetsOverviewStyle.rightSide} ${
+                              Number(sec.count) > 0
+                                ? assetsOverviewStyle.activeCount
+                                : ''
+                            }`}
+                          >
+                            {sec.count}
+                          </span>
+                        </span>
+                      </div>
                     </li>
                   ))}
                 </ul>
-              </div>
+              </section>
             ))}
           </Masonry>
         ) : (

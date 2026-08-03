@@ -1,4 +1,4 @@
-import { getAuthOptions } from "@/constants/authOptions";
+import { authOptions } from "@/constants/authOptions";
 import { getServerSession } from "next-auth";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
@@ -36,7 +36,6 @@ interface SignInPageProp {
 }
 
 export default async function SigninPage({ searchParams }: SignInPageProp) {
-  const authOptions = await getAuthOptions();
   const session = await getServerSession(authOptions);
   const resolvedSearchParams = await searchParams;
   const requestHeaders = await headers();

@@ -2,6 +2,7 @@ package main
 
 import (
 	"archive/zip"
+	"bytes"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
@@ -34,22 +35,57 @@ var (
 const windowsServiceTransitionAttempts = 30
 
 type Config struct {
-	ServerURL            string        `json:"server_url"`
-	APIToken             string        `json:"api_token"`
-	NodeID               string        `json:"node_id"`
-	NodeName             string        `json:"node_name"`
-	ZoneID               string        `json:"zone_id"`
-	GroupID              string        `json:"group_id"`
-	OS                   string        `json:"os"`
-	InstallDir           string        `json:"install_dir"`
-	SkipTLSVerification  bool          `json:"-"`
-	RemoteTaskNodeID     int64         `json:"-"`
-	RemoteAttempt        int           `json:"-"`
-	RemoteExecutionID    string        `json:"-"`
-	RemoteDeadlineUnix   int64         `json:"-"`
-	RemoteLeaseValidator func() error  `json:"-"`
-	Package              PackageConfig `json:"package"`
-	Storage              StorageConfig `json:"storage"`
+	ServerURL                string                 `json:"server_url"`
+	APIToken                 string                 `json:"api_token"`
+	NodeID                   string                 `json:"node_id"`
+	NodeName                 string                 `json:"node_name"`
+	ZoneID                   string                 `json:"zone_id"`
+	GroupID                  string                 `json:"group_id"`
+	OS                       string                 `json:"os"`
+	InstallDir               string                 `json:"install_dir"`
+	SkipTLSVerification      bool                   `json:"-"`
+	RemoteTaskNodeID         int64                  `json:"-"`
+	RemoteAttempt            int                    `json:"-"`
+	RemoteExecutionID        string                 `json:"-"`
+	RemoteDeadlineUnix       int64                  `json:"-"`
+	RemoteLeaseValidator     func() error           `json:"-"`
+	ClockValidation          *ClockValidationConfig `json:"clock_validation,omitempty"`
+	Package                  PackageConfig          `json:"package"`
+	Storage                  StorageConfig          `json:"storage"`
+	sessionRequestStartedAt  time.Time
+	sessionRequestFinishedAt time.Time
+}
+
+func (cfg *Config) UnmarshalJSON(data []byte) error {
+	type configAlias Config
+	var decoded configAlias
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(data, &fields); err != nil {
+		return err
+	}
+	if raw, exists := fields["clock_validation"]; exists && string(bytes.TrimSpace(raw)) == "null" {
+		return fmt.Errorf("clock_validation must not be null")
+	}
+
+	*cfg = Config(decoded)
+	return nil
+}
+
+type ClockValidationConfig struct {
+	ServerTimeUnixMS int64 `json:"server_time_unix_ms"`
+	MaxSkewSeconds   int64 `json:"max_skew_seconds"`
+}
+
+type ClockSkewResult struct {
+	NodeTime       time.Time
+	ServerTime     time.Time
+	OffsetSeconds  float64
+	SkewSeconds    float64
+	MaxSkewSeconds int64
 }
 
 type PackageConfig struct {
@@ -74,35 +110,67 @@ type StorageConfig struct {
 }
 
 type InstallerEvent struct {
-	Step            string `json:"step"`
-	Status          string `json:"status"`
-	Message         string `json:"message,omitempty"`
-	Progress        *int   `json:"progress,omitempty"`
-	Downloaded      int64  `json:"downloaded_bytes,omitempty"`
-	Total           int64  `json:"total_bytes,omitempty"`
-	Timestamp       string `json:"timestamp"`
-	Error           string `json:"error,omitempty"`
-	ErrorType       string `json:"error_type,omitempty"`
-	Bucket          string `json:"bucket,omitempty"`
-	FileKey         string `json:"file_key,omitempty"`
-	FileName        string `json:"file_name,omitempty"`
-	PackageName     string `json:"package_name,omitempty"`
-	CPUArchitecture string `json:"cpu_architecture,omitempty"`
-	InstallDir      string `json:"install_dir,omitempty"`
-	TargetPath      string `json:"target_path,omitempty"`
-	ExitCode        *int   `json:"exit_code,omitempty"`
+	Step                string  `json:"step"`
+	Status              string  `json:"status"`
+	Message             string  `json:"message,omitempty"`
+	Progress            *int    `json:"progress,omitempty"`
+	Downloaded          int64   `json:"downloaded_bytes,omitempty"`
+	Total               int64   `json:"total_bytes,omitempty"`
+	Timestamp           string  `json:"timestamp"`
+	StepIndex           int     `json:"step_index,omitempty"`
+	StepTotal           int     `json:"step_total,omitempty"`
+	Error               string  `json:"error,omitempty"`
+	ErrorType           string  `json:"error_type,omitempty"`
+	Bucket              string  `json:"bucket,omitempty"`
+	FileKey             string  `json:"file_key,omitempty"`
+	FileName            string  `json:"file_name,omitempty"`
+	PackageName         string  `json:"package_name,omitempty"`
+	CPUArchitecture     string  `json:"cpu_architecture,omitempty"`
+	InstallDir          string  `json:"install_dir,omitempty"`
+	TargetPath          string  `json:"target_path,omitempty"`
+	ExitCode            *int    `json:"exit_code,omitempty"`
+	NodeTime            string  `json:"node_time,omitempty"`
+	ServerTime          string  `json:"server_time,omitempty"`
+	ClockOffsetSeconds  float64 `json:"clock_offset_seconds,omitempty"`
+	ClockSkewSeconds    float64 `json:"clock_skew_seconds,omitempty"`
+	MaxClockSkewSeconds int64   `json:"max_clock_skew_seconds,omitempty"`
+}
+
+var installerStepSequence = []string{
+	"fetch_session",
+	"clock_check",
+	"prepare_directories",
+	"download_package",
+	"extract_package",
+	"configure_runtime",
+	"run_package_installer",
+	"complete",
+}
+
+func installerStepPosition(step string) (int, int) {
+	for index, candidate := range installerStepSequence {
+		if step == candidate {
+			return index + 1, len(installerStepSequence)
+		}
+	}
+	return 0, 0
 }
 
 type EventOptions struct {
-	ErrorType       string
-	Bucket          string
-	FileKey         string
-	FileName        string
-	PackageName     string
-	CPUArchitecture string
-	InstallDir      string
-	TargetPath      string
-	ExitCode        *int
+	ErrorType           string
+	Bucket              string
+	FileKey             string
+	FileName            string
+	PackageName         string
+	CPUArchitecture     string
+	InstallDir          string
+	TargetPath          string
+	ExitCode            *int
+	NodeTime            string
+	ServerTime          string
+	ClockOffsetSeconds  float64
+	ClockSkewSeconds    float64
+	MaxClockSkewSeconds int64
 }
 
 type progressPublisher interface {
@@ -305,6 +373,27 @@ func run(client *http.Client) {
 		}
 	}
 	emitEvent("fetch_session", "success", "Installer session fetched", intPtr(100), 0, 0, "")
+	if cfg.ClockValidation != nil {
+		emitEvent("clock_check", "running", "Checking node and Server clocks", nil, 0, 0, "")
+		clockResult, clockErr := validateClockSkew(cfg)
+		if clockErr != nil {
+			errorType := ""
+			if clockResult != nil {
+				errorType = "clock_skew"
+			}
+			fatalStepWithOptions("clock_check", "Clock check failed: %v", clockErr, clockEventOptions(clockResult, errorType))
+		}
+		emitEventWithOptions(
+			"clock_check",
+			"success",
+			fmt.Sprintf("Node and Server clock skew is %.3f seconds", clockResult.SkewSeconds),
+			intPtr(100),
+			0,
+			0,
+			"",
+			clockEventOptions(clockResult, ""),
+		)
+	}
 	cfg.SkipTLSVerification = *skipTLS
 	cfg.RemoteTaskNodeID = *taskNodeID
 	cfg.RemoteAttempt = *executionAttempt
@@ -433,6 +522,7 @@ func emitEvent(step, status, message string, progress *int, downloaded, total in
 }
 
 func emitEventWithOptions(step, status, message string, progress *int, downloaded, total int64, errMsg string, options *EventOptions) {
+	stepIndex, stepTotal := installerStepPosition(step)
 	event := InstallerEvent{
 		Step:       step,
 		Status:     status,
@@ -441,6 +531,8 @@ func emitEventWithOptions(step, status, message string, progress *int, downloade
 		Downloaded: downloaded,
 		Total:      total,
 		Timestamp:  time.Now().UTC().Format(time.RFC3339),
+		StepIndex:  stepIndex,
+		StepTotal:  stepTotal,
 		Error:      errMsg,
 	}
 	if options != nil {
@@ -453,6 +545,11 @@ func emitEventWithOptions(step, status, message string, progress *int, downloade
 		event.InstallDir = strings.TrimSpace(options.InstallDir)
 		event.TargetPath = strings.TrimSpace(options.TargetPath)
 		event.ExitCode = options.ExitCode
+		event.NodeTime = strings.TrimSpace(options.NodeTime)
+		event.ServerTime = strings.TrimSpace(options.ServerTime)
+		event.ClockOffsetSeconds = options.ClockOffsetSeconds
+		event.ClockSkewSeconds = options.ClockSkewSeconds
+		event.MaxClockSkewSeconds = options.MaxClockSkewSeconds
 	}
 	if installerEventReporter.subject == "" {
 		// Keep the historical stdout seam replaceable by tests and embedders.
@@ -483,6 +580,62 @@ func fatalStepWithOptions(step, format string, err error, options *EventOptions)
 
 func intValuePtr(v int) *int {
 	return &v
+}
+
+func validateClockSkew(cfg *Config) (*ClockSkewResult, error) {
+	if cfg == nil || cfg.ClockValidation == nil {
+		return nil, nil
+	}
+	validation := cfg.ClockValidation
+	if validation.ServerTimeUnixMS <= 0 || validation.MaxSkewSeconds <= 0 {
+		return nil, fmt.Errorf("invalid clock validation contract")
+	}
+	if cfg.sessionRequestStartedAt.IsZero() || cfg.sessionRequestFinishedAt.IsZero() || cfg.sessionRequestFinishedAt.Before(cfg.sessionRequestStartedAt) {
+		return nil, fmt.Errorf("invalid installer session timing")
+	}
+
+	nodeTime := cfg.sessionRequestStartedAt.Add(cfg.sessionRequestFinishedAt.Sub(cfg.sessionRequestStartedAt) / 2)
+	serverTime := time.UnixMilli(validation.ServerTimeUnixMS)
+	offsetMillis := nodeTime.UnixMilli() - validation.ServerTimeUnixMS
+	skewMillis := offsetMillis
+	if skewMillis < 0 {
+		skewMillis = -skewMillis
+	}
+	result := &ClockSkewResult{
+		NodeTime:       nodeTime,
+		ServerTime:     serverTime,
+		OffsetSeconds:  float64(offsetMillis) / 1000,
+		SkewSeconds:    float64(skewMillis) / 1000,
+		MaxSkewSeconds: validation.MaxSkewSeconds,
+	}
+	if skewMillis <= validation.MaxSkewSeconds*1000 {
+		return result, nil
+	}
+
+	direction := "ahead of"
+	if offsetMillis < 0 {
+		direction = "behind"
+	}
+	return result, fmt.Errorf(
+		"node clock is %.3f seconds %s Server; maximum allowed skew is %d seconds; synchronize the node clock with NTP and retry",
+		result.SkewSeconds,
+		direction,
+		validation.MaxSkewSeconds,
+	)
+}
+
+func clockEventOptions(result *ClockSkewResult, errorType string) *EventOptions {
+	if result == nil {
+		return &EventOptions{ErrorType: errorType}
+	}
+	return &EventOptions{
+		ErrorType:           errorType,
+		NodeTime:            result.NodeTime.UTC().Format(time.RFC3339Nano),
+		ServerTime:          result.ServerTime.UTC().Format(time.RFC3339Nano),
+		ClockOffsetSeconds:  result.OffsetSeconds,
+		ClockSkewSeconds:    result.SkewSeconds,
+		MaxClockSkewSeconds: result.MaxSkewSeconds,
+	}
 }
 
 func classifyDownloadError(err error) string {
@@ -602,6 +755,7 @@ func newHTTPClient(skipTLS bool) *http.Client {
 }
 
 func fetchConfig(client *http.Client, url string) (*Config, error) {
+	requestStartedAt := time.Now()
 	resp, err := client.Get(url)
 	if err != nil {
 		return nil, err
@@ -613,10 +767,16 @@ func fetchConfig(client *http.Client, url string) (*Config, error) {
 		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(body))
 	}
 
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read response: %v", err)
+	}
+
 	var cfg Config
-	if err := json.NewDecoder(resp.Body).Decode(&cfg); err != nil {
+	if err := json.Unmarshal(body, &cfg); err != nil {
 		return nil, fmt.Errorf("invalid JSON: %v", err)
 	}
+	requestFinishedAt := time.Now()
 
 	if cfg.ZoneID == "" {
 		cfg.ZoneID = "1"
@@ -630,6 +790,8 @@ func fetchConfig(client *http.Client, url string) (*Config, error) {
 	if cfg.OS == "" {
 		cfg.OS = "windows"
 	}
+	cfg.sessionRequestStartedAt = requestStartedAt
+	cfg.sessionRequestFinishedAt = requestFinishedAt
 	return &cfg, nil
 }
 

@@ -1,5 +1,6 @@
 from unittest.mock import MagicMock, patch
 
+from apps.system_mgmt.providers.adapters import wecom
 from apps.system_mgmt.providers.adapters.wecom import WeComLoginAuthAdapter
 
 
@@ -55,6 +56,43 @@ def test_authenticate_uses_configured_access_token_url_and_user_info_url():
         "https://wecom.internal/cgi-bin/gettoken",
         "https://wecom.internal/cgi-bin/auth/getuserinfo",
     ]
+
+
+def test_authenticate_accepts_official_lowercase_userid_response():
+    get_responses = [
+        response({"errcode": 0, "access_token": "token"}),
+        response({"errcode": 0, "userid": "alice"}),
+    ]
+    with patch(
+        "apps.system_mgmt.providers.adapters.wecom.requests.get",
+        side_effect=get_responses,
+    ):
+        result = WeComLoginAuthAdapter.authenticate(CONFIG, "wecom", "login_auth", auth_code="code")
+
+    assert result.success is True
+    assert result.payload["external_user"] == {"userid": "alice"}
+
+
+def test_login_identity_missing_logs_sanitized_response_metadata():
+    get_responses = [
+        response({"errcode": 0, "access_token": "secret-token"}),
+        response({"errcode": 0, "errmsg": "ok", "OpenId": "sensitive-open-id"}),
+    ]
+    with patch(
+        "apps.system_mgmt.providers.adapters.wecom.requests.get",
+        side_effect=get_responses,
+    ), patch("apps.system_mgmt.providers.adapters.wecom.logger") as logger:
+        result = WeComLoginAuthAdapter.authenticate(CONFIG, "wecom", "login_auth", auth_code="secret-code")
+
+    assert result.success is False
+    logger.warning.assert_called_once_with(
+        "WeCom login identity response has no userid or UserId, "
+        "endpoint=https://wecom.internal/cgi-bin/auth/getuserinfo, "
+        "status=200, errcode=0, errmsg='ok', response_keys=['OpenId', 'errcode', 'errmsg']"
+    )
+    assert "secret-token" not in str(logger.warning.call_args)
+    assert "secret-code" not in str(logger.warning.call_args)
+    assert "sensitive-open-id" not in str(logger.warning.call_args)
 
 
 def test_login_auth_uses_endpoint_overrides_without_base_url_concatenation():

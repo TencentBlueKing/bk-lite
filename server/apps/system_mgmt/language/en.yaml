@@ -114,6 +114,8 @@ app:
     and other information
   job: Quickly create and execute jobs, unified management of script execution, file
     distribution and scheduled tasks
+  patch: Centrally manage system patches with scanning, installation, and patch library
+    maintenance to continuously reduce security risks.
 action_type:
   create: Create
   delete: Delete
@@ -128,3 +130,7 @@ tag:
   script_management: Script Management
   file_distribution: File Distribution
   scheduled_task: Scheduled Task
+  # patch
+  patch_scan: Patch Scanning
+  patch_install: Patch Installation
+  patch_library: Patch Library

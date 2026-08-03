@@ -117,7 +117,7 @@ export function getPhaseLabel(phase: PhaseKey, t: (key: string, fallback?: strin
 
 - 拉取目录 / 同步组织:无 counters(空)
 - 同步用户:新建 / 更新 / 冲突(零值字段不显示)
-- 全量对账:禁用 / 删除(零值字段不显示)
+- 全量对账:删除用户 / 删除组织(零值字段不显示)
 - 收尾邮件:已入队(由 caller 单独从 email_status 拼,本 helper 不管)
 - 计数全 0 时返回空串,不显示多余行
 */
@@ -146,6 +146,12 @@ export function formatPhaseCounterLine(
     }
     case 'reconcile': {
       const parts: string[] = [];
+      if ((counters.deleted_users ?? 0) > 0) {
+        parts.push(
+          t(`${P}.phaseCounter.reconcileDeletedUsers`)
+            .replace('{{n}}', String(counters.deleted_users)),
+        );
+      }
       if ((counters.disabled_users ?? 0) > 0) {
         parts.push(t(`${P}.phaseCounter.reconcileDisabled`).replace('{{n}}', String(counters.disabled_users)));
       }
@@ -188,13 +194,13 @@ export function formatPhaseBusinessResult(
   }
   if (phase === 'reconcile') {
     const counters = payload?.phase_progress?.reconcile?.counters;
-    const disabledUsers = Number(counters?.disabled_users ?? 0);
+    const deletedUsers = Number(counters?.deleted_users ?? counters?.disabled_users ?? 0);
     const deletedGroups = Number(counters?.deleted_group_count ?? 0);
-    if (disabledUsers === 0 && deletedGroups === 0) {
+    if (deletedUsers === 0 && deletedGroups === 0) {
       return t(`${P}.phaseResult.reconcileUnchanged`);
     }
     return t(`${P}.phaseResult.reconcileChanged`)
-      .replace('{{users}}', String(disabledUsers))
+      .replace('{{users}}', String(deletedUsers))
       .replace('{{groups}}', String(deletedGroups));
   }
   if (phase === 'sync_groups') {

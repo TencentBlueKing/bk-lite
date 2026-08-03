@@ -22,6 +22,10 @@ def patch_side_effects(monkeypatch):
         lambda ids: None,
     )
     monkeypatch.setattr(
+        "apps.cmdb.services.auto_relation_reconcile.schedule_incoming_rule_full_sync_by_model_ids",
+        lambda model_ids: None,
+    )
+    monkeypatch.setattr(
         f"{MODULE}.InstanceManage._build_unique_rule_check_attr_map",
         lambda model_id, attrs, for_update=False: {"is_only": {}, "is_required": {}, "unique_rules": [], "attrs_by_id": {}},
     )

@@ -14,7 +14,13 @@
         "advanced": "高级",
         "partialFailure": "部分失败",
         "successOperate": "操作成功",
-        "all": "全部"
+        "all": "全部",
+        "heatMap": {
+            "month": "按月",
+            "day": "按日",
+            "previous": "上一个时间段",
+            "level": "级别"
+        }
     },
     "incidents": {
         "table": "表格",

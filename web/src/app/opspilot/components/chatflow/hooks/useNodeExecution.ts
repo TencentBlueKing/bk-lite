@@ -55,7 +55,7 @@ export const useNodeExecution = (t: any, initialExecutionId?: string | null) => 
 
   const { data: session } = useSession();
   const authContext = useAuth();
-  const token = (session?.user as any)?.token || authContext?.token || null;
+  const token = authContext?.token || (session?.user as any)?.token || null;
 
   const [isExecuteDrawerVisible, setIsExecuteDrawerVisible] = useState(false);
   const [executeNodeId, setExecuteNodeId] = useState<string>('');

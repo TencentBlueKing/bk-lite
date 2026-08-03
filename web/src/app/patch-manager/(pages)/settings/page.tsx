@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Tag, Button, Tabs, Input, Select, Space, TimePicker, Alert, message, Form, Switch, Modal, InputNumber, Spin, Popconfirm } from 'antd';
 import PermissionWrapper from '@/components/permission';
 import Password from '@/components/password';
@@ -15,6 +15,7 @@ import type { PatchSource, PatchSourceType } from '@/app/patch-manager/types';
 import styles from './page.module.scss';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import { useTranslation } from '@/utils/i18n';
+import { createListRequestCoordinator } from '@/app/patch-manager/utils/list-request-coordinator';
 
 const SOURCE_TYPE_OPTIONS: { label: string; value: PatchSourceType }[] = [
   { label: 'WSUS', value: 'wsus' },
@@ -55,7 +56,9 @@ function SourcesTab({ activeKey }: { activeKey: string }) {
   const { isLoading: authLoading } = useApiClient();
   const [selectedSources, setSelectedSources] = useState<React.Key[]>([]);
   const [sources, setSources] = useState<PatchSource[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [listLoading, setListLoading] = useState(false);
+  const [actionLoading, setActionLoading] = useState(false);
+  const listRequestCoordinatorRef = useRef(createListRequestCoordinator(setListLoading));
   const [sourceModalOpen, setSourceModalOpen] = useState(false);
   const [editingSource, setEditingSource] = useState<PatchSource | null>(null);
   const [form] = Form.useForm();
@@ -69,20 +72,24 @@ function SourcesTab({ activeKey }: { activeKey: string }) {
   const { convertToLocalizedTime } = useLocalizedTime();
 
   const loadSources = async (page = pagination.current, pageSize = pagination.pageSize, search = sourceSearch) => {
-    setLoading(true);
+    const coordinator = listRequestCoordinatorRef.current;
+    const ticket = coordinator.begin({ visible: true });
+    if (!ticket) return;
     try {
       const params: any = { page, page_size: pageSize };
       if (search.trim()) {
         params.search = search.trim();
       }
-      const res = await api.getPatchSourceList(params);
+      const res = await api.getPatchSourceList(params, { signal: ticket.signal });
+      if (!coordinator.shouldApply(ticket)) return;
       setSources(res.items || []);
       setPagination({ current: page, pageSize, total: res.count || 0 });
     } catch {
+      if (!coordinator.shouldApply(ticket)) return;
       setSources([]);
       setPagination((prev) => ({ ...prev, total: 0 }));
     } finally {
-      setLoading(false);
+      coordinator.finish(ticket);
     }
   };
 
@@ -98,6 +105,10 @@ function SourcesTab({ activeKey }: { activeKey: string }) {
     loadSources(1, pagination.pageSize);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authLoading, activeKey]);
+
+  useEffect(() => () => {
+    listRequestCoordinatorRef.current.invalidate();
+  }, []);
 
   const openSourceModal = (record?: PatchSource) => {
     setEditingSource(record || null);
@@ -155,31 +166,33 @@ function SourcesTab({ activeKey }: { activeKey: string }) {
 
   const runConnectionTest = async (ids: number[]) => {
     if (ids.length === 0) return;
-    setLoading(true);
+    setActionLoading(true);
     try {
       const results = await api.checkPatchSourceConnectivity(ids);
       const successCount = results.filter((r) => r.connectivity_status === 'connected').length;
       message.success(t('patchManager.settingsPage.connectivityCompleted', undefined, { success: successCount, total: results.length }));
       await loadSources();
     } catch {
-      setLoading(false);
+    } finally {
+      setActionLoading(false);
     }
   };
 
   const handleToggleEnabled = async (record: PatchSource, checked: boolean) => {
-    setLoading(true);
+    setActionLoading(true);
     try {
       await api.setPatchSourceEnabled(record.id, checked);
       message.success(t(checked ? 'patchManager.settingsPage.sourceEnabled' : 'patchManager.settingsPage.sourceDisabled', undefined, { name: record.name }));
       await loadSources();
     } catch {
-      setLoading(false);
+    } finally {
+      setActionLoading(false);
     }
   };
 
   const handleSaveSource = async () => {
     const values = await form.validateFields();
-    setLoading(true);
+    setActionLoading(true);
     try {
       const payload = buildSourcePayload(values);
       if (editingSource) {
@@ -196,18 +209,19 @@ function SourcesTab({ activeKey }: { activeKey: string }) {
       await loadSources();
     } catch {
     } finally {
-      setLoading(false);
+      setActionLoading(false);
     }
   };
 
   const handleDeleteSource = async (record: PatchSource) => {
-    setLoading(true);
+    setActionLoading(true);
     try {
       await api.deletePatchSource(record.id);
       message.success(t('patchManager.settingsPage.sourceDeleted'));
       await loadSources();
     } catch {
-      setLoading(false);
+    } finally {
+      setActionLoading(false);
     }
   };
 
@@ -282,7 +296,7 @@ function SourcesTab({ activeKey }: { activeKey: string }) {
         </div>
         <div style={{ flex: 1, minHeight: 0 }}>
           <CustomTable
-            loading={loading}
+            loading={listLoading || actionLoading}
             size="middle"
             rowKey="id"
             rowSelection={{ type: 'checkbox', selectedRowKeys: selectedSources, onChange: setSelectedSources }}
@@ -311,7 +325,7 @@ function SourcesTab({ activeKey }: { activeKey: string }) {
               <Button loading={testingConnectivity} onClick={handleSourceFormTest}>{t('patchManager.testConnection')}</Button>
             </PermissionWrapper>
             <PermissionWrapper requiredPermissions={[editingSource ? 'Edit' : 'Add']}>
-              <Button type="primary" loading={loading} onClick={handleSaveSource}>{t('patchManager.save')}</Button>
+              <Button type="primary" loading={actionLoading} onClick={handleSaveSource}>{t('patchManager.save')}</Button>
             </PermissionWrapper>
           </Space>
         }

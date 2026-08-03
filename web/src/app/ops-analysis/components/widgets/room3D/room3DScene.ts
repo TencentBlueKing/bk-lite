@@ -108,14 +108,11 @@ export const resolveRoomObjectClickState = (
     };
   }
 
-  if (
-    clicked.target === "door" &&
-    normalized.selectedRackId === clicked.rackId
-  ) {
+  if (clicked.target === "door") {
+    const willCloseDoor = normalized.openRackId === clicked.rackId;
     return {
-      selectedRackId: clicked.rackId,
-      openRackId:
-        normalized.openRackId === clicked.rackId ? "" : clicked.rackId,
+      selectedRackId: willCloseDoor ? "" : clicked.rackId,
+      openRackId: willCloseDoor ? "" : clicked.rackId,
       selectedDeviceId: "",
     };
   }
@@ -387,6 +384,19 @@ export const createRoom3DScene = (
     return camera.position.distanceTo(visual.root.position);
   };
 
+  const projectScreenPoint = (worldPoint: THREE.Vector3) => {
+    const rect = renderer.domElement.getBoundingClientRect();
+    const projected = worldPoint.clone().project(camera);
+    if (projected.z < -1 || projected.z > 1) {
+      return null;
+    }
+
+    return {
+      x: rect.left + ((projected.x + 1) / 2) * rect.width,
+      y: rect.top + ((1 - projected.y) / 2) * rect.height,
+    };
+  };
+
   const getRackScreenPoint = (rack: Room3DRack) => {
     const visual = visuals.get(rack.rack_id);
     const rect = renderer.domElement.getBoundingClientRect();
@@ -394,20 +404,17 @@ export const createRoom3DScene = (
       return { x: rect.left, y: rect.top };
     }
 
-    const projected = visual.root.position
-      .clone()
-      .add(
-        new THREE.Vector3(
-          ROOM3D_RACK_WIDTH / 2 + 0.18,
-          ROOM3D_RACK_HEIGHT * 0.58,
-          0,
+    return (
+      projectScreenPoint(
+        visual.root.position.clone().add(
+          new THREE.Vector3(
+            ROOM3D_RACK_WIDTH / 2 + 0.18,
+            ROOM3D_RACK_HEIGHT * 0.58,
+            0,
+          ),
         ),
-      )
-      .project(camera);
-    return {
-      x: rect.left + ((projected.x + 1) / 2) * rect.width,
-      y: rect.top + ((1 - projected.y) / 2) * rect.height,
-    };
+      ) || { x: rect.left, y: rect.top }
+    );
   };
 
   const handlePointerMove = (event: PointerEvent) => {
@@ -420,6 +427,10 @@ export const createRoom3DScene = (
       return;
     }
     renderer.domElement.style.cursor = "pointer";
+    if (openRackId) {
+      callbacks.onHover(null);
+      return;
+    }
     callbacks.onHover({ rack: rack.rack, ...getRackScreenPoint(rack.rack) });
   };
 
@@ -465,7 +476,7 @@ export const createRoom3DScene = (
     selectedRackId = nextState.selectedRackId;
     openRackId = nextState.openRackId;
     selectedDeviceId = nextState.selectedDeviceId;
-    callbacks.onSelect(rack.rack);
+    callbacks.onSelect(selectedRackId ? rack.rack : null);
     callbacks.onDeviceSelect?.(
       rack.device && selectedDeviceId
         ? { rack: rack.rack, device: rack.device }

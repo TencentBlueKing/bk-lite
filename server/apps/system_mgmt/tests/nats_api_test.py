@@ -83,6 +83,7 @@ def _load_target_view(monkeypatch):
         "apps.job_mgmt.constants",
         OSType=object(),
         SSHCredentialType=object(),
+        WinRMTransport=object(),
         DangerousLevel=object(),
         MatchType=object(),
     )
@@ -171,7 +172,13 @@ def test_get_all_users():
 
 
 def test_get_authorized_groups_scoped_rejects_forged_current_team(monkeypatch):
-    user = types.SimpleNamespace(username="scope-user", domain="domain.com", group_list=[1])
+    user = types.SimpleNamespace(
+        username="scope-user",
+        domain="domain.com",
+        group_list=[1],
+        role_list=[],
+        is_superuser=False,
+    )
 
     class _UserQuerySet:
         @staticmethod
@@ -195,11 +202,17 @@ def test_get_authorized_groups_scoped_rejects_forged_current_team(monkeypatch):
         include_children=True,
     )
 
-    assert result == {"result": True, "data": []}
+    assert result == {"result": True, "data": [], "is_superuser": False}
 
 
 def test_get_authorized_groups_scoped_keeps_include_children(monkeypatch):
-    user = types.SimpleNamespace(username="scope-children-user", domain="domain.com", group_list=[1])
+    user = types.SimpleNamespace(
+        username="scope-children-user",
+        domain="domain.com",
+        group_list=[1],
+        role_list=[],
+        is_superuser=False,
+    )
 
     class _UserQuerySet:
         @staticmethod
@@ -233,7 +246,11 @@ def test_get_authorized_groups_scoped_keeps_include_children(monkeypatch):
         include_children=True,
     )
 
-    assert result == {"result": True, "data": [1, 11]}
+    assert result == {
+        "result": True,
+        "data": [1, 11],
+        "is_superuser": False,
+    }
     assert captured == {
         "user_group_list": [1],
         "target_group_id": 1,
@@ -283,7 +300,13 @@ def test_send_email_to_user_keeps_ascii_attachment_filename_clean(monkeypatch):
 
 
 def test_get_authorized_groups_scoped_rejects_invalid_current_team(monkeypatch):
-    user = types.SimpleNamespace(username="scope-invalid-user", domain="domain.com", group_list=[1])
+    user = types.SimpleNamespace(
+        username="scope-invalid-user",
+        domain="domain.com",
+        group_list=[1],
+        role_list=[],
+        is_superuser=False,
+    )
 
     class _UserQuerySet:
         @staticmethod
@@ -307,7 +330,7 @@ def test_get_authorized_groups_scoped_rejects_invalid_current_team(monkeypatch):
         include_children=False,
     )
 
-    assert result == {"result": True, "data": []}
+    assert result == {"result": True, "data": [], "is_superuser": False}
 
 
 def test_target_query_nodes_propagates_authorized_scope_and_include_children(monkeypatch):

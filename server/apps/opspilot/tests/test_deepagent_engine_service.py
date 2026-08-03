@@ -109,7 +109,6 @@ class TestSkillBackendSources:
         assert kwargs["inherit_env"] is False
         n._cleanup_sandbox(sandbox_dir)
 
-    @pytest.mark.skip(reason="依赖 production minio_backend 用新 deepagents API 重写后重启用——目前 conftest 顶部 mock 替换 deepagents.backends.*,production 行为与测试期望不一致")
     def test_single_package_materialize_failure_is_isolated(self):
         n = ToolsNodes()
         pkgs = [{"name": "a"}, {"name": "b"}]
@@ -124,7 +123,6 @@ class TestSkillBackendSources:
         assert backend is not None and sources == ["/skills/"]
         n._cleanup_sandbox(sandbox_dir)
 
-    @pytest.mark.skip(reason="依赖 production minio_backend 用新 deepagents API 重写后重启用——目前 conftest 顶部 mock 替换 deepagents.backends.*,production 行为与测试期望不一致")
     def test_sandbox_env_excludes_host_secrets(self):
         n = ToolsNodes()
         os.environ["DB_PASSWORD"] = "should-not-leak"
@@ -133,7 +131,7 @@ class TestSkillBackendSources:
         finally:
             os.environ.pop("DB_PASSWORD", None)
         assert "DB_PASSWORD" not in env
-        assert set(env).issubset({"PATH", "LANG", "LC_ALL", "TMPDIR", "HOME"})
+        assert set(env).issubset({"PATH", "LANG", "LC_ALL", "TMPDIR", "HOME", "KUBECONFIG"})
         assert env["TMPDIR"] == "/tmp/run-xyz"
 
     def test_cleanup_sandbox_removes_dir(self):

@@ -83,11 +83,14 @@ class PasswordValidator:
         Returns:
             tuple: (是否通过, 错误信息)
         """
+        return cls.validate_password_with_config(password, cls.get_password_settings())
+
+    @classmethod
+    def validate_password_with_config(cls, password: str, config: Dict) -> Tuple[bool, str]:
+        """依据给定策略校验密码，供保存密码策略前的候选密码校验使用。"""
         if not password:
             return False, "密码不能为空"
 
-        # 获取密码策略配置
-        config = cls.get_password_settings()
         min_length = config["min_length"]
         max_length = config["max_length"]
         required_types = config["required_char_types"]

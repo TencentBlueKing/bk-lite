@@ -9,7 +9,6 @@ import {
   TargetParams,
   TargetListResponse,
   Target,
-  TargetFormData,
   ScriptParams,
   ScriptListResponse,
   Script,
@@ -173,9 +172,20 @@ const useJobApi = () => {
   };
 
   const testTargetConnection = async (
-    data: Partial<TargetFormData>
+    data: FormData
   ): Promise<{ success: boolean; message?: string }> => {
-    return await post('/job_mgmt/api/target/test_connection/', data);
+    return await post('/job_mgmt/api/target/test_connection/', data, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  };
+
+  const testSavedTargetConnection = async (
+    id: number,
+    data: FormData
+  ): Promise<{ success: boolean; message?: string }> => {
+    return await post(`/job_mgmt/api/target/${id}/test_connection/`, data, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
   };
 
   // Query nodes from Node Manager
@@ -535,6 +545,7 @@ const useJobApi = () => {
     deleteTarget,
     syncTargets,
     testTargetConnection,
+    testSavedTargetConnection,
     queryNodes,
     getScriptList,
     getScriptDetail,

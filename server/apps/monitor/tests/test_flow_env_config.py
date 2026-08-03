@@ -461,6 +461,14 @@ def test_refresh_collect_configs_continues_when_single_base_config_update_fails(
         "apps.monitor.services.flow_env_config.logger.exception",
         lambda message, config_id: logged.append((message, config_id)),
     )
+    monkeypatch.setattr(
+        "apps.monitor.services.flow_env_config.Sidecar.create_default_config",
+        lambda *args, **kwargs: None,
+    )
+    monkeypatch.setattr(
+        "apps.monitor.services.flow_env_config.converge_collector_action_task_for_node.delay",
+        lambda node_id: None,
+    )
 
     from apps.monitor.services.flow_env_config import FlowEnvConfigService
 

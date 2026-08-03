@@ -4,9 +4,11 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
+from django.core.files.uploadedfile import SimpleUploadedFile
 
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.job_mgmt.models import Target
+from apps.job_mgmt.services.execution_base_service import ExecutionTaskBaseService
 from apps.job_mgmt.views import target as target_views
 
 pytestmark = pytest.mark.django_db
@@ -148,6 +150,52 @@ class TestTargetCrud:
         assert target.name == "windows-host-renamed"
         assert target.winrm_cert_validation is False
 
+    @pytest.mark.parametrize("submitted_password", [None, ""])
+    def test_update_keeps_saved_ssh_password_when_not_replaced(self, su_client, submitted_password):
+        create_resp = su_client.post(URL, self._payload(), format="json")
+        target = Target.objects.get(pk=create_resp.data["id"])
+        saved_ciphertext = target.ssh_password
+        payload = self._payload(name="host1-renamed")
+        if submitted_password is None:
+            payload.pop("ssh_password")
+        else:
+            payload["ssh_password"] = submitted_password
+
+        resp = su_client.put(f"{URL}{target.id}/", payload, format="json")
+
+        assert resp.status_code == 200
+        target.refresh_from_db()
+        assert target.ssh_password == saved_ciphertext
+        assert resp.data["has_ssh_password"] is True
+        assert "ssh_password" not in resp.data
+
+    def test_target_response_exposes_key_metadata_without_key_content(self, su_client, monkeypatch):
+        storage = Target._meta.get_field("ssh_key_file").storage
+        monkeypatch.setattr(storage, "save", lambda name, content, max_length=None: name)
+        key_file = SimpleUploadedFile("lab-key.pem", b"private-key-content")
+        resp = su_client.post(
+            URL,
+            self._payload(ssh_credential_type="key", ssh_password="", ssh_key_file=key_file),
+            format="multipart",
+        )
+
+        assert resp.status_code == 201
+        assert resp.data["has_ssh_key"] is True
+        assert resp.data["ssh_key_file_name"] == "lab-key.pem"
+        assert "ssh_key_file" not in resp.data
+
+    def test_update_rejects_credential_type_change_without_replacement(self, su_client):
+        create_resp = su_client.post(URL, self._payload(), format="json")
+
+        resp = su_client.put(
+            f"{URL}{create_resp.data['id']}/",
+            self._payload(ssh_credential_type="key", ssh_password=""),
+            format="json",
+        )
+
+        assert resp.status_code == 400
+        assert "ssh_key_file" in resp.data
+
     def test_create_missing_ssh_password_returns_400(self, su_client):
         resp = su_client.post(URL, self._payload(ssh_password=""), format="json")
         assert resp.status_code == 400
@@ -208,16 +256,104 @@ class TestCloudRegions:
 
 @pytest.mark.integration
 class TestTestConnection:
-    def test_windows_not_supported(self, su_client):
-        # windows + manual 需带 winrm 凭据才能过序列化器校验，进而到达视图的"暂不支持"分支
-        resp = su_client.post(
-            f"{URL}test_connection/",
-            {"ip": "10.0.0.1", "os_type": "windows", "cloud_region_id": 1, "winrm_user": "admin", "winrm_password": "pw"},
+    def test_saved_target_connection_uses_stored_password(self, su_client):
+        create_resp = su_client.post(URL, TestTargetCrud()._payload(), format="json")
+        target_id = create_resp.data["id"]
+
+        with patch("apps.job_mgmt.views.target._get_executor_node", return_value="node-1"), patch(
+            "apps.job_mgmt.views.target.Executor"
+        ) as executor_cls:
+            executor_cls.return_value.execute_ssh.return_value = "success"
+            resp = su_client.post(
+                f"{URL}{target_id}/test_connection/",
+                {
+                    "ip": "10.0.0.1",
+                    "os_type": "linux",
+                    "cloud_region_id": 1,
+                    "driver": "ansible",
+                    "ssh_port": 22,
+                    "ssh_user": "root",
+                    "ssh_credential_type": "password",
+                },
+                format="json",
+            )
+
+        assert resp.status_code == 200
+        assert resp.data["success"] is True
+        assert executor_cls.return_value.execute_ssh.call_args.kwargs["password"] == "secret"
+
+    def test_saved_target_connection_uses_stored_private_key(self, su_client):
+        target = Target.objects.create(
+            name="key-host",
+            ip="10.0.0.2",
+            os_type="linux",
+            cloud_region_id=1,
+            ssh_user="root",
+            ssh_credential_type="key",
+            ssh_key_file="ssh_keys/lab.pem",
+            team=[1],
+        )
+        with patch("apps.job_mgmt.views.target._get_executor_node", return_value="node-1"), patch(
+            "apps.job_mgmt.views.target.ExecutionTaskBaseService._build_host_credentials",
+            return_value=[{"private_key_content": "private-key-content"}],
+        ), patch("apps.job_mgmt.views.target.Executor") as executor_cls:
+            executor_cls.return_value.execute_ssh.return_value = "success"
+            resp = su_client.post(
+                f"{URL}{target.id}/test_connection/",
+                {
+                    "ip": target.ip,
+                    "os_type": "linux",
+                    "cloud_region_id": 1,
+                    "driver": "ansible",
+                    "ssh_port": 22,
+                    "ssh_user": "root",
+                    "ssh_credential_type": "key",
+                },
+                format="json",
+            )
+
+        assert resp.status_code == 200
+        assert resp.data["success"] is True
+        assert executor_cls.return_value.execute_ssh.call_args.kwargs["private_key"] == "private-key-content"
+
+    def test_saved_windows_connection_accepts_false_cert_validation(self, su_client):
+        create_resp = su_client.post(
+            URL,
+            TestTargetCrud()._payload(
+                os_type="windows",
+                winrm_user="administrator",
+                winrm_password="secret",
+                winrm_scheme="http",
+                winrm_port=5985,
+                winrm_cert_validation=False,
+            ),
             format="json",
         )
+        with patch.object(ExecutionTaskBaseService, "_get_ansible_node", return_value="ansible-node"), patch(
+            "apps.job_mgmt.views.target.AnsibleExecutor"
+        ) as executor_cls:
+            executor_cls.return_value.adhoc.return_value = {"accepted": True, "task_id": "connectivity-task"}
+            executor_cls.return_value.task_query.return_value = {"status": "success", "result": {"success": True}}
+            resp = su_client.post(
+                f"{URL}{create_resp.data['id']}/test_connection/",
+                {
+                    "ip": "10.0.0.1",
+                    "os_type": "windows",
+                    "cloud_region_id": 1,
+                    "winrm_port": 5985,
+                    "winrm_scheme": "http",
+                    "winrm_user": "administrator",
+                    "winrm_cert_validation": "false",
+                },
+                format="multipart",
+            )
+
         assert resp.status_code == 200
-        assert resp.data["success"] is False
-        assert "Windows" in resp.data["message"]
+        assert resp.data["success"] is True
+        credential = executor_cls.return_value.adhoc.call_args.kwargs["host_credentials"][0]
+        assert credential["password"] == "secret"
+        assert credential["winrm_cert_validation"] is False
+        assert executor_cls.return_value.adhoc.call_args.kwargs["module"] == "ansible.windows.win_ping"
 
     def test_node_not_found_returns_success_false(self, su_client):
         with patch("apps.job_mgmt.views.target._get_executor_node", side_effect=ValueError("无可用节点")):

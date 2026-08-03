@@ -1,16 +1,17 @@
-from datetime import timedelta
+import hashlib
 import json
 import re
 import uuid
+from datetime import timedelta
 
 import requests
-from django.core.cache import cache
 from django.db import transaction
+from django.db.models import F
 from django.utils import timezone
 
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.utils.webhook_tls import get_webhook_tls_verify
-from apps.log.models import CollectInstance, CollectInstanceOrganization, CollectType
+from apps.log.models import CollectInstance, CollectInstanceOrganization, CollectType, K8sInstallToken
 from apps.log.services.search import SearchService
 from apps.rpc.node_mgmt import NodeMgmt
 
@@ -18,14 +19,57 @@ from apps.rpc.node_mgmt import NodeMgmt
 class K8sLogCollectService:
     TOKEN_EXPIRE_TIME = 60 * 30
     TOKEN_MAX_USAGE = 5
+    TOKEN_CLAIM_RETRIES = TOKEN_MAX_USAGE + 1
     REQUEST_TIMEOUT = 30
-    TOKEN_CACHE_PREFIX = "log_k8s_install_token"
     RUNTIME_PROFILES = {"standard", "docker", "custom"}
     PATH_UNSAFE_PATTERN = re.compile(r"[\r\n']")
 
+    @staticmethod
+    def _hash_token(token: str) -> str:
+        return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
     @classmethod
-    def _build_cache_key(cls, token: str) -> str:
-        return f"{cls.TOKEN_CACHE_PREFIX}:{token}"
+    def _consume_token_usage(cls, token: str) -> tuple[dict, int]:
+        """用数据库 CAS 原子领取一次额度，权威记录缺失时失败关闭。"""
+        token_hash = cls._hash_token(token)
+        fields = (
+            "cluster_name",
+            "cloud_region_id",
+            "config_type",
+            "usage_count",
+            "max_usage",
+            "expires_at",
+        )
+
+        # 每次 CAS 冲突都意味着另一个 worker 已推进计数；最多五次额度，因此
+        # TOKEN_MAX_USAGE + 1 次读取足以观察成功或耗尽状态。
+        for _ in range(cls.TOKEN_CLAIM_RETRIES):
+            token_data = K8sInstallToken.objects.filter(token_hash=token_hash).values(*fields).first()
+            if not token_data:
+                raise BaseAppException("Invalid or expired token")
+
+            now = timezone.now()
+            if token_data["expires_at"] <= now:
+                K8sInstallToken.objects.filter(
+                    token_hash=token_hash,
+                    expires_at__lte=now,
+                ).delete()
+                raise BaseAppException("Invalid or expired token")
+
+            usage_count = token_data["usage_count"]
+            max_usage = token_data["max_usage"]
+            if usage_count >= max_usage:
+                raise BaseAppException(f"Token has exceeded maximum usage limit ({max_usage} times)")
+
+            updated = K8sInstallToken.objects.filter(
+                token_hash=token_hash,
+                usage_count=usage_count,
+                expires_at__gt=timezone.now(),
+            ).update(usage_count=F("usage_count") + 1)
+            if updated:
+                return token_data, usage_count + 1
+
+        raise BaseAppException("Invalid or expired token")
 
     @classmethod
     def validate_cluster_name(cls, cluster_name: str):
@@ -121,16 +165,16 @@ class K8sLogCollectService:
     @classmethod
     def generate_install_token(cls, cluster_name: str, cloud_region_id: str) -> str:
         token = str(uuid.uuid4())
-        cache.set(
-            cls._build_cache_key(token),
-            {
-                "cluster_name": cluster_name,
-                "cloud_region_id": str(cloud_region_id),
-                "config_type": "log",
-                "usage_count": 0,
-                "max_usage": cls.TOKEN_MAX_USAGE,
-            },
-            timeout=cls.TOKEN_EXPIRE_TIME,
+        now = timezone.now()
+        K8sInstallToken.objects.filter(expires_at__lte=now).delete()
+        K8sInstallToken.objects.create(
+            token_hash=cls._hash_token(token),
+            cluster_name=cluster_name,
+            cloud_region_id=str(cloud_region_id),
+            config_type="log",
+            usage_count=0,
+            max_usage=cls.TOKEN_MAX_USAGE,
+            expires_at=now + timedelta(seconds=cls.TOKEN_EXPIRE_TIME),
         )
         return token
 
@@ -139,24 +183,13 @@ class K8sLogCollectService:
         if not token:
             raise BaseAppException("Token is required")
 
-        cache_key = cls._build_cache_key(token)
-        data = cache.get(cache_key)
-        if not data:
-            raise BaseAppException("Invalid or expired token")
-
-        usage_count = data.get("usage_count", 0)
-        max_usage = data.get("max_usage", cls.TOKEN_MAX_USAGE)
-        if usage_count >= max_usage:
-            cache.delete(cache_key)
-            raise BaseAppException(f"Token has exceeded maximum usage limit ({max_usage} times)")
-
-        data["usage_count"] = usage_count + 1
-        cache.set(cache_key, data, timeout=cls.TOKEN_EXPIRE_TIME)
+        data, usage_count = cls._consume_token_usage(token)
+        max_usage = data["max_usage"]
         return {
             "cluster_name": data["cluster_name"],
             "cloud_region_id": data["cloud_region_id"],
-            "config_type": data.get("config_type", "log"),
-            "remaining_usage": max_usage - data["usage_count"],
+            "config_type": data["config_type"],
+            "remaining_usage": max_usage - usage_count,
         }
 
     @staticmethod

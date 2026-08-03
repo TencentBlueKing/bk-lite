@@ -24,7 +24,7 @@ export const ROOM3D_RACK_WIDTH = 1.05;
 export const ROOM3D_RACK_DEPTH = 1.2;
 export const ROOM3D_RACK_HEIGHT = 1.95;
 export const ROOM3D_RACK_DOOR_OPEN_ROTATION = Math.PI * 0.62;
-export const ROOM3D_DEVICE_PULL_OUT_DISTANCE = 0.26;
+export const ROOM3D_DEVICE_PULL_OUT_DISTANCE = 0.32;
 
 const WALL_HEIGHT = ROOM3D_RACK_HEIGHT;
 const WALL_THICKNESS = 0.1;
@@ -922,6 +922,8 @@ const createEquipmentLayer = (
     metalness: 0.3,
     roughness: 0.42,
   });
+  frontMaterial.userData.baseEmissiveIntensity = 0.24;
+  sideMaterial.userData.baseEmissiveIntensity = 0.1;
   const layer = new THREE.Mesh(geometry, [
     sideMaterial,
     sideMaterial,
@@ -1287,7 +1289,13 @@ export const setRackVisualState = (
       : [mesh.material];
     materials.forEach((material) => {
       if (material instanceof THREE.MeshStandardMaterial) {
-        material.emissiveIntensity = selected ? 0.5 : 0.24;
+        const baseEmissiveIntensity =
+          typeof material.userData.baseEmissiveIntensity === "number"
+            ? material.userData.baseEmissiveIntensity
+            : 0.24;
+        material.emissiveIntensity = selected
+          ? Math.max(baseEmissiveIntensity, 0.72)
+          : baseEmissiveIntensity;
       }
     });
   });
@@ -1301,7 +1309,7 @@ export const animateRackVisual = (visual: RackVisual) => {
       typeof mesh.userData.targetZ === "number"
         ? mesh.userData.targetZ
         : mesh.position.z;
-    mesh.position.z += (targetZ - mesh.position.z) * 0.18;
+    mesh.position.z += (targetZ - mesh.position.z) * 0.22;
   });
 };
 

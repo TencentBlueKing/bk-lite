@@ -93,7 +93,7 @@ const useIntegrationApi = () => {
         return await del(`/monitor/api/organization_rule/${id}/`, { params });
       },
       deleteMonitorInstance: async (data: {
-        instance_ids: any;
+        instance_ids: React.Key[];
         clean_child_config: boolean;
       }) => {
         return await post(

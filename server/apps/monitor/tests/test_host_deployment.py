@@ -1,7 +1,7 @@
 import pytest
 
 from apps.core.exceptions.base_app_exception import BaseAppException
-from apps.monitor.models import CollectConfig, MonitorInstance, MonitorObject
+from apps.monitor.models import CollectConfig, MonitorInstance, MonitorObject, MonitorPlugin
 from apps.monitor.services.host_deployment import HostDeploymentStatus
 from apps.monitor.services.node_mgmt import InstanceConfigService
 from apps.node_mgmt.models import (
@@ -141,3 +141,51 @@ def test_host_onboarding_rejects_existing_instance_with_different_metric_type(mo
                 ],
             }
         )
+
+
+@pytest.mark.django_db
+def test_local_host_onboarding_persists_selected_node_ip_as_instance_fact(mocker):
+    host = MonitorObject.objects.create(name="Host", level="base")
+    plugin = MonitorPlugin.objects.create(
+        name="Host Fact Contract",
+        collector="Telegraf",
+        collect_type="host",
+        instance_fact_bindings=[{
+            "fact": "asset.ip",
+            "value_type": "ip",
+            "resolver": "selected_node",
+            "options": {"selection_field": "node_ids", "node_field": "ip", "required": True},
+        }],
+    )
+    plugin.monitor_object.add(host)
+    node_mgmt = mocker.patch("apps.monitor.services.node_mgmt.NodeMgmt")
+    node_mgmt.return_value.get_nodes_by_ids.return_value = [{
+        "id": "node-1",
+        "name": "fusion-collector",
+        "ip": "10.0.41.149",
+    }]
+    mocker.patch(
+        "apps.monitor.services.node_mgmt.HostDeploymentStatus.get_configured_node_ids",
+        return_value=set(),
+    )
+    mocker.patch("apps.monitor.services.node_mgmt.Controller").return_value.controller.return_value = None
+
+    InstanceConfigService.create_monitor_instance_by_node_mgmt({
+        "monitor_object_id": host.id,
+        "monitor_plugin_id": plugin.id,
+        "collector": "Telegraf",
+        "collect_type": "host",
+        "configs": [],
+        "instances": [{
+            "instance_id": "host-1",
+            "instance_name": "fusion-collector",
+            "node_ids": ["node-1"],
+            "group_ids": [1],
+        }],
+    })
+
+    instance = MonitorInstance.objects.get(id="('host-1',)")
+    assert instance.summary_facts["asset.ip"] == "10.0.41.149"
+    assert instance.summary_facts["_sources"]["asset.ip"] == {
+        "Host Fact Contract": "10.0.41.149"
+    }

@@ -10,6 +10,8 @@ from pathlib import Path
 import pytest
 import yaml
 
+from apps.core.utils.loader import LanguageLoader
+
 SERVER_ROOT = Path(__file__).resolve().parents[3]
 PLUGINS = SERVER_ROOT / "apps" / "monitor" / "support-files" / "plugins" / "Telegraf"
 BRAND_DIR = PLUGINS / "snmp" / "voice_gateway_zenitel"
@@ -75,7 +77,7 @@ def toml_text():
 @pytest.fixture(scope="module")
 def languages():
     return {
-        lang: yaml.safe_load((LANGUAGE_DIR / f"{lang}.yaml").read_text(encoding="utf-8"))
+        lang: LanguageLoader("monitor", lang).translations
         for lang in ("zh-Hans", "en")
     }
 
@@ -132,7 +134,9 @@ def test_snmpv3_passwords_use_runtime_env_placeholders(toml_text):
 @pytest.mark.unit
 def test_only_verified_private_health_oids_are_modelled(metrics, toml_text):
     names = {m["name"] for m in metrics["metrics"]}
-    assert names == EXPECTED_METRICS
+    floor = {"snmp_uptime", "interface_ifHCInOctets", "interface_ifHCOutOctets"}
+    assert names - floor == EXPECTED_METRICS
+    assert floor <= names
     for absent in set(UNSUPPORTED_HEALTH_METRICS) - EXPECTED_METRICS:
         assert absent not in names
         assert absent not in toml_text
@@ -142,9 +146,9 @@ def test_only_verified_private_health_oids_are_modelled(metrics, toml_text):
 
 @pytest.mark.unit
 def test_metrics_json_declares_only_vendor_delta_child(metrics):
-    assert set(metrics["supplementary_indicators"]) == EXPECTED_METRICS
+    assert set(metrics["supplementary_indicators"]) == EXPECTED_METRICS | {"snmp_uptime"}
     names = {m["name"] for m in metrics["metrics"]}
-    assert [name for name in BASE_METRICS if name in names] == []
+    assert {"snmp_uptime", "interface_ifHCInOctets", "interface_ifHCOutOctets"} <= names
 
 
 @pytest.mark.unit

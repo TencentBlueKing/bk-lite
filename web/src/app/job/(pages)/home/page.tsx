@@ -794,6 +794,7 @@ const JobHomePage = () => {
       title: t('job.operation'),
       key: 'action',
       width: 100,
+      fixed: 'right' as const,
       render: (_: unknown, record: JobRecord) => (
         <a className="text-(--color-primary) cursor-pointer" onClick={() => handleViewDetail(record)}>
           {t('job.viewDetail')}

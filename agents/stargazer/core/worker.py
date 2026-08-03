@@ -13,6 +13,7 @@ import time
 from typing import Dict, Any
 from arq import create_pool
 from arq.connections import RedisSettings
+from core.credential_state_cache import close_credential_state_cache_pool
 from core.redis_config import REDIS_CONFIG
 from sanic.log import logger
 
@@ -282,3 +283,4 @@ class WorkerSettings:
     job_timeout = int(os.getenv("TASK_JOB_TIMEOUT", "600"))
     keep_result = int(os.getenv("TASK_KEEP_RESULT", "3600"))
     max_tries = int(os.getenv("TASK_MAX_TRIES", "3"))
+    on_shutdown = close_credential_state_cache_pool

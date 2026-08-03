@@ -42,8 +42,11 @@ def _http_get_impl(
     """
     fetch_config = prepare_fetch_config(config)
 
-    # 验证URL
-    url = validate_url(url)
+    # URL 校验失败也遵循工具的结构化错误契约，避免中断 Agent 执行。
+    try:
+        url = validate_url(url)
+    except Exception as e:
+        return format_error_response(e, str(url))
 
     # 准备请求头
     req_headers = prepare_headers(headers, fetch_config.get("user_agent"))
@@ -94,7 +97,7 @@ def _http_get_impl(
     except requests.exceptions.HTTPError as e:
         return {
             "success": False,
-            "status_code": e.response.status_code if e.response else 0,
+            "status_code": e.response.status_code if e.response is not None else 0,
             "error": f"HTTP错误: {str(e)}",
             "url": url,
         }
@@ -114,7 +117,10 @@ def _http_post_impl(
 ) -> Dict[str, Any]:
     """HTTP POST 请求的内部实现。"""
     fetch_config = prepare_fetch_config(config)
-    url = validate_url(url)
+    try:
+        url = validate_url(url)
+    except Exception as e:
+        return format_error_response(e, str(url))
     req_headers = prepare_headers(headers, fetch_config.get("user_agent"))
 
     if bearer_token:
@@ -157,7 +163,7 @@ def _http_post_impl(
     except requests.exceptions.HTTPError as e:
         return {
             "success": False,
-            "status_code": e.response.status_code if e.response else 0,
+            "status_code": e.response.status_code if e.response is not None else 0,
             "error": f"HTTP错误: {str(e)}",
             "url": url,
         }
@@ -177,7 +183,10 @@ def _http_put_impl(
 ) -> Dict[str, Any]:
     """HTTP PUT 请求的内部实现。"""
     fetch_config = prepare_fetch_config(config)
-    url = validate_url(url)
+    try:
+        url = validate_url(url)
+    except Exception as e:
+        return format_error_response(e, str(url))
     req_headers = prepare_headers(headers, fetch_config.get("user_agent"))
 
     if bearer_token:
@@ -219,7 +228,7 @@ def _http_put_impl(
     except requests.exceptions.HTTPError as e:
         return {
             "success": False,
-            "status_code": e.response.status_code if e.response else 0,
+            "status_code": e.response.status_code if e.response is not None else 0,
             "error": f"HTTP错误: {str(e)}",
             "url": url,
         }
@@ -238,7 +247,10 @@ def _http_delete_impl(
 ) -> Dict[str, Any]:
     """HTTP DELETE 请求的内部实现。"""
     fetch_config = prepare_fetch_config(config)
-    url = validate_url(url)
+    try:
+        url = validate_url(url)
+    except Exception as e:
+        return format_error_response(e, str(url))
     req_headers = prepare_headers(headers, fetch_config.get("user_agent"))
 
     if bearer_token:
@@ -279,7 +291,7 @@ def _http_delete_impl(
     except requests.exceptions.HTTPError as e:
         return {
             "success": False,
-            "status_code": e.response.status_code if e.response else 0,
+            "status_code": e.response.status_code if e.response is not None else 0,
             "error": f"HTTP错误: {str(e)}",
             "url": url,
         }
@@ -299,7 +311,10 @@ def _http_patch_impl(
 ) -> Dict[str, Any]:
     """HTTP PATCH 请求的内部实现。"""
     fetch_config = prepare_fetch_config(config)
-    url = validate_url(url)
+    try:
+        url = validate_url(url)
+    except Exception as e:
+        return format_error_response(e, str(url))
     req_headers = prepare_headers(headers, fetch_config.get("user_agent"))
 
     if bearer_token:
@@ -341,7 +356,7 @@ def _http_patch_impl(
     except requests.exceptions.HTTPError as e:
         return {
             "success": False,
-            "status_code": e.response.status_code if e.response else 0,
+            "status_code": e.response.status_code if e.response is not None else 0,
             "error": f"HTTP错误: {str(e)}",
             "url": url,
         }

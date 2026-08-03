@@ -35,7 +35,23 @@ from apps.system_mgmt.utils.password_validator import PasswordValidator
         "https://open.larksuite.com/open-apis/bot/v2/hook/yyy",
     ],
 )
-def test_is_valid_webhook_url_accepts_allowlisted_domains(url):
+def test_is_valid_webhook_url_accepts_allowlisted_domains(url, mocker):
+    mocker.patch.object(
+        channel_utils,
+        "get_network_whitelist_domains",
+        return_value=[
+            "qyapi.weixin.qq.com",
+            "open.feishu.cn",
+            "oapi.dingtalk.com",
+            "open.larksuite.com",
+        ],
+    )
+    mocker.patch.object(
+        channel_utils,
+        "get_network_whitelist_cidrs",
+        return_value=[],
+    )
+
     assert channel_utils.is_valid_webhook_url(url) is True
 
 

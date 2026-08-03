@@ -3,6 +3,7 @@ package org.bklite.mobile
 import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Bundle
+import android.util.Log
 import android.view.View
 import android.view.WindowManager
 import android.webkit.PermissionRequest
@@ -15,7 +16,8 @@ import androidx.core.view.WindowInsetsCompat
 
 class MainActivity : TauriActivity() {
   companion object {
-    private const val MICROPHONE_PERMISSION_CODE = 1001
+    private const val TAG = "BKLiteMainActivity"
+    private val AUDIO_CAPTURE_RESOURCES = arrayOf(PermissionRequest.RESOURCE_AUDIO_CAPTURE)
   }
 
   private var pendingWebPermissionRequest: PermissionRequest? = null
@@ -25,8 +27,7 @@ class MainActivity : TauriActivity() {
     ActivityResultContracts.RequestPermission()
   ) { isGranted: Boolean ->
     if (isGranted) {
-      // 权限已授予，批准 WebView 的权限请求
-      pendingWebPermissionRequest?.grant(pendingWebPermissionRequest?.resources)
+      pendingWebPermissionRequest?.grant(AUDIO_CAPTURE_RESOURCES)
     } else {
       // 权限被拒绝，拒绝 WebView 的权限请求
       pendingWebPermissionRequest?.deny()
@@ -78,12 +79,11 @@ class MainActivity : TauriActivity() {
               if (ContextCompat.checkSelfPermission(
                   this@MainActivity,
                   Manifest.permission.RECORD_AUDIO
-                ) == PackageManager.PERMISSION_GRANTED
+              ) == PackageManager.PERMISSION_GRANTED
               ) {
-                // 已有权限，直接批准
-                request.grant(request.resources)
+                request.grant(AUDIO_CAPTURE_RESOURCES)
               } else {
-                // 没有权限，请求权限
+                pendingWebPermissionRequest?.deny()
                 pendingWebPermissionRequest = request
                 requestPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
               }
@@ -92,9 +92,16 @@ class MainActivity : TauriActivity() {
               super.onPermissionRequest(request)
             }
           }
+
+          override fun onPermissionRequestCanceled(request: PermissionRequest) {
+            if (pendingWebPermissionRequest === request) {
+              pendingWebPermissionRequest = null
+            }
+            super.onPermissionRequestCanceled(request)
+          }
         }
       } catch (e: Exception) {
-        e.printStackTrace()
+        Log.e(TAG, "Unable to configure WebView microphone permissions")
       }
     }
   }
@@ -106,8 +113,14 @@ class MainActivity : TauriActivity() {
       webViewField.isAccessible = true
       return webViewField.get(this) as? android.webkit.WebView
     } catch (e: Exception) {
-      e.printStackTrace()
+      Log.e(TAG, "Unable to access the Tauri WebView")
       return null
     }
+  }
+
+  override fun onDestroy() {
+    pendingWebPermissionRequest?.deny()
+    pendingWebPermissionRequest = null
+    super.onDestroy()
   }
 }

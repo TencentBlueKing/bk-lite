@@ -1,108 +1,117 @@
 # Kafka Monitoring Guide
 
-This plugin uses WeOps's kafka_exporter (forked from danielqsj/kafka_exporter) to connect to Kafka brokers via the **Kafka client protocol** and collect broker / topic / consumer-group metrics. Telegraf `inputs.prometheus` scrapes the exporter's local listen port at `/metrics`. Be sure to distinguish the **exporter listen port** from the **Kafka broker port** (default Kafka `9092`, exporter `9308`).
+This capability uses kafka_exporter to access brokers through the Kafka client protocol, and Telegraf then scrapes the exporter's local `/metrics` endpoint. It does not use JMX.
 
 ## Prerequisites
 
-- The target Kafka broker(s) are running and listening on `9092` (default).
-- The exporter connects to the broker via the Kafka client protocol — JMX access on the broker is NOT required.
-- Kafka must have `advertised.listeners=PLAINTEXT://<reachable_ip>:9092`; the broker must be reachable via the address it advertises.
-- When SASL is enabled, create the monitor account on the broker side (`bin/kafka-configs.sh` or the KRaft controller).
-- When TLS is enabled, exporter needs `tls.ca-file` / `tls.cert-file` / `tls.key-file`. The current UI does not expose TLS, so only plaintext or SASL/plaintext is supported.
-- The collector node can reach Kafka broker (default `9092`).
-- The exporter process starts and the collector can access `http://127.0.0.1:9308/metrics`.
-
-> The `kafka.server` field is broker `host:port`. **Use multiple `--kafka.server` flags for multiple brokers**; the current UI exposes only one. Multi-broker support needs UI extension.
-
-## Recommended Permissions
-
-Grant the monitor account minimum read-only permissions:
-
-```text
-# SASL/SCRAM (Kafka 7.0+) — create creds via bin/kafka-configs.sh first
-# The monitor account needs Describe only; no pub/sub needed.
-kafka-acls.sh --authorizer-properties zookeeper.connect=<zk:2181> \
-  --add --allow-principal User:'<monitor>' --operation Describe --topic '*'
-kafka-acls.sh --add --allow-principal User:'<monitor>' --operation Describe --group '*'
-kafka-acls.sh --add --allow-principal User:'<monitor>' --operation ClusterAction --cluster '*'
-```
-
-`Describe Topic` and `Describe Group` are required to capture lag/offset; `Cluster Action` is required for `kafka_consumergroup_*`.
+- The collector node can reach the configured broker `host:port` and every broker address returned through `advertised.listeners`.
+- The page accepts one broker address only. It is used for cluster discovery; multiple broker entries cannot be entered on the page.
+- The current page supports plaintext and SASL over plaintext. It has no TLS switch or certificate fields.
+- When SASL is enabled, prepare the username, password, and mechanism that match the broker, and grant access to topic, partition, and consumer-group metadata.
+- Reserve an unused exporter listen port on the collector node. It is separate from the Kafka broker port.
+- The current exporter requires Kafka **0.10.2.0** or newer; older versions fail to start.
 
 ## Setup Steps
 
-1. Verify the broker port is reachable from the collector:
+1. From the actual collector node, verify both the initial broker and its advertised addresses.
+2. Enter a Kafka protocol version (at least `0.10.2.0`). Enable authentication and enter the SASL username, password, and mechanism when required.
+3. Enter an unused listen port, one Kafka server address, topic/group include and exclude expressions, and the interval (default `60` seconds).
+4. For large topic or consumer-group fleets, tune concurrency, batch size, and consumer-group collection timeout as needed.
+5. In the monitored objects table, select the node and enter the listen port, server address, instance name, and optional group.
+6. Save the configuration and wait for at least one collection interval.
 
-   ```bash
-   nc -zv <broker_host> 9092
-   ```
+## Pre-checks
 
-2. On the configure page, fill in:
-   - Kafka version (default `2.0.0`)
-   - Enable authentication (as needed)
-   - SASL username / password / mechanism (as needed; SCRAM-SHA-256 / SCRAM-SHA-512 / GSSAPI)
-   - Exporter listen port (default `9308`)
-   - Kafka server address (`host:port`, e.g. `broker-1:9092`)
-   - Topic include / exclude (as needed; regex `.*` / `^$`)
-   - Consumer group include / exclude (as needed)
-   - Interval (default `60s`)
-3. Add rows in the monitored objects table for node, listen port, Kafka server address, instance name, and group.
-4. Click Confirm and wait for at least one collection interval.
-5. Check the asset or metrics page to confirm data is reporting.
-
-## Pre-check Commands
-
-Broker reachability:
+Check the configured broker port from the collector node, for example:
 
 ```bash
-nc -zv <broker_host> 9092
+nc -vz broker.example.com 9092
 ```
 
-Exporter reachability:
-
-```bash
-curl -sS http://127.0.0.1:9308/metrics | head
-```
-
-HTTP 200 with `kafka_broker_info`, `kafka_topic_partition_*`, `kafka_consumergroup_*`, `kafka_exporter_build_info` metrics indicates the chain is healthy.
+Also run a Kafka client metadata query with the same authentication mode. Confirm that every broker address returned by the cluster is reachable from the collector node. Reachability of the initial port alone does not validate the full discovery path.
 
 ## Field Reference
 
 | Field | Required | Description |
 | --- | --- | --- |
-| Version | Yes | Kafka broker protocol version, default `2.0.0`; idempotent / transactional semantics differ across versions |
-| Enable Auth | No | Switch; if enabled emits `sasl.enabled`, otherwise empty string |
-| Username | Conditionally required | SASL username; required when auth is enabled |
-| Password | Conditionally required | SASL password; required when auth is enabled |
-| Mechanism | No | SASL mechanism, e.g. `plain` / `sha256` / `sha512` / `gssapi`; blank falls back to PLAIN |
-| Listen Port | Yes | The port the exporter exposes `/metrics` on, default `9308`, NOT the Kafka broker port 9092 |
-| Server Address | Yes | Broker `host:port`, e.g. `kafka:9092`; broker must be reachable via `advertised.listeners` |
-| Topic Include | No | Regex for topics to scrape, default `.*` |
-| Topic Exclude | No | Regex for topics to skip, default `^$` |
-| Group Include | No | Regex for consumer groups to scrape, default `.*` |
-| Group Exclude | No | Regex for consumer groups to skip, default `^$` |
-| Interval | Yes | Collection interval in seconds, default `60` |
-| Node | Yes | Collector node used for this instance |
-| Instance Name | Yes | Display name in the platform; defaults to the Kafka server address |
-| Group | No | Organization group for ownership/permission |
+| Version | Yes | Kafka client protocol version, such as `2.0.0`; it must be compatible with the broker. **Minimum: `0.10.2.0`**. |
+| Enable Authentication | No | SASL switch; disabled by default. |
+| Username, Password | Conditional | Required when authentication is enabled. |
+| Operation Mode | No | SASL mechanism: `plain`, `sha256`, `sha512`, or `gssapi`; empty uses PLAIN as the current exporter default. |
+| Listen Port | Yes | Local port where the exporter exposes `/metrics`. |
+| Server Address | Yes | One broker `host:port`. |
+| Topic Include / Exclude | No | Regular expressions default to `.*` and `^$`. |
+| Consumer Group Include / Exclude | No | Regular expressions default to `.*` and `^$`. |
+| Topic Collection Workers | Yes | Concurrency for topic metadata and offset requests; default `20`. |
+| Consumer Group Collection Workers | Yes | Concurrency for consumer-group OffsetFetch requests; default `20`. |
+| Consumer Group Batch Size | Yes | Maximum consumer groups per DescribeGroups request; default `50`. |
+| Offset Batch Size | Yes | Maximum partitions per ListOffsets request; default `1000`. |
+| Consumer Group Collection Timeout | Yes | Timeout in seconds for one consumer-group metric collection; default `45`. **Must be less than the collection interval.** |
+| Collect All Committed Partitions | Yes | Enabled by default; when disabled, only partitions assigned to active members are collected. |
+| Allow Concurrent Scrapes | Yes | Disabled by default; keep disabled for 10,000-topic clusters so concurrent scrapes share one result. |
+| Interval | Yes | Collection interval in seconds; default `60`. |
+| Node | Yes | Collector node that runs the exporter. |
+| Instance Name | Yes | Display name in the platform. |
+| Group | No | Optional instance group. |
+
+## Recommended Timeout Values
+
+Keep this timeout relationship so Telegraf does not finish before the exporter and leave the instance without data:
+
+`GROUP_METRICS_TIMEOUT` < collection `interval`
+
+Telegraf `timeout` and `response_timeout` are **always equal to `interval`** (issued together by the child template). Do not set them shorter or longer than the interval on their own.
+
+| Parameter | Recommended value |
+| --- | --- |
+| Collection interval (`interval`) | `60` seconds |
+| Telegraf `timeout` / `response_timeout` | Same as `interval` (for example `60` seconds) |
+| Consumer-group collection timeout (`GROUP_METRICS_TIMEOUT`) | `45` seconds (must be less than `interval`) |
+
+If you lower the interval to `30` seconds, also lower the consumer-group collection timeout below `30` seconds (for example `20` seconds). The platform validates this order on save.
+
+## Upgrade and Redeploy
+
+Existing instances do not automatically pick up child-template timeout changes. After upgrading BK-Lite or kafka_exporter, re-save and redeploy the instance collection config on the integration page if you need the new `timeout` / `response_timeout` behavior (aligned with the interval).
+
+## Lag Semantics
+
+- `kafka_consumergroup_lag = LEO - committed offset`, both from the same scrape.
+- When the committed offset is `-1`, lag is `-1` and no anomaly series is emitted; the partition has no commit record.
+- When the committed offset is greater than the same-scrape LEO, the exporter keeps the computed negative lag (which may be `-1`) and emits `kafka_consumergroup_lag_anomaly=1`.
+- Therefore a lag of `-1` must be read with the anomaly metric: no anomaly series means no commit record; anomaly `1` means the committed offset exceeds LEO.
+
+## Post-setup Verification
+
+After saving and waiting for one interval, check the local endpoint with the configured listen port, for example:
+
+```bash
+curl --fail --silent --show-error "http://127.0.0.1:9308/metrics"
+```
+
+Then confirm that these metrics are queryable in the platform:
+
+- `kafka_up_gauge`
+- `kafka_brokers_gauge`
+- `kafka_exporter_scrape_success`
+- `kafka_topic_partition_count`
+- `kafka_consumergroup_lag`
 
 ## Troubleshooting
 
-### 1. No data after saving
+### The initial broker is reachable but no data appears
 
-- Run `curl http://127.0.0.1:9308/metrics` from the collector node and confirm the exporter exposes metrics.
-- Check exporter logs for `connection refused` or `no advertised brokers`; usually caused by `advertised.listeners` pointing to an internal IP the collector cannot reach.
-- When TLS is enabled, verify CA / chain matches; the certificate CN/SAN must match `tls.server-name`.
-- Wait for at least one collection interval.
+- Inspect the exporter log for the broker addresses it actually uses. Collection fails when `advertised.listeners` returns addresses unreachable from the collector node.
+- Confirm that the configured protocol version is at least `0.10.2.0` and compatible with the broker.
+- TLS cannot be configured on the current page, so a TLS-only cluster cannot be integrated directly.
+- Confirm that the consumer-group collection timeout is less than the collection interval so Telegraf does not time out before the exporter finishes.
 
-### 2. Authentication failures
+### SASL authentication fails
 
-- SASL credentials (username / password / mechanism) must match those configured on the broker via `bin/kafka-configs.sh`.
-- Keep special characters in the password field; do not embed them in the broker address or other flags.
-- On managed Kafka (AKS/Strimzi), the `KafkaUser` resource must declare an `authentication.type` that matches the SASL mechanism.
+- Check that the authentication switch, username, password, and mechanism match the broker.
+- Enter the password only in the password field; do not embed it in the server address or another field.
 
-### 3. Partial missing metrics
+### Topic or consumer-group data is missing
 
-- `kafka_consumergroup_*` requires `Describe Group` permission; missing means the broker rejects the request.
-- `kafka_topic_partition_*` is filtered by `topic.filter/exclude`; mismatches yield no data.
-- Brokers older than 0.10.1 do not support `kafka_consumergroup`; upgrade the broker.
+- Check the include and exclude expressions. The default exclude expression `^$` excludes nothing.
+- Confirm that the account can read topic, partition, and consumer-group metadata.

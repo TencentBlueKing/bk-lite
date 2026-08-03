@@ -7,7 +7,7 @@ import os
 
 from django.apps import apps as django_apps
 from django.core.management import call_command
-from django.core.management.base import BaseCommand
+from django.core.management.base import BaseCommand, CommandError
 
 from apps.core.utils.loader import preload_language_cache
 
@@ -146,7 +146,10 @@ class Command(BaseCommand):
     def _init_operation_analysis(self):
         """运营分析系统资源初始化"""
         self.stdout.write("运营分析系统资源初始化...")
-        call_command("init_default_namespace")
+        try:
+            call_command("init_default_namespace")
+        except CommandError as error:
+            self.stdout.write(self.style.WARNING(f"默认命名空间初始化跳过（{type(error).__name__}）: {error}"))
         call_command("init_default_groups")
         call_command("init_source_api_data", force_update=True)
         call_command("init_builtin_canvases")

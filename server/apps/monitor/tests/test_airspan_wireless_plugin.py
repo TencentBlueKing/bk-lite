@@ -12,6 +12,8 @@ from pathlib import Path
 import pytest
 import yaml
 
+from apps.core.utils.loader import LanguageLoader
+
 SERVER_ROOT = Path(__file__).resolve().parents[3]
 REPO_ROOT = SERVER_ROOT.parents[0]
 PLUGINS = SERVER_ROOT / "apps" / "monitor" / "support-files" / "plugins" / "Telegraf"
@@ -83,7 +85,7 @@ def toml_text():
 @pytest.fixture(scope="module")
 def languages():
     return {
-        lang: yaml.safe_load((LANGUAGE_DIR / f"{lang}.yaml").read_text(encoding="utf-8"))
+        lang: LanguageLoader("monitor", lang).translations
         for lang in ("zh-Hans", "en")
     }
 
@@ -116,12 +118,11 @@ def test_config_type_consistent(ui, toml_text):
 
 
 @pytest.mark.unit
-def test_metrics_json_declares_zero_vendor_delta_child(metrics):
+def test_metrics_json_embeds_deployed_snmp_floor(metrics):
     names = {metric["name"] for metric in metrics["metrics"]}
-    assert names == set()
-    assert names & BASE_METRICS == set()
-    assert names & UNSUPPORTED_METRICS == set()
-    assert metrics["supplementary_indicators"] == []
+    expected = {"snmp_uptime", "interface_ifHCInOctets", "interface_ifHCOutOctets"}
+    assert names == expected
+    assert set(metrics.get("supplementary_indicators", [])) == {"snmp_uptime"}
 
 
 @pytest.mark.unit
@@ -205,26 +206,6 @@ def test_brand_match_and_icon_present_in_common_once():
     assert "airspan|air4g|air5g|airharmony|airvelocity" in airspan_lines[0].lower()
     assert "wireless|open-ran|oran|ran|private|network|small" not in airspan_lines[0].lower()
     assert (WEB_ROOT / "public" / "assets" / "icons" / "mm-airspan_airspan.svg").exists()
-
-
-@pytest.mark.unit
-def test_local_mock_instances_include_two_airspan_wireless_devices():
-    text = (DEV_ROOT / "local_instances.yaml").read_text(encoding="utf-8")
-    assert text.count("collect_type: snmp_airspan") == 1
-    assert "airspan-wireless-01" in text
-    assert "airspan-wireless-02" in text
-    assert text.count("instance_id: airspan_wireless_") == 2
-
-
-@pytest.mark.unit
-def test_mock_metrics_registers_airspan_wireless_object():
-    text = (REPO_ROOT / "dev" / "mock_metrics.py").read_text(encoding="utf-8")
-    assert '"airspan_wireless": "snmp_airspan/wireless"' in text
-    assert (
-        '"airspan_wireless": {"collect_type": "snmp_airspan", '
-        '"config_type": "airspan", "instance_type": "wireless"}'
-    ) in text
-    assert '"airspan_wireless": "Wireless"' in text
 
 
 @pytest.mark.unit

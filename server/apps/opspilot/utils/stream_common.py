@@ -79,11 +79,12 @@ def process_think_content(
             return think_buffer, "", in_think_block, False, False
         else:
             has_think_tags = True
+            # 首包已整体进入缓冲区，后续通用逻辑不得再次追加同一 chunk。
+            content_chunk = ""
             if think_buffer.lstrip().startswith("<think>"):
                 in_think_block = True
                 think_start = think_buffer.find("<think>")
                 think_buffer = think_buffer[think_start + 7 :]
-                return "", think_buffer, in_think_block, False, has_think_tags
 
     if not has_think_tags:
         return content_chunk, think_buffer, in_think_block, False, has_think_tags
@@ -118,6 +119,8 @@ def split_think_content(
         think_start = think_buffer.find("<think>")
         visible_content += think_buffer[:think_start]
         think_buffer = think_buffer[think_start + 7 :]
+        # 首包已整体进入缓冲区，避免在下方重复追加造成正文重复。
+        content_chunk = ""
         in_think_block = True
         is_first_content = False
 

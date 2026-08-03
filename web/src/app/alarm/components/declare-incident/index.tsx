@@ -33,6 +33,7 @@ export interface DeclareIncidentSummary {
 export interface DeclareIncidentProps {
   rowData: DeclareIncidentRowData[];
   onSuccess: (result: any) => void;
+  buttonSize?: 'small' | 'middle' | 'large';
   fetchIncidentList: (params: any) => Promise<DeclareIncidentSummary[]>;
   createIncident: (params: any) => Promise<any>;
   updateIncident: (
@@ -48,6 +49,7 @@ export interface DeclareIncidentProps {
 const DeclareIncident: React.FC<DeclareIncidentProps> = ({
   rowData,
   onSuccess,
+  buttonSize = 'middle',
   fetchIncidentList,
   createIncident,
   updateIncident,
@@ -137,6 +139,7 @@ const DeclareIncident: React.FC<DeclareIncidentProps> = ({
     <>
       <PermissionWrapper requiredPermissions={['Edit']}>
         <Button
+          size={buttonSize}
           color="danger"
           type="dashed"
           variant="solid"

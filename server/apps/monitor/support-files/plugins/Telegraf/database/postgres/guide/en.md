@@ -1,87 +1,66 @@
-# Postgres Monitoring Guide
+# PostgreSQL Monitoring Guide
+
+This capability uses Telegraf `inputs.postgresql` to connect to a specified PostgreSQL host and port. The database is fixed to `postgres`.
 
 ## Prerequisites
 
-- The PostgreSQL service is up on the target instance (default port `5432`).
-- The collector node can reach the PostgreSQL endpoint (security groups / firewalls opened for port `5432`).
-- A username and password with permission to log in and query stat views are ready.
-- The monitoring account should be granted the `pg_monitor` role to read `pg_stat_*` views.
-
-## Recommended Permissions
-
-Use a dedicated read-only monitoring account and grant the `pg_monitor` role:
-
-```sql
-CREATE USER monitor WITH PASSWORD '<your_password>';
-GRANT pg_monitor TO monitor;
-```
-
-> `pg_monitor` is available since PostgreSQL 10 and grants read access to all `pg_stat_*` views, which is sufficient for Telegraf `inputs.postgresql`. Avoid SUPERUSER.
-
-The template already ignores `template0` and `template1` by default.
+- The collector node can reach the target PostgreSQL host and actual port.
+- Prepare an account that can log in to the `postgres` database and read the required statistics views. On PostgreSQL 10 and later, `pg_monitor` can be granted according to least privilege.
+- The target `pg_hba.conf` allows this account to connect from the collector node.
+- The current template always uses `sslmode=disable`. The page has no database-name, SSL, or certificate fields.
+- The template always ignores `template0` and `template1`.
 
 ## Setup Steps
 
-1. Verify the connection from the collector node using `psql`.
-2. Fill in username, password, host, port (default `5432`), and interval (default `60s`) on the configure page.
-3. Add rows in the monitored objects table for node, host, port, instance name, and group.
-4. Click Confirm and wait for at least one collection interval.
-5. Check the asset or metrics page to confirm data is reporting.
+1. From the actual collector node, validate the target address, account, `postgres` database, and statistics-view permissions.
+2. Enter the username, password, host, actual port, and interval (default `60` seconds).
+3. In the monitored objects table, select the node and enter the host, port, instance name, and optional group.
+4. Save the configuration and wait for at least one collection interval.
 
-## Pre-check Commands
+## Pre-checks
 
-Run from the collector node using the monitoring account to verify connectivity and basic query privileges:
-
-```bash
-psql "host=<host> port=<port> user=<user> dbname=postgres" -c "SELECT version();"
-```
-
-The endpoint is basically healthy when:
-
-- The command returns the PostgreSQL version without `FATAL: could not connect`.
-- The monitoring account can run `SELECT * FROM pg_stat_database;` and similar `pg_stat_*` queries.
-
-Optional connectivity probe:
+`--password` prompts for the password:
 
 ```bash
-nc -vz <host> 5432
+psql --host db.example.com --port 5432 --username monitor --dbname postgres --password --command "SELECT count(*) FROM pg_stat_database;"
 ```
+
+The command must return a result without authentication, network, or statistics-view permission errors.
 
 ## Field Reference
 
 | Field | Required | Description |
 | --- | --- | --- |
-| Username | Yes | Account for PostgreSQL; recommended to grant `pg_monitor` |
-| Password | Yes | Password for that account |
-| Host | Yes | PostgreSQL host, e.g. `10.0.0.10` |
-| Port | Yes | PostgreSQL port, default `5432` |
-| Interval | Yes | Collection interval in seconds, default `60` |
-| Node | Yes | Collector node used for this instance |
-| Instance Name | Yes | Display name in the platform (default `host:port`) |
-| Group | No | Organization group for ownership/permission |
+| Username | Yes | PostgreSQL monitoring account. |
+| Password | Yes | Password for the account. |
+| Host | Yes | PostgreSQL hostname or IP address without a scheme. |
+| Port | Yes | Actual PostgreSQL listener port. |
+| Interval | Yes | Collection interval in seconds; default `60`. |
+| Node | Yes | Collector node that can reach PostgreSQL. |
+| Instance Name | Yes | Display name in the platform. |
+| Group | No | Optional instance group. |
+
+## Post-setup Verification
+
+After saving and waiting for one interval, confirm that these metrics are queryable in the platform:
+
+- `postgresql_numbackends`
+- `postgresql_xact_commit_rate`
+- `postgresql_deadlocks_rate`
+- `postgresql_blks_hit_rate`
 
 ## Troubleshooting
 
-### 1. No data after saving
+### Authentication or the source address is rejected
 
-- Re-run the `psql` check from the collector node, not only from your laptop.
-- Confirm `pg_hba.conf` allows connections from the collector IP (`host all all <collector_ip>/32 md5`).
-- Wait for at least one collection interval (default 60s).
-- Confirm Telegraf / collection tasks are healthy on the node.
+- Check whether `pg_hba.conf` allows the collector source address, account, and `postgres` database.
+- Check that the server's password-authentication mode matches the account configuration.
 
-### 2. Authentication failures
+### Login succeeds but data is incomplete
 
-- Check username/password for accidental spaces.
-- Confirm the account has been granted `pg_monitor` via `GRANT pg_monitor TO <user>;`.
-- Verify `pg_hba.conf` uses `md5` or `scram-sha-256` as expected.
+- Confirm that the account can read the required `pg_stat_*` views. Use `pg_monitor` or equivalent least-privilege grants for the target version.
+- `template0` and `template1` are explicitly ignored by the template and produce no data.
 
-### 3. Partial missing metrics / insufficient privileges
+### The target enforces SSL
 
-- Missing `pg_stat_*` metrics usually indicate insufficient privileges; grant `pg_monitor` and retry.
-- Connection count, lock waits, and replication lag depend on the corresponding stat views.
-- The template ignores `template0` and `template1`; other databases may be silently skipped without privileges.
-
-### 4. SSL / connection issues
-
-- The template sets `sslmode=disable` by default; if the target enforces SSL, use a compatible connection string and update `pg_hba.conf` accordingly.
-- `FATAL: no pg_hba.conf entry` typically means `pg_hba.conf` does not allow the collector IP.
+- The template always uses `sslmode=disable` and the page has no SSL fields. An SSL-only target cannot be integrated directly.

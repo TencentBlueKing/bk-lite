@@ -15,9 +15,14 @@ import GroupTreeSelect from '@/components/group-tree-select';
 interface DeclareModalProps {
   rowData: any[];
   onSuccess: (result: any) => void;
+  buttonSize?: 'small' | 'middle' | 'large';
 }
 
-const DeclareModal: React.FC<DeclareModalProps> = ({ rowData, onSuccess }) => {
+const DeclareModal: React.FC<DeclareModalProps> = ({
+  rowData,
+  onSuccess,
+  buttonSize = 'middle',
+}) => {
   const { t } = useTranslation();
   const { userList, levelListIncident } = useCommon();
   const { selectedGroup } = useUserInfoContext();
@@ -110,6 +115,7 @@ const DeclareModal: React.FC<DeclareModalProps> = ({ rowData, onSuccess }) => {
     <>
       <PermissionWrapper requiredPermissions={['Edit']}>
         <Button
+          size={buttonSize}
           color="danger"
           type="dashed"
           variant="solid"

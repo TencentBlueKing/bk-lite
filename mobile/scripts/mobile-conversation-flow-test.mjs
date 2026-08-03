@@ -9,6 +9,37 @@ async function readProjectFile(path) {
   return readFile(new URL(path, projectRoot), 'utf8');
 }
 
+async function loadConversationManager(aiChatStream) {
+  const source = await readProjectFile('src/context/conversation.tsx');
+  const sourceFile = ts.createSourceFile(
+    'conversation.tsx',
+    source,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TSX,
+  );
+  const managerDeclaration = sourceFile.statements.find(
+    (statement) => ts.isClassDeclaration(statement)
+      && statement.name?.text === 'ConversationManager',
+  );
+  assert.ok(managerDeclaration, 'ConversationManager declaration must exist');
+
+  globalThis.__conversationAiChatStream = aiChatStream;
+  const moduleSource = `
+    const aiChatStream = (...args) => globalThis.__conversationAiChatStream(...args);
+    ${managerDeclaration.getText(sourceFile)}
+    export { ConversationManager };
+  `;
+  const compiled = ts.transpileModule(moduleSource, {
+    compilerOptions: {
+      module: ts.ModuleKind.ES2022,
+      target: ts.ScriptTarget.ES2022,
+    },
+  }).outputText;
+
+  return import(`data:text/javascript;base64,${Buffer.from(compiled).toString('base64')}#${Math.random()}`);
+}
+
 test('智能应用列表和搜索结果直接进入应用对话', async () => {
   const workbench = await readProjectFile('src/app/workbench/page.tsx');
   const search = await readProjectFile('src/app/search/page.tsx');
@@ -83,6 +114,7 @@ test('全局会话清理会终止流并清空 LRU，取消信号传到 Tauri 底
   const manager = await readProjectFile('src/context/conversation.tsx');
   const botApi = await readProjectFile('src/api/bot.ts');
   const tauriProxy = await readProjectFile('src/utils/tauriApiProxy.ts');
+  const rustProxy = await readProjectFile('src-tauri/src/api_proxy.rs');
 
   assert.match(manager, /clearAll\(\): void \{[\s\S]*controller\.abort\(\)[\s\S]*this\.sessions\.clear\(\)[\s\S]*this\.accessOrder = \[\]/);
   assert.match(manager, /new AbortController\(\)/);
@@ -90,6 +122,9 @@ test('全局会话清理会终止流并清空 LRU，取消信号传到 Tauri 底
   assert.match(botApi, /apiStream<AIChatEvent>\(endpoint, data, options\)/);
   assert.match(tauriProxy, /signal\?\.addEventListener\('abort', handleAbort/);
   assert.match(tauriProxy, /invoke\('cancel_stream'/);
+  assert.match(rustProxy, /tokio::select![\s\S]*result = req_builder\.send\(\)/);
+  assert.match(rustProxy, /connect_timeout\(Duration::from_secs\(15\)\)/);
+  assert.match(rustProxy, /req_builder\.timeout\(Duration::from_secs\(60\)\)/);
 });
 
 test('会话页不猜测缺失的 Bot 或多入口节点', async () => {
@@ -335,7 +370,7 @@ test('iOS 容器按路由启停 WKWebView 原生边缘返回手势', async () =>
 
   assert.match(
     cargo,
-    /objc2\s*=\s*"=0\.6\.3"/,
+    /objc2\s*=\s*"=0\.6\.4"/,
   );
   assert.match(rustEntry, /#\[cfg\(target_os = "ios"\)\][\s\S]*get_webview_window\("main"\)/);
   assert.match(rustEntry, /setAllowsBackForwardNavigationGestures:\s*enabled/);
@@ -635,13 +670,173 @@ test('会话侧栏使用 transform 跟手推移主页面', async () => {
   assert.match(styles, /prefers-reduced-motion:\s*reduce/);
 });
 
-test('Android Manifest 软键盘模式补丁可重复执行', async () => {
-  const { applyAdjustResize } = await import(new URL('scripts/patch-android-manifest.mjs', projectRoot));
-  const source = `<activity\n    android:name=".MainActivity"\n    android:exported="true">`;
-  const patched = applyAdjustResize(source);
+test('Android Manifest 平台配置补丁可重复执行', async () => {
+  const { applyMobilePlatformSettings } = await import(new URL('scripts/patch-android-manifest.mjs', projectRoot));
+  const source = `<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.INTERNET" />
+    <application android:label="BK-Lite">
+        <activity android:name=".MainActivity" android:exported="true">
+        </activity>
+    </application>
+</manifest>`;
+  const patched = applyMobilePlatformSettings(source);
 
   assert.match(patched, /android:windowSoftInputMode="adjustResize"/);
-  assert.equal(applyAdjustResize(patched), patched);
+  assert.match(patched, /android\.permission\.RECORD_AUDIO/);
+  assert.match(patched, /android:allowBackup="false"/);
+  assert.match(patched, /android:fullBackupContent="@xml\/backup_rules"/);
+  assert.match(patched, /android:dataExtractionRules="@xml\/data_extraction_rules"/);
+  assert.equal(applyMobilePlatformSettings(patched), patched);
+});
+
+test('移动端麦克风权限声明完整且 Android 只授权音频资源', async () => {
+  const mainActivity = await readProjectFile('src-tauri/android/app/src/main/java/org/bklite/mobile/MainActivity.kt');
+  const secureCredentials = await readProjectFile('src-tauri/android/app/src/main/java/org/bklite/mobile/SecureCredentialsPlugin.kt');
+  const iosInfo = await readProjectFile('src-tauri/Info.ios.plist');
+  const iosConfig = JSON.parse(await readProjectFile('src-tauri/tauri.ios.conf.json'));
+  const iosInfoEnglish = await readProjectFile('src-tauri/infoplist/en.lproj/InfoPlist.strings');
+  const iosInfoSimplifiedChinese = await readProjectFile('src-tauri/infoplist/zh-Hans.lproj/InfoPlist.strings');
+  const androidPatch = await readProjectFile('scripts/patch-android-manifest.mjs');
+  const legacyBackupRules = await readProjectFile('src-tauri/android/app/src/main/res/xml/backup_rules.xml');
+  const extractionRules = await readProjectFile('src-tauri/android/app/src/main/res/xml/data_extraction_rules.xml');
+
+  assert.match(iosInfo, /NSMicrophoneUsageDescription/);
+  assert.match(iosInfo, /BK-Lite needs microphone access/);
+  assert.equal(iosConfig.bundle?.resources?.['infoplist/**'], './');
+  assert.match(iosInfoEnglish, /"NSMicrophoneUsageDescription"\s*=\s*"BK-Lite needs microphone access/);
+  assert.match(iosInfoSimplifiedChinese, /"NSMicrophoneUsageDescription"\s*=\s*"BK-Lite 需要使用麦克风/);
+  assert.match(androidPatch, /android\.permission\.RECORD_AUDIO/);
+  assert.match(mainActivity, /grant\(AUDIO_CAPTURE_RESOURCES\)/);
+  assert.doesNotMatch(mainActivity, /grant\(request\.resources\)/);
+  assert.match(mainActivity, /pendingWebPermissionRequest\?\.deny\(\)/);
+  assert.doesNotMatch(secureCredentials, /\.apply\(\)/);
+  assert.equal(secureCredentials.match(/\.commit\(\)/g)?.length, 2);
+  assert.match(secureCredentials, /if \(!committed\)[\s\S]*throw IllegalStateException/);
+  assert.match(legacyBackupRules, /exclude domain="sharedpref" path="\."/);
+  assert.match(extractionRules, /<device-transfer>/);
+  assert.match(extractionRules, /exclude domain="device_sharedpref" path="\."/);
+});
+
+test('AI 流正常结束或提前断流都会由当前控制器收尾', async () => {
+  const conversation = await readProjectFile('src/context/conversation.tsx');
+
+  assert.match(conversation, /try\s*\{\s*await this\.handleAGUIEventStream/s);
+  assert.match(conversation, /finally\s*\{[\s\S]*this\.streamControllers\.get\(sessionId\) === controller/);
+  assert.match(conversation, /this\.setAIRunning\(sessionId, false\)/);
+});
+
+test('AI 流未收到 RUN_FINISHED 时保留部分内容并标记中断', async () => {
+  const messageList = await readProjectFile('src/app/conversation/components/message-list.tsx');
+  const { ConversationManager } = await loadConversationManager(async function* () {
+    yield { type: 'RUN_STARTED', timestamp: 1 };
+    yield { type: 'TEXT_MESSAGE_START' };
+    yield { type: 'TEXT_MESSAGE_CONTENT', delta: 'partial answer' };
+  });
+  const manager = new ConversationManager();
+  const originalConsoleError = console.error;
+
+  try {
+    console.error = () => {};
+    await manager.startAIResponse(
+      'session-1',
+      7,
+      'mobile-node',
+      'question',
+      (text) => text,
+      '响应中断，请重试',
+    );
+
+    const state = manager.getSessionState('session-1');
+    const response = state?.messages[1];
+    assert.equal(state?.isAIRunning, false);
+    assert.equal(response?.status, 'interrupted');
+    assert.equal(response?.streamError, '响应中断，请重试');
+    assert.equal(response?.contentParts?.[0]?.content, 'partial answer');
+    assert.match(messageList, /isAIMessage\s*=[^;]*msg\.status === 'interrupted'/);
+    assert.match(messageList, /showActions\s*=\s*isAIMessage/);
+  } finally {
+    console.error = originalConsoleError;
+    delete globalThis.__conversationAiChatStream;
+  }
+});
+
+test('AI 流收到 RUN_FINISHED 后标记正常结束', async () => {
+  const { ConversationManager } = await loadConversationManager(async function* () {
+    yield { type: 'RUN_STARTED', timestamp: 1 };
+    yield { type: 'TEXT_MESSAGE_START' };
+    yield { type: 'TEXT_MESSAGE_CONTENT', delta: 'complete answer' };
+    yield { type: 'RUN_FINISHED' };
+  });
+  const manager = new ConversationManager();
+
+  try {
+    await manager.startAIResponse(
+      'session-2',
+      8,
+      'mobile-node',
+      'question',
+      (text) => text,
+      '响应中断，请重试',
+    );
+
+    const state = manager.getSessionState('session-2');
+    const response = state?.messages[1];
+    assert.equal(state?.isAIRunning, false);
+    assert.equal(response?.status, 'ended');
+    assert.equal(response?.streamError, undefined);
+    assert.equal(response?.contentParts?.[0]?.content, 'complete answer');
+  } finally {
+    delete globalThis.__conversationAiChatStream;
+  }
+});
+
+test('发送中的会话可渲染本地消息并由全局清理终止活跃流', { timeout: 5000 }, async () => {
+  let activeSignal;
+  let markStreamStarted;
+  const streamStarted = new Promise((resolve) => {
+    markStreamStarted = resolve;
+  });
+  const { ConversationManager } = await loadConversationManager(async function* (
+    _bot,
+    _nodeId,
+    _message,
+    _sessionId,
+    options,
+  ) {
+    activeSignal = options.signal;
+    markStreamStarted();
+    await new Promise((resolve) => {
+      activeSignal.addEventListener('abort', resolve, { once: true });
+    });
+  });
+  const manager = new ConversationManager();
+
+  try {
+    const response = manager.startAIResponse(
+      'session-cancel',
+      9,
+      'mobile-node',
+      'cancel me',
+      (text) => `rendered:${text}`,
+      '响应中断，请重试',
+    );
+    await streamStarted;
+
+    const runningState = manager.getSessionState('session-cancel');
+    assert.equal(runningState?.isAIRunning, true);
+    assert.equal(runningState?.messages[0]?.message, 'rendered:cancel me');
+    assert.equal(runningState?.messages[1]?.status, 'loading');
+
+    manager.clearAll();
+    await response;
+
+    assert.equal(activeSignal.aborted, true);
+    assert.equal(manager.getSessionState('session-cancel'), undefined);
+    assert.deepEqual(manager.getRunningSessionIds(), []);
+    assert.deepEqual(manager.getCacheStats(), { total: 0, running: 0, maxSize: 10 });
+  } finally {
+    delete globalThis.__conversationAiChatStream;
+  }
 });
 
 test('对话抽屉使用明确返回入口并限制在动态视口内', async () => {

@@ -49,6 +49,7 @@ class MonitorObject(TimeInfo, MaintainerInfo):
     is_visible = models.BooleanField(default=True, verbose_name='是否可见')
     display_fields = models.JSONField(default=list, verbose_name='视图列表展示列配置')
     display_fields_customized = models.BooleanField(default=False, verbose_name='展示列是否被用户自定义')
+    instance_summary_columns = models.JSONField(default=list, verbose_name='实例摘要列')
     is_builtin = models.BooleanField(default=False, db_index=True, verbose_name='是否为内置对象')
     cleanup_policy = models.CharField(
         max_length=20,
@@ -80,6 +81,7 @@ class MonitorInstance(TimeInfo, MaintainerInfo):
     is_active = models.BooleanField(default=True)
     cloud_region_id = models.IntegerField(null=True, blank=True, db_index=True, verbose_name='云区域ID')
     ip = models.GenericIPAddressField(null=True, blank=True, verbose_name='接入IP')
+    summary_facts = models.JSONField(default=dict, verbose_name='实例摘要事实')
     fallback_sampling_rate = models.IntegerField(default=1000, verbose_name='兜底采样率')
     enabled_protocols = models.JSONField(default=list, verbose_name='已启用的Flow协议')
     last_seen_at = models.DateTimeField(null=True, blank=True, db_index=True, verbose_name='自动发现最近上报时间')
