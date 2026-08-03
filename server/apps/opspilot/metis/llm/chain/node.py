@@ -11,6 +11,7 @@ from urllib.parse import parse_qs, urlparse
 
 import json_repair
 from deepagents import create_deep_agent
+from langchain.agents.middleware import ModelCallLimitMiddleware
 from langchain_core.callbacks import dispatch_custom_event
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_core.runnables import RunnableConfig
@@ -73,9 +74,21 @@ from apps.opspilot.metis.llm.chain.lc_patches import (  # noqa: E402,F401
     _patched_create_chat_result,
 )
 from apps.opspilot.metis.llm.chain.message_trim import trim_messages
+from apps.opspilot.metis.llm.agent.tool_execution_planner import (
+    CompletedExecutionStep,
+    ToolExecutionPlan,
+    ToolExecutionPlanner,
+    ToolPlanningError,
+)
 from apps.opspilot.metis.llm.common.anthropic_capabilities import build_anthropic_runtime_capabilities, normalize_tool_choice_for_capabilities
 from apps.opspilot.metis.llm.common.llm_client_factory import LLMClientFactory
 from apps.opspilot.metis.llm.common.structured_output_parser import StructuredOutputParser
+from apps.opspilot.metis.llm.common.token_usage import TokenUsageAccumulator
+from apps.opspilot.metis.llm.middleware.token_usage import TokenUsageTrackingMiddleware
+from apps.opspilot.metis.llm.middleware.tool_runtime import (
+    PLANNED_EXECUTION_HIDDEN_DEEPAGENT_TOOLS,
+    ToolVisibilityMiddleware,
+)
 # from apps.opspilot.metis.llm.rag.naive_rag.pgvector.pgvector_rag import PgvectorRag  # 暂时禁用,master 合并后文件被删除
 from apps.opspilot.metis.llm.tools.tools_loader import ToolsLoader
 
@@ -2727,14 +2740,102 @@ class ToolsNodes(BasicNode):
 
             llm = self.get_llm_client(graph_request)
             tools = self._collect_deepagent_tools(graph_request)
+            registered_tools = list(tools)
+            active_tools = []
+            runtime_middleware = [
+                ToolVisibilityMiddleware(
+                    business_tools=registered_tools,
+                    active_tools=active_tools,
+                    hidden_tools=PLANNED_EXECUTION_HIDDEN_DEEPAGENT_TOOLS,
+                    allow_unregistered_tools=False,
+                ),
+                ModelCallLimitMiddleware(
+                    run_limit=3,
+                    thread_limit=10,
+                    exit_behavior="end",
+                ),
+            ]
+            final_system_prompt += (
+                "\n\n【分步工具执行】外部规划器已经拆分任务。"
+                "每次只完成当前步骤，只调用当前可见工具；不要自行创建待办、子任务或重复规划。"
+                "工具证据足够后立即结束当前步骤。"
+            )
+
+            token_usage_accumulator = config["configurable"].get(
+                "token_usage_accumulator"
+            )
+            if isinstance(token_usage_accumulator, TokenUsageAccumulator):
+                runtime_middleware.append(
+                    TokenUsageTrackingMiddleware(token_usage_accumulator)
+                )
+
+            planner = ToolExecutionPlanner(
+                llm,
+                accumulator=(
+                    token_usage_accumulator
+                    if isinstance(token_usage_accumulator, TokenUsageAccumulator)
+                    else None
+                ),
+            )
+
+            original_messages = list(state.get("messages") or [])
+            planning_question = str(
+                getattr(graph_request, "user_message", "")
+                or getattr(graph_request, "graph_user_message", "")
+                or ""
+            ).strip()
+            if not planning_question:
+                for message in reversed(original_messages):
+                    if isinstance(message, HumanMessage):
+                        planning_question = str(message.content or "").strip()
+                        break
+
+            try:
+                plan = await planner.plan(
+                    planning_question,
+                    tools,
+                    config=config,
+                )
+            except Exception as planning_exc:
+                # 规划失败时保持零工具可见，仍允许模型直接回答，绝不退回全量工具。
+                logger.exception(
+                    "DeepAgent 工具执行规划失败，将以零工具模式回答: %s",
+                    planning_exc,
+                )
+                plan = ToolExecutionPlan(goal=planning_question, steps=[])
+
+            planned_tool_names = list(
+                dict.fromkeys(
+                    tool_name
+                    for step in plan.steps
+                    for tool_name in step.tools
+                )
+            )
+            logger.info(
+                "DeepAgent 工具执行计划: goal=%s, registered_tool_count=%s, "
+                "planned_tools=%s, steps=%s",
+                plan.goal,
+                len(registered_tools),
+                planned_tool_names,
+                [
+                    {
+                        "objective": step.objective,
+                        "tools": step.tools,
+                    }
+                    for step in plan.steps
+                ],
+            )
+
             backend, skill_sources, sandbox_dir = self._build_skill_backend_and_sources(graph_request)
             interrupt_on = self._build_interrupt_on(graph_request, tools)
 
             agent_kwargs: Dict[str, Any] = {
                 "model": llm,
-                "tools": tools,
+                "tools": registered_tools,
                 "system_prompt": final_system_prompt,
             }
+            if runtime_middleware:
+                agent_kwargs["middleware"] = runtime_middleware
             if backend is not None:
                 agent_kwargs["backend"] = backend
             if skill_sources:
@@ -2742,7 +2843,9 @@ class ToolsNodes(BasicNode):
             if interrupt_on:
                 agent_kwargs["interrupt_on"] = interrupt_on
 
-            # 创建 DeepAgent (自动包含规划、文件系统、子代理、压缩与技能能力)
+            # 全量 tools 只注册到执行器，保证失败重规划后仍能执行新工具；
+            # ToolVisibilityMiddleware 会在每次模型调用前仅保留当前步骤工具，
+            # 因此全量 schema 不会发送给模型。
             deep_agent = create_deep_agent(**agent_kwargs)
 
             # DeepAgent 返回 CompiledStateGraph；提高递归限制以容纳复杂任务
@@ -2758,22 +2861,156 @@ class ToolsNodes(BasicNode):
                 },
             }
 
+            tool_by_name = {
+                str(getattr(tool, "name", "") or ""): tool
+                for tool in tools
+                if str(getattr(tool, "name", "") or "")
+            }
+
+            def _internal_message(content: str) -> HumanMessage:
+                return HumanMessage(
+                    content=content,
+                    additional_kwargs={"opspilot_planned_execution": True},
+                )
+
+            def _step_failure(messages: List[BaseMessage]) -> str:
+                for message in reversed(messages):
+                    if not isinstance(message, ToolMessage):
+                        continue
+                    status = str(getattr(message, "status", "") or "").lower()
+                    content = str(message.content or "")
+                    if status == "error" or content.lower().startswith(("error", "exception")):
+                        tool_name = str(getattr(message, "name", "") or "未知工具")
+                        return f"工具 {tool_name} 执行失败: {content[:800]}"
+                return ""
+
+            def _step_summary(messages: List[BaseMessage]) -> str:
+                for message in reversed(messages):
+                    if isinstance(message, AIMessage):
+                        text = str(message.content or "").strip()
+                        if text:
+                            return text[:1200]
+                for message in reversed(messages):
+                    if isinstance(message, ToolMessage):
+                        return str(message.content or "")[:1200]
+                return "步骤已完成"
+
             try:
-                result = await deep_agent.ainvoke({"messages": state["messages"]}, config=deep_config)
+                completed_steps: List[CompletedExecutionStep] = []
+                pending_steps = list(plan.steps)
+                agent_state: Dict[str, Any] = {"messages": original_messages}
+                replan_count = 0
+
+                while pending_steps:
+                    step = pending_steps.pop(0)
+                    active_tools[:] = [
+                        tool_by_name[name]
+                        for name in step.tools
+                        if name in tool_by_name
+                    ]
+                    step_message = _internal_message(
+                        f"执行计划当前步骤：{step.objective}\n"
+                        f"本步骤允许使用的工具：{', '.join(step.tools) or '无'}。\n"
+                        "只完成本步骤；取得足够证据后立即结束，不要处理后续步骤。"
+                    )
+                    step_payload = {
+                        **agent_state,
+                        "messages": list(agent_state.get("messages") or [])
+                        + [step_message],
+                    }
+                    try:
+                        step_result = await deep_agent.ainvoke(
+                            step_payload,
+                            config=deep_config,
+                        )
+                    except Exception as step_exc:
+                        failure = (
+                            f"步骤“{step.objective}”执行异常 "
+                            f"{type(step_exc).__name__}: {str(step_exc)[:800]}"
+                        )
+                        if replan_count >= 2:
+                            raise
+                        replan_count += 1
+                        replacement = await planner.plan(
+                            planning_question,
+                            tools,
+                            completed_steps=completed_steps,
+                            failure=failure,
+                            config=config,
+                        )
+                        pending_steps = list(replacement.steps)
+                        logger.warning(
+                            "DeepAgent 当前及后续步骤已重规划: count=%s, failure=%s, steps=%s",
+                            replan_count,
+                            failure,
+                            [item.objective for item in pending_steps],
+                        )
+                        continue
+
+                    result_messages = list(step_result.get("messages") or [])
+                    step_messages = result_messages[len(step_payload["messages"]):]
+                    failure = _step_failure(step_messages)
+                    agent_state = step_result
+                    if failure:
+                        if replan_count >= 2:
+                            raise ToolPlanningError(failure)
+                        replan_count += 1
+                        replacement = await planner.plan(
+                            planning_question,
+                            tools,
+                            completed_steps=completed_steps,
+                            failure=failure,
+                            config=config,
+                        )
+                        pending_steps = list(replacement.steps)
+                        logger.warning(
+                            "DeepAgent 当前及后续步骤已重规划: count=%s, failure=%s, steps=%s",
+                            replan_count,
+                            failure,
+                            [item.objective for item in pending_steps],
+                        )
+                        continue
+
+                    completed_steps.append(
+                        CompletedExecutionStep(
+                            objective=step.objective,
+                            result=_step_summary(step_messages),
+                        )
+                    )
+
+                active_tools.clear()
+                completed_text = "\n".join(
+                    f"- {step.objective}: {step.result}"
+                    for step in completed_steps
+                ) or "没有需要执行工具的步骤"
+                final_message = _internal_message(
+                    f"工具执行计划目标：{plan.goal or planning_question}\n"
+                    f"已完成步骤及结果：\n{completed_text}\n\n"
+                    "现在向用户给出最终答案。当前没有可用工具，不要继续调用工具；"
+                    "请基于已有证据直接总结结论、依据和下一步建议。"
+                )
+                final_payload = {
+                    **agent_state,
+                    "messages": list(agent_state.get("messages") or [])
+                    + [final_message],
+                }
+                result = await deep_agent.ainvoke(
+                    final_payload,
+                    config=deep_config,
+                )
             except Exception as _await_exc:
                 # deepagent 框架层异常(典型:execute 工具撞 sandbox 命令白名单)会把整
                 # 个 graph 标 ERROR,LLM 没机会拿到 ToolMessage 写 follow-up。
                 # 这里直接调一次 LLM,把失败原因作为用户消息送进去,让 LLM 产出
                 # 人话版的失败说明 + 替代方案,再走 chat_model_end 正常 emit。
                 try:
-                    from langchain_core.messages import HumanMessage
                     err_prompt = (
                         f"上一轮工具执行失败(异常 {type(_await_exc).__name__}:"
                         f" {str(_await_exc)[:800]}),请用中文告诉用户失败原因,"
                         "并给出可执行的替代方案(例如改用白名单内的命令 uvx / python -m,"
                         "或换其他可用工具)。不要再尝试调同样的命令。"
                     )
-                    fallback_messages = list(state.get("messages") or []) + [HumanMessage(content=err_prompt)]
+                    fallback_messages = original_messages + [HumanMessage(content=err_prompt)]
                     fallback_response = await llm.ainvoke(fallback_messages, config=config)
                     fallback_text = str(getattr(fallback_response, "content", "") or "").strip()
                     if not fallback_text:
@@ -2801,8 +3038,15 @@ class ToolsNodes(BasicNode):
                 return {"messages": [AIMessage(content="DeepAgent 未返回任何消息")]}
 
             # 过滤掉输入消息，只保留 DeepAgent 新增的消息
-            input_message_count = len(state.get("messages", []))
-            new_messages = final_messages[input_message_count:]
+            input_message_count = len(original_messages)
+            new_messages = [
+                message
+                for message in final_messages[input_message_count:]
+                if not (
+                    isinstance(message, HumanMessage)
+                    and message.additional_kwargs.get("opspilot_planned_execution")
+                )
+            ]
 
             if not new_messages:
                 return {"messages": [AIMessage(content="DeepAgent 未产生新的响应")]}

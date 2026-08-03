@@ -29,6 +29,7 @@ def test_single_k8s_instance_sets_default_instance_name(mocker):
         "enable_rag": False,
         "enable_rag_knowledge_source": False,
         "skill_type": 1,
+        "entry_type": "nats",
         "locale": "zh-Hans",
         "tools": [
             {
@@ -49,6 +50,7 @@ def test_single_k8s_instance_sets_default_instance_name(mocker):
 
     assert chat_kwargs["extra_config"]["instance_name"] == "Kubernetes - 1"
     assert chat_kwargs["extra_config"]["instance_id"] == "k8s-1"
+    assert chat_kwargs["extra_config"]["entry_type"] == "nats"
     assert "_multi_instance_options" not in chat_kwargs["extra_config"]
 
 
