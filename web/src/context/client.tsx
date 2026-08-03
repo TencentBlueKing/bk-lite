@@ -1,7 +1,20 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from 'react';
 import useApiClient from '@/utils/request';
 import { ClientData, AppConfigItem } from '@/types/index';
+import {
+  PORTAL_CLIENT_NAMES_CACHE_KEY,
+  buildClientNameMap,
+  writeJsonCache,
+} from '@/utils/portalTabTitle';
 import { isSessionExpiredState } from '@/utils/sessionExpiry';
+
+const persistClientNameMap = (apps: Array<{ name?: string; display_name?: string }>) => {
+  const nextMap = buildClientNameMap(apps);
+  if (Object.keys(nextMap).length === 0) {
+    return;
+  }
+  writeJsonCache(PORTAL_CLIENT_NAMES_CACHE_KEY, nextMap);
+};
 
 interface ClientDataContextType {
   clientData: ClientData[];
@@ -86,7 +99,9 @@ export const ClientProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       setLoading(true);
       const data = await get('/core/api/get_client/');
       if (data) {
-        setClientData(sortClientData(data));
+        const sortedData = sortClientData(data);
+        setClientData(sortedData);
+        persistClientNameMap(sortedData);
       }
       initializedRef.current = true;
     } catch (err) {
@@ -109,6 +124,7 @@ export const ClientProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       if (data) {
         const sortedData = data.sort((a: AppConfigItem, b: AppConfigItem) => a.index - b.index);
         setAppConfigList(sortedData);
+        persistClientNameMap(sortedData);
       }
       return data || [];
     } catch (err) {
@@ -161,7 +177,9 @@ export const ClientProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     try {
       const data = await get('/core/api/get_client/');
       if (data) {
-        setClientData(sortClientData(data));
+        const sortedData = sortClientData(data);
+        setClientData(sortedData);
+        persistClientNameMap(sortedData);
       }
       return data || [];
     } catch (err) {

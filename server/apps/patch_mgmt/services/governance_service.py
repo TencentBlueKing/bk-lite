@@ -6,6 +6,8 @@
 - 触发异步任务（Celery / NATS 调度）
 """
 
+import hashlib
+import json
 import logging
 from datetime import datetime
 
@@ -195,6 +197,88 @@ def _build_task(
     return task
 
 
+def _source_record_by_pair(items) -> dict[tuple[int, int], int]:
+    """找到每个待重启风险项最新的安装根记录。"""
+    wanted = {(int(item.host_id), int(item.patch_id)) for item in items}
+    result: dict[tuple[int, int], int] = {}
+    if not wanted:
+        return result
+    for install_task in GovernanceTask.objects.filter(
+        parent_task__isnull=True,
+        task_type=GovernanceTaskType.INSTALL,
+        host_results__stage="pending_reboot",
+    ).distinct().order_by("-created_at", "-id"):
+        for snapshot in install_task.risk_snapshot or []:
+            pair = (
+                int(snapshot.get("host_id") or 0),
+                int(snapshot.get("patch_id") or 0),
+            )
+            if pair in wanted and pair not in result:
+                result[pair] = install_task.id
+        if len(result) == len(wanted):
+            break
+    return result
+
+
+def _build_reboot_scope(target_ids: list[int]) -> tuple[list[dict], str]:
+    """生成主机级待重启范围及可校验的快照指纹。"""
+    from apps.patch_mgmt.services.risk_service import compute_risk_items
+
+    pending_items = sorted(
+        (
+            item
+            for item in compute_risk_items()
+            if item.remediation == RemediationStatus.PENDING_REBOOT
+            and item.host_id in target_ids
+        ),
+        key=lambda item: (item.host_id, item.patch_id, item.baseline_id),
+    )
+    source_by_pair = _source_record_by_pair(pending_items)
+    snapshot = [
+        {
+            "id": f"{item.host_id}:{item.patch_id}:{item.baseline_id}",
+            "host_id": item.host_id,
+            "host_name": item.host_name,
+            "host_ip": item.host_ip,
+            "patch_id": item.patch_id,
+            "patch_name": item.patch_title,
+            "patch_severity": item.patch_severity,
+            "baseline_id": item.baseline_id,
+            "baseline_name": item.baseline_name,
+            "source_record_id": source_by_pair.get((item.host_id, item.patch_id)),
+        }
+        for item in pending_items
+    ]
+    canonical = json.dumps(snapshot, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    token = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+    return snapshot, token
+
+
+def get_reboot_scope(target_ids: list) -> dict:
+    """返回重启确认弹窗必须展示的完整主机-补丁范围。"""
+    normalized = sorted({int(target_id) for target_id in target_ids if target_id})
+    if not normalized:
+        raise PatchBusinessError("target_ids_required", "target_ids is required")
+    existing = set(
+        PatchTarget.objects.filter(pk__in=normalized).values_list("id", flat=True)
+    )
+    missing = [target_id for target_id in normalized if target_id not in existing]
+    if missing:
+        raise PatchBusinessError(
+            "targets_not_found", "Targets not found: {ids}", params={"ids": missing}
+        )
+    snapshot, token = _build_reboot_scope(normalized)
+    covered = {int(item["host_id"]) for item in snapshot}
+    not_pending = sorted(set(normalized) - covered)
+    if not_pending:
+        raise PatchBusinessError(
+            "targets_not_pending_reboot",
+            "The following targets are not pending reboot: {ids}",
+            params={"ids": not_pending},
+        )
+    return {"target_ids": normalized, "items": snapshot, "scope_token": token}
+
+
 @transaction.atomic
 def create_remediation_task(request, items: list[dict], data: dict) -> GovernanceTask:
     """一键治理：按 (host_id, patch_id) 对创建 install 任务。
@@ -303,8 +387,6 @@ def create_remediation_task(request, items: list[dict], data: dict) -> Governanc
 @transaction.atomic
 def create_reboot_task(request, target_ids: list, data: dict) -> GovernanceTask:
     """一键重启：创建 reboot 任务。重启任务必须设置窗口。"""
-    from apps.patch_mgmt.services.risk_service import compute_risk_items
-
     target_ids = sorted({int(t) for t in target_ids if t})
     if not target_ids:
         raise PatchBusinessError("target_ids_required", "target_ids is required")
@@ -314,47 +396,25 @@ def create_reboot_task(request, target_ids: list, data: dict) -> GovernanceTask:
     if missing:
         raise PatchBusinessError("targets_not_found", "Targets not found: {ids}", params={"ids": missing})
 
-    pending_items = [
-        item
-        for item in compute_risk_items()
-        if item.remediation == RemediationStatus.PENDING_REBOOT
-        and item.host_id in target_ids
-    ]
-    pending_reboot_target_ids = {item.host_id for item in pending_items}
-    not_pending_reboot = sorted(set(target_ids) - pending_reboot_target_ids)
-    if not_pending_reboot:
-        raise PatchBusinessError("targets_not_pending_reboot", "The following targets are not pending reboot: {ids}", params={"ids": not_pending_reboot})
-
     # 重启必须有窗口
     if data.get("execution_mode") != "window":
         data = {**data, "execution_mode": "window"}
     _lock_and_assert_hosts_available(target_ids, data.get("execution_mode", "window"))
+    reboot_snapshot, scope_token = _build_reboot_scope(target_ids)
+    covered = {int(item["host_id"]) for item in reboot_snapshot}
+    not_pending_reboot = sorted(set(target_ids) - covered)
+    if not_pending_reboot:
+        raise PatchBusinessError("targets_not_pending_reboot", "The following targets are not pending reboot: {ids}", params={"ids": not_pending_reboot})
+    expected_token = str(data.get("scope_token") or "")
+    if not expected_token or expected_token != scope_token:
+        raise PatchBusinessError(
+            "reboot_scope_changed",
+            "The pending-reboot scope has changed. Refresh and confirm it again",
+        )
 
-    source_task_by_pair: dict[tuple[int, int], int] = {}
-    for install_task in GovernanceTask.objects.filter(
-        parent_task__isnull=True,
-        task_type=GovernanceTaskType.INSTALL,
-    ).order_by("-created_at"):
-        for snapshot in install_task.risk_snapshot or []:
-            pair = (int(snapshot.get("host_id") or 0), int(snapshot.get("patch_id") or 0))
-            source_task_by_pair.setdefault(pair, install_task.id)
-
-    reboot_snapshot = [
-        {
-            "id": f"{item.host_id}:{item.patch_id}:{item.baseline_id}",
-            "host_id": item.host_id,
-            "host_name": item.host_name,
-            "host_ip": item.host_ip,
-            "patch_id": item.patch_id,
-            "patch_name": item.patch_title,
-            "baseline_id": item.baseline_id,
-            "baseline_name": item.baseline_name,
-            "source_task_id": source_task_by_pair.get((item.host_id, item.patch_id)),
-        }
-        for item in pending_items
-    ]
+    pending_items = reboot_snapshot
     default_name = (
-        f"重启 · {pending_items[0].host_name}"
+        f"重启 · {pending_items[0]['host_name']}"
         if len(target_ids) == 1 and pending_items
         else f"一键重启 · {len(target_ids)}台"
     )
@@ -364,9 +424,21 @@ def create_reboot_task(request, target_ids: list, data: dict) -> GovernanceTask:
         name=name,
         task_type=GovernanceTaskType.REBOOT,
         target_ids=target_ids,
-        patch_ids=[],
+        patch_ids=list(
+            dict.fromkeys(
+                int(item["patch_id"])
+                for item in reboot_snapshot
+                if item.get("patch_id")
+            )
+        ),
         data={**data, "risk_snapshot": reboot_snapshot},
     )
+    source_ids = {
+        int(item.get("source_record_id") or 0) for item in reboot_snapshot
+    } - {0}
+    if len(source_ids) == 1:
+        task.source_record_id = source_ids.pop()
+        task.save(update_fields=["source_record", "updated_at"])
     _trigger_async(task.id)
     return task
 
@@ -422,57 +494,65 @@ def create_verify_task(request, target_ids: list, data: dict) -> GovernanceTask:
 
 
 @transaction.atomic
-def create_retry_task(request, original_task: GovernanceTask, target_id: int) -> GovernanceTask:
-    """重试失败主机：在同一可见根记录下创建内部步骤尝试。
-
-    - install 任务保留原 patch_list
-    - 标记原主机 can_retry=False 防止重复重试
-    """
+def create_retry_task(
+    request,
+    original_task: GovernanceTask,
+    risk_item_id: str,
+) -> GovernanceTask:
+    """重试单个风险项，并创建独立的新根执行记录。"""
     from apps.patch_mgmt.services.execution_record_service import (
-        _task_chain,
         build_risk_item_summaries,
     )
 
     original_task = GovernanceTask.objects.select_for_update().get(pk=original_task.pk)
-    chain = _task_chain(original_task)
-    retryable_host = GovernanceTaskHost.objects.filter(
-        task__in=chain,
-        target_id=target_id,
-        can_retry=True,
-    ).order_by("-created_at").first()
-    has_unmet_item = any(
-        item["host_id"] == target_id and item["status"] == "unmet"
-        for item in build_risk_item_summaries(original_task)
+    item = next(
+        (
+            snapshot
+            for snapshot in (original_task.risk_snapshot or [])
+            if str(snapshot.get("id")) == str(risk_item_id)
+        ),
+        None,
     )
-    if retryable_host is None and not has_unmet_item:
-        raise PatchBusinessError("target_not_retryable", "The target does not exist or cannot be retried")
+    summary = next(
+        (
+            current
+            for current in build_risk_item_summaries(original_task)
+            if str(current["id"]) == str(risk_item_id)
+        ),
+        None,
+    )
+    if item is None or summary is None or not summary.get("can_retry"):
+        raise PatchBusinessError(
+            "risk_item_not_retryable",
+            "The risk item does not exist or cannot be retried",
+        )
+    target_id = int(item["host_id"])
     if not PatchTarget.objects.filter(pk=target_id).exists():
         raise PatchBusinessError("target_deleted", "The target does not exist or has been deleted and cannot be retried")
 
     _lock_and_assert_hosts_available([target_id], "now")
-    host = original_task.host_results.filter(target_id=target_id).first() or retryable_host
-
-    # 防止重复重试
-    GovernanceTaskHost.objects.filter(
-        task__in=chain,
-        target_id=target_id,
-        can_retry=True,
-    ).update(can_retry=False, updated_at=_now())
+    if GovernanceTask.objects.filter(
+        parent_task__isnull=True,
+        source_record=original_task,
+        source_risk_item_id=str(risk_item_id),
+    ).exists():
+        raise PatchBusinessError(
+            "risk_item_already_retried",
+            "A new retry record has already been created for this risk item",
+        )
+    host = original_task.host_results.filter(target_id=target_id).first()
 
     task_type = original_task.task_type
-    target_snapshot = [
-        item
-        for item in (original_task.risk_snapshot or [])
-        if int(item.get("host_id") or 0) == target_id
-    ]
-    patch_ids = (
-        list(dict.fromkeys(int(item["patch_id"]) for item in target_snapshot if item.get("patch_id")))
-        if task_type == GovernanceTaskType.INSTALL
-        else []
+    target_snapshot = [{**item, "source_record_id": original_task.id}]
+    patch_ids = list(
+        dict.fromkeys(
+            int(snapshot["patch_id"])
+            for snapshot in target_snapshot
+            if snapshot.get("patch_id")
+        )
     )
-    if task_type == GovernanceTaskType.INSTALL and not patch_ids:
-        patch_ids = list(original_task.patch_list or [])
-    name = f"重试 · {host.target_name or str(target_id)} · {_now().strftime('%m-%d %H:%M')}"
+    host_name = item.get("host_name") or (host.target_name if host else str(target_id))
+    name = f"重试 · {host_name} · {_now().strftime('%m-%d %H:%M')}"
 
     task = _build_task(
         request,
@@ -487,7 +567,8 @@ def create_retry_task(request, original_task: GovernanceTask, target_id: int) ->
             "risk_snapshot": target_snapshot,
         },
     )
-    task.parent_task = original_task
-    task.save(update_fields=["parent_task", "updated_at"])
+    task.source_record = original_task
+    task.source_risk_item_id = str(risk_item_id)
+    task.save(update_fields=["source_record", "source_risk_item_id", "updated_at"])
     _trigger_async(task.id)
     return task

@@ -13,10 +13,13 @@ import pytest
 from rest_framework import status
 
 from apps.patch_mgmt.constants import (
+    GovernanceTaskStatus,
+    GovernanceTaskType,
     OSType,
     PatchSourceType,
 )
 from apps.patch_mgmt.models import (
+    GovernanceTask,
     Patch,
     PatchSource,
     PatchTarget,
@@ -250,6 +253,41 @@ class TestPatchSourceViewApi:
         assert resp.data == {"items": [], "total": 0, "page": 1, "page_size": 20}
         preview.assert_called_once_with(source)
 
+    def test_linux_preview_search_matches_package_name_only(self, su_client, mocker):
+        source = PatchSource.objects.create(
+            name="YUM-Test",
+            source_type=PatchSourceType.YUM_REPO,
+            url="https://repo.example.com",
+            team=[1],
+        )
+        mocker.patch(
+            "apps.patch_mgmt.services.source_sync_service.SourceSyncService.preview_sync_candidates",
+            return_value=[
+                {
+                    "key": "RLSA-KERNEL",
+                    "name": "kernel",
+                    "title": "Important: kernel security update",
+                    "version": "1.0-1",
+                },
+                {
+                    "key": "RLSA-BPFTOOL",
+                    "name": "bpftool",
+                    "title": "Important: kernel security update",
+                    "version": "1.0-1",
+                },
+            ],
+        )
+
+        resp = su_client.post(
+            f"{PATCH_SOURCE_URL}{source.id}/preview_sync/",
+            {"search": "kernel", "page": 1, "page_size": 20},
+            format="json",
+        )
+
+        assert resp.status_code == status.HTTP_200_OK
+        assert resp.data["total"] == 1
+        assert [item["name"] for item in resp.data["items"]] == ["kernel"]
+
     def test_wsus_preview_missing_dependency_returns_400(
         self, su_client, monkeypatch
     ):
@@ -479,6 +517,53 @@ class TestPatchDashboardViewApi:
         assert resp.data["target_total"] == 1  # 仅团队 1
         assert resp.data["patch_total"] == 1
 
+    def test_recent_tasks_mirror_visible_execution_record_roots(self, su_client):
+        install = GovernanceTask.objects.create(
+            name="治理记录",
+            task_type=GovernanceTaskType.INSTALL,
+            status=GovernanceTaskStatus.COMPLETED,
+            execution_mode="now",
+            team=[1],
+        )
+        GovernanceTask.objects.create(
+            name="内部验证",
+            task_type=GovernanceTaskType.VERIFY,
+            status=GovernanceTaskStatus.COMPLETED,
+            parent_task=install,
+            team=[1],
+        )
+        GovernanceTask.objects.create(
+            name="评估",
+            task_type=GovernanceTaskType.ASSESS,
+            status=GovernanceTaskStatus.COMPLETED,
+            team=[1],
+        )
+        reboot = GovernanceTask.objects.create(
+            name="重启记录",
+            task_type=GovernanceTaskType.REBOOT,
+            status=GovernanceTaskStatus.PENDING,
+            execution_mode="window",
+            team=[1],
+        )
+
+        resp = su_client.get(DASHBOARD_STATS_URL)
+
+        assert resp.status_code == status.HTTP_200_OK
+        assert [item["id"] for item in resp.data["recent_tasks"]] == [reboot.id, install.id]
+        assert set(resp.data["recent_tasks"][0]) == {
+            "id",
+            "name",
+            "task_type",
+            "task_type_display",
+            "execution_mode",
+            "execution_window_start",
+            "execution_window_end",
+            "status",
+            "status_code",
+            "status_color",
+            "created_at",
+        }
+
 
 # ── Risk ViewSet ──────────────────────────────────────────────────────────────
 
@@ -519,9 +604,12 @@ class TestRiskViewApi:
         assert resp.status_code == status.HTTP_200_OK
         assert resp.data["total"] >= 1
 
-    def test_risk_remediate_creates_install_task(self, su_client):
+    def test_risk_remediate_creates_install_task(self, su_client, mocker):
         from apps.patch_mgmt.models import GovernanceTask
 
+        trigger = mocker.patch(
+            "apps.patch_mgmt.services.governance_service._trigger_async"
+        )
         target, patch, _baseline = self._setup()
         resp = su_client.post(
             f"{RISK_URL}remediate/",
@@ -529,7 +617,8 @@ class TestRiskViewApi:
             format="json",
         )
         assert resp.status_code == status.HTTP_201_CREATED
-        assert GovernanceTask.objects.filter(task_type="install").count() == 1
+        task = GovernanceTask.objects.get(task_type="install")
+        trigger.assert_called_once_with(task.id)
 
     def test_risk_reboot_requires_window(self, su_client):
         target, _patch, _baseline = self._setup()
@@ -574,6 +663,7 @@ class TestRiskViewApi:
             stage="pending_reboot",
             stage_color="warning",
         )
+        return task
 
     def test_risk_reboot_rejects_host_not_pending_reboot(self, su_client):
         from apps.patch_mgmt.models import GovernanceTask
@@ -591,20 +681,99 @@ class TestRiskViewApi:
         assert str(target.id) in resp.data["detail"]
         assert not GovernanceTask.objects.filter(task_type="reboot").exists()
 
-    def test_risk_reboot_accepts_pending_reboot_host(self, su_client):
+    def test_risk_reboot_accepts_pending_reboot_host(self, su_client, mocker):
         from apps.patch_mgmt.models import GovernanceTask
 
+        trigger = mocker.patch(
+            "apps.patch_mgmt.services.governance_service._trigger_async"
+        )
+        target, patch, _baseline = self._setup()
+        self._mark_pending_reboot(target, patch)
+
+        preview = su_client.post(
+            f"{RISK_URL}reboot_preview/",
+            {"target_ids": [target.id]},
+            format="json",
+        )
+        assert preview.status_code == status.HTTP_200_OK
+        assert preview.data["target_ids"] == [target.id]
+        assert [(item["host_id"], item["patch_id"]) for item in preview.data["items"]] == [
+            (target.id, patch.id)
+        ]
+
+        resp = su_client.post(
+            f"{RISK_URL}reboot/",
+            {
+                "target_ids": [target.id],
+                "scope_token": preview.data["scope_token"],
+                **self._valid_reboot_window(),
+            },
+            format="json",
+        )
+
+        assert resp.status_code == status.HTTP_201_CREATED
+        task = GovernanceTask.objects.get(task_type="reboot", target_list=[target.id])
+        trigger.assert_called_once_with(task.id)
+
+    def test_risk_reboot_rejects_stale_scope_token(self, su_client):
         target, patch, _baseline = self._setup()
         self._mark_pending_reboot(target, patch)
 
         resp = su_client.post(
             f"{RISK_URL}reboot/",
-            {"target_ids": [target.id], **self._valid_reboot_window()},
+            {
+                "target_ids": [target.id],
+                "scope_token": "stale-token",
+                **self._valid_reboot_window(),
+            },
             format="json",
         )
 
-        assert resp.status_code == status.HTTP_201_CREATED
-        assert GovernanceTask.objects.filter(task_type="reboot", target_list=[target.id]).exists()
+        assert resp.status_code == status.HTTP_400_BAD_REQUEST
+        assert resp.data["code"] == "reboot_scope_changed"
+
+    def test_reboot_preview_source_record_ignores_later_failed_install(self, su_client):
+        from apps.patch_mgmt.constants import GovernanceTaskStatus, GovernanceTaskType
+        from apps.patch_mgmt.models import GovernanceTask, GovernanceTaskHost
+
+        target, patch, baseline = self._setup()
+        completed = self._mark_pending_reboot(target, patch)
+        risk_snapshot = [
+            {
+                "id": f"{target.id}:{patch.id}:{baseline.id}",
+                "host_id": target.id,
+                "patch_id": patch.id,
+                "baseline_id": baseline.id,
+            }
+        ]
+        completed.risk_snapshot = risk_snapshot
+        completed.save(update_fields=["risk_snapshot", "updated_at"])
+        failed = GovernanceTask.objects.create(
+            name="later failed install",
+            task_type=GovernanceTaskType.INSTALL,
+            status=GovernanceTaskStatus.FAILED,
+            target_list=[target.id],
+            patch_list=[patch.id],
+            risk_snapshot=risk_snapshot,
+            team=[1],
+        )
+        GovernanceTaskHost.objects.create(
+            task=failed,
+            target_id=target.id,
+            target_name=target.name,
+            target_ip=target.ip,
+            stage="failed",
+            stage_color="error",
+        )
+
+        preview = su_client.post(
+            f"{RISK_URL}reboot_preview/",
+            {"target_ids": [target.id]},
+            format="json",
+        )
+
+        assert preview.status_code == status.HTTP_200_OK
+        assert preview.data["items"][0]["source_record_id"] == completed.id
 
     def test_risk_reboot_rejects_mixed_pending_and_non_pending_hosts(self, su_client):
         from apps.patch_mgmt.models import GovernanceTask
@@ -689,7 +858,10 @@ class TestGovernanceTaskViewApi:
 
         assert data["progress"] == "1 / 1"
 
-    def test_create_assess_task_without_name_succeeds(self, su_client):
+    def test_create_assess_task_without_name_succeeds(self, su_client, mocker):
+        trigger = mocker.patch(
+            "apps.patch_mgmt.services.governance_service._trigger_async"
+        )
         target = PatchTarget.objects.create(name="web-01", ip="10.0.0.1", os_type=OSType.WINDOWS, team=[1])
         resp = su_client.post(
             GOVERNANCE_URL,
@@ -698,6 +870,21 @@ class TestGovernanceTaskViewApi:
         )
         assert resp.status_code == status.HTTP_201_CREATED
         assert "id" in resp.data
+        trigger.assert_called_once_with(resp.data["id"])
+
+    def test_manual_verify_task_is_rejected(self, su_client):
+        target = PatchTarget.objects.create(
+            name="web-verify", ip="10.0.0.9", os_type=OSType.WINDOWS, team=[1]
+        )
+
+        resp = su_client.post(
+            GOVERNANCE_URL,
+            {"task_type": "verify", "target_list": [target.id], "execution_mode": "now"},
+            format="json",
+        )
+
+        assert resp.status_code == status.HTTP_400_BAD_REQUEST
+        assert resp.data["code"] == "manual_verify_not_supported"
 
     @staticmethod
     def _make_cancel_task(*, task_status, stages):

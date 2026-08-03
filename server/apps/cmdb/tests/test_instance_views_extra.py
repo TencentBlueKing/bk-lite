@@ -35,6 +35,10 @@ def _perm(monkeypatch):
         lambda request, model_id="", permission_type=None: {1: {"permission_instances_map": {}, "inst_names": []}},
     )
     monkeypatch.setattr(
+        f"{VIEWS}.ModelManage.search_model_info",
+        lambda model_id: {"model_id": model_id, "model_name": model_id, "is_visible": True},
+    )
+    monkeypatch.setattr(
         f"{VIEWS}.InstanceViewSet.require_instance_permission",
         lambda self, request, instance, operator=None: None,
     )

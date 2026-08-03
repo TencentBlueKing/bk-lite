@@ -448,6 +448,7 @@ def test_dedupe_migration_keeps_earliest_record():
     executor = MigrationExecutor(connection)
     old_target = [("cmdb", "0031_subscriptiondelivery")]
     new_target = [("cmdb", "0033_config_file_content_lifecycle")]
+    latest_target = [("cmdb", "0042_collectmodels_system_code_unique")]
     executor.migrate(old_target)
     try:
         old_apps = executor.loader.project_state(old_target).apps
@@ -470,7 +471,7 @@ def test_dedupe_migration_keeps_earliest_record():
         assert historical_version.objects.filter(id=second.id).exists()
     finally:
         executor = MigrationExecutor(connection)
-        executor.migrate(new_target)
+        executor.migrate(latest_target)
 
 
 @pytest.mark.django_db(transaction=True)
@@ -478,6 +479,7 @@ def test_content_lifecycle_migration_classifies_existing_versions():
     executor = MigrationExecutor(connection)
     old_target = [("cmdb", "0032_dedupe_config_file_versions")]
     new_target = [("cmdb", "0033_config_file_content_lifecycle")]
+    latest_target = [("cmdb", "0042_collectmodels_system_code_unique")]
     executor.migrate(old_target)
     try:
         old_apps = executor.loader.project_state(old_target).apps
@@ -507,4 +509,4 @@ def test_content_lifecycle_migration_classifies_existing_versions():
         assert missing_version.content_error == "历史配置版本缺少正文对象"
     finally:
         executor = MigrationExecutor(connection)
-        executor.migrate(new_target)
+        executor.migrate(latest_target)

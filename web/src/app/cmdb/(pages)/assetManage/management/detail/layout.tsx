@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useRef, useState, useEffect } from 'react';
-import Image from 'next/image';
 import WithSideMenuLayout from '@/components/sub-layout';
 import ModelModal from '../list/modelModal';
 import CopyModelModal from '../list/copyModelModal';
@@ -10,7 +9,7 @@ import useApiClient from '@/utils/request';
 import PermissionWrapper from '@/components/permission';
 import { Card, Modal, message, Tooltip } from 'antd';
 import { useRouter } from 'next/navigation';
-import { getIconUrl } from '@/app/cmdb/utils/common';
+import ModelIcon from '@/app/cmdb/components/model-icon';
 import { EditTwoTone, DeleteTwoTone, CopyOutlined } from '@ant-design/icons';
 import { useSearchParams } from 'next/navigation';
 import { ClassificationItem } from '@/app/cmdb/types/assetManage';
@@ -187,11 +186,9 @@ const AboutLayout = ({ children }: { children: React.ReactNode }) => {
       <div className={`${attrLayoutStyle.attrLayout}`}>
         <Card style={{ width: '100%' }} className="mb-[20px]">
           <header className="flex items-center">
-            <Image
-              src={getIconUrl({
-                icn: modelDetail.icn || '',
-                model_id: modelId,
-              })}
+            <ModelIcon
+              icon={modelDetail.icn}
+              modelId={modelId}
               className="block mr-[20px]"
               alt={t('picture')}
               width={30}

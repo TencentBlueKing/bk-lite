@@ -40,8 +40,8 @@ assertAbsent(page, /<Input\.TextArea[\s\S]{0,500}\bshowCount\b/, '取消原因�
 assertPresent(page, /canCancel:\s*Boolean\(task\.can_cancel\)/, '取消资格由后端主机状态决定');
 assertPresent(page, /row\.canCancel[\s\S]{0,700}patchManager\.cancel/, '可取消任务按钮');
 
-assertPresent(page, /setInterval\(\(\) => \{[\s\S]{0,300}\},\s*2000\);/, '执行记录 2 秒轮询');
-assertPresent(riskPendingPage, /setInterval\(\(\) => \{[\s\S]{0,300}\},\s*2000\);/, '待治理风险 2 秒轮询');
-assertPresent(targetPage, /setInterval\(\(\) => \{[\s\S]{0,300}\},\s*2000\);/, '目标管理 2 秒轮询');
+assertPresent(page, /setInterval\(\(\) => \{[\s\S]{0,300}\},\s*PATCH_MANAGER_POLL_INTERVAL_MS\);/, '执行记录统一 5 秒轮询');
+assertPresent(riskPendingPage, /setInterval\(\(\) => \{[\s\S]{0,300}\},\s*PATCH_MANAGER_POLL_INTERVAL_MS\);/, '待治理风险统一 5 秒轮询');
+assertPresent(targetPage, /setInterval\(\(\) => \{[\s\S]{0,300}\},\s*pollIntervalMs\);/, '目标管理由刷新选择器控制轮询');
 
 console.log('补丁治理取消前端约束通过');

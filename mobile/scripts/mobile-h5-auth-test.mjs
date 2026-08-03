@@ -453,3 +453,12 @@ test('browser user cache removes the backend JWT', async () => {
   assert.equal(cachedUser.token, '');
   assert.equal(JSON.stringify(cachedUser).includes('backend-jwt'), false);
 });
+
+test('restored authentication redirects the public login page to the workbench', async () => {
+  const source = await readFile(new URL('src/context/auth.tsx', projectRoot), 'utf8');
+
+  assert.match(
+    source,
+    /if \(isAuthenticated && pathname === '\/login'\) \{\s*navigateAfterLogin\(\);\s*return;\s*\}/,
+  );
+});

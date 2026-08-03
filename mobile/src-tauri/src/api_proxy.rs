@@ -633,9 +633,7 @@ pub async fn cancel_stream(
     registry: State<'_, StreamRegistry>,
     stream_id: String,
 ) -> Result<(), String> {
-    let mut map = registry.0.lock().unwrap_or_else(|e| e.into_inner());
-    if let Some(tx) = map.remove(&stream_id) {
-        let _ = tx.send(());
+    if cancel_registered_stream(&registry, &stream_id) {
         log::info!(
             "🛑 [cancel_stream] Cancelled stream: {}",
             &stream_id[..8.min(stream_id.len())]
@@ -644,18 +642,35 @@ pub async fn cancel_stream(
     Ok(())
 }
 
+fn cancel_registered_stream(registry: &StreamRegistry, stream_id: &str) -> bool {
+    let sender = registry
+        .0
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .remove(stream_id);
+    match sender {
+        Some(sender) => {
+            let _ = sender.send(());
+            true
+        }
+        None => false,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
-        build_http_client, is_allowed_host_with_allowlist, redact_headers_for_log, StreamEvent,
-        Utf8ChunkDecoder,
+        build_http_client, cancel_registered_stream, is_allowed_host_with_allowlist,
+        redact_headers_for_log, StreamEvent, StreamRegistry, Utf8ChunkDecoder,
     };
     use std::{
         collections::HashMap,
         io::{Read, Write},
         net::TcpListener,
+        sync::Mutex,
         thread,
     };
+    use tokio::sync::oneshot;
 
     #[test]
     fn test_utf8_chunk_decoder_preserves_code_points_split_across_network_chunks() {
@@ -696,6 +711,32 @@ mod tests {
                 "status": 401,
             }),
         );
+    }
+
+    #[test]
+    fn test_cancel_registered_stream_removes_and_notifies_active_stream() {
+        let registry = StreamRegistry(Mutex::new(HashMap::new()));
+        let (cancel_tx, mut cancel_rx) = oneshot::channel();
+        registry
+            .0
+            .lock()
+            .expect("lock stream registry")
+            .insert("stream-active".to_string(), cancel_tx);
+
+        assert!(cancel_registered_stream(&registry, "stream-active"));
+        assert!(registry.0.lock().expect("lock stream registry").is_empty());
+        cancel_rx
+            .try_recv()
+            .expect("receive cancellation signal without waiting");
+    }
+
+    #[test]
+    fn test_cancel_registered_stream_is_idempotent_after_cleanup() {
+        let registry = StreamRegistry(Mutex::new(HashMap::new()));
+
+        assert!(!cancel_registered_stream(&registry, "stream-finished"));
+        assert!(!cancel_registered_stream(&registry, "stream-finished"));
+        assert!(registry.0.lock().expect("lock stream registry").is_empty());
     }
 
     // --- 未配置白名单（默认只放行 localhost/127.0.0.1）---

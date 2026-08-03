@@ -36,6 +36,7 @@ const messages: Record<string, string> = {
   'system.user.userSyncPage.phaseCounter.syncUsersUpdated': '已更新 {{n}} 名用户',
   'system.user.userSyncPage.phaseCounter.syncUsersConflict': '发现 {{n}} 名冲突用户',
   'system.user.userSyncPage.phaseCounter.reconcileDisabled': '禁用 {{n}}',
+  'system.user.userSyncPage.phaseCounter.reconcileDeletedUsers': '删除 {{n}} 名用户',
   'system.user.userSyncPage.phaseCounter.reconcileDeleted': '删除 {{n}} 组',
   'system.user.userSyncPage.phaseCounter.syncGroupsCreated': '已新建 {{n}} 个组织',
   'system.user.userSyncPage.phaseCounter.syncGroupsUpdated': '已更新 {{n}} 个组织',
@@ -44,7 +45,7 @@ const messages: Record<string, string> = {
   'system.user.userSyncPage.phaseResult.fetchDirectory': '已获取 {{users}} 名用户 · {{groups}} 个组织',
   'system.user.userSyncPage.phaseResult.syncGroupsUnchanged': '已核验 {{groups}} 个组织，未发现变更',
   'system.user.userSyncPage.phaseResult.syncUsersUnchanged': '已核验 {{users}} 名用户，未发现变更',
-  'system.user.userSyncPage.phaseResult.reconcileChanged': '已禁用 {{users}} 名用户 · 已移除 {{groups}} 个组织',
+  'system.user.userSyncPage.phaseResult.reconcileChanged': '已删除 {{users}} 名用户 · 已移除 {{groups}} 个组织',
   'system.user.userSyncPage.phaseResult.reconcileUnchanged': '未发现需清理的用户或组织',
   'system.user.userSyncPage.phaseResult.emailQueued': '邮件已入队，待发送 {{total}} 封',
   'system.user.userSyncPage.phaseResult.emailSending': '邮件发送中，已发送 {{sent}} / {{total}} 封',
@@ -188,13 +189,13 @@ function testFormatPhaseCounterLine() {
   };
   assert.equal(formatPhaseCounterLine('sync_users', zeroPayload, t), '');
 
-  // reconcile: 2 禁用 / 1 删除
+  // reconcile: 2 删除用户 / 1 删除组织
   const reconcilePayload: UserSyncRunProgressPayload = {
     phase_progress: {
-      reconcile: { current: 1, total: 1, status: 'finish', counters: { disabled_users: 2, deleted_group_count: 1 } },
+      reconcile: { current: 1, total: 1, status: 'finish', counters: { deleted_users: 2, deleted_group_count: 1 } },
     },
   };
-  assert.equal(formatPhaseCounterLine('reconcile', reconcilePayload, t), '禁用 2 · 删除 1 组');
+  assert.equal(formatPhaseCounterLine('reconcile', reconcilePayload, t), '删除 2 名用户 · 删除 1 组');
 
   // reconcile 只有 disabled 没有 deleted
   const onlyDisabled: UserSyncRunProgressPayload = {
@@ -248,10 +249,10 @@ function testFormatPhaseBusinessResult() {
   assert.equal(
     formatPhaseBusinessResult(
       'reconcile',
-      { phase_progress: { reconcile: { current: 1, total: 1, status: 'finish', counters: { disabled_users: 2, deleted_group_count: 1 } } } },
+      { phase_progress: { reconcile: { current: 1, total: 1, status: 'finish', counters: { deleted_users: 2, deleted_group_count: 1 } } } },
       t,
     ),
-    '已禁用 2 名用户 · 已移除 1 个组织',
+    '已删除 2 名用户 · 已移除 1 个组织',
   );
   assert.equal(
     formatPhaseBusinessResult(

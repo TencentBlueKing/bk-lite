@@ -87,6 +87,106 @@ def test_user_sync_source_model_keeps_provider_business_params_in_business_confi
     assert "root_department_id" not in field_names
 
 
+def test_reconcile_deletes_stale_users_instead_of_disabling_them():
+    class StaleUsers:
+        def __init__(self):
+            self.deleted = False
+            self.user = SimpleNamespace(username="missing-user", disabled=False, group_list=[1], save=lambda **kwargs: None)
+
+        def __iter__(self):
+            return iter([self.user])
+
+        def values_list(self, field_name, flat=False):
+            assert field_name == "username"
+            assert flat is True
+            return ["missing-user"]
+
+        def delete(self):
+            self.deleted = True
+            return 1, {"system_mgmt.User": 1}
+
+    class UserManager:
+        def __init__(self, stale_users):
+            self.stale_users = stale_users
+
+        def filter(self, **kwargs):
+            assert kwargs == {"sync_source": source, "domain": "domain.com"}
+            return self
+
+        def exclude(self, **kwargs):
+            assert kwargs == {"username__in": ["current-user"]}
+            return self.stale_users
+
+    class EmptyGroups:
+        def exclude(self, **kwargs):
+            return self
+
+        def values_list(self, *args, **kwargs):
+            return []
+
+    source = SimpleNamespace()
+    stale_users = StaleUsers()
+    with patch("apps.system_mgmt.services.user_sync_service.User.objects", UserManager(stale_users)), patch(
+        "apps.system_mgmt.services.user_sync_service.Group.objects.filter", return_value=EmptyGroups()
+    ), patch("apps.system_mgmt.services.user_sync_service.clear_users_permission_cache"), patch(
+        "apps.system_mgmt.services.user_sync_service.transaction.atomic"
+    ) as atomic:
+        atomic.return_value.__enter__.return_value = None
+        atomic.return_value.__exit__.return_value = False
+        result = user_sync_service_module._reconcile_synced_directory(
+            source=source,
+            synced_usernames=["current-user"],
+            active_group_ids=[10],
+            root_group_id=10,
+        )
+
+    assert stale_users.deleted is True
+    assert result["deleted_user_count"] == 1
+
+
+@pytest.mark.django_db
+def test_execute_user_sync_persists_directory_summary_before_sync_stages(ready_integration_instance):
+    source = UserSyncSource.objects.create(
+        name="directory-summary-during-sync",
+        integration_instance=ready_integration_instance,
+        enabled=True,
+        root_group_name="Directory Summary",
+        business_config={"root_department_id": "0"},
+        field_mapping={"username": "user_id"},
+        schedule_config={"mode": "disabled"},
+    )
+    provider_result = CapabilityExecutionResult.success_result(
+        "ok",
+        payload={
+            "group_list": [{"id": "dept-1"}, {"id": "dept-2"}, {"id": "dept-3"}],
+            "user_list": [{"user_id": "user-1"}, {"user_id": "user-2"}],
+        },
+    )
+    observed_payload = {}
+
+    def capture_payload_before_sync_stages(source, payload, current_run):
+        current_run.refresh_from_db()
+        observed_payload.update(current_run.payload)
+        return {
+            "summary": "ok",
+            "synced_user_count": 0,
+            "synced_group_count": 0,
+            "disabled_user_count": 0,
+            "conflict_usernames": [],
+        }
+
+    with patch(
+        "apps.system_mgmt.services.user_sync_service.RuntimeApplicationService.execute",
+        return_value=provider_result,
+    ), patch(
+        "apps.system_mgmt.services.user_sync_service._apply_user_sync_payload",
+        side_effect=capture_payload_before_sync_stages,
+    ):
+        assert execute_user_sync(source.id)["result"] is True
+
+    assert observed_payload["input_summary"] == {"fetched_user_count": 2, "fetched_group_count": 3}
+
+
 @pytest.mark.django_db
 def test_user_sync_source_serializer_rejects_conflicting_root_group_name(ready_integration_instance):
     Group.objects.create(name="Feishu Root", parent_id=0)
@@ -479,8 +579,8 @@ def test_feishu_user_sync_serializer_drops_deprecated_fetch_child_config(ready_i
                 "user_id_type": "open_id",
                 "fetch_child": False,
             },
-            "field_mapping": {},
-            "schedule_config": {},
+            "field_mapping": {"username": "user_id"},
+            "schedule_config": {"mode": "disabled"},
         }
     )
 
@@ -679,8 +779,8 @@ def test_serializer_accepts_business_config_without_mirroring_legacy_columns(rea
             "business_config": {
                 "root_department_id": "dept-99",
             },
-            "field_mapping": {},
-            "schedule_config": {},
+            "field_mapping": {"username": "user_id"},
+            "schedule_config": {"mode": "disabled"},
         }
     )
 
@@ -792,7 +892,7 @@ def test_serializer_rejects_legacy_schedule_payload(ready_integration_instance):
                 "enabled": True,
                 "root_group_name": "Invalid Schedule Root",
                 "business_config": {"root_department_id": "0"},
-                "field_mapping": {},
+                "field_mapping": {"username": "user_id"},
                 "schedule_config": {"enabled": True, "sync_time": "25:00"},
             }
         )
@@ -815,7 +915,7 @@ def test_serializer_accepts_weekly_schedule_config(ready_integration_instance):
                 "enabled": True,
                 "root_group_name": "Weekly Schedule Root",
                 "business_config": {"root_department_id": "0"},
-                "field_mapping": {},
+                "field_mapping": {"username": "user_id"},
                 "schedule_config": {
                     "mode": "weekly",
                     "time": "02:00",
@@ -856,7 +956,7 @@ def test_serializer_rejects_user_sync_field_mapping_not_declared_by_manifest(rea
             "root_group_name": "Invalid Mapping Value Root",
             "business_config": {"root_department_id": "0"},
             "field_mapping": {"username": "private_token"},
-            "schedule_config": {},
+            "schedule_config": {"mode": "disabled"},
         }
     )
 
@@ -920,8 +1020,8 @@ def test_serializer_normalizes_all_department_selection_and_passes_department_id
                 "root_department_id": "__all__",
                 "department_id_type": "department_id",
             },
-            "field_mapping": {},
-            "schedule_config": {},
+            "field_mapping": {"username": "user_id"},
+            "schedule_config": {"mode": "disabled"},
         }
     )
 
@@ -957,8 +1057,8 @@ def test_serializer_rejects_stale_root_department_selection(ready_integration_in
                 "root_department_id": "stale-dept",
                 "department_id_type": "department_id",
             },
-            "field_mapping": {},
-            "schedule_config": {},
+            "field_mapping": {"username": "user_id"},
+            "schedule_config": {"mode": "disabled"},
         }
     )
 
@@ -978,8 +1078,8 @@ def test_serializer_requires_root_department_selection(ready_integration_instanc
             "business_config": {
                 "department_id_type": "department_id",
             },
-            "field_mapping": {},
-            "schedule_config": {},
+            "field_mapping": {"username": "user_id"},
+            "schedule_config": {"mode": "disabled"},
         }
     )
 
@@ -1652,7 +1752,9 @@ def test_existing_user_skips_password_initialization(password_init_source_factor
 @pytest.mark.django_db
 def test_none_mode_does_not_enqueue_initial_password_email(password_init_source_factory):
     source = password_init_source_factory("none")
-    with patch("apps.system_mgmt.services.password_init_service.send_initial_password_email.delay") as delay:
+    with patch(
+        "apps.system_mgmt.services.password_init_service.send_initial_password_email_batch.delay"
+    ) as delay:
         _apply_user_sync_payload(
             source,
             {"user_list": [{"user_id": "alice-none", "name": "Alice", "email": "a@b.c"}], "group_list": []},
@@ -2025,7 +2127,7 @@ def test_batch_sync_does_not_disable_later_batch_users(ready_integration_instanc
         assert user.disabled is False, f"u{user.username} 不应被 disable,reconcile 阶段未跑"
 
 
-@pytest.mark.django_db
+@pytest.mark.django_db(transaction=True)
 def test_run_payload_mutations_preserve_all_writers(ready_integration_instance):
     """交错模拟进度、密码初始化、邮件状态写入,断言阶段、保险库和邮件状态均未丢失。"""
     source = UserSyncSource.objects.create(
@@ -2052,7 +2154,12 @@ def test_run_payload_mutations_preserve_all_writers(ready_integration_instance):
         },
     )
 
-    with patch("apps.system_mgmt.services.user_sync_service.RuntimeApplicationService.execute", return_value=payload):
+    with patch(
+        "apps.system_mgmt.services.user_sync_service.RuntimeApplicationService.execute",
+        return_value=payload,
+    ), patch(
+        "apps.system_mgmt.services.password_init_service.send_initial_password_email_batch.delay"
+    ):
         result = execute_user_sync(source.id)
 
     assert result["result"] is True
@@ -2078,7 +2185,7 @@ def test_run_payload_mutations_preserve_all_writers(ready_integration_instance):
     sync_counters = payload.get("phase_progress", {}).get("sync_users", {}).get("counters") or {}
     assert sync_counters.get("new_users") == 5
     reconcile_counters = payload.get("phase_progress", {}).get("reconcile", {}).get("counters") or {}
-    assert reconcile_counters.get("disabled_users") == 0
+    assert reconcile_counters.get("deleted_users") == 0
 
     # password_init_mode snapshot
     assert payload.get("password_init_mode") == "random"
@@ -2189,12 +2296,59 @@ def test_sync_users_empty_user_list_writes_finish(ready_integration_instance):
 
 
 @pytest.mark.django_db
-def test_per_phase_counters_split_between_sync_users_and_reconcile(ready_integration_instance):
-    """per-phase counters 拆分:同步用户只含 new/updated/conflict,对账只含 disabled_users + deleted_group_count。
+def test_reconcile_deletes_missing_user_and_recreates_user_when_external_directory_recovers(ready_integration_instance):
+    source = UserSyncSource.objects.create(
+        name="delete-missing-users",
+        integration_instance=ready_integration_instance,
+        enabled=True,
+        root_group_name="Delete Missing Users",
+        business_config={"root_department_id": "0"},
+        field_mapping={"username": "user_id"},
+        schedule_config={"mode": "disabled"},
+    )
+    missing_user = User.objects.create(
+        user_id=str(uuid.uuid4()),
+        username="returning-user",
+        display_name="Returning User",
+        email="returning@example.com",
+        password=make_password(""),
+        domain="domain.com",
+        group_list=[],
+        sync_source=source,
+    )
+    missing_payload = CapabilityExecutionResult.success_result("ok", payload={"group_list": [], "user_list": []})
+    recovered_payload = CapabilityExecutionResult.success_result(
+        "ok",
+        payload={
+            "group_list": [],
+            "user_list": [{"user_id": "returning-user", "name": "Returning User", "department_ids": ["0"]}],
+        },
+    )
 
-    场景:3 个用户已存在(将被 reconcile disable),5 个新用户(将被 sync_users 新建)
+    with patch(
+        "apps.system_mgmt.services.user_sync_service.RuntimeApplicationService.execute",
+        side_effect=[missing_payload, recovered_payload],
+    ):
+        assert execute_user_sync(source.id)["result"] is True
+        assert User.objects.filter(id=missing_user.id).exists() is False
+
+        first_run = UserSyncRun.objects.filter(source=source).latest("id")
+        assert first_run.payload["phase_progress"]["reconcile"]["counters"]["deleted_users"] == 1
+
+        assert execute_user_sync(source.id)["result"] is True
+
+    recovered_user = User.objects.get(username="returning-user", domain="domain.com")
+    assert recovered_user.sync_source_id == source.id
+    assert recovered_user.disabled is False
+
+
+@pytest.mark.django_db
+def test_per_phase_counters_split_between_sync_users_and_reconcile(ready_integration_instance):
+    """per-phase counters 拆分:同步用户只含 new/updated/conflict,对账只含 deleted_users + deleted_group_count。
+
+    场景:3 个用户已存在(将被 reconcile 删除),5 个新用户(将被 sync_users 新建)
     → 终态 phase_progress.sync_users.counters 应只有 new/updated/conflict 三个字段
-    → phase_progress.reconcile.counters 应只有 disabled_users + deleted_group_count
+    → phase_progress.reconcile.counters 应只有 deleted_users + deleted_group_count
     """
     source = UserSyncSource.objects.create(
         name="per-phase-counters",
@@ -2206,7 +2360,7 @@ def test_per_phase_counters_split_between_sync_users_and_reconcile(ready_integra
         schedule_config={"mode": "disabled"},
     )
 
-    # 先创建 3 个"老用户"(属于该 source),供 reconcile 标记为 stale
+    # 先创建 3 个"老用户"(属于该 source),供 reconcile 删除
     legacy_domain = "domain.com"
     for i in range(3):
         User.objects.create(
@@ -2246,16 +2400,16 @@ def test_per_phase_counters_split_between_sync_users_and_reconcile(ready_integra
     assert sync_users_counters["new_users"] == 5
     assert sync_users_counters["updated_users"] == 0
     assert sync_users_counters["conflict_users"] == 0
-    # 关键断言:sync_users 阶段不能有 disabled_users
-    assert "disabled_users" not in sync_users_counters, \
-        "disabled_users 是对账阶段指标,不应在 sync_users 阶段出现"
+    # 关键断言:sync_users 阶段不能有 deleted_users
+    assert "deleted_users" not in sync_users_counters, \
+        "deleted_users 是对账阶段指标,不应在 sync_users 阶段出现"
 
     # 2. 对账阶段 counters 只含本阶段字段
     reconcile_counters = phase_progress.get("reconcile", {}).get("counters") or {}
-    assert set(reconcile_counters.keys()) == {"disabled_users", "deleted_group_count"}, \
+    assert set(reconcile_counters.keys()) == {"deleted_users", "deleted_group_count"}, \
         f"reconcile phase counters 应只含这 2 个字段,实际: {reconcile_counters.keys()}"
-    assert reconcile_counters["disabled_users"] == 3, \
-        f"应 disable 3 个 legacy 用户,实际 disable {reconcile_counters['disabled_users']}"
+    assert reconcile_counters["deleted_users"] == 3, \
+        f"应删除 3 个 legacy 用户,实际删除 {reconcile_counters['deleted_users']}"
     assert reconcile_counters["deleted_group_count"] == 0
     # 关键断言:reconcile 阶段不能有 new_users/updated_users
     assert "new_users" not in reconcile_counters
@@ -2357,7 +2511,7 @@ def test_reconcile_clears_dangling_group_list_before_deleting_groups(ready_integ
         sync_source=source,
     )
 
-    # 外部清单:alice / carol / dave(都还属于 source),bob 算 stale(被 disable)
+    # 外部清单:alice / carol / dave(都还属于 source),bob 算 stale(被删除)
     user_list = [
         {"user_id": "alice", "name": "Alice", "email": "alice@x.com", "department_ids": ["active"]},
         {"user_id": "carol", "name": "Carol", "email": "carol@x.com", "department_ids": ["active"]},
@@ -2379,13 +2533,11 @@ def test_reconcile_clears_dangling_group_list_before_deleting_groups(ready_integ
 
     # 刷新所有用户对象(数据库已变更)
     user_mixed.refresh_from_db()
-    user_stale_only.refresh_from_db()
     user_clean.refresh_from_db()
     user_empty.refresh_from_db()
 
-    # 1. bob 是 stale,被 disable + group_list=[]
-    assert user_stale_only.disabled is True
-    assert user_stale_only.group_list == []
+    # 1. bob 是 stale,被删除；外部目录恢复后会在之后的同步中重新创建
+    assert not User.objects.filter(id=user_stale_only.id).exists()
 
     # 2. alice 仍 active,group_list 里的 stale_group_1 被清除,只留 active_group
     assert user_mixed.disabled is False
@@ -2411,7 +2563,7 @@ def test_reconcile_clears_dangling_group_list_before_deleting_groups(ready_integ
     # 7. reconcile 记录最终对账状态
     run = UserSyncRun.objects.get(source=source)
     reconcile_phase = run.payload.get("phase_progress", {}).get("reconcile", {})
-    assert reconcile_phase.get("counters", {}).get("disabled_users") == 1  # bob
+    assert reconcile_phase.get("counters", {}).get("deleted_users") == 1  # bob
 
 
 @pytest.mark.django_db

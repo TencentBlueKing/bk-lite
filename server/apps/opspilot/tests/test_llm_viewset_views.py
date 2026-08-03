@@ -283,7 +283,7 @@ def test_test_mysql_connection_rejects_private_host(mocker):
     body = _json_body(response)
     assert response.status_code == 400
     assert body["result"] is False
-    assert "private host blocked" in body["message"]
+    assert body["message"] == "Connection target is not allowed"
     guard.assert_called_once_with("10.0.0.5", 3306)
     # 拦截后不得 normalize / 真实测试连接
     normalize.assert_not_called()
@@ -310,7 +310,7 @@ def test_test_redis_connection_rejects_private_url(mocker):
     body = _json_body(response)
     assert response.status_code == 400
     assert body["result"] is False
-    assert "loopback url blocked" in body["message"]
+    assert body["message"] == "Connection target is not allowed"
     normalize.assert_not_called()
     tester.assert_not_called()
 

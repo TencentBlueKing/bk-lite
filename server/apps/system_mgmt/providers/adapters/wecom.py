@@ -2,6 +2,8 @@ from urllib.parse import urlencode, urlparse
 
 import requests
 
+from apps.core.logger import system_mgmt_logger as logger
+
 from .base import BaseIMNotificationAdapter, BaseLoginAuthAdapter, BaseUserSyncAdapter
 from ..runtime import CapabilityExecutionResult
 
@@ -66,6 +68,21 @@ def _resolved_url(config, field_key, default):
     return config.get(field_key) or default
 
 
+def _sanitize_url_for_log(url):
+    """保留身份接口的安全定位信息，过滤凭据和查询参数。"""
+    parsed = urlparse(url)
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+        return "<invalid-url>"
+    hostname = parsed.hostname
+    if ":" in hostname:
+        hostname = f"[{hostname}]"
+    try:
+        port = f":{parsed.port}" if parsed.port else ""
+    except ValueError:
+        return "<invalid-url>"
+    return f"{parsed.scheme}://{hostname}{port}{parsed.path}"
+
+
 def _get_access_token(config):
     """统一从基础连接读取 access_token_url,不再依赖 api_base_url 拼接。"""
     url = _resolved_url(config, "access_token_url", WECOM_DEFAULT_ACCESS_TOKEN_URL)
@@ -106,7 +123,7 @@ def _get_access_token(config):
     return data["access_token"], None
 
 
-def _request_get(url, config, token, params=None):
+def _request_get(url, config, token, params=None, *, return_response=False):
     """执行带 token 的 GET 请求;显式传入 config 以注入代理配置。"""
     kwargs = {
         "params": {"access_token": token, **(params or {})},
@@ -119,7 +136,7 @@ def _request_get(url, config, token, params=None):
     data = _parse_json_response(response)
     if response.status_code != 200 or data.get("errcode"):
         raise ValueError(data.get("errmsg") or "WeCom request failed")
-    return data
+    return (data, response) if return_response else data
 
 
 def _normalize_users(users):
@@ -293,8 +310,8 @@ class WeComLoginAuthAdapter(BaseLoginAuthAdapter):
             config, "login_auth_user_info_url", WECOM_DEFAULT_LOGIN_AUTH_USER_INFO_URL
         )
         try:
-            identity = _request_get(
-                user_info_url, config, token, {"code": code}
+            identity, response = _request_get(
+                user_info_url, config, token, {"code": code}, return_response=True
             )
         except requests.Timeout:
             return CapabilityExecutionResult.failed_result(
@@ -313,8 +330,16 @@ class WeComLoginAuthAdapter(BaseLoginAuthAdapter):
                 code="provider.request_failed",
                 retryable=True,
             )
-        user_id = identity.get("UserId")
+        # 企业微信当前 /cgi-bin/auth/getuserinfo 文档返回小写 userid；
+        # 保留 UserId 兼容历史接口响应，统一输出平台约定的 userid。
+        user_id = identity.get("userid") or identity.get("UserId")
         if not user_id:
+            logger.warning(
+                "WeCom login identity response has no userid or UserId, "
+                f"endpoint={_sanitize_url_for_log(user_info_url)}, "
+                f"status={response.status_code}, errcode={identity.get('errcode')}, "
+                f"errmsg={identity.get('errmsg')!r}, response_keys={sorted(identity.keys())}"
+            )
             return CapabilityExecutionResult.failed_result(
                 "WeCom user identity is missing",
                 code="provider.auth_failed",

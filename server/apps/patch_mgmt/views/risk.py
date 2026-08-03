@@ -190,6 +190,23 @@ class RiskViewSet(AuthViewSet):
 
     @action(detail=False, methods=["post"])
     @HasPermission("patch_risk-Add")
+    def reboot_preview(self, request):
+        """返回按主机扩展后的完整待重启范围。"""
+        from apps.patch_mgmt.services.governance_service import get_reboot_scope
+
+        target_ids = request.data.get("target_ids") or []
+        if not isinstance(target_ids, list) or not target_ids:
+            return Response({"detail": patch_message(request, "error.target_ids_required", "target_ids is required")}, status=400)
+        require_authorized_ids(
+            self, request, PatchTarget.objects.all(), target_ids, "patch_target"
+        )
+        try:
+            return Response(get_reboot_scope(target_ids))
+        except PatchBusinessError as exc:
+            return Response({"code": exc.code, "detail": render_business_error(request, exc)}, status=400)
+
+    @action(detail=False, methods=["post"])
+    @HasPermission("patch_risk-Add")
     def reboot(self, request):
         """一键重启（创建 reboot 治理任务）
 

@@ -544,7 +544,14 @@ def verify_pending_reboot_hosts() -> None:
             execution_mode="now",
             status=GovernanceTaskStatus.PENDING,
             target_list=[host.target_id],
-            patch_list=[],
+            patch_list=list(
+                dict.fromkeys(
+                    int(item["patch_id"])
+                    for item in (host.task.risk_snapshot or [])
+                    if int(item.get("host_id") or 0) == host.target_id
+                    and item.get("patch_id")
+                )
+            ),
             risk_snapshot=[
                 item
                 for item in (host.task.risk_snapshot or [])

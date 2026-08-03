@@ -398,7 +398,14 @@ class LLMViewSet(PinMixin, AuthViewSet):
             params["skill_params"] = merge_skill_params(params.get("skill_params", []), skill_obj.skill_params or [])
 
             # 调用AGUI协议的流式响应
-            return stream_agui_chat(params, skill_obj.name, {}, current_ip, params["user_message"])
+            return stream_agui_chat(
+                params,
+                skill_obj.name,
+                {},
+                current_ip,
+                params["user_message"],
+                skill_id=skill_obj.id,
+            )
         except LLMSkill.DoesNotExist:
             message = self.loader.get("error.skill_not_found_detail") if self.loader else "Skill not found."
             return self.create_error_stream_response(message)

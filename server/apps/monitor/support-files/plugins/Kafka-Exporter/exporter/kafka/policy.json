@@ -18,6 +18,21 @@
       "group_algorithm": "avg"
     },
     {
+      "name": "Kafka 采集失败",
+      "alert_name": "Kafka ${resource_name} 指标采集失败",
+      "description": "检测 kafka_exporter 最近一轮采集是否成功；失败表示 Broker 请求异常或采集超时，与服务进程不可用是不同故障。",
+      "metric_name": "kafka_exporter_scrape_success",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 1,
+          "method": "!="
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
       "name": "Kafka Broker 数量异常",
       "alert_name": "Kafka ${resource_name} Broker 数量不足",
       "description": "监控集群 Broker 数量，若低于副本因子数可能导致数据不可用。",
@@ -83,6 +98,21 @@
       "group_algorithm": "max"
     },
     {
+      "name": "Kafka 消费者组 Lag 异常",
+      "alert_name": "Kafka ${resource_name} 消费组提交偏移量异常",
+      "description": "检测 committed offset 是否大于同轮 LEO；异常通常意味着 Topic 被重建或 offset 被重置。",
+      "metric_name": "kafka_consumergroup_lag_anomaly",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "warning",
+          "value": 1,
+          "method": ">="
+        }
+      ],
+      "group_algorithm": "max"
+    },
+    {
       "name": "Kafka 分区偏移量停滞",
       "alert_name": "Kafka ${resource_name} 分区无新数据",
       "description": "检测分区最新偏移量增长率，停滞可能表明生产者异常。",
@@ -110,23 +140,23 @@
     {
       "name": "Kafka 虚拟内存过大",
       "alert_name": "Kafka ${resource_name} 虚拟内存异常",
-      "description": "检测进程虚拟内存，过大可能发生内存交换。",
+      "description": "检测探针进程虚拟内存，过大可能发生内存交换。阈值单位为字节。",
       "metric_name": "process_virtual_memory_bytes_gauge",
       "algorithm": "max_over_time",
       "threshold": [
         {
           "level": "critical",
-          "value": 32,
+          "value": 34359738368,
           "method": ">="
         },
         {
           "level": "error",
-          "value": 16,
+          "value": 17179869184,
           "method": ">="
         },
         {
           "level": "warning",
-          "value": 8,
+          "value": 8589934592,
           "method": ">="
         }
       ],

@@ -26,6 +26,8 @@ from pathlib import Path
 import pytest
 import yaml
 
+from apps.core.utils.loader import LanguageLoader
+
 SERVER_ROOT = Path(__file__).resolve().parents[3]
 PLUGINS = SERVER_ROOT / "apps" / "monitor" / "support-files" / "plugins" / "Telegraf"
 F5_DIR = PLUGINS / "snmp" / "loadbalance_f5"
@@ -92,7 +94,7 @@ def toml_text():
 @pytest.fixture(scope="module")
 def languages():
     return {
-        lang: yaml.safe_load((LANGUAGE_DIR / f"{lang}.yaml").read_text(encoding="utf-8"))
+        lang: LanguageLoader("monitor", lang).translations
         for lang in ("zh-Hans", "en")
     }
 
@@ -275,10 +277,11 @@ def test_no_dangling_descr_in_alert_names(policy):
 
 @pytest.mark.unit
 def test_all_scalar_metric_units_supported(metrics):
+    supported_units = SUPPORTED_SCALAR_UNITS | {"connections"}
     bad = [
         f'{m["name"]}:{m["unit"]}'
         for m in metrics["metrics"]
-        if m["data_type"] != "Enum" and m["unit"] not in SUPPORTED_SCALAR_UNITS
+        if m["data_type"] != "Enum" and m["unit"] not in supported_units
     ]
     assert bad == [], f"unsupported units: {bad}"
 

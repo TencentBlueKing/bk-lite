@@ -26,6 +26,13 @@ const useViewApi = () => {
     [get]
   );
 
+  const getInstanceInstantQuery = useCallback(
+    async (params: SearchParams = { query: '' }) => {
+      return await get(`/monitor/api/metrics_instance/query/`, { params });
+    },
+    [get]
+  );
+
   const getInstanceSearch = useCallback(
     async (
       objectId: React.Key,
@@ -91,6 +98,7 @@ const useViewApi = () => {
 
   return {
     getInstanceQuery,
+    getInstanceInstantQuery,
     getInstanceSearch,
     getInstanceQueryParams,
     getMetricsInstanceQuery,

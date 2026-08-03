@@ -127,6 +127,7 @@ const Integration = () => {
         )}
         {displayType === 'list' ? (
           <ViewList
+            key={objectId}
             objects={objects}
             objectId={objectId}
             showTab={showTab}
