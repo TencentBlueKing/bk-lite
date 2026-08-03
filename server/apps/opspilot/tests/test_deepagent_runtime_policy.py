@@ -5,15 +5,10 @@ from langchain.agents.middleware import ModelRequest, ModelResponse
 from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.tools import StructuredTool
 
+from apps.opspilot.metis.llm.agent.tool_execution_planner import CompletedExecutionStep, ToolExecutionPlanner
 from apps.opspilot.metis.llm.common.token_usage import TokenUsageAccumulator
-from apps.opspilot.metis.llm.agent.tool_execution_planner import (
-    CompletedExecutionStep,
-    ToolExecutionPlanner,
-)
-from apps.opspilot.metis.llm.middleware.tool_runtime import (
-    ToolVisibilityMiddleware,
-)
 from apps.opspilot.metis.llm.middleware.token_usage import TokenUsageTrackingMiddleware
+from apps.opspilot.metis.llm.middleware.tool_runtime import ToolVisibilityMiddleware
 
 pytestmark = pytest.mark.unit
 
@@ -33,7 +28,7 @@ def _request(tools):
     return ModelRequest(
         model=SimpleNamespace(),
         messages=[HumanMessage(content="K8s Warning Failed on Pod/ns/pod-1")],
-        system_message=None,
+        system_prompt=None,
         tool_choice=None,
         tools=tools,
         response_format=None,
@@ -43,15 +38,21 @@ def _request(tools):
     )
 
 
-def test_dynamic_tool_visibility_exposes_only_current_step_tools():
+def test_dynamic_tool_visibility_exposes_step_tools_plus_always_on_fs():
     diagnose = _tool("diagnose_kubernetes_pod_issues")
     logs = _tool("get_kubernetes_pod_logs")
     events = _tool("list_kubernetes_events")
     planning = _tool("write_todos")
+    task = _tool("task")
+    read_file = _tool("read_file")
+    choice = _tool("request_user_choice")
     active_tools = []
     middleware = ToolVisibilityMiddleware(
-        business_tools=[diagnose, logs, events],
+        business_tools=[diagnose, logs, events, choice],
         active_tools=active_tools,
+        always_visible_tools={"read_file", "request_user_choice"},
+        hidden_tools={"write_todos", "task", "execute"},
+        allow_unregistered_tools=False,
     )
     visible_calls = []
 
@@ -59,30 +60,38 @@ def test_dynamic_tool_visibility_exposes_only_current_step_tools():
         visible_calls.append([tool.name for tool in request.tools])
         return ModelResponse(result=[AIMessage(content="ok")])
 
-    middleware.wrap_model_call(
-        _request([diagnose, logs, events, planning]),
-        _handler,
-    )
+    all_tools = [diagnose, logs, events, planning, task, read_file, choice]
+    middleware.wrap_model_call(_request(all_tools), _handler)
     active_tools[:] = [diagnose, logs]
-    middleware.wrap_model_call(
-        _request([diagnose, logs, events, planning]),
-        _handler,
-    )
+    middleware.wrap_model_call(_request(all_tools), _handler)
     active_tools[:] = [events]
-    middleware.wrap_model_call(
-        _request([diagnose, logs, events, planning]),
-        _handler,
-    )
+    middleware.wrap_model_call(_request(all_tools), _handler)
+    active_tools.clear()
+    middleware.include_always_visible = False
+    middleware.wrap_model_call(_request(all_tools), _handler)
 
     assert visible_calls == [
-        ["write_todos"],
+        ["read_file", "request_user_choice"],
         [
             "diagnose_kubernetes_pod_issues",
             "get_kubernetes_pod_logs",
-            "write_todos",
+            "read_file",
+            "request_user_choice",
         ],
-        ["list_kubernetes_events", "write_todos"],
+        ["list_kubernetes_events", "read_file", "request_user_choice"],
+        [],
     ]
+
+
+def test_progressive_tools_env_defaults_enabled(monkeypatch):
+    from apps.opspilot.metis.llm.middleware.tool_runtime import is_progressive_tools_enabled
+
+    monkeypatch.delenv("OPSPILOT_DEEPAGENT_PROGRESSIVE_TOOLS", raising=False)
+    assert is_progressive_tools_enabled() is True
+    monkeypatch.setenv("OPSPILOT_DEEPAGENT_PROGRESSIVE_TOOLS", "0")
+    assert is_progressive_tools_enabled() is False
+    monkeypatch.setenv("OPSPILOT_DEEPAGENT_PROGRESSIVE_TOOLS", "1")
+    assert is_progressive_tools_enabled() is True
 
 
 @pytest.mark.asyncio
@@ -134,9 +143,7 @@ async def test_planner_uses_compact_catalog_and_normalizes_tool_plan():
     plan = await planner.plan(
         "K8s Pod 告警",
         tools,
-        completed_steps=[
-            CompletedExecutionStep(objective="读取告警", result="已确认 Pod 名称")
-        ],
+        completed_steps=[CompletedExecutionStep(objective="读取告警", result="已确认 Pod 名称")],
     )
 
     assert plan.goal == "定位告警根因"

@@ -1,10 +1,8 @@
 import asyncio
 import hashlib
-import inspect
 import json
 import time
 import uuid
-from collections import Counter
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 from urllib.parse import parse_qs, urlparse
@@ -12,7 +10,7 @@ from urllib.parse import parse_qs, urlparse
 import json_repair
 from deepagents import create_deep_agent
 from langchain.agents.middleware import ModelCallLimitMiddleware
-from langchain_core.callbacks import dispatch_custom_event
+from langchain_core.callbacks import adispatch_custom_event, dispatch_custom_event
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import StructuredTool
@@ -24,17 +22,8 @@ from pydantic import BaseModel as PydanticBaseModel
 from pydantic import Field as PydanticField
 
 from apps.core.logger import opspilot_logger as logger
-from apps.opspilot.metis.llm.chain.compaction import CompactionConfig, compact_messages
-from apps.opspilot.metis.llm.chain.entity import (
-    BasicLLMRequest,
-    DoneToolConfig,
-    ExtraConfig,
-    PrepareStepContext,
-    PrepareStepResult,
-    StopConditionContext,
-    StopConditionResult,
-    normalize_tool_calls,
-)
+from apps.opspilot.metis.llm.agent.tool_execution_planner import CompletedExecutionStep, ToolExecutionPlan, ToolExecutionPlanner, ToolPlanningError
+from apps.opspilot.metis.llm.chain.entity import BasicLLMRequest, DoneToolConfig, ExtraConfig
 
 # ---------------------------------------------------------------------------
 # Facade re-exports (structural refactor, no behavior change).
@@ -73,22 +62,18 @@ from apps.opspilot.metis.llm.chain.lc_patches import (  # noqa: E402,F401
     _patched_convert_message_to_dict,
     _patched_create_chat_result,
 )
-from apps.opspilot.metis.llm.chain.message_trim import trim_messages
-from apps.opspilot.metis.llm.agent.tool_execution_planner import (
-    CompletedExecutionStep,
-    ToolExecutionPlan,
-    ToolExecutionPlanner,
-    ToolPlanningError,
-)
-from apps.opspilot.metis.llm.common.anthropic_capabilities import build_anthropic_runtime_capabilities, normalize_tool_choice_for_capabilities
 from apps.opspilot.metis.llm.common.llm_client_factory import LLMClientFactory
 from apps.opspilot.metis.llm.common.structured_output_parser import StructuredOutputParser
 from apps.opspilot.metis.llm.common.token_usage import TokenUsageAccumulator
 from apps.opspilot.metis.llm.middleware.token_usage import TokenUsageTrackingMiddleware
 from apps.opspilot.metis.llm.middleware.tool_runtime import (
+    PLANNED_EXECUTION_ALWAYS_ON_BUSINESS_TOOLS,
+    PLANNED_EXECUTION_ALWAYS_VISIBLE_FS_TOOLS,
     PLANNED_EXECUTION_HIDDEN_DEEPAGENT_TOOLS,
     ToolVisibilityMiddleware,
+    is_progressive_tools_enabled,
 )
+
 # from apps.opspilot.metis.llm.rag.naive_rag.pgvector.pgvector_rag import PgvectorRag  # 暂时禁用,master 合并后文件被删除
 from apps.opspilot.metis.llm.tools.tools_loader import ToolsLoader
 
@@ -99,10 +84,7 @@ except ImportError:
     PgvectorRag = None
 from apps.opspilot.metis.utils.template_loader import TemplateLoader
 from apps.opspilot.services.approval import wait_for_approval
-from apps.opspilot.utils.execution_interrupt import is_interrupt_requested_async
-from apps.opspilot.utils.rollback import execute_rollback, get_rollback_spec, take_snapshot
 from apps.opspilot.utils.user_choice import wait_for_choice
-from apps.opspilot.utils.verification import get_verification_spec, run_verification
 
 
 def _safe_log_preview(content: str, max_len: int = 200) -> str:
@@ -346,6 +328,7 @@ class BasicNode:
         """执行图谱搜索(GraphRAG 模块上游已删除,降级返回空)"""
         try:
             from apps.opspilot.metis.llm.rag.graph_rag.graphiti.graphiti_rag import GraphitiRAG
+
             graphiti = GraphitiRAG()
             rag_search_request.graph_rag_request.search_query = rag_search_request.search_query
             graph_result = await graphiti.search(req=rag_search_request.graph_rag_request)
@@ -610,10 +593,7 @@ class BasicNode:
         request = config["configurable"]["graph_request"]
         user_message = request.user_message
         trace_id = config["configurable"].get("trace_id", "unknown")
-        logger.info(
-            f"[{trace_id}] user_message_node 开始执行, "
-            f"original_user_message(完整, len={len(user_message)})=<{user_message!r}>"
-        )
+        logger.info(f"[{trace_id}] user_message_node 开始执行, " f"original_user_message(完整, len={len(user_message)})=<{user_message!r}>")
 
         # 如果启用问题改写功能
         if config["configurable"]["graph_request"].enable_query_rewrite:
@@ -882,6 +862,7 @@ class ToolsNodes(BasicNode):
             # async 路径:deep_wrapper_node 传入的 adispatch_custom_event 回调
             try:
                 import asyncio as _asyncio
+
                 coro = event_dispatcher(capability, payload)
                 try:
                     _asyncio.get_running_loop()
@@ -897,6 +878,7 @@ class ToolsNodes(BasicNode):
         else:
             try:
                 from langchain_core.callbacks import dispatch_custom_event
+
                 dispatch_custom_event(capability, payload, config=config)
             except Exception as e:
                 logger.warning(f"dispatch {capability} failed: {e}")
@@ -951,10 +933,7 @@ class ToolsNodes(BasicNode):
         """
         from langchain_core.messages import ToolMessage
 
-        from apps.opspilot.metis.llm.chain.k8s_report_tools import (
-            TOOL_RESULT_TO_CAPABILITY,
-            merge_analysis_results,
-        )
+        from apps.opspilot.metis.llm.chain.k8s_report_tools import TOOL_RESULT_TO_CAPABILITY, merge_analysis_results
 
         # 按 capability 累计:同一 capability 多次工具调用,合并成一次 emit
         accumulated: Dict[str, List[Any]] = {}
@@ -1462,11 +1441,7 @@ class ToolsNodes(BasicNode):
             group_by: str = PydanticField(
                 default="target",
                 description=(
-                    "报告组织方式：\n"
-                    "- 'scope': 按所属空间聚合\n"
-                    "- 'severity': 按风险等级聚合\n"
-                    "- 'all': 全部合并为一条\n"
-                    "兼容旧值：'target' 按目标聚合，'category' 按问题类别聚合"
+                    "报告组织方式：\n" "- 'scope': 按所属空间聚合\n" "- 'severity': 按风险等级聚合\n" "- 'all': 全部合并为一条\n" "兼容旧值：'target' 按目标聚合，'category' 按问题类别聚合"
                 ),
             )
 
@@ -1845,9 +1820,7 @@ class ToolsNodes(BasicNode):
                     )
 
             elif group_by == "scope":
-                from apps.opspilot.metis.llm.chain.repair_report_identity import (
-                    count_distinct_repair_targets,
-                )
+                from apps.opspilot.metis.llm.chain.repair_report_identity import count_distinct_repair_targets
 
                 raw_items.sort(key=lambda x: (x.get("namespace", ""), x.get("target_name", "")))
                 for namespace, group in _groupby(raw_items, key=lambda x: x.get("namespace", "")):
@@ -1881,9 +1854,7 @@ class ToolsNodes(BasicNode):
                     )
 
             elif group_by == "severity":
-                from apps.opspilot.metis.llm.chain.repair_report_identity import (
-                    count_distinct_repair_targets,
-                )
+                from apps.opspilot.metis.llm.chain.repair_report_identity import count_distinct_repair_targets
 
                 severity_labels = {"critical": "严重", "high": "高危", "warning": "中危", "info": "低危"}
                 raw_items.sort(key=lambda x: (_severity_order.get(x.get("severity"), 9), x.get("namespace", ""), x.get("target_name", "")))
@@ -1969,9 +1940,7 @@ class ToolsNodes(BasicNode):
                     categories.add(it.get("category", "") or summary_text)
                     if _severity_order.get(it.get("severity"), 9) < _severity_order.get(worst_severity, 9):
                         worst_severity = it.get("severity", "info")
-                from apps.opspilot.metis.llm.chain.repair_report_identity import (
-                    count_distinct_repair_targets,
-                )
+                from apps.opspilot.metis.llm.chain.repair_report_identity import count_distinct_repair_targets
 
                 target_count = count_distinct_repair_targets(raw_items)
                 diff_items.append(
@@ -2234,16 +2203,10 @@ class ToolsNodes(BasicNode):
             choice_result = await choice_tool.ainvoke(build_repair_mode_choice_args(analysis), config=config)
         group_by = self._normalize_repair_group_by(str(choice_result or ""))
 
-        from apps.opspilot.metis.llm.tools.kubernetes.analysis import (
-            _take_cached_k8s_analysis_details,
-        )
+        from apps.opspilot.metis.llm.tools.kubernetes.analysis import _take_cached_k8s_analysis_details
 
         configurable = (config or {}).get("configurable", {})
-        deployments = (
-            analysis.get("_deployments_full")
-            or _take_cached_k8s_analysis_details(configurable.get("execution_id", ""))
-            or []
-        )
+        deployments = analysis.get("_deployments_full") or _take_cached_k8s_analysis_details(configurable.get("execution_id", "")) or []
         analysis_cache = {
             "deployments": deployments if isinstance(deployments, list) else [],
             "cluster_name": analysis.get("cluster_name") or "Kubernetes",
@@ -2281,8 +2244,8 @@ class ToolsNodes(BasicNode):
         try:
             from types import SimpleNamespace
 
-            from apps.opspilot.metis.llm.tools.knowledge_tool import build_knowledge_retrieve_tool
             from apps.opspilot.metis.llm.rag.naive_rag.pgvector.pgvector_rag import PgvectorRag
+            from apps.opspilot.metis.llm.tools.knowledge_tool import build_knowledge_retrieve_tool
 
             # 用 DocumentRetrieverRequest 作为“知识库”载体；kwargs_map 不参与（search_fn 自带逻辑）
             knowledge_bases = []
@@ -2361,13 +2324,11 @@ class ToolsNodes(BasicNode):
         try:
             import os
             import tempfile
-            from pathlib import Path
 
             from deepagents.backends import LocalShellBackend
 
-            from apps.opspilot.services.skill_package.materializer import materialize_skill_package
-
             from apps.opspilot.services.skill_executor import PathRewritingBackend
+            from apps.opspilot.services.skill_package.materializer import materialize_skill_package
 
             base = self._skill_sandbox_base()
             os.makedirs(base, exist_ok=True)
@@ -2408,6 +2369,7 @@ class ToolsNodes(BasicNode):
                     materialize_skill_package(pkg, backend, skills_root="/skills")
                 except Exception as me:  # 幂等：已存在/单包失败不影响其它技能
                     import traceback
+
                     logger.warning(
                         "技能物化失败(%s): %s\n%s",
                         pkg.get("name") if isinstance(pkg, dict) else pkg,
@@ -2432,7 +2394,6 @@ class ToolsNodes(BasicNode):
         在 async 上下文里跑 subprocess 会抛 "async context",所以用
         asyncio.to_thread 把同步 subprocess 包到独立线程。
         """
-        import asyncio
         import importlib.util
         import re
         import subprocess
@@ -2489,6 +2450,7 @@ class ToolsNodes(BasicNode):
             if pkg_json.is_file():
                 try:
                     import json
+
                     pkg_meta = json.loads(pkg_json.read_text(encoding="utf-8"))
                     for section in ("dependencies", "devDependencies"):
                         deps = pkg_meta.get(section) or {}
@@ -2522,11 +2484,17 @@ class ToolsNodes(BasicNode):
         try:
             result = subprocess.run(
                 [
-                    sys.executable, "-m", "pip", "install", "--quiet",
+                    sys.executable,
+                    "-m",
+                    "pip",
+                    "install",
+                    "--quiet",
                     # host Python 环境的 SSL CA bundle 不全,
                     # 加 --trusted-host 绕过 PyPI HTTPS 验证。
-                    "--trusted-host", "pypi.org",
-                    "--trusted-host", "files.pythonhosted.org",
+                    "--trusted-host",
+                    "pypi.org",
+                    "--trusted-host",
+                    "files.pythonhosted.org",
                     *missing,
                 ],
                 capture_output=True,
@@ -2536,10 +2504,7 @@ class ToolsNodes(BasicNode):
             if result.returncode == 0:
                 logger.warning(f"[sandbox-deps] 装好: {missing}")
             else:
-                logger.warning(
-                    f"[sandbox-deps] pip install 失败(returncode={result.returncode}): "
-                    f"{result.stderr[:300]}"
-                )
+                logger.warning(f"[sandbox-deps] pip install 失败(returncode={result.returncode}): " f"{result.stderr[:300]}")
         except subprocess.TimeoutExpired:
             logger.warning(f"[sandbox-deps] pip install 超时: {missing}")
         except Exception as e:
@@ -2558,13 +2523,34 @@ class ToolsNodes(BasicNode):
     # 探测对象是 LLM 在技能任务里常用的工具:python/pip/uv/uvx/markitdown/pypdf 等,
     # 任何找到的工具的 bin 目录都加入 sandbox PATH,让 LLM 一次就能找到。
     _SANDBOX_PATH_PROBES = (
-        "python3", "python", "pip", "pip3", "uv", "uvx",
-        "node", "npm", "npx",
-        "agent-browser", "ab", "playwright", "chromium",
-        "markitdown", "pdftotext", "qpdf", "wkhtmltopdf",
-        "pypdf", "pymupdf", "pdfplumber", "reportlab",
-        "kubectl", "helm", "kustomize",
-        "git", "curl", "jq", "rg",
+        "python3",
+        "python",
+        "pip",
+        "pip3",
+        "uv",
+        "uvx",
+        "node",
+        "npm",
+        "npx",
+        "agent-browser",
+        "ab",
+        "playwright",
+        "chromium",
+        "markitdown",
+        "pdftotext",
+        "qpdf",
+        "wkhtmltopdf",
+        "pypdf",
+        "pymupdf",
+        "pdfplumber",
+        "reportlab",
+        "kubectl",
+        "helm",
+        "kustomize",
+        "git",
+        "curl",
+        "jq",
+        "rg",
     )
 
     @staticmethod
@@ -2628,7 +2614,7 @@ class ToolsNodes(BasicNode):
             "LANG": os.environ.get("LANG", "C.UTF-8"),
             "LC_ALL": os.environ.get("LC_ALL", os.environ.get("LANG", "C.UTF-8")),
             "TMPDIR": sandbox_dir,  # 临时文件落在沙箱内,用完即弃
-            "HOME": sandbox_dir,    # 用户配置也隔离(PATH 透传但 HOME 不透)
+            "HOME": sandbox_dir,  # 用户配置也隔离(PATH 透传但 HOME 不透)
             # kubectl 默认读 ~/.kube/config,但 sandbox 把 HOME 隔离到 sandbox_dir,
             # 找不到 kubeconfig。显式传 KUBECONFIG(host 环境变量,LLM 调 kubectl 才能连 k8s)。
             "KUBECONFIG": os.environ.get("KUBECONFIG", os.path.expanduser("~/.kube/config")),
@@ -2681,6 +2667,7 @@ class ToolsNodes(BasicNode):
                 in_async = False
             if in_async:
                 import concurrent.futures
+
                 with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
                     future = ex.submit(hydrate_skill_packages, normalize_skill_packages(raw))
                     return future.result()
@@ -2706,7 +2693,7 @@ class ToolsNodes(BasicNode):
             return None
         return {name: True for name in target_names}
 
-    async def build_deepagent_nodes(
+    async def build_deepagent_nodes(  # noqa: C901
         self,
         graph_builder: StateGraph,
         composite_node_name: str = "deep_agent",
@@ -2741,14 +2728,109 @@ class ToolsNodes(BasicNode):
             llm = self.get_llm_client(graph_request)
             tools = self._collect_deepagent_tools(graph_request)
             registered_tools = list(tools)
+            original_messages = list(state.get("messages") or [])
+            backend, skill_sources, sandbox_dir = self._build_skill_backend_and_sources(graph_request)
+            interrupt_on = self._build_interrupt_on(graph_request, tools)
+            token_usage_accumulator = config["configurable"].get("token_usage_accumulator")
+
+            # 紧急关闭：回退全量 Schema + 单次 DeepAgent 调用
+            if not is_progressive_tools_enabled():
+                agent_kwargs: Dict[str, Any] = {
+                    "model": llm,
+                    "tools": registered_tools,
+                    "system_prompt": final_system_prompt,
+                }
+                legacy_middleware = []
+                if isinstance(token_usage_accumulator, TokenUsageAccumulator):
+                    legacy_middleware.append(TokenUsageTrackingMiddleware(token_usage_accumulator))
+                if legacy_middleware:
+                    agent_kwargs["middleware"] = legacy_middleware
+                if backend is not None:
+                    agent_kwargs["backend"] = backend
+                if skill_sources:
+                    agent_kwargs["skills"] = skill_sources
+                if interrupt_on:
+                    agent_kwargs["interrupt_on"] = interrupt_on
+                deep_agent = create_deep_agent(**agent_kwargs)
+                ec = getattr(self, "_extra_config", None)
+                matched_packages = list(getattr(ec, "matched_skill_packages", None) or []) if ec else []
+                deep_config = {
+                    **config,
+                    "recursion_limit": 100,
+                    "configurable": {
+                        **config.get("configurable", {}),
+                        "enabled_report_capabilities": sorted(self._enabled_report_capabilities()),
+                        "report_package_context": matched_packages[0] if matched_packages else {},
+                    },
+                }
+                try:
+                    result = await deep_agent.ainvoke({"messages": original_messages}, config=deep_config)
+                except Exception as _await_exc:
+                    try:
+                        err_prompt = (
+                            f"上一轮工具执行失败(异常 {type(_await_exc).__name__}:"
+                            f" {str(_await_exc)[:800]}),请用中文告诉用户失败原因,"
+                            "并给出可执行的替代方案(例如改用白名单内的命令 uvx / python -m,"
+                            "或换其他可用工具)。不要再尝试调同样的命令。"
+                        )
+                        fallback_messages = original_messages + [HumanMessage(content=err_prompt)]
+                        fallback_response = await llm.ainvoke(fallback_messages, config=config)
+                        fallback_text = str(getattr(fallback_response, "content", "") or "").strip()
+                        if not fallback_text:
+                            fallback_text = (
+                                f"工具执行失败:{type(_await_exc).__name__}: {str(_await_exc)[:400]}\n" "请尝试改用白名单内的等效命令(uvx / python -m 等)或换其他工具。"
+                            )
+                        return {"messages": [AIMessage(content=fallback_text)]}
+                    except Exception:
+                        return {
+                            "messages": [
+                                AIMessage(
+                                    content=(
+                                        f"工具执行失败:{type(_await_exc).__name__}: {str(_await_exc)[:400]}\n" "请尝试改用白名单内的等效命令(uvx / python -m 等)或换其他工具。"
+                                    )
+                                )
+                            ]
+                        }
+                finally:
+                    if sandbox_dir:
+                        self._cleanup_sandbox(sandbox_dir)
+
+                final_messages = result.get("messages", [])
+                if not final_messages:
+                    return {"messages": [AIMessage(content="DeepAgent 未返回任何消息")]}
+                new_messages = final_messages[len(original_messages) :]
+                if not new_messages:
+                    return {"messages": [AIMessage(content="DeepAgent 未产生新的响应")]}
+                try:
+
+                    async def _emit_via_async_config_legacy(capability: str, payload: dict):
+                        await adispatch_custom_event(capability, payload, config=config)
+
+                    self._post_process_tool_results(
+                        new_messages,
+                        skill_id=getattr(graph_request, "skill_id", None),
+                        event_dispatcher=_emit_via_async_config_legacy,
+                    )
+                    await self._run_pending_k8s_repair_workflow(final_messages, config)
+                except Exception:
+                    raise
+                return {"messages": new_messages}
+
             active_tools = []
+            always_visible = set(PLANNED_EXECUTION_ALWAYS_VISIBLE_FS_TOOLS)
+            always_visible |= {
+                name for name in PLANNED_EXECUTION_ALWAYS_ON_BUSINESS_TOOLS if any(getattr(tool, "name", "") == name for tool in registered_tools)
+            }
+            visibility_middleware = ToolVisibilityMiddleware(
+                business_tools=registered_tools,
+                active_tools=active_tools,
+                hidden_tools=PLANNED_EXECUTION_HIDDEN_DEEPAGENT_TOOLS,
+                always_visible_tools=always_visible,
+                allow_unregistered_tools=False,
+                include_always_visible=True,
+            )
             runtime_middleware = [
-                ToolVisibilityMiddleware(
-                    business_tools=registered_tools,
-                    active_tools=active_tools,
-                    hidden_tools=PLANNED_EXECUTION_HIDDEN_DEEPAGENT_TOOLS,
-                    allow_unregistered_tools=False,
-                ),
+                visibility_middleware,
                 ModelCallLimitMiddleware(
                     run_limit=3,
                     thread_limit=10,
@@ -2756,34 +2838,18 @@ class ToolsNodes(BasicNode):
                 ),
             ]
             final_system_prompt += (
-                "\n\n【分步工具执行】外部规划器已经拆分任务。"
-                "每次只完成当前步骤，只调用当前可见工具；不要自行创建待办、子任务或重复规划。"
-                "工具证据足够后立即结束当前步骤。"
+                "\n\n【分步工具执行】外部规划器已经拆分任务。" "每次只完成当前步骤，只调用当前可见工具；不要自行创建待办、子任务或重复规划。" "工具证据足够后立即结束当前步骤。" "如需落盘大段内容可使用文件工具；需要向用户提问时可使用交互工具。"
             )
 
-            token_usage_accumulator = config["configurable"].get(
-                "token_usage_accumulator"
-            )
             if isinstance(token_usage_accumulator, TokenUsageAccumulator):
-                runtime_middleware.append(
-                    TokenUsageTrackingMiddleware(token_usage_accumulator)
-                )
+                runtime_middleware.append(TokenUsageTrackingMiddleware(token_usage_accumulator))
 
             planner = ToolExecutionPlanner(
                 llm,
-                accumulator=(
-                    token_usage_accumulator
-                    if isinstance(token_usage_accumulator, TokenUsageAccumulator)
-                    else None
-                ),
+                accumulator=(token_usage_accumulator if isinstance(token_usage_accumulator, TokenUsageAccumulator) else None),
             )
 
-            original_messages = list(state.get("messages") or [])
-            planning_question = str(
-                getattr(graph_request, "user_message", "")
-                or getattr(graph_request, "graph_user_message", "")
-                or ""
-            ).strip()
+            planning_question = str(getattr(graph_request, "user_message", "") or getattr(graph_request, "graph_user_message", "") or "").strip()
             if not planning_question:
                 for message in reversed(original_messages):
                     if isinstance(message, HumanMessage):
@@ -2804,16 +2870,9 @@ class ToolsNodes(BasicNode):
                 )
                 plan = ToolExecutionPlan(goal=planning_question, steps=[])
 
-            planned_tool_names = list(
-                dict.fromkeys(
-                    tool_name
-                    for step in plan.steps
-                    for tool_name in step.tools
-                )
-            )
+            planned_tool_names = list(dict.fromkeys(tool_name for step in plan.steps for tool_name in step.tools))
             logger.info(
-                "DeepAgent 工具执行计划: goal=%s, registered_tool_count=%s, "
-                "planned_tools=%s, steps=%s",
+                "DeepAgent 工具执行计划: goal=%s, registered_tool_count=%s, " "planned_tools=%s, steps=%s",
                 plan.goal,
                 len(registered_tools),
                 planned_tool_names,
@@ -2826,10 +2885,7 @@ class ToolsNodes(BasicNode):
                 ],
             )
 
-            backend, skill_sources, sandbox_dir = self._build_skill_backend_and_sources(graph_request)
-            interrupt_on = self._build_interrupt_on(graph_request, tools)
-
-            agent_kwargs: Dict[str, Any] = {
+            agent_kwargs = {
                 "model": llm,
                 "tools": registered_tools,
                 "system_prompt": final_system_prompt,
@@ -2861,11 +2917,7 @@ class ToolsNodes(BasicNode):
                 },
             }
 
-            tool_by_name = {
-                str(getattr(tool, "name", "") or ""): tool
-                for tool in tools
-                if str(getattr(tool, "name", "") or "")
-            }
+            tool_by_name = {str(getattr(tool, "name", "") or ""): tool for tool in tools if str(getattr(tool, "name", "") or "")}
 
             def _internal_message(content: str) -> HumanMessage:
                 return HumanMessage(
@@ -2895,28 +2947,54 @@ class ToolsNodes(BasicNode):
                         return str(message.content or "")[:1200]
                 return "步骤已完成"
 
+            def _resolve_step_tools(step_tool_names: List[str]) -> list:
+                selected = [tool_by_name[name] for name in step_tool_names if name in tool_by_name]
+                selected_names = {getattr(tool, "name", "") for tool in selected}
+                for name in PLANNED_EXECUTION_ALWAYS_ON_BUSINESS_TOOLS:
+                    if name in tool_by_name and name not in selected_names:
+                        selected.append(tool_by_name[name])
+                return selected
+
+            async def _emit_step_boundary(event_name: str, payload: dict) -> None:
+                try:
+                    await adispatch_custom_event(event_name, payload, config=config)
+                except Exception as emit_exc:
+                    # 单测直接调 wrapper 时缺少 parent run id，属预期；真实 astream_events 路径可发出。
+                    logger.debug("分步边界事件派发跳过: %s (%s)", event_name, emit_exc)
+
             try:
                 completed_steps: List[CompletedExecutionStep] = []
                 pending_steps = list(plan.steps)
                 agent_state: Dict[str, Any] = {"messages": original_messages}
                 replan_count = 0
+                total_steps = len(plan.steps)
 
                 while pending_steps:
                     step = pending_steps.pop(0)
-                    active_tools[:] = [
-                        tool_by_name[name]
-                        for name in step.tools
-                        if name in tool_by_name
-                    ]
+                    step_index = len(completed_steps) + 1
+                    active_tools[:] = _resolve_step_tools(step.tools)
+                    visibility_middleware.include_always_visible = True
+                    visible_names = [getattr(tool, "name", "") for tool in active_tools]
+                    await _emit_step_boundary(
+                        "planned_execution_step",
+                        {
+                            "phase": "start",
+                            "step_index": step_index,
+                            "total_steps": total_steps,
+                            "objective": step.objective,
+                            "tools": visible_names,
+                        },
+                    )
                     step_message = _internal_message(
                         f"执行计划当前步骤：{step.objective}\n"
-                        f"本步骤允许使用的工具：{', '.join(step.tools) or '无'}。\n"
+                        f"本步骤计划工具：{', '.join(step.tools) or '无'}。\n"
+                        f"本步骤当前可见工具：{', '.join(visible_names) or '无'} "
+                        f"（含文件/交互等常驻工具）。\n"
                         "只完成本步骤；取得足够证据后立即结束，不要处理后续步骤。"
                     )
                     step_payload = {
                         **agent_state,
-                        "messages": list(agent_state.get("messages") or [])
-                        + [step_message],
+                        "messages": list(agent_state.get("messages") or []) + [step_message],
                     }
                     try:
                         step_result = await deep_agent.ainvoke(
@@ -2924,10 +3002,7 @@ class ToolsNodes(BasicNode):
                             config=deep_config,
                         )
                     except Exception as step_exc:
-                        failure = (
-                            f"步骤“{step.objective}”执行异常 "
-                            f"{type(step_exc).__name__}: {str(step_exc)[:800]}"
-                        )
+                        failure = f"步骤“{step.objective}”执行异常 " f"{type(step_exc).__name__}: {str(step_exc)[:800]}"
                         if replan_count >= 2:
                             raise
                         replan_count += 1
@@ -2939,6 +3014,7 @@ class ToolsNodes(BasicNode):
                             config=config,
                         )
                         pending_steps = list(replacement.steps)
+                        total_steps = len(completed_steps) + len(pending_steps)
                         logger.warning(
                             "DeepAgent 当前及后续步骤已重规划: count=%s, failure=%s, steps=%s",
                             replan_count,
@@ -2948,7 +3024,7 @@ class ToolsNodes(BasicNode):
                         continue
 
                     result_messages = list(step_result.get("messages") or [])
-                    step_messages = result_messages[len(step_payload["messages"]):]
+                    step_messages = result_messages[len(step_payload["messages"]) :]
                     failure = _step_failure(step_messages)
                     agent_state = step_result
                     if failure:
@@ -2963,6 +3039,7 @@ class ToolsNodes(BasicNode):
                             config=config,
                         )
                         pending_steps = list(replacement.steps)
+                        total_steps = len(completed_steps) + len(pending_steps)
                         logger.warning(
                             "DeepAgent 当前及后续步骤已重规划: count=%s, failure=%s, steps=%s",
                             replan_count,
@@ -2977,12 +3054,20 @@ class ToolsNodes(BasicNode):
                             result=_step_summary(step_messages),
                         )
                     )
+                    await _emit_step_boundary(
+                        "planned_execution_step",
+                        {
+                            "phase": "end",
+                            "step_index": step_index,
+                            "total_steps": total_steps,
+                            "objective": step.objective,
+                            "tools": list(step.tools),
+                        },
+                    )
 
                 active_tools.clear()
-                completed_text = "\n".join(
-                    f"- {step.objective}: {step.result}"
-                    for step in completed_steps
-                ) or "没有需要执行工具的步骤"
+                visibility_middleware.include_always_visible = False
+                completed_text = "\n".join(f"- {step.objective}: {step.result}" for step in completed_steps) or "没有需要执行工具的步骤"
                 final_message = _internal_message(
                     f"工具执行计划目标：{plan.goal or planning_question}\n"
                     f"已完成步骤及结果：\n{completed_text}\n\n"
@@ -2991,8 +3076,7 @@ class ToolsNodes(BasicNode):
                 )
                 final_payload = {
                     **agent_state,
-                    "messages": list(agent_state.get("messages") or [])
-                    + [final_message],
+                    "messages": list(agent_state.get("messages") or []) + [final_message],
                 }
                 result = await deep_agent.ainvoke(
                     final_payload,
@@ -3014,16 +3098,16 @@ class ToolsNodes(BasicNode):
                     fallback_response = await llm.ainvoke(fallback_messages, config=config)
                     fallback_text = str(getattr(fallback_response, "content", "") or "").strip()
                     if not fallback_text:
-                        fallback_text = (
-                            f"工具执行失败:{type(_await_exc).__name__}: {str(_await_exc)[:400]}\n"
-                            "请尝试改用白名单内的等效命令(uvx / python -m 等)或换其他工具。"
-                        )
+                        fallback_text = f"工具执行失败:{type(_await_exc).__name__}: {str(_await_exc)[:400]}\n" "请尝试改用白名单内的等效命令(uvx / python -m 等)或换其他工具。"
                     return {"messages": [AIMessage(content=fallback_text)]}
                 except Exception:
-                    return {"messages": [AIMessage(
-                        content=f"工具执行失败:{type(_await_exc).__name__}: {str(_await_exc)[:400]}\n"
-                        "请尝试改用白名单内的等效命令(uvx / python -m 等)或换其他工具。"
-                    )]}
+                    return {
+                        "messages": [
+                            AIMessage(
+                                content=f"工具执行失败:{type(_await_exc).__name__}: {str(_await_exc)[:400]}\n" "请尝试改用白名单内的等效命令(uvx / python -m 等)或换其他工具。"
+                            )
+                        ]
+                    }
             finally:
                 # 用完即弃：销毁本次运行的一次性技能沙箱目录
                 # _cleanup_sandbox 内部有 None 守卫,但这里再写一次防御:
@@ -3042,10 +3126,7 @@ class ToolsNodes(BasicNode):
             new_messages = [
                 message
                 for message in final_messages[input_message_count:]
-                if not (
-                    isinstance(message, HumanMessage)
-                    and message.additional_kwargs.get("opspilot_planned_execution")
-                )
+                if not (isinstance(message, HumanMessage) and message.additional_kwargs.get("opspilot_planned_execution"))
             ]
 
             if not new_messages:
@@ -3059,7 +3140,6 @@ class ToolsNodes(BasicNode):
             # `dispatch_custom_event` 会因缺 parent run id 静默失败,所以走
             # `adispatch_custom_event` 并把 `config` 传进去,让事件能正确 emit。
             try:
-                from langchain_core.callbacks import adispatch_custom_event
 
                 async def _emit_via_async_config(capability: str, payload: dict):
                     await adispatch_custom_event(capability, payload, config=config)
