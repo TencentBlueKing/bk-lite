@@ -9,7 +9,8 @@ import {
   ModalRef,
   Organization,
   Pagination,
-  TableDataItem
+  TableDataItem,
+  UserItem
 } from '@/app/log/types';
 import { ReloadOutlined } from '@ant-design/icons';
 import CustomTable from '@/components/custom-table';
@@ -22,6 +23,8 @@ import Permission from '@/components/permission';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import { GroupInfo } from '@/app/log/types/integration';
+import UserAvatar from '@/components/user-avatar';
+import { formatUserDisplayName } from '@/utils/userDisplay';
 const { Search } = Input;
 
 const Grouping = () => {
@@ -30,6 +33,7 @@ const Grouping = () => {
   const { t } = useTranslation();
   const { convertToLocalizedTime } = useLocalizedTime();
   const commonContext = useCommon();
+  const userList: UserItem[] = commonContext?.userList || [];
   const authList = useRef(commonContext?.authOrganizations || []);
   const organizationList: Organization[] = authList.current;
   const instanceRef = useRef<ModalRef>(null);
@@ -86,7 +90,16 @@ const Grouping = () => {
     {
       title: t('common.creator'),
       dataIndex: 'created_by',
-      key: 'created_by'
+      key: 'created_by',
+      render: (_, { created_by }) =>
+        created_by ? (
+          <UserAvatar
+            userName={formatUserDisplayName(created_by, userList)}
+            size="small"
+          />
+        ) : (
+          <>--</>
+        )
     },
     {
       title: t('common.action'),
