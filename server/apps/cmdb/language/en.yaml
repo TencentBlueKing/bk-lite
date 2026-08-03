@@ -121,6 +121,7 @@ MODEL:
   openstack_vm: OpenStack Virtual Machine
   pc: PC
   peripherals: Peripherals
+  physical_server: Physical Server
   physcial_server: Physical Server
   qcloud_bucket: Tencent Cloud Object Storage Bucket
   qcloud_clb: Tencent Cloud Load Balancing

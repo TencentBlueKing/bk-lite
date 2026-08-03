@@ -562,6 +562,8 @@
     "lineColor": "Line Color",
     "pageSize": "Page Size",
     "selectDataSource": "Please select data source",
+    "dataSourceNotFound": "The data source does not exist",
+    "dataSourceLoadFailed": "Failed to load the data source",
     "dataFetchFailed": "Data query failed",
     "inputName": "Please enter widget name",
     "paramSettings": "Parameter Settings",

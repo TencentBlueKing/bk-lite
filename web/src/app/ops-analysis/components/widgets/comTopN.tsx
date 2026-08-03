@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react';
-import { Spin, Empty } from 'antd';
+import { Spin } from 'antd';
+import WidgetState from '@/app/ops-analysis/components/widget-state';
 import {
   getOpsChartColorsByMode,
   getOpsChartThemeByMode,
@@ -179,20 +180,9 @@ const TopN: React.FC<TopNProps> = ({
       </div>
     );
   } else if (contentState === 'error') {
-    content = (
-      <div className="h-full flex items-center justify-center">
-        <Empty
-          image={Empty.PRESENTED_IMAGE_SIMPLE}
-          description={errorMessage}
-        />
-      </div>
-    );
+    content = <WidgetState kind="error" description={errorMessage} />;
   } else if (contentState === 'empty') {
-    content = (
-      <div className="h-full flex items-center justify-center">
-        <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} />
-      </div>
-    );
+    content = <WidgetState />;
   } else {
     content = (
       <div

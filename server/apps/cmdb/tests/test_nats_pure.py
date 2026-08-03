@@ -11,7 +11,6 @@ from django.utils import timezone
 
 from apps.cmdb.nats import nats as N
 
-
 # --------------------------------------------------------------------------
 # _normalize_to_list
 # --------------------------------------------------------------------------
@@ -90,9 +89,10 @@ def test_parse_client_datetime_iso():
     assert isinstance(N._parse_client_datetime("2026-01-01T00:00:00Z", tz), datetime.datetime)
 
 
-def test_parse_client_datetime_plain():
+def test_parse_client_datetime_rejects_timezone_less_value():
     tz = timezone.get_current_timezone()
-    assert isinstance(N._parse_client_datetime("2026-01-01 00:00:00", tz), datetime.datetime)
+    with pytest.raises(ValueError, match="explicit timezone"):
+        N._parse_client_datetime("2026-01-01 00:00:00", tz)
 
 
 def test_format_period_value_date():

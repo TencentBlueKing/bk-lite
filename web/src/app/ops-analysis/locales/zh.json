@@ -562,6 +562,8 @@
     "lineColor": "线条颜色",
     "pageSize": "每页条数",
     "selectDataSource": "请选择数据源",
+    "dataSourceNotFound": "数据源不存在",
+    "dataSourceLoadFailed": "数据源加载失败",
     "dataFetchFailed": "数据查询失败",
     "inputName": "请输入组件名称",
     "paramSettings": "参数设置",
