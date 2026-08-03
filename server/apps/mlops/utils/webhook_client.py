@@ -63,6 +63,7 @@ class WebhookClient:
 
     DEFAULT_SERVING_STARTUP_TIMEOUT_SECONDS = 120
     MAX_SERVING_STARTUP_TIMEOUT_SECONDS = 290
+    SERVING_HOOK_GRACE_SECONDS = 5
     SERVING_REQUEST_GRACE_SECONDS = 5
 
     @staticmethod
@@ -200,7 +201,24 @@ class WebhookClient:
         # )
 
         try:
-            response = requests.post(url, json=payload, timeout=timeout)
+            startup_timeout = (
+                payload.get("startup_timeout_seconds")
+                if endpoint == "serve"
+                else None
+            )
+            if startup_timeout is None:
+                response = requests.post(url, json=payload, timeout=timeout)
+            else:
+                hook_timeout = (
+                    int(startup_timeout)
+                    + WebhookClient.SERVING_HOOK_GRACE_SECONDS
+                )
+                response = requests.post(
+                    url,
+                    json=payload,
+                    timeout=timeout,
+                    headers={"X-Hook-Timeout": str(hook_timeout)},
+                )
 
             # logger.info(
             #     f"Webhookd 响应 - 状态码: {response.status_code}, 内容: {response.text[:500]}"
@@ -300,7 +318,9 @@ class WebhookClient:
                 )
             payload["startup_timeout_seconds"] = startup_timeout
             request_timeout = (
-                startup_timeout + WebhookClient.SERVING_REQUEST_GRACE_SECONDS
+                startup_timeout
+                + WebhookClient.SERVING_REQUEST_GRACE_SECONDS
+                + WebhookClient.SERVING_HOOK_GRACE_SECONDS
             )
 
         # 添加运行时特定参数

@@ -179,6 +179,30 @@ def test_request_success_returns_json(monkeypatch):
     assert captured["timeout"] == 15
 
 
+def test_request_forwards_startup_budget_as_per_hook_timeout_header(monkeypatch):
+    _setup_hook(monkeypatch)
+    captured = {}
+
+    def fake_post(url, json=None, timeout=None, headers=None):
+        captured["timeout"] = timeout
+        captured["headers"] = headers
+        return FakeResponse(200, {"status": "success"})
+
+    monkeypatch.setattr(requests, "post", fake_post)
+
+    result = WebhookClient._request(
+        "serve",
+        {"startup_timeout_seconds": 120},
+        timeout=130,
+    )
+
+    assert result == {"status": "success"}
+    assert captured == {
+        "timeout": 130,
+        "headers": {"X-Hook-Timeout": "125"},
+    }
+
+
 def test_request_non200_json_error_with_code_and_detail(monkeypatch):
     _setup_hook(monkeypatch)
 
@@ -268,7 +292,7 @@ def test_serve_builds_payload_and_returns_result(monkeypatch):
     assert p["train_image"] == "img"
     assert p["device"] == "gpu"
     assert p["startup_timeout_seconds"] == 120
-    assert captured["timeout"] == 125
+    assert captured["timeout"] == 130
 
 
 def test_serve_error_status_raises(monkeypatch):
@@ -312,7 +336,7 @@ def test_serve_uses_configured_docker_startup_budget(monkeypatch):
     WebhookClient.serve("Svc_1", "http://mlflow", "models:/m/1")
 
     assert captured["payload"]["startup_timeout_seconds"] == 45
-    assert captured["timeout"] == 50
+    assert captured["timeout"] == 55
 
 
 def test_serve_rejects_invalid_docker_startup_budget(monkeypatch):
