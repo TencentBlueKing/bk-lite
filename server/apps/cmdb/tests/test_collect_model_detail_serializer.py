@@ -120,6 +120,7 @@ def test_collect_model_retrieve_keeps_legacy_result_payload_behind_explicit_swit
     [
         ({}, CollectModelDetailSerializer),
         ({"include_result_data": "false"}, CollectModelDetailSerializer),
+        ({"include_result_data": "invalid"}, CollectModelDetailSerializer),
         ({"include_result_data": "1"}, CollectModelSerializer),
         ({"include_result_data": "true"}, CollectModelSerializer),
     ],
@@ -135,6 +136,7 @@ def test_collect_model_retrieve_routes_legacy_result_fields_only_when_explicitly
     assert view.get_serializer_class() is expected_serializer
 
 
+@pytest.mark.django_db
 def test_collect_model_retrieve_defers_result_columns_unless_legacy_payload_is_requested(monkeypatch):
     monkeypatch.setattr(
         CollectModelViewSet,
@@ -144,12 +146,18 @@ def test_collect_model_retrieve_defers_result_columns_unless_legacy_payload_is_r
     view = CollectModelViewSet()
     view.action = "retrieve"
     view.request = _request()
+    task = CollectModels.objects.create(
+        name="deferred-detail",
+        task_type="host",
+        model_id="host",
+        cycle_value_type="cycle",
+        team=[1],
+    )
 
-    deferred_fields, is_deferred = view.get_queryset().query.deferred_loading
+    bounded_task = view.get_queryset().get(pk=task.pk)
 
-    assert is_deferred is True
-    assert RESULT_PAYLOAD_FIELDS.issubset(deferred_fields)
+    assert RESULT_PAYLOAD_FIELDS.issubset(bounded_task.get_deferred_fields())
 
     view.request = _request(query_params={"include_result_data": "true"})
-    legacy_deferred_fields, _ = view.get_queryset().query.deferred_loading
-    assert RESULT_PAYLOAD_FIELDS.isdisjoint(legacy_deferred_fields)
+    legacy_task = view.get_queryset().get(pk=task.pk)
+    assert RESULT_PAYLOAD_FIELDS.isdisjoint(legacy_task.get_deferred_fields())
