@@ -1,0 +1,200 @@
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+  file_storage:
+    directory: /var/lib/otelcol/queue
+    timeout: 1s
+    compaction:
+      directory: /var/lib/otelcol/queue
+      on_start: true
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+        max_recv_msg_size_mib: 8
+        include_metadata: true
+      http:
+        endpoint: 0.0.0.0:4318
+        include_metadata: true
+
+processors:
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: ${env:APM_COLLECTOR_MEMORY_LIMIT_MIB}
+    spike_limit_mib: ${env:APM_COLLECTOR_MEMORY_SPIKE_MIB}
+
+  # 客户端提交的 bk.* span/resource 属性都不可信，必须在注入来源前删除。
+  attributes/drop_reserved:
+    actions:
+      - pattern: ^bk\..*$
+        action: delete
+  resource/drop_reserved:
+    attributes:
+      - pattern: ^bk\..*$
+        action: delete
+  transform/drop_nested_reserved:
+    error_mode: ignore
+    trace_statements:
+      - context: scope
+        statements:
+          - delete_matching_keys(scope.attributes, "^bk\\..*$")
+      - context: spanevent
+        statements:
+          - delete_matching_keys(spanevent.attributes, "^bk\\..*$")
+  resource/trusted_ingest_source:
+    attributes:
+      - key: bk.ingest_source.id
+        from_context: metadata.x-bk-ingest-source-id
+        action: upsert
+
+  # 对 Span 属性总数和字符串长度设置硬上限；规范化端点后立即删除可能含敏感参数的原始名称。
+  transform/limits_and_route:
+    error_mode: ignore
+    trace_statements:
+      - context: span
+        statements:
+          - delete_matching_keys(span.attributes, "(?i)(^|[._-])(authorization|cookie|password|passwd|pwd|secret|token|api[-_]?key|private[-_]?key)([._-]|$)")
+          - delete_key(span.attributes, "body")
+          - delete_key(span.attributes, "http.request.body")
+          - delete_key(span.attributes, "http.response.body")
+          - delete_key(span.attributes, "request.body")
+          - delete_key(span.attributes, "response.body")
+          - set_semconv_span_name("1.40.0", "bk.apm.original_span_name")
+          - delete_key(span.attributes, "url.full")
+          - delete_key(span.attributes, "url.path")
+          - delete_key(span.attributes, "url.query")
+          - delete_key(span.attributes, "url.fragment")
+          - delete_key(span.attributes, "http.url")
+          - delete_key(span.attributes, "http.target")
+          - delete_key(span.attributes, "bk.apm.original_span_name")
+          - limit(span.attributes, 100, [])
+          - truncate_all(span.attributes, 4096)
+      - context: resource
+        statements:
+          - delete_matching_keys(resource.attributes, "(?i)(^|[._-])(authorization|cookie|password|passwd|pwd|secret|token|api[-_]?key|private[-_]?key)([._-]|$)")
+          - limit(resource.attributes, 64, [])
+          - truncate_all(resource.attributes, 4096)
+
+  # 先生成全量 Span Metrics；尾采样仅位于另一条 traces/sampled pipeline。
+  tail_sampling:
+    decision_wait: ${env:APM_TAIL_DECISION_WAIT}
+    num_traces: ${env:APM_TAIL_NUM_TRACES}
+    expected_new_traces_per_sec: ${env:APM_TAIL_EXPECTED_TRACES_PER_SEC}
+    policies:
+      - name: errors
+        type: status_code
+        status_code:
+          status_codes: [ERROR]
+      - name: slow
+        type: latency
+        latency:
+          threshold_ms: ${env:APM_SLOW_TRACE_THRESHOLD_MS}
+      - name: normal
+        type: probabilistic
+        probabilistic:
+          sampling_percentage: ${env:APM_NORMAL_TRACE_SAMPLE_PERCENT}
+
+  batch/traces:
+    timeout: 2s
+    send_batch_size: ${env:APM_TRACE_BATCH_SIZE}
+    send_batch_max_size: ${env:APM_TRACE_BATCH_MAX_SIZE}
+  batch/metrics:
+    timeout: 5s
+    send_batch_size: ${env:APM_METRIC_BATCH_SIZE}
+    send_batch_max_size: ${env:APM_METRIC_BATCH_MAX_SIZE}
+
+connectors:
+  spanmetrics:
+    namespace: bklite.apm
+    histogram:
+      explicit:
+        buckets: [2ms, 5ms, 10ms, 25ms, 50ms, 100ms, 250ms, 500ms, 1s, 2s, 5s, 10s]
+    dimensions:
+      - name: service.namespace
+        default: ""
+      - name: service.instance.id
+        default: ""
+      - name: deployment.environment
+        default: ""
+      - name: service.version
+        default: ""
+      - name: bk.ingest_source.id
+        default: ""
+    resource_metrics_key_attributes:
+      - service.namespace
+      - service.name
+      - service.instance.id
+      - deployment.environment
+      - service.version
+      - bk.ingest_source.id
+    aggregation_cardinality_limit: ${env:APM_SPANMETRICS_CARDINALITY_LIMIT}
+    metrics_flush_interval: 5s
+
+exporters:
+  otlphttp/victoria_traces:
+    traces_endpoint: ${env:APM_VICTORIATRACES_OTLP_ENDPOINT}
+    timeout: 10s
+    sending_queue:
+      enabled: true
+      num_consumers: 4
+      queue_size: ${env:APM_TRACE_EXPORT_QUEUE_SIZE}
+      storage: file_storage
+    retry_on_failure:
+      enabled: true
+      initial_interval: 1s
+      max_interval: 30s
+      max_elapsed_time: 300s
+
+  prometheusremotewrite/victoria_metrics:
+    endpoint: ${env:APM_VICTORIAMETRICS_WRITE_ENDPOINT}
+    timeout: 10s
+    remote_write_queue:
+      enabled: true
+      num_consumers: 1
+      queue_size: ${env:APM_METRIC_EXPORT_QUEUE_SIZE}
+    retry_on_failure:
+      enabled: true
+      initial_interval: 1s
+      max_interval: 30s
+      max_elapsed_time: 300s
+
+service:
+  extensions: [health_check, file_storage]
+  telemetry:
+    metrics:
+      level: normal
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
+  pipelines:
+    traces/spanmetrics:
+      receivers: [otlp]
+      processors:
+        - memory_limiter
+        - attributes/drop_reserved
+        - resource/drop_reserved
+        - transform/drop_nested_reserved
+        - resource/trusted_ingest_source
+        - transform/limits_and_route
+      exporters: [spanmetrics]
+    traces/sampled:
+      receivers: [otlp]
+      processors:
+        - memory_limiter
+        - attributes/drop_reserved
+        - resource/drop_reserved
+        - transform/drop_nested_reserved
+        - resource/trusted_ingest_source
+        - transform/limits_and_route
+        - tail_sampling
+        - batch/traces
+      exporters: [otlphttp/victoria_traces]
+    metrics/spanmetrics:
+      receivers: [spanmetrics]
+      processors: [memory_limiter, batch/metrics]
+      exporters: [prometheusremotewrite/victoria_metrics]

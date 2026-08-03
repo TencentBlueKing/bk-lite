@@ -29,7 +29,7 @@ const TableContent = () => {
   const baseColumns: Record<string, ColumnItem[]> = {
     [DatasetType.LOG_CLUSTERING]: [
       {
-        title: '日志内容',
+        title: t('datasets.logContent'),
         dataIndex: 'log',
         key: 'log',
         align: 'center',
@@ -38,13 +38,13 @@ const TableContent = () => {
     ],
     [DatasetType.CLASSIFICATION]: [
       {
-        title: '文本内容',
+        title: t('datasets.textContent'),
         dataIndex: 'text',
         key: 'text',
         align: 'center',
       },
       {
-        title: '标注',
+        title: t('datasets.label'),
         dataIndex: 'label',
         key: 'label',
         align: 'center'

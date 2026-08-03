@@ -284,8 +284,12 @@ export default function LibraryPage() {
     () => data.filter((patch) => selectedPatchIds.includes(patch.id)),
     [data, selectedPatchIds],
   );
+  const selectedSource = useMemo(
+    () => sources.find((source) => source.id === selectedSourceId),
+    [selectedSourceId, sources],
+  );
   const batchDeleteBlocked = selectedPatches.some(
-    (patch) => (patch.baseline_requirement_count ?? 0) > 0,
+    (patch) => (patch.baseline_requirement_count ?? 0) > 0 || !patch.permission?.includes('Operate'),
   );
 
   const handleDelete = async (patchIds: number[]) => {
@@ -347,8 +351,8 @@ export default function LibraryPage() {
           {t('patchManager.delete')}
         </Button>;
         return <Space size={12}>
-          <PermissionWrapper requiredPermissions={['Edit']}><a style={{ color: '#1677ff' }} onClick={() => setEditingPatch(r)}><EditOutlined /> {t('patchManager.edit')}</a></PermissionWrapper>
-          <PermissionWrapper requiredPermissions={['Delete']}>
+          <PermissionWrapper requiredPermissions={['Edit']} instPermissions={r.permission}><a style={{ color: '#1677ff' }} onClick={() => setEditingPatch(r)}><EditOutlined /> {t('patchManager.edit')}</a></PermissionWrapper>
+          <PermissionWrapper requiredPermissions={['Delete']} instPermissions={r.permission}>
             {deleteBlocked ? <Tooltip title={t('patchManager.libraryPage.deleteReferenced')}><span>{deleteButton}</span></Tooltip> : <Popconfirm title={t('patchManager.libraryPage.deleteConfirm')} onConfirm={() => handleDelete([r.id])} okText={t('patchManager.delete')} cancelText={t('patchManager.cancel')}>
               {deleteButton}
             </Popconfirm>}
@@ -640,7 +644,7 @@ export default function LibraryPage() {
               </Button>
             </Dropdown>
           </PermissionWrapper>
-          <PermissionWrapper requiredPermissions={['Edit']}><Button icon={<CloudDownloadOutlined />} onClick={handleImportSearch}>{t('patchManager.libraryPage.syncIngest')}</Button></PermissionWrapper>
+          <PermissionWrapper requiredPermissions={['Edit']} permissionPath="/patch-manager/settings"><Button icon={<CloudDownloadOutlined />} onClick={handleImportSearch}>{t('patchManager.libraryPage.syncIngest')}</Button></PermissionWrapper>
           {activeTab === 'win' && (
             <PermissionWrapper requiredPermissions={['Add']}><Button icon={<PlusOutlined />} onClick={() => { createForm.resetFields(); setCreateOpen(true); }}>{t('patchManager.libraryPage.addPatch')}</Button></PermissionWrapper>
           )}
@@ -657,6 +661,7 @@ export default function LibraryPage() {
           rowSelection={{
             selectedRowKeys: selectedPatchIds,
             onChange: (keys) => setSelectedPatchIds(keys.map(Number)),
+            getCheckboxProps: (record) => ({ disabled: !record.permission?.includes('Operate') }),
           }}
           pagination={{
             current: pagination.current,
@@ -686,7 +691,9 @@ export default function LibraryPage() {
         footer={
           <Space>
             <Button disabled={createSaving} onClick={() => { createForm.resetFields(); setCreateOpen(false); }}>{t('patchManager.cancel')}</Button>
-            <Button type="primary" loading={createSaving} onClick={handleCreateSubmit}>{t('patchManager.confirm')}</Button>
+            <PermissionWrapper requiredPermissions={['Add']}>
+              <Button type="primary" loading={createSaving} onClick={handleCreateSubmit}>{t('patchManager.confirm')}</Button>
+            </PermissionWrapper>
           </Space>
         }
       >
@@ -757,7 +764,9 @@ export default function LibraryPage() {
         footer={
           <Space>
             <Button onClick={closeImportDrawer}>{t('patchManager.cancel')}</Button>
-            <Button type="primary" loading={candidateActionLoading} disabled={candidateSelection.keys.length === 0} icon={<CloudDownloadOutlined />} onClick={handleImportSubmit}>{t('patchManager.libraryPage.batchIngest', undefined, { count: candidateSelection.keys.length })}</Button>
+            <PermissionWrapper requiredPermissions={['Edit']} permissionPath="/patch-manager/settings" instPermissions={selectedSource?.permission}>
+              <Button type="primary" loading={candidateActionLoading} disabled={candidateSelection.keys.length === 0} icon={<CloudDownloadOutlined />} onClick={handleImportSubmit}>{t('patchManager.libraryPage.batchIngest', undefined, { count: candidateSelection.keys.length })}</Button>
+            </PermissionWrapper>
           </Space>
         }
       >
@@ -872,6 +881,7 @@ export default function LibraryPage() {
           if (!editSaving) setEditingPatch(null);
         }}
         confirmLoading={editSaving}
+        okButtonProps={{ disabled: !editingPatch?.permission?.includes('Operate') }}
         cancelButtonProps={{ disabled: editSaving }}
         closable={!editSaving}
         maskClosable={!editSaving}

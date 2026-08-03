@@ -12,13 +12,14 @@ import {
   Pagination,
   ObjectItem,
   ModalRef,
-  TableDataItem
+  TableDataItem,
+  UserItem
 } from '@/app/monitor/types';
 import { SourceFeild } from '@/app/monitor/types/event';
 import CustomTable from '@/components/custom-table';
 import SelectAssets from './selectAssets';
-import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
-import { getRandomColor, findLabelById } from '@/app/monitor/utils/common';
+import UserAvatar from '@/components/user-avatar';
+import { findLabelById } from '@/app/monitor/utils/common';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import { PlusOutlined } from '@ant-design/icons';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -26,6 +27,8 @@ import TreeSelector from '@/app/monitor/components/treeSelector';
 import ResizableSidebar from '@/app/monitor/components/resizableSidebar';
 import Permission from '@/components/permission';
 import { cloneDeep } from 'lodash';
+import { useCommon } from '@/app/monitor/context/common';
+import { formatUserDisplayName } from '@/utils/userDisplay';
 
 const Strategy: React.FC = () => {
   const { t } = useTranslation();
@@ -35,6 +38,8 @@ const Strategy: React.FC = () => {
     useEventApi();
   const searchParams = useSearchParams();
   const { convertToLocalizedTime } = useLocalizedTime();
+  const commonContext = useCommon();
+  const userList: UserItem[] = commonContext?.userList || [];
   const objId = searchParams.get('objId');
   const router = useRouter();
   const instRef = useRef<ModalRef>(null);
@@ -85,26 +90,15 @@ const Strategy: React.FC = () => {
       title: t('common.creator'),
       dataIndex: 'created_by',
       key: 'created_by',
-      render: (_, { created_by }) => {
-        return created_by ? (
-          <div className="column-user" title={created_by}>
-            <span
-              className="user-avatar"
-              style={{ background: getRandomColor() }}
-            >
-              {created_by.slice(0, 1).toLocaleUpperCase()}
-            </span>
-            <span className="user-name">
-              <EllipsisWithTooltip
-                className="w-full overflow-hidden text-ellipsis whitespace-nowrap"
-                text={created_by}
-              />
-            </span>
-          </div>
+      render: (_, { created_by }) =>
+        created_by ? (
+          <UserAvatar
+            userName={formatUserDisplayName(created_by, userList)}
+            size="small"
+          />
         ) : (
           <>--</>
-        );
-      }
+        )
     },
     {
       title: t('common.createTime'),

@@ -67,6 +67,7 @@ def calculate_alerts(alert_name, df, thresholds, template_context=None, n=1):
     enum_value_map = template_context.get("enum_value_map", {})
     dimension_name_map = template_context.get("dimension_name_map", {})
     monitor_instance_id_key = template_context.get("monitor_instance_id_key")
+    resource_context_resolver = template_context.get("resource_context_resolver")
 
     for _, row in df.iterrows():
         instance_id_tuple = row["instance_id"]
@@ -78,7 +79,16 @@ def calculate_alerts(alert_name, df, thresholds, template_context=None, n=1):
             instance_id_keys,
             monitor_instance_id_key,
         )
-        resource_name = instances_map.get(monitor_instance_id, monitor_instance_id)
+        resource_context = {}
+        if callable(resource_context_resolver):
+            resource_context = resource_context_resolver(metric_instance_id) or {}
+            monitor_instance_id = resource_context.get(
+                "monitor_instance_id", monitor_instance_id
+            )
+        resource_name = resource_context.get(
+            "resource_name",
+            instances_map.get(monitor_instance_id, monitor_instance_id),
+        )
         dimension_str = format_dimension_str(dimensions, instance_id_keys)
         display_name = (
             f"{resource_name} - {dimension_str}" if dimension_str else resource_name
@@ -127,6 +137,7 @@ def calculate_alerts(alert_name, df, thresholds, template_context=None, n=1):
                     "level": threshold_info["level"],
                     "value": formatted_value,
                     "dimension_value": dimension_value,
+                    **resource_context,
                 }
                 context.update(build_metric_template_vars(dimensions))
 

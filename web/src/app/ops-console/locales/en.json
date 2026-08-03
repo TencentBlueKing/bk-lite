@@ -1,6 +1,6 @@
 {
   "opsConsole": {
-    "console": "Wecome to BlueKing Lite Console",
+    "console": "Welcome to {portalName} Console",
     "user": "User",
     "probeManagement": "Probe",
     "associatedTopology": "Topology",

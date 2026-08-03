@@ -18,6 +18,7 @@ from apps.mlops.serializers.algorithm_config import (
     AlgorithmConfigListSerializer,
 )
 from apps.mlops.filters.algorithm_config import AlgorithmConfigFilter
+from apps.mlops.utils.i18n import mlops_message
 
 
 # 算法类型到训练任务模型的映射
@@ -89,7 +90,12 @@ class AlgorithmConfigViewSet(ModelViewSet):
             if task_count > 0:
                 return Response(
                     {
-                        "error": f"无法禁用：有 {task_count} 个训练任务正在使用此算法",
+                        "error": mlops_message(
+                            request,
+                            "error.algorithm_in_use_cannot_disable",
+                            "无法禁用：有 {task_count} 个训练任务正在使用此算法",
+                            task_count=task_count,
+                        ),
                         "task_count": task_count,
                     },
                     status=status.HTTP_400_BAD_REQUEST,
@@ -133,7 +139,12 @@ class AlgorithmConfigViewSet(ModelViewSet):
         if task_count > 0:
             return Response(
                 {
-                    "error": f"无法删除：有 {task_count} 个训练任务正在使用此算法",
+                    "error": mlops_message(
+                        request,
+                        "error.algorithm_in_use_cannot_delete",
+                        "无法删除：有 {task_count} 个训练任务正在使用此算法",
+                        task_count=task_count,
+                    ),
                     "task_count": task_count,
                 },
                 status=status.HTTP_400_BAD_REQUEST,
@@ -175,7 +186,13 @@ class AlgorithmConfigViewSet(ModelViewSet):
 
         if not algorithm_type or not name:
             return Response(
-                {"error": "algorithm_type 和 name 参数必填"},
+                {
+                    "error": mlops_message(
+                        request,
+                        "error.algorithm_type_and_name_required",
+                        "algorithm_type 和 name 参数必填",
+                    )
+                },
                 status=400,
             )
 
@@ -189,6 +206,13 @@ class AlgorithmConfigViewSet(ModelViewSet):
                 f"未找到算法配置: algorithm_type={algorithm_type}, name={name}"
             )
             return Response(
-                {"error": f"未找到算法配置: {algorithm_type}/{name}"},
+                {
+                    "error": mlops_message(
+                        request,
+                        "error.algorithm_config_not_found",
+                        "未找到算法配置：{algorithm}",
+                        algorithm=f"{algorithm_type}/{name}",
+                    )
+                },
                 status=404,
             )

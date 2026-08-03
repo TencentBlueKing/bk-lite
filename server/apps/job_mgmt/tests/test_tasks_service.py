@@ -4,7 +4,7 @@
 """
 
 from datetime import timedelta
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 from django.utils import timezone
@@ -149,7 +149,10 @@ class TestCleanupExpiredFiles:
     def test_deletes_expired_only(self):
         expired = DistributionFile.objects.create(original_name="old", file_key="k1", expire_at=timezone.now() - timedelta(days=1), team=1)
         fresh = DistributionFile.objects.create(original_name="new", file_key="k2", expire_at=timezone.now() + timedelta(days=1), team=1)
-        with patch("apps.job_mgmt.tasks.async_to_sync", lambda fn: (lambda *a, **k: None)):
+        with patch(
+            "apps.job_mgmt.tasks.async_to_sync",
+            lambda fn: (lambda file_keys, **kwargs: {file_key: None for file_key in file_keys}),
+        ):
             tasks.cleanup_expired_distribution_files_task()
         assert not DistributionFile.objects.filter(id=expired.id).exists()
         assert DistributionFile.objects.filter(id=fresh.id).exists()

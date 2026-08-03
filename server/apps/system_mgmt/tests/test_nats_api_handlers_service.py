@@ -5,8 +5,10 @@ nats handler 直接可调用（@nats_client.register 返回原函数）。
 """
 
 import types
+from unittest.mock import Mock
 
 import pytest
+from django.db import connection
 from nats_client.registry import default_registry
 
 import nats_client
@@ -39,6 +41,10 @@ def test_nats_api_compat_exports_local_and_nats_entrypoints():
         "get_channel_detail",
         "search_channel_list",
         "search_channel_list_scoped",
+        "list_notification_channels_scoped",
+        "search_notification_recipients_scoped",
+        "dispatch_notification",
+        "probe_notification_channel",
         "send_msg_with_channel",
         "_list_opspilot_nats_channels",
         "sync_opspilot_nats_channels",
@@ -425,6 +431,42 @@ def test_search_channel_list_filters_by_team_and_type():
     assert "c1" in names and "c2" not in names
 
 
+@pytest.mark.skipif(
+    connection.vendor == "sqlite",
+    reason="现有 Channel.team JSON contains 查询只支持生产 PostgreSQL",
+)
+def test_search_channel_list_filters_nats_method_without_exposing_config():
+    Channel.objects.create(
+        name="alert-center",
+        channel_type=ChannelChoices.NATS,
+        config={"method_name": "receive_alert_events", "secret": "hidden"},
+        description="d",
+        team=[5],
+    )
+    Channel.objects.create(
+        name="workflow",
+        channel_type=ChannelChoices.NATS,
+        config={"method_name": "trigger_workflow_by_nats"},
+        description="d",
+        team=[5],
+    )
+
+    result = nats_api.search_channel_list(
+        channel_type=ChannelChoices.NATS,
+        teams=[5],
+        channel_method="receive_alert_events",
+    )
+
+    assert result["data"] == [
+        {
+            "id": Channel.objects.get(name="alert-center").id,
+            "name": "alert-center",
+            "channel_type": "nats",
+            "description": "d",
+        }
+    ]
+
+
 def test_search_channel_list_include_children():
     parent = Group.objects.create(name="CParent", parent_id=0)
     child = Group.objects.create(name="CChild", parent_id=parent.id)
@@ -432,6 +474,292 @@ def test_search_channel_list_include_children():
     result = nats_api.search_channel_list(teams=[parent.id], include_children=True)
     names = {c["name"] for c in result["data"]}
     assert "cc" in names
+
+
+def test_public_notification_directory_exposes_capabilities_without_private_config():
+    group = Group.objects.create(name="notify-team", parent_id=0)
+    actor = User.objects.create(
+        username="notify-user",
+        domain="domain.com",
+        password="x",
+        group_list=[group.id],
+    )
+    email = Channel.objects.create(
+        name="邮件",
+        channel_type=ChannelChoices.EMAIL,
+        config={"smtp_pwd": "encrypted-secret"},
+        description="值班邮件",
+        team=[group.id],
+    )
+    alert_copy = Channel.objects.create(
+        name="告警中心",
+        channel_type=ChannelChoices.NATS,
+        config={"method_name": "receive_alert_events", "secret": "hidden"},
+        description="事件副本",
+        team=[group.id],
+    )
+
+    response = nats_api.list_notification_channels_scoped(
+        {
+            "username": actor.username,
+            "domain": actor.domain,
+            "current_team": group.id,
+        },
+        teams=[group.id],
+    )
+
+    assert response["result"] is True
+    assert response["data"] == [
+        {
+            "id": email.id,
+            "name": "邮件",
+            "channel_type": "email",
+            "description": "值班邮件",
+            "delivery_mode": "message",
+            "recipient_mode": "system_user",
+            "availability": "available",
+        },
+        {
+            "id": alert_copy.id,
+            "name": "告警中心",
+            "channel_type": "nats",
+            "description": "事件副本",
+            "delivery_mode": "alert_event_copy",
+            "recipient_mode": "none",
+            "availability": "available",
+        },
+    ]
+    assert "config" not in str(response)
+    assert "secret" not in str(response)
+
+
+def test_probe_notification_channel_checks_alert_copy_responder(monkeypatch):
+    group = Group.objects.create(name="probe-team", parent_id=0)
+    channel = Channel.objects.create(
+        name="告警中心",
+        channel_type=ChannelChoices.NATS,
+        config={"namespace": "bklite", "method_name": "receive_alert_events", "timeout": 60},
+        team=[group.id],
+    )
+    captured = {}
+
+    def probe(channel_obj, content, *, timeout_override=None):
+        captured.update({"channel": channel_obj.id, "content": content, "timeout": timeout_override})
+        return {"result": True, "data": {"status": "ok"}, "message": ""}
+
+    monkeypatch.setattr("apps.system_mgmt.nats.channels.send_nats_message", probe)
+
+    response = nats_api.probe_notification_channel(channel.id)
+
+    assert response == {"result": True, "code": "available", "retryable": False, "message": "success"}
+    assert captured == {"channel": channel.id, "content": {"health_probe": True}, "timeout": 2}
+
+
+def test_public_notification_recipient_search_is_scoped_and_bounded():
+    group = Group.objects.create(name="recipient-team", parent_id=0)
+    other_group = Group.objects.create(name="other-team", parent_id=0)
+    actor = User.objects.create(username="actor", domain="domain.com", password="x", group_list=[group.id])
+    matching = User.objects.create(
+        username="alice",
+        display_name="Alice On-call",
+        domain="domain.com",
+        password="x",
+        group_list=[group.id],
+    )
+    User.objects.create(
+        username="alice-hidden",
+        display_name="Alice Hidden",
+        domain="domain.com",
+        password="x",
+        group_list=[other_group.id],
+    )
+
+    response = nats_api.search_notification_recipients_scoped(
+        {"username": actor.username, "domain": actor.domain, "current_team": group.id},
+        teams=[group.id],
+        search="alice",
+        limit=1,
+    )
+
+    assert response == {
+        "result": True,
+        "data": [{"id": matching.id, "username": "alice", "display_name": "Alice On-call"}],
+    }
+
+
+def test_public_notification_dispatch_normalizes_success_and_terminal_failure(monkeypatch):
+    channel = Channel.objects.create(
+        name="Webhook",
+        channel_type=ChannelChoices.CUSTOM_WEBHOOK,
+        config={"webhook_url": "encrypted"},
+        description="hook",
+        team=[7],
+    )
+    sent = {}
+
+    def fake_send(channel_id, title, content, receivers, attachments=None):
+        sent.update(channel_id=channel_id, title=title, content=content, receivers=receivers)
+        return {"result": True}
+
+    monkeypatch.setattr("apps.system_mgmt.nats.channels.send_msg_with_channel", fake_send)
+
+    delivered = nats_api.dispatch_notification(
+        delivery_key="apm:event:channel",
+        channel_id=channel.id,
+        organization_ids=[7],
+        recipients=["on-call"],
+        title="APM 告警",
+        body="checkout 错误率过高",
+        event_payload={"event_key": "event"},
+    )
+    missing = nats_api.dispatch_notification(
+        delivery_key="apm:missing",
+        channel_id=999999,
+        organization_ids=[7],
+        recipients=[],
+        title="x",
+        body="y",
+        event_payload={},
+    )
+
+    assert delivered == {"result": True, "code": "delivered", "retryable": False, "message": "success"}
+    assert sent == {
+        "channel_id": channel.id,
+        "title": "APM 告警",
+        "content": "checkout 错误率过高",
+        "receivers": ["on-call"],
+    }
+    assert missing == {
+        "result": False,
+        "code": "channel_not_found",
+        "retryable": False,
+        "message": "通知渠道不存在。",
+    }
+
+
+def test_public_notification_dispatch_builds_alert_center_event_copy(monkeypatch):
+    channel = Channel.objects.create(
+        name="告警中心",
+        channel_type=ChannelChoices.NATS,
+        config={"method_name": "receive_alert_events"},
+        description="copy",
+        team=[9],
+    )
+    sent = {}
+
+    def fake_send(channel_id, title, content, receivers, attachments=None):
+        sent.update(channel_id=channel_id, title=title, content=content, receivers=receivers)
+        return {"result": True, "data": {"ingestion": {"accepted": 1, "skipped": 0, "errored": 0}}}
+
+    monkeypatch.setattr("apps.system_mgmt.nats.channels.send_msg_with_channel", fake_send)
+
+    result = nats_api.dispatch_notification(
+        delivery_key="apm:event:copy",
+        channel_id=channel.id,
+        organization_ids=[9],
+        recipients=[],
+        title="ignored",
+        body="ignored",
+        event_payload={"event_key": "event-1", "organizations": [9]},
+    )
+
+    assert result["result"] is True
+    assert sent["content"] == {
+        "source_id": "nats",
+        "pusher": "lite-apm",
+        "events": [{"event_key": "event-1", "organizations": [9]}],
+    }
+    assert sent["receivers"] == []
+
+
+def test_public_notification_dispatch_uses_shared_channel_organization_for_nats(monkeypatch):
+    channel = Channel.objects.create(
+        name="组织内 NATS",
+        channel_type=ChannelChoices.NATS,
+        config={"namespace": "notify", "method_name": "send"},
+        description="message",
+        team=[9, 7],
+    )
+    sent = {}
+
+    def fake_send(channel_id, title, content, receivers, attachments=None):
+        sent.update(channel_id=channel_id, title=title, content=content, receivers=receivers)
+        return {"result": True}
+
+    monkeypatch.setattr("apps.system_mgmt.nats.channels.send_msg_with_channel", fake_send)
+
+    result = nats_api.dispatch_notification(
+        delivery_key="apm:event:nats-team",
+        channel_id=channel.id,
+        organization_ids=[1, 9, 7],
+        recipients=["on-call"],
+        title="APM 告警",
+        body="checkout 错误率过高",
+        event_payload={"event_key": "event-1"},
+    )
+
+    assert result["result"] is True
+    assert sent["content"] == {
+        "message": "checkout 错误率过高",
+        "team": 7,
+        "user_ids": ["on-call"],
+    }
+
+
+def test_public_notification_dispatch_rejects_missing_system_user_without_retry(monkeypatch):
+    channel = Channel.objects.create(
+        name="邮件",
+        channel_type=ChannelChoices.EMAIL,
+        config={},
+        description="mail",
+        team=[7],
+    )
+    send = Mock()
+    monkeypatch.setattr("apps.system_mgmt.nats.channels.send_msg_with_channel", send)
+
+    result = nats_api.dispatch_notification(
+        delivery_key="apm:event:email",
+        channel_id=channel.id,
+        organization_ids=[7],
+        recipients=["999999"],
+        title="title",
+        body="body",
+        event_payload={},
+    )
+
+    assert result["result"] is False
+    assert result["code"] == "invalid_recipients"
+    assert result["retryable"] is False
+    send.assert_not_called()
+
+
+def test_public_notification_dispatch_escapes_rich_text_before_transport(monkeypatch):
+    channel = Channel.objects.create(
+        name="飞书",
+        channel_type=ChannelChoices.FEISHU_BOT,
+        config={},
+        description="bot",
+        team=[7],
+    )
+    send = Mock(return_value={"result": True})
+    monkeypatch.setattr("apps.system_mgmt.nats.channels.send_msg_with_channel", send)
+
+    result = nats_api.dispatch_notification(
+        delivery_key="apm:event:bot",
+        channel_id=channel.id,
+        organization_ids=[7],
+        recipients=["on-call"],
+        title="<b>[title]</b>",
+        body="**<script>alert(1)</script>**",
+        event_payload={},
+    )
+
+    assert result["result"] is True
+    _, sent_title, sent_body, _ = send.call_args.args
+    assert "<" not in sent_title
+    assert "<" not in sent_body
+    assert "\\[title\\]" in sent_title
+    assert "\\*\\*" in sent_body
 
 
 # ---------------------------------------------------------------------------

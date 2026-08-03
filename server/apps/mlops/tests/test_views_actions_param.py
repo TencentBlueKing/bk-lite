@@ -57,8 +57,7 @@ PREDICT_PARAM = {
 }
 
 # Algorithms whose DatasetReleaseViewSet exposes archive/unarchive.
-HAS_ARCHIVE = {"anomaly_detection", "log_clustering", "timeseries_predict",
-               "image_classification", "object_detection"}
+HAS_ARCHIVE = set(ALGO_IDS)
 
 # Algorithms whose archive/unarchive also mutate ``description`` (prepend /
 # strip the "[已归档] " marker). image/object only flip ``status``.
@@ -179,7 +178,7 @@ def test_train_rejects_already_running(monkeypatch, superuser, suffix, prefix, m
     request = factory.post(f"/{suffix}_train_jobs/x/train/")
     resp = _call(view, request, superuser, pk=tj.id)
     assert resp.status_code == status.HTTP_400_BAD_REQUEST
-    assert "运行中" in resp.data["error"]
+    assert "running" in resp.data["error"]
 
 
 @pytest.mark.parametrize("suffix,prefix,model_module,basename", ALGOS, ids=ALGO_IDS)
@@ -197,7 +196,7 @@ def test_train_config_error_returns_500(monkeypatch, superuser, suffix, prefix, 
     request = factory.post(f"/{suffix}_train_jobs/x/train/")
     resp = _call(view, request, superuser, pk=tj.id)
     assert resp.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
-    assert "系统配置错误" in resp.data["error"]
+    assert "configuration" in resp.data["error"]
 
 
 @pytest.mark.parametrize("suffix,prefix,model_module,basename", ALGOS, ids=ALGO_IDS)
@@ -214,9 +213,9 @@ def test_train_missing_dataset_file(monkeypatch, superuser, suffix, prefix, mode
     view = getattr(mod, f"{basename}TrainJobViewSet").as_view({"post": "train"})
     request = factory.post(f"/{suffix}_train_jobs/x/train/")
     resp = _call(view, request, superuser, pk=tj.id)
-    # no dataset_version -> 数据集文件不存在
+    # no dataset_version -> Dataset file was not found
     assert resp.status_code == status.HTTP_400_BAD_REQUEST
-    assert "数据集文件不存在" in resp.data["error"]
+    assert "Dataset file was not found" in resp.data["error"]
 
 
 @pytest.mark.parametrize("suffix,prefix,model_module,basename", ALGOS, ids=ALGO_IDS)
@@ -235,7 +234,7 @@ def test_train_missing_config_url(monkeypatch, superuser, suffix, prefix, model_
     request = factory.post(f"/{suffix}_train_jobs/x/train/")
     resp = _call(view, request, superuser, pk=tj.id)
     assert resp.status_code == status.HTTP_400_BAD_REQUEST
-    assert "训练配置文件不存在" in resp.data["error"]
+    assert "Training configuration file was not found" in resp.data["error"]
 
 
 @pytest.mark.parametrize("suffix,prefix,model_module,basename", ALGOS, ids=ALGO_IDS)
@@ -281,6 +280,7 @@ def test_train_happy_path(monkeypatch, superuser, suffix, prefix, model_module, 
     request = factory.post(f"/{suffix}_train_jobs/x/train/")
     resp = _call(view, request, superuser, pk=tj.id)
     assert resp.status_code == status.HTTP_200_OK
+    assert resp.data["message"] == "Training task started"
     assert "train_job_id" in resp.data
     train_mock.assert_called_once()
     delay_mock.assert_called_once()
@@ -301,7 +301,7 @@ def test_stop_not_running_rejected(monkeypatch, superuser, suffix, prefix, model
     request = factory.post(f"/{suffix}_train_jobs/x/stop/")
     resp = _call(view, request, superuser, pk=tj.id)
     assert resp.status_code == status.HTTP_400_BAD_REQUEST
-    assert "未在运行中" in resp.data["error"]
+    assert "Training task is not running" in resp.data["error"]
 
 
 @pytest.mark.parametrize("suffix,prefix,model_module,basename", ALGOS, ids=ALGO_IDS)
@@ -315,6 +315,7 @@ def test_stop_running_success(monkeypatch, superuser, suffix, prefix, model_modu
     request = factory.post(f"/{suffix}_train_jobs/x/stop/")
     resp = _call(view, request, superuser, pk=tj.id)
     assert resp.status_code == status.HTTP_200_OK
+    assert resp.data["message"] == "Training task stopped"
     assert resp.data["webhook_response"] == {"ok": True}
     tj.refresh_from_db()
     assert tj.status == TrainJobStatus.PENDING
@@ -356,7 +357,7 @@ def test_runs_data_list_no_experiment(monkeypatch, superuser, suffix, prefix, mo
     assert resp.status_code == status.HTTP_200_OK
     assert resp.data["count"] == 0
     assert resp.data["items"] == []
-    assert "未找到对应的MLflow实验" in resp.data["message"]
+    assert resp.data["message"] == "MLflow experiment was not found"
 
 
 @pytest.mark.parametrize("suffix,prefix,model_module,basename", ALGOS, ids=ALGO_IDS)
@@ -373,7 +374,7 @@ def test_runs_data_list_empty_runs(monkeypatch, superuser, suffix, prefix, model
     resp = _call(view, request, superuser, pk=tj.id)
     assert resp.status_code == status.HTTP_200_OK
     assert resp.data["count"] == 0
-    assert "未找到训练运行记录" in resp.data["message"]
+    assert resp.data["message"] == "No training run records were found"
 
 
 @pytest.mark.parametrize("suffix,prefix,model_module,basename", ALGOS, ids=ALGO_IDS)
@@ -429,6 +430,7 @@ def test_delete_run_not_found(monkeypatch, superuser, suffix, prefix, model_modu
     resp = _call(view, request, superuser, pk=tj.id, run_id="missing")
     assert resp.status_code == status.HTTP_404_NOT_FOUND
     assert resp.data["code"] == "run_not_found"
+    assert resp.data["error"] == "Training run record was not found"
 
 
 @pytest.mark.parametrize("suffix,prefix,model_module,basename", ALGOS, ids=ALGO_IDS)
@@ -445,6 +447,7 @@ def test_delete_run_blocked_active_latest(monkeypatch, superuser, suffix, prefix
     resp = _call(view, request, superuser, pk=tj.id, run_id="r1")
     assert resp.status_code == status.HTTP_400_BAD_REQUEST
     assert resp.data["code"] == "active_latest_run"
+    assert resp.data["error"] == "The current training run record cannot be deleted"
 
 
 @pytest.mark.parametrize("suffix,prefix,model_module,basename", ALGOS, ids=ALGO_IDS)
@@ -636,6 +639,7 @@ def test_release_archive_success(monkeypatch, superuser, suffix, prefix, model_m
     request = factory.post(f"/{suffix}_dataset_releases/x/archive/")
     resp = _call(view, request, superuser, pk=rel.id)
     assert resp.status_code == status.HTTP_200_OK
+    assert resp.data == {"message": "Archived successfully", "release_id": rel.id}
     rel.refresh_from_db()
     assert rel.status == DatasetReleaseStatus.ARCHIVED
     if suffix in ARCHIVE_TOUCHES_DESCRIPTION:
@@ -652,6 +656,7 @@ def test_release_archive_already_archived(monkeypatch, superuser, suffix, prefix
     request = factory.post(f"/{suffix}_dataset_releases/x/archive/")
     resp = _call(view, request, superuser, pk=rel.id)
     assert resp.status_code == status.HTTP_400_BAD_REQUEST
+    assert resp.data == {"error": "Dataset release is already archived"}
 
 
 @pytest.mark.parametrize("suffix,prefix,model_module,basename", ALGOS, ids=ALGO_IDS)
@@ -664,6 +669,7 @@ def test_release_unarchive_success(monkeypatch, superuser, suffix, prefix, model
     request = factory.post(f"/{suffix}_dataset_releases/x/unarchive/")
     resp = _call(view, request, superuser, pk=rel.id)
     assert resp.status_code == status.HTTP_200_OK
+    assert resp.data == {"message": "Restored successfully", "release_id": rel.id}
     rel.refresh_from_db()
     assert rel.status == DatasetReleaseStatus.PUBLISHED
     if suffix in ARCHIVE_TOUCHES_DESCRIPTION:
@@ -680,6 +686,7 @@ def test_release_unarchive_not_archived(monkeypatch, superuser, suffix, prefix, 
     request = factory.post(f"/{suffix}_dataset_releases/x/unarchive/")
     resp = _call(view, request, superuser, pk=rel.id)
     assert resp.status_code == status.HTTP_400_BAD_REQUEST
+    assert resp.data == {"error": "Only archived dataset releases can be restored"}
 
 
 # =========================================================================
@@ -697,6 +704,7 @@ def test_serving_stop_success(monkeypatch, superuser, suffix, prefix, model_modu
     request = factory.post(f"/{suffix}_servings/x/stop/")
     resp = _call(view, request, superuser, pk=serving.id)
     assert resp.status_code == status.HTTP_200_OK
+    assert resp.data["message"] == "Service stopped and deleted"
     assert resp.data["serving_id"] == f"{prefix}_Serving_{serving.id}"
     stop_mock.assert_called_once()
 
@@ -733,9 +741,7 @@ def test_serving_predict_empty_data(monkeypatch, superuser, suffix, prefix, mode
     request = factory.post(f"/{suffix}_servings/x/predict/", {}, format="json")
     resp = _call(view, request, superuser, pk=serving.id)
     assert resp.status_code == status.HTTP_400_BAD_REQUEST
-    # message mentions the missing param name (不能为空 / 缺少参数)
-    err = resp.data["error"]
-    assert PREDICT_PARAM[suffix] in err or "不能为空" in err or "缺少参数" in err
+    assert resp.data["error"] == f"{PREDICT_PARAM[suffix]} is required"
 
 
 @pytest.mark.parametrize("suffix,prefix,model_module,basename", ALGOS, ids=ALGO_IDS)
@@ -754,7 +760,7 @@ def test_serving_predict_non_list_data(monkeypatch, superuser, suffix, prefix, m
     request = factory.post(f"/{suffix}_servings/x/predict/", {param: {"a": 1}}, format="json")
     resp = _call(view, request, superuser, pk=serving.id)
     assert resp.status_code == status.HTTP_400_BAD_REQUEST
-    assert "数组格式" in resp.data["error"]
+    assert resp.data["error"] == f"{PREDICT_PARAM[suffix]} must be an array"
 
 
 @pytest.mark.parametrize("suffix,prefix,model_module,basename", ALGOS, ids=ALGO_IDS)
@@ -899,8 +905,10 @@ def test_serving_start_config_error(monkeypatch, superuser, suffix, prefix, mode
     request = factory.post(f"/{suffix}_servings/x/start/")
     resp = _call(view, request, superuser, pk=serving.id)
     assert resp.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
-    # Config-related error: either explicit env-var message or generic config error.
-    assert ("MLFLOW_TRACKER_URL" in resp.data["error"]) or ("配置" in resp.data["error"])
+    assert resp.data["error"] in {
+        "System configuration error. Please contact an administrator.",
+        "MLFLOW_TRACKER_URL environment variable is not configured",
+    }
 
 
 def _allow_team_one(monkeypatch):

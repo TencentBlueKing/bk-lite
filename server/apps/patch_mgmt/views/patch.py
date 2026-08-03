@@ -25,6 +25,7 @@ from apps.patch_mgmt.services.windows_package import (
     replace_failed_windows_package,
     store_windows_package,
 )
+from apps.patch_mgmt.utils.data_permissions import require_authorized_ids
 from apps.patch_mgmt.utils.operation_log import log_patch_created, log_patch_deleted, log_patch_updated
 from apps.patch_mgmt.utils.i18n import patch_message, render_business_error
 from rest_framework import status
@@ -242,9 +243,12 @@ class PatchViewSet(AuthViewSet):
         return self._delete_patches(request, [patches_by_id[patch_id] for patch_id in ids])
 
     @action(detail=True, methods=["post"], parser_classes=[MultiPartParser])
-    @HasPermission("patch-Add")
+    @HasPermission("patch-Edit")
     def upload_package(self, request, pk=None):
         patch = self.get_object()
+        require_authorized_ids(
+            self, request, Patch.objects.all(), [patch.id], "patch"
+        )
         uploaded_file = request.FILES.get("file")
         if uploaded_file is None:
             return Response({"detail": patch_message(request, "error.patch_package_required", "Select a patch package")}, status=status.HTTP_400_BAD_REQUEST)
@@ -259,6 +263,9 @@ class PatchViewSet(AuthViewSet):
     @HasPermission("patch-Edit")
     def replace_package(self, request, pk=None):
         patch = self.get_object()
+        require_authorized_ids(
+            self, request, Patch.objects.all(), [patch.id], "patch"
+        )
         uploaded_file = request.FILES.get("file")
         if uploaded_file is None:
             return Response({"detail": patch_message(request, "error.patch_package_required", "Select a patch package")}, status=status.HTTP_400_BAD_REQUEST)

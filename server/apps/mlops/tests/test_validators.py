@@ -17,21 +17,26 @@ def _inst(state):
     return SimpleNamespace(container_info={"state": state} if state is not None else None)
 
 
+def _request():
+    return SimpleNamespace(user=SimpleNamespace(locale="en"))
+
+
 def test_active_但容器未运行_返回400():
-    resp = validate_serving_status_change(_inst("exited"), "active")
+    resp = validate_serving_status_change(_request(), _inst("exited"), "active")
     assert resp is not None
     assert resp.status_code == 400
+    assert resp.data["error"] == "Cannot set status to active because the container is not running. Start the service first."
 
 
 def test_active_且容器运行中_放行():
-    assert validate_serving_status_change(_inst("running"), "active") is None
+    assert validate_serving_status_change(_request(), _inst("running"), "active") is None
 
 
 def test_非active状态_放行():
-    assert validate_serving_status_change(_inst("exited"), "inactive") is None
+    assert validate_serving_status_change(_request(), _inst("exited"), "inactive") is None
 
 
 def test_container_info_为None_视为未运行():
-    resp = validate_serving_status_change(_inst(None), "active")
+    resp = validate_serving_status_change(_request(), _inst(None), "active")
     assert resp is not None
     assert resp.status_code == 400

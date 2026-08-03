@@ -444,7 +444,7 @@ class TestCleanupExpiredDistributionFiles:
         )
 
         with patch("apps.job_mgmt.tasks.async_to_sync") as mock_async:
-            mock_async.return_value = MagicMock()
+            mock_async.return_value = MagicMock(return_value={expired.file_key: None})
             cleanup_expired_distribution_files_task()
             # 已到期文件触发了 S3 删除
             mock_async.assert_called()

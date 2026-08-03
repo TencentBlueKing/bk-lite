@@ -4,6 +4,7 @@ from rest_framework import serializers
 
 from apps.core.utils.serializers import AuthSerializer
 from apps.mlops.models.log_clustering import *
+from apps.mlops.utils.i18n import serializer_message
 from apps.mlops.utils.group_scope import (
     assert_dataset_version_scope,
     assert_parent_team_matches,
@@ -140,7 +141,7 @@ class LogClusteringDatasetReleaseSerializer(AuthSerializer):
             allow_failed_retry = bool(train_file_id and val_file_id and test_file_id) and existing and existing.status == "failed"
 
             if existing and not allow_failed_retry:
-                raise serializers.ValidationError({"version": f"数据集 {dataset.name} 的版本 {version} 已存在"})
+                raise serializers.ValidationError({"version": serializer_message(self, "error.dataset_release_version_exists", dataset_name=dataset.name, version=version)})
 
         return attrs
 
@@ -193,7 +194,7 @@ class LogClusteringDatasetReleaseSerializer(AuthSerializer):
                     release.save(update_fields=["status", "file_size", "metadata"])
                 else:
                     logger.info(f"数据集版本已存在 - Dataset: {dataset.id}, Version: {version}, Status: {existing.status}")
-                    raise serializers.ValidationError(f"数据集 {dataset.name} 的版本 {version} 已存在或正在处理中")
+                    raise serializers.ValidationError(serializer_message(self, "error.dataset_release_version_unavailable", dataset_name=dataset.name, version=version))
             else:
                 # 创建 pending 状态的发布记录
                 validated_data["status"] = "pending"
@@ -220,7 +221,7 @@ class LogClusteringDatasetReleaseSerializer(AuthSerializer):
                 )
                 release.status = "failed"
                 release.save(update_fields=["status"])
-                raise serializers.ValidationError("投递异步任务失败")
+                raise serializers.ValidationError(serializer_message(self, "error.dataset_release_task_enqueue_failed"))
 
             logger.info(f"创建数据集发布任务 - Release ID: {release.id}, Dataset: {dataset.id}, Version: {version}")
 
@@ -228,12 +229,12 @@ class LogClusteringDatasetReleaseSerializer(AuthSerializer):
 
         except LogClusteringTrainData.DoesNotExist as e:
             logger.error(f"训练数据文件不存在 - {str(e)}")
-            raise serializers.ValidationError(f"训练数据文件不存在或不属于该数据集")
+            raise serializers.ValidationError(serializer_message(self, "error.dataset_release_training_data_not_found"))
         except serializers.ValidationError:
             raise
         except Exception as e:
             logger.error(f"创建数据集发布任务失败 - {str(e)}", exc_info=True)
-            raise serializers.ValidationError("创建发布任务失败")
+            raise serializers.ValidationError(serializer_message(self, "error.dataset_release_create_failed"))
 
 
 class LogClusteringTrainJobSerializer(AuthSerializer):
@@ -263,7 +264,7 @@ class LogClusteringTrainJobSerializer(AuthSerializer):
         """
         # 只在创建时验证（更新时不强制要求）
         if not self.instance and not attrs.get("dataset_version"):
-            raise serializers.ValidationError({"dataset_version": "创建训练任务时必须指定数据集版本"})
+            raise serializers.ValidationError({"dataset_version": serializer_message(self, "error.training_task_dataset_version_required")})
 
         attrs = super().validate(attrs)
         request = self.context["request"]
@@ -299,7 +300,7 @@ class LogClusteringServingSerializer(AuthSerializer):
         team = attrs.get("team", getattr(self.instance, "team", None))
         if train_job is not None and team is not None:
             field_name = "train_job" if "train_job" in attrs or "team" not in attrs else "team"
-            assert_parent_team_matches(SimpleNamespace(team=team), train_job, field_name)
+            assert_parent_team_matches(SimpleNamespace(team=team), train_job, field_name, request=self.context.get("request"))
 
         return attrs
 

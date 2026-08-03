@@ -4,7 +4,7 @@ import pytest
 from django.utils import timezone
 
 from apps.core.exceptions.base_app_exception import ValidationAppException
-from apps.monitor.models import MonitorInstance, MonitorObject
+from apps.monitor.models import MonitorAlert, MonitorInstance, MonitorObject
 from apps.monitor.services.auto_discovery_lifecycle import AutoDiscoveryLifecycleService
 from apps.monitor.services.monitor_object_cleanup import MonitorObjectCleanupPolicyService
 
@@ -77,3 +77,46 @@ def test_child_inherits_parent_policy_and_policy_change_starts_fresh_interval():
     instance.refresh_from_db()
     assert instance.is_active is False
     assert instance.missing_duration_seconds == 24 * 60 * 60 - 1
+
+
+def test_minute_timeout_removes_instance_only_after_full_duration():
+    observed_at = timezone.now()
+    monitor_object = MonitorObject.objects.create(
+        name="CleanupMinuteBase",
+        level="base",
+        cleanup_policy=MonitorObject.CLEANUP_POLICY_TIMEOUT,
+        cleanup_timeout_days=30,
+        cleanup_timeout_unit=MonitorObject.CLEANUP_TIMEOUT_UNIT_MINUTE,
+        cleanup_policy_effective_at=observed_at - timedelta(minutes=10),
+        last_discovery_success_at=observed_at - timedelta(minutes=10),
+    )
+    instance = MonitorInstance.objects.create(
+        id="minute-timeout",
+        monitor_object=monitor_object,
+        auto=True,
+        missing_duration_seconds=19 * 60,
+    )
+    alert = MonitorAlert.objects.create(
+        monitor_instance_id=instance.id,
+        metric_instance_id="minute-timeout:no-data",
+        alert_type="no_data",
+        status="new",
+    )
+
+    AutoDiscoveryLifecycleService.reconcile({}, {monitor_object.id}, observed_at)
+
+    instance.refresh_from_db()
+    alert.refresh_from_db()
+    assert instance.missing_duration_seconds == 29 * 60
+    assert alert.status == "new"
+
+    AutoDiscoveryLifecycleService.reconcile(
+        {},
+        {monitor_object.id},
+        observed_at + timedelta(minutes=1),
+    )
+
+    assert not MonitorInstance.objects.filter(id=instance.id).exists()
+    alert.refresh_from_db()
+    assert alert.status == "closed"
+    assert alert.operation_logs[-1]["reason"] == "auto_cleanup_instance_deleted"

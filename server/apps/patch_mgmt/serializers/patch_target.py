@@ -6,9 +6,9 @@ from pathlib import PurePosixPath
 from rest_framework import serializers
 
 from apps.core.mixinx import EncryptMixin
-from apps.core.utils.serializers import TeamSerializer
 from apps.patch_mgmt.constants import PatchTargetSource
 from apps.patch_mgmt.models import GovernanceTask, GovernanceTaskHost, PatchTarget
+from apps.patch_mgmt.serializers.permission import PatchPermissionSerializer
 from apps.patch_mgmt.utils.i18n import serializer_message
 
 
@@ -52,7 +52,7 @@ class PatchTargetConnectivitySerializer(serializers.Serializer):
         return attrs
 
 
-class PatchTargetSerializer(TeamSerializer):
+class PatchTargetSerializer(PatchPermissionSerializer):
     """补丁管理目标序列化器"""
 
     os_type_display = serializers.CharField(source="get_os_type_display", read_only=True)
@@ -78,6 +78,7 @@ class PatchTargetSerializer(TeamSerializer):
     has_winrm_password = serializers.SerializerMethodField()
     has_ssh_key = serializers.SerializerMethodField()
     ssh_key_file_name = serializers.SerializerMethodField()
+    permission_key = "patch_target"
 
     # 运行时聚合字段（列表/详情均返回，便于前端目标管理页展示）
     baseline_name = serializers.SerializerMethodField()
@@ -281,6 +282,7 @@ class PatchTargetSerializer(TeamSerializer):
             "arch",
             "team",
             "team_name",
+            "permission",
             "created_by",
             "created_at",
             "updated_by",
