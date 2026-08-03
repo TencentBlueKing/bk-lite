@@ -43,6 +43,10 @@ def _perm(monkeypatch):
     monkeypatch.setattr(f"{VIEWS}.get_default_group_id", lambda: [1])
     monkeypatch.setattr(f"{VIEWS}.ModelViewSet.organizations", lambda self, r, m: [1])
     monkeypatch.setattr(f"{VIEWS}.create_change_record", lambda **k: None)
+    monkeypatch.setattr(
+        f"{VIEWS}.ModelManage.search_model_info",
+        lambda model_id: {"model_id": model_id, "model_name": model_id, "group": [1], "is_visible": True},
+    )
 
 
 def _req(method, user, data=None, query="", files=None):

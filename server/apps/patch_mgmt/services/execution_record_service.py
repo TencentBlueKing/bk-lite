@@ -215,6 +215,19 @@ def _item_status(root: GovernanceTask, item: dict) -> str:
         return reboot[-1]["status"]
 
     install = attempts.get(GovernanceTaskType.INSTALL, [])
+    if not verify and (install or reboot):
+        verify_status, _ = _skipped_step_reason(
+            root,
+            target_id,
+            GovernanceTaskType.VERIFY,
+            attempts,
+        )
+        if verify_status == "waiting":
+            # 批量任务中单台主机可能先安装/重启完成，但自动验证要等
+            # 根任务收口后才创建。此时详情仍显示“验证等待中”，摘要
+            # 也必须保持等待，不能把前置步骤完成误报为整条链路完成。
+            return "waiting"
+
     if install:
         if install[-1]["status"] in {"failed", "cancelled", "unknown"}:
             return install[-1]["status"]

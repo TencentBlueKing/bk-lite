@@ -270,25 +270,37 @@ const SearchView: React.FC = () => {
                   size="small"
                   style={{ boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}
                   title={
-                    <div className="flex items-center">
-                      <EllipsisWithTooltip
-                        text={`${item.aggregation}(${item.objectName}-${item.metric?.display_name || '--'})`}
-                        className="font-medium truncate max-w-[calc(100%-150px)]"
-                      />
-                      <span className="font-medium flex-shrink-0">
-                        <span className="text-[var(--color-text-3)] text-[12px]">
-                          {getUnit(item.unit)}
-                        </span>
-                        {item.metric?.display_description && (
-                          <Tooltip title={item.metric.display_description}>
-                            <QuestionCircleFilled
-                              className={`cursor-help text-xs align-super ${getUnit(item.unit) ? 'ml-[-6px]' : ''} text-[var(--color-text-3)]`}
-                            />
-                          </Tooltip>
-                        )}
-                      </span>
+                    <div className="flex items-start gap-[8px] min-w-0">
+                      <div className="min-w-0 flex-1 overflow-hidden">
+                        <div className="flex items-center min-w-0">
+                          <EllipsisWithTooltip
+                            text={`${item.aggregation}(${item.objectName}-${item.metric?.display_name || '--'})`}
+                            className="font-medium truncate max-w-full"
+                          />
+                          <span className="font-medium flex-shrink-0">
+                            <span className="text-[var(--color-text-3)] text-[12px]">
+                              {getUnit(item.unit)}
+                            </span>
+                            {item.metric?.display_description && (
+                              <Tooltip title={item.metric.display_description}>
+                                <QuestionCircleFilled
+                                  className={`cursor-help text-xs align-super ${getUnit(item.unit) ? 'ml-[-6px]' : ''} text-[var(--color-text-3)]`}
+                                />
+                              </Tooltip>
+                            )}
+                          </span>
+                        </div>
+                        {item.metric?.name ? (
+                          <div
+                            className="mt-[2px] text-[12px] leading-[18px] text-[var(--color-text-3)] overflow-hidden text-ellipsis whitespace-nowrap"
+                            title={item.metric.name}
+                          >
+                            {item.metric.name}
+                          </div>
+                        ) : null}
+                      </div>
                       {!item.loading && item.duration > 0 && (
-                        <span className="text-xs text-[var(--color-text-3)] font-normal flex-shrink-0 whitespace-nowrap ml-[10px]">
+                        <span className="text-xs text-[var(--color-text-3)] font-normal flex-shrink-0 whitespace-nowrap pt-[2px]">
                           {t('monitor.search.duration')} {item.duration}
                           {t('monitor.search.ms')}
                         </span>

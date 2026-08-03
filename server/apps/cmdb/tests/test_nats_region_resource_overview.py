@@ -47,7 +47,7 @@ class TestRegionResourceOverview:
     @pytest.mark.parametrize("region", [None, "", "未知"])
     @patch.object(nats, "_build_nats_model_permission_map", return_value=MODEL_PERMISSIONS)
     def test_blank_or_unknown_region_returns_empty(self, _permission, region):
-        with patch.object(nats, "extract_region_options", return_value=[{"label": "本部", "value": "本部"}]), patch.object(nats, "_build_nats_permission_map", return_value=INSTANCE_PERMISSIONS):
+        with patch.object(nats, "extract_region_options", return_value=[{"label": "本部", "value": "本部"}]), patch.object(nats, "_build_nats_permission_map", return_value=INSTANCE_PERMISSIONS), patch.object(nats.ModelManage, "search_model", return_value=[]), patch.object(nats.ClassificationManage, "search_model_classification", return_value=[]):
             assert nats.get_region_resource_overview(region=region, user_info=USER_INFO) == {"items": []}
 
     @patch.object(nats, "_build_nats_model_permission_map", return_value=MODEL_PERMISSIONS)

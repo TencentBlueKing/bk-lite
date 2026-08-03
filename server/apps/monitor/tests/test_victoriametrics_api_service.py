@@ -18,7 +18,7 @@ def _resp(payload):
 
 def test_query_builds_path_and_params():
     api = VictoriaMetricsAPI()
-    with patch("apps.monitor.utils.victoriametrics_api.requests.get", return_value=_resp({"ok": 1})) as g:
+    with patch("apps.monitor.utils.victoriametrics_api._SESSION.get", return_value=_resp({"ok": 1})) as g:
         out = api.query("cpu", step="1m", time=12345)
     assert out == {"ok": 1}
     args, kwargs = g.call_args
@@ -29,21 +29,21 @@ def test_query_builds_path_and_params():
 
 def test_query_omits_empty_step_and_time():
     api = VictoriaMetricsAPI()
-    with patch("apps.monitor.utils.victoriametrics_api.requests.get", return_value=_resp({})) as g:
+    with patch("apps.monitor.utils.victoriametrics_api._SESSION.get", return_value=_resp({})) as g:
         api.query("cpu", step=None, time=None)
     assert g.call_args.kwargs["params"] == {"query": "cpu"}
 
 
 def test_query_includes_lookback_delta_when_supplied():
     api = VictoriaMetricsAPI()
-    with patch("apps.monitor.utils.victoriametrics_api.requests.get", return_value=_resp({})) as g:
+    with patch("apps.monitor.utils.victoriametrics_api._SESSION.get", return_value=_resp({})) as g:
         api.query("cpu", lookback_delta="600s")
     assert g.call_args.kwargs["params"] == {"query": "cpu", "step": "5m", "lookback_delta": "600s"}
 
 
 def test_query_range_builds_params():
     api = VictoriaMetricsAPI()
-    with patch("apps.monitor.utils.victoriametrics_api.requests.get", return_value=_resp({"r": []})) as g:
+    with patch("apps.monitor.utils.victoriametrics_api._SESSION.get", return_value=_resp({"r": []})) as g:
         out = api.query_range("cpu", "s", "e", step="30s")
     assert out == {"r": []}
     args, kwargs = g.call_args
@@ -53,14 +53,14 @@ def test_query_range_builds_params():
 
 def test_timeout_is_propagated():
     api = VictoriaMetricsAPI()
-    with patch("apps.monitor.utils.victoriametrics_api.requests.get", side_effect=requests.Timeout("boom")):
+    with patch("apps.monitor.utils.victoriametrics_api._SESSION.get", side_effect=requests.Timeout("boom")):
         with pytest.raises(requests.Timeout):
             api.query("cpu")
 
 
 def test_request_exception_is_propagated():
     api = VictoriaMetricsAPI()
-    with patch("apps.monitor.utils.victoriametrics_api.requests.get", side_effect=requests.ConnectionError("x")):
+    with patch("apps.monitor.utils.victoriametrics_api._SESSION.get", side_effect=requests.ConnectionError("x")):
         with pytest.raises(requests.RequestException):
             api.query_range("cpu", "s", "e")
 
@@ -69,6 +69,6 @@ def test_http_error_raised_via_raise_for_status():
     api = VictoriaMetricsAPI()
     r = MagicMock()
     r.raise_for_status.side_effect = requests.HTTPError("500")
-    with patch("apps.monitor.utils.victoriametrics_api.requests.get", return_value=r):
+    with patch("apps.monitor.utils.victoriametrics_api._SESSION.get", return_value=r):
         with pytest.raises(requests.HTTPError):
             api.query("cpu")

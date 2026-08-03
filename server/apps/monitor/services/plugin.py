@@ -262,6 +262,7 @@ class MonitorPluginService:
                 existing_metric.monitor_plugin_id = plugin_obj.id
                 existing_metric.display_name = metric["display_name"]
                 existing_metric.query = metric["query"]
+                existing_metric.view_query = metric.get("view_query", "")
                 existing_metric.unit = metric["unit"]
                 existing_metric.data_type = metric["data_type"]
                 existing_metric.description = metric["description"]
@@ -277,6 +278,7 @@ class MonitorPluginService:
                         name=metric["name"],
                         display_name=metric["display_name"],
                         query=metric["query"],
+                        view_query=metric.get("view_query", ""),
                         unit=metric["unit"],
                         data_type=metric["data_type"],
                         description=metric["description"],
@@ -288,7 +290,7 @@ class MonitorPluginService:
         if metrics_to_update:
             Metric.objects.bulk_update(
                 metrics_to_update,
-                ["metric_group_id", "display_name", "query", "unit", "data_type", "description", "dimensions", "instance_id_keys"],
+                ["metric_group_id", "display_name", "query", "view_query", "unit", "data_type", "description", "dimensions", "instance_id_keys"],
                 batch_size=DatabaseConstants.BULK_UPDATE_BATCH_SIZE,
             )
 

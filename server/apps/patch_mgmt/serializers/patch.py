@@ -170,3 +170,16 @@ class PatchDetailSerializer(PatchListSerializer):
             "updated_by",
             "updated_at",
         ]
+
+
+class PatchBatchDeleteSerializer(serializers.Serializer):
+    """批量删除补丁入参。"""
+
+    ids = serializers.ListField(
+        child=serializers.IntegerField(min_value=1),
+        allow_empty=False,
+        max_length=500,
+    )
+
+    def validate_ids(self, value):
+        return list(dict.fromkeys(value))

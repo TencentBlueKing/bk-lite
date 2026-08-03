@@ -311,6 +311,68 @@ class TestExecutionRecordListApi:
         assert "未设置" in detail["steps"][1]["reason"]
         assert "未执行重启" in detail["steps"][2]["reason"]
 
+    def test_install_item_waits_for_verification_while_batch_peer_is_running(self):
+        """单机安装完成不代表治理完成；自动验证创建前摘要应与详情同为等待中。"""
+        completed_risk_id = "10:20:30"
+        running_risk_id = "11:21:31"
+        remediation = GovernanceTask.objects.create(
+            name="一键治理 · 2台 · 2项",
+            task_type=GovernanceTaskType.INSTALL,
+            status=GovernanceTaskStatus.RUNNING,
+            target_list=[10, 11],
+            patch_list=[20, 21],
+            risk_snapshot=[
+                {
+                    "id": completed_risk_id,
+                    "host_id": 10,
+                    "host_name": "host-a",
+                    "host_ip": "10.0.0.1",
+                    "patch_id": 20,
+                    "patch_name": "openssl",
+                },
+                {
+                    "id": running_risk_id,
+                    "host_id": 11,
+                    "host_name": "host-b",
+                    "host_ip": "10.0.0.2",
+                    "patch_id": 21,
+                    "patch_name": "kernel",
+                },
+            ],
+            team=[1],
+        )
+        GovernanceTaskHost.objects.create(
+            task=remediation,
+            target_id=10,
+            target_name="host-a",
+            target_ip="10.0.0.1",
+            stage="completed",
+            stage_color="success",
+            reason="安装完成，无需重启（apt）",
+        )
+        GovernanceTaskHost.objects.create(
+            task=remediation,
+            target_id=11,
+            target_name="host-b",
+            target_ip="10.0.0.2",
+            stage="installing",
+            stage_color="processing",
+        )
+
+        summaries = {
+            item["id"]: item for item in build_risk_item_summaries(remediation)
+        }
+        detail = build_risk_item_detail(remediation, completed_risk_id)
+        verify_step = next(
+            step
+            for step in detail["steps"]
+            if step["key"] == GovernanceTaskType.VERIFY
+        )
+
+        assert summaries[completed_risk_id]["status"] == "waiting"
+        assert detail["status"] == "waiting"
+        assert verify_step["status"] == "waiting"
+
     def test_verification_result_is_not_changed_by_later_live_compliance(self):
         target = PatchTarget.objects.create(
             name="host-a", ip="10.0.0.1", os_type=OSType.LINUX, team=[1]

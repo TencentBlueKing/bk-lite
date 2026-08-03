@@ -4,8 +4,7 @@ import json
 import re
 from pathlib import Path
 
-import yaml
-
+from apps.core.utils.loader import LanguageLoader
 
 ROOT = Path(__file__).resolve().parents[3]
 REPO_ROOT = ROOT.parent
@@ -41,7 +40,7 @@ def _json(name: str):
 
 
 def _yaml(name: str):
-    return yaml.safe_load((ROOT / "apps" / "monitor" / "language" / name).read_text(encoding="utf-8"))
+    return LanguageLoader("monitor", name.removesuffix(".yaml")).translations
 
 
 def test_lantronix_snmpv3_passwords_use_sidecar_env():
@@ -57,7 +56,7 @@ def test_lantronix_snmpv3_passwords_use_sidecar_env():
     assert "{{ priv_password }}" not in toml
 
 
-def test_lantronix_metrics_are_vendor_delta_only_and_policy_subset():
+def test_lantronix_metrics_embed_deployed_snmp_floor_and_policy_subset():
     metrics = _json("metrics.json")
     policy = _json("policy.json")
     metric_names = {metric["name"] for metric in metrics["metrics"]}
@@ -65,8 +64,9 @@ def test_lantronix_metrics_are_vendor_delta_only_and_policy_subset():
     assert metrics["collect_type"] == "snmp_lantronix"
     assert metrics["name"] == "ConsoleServer"
     assert metrics["plugin"] == "ConsoleServer Lantronix SLC SNMP"
-    assert metrics["metrics"] == []
-    assert not {"snmp_uptime", "interface_ifHCInOctets", "interface_ifHCOutOctets"} & metric_names
+    floor = {"snmp_uptime", "interface_ifHCInOctets", "interface_ifHCOutOctets"}
+    assert metric_names == floor
+    assert set(metrics["supplementary_indicators"]) == {"snmp_uptime"}
     assert not {name for name in metric_names if name.startswith("device_total_")}
 
     policy_metrics = {template["metric_name"] for template in policy["templates"]}
@@ -119,7 +119,7 @@ def test_lantronix_brand_regex_avoids_generic_console_terms():
 
 def test_lantronix_files_do_not_leak_external_source_names():
     for path in [
-        *PLUGIN_DIR.iterdir(),
+        *(path for path in PLUGIN_DIR.rglob("*") if path.is_file()),
         Path(__file__),
         WEB_ROOT / "hooks" / "integration" / "objects" / "networkDevice" / "consoleServer.tsx",
         WEB_ROOT / "utils" / "common.tsx",

@@ -28,7 +28,7 @@ import {
 } from 'antd';
 import useApiClient from '@/utils/request';
 import { useCommon } from '@/app/cmdb/context/common';
-import { deepClone, getFieldItem, getIconUrl } from '@/app/cmdb/utils/common';
+import { deepClone, getFieldItem } from '@/app/cmdb/utils/common';
 import {
   useChangeRecordApi,
   useClassificationApi,
@@ -314,7 +314,6 @@ const AssetSearch = () => {
             classification_id: model?.classification_id || detail.classification_id || '',
             icn: model?.icn || detail.icn || '',
             organization: detail.organization_display || (Array.isArray(detail.organization) ? detail.organization.join(' / ') : ''),
-            icon: getIconUrl({ icn: model?.icn || detail.icn || '', model_id: modelId }),
             followed: true,
           } as FollowedAssetViewItem;
         })
@@ -337,12 +336,7 @@ const AssetSearch = () => {
         modelList,
         instanceCount: instCount,
         limit: 6,
-      }).map((entry) => ({
-        ...entry,
-        icon: entry.target_model_id
-          ? getIconUrl({ icn: entry.target_icn || '', model_id: entry.target_model_id })
-          : '',
-      }));
+      });
       setCategoryEntries(entries);
     } catch {
       setCategoryEntries([]);

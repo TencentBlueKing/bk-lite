@@ -22,7 +22,7 @@ def test_network_device_resource_top_registry_contract():
         "cpu", "memory", "traffic"
     ]
     assert [x["key"] for x in source["field_schema"]] == [
-        "rank", "display_name", "value", "unit", "instance_id",
+        "rank", "display_name", "value", "unit", "ip", "instance_id",
         "device_type", "sampled_at",
     ]
 

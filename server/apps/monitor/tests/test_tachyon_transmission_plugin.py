@@ -16,6 +16,8 @@ from pathlib import Path
 import pytest
 import yaml
 
+from apps.core.utils.loader import LanguageLoader
+
 SERVER_ROOT = Path(__file__).resolve().parents[3]
 PLUGINS = SERVER_ROOT / "apps" / "monitor" / "support-files" / "plugins" / "Telegraf"
 BRAND_DIR = PLUGINS / "snmp" / "transmission_tachyon"
@@ -77,7 +79,7 @@ def toml_text():
 @pytest.fixture(scope="module")
 def languages():
     return {
-        lang: yaml.safe_load((LANGUAGE_DIR / f"{lang}.yaml").read_text(encoding="utf-8"))
+        lang: LanguageLoader("monitor", lang).translations
         for lang in ("zh-Hans", "en")
     }
 
@@ -121,8 +123,10 @@ def test_ui_is_pure_snmp_form(ui):
 @pytest.mark.unit
 def test_metrics_is_vendor_delta_child(metrics):
     names = {m["name"] for m in metrics["metrics"]}
-    assert names == EXPECTED_METRICS
-    assert all(name not in names for name in ABSENT_METRICS)
+    floor = {"snmp_uptime", "interface_ifHCInOctets", "interface_ifHCOutOctets"}
+    assert floor <= names
+    assert names - floor == EXPECTED_METRICS
+    assert all(name not in names - floor for name in ABSENT_METRICS)
     assert metrics.get("display_fields") in (None, [])
 
 
@@ -143,7 +147,8 @@ def test_cpu_memory_and_temperature_units(metrics):
 @pytest.mark.unit
 def test_memory_pool_and_fan_psu_not_modelled(metrics):
     names = {m["name"] for m in metrics["metrics"]}
-    present = [a for a in ABSENT_METRICS if a in names]
+    floor = {"snmp_uptime", "interface_ifHCInOctets", "interface_ifHCOutOctets"}
+    present = [a for a in ABSENT_METRICS if a in names - floor]
     assert present == []
 
 
