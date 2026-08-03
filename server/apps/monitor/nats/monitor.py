@@ -152,6 +152,21 @@ def _normalize_dimensions(metric, dimensions):
     return {str(key): str(value) for key, value in dimensions.items() if value is not None}
 
 
+def _serialize_metric_plugin(metric: Metric) -> Optional[dict]:
+    plugin = metric.monitor_plugin
+    if plugin is None:
+        return None
+    return {
+        "id": plugin.id,
+        "name": plugin.name,
+        "display_name": plugin.display_name,
+        "template_id": plugin.template_id,
+        "template_type": plugin.template_type,
+        "collector": plugin.collector,
+        "collect_type": plugin.collect_type,
+    }
+
+
 def _paginate_items(items: list, page, page_size):
     total_count = len(items)
     start = (page - 1) * page_size
@@ -730,7 +745,11 @@ def monitor_object_instances(monitor_obj_id: str, *args, **kwargs):
 
 @nats_client.register
 def query_monitor_data_by_metric(query_data: dict, *args, **kwargs):
-    """查询指标数据
+    """查询同一监控对象下指定名称的所有插件指标数据。
+
+    匹配到多个插件指标时分别查询并合并 VictoriaMetrics 序列，
+    每条序列附加 ``metric_id`` 和 ``monitor_plugin`` 用于区分来源。
+
     query_data: {
         monitor_obj_id: 监控对象ID
         metric: 指标名称
@@ -771,20 +790,28 @@ def query_monitor_data_by_metric(query_data: dict, *args, **kwargs):
 
     try:
         monitor_obj = MonitorObject.objects.get(id=monitor_obj_id)
-        metric = Metric.objects.get(monitor_object=monitor_obj, name=metric_name)
-    except (MonitorObject.DoesNotExist, Metric.DoesNotExist):
+    except MonitorObject.DoesNotExist:
+        return {"result": False, "data": [], "message": "监控对象或指标不存在"}
+
+    metrics = list(
+        Metric.objects.filter(monitor_object=monitor_obj, name=metric_name)
+        .select_related("monitor_plugin")
+        .order_by("id")
+    )
+    if not metrics:
         return {"result": False, "data": [], "message": "监控对象或指标不存在"}
 
     try:
         step = _normalize_step(step)
-        dimensions = _normalize_dimensions(metric, raw_dimensions)
+        metric_queries = []
+        for metric in metrics:
+            dimensions = _normalize_dimensions(metric, raw_dimensions)
+            if not metric.query:
+                return {"result": False, "data": [], "message": "指标查询语句为空"}
+            instance_id_keys = _normalize_metric_instance_id_keys(metric, monitor_obj)
+            metric_queries.append((metric, dimensions, instance_id_keys))
     except ValueError as exc:
         return {"result": False, "data": [], "message": str(exc)}
-
-    # 构建查询语句
-    query = metric.query
-    if not query:
-        return {"result": False, "data": [], "message": "指标查询语句为空"}
 
     authorized_qs = _get_authorized_instance_queryset(permission)
 
@@ -792,48 +819,57 @@ def query_monitor_data_by_metric(query_data: dict, *args, **kwargs):
     if instance_ids:
         # 获取有权限的实例ID
         authorized_instances = list(
-            authorized_qs.filter(id__in=instance_ids, monitor_object=monitor_obj, is_deleted=False).values_list("id", flat=True)
+            authorized_qs.filter(
+                id__in=instance_ids,
+                monitor_object=monitor_obj,
+                is_deleted=False,
+            ).values_list("id", flat=True)
         )
 
         if not authorized_instances:
             return {"result": False, "data": [], "message": "没有权限访问指定的实例"}
         instance_ids = authorized_instances
 
-    instance_id_keys = _normalize_metric_instance_id_keys(metric, monitor_obj)
-    query = _build_metric_label_query(
-        query,
-        instance_ids=instance_ids,
-        dimensions=dimensions,
-        instance_id_keys=instance_id_keys,
+    authorized_instance_ids = set(
+        authorized_qs.filter(monitor_object=monitor_obj, is_deleted=False).values_list(
+            "id",
+            flat=True,
+        )
     )
 
     try:
-        # 执行范围查询
-        result = Metrics.get_metrics_range(query, start_time, end_time, step)
+        merged_result = None
+        merged_series = []
+        for metric, dimensions, instance_id_keys in metric_queries:
+            query = _build_metric_label_query(
+                metric.query,
+                instance_ids=instance_ids,
+                dimensions=dimensions,
+                instance_id_keys=instance_id_keys,
+            )
+            result = Metrics.get_metrics_range(query, start_time, end_time, step)
+            if merged_result is None:
+                merged_result = dict(result)
+                merged_data = dict(result.get("data") or {})
+                merged_data["result"] = merged_series
+                merged_result["data"] = merged_data
 
-        # 数据格式化和权限过滤
-        if "data" in result and "result" in result["data"]:
-            # 获取所有有权限的实例ID
-            authorized_instance_ids = set(authorized_qs.filter(monitor_object=monitor_obj, is_deleted=False).values_list("id", flat=True))
-
-            filtered_result = []
-            for metric_data in result["data"]["result"]:
+            plugin_data = _serialize_metric_plugin(metric)
+            for metric_data in (result.get("data") or {}).get("result") or []:
                 metric_instance_ids = _build_metric_instance_id_candidates(
                     metric_data.get("metric", {}),
                     instance_id_keys,
                 )
 
-                if metric_instance_ids:
-                    # 只返回有权限的实例数据
-                    if metric_instance_ids & authorized_instance_ids:
-                        filtered_result.append(metric_data)
-                else:
-                    # 没有实例ID的指标数据直接返回
-                    filtered_result.append(metric_data)
+                if metric_instance_ids and not metric_instance_ids & authorized_instance_ids:
+                    continue
 
-            result["data"]["result"] = filtered_result
+                enriched_metric_data = dict(metric_data)
+                enriched_metric_data["metric_id"] = metric.id
+                enriched_metric_data["monitor_plugin"] = plugin_data
+                merged_series.append(enriched_metric_data)
 
-        return {"result": True, "data": result, "message": ""}
+        return {"result": True, "data": merged_result, "message": ""}
 
     except Exception as e:
         return {"result": False, "data": [], "message": f"查询指标数据失败: {str(e)}"}
