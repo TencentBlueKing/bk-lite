@@ -45,6 +45,7 @@ interface TaskRow {
   createdAt: string;
   canCancel: boolean;
   canRetry: boolean;
+  permission?: string[];
   raw: any;
 }
 
@@ -226,6 +227,7 @@ export default function RiskExecutionPage() {
       createdAt: formatDateTime(task.created_at),
       canCancel: Boolean(task.can_cancel),
       canRetry: Boolean(task.can_retry),
+      permission: task.permission,
       raw: task,
     }))
   ), [formatDateTime, t]);
@@ -554,7 +556,7 @@ export default function RiskExecutionPage() {
       width: 150,
       render: (_: unknown, row: TaskRow) => <Space size={12}>
         <Button type="link" size="small" onClick={() => openDetail(row.id)}>{t('patchManager.risk.details')}</Button>
-        {row.canCancel && <PermissionWrapper requiredPermissions={['Edit']}><Button type="link" size="small" danger onClick={() => setCancelTask(row)}>{t('patchManager.cancel')}</Button></PermissionWrapper>}
+        {row.canCancel && <PermissionWrapper requiredPermissions={['Edit']} instPermissions={row.permission}><Button type="link" size="small" danger onClick={() => setCancelTask(row)}>{t('patchManager.cancel')}</Button></PermissionWrapper>}
       </Space>,
     },
   ];
@@ -680,7 +682,7 @@ export default function RiskExecutionPage() {
                 <div style={{ fontSize: 16, fontWeight: 600 }}>{riskDetail.display_name}</div>
                 <div style={{ color: 'var(--color-text-3, #8c8c8c)', marginTop: 4 }}>{riskDetail.host_ip || '—'} · {riskDetail.baseline_name || '—'}</div>
               </div>
-              {riskDetail.can_retry && <PermissionWrapper requiredPermissions={['Edit']}><Button type="link" size="small" onClick={handleRetry}>{t('patchManager.execution.retry')}</Button></PermissionWrapper>}
+              {riskDetail.can_retry && <PermissionWrapper requiredPermissions={['Edit']} instPermissions={detailTask?.permission}><Button type="link" size="small" onClick={handleRetry}>{t('patchManager.execution.retry')}</Button></PermissionWrapper>}
             </div>
             {(riskDetail.steps || []).map((step: any, stepIndex: number) => <div key={step.key} style={{ position: 'relative', paddingLeft: 28, paddingBottom: stepIndex === riskDetail.steps.length - 1 ? 0 : 18 }}>
               {stepIndex < riskDetail.steps.length - 1 && <div style={{ position: 'absolute', left: 9, top: 20, bottom: -2, width: 2, background: STEP_BORDER[step.status] || '#d9d9d9' }} />}

@@ -94,6 +94,10 @@ class TestPatchPermissionApiBoundaries:
         response = client.get(f"{_BASE}/api/patch_source/")
 
         assert response.status_code == status.HTTP_200_OK
+        assert response.json()["data"][0]["permission"] == [
+            "View",
+            "Operate",
+        ]
 
     def test_target_update_requires_edit_operation_permission(
         self, api_client, authenticated_user, mocker
@@ -144,6 +148,41 @@ class TestPatchPermissionApiBoundaries:
         patch = Patch.objects.create(title="openssl", os_type=OSType.LINUX, team=[1])
         client = _permission_client(api_client, authenticated_user, {"patch_baseline-View"})
         _team_rule(mocker)
+
+        response = client.post(
+            f"{_BASE}/api/baseline/{baseline.id}/requirements/",
+            {"patch_ids": [patch.id]},
+            format="json",
+        )
+
+        assert response.status_code == status.HTTP_403_FORBIDDEN
+        assert not baseline.requirements.exists()
+
+    def test_baseline_instance_view_permission_cannot_add_requirement(
+        self, api_client, authenticated_user, mocker
+    ):
+        from apps.patch_mgmt.constants import OSType
+        from apps.patch_mgmt.models import Patch, PatchBaseline
+
+        baseline = PatchBaseline.objects.create(
+            name="view-only", os_type=OSType.LINUX, team=[1]
+        )
+        patch = Patch.objects.create(
+            title="openssl", os_type=OSType.LINUX, team=[1]
+        )
+        client = _permission_client(
+            api_client, authenticated_user, {"patch_baseline-Edit"}
+        )
+        mocker.patch(
+            "apps.core.utils.viewset_utils.get_permission_rules",
+            return_value={
+                "team": [],
+                "instance": [
+                    {"id": baseline.id, "permission": ["View"]},
+                    {"id": patch.id, "permission": ["View", "Operate"]},
+                ],
+            },
+        )
 
         response = client.post(
             f"{_BASE}/api/baseline/{baseline.id}/requirements/",

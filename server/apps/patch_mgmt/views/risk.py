@@ -5,11 +5,16 @@
 但 list/retrieve 都被完全重写，不会触发标准 ModelViewSet 行为。
 """
 
+from django.db.models import Q
+
 from rest_framework.decorators import action
+from rest_framework.exceptions import MethodNotAllowed
 from rest_framework.response import Response
 
 from apps.core.decorators.api_permission import HasPermission
-from apps.core.utils.viewset_utils import AuthViewSet
+from apps.core.utils import viewset_utils
+from apps.core.utils.team_utils import get_current_team
+from apps.core.utils.viewset_utils import AuthViewSet, build_json_membership_query
 from apps.patch_mgmt.exceptions import PatchBusinessError
 from apps.patch_mgmt.models import GovernanceTask, Patch, PatchBaseline, PatchTarget
 from apps.patch_mgmt.serializers.governance import GovernanceTaskListSerializer
@@ -56,6 +61,18 @@ class RiskViewSet(AuthViewSet):
     serializer_class = GovernanceTaskListSerializer
     permission_key = "patch_risk"
 
+    def create(self, request, *args, **kwargs):
+        raise MethodNotAllowed(request.method)
+
+    def update(self, request, *args, **kwargs):
+        raise MethodNotAllowed(request.method)
+
+    def partial_update(self, request, *args, **kwargs):
+        raise MethodNotAllowed(request.method)
+
+    def destroy(self, request, *args, **kwargs):
+        raise MethodNotAllowed(request.method)
+
     def _scoped_items(self, request):
         """仅返回同时具备主机、补丁和基线数据权限的风险项。"""
         target_ids = set(
@@ -73,13 +90,52 @@ class RiskViewSet(AuthViewSet):
                 request, PatchBaseline.objects.all(), permission_key="patch_baseline"
             ).values_list("id", flat=True)
         )
-        return [
+        items = [
             item
             for item in compute_risk_items()
             if item.host_id in target_ids
             and item.patch_id in patch_ids
             and item.baseline_id in baseline_ids
         ]
+        operable_target_ids = self._operable_ids(
+            request, PatchTarget.objects.all(), "patch_target"
+        )
+        operable_patch_ids = self._operable_ids(
+            request, Patch.objects.all(), "patch"
+        )
+        for item in items:
+            item.can_reboot = item.host_id in operable_target_ids
+            item.can_remediate = (
+                item.can_reboot and item.patch_id in operable_patch_ids
+            )
+        return items
+
+    def _operable_ids(self, request, queryset, permission_key):
+        """返回当前用户对指定资源具备 Operate 的实例 ID。"""
+        if getattr(request.user, "is_superuser", False):
+            return set(queryset.values_list("id", flat=True))
+        current_team = get_current_team(request, "0")
+        include_children = request.COOKIES.get("include_children", "0") == "1"
+        rules = viewset_utils.get_permission_rules(
+            request.user,
+            current_team,
+            self._get_app_name(),
+            permission_key,
+            include_children,
+        )
+        instance_ids = [
+            item.get("id")
+            for item in rules.get("instance", [])
+            if "Operate" in (item.get("permission") or [])
+        ]
+        team_query = build_json_membership_query(
+            queryset, self.ORGANIZATION_FIELD, rules.get("team", [])
+        )
+        return set(
+            queryset.filter(team_query | Q(pk__in=instance_ids)).values_list(
+                "id", flat=True
+            )
+        )
 
     @HasPermission("patch_risk-View")
     def list(self, request, *args, **kwargs):
