@@ -121,6 +121,7 @@ MODEL:
   openstack_vm: OpenStack虚拟机
   pc: PC电脑
   peripherals: 外设
+  physical_server: 物理服务器
   physcial_server: 物理服务器
   qcloud_bucket: 腾讯云对象存储Bucket
   qcloud_clb: 腾讯云负载均衡

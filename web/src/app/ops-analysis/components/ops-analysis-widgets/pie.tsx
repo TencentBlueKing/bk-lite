@@ -32,8 +32,10 @@ const OpsAnalysisPie: React.FC<OpsAnalysisPieProps> = ({
   }, []);
 
   const chartData = ChartDataTransformer.transformToPieData(rawData);
-  const isDataReady = chartData.length > 0;
-  const showLegend = chartData.length > 0;
+  const isDataReady = chartData.some(
+    (item) => Number.isFinite(item.value) && item.value > 0,
+  );
+  const showLegend = isDataReady;
 
   useEffect(() => {
     if (!loading) {

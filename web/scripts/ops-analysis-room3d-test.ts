@@ -12,7 +12,10 @@ import {
   filterChartTypesForSurface,
   hasSupportedChartTypeForSurface,
 } from "../src/app/ops-analysis/utils/chartTypeSurface";
-import { shouldWaitForInitialWidgetData } from "../src/app/ops-analysis/utils/widgetRequestVersion";
+import {
+  resolveWidgetDataSourceState,
+  shouldWaitForInitialWidgetData,
+} from "../src/app/ops-analysis/utils/widgetRequestVersion";
 import { shouldShowInitialWidgetLoading } from "../src/app/ops-analysis/utils/widgetDataTransform";
 import {
   getDefaultScreenWidgetAppearance,
@@ -401,6 +404,7 @@ assert.equal(
     isTableLikeChart: false,
     hasDataSourceId: true,
     hasResolvedDataSource: false,
+    dataSourceLookupLoading: true,
     hasRawPayload: false,
     hasDataValidation: false,
     requestEnabled: true,
@@ -413,7 +417,49 @@ assert.equal(
     isSceneWidget: false,
     isTableLikeChart: false,
     hasDataSourceId: true,
+    hasResolvedDataSource: false,
+    dataSourceLookupLoading: false,
+    hasRawPayload: false,
+    hasDataValidation: false,
+    requestEnabled: false,
+    hasRequested: false,
+  }),
+  false,
+  "已删除的数据源匹配结束后不应继续等待",
+);
+assert.equal(
+  resolveWidgetDataSourceState({
+    hasDataSourceId: true,
+    hasResolvedDataSource: false,
+    lookupStatus: "error",
+  }),
+  "data-source-load-error",
+  "数据源元数据请求失败不能误报为数据源不存在",
+);
+assert.equal(
+  resolveWidgetDataSourceState({
+    hasDataSourceId: true,
+    hasResolvedDataSource: false,
+    lookupStatus: "success",
+  }),
+  "data-source-not-found",
+  "元数据请求成功但目标缺失时才显示数据源不存在",
+);
+assert.equal(
+  resolveWidgetDataSourceState({
+    hasDataSourceId: true,
+    hasResolvedDataSource: false,
+    lookupStatus: "loading",
+  }),
+  "loading",
+);
+assert.equal(
+  shouldWaitForInitialWidgetData({
+    isSceneWidget: false,
+    isTableLikeChart: false,
+    hasDataSourceId: true,
     hasResolvedDataSource: true,
+    dataSourceLookupLoading: false,
     hasRawPayload: false,
     hasDataValidation: false,
     requestEnabled: false,
@@ -427,6 +473,7 @@ assert.equal(
     isTableLikeChart: true,
     hasDataSourceId: true,
     hasResolvedDataSource: true,
+    dataSourceLookupLoading: false,
     hasRawPayload: false,
     hasDataValidation: false,
     requestEnabled: true,
@@ -449,6 +496,7 @@ assert.equal(
     isTableLikeChart: false,
     hasDataSourceId: true,
     hasResolvedDataSource: true,
+    dataSourceLookupLoading: false,
     hasRawPayload: true,
     hasDataValidation: false,
     requestEnabled: true,

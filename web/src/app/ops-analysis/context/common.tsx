@@ -19,12 +19,14 @@ import type {
   NamespaceItem,
 } from '@/app/ops-analysis/types/namespace';
 import type { DatasourceItem } from '@/app/ops-analysis/types/dataSource';
+import type { DataSourceLookupStatus } from '@/app/ops-analysis/utils/widgetRequestVersion';
 
 interface OpsAnalysisContextType {
   namespaceList: NamespaceItem[];
   namespacesLoading: boolean;
   dataSources: DatasourceItem[];
   dataSourcesLoading: boolean;
+  canvasDataSourceLookupStatus: DataSourceLookupStatus;
   fetchNamespaces: (ids?: Array<number | string>) => Promise<NamespaceItem[]>;
   loadCanvasNamespaces: (ids?: Array<number | string>) => Promise<NamespaceItem[]>;
   refreshNamespaces: () => Promise<void>;
@@ -36,12 +38,24 @@ const OpsAnalysisContext = createContext<OpsAnalysisContextType | undefined>(
   undefined
 );
 
-export const OpsAnalysisProvider = ({ children }: { children: ReactNode }) => {
+interface OpsAnalysisProviderCoreProps {
+  children: ReactNode;
+  selectedGroupId?: number | string;
+  trustBackendAuthorization?: boolean;
+}
+
+const OpsAnalysisProviderCore = ({
+  children,
+  selectedGroupId,
+  trustBackendAuthorization = false,
+}: OpsAnalysisProviderCoreProps) => {
   const sharedAccess = useSharedDataSourceQuery();
   const [rawNamespaces, setRawNamespaces] = useState<NamespaceItem[]>([]);
   const [namespacesLoading, setNamespacesLoading] = useState(false);
   const [rawDataSources, setRawDataSources] = useState<DatasourceItem[]>([]);
   const [dataSourcesLoading, setDataSourcesLoading] = useState(false);
+  const [canvasDataSourceLookupStatus, setCanvasDataSourceLookupStatus] =
+    useState<DataSourceLookupStatus>('idle');
 
   const namespaceRequestCountRef = useRef(0);
   const dataSourceRequestCountRef = useRef(0);
@@ -55,8 +69,6 @@ export const OpsAnalysisProvider = ({ children }: { children: ReactNode }) => {
 
   const { getDataSourceDetails } = useDataSourceApi();
   const { getNamespaceList } = useNamespaceApi();
-  const { selectedGroup } = useUserInfoContext();
-
   const normalizeDataSources = useCallback((response: any): DatasourceItem[] => {
     if (Array.isArray(response)) {
       return response;
@@ -85,10 +97,10 @@ export const OpsAnalysisProvider = ({ children }: { children: ReactNode }) => {
 
   const applyDataSourceAuth = useCallback(
     (list: DatasourceItem[]) =>
-      sharedAccess
+      sharedAccess || trustBackendAuthorization
         ? (list || []).map((item) => ({ ...item, hasAuth: true }))
-        : addAuthToDataSources(list || [], selectedGroup?.id),
-    [selectedGroup?.id, sharedAccess],
+        : addAuthToDataSources(list || [], selectedGroupId),
+    [selectedGroupId, sharedAccess, trustBackendAuthorization],
   );
 
   const mergeDataSources = useCallback((incoming: DatasourceItem[]) => {
@@ -316,6 +328,7 @@ export const OpsAnalysisProvider = ({ children }: { children: ReactNode }) => {
     if (normalizedIds.length === 0) {
       rawDataSourcesRef.current = [];
       setRawDataSources([]);
+      setCanvasDataSourceLookupStatus('success');
       return [];
     }
 
@@ -330,10 +343,12 @@ export const OpsAnalysisProvider = ({ children }: { children: ReactNode }) => {
         .filter((item): item is DatasourceItem => Boolean(item));
       rawDataSourcesRef.current = scopedDataSources;
       setRawDataSources(scopedDataSources);
+      setCanvasDataSourceLookupStatus('success');
       return applyDataSourceAuth(scopedDataSources);
     }
 
     try {
+      setCanvasDataSourceLookupStatus('loading');
       dataSourceRequestCountRef.current += 1;
       dataSourcesRequestingRef.current = true;
       setDataSourcesLoading(true);
@@ -347,12 +362,14 @@ export const OpsAnalysisProvider = ({ children }: { children: ReactNode }) => {
       if (canvasDataSourceRequestIdRef.current === requestId) {
         rawDataSourcesRef.current = scopedDataSources;
         setRawDataSources(scopedDataSources);
+        setCanvasDataSourceLookupStatus('success');
       }
       return applyDataSourceAuth(scopedDataSources);
     } catch (err) {
       console.error('加载画布数据源详情失败:', err);
       if (canvasDataSourceRequestIdRef.current === requestId) {
         setRawDataSources([]);
+        setCanvasDataSourceLookupStatus('error');
       }
       return [];
     } finally {
@@ -375,6 +392,7 @@ export const OpsAnalysisProvider = ({ children }: { children: ReactNode }) => {
     namespacesLoading,
     dataSources,
     dataSourcesLoading,
+    canvasDataSourceLookupStatus,
     fetchNamespaces,
     loadCanvasNamespaces,
     refreshNamespaces,
@@ -388,6 +406,26 @@ export const OpsAnalysisProvider = ({ children }: { children: ReactNode }) => {
     </OpsAnalysisContext.Provider>
   );
 };
+
+export const OpsAnalysisProvider = ({ children }: { children: ReactNode }) => {
+  const { selectedGroup } = useUserInfoContext();
+
+  return (
+    <OpsAnalysisProviderCore selectedGroupId={selectedGroup?.id}>
+      {children}
+    </OpsAnalysisProviderCore>
+  );
+};
+
+export const DashboardRenderOpsAnalysisProvider = ({
+  children,
+}: {
+  children: ReactNode;
+}) => (
+  <OpsAnalysisProviderCore trustBackendAuthorization>
+    {children}
+  </OpsAnalysisProviderCore>
+);
 
 export const useOpsAnalysis = (): OpsAnalysisContextType => {
   const context = useContext(OpsAnalysisContext);

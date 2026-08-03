@@ -62,7 +62,7 @@ def test_log_nats_search_rejects_oversized_limit_without_vm_query(monkeypatch):
 
     result = log_search(
         "*",
-        ("2026-04-22 00:00:00", "2026-04-22 00:01:00"),
+        ("2026-04-22T00:00:00Z", "2026-04-22T00:01:00Z"),
         limit=VictoriaLogsConstants.QUERY_LIMIT_MAX + 1,
     )
 

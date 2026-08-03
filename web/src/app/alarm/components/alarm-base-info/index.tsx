@@ -7,7 +7,6 @@ import { useTranslation } from '@/utils/i18n';
 export interface AlarmBaseInfoDetail {
   content?: string | null;
   operator_user?: string | null;
-  source_names?: string | null;
   notification_status?: string | null;
   notify_status?: string | null;
   resource_type?: string | null;
@@ -46,12 +45,6 @@ const AlarmBaseInfo: React.FC<AlarmBaseInfoProps> = ({ detail }) => {
       key: 'operator',
       label: t('alarmCommon.operator'),
       value: detail.operator_user,
-      copyable: false,
-    },
-    {
-      key: 'source',
-      label: t('alarms.source'),
-      value: detail.source_names,
       copyable: false,
     },
     {

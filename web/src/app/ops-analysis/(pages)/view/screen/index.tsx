@@ -43,6 +43,7 @@ import ViewWorkspace from "../components/viewWorkspace";
 import ScreenCanvas from "./components/screenCanvas";
 import ScreenConfigModal from "./components/screenConfigModal";
 import ScreenToolbar from "./components/screenToolbar";
+import DashboardSubscriptionModal from "@/app/ops-analysis/components/dashboardSubscriptionModal";
 import {
   addConfiguredScreenWidget,
   buildFiltersFromScreenItems,
@@ -89,6 +90,8 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
   const [saving, setSaving] = useState(false);
   const [editMode, setEditMode] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [subscriptionModalVisible, setSubscriptionModalVisible] =
+    useState(false);
   const [filterConfigOpen, setFilterConfigOpen] = useState(false);
   const [widgetSelectorOpen, setWidgetSelectorOpen] = useState(false);
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
@@ -581,6 +584,11 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
                   }
                 : undefined
             }
+            onOpenSubscription={
+              !shareMode && selectedScreen?.data_id
+                ? () => setSubscriptionModalVisible(true)
+                : undefined
+            }
             saving={saving}
             onRefresh={handleRefresh}
             onOpenSettings={() => setSettingsOpen(true)}
@@ -696,6 +704,15 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
           unifiedFilterValues={queryState.filterValues}
           onConfirm={handleConfirmNewWidgetConfig}
           onClose={() => setPendingConfigItem(null)}
+        />
+      )}
+      {selectedScreen?.data_id != null && (
+        <DashboardSubscriptionModal
+          open={subscriptionModalVisible}
+          resourceType="screen"
+          resourceId={Number(selectedScreen.data_id)}
+          appliedFilterValues={queryState.appliedFilterValues}
+          onClose={() => setSubscriptionModalVisible(false)}
         />
       )}
     </>
