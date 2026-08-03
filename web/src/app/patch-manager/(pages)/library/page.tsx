@@ -1,10 +1,10 @@
 'use client';
 
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { Tag, Button, Input, Select, Space, Tabs, Modal, Form, message, Popconfirm, Tooltip, Upload } from 'antd';
+import { Tag, Button, Input, Select, Space, Tabs, Modal, Form, message, Popconfirm, Tooltip, Upload, Dropdown } from 'antd';
 import PermissionWrapper from '@/components/permission';
 import type { ColumnsType } from 'antd/es/table';
-import { PlusOutlined, CloudDownloadOutlined, EditOutlined, DeleteOutlined, CloseOutlined, InboxOutlined, UploadOutlined } from '@ant-design/icons';
+import { PlusOutlined, CloudDownloadOutlined, EditOutlined, DeleteOutlined, CloseOutlined, DownOutlined, InboxOutlined, UploadOutlined } from '@ant-design/icons';
 import SearchCombination from '@/components/search-combination';
 import type { FieldConfig, SearchFilters } from '@/components/search-combination/types';
 import useApiClient from '@/utils/request';
@@ -126,6 +126,8 @@ export default function LibraryPage() {
   const [editingPatch, setEditingPatch] = useState<Patch | null>(null);
   const [createSaving, setCreateSaving] = useState(false);
   const [editSaving, setEditSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [selectedPatchIds, setSelectedPatchIds] = useState<number[]>([]);
   const [createForm] = Form.useForm();
   const [editForm] = Form.useForm();
   const [pagination, setPagination] = useState({ current: 1, pageSize: 20, total: 0 });
@@ -209,6 +211,7 @@ export default function LibraryPage() {
 
   useEffect(() => {
     if (isLoading) return;
+    setSelectedPatchIds([]);
     setPagination((p) => ({ ...p, current: 1 }));
     loadData(1, pagination.pageSize, filters);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -277,14 +280,42 @@ export default function LibraryPage() {
     { name: 'sourceType', label: t('patchManager.libraryPage.sourceType'), lookup_expr: 'in', options: [{ id: 'auto', name: t('patchManager.libraryPage.automatic') }, { id: 'manual', name: t('patchManager.manual') }] },
   ];
 
-  const handleDelete = async (row: Patch) => {
-    if ((row.baseline_requirement_count ?? 0) > 0) return;
+  const selectedPatches = useMemo(
+    () => data.filter((patch) => selectedPatchIds.includes(patch.id)),
+    [data, selectedPatchIds],
+  );
+  const batchDeleteBlocked = selectedPatches.some(
+    (patch) => (patch.baseline_requirement_count ?? 0) > 0,
+  );
+
+  const handleDelete = async (patchIds: number[]) => {
+    if (patchIds.length === 0) return;
+    const targetPatches = data.filter((patch) => patchIds.includes(patch.id));
+    if (targetPatches.some((patch) => (patch.baseline_requirement_count ?? 0) > 0)) return;
+    setDeleting(true);
     try {
-      await api.deletePatch(row.id);
-      message.success(t('patchManager.libraryPage.deleted'));
-      loadData();
+      const result = await api.deletePatches(patchIds);
+      message.success(patchIds.length === 1
+        ? t('patchManager.libraryPage.deleted')
+        : t('patchManager.libraryPage.batchDeleted', undefined, { count: result.deleted_count }));
+      setSelectedPatchIds([]);
+      await loadData();
     } catch {
+    } finally {
+      setDeleting(false);
     }
+  };
+
+  const confirmBatchDelete = () => {
+    if (selectedPatchIds.length === 0 || batchDeleteBlocked) return;
+    Modal.confirm({
+      title: t('patchManager.libraryPage.batchDeleteConfirm', undefined, { count: selectedPatchIds.length }),
+      content: t('patchManager.libraryPage.batchDeleteDescription'),
+      okText: t('patchManager.delete'),
+      cancelText: t('patchManager.cancel'),
+      okButtonProps: { danger: true },
+      onOk: () => handleDelete(selectedPatchIds),
+    });
   };
 
   const columns: ColumnsType<Patch> = useMemo(() => {
@@ -309,7 +340,7 @@ export default function LibraryPage() {
           type="link"
           size="small"
           danger
-          disabled={deleteBlocked}
+          disabled={deleteBlocked || deleting}
           icon={<DeleteOutlined />}
           style={{ paddingInline: 0 }}
         >
@@ -318,14 +349,14 @@ export default function LibraryPage() {
         return <Space size={12}>
           <PermissionWrapper requiredPermissions={['Edit']}><a style={{ color: '#1677ff' }} onClick={() => setEditingPatch(r)}><EditOutlined /> {t('patchManager.edit')}</a></PermissionWrapper>
           <PermissionWrapper requiredPermissions={['Delete']}>
-            {deleteBlocked ? <Tooltip title={t('patchManager.libraryPage.deleteReferenced')}><span>{deleteButton}</span></Tooltip> : <Popconfirm title={t('patchManager.libraryPage.deleteConfirm')} onConfirm={() => handleDelete(r)} okText={t('patchManager.delete')} cancelText={t('patchManager.cancel')}>
+            {deleteBlocked ? <Tooltip title={t('patchManager.libraryPage.deleteReferenced')}><span>{deleteButton}</span></Tooltip> : <Popconfirm title={t('patchManager.libraryPage.deleteConfirm')} onConfirm={() => handleDelete([r.id])} okText={t('patchManager.delete')} cancelText={t('patchManager.cancel')}>
               {deleteButton}
             </Popconfirm>}
           </PermissionWrapper>
         </Space>;
       }},
     ];
-  }, [activeTab, convertToLocalizedTime, t]);
+  }, [activeTab, convertToLocalizedTime, deleting, t]);
 
   const handleCreateSubmit = async () => {
     let values;
@@ -574,6 +605,7 @@ export default function LibraryPage() {
         <SearchCombination
           fieldConfigs={activeTab === 'win' ? winFieldConfigs : linuxFieldConfigs}
           onChange={(next) => {
+            setSelectedPatchIds([]);
             setFilters(next);
             setPagination((p) => ({ ...p, current: 1 }));
             loadData(1, pagination.pageSize, next);
@@ -582,6 +614,32 @@ export default function LibraryPage() {
           selectWidth={360}
         />
         <Space>
+          <PermissionWrapper requiredPermissions={['Delete']}>
+            <Dropdown
+              disabled={selectedPatchIds.length === 0 || deleting}
+              menu={{
+                items: [{
+                  key: 'delete',
+                  danger: true,
+                  disabled: batchDeleteBlocked || deleting,
+                  icon: <DeleteOutlined />,
+                  label: (
+                    <Tooltip
+                      title={batchDeleteBlocked ? t('patchManager.libraryPage.batchDeleteReferenced') : undefined}
+                      zIndex={10001}
+                    >
+                      <span style={{ display: 'block' }}>{t('common.batchDelete')}</span>
+                    </Tooltip>
+                  ),
+                  onClick: confirmBatchDelete,
+                }],
+              }}
+            >
+              <Button loading={deleting}>
+                {t('common.batchOperation')}{selectedPatchIds.length ? `(${selectedPatchIds.length})` : ''} <DownOutlined />
+              </Button>
+            </Dropdown>
+          </PermissionWrapper>
           <PermissionWrapper requiredPermissions={['Edit']}><Button icon={<CloudDownloadOutlined />} onClick={handleImportSearch}>{t('patchManager.libraryPage.syncIngest')}</Button></PermissionWrapper>
           {activeTab === 'win' && (
             <PermissionWrapper requiredPermissions={['Add']}><Button icon={<PlusOutlined />} onClick={() => { createForm.resetFields(); setCreateOpen(true); }}>{t('patchManager.libraryPage.addPatch')}</Button></PermissionWrapper>
@@ -596,6 +654,10 @@ export default function LibraryPage() {
           dataSource={data}
           loading={loading}
           scroll={{ x: 1300 }}
+          rowSelection={{
+            selectedRowKeys: selectedPatchIds,
+            onChange: (keys) => setSelectedPatchIds(keys.map(Number)),
+          }}
           pagination={{
             current: pagination.current,
             pageSize: pagination.pageSize,
@@ -603,7 +665,10 @@ export default function LibraryPage() {
             showSizeChanger: true,
             showTotal: (total: number) => t('patchManager.common.totalItems', undefined, { count: total }),
             style: { marginBottom: 0 },
-            onChange: (page, pageSize) => loadData(page, pageSize),
+            onChange: (page, pageSize) => {
+              setSelectedPatchIds([]);
+              loadData(page, pageSize);
+            },
           }}
         />
       </div>
