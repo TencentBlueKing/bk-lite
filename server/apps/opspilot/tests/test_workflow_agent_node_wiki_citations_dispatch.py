@@ -22,7 +22,7 @@ def _parse_sse_lines(lines):
 
 
 class _FakeGraph:
-    async def agui_stream(self, request):  # noqa: ARG002
+    async def agui_stream(self, request, token_usage_accumulator=None):  # noqa: ARG002
         yield 'data: {"type": "RUN_FINISHED"}\n\n'
 
 

@@ -26,6 +26,10 @@ def test_controller_notifies_collect_enterprise_extension(monkeypatch):
     registry.register("collect", RecordingExtension())
     monkeypatch.setattr("apps.cmdb.collection.common.ModelManage.search_model_attr", lambda model_id: [])
     monkeypatch.setattr("apps.cmdb.collection.common.write_collect_instance_change_records", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        "apps.cmdb.services.auto_relation_reconcile.schedule_incoming_rule_full_sync_by_model_ids",
+        lambda model_ids: None,
+    )
 
     management = Management(
         organization=["org-a"],
@@ -40,6 +44,7 @@ def test_controller_notifies_collect_enterprise_extension(monkeypatch):
     monkeypatch.setattr(management, "delete_inst", lambda inst_list: {"success": inst_list, "failed": []})
     monkeypatch.setattr(management, "add_inst", lambda inst_list: {"success": inst_list, "failed": []})
     monkeypatch.setattr(management, "update_inst", lambda inst_list: {"success": inst_list, "failed": []})
+    monkeypatch.setattr(management, "refresh_heartbeat", lambda inst_list: {"success": [], "failed": []})
 
     result = management.controller()
 
@@ -56,6 +61,10 @@ def test_update_notifies_collect_enterprise_extension(monkeypatch):
     registry.register("collect", RecordingExtension())
     monkeypatch.setattr("apps.cmdb.collection.common.ModelManage.search_model_attr", lambda model_id: [])
     monkeypatch.setattr("apps.cmdb.collection.common.write_collect_instance_change_records", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        "apps.cmdb.services.auto_relation_reconcile.schedule_incoming_rule_full_sync_by_model_ids",
+        lambda model_ids: None,
+    )
 
     management = Management(
         organization=["org-a"],
@@ -68,6 +77,7 @@ def test_update_notifies_collect_enterprise_extension(monkeypatch):
         task_id="task-1",
     )
     monkeypatch.setattr(management, "update_inst", lambda inst_list: {"success": inst_list, "failed": []})
+    monkeypatch.setattr(management, "refresh_heartbeat", lambda inst_list: {"success": [], "failed": []})
 
     result = management.update()
 

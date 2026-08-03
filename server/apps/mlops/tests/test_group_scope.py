@@ -24,7 +24,7 @@ def test_validate_requested_teams_rejects_unowned_team():
     with pytest.raises(serializers.ValidationError) as exc:
         validate_requested_teams(request, [1, 3])
 
-    assert exc.value.detail == {"team": ["只能选择当前用户所属组织"]}
+    assert exc.value.detail == {"team": "只能选择当前用户所属组织"}
 
 
 def test_validate_requested_teams_allows_superuser_to_assign_any_team():

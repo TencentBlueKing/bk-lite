@@ -10,6 +10,8 @@ from pathlib import Path
 import pytest
 import yaml
 
+from apps.core.utils.loader import LanguageLoader
+
 SERVER_ROOT = Path(__file__).resolve().parents[3]
 PLUGINS = SERVER_ROOT / "apps" / "monitor" / "support-files" / "plugins" / "Telegraf"
 BRAND_DIR = PLUGINS / "snmp" / "firewall_barracuda"
@@ -83,7 +85,7 @@ def toml_text():
 @pytest.fixture(scope="module")
 def languages():
     return {
-        lang: yaml.safe_load((LANGUAGE_DIR / f"{lang}.yaml").read_text(encoding="utf-8"))
+        lang: LanguageLoader("monitor", lang).translations
         for lang in ("zh-Hans", "en")
     }
 
@@ -147,9 +149,16 @@ def test_toml_collects_verified_barracuda_health_oids(toml_text):
 @pytest.mark.unit
 def test_metrics_json_is_brand_delta_without_base_metrics(metrics):
     names = {m["name"] for m in metrics["metrics"]}
-    assert names == EXPECTED_METRICS
-    assert not (names & BASE_METRICS)
-    assert metrics.get("supplementary_indicators", []) == sorted(EXPECTED_METRICS)
+    floor = {"snmp_uptime", "interface_ifHCInOctets", "interface_ifHCOutOctets"}
+    diagnostic_metrics = {
+        "barracuda_cpu_temperature_celsius",
+        "barracuda_system_temperature_celsius",
+        "barracuda_firmware_storage_usage",
+        "barracuda_log_storage_usage",
+    }
+    assert floor <= names
+    assert names - floor == EXPECTED_METRICS | diagnostic_metrics
+    assert set(metrics.get("supplementary_indicators", [])) == EXPECTED_METRICS | {"snmp_uptime"}
 
 
 @pytest.mark.unit

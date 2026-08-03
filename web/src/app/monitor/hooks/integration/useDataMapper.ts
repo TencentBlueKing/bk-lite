@@ -77,6 +77,15 @@ export class DataMapper {
           const match = processedValue.match(new RegExp(to_form.regex));
           processedValue = match ? match[1] || match[0] : processedValue;
         }
+        // 数组用分隔符拼成字符串（SNMP ifDescr 黑白名单回显）
+        if (to_form.array_join) {
+          const sep = typeof to_form.array_join === 'string' ? to_form.array_join : ',';
+          if (Array.isArray(processedValue)) {
+            processedValue = processedValue.join(sep);
+          } else if (processedValue == null) {
+            processedValue = '';
+          }
+        }
         // 类型转换
         if (to_form.type) {
           switch (to_form.type) {
@@ -191,6 +200,18 @@ export class DataMapper {
         processedValue !== null
       ) {
         processedValue = String(processedValue) + to_api.suffix;
+      }
+      // 字符串按分隔符拆成数组（SNMP ifDescr 黑白名单提交）
+      if (to_api.split) {
+        const sep = typeof to_api.split === 'string' ? to_api.split : ',';
+        if (typeof processedValue === 'string') {
+          processedValue = processedValue
+            .split(sep)
+            .map((item: string) => item.trim())
+            .filter(Boolean);
+        } else if (processedValue == null || processedValue === '') {
+          processedValue = [];
+        }
       }
       // 模板拼接（支持从 formData 获取其他字段）
       if (to_api.template && formData) {
@@ -358,12 +379,16 @@ export class DataMapper {
           (n: any) => n?.value === firstNodeId || n?.id === firstNodeId
         )
         : undefined;
-      // 生成 instance_id（如果有模板）,使用 SHA256 哈希编码
+      // 生成 instance_id：UUID 策略复用当前行稳定的 UUID key；
+      // 普通模板继续使用既有哈希编码。
       let instance_id = row.instance_id;
       if (!instance_id && context.instance_id) {
-        instance_id = this.hashInstanceId(
-          this.applyTemplate(context.instance_id, row, context)
-        );
+        instance_id =
+          context.instance_id === '{{uuid}}'
+            ? String(row.key).replaceAll('-', '').toLowerCase()
+            : this.hashInstanceId(
+              this.applyTemplate(context.instance_id, row, context)
+            );
       }
       // 过滤掉 key 字段和所有 _error 字段，并处理加密字段
       const cleanedInstanceData = Object.keys(row)

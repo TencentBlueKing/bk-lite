@@ -18,5 +18,9 @@
   "next_steps": [
     "用户提供达梦官方 license + 在 amd64 CI runner 跑(同 mssql 模式)",
     "或商业版用户提供 license 文件,本地 amd64 工作站(非 Mac)单独跑"
+  ],
+  "references": [
+    "apps/cmdb/tests/e2e/test_dameng_enterprise_pipeline.py",
+    "apps/cmdb/tests/e2e/schemas/dameng/01_stargazer_raw.schema.json"
   ]
 }

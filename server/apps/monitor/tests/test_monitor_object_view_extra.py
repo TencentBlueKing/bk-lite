@@ -163,6 +163,38 @@ class TestMonitorObjectList:
             allowed_by_current_team.id,
         }
 
+    def test_instance_count_excludes_inactive_auto_discovered_instances(self, api_client, mocker):
+        monitor_object = MonitorObject.objects.create(name="OVCountActiveOnly", level="derivative")
+        active = MonitorInstance.objects.create(
+            id="ov-count-active",
+            name="当前仍在上报的实例",
+            monitor_object=monitor_object,
+            auto=True,
+            is_active=True,
+        )
+        inactive = MonitorInstance.objects.create(
+            id="ov-count-inactive",
+            name="已停止上报的历史实例",
+            monitor_object=monitor_object,
+            auto=True,
+            is_active=False,
+        )
+        for instance in (active, inactive):
+            MonitorInstanceOrganization.objects.create(
+                monitor_instance=instance,
+                organization=10,
+            )
+        mocker.patch(
+            "apps.monitor.views.monitor_object.get_permissions_rules",
+            return_value={"data": {str(monitor_object.id): {"team": [10]}}, "team": []},
+        )
+
+        response = api_client.get(f"{BASE}/api/monitor_object/?add_instance_count=true")
+
+        assert response.status_code == 200
+        rows = {row["name"]: row for row in response.json()["data"]}
+        assert rows[monitor_object.name]["instance_count"] == 1
+
     def test_instance_count_skips_query_candidates_when_permissions_are_empty(self, api_client, mocker):
         monitor_object = MonitorObject.objects.create(name="OVCountEmpty", level="base")
         instance = MonitorInstance.objects.create(

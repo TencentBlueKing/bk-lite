@@ -1,3 +1,5 @@
+import { PATCH_MANAGER_POLL_INTERVAL_MS } from '@/app/patch-manager/constants/polling';
+
 export interface ExecutionListQuery {
   page: number;
   pageSize: number;
@@ -12,7 +14,7 @@ type LoadExecutionList = (
 
 export function createExecutionListPolling(
   load: LoadExecutionList,
-  intervalMs = 2000,
+  intervalMs = PATCH_MANAGER_POLL_INTERVAL_MS,
 ) {
   let timer: ReturnType<typeof setInterval> | undefined;
   let generation = 0;

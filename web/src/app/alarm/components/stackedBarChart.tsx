@@ -9,6 +9,7 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from 'recharts';
+import { getChartAxisTicks } from '@/app/alarm/utils/alarmChart';
 
 interface StackedBarChartProps {
   data: Array<Record<string, any>>;
@@ -53,6 +54,7 @@ const StackedBarChart: React.FC<StackedBarChartProps> = ({
   );
   const minValue = Math.min(...allValues);
   const maxValue = Math.max(...allValues);
+  const xAxisTicks = getChartAxisTicks(data);
 
   return data?.length ? (
     <ResponsiveContainer width="100%" height="100%">
@@ -65,6 +67,9 @@ const StackedBarChart: React.FC<StackedBarChartProps> = ({
         <CartesianGrid strokeDasharray="3 3" vertical={false} />
         <XAxis
           dataKey="time"
+          ticks={xAxisTicks}
+          interval="preserveStartEnd"
+          minTickGap={24}
           tick={{ fill: 'var(--color-text-3)', fontSize: 13 }}
         />
         <YAxis

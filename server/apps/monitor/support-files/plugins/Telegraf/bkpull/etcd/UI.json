@@ -15,6 +15,8 @@
       "required": true,
       "visible_in": "edit",
       "description": "etcd Prometheus 指标地址，填写完整 URL",
+      "guide_short": "填写完整的 http:// 或 https:// 指标 URL，例如 http://127.0.0.1:2379/metrics；页面没有拆分的协议、主机、端口或路径字段。",
+      "guide_short_en": "Enter the complete http:// or https:// metrics URL, for example http://127.0.0.1:2379/metrics. The page has no separate scheme, host, port, or path fields.",
       "widget_props": {
         "placeholder": "http://127.0.0.1:2379/metrics"
       },
@@ -37,6 +39,8 @@
       "type": "input",
       "required": false,
       "description": "HTTPS 访问时使用的 CA 证书路径",
+      "guide_short": "HTTPS 场景下填写采集节点上用于校验服务端证书的 CA 文件路径；HTTP 场景留空。",
+      "guide_short_en": "For HTTPS, enter the path on the collector node to the CA file used to verify the server certificate. Leave it empty for HTTP.",
       "widget_props": {
         "placeholder": "/etc/ssl/ca.pem"
       },
@@ -51,6 +55,8 @@
       "type": "input",
       "required": false,
       "description": "HTTPS 双向认证时使用的客户端证书路径",
+      "guide_short": "仅 mTLS 场景填写采集节点上的客户端证书路径，并与客户端密钥成对配置。",
+      "guide_short_en": "For mutual TLS only, enter the client certificate path on the collector node and configure it together with the client key.",
       "widget_props": {
         "placeholder": "/etc/ssl/client.pem"
       },
@@ -65,6 +71,8 @@
       "type": "input",
       "required": false,
       "description": "HTTPS 双向认证时使用的客户端密钥路径",
+      "guide_short": "仅 mTLS 场景填写与客户端证书配套的私钥路径，并限制采集进程之外的文件读取权限。",
+      "guide_short_en": "For mutual TLS only, enter the private-key path paired with the client certificate and restrict file read access outside the collector process.",
       "widget_props": {
         "placeholder": "/etc/ssl/client-key.pem"
       },
@@ -80,6 +88,8 @@
       "required": true,
       "default_value": 60,
       "description": "监控数据的采集时间间隔（单位：秒）",
+      "guide_short": "Telegraf 拉取 etcd 指标的周期，单位秒，默认 60，页面最小值为 1。",
+      "guide_short_en": "Telegraf interval for pulling etcd metrics, in seconds; the default is 60 and the page minimum is 1.",
       "widget_props": {
         "min": 1,
         "precision": 0,
@@ -106,6 +116,8 @@
       "required": false,
       "default_value": false,
       "description": "HTTPS 场景下是否跳过服务端证书校验",
+      "guide_short": "开启后不校验 HTTPS 服务端证书；默认关闭，生产环境应保持关闭并配置可信 CA。",
+      "guide_short_en": "When enabled, HTTPS server certificates are not verified. It is off by default; keep it off in production and configure a trusted CA.",
       "widget_props": {},
       "transform_on_edit": {
         "origin_path": "child.content.config.insecure_skip_verify"

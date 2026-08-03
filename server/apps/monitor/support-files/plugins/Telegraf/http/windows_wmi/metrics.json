@@ -2,6 +2,8 @@
   "plugin": "Windows WMI",
   "plugin_desc": "Remote Windows host metrics collection through WMI/DCOM from Stargazer. Requires WMI service, account permission, and WMI/DCOM/RPC network reachability.",
   "status_query": "any({instance_type='os', collect_type='http', config_type='windows_wmi'}) by (instance_id)",
+  "instance_fact_bindings": [{"fact":"asset.ip","value_type":"ip","resolver":"input","options":{"field":"host","required":true}}],
+  "instance_summary_columns": [{"fact":"asset.ip","title":"monitor.views.assetIp","order":10}],
   "node_selector": {
     "is_container": true
   },

@@ -7,9 +7,7 @@ from typing import Any
 
 from asgiref.sync import sync_to_async
 from django.core import signing
-from django.db.models import Count, IntegerField, Q, Sum, Value
-from django.db.models.fields.json import KeyTextTransform
-from django.db.models.functions import Cast, Coalesce, NullIf, TruncDate
+from django.db.models import Q
 from django.http import FileResponse, HttpResponse, JsonResponse
 from ipware import get_client_ip
 from wechatpy.enterprise import WeChatCrypto
@@ -21,21 +19,13 @@ from apps.core.utils.exempt import api_exempt
 from apps.core.utils.loader import LanguageLoader
 from apps.core.utils.team_utils import get_current_team
 from apps.opspilot.enum import WorkFlowTaskStatus
-from apps.opspilot.models import (
-    Bot,
-    BotChannel,
-    BotConversationHistory,
-    BotWebChatSession,
-    BotWorkFlow,
-    LLMSkill,
-    SkillRequestLog,
-    WorkFlowTaskResult,
-)
+from apps.opspilot.models import Bot, BotChannel, BotWebChatSession, BotWorkFlow, LLMSkill, WorkFlowTaskResult
 from apps.opspilot.serializers.request_serializers import (
     InterruptChatFlowRequestSerializer,
     SubmitApprovalRequestSerializer,
     SubmitChoiceRequestSerializer,
 )
+from apps.opspilot.services import usage_statistics_service
 from apps.opspilot.services.caller_identity import CALLER_IDENTITY_CONFIG_KEY, CallerIdentityError, capture_caller_identity, mark_api_secret_identity
 from apps.opspilot.services.chat_completion_service import ChatCompletionService
 from apps.opspilot.services.chat_service import ChatService
@@ -408,193 +398,76 @@ def get_skill_execute_result(bot_id, channel, chat_history, kwargs, request, sen
     return result
 
 
-def _extract_token_usage(response_detail: Any) -> tuple[int, int, int]:  # pragma: no cover
-    """从 SkillRequestLog.response_detail 中解析 OpenAI 风格的 usage 字段。
-
-    返回 (input_tokens, output_tokens, total_tokens)。
-    """
-    if not isinstance(response_detail, dict):
-        return 0, 0, 0
-    usage = response_detail.get("usage")
-    if not isinstance(usage, dict):
-        return 0, 0, 0
-
-    def _to_int(value: Any) -> int:
-        try:
-            return int(value or 0)
-        except (TypeError, ValueError):
-            return 0
-
-    prompt = _to_int(usage.get("prompt_tokens"))
-    completion = _to_int(usage.get("completion_tokens"))
-    total = _to_int(usage.get("total_tokens")) or (prompt + completion)
-    return prompt, completion, total  # pragma: no cover
-
-
-def _user_team_ids(request) -> set[int]:
-    """返回调用者可访问的团队 id 集合(superuser 返回空集表示不限制)。"""
-    if getattr(request.user, "is_superuser", False):
-        return set()  # pragma: no cover
-    return {g["id"] for g in getattr(request.user, "group_list", []) if isinstance(g, dict) and "id" in g}  # pragma: no cover
+_extract_token_usage = usage_statistics_service.extract_token_usage
+_user_team_ids = usage_statistics_service.user_team_ids
+_annotate_token_fields = usage_statistics_service.annotate_token_fields
+set_channel_type_line = usage_statistics_service.format_channel_type_line
 
 
 def _bot_in_user_team(request, bot_id) -> bool:
-    """校验 bot 属于调用者所在团队(superuser 不限制)。"""
-    bot = Bot.objects.filter(id=bot_id).first()
-    if not bot:
-        return False
-    if getattr(request.user, "is_superuser", False):  # pragma: no cover
-        return True
-    team_ids = _user_team_ids(request)  # pragma: no cover
-    return bool(set(bot.team or []) & team_ids)  # pragma: no cover
+    """兼容旧导入/patch 点，团队作用域逻辑由统计 service 承载。"""
+    return usage_statistics_service.bot_in_user_team(
+        request,
+        bot_id,
+        team_ids_getter=_user_team_ids,
+    )
 
 
 def _token_consumption_queryset(request):  # pragma: no cover
-    """按 bot_id(经由其关联技能)与时间范围过滤 SkillRequestLog。
-
-    bot_id 必须属于调用者所在团队，否则返回空 queryset(配合 scope 校验)。
-    """
-    start_time_str = request.GET.get("start_time")
-    end_time_str = request.GET.get("end_time")
-    end_time, start_time = set_time_range(end_time_str, start_time_str)
-    queryset = SkillRequestLog.objects.filter(created_at__range=[start_time, end_time], state=True)
-    bot_id = request.GET.get("bot_id")
-    if bot_id:
-        if not _bot_in_user_team(request, bot_id):
-            return queryset.none(), start_time, end_time
-        skill_ids = LLMSkill.objects.filter(bot__id=bot_id).values_list("id", flat=True)
-        queryset = queryset.filter(skill_id__in=skill_ids)
-    return queryset, start_time, end_time
-
-
-def _annotate_token_fields(queryset):
-    """在 DB 层从 response_detail JSONField 中提取各 token 整型字段，供聚合使用。
-
-    response_detail 结构：{"usage": {"prompt_tokens": N, "completion_tokens": N, "total_tokens": N}}
-    KeyTextTransform 提取文本值后 Cast 为整型；NULL 值（路径不存在的旧行）被 Coalesce 置零。
-    与 _extract_token_usage 保持一致：total_tokens 缺失或为 0 时回退为 prompt_tokens + completion_tokens。
-    """
-
-    def _int_field(path):
-        return Coalesce(Cast(KeyTextTransform(path[1], KeyTextTransform(path[0], "response_detail")), IntegerField()), 0)
-
-    prompt_expr = _int_field(("usage", "prompt_tokens"))
-    completion_expr = _int_field(("usage", "completion_tokens"))
-    total_expr = _int_field(("usage", "total_tokens"))
-    return queryset.annotate(
-        _prompt=prompt_expr,
-        _completion=completion_expr,
-        _total=Coalesce(
-            NullIf(total_expr, Value(0)),
-            prompt_expr + completion_expr,
-            Value(0),
-            output_field=IntegerField(),
-        ),
+    """兼容旧 patch 点，查询构造由统计 service 承载。"""
+    return usage_statistics_service.token_consumption_queryset(
+        request,
+        bot_scope_check=_bot_in_user_team,
+        time_range_getter=set_time_range,
     )
 
 
 @HasRole("admin")
 def get_total_token_consumption(request):  # pragma: no cover
     queryset, _start_time, _end_time = _token_consumption_queryset(request)
-    # DB 层聚合：不再把记录全量拉取到 Python 进程
-    result = _annotate_token_fields(queryset).aggregate(
-        input_tokens=Sum("_prompt"),
-        output_tokens=Sum("_completion"),
-        total_tokens=Sum("_total"),
+    data = usage_statistics_service.aggregate_token_totals(
+        queryset,
+        annotate=_annotate_token_fields,
     )
-    data = {
-        "total_tokens": result["total_tokens"] or 0,
-        "input_tokens": result["input_tokens"] or 0,
-        "output_tokens": result["output_tokens"] or 0,
-    }
     return JsonResponse({"result": True, "data": data})
 
 
 @HasRole("admin")
 def get_token_consumption_overview(request):  # pragma: no cover
     queryset, start_time, end_time = _token_consumption_queryset(request)
-    num_days = (end_time - start_time).days + 1
-    # 先初始化日期骨架（保证无数据日仍有 0 占位）
-    daily_totals = {(start_time + datetime.timedelta(days=i)).strftime("%Y-%m-%d"): 0 for i in range(num_days)}
-    # DB 层按日期聚合 token 总量，不再全量拉取行到 Python
-    rows = _annotate_token_fields(queryset).annotate(date=TruncDate("created_at")).values("date").annotate(tokens=Sum("_total")).order_by("date")
-    for row in rows:
-        date_key = row["date"].strftime("%Y-%m-%d")
-        daily_totals[date_key] = (daily_totals.get(date_key) or 0) + (row["tokens"] or 0)
-    items = [{"date": date, "tokens": tokens} for date, tokens in sorted(daily_totals.items())]
-    return JsonResponse({"result": True, "data": {"items": items}})
+    data = usage_statistics_service.token_consumption_overview(
+        queryset,
+        start_time,
+        end_time,
+        annotate=_annotate_token_fields,
+    )
+    return JsonResponse({"result": True, "data": data})
 
 
 @HasRole("admin")
 def get_conversations_line_data(request):  # pragma: no cover
-    start_time_str = request.GET.get("start_time")
-    end_time_str = request.GET.get("end_time")
-    end_time, start_time = set_time_range(end_time_str, start_time_str)
-    bot_id = request.GET.get("bot_id")
-    if bot_id and not _bot_in_user_team(request, bot_id):
-        return JsonResponse({"result": True, "data": set_channel_type_line(end_time, [], start_time)})
-    queryset = (
-        BotConversationHistory.objects.filter(
-            created_at__range=[start_time, end_time],
-            bot_id=bot_id,
-            conversation_role="bot",
-        )
-        .annotate(date=TruncDate("created_at"))
-        .values("channel_user__channel_type", "date")
-        .annotate(count=Count("id"))  # 不去重，按记录统计
+    data = usage_statistics_service.conversation_line_data(
+        request,
+        role="bot",
+        distinct_users=False,
+        bot_scope_check=_bot_in_user_team,
+        line_formatter=set_channel_type_line,
+        time_range_getter=set_time_range,
     )
-    # 生成日期范围内的所有日期
-    result = set_channel_type_line(end_time, queryset, start_time)
-    return JsonResponse({"result": True, "data": result})
+    return JsonResponse({"result": True, "data": data})
 
 
 @HasRole("admin")
 def get_active_users_line_data(request):  # pragma: no cover
-    start_time_str = request.GET.get("start_time")
-    end_time_str = request.GET.get("end_time")
-    end_time, start_time = set_time_range(end_time_str, start_time_str)
-    bot_id = request.GET.get("bot_id")
-    if bot_id and not _bot_in_user_team(request, bot_id):
-        return JsonResponse({"result": True, "data": set_channel_type_line(end_time, [], start_time)})
-    queryset = (
-        BotConversationHistory.objects.filter(created_at__range=[start_time, end_time], bot_id=bot_id, conversation_role="user")
-        .annotate(date=TruncDate("created_at"))
-        .values("channel_user__channel_type", "date")
-        .annotate(count=Count("channel_user", distinct=True))
+    data = usage_statistics_service.conversation_line_data(
+        request,
+        role="user",
+        distinct_users=True,
+        bot_scope_check=_bot_in_user_team,
+        line_formatter=set_channel_type_line,
+        time_range_getter=set_time_range,
     )
-    # 生成日期范围内的所有日期
-    result = set_channel_type_line(end_time, queryset, start_time)
-    return JsonResponse({"result": True, "data": result})
-
-
-def set_channel_type_line(end_time, queryset, start_time):  # pragma: no cover
-    num_days = (end_time - start_time).days + 1
-    all_dates = [start_time + datetime.timedelta(days=i) for i in range(num_days)]
-    formatted_dates = {date.strftime("%Y-%m-%d"): 0 for date in all_dates}
-    known_channel_types = [
-        "web",
-        "ding_talk",
-        "enterprise_wechat",
-        "wechat_official_account",
-    ]
-    result_dict = {channel_type: formatted_dates.copy() for channel_type in known_channel_types}
-    total_user_count = formatted_dates.copy()
-    # 更新字典与查询结果
-    for entry in queryset:
-        channel_type = entry["channel_user__channel_type"]
-        date = entry["date"].strftime("%Y-%m-%d")
-        user_count = entry["count"]
-        if channel_type not in result_dict:
-            result_dict[channel_type] = formatted_dates.copy()
-        result_dict[channel_type][date] = user_count
-        total_user_count[date] += user_count
-    # 转换为所需的输出格式
-    result = {
-        channel_type: [{"time": date, "count": user_count} for date, user_count in sorted(date_dict.items())]
-        for channel_type, date_dict in result_dict.items()
-    }
-    result["total"] = [{"time": date, "count": user_count} for date, user_count in sorted(total_user_count.items())]
-    return result
+    return JsonResponse({"result": True, "data": data})
 
 
 @api_exempt

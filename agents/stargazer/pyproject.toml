@@ -31,6 +31,7 @@ dependencies = [
     "oracledb==3.3.0",
     "pyodbc==5.2.0",
     "paramiko==3.5.0",
+    "confluent-kafka[avro]==2.15.0",
     "netmiko==4.5.0",
     "pyghmi>=1.6.5",
     "impacket>=0.12.0",

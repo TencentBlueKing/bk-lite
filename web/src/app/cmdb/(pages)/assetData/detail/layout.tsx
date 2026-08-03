@@ -5,8 +5,7 @@ import { Button, message, Spin, Tooltip } from 'antd';
 import { RelationshipsProvider } from '@/app/cmdb/context/relationships';
 import SideMenuLayout, { WithSideMenuLayoutProps } from '../components/sub-layout';
 import { useRouter } from 'next/navigation';
-import { getIconUrl } from '@/app/cmdb/utils/common';
-import Image from 'next/image';
+import ModelIcon from '@/app/cmdb/components/model-icon';
 import { useSearchParams } from 'next/navigation';
 import attrLayoutStyle from './layout.module.scss';
 import { useTranslation } from '@/utils/i18n';
@@ -44,8 +43,9 @@ const LayoutContent: React.FC<{ children: React.ReactNode }> = ({ children }) =>
 
   const intro = (
     <header className="grid grid-cols-[30px_minmax(0,1fr)_28px] items-start gap-[10px]">
-      <Image
-        src={getIconUrl({ icn: objIcon, model_id: modelId })}
+      <ModelIcon
+        icon={objIcon}
+        modelId={modelId}
         className="block"
         alt={t('picture')}
         width={30}

@@ -26,6 +26,7 @@ from apps.cmdb.constants.field_constraints import TAG_ATTR_ID, TAG_MODE_FREE
 from apps.cmdb.custom_reporting.extensions import get_custom_reporting_extension
 from apps.cmdb.display_field.constants import DISPLAY_FIELD_TYPES, DISPLAY_SUFFIX
 from apps.cmdb.graph.drivers.graph_client import GraphClient
+from apps.cmdb.graph.validators import MAX_BATCH_UPDATE_PROPERTY_VALUES
 from apps.cmdb.language.service import SettingLanguage
 from apps.cmdb.model_ops.extensions import get_model_enterprise_extension, is_file_attr_type
 from apps.cmdb.models import CREATE_INST, DELETE_INST, UPDATE_INST, FieldGroup
@@ -1177,15 +1178,56 @@ class ModelManage(object):
 
         try:
             with GraphClient() as ag:
-                instances, _ = ag.query_entity(INSTANCE, [{"field": "model_id", "type": "str=", "value": model_id}])
+                last_instance_id = None
+                property_values = []
+                while True:
+                    query_params = [{"field": "model_id", "type": "str=", "value": model_id}]
+                    if last_instance_id is not None:
+                        query_params.append(
+                            {
+                                "field": "id",
+                                "type": "id>",
+                                "value": last_instance_id,
+                            }
+                        )
+                    instances, _ = ag.query_entity(
+                        INSTANCE,
+                        query_params,
+                        page={"skip": 0, "limit": MAX_BATCH_UPDATE_PROPERTY_VALUES},
+                        include_count=False,
+                    )
+                    if not instances:
+                        break
 
-                for instance in instances:
-                    # 仅处理含该文件字段值的实例
-                    if attr_id in instance and instance[attr_id]:
-                        new_display_value = DisplayFieldConverter.convert_file(instance[attr_id])
-                        update_data = {display_field_id: new_display_value}
-                        ag.batch_update_node_properties(INSTANCE, [instance["_id"]], update_data)
-                        updated_count += 1
+                    for instance in instances:
+                        if attr_id not in instance or not instance[attr_id]:
+                            continue
+                        property_values.append(
+                            {
+                                "id": instance["_id"],
+                                "value": DisplayFieldConverter.convert_file(instance[attr_id]),
+                            }
+                        )
+                        if len(property_values) == MAX_BATCH_UPDATE_PROPERTY_VALUES:
+                            ag.batch_update_node_property_values(
+                                INSTANCE,
+                                display_field_id,
+                                property_values,
+                            )
+                            updated_count += len(property_values)
+                            property_values = []
+
+                    if len(instances) < MAX_BATCH_UPDATE_PROPERTY_VALUES:
+                        break
+                    last_instance_id = instances[-1]["_id"]
+
+                if property_values:
+                    ag.batch_update_node_property_values(
+                        INSTANCE,
+                        display_field_id,
+                        property_values,
+                    )
+                    updated_count += len(property_values)
 
                 if updated_count > 0:
                     logger.info(

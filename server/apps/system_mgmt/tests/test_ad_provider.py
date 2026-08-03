@@ -420,24 +420,19 @@ def test_ad_authenticate_returns_invalid_config_when_base_dn_missing():
 
 
 # ---------------------------------------------------------------------------
-# Phone field variants (mobile / mobilePhone) — regression for AD 域里手机号
-# 实际保存在 mobile / mobilePhone 而非 telephoneNumber 的场景。
-# 2026-07-28：白名单放开 + 适配器多源读取。
+# AD LDAP 属性白名单：仅请求当前同步源映射所需字段及组织结构必需字段。
 # ---------------------------------------------------------------------------
 
 
 @patch("apps.system_mgmt.providers.adapters.ad.search_entries")
-def test_ad_user_sync_normalizes_mobile_and_mobile_phone_fields(mock_search_entries):
-    """sync_users 必须把 LDAP mobile / mobilePhone 都抽到 user_list 顶层字段，
-    让 user_sync_form 的 field_mapping.phone 能配 mobile 或 mobilePhone。"""
+def test_ad_user_sync_requests_only_mapped_external_fields(mock_search_entries):
+    """用户同步不请求未被当前源映射的可选 LDAP 字段。"""
     mock_search_entries.side_effect = [
         [
             {
                 "sAMAccountName": "alice",
                 "displayName": "Alice",
                 "distinguishedName": "CN=Alice,OU=PAAS,DC=corp,DC=example,DC=com",
-                "mobile": "13800000001",
-                "mobilePhone": "13800000001-mobilePhone",
             },
             {
                 "sAMAccountName": "bob",
@@ -462,103 +457,21 @@ def test_ad_user_sync_normalizes_mobile_and_mobile_phone_fields(mock_search_entr
                     "user_object_class": "user",
                     "user_filter": "(&(objectCategory=Person)(sAMAccountName=*))",
                     "organization_object_class": "organizationalUnit",
-                }
+                },
+                "field_mapping": {
+                    "username": "sAMAccountName",
+                    "display_name": "displayName",
+                    "email": "mail",
+                    "phone": "telephoneNumber",
+                },
             },
         )(),
     )
 
     assert result.success is True
     users_by_name = {u["sAMAccountName"]: u for u in result.payload["user_list"]}
-    # AD 实际用 mobile 字段保存手机号 → 必须抽出
-    assert users_by_name["alice"]["mobile"] == "13800000001"
-    assert users_by_name["alice"]["mobilePhone"] == "13800000001-mobilePhone"
-    # 没填 mobile 的用户，输出空串而不是抛错
-    assert users_by_name["bob"]["mobile"] == ""
-    assert users_by_name["bob"]["mobilePhone"] == ""
     # 兼容性：telephoneNumber 仍可读
     assert users_by_name["bob"]["telephoneNumber"] == "13800000002"
-    # 关键：AD_LOGIN_ATTRIBUTES 必须把 mobile / mobilePhone 都带上
+    # 仅请求配置映射字段和构建组织关系所需的 distinguishedName。
     attributes_arg = mock_search_entries.call_args_list[0].args[3]
-    assert "mobile" in attributes_arg
-    assert "mobilePhone" in attributes_arg
-    assert "telephoneNumber" in attributes_arg
-
-
-@patch("apps.system_mgmt.providers.adapters.ad.bind_user_dn")
-@patch("apps.system_mgmt.providers.adapters.ad.search_single_user")
-def test_ad_login_auth_returns_mobile_with_priority_mobile_over_telephone(
-    mock_search_single_user, mock_bind_user_dn
-):
-    """authenticate 返回的 mobile 优先取 LDAP 的 mobile 字段；
-    mobile 为空时回落到 telephoneNumber；再回落 mobilePhone。"""
-    # 场景 1：mobile 有值，优先取 mobile
-    mock_search_single_user.return_value = {
-        "sAMAccountName": "alice",
-        "displayName": "Alice",
-        "mail": "alice@example.com",
-        "mobile": "13800000001",
-        "telephoneNumber": "021-12345678",
-        "distinguishedName": "CN=Alice,OU=PAAS,DC=corp,DC=example,DC=com",
-    }
-    result = ADLoginAuthAdapter.authenticate(
-        config=_base_config(),
-        provider_key="ad",
-        capability_key="login_auth",
-        username="alice",
-        password="secret",
-    )
-    assert result.success is True
-    assert result.payload["external_user"]["mobile"] == "13800000001"
-
-    # 场景 2：mobile 为空，回落 telephoneNumber
-    mock_search_single_user.return_value = {
-        "sAMAccountName": "bob",
-        "displayName": "Bob",
-        "mail": "bob@example.com",
-        "mobile": "",
-        "telephoneNumber": "13800000002",
-        "distinguishedName": "CN=Bob,OU=PAAS,DC=corp,DC=example,DC=com",
-    }
-    result = ADLoginAuthAdapter.authenticate(
-        config=_base_config(),
-        provider_key="ad",
-        capability_key="login_auth",
-        username="bob",
-        password="secret",
-    )
-    assert result.payload["external_user"]["mobile"] == "13800000002"
-
-    # 场景 3：mobile 和 telephoneNumber 都为空，回落 mobilePhone
-    mock_search_single_user.return_value = {
-        "sAMAccountName": "carol",
-        "displayName": "Carol",
-        "mail": "carol@example.com",
-        "mobile": None,
-        "telephoneNumber": None,
-        "mobilePhone": "13800000003",
-        "distinguishedName": "CN=Carol,OU=PAAS,DC=corp,DC=example,DC=com",
-    }
-    result = ADLoginAuthAdapter.authenticate(
-        config=_base_config(),
-        provider_key="ad",
-        capability_key="login_auth",
-        username="carol",
-        password="secret",
-    )
-    assert result.payload["external_user"]["mobile"] == "13800000003"
-
-    # 场景 4：三个都为空，输出空串（不抛错）
-    mock_search_single_user.return_value = {
-        "sAMAccountName": "dave",
-        "displayName": "Dave",
-        "mail": "dave@example.com",
-        "distinguishedName": "CN=Dave,OU=PAAS,DC=corp,DC=example,DC=com",
-    }
-    result = ADLoginAuthAdapter.authenticate(
-        config=_base_config(),
-        provider_key="ad",
-        capability_key="login_auth",
-        username="dave",
-        password="secret",
-    )
-    assert result.payload["external_user"]["mobile"] == ""
+    assert attributes_arg == ["sAMAccountName", "displayName", "mail", "telephoneNumber", "distinguishedName"]

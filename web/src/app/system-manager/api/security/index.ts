@@ -27,6 +27,8 @@ export const useSecurityApi = () => {
     pwdSetMaxRetryCount,
     pwdSetLockDuration,
     pwdSetExpiryReminderDays,
+    userCreateInitialPasswordEnabled,
+    userCreateInitialPassword,
   }: { 
     enableOtp: string; 
     loginExpiredTime: string;
@@ -37,6 +39,8 @@ export const useSecurityApi = () => {
     pwdSetMaxRetryCount?: string;
     pwdSetLockDuration?: string;
     pwdSetExpiryReminderDays?: string;
+    userCreateInitialPasswordEnabled?: string;
+    userCreateInitialPassword?: string;
   }): Promise<any> {
     return await post('/system_mgmt/system_settings/update_sys_set/', {
       enable_otp: enableOtp,
@@ -48,6 +52,8 @@ export const useSecurityApi = () => {
       pwd_set_max_retry_count: pwdSetMaxRetryCount,
       pwd_set_lock_duration: pwdSetLockDuration,
       pwd_set_expiry_reminder_days: pwdSetExpiryReminderDays,
+      user_create_initial_password_enabled: userCreateInitialPasswordEnabled,
+      ...(userCreateInitialPassword ? { user_create_initial_password: userCreateInitialPassword } : {}),
     });
   }
 

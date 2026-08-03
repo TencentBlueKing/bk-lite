@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Switch, InputNumber, Button, Select, Checkbox } from 'antd';
+import { Switch, Input, InputNumber, Button, Select, Checkbox } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import PermissionWrapper from '@/components/permission';
 
@@ -15,6 +15,12 @@ interface LoginSettingsProps {
   loginAttempts: string;
   lockDuration: string;
   reminderDays: string;
+  initialPasswordEnabled: boolean;
+  initialPasswordConfigured: boolean;
+  initialPasswordRequired: boolean;
+  initialPasswordEditing: boolean;
+  initialPassword: string;
+  confirmInitialPassword: string;
   loading: boolean;
   disabled?: boolean;
   onOtpChange: (checked: boolean) => void;
@@ -26,6 +32,10 @@ interface LoginSettingsProps {
   onLoginAttemptsChange: (value: string) => void;
   onLockDurationChange: (value: string) => void;
   onReminderDaysChange: (value: string) => void;
+  onInitialPasswordEnabledChange: (checked: boolean) => void;
+  onStartInitialPasswordChange: () => void;
+  onInitialPasswordChange: (value: string) => void;
+  onConfirmInitialPasswordChange: (value: string) => void;
   onSave: () => void;
 }
 
@@ -39,6 +49,12 @@ const LoginSettings: React.FC<LoginSettingsProps> = ({
   loginAttempts,
   lockDuration,
   reminderDays,
+  initialPasswordEnabled,
+  initialPasswordConfigured,
+  initialPasswordRequired,
+  initialPasswordEditing,
+  initialPassword,
+  confirmInitialPassword,
   loading,
   disabled = false,
   onOtpChange,
@@ -50,6 +66,10 @@ const LoginSettings: React.FC<LoginSettingsProps> = ({
   onLoginAttemptsChange,
   onLockDurationChange,
   onReminderDaysChange,
+  onInitialPasswordEnabledChange,
+  onStartInitialPasswordChange,
+  onInitialPasswordChange,
+  onConfirmInitialPasswordChange,
   onSave
 }) => {
   const { t } = useTranslation();
@@ -188,6 +208,62 @@ const LoginSettings: React.FC<LoginSettingsProps> = ({
           </div>
         </div>
       </div>
+
+      <section className="mt-6 border-t border-[var(--color-border-1)] pt-4" aria-labelledby="initial-password-heading">
+        <h4 id="initial-password-heading" className="text-sm font-semibold text-[var(--color-text-1)]">
+          {t('system.security.newUserInitialPassword')}
+        </h4>
+        <p className="mt-1 text-xs text-[var(--color-text-2)]">
+          {t('system.security.newUserInitialPasswordDescription')}
+        </p>
+        <div className="mt-3 flex items-center gap-3">
+          <Switch
+            size="small"
+            checked={initialPasswordEnabled}
+            onChange={onInitialPasswordEnabledChange}
+            disabled={disabled || loading}
+          />
+          <span className="text-xs text-[var(--color-text-1)]">{t('system.security.enableInitialPassword')}</span>
+          {initialPasswordEnabled && initialPasswordConfigured && !initialPasswordRequired && !initialPasswordEditing && (
+            <>
+              <span className="text-xs text-[var(--color-text-2)]">{t('system.security.initialPasswordConfigured')}</span>
+              <Button type="link" size="small" className="p-0" onClick={onStartInitialPasswordChange}>
+                {t('system.security.changeInitialPassword')}
+              </Button>
+            </>
+          )}
+        </div>
+        {initialPasswordEnabled && (initialPasswordRequired || !initialPasswordConfigured || initialPasswordEditing) && (
+          <div className="mt-3 w-72 space-y-2">
+            {initialPasswordRequired && (
+              <div className="text-xs text-[var(--color-warning)]">{t('system.security.initialPasswordReentryRequired')}</div>
+            )}
+            <label className="block text-xs text-[var(--color-text-1)]">
+              <span>{t('system.security.initialPassword')}</span>
+              <Input.Password
+                value={initialPassword}
+                onChange={(event) => onInitialPasswordChange(event.target.value)}
+                disabled={disabled || loading}
+                autoComplete="new-password"
+                placeholder={t('system.security.initialPasswordPlaceholder')}
+                className="mt-1"
+              />
+            </label>
+            <label className="block text-xs text-[var(--color-text-1)]">
+              <span>{t('system.security.confirmInitialPassword')}</span>
+              <Input.Password
+                value={confirmInitialPassword}
+                onChange={(event) => onConfirmInitialPasswordChange(event.target.value)}
+                disabled={disabled || loading}
+                autoComplete="new-password"
+                placeholder={t('system.security.confirmInitialPasswordPlaceholder')}
+                className="mt-1"
+              />
+            </label>
+            <div className="text-xs text-[var(--color-text-2)]">{t('system.security.initialPasswordOfflineNotice')}</div>
+          </div>
+        )}
+      </section>
 
       <div className="mt-6">
         <PermissionWrapper requiredPermissions={['Edit']}>

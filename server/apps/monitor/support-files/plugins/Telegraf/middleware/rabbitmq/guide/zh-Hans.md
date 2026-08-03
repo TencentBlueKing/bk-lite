@@ -1,84 +1,67 @@
 # RabbitMQ 监控接入指南
 
-本插件通过 Telegraf `inputs.rabbitmq` 周期性拉取 RabbitMQ Management Plugin 的 HTTP API，采集概览、节点、队列、交换机、联邦链路等指标。Management Plugin 默认端口 `15672`，与 AMQP（`5672`）不同，请勿混淆。
+本能力通过 Telegraf `inputs.rabbitmq` 访问 RabbitMQ Management Plugin HTTP API；管理端口与 AMQP 端口不同。
 
 ## 前置要求
 
-- 目标 RabbitMQ 服务已启动，并启用 Management Plugin：
-
-  ```bash
-  rabbitmq-plugins enable rabbitmq_management
-  ```
-
-- Management 默认端口 `15672`，账号通常使用 `guest / guest`（仅本机访问）或自定义管理员账号。
-- 采集节点到 RabbitMQ 主机网络可达（含安全组 / 防火墙放通）。
-- 如启用 LDAP / 内部账号鉴权，准备好只读账号（仅可访问 Management HTTP API）。
-
-> Telegraf 输出 5 张主要指标表：`rabbitmq_overview`、`rabbitmq_node`、`rabbitmq_queue`、`rabbitmq_exchange`、`rabbitmq_federation`，并以 `url` / `node` / `queue` / `vhost` 等为维度。
-
-## 推荐账号权限
-
-Management 账号在 RabbitMQ 中通过内置 tag 控制（`administrator` / `monitoring` / `management` / `policymaker`）。监控账号建议授予 `monitoring` 标签，只读：
-
-```bash
-rabbitmqctl add_user monitor monitor-pwd
-rabbitmqctl set_user_tags monitor monitoring
-rabbitmqctl set_permissions -p / monitor "^$" "^$" "^$"   # monitoring 仅 API 读，不需要 AMQP 权限
-```
-
-`monitoring` 标签自带 Management HTTP API 只读访问能力，已满足 Telegraf 采集需求。
+- 目标 RabbitMQ 已启用 Management Plugin，并暴露采集节点可访问的 HTTP(S) 管理地址。
+- 准备可读取 Management API 的账号；远程采集不要使用默认仅限本机的 `guest` 账号。
+- 用户名和密码在当前页面均为必填。
+- 带认证的 Management API 应优先使用 HTTPS，并部署证书链受采集节点信任的服务端证书。
+- 若目标只能使用 HTTP，仅可部署在隔离且可信的链路中；Basic Auth 凭据只是可逆编码，会在网络中以未加密形式传输。
+- 当前页面和模板没有队列包含/排除过滤字段，也不提供 Management Plugin 启停操作。
+- 以 Management API 的实际可访问状态作为接入前提。
 
 ## 接入步骤
 
-1. 在采集节点验证 Management API 可达：
-
-   ```bash
-   curl -u monitor:monitor-pwd http://<host>:15672/api/overview
-   ```
-
-2. 在监控接入页填写 URL（默认 `http://<host>:15672`）、用户名、密码、采集间隔（默认 `60s`）。
-3. 在「监控对象」表格中填写节点、URL、实例名称和所属组。
-4. 点击「确认」保存配置，等待至少一个采集周期。
-5. 到资产或指标页确认实例已上报数据。
+1. 从实际采集节点验证 Management API 地址和监控账号。
+2. 填写 URL、用户名、密码和采集间隔（默认 `60` 秒）。
+3. 在监控对象表格中选择节点，填写 URL、实例名称和可选分组。
+4. 保存后等待至少一个采集周期。
 
 ## 接入前校验
 
-Management API 可达性：
+下列 HTTPS 命令会交互式询问密码，并保留 HTTP 失败状态。交互提示只避免密码进入命令行参数或历史记录，不能保护网络传输；证书链必须受采集节点信任。不要将 `-k` 或 `--insecure` 作为常规方案：
 
 ```bash
-curl -u <user>:<pwd> http://<host>:15672/api/nodes
+curl --fail --silent --show-error --user monitor "https://rabbitmq.example.com:15671/api/overview"
 ```
 
-返回 200 + JSON 数组即视为正常。
+请求应返回 `200` 和 JSON。使用页面要填写的同一完整基地址验证，不要混用 AMQP 端口。
 
 ## 页面字段说明
 
 | 页面字段 | 是否必填 | 说明 |
 | --- | --- | --- |
-| URL | 是 | RabbitMQ Management API 地址，例如 `http://10.0.0.5:15672` |
-| 用户名 | 是 | Management 登录账号，建议使用 `monitoring` 标签的只读账号 |
-| 密码 | 是 | 对应账号密码 |
-| 间隔 | 是 | 采集周期，单位秒，默认 `60` |
-| 节点 | 是 | 负责采集的探针节点 |
-| 实例名称 | 是 | 平台内展示的实例名，默认由 URL 自动填充 |
-| 组 | 否 | 组织分组，便于权限与资产归属 |
+| URL | 是 | RabbitMQ Management HTTP(S) API 基地址。 |
+| 用户名 | 是 | 可读取 Management API 的账号。 |
+| 密码 | 是 | 对应账号密码。 |
+| 间隔 | 是 | 采集周期，单位秒，默认 `60`。 |
+| 节点 | 是 | 能够访问 Management API 的采集节点。 |
+| 实例名称 | 是 | 平台内展示的实例名称。 |
+| 组 | 否 | 实例所属分组。 |
+
+## 接入后验证
+
+保存并等待一个采集周期后，在平台确认以下指标可查询：
+
+- `rabbitmq_node_running`
+- `rabbitmq_overview_connections`
+- `rabbitmq_overview_messages`
+- `rabbitmq_node_mem_used`
 
 ## 常见问题
 
-### 1. 保存后长时间无数据
+### 返回 `401` 或 `403`
 
-- 确认 Management Plugin 已 `enable`；启用后必须重启 RabbitMQ 节点或等待下一次节点启动。
-- 确认端口 `15672` 可达，注意与 AMQP `5672` 区分。
-- 在采集节点用 `curl` 直接验证 `/api/overview`。
+- 核对账号是否具有 Management API 的监控读取权限。
+- `guest` 默认不能远程登录；为采集准备专用账号。
 
-### 2. 认证失败
+### 端口可达但无数据
 
-- `guest` 账号默认仅允许 `localhost` 登录；远程采集请新建账号。
-- 检查账号的 `set_user_tags` 是否包含 `monitoring` 或 `management`；只设 `set_permissions` 不够。
-- 密码含特殊字符无需转义，Telegraf 会通过 Authorization 头发认证。
+- 确认 URL 指向 Management HTTP(S) API，而不是 AMQP 服务端口。
+- 查看 Telegraf 日志中的具体 API、HTTP 状态和响应解析错误。
 
-### 3. 部分指标缺失
+### 需要过滤队列
 
-- `rabbitmq_node` 仅暴露当前查询可达的节点；若集群有节点掉线，需等待节点恢复或检查集群状态。
-- 某些字段（`gc_num`、`io_read_bytes` 等）依赖 RabbitMQ 3.6+ 的新统计；老版本会出现字段缺失。
-- 通过 `queue_name_include` / `queue_name_exclude` 可按通配符过滤；空数组表示全部（默认值）。
+- 当前 UI 和模板没有队列过滤字段；文档不承诺或要求配置该能力。

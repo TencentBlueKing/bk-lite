@@ -410,14 +410,19 @@ def _run_screenshot_command(
     execution_id: str = "",
 ) -> Dict[str, Any]:
     """执行 screenshot 命令的内部帮助函数。"""
-    screenshot_path = _build_default_screenshot_path(filename=filename or None, image_format=image_format)
+    normalized_format = (image_format or "png").lower()
+    if normalized_format not in {"png", "jpeg", "jpg"}:
+        normalized_format = "png"
+    screenshot_path = _build_default_screenshot_path(
+        filename=filename or None,
+        image_format=normalized_format,
+    )
     command_args = [*_build_session_flags(session_name), "screenshot"]
     if full_page:
         command_args.append("--full")
     if annotate:
         command_args.append("--annotate")
-    if image_format:
-        command_args.extend(["--screenshot-format", image_format])
+    command_args.extend(["--screenshot-format", normalized_format])
     command_args.append(screenshot_path)
 
     result = _run_agent_browser_command(command=command_args, timeout=timeout, execution_id=execution_id)

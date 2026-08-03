@@ -1,88 +1,69 @@
 # ElasticSearch 监控接入指南
 
+本能力通过 Telegraf `inputs.elasticsearch` 访问 ElasticSearch HTTP API，采集集群健康和指定节点统计。
+
 ## 前置要求
 
-- 目标实例已启动 Elasticsearch HTTP 服务，默认可访问 `9200` 端口。
-- 采集节点到 Elasticsearch 地址网络可达（含安全组 / 防火墙放通）。
-- 已准备具备查询集群健康与节点统计接口权限的账号和密码。
-- 页面「服务器地址」需填写完整 URL，并以 `http://` 或 `https://` 开头，例如 `http://10.0.0.10:9200`。
-
-## 推荐账号权限
-
-账号至少能访问：
-
-- `GET /_cluster/health`
-- `GET /_nodes/stats`
-
-若集群开启安全认证，请使用可读取上述接口的专用只读监控账号，避免使用高权限管理员账号。
+- 采集节点能够访问 ElasticSearch 的完整 HTTP(S) 地址。
+- 准备可读取集群健康与节点统计接口的用户名和密码；当前页面两项均为必填。
+- 带认证的端点应优先使用 HTTPS，并部署证书链受采集节点信任的服务端证书。
+- 若目标只能使用 HTTP，仅可部署在隔离且可信的链路中；Basic Auth 凭据只是可逆编码，会在网络中以未加密形式传输。
+- 账号至少能访问 `/_cluster/health` 与 `/_nodes/stats`。
+- 当前模板固定启用集群健康，并采集 JVM、文件系统、进程、断路器、HTTP 和线程池节点统计。
+- HTTPS 连接在当前模板中固定跳过服务端证书校验，页面不提供 CA 或校验开关；不要因此把不可信证书作为常规方案。
 
 ## 接入步骤
 
-1. 在采集节点上确认可访问目标 Elasticsearch。
-2. 在监控对象接入页填写用户名、密码和采集间隔（默认 `60s`）。
-3. 在「监控对象」表格中填写节点、服务器地址、实例名称和所属组。
-4. 点击「确认」保存配置，等待至少一个采集周期。
-5. 到资产或指标页确认实例已上报数据。
+1. 从实际采集节点验证完整服务器地址、账号和接口权限。
+2. 填写服务器地址、用户名、密码和采集间隔（默认 `60` 秒）。
+3. 在监控对象表格中选择节点，填写服务器地址、实例名称和可选分组。
+4. 保存后等待至少一个采集周期。
 
 ## 接入前校验
 
-无认证（若环境允许）可执行：
+以下 HTTPS 命令会交互式询问密码，不会把密码写入命令行参数或历史记录。交互提示不能保护网络传输；安全性仍依赖 TLS，证书链必须受采集节点信任。不要将 `-k` 或 `--insecure` 作为常规方案：
 
 ```bash
-curl -sS "http://<host>:9200/_cluster/health?pretty"
+curl --fail --silent --show-error --user monitor "https://es.example.com:9200/_cluster/health"
+curl --fail --silent --show-error --user monitor "https://es.example.com:9200/_nodes/stats"
 ```
 
-带 Basic Auth：
-
-```bash
-curl -sS -u "<username>:<password>" "http://<host>:9200/_cluster/health?pretty"
-```
-
-节点统计：
-
-```bash
-curl -sS -u "<username>:<password>" "http://<host>:9200/_nodes/stats?pretty"
-```
-
-满足以下条件可认为端点基本可用：
-
-- HTTP 状态码为 `200`
-- `_cluster/health` 返回包含 `status`、`number_of_nodes` 等字段
+两个请求都应返回 `200`；`--fail` 会保留 `4xx/5xx` 失败状态。
 
 ## 页面字段说明
 
 | 页面字段 | 是否必填 | 说明 |
 | --- | --- | --- |
-| 用户名 | 是 | 访问 Elasticsearch HTTP 接口的账号 |
-| 密码 | 是 | 对应账号密码 |
-| 间隔 | 是 | 采集周期，单位秒，默认 `60` |
-| 节点 | 是 | 负责采集的探针节点 |
-| 服务器地址 | 是 | 完整 URL，例如 `http://localhost:9200` |
-| 实例名称 | 是 | 平台内展示的实例名 |
-| 组 | 否 | 组织分组，便于权限与资产归属 |
+| 服务器地址 | 是 | 完整 HTTP(S) URL，带认证时优先使用 `https://es.example.com:9200`。 |
+| 用户名 | 是 | 可读取集群健康和节点统计接口的账号。 |
+| 密码 | 是 | 对应账号密码。 |
+| 间隔 | 是 | 采集周期，单位秒，默认 `60`。 |
+| 节点 | 是 | 能够访问 ElasticSearch 的采集节点。 |
+| 实例名称 | 是 | 平台内展示的实例名称。 |
+| 组 | 否 | 实例所属分组。 |
+
+## 接入后验证
+
+保存并等待一个采集周期后，在平台确认以下指标可查询：
+
+- `elasticsearch_cluster_health_status_code`
+- `elasticsearch_cluster_health_active_primary_shards`
+- `elasticsearch_jvm_mem_heap_used_percent`
+- `elasticsearch_thread_pool_search_queue`
 
 ## 常见问题
 
-### 1. 保存后长时间无数据
+### 返回 `401` 或 `403`
 
-- 核对服务器地址协议与端口是否正确。
-- 在采集节点上重新执行上述 `curl`，确认不是仅控制台可达。
-- 等待至少一个采集间隔后再查看。
-- 检查节点上 Telegraf / 采集任务是否正常运行。
+- 核对用户名、密码以及两个接口的读取权限。
+- 分别验证集群健康与节点统计；其中一个成功不能证明另一个有权限。
 
-### 2. 认证失败（401 / 403）
+### HTTPS 连接异常
 
-- 确认用户名密码无首尾空格与特殊字符转义问题。
-- 确认账号具备 `_cluster/health` 与 `_nodes/stats` 读权限。
-- 若集群启用了额外安全插件，确认允许来自采集节点 IP 的访问。
+- 核对 URL 协议与端口。
+- 当前模板固定跳过服务端证书校验，但不支持客户端证书或自定义 CA 字段；要求双向 TLS 的目标不能直接接入。
 
-### 3. HTTPS / 证书相关异常
+### 只有部分数据
 
-- 当前采集模板默认 `insecure_skip_verify = true`，一般可跳过证书校验。
-- 若仍失败，优先确认目标是否需要特定证书链，以及 URL 是否误写成 `http://`。
-
-### 4. 仅部分指标缺失
-
-- 集群健康指标依赖 `cluster_health = true`。
-- 节点资源、断路器、HTTP、线程池依赖 `node_stats` 列表。
-- 权限不足时可能出现健康接口成功、节点统计失败，请分别验证两个接口。
+- 节点统计只包含模板列出的六类，未配置的统计类别不会采集。
+- 检查 Telegraf 日志中是集群健康请求还是具体节点统计请求失败。

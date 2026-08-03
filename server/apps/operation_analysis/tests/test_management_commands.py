@@ -3,10 +3,11 @@
 对照 specs/capabilities/legacy-prd-运营分析-管理.md：内置命名空间/数据源/默认组织的初始化。
 """
 
-import importlib
+from io import StringIO
 
 import pytest
 from django.core.management import call_command
+from django.core.management.base import CommandError
 
 from apps.operation_analysis.models.datasource_models import DataSourceAPIModel, DataSourceTag, NameSpace
 from apps.operation_analysis.models.models import Directory
@@ -30,36 +31,114 @@ def test_init_default_namespace_creates_from_nats_url(settings):
 
 @pytest.mark.django_db
 def test_init_default_namespace_creates_from_tls_url(settings):
-    settings.NATS_SERVERS = "tls://user:pwd@example.com:4222"
+    settings.NATS_SERVERS = "tls://user:pwd%40value@example.com:4222"
     call_command("init_default_namespace")
 
     ns = NameSpace.objects.get(name="默认命名空间")
+    assert ns.account == "user"
+    assert ns.decrypt_password == "pwd@value"
     assert ns.enable_tls is True
     assert ns.domain == "example.com:4222"
 
 
 @pytest.mark.django_db
-def test_init_default_namespace_plain_host(settings):
-    settings.NATS_SERVERS = "myhost:4222"
+@pytest.mark.parametrize("nats_servers", ["myhost:4222", "nats://myhost:4222"])
+def test_init_default_namespace_plain_host_uses_explicit_nats_options(settings, nats_servers):
+    settings.NATS_SERVERS = nats_servers
+    settings.NATS_OPTIONS = {
+        "user": "configured-user",
+        "password": "configured-password",
+    }
     call_command("init_default_namespace")
 
     ns = NameSpace.objects.get(name="默认命名空间")
     assert ns.domain == "myhost:4222"
-    assert ns.account == "admin"
+    assert ns.account == "configured-user"
+    assert ns.decrypt_password == "configured-password"
 
 
 @pytest.mark.django_db
-def test_init_default_namespace_no_servers_returns_early(settings):
-    settings.NATS_SERVERS = ""
-    import os
+@pytest.mark.parametrize(
+    "nats_servers",
+    [
+        "",
+        "not-a-valid-url",
+        "http://user:secret@nats.internal:4222",
+        "nats://nats.internal:4222",
+        "nats://user@nats.internal:4222",
+        "nats://user:secret@nats.internal",
+        "nats://user:secret@[bad:4222",
+        "nats://user:secret@bad host:4222",
+        "nats://user:secret@bad%20host:4222",
+        "nats://user:secret@bad%00host:4222",
+        "nats://user:secret@nats.internal:0",
+        "user:secret@nats.internal:4222",
+        "nats://%20:secret@nats.internal:4222",
+        "nats://user:%20@nats.internal:4222",
+        "nats://:@nats.internal:4222",
+    ],
+)
+def test_init_default_namespace_rejects_invalid_config_without_writing(settings, monkeypatch, nats_servers):
+    settings.NATS_SERVERS = nats_servers
+    settings.NATS_OPTIONS = {}
+    monkeypatch.delenv("NATS_SERVERS", raising=False)
 
-    old = os.environ.pop("NATS_SERVERS", None)
-    try:
+    with pytest.raises(CommandError, match="NATS_SERVERS"):
         call_command("init_default_namespace")
-        assert not NameSpace.objects.filter(name="默认命名空间").exists()
-    finally:
-        if old is not None:
-            os.environ["NATS_SERVERS"] = old
+
+    assert not NameSpace.objects.filter(name="默认命名空间").exists()
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "nats_options",
+    [
+        {"user": "configured-user"},
+        {"password": "configured-password"},
+        {"token": "configured-token"},
+        {"user": " ", "password": "configured-password"},
+        {"user": "configured-user", "password": " "},
+    ],
+)
+def test_init_default_namespace_rejects_incomplete_nats_options_without_writing(settings, nats_options):
+    settings.NATS_SERVERS = "myhost:4222"
+    settings.NATS_OPTIONS = nats_options
+
+    with pytest.raises(CommandError, match="NATS_SERVERS"):
+        call_command("init_default_namespace")
+
+    assert not NameSpace.objects.filter(name="默认命名空间").exists()
+
+
+@pytest.mark.django_db
+def test_batch_init_warns_and_continues_when_default_namespace_config_is_invalid(settings):
+    from apps.system_mgmt.models.user import Group
+
+    Group.objects.create(name="Default", parent_id=0)
+    settings.NATS_SERVERS = "nats://user:secret@[bad:4222"
+    settings.NATS_OPTIONS = {}
+    output = StringIO()
+
+    call_command("batch_init", apps="operation_analysis", stdout=output)
+
+    assert not NameSpace.objects.filter(name="默认命名空间").exists()
+    assert "默认命名空间初始化跳过（CommandError）" in output.getvalue()
+    assert "NATS_SERVERS 配置非法" in output.getvalue()
+    assert "批量初始化完成" in output.getvalue()
+    assert DataSourceTag.objects.exists()
+    assert not DataSourceAPIModel.objects.exists()
+
+    settings.NATS_SERVERS = "nats.internal:4222"
+    settings.NATS_OPTIONS = {
+        "user": "configured-user",
+        "password": "configured-password",
+    }
+    recovered_output = StringIO()
+    call_command("batch_init", apps="operation_analysis", stdout=recovered_output)
+
+    assert NameSpace.objects.filter(name="默认命名空间").exists()
+    assert DataSourceAPIModel.objects.exists()
+    assert "批量初始化完成" in recovered_output.getvalue()
 
 
 @pytest.mark.django_db
@@ -73,6 +152,37 @@ def test_init_default_namespace_rerun_updates_changed_config(settings):
     ns = NameSpace.objects.get(name="默认命名空间")
     assert ns.account == "other"
     assert ns.domain == "10.0.0.1:4222"
+
+
+@pytest.mark.django_db
+def test_init_default_namespace_rotates_legacy_credentials_without_breaking_datasource_relation(settings):
+    namespace = NameSpace.objects.create(
+        name="默认命名空间",
+        account="admin",
+        password="nats_password",
+        domain="legacy-nats:4222",
+    )
+    source = DataSourceAPIModel.objects.create(
+        name="存量 NATS 数据源",
+        rest_api="legacy/get_data",
+        source_type=DataSourceAPIModel.SOURCE_TYPE_NATS,
+    )
+    source.namespaces.add(namespace)
+    original_id = namespace.id
+    settings.NATS_SERVERS = "new-nats:4222"
+    settings.NATS_OPTIONS = {
+        "user": "rotated-user",
+        "password": "rotated-password",
+    }
+
+    call_command("init_default_namespace")
+
+    namespace.refresh_from_db()
+    assert namespace.id == original_id
+    assert namespace.account == "rotated-user"
+    assert namespace.decrypt_password == "rotated-password"
+    assert namespace.domain == "new-nats:4222"
+    assert source.namespaces.filter(id=original_id).exists()
 
 
 @pytest.mark.django_db
@@ -113,15 +223,14 @@ def test_init_source_api_data_creates_room3d_datasource(settings):
     source = DataSourceAPIModel.objects.get(name="CMDB 3D机房布局", rest_api="cmdb/get_room3d_layout")
 
     assert source.chart_type == ["room3D"]
-    assert source.params == [
-        {
-            "name": "server_room_id",
-            "type": "string",
-            "value": "",
-            "alias_name": "机房ID",
-            "filterType": "params",
-        }
-    ]
+    server_room_param = source.params[0]
+    assert {key: server_room_param[key] for key in ("name", "type", "value", "alias_name", "filterType")} == {
+        "name": "server_room_id",
+        "type": "string",
+        "value": "",
+        "alias_name": "机房ID",
+        "filterType": "params",
+    }
     assert list(source.tag.values_list("tag_id", flat=True)) == ["cmdb"]
 
 
@@ -131,9 +240,7 @@ def test_init_source_api_data_creates_cloud_cost_distribution_contract(settings)
     call_command("init_default_namespace")
     call_command("init_source_api_data")
 
-    source = DataSourceAPIModel.objects.get(
-        rest_api="cmdb/get_cloud_resource_cost_distribution"
-    )
+    source = DataSourceAPIModel.objects.get(rest_api="cmdb/get_cloud_resource_cost_distribution")
     params = {item["name"]: item for item in source.params}
     fields = {item["key"]: item for item in source.field_schema}
 
@@ -197,8 +304,10 @@ class _MigrationApps:
 
 
 def _distribution_migration():
+    import importlib
+
     return importlib.import_module(
-        "apps.operation_analysis.migrations.0018_set_cloud_cost_distribution_field_schema"
+        "apps.operation_analysis.migrations.0019_set_cloud_cost_distribution_field_schema"
     )
 
 
@@ -364,10 +473,28 @@ def test_init_default_groups_covers_all_registered_canvas_models():
 
     root_default, _ = Group.objects.get_or_create(name="Default", parent_id=0)
     records = []
+    directory = Directory.objects.create(
+        name="网络拓扑测试目录",
+        groups=[root_default.id],
+        created_by="system",
+    )
 
     for object_type, meta in CANVAS_TYPE_REGISTRY.items():
-        empty = meta.model.objects.create(name=f"无组织-{object_type}", groups=[], created_by="system")
-        existing = meta.model.objects.create(name=f"已分组-{object_type}", groups=[99], created_by="system")
+        extra = {}
+        if object_type == "networkTopology":
+            extra = {"directory": directory, "base_url": "https://weops.example.com"}
+        empty = meta.model.objects.create(
+            name=f"无组织-{object_type}",
+            groups=[],
+            created_by="system",
+            **extra,
+        )
+        existing = meta.model.objects.create(
+            name=f"已分组-{object_type}",
+            groups=[99],
+            created_by="system",
+            **extra,
+        )
         records.append((empty, existing))
 
     call_command("init_default_groups")

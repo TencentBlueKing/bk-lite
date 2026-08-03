@@ -7,6 +7,7 @@ from django.db.migrations.executor import MigrationExecutor
 def test_execution_claim_token_migration_is_nullable_and_preserves_existing_tasks():
     old_target = [("cmdb", "0039_node_mgmt_sync_reconciliation")]
     new_target = [("cmdb", "0040_collectmodels_execution_claim_token")]
+    latest_target = [("cmdb", "0042_collectmodels_system_code_unique")]
     executor = MigrationExecutor(connection)
     executor.migrate(old_target)
     try:
@@ -26,4 +27,4 @@ def test_execution_claim_token_migration_is_nullable_and_preserves_existing_task
 
         assert migrated.execution_claim_token is None
     finally:
-        MigrationExecutor(connection).migrate(new_target)
+        MigrationExecutor(connection).migrate(latest_target)

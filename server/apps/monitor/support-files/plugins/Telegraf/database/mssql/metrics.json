@@ -2,6 +2,8 @@
   "plugin": "MSSQL",
   "plugin_desc": "MSSQL Exporter is used to collect and export metrics from Microsoft SQL Server databases, including query performance, connection counts, transaction statistics, and resource usage, to help monitor the health and performance of MSSQL instances.",
   "status_query": "any({instance_type='mssql', collect_type='database'}) by (instance_id)",
+  "instance_fact_bindings": [{"fact":"asset.ip","value_type":"ip","resolver":"input","options":{"field":"host"}}],
+  "instance_summary_columns": [{"fact":"asset.ip","title":"monitor.views.assetIp","order":10}],
   "name": "MSSQL",
   "icon": "mm-mssql_Mssql",
   "type": "Database",
@@ -14,9 +16,7 @@
     {"name":"缓冲区缓存命中率","sort_order":1,"metrics":[{"plugin":"MSSQL","metric":"sqlserver_buffer_cache_hit_ratio"}]},
     {"name":"批处理请求速率","sort_order":2,"metrics":[{"plugin":"MSSQL","metric":"sqlserver_performance_value_rate"}]},
     {"name":"数据库读取延迟","sort_order":3,"metrics":[{"plugin":"MSSQL","metric":"sqlserver_database_io_read_latency_ms"}]},
-    {"name":"用户连接数","sort_order":4,"metrics":[{"plugin":"MSSQL","metric":"sqlserver_user_connections_rate"}]},
-    {"name":"阻塞进程数","sort_order":5,"metrics":[{"plugin":"MSSQL","metric":"sqlserver_processes_blocked"}]},
-    {"name":"等待内存授予的请求数","sort_order":6,"metrics":[{"plugin":"MSSQL","metric":"sqlserver_memory_grants_pending"}]}
+    {"name":"用户连接数","sort_order":4,"metrics":[{"plugin":"MSSQL","metric":"sqlserver_user_connections_rate"}]}
   ],
   "metrics": [
     {

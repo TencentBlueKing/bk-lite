@@ -77,9 +77,64 @@ def test_monitor_instance_list_returns_flow_asset_fields(db, monkeypatch):
         "time": "",
         "cloud_region_id": 3,
         "ip": "10.0.0.12",
+        "summary_facts": {},
         "fallback_sampling_rate": 2000,
         "organizations": [7],
     }
+
+
+def test_monitor_instance_lists_exclude_inactive_auto_discovered_instances(db, monkeypatch):
+    monitor_object = MonitorObject.objects.create(
+        name="ActiveInstancesOnly",
+        default_metric="up",
+        instance_id_keys=["instance_id"],
+    )
+    active = MonitorInstance.objects.create(
+        id="('active-instance',)",
+        name="Active",
+        monitor_object=monitor_object,
+        auto=True,
+        is_active=True,
+    )
+    inactive = MonitorInstance.objects.create(
+        id="('inactive-instance',)",
+        name="Inactive",
+        monitor_object=monitor_object,
+        auto=True,
+        is_active=False,
+    )
+    metric_items = [
+        {"metric": {"instance_id": "active-instance"}, "value": [1, "1"]},
+        {"metric": {"instance_id": "inactive-instance"}, "value": [1, "1"]},
+    ]
+    monkeypatch.setattr(
+        MonitorObjectService,
+        "get_instances_by_metric",
+        lambda *args, **kwargs: {
+            active.id: {"instance_id": active.id, "agent_id": "", "time": 1},
+            inactive.id: {"instance_id": inactive.id, "agent_id": "", "time": 1},
+        },
+    )
+    monkeypatch.setattr(MonitorObjectService, "add_attr", lambda result, visible_organization_ids=None: None)
+
+    list_data = MonitorObjectService.get_monitor_instance(
+        monitor_object.id,
+        page=1,
+        page_size=-1,
+        name=None,
+        qs=MonitorInstance.objects.all(),
+    )
+    search = InstanceSearch(
+        monitor_object,
+        {"page": 1, "page_size": -1},
+        qs=MonitorInstance.objects.all(),
+    )
+    monkeypatch.setattr(search, "get_vm_metrics", lambda: metric_items)
+    search_data = search.search()
+
+    assert list_data["count"] == search_data["count"] == 1
+    assert [item["instance_id"] for item in list_data["results"]] == [active.id]
+    assert [item["instance_id"] for item in search_data["results"]] == [active.id]
 
 
 def test_monitor_instance_list_hides_sibling_organizations(db, monkeypatch):
@@ -302,6 +357,7 @@ def test_monitor_instance_list_item_serializer_includes_flow_asset_fields():
         interval=60,
         cloud_region_id=3,
         ip="10.0.0.12",
+        summary_facts={"asset.ip": "10.0.0.12"},
         fallback_sampling_rate=2000,
     )
 
@@ -318,6 +374,7 @@ def test_monitor_instance_list_item_serializer_includes_flow_asset_fields():
         "time": "",
         "cloud_region_id": 3,
         "ip": "10.0.0.12",
+        "summary_facts": {"asset.ip": "10.0.0.12"},
         "fallback_sampling_rate": 2000,
         "organizations": [7],
     }

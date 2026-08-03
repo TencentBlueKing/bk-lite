@@ -34,6 +34,7 @@ import type { RecentChangeFilter } from '@/app/cmdb/utils/assetSearchLandingData
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import MoreActionsDropdown from '@/components/more-actions-dropdown';
 import type { MoreActionsDropdownItem } from '@/components/more-actions-dropdown';
+import ModelIcon from '@/app/cmdb/components/model-icon';
 import assetSearchStyle from './index.module.scss';
 
 export interface QuickTagItem {
@@ -63,7 +64,6 @@ export interface FollowedAssetViewItem {
   classification_id?: string;
   icn?: string;
   organization?: string;
-  icon?: string;
   followed?: boolean;
 }
 
@@ -74,7 +74,7 @@ export interface CategoryEntryItem {
   count: number;
   target_model_id?: string;
   target_classification_id?: string;
-  icon?: string;
+  target_icn?: string;
 }
 
 export interface AssetSearchLandingProps {
@@ -453,7 +453,17 @@ const AssetSearchLanding: React.FC<AssetSearchLandingProps> = ({
               >
                 <div className={assetSearchStyle.followedAssetRow}>
                   <span className={assetSearchStyle.assetIcon}>
-                    {item.icon ? <img src={item.icon} alt="" /> : <AppstoreOutlined />}
+                    {item.model_id ? (
+                      <ModelIcon
+                        icon={item.icn}
+                        modelId={item.model_id}
+                        alt=""
+                        width={32}
+                        height={32}
+                      />
+                    ) : (
+                      <AppstoreOutlined />
+                    )}
                   </span>
                   <span className={assetSearchStyle.followedAssetIdentity}>
                     <span className={assetSearchStyle.followedAssetName}>
@@ -490,7 +500,17 @@ const AssetSearchLanding: React.FC<AssetSearchLandingProps> = ({
                 onClick={() => onOpenCategory(item)}
               >
                 <span className={assetSearchStyle.categoryIcon}>
-                  {item.icon ? <img src={item.icon} alt="" /> : <AppstoreOutlined />}
+                  {item.target_model_id ? (
+                    <ModelIcon
+                      icon={item.target_icn}
+                      modelId={item.target_model_id}
+                      alt=""
+                      width={36}
+                      height={36}
+                    />
+                  ) : (
+                    <AppstoreOutlined />
+                  )}
                 </span>
                 <span>
                   <strong>{item.title}</strong>

@@ -1,23 +1,55 @@
 import toml
 import yaml
+from copy import deepcopy
 from urllib.parse import urlencode, urlparse, parse_qs
 
 class ConfigFormat:
     @staticmethod
     def toml_to_dict(toml_config):
         config_dict = toml.loads(toml_config)
-        result = {}
-        for key1, value1 in config_dict.items():
+        plugin = None
+
+        # Telegraf 子配置可能同时包含 inputs、processors 等多个顶层段。
+        # 编辑表单对应的是采集输入，不能把遍历到的最后一个 processor 当成配置。
+        namespaces = [
+            ("inputs", config_dict.get("inputs", {})),
+            *[(key, value) for key, value in config_dict.items() if key != "inputs"],
+        ]
+        for key1, value1 in namespaces:
+            if not isinstance(value1, dict):
+                continue
             for key2, value2 in value1.items():
-                result["plugin"] = (key1, key2)
-                result["config"] = value2[0]
-        return result
+                if isinstance(value2, list) and value2:
+                    plugin = (key1, key2)
+                    break
+            if plugin:
+                break
+
+        if not plugin:
+            return {}
+
+        key1, key2 = plugin
+        return {
+            "plugin": plugin,
+            "config": config_dict[key1][key2][0],
+            # 更新时用于保留同一 TOML 中不属于编辑表单的 processors 等配置。
+            "_toml_document": config_dict,
+        }
 
     @staticmethod
     def json_to_toml(json_config):
-        data = {json_config["plugin"][0]: {json_config["plugin"][1]: [json_config["config"]]}}
+        key1, key2 = json_config["plugin"]
+        if json_config.get("_toml_document"):
+            data = deepcopy(json_config["_toml_document"])
+            data.setdefault(key1, {}).setdefault(key2, [{}])
+            data[key1][key2][0] = json_config["config"]
+        else:
+            data = {key1: {key2: [json_config["config"]]}}
         result = toml.dumps(data)
-        result = result.replace("[inputs]", '')  # 将单引号替换为双引号
+        # toml.dumps 会为数组表补一个空的顶层父表；Telegraf 配置只需要
+        # [[inputs.snmp]] / [[processors.enum]] 这样的实际插件段。
+        for namespace in data:
+            result = result.replace(f"[{namespace}]\n", "")
         return result
 
     @staticmethod

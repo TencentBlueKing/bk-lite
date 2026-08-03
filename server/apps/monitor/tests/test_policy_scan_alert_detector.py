@@ -43,6 +43,7 @@ def _mq(metric=None, **kwargs):
         format_aggregation_metrics=lambda data: kwargs.get("formatted", {}),
         get_display_unit=lambda: kwargs.get("display_unit", ""),
         get_enum_value_map=lambda: kwargs.get("enum_map", {}),
+        convert_thresholds=lambda thresholds: thresholds,
     )
     return m
 

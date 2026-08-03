@@ -132,6 +132,29 @@ const formatAxisNumber = (value: number) => {
   return value.toFixed(2).replace(/\.0+$/, '').replace(/(\.\d*[1-9])0+$/, '$1');
 };
 
+/** 与 Y 轴 tick 渲染、左侧宽度预留共用，避免长枚举名撑宽后实际短文案导致漂移。 */
+const Y_AXIS_TICK_LABEL_MAX_LENGTH = 6;
+
+const formatYAxisTickLabel = (value: number | string, unit?: string) => {
+  let label = String(value);
+  if (isStringArray(unit || '')) {
+    try {
+      const unitName = (JSON.parse(unit as string) as ListItem[]).find(
+        (item) => item.id === Number(value)
+      )?.name;
+      label = unitName || formatAxisNumber(Number(value));
+    } catch {
+      label = formatAxisNumber(Number(value));
+    }
+  } else {
+    label = formatAxisNumber(Number(value));
+  }
+  if (label.length > Y_AXIS_TICK_LABEL_MAX_LENGTH) {
+    return `${label.slice(0, Y_AXIS_TICK_LABEL_MAX_LENGTH - 1)}...`;
+  }
+  return label;
+};
+
 const buildNiceAxis = (
   rawDomain: [number | 'auto', number | 'auto'],
   tickCount: number
@@ -398,16 +421,21 @@ const LineChart: React.FC<LineChartProps> = memo(
         return leftAxisWidthOverride;
       }
 
-      if (isStringArray(unit)) {
-        return 56;
-      }
-
-      const maxLabelLength = Math.max(
-        ...niceYAxis.ticks.map((tick) => formatAxisNumber(Number(tick)).length),
-        1
+      // 必须与 formatYAxisTickLabel 最终展示的文案一致，否则枚举长文案会把左侧撑得过宽，
+      // 而实际刻度是短数字时就会出现「整图往右漂」的观感。
+      const tickLabels = niceYAxis.ticks.map((tick) =>
+        formatYAxisTickLabel(tick, unit)
       );
 
-      return Math.min(Math.max(maxLabelLength * 8 + 8, 32), 50);
+      const maxLabelLength = Math.max(
+        ...tickLabels.map((label) => label.length),
+        1
+      );
+      const hasWideChars = tickLabels.some((label) =>
+        /[\u4e00-\u9fff]/.test(label)
+      );
+      const charWidth = hasWideChars ? 12 : 8;
+      return Math.min(Math.max(maxLabelLength * charWidth + 12, 36), 80);
     }, [leftAxisWidthOverride, niceYAxis.ticks, unit]);
 
     // 计算阈值标签信息（包含格式化文本和偏移量）
@@ -629,16 +657,21 @@ const LineChart: React.FC<LineChartProps> = memo(
     const renderYAxisTick = useCallback(
       (props: any) => {
         const { x, y, payload } = props;
-        let label = String(payload.value);
-        if (isStringArray(unit)) {
-          const unitName = JSON.parse(unit).find(
-            (item: ListItem) => item.id === +label
-          )?.name;
-          label = unitName || label;
-        } else {
-          label = formatAxisNumber(Number(payload.value));
-        }
-        const maxLength = 6; // 设置标签的最大长度
+        const label = formatYAxisTickLabel(payload.value, unit);
+        const fullText =
+          isStringArray(unit || '')
+            ? (() => {
+                try {
+                  return (
+                    (JSON.parse(unit as string) as ListItem[]).find(
+                      (item) => item.id === Number(payload.value)
+                    )?.name || String(payload.value)
+                  );
+                } catch {
+                  return String(payload.value);
+                }
+              })()
+            : formatAxisNumber(Number(payload.value));
         return (
           <text
             x={x}
@@ -647,12 +680,12 @@ const LineChart: React.FC<LineChartProps> = memo(
             fontSize={12}
             fill="var(--color-text-3)"
             dy={4}
-            dx={2}
+            dx={0}
           >
-            {label.length > maxLength && <title>{label}</title>}
-            {label.length > maxLength
-              ? `${label.slice(0, maxLength - 1)}...`
-              : label}
+            {fullText.length > Y_AXIS_TICK_LABEL_MAX_LENGTH && (
+              <title>{fullText}</title>
+            )}
+            {label}
           </text>
         );
       },
@@ -685,9 +718,9 @@ const LineChart: React.FC<LineChartProps> = memo(
                 syncId={syncId}
                 margin={{
                   top: 10,
-                  right: rightMargin,
-                  left: 0,
-                  bottom: 6
+                  right: Math.max(rightMargin, 8),
+                  left: 4,
+                  bottom: 10
                 }}
                 onMouseDown={handleMouseDown}
                 onMouseMove={handleMouseMove}
@@ -706,6 +739,7 @@ const LineChart: React.FC<LineChartProps> = memo(
                 />
                 <YAxis
                   yAxisId="left"
+                  orientation="left"
                   axisLine={false}
                   tickLine={false}
                   tick={renderYAxisTick}

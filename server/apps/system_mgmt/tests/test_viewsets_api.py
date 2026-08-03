@@ -190,20 +190,24 @@ def test_custom_menu_group_get_menus_missing_app(super_client):
 # ---------------------------------------------------------------------------
 # login_module
 # ---------------------------------------------------------------------------
-def test_login_module_list(super_client):
-    LoginModule.objects.create(name="lm1", source_type="wechat", other_config={})
-    resp = super_client.get(f"{V}/login_module/")
-    assert resp.status_code == 200
-
-
-def test_login_module_create_requires_domain(super_client):
-    resp = super_client.post(
-        f"{V}/login_module/",
-        {"name": "ldapX", "source_type": "ldap", "other_config": {}},
-        format="json",
+def test_login_module_legacy_routes_are_not_exposed(super_client):
+    lm = LoginModule.objects.create(
+        name="legacy-login-module",
+        source_type="wechat",
+        other_config={},
     )
-    # 缺 domain -> result False
-    assert resp.json()["result"] is False
+
+    assert super_client.get(f"{V}/login_module/").status_code == 404
+    assert (
+        super_client.post(
+            f"{V}/login_module/",
+            {"name": "ldapX", "source_type": "ldap", "other_config": {}},
+            format="json",
+        ).status_code
+        == 404
+    )
+    assert super_client.delete(f"{V}/login_module/{lm.id}/").status_code == 404
+    assert LoginModule.objects.filter(id=lm.id).exists()
 
 
 def test_login_module_sync_data():
@@ -227,14 +231,6 @@ def test_login_module_sync_data():
 
     assert json.loads(resp.content)["result"] is True
     m_task.delay.assert_called_once_with(lm.id)
-
-
-def test_login_module_destroy(super_client):
-    lm = LoginModule.objects.create(name="delmod", source_type="wechat", other_config={})
-    with patch("apps.system_mgmt.viewset.login_module_viewset.log_operation"):
-        resp = super_client.delete(f"{V}/login_module/{lm.id}/")
-    assert resp.status_code in (200, 204)
-    assert not LoginModule.objects.filter(id=lm.id).exists()
 
 
 # ---------------------------------------------------------------------------

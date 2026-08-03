@@ -236,6 +236,11 @@ export interface ObjectItem {
     sort_order: number;
     metrics: { plugin: string; metric: string; field?: string }[];
   }[];
+  instance_summary_columns?: {
+    fact: string;
+    title: string;
+    order?: number;
+  }[];
   options?: ObjectItem[];
   label?: string;
   value?: string;
@@ -279,11 +284,17 @@ export interface MetricItem {
   instance_id_keys?: string[];
   dimensions: Dimension[];
   query?: string;
+  view_query?: string;
   unit?: string;
   displayType?: string;
   description?: string;
   viewData?: ChartData[] | InterfaceTableItem[];
   displayUnit?: string;
+  seriesBudget?: {
+    truncated: boolean;
+    limit: number;
+    applied?: boolean;
+  };
   style?: {
     width: string;
     height: string;

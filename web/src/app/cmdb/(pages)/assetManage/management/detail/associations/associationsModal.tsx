@@ -9,8 +9,7 @@ import React, {
 } from 'react';
 import { Button, Form, message, Select } from 'antd';
 import OperateModal from '@/components/operate-modal';
-import Image from 'next/image';
-import { getIconUrl } from '@/app/cmdb/utils/common';
+import ModelIcon from '@/app/cmdb/components/model-icon';
 import type { FormInstance } from 'antd';
 import associationsModalStyle from './associationsModal.module.scss';
 import { deepClone } from '@/app/cmdb/utils/common';
@@ -250,14 +249,12 @@ const AssociationsModal = forwardRef<AssoModalRef, AssoModalProps>(
                       >
                         <div className={associationsModalStyle.modelObject}>
                           <div className="mb-[4px]">
-                            <Image
-                              src={getIconUrl({
-                                icn: showModelKeyName(
-                                  getFieldValue('src_model_id'),
-                                  'icn'
-                                ),
-                                model_id: getFieldValue('src_model_id'),
-                              })}
+                            <ModelIcon
+                              icon={showModelKeyName(
+                                getFieldValue('src_model_id'),
+                                'icn'
+                              )}
+                              modelId={getFieldValue('src_model_id')}
                               className="block bg-[var(--color-bg-1)] p-[6px] rounded-[50%]"
                               alt={t('picture')}
                               width={40}
@@ -284,14 +281,12 @@ const AssociationsModal = forwardRef<AssoModalRef, AssoModalProps>(
                         </div>
                         <div className={associationsModalStyle.modelObject}>
                           <div className="mb-[4px]">
-                            <Image
-                              src={getIconUrl({
-                                icn: showModelKeyName(
-                                  getFieldValue('dst_model_id'),
-                                  'icn'
-                                ),
-                                model_id: getFieldValue('dst_model_id'),
-                              })}
+                            <ModelIcon
+                              icon={showModelKeyName(
+                                getFieldValue('dst_model_id'),
+                                'icn'
+                              )}
+                              modelId={getFieldValue('dst_model_id')}
                               className="block bg-[var(--color-bg-1)] p-[6px] rounded-[50%]"
                               alt={t('picture')}
                               width={40}

@@ -283,9 +283,10 @@ class SourceSyncService:
             )
             candidates = []
             for upd in updates:
-                if not normalize_wsus_kb(upd.kb_number):
+                normalized_kb = normalize_wsus_kb(upd.kb_number)
+                if not normalized_kb:
                     continue
-                name = upd.kb_number or upd.title or upd.update_id
+                name = normalized_kb
                 candidates.append({
                     "key": upd.update_id,
                     "name": name,
@@ -293,7 +294,7 @@ class SourceSyncService:
                     "version": ", ".join(upd.products[:3]) if upd.products else "",
                     "dist": "",
                     "arch": source.arch or "x64",
-                    "added": name in existing_titles or upd.title in existing_titles,
+                    "added": name in existing_titles or upd.kb_number in existing_titles or upd.title in existing_titles,
                 })
             return candidates
 

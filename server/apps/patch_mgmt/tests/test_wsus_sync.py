@@ -410,6 +410,20 @@ class TestSyncWsus:
         assert result["created"] == 1
         assert Patch.objects.get(title="5072654").pkg_status == PackageStatus.READY
 
+    def test_preview_normalizes_kb_name(self, monkeypatch):
+        source = _make_source()
+        update = WsusUpdate(
+            update_id="uid-preview",
+            title="Security Update KB5072653",
+            kb_number="5072653",
+            products=["Windows 11"],
+        )
+        monkeypatch.setattr(WsusClient, "get_approved_updates", lambda self: [update])
+
+        candidates = SourceSyncService.preview_sync_candidates(source)
+
+        assert candidates[0]["name"] == "KB5072653"
+
     def test_preview_and_ingest_skip_update_without_kb(self, monkeypatch):
         source = _make_source()
         update = WsusUpdate(
