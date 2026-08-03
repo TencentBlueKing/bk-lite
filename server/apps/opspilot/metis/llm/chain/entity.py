@@ -369,6 +369,8 @@ class BasicLLMResponse(BaseModel):
     total_tokens: int = 0
     prompt_tokens: int = 0
     completion_tokens: int = 0
+    llm_call_count: int = 0
+    token_usage_calls: List[Dict[str, Any]] = Field(default_factory=list)
     browser_steps: List[str] = []  # browser_use 步骤信息，格式: ["step1 xxx", "step2 xxx", ..., "最终结果: xxx"]
 
 
