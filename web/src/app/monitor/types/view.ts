@@ -15,6 +15,7 @@ export interface ViewPluginOption {
 
 export interface ViewColumnPreference {
   field_keys: string[];
+  fixed_field_keys?: string[];
 }
 
 export interface ViewModalProps {
