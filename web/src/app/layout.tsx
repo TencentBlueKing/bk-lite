@@ -9,10 +9,9 @@ import { SessionProvider, useSession } from 'next-auth/react';
 import { LocaleProvider } from '@/context/locale';
 import { useTranslation } from '@/utils/i18n';
 import { ThemeBootstrap, ThemeProvider } from '@/theme';
-import { MenusProvider, useMenus } from '@/context/menus';
-import { UserInfoProvider } from '@/context/userInfo';
-import { ClientProvider, useClientData } from '@/context/client';
-import { PermissionsProvider, usePermissions } from '@/context/permissions';
+import { useMenus } from '@/context/menus';
+import { useClientData } from '@/context/client';
+import { usePermissions } from '@/context/permissions';
 import AuthProvider, { useAuth } from '@/context/auth';
 import TopMenu from '@/app/(core)/components/top-menu';
 import { Watermark, message } from 'antd';
@@ -30,6 +29,7 @@ import {
 } from '@/utils/portalTabTitle'
 import { isSessionExpiredState } from '@/utils/sessionExpiry'
 import { useUserInfoContext } from '@/context/userInfo';
+import { RouteScopedLayout } from '@/app/routeScopedLayout';
 
 const Loader = () => (
   <div className="flex justify-center items-center h-screen">
@@ -137,7 +137,11 @@ const LayoutWithProviders = ({ children }: { children: React.ReactNode }) => {
   const { data: session, status } = useSession();
   const { isAuthenticated: authContextAuthenticated } = useAuth();
   const { loading: menusLoading, configMenus } = useMenus();
-  const { username, displayName } = useUserInfoContext();
+  const {
+    username,
+    displayName,
+    loading: userInfoLoading,
+  } = useUserInfoContext();
   const { portalName, watermarkEnabled, watermarkText } = usePortalBranding();
   const router = useRouter();
   const pathname = usePathname();
@@ -159,20 +163,42 @@ const LayoutWithProviders = ({ children }: { children: React.ReactNode }) => {
     && !(session?.user as any)?.temporary_pwd;
   const isAuthLoading = status === 'loading' && !authContextAuthenticated;
 
-  const isLoading = isAuthLoading || (isAuthenticated && (permissionsLoading || menusLoading));
   const authPaths = ['/auth/signin', '/auth/signout', '/auth/signin/login-auth-result'];
   const excludedPaths = ['/no-permission', '/no-found', '/', ...authPaths];
   const hasResolvedPathname = pathname !== null;
   const isAuthRoute = Boolean(pathname && authPaths.includes(pathname));
   const isDashboardRoute = isProfessionalDashboardRoute(pathname);
   const isDashboardShareRoute = pathname?.startsWith('/ops-analysis/share/');
+  const isDashboardRenderRoute = pathname?.startsWith(
+    '/ops-analysis/render/execution/',
+  );
+  const isStandaloneDashboardRoute = (
+    isDashboardShareRoute || isDashboardRenderRoute
+  );
+  const isLoading = isAuthLoading || (
+    isAuthenticated
+    && (
+      isDashboardRenderRoute
+        ? userInfoLoading || !username
+        : permissionsLoading || menusLoading
+    )
+  );
 
   const shouldRenderMenu = useMemo(() => {
-    if (pathname?.startsWith('/ops-console') || isDashboardRoute || isDashboardShareRoute) {
+    if (
+      pathname?.startsWith('/ops-console')
+      || isDashboardRoute
+      || isStandaloneDashboardRoute
+    ) {
       return false;
     }
     return shouldRenderSecondLayerMenu(pathname, menus);
-  }, [pathname, menus, isDashboardRoute, isDashboardShareRoute]);
+  }, [
+    pathname,
+    menus,
+    isDashboardRoute,
+    isStandaloneDashboardRoute,
+  ]);
 
   const isPathInMenu = useCallback((path: string, menus: MenuItem[]): boolean => {
     for (const menu of menus) {
@@ -199,7 +225,10 @@ const LayoutWithProviders = ({ children }: { children: React.ReactNode }) => {
       }
 
       if (!isLoading) {
-        if ((pathname && excludedPaths.includes(pathname)) || isDashboardShareRoute) {
+        if (
+          (pathname && excludedPaths.includes(pathname))
+          || isStandaloneDashboardRoute
+        ) {
           setIsAllowed(true);
           return;
         }
@@ -221,7 +250,17 @@ const LayoutWithProviders = ({ children }: { children: React.ReactNode }) => {
     };
 
     checkPermission();
-  }, [isLoading, pathname, isAuthenticated, status, session, router, configMenus, hasPermission, isDashboardShareRoute]);
+  }, [
+    isLoading,
+    pathname,
+    isAuthenticated,
+    status,
+    session,
+    router,
+    configMenus,
+    hasPermission,
+    isStandaloneDashboardRoute,
+  ]);
 
   // Show password expiry reminder after login redirect
   useEffect(() => {
@@ -257,7 +296,7 @@ const LayoutWithProviders = ({ children }: { children: React.ReactNode }) => {
       && !isAllowed
       && pathname
       && !excludedPaths.includes(pathname)
-      && !isDashboardShareRoute
+      && !isStandaloneDashboardRoute
       && !isLoading
     )
   ) {
@@ -288,7 +327,7 @@ const LayoutWithProviders = ({ children }: { children: React.ReactNode }) => {
     </div>
   );
 
-  if (!isAuthenticated || !watermarkEnabled) {
+  if (!isAuthenticated || !watermarkEnabled || isDashboardRenderRoute) {
     return layoutContent;
   }
 
@@ -308,6 +347,13 @@ const LayoutWithProviders = ({ children }: { children: React.ReactNode }) => {
     </Watermark>
   );
 };
+
+const StandardRouteLayout = ({ children }: { children: React.ReactNode }) => (
+  <>
+    <PortalTabTitle />
+    <LayoutWithProviders>{children}</LayoutWithProviders>
+  </>
+);
 
 export default function RootLayout({
   children,
@@ -333,17 +379,9 @@ export default function RootLayout({
               <ThemeProvider>
                 <AuthProvider>
                   <PortalBrandingHead />
-                  <UserInfoProvider>
-                    <ClientProvider>
-                      <PortalTabTitle />
-                      <MenusProvider>
-                        <PermissionsProvider>
-                          {/* 渲染布局 */}
-                          <LayoutWithProviders>{children}</LayoutWithProviders>
-                        </PermissionsProvider>
-                      </MenusProvider>
-                    </ClientProvider>
-                  </UserInfoProvider>
+                  <RouteScopedLayout StandardLayout={StandardRouteLayout}>
+                    {children}
+                  </RouteScopedLayout>
                 </AuthProvider>
               </ThemeProvider>
             </LocaleProvider>

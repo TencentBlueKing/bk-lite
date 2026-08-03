@@ -42,6 +42,8 @@ ADD ./linux/bklite-controller-installer /opt/release/linux/fusion-collectors/bkl
 
 # exporters
 ADD ./linux/exporters /opt/release/linux/exporters
+# prestage: 双架构控制器包材料（bootstrap 据此生成异构架构控制器 zip）
+ADD ./linux/prestage /opt/release/linux/prestage
 # ansible executor
 ADD ./linux/ansible-executor/ ./bin/
 # Suporvisor
