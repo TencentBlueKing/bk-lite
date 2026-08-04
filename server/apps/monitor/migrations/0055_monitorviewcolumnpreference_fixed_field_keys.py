@@ -13,7 +13,7 @@ def backfill_default_fixed_keys(apps, schema_editor):
 class Migration(migrations.Migration):
 
     dependencies = [
-        ("monitor", "0053_metric_view_config"),
+        ("monitor", "0054_metric_view_config"),
     ]
 
     operations = [
