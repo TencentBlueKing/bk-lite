@@ -58,11 +58,21 @@
 - ✅ **禁原生 SQL**:走 Django ORM(`DB_ENGINE` 多方言,raw SQL 跨库易碎);确需复杂查询用 ORM 表达式。
 - ✅ **图库(CMDB)用参数化查询**,禁拼接 Cypher / 禁 Neo4j 语法(本项目用 FalkorDB)。
 
-## 8. 架构卫生
+## 8. 日志引入
+
+- ✅ **`server/apps/<app>/` 内统一从 `apps.core.logger` 引入本 app 的 logger，并别名为 `logger`**:
+  ```python
+  from apps.core.logger import {app_name}_logger as logger
+  ```
+  现有导出见 `server/apps/core/logger.py`（如 `cmdb_logger`、`opspilot_logger`、`alert_logger`、`monitor_logger`、`node_logger`、`job_logger`、`mlops_logger`、`log_logger`、`system_mgmt_logger`、`console_mgmt_logger`、`operation_analysis_logger`、`nats_logger`、`celery_logger`）。`core` / 跨 app 共享工具可用默认 `from apps.core.logger import logger`。
+  - ❌ `from loguru import logger`、直接 `logging.getLogger(...)`、或引入其他 app 的 `*_logger`。
+  - ❌ 新增 app logger 时绕过 `apps/core/logger.py` 就地创建。
+
+## 9. 架构卫生
 
 - ✅ **控制文件/类规模**:发现 God 文件(>500 LOC)/God 类及时拆分;重复逻辑(3+ 处)抽公共 helper,避免漂移漏改。
 
-## 9. 高风险通用能力(跨模块)
+## 10. 高风险通用能力(跨模块)
 
 - ✅ **安全边界变更按迁移处理**:新增或收紧鉴权、校验、加密、超时等边界前,必须盘点存量调用方、存量数据和默认行为,并明确兼容策略、迁移步骤与回滚方案。
   - ❌ 只证明新逻辑更安全,未验证存量契约与回滚路径就直接上线。
@@ -85,6 +95,7 @@
 - [ ] 多步写有 `atomic`,通知在 `on_commit`,RMW 原子
 - [ ] 输入经校验,异常不吞,失败码语义正确(400/403 非 500)
 - [ ] serializer 无 `__all__`,敏感字段 write_only
+- [ ] 日志从 `apps.core.logger` 引入本 app 的 `*_logger as logger`,未用 loguru / 就地 getLogger
 - [ ] 无原生 SQL,图查询参数化
 - [ ] 安全边界变更已盘点存量契约,有迁移与回滚方案
 - [ ] 异步状态有 fencing/幂等,持久化与外部副作用可补偿重试

@@ -37,6 +37,7 @@
 - 中文交流和提交；代码标识符遵循现有项目风格。
 - 凭据只由环境注入，不提交或记录 `.env`、keystore、token。
 - 数据库访问使用 Django ORM，禁止 raw SQL、`.raw()`、`RawSQL`、`cursor.execute`。
+- `server/apps/<app>/` 引入日志统一用 `from apps.core.logger import {app_name}_logger as logger`（见 `server/apps/core/logger.py`），禁止 `loguru` 或就地 `logging.getLogger`。
 - 非关键、可重建的外部资源失败不得阻断服务启动。
 - 向目标主机下发或执行操作必须有资源边界、幂等/回滚和相应测试。
 - Web 改动优先复用 Ant Design、现有组件和 Storybook；共享抽象必须已有多个真实使用方。
