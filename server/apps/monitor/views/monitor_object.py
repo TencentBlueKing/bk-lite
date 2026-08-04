@@ -13,7 +13,13 @@ from apps.core.utils.web_utils import WebUtils
 from apps.monitor.constants.language import LanguageConstants
 from apps.monitor.constants.permission import PermissionConstants
 from apps.monitor.filters.monitor_object import MonitorObjectFilter
-from apps.monitor.models import MonitorInstance, MonitorPolicy, MonitorViewColumnPreference
+from apps.monitor.models import (
+    MonitorInstance,
+    MonitorInstanceOrganization,
+    MonitorPolicy,
+    MonitorViewColumnPreference,
+    PolicyOrganization,
+)
 from apps.monitor.models.monitor_object import MonitorObject, MonitorObjectType
 from apps.monitor.serializers.monitor_object import MonitorObjectSerializer, MonitorObjectTypeSerializer
 from apps.monitor.serializers.view_column_preference import MonitorViewColumnPreferenceSerializer
@@ -86,6 +92,61 @@ def _build_instance_count_queryset(instance_permissions, cur_team):
     if candidate_instance_ids:
         candidate_filter |= Q(id__in=candidate_instance_ids)
     return queryset.filter(candidate_filter).distinct()
+
+
+def _build_org_map_for_ids(model, id_field: str, ids: list) -> dict:
+    """分块加载 id→组织集合，避免一次性巨大 IN 查询。"""
+    org_map: dict = {}
+    chunk_size = 2000
+    for start in range(0, len(ids), chunk_size):
+        chunk = ids[start : start + chunk_size]
+        for entity_id, organization in model.objects.filter(
+            **{f"{id_field}__in": chunk}
+        ).values_list(id_field, "organization"):
+            org_map.setdefault(entity_id, set()).add(organization)
+    return org_map
+
+
+def _count_by_object_with_permissions(rows, org_map, permissions, cur_team):
+    """对 (id, monitor_object_id) 行按权限累计每个对象的可见数量。"""
+    counts = {}
+    for entity_id, monitor_object_id in rows:
+        teams = org_map.get(entity_id, set())
+        if not check_instance_permission(
+            monitor_object_id,
+            entity_id,
+            teams,
+            permissions,
+            cur_team,
+        ):
+            continue
+        counts[monitor_object_id] = counts.get(monitor_object_id, 0) + 1
+    return counts
+
+
+def _build_instance_count_map(instance_permissions, cur_team):
+    """按权限统计各对象实例数，避免把完整 ORM 实例装入内存。"""
+    rows = list(
+        _build_instance_count_queryset(instance_permissions, cur_team).values_list(
+            "id", "monitor_object_id"
+        )
+    )
+    if not rows:
+        return {}
+    org_map = _build_org_map_for_ids(
+        MonitorInstanceOrganization, "monitor_instance_id", [row[0] for row in rows]
+    )
+    return _count_by_object_with_permissions(rows, org_map, instance_permissions, cur_team)
+
+
+def _build_policy_count_map(policy_permissions, cur_team):
+    """按权限统计各对象策略数，只取 id / object_id / 组织关系。"""
+    # 权限规则仍要求逐策略判定；此处只拉 id 三元组，避免装载完整 Policy ORM。
+    rows = list(MonitorPolicy.objects.all().values_list("id", "monitor_object_id"))
+    if not rows:
+        return {}
+    org_map = _build_org_map_for_ids(PolicyOrganization, "policy_id", [row[0] for row in rows])
+    return _count_by_object_with_permissions(rows, org_map, policy_permissions, cur_team)
 
 
 class MonitorObjectViewSet(viewsets.ModelViewSet):
@@ -181,24 +242,7 @@ class MonitorObjectViewSet(viewsets.ModelViewSet):
                 inst_res.get("team", []),
             )
 
-            inst_objs = _build_instance_count_queryset(instance_permissions, cur_team)
-            inst_map = {}
-            for inst_obj in inst_objs:
-                monitor_object_id = inst_obj.monitor_object_id
-                instance_id = inst_obj.id
-                teams = {i.organization for i in inst_obj.monitorinstanceorganization_set.all()}
-                _check = check_instance_permission(
-                    monitor_object_id,
-                    instance_id,
-                    teams,
-                    instance_permissions,
-                    cur_team,
-                )
-                if not _check:
-                    continue
-                if monitor_object_id not in inst_map:
-                    inst_map[monitor_object_id] = 0
-                inst_map[monitor_object_id] += 1
+            inst_map = _build_instance_count_map(instance_permissions, cur_team)
 
             for result in results:
                 result["instance_count"] = inst_map.get(result["id"], 0)
@@ -218,18 +262,7 @@ class MonitorObjectViewSet(viewsets.ModelViewSet):
                 policy_res.get("team", []),
             )
 
-            policy_objs = MonitorPolicy.objects.all().prefetch_related("policyorganization_set")
-            policy_map = {}
-            for policy_obj in policy_objs:
-                monitor_object_id = policy_obj.monitor_object_id
-                instance_id = policy_obj.id
-                teams = {i.organization for i in policy_obj.policyorganization_set.all()}
-                _check = check_instance_permission(monitor_object_id, instance_id, teams, policy_permissions, cur_team)
-                if not _check:
-                    continue
-                if monitor_object_id not in policy_map:
-                    policy_map[monitor_object_id] = 0
-                policy_map[monitor_object_id] += 1
+            policy_map = _build_policy_count_map(policy_permissions, cur_team)
 
             for result in results:
                 result["policy_count"] = policy_map.get(result["id"], 0)

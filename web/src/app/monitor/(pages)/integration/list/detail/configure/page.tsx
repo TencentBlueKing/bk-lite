@@ -1,5 +1,6 @@
 'use client';
 import React, { useMemo } from 'react';
+import { Spin } from 'antd';
 import AutomaticConfiguration from './automatic';
 import { useSearchParams } from 'next/navigation';
 import configureStyle from './index.module.scss';
@@ -12,19 +13,27 @@ import TemplateAccessGuide from './accessGuide/index';
 
 const Configure: React.FC = () => {
   const searchParams = useSearchParams();
-  const { getCollectType } = useObjectConfigInfo();
   const pluginName = searchParams.get('plugin_name') || '';
   const objectName = searchParams.get('name') || '';
   const templateType = searchParams.get('template_type') || '';
+  const { getCollectType, ready: objectConfigReady } = useObjectConfigInfo(objectName);
 
   const collectType = useMemo(
-    () => getCollectType(objectName, pluginName),
-    [getCollectType, objectName, pluginName]
+    () => (objectConfigReady ? getCollectType(objectName, pluginName) : undefined),
+    [getCollectType, objectConfigReady, objectName, pluginName]
   );
 
   const isK8s = collectType === 'k8s';
   const isK3s = collectType === 'k3s';
   const isFlow = collectType === 'netflow' || collectType === 'sflow';
+
+  if (templateType !== 'api' && !objectConfigReady) {
+    return (
+      <div className={`${configureStyle.configure} flex justify-center items-center`} style={{ minHeight: 200 }}>
+        <Spin />
+      </div>
+    );
+  }
 
   return (
     <>

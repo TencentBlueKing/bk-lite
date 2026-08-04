@@ -97,7 +97,6 @@ const StrategyOperation = () => {
   const searchParams = useSearchParams();
   const [form] = Form.useForm();
   const router = useRouter();
-  const { getGroupIds } = useObjectConfigInfo();
   const userList: UserItem[] = commonContext?.userList || [];
   const instRef = useRef<ModalRef>(null);
   const formContainerRef = useRef<HTMLDivElement>(null);
@@ -111,6 +110,7 @@ const StrategyOperation = () => {
   const type = searchParams.get('type') || '';
   const detailId = searchParams.get('id');
   const detailName = searchParams.get('name') || '--';
+  const { getGroupIds, ready: objectConfigReady } = useObjectConfigInfo(monitorName);
   const [pageLoading, setPageLoading] = useState<boolean>(false);
   const [confirmLoading, setConfirmLoading] = useState<boolean>(false);
   const [templateSaving, setTemplateSaving] = useState<boolean>(false);
@@ -149,6 +149,14 @@ const StrategyOperation = () => {
   const [groupBy, setGroupBy] = useState<string[]>(
     getGroupIds(monitorName as string)?.default || defaultGroup
   );
+
+  useEffect(() => {
+    if (!objectConfigReady || !monitorName) return;
+    const defaults = getGroupIds(monitorName)?.default;
+    if (defaults?.length) {
+      setGroupBy((prev) => (prev === defaultGroup || prev.length === 0 ? defaults : prev));
+    }
+  }, [objectConfigReady, monitorName, getGroupIds]);
   const [groupAlgorithm, setGroupAlgorithm] = useState<string | null>('avg');
   const [period, setPeriod] = useState<number | null>(null);
   const [algorithm, setAlgorithm] = useState<string | null>(null);

@@ -94,7 +94,7 @@ const MetricDefinitionForm: React.FC<MetricDefinitionFormProps> = ({
   const GROUP_METHOD_LIST = useGroupMethodList();
   const SCHEDULE_LIST = useScheduleList();
   const CONDITION_LIST = useConditionList();
-  const { getGroupIds } = useObjectConfigInfo();
+  const { getGroupIds } = useObjectConfigInfo(monitorName);
 
   // 固定维度作为每个指标行的基础选项，指标标签由编辑器按行补充。
   const groupByOptions = useMemo(() => {
