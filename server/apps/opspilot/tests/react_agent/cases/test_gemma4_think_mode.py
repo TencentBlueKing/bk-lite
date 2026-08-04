@@ -239,7 +239,7 @@ class TestGraphReasoningContentFromAdditionalKwargs:
         graph = _ConcreteGraph()
         encoder = EventEncoder()
         run_id = str(uuid.uuid4())
-        events, _, _, thinking_started = graph._handle_chat_model_stream_content(
+        events, _, _, thinking_started, _ = graph._handle_chat_model_stream_content(
             chunk=chunk,
             encoder=encoder,
             run_id=run_id,
@@ -305,7 +305,7 @@ class TestGraphReasoningContentFromAdditionalKwargs:
         encoder = EventEncoder()
         run_id = str(uuid.uuid4())
 
-        events, _, _, _ = graph._handle_chat_model_stream_content(
+        events, _, _, _, _ = graph._handle_chat_model_stream_content(
             chunk=_AnthropicChunk(),
             encoder=encoder,
             run_id=run_id,

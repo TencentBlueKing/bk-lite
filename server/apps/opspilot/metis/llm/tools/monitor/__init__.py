@@ -1,7 +1,7 @@
 """Monitor built-in toolset backed by Monitor RPC/NATS.
 
-查询 BK-Lite 已纳管监控数据（对象/实例/指标/告警），用于主机 CPU 等场景；
-不提供 SSH 或本机命令采集能力。
+【主机CPU使用率】BK-Lite 已纳管监控：对象→实例(主机名)→指标名→时序。
+支持按主机名查 CPU/内存/磁盘与告警；不提供 SSH 或本机 top/htop。
 """
 
 from apps.opspilot.metis.llm.tools.monitor.alerts import monitor_list_active_alerts, monitor_query_alert_segments

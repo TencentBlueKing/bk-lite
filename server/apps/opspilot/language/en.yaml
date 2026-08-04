@@ -212,24 +212,24 @@ tools:
   monitor:
     name: Monitor
     description: |
-      Query BK-Lite monitored objects, instances, metric series, and alerts with the caller's identity.
-      Typical use: look up host CPU/memory by instance name, or active/history alerts.
+      [Host CPU] Query BK-Lite monitored objects, instances, metric series, and alerts with caller identity.
+      Typical flow: object type → match host name to instance → confirm metric → query series.
       Prefer these tools; do not suggest SSH/top/htop.
     tools:
       monitor_list_objects:
-        description: List monitored object types (hosts, middleware, etc.). Find the host object before querying metrics.
+        description: "[Host CPU] Step 1: list object types and find the host monitor_obj_id."
       monitor_list_object_instances:
-        description: List instances under an object (includes host names). Match by name to get instance_id.
+        description: "[Host CPU] Step 2: list instances; match host name to get instance_id."
       monitor_list_object_metrics:
-        description: List metric definitions for an object type (CPU, memory, etc.) to learn metric names.
+        description: "[Host CPU] Step 3: list metric definitions; confirm CPU usage metric name."
       monitor_list_instance_metrics:
-        description: List metrics collected for one instance; confirm whether the host has CPU data.
+        description: "[Host CPU] Optional: confirm whether an instance has CPU metrics."
       monitor_query_metric_data:
-        description: Query metric time series (e.g. CPU usage). Needs object, metric, time range; optional instance_ids.
+        description: "[Host CPU] Step 4: query metric time series; needs object, metric, time range, optional instance_ids."
       monitor_list_active_alerts:
-        description: List current active alerts; filter by object/instance/level.
+        description: "[Host alerts] List current active alerts; filter by object/instance/level."
       monitor_query_alert_segments:
-        description: Query historical alert segments in a time window for a host or object.
+        description: "[Host alert history] Query alert segments in a time window."
   attachment_file:
     name: Workflow Attachment File
     description: |

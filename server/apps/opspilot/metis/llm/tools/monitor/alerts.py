@@ -6,7 +6,7 @@ from langchain_core.tools import tool
 from apps.opspilot.metis.llm.tools.monitor.utils import call_monitor_rpc, wrap_error
 
 
-@tool(description=("BK-Lite监控：查询当前活跃告警。" "可按对象/实例/级别/类型过滤；" "排查主机告警优先用此工具，不要让用户去外部监控台。"))
+@tool(description=("【主机告警】查询BK-Lite当前活跃告警。" "可按monitor_obj_id/instance_ids/级别过滤；排查主机告警用此工具。"))
 def monitor_list_active_alerts(
     config: RunnableConfig = None,
     monitor_obj_id: Optional[str] = None,
@@ -29,7 +29,7 @@ def monitor_list_active_alerts(
     )
 
 
-@tool(description=("BK-Lite监控：按时间窗查询历史告警片段。" "需 monitor_obj_id、start、end；" "可筛实例/状态/级别，用于回顾某主机告警历史。"))
+@tool(description=("【主机告警历史】按时间窗查询告警片段。" "必填monitor_obj_id、start、end；可筛实例/状态/级别。"))
 def monitor_query_alert_segments(
     monitor_obj_id: Optional[str] = None,
     start: Optional[Any] = None,
