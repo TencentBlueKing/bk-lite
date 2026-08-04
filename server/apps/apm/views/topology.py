@@ -8,12 +8,11 @@ from rest_framework import serializers, status, viewsets
 from rest_framework.response import Response
 
 from apps.apm.adapters import TelemetryStoreUnavailable, VictoriaTracesTraceStore
-from apps.apm.models import ApmServiceInstance
+from apps.apm.models import ApmService, ApmServiceInstance
 from apps.apm.renderers import ApmRenderer
 from apps.apm.services import DjangoApmTopologyService
 from apps.apm.services.access import current_organization_id, filter_current_organization
-from apps.apm.services.contracts import TopologyTarget, TracePage
-from apps.apm.services.trace_access import TraceAccessResolver
+from apps.apm.services.contracts import TopologyTarget
 from apps.core.decorators.api_permission import HasPermission
 
 
@@ -36,32 +35,12 @@ class TopologyQuerySerializer(serializers.Serializer):
         return attrs
 
 
-class _OrganizationScopedTraceStore:
-    def __init__(self, organization_id: int):
-        self.delegate = VictoriaTracesTraceStore()
-        self.organization_id = organization_id
-        self.access = TraceAccessResolver()
-
-    def search(self, query):
-        page = self.delegate.search(query)
-        return TracePage(
-            items=self.access.filter_summaries(page.items, self.organization_id),
-            next_cursor=page.next_cursor,
-        )
-
-    def get_trace(self, trace_id):
-        detail = self.delegate.get_trace(trace_id)
-        if detail is None or not self.access.can_view_detail(detail, self.organization_id):
-            return None
-        return detail
-
-
 class ApmTopologyViewSet(viewsets.ViewSet):
     renderer_classes = (ApmRenderer,)
 
     @staticmethod
-    def _service(organization_id: int):
-        return DjangoApmTopologyService(_OrganizationScopedTraceStore(organization_id))
+    def _service():
+        return DjangoApmTopologyService(VictoriaTracesTraceStore())
 
     @HasPermission("services-View")
     def list(self, request):
@@ -75,10 +54,14 @@ class ApmTopologyViewSet(viewsets.ViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
         data = serializer.validated_data
-        instances = filter_current_organization(
-            ApmServiceInstance.objects.select_related("service").filter(archived_at__isnull=True),
+        services = filter_current_organization(
+            ApmService.objects.filter(archived_at__isnull=True),
             request,
             "organization_links",
+        )
+        instances = ApmServiceInstance.objects.select_related("service").filter(
+            service__in=services,
+            archived_at__isnull=True,
         )
         if environment := data.get("environment"):
             instances = instances.filter(environment=environment)
@@ -87,7 +70,7 @@ class ApmTopologyViewSet(viewsets.ViewSet):
             for instance in instances.order_by("service_id", "environment").distinct("service_id", "environment")
         ]
         try:
-            graph = self._service(organization_id).build(
+            graph = self._service().build(
                 targets,
                 started_at=data["started_at"],
                 ended_at=data["ended_at"],

@@ -184,7 +184,14 @@ export default function ApmTopologyPage() {
                   <Button aria-label="重置拓扑缩放" icon={<AimOutlined aria-hidden="true" />} onClick={() => setZoom(1)} />
                 </Space.Compact>
               </div>
-              <TopologyCanvas edges={visibleEdges} keyword={keyword} layout={layout} nodes={visibleNodes} zoom={zoom} />
+              <div
+                aria-label="服务拓扑画布滚动区域"
+                className="overflow-x-auto"
+                role="region"
+                tabIndex={0}
+              >
+                <TopologyCanvas edges={visibleEdges} keyword={keyword} layout={layout} nodes={visibleNodes} zoom={zoom} />
+              </div>
             </>
           ) : state === 'empty' ? <Empty className="pt-44" description="当前范围内没有可用于构建拓扑的调用链样本。" /> : <CatalogState kind={state} />}
         </ApmSurface>

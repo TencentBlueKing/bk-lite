@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ReloadOutlined, SearchOutlined } from '@ant-design/icons';
-import { Button, Input, Radio, Select, Space, Table, Tag, Typography, type TableColumnsType } from 'antd';
+import { Alert, Button, Input, Radio, Select, Space, Table, Tag, Typography, type TableColumnsType } from 'antd';
 import dayjs from 'dayjs';
 import useApmApi from '@/app/apm/api';
 import ApmRouteShell, { ApmSurface } from '@/app/apm/components/apm-route-shell';
@@ -66,10 +66,12 @@ export default function ApmEndpointsPage() {
   const [serviceId, setServiceId] = useState('all');
   const [sortKey, setSortKey] = useState<SortKey>('request_rate');
   const [keyword, setKeyword] = useState('');
+  const [metricFailureCount, setMetricFailureCount] = useState(0);
 
   const load = useCallback(async () => {
     if (authLoading) return;
     setState('loading');
+    setMetricFailureCount(0);
     try {
       const serviceItems = await getServices();
       setServices(serviceItems);
@@ -93,6 +95,7 @@ export default function ApmEndpointsPage() {
         const firstFailure = results.find((result) => result.status === 'rejected');
         throw firstFailure?.reason;
       }
+      setMetricFailureCount(results.length - successfulResults.length);
       const endpointRows = results.flatMap((result) => {
         if (result.status !== 'fulfilled') return [];
         const { service, red } = result.value;
@@ -117,6 +120,7 @@ export default function ApmEndpointsPage() {
       setState(endpointRows.length ? 'ready' : 'empty');
     } catch (error) {
       setRows([]);
+      setMetricFailureCount(0);
       setState(catalogErrorKind(error));
     }
   }, [authLoading, environment, getServiceRed, getServices, timeRange]);
@@ -212,6 +216,15 @@ export default function ApmEndpointsPage() {
       dependency="telemetry"
     >
       <div className="flex flex-col gap-3">
+        {metricFailureCount ? (
+          <Alert
+            action={<Button icon={<ReloadOutlined aria-hidden="true" />} size="small" onClick={load}>重试</Button>}
+            description="已展示成功返回的服务，失败服务不会被误判为没有端点数据。"
+            message={`部分服务的端点指标查询失败（${metricFailureCount} 项）`}
+            showIcon
+            type="warning"
+          />
+        ) : null}
         <ApmSurface padding="compact">
           <div className="flex flex-wrap items-center gap-3">
             <Input

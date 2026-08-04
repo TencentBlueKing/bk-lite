@@ -68,4 +68,64 @@ def test_topology_api_only_queries_targets_visible_to_current_organization(apm_a
     assert response.status_code == 200
     assert response.data["sampled_traces"] == 1
     assert {node["service_name"] for node in response.data["nodes"]} == {"gateway", "payment"}
-    mocked.assert_called_once_with(10)
+    mocked.assert_called_once_with()
+
+
+@pytest.mark.django_db
+def test_topology_api_uses_service_visibility_instead_of_instance_visibility(apm_api_client, mocker):
+    now = timezone.now()
+    source = DjangoIngestSourceService().create(
+        name="instance-private-topology-source",
+        ingest_type="otlp_http",
+        organization_ids=[20],
+        actor="tester",
+    ).source
+    catalog = DjangoTelemetryCatalogService()
+    gateway = catalog.discover(
+        CatalogDiscovery(source.id, "shop", "gateway", "gateway-1", "prod", seen_at=now)
+    )
+    payment = catalog.discover(
+        CatalogDiscovery(source.id, "shop", "payment", "payment-1", "prod", seen_at=now)
+    )
+    catalog.set_service_organizations(gateway.service.id, [10], actor="tester")
+    catalog.set_service_organizations(payment.service.id, [10], actor="tester")
+
+    summary, detail = _telemetry(now, source.id)
+    service = DjangoApmTopologyService(InMemoryTraceStore(summaries=[summary], details=[detail]))
+    mocker.patch("apps.apm.views.topology.ApmTopologyViewSet._service", return_value=service)
+
+    response = apm_api_client.get("/api/v1/apm/topology/", {"environment": "prod"})
+
+    assert response.status_code == 200
+    assert response.data["sampled_traces"] == 1
+    assert {node["service_name"] for node in response.data["nodes"]} == {"gateway", "payment"}
+
+
+@pytest.mark.django_db
+def test_topology_api_does_not_leak_related_services_outside_service_scope(apm_api_client, mocker):
+    now = timezone.now()
+    source = DjangoIngestSourceService().create(
+        name="cross-scope-topology-source",
+        ingest_type="otlp_http",
+        organization_ids=[20],
+        actor="tester",
+    ).source
+    catalog = DjangoTelemetryCatalogService()
+    gateway = catalog.discover(
+        CatalogDiscovery(source.id, "shop", "gateway", "gateway-1", "prod", seen_at=now)
+    )
+    catalog.discover(
+        CatalogDiscovery(source.id, "shop", "payment", "payment-1", "prod", seen_at=now)
+    )
+    catalog.set_service_organizations(gateway.service.id, [10], actor="tester")
+
+    summary, detail = _telemetry(now, source.id)
+    service = DjangoApmTopologyService(InMemoryTraceStore(summaries=[summary], details=[detail]))
+    mocker.patch("apps.apm.views.topology.ApmTopologyViewSet._service", return_value=service)
+
+    response = apm_api_client.get("/api/v1/apm/topology/", {"environment": "prod"})
+
+    assert response.status_code == 200
+    assert response.data["sampled_traces"] == 1
+    assert [node["service_name"] for node in response.data["nodes"]] == ["gateway"]
+    assert not response.data["edges"]

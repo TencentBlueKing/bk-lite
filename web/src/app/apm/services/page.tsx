@@ -8,6 +8,7 @@ import {
   EditOutlined,
   EyeOutlined,
   InboxOutlined,
+  ReloadOutlined,
   SearchOutlined,
   UndoOutlined,
 } from '@ant-design/icons';
@@ -62,6 +63,7 @@ interface ApplicationSummary {
   environmentCount: number;
   requestRate: number | null;
   errorRate: number | null;
+  metricUnavailable: boolean;
   lastSeenAt: string;
 }
 
@@ -75,8 +77,8 @@ const timeWindowUnits: Record<TimeWindow, [number, dayjs.ManipulateType]> = {
 
 const metricKey = (serviceId: string, environment: string) => `${serviceId}:${environment}`;
 
-const formatRate = (value: number | null) => {
-  if (value === null) return '暂无数据';
+const formatRate = (value: number | null, unavailable = false) => {
+  if (value === null) return unavailable ? '查询失败' : '暂无数据';
   return value >= 1000 ? `${(value / 1000).toFixed(1)}k/s` : `${value.toFixed(value >= 100 ? 0 : 1)}/s`;
 };
 
@@ -99,7 +101,9 @@ export default function ApmServicesPage() {
   const [status, setStatus] = useState<CatalogStatus>();
   const [timeWindow, setTimeWindow] = useState<TimeWindow>('1h');
   const [redMetrics, setRedMetrics] = useState<Record<string, ApmServiceRed>>({});
+  const [metricFailureKeys, setMetricFailureKeys] = useState<string[]>([]);
   const [metricsLoading, setMetricsLoading] = useState(false);
+  const [metricRefreshKey, setMetricRefreshKey] = useState(0);
   const [state, setState] = useState<PageState>('loading');
   const [refreshKey, setRefreshKey] = useState(0);
   const [organizationService, setOrganizationService] = useState<ApmService | null>(null);
@@ -174,11 +178,13 @@ export default function ApmServicesPage() {
   useEffect(() => {
     if (state !== 'ready') {
       setRedMetrics({});
+      setMetricFailureKeys([]);
       return;
     }
     const targets = rows.filter((row) => row.environment && !row.serviceArchivedAt);
     if (!targets.length) {
       setRedMetrics({});
+      setMetricFailureKeys([]);
       return;
     }
     let active = true;
@@ -186,6 +192,7 @@ export default function ApmServicesPage() {
     const endedAt = dayjs();
     const startedAt = endedAt.subtract(amount, unit);
     setMetricsLoading(true);
+    setMetricFailureKeys([]);
     Promise.allSettled(targets.map(async (row) => ({
       key: metricKey(row.serviceId, row.environment),
       metric: await getServiceRed(row.serviceId, row.environment, startedAt.toISOString(), endedAt.toISOString()),
@@ -195,6 +202,11 @@ export default function ApmServicesPage() {
         setRedMetrics(Object.fromEntries(results.flatMap((result) => (
           result.status === 'fulfilled' ? [[result.value.key, result.value.metric]] : []
         ))));
+        setMetricFailureKeys(results.flatMap((result, index) => (
+          result.status === 'rejected'
+            ? [metricKey(targets[index].serviceId, targets[index].environment)]
+            : []
+        )));
       })
       .finally(() => {
         if (active) setMetricsLoading(false);
@@ -202,7 +214,7 @@ export default function ApmServicesPage() {
     return () => {
       active = false;
     };
-  }, [getServiceRed, rows, state, timeWindow]);
+  }, [getServiceRed, metricRefreshKey, rows, state, timeWindow]);
 
   const environmentOptions = useMemo(
     () => Array.from(new Set(rows.map((item) => item.environment)))
@@ -241,6 +253,7 @@ export default function ApmServicesPage() {
       environments: Set<string>;
       statuses: CatalogStatus[];
       metrics: ApmServiceRed[];
+      metricUnavailable: boolean;
       lastSeenAt: string;
     }>();
     filteredRows.forEach((row) => {
@@ -249,6 +262,7 @@ export default function ApmServicesPage() {
         environments: new Set<string>(),
         statuses: [],
         metrics: [],
+        metricUnavailable: false,
         lastSeenAt: row.last_seen_at,
       };
       current.serviceNames.add(row.serviceName);
@@ -257,6 +271,7 @@ export default function ApmServicesPage() {
       current.lastSeenAt = dayjs(row.last_seen_at).isAfter(current.lastSeenAt) ? row.last_seen_at : current.lastSeenAt;
       const metric = redMetrics[metricKey(row.serviceId, row.environment)];
       if (metric) current.metrics.push(metric);
+      if (metricFailureKeys.includes(metricKey(row.serviceId, row.environment))) current.metricUnavailable = true;
       summaries.set(row.namespace, current);
     });
 
@@ -280,10 +295,11 @@ export default function ApmServicesPage() {
         environmentCount: summary.environments.size,
         requestRate,
         errorRate,
+        metricUnavailable: summary.metricUnavailable,
         lastSeenAt: summary.lastSeenAt,
       };
     }).sort((left, right) => left.label.localeCompare(right.label));
-  }, [filteredRows, redMetrics]);
+  }, [filteredRows, metricFailureKeys, redMetrics]);
 
   const columns: TableColumnsType<ServiceEnvironmentRow> = [
     {
@@ -386,6 +402,27 @@ export default function ApmServicesPage() {
           type="warning"
           showIcon
           message="目录对账暂时降级，当前列表可能不是最新状态。"
+        />
+      ) : null}
+      {metricFailureKeys.length ? (
+        <Alert
+          action={(
+            <Button
+              icon={<ReloadOutlined aria-hidden="true" />}
+              loading={metricsLoading}
+              size="small"
+              onClick={() => setMetricRefreshKey((value) => value + 1)}
+            >
+              重试 RED 指标
+            </Button>
+          )}
+          className="mb-4"
+          description="服务目录元数据仍然可用；失败项不会再显示为无遥测数据。"
+          message={metricFailureKeys.length === rows.filter((row) => row.environment && !row.serviceArchivedAt).length
+            ? 'RED 指标查询失败'
+            : `部分 RED 指标查询失败（${metricFailureKeys.length} 项）`}
+          showIcon
+          type="warning"
         />
       ) : null}
       <div className="flex flex-col gap-3">
@@ -499,12 +536,14 @@ export default function ApmServicesPage() {
                         <div className="grid grid-cols-2 gap-3 rounded-md bg-[var(--color-fill-1)] p-3">
                           <div>
                             <Typography.Text type="secondary" className="block !text-xs">吞吐量</Typography.Text>
-                            <Typography.Text strong className="tabular-nums">{formatRate(application.requestRate)}</Typography.Text>
+                            <Typography.Text strong className="tabular-nums">{formatRate(application.requestRate, application.metricUnavailable)}</Typography.Text>
                           </div>
                           <div>
                             <Typography.Text type="secondary" className="block !text-xs">错误率</Typography.Text>
                             <Typography.Text strong className="tabular-nums">
-                              {application.errorRate === null ? '暂无数据' : `${(application.errorRate * 100).toFixed(2)}%`}
+                              {application.errorRate === null
+                                ? application.metricUnavailable ? '查询失败' : '暂无数据'
+                                : `${(application.errorRate * 100).toFixed(2)}%`}
                             </Typography.Text>
                           </div>
                         </div>

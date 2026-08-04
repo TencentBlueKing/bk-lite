@@ -26,6 +26,7 @@ import {
   message,
   Modal,
   Popconfirm,
+  Segmented,
   Select,
   Space,
   Steps,
@@ -55,13 +56,6 @@ const LANGUAGE_OPTIONS = [
   { value: 'nodejs', label: 'Node.js' },
   { value: 'go', label: 'Go' },
 ] satisfies { value: ApmIngestSnippetInput['language']; label: string }[];
-
-const RUNTIME_OPTIONS = [
-  { value: 'kubernetes', label: 'Kubernetes Pod' },
-  { value: 'docker', label: 'Docker 容器' },
-  { value: 'host', label: '固定主机' },
-  { value: 'other', label: '其他运行环境' },
-] satisfies { value: ApmIngestSnippetInput['runtime']; label: string }[];
 
 interface IntegrationMethod {
   key: string;
@@ -116,6 +110,8 @@ type SecretState = Pick<ApmIngestSourceWithCredential, 'credential'> & {
 };
 
 type PageState = CatalogStateKind | 'ready';
+type SnippetMode = 'agent' | 'docker';
+type SnippetFormValues = Omit<ApmIngestSnippetInput, 'credential' | 'endpoint' | 'runtime'>;
 
 function publicOtlpEndpoint(ingestType: ApmIngestSource['ingest_type']) {
   if (typeof window === 'undefined') return ingestType === 'otlp_grpc' ? 'http://localhost:4317' : 'http://localhost:4318';
@@ -160,10 +156,12 @@ export default function ApmIntegrationAddPage() {
   const [secret, setSecret] = useState<SecretState | null>(null);
   const [snippet, setSnippet] = useState<ApmIngestSnippet | null>(null);
   const [snippetSubmitting, setSnippetSubmitting] = useState(false);
+  const [snippetMode, setSnippetMode] = useState<SnippetMode>('agent');
+  const [snippetLanguage, setSnippetLanguage] = useState<ApmIngestSnippetInput['language']>('python');
   const [organizationSource, setOrganizationSource] = useState<ApmIngestSource | null>(null);
   const [organizationSubmitting, setOrganizationSubmitting] = useState(false);
   const [createForm] = Form.useForm<ApmIngestSourceInput>();
-  const [snippetForm] = Form.useForm<Omit<ApmIngestSnippetInput, 'credential'>>();
+  const [snippetForm] = Form.useForm<SnippetFormValues>();
 
   const groupNames = useMemo(
     () => new Map(flatGroups.map((group) => [Number(group.id), group.name])),
@@ -191,10 +189,10 @@ export default function ApmIntegrationAddPage() {
   useEffect(() => {
     if (!secret) return;
     setSnippet(null);
+    setSnippetMode('agent');
+    setSnippetLanguage(preferredLanguage ?? 'python');
     snippetForm.setFieldsValue({
       language: preferredLanguage ?? 'python',
-      runtime: 'kubernetes',
-      endpoint: publicOtlpEndpoint(secret.source.ingest_type),
       service_namespace: '',
       service_name: secret.source.name,
       environment: secret.source.environment_hint || 'production',
@@ -231,6 +229,7 @@ export default function ApmIntegrationAddPage() {
   }, [createForm, createIngestSource, loadSources, revealCredential]);
 
   const rotate = useCallback(async (source: ApmIngestSource) => {
+    setPreferredLanguage(undefined);
     const rotated = await rotateIngestSource(source.id);
     revealCredential(rotated);
     message.success('凭证已轮换，旧凭证将在边缘短缓存过期后失效');
@@ -260,15 +259,20 @@ export default function ApmIntegrationAddPage() {
     }
   }, [loadSources, organizationSource, setIngestSourceOrganizations]);
 
-  const generateSnippet = useCallback(async (values: Omit<ApmIngestSnippetInput, 'credential'>) => {
+  const generateSnippet = useCallback(async (values: SnippetFormValues) => {
     if (!secret) return;
     setSnippetSubmitting(true);
     try {
-      setSnippet(await getIngestSnippet(secret.source.id, { ...values, credential: secret.credential }));
+      setSnippet(await getIngestSnippet(secret.source.id, {
+        ...values,
+        credential: secret.credential,
+        endpoint: publicOtlpEndpoint(secret.source.ingest_type),
+        runtime: snippetMode === 'docker' ? 'docker' : 'host',
+      }));
     } finally {
       setSnippetSubmitting(false);
     }
-  }, [getIngestSnippet, secret]);
+  }, [getIngestSnippet, secret, snippetMode]);
 
   const copy = useCallback(async (value: string, label: string) => {
     try {
@@ -289,6 +293,8 @@ export default function ApmIntegrationAddPage() {
       onOk: () => {
         setSecret(null);
         setSnippet(null);
+        setSnippetMode('agent');
+        setSnippetLanguage('python');
         snippetForm.resetFields();
       },
     });
@@ -391,6 +397,16 @@ export default function ApmIntegrationAddPage() {
     : sources.length
       ? <Table rowKey="id" columns={columns} dataSource={sources} pagination={{ pageSize: 20 }} scroll={{ x: 1100 }} />
       : <CatalogState kind="empty" description="当前组织还没有接入源，请先创建一个受控 OTLP 接入。" />;
+
+  const activeLanguage = preferredLanguage ?? snippetLanguage;
+  const activeLanguageLabel = LANGUAGE_OPTIONS.find((option) => option.value === activeLanguage)?.label ?? 'SDK';
+  const agentModeLabel = {
+    python: 'Python 自动探针',
+    nodejs: 'Node.js 自动探针',
+    java: 'Java Agent',
+    go: 'Go SDK',
+  }[activeLanguage];
+  const assignedEndpoint = secret ? publicOtlpEndpoint(secret.source.ingest_type) : '';
 
   return (
     <ApmRouteShell
@@ -556,9 +572,9 @@ export default function ApmIntegrationAddPage() {
       </Modal>
 
       <Modal
-        title={<Space><KeyOutlined />一次性接入凭证与配置</Space>}
+        title={<Space><KeyOutlined />{activeLanguageLabel} 接入</Space>}
         open={Boolean(secret)}
-        width={820}
+        width={960}
         footer={<Button danger onClick={closeSecret}>我已保存，关闭并清除</Button>}
         closable={false}
         maskClosable={false}
@@ -580,20 +596,67 @@ export default function ApmIntegrationAddPage() {
               addonAfter={<Button type="text" size="small" icon={<CopyOutlined />} onClick={() => void copy(secret.credential, 'Token')}>复制</Button>}
             />
             <ApmSurface padding="compact">
-              <Typography.Text strong>生成可执行接入片段</Typography.Text>
+              <div className="mb-4 flex items-center gap-2">
+                <span className="inline-flex size-6 shrink-0 items-center justify-center rounded-full bg-[var(--color-primary)] text-xs font-semibold text-white">1</span>
+                <Typography.Title level={3} className="!m-0 !text-base">上报端点</Typography.Title>
+              </div>
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                <div>
+                  <Typography.Text type="secondary" className="mb-1 block text-xs">云区域</Typography.Text>
+                  <Input value={secret.source.cloud_region_id ? `#${secret.source.cloud_region_id}` : 'default'} readOnly aria-label="云区域" />
+                </div>
+                <div>
+                  <Typography.Text type="secondary" className="mb-1 block text-xs">组织</Typography.Text>
+                  <div className="flex min-h-8 items-center gap-1 rounded-md border border-[var(--color-border-2)] px-3 py-1.5">
+                    {secret.source.organization_ids.map((id) => <Tag key={id}>{groupNames.get(id) ?? `#${id}`}</Tag>)}
+                  </div>
+                </div>
+              </div>
+              <Typography.Text strong className="mb-2 mt-4 block">API 端点</Typography.Text>
+              <div className="relative max-w-full overflow-x-auto rounded-lg bg-slate-950 px-4 py-5 pr-14 font-mono text-sm text-slate-100">
+                <Tag color="success" className="!mr-3">POST</Tag>
+                <span>{assignedEndpoint}</span>
+                <Button
+                  type="text"
+                  icon={<CopyOutlined />}
+                  aria-label="复制 API 端点"
+                  className="!absolute !right-2 !top-2 !text-slate-300"
+                  onClick={() => void copy(assignedEndpoint, 'API 端点')}
+                />
+              </div>
+            </ApmSurface>
+            <ApmSurface padding="compact">
+              <div className="mb-1 flex items-center gap-2">
+                <span className="inline-flex size-6 shrink-0 items-center justify-center rounded-full bg-[var(--color-primary)] text-xs font-semibold text-white">2</span>
+                <Typography.Title level={3} className="!m-0 !text-base">接入配置</Typography.Title>
+              </div>
+              <Typography.Text type="secondary" className="mb-4 ml-8 block text-xs">
+                填写服务身份，选择运行方式后生成包含安装、配置和启动步骤的完整片段。
+              </Typography.Text>
               <Form
                 form={snippetForm}
                 layout="vertical"
-                className="mt-3"
                 onFinish={generateSnippet}
               >
-                <div className="grid grid-cols-1 gap-x-3 md:grid-cols-2">
-                  <Form.Item name="language" label="语言 / SDK" rules={[{ required: true }]}>
-                    <Select options={LANGUAGE_OPTIONS} />
-                  </Form.Item>
-                  <Form.Item name="runtime" label="运行环境" rules={[{ required: true }]}>
-                    <Select options={RUNTIME_OPTIONS} />
-                  </Form.Item>
+                <div className="grid grid-cols-1 gap-x-3 md:grid-cols-2 lg:grid-cols-4">
+                  {preferredLanguage ? (
+                    <>
+                      <Form.Item name="language" hidden><Input /></Form.Item>
+                      <Form.Item label="语言 / SDK">
+                        <Input value={activeLanguageLabel} readOnly />
+                      </Form.Item>
+                    </>
+                  ) : (
+                    <Form.Item name="language" label="语言 / SDK" rules={[{ required: true }]}>
+                      <Select
+                        options={LANGUAGE_OPTIONS}
+                        onChange={(value) => {
+                          setSnippetLanguage(value);
+                          setSnippet(null);
+                        }}
+                      />
+                    </Form.Item>
+                  )}
                   <Form.Item name="service_namespace" label="服务命名空间" rules={[{ max: 256 }]}>
                     <Input placeholder="shop（可留空）" />
                   </Form.Item>
@@ -603,24 +666,43 @@ export default function ApmIntegrationAddPage() {
                   <Form.Item name="environment" label="部署环境" rules={[{ required: true, message: '请输入部署环境' }, { max: 256 }]}>
                     <Input placeholder="production" />
                   </Form.Item>
-                  <Form.Item name="endpoint" label="OTLP 公网端点" rules={[{ required: true, type: 'url', message: '请输入有效的 HTTP/HTTPS URL' }]}>
-                    <Input placeholder="https://apm.example.com:4318" />
-                  </Form.Item>
                 </div>
+                <Segmented
+                  value={snippetMode}
+                  options={[
+                    { value: 'agent', label: agentModeLabel },
+                    { value: 'docker', label: 'Docker 运行（-e 注入）' },
+                  ]}
+                  onChange={(value) => {
+                    setSnippetMode(value as SnippetMode);
+                    setSnippet(null);
+                  }}
+                  className="mb-4"
+                />
                 <Button htmlType="submit" type="primary" loading={snippetSubmitting} icon={<SafetyCertificateOutlined />}>
                   验证 Token 并生成片段
                 </Button>
               </Form>
-            </ApmSurface>
-            {snippet && (
-              <div>
-                <div className="mb-2 flex items-center justify-between">
-                  <Typography.Text strong>Shell 接入片段</Typography.Text>
-                  <Button icon={<CopyOutlined />} onClick={() => void copy(snippet.code, '接入片段')}>复制片段</Button>
+              {snippet && (
+                <div className="mt-4">
+                  <Typography.Text type="secondary" className="mb-2 block text-xs">
+                    {snippetMode === 'docker' ? 'Docker 运行（-e 注入）' : agentModeLabel}
+                  </Typography.Text>
+                  <div className="relative max-w-full overflow-x-auto rounded-lg bg-slate-950 p-4 pt-12 font-mono text-xs leading-6 text-slate-100">
+                    <Tag className="!absolute !left-3 !top-3 !border-0 !bg-slate-700 !text-slate-100">BASH</Tag>
+                    <Button
+                      icon={<CopyOutlined />}
+                      aria-label="复制接入片段"
+                      className="!absolute !right-3 !top-2"
+                      onClick={() => void copy(snippet.code, '接入片段')}
+                    >
+                      复制片段
+                    </Button>
+                    <pre className="m-0 min-w-max whitespace-pre">{snippet.code}</pre>
+                  </div>
                 </div>
-                <Input.TextArea value={snippet.code} readOnly autoSize={{ minRows: 10, maxRows: 18 }} className="font-mono text-xs" />
-              </div>
-            )}
+              )}
+            </ApmSurface>
           </div>
         )}
       </Modal>

@@ -17,6 +17,8 @@ assert.match(endpoints, /getServices\(\)/, '端点列表必须来自真实服务
 assert.match(endpoints, /getServiceRed\(/, '端点列表必须来自真实 RED 指标');
 assert.match(endpoints, /top_endpoints/, '端点列表必须使用服务 RED 的端点聚合结果');
 assert.match(endpoints, /'7d'/, '端点页应支持原型中的 7 天时间范围');
+assert.match(endpoints, /metricFailureCount/, '端点列表必须显式记录部分 RED 查询失败');
+assert.match(endpoints, /部分服务的端点指标查询失败/, '端点列表不能静默隐藏查询失败的服务');
 assert.match(errors, /getTraces\(/, '错误页必须来自真实 Trace 查询');
 assert.match(errors, /item\.status === 'error'/, '错误页只展示真实错误 Trace');
 assert.match(errors, /Issue 自动聚类将在数据能力就绪后接入/, 'MVP 必须明确 Issue 聚类尚未接入');
