@@ -2,6 +2,7 @@
 MLOps 任务通用工具函数
 """
 
+import codecs
 import json
 import os
 import tempfile
@@ -210,22 +211,28 @@ def count_txt_samples(file_path: Path) -> int:
     sample_count = 0
     line_has_content = False
     skip_lf_after_cr = False
+    decoder = codecs.getincrementaldecoder("utf-8")(errors="surrogateescape")
+
+    def consume(chars: str) -> None:
+        nonlocal sample_count, line_has_content, skip_lf_after_cr
+        for char in chars:
+            if skip_lf_after_cr:
+                skip_lf_after_cr = False
+                if char == "\n":
+                    continue
+
+            if char in "\r\n":
+                if line_has_content:
+                    sample_count += 1
+                line_has_content = False
+                skip_lf_after_cr = char == "\r"
+            elif not char.isspace():
+                line_has_content = True
 
     with open(file_path, "rb") as text_file:
         for chunk in iter(lambda: text_file.read(_STREAM_CHUNK_SIZE), b""):
-            for byte in chunk:
-                if skip_lf_after_cr:
-                    skip_lf_after_cr = False
-                    if byte == ord("\n"):
-                        continue
-
-                if byte in (ord("\r"), ord("\n")):
-                    if line_has_content:
-                        sample_count += 1
-                    line_has_content = False
-                    skip_lf_after_cr = byte == ord("\r")
-                elif byte not in b" \t\v\f":
-                    line_has_content = True
+            consume(decoder.decode(chunk))
+        consume(decoder.decode(b"", final=True))
 
     return sample_count + int(line_has_content)
 

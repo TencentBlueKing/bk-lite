@@ -119,7 +119,11 @@ def test_count_txt_samples_no_trailing_newline(tmp_path):
 
 def test_count_txt_samples_ignores_empty_and_whitespace_only_lines(tmp_path):
     f = tmp_path / "empty-lines.txt"
-    f.write_bytes(b"line1\n\n \t\r\nline2\n")
+    f.write_text(
+        "line1\n\n \t\r\n\N{NO-BREAK SPACE}\n\N{IDEOGRAPHIC SPACE}\nline2\n",
+        encoding="utf-8",
+        newline="",
+    )
 
     assert count_txt_samples(f) == 2
 
