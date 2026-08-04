@@ -67,6 +67,10 @@ collector:
     description: The Kafka Exporter (Linux) collector connects to Kafka to gather
       various monitoring metrics.
     name: Kafka Exporter
+  exporter_kafka_linux_arm64:
+    description: The Kafka Exporter (Linux ARM64) collector connects to Kafka to
+      gather various monitoring metrics.
+    name: Kafka Exporter
   telegraf_windows:
     name: Telegraf
     description: Telegraf (Windows) is a lightweight and highly efficient metrics

@@ -4,6 +4,7 @@ from django_filters.rest_framework import FilterSet
 from rest_framework.decorators import action
 
 from apps.core.decorators.api_permission import HasPermission
+from apps.core.utils.loader import LanguageLoader
 from apps.core.utils.viewset_utils import MaintainerViewSet
 from apps.system_mgmt.models import CustomMenuGroup
 from apps.system_mgmt.serializers.custom_menu_group_serializer import CustomMenuGroupListSerializer, CustomMenuGroupSerializer
@@ -39,6 +40,11 @@ class CustomMenuGroupViewSet(MaintainerViewSet):
     queryset = CustomMenuGroup.objects.all().order_by("app", "id")
     serializer_class = CustomMenuGroupSerializer
     filterset_class = CustomMenuGroupFilter
+
+    def _loader(self, request):
+        return getattr(self, "loader", None) or LanguageLoader(
+            app="system_mgmt", default_lang=getattr(getattr(request, "user", None), "locale", "en") or "en"
+        )
 
     def get_serializer_class(self):
         """根据不同操作返回不同的序列化器"""
@@ -127,7 +133,7 @@ class CustomMenuGroupViewSet(MaintainerViewSet):
         is_enabled = request.data.get("is_enabled")
 
         if is_enabled is None:
-            return JsonResponse({"result": False, "message": "缺少 is_enabled 参数"}, status=400)
+            return JsonResponse({"result": False, "message": self._loader(request).get("error.is_enabled_required")}, status=400)
 
         # 如果要启用
         if is_enabled:
@@ -175,7 +181,10 @@ class CustomMenuGroupViewSet(MaintainerViewSet):
         else:
             # 检查传入的名称是否已存在
             if CustomMenuGroup.objects.filter(app=instance.app, display_name=new_display_name).exists():
-                return JsonResponse({"result": False, "message": f"应用 {instance.app} 下已存在名称为 {new_display_name} 的菜单组"}, status=400)
+                message = self._loader(request).get("error.custom_menu_group_name_exists").format(
+                    app=instance.app, display_name=new_display_name
+                )
+                return JsonResponse({"result": False, "message": message}, status=400)
 
         if not menus:
             menus = instance.menus.copy()
@@ -194,7 +203,13 @@ class CustomMenuGroupViewSet(MaintainerViewSet):
         # 记录操作日志
         log_operation(request, "create", "system-manager", f"复制菜单: {instance.display_name} -> {new_display_name}")
 
-        return JsonResponse({"result": True, "data": CustomMenuGroupSerializer(new_instance).data, "message": "菜单组复制成功"})
+        return JsonResponse(
+            {
+                "result": True,
+                "data": CustomMenuGroupSerializer(new_instance, context={"request": request}).data,
+                "message": self._loader(request).get("success.menu_group_copied"),
+            }
+        )
 
     @action(detail=False, methods=["get"])
     def get_menus(self, request):
@@ -209,15 +224,22 @@ class CustomMenuGroupViewSet(MaintainerViewSet):
         app = request.GET.get("app")
 
         if not app:
-            return JsonResponse({"result": False, "message": "缺少 app 参数"}, status=400)
+            return JsonResponse({"result": False, "message": self._loader(request).get("error.app_required")}, status=400)
 
         # 获取该应用下第一个启用的菜单组
         menu_group = CustomMenuGroup.objects.filter(app=app, is_enabled=True).first()
 
         if not menu_group:
-            return JsonResponse({"result": False, "message": f"未找到应用 {app} 的启用菜单组"}, status=404)
+            message = self._loader(request).get("error.enabled_menu_group_not_found").format(app=app)
+            return JsonResponse({"result": False, "message": message}, status=404)
 
         # 直接返回 menus 字段和是否内置标识，不做任何转换
         menus = menu_group.menus if isinstance(menu_group.menus, list) else []
 
-        return JsonResponse({"result": True, "data": {"is_build_in": menu_group.is_build_in, "menus": menus}, "message": "success"})
+        return JsonResponse(
+            {
+                "result": True,
+                "data": {"is_build_in": menu_group.is_build_in, "menus": menus},
+                "message": self._loader(request).get("status.success"),
+            }
+        )

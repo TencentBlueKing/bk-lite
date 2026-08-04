@@ -6,6 +6,7 @@ from rest_framework.decorators import action
 
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.utils.permission_cache import clear_users_permission_cache
+from apps.core.utils.loader import LanguageLoader
 from apps.core.utils.viewset_utils import LanguageViewSet
 from apps.system_mgmt.models import Group, Menu, Role, User
 from apps.system_mgmt.serializers.role_serializer import RoleSerializer
@@ -19,6 +20,11 @@ from apps.system_mgmt.utils.viewset_utils import ViewSetUtils
 class RoleViewSet(LanguageViewSet, ViewSetUtils):
     queryset = Role.objects.exclude(app="")
     serializer_class = RoleSerializer
+
+    def _loader(self, request):
+        return getattr(self, "loader", None) or LanguageLoader(
+            app="system_mgmt", default_lang=getattr(getattr(request, "user", None), "locale", "en") or "en"
+        )
 
     @staticmethod
     def _get_users_in_group_trees(group_ids):
@@ -41,8 +47,7 @@ class RoleViewSet(LanguageViewSet, ViewSetUtils):
     def _validate_group_scope_for_request(self, request, group_ids):
         unauthorized_group_ids = get_unauthorized_group_ids(request.user, group_ids)
         if unauthorized_group_ids:
-            loader = getattr(self, "loader", None)
-            message = loader.get("error.no_permission_access_group") if loader else "无权访问该组织"
+            message = self._loader(request).get("error.no_permission_access_group")
             return JsonResponse({"result": False, "message": message}, status=403)
         return None
 
@@ -441,7 +446,7 @@ class RoleViewSet(LanguageViewSet, ViewSetUtils):
         group_ids = request.data.get("group_ids", [])
 
         if not isinstance(group_ids, list):
-            return JsonResponse({"result": False, "message": "group_ids must be a list"})
+            return JsonResponse({"result": False, "message": self._loader(request).get("error.group_ids_must_be_list")})
 
         if not group_ids:
             return JsonResponse({"result": True, "data": []})

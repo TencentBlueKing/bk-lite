@@ -77,6 +77,15 @@ export class DataMapper {
           const match = processedValue.match(new RegExp(to_form.regex));
           processedValue = match ? match[1] || match[0] : processedValue;
         }
+        // 数组用分隔符拼成字符串（SNMP ifDescr 黑白名单回显）
+        if (to_form.array_join) {
+          const sep = typeof to_form.array_join === 'string' ? to_form.array_join : ',';
+          if (Array.isArray(processedValue)) {
+            processedValue = processedValue.join(sep);
+          } else if (processedValue == null) {
+            processedValue = '';
+          }
+        }
         // 类型转换
         if (to_form.type) {
           switch (to_form.type) {
@@ -191,6 +200,18 @@ export class DataMapper {
         processedValue !== null
       ) {
         processedValue = String(processedValue) + to_api.suffix;
+      }
+      // 字符串按分隔符拆成数组（SNMP ifDescr 黑白名单提交）
+      if (to_api.split) {
+        const sep = typeof to_api.split === 'string' ? to_api.split : ',';
+        if (typeof processedValue === 'string') {
+          processedValue = processedValue
+            .split(sep)
+            .map((item: string) => item.trim())
+            .filter(Boolean);
+        } else if (processedValue == null || processedValue === '') {
+          processedValue = [];
+        }
       }
       // 模板拼接（支持从 formData 获取其他字段）
       if (to_api.template && formData) {
@@ -473,18 +494,34 @@ export class DataMapper {
     context: any
   ): string {
     let result = template;
+    const replaceVars = (source: Record<string, any> | null | undefined) => {
+      if (!source) return;
+      const vars: Record<string, string> = {};
+      Object.entries(source).forEach(([key, value]) => {
+        if (value !== null && value !== undefined) {
+          vars[key] = String(value);
+        }
+      });
+      // UI 模板约定 {{cloud_region}}；节点可能只回 cloud_region 或 cloud_region_id。
+      if (!vars.cloud_region && vars.cloud_region_id) {
+        vars.cloud_region = vars.cloud_region_id;
+      }
+      // Host Remote 用 {{host}}，本地节点字段是 ip。
+      if (!vars.host && vars.ip) {
+        vars.host = vars.ip;
+      }
+      if (!vars.ip && vars.host) {
+        vars.ip = vars.host;
+      }
+      Object.entries(vars).forEach(([key, value]) => {
+        result = result.replace(new RegExp(`{{${key}}}`, 'g'), value);
+      });
+    };
+
     // 1. 替换数据字段（当前行的字段）
-    Object.entries(data).forEach(([key, value]) => {
-      if (value !== null && value !== undefined) {
-        result = result.replace(new RegExp(`{{${key}}}`, 'g'), String(value));
-      }
-    });
+    replaceVars(data);
     // 2. 替换上下文字段
-    Object.entries(context).forEach(([key, value]) => {
-      if (value !== null && value !== undefined) {
-        result = result.replace(new RegExp(`{{${key}}}`, 'g'), String(value));
-      }
-    });
+    replaceVars(context);
     // 3. 从节点数据中提取字段（如果有 node_ids 和 nodeList）
     if (data.node_ids && context.nodeList) {
       // 获取第一个选中的节点ID
@@ -497,15 +534,7 @@ export class DataMapper {
           (n: any) => n.value === firstNodeId || n.id === firstNodeId
         );
         if (node) {
-          // 替换节点中的所有字段
-          Object.entries(node).forEach(([key, value]) => {
-            if (value !== null && value !== undefined) {
-              result = result.replace(
-                new RegExp(`{{${key}}}`, 'g'),
-                String(value)
-              );
-            }
-          });
+          replaceVars(node);
         }
       }
     }

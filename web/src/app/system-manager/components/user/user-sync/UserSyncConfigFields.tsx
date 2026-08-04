@@ -247,7 +247,7 @@ const UserSyncConfigFields: React.FC<UserSyncConfigFieldsProps> = ({
     return () => {
       active = false;
     };
-  }, [departmentIdType, form, resolvedTemplate, rootDepartmentFieldKey, selectedInstanceId, t]);
+  }, [departmentIdType, currentRootDepartmentId, form, resolvedTemplate, rootDepartmentFieldKey, selectedInstanceId, t]);
 
   const renderManifestField = (field: TemplateField) => {
     if (hideRootDepartmentField && (field.key === rootDepartmentFieldKey || field.key === 'department_id_type')) {

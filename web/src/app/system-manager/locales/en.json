@@ -91,7 +91,8 @@
       "functionList": "Function List",
       "updatedAt": "Updated At",
       "deleteConfirm": "Are you sure you want to delete this menu?",
-      "name": "Menu Name"
+      "name": "Menu Name",
+      "nameMaxLength": "Menu name cannot exceed 100 characters"
     },
     "application": {
       "searchIcon": "Search Icon",
@@ -183,7 +184,9 @@
         "normalUser": "Normal User",
         "groupSelectionRequired": "Please select at least one organization",
         "normalGroupRequired": "Please select at least one normal organization",
-        "tempTooltip": "If enabled, the user must change the password on next login"
+        "tempTooltip": "If enabled, the user must change the password on next login",
+        "initialPasswordEmailSent": "The user has been notified of the initial password by email",
+        "initialPasswordEmailFailed": "The initial password email could not be delivered"
       },
       "admin": {
         "desc1": "1.Manage organizations and users in system settings.",
@@ -335,6 +338,7 @@
           "syncUsersUpdated": "Updated {{n}} users",
           "syncUsersConflict": "Found {{n}} conflicting users",
           "reconcileDisabled": "Disabled {{n}}",
+          "reconcileDeletedUsers": "Deleted {{n}} users",
           "reconcileDeleted": "Deleted {{n}} groups",
           "syncGroupsSynced": "Synced {{n}} groups",
           "syncGroupsCreated": "Created {{n}} groups",
@@ -344,7 +348,7 @@
           "fetchDirectory": "Retrieved {{users}} users · {{groups}} groups",
           "syncGroupsUnchanged": "Verified {{groups}} groups; no changes found",
           "syncUsersUnchanged": "Verified {{users}} users; no changes found",
-          "reconcileChanged": "Disabled {{users}} users · Removed {{groups}} groups",
+          "reconcileChanged": "Deleted {{users}} users · Removed {{groups}} groups",
           "reconcileUnchanged": "No users or groups require cleanup",
           "emailQueued": "Emails queued; {{total}} pending",
           "emailSending": "Sending emails; {{sent}} / {{total}} sent",
@@ -518,7 +522,21 @@
       "passwordLengthRange": "Password Length Range",
       "newUserInitialPassword": "New Local User Initial Password",
       "newUserInitialPasswordDescription": "Applies only to local users created manually by administrators. Users must change it at first sign-in.",
-      "enableInitialPassword": "Enable initial password",
+      "initialPasswordModeFixed": "Uniform initial password",
+      "initialPasswordModeRandom": "Random password",
+      "initialPasswordModeNone": "No local password",
+      "initialPasswordModeLabel": "Initial password mode",
+      "randomEmailChannel": "Email notification channel",
+      "randomEmailChannelPlaceholder": "Select an email channel",
+      "randomEmailChannelNotice": "When a new user is created, the system generates a 16-character random password and notifies the user through this email channel.",
+      "randomEmailChannelRequired": "Random password mode requires an email channel",
+      "initialPasswordEmailChannelRequired": "An email channel is required when new-user initial passwords are enabled",
+      "initialPasswordEmailChannel": "Email notification channel",
+      "initialPasswordEmailChannelPlaceholder": "Select an email channel to notify the user",
+      "initialPasswordEmailChannelNotice": "Required when enabled. The system sends the initial password to each new local user through this email channel.",
+      "initialPasswordEmailChannelLoadFailed": "Unable to load email channels. Please retry.",
+      "initialPasswordEmailChannelRetry": "Retry",
+      "initialPasswordNoneNotice": "No local password is set. An administrator must reset the password before local sign-in, or the user can sign in through an external identity source.",
       "initialPasswordConfigured": "Configured; the password cannot be displayed again",
       "changeInitialPassword": "Change initial password",
       "initialPassword": "Initial password",
@@ -528,7 +546,7 @@
       "initialPasswordRequired": "Set an initial password",
       "initialPasswordMismatch": "The initial passwords do not match",
       "initialPasswordReentryRequired": "Password policy changed. Set the initial password again.",
-      "initialPasswordOfflineNotice": "Tell new users through an administrator-controlled offline channel",
+      "initialPasswordDeliveryNotice": "The system sends the initial password to the new user through the selected email channel",
       "appSecret": "App Secret",
       "pleaseSelectRows": "Please select at least one record",
       "authSourceType": "Authentication Source Type",
@@ -566,7 +584,16 @@
       "scenario": "Scenario",
       "modelObject": "Model",
       "operatorObject": "Operator Object",
-      "beforeAfter": "Before vs. After Comparison"
+      "beforeAfter": "Before vs. After Comparison",
+      "authSourceBkLite": "BK-Lite Authentication Source",
+      "authSourceBlueking": "BlueKing Authentication Source",
+      "authSourceUrl": "Authentication URL",
+      "authSourceWechatDescription": "Supports WeChat QR-code sign-in",
+      "authSourceBkLiteDescription": "Supports the BK-Lite authentication source",
+      "authSourceBluekingDescription": "Supports the BlueKing platform authentication source",
+      "exportSheetName": "Login Logs",
+      "exportExcel": "Excel (.xlsx)",
+      "exportCsv": "CSV (.csv)"
     },
     "settings": {
       "tabs": {
@@ -724,6 +751,8 @@
           "system_mgmtDesc": "Multi-tenant permission management and audit trails, ensuring secure and controllable system access with full traceability.",
           "cmdb": "CMDB",
           "cmdbDesc": "Build a trusted IT asset map. Comprehensive collection and architecture restoration, providing data foundation for operations decisions and compliance management.",
+          "patch": "Patch Management",
+          "patchDesc": "Centrally manage system patches with scanning, installation, and patch library maintenance to continuously reduce security risks.",
           "monitor": "Monitor Center",
           "monitorDesc": "Full-domain monitoring system with sub-second collection and precise alerting to ensure stable system operation.",
           "log": "Log Center",
@@ -980,6 +1009,7 @@
           "phone": "Phone"
         },
         "externalFieldOption": {
+          "userid": "User ID",
           "user_id": "User ID",
           "open_id": "Open ID",
           "email": "Email",

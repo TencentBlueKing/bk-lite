@@ -1,8 +1,8 @@
 /**
  * Vector 采集"编辑模式"配置加载/保存一致性测试。
  *
- * 回归保护：当 `getDefaultForm` 改回旧的"从 content.sources.xxx 嵌套读取"模式时，
- * 以下测试会立即失败，避免再次出现"编辑时多行合并开关显示关闭"的 bug。
+ * 回归保护：`get_config_content` 返回的是 TOML 解析后的嵌套结构，
+ * `getDefaultForm` 必须能从 `content.sources.file_xxx` 回填编辑表单。
  *
  * 运行：`pnpm exec tsx scripts/log-vector-config-test.ts`
  */
@@ -19,7 +19,44 @@ import {
 
 // ============ file.tsx ============
 
-// Case 1: 用户报告的核心 bug —— 已保存多行合并，编辑时开关应保持 ON
+// Case 1: 用户报告的核心 bug —— 接口返回真实 TOML 结构时，日志路径应回显
+{
+  const loaded = getVectorFileDefaultForm({
+    child: {
+      content: {
+        sources: {
+          file_0198f0d7_1d4e_7db1_b7c2_132807fa330e: {
+            type: 'file',
+            include: ['/var/log/app/*.log'],
+            exclude: ['/var/log/app/*.gz'],
+            read_from: 'end',
+            ignore_older_secs: 3600,
+            encoding: {
+              charset: 'gbk'
+            },
+            multiline: {
+              mode: 'continue_through',
+              start_pattern: '^\\d{4}-\\d{2}-\\d{2}',
+              timeout_ms: 1000,
+              condition_pattern: '\\s+'
+            }
+          }
+        }
+      }
+    }
+  });
+
+  assert.deepEqual(
+    loaded.include,
+    ['/var/log/app/*.log'],
+    'file: 更新配置时应从真实 TOML 结构回显日志路径'
+  );
+  assert.deepEqual(loaded.exclude, ['/var/log/app/*.gz']);
+  assert.equal(loaded.encoding_charset, 'gbk');
+  assert.equal(loaded.multiline.enabled, true);
+}
+
+// Case 2: 已保存多行合并，兼容扁平配置时开关应保持 ON
 assert.deepEqual(
   getVectorFileDefaultForm({
     child: {
@@ -44,7 +81,7 @@ assert.deepEqual(
   'file: 已保存 multiline 应在编辑时 enabled=true'
 );
 
-// Case 2: 未启用多行合并时，enabled 应为 false
+// Case 3: 未启用多行合并时，enabled 应为 false
 assert.equal(
   getVectorFileDefaultForm({
     child: { content: { include: ['/var/log/x.log'] } }
@@ -53,7 +90,7 @@ assert.equal(
   'file: 未保存 multiline 时 enabled 应为 false'
 );
 
-// Case 3: 完整往返 —— 保存多行合并 → 加载回来所有字段一致
+// Case 4: 完整往返 —— 保存多行合并 → 加载回来所有字段一致
 {
   const form = {
     include: ['/var/log/a.log', '/var/log/b.log'],
@@ -75,7 +112,7 @@ assert.equal(
   assert.deepEqual(loaded, form, 'file: 完整往返一致性（多行合并 ON）');
 }
 
-// Case 4: 往返 —— 多行合并 OFF（输入包含完整默认，因为 defaultForm 总是返回完整结构）
+// Case 5: 往返 —— 多行合并 OFF（输入包含完整默认，因为 defaultForm 总是返回完整结构）
 {
   const form = {
     include: ['/var/log/c.log'],
@@ -99,7 +136,7 @@ assert.equal(
   assert.equal(loaded.read_from, form.read_from);
 }
 
-// Case 5: getParams 不会把 disabled 状态的 multiline 子字段写入 content
+// Case 6: getParams 不会把 disabled 状态的 multiline 子字段写入 content
 {
   const params = getVectorFileParams(
     {
@@ -123,7 +160,7 @@ assert.equal(
 
 // ============ docker.tsx ============
 
-// Case 6: docker 多行合并开关已保存 → 编辑时 enabled=true
+// Case 7: docker 多行合并开关已保存 → 编辑时 enabled=true
 assert.deepEqual(
   getVectorDockerDefaultForm({
     child: {
@@ -146,14 +183,14 @@ assert.deepEqual(
   'docker: 已保存多行合并应 enabled=true'
 );
 
-// Case 7: docker 未启用多行合并 → enabled=false
+// Case 8: docker 未启用多行合并 → enabled=false
 assert.equal(
   getVectorDockerDefaultForm({ child: { content: {} } }).multiline.enabled,
   false,
   'docker: 未保存 multiline 时 enabled 应为 false'
 );
 
-// Case 8: docker 容器过滤开关已保存 → enabled=true，数组正确还原
+// Case 9: docker 容器过滤开关已保存 → enabled=true，数组正确还原
 assert.deepEqual(
   getVectorDockerDefaultForm({
     child: {
@@ -180,7 +217,7 @@ assert.deepEqual(
   'docker: 容器过滤开启时，CSV 字符串应正确 split 回数组并去空白'
 );
 
-// Case 9: docker 容器过滤关闭 → enabled=false，数组为 []
+// Case 10: docker 容器过滤关闭 → enabled=false，数组为 []
 {
   const loaded = getVectorDockerDefaultForm({
     child: {
@@ -196,7 +233,7 @@ assert.deepEqual(
   assert.deepEqual(loaded.container_name_exclude, []);
 }
 
-// Case 10: docker 完整往返（含容器过滤 + 多行合并 ON）
+// Case 11: docker 完整往返（含容器过滤 + 多行合并 ON）
 {
   const form = {
     endpoint: 'tcp://192.168.1.10:2375',
@@ -216,7 +253,7 @@ assert.deepEqual(
   assert.deepEqual(loaded, form, 'docker: 完整往返一致性');
 }
 
-// Case 11: docker 完整往返（多行合并 OFF + 容器过滤 OFF）
+// Case 12: docker 完整往返（多行合并 OFF + 容器过滤 OFF）
 {
   const form = {
     endpoint: 'unix:///var/run/docker.sock',
@@ -242,7 +279,7 @@ assert.deepEqual(
   );
 }
 
-// Case 12: docker endpoint 自定义值不被默认值覆盖
+// Case 13: docker endpoint 自定义值不被默认值覆盖
 {
   const loaded = getVectorDockerDefaultForm({
     child: { content: { endpoint: 'tcp://10.0.0.1:2376' } }
@@ -250,4 +287,4 @@ assert.deepEqual(
   assert.equal(loaded.endpoint, 'tcp://10.0.0.1:2376');
 }
 
-console.log('log-vector-config tests passed: 12 cases');
+console.log('log-vector-config tests passed: 13 cases');

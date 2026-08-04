@@ -8,6 +8,7 @@ import {
 } from '@/app/monitor/types/event';
 import { UserItem } from '@/app/monitor/types';
 import SelectCard from './selectCard';
+import { formatUserName } from '@/utils/userDisplay';
 
 const { Option } = Select;
 
@@ -176,8 +177,11 @@ const NotificationForm: React.FC<NotificationFormProps> = ({
                           if (!user) return false;
                           const searchText = input.toLowerCase();
                           return (
-                            user.display_name?.toLowerCase() || ''
-                          ).includes(searchText);
+                            user.display_name
+                              ?.toLowerCase()
+                              .includes(searchText) ||
+                            user.username.toLowerCase().includes(searchText)
+                          );
                         }}
                         optionLabelProp="label"
                       >
@@ -185,9 +189,9 @@ const NotificationForm: React.FC<NotificationFormProps> = ({
                           <Option
                             value={item.id}
                             key={item.id}
-                            label={item.display_name}
+                            label={formatUserName(item)}
                           >
-                            {item.display_name}
+                            {formatUserName(item)}
                           </Option>
                         ))}
                       </Select>

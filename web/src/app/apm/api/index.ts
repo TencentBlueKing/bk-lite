@@ -1,0 +1,265 @@
+import { useCallback } from 'react';
+import useApiClient from '@/utils/request';
+import type {
+  ApmIngestSource,
+  ApmIngestSourceInput,
+  ApmIngestSourceWithCredential,
+  ApmIngestSnippet,
+  ApmIngestSnippetInput,
+  ApmEvent,
+  ApmEventQuery,
+  ApmHealth,
+  ApmService,
+  ApmServiceInstance,
+  ApmServiceRed,
+  ApmSlo,
+  ApmSloInput,
+  ApmPolicy,
+  ApmPolicyInput,
+  ApmPolicyQueryResult,
+  ApmNotificationChannel,
+  ApmNotificationDelivery,
+  ApmNotificationRecipient,
+  ApmTraceDetail,
+  ApmTracePage,
+  ApmTraceSearchParams,
+  ApmTopologyGraph,
+  CatalogStatus,
+} from '@/app/apm/types';
+
+interface InstanceQuery {
+  environment?: string;
+  status?: CatalogStatus;
+  include_archived?: boolean;
+}
+
+const useApmApi = () => {
+  const { del, get, patch, post, put, isLoading } = useApiClient();
+
+  const getServices = useCallback(
+    (params: { environment?: string; include_archived?: boolean } = {}) =>
+      get<ApmService[]>('/apm/services/', { params }),
+    [get]
+  );
+
+  const getService = useCallback(
+    (serviceId: string, includeArchived = false) =>
+      get<ApmService>(`/apm/services/${serviceId}/`, {
+        params: { include_archived: includeArchived },
+      }),
+    [get]
+  );
+
+  const getInstances = useCallback(
+    (params: InstanceQuery = {}) => get<ApmServiceInstance[]>('/apm/instances/', { params }),
+    [get]
+  );
+
+  const setInstanceOrganizations = useCallback(
+    (instanceId: string, organizationIds: number[]) =>
+      put<ApmServiceInstance>(`/apm/instances/${instanceId}/organizations/`, {
+        organization_ids: organizationIds,
+      }),
+    [put]
+  );
+
+  const setInstanceArchived = useCallback(
+    (instanceId: string, archived: boolean) =>
+      post<ApmServiceInstance>(`/apm/instances/${instanceId}/${archived ? 'archive' : 'restore'}/`, {
+        reason: 'manual',
+      }),
+    [post]
+  );
+
+  const setServiceOrganizations = useCallback(
+    (serviceId: string, organizationIds: number[]) =>
+      put<ApmService>(`/apm/services/${serviceId}/organizations/`, {
+        organization_ids: organizationIds,
+      }),
+    [put]
+  );
+
+  const setServiceArchived = useCallback(
+    (serviceId: string, archived: boolean) =>
+      post<ApmService>(`/apm/services/${serviceId}/${archived ? 'archive' : 'restore'}/`, {
+        reason: 'manual',
+      }),
+    [post]
+  );
+
+  const getIngestSources = useCallback(() => get<ApmIngestSource[]>('/apm/ingest-sources/'), [get]);
+
+  const createIngestSource = useCallback(
+    (payload: ApmIngestSourceInput) =>
+      post<ApmIngestSourceWithCredential>('/apm/ingest-sources/', payload),
+    [post]
+  );
+
+  const rotateIngestSource = useCallback(
+    (sourceId: string) =>
+      post<ApmIngestSourceWithCredential>(`/apm/ingest-sources/${sourceId}/rotate/`),
+    [post]
+  );
+
+  const disableIngestSource = useCallback(
+    (sourceId: string) => post<ApmIngestSource>(`/apm/ingest-sources/${sourceId}/disable/`),
+    [post]
+  );
+
+  const setIngestSourceOrganizations = useCallback(
+    (sourceId: string, organizationIds: number[]) =>
+      put<ApmIngestSource>(`/apm/ingest-sources/${sourceId}/organizations/`, {
+        organization_ids: organizationIds,
+      }),
+    [put]
+  );
+
+  const getIngestSnippet = useCallback(
+    (sourceId: string, payload: ApmIngestSnippetInput) =>
+      post<ApmIngestSnippet>(`/apm/ingest-sources/${sourceId}/snippet/`, payload),
+    [post]
+  );
+
+  const getHealth = useCallback(() => get<ApmHealth>('/apm/health/'), [get]);
+
+  const getServiceRed = useCallback(
+    (serviceId: string, environment: string, startedAt?: string, endedAt?: string) =>
+      get<ApmServiceRed>(`/apm/services/${serviceId}/metrics/`, {
+        params: { environment, started_at: startedAt, ended_at: endedAt },
+      }),
+    [get]
+  );
+
+  const getSlos = useCallback(() => get<ApmSlo[]>('/apm/slos/'), [get]);
+
+  const createSlo = useCallback(
+    (payload: ApmSloInput) => post<ApmSlo>('/apm/slos/', payload),
+    [post]
+  );
+
+  const updateSlo = useCallback(
+    (sloId: string, payload: Partial<ApmSloInput>) => patch<ApmSlo>(`/apm/slos/${sloId}/`, payload),
+    [patch]
+  );
+
+  const deleteSlo = useCallback((sloId: string) => del(`/apm/slos/${sloId}/`), [del]);
+
+  const setSloEnabled = useCallback(
+    (sloId: string, enabled: boolean) => post<ApmSlo>(`/apm/slos/${sloId}/${enabled ? 'enable' : 'disable'}/`),
+    [post]
+  );
+
+  const getTraces = useCallback(
+    (params: ApmTraceSearchParams) => get<ApmTracePage>('/apm/traces/', { params }),
+    [get]
+  );
+
+  const getTrace = useCallback(
+    (traceId: string) => get<ApmTraceDetail>(`/apm/traces/${traceId}/`),
+    [get]
+  );
+
+  const getTopology = useCallback(
+    (params: { started_at: string; ended_at: string; environment?: string }) =>
+      get<ApmTopologyGraph>('/apm/topology/', { params }),
+    [get]
+  );
+
+  const getPolicies = useCallback(() => get<ApmPolicy[]>('/apm/policies/'), [get]);
+
+  const createPolicy = useCallback(
+    (payload: ApmPolicyInput) => post<ApmPolicy>('/apm/policies/', payload),
+    [post]
+  );
+
+  const updatePolicy = useCallback(
+    (policyId: string, payload: Partial<ApmPolicyInput>) =>
+      patch<ApmPolicy>(`/apm/policies/${policyId}/`, payload),
+    [patch]
+  );
+
+  const deletePolicy = useCallback(
+    (policyId: string) => del(`/apm/policies/${policyId}/`),
+    [del]
+  );
+
+  const setPolicyEnabled = useCallback(
+    (policyId: string, enabled: boolean) =>
+      post<ApmPolicy>(`/apm/policies/${policyId}/${enabled ? 'enable' : 'disable'}/`),
+    [post]
+  );
+
+  const testPolicy = useCallback(
+    (policyId: string) => post<ApmPolicyQueryResult>(`/apm/policies/${policyId}/test-query/`),
+    [post]
+  );
+
+  const getEvents = useCallback(
+    (params: ApmEventQuery = {}) => get<ApmEvent[]>('/apm/events/', { params }),
+    [get]
+  );
+
+  const getNotificationChannels = useCallback(
+    () => get<ApmNotificationChannel[]>('/apm/notification-channels/'),
+    [get]
+  );
+
+  const getNotificationDeliveries = useCallback(
+    (params: { status?: ApmNotificationDelivery['status']; event_id?: string } = {}) =>
+      get<ApmNotificationDelivery[]>('/apm/notification-deliveries/', { params }),
+    [get]
+  );
+
+  const getNotificationRecipients = useCallback(
+    (params: { search?: string; limit?: number } = {}) =>
+      get<ApmNotificationRecipient[]>('/apm/notification-recipients/', { params }),
+    [get]
+  );
+
+  const retryNotificationDelivery = useCallback(
+    (deliveryId: string, recipients?: string[]) =>
+      post<ApmNotificationDelivery>(`/apm/notification-deliveries/${deliveryId}/retry/`,
+        recipients === undefined ? {} : { recipients }),
+    [post]
+  );
+
+  return {
+    getServices,
+    getService,
+    getInstances,
+    setInstanceOrganizations,
+    setInstanceArchived,
+    setServiceOrganizations,
+    setServiceArchived,
+    getIngestSources,
+    createIngestSource,
+    rotateIngestSource,
+    disableIngestSource,
+    setIngestSourceOrganizations,
+    getIngestSnippet,
+    getHealth,
+    getServiceRed,
+    getSlos,
+    createSlo,
+    updateSlo,
+    deleteSlo,
+    setSloEnabled,
+    getTraces,
+    getTrace,
+    getTopology,
+    getPolicies,
+    createPolicy,
+    updatePolicy,
+    deletePolicy,
+    setPolicyEnabled,
+    testPolicy,
+    getEvents,
+    getNotificationChannels,
+    getNotificationDeliveries,
+    getNotificationRecipients,
+    retryNotificationDelivery,
+    isLoading,
+  };
+};
+
+export default useApmApi;

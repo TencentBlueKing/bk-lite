@@ -11,6 +11,8 @@ from pathlib import Path
 import pytest
 import yaml
 
+from apps.core.utils.loader import LanguageLoader
+
 SERVER_ROOT = Path(__file__).resolve().parents[3]
 PLUGINS = SERVER_ROOT / "apps" / "monitor" / "support-files" / "plugins" / "Telegraf"
 BRAND_DIR = PLUGINS / "snmp" / "console_server_wti"
@@ -73,7 +75,7 @@ def toml_text():
 @pytest.fixture(scope="module")
 def languages():
     return {
-        lang: yaml.safe_load((LANGUAGE_DIR / f"{lang}.yaml").read_text(encoding="utf-8"))
+        lang: LanguageLoader("monitor", lang).translations
         for lang in ("zh-Hans", "en")
     }
 
@@ -138,10 +140,11 @@ def test_toml_collects_verified_wti_health_oids(toml_text):
 @pytest.mark.unit
 def test_metrics_json_is_brand_delta_without_base_metrics(metrics):
     names = {m["name"] for m in metrics["metrics"]}
-    assert names == EXPECTED_METRICS
-    leaked = [name for name in BASE_METRICS if name in names]
-    assert leaked == []
-    assert metrics.get("supplementary_indicators", []) == sorted(EXPECTED_METRICS)
+    floor = {"snmp_uptime", "interface_ifHCInOctets", "interface_ifHCOutOctets"}
+    input_power_states = {f"wti_input_power_{index}_state" for index in range(1, 5)}
+    assert names - floor == EXPECTED_METRICS | input_power_states
+    assert floor <= names
+    assert set(metrics.get("supplementary_indicators", [])) == EXPECTED_METRICS | {"snmp_uptime"}
 
 
 @pytest.mark.unit

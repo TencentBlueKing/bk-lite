@@ -4,10 +4,12 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Tag, Button, Input, InputNumber, Select, Space, Modal, Form, Radio, Upload, Alert, message, Tooltip, Popconfirm } from 'antd';
 import { PlusOutlined, LinkOutlined, EditOutlined, InboxOutlined, CloseOutlined } from '@ant-design/icons';
 import PermissionWrapper from '@/components/permission';
+import TimeSelector from '@/components/time-selector';
 import Password from '@/components/password';
 import GroupTreeSelect from '@/components/group-tree-select';
 import useApiClient from '@/utils/request';
 import usePatchManagerApi from '@/app/patch-manager/api';
+import { createListRequestCoordinator } from '@/app/patch-manager/utils/list-request-coordinator';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import { PatchTarget, OSType } from '@/app/patch-manager/types';
 import ComplianceTag, { ComplianceStatus } from '@/app/patch-manager/components/compliance-tag';
@@ -17,6 +19,10 @@ import OperateDrawer from '@/app/patch-manager/components/operate-drawer';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { buildTargetFilterSearch, parseBaselineFilter } from './filter-state';
 import { useTranslation } from '@/utils/i18n';
+import {
+  createPatchManagerPollFrequencyOptions,
+  PATCH_MANAGER_MANUAL_POLL_INTERVAL_MS,
+} from '@/app/patch-manager/constants/polling';
 
 interface HostRow {
   key: string;
@@ -34,6 +40,7 @@ interface HostRow {
   hasActiveTask?: boolean;
   hasPendingReboot?: boolean;
   complianceFailureReason?: string;
+  permission?: string[];
 }
 
 const CONN_TAG: Record<HostRow['connectivity'], { color: string }> = {
@@ -99,6 +106,7 @@ function mapTargetToRow(item: PatchTargetItem): HostRow {
     hasActiveTask: item.has_active_task ?? false,
     hasPendingReboot: item.has_pending_reboot ?? false,
     complianceFailureReason: item.compliance_failure_reason || '',
+    permission: item.permission,
   };
 }
 
@@ -138,10 +146,13 @@ export default function TargetPage() {
   const { isLoading } = useApiClient();
   const { convertToLocalizedTime } = useLocalizedTime();
   const [data, setData] = useState<PatchTarget[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [listLoading, setListLoading] = useState(false);
+  const [actionLoading, setActionLoading] = useState(false);
+  const listRequestCoordinatorRef = useRef(createListRequestCoordinator(setListLoading));
+  const [pollIntervalMs, setPollIntervalMs] = useState(PATCH_MANAGER_MANUAL_POLL_INTERVAL_MS);
   const [selectedKeys, setSelectedKeys] = useState<React.Key[]>([]);
   const [bindOpen, setBindOpen] = useState(false);
-  const [scanOpen, setScanOpen] = useState(false);
+  const [, setScanOpen] = useState(false);
   const [scanMethod, setScanMethod] = useState<'now' | 'cycle'>('now');
   const [manualOpen, setManualOpen] = useState(false);
   const [editingTarget, setEditingTarget] = useState<PatchTarget | null>(null);
@@ -168,6 +179,8 @@ export default function TargetPage() {
   const nodeCacheRef = useRef<Map<string, any>>(new Map());
   const [importedNodes, setImportedNodes] = useState<Array<{ node_id: string; name: string }>>([]);
   const [nodeLoading, setNodeLoading] = useState(false);
+  const nodeRequestCoordinatorRef = useRef(createListRequestCoordinator(setNodeLoading));
+  const importedNodeRequestCoordinatorRef = useRef(createListRequestCoordinator(() => undefined));
   const [form] = Form.useForm();
   const [testingConnectivity, setTestingConnectivity] = useState(false);
   const [connectivityResult, setConnectivityResult] = useState<{
@@ -178,6 +191,10 @@ export default function TargetPage() {
   const [testedSignature, setTestedSignature] = useState('');
   const [initialConnectionSignature, setInitialConnectionSignature] = useState('');
   const [keepExistingKey, setKeepExistingKey] = useState(false);
+  const pollFrequencyOptions = useMemo(
+    () => createPatchManagerPollFrequencyOptions(t('common.timeSelector.off')),
+    [t],
+  );
   const editingCredential = editingTarget
     ? editingTarget.ssh_credential_type || (editingTarget.has_ssh_key ? 'key' : 'password')
     : undefined;
@@ -192,28 +209,35 @@ export default function TargetPage() {
     } = {},
     silent = false,
   ) => {
-    if (!silent) setLoading(true);
+    const coordinator = listRequestCoordinatorRef.current;
+    const ticket = coordinator.begin({ visible: !silent });
+    if (!ticket) return;
     try {
-      const res = await api.getPatchTargetList({
-        page,
-        page_size: pageSize,
-        ip: filters.ip !== undefined ? filters.ip || undefined : ipQuery || undefined,
-        compliance_status:
-          filters.compliance_status !== undefined
-            ? filters.compliance_status || undefined
-            : complianceFilter || undefined,
-        baseline_id:
-          filters.baseline_id !== undefined
-            ? filters.baseline_id || undefined
-            : baselineFilter,
-      });
+      const res = await api.getPatchTargetList(
+        {
+          page,
+          page_size: pageSize,
+          ip: filters.ip !== undefined ? filters.ip || undefined : ipQuery || undefined,
+          compliance_status:
+            filters.compliance_status !== undefined
+              ? filters.compliance_status || undefined
+              : complianceFilter || undefined,
+          baseline_id:
+            filters.baseline_id !== undefined
+              ? filters.baseline_id || undefined
+              : baselineFilter,
+        },
+        { signal: ticket.signal },
+      );
+      if (!coordinator.shouldApply(ticket)) return;
       setData(res.items || []);
       setPagination((p) => ({ ...p, current: page, pageSize, total: res.count || 0 }));
     } catch {
+      if (!coordinator.shouldApply(ticket)) return;
       setData([]);
       setPagination((p) => ({ ...p, current: page, pageSize, total: 0 }));
     } finally {
-      if (!silent) setLoading(false);
+      coordinator.finish(ticket);
     }
   };
 
@@ -251,9 +275,15 @@ export default function TargetPage() {
   };
 
   const loadNodeList = async (page = 1, pageSize = nodePagination.pageSize, search = nodeSearch) => {
-    setNodeLoading(true);
+    const coordinator = nodeRequestCoordinatorRef.current;
+    const ticket = coordinator.begin({ visible: true });
+    if (!ticket) return;
     try {
-      const res = await api.queryNodes({ page, page_size: pageSize, name: search || undefined });
+      const res = await api.queryNodes(
+        { page, page_size: pageSize, name: search || undefined },
+        { signal: ticket.signal },
+      );
+      if (!coordinator.shouldApply(ticket)) return;
       const mapped = (res.items || []).map((n: any) => ({
         ...n,
         key: n.id,
@@ -265,19 +295,27 @@ export default function TargetPage() {
       setNodePagination({ current: page, pageSize, total: res.count || 0 });
       mapped.forEach((n: any) => nodeCacheRef.current.set(String(n.id), n));
     } catch {
+      if (!coordinator.shouldApply(ticket)) return;
       setNodes([]);
       setNodePagination({ current: page, pageSize, total: 0 });
     } finally {
-      setNodeLoading(false);
+      coordinator.finish(ticket);
     }
   };
 
   const loadImportedNodes = async () => {
+    const coordinator = importedNodeRequestCoordinatorRef.current;
+    const ticket = coordinator.begin({ visible: false });
+    if (!ticket) return;
     try {
-      const res = await api.getImportedNodeIds();
+      const res = await api.getImportedNodeIds({ signal: ticket.signal });
+      if (!coordinator.shouldApply(ticket)) return;
       setImportedNodes(res.items || []);
     } catch {
+      if (!coordinator.shouldApply(ticket)) return;
       setImportedNodes([]);
+    } finally {
+      coordinator.finish(ticket);
     }
   };
 
@@ -314,15 +352,21 @@ export default function TargetPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nodeOpen]);
 
-  // 2 秒轮询：弹窗打开时暂停，避免列表刷新影响选择
-  const pollingEnabled = !manualOpen && !nodeOpen && !bindOpen && !scanOpen;
+  const targetPollRef = useRef<() => void>(() => {});
+  targetPollRef.current = () => loadData(pagination.current, pagination.pageSize, {}, true);
   useEffect(() => {
-    if (!pollingEnabled) return undefined;
+    if (isLoading || pollIntervalMs <= 0) return undefined;
     const timer = setInterval(() => {
-      loadData(pagination.current, pagination.pageSize, {}, true);
-    }, 2000);
+      if (!document.hidden) targetPollRef.current();
+    }, pollIntervalMs);
     return () => clearInterval(timer);
-  }, [pollingEnabled, pagination.current, pagination.pageSize, ipQuery, baselineFilter, complianceFilter]);
+  }, [isLoading, pollIntervalMs]);
+
+  useEffect(() => () => {
+    listRequestCoordinatorRef.current.invalidate();
+    nodeRequestCoordinatorRef.current.invalidate();
+    importedNodeRequestCoordinatorRef.current.invalidate();
+  }, []);
 
   const rows = useMemo<HostRow[]>(() => data.map((item) => mapTargetToRow(item as PatchTargetItem)), [data]);
 
@@ -330,7 +374,7 @@ export default function TargetPage() {
     if (selectedKeys.length === 0) return true;
     return selectedKeys.some((key) => {
       const row = rows.find((r) => r.key === String(key));
-      return !!row && (row.hasActiveTask || row.hasPendingReboot);
+      return !!row && (row.hasActiveTask || row.hasPendingReboot || !row.permission?.includes('Operate'));
     });
   }, [selectedKeys, rows]);
 
@@ -348,14 +392,14 @@ export default function TargetPage() {
   }, [selectedNodes, nodes]);
 
   const handleDelete = async (id: string) => {
-    setLoading(true);
+    setActionLoading(true);
     try {
       await api.deletePatchTarget(Number(id));
       message.success(t('patchManager.targetPage.deleted'));
       await loadData();
     } catch {
     } finally {
-      setLoading(false);
+      setActionLoading(false);
     }
   };
 
@@ -465,7 +509,7 @@ export default function TargetPage() {
   };
 
   const handleCreate = async () => {
-    setLoading(true);
+    setActionLoading(true);
     try {
       const values = await form.validateFields();
       const formData = new FormData();
@@ -507,7 +551,7 @@ export default function TargetPage() {
       await loadData();
     } catch {
     } finally {
-      setLoading(false);
+      setActionLoading(false);
     }
   };
 
@@ -517,7 +561,7 @@ export default function TargetPage() {
       return;
     }
     const targetIds = selectedKeys.map((k) => Number(k)).filter((id) => !isNaN(id));
-    setLoading(true);
+    setActionLoading(true);
     try {
       await api.bindHostsToBaseline(bindBaseline, targetIds);
       message.success(t('patchManager.targetPage.baselineBound'));
@@ -528,7 +572,7 @@ export default function TargetPage() {
       await loadData();
     } catch {
     } finally {
-      setLoading(false);
+      setActionLoading(false);
     }
   };
 
@@ -537,7 +581,7 @@ export default function TargetPage() {
       message.warning(t('patchManager.targetPage.selectNodes'));
       return;
     }
-    setLoading(true);
+    setActionLoading(true);
     try {
       const targets = selectedNodes
         .map((key) => {
@@ -567,7 +611,7 @@ export default function TargetPage() {
       await loadData(1);
     } catch {
     } finally {
-      setLoading(false);
+      setActionLoading(false);
     }
   };
 
@@ -626,7 +670,7 @@ export default function TargetPage() {
         return (
           <Space size={10}>
             {isManual ? (
-              <PermissionWrapper requiredPermissions={['Edit']}><a style={{ color: 'var(--color-primary, #1677ff)' }} onClick={() => {
+              <PermissionWrapper requiredPermissions={['Edit']} instPermissions={r.permission}><a style={{ color: 'var(--color-primary, #1677ff)' }} onClick={() => {
                 const target = data.find((t) => String(t.id) === r.key);
                 if (!target) return;
                 openManualTarget(target);
@@ -636,8 +680,8 @@ export default function TargetPage() {
                 <span style={{ color: 'var(--color-text-4, #bfbfbf)', cursor: 'not-allowed' }}><EditOutlined /> {t('patchManager.edit')}</span>
               </Tooltip>
             )}
-            <PermissionWrapper requiredPermissions={['Edit']}><a style={{ color: 'var(--color-primary, #1677ff)' }} onClick={async () => {
-              setLoading(true);
+            <PermissionWrapper requiredPermissions={['Edit']} instPermissions={r.permission}><a style={{ color: 'var(--color-primary, #1677ff)' }} onClick={async () => {
+              setActionLoading(true);
               try {
                 const result = await api.checkPatchTargetConnectivity(Number(r.key));
                 if (result.connectivity_status === 'connected') {
@@ -648,7 +692,7 @@ export default function TargetPage() {
                 await loadData();
               } catch {
               } finally {
-                setLoading(false);
+                setActionLoading(false);
               }
             }}>{t('patchManager.testConnection')}</a></PermissionWrapper>
             {blockChangeReason ? (
@@ -656,7 +700,7 @@ export default function TargetPage() {
                 <span style={{ color: 'var(--color-text-4, #bfbfbf)', cursor: 'not-allowed' }}>{t('patchManager.targetPage.bindBaseline')}</span>
               </Tooltip>
             ) : (
-              <PermissionWrapper requiredPermissions={['Edit']}><a style={{ color: 'var(--color-primary, #1677ff)' }} onClick={() => { setSelectedKeys([r.key]); setBindBaseline(r.baseline_id ?? undefined); setBindOpen(true); }}>
+              <PermissionWrapper requiredPermissions={['Edit']} permissionPath="/patch-manager/baseline" instPermissions={r.permission}><a style={{ color: 'var(--color-primary, #1677ff)' }} onClick={() => { setSelectedKeys([r.key]); setBindBaseline(r.baseline_id ?? undefined); setBindOpen(true); }}>
                 {t('patchManager.targetPage.bindBaseline')}
               </a></PermissionWrapper>
             )}
@@ -665,8 +709,8 @@ export default function TargetPage() {
                 <span style={{ color: 'var(--color-text-4, #bfbfbf)', cursor: 'not-allowed' }}>{t('patchManager.dashboard.assessNow')}</span>
               </Tooltip>
             ) : (
-              <PermissionWrapper requiredPermissions={['Add']}><a style={{ color: 'var(--color-primary, #1677ff)' }} onClick={async () => {
-                setLoading(true);
+              <PermissionWrapper requiredPermissions={['Add']} permissionPath="/patch-manager/risk-execution" instPermissions={r.permission}><a style={{ color: 'var(--color-primary, #1677ff)' }} onClick={async () => {
+                setActionLoading(true);
                 try {
                   await api.createGovernanceTask({
                     name: t('patchManager.targetPage.assessmentName', undefined, { name: r.name }),
@@ -678,7 +722,7 @@ export default function TargetPage() {
                   await loadData();
                 } catch {
                 } finally {
-                  setLoading(false);
+                  setActionLoading(false);
                 }
               }}>{t('patchManager.dashboard.assessNow')}</a></PermissionWrapper>
             )}
@@ -687,7 +731,7 @@ export default function TargetPage() {
                 <span style={{ color: 'var(--color-text-4, #bfbfbf)', cursor: 'not-allowed' }}>{t('patchManager.delete')}</span>
               </Tooltip>
             ) : (
-              <PermissionWrapper requiredPermissions={['Delete']}><Popconfirm title={t('patchManager.targetPage.deleteConfirm')} onConfirm={() => handleDelete(r.key)} okText={t('patchManager.delete')} cancelText={t('patchManager.cancel')}>
+              <PermissionWrapper requiredPermissions={['Delete']} instPermissions={r.permission}><Popconfirm title={t('patchManager.targetPage.deleteConfirm')} onConfirm={() => handleDelete(r.key)} okText={t('patchManager.delete')} cancelText={t('patchManager.cancel')}>
                 <a style={{ color: '#ff4d4f' }}>{t('patchManager.delete')}</a>
               </Popconfirm></PermissionWrapper>
             )}
@@ -739,20 +783,28 @@ export default function TargetPage() {
             ]}
           />
         </Space>
-        <Space>
-          <Tooltip
-            title={
-              bulkBindDisabled && selectedKeys.length > 0
-                ? t('patchManager.targetPage.bulkBindBlocked')
-                : ''
-            }
-          >
-            <PermissionWrapper requiredPermissions={['Edit']}><Button icon={<LinkOutlined />} disabled={bulkBindDisabled} onClick={() => { setBindBaseline(undefined); setBindOpen(true); }}>
-              {t('patchManager.targetPage.bulkBind')}{selectedKeys.length ? `(${selectedKeys.length})` : ''}
-            </Button></PermissionWrapper>
-          </Tooltip>
-          <PermissionWrapper requiredPermissions={['Add']}><Button type="primary" icon={<PlusOutlined />} onClick={() => openManualTarget()}>{t('patchManager.targetPage.manualEntry')}</Button></PermissionWrapper>
-          <PermissionWrapper requiredPermissions={['Add']}><Button icon={<PlusOutlined />} onClick={() => setNodeOpen(true)}>{t('patchManager.targetPage.nodeImport')}</Button></PermissionWrapper>
+        <Space size={0}>
+          <Space size={8}>
+            <Tooltip
+              title={
+                bulkBindDisabled && selectedKeys.length > 0
+                  ? t('patchManager.targetPage.bulkBindBlocked')
+                  : ''
+              }
+            >
+              <PermissionWrapper requiredPermissions={['Edit']} permissionPath="/patch-manager/baseline"><Button icon={<LinkOutlined />} disabled={bulkBindDisabled} onClick={() => { setBindBaseline(undefined); setBindOpen(true); }}>
+                {t('patchManager.targetPage.bulkBind')}{selectedKeys.length ? `(${selectedKeys.length})` : ''}
+              </Button></PermissionWrapper>
+            </Tooltip>
+            <PermissionWrapper requiredPermissions={['Add']}><Button type="primary" icon={<PlusOutlined />} onClick={() => openManualTarget()}>{t('patchManager.targetPage.manualEntry')}</Button></PermissionWrapper>
+            <PermissionWrapper requiredPermissions={['Add']}><Button icon={<PlusOutlined />} onClick={() => setNodeOpen(true)}>{t('patchManager.targetPage.nodeImport')}</Button></PermissionWrapper>
+          </Space>
+          <TimeSelector
+            onlyRefresh
+            customFrequencyList={pollFrequencyOptions}
+            onFrequenceChange={setPollIntervalMs}
+            onRefresh={() => loadData()}
+          />
         </Space>
       </div>
 
@@ -761,8 +813,13 @@ export default function TargetPage() {
           columns={columns}
           dataSource={rows}
           rowKey="key"
-          loading={loading}
-          rowSelection={{ type: 'checkbox', selectedRowKeys: selectedKeys, onChange: setSelectedKeys }}
+          loading={listLoading || actionLoading}
+          rowSelection={{
+            type: 'checkbox',
+            selectedRowKeys: selectedKeys,
+            onChange: setSelectedKeys,
+            getCheckboxProps: (record) => ({ disabled: !record.permission?.includes('Operate') }),
+          }}
           scroll={{ x: 1280 }}
           pagination={{
             current: pagination.current,
@@ -776,13 +833,13 @@ export default function TargetPage() {
         />
       </div>
 
-      <Modal title={t('patchManager.targetPage.bulkBind')} open={bindOpen} onCancel={() => setBindOpen(false)} onOk={handleBind} okText={t('patchManager.confirm')} cancelText={t('patchManager.cancel')} confirmLoading={loading}>
+      <Modal title={t('patchManager.targetPage.bulkBind')} open={bindOpen} onCancel={() => setBindOpen(false)} onOk={handleBind} okText={t('patchManager.confirm')} cancelText={t('patchManager.cancel')} confirmLoading={actionLoading} okButtonProps={{ disabled: !bindBaseline || !baselines.find((item) => item.id === bindBaseline)?.permission?.includes('Operate') }}>
         <p style={{ color: 'var(--color-text-2, #595959)' }}>{t('patchManager.targetPage.bindSelection', undefined, { count: selectedKeys.length })}</p>
         <Select
           style={{ width: '100%' }}
           placeholder={t('patchManager.targetPage.selectBaseline')}
           virtual
-          options={baselines.map((b) => ({ label: b.name, value: b.id }))}
+          options={baselines.map((b) => ({ label: b.name, value: b.id, disabled: !b.permission?.includes('Operate') }))}
           value={bindBaseline}
           onChange={setBindBaseline}
         />
@@ -842,11 +899,11 @@ export default function TargetPage() {
               setCred('password');
               setConnectivityResult(undefined);
             }}>{t('patchManager.cancel')}</Button>
-            <PermissionWrapper requiredPermissions={[editingTarget ? 'Edit' : 'Add']}>
+            <PermissionWrapper requiredPermissions={[editingTarget ? 'Edit' : 'Add']} instPermissions={editingTarget?.permission}>
               <Button loading={testingConnectivity} onClick={handleFormConnectivityTest}>{t('patchManager.testConnection')}</Button>
             </PermissionWrapper>
-            <PermissionWrapper requiredPermissions={[editingTarget ? 'Edit' : 'Add']}>
-              <Button type="primary" loading={loading} onClick={handleCreate}>{editingTarget ? t('patchManager.save') : t('patchManager.targetPage.create')}</Button>
+            <PermissionWrapper requiredPermissions={[editingTarget ? 'Edit' : 'Add']} instPermissions={editingTarget?.permission}>
+              <Button type="primary" loading={actionLoading} onClick={handleCreate}>{editingTarget ? t('patchManager.save') : t('patchManager.targetPage.create')}</Button>
             </PermissionWrapper>
           </Space>
         }
@@ -973,12 +1030,22 @@ export default function TargetPage() {
       <OperateDrawer
         title={t('patchManager.targetPage.nodeImport')}
         open={nodeOpen}
-        onClose={() => setNodeOpen(false)}
+        onClose={() => {
+          setNodeOpen(false);
+          nodeRequestCoordinatorRef.current.invalidate();
+          importedNodeRequestCoordinatorRef.current.invalidate();
+        }}
         width={720}
         footer={
           <Space>
-            <Button onClick={() => setNodeOpen(false)}>{t('patchManager.cancel')}</Button>
-            <Button type="primary" loading={loading} onClick={handleNodeSave}>{t('patchManager.save')}</Button>
+            <Button onClick={() => {
+              setNodeOpen(false);
+              nodeRequestCoordinatorRef.current.invalidate();
+              importedNodeRequestCoordinatorRef.current.invalidate();
+            }}>{t('patchManager.cancel')}</Button>
+            <PermissionWrapper requiredPermissions={['Add']}>
+              <Button type="primary" loading={actionLoading} onClick={handleNodeSave}>{t('patchManager.save')}</Button>
+            </PermissionWrapper>
           </Space>
         }
       >

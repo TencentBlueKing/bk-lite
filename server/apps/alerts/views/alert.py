@@ -2,21 +2,21 @@
 from django.db import connection
 from django.db.models import Count
 from django.http import Http404
-from rest_framework.response import Response
 from rest_framework.decorators import action
+from rest_framework.response import Response
 
 from apps.alerts.constants import PERMISSION_ALERT
-from apps.alerts.constants.constants import SessionStatus, PERMISSION_EVENT
+from apps.alerts.constants.constants import PERMISSION_EVENT, SessionStatus
 from apps.alerts.filters import AlertModelFilter
 from apps.alerts.models.models import Alert, Event
 from apps.alerts.serializers import AlertModelSerializer, EventModelSerializer
-from apps.alerts.service.related_alerts import RelatedAlertsService
 from apps.alerts.service.alter_operator import AlertOperator
+from apps.alerts.service.related_alerts import RelatedAlertsService
 from apps.alerts.utils.permission_scope import get_authorized_group_ids
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.logger import alert_logger as logger
-from apps.core.utils.web_utils import WebUtils
 from apps.core.utils.viewset_utils import AuthViewSet
+from apps.core.utils.web_utils import WebUtils
 from apps.system_mgmt.models.user import User
 from config.drf.pagination import CustomPageNumberPagination
 
@@ -39,7 +39,7 @@ class AlertModelViewSet(AuthViewSet):
             .annotate(
                 event_count_annotated=Count("events", distinct=True),
             )
-            .prefetch_related("events__source", "incident_set")
+            .prefetch_related("incident_set")
         )
 
         # StringAgg 是 PostgreSQL 专属函数，其他数据库通过 serializer fallback 处理
@@ -51,11 +51,9 @@ class AlertModelViewSet(AuthViewSet):
                 .get_queryset()
                 .annotate(
                     event_count_annotated=Count("events", distinct=True),
-                    # 通过事件获取告警源名称（去重）
-                    source_names_annotated=StringAgg("events__source__name", delimiter=", ", distinct=True),
                     incident_title_annotated=StringAgg("incident__title", delimiter=", ", distinct=True),
                 )
-                .prefetch_related("events__source", "incident_set")
+                .prefetch_related("incident_set")
             )
 
         return queryset
@@ -125,8 +123,9 @@ class AlertModelViewSet(AuthViewSet):
     def events(self, request, *args, **kwargs):
         alert_queryset = self.get_queryset_by_permission(request, self.get_queryset())
         alert = alert_queryset.get(pk=kwargs["pk"])
-        queryset = self.get_queryset_by_permission(request, Event.objects.select_related("source").filter(alert=alert),
-                                                   permission_key=PERMISSION_EVENT)
+        queryset = self.get_queryset_by_permission(
+            request, Event.objects.select_related("source").filter(alert=alert), permission_key=PERMISSION_EVENT
+        )
         queryset = queryset.order_by("-received_at")
 
         page = self.paginate_queryset(queryset)
@@ -176,10 +175,7 @@ class AlertModelViewSet(AuthViewSet):
         Custom operator method to handle alert operations.
         """
         alert_id_list = request.data["alert_id"]
-        allowed_alert_ids = set(
-            self._get_permission_filtered_queryset(request).filter(alert_id__in=alert_id_list).values_list("alert_id",
-                                                                                                           flat=True)
-        )
+        allowed_alert_ids = set(self._get_permission_filtered_queryset(request).filter(alert_id__in=alert_id_list).values_list("alert_id", flat=True))
         operator = AlertOperator(
             user=self.request.user.username,
             allowed_alert_ids=allowed_alert_ids,

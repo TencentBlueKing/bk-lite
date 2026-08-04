@@ -13,6 +13,8 @@ from pathlib import Path
 import pytest
 import yaml
 
+from apps.core.utils.loader import LanguageLoader
+
 SERVER_ROOT = Path(__file__).resolve().parents[3]
 PLUGINS = SERVER_ROOT / "apps" / "monitor" / "support-files" / "plugins" / "Telegraf"
 PLUGIN_DIR = PLUGINS / "snmp" / "router_robustel"
@@ -83,7 +85,7 @@ def toml_text():
 @pytest.fixture(scope="module")
 def languages():
     return {
-        lang: yaml.safe_load((LANGUAGE_DIR / f"{lang}.yaml").read_text(encoding="utf-8"))
+        lang: LanguageLoader("monitor", lang).translations
         for lang in ("zh-Hans", "en")
     }
 
@@ -126,16 +128,18 @@ def test_ui_is_pure_snmp_form(ui):
 
 
 @pytest.mark.unit
-def test_metrics_json_is_zero_delta_child(metrics):
-    assert metrics["metrics"] == []
-    assert metrics["supplementary_indicators"] == []
+def test_metrics_json_embeds_deployed_snmp_floor(metrics):
+    names = {metric["name"] for metric in metrics["metrics"]}
+    expected = {"snmp_uptime", "interface_ifHCInOctets", "interface_ifHCOutOctets"}
+    assert names == expected
+    assert set(metrics.get("supplementary_indicators", [])) == {"snmp_uptime"}
 
 
 @pytest.mark.unit
-def test_metrics_json_does_not_redeclare_snmp_floor(metrics):
-    names = {m["name"] for m in metrics["metrics"]}
-    leaked = sorted(names & BASE_METRICS)
-    assert leaked == [], f"SNMP floor metrics must stay in generic snmp/router only: {leaked}"
+def test_metrics_json_keeps_snmp_floor_in_brand_template(metrics):
+    names = {metric["name"] for metric in metrics["metrics"]}
+    expected = {"snmp_uptime", "interface_ifHCInOctets", "interface_ifHCOutOctets"}
+    assert expected <= names
 
 
 @pytest.mark.unit

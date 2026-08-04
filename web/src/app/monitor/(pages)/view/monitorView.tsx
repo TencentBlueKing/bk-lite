@@ -27,6 +27,15 @@ import dayjs, { Dayjs } from 'dayjs';
 import { INIT_VIEW_MODAL_FORM } from '@/app/monitor/constants/view';
 import LazyMetricItem from '@/app/monitor/components/metric-views/lazyMetricItem';
 import { createMetricQueryWindow } from '@/app/monitor/components/metric-views/queryWindow';
+import { useMetricSelectOptions } from '@/app/monitor/components/metricSelectOptions';
+import {
+  buildHostProcessLabelPairs,
+  isHostMonitorObject,
+  isHostProcessMetricsTab,
+  resolveHostProcessMetricsTarget,
+  resolveProcessNameFromInstance,
+  withHostProcessMetricsTab
+} from '@/app/monitor/dashboards/objects/host/host-process-metrics-tab';
 
 const MonitorView: React.FC<ViewModalProps> = ({
   monitorObject,
@@ -36,7 +45,8 @@ const MonitorView: React.FC<ViewModalProps> = ({
 }) => {
   const { isLoading } = useApiClient();
   const { get } = useApiClient();
-  const { getMetricsGroup, getMonitorMetrics } = useMonitorApi();
+  const { getMetricsGroup, getMonitorMetrics, getMonitorObject, getMonitorPlugin, getInstanceList } =
+    useMonitorApi();
   const { t } = useTranslation();
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
@@ -58,7 +68,16 @@ const MonitorView: React.FC<ViewModalProps> = ({
   const [metricData, setMetricData] = useState<IndexViewItem[]>([]);
   const [originMetricData, setOriginMetricData] = useState<IndexViewItem[]>([]);
   const [activeTab, setActiveTab] = useState<string>('');
+  const [tabOptions, setTabOptions] = useState(plugins);
+  const [processObjectId, setProcessObjectId] = useState('');
+  const [processPluginId, setProcessPluginId] = useState('');
+  const [processFilterNames, setProcessFilterNames] = useState<string[]>([]);
+  const [processFilterOptions, setProcessFilterOptions] = useState<
+    { label: string; value: string }[]
+  >([]);
+  const [processFilterLoading, setProcessFilterLoading] = useState(false);
   const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
+  const metricSelect = useMetricSelectOptions(originMetricData);
   const [loadedMetricIds, setLoadedMetricIds] = useState<Set<number>>(
     new Set()
   );
@@ -77,40 +96,23 @@ const MonitorView: React.FC<ViewModalProps> = ({
     new Set()
   );
 
-  // 请求并发控制
-  const MAX_CONCURRENT_REQUESTS = 12;
+  // 请求并发控制：与指标详情页一致，排队而非取消最早请求。
+  const MAX_CONCURRENT_REQUESTS = 4;
   const activeRequestsRef = useRef<Map<number, AbortController>>(new Map());
-  const requestQueueRef = useRef<number[]>([]);
+  const requestGenerationRef = useRef(0);
+  const visibleMetricIdsRef = useRef<Set<number>>(new Set());
+  const metricDataRef = useRef<IndexViewItem[]>([]);
+
+  visibleMetricIdsRef.current = visibleMetricIds;
+  metricDataRef.current = metricData;
+
+  const isProcessMetricsView = isHostProcessMetricsTab(activeTab);
+  const hostLogicalId = String(form?.instance_id_values?.[0] || '').trim();
 
   const snapshotActiveQueryWindow = () => {
     const nextQueryWindow = createMetricQueryWindow(timeValues);
     activeQueryWindowRef.current = nextQueryWindow;
     setActiveQueryWindow(nextQueryWindow);
-  };
-
-  const cancelRequest = (metricId: number) => {
-    const abortController = activeRequestsRef.current.get(metricId);
-    if (abortController) {
-      abortController.abort();
-      activeRequestsRef.current.delete(metricId);
-    }
-    requestQueueRef.current = requestQueueRef.current.filter(
-      (id) => id !== metricId
-    );
-
-    setCancelledMetricIds((prev) => new Set(prev).add(metricId));
-
-    setLoadingMetricIds((prev) => {
-      const newSet = new Set(prev);
-      newSet.delete(metricId);
-      return newSet;
-    });
-
-    setLoadedMetricIds((prev) => {
-      const newSet = new Set(prev);
-      newSet.delete(metricId);
-      return newSet;
-    });
   };
 
   const cancelAllRequests = () => {
@@ -120,7 +122,7 @@ const MonitorView: React.FC<ViewModalProps> = ({
       abortController.abort();
     });
     activeRequestsRef.current.clear();
-    requestQueueRef.current = [];
+    requestGenerationRef.current += 1;
 
     setCancelledMetricIds((prev) => {
       const newSet = new Set(prev);
@@ -131,28 +133,40 @@ const MonitorView: React.FC<ViewModalProps> = ({
     setLoadingMetricIds(new Set());
   };
 
-  const manageRequestQueue = (newMetricId: number) => {
-    if (activeRequestsRef.current.size >= MAX_CONCURRENT_REQUESTS) {
-      const oldestMetricId = requestQueueRef.current.shift();
-      if (oldestMetricId !== undefined) {
-        cancelRequest(oldestMetricId);
-        setLoadingMetricIds((prev) => {
-          const newSet = new Set(prev);
-          newSet.delete(oldestMetricId);
-          return newSet;
-        });
-      }
-    }
-
-    requestQueueRef.current.push(newMetricId);
-  };
-
   useEffect(() => {
     if (isLoading) {
       return;
     }
-    if (form?.instance_id_values.length) {
-      const _activeTab = plugins[0]?.value || '';
+    if (!form?.instance_id_values.length) {
+      return;
+    }
+
+    let active = true;
+    const bootstrap = async () => {
+      let nextOptions = plugins;
+      let nextProcessObjectId = '';
+      let nextProcessPluginId = '';
+      if (isHostMonitorObject(monitorName)) {
+        const target = await resolveHostProcessMetricsTarget({
+          getMonitorObject,
+          getMonitorPlugin
+        });
+        if (target) {
+          nextProcessObjectId = target.processObjectId;
+          nextProcessPluginId = target.processPluginId;
+          nextOptions = withHostProcessMetricsTab(
+            plugins,
+            true,
+            target.processPluginLabel
+          );
+        }
+      }
+      if (!active) return;
+      setProcessObjectId(nextProcessObjectId);
+      setProcessPluginId(nextProcessPluginId);
+      setTabOptions(nextOptions);
+
+      const _activeTab = nextOptions[0]?.value || '';
       setActiveTab(_activeTab);
       if (!_activeTab) {
         setMetricData([]);
@@ -161,9 +175,17 @@ const MonitorView: React.FC<ViewModalProps> = ({
         return;
       }
       setNeedsRefreshOnExpand(true);
-      getInitData(_activeTab);
-    }
-  }, [isLoading, form]);
+      getInitData(_activeTab, {
+        processObjectId: nextProcessObjectId,
+        processPluginId: nextProcessPluginId
+      });
+    };
+
+    void bootstrap();
+    return () => {
+      active = false;
+    };
+  }, [isLoading, form, plugins, monitorName]);
 
   useEffect(() => {
     clearTimer();
@@ -187,9 +209,48 @@ const MonitorView: React.FC<ViewModalProps> = ({
     };
   }, []);
 
+  useEffect(() => {
+    if (!isProcessMetricsView || !processObjectId || !hostLogicalId) {
+      setProcessFilterOptions([]);
+      return;
+    }
+    let active = true;
+    setProcessFilterNames([]);
+    const loadProcessOptions = async () => {
+      setProcessFilterLoading(true);
+      try {
+        const data = await getInstanceList(processObjectId, {
+          page_size: -1,
+          vm_params: { instance_id: hostLogicalId },
+        });
+        if (!active) return;
+        const options: { label: string; value: string }[] = [];
+        const seen = new Set<string>();
+        (data?.results || []).forEach((item: any) => {
+          const name = resolveProcessNameFromInstance(item);
+          if (!name || seen.has(name)) return;
+          seen.add(name);
+          options.push({ label: name, value: name });
+        });
+        options.sort((a, b) => a.label.localeCompare(b.label));
+        setProcessFilterOptions(options);
+      } catch {
+        if (active) setProcessFilterOptions([]);
+      } finally {
+        if (active) setProcessFilterLoading(false);
+      }
+    };
+    loadProcessOptions();
+    return () => {
+      active = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isProcessMetricsView, processObjectId, hostLogicalId]);
+
   const onTabChange = (val: string) => {
     setActiveTab(val);
     setMetricId(null);
+    setProcessFilterNames([]);
     cancelAllRequests();
     setResetCounter((prev) => prev + 1);
     setNeedsRefreshOnExpand(true);
@@ -200,10 +261,22 @@ const MonitorView: React.FC<ViewModalProps> = ({
   };
 
   // 初始化数据，包括分组和指标列表（只在弹窗时调用一次）
-  const getInitData = async (tab: string) => {
+  const getInitData = async (
+    tab: string,
+    processTarget?: { processObjectId: string; processPluginId: string }
+  ) => {
+    const processOid = processTarget?.processObjectId || processObjectId;
+    const processPid = processTarget?.processPluginId || processPluginId;
+    const processTab = isHostProcessMetricsTab(tab);
+    if (processTab && (!processOid || !processPid)) {
+      setMetricData([]);
+      setOriginMetricData([]);
+      setLoading(false);
+      return;
+    }
     const params = {
-      monitor_object_id: monitorObject,
-      monitor_plugin_id: tab,
+      monitor_object_id: processTab ? processOid : monitorObject,
+      monitor_plugin_id: processTab ? processPid : tab,
     };
     const getGroupList = getMetricsGroup(params);
     const getMetrics = getMonitorMetrics(params);
@@ -234,9 +307,8 @@ const MonitorView: React.FC<ViewModalProps> = ({
           setMetricData(_groupData);
           setOriginMetricData(_groupData);
           if (_groupData.length > 0) {
-            setExpandedIds(
-              new Set(_groupData.map((group: IndexViewItem) => group.id))
-            );
+            // 默认展开全部分组，避免用户逐个点开；具体指标卡仍靠滚入视图懒加载。
+            setExpandedIds(new Set(_groupData.map((group: IndexViewItem) => group.id)));
           }
           setLoadedMetricIds(new Set());
           setLoadingMetricIds(new Set());
@@ -266,6 +338,7 @@ const MonitorView: React.FC<ViewModalProps> = ({
             .map((item) => ({
               ...item,
               viewData: [],
+              seriesBudget: undefined,
             })),
         }))
         .filter((item) => item.child?.find((tex) => tex.id === metricId));
@@ -276,15 +349,29 @@ const MonitorView: React.FC<ViewModalProps> = ({
         child: (group.child || []).map((item) => ({
           ...item,
           viewData: [],
+          seriesBudget: undefined,
         })),
       }));
     }
 
     setMetricData(clearedData);
-    // 更新展开状态
-    if (clearedData.length > 0) {
-      setExpandedIds(new Set(clearedData.map((group) => group.id)));
-    }
+    setExpandedIds((prev) => {
+      if (prev.size > 0) {
+        const kept = new Set<number>(
+          clearedData
+            .map((group) => group.id)
+            .filter((id): id is number => typeof id === 'number' && prev.has(id))
+        );
+        if (kept.size > 0) {
+          return kept;
+        }
+      }
+      return new Set<number>(
+        clearedData
+          .map((group) => group.id)
+          .filter((id): id is number => typeof id === 'number')
+      );
+    });
     setLoadedMetricIds(new Set());
     setLoadingMetricIds(new Set());
     setCancelledMetricIds(new Set());
@@ -292,15 +379,21 @@ const MonitorView: React.FC<ViewModalProps> = ({
   };
 
   const getParams = (item: MetricItem, ids: string[]) => {
+    const labelKeys = isHostProcessMetricsTab(activeTab)
+      ? ['instance_id']
+      : item.instance_id_keys || [];
+    const labelPairs = isHostProcessMetricsTab(activeTab)
+      ? buildHostProcessLabelPairs(hostLogicalId || ids[0] || '', processFilterNames)
+      : [{ keys: labelKeys, values: ids }];
     const params: SearchParams = {
+      // 卡片统一用完整 query + 通用序列预算；不再走 per-metric view_query。
       query: (item.query || '').replace(
         /__\$labels__/g,
-        mergeViewQueryKeyValues([
-          { keys: item.instance_id_keys || [], values: ids },
-        ])
+        mergeViewQueryKeyValues(labelPairs)
       ),
       source_unit: item.unit || '',
     };
+    params.query_budget = 'card';
     const queryWindow = activeQueryWindowRef.current;
     if (queryWindow) {
       params.start = queryWindow.startMs;
@@ -314,11 +407,18 @@ const MonitorView: React.FC<ViewModalProps> = ({
     return buildGapDetectionParams(params, (form as { interval?: unknown })?.interval);
   };
 
-  const fetchSingleMetricData = async (metric: MetricItem) => {
-    if (loadedMetricIds.has(metric.id) && !cancelledMetricIds.has(metric.id)) {
+  const fetchSingleMetricData = async (
+    metric: MetricItem,
+    options?: { force?: boolean }
+  ) => {
+    if (
+      !options?.force &&
+      loadedMetricIds.has(metric.id) &&
+      !cancelledMetricIds.has(metric.id)
+    ) {
       return;
     }
-    if (loadingMetricIds.has(metric.id)) {
+    if (!options?.force && loadingMetricIds.has(metric.id)) {
       return;
     }
     const isCancelledRequest = cancelledMetricIds.has(metric.id);
@@ -329,14 +429,20 @@ const MonitorView: React.FC<ViewModalProps> = ({
         return newSet;
       });
     }
+    const generation = requestGenerationRef.current;
+    setLoadingMetricIds((prev) => new Set(prev).add(metric.id));
+    while (activeRequestsRef.current.size >= MAX_CONCURRENT_REQUESTS) {
+      await new Promise((resolve) => window.setTimeout(resolve, 30));
+      if (generation !== requestGenerationRef.current) return;
+    }
+    if (generation !== requestGenerationRef.current) return;
+    const previousController = activeRequestsRef.current.get(metric.id);
+    if (previousController) {
+      previousController.abort();
+      activeRequestsRef.current.delete(metric.id);
+    }
     const abortController = new AbortController();
     activeRequestsRef.current.set(metric.id, abortController);
-    manageRequestQueue(metric.id);
-    const currentController = activeRequestsRef.current.get(metric.id);
-    if (!currentController || currentController.signal.aborted) {
-      return;
-    }
-    setLoadingMetricIds((prev) => new Set(prev).add(metric.id));
     let response;
     try {
       const params = getParams(metric, form?.instance_id_values || []);
@@ -350,18 +456,25 @@ const MonitorView: React.FC<ViewModalProps> = ({
       }
       return;
     }
+    // 响应返回后若已被新请求替换，丢弃结果，避免 force 刷新被旧数据覆盖。
+    if (activeRequestsRef.current.get(metric.id) !== abortController) {
+      return;
+    }
     try {
       const instanceRow = [
         {
           instance_id_values: form.instance_id_values,
           instance_name: form.instance_name,
-          instance_id_keys: metric?.instance_id_keys || [],
+          instance_id_keys: isHostProcessMetricsTab(activeTab)
+            ? ['instance_id']
+            : metric?.instance_id_keys || [],
           dimensions: metric?.dimensions || [],
           title: metric?.display_name || '--',
         },
       ];
       const chartData = response?.data?.result || [];
       const displayUnit = response?.data?.unit || '';
+      const seriesBudget = response?.data?.series_budget;
       const viewData = attachGapIntervals(
         renderChart(chartData, instanceRow),
         response?.data?.gaps || []
@@ -375,6 +488,7 @@ const MonitorView: React.FC<ViewModalProps> = ({
                 ...item,
                 displayUnit,
                 viewData,
+                seriesBudget,
               }
               : item
           ),
@@ -391,6 +505,7 @@ const MonitorView: React.FC<ViewModalProps> = ({
                 ...item,
                 displayUnit,
                 viewData,
+                seriesBudget,
               }
               : item
           ),
@@ -423,12 +538,11 @@ const MonitorView: React.FC<ViewModalProps> = ({
       }
       return;
     } finally {
-      if (activeRequestsRef.current.get(metric.id) === abortController) {
-        activeRequestsRef.current.delete(metric.id);
-        requestQueueRef.current = requestQueueRef.current.filter(
-          (id) => id !== metric.id
-        );
+      // 仅当前请求仍占用该指标槽时清理 loading/loaded，避免 force 刷新时被中止的旧请求清掉新请求状态。
+      if (activeRequestsRef.current.get(metric.id) !== abortController) {
+        return;
       }
+      activeRequestsRef.current.delete(metric.id);
       setLoadingMetricIds((prev) => {
         const newSet = new Set(prev);
         newSet.delete(metric.id);
@@ -466,14 +580,28 @@ const MonitorView: React.FC<ViewModalProps> = ({
   };
 
   const handleSearch = (type: string) => {
-    if (['refresh', 'timer'].includes(type)) {
+    if (type === 'refresh') {
       snapshotActiveQueryWindow();
       cancelAllRequests();
       setResetCounter((prev) => prev + 1);
       setNeedsRefreshOnExpand(true);
-
-      // 使用新的clearAllMetricData函数清空所有指标数据
       clearAllMetricData();
+      return;
+    }
+    if (type === 'timer') {
+      snapshotActiveQueryWindow();
+      const visibleIds = Array.from(visibleMetricIdsRef.current);
+      if (!visibleIds.length) {
+        return;
+      }
+      const visibleIdSet = new Set(visibleIds);
+      metricDataRef.current.forEach((group) => {
+        (group.child || []).forEach((metric: MetricItem) => {
+          if (visibleIdSet.has(metric.id)) {
+            void fetchSingleMetricData(metric, { force: true });
+          }
+        });
+      });
     }
   };
 
@@ -521,6 +649,17 @@ const MonitorView: React.FC<ViewModalProps> = ({
         new Set(clearedData.map((group: IndexViewItem) => group.id))
       );
     }
+  };
+
+  const handleProcessFilterChange = (names: string[]) => {
+    setProcessFilterNames(names);
+    cancelAllRequests();
+    setLoadedMetricIds(new Set());
+    setLoadingMetricIds(new Set());
+    setVisibleMetricIds(new Set());
+    setResetCounter((prev) => prev + 1);
+    setNeedsRefreshOnExpand(true);
+    clearAllMetricData();
   };
 
   const handleMetricVisible = useCallback(
@@ -609,9 +748,12 @@ const MonitorView: React.FC<ViewModalProps> = ({
   };
 
   const linkToSearch = (row: TableDataItem) => {
+    const processTab = isHostProcessMetricsTab(activeTab);
     const _row = {
-      monitor_object: monitorObject + '',
-      plugin_id: activeTab,
+      monitor_object: String(
+        processTab ? processObjectId || monitorObject : monitorObject
+      ),
+      plugin_id: processTab ? processPluginId || activeTab : activeTab,
       instance_id: form?.instance_id || '',
       metric_id: row.id ? String(row.id) : row.name,
     };
@@ -635,26 +777,34 @@ const MonitorView: React.FC<ViewModalProps> = ({
 
   return (
     <div>
-      <div className="flex justify-between mb-[15px]">
-        <Select
-          className="w-[250px]"
-          placeholder={t('common.searchPlaceHolder')}
-          value={metricId}
-          allowClear
-          showSearch
-          filterOption={(input, option) =>
-            (option?.label || '').toLowerCase().includes(input.toLowerCase())
-          }
-          options={originMetricData.map((item) => ({
-            label: item.display_name,
-            title: item.name,
-            options: (item.child || []).map((tex) => ({
-              label: tex.display_name,
-              value: tex.id,
-            })),
-          }))}
-          onChange={handleMetricIdChange}
-        ></Select>
+      <div className="flex justify-between mb-[15px] gap-3">
+        <div className="flex flex-wrap gap-2 min-w-0">
+          <Select
+            className="w-[250px]"
+            placeholder={t('common.searchPlaceHolder')}
+            value={metricId}
+            allowClear
+            {...metricSelect.selectSearchProps}
+            options={metricSelect.options}
+            onChange={handleMetricIdChange}
+          />
+          {isProcessMetricsView ? (
+            <Select
+              className="min-w-[220px] max-w-[360px]"
+              mode="multiple"
+              allowClear
+              showSearch
+              optionFilterProp="label"
+              maxTagCount="responsive"
+              loading={processFilterLoading}
+              placeholder={t('monitor.views.filterProcessPlaceholder')}
+              value={processFilterNames}
+              options={processFilterOptions}
+              onChange={handleProcessFilterChange}
+              aria-label={t('monitor.views.filterProcess')}
+            />
+          ) : null}
+        </div>
         <TimeSelector
           defaultValue={timeDefaultValue}
           onChange={onTimeChange}
@@ -665,7 +815,7 @@ const MonitorView: React.FC<ViewModalProps> = ({
       <Segmented
         className="mb-[20px]"
         value={activeTab}
-        options={plugins}
+        options={tabOptions}
         onChange={onTabChange}
       />
       <div className="groupList">

@@ -15,3 +15,7 @@ class PatchMgmt:
     def get_module_list(self):
         """获取模块列表"""
         return self.client.run("get_patch_mgmt_module_list")
+
+    def get_module_data(self, **kwargs):
+        """获取数据权限规则可选实例。"""
+        return self.client.run("get_patch_mgmt_module_data", **kwargs)

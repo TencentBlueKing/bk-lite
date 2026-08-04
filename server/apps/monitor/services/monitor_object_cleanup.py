@@ -10,22 +10,40 @@ class MonitorObjectCleanupPolicyService:
 
     @classmethod
     @transaction.atomic
-    def configure(cls, monitor_object, *, policy, timeout_days=1):
+    def configure(
+        cls,
+        monitor_object,
+        *,
+        policy,
+        timeout_value=None,
+        timeout_unit=None,
+        timeout_days=None,
+    ):
         target = MonitorObject.objects.select_for_update().get(pk=monitor_object.pk)
         if target.parent_id is not None or target.level != "base":
             raise ValidationAppException("清理策略只能配置在一级监控对象")
         if policy not in dict(MonitorObject.CLEANUP_POLICY_CHOICES):
             raise ValidationAppException("清理策略不合法")
-        if type(timeout_days) is not int or not 1 <= timeout_days <= 365:
-            raise ValidationAppException("超时清理天数必须是 1～365 的整数")
+        if timeout_value is None:
+            timeout_value = timeout_days if timeout_days is not None else 1
+        if timeout_unit is None:
+            timeout_unit = MonitorObject.CLEANUP_TIMEOUT_UNIT_DAY
+        max_value = MonitorObject.CLEANUP_TIMEOUT_MAX_BY_UNIT.get(timeout_unit)
+        if max_value is None:
+            raise ValidationAppException("超时时间单位不合法")
+        if type(timeout_value) is not int or not 1 <= timeout_value <= max_value:
+            unit_label = MonitorObject.CLEANUP_TIMEOUT_UNIT_LABELS[timeout_unit]
+            raise ValidationAppException(f"超时时间必须是 1～{max_value} {unit_label}的整数")
 
         target.cleanup_policy = policy
-        target.cleanup_timeout_days = timeout_days
+        target.cleanup_timeout_days = timeout_value
+        target.cleanup_timeout_unit = timeout_unit
         target.cleanup_policy_effective_at = timezone.now()
         target.save(
             update_fields=[
                 "cleanup_policy",
                 "cleanup_timeout_days",
+                "cleanup_timeout_unit",
                 "cleanup_policy_effective_at",
                 "updated_at",
             ]

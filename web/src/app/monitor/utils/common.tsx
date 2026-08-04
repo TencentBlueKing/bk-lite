@@ -269,14 +269,21 @@ export const isStringArray = (input: string): boolean => {
   }
 };
 
+const matchEnumOption = (options: ListItem[], id: number | string) => {
+  const numericId = Number(id);
+  return options.find((item: ListItem) => {
+    if (item.id === id) return true;
+    if (!Number.isFinite(numericId)) return false;
+    return Number(item.id) === numericId;
+  });
+};
+
 // 根据指标枚举获取值
 export const getEnumValue = (metric: MetricItem, id: number | string) => {
   const { unit: input = '', name } = metric || {};
   if (!id && id !== 0) return '--';
   if (isStringArray(input)) {
-    return (
-      JSON.parse(input).find((item: ListItem) => item.id === id)?.name || id
-    );
+    return matchEnumOption(JSON.parse(input), id)?.name || id;
   }
   return isNaN(+id) || APPOINT_METRIC_IDS.includes(name)
     ? id
@@ -287,9 +294,7 @@ export const getEnumValue = (metric: MetricItem, id: number | string) => {
 export const getEnumColor = (metric: MetricItem, id: number | string) => {
   const { unit: input = '' } = metric || {};
   if (isStringArray(input)) {
-    return (
-      JSON.parse(input).find((item: ListItem) => item.id === +id)?.color || ''
-    );
+    return matchEnumOption(JSON.parse(input), id)?.color || '';
   }
   return '';
 };
@@ -466,6 +471,13 @@ export const showInstName = (
   row: TableDataItem,
   objects?: ObjectItem[]
 ) => {
+  // Process 列表已有「主机名称」列，名称列只展示指标维度 process_name。
+  if (objectItem?.name === 'Process') {
+    const processName = row?.instance_id_values?.[1];
+    if (processName != null && String(processName).trim() !== '') {
+      return String(processName);
+    }
+  }
   const isDerivative = objects
     ? isDerivativeObject(objectItem, objects)
     : isDerivativeObject(objectItem);
@@ -480,6 +492,7 @@ export const getBaseInstanceColumn = (config: {
   objects: ObjectItem[];
   t: any;
   queryData?: any[];
+  ipFilterOptions?: string[];
 }) => {
   const baseTarget = config.objects
     .filter((item) => item.type === config.row?.type)
@@ -528,16 +541,66 @@ export const getBaseInstanceColumn = (config: {
     (left, right) => (left.order || 0) - (right.order || 0)
   );
   summaryColumns.forEach((column) => {
+    const isAssetIp = column.fact === 'asset.ip';
+    const ipFilters = (config.ipFilterOptions || [])
+      .map((ip) => String(ip || '').trim())
+      .filter(Boolean)
+      .map((ip) => ({ text: ip, value: ip }));
     columnItems.push({
       title: config.t(column.title),
       dataIndex: ['summary_facts', column.fact],
       key: `summary_fact:${column.fact}`,
       onCell: () => ({ style: { minWidth: 150 } }),
+      ...(isAssetIp
+        ? {
+            filterMultiple: true,
+            filterSearch: true,
+            filterParam: 'asset.ip',
+            filters: ipFilters.length ? ipFilters : undefined
+          }
+        : {}),
       render: (_: unknown, record: TableDataItem) =>
         renderAssetText(formatSummaryFact(record.summary_facts?.[column.fact]))
     });
   });
+  // Process：归属主机作为列头多选过滤，替代顶栏「过滤项」。
+  if (config.row?.name === 'Process') {
+    const hostFilters = (config.queryData || [])
+      .map((item: TableDataItem) => ({
+        text: String(item.name || item.id || ''),
+        value: String(item.id ?? '')
+      }))
+      .filter((item) => item.value);
+    columnItems.splice(1, 0, {
+      title: config.t('monitor.views.hostName'),
+      dataIndex: 'base_instance_name',
+      key: 'base_instance_name',
+      onCell: () => ({ style: { minWidth: 150 } }),
+      filterMultiple: true,
+      filterSearch: true,
+      filters: hostFilters.length ? hostFilters : undefined,
+      render: (_: unknown, record: TableDataItem) => {
+        const instanceIdValue = record.instance_id_values?.[0];
+        let displayName = instanceIdValue || '--';
+        if (config.queryData && instanceIdValue) {
+          const matchedItem = config.queryData.find(
+            (item: TableDataItem) => item.id === instanceIdValue
+          );
+          if (matchedItem) {
+            displayName = matchedItem.name || matchedItem.id;
+          }
+        }
+        return renderAssetText(displayName);
+      }
+    });
+  }
   if (isDerivative) {
+    const clusterFilters = (config.queryData || [])
+      .map((item: TableDataItem) => ({
+        text: String(item.name || item.id || ''),
+        value: String(item.id ?? '')
+      }))
+      .filter((item) => item.value);
     columnItems.unshift({
       title: title,
       dataIndex: 'base_instance_name',
@@ -548,6 +611,8 @@ export const getBaseInstanceColumn = (config: {
         }
       }),
       key: 'base_instance_name',
+      filterMultiple: true,
+      filters: clusterFilters.length ? clusterFilters : undefined,
       render: (_: unknown, record: TableDataItem) => {
         const instanceIdValue = record.instance_id_values?.[0];
         let displayName = instanceIdValue || '--';

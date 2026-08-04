@@ -165,10 +165,12 @@ def build_ranked_rows(
 class HostResourceTopService:
     """Query and rank the latest resource values for authorized hosts."""
 
-    METRIC_NAMES = {
-        "cpu": ("host_cpu_usage_percent", "host_cpu_usage_percent_gauge"),
-        "memory": ("host_mem_used_percent", "host_mem_used_percent_gauge"),
-        "disk": ("host_disk_used_percent", "host_disk_used_percent_gauge"),
+    # Agent Telegraf Host only.
+    # CPU stores idle percent; convert to usage in _query. Memory/disk are usage %.
+    METRIC_QUERIES = {
+        "cpu": '{__name__="cpu_usage_idle",cpu="cpu-total"}',
+        "memory": '{__name__="mem_used_percent"}',
+        "disk": '{__name__="disk_used_percent"}',
     }
 
     def __init__(self, *, vm_api, now: datetime | None = None):
@@ -176,12 +178,11 @@ class HostResourceTopService:
         self.now = now
 
     def _query(self, metric_type: str, lookback_seconds: int) -> list[HostCandidate]:
-        metric_names = self.METRIC_NAMES[metric_type]
-        query = '__name__=~"' + "|".join(metric_names) + '"'
+        query = self.METRIC_QUERIES[metric_type]
         try:
-            response = self.vm_api.query(f"{{{query}}}", lookback_delta=f"{lookback_seconds}s")
+            response = self.vm_api.query(query, lookback_delta=f"{lookback_seconds}s")
         except TypeError:
-            response = self.vm_api.query(f"{{{query}}}")
+            response = self.vm_api.query(query)
         if not isinstance(response, dict) or response.get("status") != "success":
             message = response.get("error") if isinstance(response, dict) else None
             raise RuntimeError(message or "主机资源指标查询失败")
@@ -202,6 +203,12 @@ class HostResourceTopService:
                 sampled_at = datetime.fromtimestamp(float(value[0]), tz=timezone.utc)
             except (TypeError, ValueError, OSError, OverflowError):
                 continue
+            raw_value = value[1]
+            if metric_type == "cpu":
+                try:
+                    raw_value = 100.0 - float(raw_value)
+                except (TypeError, ValueError):
+                    continue
             candidate_labels = {
                 "mount": labels.get("mount") or labels.get("path"),
                 "path": labels.get("path") or labels.get("device"),
@@ -211,7 +218,7 @@ class HostResourceTopService:
             candidates.append(
                 HostCandidate(
                     instance_id=str(instance_id),
-                    value=value[1],
+                    value=raw_value,
                     sampled_at=sampled_at,
                     metric_type=metric_type,
                     labels=candidate_labels,

@@ -12,6 +12,7 @@ RUN apt-get update -y && \
 RUN apt-get update -y && \
     apt-get install -y --no-install-recommends \
         fonts-unifont \
+        fonts-noto-cjk \
         fonts-liberation \
         fonts-dejavu-core \
         fonts-freefont-ttf \

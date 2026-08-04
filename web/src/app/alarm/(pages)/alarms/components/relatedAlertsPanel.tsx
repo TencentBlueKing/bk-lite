@@ -128,7 +128,6 @@ const RelatedAlertsPanel = ({ alert, onRefresh }: Props) => {
     ...item,
     level: item.level as AlarmTableDataItem['level'],
     event_count: 0,
-    source_names: '',
     duration: '--',
     operator_user: '',
     operator: [],

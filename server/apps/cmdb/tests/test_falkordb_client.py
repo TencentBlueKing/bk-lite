@@ -899,6 +899,9 @@ def test_execute_query_invalidates_pool_after_graph_error(monkeypatch):
             raise ConnectionError("connection closed")
 
     class FakeFalkorDB:
+        def __init__(self, *args, **kwargs):
+            pass
+
         def select_graph(self, name):
             return FakeGraph(FakeResultSet([], []))
 

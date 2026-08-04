@@ -164,6 +164,7 @@
         "title": "模型设置",
         "message": "资产模型管理提供对所有资产模型及模型分组的创建与管理。您可以根据需求创建和管理它们。",
         "selectIcon": "选择图标",
+        "searchIcon": "搜索图标名称",
         "addAttribute": "添加属性",
         "editAttribute": "编辑属性",
         "addAttrGroup": "新增属性分组",

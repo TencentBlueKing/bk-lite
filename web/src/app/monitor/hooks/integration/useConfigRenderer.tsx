@@ -15,6 +15,28 @@ import GroupTreeSelector from '@/components/group-tree-select';
 import { useTranslation } from '@/utils/i18n';
 import FieldGuideTip from '@/app/monitor/(pages)/integration/list/detail/configure/fieldGuideTip';
 import { applyTableChangeHandler } from './tableChangeHandler';
+import { isDependencySatisfied } from './formFieldDependency';
+import {
+  FILTER_MUTEX_PEERS,
+  getSnmpFilterMutexLastKey,
+  normalizeIfTypeTags,
+  normalizeMutexValues
+} from './snmpFilterMutex';
+
+const mutexValuesEqual = (left: any, right: any) => {
+  if (left === right) return true;
+  if (Array.isArray(left) || Array.isArray(right)) {
+    const leftList = Array.isArray(left) ? left : left == null || left === '' ? [] : [left];
+    const rightList = Array.isArray(right)
+      ? right
+      : right == null || right === ''
+        ? []
+        : [right];
+    if (leftList.length !== rightList.length) return false;
+    return leftList.every((item, index) => String(item) === String(rightList[index]));
+  }
+  return false;
+};
 
 export const useConfigRenderer = () => {
   const { t } = useTranslation();
@@ -137,51 +159,127 @@ export const useConfigRenderer = () => {
       );
     }
 
+    const ltPeerFields = (rules || [])
+      .filter((rule: any) => rule?.type === 'lt_field' && rule.field)
+      .map((rule: any) => rule.field as string);
+    const mutexPeerField = (FILTER_MUTEX_PEERS[name] ||
+      (rules || []).find((rule: any) => rule?.type === 'mutex_with' && rule.field)?.field) as
+      | string
+      | undefined;
+    const mutexPeerFields = mutexPeerField ? [mutexPeerField] : [];
+    const mutexLastKey = mutexPeerField ? getSnmpFilterMutexLastKey(name) : undefined;
+    const mutexPeerLabel = mutexPeerField
+      ? t(`monitor.integrations.filterMutexFields.${mutexPeerField}`)
+      : '';
+    // react-intl 使用 ICU `{peer}`，不是 `{{peer}}`
+    const mutexPeerOccupiedTip = mutexPeerLabel
+      ? t('monitor.integrations.filterMutexPeerOccupied', '', { peer: mutexPeerLabel })
+      : '';
+    const isIfTypeFilterField =
+      name === 'iftype_exclude' || name === 'iftype_include';
+
     const formRules = [
       ...(required ? [{ required: true, message: t('common.required') }] : []),
-      ...rules
+      ...(isIfTypeFilterField
+        ? [
+          {
+            validator: async (_: unknown, value: unknown) => {
+              const { rejected } = normalizeIfTypeTags(value);
+              if (rejected.length) {
+                throw new Error(
+                  t('monitor.integrations.filterIfTypeInvalid', '', {
+                    values: rejected.join(', ')
+                  })
+                );
+              }
+            }
+          }
+        ]
+        : []),
+      ...rules.flatMap((rule: any) => {
+        if (rule?.type === 'mutex_with') {
+          return [];
+        }
+        if (rule?.type === 'lt_field' && rule.field) {
+          return [
+            ({ getFieldValue }: { getFieldValue: (name: string) => unknown }) => ({
+              validator: async (_: unknown, value: unknown) => {
+                if (value === undefined || value === null || value === '') {
+                  return;
+                }
+                const peer = getFieldValue(rule.field);
+                if (peer === undefined || peer === null || peer === '') {
+                  return;
+                }
+                const left = Number(value);
+                const right = Number(peer);
+                if (!Number.isFinite(left) || !Number.isFinite(right)) {
+                  return;
+                }
+                if (left >= right) {
+                  throw new Error(
+                    rule.message || t('monitor.integrations.timeoutMustLtInterval')
+                  );
+                }
+              }
+            })
+          ];
+        }
+        if (rule?.type === 'pattern' && rule.pattern) {
+          return [
+            {
+              pattern: new RegExp(rule.pattern),
+              message: rule.message || t('common.required')
+            }
+          ];
+        }
+        return [rule];
+      })
+      // 冲突仅在后填写侧右侧红字提示；保存仍由后端校验
     ];
     const watchField = dependency?.field;
 
-    const shouldUpdate = watchField
-      ? (prevValues: any, currentValues: any) => {
-        if (typeof watchField === 'string') {
-          return prevValues[watchField] !== currentValues[watchField];
+    const shouldUpdate = (prevValues: any, currentValues: any) => {
+      if (mutexPeerField) {
+        if (!mutexValuesEqual(prevValues[mutexPeerField], currentValues[mutexPeerField])) {
+          return true;
         }
-        if (Array.isArray(watchField)) {
-          return watchField.some(
-            (field: string) => prevValues[field] !== currentValues[field]
-          );
+        if (!mutexValuesEqual(prevValues[name], currentValues[name])) {
+          return true;
         }
-        return false;
+        if (
+          mutexLastKey &&
+          prevValues[mutexLastKey] !== currentValues[mutexLastKey]
+        ) {
+          return true;
+        }
       }
-      : undefined;
-
-    const isFieldVisible = (getFieldValue: any) => {
-      if (!watchField) return true;
+      if (!watchField) return false;
       if (typeof watchField === 'string') {
-        const watchValue = getFieldValue(watchField);
-        if (dependency.value !== undefined) {
-          return watchValue === dependency.value;
-        }
+        return prevValues[watchField] !== currentValues[watchField];
       }
       if (Array.isArray(watchField)) {
-        return watchField.every((field: string, index: number) => {
-          const watchValue = getFieldValue(field);
-          const conditions = dependency.conditions?.[index] || [];
-          return conditions.some((condition: any) => {
-            if (condition.equals !== undefined) {
-              return watchValue === condition.equals;
-            }
-            if (condition.in !== undefined) {
-              return condition.in.includes(watchValue);
-            }
-            return false;
-          });
-        });
+        return watchField.some(
+          (field: string) => prevValues[field] !== currentValues[field]
+        );
       }
-      return true;
+      return false;
     };
+
+    const isFieldVisible = (getFieldValue: any) =>
+      isDependencySatisfied(dependency, getFieldValue);
+
+    const locked = mode === 'edit' && editable === false;
+
+    const renderLabel = () =>
+      hasGuideTip ? (
+        <span className="inline-flex items-center">
+          {label}
+          <FieldGuideTip short={guideTip} />
+        </span>
+      ) : (
+        label
+      );
 
     const renderWidget = () => {
       switch (type) {
@@ -189,6 +287,7 @@ export const useConfigRenderer = () => {
           return (
             <Input
               {...widget_props}
+              disabled={Boolean(locked || widget_props.disabled)}
               placeholder={widget_props.placeholder || label}
               className={`${FORM_WIDGET_WIDTH_CLASS} mr-[10px]`}
             />
@@ -204,7 +303,7 @@ export const useConfigRenderer = () => {
             />
           );
 
-        case 'inputNumber':
+        case 'inputNumber': {
           const { addonAfter, ...restProps } = widget_props;
           return (
             <InputNumber
@@ -224,23 +323,40 @@ export const useConfigRenderer = () => {
               addonAfter={addonAfter ? addonAfter : undefined}
             />
           );
+        }
 
-        case 'select':
+        case 'select': {
+          const allowCustomTags =
+            name === 'iftype_exclude' || name === 'iftype_include';
           return (
             <Select
               {...widget_props}
-              placeholder={widget_props.placeholder || label}
+              mode={allowCustomTags ? 'tags' : widget_props.mode}
+              tokenSeparators={
+                allowCustomTags
+                  ? widget_props.tokenSeparators || [',']
+                  : widget_props.tokenSeparators
+              }
+              disabled={Boolean(locked || widget_props.disabled)}
+              placeholder={
+                allowCustomTags
+                  ? widget_props.placeholder ||
+                    t('monitor.integrations.filterIfTypeTagsPlaceholder')
+                  : widget_props.placeholder || label
+              }
               showSearch
+              optionFilterProp="label"
               className="mr-[10px]"
               style={{ width: `${FORM_WIDGET_WIDTH}px` }}
             >
               {options.map((option: any) => (
-                <Select.Option key={option.value} value={option.value}>
+                <Select.Option key={option.value} value={option.value} label={option.label}>
                   {option.label}
                 </Select.Option>
               ))}
             </Select>
           );
+        }
 
         case 'textarea':
           return (
@@ -277,7 +393,7 @@ export const useConfigRenderer = () => {
                         {option.label}
                       </span>
                       {option.description && (
-                        <span className="text-[var(--color-text-3)] text-[12px]">
+                        <span className="text-[12px] text-[var(--color-text-3)]">
                           {option.description}
                         </span>
                       )}
@@ -316,34 +432,52 @@ export const useConfigRenderer = () => {
       }
     };
 
-    if (dependency?.field) {
+    const renderNamedControl = () => (
+      <Form.Item
+        noStyle
+        name={name}
+        rules={formRules}
+        dependencies={[...mutexPeerFields, ...ltPeerFields]}
+        initialValue={default_value}
+        valuePropName={type === 'switch' ? 'checked' : 'value'}
+      >
+        {renderWidget()}
+      </Form.Item>
+    );
+
+    if (dependency?.field || mutexPeerField) {
       return (
         <Form.Item noStyle shouldUpdate={shouldUpdate} key={name}>
-          {({ getFieldValue }) =>
-            isFieldVisible(getFieldValue) ? (
-              <Form.Item
-                required={required}
-                label={
-                  hasGuideTip ? (
-                    <span className="inline-flex items-center">
-                      {label}
-                      <FieldGuideTip short={guideTip} />
-                    </span>
-                  ) : (
-                    label
-                  )
-                }
-              >
-                <Form.Item
-                  noStyle
-                  name={name}
-                  rules={formRules}
-                  initialValue={default_value}
-                  valuePropName={type === 'switch' ? 'checked' : 'value'}
-                >
-                  {renderWidget()}
-                </Form.Item>
-                {showInlineDescription && (
+          {({ getFieldValue }) => {
+            if (dependency?.field && !isFieldVisible(getFieldValue)) {
+              return null;
+            }
+            const selfOccupied = normalizeMutexValues(getFieldValue(name)).length > 0;
+            const peerOccupied = mutexPeerField
+              ? normalizeMutexValues(getFieldValue(mutexPeerField)).length > 0
+              : false;
+            const lastChanged = mutexLastKey
+              ? getFieldValue(mutexLastKey)
+              : undefined;
+            // 仅后填写的一侧展示提示
+            const showMutexConflict = Boolean(
+              mutexPeerField &&
+                selfOccupied &&
+                peerOccupied &&
+                lastChanged === name
+            );
+            return (
+              <Form.Item required={required} label={renderLabel()}>
+                {renderNamedControl()}
+                {showMutexConflict ? (
+                  <span
+                    className="text-[12px] leading-[18px] text-[var(--color-fail)]"
+                    style={{ verticalAlign: 'middle' }}
+                  >
+                    {mutexPeerOccupiedTip}
+                  </span>
+                ) : null}
+                {showInlineDescription && !showMutexConflict && (
                   <span
                     className="text-[12px] text-[var(--color-text-3)]"
                     style={{ verticalAlign: 'middle' }}
@@ -352,27 +486,14 @@ export const useConfigRenderer = () => {
                   </span>
                 )}
               </Form.Item>
-            ) : null
-          }
+            );
+          }}
         </Form.Item>
       );
     }
 
     return (
-      <Form.Item
-        key={name}
-        required={required}
-        label={
-          hasGuideTip ? (
-            <span className="inline-flex items-center">
-              {label}
-              <FieldGuideTip short={guideTip} />
-            </span>
-          ) : (
-            label
-          )
-        }
-      >
+      <Form.Item key={name} required={required} label={renderLabel()}>
         <Form.Item
           noStyle
           name={name}
@@ -436,9 +557,13 @@ export const useConfigRenderer = () => {
       options_key,
       enable_row_filter = false,
       rules = [],
-      required = false
+      required = false,
+      description,
+      guide_short,
+      tooltip
     } = columnConfig;
     const { width: columnWidth, ...componentProps } = widget_props;
+    const guideTip = guide_short || tooltip || description;
 
     let options = columnConfig.options || [];
     if (!options?.length && externalOptions) {
@@ -452,7 +577,14 @@ export const useConfigRenderer = () => {
     }
 
     const column: any = {
-      title: label,
+      title: guideTip ? (
+        <span className="inline-flex items-center">
+          <span>{label}</span>
+          <FieldGuideTip short={guideTip} />
+        </span>
+      ) : (
+        label
+      ),
       dataIndex: name,
       key: name,
       width: columnWidth || 200

@@ -36,6 +36,8 @@ export const buildSearchParams = (
   if (Number.isFinite(startTime) && Number.isFinite(endTime)) {
     params.start = startTime;
     params.end = endTime;
+    // instant 查询使用窗口终点求值，与 range 曲线时间窗对齐。
+    params.time = endTime;
     params.step = calculateQueryStep(params.start, params.end, minStepSeconds);
   }
 

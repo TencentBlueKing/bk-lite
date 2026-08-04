@@ -2,7 +2,6 @@
 
 from rest_framework import serializers
 
-from apps.core.utils.serializers import TeamSerializer
 from apps.patch_mgmt.constants import GovernanceTaskStatus, GovernanceTaskType
 from apps.patch_mgmt.models import (
     BaselineRequirement,
@@ -11,6 +10,7 @@ from apps.patch_mgmt.models import (
     HostBaselineBinding,
     HostComplianceSnapshot,
 )
+from apps.patch_mgmt.serializers.permission import PatchPermissionSerializer
 from apps.patch_mgmt.utils.i18n import serializer_message
 
 
@@ -83,7 +83,7 @@ class GovernanceTaskHostSerializer(serializers.ModelSerializer):
         ]
 
 
-class GovernanceTaskListSerializer(TeamSerializer):
+class GovernanceTaskListSerializer(PatchPermissionSerializer):
     """治理任务列表序列化器"""
 
     name = serializers.CharField(required=False, allow_blank=True)
@@ -96,6 +96,8 @@ class GovernanceTaskListSerializer(TeamSerializer):
     record_status = serializers.SerializerMethodField()
     record_status_display = serializers.SerializerMethodField()
     record_status_color = serializers.SerializerMethodField()
+    source_record_name = serializers.SerializerMethodField()
+    permission_key = "patch_governance"
 
     class Meta:
         model = GovernanceTask
@@ -127,9 +129,13 @@ class GovernanceTaskListSerializer(TeamSerializer):
             "cancel_reason",
             "team",
             "team_name",
+            "permission",
             "created_by",
             "created_at",
             "parent_task",
+            "source_record",
+            "source_record_name",
+            "source_risk_item_id",
             "chain_started_at",
             "chain_deadline_at",
             "overdue_at",
@@ -181,16 +187,13 @@ class GovernanceTaskListSerializer(TeamSerializer):
 
     def get_can_retry(self, obj):
         from apps.patch_mgmt.services.execution_record_service import (
-            _task_chain,
             build_risk_item_summaries,
         )
 
-        has_retryable_attempt = GovernanceTaskHost.objects.filter(
-            task__in=_task_chain(obj), can_retry=True
-        ).exists()
-        return has_retryable_attempt or any(
-            item["status"] == "unmet" for item in build_risk_item_summaries(obj)
-        )
+        return any(item["can_retry"] for item in build_risk_item_summaries(obj))
+
+    def get_source_record_name(self, obj):
+        return obj.source_record.name if obj.source_record_id else ""
 
     @staticmethod
     def _record_status(obj):

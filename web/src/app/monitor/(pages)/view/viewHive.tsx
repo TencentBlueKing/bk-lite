@@ -187,16 +187,6 @@ const ViewHive: React.FC<ViewListProps> = ({ objects, objectId }) => {
     }
   }, [pagination, chartData]);
 
-  const handleColonyChange = (id: string) => {
-    setColony(id);
-    setNode(null);
-    setChartData([]);
-    setPagination((prev: Pagination) => ({
-      ...prev,
-      current: 1
-    }));
-  };
-
   const handleNodeChange = (id: string) => {
     setNode(id);
     setChartData([]);
@@ -430,27 +420,12 @@ const ViewHive: React.FC<ViewListProps> = ({ objects, objectId }) => {
     <div className="w-full h-[calc(100vh-216px)]">
       <div className="flex justify-between flex-wrap">
         <div className="flex items-center mb-[20px]">
-          <span className="text-[14px] mr-[10px]">
-            {t('monitor.views.filterOptions')}
-          </span>
-          <Select
-            value={colony}
-            allowClear
-            showSearch
-            style={{ width: 240 }}
-            placeholder={t('monitor.views.colony')}
-            onChange={handleColonyChange}
-          >
-            {queryData.map((item) => (
-              <Option key={item.id} value={item.id}>
-                {item.id}
-              </Option>
-            ))}
-          </Select>
           {isPod && (
             <>
+              <span className="text-[14px] mr-[10px]">
+                {t('monitor.views.filterOptions')}
+              </span>
               <Select
-                className="ml-[8px]"
                 value={node}
                 allowClear
                 showSearch

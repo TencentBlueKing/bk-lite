@@ -74,6 +74,10 @@ class PatchBaselineViewSet(AuthViewSet):
     def requirements(self, request, pk=None):
         """查询补丁要求清单。"""
         baseline = self.get_object()
+        require_authorized_ids(
+            self, request, PatchBaseline.objects.all(), [baseline.id],
+            "patch_baseline", operation="View"
+        )
         reqs = baseline.requirements.select_related(
             "patch__windows_detail", "patch__linux_detail"
         )
@@ -85,6 +89,10 @@ class PatchBaselineViewSet(AuthViewSet):
     def add_requirements(self, request, pk=None):
         """添加补丁要求。"""
         baseline = self.get_object()
+        require_authorized_ids(
+            self, request, PatchBaseline.objects.all(), [baseline.id],
+            "patch_baseline"
+        )
         patch_ids = request.data.get("patch_ids", [])
         require_authorized_ids(self, request, Patch.objects.all(), patch_ids, "patch")
         condition = request.data.get("condition", "")
@@ -107,6 +115,10 @@ class PatchBaselineViewSet(AuthViewSet):
     def delete_requirements(self, request, pk=None):
         """移除补丁要求。"""
         baseline = self.get_object()
+        require_authorized_ids(
+            self, request, PatchBaseline.objects.all(), [baseline.id],
+            "patch_baseline"
+        )
         req_ids = request.data.get("requirement_ids", [])
         deleted_count, _ = BaselineRequirement.objects.filter(
             id__in=req_ids, baseline=baseline
@@ -121,6 +133,10 @@ class PatchBaselineViewSet(AuthViewSet):
     def bind_hosts(self, request, pk=None):
         """绑定主机到基线"""
         baseline = self.get_object()
+        require_authorized_ids(
+            self, request, PatchBaseline.objects.all(), [baseline.id],
+            "patch_baseline"
+        )
         target_ids = sorted(
             {
                 int(target_id)
@@ -195,6 +211,10 @@ class PatchBaselineViewSet(AuthViewSet):
     def hosts(self, request, pk=None):
         """已绑定主机列表"""
         baseline = self.get_object()
+        require_authorized_ids(
+            self, request, PatchBaseline.objects.all(), [baseline.id],
+            "patch_baseline", operation="View"
+        )
         bindings = baseline.host_bindings.select_related("target", "baseline")
         serializer = HostBaselineBindingSerializer(bindings, many=True)
         return Response(serializer.data)
@@ -209,6 +229,10 @@ class PatchBaselineViewSet(AuthViewSet):
         )
 
         baseline = self.get_object()
+        require_authorized_ids(
+            self, request, PatchBaseline.objects.all(), [baseline.id],
+            "patch_baseline"
+        )
         requirements = list(baseline.requirements.order_by("id"))
         if not requirements:
             return Response(

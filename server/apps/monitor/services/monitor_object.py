@@ -131,9 +131,14 @@ class MonitorObjectService:
         add_metrics=False,
         monitor_plugin_id=None,
         visible_organization_ids=None,
+        vm_params=None,
     ):
         """获取监控对象实例"""
-        qs = qs.filter(monitor_object_id=monitor_object_id, is_deleted=False)
+        qs = qs.filter(
+            monitor_object_id=monitor_object_id,
+            is_deleted=False,
+            is_active=True,
+        )
         if name:
             qs = qs.filter(name__icontains=name)
 
@@ -145,6 +150,16 @@ class MonitorObjectService:
         obj_metric_map = obj_metric_map.get(monitor_obj.name)
         if not obj_metric_map:
             raise BaseAppException("Monitor object default metric does not exist")
+
+        # Process 主机 / asset.ip / Enum 指标过滤在 list 与 search 共用同一套规则。
+        from apps.monitor.services.monitor_instance import InstanceSearch
+
+        qs = InstanceSearch.apply_process_instance_filters(
+            qs,
+            monitor_obj.name,
+            vm_params,
+            monitor_object_id=monitor_obj.id,
+        )
 
         status_query = obj_metric_map.get("default_metric", "")
         if monitor_plugin_id:
@@ -167,6 +182,11 @@ class MonitorObjectService:
         )
         if monitor_plugin_id:
             qs = qs.filter(id__in=instance_map.keys())
+
+        status_raw = None
+        if isinstance(vm_params, dict):
+            status_raw = vm_params.get("status")
+        qs = InstanceSearch.apply_status_filter_to_qs(qs, instance_map, status_raw)
 
         # 去除重复
         qs = qs.distinct()

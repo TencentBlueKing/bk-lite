@@ -33,6 +33,7 @@ class InstanceConfigService:
         "Node": "node_status_condition",
     }
     _HOST_MONITOR_OBJECT_NAME = "Host"
+    _PROCESS_MONITOR_OBJECT_NAME = "Process"
     _NETWORK_DEVICE_MONITOR_OBJECT_NAMES = {"Switch", "Router", "Firewall", "Loadbalance"}
 
     @staticmethod
@@ -668,6 +669,11 @@ class InstanceConfigService:
         return monitor_object_name == InstanceConfigService._HOST_MONITOR_OBJECT_NAME
 
     @staticmethod
+    def _should_use_process_identity_adapter(monitor_object_name: str) -> bool:
+        """Process 接入：storage 用 (host_instance_id, process_name)，指标标签用主机 instance_id。"""
+        return monitor_object_name == InstanceConfigService._PROCESS_MONITOR_OBJECT_NAME
+
+    @staticmethod
     def _should_use_network_device_identity_adapter(monitor_object_name: str) -> bool:
         """判断当前监控对象是否为网络设备，网络设备接入需要跨插件统一实例ID。"""
         return monitor_object_name in InstanceConfigService._NETWORK_DEVICE_MONITOR_OBJECT_NAMES
@@ -694,6 +700,35 @@ class InstanceConfigService:
                     "logical_instance_value": identity["logical_instance_value"],
                     "storage_instance_key": identity["storage_instance_key"],
                     "instance_id": identity["storage_instance_key"],
+                }
+            )
+        return prepared
+
+    @staticmethod
+    def _prepare_process_identity_instances(instances: list) -> list:
+        """Process 实例：与 Host 共用 logical instance_id，storage 追加 process_name 避免主键冲突。"""
+        prepared = []
+        for instance in instances:
+            process_name = str(instance.get("process_name") or "").strip()
+            if not process_name:
+                raise ValueError("process instance requires process_name")
+            host_identity = normalize_instance_identity(instance.get("instance_id"))
+            host_logical_id = host_identity["logical_instance_value"]
+            identity = normalize_instance_identity((host_logical_id, process_name))
+            storage_key = identity["storage_instance_key"]
+            if len(storage_key) > 200:
+                raise ValueError(
+                    "process instance id too long "
+                    f"({len(storage_key)} > 200); shorten process_name or host id"
+                )
+            prepared.append(
+                {
+                    **instance,
+                    "raw_instance_id": instance.get("instance_id"),
+                    "logical_instance_value": identity["logical_instance_value"],
+                    "storage_instance_key": identity["storage_instance_key"],
+                    "instance_id": identity["storage_instance_key"],
+                    "process_name": process_name,
                 }
             )
         return prepared
@@ -846,6 +881,12 @@ class InstanceConfigService:
             except ValueError as e:
                 logger.error(f"实例识别失败: {e}")
                 raise BaseAppException(f"实例识别失败：{e}")
+        elif InstanceConfigService._should_use_process_identity_adapter(monitor_object_name):
+            try:
+                prepared_instances = InstanceConfigService._prepare_process_identity_instances(sanitized_instances)
+            except ValueError as e:
+                logger.error(f"实例识别失败: {e}")
+                raise BaseAppException(f"实例识别失败：{e}")
         elif InstanceConfigService._should_use_network_device_identity_adapter(monitor_object_name):
             try:
                 prepared_instances = InstanceConfigService._prepare_network_device_identity_instances(sanitized_instances)
@@ -967,5 +1008,25 @@ class InstanceConfigService:
                     validate_rendered_website_config(child_info.get("content") or {}, env_config)
                 except ValueError as exc:
                     raise BaseAppException(str(exc)) from exc
+            if (config_obj.collect_type or "").startswith("snmp"):
+                from apps.monitor.utils.snmp_interface_filters import normalize_snmp_interface_filter_config
+
+                child_info["content"] = normalize_snmp_interface_filter_config(child_info.get("content"))
+            if (config_obj.config_type or "").lower() == "kafka":
+                from apps.monitor.utils.kafka_collect_timeouts import (
+                    assert_kafka_group_metrics_timeout_lt_interval,
+                    extract_group_metrics_timeout_from_env,
+                )
+
+                child_content = child_info.get("content") or {}
+                child_interval = (
+                    (child_content.get("config") or {}).get("interval")
+                    if isinstance(child_content, dict)
+                    else None
+                )
+                assert_kafka_group_metrics_timeout_lt_interval(
+                    extract_group_metrics_timeout_from_env(env_config),
+                    child_interval,
+                )
             content = ConfigFormat.json_to_toml(child_info["content"]) if child_info else None
             NodeMgmt().update_child_config_content(child_info["id"], content, env_config)

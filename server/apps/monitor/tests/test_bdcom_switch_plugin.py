@@ -29,6 +29,8 @@ from pathlib import Path
 import pytest
 import yaml
 
+from apps.core.utils.loader import LanguageLoader
+
 SERVER_ROOT = Path(__file__).resolve().parents[3]
 PLUGINS = SERVER_ROOT / "apps" / "monitor" / "support-files" / "plugins" / "Telegraf"
 BDCOM_DIR = PLUGINS / "snmp" / "switch_bdcom"
@@ -84,7 +86,7 @@ def toml_text():
 @pytest.fixture(scope="module")
 def languages():
     return {
-        lang: yaml.safe_load((LANGUAGE_DIR / f"{lang}.yaml").read_text(encoding="utf-8"))
+        lang: LanguageLoader("monitor", lang).translations
         for lang in ("zh-Hans", "en")
     }
 
@@ -249,12 +251,12 @@ def test_toml_collects_64bit_ifhc_counters(toml_text):
 
 
 # --------------------------------------------------------------------------- #
-# metrics.json is a brand delta: must NOT re-declare baseline uptime
+# metrics.json embeds the common metrics that the child template actually emits
 # --------------------------------------------------------------------------- #
 @pytest.mark.unit
-def test_metrics_is_brand_delta_without_baseline_uptime(metrics):
+def test_metrics_embeds_deployed_snmp_floor(metrics):
     names = {m["name"] for m in metrics["metrics"]}
-    assert "snmp_uptime" not in names, "uptime belongs to the SNMP base, not the brand delta"
+    assert {"snmp_uptime", "interface_ifHCInOctets", "interface_ifHCOutOctets"} <= names
 
 
 # --------------------------------------------------------------------------- #

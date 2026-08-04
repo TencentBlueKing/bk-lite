@@ -26,13 +26,23 @@ assert.match(
 );
 assert.match(
   assetPage,
-  /okButtonProps: \{ danger: true \}/,
-  '批量删除确认按钮应使用危险操作样式'
+  /t\('common\.selected'\)/,
+  '批量删除确认文案应展示选中数量'
 );
 assert.match(
   assetPage,
   /modal\.confirm\(/,
   '批量删除应使用当前页面上下文中的确认框'
+);
+assert.match(
+  assetPage,
+  /okButtonProps: \{ danger: true \}/,
+  '批量删除确认按钮应使用危险操作样式'
+);
+assert.match(
+  menuItems,
+  /danger: true/,
+  '批量删除菜单项应使用危险操作样式'
 );
 assert.match(
   assetPage,
@@ -45,16 +55,19 @@ assert.match(
   '批量删除成功后应清空选择'
 );
 
-for (const locale of [zh, en]) {
-  assert.match(
+for (const [locale, irreversibleText] of [
+  [zh, /无法恢复/],
+  [en, /cannot be recovered/i]
+] as const) {
+  assert.equal(
     locale.monitor.integrations.assetBatchDeleteConfirm,
-    /\{count\}/,
-    '批量删除确认文案应展示选中数量'
+    undefined,
+    '批量删除确认应复用公共文案，避免运行时语言包热更新后暴露新 key'
   );
   assert.match(
-    locale.monitor.integrations.assetBatchDeleteSuccess,
-    /\{count\}/,
-    '批量删除成功反馈应展示删除数量'
+    `${locale.common.selected} ${locale.common.items} ${locale.common.deleteContent}`,
+    irreversibleText,
+    '批量删除公共文案应保留选中项和不可恢复提示'
   );
 }
 

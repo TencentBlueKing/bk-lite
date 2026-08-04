@@ -1,0 +1,8 @@
+.dashboardTable {
+  height: 100%;
+  overflow: hidden;
+
+  :global(.ant-table-body) {
+    max-height: var(--dashboard-table-body-height) !important;
+  }
+}

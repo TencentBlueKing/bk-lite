@@ -4,6 +4,7 @@ import {
   DownloadOutlined,
   EditOutlined,
   FullscreenOutlined,
+  MailOutlined,
   PlusOutlined,
   ReloadOutlined,
   ShareAltOutlined,
@@ -36,6 +37,7 @@ interface DashboardToolbarProps {
   shareMode?: boolean;
   shareLoading?: boolean;
   onOpenShare?: () => void;
+  onOpenSubscriptions?: () => void;
 }
 
 const DashboardToolbar: React.FC<DashboardToolbarProps> = ({
@@ -57,6 +59,7 @@ const DashboardToolbar: React.FC<DashboardToolbarProps> = ({
   shareMode = false,
   shareLoading = false,
   onOpenShare,
+  onOpenSubscriptions,
 }) => {
   const { t } = useTranslation();
 
@@ -101,6 +104,18 @@ const DashboardToolbar: React.FC<DashboardToolbarProps> = ({
               loading={shareLoading}
               disabled={shareLoading}
               onClick={onOpenShare}
+              className="rounded-full!"
+            />
+          </Tooltip>
+        )}
+
+        {!shareMode && !isEditMode && onOpenSubscriptions && (
+          <Tooltip title={t('dashboard.subscriptionTitle')}>
+            <Button
+              type="text"
+              icon={<MailOutlined aria-hidden="true" />}
+              aria-label={t('dashboard.subscriptionTitle')}
+              onClick={onOpenSubscriptions}
               className="rounded-full!"
             />
           </Tooltip>

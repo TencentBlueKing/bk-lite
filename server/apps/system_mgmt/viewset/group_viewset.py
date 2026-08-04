@@ -7,9 +7,10 @@ from rest_framework.decorators import action
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.logger import system_mgmt_logger as logger
 from apps.core.utils.permission_cache import clear_users_permission_cache
+from apps.core.utils.loader import LanguageLoader
 from apps.core.utils.viewset_utils import LanguageViewSet
 from apps.rpc.cmdb import CMDB
-from apps.system_mgmt.models import Group, User
+from apps.system_mgmt.models import Group, User, UserSyncSource
 from apps.system_mgmt.serializers.group_serializer import GroupSerializer
 from apps.system_mgmt.utils.group_filter_mixin import get_user_group_ids
 from apps.system_mgmt.utils.group_utils import GroupUtils
@@ -31,6 +32,11 @@ class GroupViewSet(LanguageViewSet, ViewSetUtils):
     # 禁用所有内置 CRUD 方法
     http_method_names = ["get", "post", "options"]
 
+    def _loader(self, request):
+        return getattr(self, "loader", None) or LanguageLoader(
+            app="system_mgmt", default_lang=getattr(getattr(request, "user", None), "locale", "en") or "en"
+        )
+
     def _get_user_group_ids(self, user):
         """获取用户有权限的组ID集合"""
         return get_user_group_ids(user)
@@ -50,33 +56,33 @@ class GroupViewSet(LanguageViewSet, ViewSetUtils):
 
         user_group_ids = self._get_user_group_ids(request.user)
         if group_id not in user_group_ids:
-            message = self.loader.get("error.no_permission_access_group") if self.loader else "无权访问该组织"
+            message = self._loader(request).get("error.no_permission_access_group")
             return False, JsonResponse({"result": False, "message": message}, status=403)
         return True, None
 
     def list(self, request, *args, **kwargs):
         """禁用内置 list 接口 - 使用 search_group_list action"""
-        return JsonResponse({"result": False, "message": self.loader.get("error.api_not_enabled") if self.loader else "接口未启用"}, status=405)
+        return JsonResponse({"result": False, "message": self._loader(request).get("error.api_not_enabled")}, status=405)
 
     def retrieve(self, request, *args, **kwargs):
         """禁用内置 retrieve 接口 - 使用 get_detail action"""
-        return JsonResponse({"result": False, "message": self.loader.get("error.api_not_enabled") if self.loader else "接口未启用"}, status=405)
+        return JsonResponse({"result": False, "message": self._loader(request).get("error.api_not_enabled")}, status=405)
 
     def create(self, request, *args, **kwargs):
         """禁用内置 create 接口 - 使用 create_group action"""
-        return JsonResponse({"result": False, "message": self.loader.get("error.api_not_enabled") if self.loader else "接口未启用"}, status=405)
+        return JsonResponse({"result": False, "message": self._loader(request).get("error.api_not_enabled")}, status=405)
 
     def update(self, request, *args, **kwargs):
         """禁用内置 update 接口 - 使用 update_group action"""
-        return JsonResponse({"result": False, "message": self.loader.get("error.api_not_enabled") if self.loader else "接口未启用"}, status=405)
+        return JsonResponse({"result": False, "message": self._loader(request).get("error.api_not_enabled")}, status=405)
 
     def partial_update(self, request, *args, **kwargs):
         """禁用内置 partial_update 接口 - 使用 update_group action"""
-        return JsonResponse({"result": False, "message": self.loader.get("error.api_not_enabled") if self.loader else "接口未启用"}, status=405)
+        return JsonResponse({"result": False, "message": self._loader(request).get("error.api_not_enabled")}, status=405)
 
     def destroy(self, request, *args, **kwargs):
         """禁用内置 destroy 接口 - 使用 delete_groups action"""
-        return JsonResponse({"result": False, "message": self.loader.get("error.api_not_enabled") if self.loader else "接口未启用"}, status=405)
+        return JsonResponse({"result": False, "message": self._loader(request).get("error.api_not_enabled")}, status=405)
 
     @action(detail=False, methods=["GET"])
     def get_teams(self, request):
@@ -119,6 +125,8 @@ class GroupViewSet(LanguageViewSet, ViewSetUtils):
         if not self._check_create_permission(request.user, parent_id):
             message = self.loader.get("error.no_permission_create_group")
             return JsonResponse({"result": False, "message": message})
+        if parent_id and Group.objects.filter(id=parent_id, sync_source__isnull=False).exists():
+            return JsonResponse({"result": False, "message": self._loader(request).get("error.synced_group_child_creation_forbidden")})
 
         # 虚拟组校验并确定新组的虚拟属性
         is_virtual, error_response = self._validate_virtual_group_creation(parent_id, params.get("is_virtual", False))
@@ -210,9 +218,12 @@ class GroupViewSet(LanguageViewSet, ViewSetUtils):
     def update_group(self, request):
         obj = Group.objects.get(id=request.data.get("group_id"))
         role_ids = request.data.get("role_ids", [])
+        group_name = request.data.get("group_name")
         if obj.name == "Default" and obj.parent_id == 0:
             message = self.loader.get("error.default_group_cannot_modify")
             return JsonResponse({"result": False, "message": message})
+        if obj.sync_source_id and obj.parent_id != 0 and group_name != obj.name:
+            return JsonResponse({"result": False, "message": self._loader(request).get("error.synced_child_group_name_immutable")})
         if not request.user.is_superuser:
             groups = [i["id"] for i in request.user.group_list]
             if request.data.get("group_id") not in groups:
@@ -220,7 +231,7 @@ class GroupViewSet(LanguageViewSet, ViewSetUtils):
                 return JsonResponse({"result": False, "message": message})
 
         # 准备更新的字段
-        update_fields = {"name": request.data.get("group_name")}
+        update_fields = {"name": group_name}
 
         # 如果请求中包含 is_virtual 字段，则更新
         if "is_virtual" in request.data:
@@ -232,6 +243,8 @@ class GroupViewSet(LanguageViewSet, ViewSetUtils):
 
         with transaction.atomic():
             Group.objects.filter(id=request.data.get("group_id")).update(**update_fields)
+            if obj.sync_source_id and obj.parent_id == 0 and group_name != obj.name:
+                UserSyncSource.objects.filter(id=obj.sync_source_id).update(root_group_name=group_name)
 
             # 更新组的角色
             if isinstance(role_ids, list):
@@ -251,12 +264,12 @@ class GroupViewSet(LanguageViewSet, ViewSetUtils):
 
         # 同步组织数据到CMDB
         try:
-            CMDB().sync_display_fields(organizations=[{"id": request.data.get("group_id"), "name": request.data.get("group_name")}])
+            CMDB().sync_display_fields(organizations=[{"id": request.data.get("group_id"), "name": group_name}])
         except Exception as e:
             logger.exception(e)
 
         # 记录操作日志
-        log_operation(request, "update", "system-manager", f"编辑组织: {request.data.get('group_name')}")
+        log_operation(request, "update", "system-manager", f"编辑组织: {group_name}")
 
         return JsonResponse({"result": True})
 
@@ -266,6 +279,8 @@ class GroupViewSet(LanguageViewSet, ViewSetUtils):
         kwargs = request.data
         group_id = int(kwargs["id"])
         obj = Group.objects.get(id=group_id)
+        if obj.sync_source_id:
+            return JsonResponse({"result": False, "message": self._loader(request).get("error.synced_groups_delete_forbidden")})
         if obj.name == "Default" and obj.parent_id == 0:
             message = self.loader.get("error.default_group_cannot_delete")
             return JsonResponse({"result": False, "message": message})
@@ -370,7 +385,7 @@ class GroupViewSet(LanguageViewSet, ViewSetUtils):
         """批量获取多个组织的角色详情，避免前端逐个请求"""
         group_ids = request.data.get("group_ids", [])
         if not group_ids or not isinstance(group_ids, list):
-            return JsonResponse({"result": False, "message": "group_ids 参数是必填的列表"}, status=400)
+            return JsonResponse({"result": False, "message": self._loader(request).get("error.group_ids_list_required")}, status=400)
 
         all_groups = {g.id: g for g in Group.objects.prefetch_related("roles").all()}
 

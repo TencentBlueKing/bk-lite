@@ -26,6 +26,13 @@ const useViewApi = () => {
     [get]
   );
 
+  const getInstanceInstantQuery = useCallback(
+    async (params: SearchParams = { query: '' }) => {
+      return await get(`/monitor/api/metrics_instance/query/`, { params });
+    },
+    [get]
+  );
+
   const getInstanceSearch = useCallback(
     async (
       objectId: React.Key,
@@ -80,10 +87,14 @@ const useViewApi = () => {
   );
 
   const saveViewColumnPreference = useCallback(
-    async (objectId: React.Key, fieldKeys: string[]) => {
+    async (
+      objectId: React.Key,
+      fieldKeys: string[],
+      fixedFieldKeys: string[] = []
+    ) => {
       return await put<ViewColumnPreference>(
         `/monitor/api/monitor_object/${objectId}/view_column_preference/`,
-        { field_keys: fieldKeys }
+        { field_keys: fieldKeys, fixed_field_keys: fixedFieldKeys }
       );
     },
     [put]
@@ -91,6 +102,7 @@ const useViewApi = () => {
 
   return {
     getInstanceQuery,
+    getInstanceInstantQuery,
     getInstanceSearch,
     getInstanceQueryParams,
     getMetricsInstanceQuery,

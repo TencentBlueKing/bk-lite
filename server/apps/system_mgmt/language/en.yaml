@@ -61,6 +61,48 @@ error:
   no_permission_access_group: You do not have permission to access this group.
   no_permission_access_user: You do not have permission to access this user.
   system_error: System error, please contact the administrator.
+  api_not_enabled: API is not enabled
+  password_required: Password is required
+  password_too_short: Password must contain at least {min_length} characters
+  password_too_long: Password cannot contain more than {max_length} characters
+  password_missing_char_types: 'Password must contain: {types}'
+  password_invalid_characters: Password contains invalid characters. Only printable ASCII characters are allowed.
+  initial_password_generation_failed: Unable to generate an initial password that meets the password policy
+  invalid_phone: Invalid phone number format
+  initial_password_not_configured: Local user initial password is not configured
+  initial_password_email_channel_unavailable: Initial password email channel does not exist or is unavailable
+  initial_password_email_channel_invalid: Initial password email channel must be an email channel
+  initial_password_email_required: An email address is required for initial password notification
+  initial_password_decrypt_failed: Unable to decrypt the initial password. Please set it again.
+  synced_groups_local_users_forbidden: Synced groups cannot have locally managed users
+  synced_group_membership_immutable: Synced group membership cannot be changed locally
+  channel_team_required: Please select the channel organization
+  custom_menu_group_display_name_exists: A menu group with the same display name already exists under app {app}
+  custom_menu_group_enabled_exists: App {app} already has an enabled menu group. Only one menu group can be enabled per app.
+  custom_menu_group_name_exists: A menu group named {display_name} already exists under app {app}
+  network_required: Network cannot be empty
+  invalid_network: 'Invalid CIDR/IP: {network}'
+  forbidden_network_supernet: Adding 0.0.0.0/0 or ::/0 is forbidden because it disables all protection
+  domain_name_required: Domain name cannot be empty
+  invalid_domain_name_characters: 'Domain name contains invalid characters: {domain}'
+  domain_name_leading_dot: Domain name cannot start with a dot
+  network_whitelist_type_immutable: Network allowlist entry type cannot be changed
+  network_or_domain_required: Exactly one of network and domain_name must be provided
+  network_or_domain_exists: Network or domain name already exists
+  app_required: App parameter is required
+  enabled_menu_group_not_found: No enabled menu group was found for app {app}
+  current_team_required: current_team parameter is required
+  invalid_current_team: current_team parameter is invalid
+  invalid_group_id: group_id parameter is invalid
+  group_ids_list_required: group_ids must be a required list
+  group_ids_must_be_list: group_ids must be a list
+  user_ids_list_required: user_ids must be a non-empty list
+  invalid_user_status_action: Action must be one of enable, disable, or unlock
+  invalid_user_ids: 'Invalid user IDs: {ids}'
+  synced_users_delete_forbidden: Synced users cannot be deleted directly. Please delete them from the user sync source.
+  synced_group_child_creation_forbidden: Synced groups cannot have manually created child groups
+  synced_child_group_name_immutable: Synced child group name cannot be changed
+  synced_groups_delete_forbidden: Synced groups cannot be deleted directly
 success:
   menu_group_disabled: Menu group disabled
   batch_create: Batch creation successful
@@ -70,6 +112,12 @@ success:
   batch_update_order: Successfully updated menu orders
   menu_group_enabled: Menu group enabled
   update_order: Order updated successfully
+  menu_group_copied: Menu group copied successfully
+password:
+  char_type_uppercase: uppercase letter
+  char_type_lowercase: lowercase letter
+  char_type_digit: number
+  char_type_special: special character
 login:
   incorrect_password_with_attempts: Username or password is incorrect. {attempts}
     attempts remaining.
@@ -114,6 +162,8 @@ app:
     and other information
   job: Quickly create and execute jobs, unified management of script execution, file
     distribution and scheduled tasks
+  patch: Centrally manage system patches with scanning, installation, and patch library
+    maintenance to continuously reduce security risks.
 action_type:
   create: Create
   delete: Delete
@@ -128,3 +178,7 @@ tag:
   script_management: Script Management
   file_distribution: File Distribution
   scheduled_task: Scheduled Task
+  # patch
+  patch_scan: Patch Scanning
+  patch_install: Patch Installation
+  patch_library: Patch Library

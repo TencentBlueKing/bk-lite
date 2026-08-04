@@ -18,7 +18,16 @@ if TYPE_CHECKING:
 
 
 # 磁盘 UI.json 相对 DB 模板可热更新的展示字段（无需等 plugin_init）。
-_FILE_OVERLAY_FIELD_KEYS = ("guide_short", "section")
+_FILE_OVERLAY_FIELD_KEYS = ("guide_short", "section", "rules")
+_FILE_OVERLAY_TABLE_COLUMN_KEYS = (
+    "guide_short",
+    "guide_short_en",
+    "description",
+    "description_en",
+    "tooltip",
+    "dependency",
+)
+_FILE_OVERLAY_TOP_KEYS = ("advanced_panel",)
 
 
 _EN_LOCALES = {"en", "en-us", "en-gb"}
@@ -232,51 +241,88 @@ def _localize_node(node: Any, locale: str) -> Any:
 def enrich_ui_template_from_plugin_files(content: dict | None, plugin: MonitorPlugin | None) -> dict | None:
     """用插件目录 UI.json 覆盖 DB 模板中的悬浮提示等展示字段。
 
-    内置插件以 support-files 下的 UI.json 为展示文案真相源；仅同步 guide_short /
-    section 等不影响已下发配置语义的字段，避免每次改提示都强制跑 plugin_init。
+    内置插件以 support-files 下的 UI.json 为展示文案真相源；一般仅同步 guide_short /
+    section、以及 table_columns 的 description/guide_short 等不影响已下发配置语义的字段，
+    避免每次改提示都强制跑 plugin_init。
+
+    SNMP 接口过滤四字段与 advanced_panel 由常量运行时注入（见 snmp_interface_template），
+    各插件 UI.json 不再复制该块。
     """
-    if not content or not plugin:
+    if content is None or not plugin:
+        return content
+    if not isinstance(content, dict):
         return content
 
     from apps.monitor.services.plugin_guide import PluginGuideService
-
-    plugin_dir = PluginGuideService.resolve_plugin_dir(plugin)
-    if plugin_dir is None:
-        return content
-
-    ui_file = Path(plugin_dir) / "UI.json"
-    if not ui_file.is_file():
-        return content
-
-    try:
-        file_ui = json.loads(ui_file.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError, TypeError):
-        return content
-
-    file_fields = {
-        str(field.get("name")): field
-        for field in (file_ui.get("form_fields") or [])
-        if isinstance(field, dict) and field.get("name")
-    }
-    if not file_fields:
-        return content
+    from apps.monitor.utils.snmp_interface_template import (
+        merge_snmp_interface_filter_ui,
+        should_inject_snmp_interface_filters,
+    )
 
     enriched = deepcopy(content)
-    form_fields = enriched.get("form_fields")
-    if not isinstance(form_fields, list):
-        return enriched
 
-    for field in form_fields:
-        if not isinstance(field, dict):
-            continue
-        source = file_fields.get(str(field.get("name") or ""))
-        if not source:
-            continue
-        for key in _FILE_OVERLAY_FIELD_KEYS:
-            value = source.get(key)
-            if value in (None, ""):
-                continue
-            field[key] = value
+    plugin_dir = PluginGuideService.resolve_plugin_dir(plugin)
+    if plugin_dir is not None:
+        ui_file = Path(plugin_dir) / "UI.json"
+        if ui_file.is_file():
+            try:
+                file_ui = json.loads(ui_file.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError, TypeError):
+                file_ui = None
+
+            if isinstance(file_ui, dict):
+                file_fields = {
+                    str(field.get("name")): field
+                    for field in (file_ui.get("form_fields") or [])
+                    if isinstance(field, dict) and field.get("name")
+                }
+                file_columns = {
+                    str(column.get("name")): column
+                    for column in (file_ui.get("table_columns") or [])
+                    if isinstance(column, dict) and column.get("name")
+                }
+                for key in _FILE_OVERLAY_TOP_KEYS:
+                    value = file_ui.get(key)
+                    if value not in (None, ""):
+                        enriched[key] = value
+
+                form_fields = enriched.get("form_fields")
+                if isinstance(form_fields, list) and file_fields:
+                    for field in form_fields:
+                        if not isinstance(field, dict):
+                            continue
+                        name = str(field.get("name") or "")
+                        source = file_fields.get(name)
+                        if not source:
+                            continue
+                        for key in _FILE_OVERLAY_FIELD_KEYS:
+                            if key not in source:
+                                continue
+                            value = source.get(key)
+                            if value in (None, ""):
+                                continue
+                            field[key] = deepcopy(value)
+
+                table_columns = enriched.get("table_columns")
+                if isinstance(table_columns, list) and file_columns:
+                    for column in table_columns:
+                        if not isinstance(column, dict):
+                            continue
+                        name = str(column.get("name") or "")
+                        source = file_columns.get(name)
+                        if not source:
+                            continue
+                        for key in _FILE_OVERLAY_TABLE_COLUMN_KEYS:
+                            if key not in source:
+                                continue
+                            value = source.get(key)
+                            if value in (None, ""):
+                                continue
+                            column[key] = deepcopy(value)
+
+    if should_inject_snmp_interface_filters(plugin, enriched):
+        enriched = merge_snmp_interface_filter_ui(enriched)
+
     return enriched
 
 

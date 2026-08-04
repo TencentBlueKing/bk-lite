@@ -6,7 +6,7 @@
       "name": "缓存命中率下降",
       "alert_name": "PostgreSQL 实例 ${resource_name} 缓存效率低",
       "description": "监控数据块缓存命中率，低命中率会导致大量物理IO。需优化shared_buffers配置或检查查询模式。",
-      "metric_name": "postgresql_blks_hit_rate",
+      "metric_name": "postgresql_cache_hit_ratio",
       "algorithm": "min_over_time",
       "threshold": [
         {
@@ -105,24 +105,24 @@
     {
       "name": "物理读过高",
       "alert_name": "PostgreSQL 实例 ${resource_name} 物理 IO 压力",
-      "description": "检测块缓存命中率，反映缓存的有效性",
+      "description": "检测磁盘数据块读取速率，过高表明缓存不足或查询触发大量物理 IO。需检查 shared_buffers、查询模式或存储性能。",
       "metric_name": "postgresql_blks_read_rate",
       "algorithm": "max_over_time",
       "threshold": [
         {
           "level": "critical",
-          "value": 85,
-          "method": "<"
+          "value": 1000,
+          "method": ">="
         },
         {
           "level": "error",
-          "value": 95,
-          "method": "<"
+          "value": 500,
+          "method": ">="
         },
         {
           "level": "warning",
-          "value": 99,
-          "method": "<"
+          "value": 200,
+          "method": ">="
         }
       ],
       "group_algorithm": "max"

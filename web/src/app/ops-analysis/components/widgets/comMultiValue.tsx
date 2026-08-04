@@ -1,10 +1,11 @@
 import React, { useEffect, useMemo } from 'react';
-import { Empty, Spin, Tooltip } from 'antd';
+import { Spin, Tooltip } from 'antd';
 import type { ScreenRenderContext, ValueConfig } from '@/app/ops-analysis/types/dashBoard';
 import { useTranslation } from '@/utils/i18n';
 import { validateMultiValueData } from '@/app/ops-analysis/utils/multiValueData';
 import { getOpsChartThemeByMode } from '@/app/ops-analysis/utils/chartTheme';
 import { scaleScreenMetric } from './shared/screenMetrics';
+import WidgetState from '@/app/ops-analysis/components/widget-state';
 
 interface ComMultiValueProps {
   rawData: unknown;
@@ -34,10 +35,10 @@ const ComMultiValue: React.FC<ComMultiValueProps> = ({
     return <div className="flex h-full items-center justify-center"><Spin size="small" /></div>;
   }
   if (!result.isValid) {
-    return <div className="flex h-full items-center justify-center text-xs text-red-500">{result.errorMessage}</div>;
+    return <WidgetState kind="error" description={result.errorMessage} />;
   }
   if (result.items.length === 0) {
-    return <div className="flex h-full items-center justify-center"><Empty image={Empty.PRESENTED_IMAGE_SIMPLE} /></div>;
+    return <WidgetState />;
   }
 
   const padding = scaleScreenMetric(8, screenRenderContext);

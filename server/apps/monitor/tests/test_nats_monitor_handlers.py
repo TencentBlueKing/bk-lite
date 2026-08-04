@@ -3,8 +3,8 @@
 外部权限/VM 边界 mock；DB 走真实模型断言查询结果。
 """
 
-from types import SimpleNamespace
 import time
+from types import SimpleNamespace
 
 import pytest
 
@@ -60,8 +60,12 @@ class TestMonitorMetricsHandler:
         plugin = MonitorPlugin.objects.create(name="NMMPlugin")
         group = MetricGroup.objects.create(monitor_object=obj, monitor_plugin=plugin, name="g")
         Metric.objects.create(
-            monitor_object=obj, monitor_plugin=plugin, metric_group=group,
-            name="cpu", display_name="CPU", description="d",
+            monitor_object=obj,
+            monitor_plugin=plugin,
+            metric_group=group,
+            name="cpu",
+            display_name="CPU",
+            description="d",
         )
         out = nm.monitor_metrics(obj.id, user_info={"locale": "en"})
         assert out["result"] is True
@@ -83,7 +87,11 @@ class TestMonitorObjectInstancesHandler:
     def test_returns_authorized_instances(self, mocker):
         obj = MonitorObject.objects.create(name="NMIObj2", level="base")
         MonitorInstance.objects.create(
-            id="('h1',)", name="h1", monitor_object=obj, is_active=True, is_deleted=False,
+            id="('h1',)",
+            name="h1",
+            monitor_object=obj,
+            is_active=True,
+            is_deleted=False,
         )
         mocker.patch(
             "apps.monitor.nats.monitor.get_permission_rules",
@@ -142,7 +150,7 @@ class TestHostResourceTop:
         vm = mocker.patch("apps.monitor.nats.monitor.VictoriaMetricsAPI")
         vm.return_value.query.return_value = {
             "status": "success",
-            "data": {"result": [{"metric": {"instance_id": "host-1"}, "value": [time.time(), "42"]}]},
+            "data": {"result": [{"metric": {"instance_id": "host-1"}, "value": [time.time(), "58"]}]},
         }
 
         out = nm.get_host_resource_top("cpu", user_info={"user": "u", "team": 1})
@@ -166,15 +174,46 @@ class TestMmQueryRange:
             "status": "success",
             "data": {"result": [{"values": [[1, "10"], [2, "20"]]}]},
         }
-        out = nm.mm_query_range("up", ["2026-01-01 00:00:00", "2026-01-01 00:10:00"])
+        out = nm.mm_query_range(
+            "up",
+            ["2026-01-01T00:00:00.000Z", "2026-01-01T00:10:00.000Z"],
+        )
+
         assert out["result"] is True
         assert out["data"] == [{"name": 1, "value": "10"}, {"name": 2, "value": "20"}]
+        vm.return_value.query_range.assert_called_once_with(
+            "up",
+            "1767225600",
+            "1767226200",
+            "5m",
+        )
 
     def test_failure(self, mocker):
         vm = mocker.patch("apps.monitor.nats.monitor.VictoriaMetricsAPI")
         vm.return_value.query_range.return_value = {"status": "error", "message": "down"}
-        out = nm.mm_query_range("up", ["2026-01-01 00:00:00", "2026-01-01 00:10:00"])
+        out = nm.mm_query_range(
+            "up",
+            ["2026-01-01T00:00:00.000Z", "2026-01-01T00:10:00.000Z"],
+        )
         assert out["result"] is False
+
+    @pytest.mark.integration
+    @pytest.mark.parametrize(
+        "time_range",
+        [
+            ["2026-01-01 00:00:00", "2026-01-01T00:10:00Z"],
+            ["2026-01-01T00:00:00Z"],
+        ],
+    )
+    def test_invalid_time_range_returns_error_without_query(self, mocker, time_range):
+        vm = mocker.patch("apps.monitor.nats.monitor.VictoriaMetricsAPI")
+
+        result = nm.mm_query_range("up", time_range)
+
+        assert result["result"] is False
+        assert result["data"] == []
+        assert "time range" in result["message"]
+        vm.assert_not_called()
 
 
 class TestQueryMonitorDataByMetric:
@@ -183,8 +222,12 @@ class TestQueryMonitorDataByMetric:
         plugin = MonitorPlugin.objects.create(name="QMDPlugin")
         group = MetricGroup.objects.create(monitor_object=obj, monitor_plugin=plugin, name="g")
         metric = Metric.objects.create(
-            monitor_object=obj, monitor_plugin=plugin, metric_group=group,
-            name="cpu", query="cpu{__$labels__}", instance_id_keys=["instance_id"],
+            monitor_object=obj,
+            monitor_plugin=plugin,
+            metric_group=group,
+            name="cpu",
+            query="cpu{__$labels__}",
+            instance_id_keys=["instance_id"],
             dimensions=[],
         )
         return obj, metric
@@ -227,10 +270,14 @@ class TestQueryMonitorDataByMetric:
         )
         mocker.patch(
             "apps.monitor.nats.monitor.Metrics.get_metrics_range",
-            return_value={"data": {"result": [
-                {"metric": {"instance_id": "('h1',)"}, "values": [[0, "1"]]},
-                {"metric": {"instance_id": "('other',)"}, "values": [[0, "2"]]},
-            ]}},
+            return_value={
+                "data": {
+                    "result": [
+                        {"metric": {"instance_id": "('h1',)"}, "values": [[0, "1"]]},
+                        {"metric": {"instance_id": "('other',)"}, "values": [[0, "2"]]},
+                    ]
+                }
+            },
         )
         out = nm.query_monitor_data_by_metric(
             {"monitor_obj_id": obj.id, "metric": "cpu", "start": 1, "end": 2},
@@ -240,6 +287,90 @@ class TestQueryMonitorDataByMetric:
         ids = {d["metric"]["instance_id"] for d in out["data"]["data"]["result"]}
         # 只保留有权限实例 ('h1',)
         assert ids == {"('h1',)"}
+
+    def test_same_metric_name_queries_all_plugins_and_returns_plugin_metadata(
+        self,
+        mocker,
+    ):
+        obj, first_metric = self._setup()
+        first_metric.query = "plugin_a_cpu{__$labels__}"
+        first_metric.save(update_fields=["query"])
+
+        second_plugin = MonitorPlugin.objects.create(
+            name="QMDPluginB",
+            display_name="Plugin B",
+            template_id="qmd-plugin-b",
+            template_type="api",
+            collector="telegraf",
+            collect_type="http",
+        )
+        second_group = MetricGroup.objects.create(
+            monitor_object=obj,
+            monitor_plugin=second_plugin,
+            name="g",
+        )
+        second_metric = Metric.objects.create(
+            monitor_object=obj,
+            monitor_plugin=second_plugin,
+            metric_group=second_group,
+            name="cpu",
+            query="plugin_b_cpu{__$labels__}",
+            instance_id_keys=["instance_id"],
+            dimensions=[],
+        )
+        MonitorInstance.objects.create(
+            id="('h1',)",
+            name="h1",
+            monitor_object=obj,
+            is_deleted=False,
+        )
+        mocker.patch("apps.monitor.nats.monitor.get_permission_rules", return_value={"team": [1]})
+        mocker.patch(
+            "apps.monitor.nats.monitor.permission_filter",
+            side_effect=lambda model, perm, **kw: model.objects.all(),
+        )
+
+        def query_metric(query, *args, **kwargs):
+            source = "plugin_a" if query.startswith("plugin_a_cpu") else "plugin_b"
+            return {
+                "status": "success",
+                "data": {
+                    "resultType": "matrix",
+                    "result": [
+                        {
+                            "metric": {"instance_id": "h1", "source": source},
+                            "values": [[0, "1"]],
+                        }
+                    ],
+                },
+            }
+
+        get_metrics_range = mocker.patch(
+            "apps.monitor.nats.monitor.Metrics.get_metrics_range",
+            side_effect=query_metric,
+        )
+
+        out = nm.query_monitor_data_by_metric(
+            {"monitor_obj_id": obj.id, "metric": "cpu", "start": 1, "end": 2},
+            user_info={"user": SimpleNamespace(username="u", domain="d"), "team": 1},
+        )
+
+        assert out["result"] is True
+        rows = out["data"]["data"]["result"]
+        assert len(rows) == 2
+        assert get_metrics_range.call_count == 2
+        assert {row["metric_id"] for row in rows} == {first_metric.id, second_metric.id}
+        plugins = {row["metric"]["source"]: row["monitor_plugin"] for row in rows}
+        assert plugins["plugin_a"]["name"] == "QMDPlugin"
+        assert plugins["plugin_b"] == {
+            "id": second_plugin.id,
+            "name": "QMDPluginB",
+            "display_name": "Plugin B",
+            "template_id": "qmd-plugin-b",
+            "template_type": "api",
+            "collector": "telegraf",
+            "collect_type": "http",
+        }
 
 
 class TestMonitorInstanceMetrics:
@@ -257,7 +388,8 @@ class TestMonitorInstanceMetrics:
 
     def test_missing_user_info(self):
         out = nm.monitor_instance_metrics(
-            {"monitor_obj_id": 1, "instance_id": "('h1',)"}, user_info={},
+            {"monitor_obj_id": 1, "instance_id": "('h1',)"},
+            user_info={},
         )
         assert out["result"] is False
 
@@ -266,11 +398,20 @@ class TestMonitorInstanceMetrics:
         plugin = MonitorPlugin.objects.create(name="MIMPlugin")
         group = MetricGroup.objects.create(monitor_object=obj, monitor_plugin=plugin, name="g")
         Metric.objects.create(
-            monitor_object=obj, monitor_plugin=plugin, metric_group=group,
-            name="cpu", display_name="CPU", unit="percent", data_type="Number",
+            monitor_object=obj,
+            monitor_plugin=plugin,
+            metric_group=group,
+            name="cpu",
+            display_name="CPU",
+            unit="percent",
+            data_type="Number",
         )
         MonitorInstance.objects.create(
-            id="('h1',)", name="h1", monitor_object=obj, is_active=True, is_deleted=False,
+            id="('h1',)",
+            name="h1",
+            monitor_object=obj,
+            is_active=True,
+            is_deleted=False,
         )
         mocker.patch("apps.monitor.nats.monitor.get_permission_rules", return_value={"team": [1]})
         mocker.patch(
@@ -300,7 +441,11 @@ class TestMonitorInstanceMetrics:
                 sort_order=index,
             )
         MonitorInstance.objects.create(
-            id="('h1',)", name="h1", monitor_object=obj, is_active=True, is_deleted=False,
+            id="('h1',)",
+            name="h1",
+            monitor_object=obj,
+            is_active=True,
+            is_deleted=False,
         )
         mocker.patch("apps.monitor.nats.monitor.get_permission_rules", return_value={"team": [1]})
         mocker.patch(
@@ -347,9 +492,14 @@ class TestQueryMonitorAlertSegments:
         assert "缺少必要参数" in out["message"]
 
     def test_start_after_end(self):
-        out = nm.query_monitor_alert_segments({
-            "monitor_obj_id": 1, "start": "2026-01-02 00:00:00", "end": "2026-01-01 00:00:00",
-        }, user_info={})
+        out = nm.query_monitor_alert_segments(
+            {
+                "monitor_obj_id": 1,
+                "start": "2026-01-02 00:00:00",
+                "end": "2026-01-01 00:00:00",
+            },
+            user_info={},
+        )
         assert out["result"] is False
         assert "时间" in out["message"]
 
@@ -360,9 +510,14 @@ class TestQueryMonitorAlertSegments:
             "apps.monitor.nats.monitor.permission_filter",
             side_effect=lambda model, perm, **kw: model.objects.none(),
         )
-        out = nm.query_monitor_alert_segments({
-            "monitor_obj_id": obj.id, "start": "2026-01-01 00:00:00", "end": "2026-01-02 00:00:00",
-        }, user_info={"user": SimpleNamespace(username="u", domain="d"), "team": 1})
+        out = nm.query_monitor_alert_segments(
+            {
+                "monitor_obj_id": obj.id,
+                "start": "2026-01-01 00:00:00",
+                "end": "2026-01-02 00:00:00",
+            },
+            user_info={"user": SimpleNamespace(username="u", domain="d"), "team": 1},
+        )
         assert out["result"] is True
         assert out["data"]["count"] == 0
 
@@ -370,9 +525,14 @@ class TestQueryMonitorAlertSegments:
         from datetime import datetime, timezone
 
         from apps.monitor.models import MonitorAlert
+
         obj = MonitorObject.objects.create(name="QMASObj2", level="base")
         instance = MonitorInstance.objects.create(
-            id="('h1',)", name="h1", monitor_object=obj, is_active=True, is_deleted=False,
+            id="('h1',)",
+            name="h1",
+            monitor_object=obj,
+            is_active=True,
+            is_deleted=False,
         )
         MonitorInstanceOrganization.objects.create(
             monitor_instance=instance,
@@ -388,7 +548,10 @@ class TestQueryMonitorAlertSegments:
         )
         PolicyOrganization.objects.create(policy=policy, organization=1)
         MonitorAlert.objects.create(
-            policy_id=policy.id, monitor_instance_id="('h1',)", status="new", level="critical",
+            policy_id=policy.id,
+            monitor_instance_id="('h1',)",
+            status="new",
+            level="critical",
             start_event_time=datetime(2026, 1, 1, 12, tzinfo=timezone.utc),
         )
         mocker.patch("apps.monitor.nats.monitor.get_permission_rules", return_value={"team": [1]})
@@ -400,9 +563,14 @@ class TestQueryMonitorAlertSegments:
             "apps.monitor.nats.monitor.permission_filter",
             side_effect=lambda model, perm, **kw: model.objects.all(),
         )
-        out = nm.query_monitor_alert_segments({
-            "monitor_obj_id": obj.id, "start": "2026-01-01 00:00:00", "end": "2026-01-02 00:00:00",
-        }, user_info={"user": SimpleNamespace(username="u", domain="d"), "team": 1})
+        out = nm.query_monitor_alert_segments(
+            {
+                "monitor_obj_id": obj.id,
+                "start": "2026-01-01 00:00:00",
+                "end": "2026-01-02 00:00:00",
+            },
+            user_info={"user": SimpleNamespace(username="u", domain="d"), "team": 1},
+        )
         assert out["result"] is True
         assert out["data"]["count"] == 1
 
@@ -413,7 +581,11 @@ class TestQueryMonitorAlertSegments:
 
         obj = MonitorObject.objects.create(name="QMASObj3", level="base")
         instance = MonitorInstance.objects.create(
-            id="('h1',)", name="h1", monitor_object=obj, is_active=True, is_deleted=False,
+            id="('h1',)",
+            name="h1",
+            monitor_object=obj,
+            is_active=True,
+            is_deleted=False,
         )
         MonitorInstanceOrganization.objects.create(
             monitor_instance=instance,
@@ -452,13 +624,16 @@ class TestQueryMonitorAlertSegments:
             side_effect=nm._build_monitor_alert_segment,
         )
 
-        out = nm.query_monitor_alert_segments({
-            "monitor_obj_id": obj.id,
-            "start": "2026-01-01 00:00:00",
-            "end": "2026-01-02 00:00:00",
-            "page": 2,
-            "page_size": 1,
-        }, user_info={"user": SimpleNamespace(username="u", domain="d"), "team": 1})
+        out = nm.query_monitor_alert_segments(
+            {
+                "monitor_obj_id": obj.id,
+                "start": "2026-01-01 00:00:00",
+                "end": "2026-01-02 00:00:00",
+                "page": 2,
+                "page_size": 1,
+            },
+            user_info={"user": SimpleNamespace(username="u", domain="d"), "team": 1},
+        )
 
         assert out["result"] is True
         assert out["data"]["count"] == 3
@@ -472,13 +647,23 @@ class TestQueryMonitorAlertSegments:
 class TestBuildMonitorAlertSegment:
     def test_computes_duration(self):
         from datetime import datetime, timezone
+
         alert = SimpleNamespace(
-            id=1, policy_id=2, monitor_instance_id="('h1',)", monitor_instance_name="主机1",
-            metric_instance_id="m1", level="critical", value=9.0, status="recovered",
-            content="c", dimensions={}, alert_type="alert",
+            id=1,
+            policy_id=2,
+            monitor_instance_id="('h1',)",
+            monitor_instance_name="主机1",
+            metric_instance_id="m1",
+            level="critical",
+            value=9.0,
+            status="recovered",
+            content="c",
+            dimensions={},
+            alert_type="alert",
             start_event_time=datetime(2026, 1, 1, 0, 0, 0, tzinfo=timezone.utc),
             end_event_time=datetime(2026, 1, 1, 0, 5, 0, tzinfo=timezone.utc),
-            created_at=None, updated_at=None,
+            created_at=None,
+            updated_at=None,
         )
         seg = nm._build_monitor_alert_segment(alert)
         assert seg["duration_seconds"] == 300
@@ -532,8 +717,13 @@ class TestGetMonitorStatistics:
         MonitorInstanceOrganization.objects.create(monitor_instance=inactive, organization=1)
         MonitorPlugin.objects.create(name="StatPlugin", is_pre=True)
         policy = MonitorPolicy.objects.create(
-            monitor_object=obj, name="sp", algorithm="max",
-            query_condition={}, source={}, group_by=[], enable=True,
+            monitor_object=obj,
+            name="sp",
+            algorithm="max",
+            query_condition={},
+            source={},
+            group_by=[],
+            enable=True,
             threshold=[{"method": ">", "value": 1, "level": "warning"}],
         )
         PolicyOrganization.objects.create(policy=policy, organization=1)

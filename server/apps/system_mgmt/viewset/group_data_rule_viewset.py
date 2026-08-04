@@ -5,6 +5,7 @@ from django_filters.rest_framework import FilterSet
 from rest_framework.decorators import action
 
 from apps.core.decorators.api_permission import HasPermission
+from apps.core.utils.loader import LanguageLoader
 from apps.core.utils.team_utils import get_current_team
 from apps.core.utils.permission_cache import clear_users_permission_cache
 from apps.core.utils.user_group import normalize_user_group_ids
@@ -26,15 +27,18 @@ from apps.system_mgmt.utils.operation_log_utils import log_operation
 
 
 def _build_actor_context(request, loader=None):
+    loader = loader or LanguageLoader(
+        app="system_mgmt", default_lang=getattr(getattr(request, "user", None), "locale", "en") or "en"
+    )
     current_team = get_current_team(request)
     if current_team in (None, ""):
-        message = loader.get("error.current_team_required") if loader else "缺少 current_team 参数"
+        message = loader.get("error.current_team_required")
         return None, JsonResponse({"result": False, "message": message}, status=400)
 
     try:
         current_team = int(current_team)
     except (TypeError, ValueError):
-        message = loader.get("error.invalid_current_team") if loader else "current_team 参数非法"
+        message = loader.get("error.invalid_current_team")
         return None, JsonResponse({"result": False, "message": message}, status=400)
 
     return {
@@ -69,6 +73,11 @@ class GroupDataRuleViewSet(LanguageViewSet):
     # 禁用 PATCH (partial_update)
     http_method_names = ["get", "post", "put", "delete", "options"]
 
+    def _loader(self, request):
+        return getattr(self, "loader", None) or LanguageLoader(
+            app="system_mgmt", default_lang=getattr(getattr(request, "user", None), "locale", "en") or "en"
+        )
+
     def _get_user_group_ids(self, user):
         """获取用户有权限的组ID集合"""
         return get_user_group_ids(user)
@@ -88,7 +97,7 @@ class GroupDataRuleViewSet(LanguageViewSet):
 
         user_group_ids = self._get_user_group_ids(request.user)
         if group_id not in user_group_ids:
-            message = (self.loader.get("error.no_permission_access_group") if self.loader else None) or "无权访问该组织"
+            message = self._loader(request).get("error.no_permission_access_group")
             return False, JsonResponse({"result": False, "message": message}, status=403)
         return True, None
 
@@ -114,7 +123,7 @@ class GroupDataRuleViewSet(LanguageViewSet):
 
     def retrieve(self, request, *args, **kwargs):
         """禁用内置 retrieve 接口"""
-        return JsonResponse({"result": False, "message": self.loader.get("error.api_not_enabled") if self.loader else "接口未启用"}, status=405)
+        return JsonResponse({"result": False, "message": self._loader(request).get("error.api_not_enabled")}, status=405)
 
     @HasPermission("data_permission-Delete")
     def destroy(self, request, *args, **kwargs):
@@ -212,11 +221,11 @@ class GroupDataRuleViewSet(LanguageViewSet):
         params = request.GET.dict()
         # 记录 app 值（get_client 会从 params 中弹出），用于后续判断是否注入上下文
         app = params.get("app", "")
-        if app in {"job", "log", "mlops"}:
+        if app in {"job", "log", "mlops", "patch"}:
             try:
                 group_id = int(params.get("group_id"))
             except (TypeError, ValueError):
-                return JsonResponse({"result": False, "message": "group_id 参数非法"}, status=400)
+                return JsonResponse({"result": False, "message": self._loader(request).get("error.invalid_group_id")}, status=400)
 
             is_valid, error_response = self._validate_group_permission(request, group_id)
             if not is_valid:
@@ -227,7 +236,7 @@ class GroupDataRuleViewSet(LanguageViewSet):
                 if error_response:
                     return error_response
                 params["actor_context"] = actor_context
-            elif app == "job":
+            elif app in {"job", "patch"}:
                 user_group_ids = self._get_user_group_ids(request.user)
                 params["team"] = [group_id] if user_group_ids is None else sorted(user_group_ids)
 
@@ -245,7 +254,7 @@ class GroupDataRuleViewSet(LanguageViewSet):
             try:
                 team = int(current_team) if current_team not in (None, "") else None
             except (TypeError, ValueError):
-                message = self.loader.get("error.invalid_current_team") if self.loader else "current_team 参数非法"
+                message = self._loader(request).get("error.invalid_current_team")
                 return JsonResponse({"result": False, "message": message}, status=400)
             params["user_info"] = {
                 "user": getattr(user, "username", ""),

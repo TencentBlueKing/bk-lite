@@ -4,6 +4,7 @@ import type { DataNode as TreeDataNode } from 'antd/lib/tree';
 
 interface UserGroupTreeDataNode extends TreeDataNode {
   isVirtual?: boolean;
+  syncSource?: number | null;
 }
 
 export interface GroupRole {
@@ -21,6 +22,7 @@ export interface TreeSelectNode {
   value: React.Key;
   key: React.Key;
   isVirtual?: boolean;
+  syncSource?: number | null;
   children: TreeSelectNode[];
 }
 
@@ -45,6 +47,7 @@ export interface UserDetailResponse {
   timezone?: string;
   locale?: string;
   is_superuser?: boolean;
+  sync_source?: number | null;
   groups?: Array<{ id: React.Key; rules?: { [key: string]: number } }>;
   roles?: Array<{ role_id: number }>;
 }
@@ -61,9 +64,33 @@ export function transformTreeDataForSelect(data: TreeDataNode[]): TreeSelectNode
       value: node.key,
       key: node.key,
       isVirtual: groupNode.isVirtual === true,
+      syncSource: groupNode.syncSource,
       children: node.children ? transformTreeDataForSelect(node.children as TreeDataNode[]) : [],
     };
   });
+}
+
+/**
+ * Exclude synced groups when assigning a local user. A retained synced child
+ * also keeps its ancestors visible so historic memberships can be displayed.
+ */
+export function filterSyncedGroupsForLocalUser(
+  nodes: TreeSelectNode[],
+  retainedGroupIds: React.Key[] = []
+): TreeSelectNode[] {
+  const retainedIds = new Set(retainedGroupIds.map(String));
+
+  return nodes.reduce<TreeSelectNode[]>((result, node) => {
+    const children = filterSyncedGroupsForLocalUser(node.children, retainedGroupIds);
+    const isSyncedGroup = node.syncSource !== null && node.syncSource !== undefined;
+    const shouldKeep = !isSyncedGroup || retainedIds.has(String(node.key)) || children.length > 0;
+
+    if (shouldKeep) {
+      result.push({ ...node, children });
+    }
+
+    return result;
+  }, []);
 }
 
 export function flattenTreeSelectNodes(nodes: TreeSelectNode[]): TreeSelectNode[] {

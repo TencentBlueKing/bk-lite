@@ -25,10 +25,11 @@ from apps.alerts.models.models import Alert, Event, Incident, Level
 from apps.alerts.utils.permission_scope import apply_team_scope_with_group_ids
 from apps.core.logger import alert_logger as logger
 from apps.core.utils.permission_utils import get_permission_rules
+from apps.core.utils.time_util import parse_rfc3339_range_utc, parse_rfc3339_utc
 from apps.core.utils.viewset_utils import GenericViewSetFun
 
 ALERT_LEVEL_DISPLAY_MAP = dict(EventLevel.CHOICES)
-TRUSTED_INTERNAL_PUSHERS = {"lite-monitor", "lite-log"}
+TRUSTED_INTERNAL_PUSHERS = {"lite-monitor", "lite-log", "lite-apm"}
 
 
 def _positive_int_env(name, default):
@@ -137,13 +138,9 @@ def _get_authorized_alert_queryset(user_info: dict):
         except (TypeError, ValueError):
             logger.warning("Invalid alert permission team id: %s", team_id)
 
-    authorized_queryset = apply_team_scope_with_group_ids(
-        Alert.objects.all(), normalized_permission_team_ids
-    )
+    authorized_queryset = apply_team_scope_with_group_ids(Alert.objects.all(), normalized_permission_team_ids)
     if instance_ids:
-        authorized_queryset = Alert.objects.filter(
-            Q(id__in=authorized_queryset.values("id")) | Q(id__in=instance_ids)
-        )
+        authorized_queryset = Alert.objects.filter(Q(id__in=authorized_queryset.values("id")) | Q(id__in=instance_ids))
     return authorized_queryset.distinct(), None
 
 
@@ -189,15 +186,18 @@ def _resolve_target_timezone(timezone_name=None):
 
 
 def _parse_client_datetime(value, target_tz):
-    text = str(value).strip()
-    try:
-        parsed = datetime.datetime.fromisoformat(text.replace("Z", "+00:00"))
-    except ValueError:
-        parsed = datetime.datetime.strptime(text, "%Y-%m-%d %H:%M:%S")
+    return parse_rfc3339_utc(value).astimezone(target_tz)
 
-    if timezone.is_naive(parsed):
-        return timezone.make_aware(parsed, target_tz)
-    return parsed.astimezone(target_tz)
+
+def _parse_optional_client_time_range(value, target_tz):
+    if value is None or value == [] or value == ():
+        return None, None, None
+
+    try:
+        start, end = parse_rfc3339_range_utc(value)
+    except ValueError as exc:
+        return None, None, str(exc)
+    return start.astimezone(target_tz), end.astimezone(target_tz), None
 
 
 def _format_period_value(value, target_tz):
@@ -483,9 +483,10 @@ def get_alert_source_statistics(*args, **kwargs) -> Dict[str, Any]:
     enabled_rate = round((enabled_count / total_count * 100), 1) if total_count > 0 else 0
 
     # 活跃告警源：当前授权告警范围内，时间窗口中实际收到过事件的来源。
-    if time and len(time) == 2:
-        aware_start = _parse_client_datetime(time[0], target_tz)
-        aware_end = _parse_client_datetime(time[1], target_tz)
+    aware_start, aware_end, time_error = _parse_optional_client_time_range(time, target_tz)
+    if time_error:
+        return {"result": False, "data": {}, "message": time_error}
+    if aware_start is not None:
         active_source_ids = event_qs.filter(received_at__gte=aware_start, received_at__lt=aware_end).values_list("source_id", flat=True).distinct()
         active_count = visible_sources.filter(id__in=active_source_ids).count()
     else:
@@ -531,9 +532,10 @@ def get_notification_statistics(*args, **kwargs) -> Dict[str, Any]:
 
     time = kwargs.pop("time", [])
 
-    if time and len(time) == 2:
-        aware_start = _parse_client_datetime(time[0], target_tz)
-        aware_end = _parse_client_datetime(time[1], target_tz)
+    aware_start, aware_end, time_error = _parse_optional_client_time_range(time, target_tz)
+    if time_error:
+        return {"result": False, "data": {}, "message": time_error}
+    if aware_start is not None:
         qs = qs.filter(notify_time__gte=aware_start, notify_time__lt=aware_end)
 
     from apps.alerts.constants.constants import NotifyResultStatus
@@ -583,9 +585,10 @@ def get_notification_channel_stats(*args, **kwargs) -> Dict[str, Any]:
 
     time = kwargs.pop("time", [])
 
-    if time and len(time) == 2:
-        aware_start = _parse_client_datetime(time[0], target_tz)
-        aware_end = _parse_client_datetime(time[1], target_tz)
+    aware_start, aware_end, time_error = _parse_optional_client_time_range(time, target_tz)
+    if time_error:
+        return {"result": False, "data": [], "message": time_error}
+    if aware_start is not None:
         qs = qs.filter(notify_time__gte=aware_start, notify_time__lt=aware_end)
 
     from apps.alerts.constants.constants import NotifyResultStatus
@@ -638,9 +641,10 @@ def get_alert_data_quality(*args, **kwargs) -> Dict[str, Any]:
         return error
 
     time = kwargs.pop("time", [])
-    if time and len(time) == 2:
-        aware_start = _parse_client_datetime(time[0], target_tz)
-        aware_end = _parse_client_datetime(time[1], target_tz)
+    aware_start, aware_end, time_error = _parse_optional_client_time_range(time, target_tz)
+    if time_error:
+        return {"result": False, "data": {}, "message": time_error}
+    if aware_start is not None:
         queryset = queryset.filter(created_at__gte=aware_start, created_at__lt=aware_end)
 
     total_count = queryset.count()
@@ -742,6 +746,9 @@ def receive_alert_events(*args, **kwargs) -> Dict[str, Any]:
               }
             }
     """
+    if kwargs.pop("health_probe", False) is True:
+        return {"result": True, "data": {"status": "ok"}, "message": ""}
+
     logger.info(
         "[AlertEvent] receive_alert_events source_id=%s pusher=%s event_count=%s",
         kwargs.get("source_id", ""),
@@ -824,11 +831,7 @@ def receive_alert_events(*args, **kwargs) -> Dict[str, Any]:
                 "pusher": pusher,
                 "timestamp": timezone.now().strftime("%Y-%m-%d %H:%M:%S"),
             },
-            "message": (
-                "Events received and processed successfully."
-                if fully_accepted
-                else "Alert events were only partially accepted."
-            ),
+            "message": ("Events received and processed successfully." if fully_accepted else "Alert events were only partially accepted."),
         }
 
     except Exception as e:

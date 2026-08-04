@@ -37,7 +37,6 @@ export interface NotifyRecord {
 export interface AlarmTableDataItem {
   id: number;
   event_count: number;
-  source_names: string;
   duration: string;
   operator_user: string;
   operator: string[];

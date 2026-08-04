@@ -5,9 +5,12 @@
 import time
 from typing import Any, Dict
 
+from asgiref.sync import sync_to_async
+
 from apps.core.logger import opspilot_logger as logger
 from apps.core.utils.safe_template import TemplateSecurityError, safe_render
-from apps.opspilot.models import LLMModel, LLMSkill, WorkflowAttachmentAsset
+from apps.opspilot.metis.llm.common.token_usage import TokenUsageAccumulator
+from apps.opspilot.models import LLMModel, LLMSkill, SkillRequestLog, WorkflowAttachmentAsset
 from apps.opspilot.services.builtin_tools import BUILTIN_ATTACHMENT_FILE_TOOL_NAME
 from apps.opspilot.services.chat_service import ChatService, chat_service
 from apps.opspilot.services.skill_package.runtime import build_skill_package_prompt, build_skill_package_strategy, hydrate_skill_packages
@@ -27,6 +30,29 @@ def _build_wiki_citations_event(extra_config: dict | None) -> dict | None:
         "name": "wiki_citations",
         "value": {"citations": citations},
         "timestamp": int(time.time() * 1000),
+    }
+
+
+def _safe_token_count(value: Any) -> int:
+    if isinstance(value, bool) or value is None:
+        return 0
+    if isinstance(value, float) and not value.is_integer():
+        return 0
+    try:
+        count = int(value)
+    except (TypeError, ValueError, OverflowError):
+        return 0
+    return count if count >= 0 else 0
+
+
+def _openai_usage(chat_result: Dict[str, Any]) -> Dict[str, int]:
+    prompt_tokens = _safe_token_count(chat_result.get("prompt_tokens"))
+    completion_tokens = _safe_token_count(chat_result.get("completion_tokens"))
+    total_tokens = _safe_token_count(chat_result.get("total_tokens")) or (prompt_tokens + completion_tokens)
+    return {
+        "prompt_tokens": prompt_tokens,
+        "completion_tokens": completion_tokens,
+        "total_tokens": total_tokens,
     }
 
 
@@ -235,6 +261,7 @@ class AgentNode(BaseNodeExecutor):
             "node_id": effective_node_id,
             "flow_id": self.variable_manager.get_variable("flow_id", ""),
             "trigger_type": self._resolve_trigger_type(flow_input),
+            "entry_type": flow_input.get("entry_type", ""),
             # Wiki 知识库复用:把 skill 上勾选的 wiki KB id 列表透传给 chat_service,
             # 触发 augment_prompt 路径,自动检索并把相关页面片段注入系统提示词。
             # 与 /opspilot/skill/detail 路径行为一致,Issue #3919。
@@ -300,6 +327,9 @@ class AgentNode(BaseNodeExecutor):
         chat_kwargs, _, _ = chat_service.format_chat_server_kwargs(llm_params, llm_model)
         # 创建 agent 实例
         graph, request = create_agent_instance(skill_type, chat_kwargs)
+        token_usage_accumulator = TokenUsageAccumulator()
+        skill_id = config.get("agent")
+        user_message = llm_params.get("user_message", "")
 
         # 直接返回异步生成器
         async def generate_agui_stream():
@@ -312,9 +342,28 @@ class AgentNode(BaseNodeExecutor):
                     yield _build_sse_line(wiki_citations_event)
 
                 chunk_index = 0
-                async for sse_line in graph.agui_stream(request):
+                async for sse_line in graph.agui_stream(
+                    request,
+                    token_usage_accumulator=token_usage_accumulator,
+                ):
                     yield sse_line
 
+                usage = token_usage_accumulator.as_openai_usage()
+                await sync_to_async(self._record_agent_token_usage, thread_sensitive=True)(
+                    node_id=node_id,
+                    skill_id=skill_id,
+                    skill_name=skill_name,
+                    chat_result={
+                        "message": "",
+                        "success": True,
+                        **usage,
+                        "llm_call_count": token_usage_accumulator.call_count,
+                        "token_usage_calls": token_usage_accumulator.as_call_details(),
+                    },
+                    user_message=user_message,
+                    nats_only=False,
+                    log_source="Workflow AGUI Agent",
+                )
                 logger.info(f"[AgentNode-AGUI] 流式处理完成 - 生成 {chunk_index} 个chunk")
             except Exception as e:
                 logger.error(f"[AgentNode-AGUI] stream error: {e}", exc_info=True)
@@ -377,10 +426,19 @@ class AgentNode(BaseNodeExecutor):
         config = node_config["data"].get("config", {})
         output_key = config.get("outputParams", "last_message")
 
-        llm_params, _, supports_attachment_generation = self.set_llm_params(node_id, config, input_data)
+        llm_params, skill_name, supports_attachment_generation = self.set_llm_params(node_id, config, input_data)
 
         # 使用同步版本的 invoke_chat,避免异步上下文冲突
         data, _, _ = ChatService.invoke_chat(llm_params)
+        self._record_agent_token_usage(
+            node_id=node_id,
+            skill_id=config.get("agent"),
+            skill_name=skill_name,
+            chat_result=data,
+            user_message=llm_params.get("user_message", ""),
+            nats_only=True,
+            log_source="NATS Agent",
+        )
 
         # 检查执行是否失败
         if data.get("success") is False:
@@ -397,6 +455,103 @@ class AgentNode(BaseNodeExecutor):
         if data.get("browser_steps"):
             result["browser_steps"] = data["browser_steps"]
         return result
+
+    def _record_agent_token_usage(
+        self,
+        *,
+        node_id: str,
+        skill_id: Any,
+        skill_name: str,
+        chat_result: Dict[str, Any],
+        user_message: str,
+        nats_only: bool,
+        log_source: str,
+    ) -> None:
+        """按 Agent 节点记录工作流模型用量；失败不得影响工作流。"""
+        entry_type = ""
+        bot_id = ""
+        execution_id = ""
+        try:
+            variable_manager = getattr(self, "variable_manager", None)
+            if variable_manager is None:
+                logger.warning("%s token usage log skipped: variable_manager is unavailable", log_source)
+                return
+
+            flow_input = variable_manager.get_variable("flow_input", {}) or {}
+            entry_type = flow_input.get("entry_type", "")
+            if nats_only and entry_type != "nats":
+                return
+
+            bot_id = flow_input.get("bot_id") or variable_manager.get_variable("bot_id", "")
+            execution_id = variable_manager.get_variable("execution_id", "") or flow_input.get("execution_id", "")
+            usage = _openai_usage(chat_result)
+            usage_calls = chat_result.get("token_usage_calls") or []
+            llm_call_count = chat_result.get("llm_call_count")
+            if not isinstance(llm_call_count, int) or llm_call_count < 0:
+                llm_call_count = len(usage_calls)
+            SkillRequestLog.objects.create(
+                skill_id=skill_id,
+                current_ip="0.0.0.0",
+                state=bool(chat_result.get("success", True)),
+                request_detail={
+                    "entry_type": entry_type,
+                    "bot_id": bot_id,
+                    "execution_id": execution_id,
+                    "node_id": node_id,
+                    "skill_name": skill_name,
+                },
+                response_detail={
+                    "usage": usage,
+                    "llm_call_count": llm_call_count,
+                    "usage_calls": usage_calls,
+                    "response": chat_result.get("message", ""),
+                },
+                user_message=user_message,
+            )
+            for call in usage_calls:
+                logger.info(
+                    "%s token usage call recorded: entry_type=%s, bot_id=%s, execution_id=%s, "
+                    "node_id=%s, skill_id=%s, call_index=%s, visible_tool_count=%s, "
+                    "visible_tools=%s, prompt_tokens=%s, completion_tokens=%s, total_tokens=%s",
+                    log_source,
+                    entry_type,
+                    bot_id,
+                    execution_id,
+                    node_id,
+                    skill_id,
+                    call.get("call_index"),
+                    call.get("visible_tool_count", 0),
+                    call.get("visible_tools", []),
+                    call.get("prompt_tokens", 0),
+                    call.get("completion_tokens", 0),
+                    call.get("total_tokens", 0),
+                )
+            logger.info(
+                "%s token usage recorded: entry_type=%s, bot_id=%s, execution_id=%s, node_id=%s, "
+                "skill_id=%s, skill_name=%s, llm_call_count=%s, prompt_tokens=%s, "
+                "completion_tokens=%s, total_tokens=%s",
+                log_source,
+                entry_type,
+                bot_id,
+                execution_id,
+                node_id,
+                skill_id,
+                skill_name,
+                llm_call_count,
+                usage["prompt_tokens"],
+                usage["completion_tokens"],
+                usage["total_tokens"],
+            )
+        except Exception:
+            logger.exception(
+                "%s token usage log failed: entry_type=%s, bot_id=%s, execution_id=%s, node_id=%s, skill_id=%s",
+                log_source,
+                entry_type,
+                bot_id,
+                execution_id,
+                node_id,
+                skill_id,
+            )
 
 
 # 向后兼容的别名

@@ -48,6 +48,7 @@ export default React.memo(PermissionWrapper, (prevProps, nextProps) => {
   return (
     prevProps.requiredPermissions === nextProps.requiredPermissions &&
     prevProps.permissionPath === nextProps.permissionPath &&
+    prevProps.instPermissions === nextProps.instPermissions &&
     prevProps.fallback === nextProps.fallback &&
     prevProps.tooltip === nextProps.tooltip &&
     prevProps.className === nextProps.className

@@ -4,6 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 from rest_framework import serializers
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.test import APIRequestFactory
 
 from apps.mlops.utils import group_scope as gs
@@ -11,12 +12,14 @@ from apps.mlops.utils import group_scope as gs
 pytestmark = pytest.mark.unit
 
 
-def _req(team=None, user=None):
+def _req(team=None, user=None, locale="zh-Hans"):
     request = APIRequestFactory().get("/")
     if team is not None:
         request._api_current_team = team
     if user is not None:
         request.user = user
+    elif locale:
+        request.user = SimpleNamespace(is_superuser=False, locale=locale)
     return request
 
 
@@ -142,6 +145,26 @@ def test_assert_parent_team_matches_differ_raises():
     with pytest.raises(serializers.ValidationError) as exc:
         gs.assert_parent_team_matches(owner, parent, "ds")
     assert "ds" in exc.value.detail
+
+
+def test_group_scope_errors_use_request_locale():
+    request = _req(team="1", locale="en")
+
+    with pytest.raises(PermissionDenied) as denied:
+        gs.filter_queryset_by_parent_team(SimpleNamespace(), _req(team="2", locale="en"), "team")
+    assert str(denied.value.detail) == "You do not have permission to access data for this team"
+
+    with pytest.raises(serializers.ValidationError) as ownership:
+        gs.assert_team_ownership(SimpleNamespace(team=[2]), 1, "team", request=request)
+    assert str(ownership.value.detail["team"]) == "The selected resource does not belong to the current team"
+
+    with pytest.raises(serializers.ValidationError) as mismatch:
+        gs.assert_parent_team_matches(SimpleNamespace(team=[1]), SimpleNamespace(team=[2]), "team", request=request)
+    assert str(mismatch.value.detail["team"]) == "The associated resource does not match the current object's team assignment"
+
+    with pytest.raises(serializers.ValidationError) as missing_dataset:
+        gs.assert_dataset_version_scope(SimpleNamespace(dataset=None), [1], request)
+    assert str(missing_dataset.value.detail["dataset_version"]) == "The selected dataset version has no associated dataset"
 
 
 # ---------- assert_dataset_version_scope ----------
