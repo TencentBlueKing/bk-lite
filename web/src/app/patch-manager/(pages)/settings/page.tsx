@@ -24,6 +24,29 @@ const SOURCE_TYPE_OPTIONS: { label: string; value: PatchSourceType }[] = [
   { label: 'apt repo', value: 'apt_repo' },
 ];
 
+const SOURCE_URL_TEXT_KEYS: Record<PatchSourceType, { label: string; help: string; placeholder: string }> = {
+  wsus: {
+    label: 'patchManager.catalogUrl',
+    help: 'patchManager.settingsPage.wsusUrlHelp',
+    placeholder: 'patchManager.settingsPage.wsusUrlPlaceholder',
+  },
+  yum_repo: {
+    label: 'patchManager.repoUrl',
+    help: 'patchManager.settingsPage.yumRepoUrlHelp',
+    placeholder: 'patchManager.settingsPage.yumRepoUrlPlaceholder',
+  },
+  dnf_repo: {
+    label: 'patchManager.repoUrl',
+    help: 'patchManager.settingsPage.dnfRepoUrlHelp',
+    placeholder: 'patchManager.settingsPage.dnfRepoUrlPlaceholder',
+  },
+  apt_repo: {
+    label: 'patchManager.repoUrl',
+    help: 'patchManager.settingsPage.aptRepoUrlHelp',
+    placeholder: 'patchManager.settingsPage.aptRepoUrlPlaceholder',
+  },
+};
+
 const SAVED_SECRET = '********';
 
 function getConnStatusKey(status?: string) {
@@ -62,7 +85,11 @@ function SourcesTab({ activeKey }: { activeKey: string }) {
   const [sourceModalOpen, setSourceModalOpen] = useState(false);
   const [editingSource, setEditingSource] = useState<PatchSource | null>(null);
   const [form] = Form.useForm();
-  const sourceType = Form.useWatch('source_type', form);
+  const sourceType = (Form.useWatch('source_type', form) || 'wsus') as PatchSourceType;
+  const sourceUrlTextKeys = SOURCE_URL_TEXT_KEYS[sourceType];
+  const sourceUrlLabel = t(sourceUrlTextKeys.label);
+  const sourceUrlHelp = t(sourceUrlTextKeys.help);
+  const sourceUrlPlaceholder = t(sourceUrlTextKeys.placeholder);
   const [sourceSearch, setSourceSearch] = useState('');
   const [pagination, setPagination] = useState({ current: 1, pageSize: 20, total: 0 });
   const [testingConnectivity, setTestingConnectivity] = useState(false);
@@ -330,6 +357,7 @@ function SourcesTab({ activeKey }: { activeKey: string }) {
         title={editingSource ? t('patchManager.settingsPage.editSource') : t('patchManager.settingsPage.addSource')}
         open={sourceModalOpen}
         onCancel={() => setSourceModalOpen(false)}
+        styles={{ body: { maxHeight: 'calc(100vh - 240px)', overflowY: 'auto' } }}
         footer={
           <Space style={{ width: '100%', justifyContent: 'flex-end' }}>
             <Button onClick={() => setSourceModalOpen(false)}>{t('patchManager.cancel')}</Button>
@@ -349,8 +377,13 @@ function SourcesTab({ activeKey }: { activeKey: string }) {
           <Form.Item label={t('patchManager.settingsPage.type')} name="source_type" rules={[{ required: true, message: t('patchManager.settingsPage.typeRequired') }]}>
             <Select options={SOURCE_TYPE_OPTIONS} />
           </Form.Item>
-          <Form.Item label="URL" name="url" rules={[{ required: true, message: t('patchManager.settingsPage.urlRequired') }]}>
-            <Input placeholder="https://..." />
+          <Form.Item
+            label={sourceUrlLabel}
+            name="url"
+            extra={sourceUrlHelp}
+            rules={[{ required: true, message: t('patchManager.settingsPage.urlRequired') }]}
+          >
+            <Input placeholder={sourceUrlPlaceholder} />
           </Form.Item>
           <Form.Item label={t('patchManager.settingsPage.proxy')} name="proxy">
             <Input placeholder={t('patchManager.settingsPage.proxyPlaceholder')} />
