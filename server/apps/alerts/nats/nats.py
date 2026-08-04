@@ -956,7 +956,14 @@ def get_alert_status_distribution(**kwargs):
 
     status_labels = dict(AlertStatus.CHOICES)
     status_order = [AlertStatus.UNASSIGNED, AlertStatus.PENDING, AlertStatus.PROCESSING]
-    status_counts = queryset.filter(status__in=status_order).values("status").annotate(count=Count("id"))
+    # Alert.Meta.ordering 包含 updated_at；聚合前必须清除默认排序，否则部分
+    # 数据库会把排序列加入 GROUP BY，导致同一状态被拆成多条。
+    status_counts = (
+        queryset.filter(status__in=status_order)
+        .order_by()
+        .values("status")
+        .annotate(count=Count("id"))
+    )
     counts = {item["status"]: item["count"] for item in status_counts}
 
     return {

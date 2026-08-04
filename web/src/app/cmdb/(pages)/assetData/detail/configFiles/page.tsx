@@ -22,7 +22,7 @@ import type {
   ConfigFileItem,
   ConfigFileVersion,
 } from '@/app/cmdb/types/configFile';
-import { isConfigFileSupportedModel } from '@/app/cmdb/constants/configFile';
+import { isConfigFileSupportedModel, isNetworkConfigFileModel } from '@/app/cmdb/constants/configFile';
 import { useTranslation } from '@/utils/i18n';
 import ContentDrawer from './components/contentDrawer';
 import CompareDrawer from './components/compareDrawer';
@@ -51,6 +51,9 @@ const ConfigFilesPage = () => {
   const modelId = searchParams.get('model_id') || '';
   const isSupportedModel = isConfigFileSupportedModel(modelId);
   const { t } = useTranslation();
+  const pageDescription = isNetworkConfigFileModel(modelId)
+    ? t('ConfigFile.descriptionNetwork')
+    : t('ConfigFile.description');
   const configFileApi = useConfigFileApi();
   const {
     getConfigFileList,
@@ -453,7 +456,7 @@ const ConfigFilesPage = () => {
               {t('ConfigFile.title')}
             </div>
             <div className="mt-1 text-xs text-[var(--color-text-tertiary)]">
-              {t('ConfigFile.description')}
+              {pageDescription}
             </div>
           </div>
           <Button

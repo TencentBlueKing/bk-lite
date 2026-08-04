@@ -11,6 +11,46 @@
   @extend %titleBase;
 }
 
+.ipRangeCycleHintItem {
+  margin-bottom: 12px !important;
+  margin-top: -8px;
+
+  :global(.ant-form-item-control) {
+    max-width: 100%;
+  }
+}
+
+/** 采集表单内联提示：统一最小字号、紧凑单行 */
+.formFieldHint {
+  align-items: center;
+  font-size: 12px;
+  line-height: 20px;
+  padding: 4px 12px;
+
+  :global(.ant-alert-icon) {
+    font-size: 12px;
+    margin-inline-end: 8px;
+  }
+
+  :global(.ant-alert-content) {
+    min-width: 0;
+  }
+
+  :global(.ant-alert-message) {
+    color: inherit;
+    font-size: 12px;
+    line-height: 20px;
+    margin-bottom: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  :global(.ant-alert-description) {
+    display: none;
+  }
+}
+
 .panelHeader {
   font-size: 16px;
   font-weight: bold;

@@ -555,6 +555,9 @@
         "accessPointLink": "快速跳转到节点管理",
         "ipRange": "IP范围",
         "ipRangeOrderInvalid": "起始 IP 不可大于结束 IP",
+        "ipRangeTooLarge": "IP 范围不可超过 /21 网段（最多 2048 个地址）",
+        "ipRangeCycleHint": "当前 IP 段地址数较多，单次采集耗时会明显增加，请评估是否需要拉长采集周期。",
+        "hostCredentialOptionalTip": "主机凭据（SSH / WMI）可不填：留空时将走 Agent 采集。用户名和密码均可为空。",
         "chooseIp": "选择IP",
         "chooseAsset": "选择资产",
         "chooseHost": "选择主机",
@@ -962,8 +965,8 @@
                 "enablePassword": "特权密码"
             },
             "fields": {
-                "sshAccount": "目标主机的操作系统登录用户名，需要具备执行只读采集命令的权限。",
-                "sshPassword": "上述操作系统账户对应的登录密码。",
+                "sshAccount": "可选。目标主机的操作系统登录用户名；不填则走 Agent 采集。填写时需具备执行只读采集命令的权限。",
+                "sshPassword": "可选。上述操作系统账户对应的登录密码；可不填。",
                 "sshPort": "目标主机 SSH 服务监听端口；使用非标准端口时请按实际值修改。",
                 "databaseAccount": "可登录目标数据库并读取配置或元数据的数据库用户名。",
                 "databasePassword": "上述数据库账户对应的密码。",
@@ -1055,7 +1058,7 @@
                 "networkDeviceAccount": "网络设备 SSH 账户"
             },
             "instruction": {
-                "ssh": "填写可通过 SSH 登录目标主机并执行只读采集命令的账户。",
+                "ssh": "凭据可不填；留空时走 Agent 采集。填写时请提供可通过 SSH（Linux）或 WMI（Windows）登录目标主机并执行只读采集命令的账户。",
                 "database": "填写可连接目标实例并读取配置或元数据的数据库账户。",
                 "snmp": "V2/V2C 填写团体字；V3 authNoPriv 填写用户名、认证密码和哈希算法；authPriv 还需填写加密算法和加密密钥。",
                 "influxdb": "不填写 Token 时采集基础识别信息；填写后读取完整运行配置。Operator Token 具有实例级管理权限，请谨慎使用。",
@@ -1312,6 +1315,7 @@
     "ConfigFile": {
         "title": "配置文件列表",
         "description": "按主机维度查看最新版本的配置文件记录",
+        "descriptionNetwork": "按网络设备维度查看最新版本的配置文件记录",
         "manualUpload": "手动上传",
         "uploadDrawerTitle": "上传配置文件",
         "filePath": "文件路径",
