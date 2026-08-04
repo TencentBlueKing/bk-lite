@@ -83,6 +83,7 @@ _MONITOR_TEMPLATE_ALLOWED_VARIABLES = {
     "send",
     "server",
     "server_url",
+    "sslmode",
     "storage_instance_key",
     "timeout",
     "tls_ca",
