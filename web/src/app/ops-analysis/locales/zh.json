@@ -624,6 +624,8 @@
     "networkTopoPopoverModel": "模型",
     "networkTopoPopoverAlerts": "活跃告警",
     "networkTopoPopoverSeverity": "最高级别",
+    "networkTopoLinkPorts": "接口连线",
+    "networkTopoLinkCount": "{count} 条",
     "basicSettings": "基本设置",
     "showHeader": "显示表头",
     "fixed": "固定",

@@ -5,7 +5,6 @@ import { Alert, Button, Empty, Spin } from 'antd';
 import type { Graph } from '@antv/x6';
 import {
   NetworkTopologyX6Canvas,
-  buildNetworkTopologyX6GraphData,
   layoutNetworkTopology,
 } from '@/app/cmdb/components/networkTopology';
 import type {
@@ -22,7 +21,10 @@ import type {
   NetworkStatusTopologyResponse,
 } from '@/app/ops-analysis/types/sceneWidget';
 import type { ValueConfig } from '@/app/ops-analysis/types/dashBoard';
-import { isScreenChartThemeMode } from '@/app/ops-analysis/utils/chartTheme';
+import {
+  isScreenChartThemeMode,
+  resolveOpsChartThemeName,
+} from '@/app/ops-analysis/utils/chartTheme';
 import {
   buildAlertListUrl,
   buildFaultPath,
@@ -31,6 +33,19 @@ import {
   getLinkId,
   getNodeResource,
 } from './graphModel';
+import { assignParallelOffsets } from './parallelEdges';
+import {
+  buildStatusTopologyX6GraphData,
+  ensureStatusTopologyNodeRegistered,
+  isStatusTopologyIconHoverTarget,
+  STATUS_TOPOLOGY_NODE_SHAPE,
+  STATUS_TOPOLOGY_PALETTE_DARK,
+  STATUS_TOPOLOGY_PALETTE_LIGHT,
+  STATUS_TOPOLOGY_VISUAL,
+} from './statusTopologyGraph';
+import type { StatusTopologyPositionedLink } from './statusTopologyGraph';
+import { resolveNodePopoverPosition } from './popoverPosition';
+import { useWidgetViewport } from '@/app/ops-analysis/components/widget-viewport';
 import styles from './networkStatusTopology.module.scss';
 
 interface NetworkStatusTopologyProps {
@@ -98,6 +113,7 @@ const NetworkStatusTopology: React.FC<NetworkStatusTopologyProps> = ({
 }) => {
   const { t } = useTranslation();
   const shareMode = useShareMode();
+  const { scale: viewportScale } = useWidgetViewport();
   const { getNetworkStatusTopology } = useNetworkStatusTopologyApi();
   const [data, setData] = useState<NetworkStatusTopologyResponse | null>(null);
   const [loading, setLoading] = useState(false);
@@ -109,6 +125,7 @@ const NetworkStatusTopology: React.FC<NetworkStatusTopologyProps> = ({
   const canvasRef = useRef<HTMLDivElement | null>(null);
   const [hoverNodeId, setHoverNodeId] = useState('');
   const [hoverPoint, setHoverPoint] = useState({ x: 0, y: 0 });
+  const hoverNodeIdRef = useRef('');
   const [contextNodeId, setContextNodeId] = useState('');
   const [contextPoint, setContextPoint] = useState({ x: 0, y: 0 });
 
@@ -149,6 +166,10 @@ const NetworkStatusTopology: React.FC<NetworkStatusTopologyProps> = ({
     void fetchData();
   }, [fetchData, refreshKey]);
 
+  useEffect(() => {
+    ensureStatusTopologyNodeRegistered();
+  }, []);
+
   const originalNodeMap = useMemo(
     () =>
       new Map(
@@ -179,6 +200,11 @@ const NetworkStatusTopology: React.FC<NetworkStatusTopologyProps> = ({
     [data?.links, nodeNameMap],
   );
 
+  const parallelLinks = useMemo(
+    () => assignParallelOffsets(canvasLinks),
+    [canvasLinks],
+  );
+
   const faultPath = useMemo(() => {
     const selected = originalNodeMap.get(selectedNodeId);
     if (!data || !selected || !selected.alert_count) {
@@ -193,29 +219,61 @@ const NetworkStatusTopology: React.FC<NetworkStatusTopologyProps> = ({
   }, [data, originalNodeMap, selectedNodeId]);
 
   const faultNodeIds = useMemo(() => new Set(faultPath.nodeIds), [faultPath.nodeIds]);
-  const faultLinkIds = useMemo(() => new Set(faultPath.linkIds), [faultPath.linkIds]);
+  const faultLinkIds = useMemo(
+    () => new Set(faultPath.linkIds),
+    [faultPath.linkIds],
+  );
   const hasFaultPath = faultNodeIds.size > 0 || faultLinkIds.size > 0;
+  const usesScreenTheme = isScreenChartThemeMode(config?.chartThemeMode);
+  const topologyPalette = (() => {
+    if (config?.chartThemeMode === 'screen-dark') return STATUS_TOPOLOGY_PALETTE_DARK;
+    if (config?.chartThemeMode === 'screen-light') return STATUS_TOPOLOGY_PALETTE_LIGHT;
+    return resolveOpsChartThemeName() === 'dark'
+      ? STATUS_TOPOLOGY_PALETTE_DARK
+      : STATUS_TOPOLOGY_PALETTE_LIGHT;
+  })();
+
+  const bringNodesAboveEdges = useCallback((graph: Graph | null) => {
+    if (!graph) return;
+    graph.getEdges().forEach((edge) => edge.toBack());
+    graph.getNodes().forEach((node) => node.toFront());
+  }, []);
+
   const layout = useMemo(
     () => layoutNetworkTopology({
       nodes: canvasNodes,
-      links: canvasLinks,
+      links: parallelLinks,
       centerId: String(data?.center_id || topoConfig?.instId || ''),
       mode: layoutMode,
       fitToViewport: false,
     }),
-    [canvasLinks, canvasNodes, data?.center_id, layoutMode, topoConfig?.instId],
+    [canvasNodes, data?.center_id, layoutMode, parallelLinks, topoConfig?.instId],
   );
   const graphData = useMemo(
-    () => buildNetworkTopologyX6GraphData({
-      nodes: layout.nodes,
-      links: layout.links,
-      centerId: String(data?.center_id || topoConfig?.instId || ''),
-      selectedNodeId,
-      activeNodeIds: faultNodeIds,
-      activeLinkIds: faultLinkIds,
-      dimInactive: hasFaultPath,
-      showStatusDot: false,
-    }),
+    () => {
+      const parallelById = new Map(
+        parallelLinks.map((link) => [link.id, link]),
+      );
+      const positionedLinks: StatusTopologyPositionedLink[] = layout.links.map((link) => {
+        const withOffset = parallelById.get(link.id);
+        return {
+          ...link,
+          parallelOffset: withOffset?.parallelOffset ?? 0,
+        };
+      });
+
+      return buildStatusTopologyX6GraphData({
+        nodes: layout.nodes,
+        links: positionedLinks,
+        centerId: String(data?.center_id || topoConfig?.instId || ''),
+        selectedNodeId,
+        activeNodeIds: faultNodeIds,
+        activeLinkIds: faultLinkIds,
+        dimInactive: hasFaultPath,
+        showStatusDot: false,
+        palette: topologyPalette,
+      });
+    },
     [
       data?.center_id,
       faultLinkIds,
@@ -223,8 +281,10 @@ const NetworkStatusTopology: React.FC<NetworkStatusTopologyProps> = ({
       hasFaultPath,
       layout.links,
       layout.nodes,
+      parallelLinks,
       selectedNodeId,
       topoConfig?.instId,
+      topologyPalette,
     ],
   );
   const fitViewKey = useMemo(
@@ -232,20 +292,48 @@ const NetworkStatusTopology: React.FC<NetworkStatusTopologyProps> = ({
       layoutMode,
       data?.center_id || topoConfig?.instId || '',
       canvasNodes.map((node) => node.id).join(','),
-      canvasLinks.map((link) => link.id).join(','),
+      parallelLinks.map((link) => link.id).join(','),
+      // 强制在视觉常量 / shape 版本变更后重建画布
+      STATUS_TOPOLOGY_NODE_SHAPE,
+      `i${STATUS_TOPOLOGY_VISUAL.iconSize}-n${STATUS_TOPOLOGY_VISUAL.nameFontSize}-y${STATUS_TOPOLOGY_VISUAL.labelNameY}`,
     ].join('|'),
-    [canvasLinks, canvasNodes, data?.center_id, layoutMode, topoConfig?.instId],
+    [canvasNodes, data?.center_id, layoutMode, parallelLinks, topoConfig?.instId],
   );
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      bringNodesAboveEdges(graphRef.current);
+    }, 80);
+    return () => window.clearTimeout(timer);
+  }, [bringNodesAboveEdges, fitViewKey, graphData]);
 
   const closeContextMenu = useCallback(() => setContextNodeId(''), []);
 
-  const updateHoverPoint = useCallback((nodeId: string, event: MouseEvent) => {
-    const rect = canvasRef.current?.getBoundingClientRect();
+  const updateNodeHover = useCallback((nodeId: string, event: MouseEvent) => {
+    // 双保险：即便 body 全尺寸命中，也只在 SVG image（icon）上展示浮层
+    if (!isStatusTopologyIconHoverTarget(event)) {
+      hoverNodeIdRef.current = '';
+      setHoverNodeId('');
+      return;
+    }
+    // 悬停期间不跟手：仅首次进入或切换节点时锚定 icon 算一次位置
+    if (hoverNodeIdRef.current !== nodeId) {
+      const next = resolveNodePopoverPosition(
+        graphRef.current,
+        nodeId,
+        canvasRef.current,
+        undefined,
+        viewportScale,
+      );
+      if (next) setHoverPoint(next);
+    }
+    hoverNodeIdRef.current = nodeId;
     setHoverNodeId(nodeId);
-    setHoverPoint({
-      x: event.clientX - (rect?.left || 0) + 28,
-      y: event.clientY - (rect?.top || 0) + 20,
-    });
+  }, [viewportScale]);
+
+  const clearNodeHover = useCallback(() => {
+    hoverNodeIdRef.current = '';
+    setHoverNodeId('');
   }, []);
 
   const renderPopover = useCallback(
@@ -342,7 +430,6 @@ const NetworkStatusTopology: React.FC<NetworkStatusTopologyProps> = ({
   const hoverCanvasNode = canvasNodes.find((node) => node.id === hoverNodeId);
   const contextCanvasNode = canvasNodes.find((node) => node.id === contextNodeId);
   const isMissingConfig = !topoConfig?.modelId || !topoConfig?.instId;
-  const usesScreenTheme = isScreenChartThemeMode(config?.chartThemeMode);
 
   return (
     <div
@@ -359,6 +446,10 @@ const NetworkStatusTopology: React.FC<NetworkStatusTopologyProps> = ({
           graphRef={graphRef}
           fitViewOptions={{ padding: 48, maxScale: 1.08 }}
           fitViewKey={fitViewKey}
+          onGraphReady={(graph) => {
+            if (graphRef) graphRef.current = graph;
+            bringNodesAboveEdges(graph);
+          }}
           toolbar={{
             layoutMode,
             onLayoutChange: (value) => setLayoutMode(value as NetworkTopologyLayoutMode),
@@ -393,6 +484,7 @@ const NetworkStatusTopology: React.FC<NetworkStatusTopologyProps> = ({
           }}
           onBlankClick={() => {
             setSelectedNodeId('');
+            hoverNodeIdRef.current = '';
             setHoverNodeId('');
             closeContextMenu();
           }}
@@ -401,9 +493,9 @@ const NetworkStatusTopology: React.FC<NetworkStatusTopologyProps> = ({
             closeContextMenu();
             setSelectedNodeId((current) => (current === nodeId ? '' : nodeId));
           }}
-          onNodeMouseEnter={updateHoverPoint}
-          onNodeMouseMove={updateHoverPoint}
-          onNodeMouseLeave={() => setHoverNodeId('')}
+          onNodeMouseEnter={updateNodeHover}
+          onNodeMouseMove={updateNodeHover}
+          onNodeMouseLeave={clearNodeHover}
           onNodeContextMenu={(nodeId, event) => {
             setContextNodeId(nodeId);
             setContextPoint({ x: event.offsetX + 8, y: event.offsetY + 8 });

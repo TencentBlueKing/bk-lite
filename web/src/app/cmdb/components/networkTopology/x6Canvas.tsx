@@ -72,6 +72,9 @@ interface NetworkTopologyX6CanvasProps {
   onNodeMouseMove?: (nodeId: string, event: MouseEvent) => void;
   onNodeMouseLeave?: (nodeId: string) => void;
   onNodeContextMenu?: (nodeId: string, event: MouseEvent) => void;
+  onEdgeMouseEnter?: (edgeId: string, event: MouseEvent) => void;
+  onEdgeMouseMove?: (edgeId: string, event: MouseEvent) => void;
+  onEdgeMouseLeave?: (edgeId: string) => void;
   onEdgeContextMenu?: (edgeId: string, event: MouseEvent) => void;
   onBlankClick?: () => void;
   onBlankContextMenu?: (event: MouseEvent) => void;
@@ -154,12 +157,23 @@ const buildStructureKey = (data: NetworkTopologyX6GraphData) =>
       node.width,
       node.height,
       node.shape,
+      node.attrs?.img?.width,
+      node.attrs?.lbl?.fontSize,
+      node.attrs?.lbl?.y,
+      node.attrs?.alertBadgeText?.text,
     ]),
     edges: data.edges.map((edge) => [
       edge.id,
       edge.source,
       edge.target,
       edge.vertices,
+      edge.connector,
+      Array.isArray(edge.labels)
+        ? edge.labels.map((label: any) => [
+            label?.position,
+            label?.attrs?.txt?.text,
+          ])
+        : null,
     ]),
   });
 
@@ -192,6 +206,12 @@ const patchGraphAttrs = (graph: Graph, data: NetworkTopologyX6GraphData) => {
       cell.setAttrs(edge.attrs);
     } else {
       cell.attr?.(edge.attrs);
+    }
+    if (edge.connector && cell.setConnector) {
+      cell.setConnector(edge.connector);
+    }
+    if (edge.vertices !== undefined && cell.setVertices) {
+      cell.setVertices(edge.vertices || []);
     }
     cell.setLabels?.(edge.labels);
   });
@@ -354,6 +374,9 @@ const GraphLoader: React.FC<NetworkTopologyX6CanvasProps> = ({
   onNodeMouseMove,
   onNodeMouseLeave,
   onNodeContextMenu,
+  onEdgeMouseEnter,
+  onEdgeMouseMove,
+  onEdgeMouseLeave,
   onEdgeContextMenu,
   onBlankClick,
   onBlankContextMenu,
@@ -422,6 +445,12 @@ const GraphLoader: React.FC<NetworkTopologyX6CanvasProps> = ({
       e.preventDefault();
       onNodeContextMenu?.(String(node.id), e);
     };
+    const handleEdgeEnter = ({ edge, e }: { edge: any; e: MouseEvent }) =>
+      onEdgeMouseEnter?.(String(edge.id), e);
+    const handleEdgeMove = ({ edge, e }: { edge: any; e: MouseEvent }) =>
+      onEdgeMouseMove?.(String(edge.id), e);
+    const handleEdgeLeave = ({ edge }: { edge: any }) =>
+      onEdgeMouseLeave?.(String(edge.id));
     const handleEdgeContext = ({ edge, e }: { edge: any; e: MouseEvent }) => {
       e.preventDefault();
       onEdgeContextMenu?.(String(edge.id), e);
@@ -436,6 +465,9 @@ const GraphLoader: React.FC<NetworkTopologyX6CanvasProps> = ({
     graph.on('node:mousemove', handleNodeMove);
     graph.on('node:mouseleave', handleNodeLeave);
     graph.on('node:contextmenu', handleNodeContext);
+    graph.on('edge:mouseenter', handleEdgeEnter);
+    graph.on('edge:mousemove', handleEdgeMove);
+    graph.on('edge:mouseleave', handleEdgeLeave);
     graph.on('edge:contextmenu', handleEdgeContext);
     graph.on('blank:click', handleBlankClick);
     graph.on('blank:contextmenu', handleBlankContext);
@@ -445,6 +477,9 @@ const GraphLoader: React.FC<NetworkTopologyX6CanvasProps> = ({
       graph.off('node:mousemove', handleNodeMove);
       graph.off('node:mouseleave', handleNodeLeave);
       graph.off('node:contextmenu', handleNodeContext);
+      graph.off('edge:mouseenter', handleEdgeEnter);
+      graph.off('edge:mousemove', handleEdgeMove);
+      graph.off('edge:mouseleave', handleEdgeLeave);
       graph.off('edge:contextmenu', handleEdgeContext);
       graph.off('blank:click', handleBlankClick);
       graph.off('blank:contextmenu', handleBlankContext);
@@ -454,6 +489,9 @@ const GraphLoader: React.FC<NetworkTopologyX6CanvasProps> = ({
     onBlankClick,
     onBlankContextMenu,
     onEdgeContextMenu,
+    onEdgeMouseEnter,
+    onEdgeMouseLeave,
+    onEdgeMouseMove,
     onNodeClick,
     onNodeContextMenu,
     onNodeMouseEnter,

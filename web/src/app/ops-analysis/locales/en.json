@@ -624,6 +624,8 @@
     "networkTopoPopoverModel": "Model",
     "networkTopoPopoverAlerts": "Active alerts",
     "networkTopoPopoverSeverity": "Highest severity",
+    "networkTopoLinkPorts": "Interface links",
+    "networkTopoLinkCount": "{count} links",
     "basicSettings": "Basic Settings",
     "showHeader": "Show Header",
     "fixed": "Fixed",
