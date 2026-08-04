@@ -1,0 +1,34 @@
+Process:
+  desc: 通过 Telegraf procstat 采集主机上指定进程的 CPU、内存、线程、RSS、打开文件数，并可对关联端口做 TCP 存活探测；指标 instance_id 与主机一致，便于在主机仪表盘查看进程视图。
+  name: 进程（Telegraf）
+monitor_object:
+  Process: 进程
+monitor_object_type:
+  OS: 主机资源
+monitor_object_metric:
+  Process:
+    process_cpu_usage:
+      name: CPU使用率
+      desc: 匹配进程的 CPU 使用率（按 process_name 聚合），用于定位主机上的热点进程。
+    process_mem_usage:
+      name: 应用内存使用率
+      desc: 匹配进程占用系统内存的比例（按 process_name 聚合），用于评估进程内存消耗。
+    process_memory_rss:
+      name: 内存 RSS
+      desc: 匹配进程的常驻内存（RSS，按 process_name 聚合），用于评估绝对内存占用。
+    process_num_threads:
+      name: 线程数
+      desc: 匹配进程的线程数（按 process_name 聚合），用于发现线程泄漏或异常膨胀。
+    process_num_fds:
+      name: 打开文件数
+      desc: 匹配进程打开的文件描述符数量（按 process_name 聚合），用于发现 FD 泄漏；采集可能需要较高权限。
+    process_alive:
+      name: 进程存活
+      desc: 是否存在匹配进程的上报数据；存活表示有数据，失活表示无匹配进程上报。
+    process_port_alive:
+      name: 端口存活
+      desc: 配置端口的存活状态；存活=全部可达，失活=全部不可达，部分失活=部分可达；无序列表示未配置端口或无上报。
+monitor_object_metric_group:
+  Process:
+    Resource: 资源
+    Status: 状态

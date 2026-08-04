@@ -1,3 +1,5 @@
+import re
+
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.logger import monitor_logger as logger
 from apps.core.utils.loader import LanguageLoader
@@ -60,12 +62,58 @@ class MonitorEffectivePluginService:
 
     @staticmethod
     def _get_configured_plugin_ids(instance_id: str) -> set[int]:
-        return set(
+        """Exact instance_id match, plus multi-key child configs sharing the same primary.
+
+        Process CollectConfig rows are keyed as ``('host_id', 'process_name')``. Host
+        dashboard process metrics call this API with the host storage id
+        ``('host_id',)``; without primary-prefix matching those configs never count.
+        """
+        plugin_ids = set(
             CollectConfig.objects.filter(
                 monitor_instance_id=instance_id,
                 monitor_plugin_id__isnull=False,
             ).values_list("monitor_plugin_id", flat=True)
         )
+        parsed = parse_instance_id(instance_id)
+        if not parsed:
+            return plugin_ids
+
+        primary = str(parsed[0])
+        # Loose startswith then parse — avoids host_01 matching host_011 via prefix alone.
+        # monitor_instance is a FK; filter on related MonitorInstance.id (CharField PK).
+        loose_prefix = f"('{primary}'"
+        for monitor_instance_id, plugin_id in CollectConfig.objects.filter(
+            monitor_instance__id__startswith=loose_prefix,
+            monitor_plugin_id__isnull=False,
+        ).values_list("monitor_instance_id", "monitor_plugin_id"):
+            if monitor_instance_id == instance_id:
+                continue
+            child_parsed = parse_instance_id(monitor_instance_id)
+            if child_parsed and str(child_parsed[0]) == primary:
+                plugin_ids.add(plugin_id)
+        return plugin_ids
+
+    @staticmethod
+    def _inject_label_matcher(query: str, key: str, value: str) -> str:
+        """Inject ``key="value"`` into every PromQL selector to scope status queries."""
+        escaped = (
+            str(value)
+            .replace("\\", "\\\\")
+            .replace('"', '\\"')
+            .replace("\n", "\\n")
+        )
+        matcher = f'{key}="{escaped}"'
+        key_pattern = re.compile(rf"(?:^|,)\s*{re.escape(key)}\s*(=~?|!=)")
+
+        def _replacer(match: re.Match) -> str:
+            body = match.group(1).strip()
+            if key_pattern.search(body):
+                return match.group(0)
+            if not body:
+                return "{" + matcher + "}"
+            return "{" + matcher + "," + body + "}"
+
+        return re.sub(r"\{([^{}]*)\}", _replacer, query)
 
     @staticmethod
     def _get_reported_plugin_ids(plugins: list[MonitorPlugin], instance_id: str, instance_id_keys: list[str]) -> set[int]:
@@ -78,6 +126,12 @@ class MonitorEffectivePluginService:
             query = (plugin.status_query or "").strip()
             if not query:
                 continue
+            # Process (and other multi-key) status_query can return every series in the
+            # cluster; scope by primary label so host→process metrics does not hang.
+            if target_primary is not None:
+                query = MonitorEffectivePluginService._inject_label_matcher(
+                    query, primary_key, target_primary
+                )
             try:
                 response = vm_api.query(query, step="20m")
             except Exception:

@@ -7,10 +7,8 @@ const styles: DashboardPageHeaderStyles = {
   titleBlock: 'min-w-0',
   breadcrumb: 'mb-1 text-xs',
   title: 'm-0 text-base font-semibold text-[var(--color-text-1)]',
-  controlsWrap: 'flex flex-wrap items-center gap-3',
-  modeTabs: 'inline-flex items-center rounded-md bg-[var(--color-fill-1)] p-1',
-  modeTab: 'rounded px-3 py-1.5 text-sm text-[var(--color-text-2)]',
-  modeTabActive: 'bg-[var(--color-bg)] text-[var(--color-text-1)]',
+  controlsWrap: 'flex flex-wrap items-center gap-2',
+  modeSegmented: 'rounded-md border border-[var(--color-border)] bg-[var(--color-fill-1)]',
   toolbarBackBtn: '',
   actionButtons: 'flex items-center'
 };

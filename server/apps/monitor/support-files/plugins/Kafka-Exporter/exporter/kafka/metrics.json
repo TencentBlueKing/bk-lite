@@ -69,8 +69,7 @@
         }
       ],
       "description": "Number of partitions for a given Kafka topic.",
-      "query": "sum by (topic) (kafka_topic_partitions_gauge{__$labels__})",
-      "view_query": "topk(10, sum by (topic) (kafka_topic_partitions_gauge{__$labels__}))"
+      "query": "sum by (topic) (kafka_topic_partitions_gauge{__$labels__})"
     },
     {
       "metric_group": "Topic",
@@ -90,8 +89,7 @@
         }
       ],
       "description": "Current offset for the specified topic and partition.",
-      "query": "kafka_topic_partition_current_offset_gauge{__$labels__}",
-      "view_query": "topk(10, kafka_topic_partition_current_offset_gauge{__$labels__})"
+      "query": "kafka_topic_partition_current_offset_gauge{__$labels__}"
     },
     {
       "metric_group": "Topic",
@@ -111,8 +109,7 @@
         }
       ],
       "description": "Oldest offset for the specified topic and partition.",
-      "query": "kafka_topic_partition_oldest_offset_gauge{__$labels__}",
-      "view_query": "topk(10, kafka_topic_partition_oldest_offset_gauge{__$labels__})"
+      "query": "kafka_topic_partition_oldest_offset_gauge{__$labels__}"
     },
     {
       "metric_group": "Topic",
@@ -132,8 +129,7 @@
         }
       ],
       "description": "Number of in-sync replicas for the specified topic and partition.",
-      "query": "kafka_topic_partition_in_sync_replica_gauge{__$labels__}",
-      "view_query": "bottomk(10, kafka_topic_partition_in_sync_replica_gauge{__$labels__})"
+      "query": "kafka_topic_partition_in_sync_replica_gauge{__$labels__}"
     },
     {
       "metric_group": "Topic",
@@ -153,8 +149,7 @@
         }
       ],
       "description": "Leader broker ID for the specified topic and partition.",
-      "query": "kafka_topic_partition_leader_gauge{__$labels__}",
-      "view_query": "topk(10, kafka_topic_partition_leader_gauge{__$labels__})"
+      "query": "kafka_topic_partition_leader_gauge{__$labels__}"
     },
     {
       "metric_group": "Topic",
@@ -174,8 +169,7 @@
         }
       ],
       "description": "Value is 1 if the preferred Broker node is in use for the topic/partition, otherwise 0.",
-      "query": "kafka_topic_partition_leader_is_preferred_gauge{__$labels__}",
-      "view_query": "bottomk(10, kafka_topic_partition_leader_is_preferred_gauge{__$labels__})"
+      "query": "kafka_topic_partition_leader_is_preferred_gauge{__$labels__}"
     },
     {
       "metric_group": "Topic",
@@ -195,8 +189,7 @@
         }
       ],
       "description": "Number of replicas for the specified topic and partition.",
-      "query": "kafka_topic_partition_replicas_gauge{__$labels__}",
-      "view_query": "bottomk(10, kafka_topic_partition_replicas_gauge{__$labels__})"
+      "query": "kafka_topic_partition_replicas_gauge{__$labels__}"
     },
     {
       "metric_group": "Topic",
@@ -216,8 +209,7 @@
         }
       ],
       "description": "Value is 1 if the topic/partition is under-replicated, otherwise 0.",
-      "query": "kafka_topic_partition_under_replicated_partition_gauge{__$labels__}",
-      "view_query": "topk(10, kafka_topic_partition_under_replicated_partition_gauge{__$labels__})"
+      "query": "kafka_topic_partition_under_replicated_partition_gauge{__$labels__}"
     },
     {
       "metric_group": "ConsumerGroup",
@@ -241,8 +233,7 @@
         }
       ],
       "description": "Current offset for the consumer group in the specified topic and partition.",
-      "query": "kafka_consumergroup_current_offset_gauge{__$labels__}",
-      "view_query": "topk(10, kafka_consumergroup_current_offset_gauge{__$labels__})"
+      "query": "kafka_consumergroup_current_offset_gauge{__$labels__}"
     },
     {
       "metric_group": "ConsumerGroup",
@@ -262,8 +253,7 @@
         }
       ],
       "description": "Sum of committed offsets for a consumer group and topic.",
-      "query": "kafka_consumergroup_current_offset_sum_gauge{__$labels__}",
-      "view_query": "topk(10, kafka_consumergroup_current_offset_sum_gauge{__$labels__})"
+      "query": "kafka_consumergroup_current_offset_sum_gauge{__$labels__}"
     },
     {
       "metric_group": "ConsumerGroup",
@@ -287,8 +277,7 @@
         }
       ],
       "description": "Current approximate lag of the consumer group in the specified topic and partition.",
-      "query": "kafka_consumergroup_lag_gauge{__$labels__}",
-      "view_query": "topk(10, kafka_consumergroup_lag_gauge{__$labels__} >= 0)"
+      "query": "kafka_consumergroup_lag_gauge{__$labels__}"
     },
     {
       "metric_group": "ConsumerGroup",
@@ -308,8 +297,7 @@
         }
       ],
       "description": "Sum of lag across partitions for a consumer group and topic.",
-      "query": "kafka_consumergroup_lag_sum_gauge{__$labels__}",
-      "view_query": "topk(10, kafka_consumergroup_lag_sum_gauge{__$labels__} >= 0)"
+      "query": "kafka_consumergroup_lag_sum_gauge{__$labels__}"
     },
     {
       "metric_group": "ConsumerGroup",
@@ -325,8 +313,7 @@
         }
       ],
       "description": "Number of members in a consumer group.",
-      "query": "kafka_consumergroup_members_gauge{__$labels__}",
-      "view_query": "topk(10, kafka_consumergroup_members_gauge{__$labels__})"
+      "query": "kafka_consumergroup_members_gauge{__$labels__}"
     },
     {
       "metric_group": "ConsumerGroup",
@@ -350,8 +337,7 @@
         }
       ],
       "description": "Value is 1 when the committed offset is greater than the log end offset from the same collection.",
-      "query": "kafka_consumergroup_lag_anomaly_gauge{__$labels__}",
-      "view_query": "topk(10, kafka_consumergroup_lag_anomaly_gauge{__$labels__})"
+      "query": "kafka_consumergroup_lag_anomaly_gauge{__$labels__}"
     },
     {
       "metric_group": "Exporter",

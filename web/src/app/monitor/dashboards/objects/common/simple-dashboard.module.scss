@@ -56,42 +56,46 @@
 .controlsWrap {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   flex-wrap: wrap;
   justify-content: flex-end;
 }
 
-.modeTabs {
-  display: inline-flex;
-  align-items: center;
-  padding: 3px;
-  border-radius: 14px;
-  border: 1px solid #dbe5f1;
-  background: #f8fbff;
+// 视图模式切换：Ant Design Segmented，单层边框，不与下方控件叠套。
+.modeSegmented {
+  height: 32px;
+  padding: 2px !important;
+  border-radius: 8px !important;
+  border: 1px solid var(--color-border);
+  background: var(--color-fill-1) !important;
 }
 
-.modeTab {
-  border: 0;
-  background: transparent;
-  color: #5c7190;
+.modeSegmented :global(.ant-segmented-item) {
+  min-height: 26px;
+  line-height: 26px;
+  border-radius: 6px !important;
+  color: var(--color-text-3);
   font-size: 13px;
-  font-weight: 700;
-  height: 30px;
-  padding: 0 12px;
-  border-radius: 11px;
-  cursor: pointer;
+  font-weight: 500;
 }
 
-.modeTabActive {
-  background: #ffffff;
-  color: #182132;
-  box-shadow: 0 4px 14px rgba(37, 71, 120, 0.12);
+.modeSegmented :global(.ant-segmented-item-selected) {
+  color: var(--color-text-1) !important;
+  background: var(--color-bg) !important;
+  box-shadow: none;
+}
+
+.modeSegmented :global(.ant-segmented-thumb) {
+  border-radius: 6px !important;
+  background: var(--color-bg) !important;
+  box-shadow: none;
 }
 
 .toolbarTimeSelector {
   display: flex;
   align-items: center;
   flex-shrink: 0;
+  min-width: 0;
 }
 
 .toolbarTimeSelector > div {
@@ -99,57 +103,122 @@
   display: flex;
 }
 
+// 时间组合区：只约束 Select / 可见 RangePicker 外观，二者同槽位单层边框。
+// 禁止改 picker dropdown 的 panel 结构样式，避免弹出层「双层方框」。
 .toolbarTimeSelector > div > div:first-child {
-  width: 212px;
-}
-
-// 刷新组（手动刷新 ⟳ + 自动刷新间隔）合并为一个连体控件：与左侧时间范围拉开 12px 独立成组，
-// 单层外边框 + 内部发丝线分隔，让"刷新"两件相关功能读起来是一个整体。
-.toolbarTimeSelector > div > div:last-child {
-  margin-left: 12px !important;
-  display: inline-flex;
-  align-items: center;
-  height: 34px;
-  border: 1px solid #dbe5f1;
-  border-radius: 8px;
-  background: #ffffff;
-  overflow: hidden;
+  position: relative;
+  width: 220px;
+  overflow: visible;
+  transition: width 0.15s ease;
 }
 
 .toolbarTimeSelector > div > div:first-child :global(.ant-select),
 .toolbarTimeSelector > div > div:first-child :global(.ant-picker) {
-  width: 212px !important;
+  width: 100% !important;
 }
 
-// 左段：手动刷新按钮——去独立边框/圆角/底色，仅留右侧发丝线作为分隔。
+// 自定义面板打开中或已确认自定义：加宽以完整显示起止时间。
+.toolbarTimeSelector > div[class*='customActive'] > div:first-child,
+.toolbarTimeSelector > div[class*='pickerVisible'] > div:first-child {
+  width: 340px;
+}
+
+.toolbarTimeSelector > div > div:first-child :global(.ant-select-selector),
+.toolbarTimeSelector > div[class*='pickerVisible'] > div:first-child :global(.ant-picker) {
+  min-height: 32px !important;
+  height: 32px !important;
+  border: 1px solid var(--color-border) !important;
+  border-radius: 8px !important;
+  background: var(--color-bg) !important;
+  box-shadow: none !important;
+}
+
+.toolbarTimeSelector > div > div:first-child :global(.ant-picker-focused),
+.toolbarTimeSelector > div[class*='pickerVisible'] > div:first-child :global(.ant-picker-focused) {
+  border-color: var(--color-primary) !important;
+}
+
+.toolbarTimeSelector > div > div:first-child :global(.ant-picker-input > input) {
+  font-size: 12px;
+}
+
+.toolbarTimeSelector > div > div:first-child :global(.ant-select-selection-item),
+.toolbarTimeSelector > div > div:first-child :global(.ant-select-selection-placeholder) {
+  color: var(--color-text-2) !important;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 30px !important;
+}
+
+// RangePicker 自带的后缀日历隐藏，统一用外层 CalendarOutlined，避免右侧再套一层图标框。
+.toolbarTimeSelector > div > div:first-child :global(.ant-picker-suffix) {
+  display: none !important;
+}
+
+// 刷新组：与时间选择器并排，单层边框，内部发丝分隔。
+.toolbarTimeSelector > div > div:last-child {
+  margin-left: 8px !important;
+  display: inline-flex;
+  align-items: center;
+  height: 32px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-bg);
+  overflow: hidden;
+}
+
 .toolbarTimeSelector > div > div:last-child :global(.ant-btn) {
   height: 100% !important;
   border: none !important;
-  border-right: 1px solid #eef2f7 !important;
+  border-right: 1px solid var(--color-border) !important;
   border-radius: 0 !important;
   background: transparent !important;
   box-shadow: none !important;
+  color: var(--color-text-3) !important;
   padding: 0 10px !important;
 }
 
-// 右段：自动刷新间隔下拉——去独立边框，融入连体控件。
+.toolbarTimeSelector > div > div:last-child :global(.ant-btn:hover) {
+  color: var(--color-primary) !important;
+  background: var(--color-fill-1) !important;
+}
+
 .toolbarTimeSelector > div > div:last-child :global(.ant-select) {
-  width: 104px !important;
+  width: 96px !important;
 }
 
 .toolbarTimeSelector > div > div:last-child :global(.ant-select-selector) {
+  min-height: 30px !important;
+  height: 30px !important;
   border: none !important;
   border-radius: 0 !important;
   background: transparent !important;
   box-shadow: none !important;
 }
 
+.toolbarTimeSelector > div > div:last-child :global(.ant-select-selection-item),
+.toolbarTimeSelector > div > div:last-child :global(.ant-select-selection-placeholder) {
+  color: var(--color-text-2) !important;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 30px !important;
+}
+
 .toolbarBackBtn {
-  height: 34px;
-  border-radius: 16px;
-  font-weight: 700;
-  color: #4e6383;
-  border-color: #dbe5f1;
+  height: 32px !important;
+  padding-inline: 12px !important;
+  border-radius: 8px !important;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-text-2) !important;
+  border-color: var(--color-border) !important;
+  background: var(--color-bg) !important;
+}
+
+.toolbarBackBtn:hover {
+  color: var(--color-primary) !important;
+  border-color: var(--color-primary) !important;
+  background: var(--color-bg) !important;
 }
 
 .instanceCard {
@@ -158,7 +227,7 @@
   justify-content: space-between;
   gap: 12px;
   padding: 6px 0 8px;
-  border-bottom: 1px solid #e7edf5;
+  border-bottom: 1px solid var(--color-border);
   min-width: 0;
 }
 
@@ -212,12 +281,28 @@
   justify-content: flex-end;
   gap: 12px;
   flex-shrink: 0;
+  min-width: 0;
+}
+
+.instanceSelectorField {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.instanceSelectorLabel {
+  color: var(--color-text-3);
+  font-size: 13px;
+  font-weight: 400;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .instanceMetaInline {
-  color: #526987;
+  color: var(--color-text-2);
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .instanceMetaDivider {
@@ -228,14 +313,14 @@
 
 .instanceMetaDivider::before {
   content: '·';
-  color: #cad4e1;
+  color: var(--color-text-4);
   font-size: 14px;
   font-weight: 700;
 }
 
 // 次要环境信息（实例ID、时区等）：弱化为浅灰常规字重。
 .instanceMetaMuted {
-  color: #8a9bb4;
+  color: var(--color-text-3);
   font-size: 13px;
   font-weight: 400;
   line-height: 1.35;
@@ -245,14 +330,15 @@
 .inlineInstanceSelector {
   width: 190px;
   padding: 0 10px;
-  border-radius: 12px;
-  background: #ffffff;
-  border: 1px solid #dbe5f1;
+  border-radius: 8px;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
 }
 
 .inlineInstanceSelector :global(.ant-select-selector) {
-  min-height: 34px !important;
-  padding: 0 24px 0 0 !important;
+  min-height: 32px !important;
+  height: 32px !important;
+  padding: 0 20px 0 0 !important;
   border: 0 !important;
   background: transparent !important;
   box-shadow: none !important;
@@ -260,21 +346,22 @@
 
 .inlineInstanceSelector :global(.ant-select-selection-item),
 .inlineInstanceSelector :global(.ant-select-selection-placeholder) {
-  color: #5b7190 !important;
-  font-size: 14px;
-  font-weight: 700;
+  color: var(--color-text-2) !important;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 30px !important;
 }
 
 .inlineInstanceSelector :global(.ant-select-item-option-content) {
-  color: #22324a;
-  font-size: 14px;
-  font-weight: 600;
+  color: var(--color-text-1);
+  font-size: 13px;
+  font-weight: 500;
   white-space: normal;
   word-break: break-word;
 }
 
 .inlineInstanceSelector :global(.ant-select-arrow) {
-  color: #8aa0bc;
+  color: var(--color-text-4);
 }
 
 // 身份/状态胶囊组的横向布局（胶囊配色由各仪表盘按品牌自定义）。
@@ -1362,8 +1449,30 @@
     grid-template-columns: 1fr;
   }
 
+  .instanceSelectorField {
+    width: 100%;
+  }
+
   .inlineInstanceSelector {
     width: 100%;
+    max-width: none;
+  }
+
+  .toolbarTimeSelector,
+  .toolbarTimeSelector > div,
+  .toolbarTimeSelector > div > div:first-child,
+  .toolbarTimeSelector > div > div:first-child :global(.ant-select),
+  .toolbarTimeSelector > div > div:first-child :global(.ant-picker) {
+    width: 100% !important;
+  }
+
+  .toolbarTimeSelector > div {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .toolbarTimeSelector > div > div:last-child {
+    margin-left: 0 !important;
   }
 
   .chartPanelHeader {
@@ -1438,40 +1547,47 @@
   border-color: #26364a;
 }
 
-:global(html.dark) .modeTabs,
-:global(html.dark) .inlineInstanceSelector {
-  background: #0f1a28;
-  border-color: #2a3a50;
+:global(html.dark) .modeSegmented {
+  background: var(--color-fill-1) !important;
+  border-color: var(--color-border);
 }
 
-// 暗色连体刷新框：外框承深色边框/底色，内部按钮与下拉透明、仅留深色发丝线分隔。
-:global(html.dark) .toolbarTimeSelector > div > div:last-child {
-  background: #0f1a28;
-  border-color: #2a3a50;
+:global(html.dark) .modeSegmented :global(.ant-segmented-item) {
+  color: var(--color-text-3);
+}
+
+:global(html.dark) .modeSegmented :global(.ant-segmented-item-selected),
+:global(html.dark) .modeSegmented :global(.ant-segmented-thumb) {
+  color: var(--color-text-1) !important;
+  background: var(--color-bg) !important;
+}
+
+:global(html.dark) .inlineInstanceSelector,
+:global(html.dark) .toolbarTimeSelector > div > div:first-child :global(.ant-select-selector),
+:global(html.dark) .toolbarTimeSelector > div > div:last-child,
+:global(html.dark) .toolbarBackBtn {
+  background: var(--color-bg) !important;
+  border-color: var(--color-border) !important;
 }
 
 :global(html.dark) .toolbarTimeSelector > div > div:last-child :global(.ant-btn),
 :global(html.dark) .toolbarTimeSelector > div > div:last-child :global(.ant-select-selector) {
   background: transparent !important;
-  color: rgba(255, 255, 255, 0.78) !important;
+  color: var(--color-text-2) !important;
 }
 
 :global(html.dark) .toolbarTimeSelector > div > div:last-child :global(.ant-btn) {
   border: none !important;
-  border-right: 1px solid rgba(255, 255, 255, 0.1) !important;
+  border-right: 1px solid var(--color-border) !important;
 }
 
 :global(html.dark) .instanceMetaDivider::before {
-  color: rgba(255, 255, 255, 0.28);
+  color: var(--color-text-4);
 }
 
-:global(html.dark) .instanceMetaMuted {
-  color: rgba(255, 255, 255, 0.48);
-}
-
-:global(html.dark) .modeTabActive {
-  background: #e8eef7;
-  color: #101826;
+:global(html.dark) .instanceMetaMuted,
+:global(html.dark) .instanceSelectorLabel {
+  color: var(--color-text-3);
 }
 
 :global(html.dark) .statLabel,

@@ -563,6 +563,30 @@
     "field_schema": []
 },
 {
+    "name": "CMDB 变更趋势",
+    "desc": "查询 CMDB 在时间范围内的新增、修改、删除趋势",
+    "rest_api": "cmdb/get_change_trend",
+    "tag": ["cmdb"],
+    "chart_type": ["line", "bar"],
+    "params": [
+        {
+            "name": "time",
+            "type": "timeRange",
+            "value": 10080,
+            "alias_name": "时间范围",
+            "filterType": "filter"
+        },
+        {
+            "name": "model_id",
+            "type": "string",
+            "value": "",
+            "alias_name": "模型ID",
+            "filterType": "params"
+        }
+    ],
+    "field_schema": []
+},
+{
     "name": "CMDB 模型分类列表",
     "desc": "返回当前用户可见的 CMDB 模型分类，供参数动态选项使用",
     "rest_api": "cmdb/get_model_classification_options",

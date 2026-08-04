@@ -977,7 +977,10 @@ const ScreenCanvas: React.FC<ScreenCanvasProps> = ({
           padding: 0;
         }
 
-        .screen-widget-frame--kpi .screen-widget-frame__body,
+        .screen-widget-frame--kpi .screen-widget-frame__body {
+          padding: 0 calc(10px * var(--screen-widget-ui-scale));
+        }
+
         .screen-widget-frame--gauge .screen-widget-frame__body {
           padding: calc(8px * var(--screen-widget-ui-scale)) calc(10px * var(--screen-widget-ui-scale)) calc(10px * var(--screen-widget-ui-scale));
         }

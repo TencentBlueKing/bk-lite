@@ -88,9 +88,9 @@ def test_parse_client_datetime_iso():
     assert isinstance(dt, datetime.datetime)
 
 
-def test_parse_client_datetime_plain():
+def test_parse_client_datetime_explicit_offset():
     tz = timezone.get_current_timezone()
-    dt = N._parse_client_datetime("2026-01-01 10:00:00", tz)
+    dt = N._parse_client_datetime("2026-01-01T10:00:00+08:00", tz)
     assert isinstance(dt, datetime.datetime)
 
 
@@ -432,8 +432,8 @@ def test_get_alert_level_trend_returns_multiseries_by_level(user_info):
     )
     Alert.objects.filter(pk=fatal_alert.pk).update(created_at=now)
     Alert.objects.filter(pk=warning_alert.pk).update(created_at=now)
-    start = (now - datetime.timedelta(days=1)).strftime("%Y-%m-%d %H:%M:%S")
-    end = (now + datetime.timedelta(days=1)).strftime("%Y-%m-%d %H:%M:%S")
+    start = (now - datetime.timedelta(days=1)).isoformat()
+    end = (now + datetime.timedelta(days=1)).isoformat()
 
     result = N.get_alert_level_trend(user_info=user_info, time=[start, end], group_by="day")
 
@@ -450,7 +450,7 @@ def test_get_alert_level_trend_returns_multiseries_by_level(user_info):
 )
 def test_get_alert_level_trend_span_over_limit_rejected_before_period_generation(monkeypatch, user_info, group_by):
     """超限区间必须在生成完整时间序列前被拒绝。"""
-    start = datetime.datetime(2025, 1, 1)
+    start = datetime.datetime(2025, 1, 1, tzinfo=datetime.timezone.utc)
     end = start + datetime.timedelta(seconds=N._MAX_SPAN_SECONDS[group_by] + 1)
     monkeypatch.setattr(
         N,
@@ -471,7 +471,7 @@ def test_get_alert_level_trend_span_over_limit_rejected_before_period_generation
 
 @pytest.mark.django_db
 def test_get_alert_level_trend_exact_span_limit_is_accepted(monkeypatch, user_info):
-    start = datetime.datetime(2025, 1, 1)
+    start = datetime.datetime(2025, 1, 1, tzinfo=datetime.timezone.utc)
     end = start + datetime.timedelta(seconds=N._MAX_SPAN_SECONDS["minute"])
     monkeypatch.setattr(N, "_generate_time_periods", lambda *_args, **_kwargs: [])
 
@@ -516,10 +516,29 @@ def test_alert_trend_rejects_malformed_time(user_info, handler, empty_data, time
         (N.get_alert_level_trend, {}),
     ],
 )
+def test_alert_trend_rejects_timezone_less_time(user_info, handler, empty_data):
+    result = handler(
+        user_info=user_info,
+        time=["2025-01-01 00:00:00", "2025-01-02 00:00:00"],
+    )
+
+    assert result["result"] is False
+    assert result["data"] == empty_data
+    assert "datetime" in result["message"]
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("handler", "empty_data"),
+    [
+        (N.get_alert_trend_data, []),
+        (N.get_alert_level_trend, {}),
+    ],
+)
 def test_alert_trend_rejects_reversed_time(user_info, handler, empty_data):
     result = handler(
         user_info=user_info,
-        time=["2025-01-02 00:00:00", "2025-01-01 00:00:00"],
+        time=["2025-01-02T00:00:00Z", "2025-01-01T00:00:00Z"],
     )
 
     assert result["result"] is False
@@ -539,7 +558,7 @@ def test_alert_trend_rejects_reversed_time(user_info, handler, empty_data):
 def test_alert_trend_rejects_unsupported_group(user_info, handler, empty_data, group_by):
     result = handler(
         user_info=user_info,
-        time=["2025-01-01 00:00:00", "2025-01-02 00:00:00"],
+        time=["2025-01-01T00:00:00Z", "2025-01-02T00:00:00Z"],
         group_by=group_by,
     )
 
@@ -594,7 +613,7 @@ def test_get_alert_trend_data_minute_span_over_limit_rejected(user_info):
     """
     result = N.get_alert_trend_data(
         user_info=user_info,
-        time=["2026-01-01 00:00:00", "2026-01-09 00:00:00"],  # 8 天，超过 minute 粒度 7 天上限
+        time=["2026-01-01T00:00:00Z", "2026-01-09T00:00:00Z"],  # 8 天，超过 minute 粒度 7 天上限
         group_by="minute",
     )
     assert result["result"] is False, "超出 minute 粒度上限的请求必须被拒绝，防止 OOM"
@@ -606,7 +625,7 @@ def test_get_alert_trend_data_minute_span_within_limit_ok(user_info):
     """minute 粒度时间跨度在 7 天以内，应正常返回数据。"""
     result = N.get_alert_trend_data(
         user_info=user_info,
-        time=["2026-01-01 00:00:00", "2026-01-06 00:00:00"],  # 5 天，在上限内
+        time=["2026-01-01T00:00:00Z", "2026-01-06T00:00:00Z"],  # 5 天，在上限内
         group_by="minute",
     )
     assert result["result"] is True
@@ -620,7 +639,7 @@ def test_get_alert_trend_data_hour_span_over_limit_rejected(user_info):
     """
     result = N.get_alert_trend_data(
         user_info=user_info,
-        time=["2026-01-01 00:00:00", "2026-04-15 00:00:00"],  # ~104 天，超过 hour 粒度 90 天上限
+        time=["2026-01-01T00:00:00Z", "2026-04-15T00:00:00Z"],  # ~104 天，超过 hour 粒度 90 天上限
         group_by="hour",
     )
     assert result["result"] is False, "超出 hour 粒度上限的请求必须被拒绝，防止 OOM"
@@ -632,7 +651,7 @@ def test_get_alert_trend_data_returns_series(user_info):
     Alert.objects.create(alert_id="A1", level="0", title="t", content="c", fingerprint="fp", team=[1])
     result = N.get_alert_trend_data(
         user_info=user_info,
-        time=["2026-01-01 00:00:00", "2026-01-03 00:00:00"],
+        time=["2026-01-01T00:00:00Z", "2026-01-03T00:00:00Z"],
         group_by="day",
     )
     assert result["result"] is True
@@ -646,8 +665,8 @@ def test_get_alert_trend_data_with_events_in_window(user_info):
     now = timezone.now()
     alert = Alert.objects.create(alert_id="A1", level="0", title="t", content="c", fingerprint="fp", team=[1])
     Alert.objects.filter(pk=alert.pk).update(created_at=now)
-    start = (now - datetime.timedelta(days=1)).strftime("%Y-%m-%d %H:%M:%S")
-    end = (now + datetime.timedelta(days=1)).strftime("%Y-%m-%d %H:%M:%S")
+    start = (now - datetime.timedelta(days=1)).isoformat()
+    end = (now + datetime.timedelta(days=1)).isoformat()
     result = N.get_alert_trend_data(user_info=user_info, time=[start, end], group_by="day")
     assert result["result"] is True
     # 告警数序列非空且为 [时间, 数量] 形式
@@ -802,6 +821,37 @@ def test_get_alert_source_statistics_counts_only_sources_from_authorized_alerts(
 def test_get_alert_source_statistics_permission_error():
     result = N.get_alert_source_statistics(user_info={"is_superuser": False, "permission": {}})
     assert result["result"] is False
+
+
+@pytest.mark.integration
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("handler", "empty_data"),
+    [
+        (N.get_alert_source_statistics, {}),
+        (N.get_notification_statistics, {}),
+        (N.get_notification_channel_stats, []),
+        (N.get_alert_data_quality, {}),
+    ],
+)
+@pytest.mark.parametrize(
+    "time_range",
+    [
+        ["2026-01-01 00:00:00", "2026-01-02T00:00:00Z"],
+        ["2026-01-01T00:00:00Z"],
+    ],
+)
+def test_alert_statistics_reject_invalid_time_range(
+    user_info,
+    handler,
+    empty_data,
+    time_range,
+):
+    result = handler(user_info=user_info, time=time_range)
+
+    assert result["result"] is False
+    assert result["data"] == empty_data
+    assert "time range" in result["message"]
 
 
 @pytest.mark.django_db
@@ -1015,9 +1065,7 @@ def test_receive_alert_events_reports_partial_ingestion(monkeypatch):
         staticmethod(lambda source: FakeAdapter),
     )
 
-    result = N.receive_alert_events(
-        source_id="nats-partial", events=[{"title": "ok"}, {}], pusher="lite-monitor"
-    )
+    result = N.receive_alert_events(source_id="nats-partial", events=[{"title": "ok"}, {}], pusher="lite-monitor")
 
     assert result["result"] is False
     assert result["data"]["processed_events"] == 1

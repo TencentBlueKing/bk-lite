@@ -3,7 +3,7 @@
 # @Time: 2025/11/3 15:48
 # @Author: windyzhao
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from django.http import Http404
 from rest_framework import status, viewsets
@@ -13,6 +13,7 @@ from rest_framework.response import Response
 
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.logger import operation_analysis_logger as logger
+from apps.core.utils.time_util import format_rfc3339_utc, parse_rfc3339_utc
 from apps.core.utils.viewset_utils import AuthViewSet
 from apps.operation_analysis.common.audit_log import get_response_name, log_ops_analysis_success
 from apps.operation_analysis.common.get_nats_source_data import GetNatsData
@@ -30,7 +31,6 @@ from apps.operation_analysis.services.datasource_preview import ConnectorError, 
 from config.drf.pagination import CustomPageNumberPagination
 from config.drf.viewsets import ModelViewSet
 
-TIME_RANGE_FORMAT = "%Y-%m-%d %H:%M:%S"
 RUNTIME_ALLOWED_KEYS = {"namespace_id", "page", "page_size", "query_list"}
 
 
@@ -126,66 +126,46 @@ def _classify_runtime_exception(error):
 
 def _parse_time_value(value):
     if isinstance(value, datetime):
-        return value
-
-    if isinstance(value, (int, float)):
-        timestamp = float(value)
-        # 13 位时间戳视为毫秒
-        if abs(timestamp) > 10**11:
-            timestamp = timestamp / 1000.0
-        return datetime.fromtimestamp(timestamp)
+        try:
+            return parse_rfc3339_utc(value)
+        except ValueError as exc:
+            raise ValueError("timeRange 时间必须包含时区") from exc
 
     if isinstance(value, str):
         text = value.strip()
         if not text:
             raise ValueError("timeRange 时间不能为空")
-
-        # 兼容 ISO8601，例如 2026-04-19T09:34:13.712Z / +08:00
-        iso_text = text[:-1] + "+00:00" if text.endswith("Z") else text
         try:
-            parsed = datetime.fromisoformat(iso_text)
-            if parsed.tzinfo is not None:
-                parsed = parsed.astimezone().replace(tzinfo=None)
-            return parsed
-        except ValueError:
-            pass
+            return parse_rfc3339_utc(text)
+        except ValueError as exc:
+            raise ValueError("timeRange 时间必须为带时区的 RFC3339 格式") from exc
 
-        for fmt in (
-            TIME_RANGE_FORMAT,
-            "%Y-%m-%dT%H:%M:%S",
-            "%Y-%m-%dT%H:%M:%S.%f",
-        ):
-            try:
-                return datetime.strptime(text, fmt)
-            except ValueError:
-                continue
-
-    raise ValueError("timeRange 时间格式错误，需为 yyyy-MM-dd HH:mm:ss")
+    raise ValueError("timeRange 时间必须为带时区的 RFC3339 字符串")
 
 
 def _normalize_time_range(value):
-    now = datetime.now()
+    now = datetime.now(timezone.utc)
 
     if isinstance(value, (int, float)):
         minutes = int(value)
         if minutes <= 0:
             raise ValueError("timeRange 必须为正整数分钟数")
         start = now - timedelta(minutes=minutes)
-        return [start.strftime(TIME_RANGE_FORMAT), now.strftime(TIME_RANGE_FORMAT)]
+        return [format_rfc3339_utc(start), format_rfc3339_utc(now)]
 
     if isinstance(value, list) and len(value) == 2:
         start = _parse_time_value(value[0])
         end = _parse_time_value(value[1])
         if start >= end:
             raise ValueError("timeRange 开始时间必须小于结束时间")
-        return [start.strftime(TIME_RANGE_FORMAT), end.strftime(TIME_RANGE_FORMAT)]
+        return [format_rfc3339_utc(start), format_rfc3339_utc(end)]
 
     if isinstance(value, dict) and value.get("start") and value.get("end"):
         start = _parse_time_value(value["start"])
         end = _parse_time_value(value["end"])
         if start >= end:
             raise ValueError("timeRange 开始时间必须小于结束时间")
-        return [start.strftime(TIME_RANGE_FORMAT), end.strftime(TIME_RANGE_FORMAT)]
+        return [format_rfc3339_utc(start), format_rfc3339_utc(end)]
 
     raise ValueError("timeRange 参数格式错误")
 

@@ -1,5 +1,6 @@
 import os
 import re
+import json
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
@@ -25,6 +26,9 @@ from apps.monitor.utils.victoriametrics_api import VictoriaMetricsAPI
 # 实例列表页插件状态查询的最大并发度：每个插件的 status_query 是一次独立 VM 读，
 # 去重后并发拉取以消除「插件越多越慢」的串行 N+1。保守默认 8，可经 env 调。
 PLUGIN_STATUS_QUERY_MAX_WORKERS = int(os.getenv("MONITOR_PLUGIN_STATUS_QUERY_MAX_WORKERS", "8"))
+
+# vm_params 中非 Enum 指标名的保留键（不参与通用 Enum 过滤）。
+_VM_PARAM_RESERVED_KEYS = frozenset({"instance_id", "node", "status", "asset.ip"})
 
 
 class InstanceSearch:
@@ -60,8 +64,72 @@ class InstanceSearch:
         return data
 
     @staticmethod
+    def get_process_host_filter_enum():
+        """进程列表过滤项：按进程实例归属主机枚举（形态对齐 K8s cluster）。"""
+        process_ids = MonitorInstance.objects.filter(
+            monitor_object__name="Process",
+            is_deleted=False,
+        ).values_list("id", flat=True)
+        host_ids = []
+        seen = set()
+        for process_id in process_ids:
+            parts = parse_instance_id(process_id)
+            if not parts:
+                continue
+            host_id = str(parts[0])
+            if not host_id or host_id in seen:
+                continue
+            seen.add(host_id)
+            host_ids.append(host_id)
+
+        host_name_map = {}
+        if host_ids:
+            host_storage_ids = [str((host_id,)) for host_id in host_ids]
+            for host in MonitorInstance.objects.filter(
+                monitor_object__name="Host",
+                id__in=host_storage_ids,
+                is_deleted=False,
+            ).values("id", "name"):
+                parts = parse_instance_id(host["id"])
+                if not parts:
+                    continue
+                host_name_map[str(parts[0])] = host["name"] or str(parts[0])
+
+        return {
+            "cluster": [
+                {
+                    "id": host_id,
+                    "name": host_name_map.get(host_id, host_id),
+                }
+                for host_id in sorted(host_ids)
+            ],
+            "asset_ips": InstanceSearch.collect_asset_ip_options("Process"),
+        }
+
+    @staticmethod
+    def collect_asset_ip_options(monitor_obj_name):
+        """收集监控对象实例的去重 asset.ip（摘要事实优先，其次模型 ip 字段）。"""
+        if not monitor_obj_name:
+            return []
+        ips = set()
+        for ip, facts in MonitorInstance.objects.filter(
+            monitor_object__name=monitor_obj_name,
+            is_deleted=False,
+        ).values_list("ip", "summary_facts"):
+            if isinstance(facts, dict):
+                fact_ip = facts.get("asset.ip")
+                if fact_ip not in (None, ""):
+                    ips.add(str(fact_ip).strip())
+                    continue
+            if ip not in (None, ""):
+                ips.add(str(ip).strip())
+        return sorted(ip for ip in ips if ip)
+
+    @staticmethod
     def get_query_params_enum(monitor_obj_name, monitor_object_id=None):
         """获取查询参数枚举"""
+        if monitor_obj_name == "Host":
+            return {"asset_ips": InstanceSearch.collect_asset_ip_options("Host")}
         if monitor_obj_name == "Pod":
             query = "count(prometheus_remote_write_kube_pod_info{}) by (instance_id, node)"
             metrics = VictoriaMetricsAPI().query(query)
@@ -149,6 +217,8 @@ class InstanceSearch:
             ]
 
             return {"cluster": instance_list}
+        elif monitor_obj_name == "Process":
+            return InstanceSearch.get_process_host_filter_enum()
         elif monitor_obj_name in {"ESXI", "VM", "DataStorage"}:
             return InstanceSearch.get_parent_instance_list(monitor_object_id)
         elif monitor_obj_name in {"CVM"}:
@@ -198,6 +268,13 @@ class InstanceSearch:
                 value=metric["value"][1],
             )
             items.append(item)
+
+        vm_params = self.query_data.get("vm_params") or {}
+        if isinstance(vm_params, dict):
+            items = InstanceSearch.apply_status_filter_to_items(
+                items, vm_params.get("status")
+            )
+
         # 数据合并，取objs和vm_metrics的交集
         page = self.query_data.get("page", 1)
         page_size = self.query_data.get("page_size", 10)
@@ -390,6 +467,244 @@ class InstanceSearch:
                 best[key] = (rank, plugin)
         return [best[key][1] for key in order]
 
+    def _apply_process_filters(self, qs):
+        """列表/搜索共用：主机归属 + asset.ip + Enum 指标多值过滤。"""
+        return InstanceSearch.apply_process_instance_filters(
+            qs,
+            getattr(self.monitor_obj, "name", None),
+            self.query_data.get("vm_params"),
+            monitor_object_id=getattr(self.monitor_obj, "id", None),
+        )
+
+    @staticmethod
+    def apply_process_instance_filters(
+        qs, monitor_obj_name, vm_params, monitor_object_id=None
+    ):
+        """按 vm_params 过滤实例：Process 主机多选 + asset.ip 多选 + Enum 指标多选。"""
+        qs = InstanceSearch.apply_process_host_filters(qs, monitor_obj_name, vm_params)
+        qs = InstanceSearch.apply_asset_ip_filters(qs, vm_params)
+        object_id = monitor_object_id
+        if object_id is None and monitor_obj_name:
+            object_id = (
+                MonitorObject.objects.filter(name=monitor_obj_name)
+                .values_list("id", flat=True)
+                .first()
+            )
+        return InstanceSearch.apply_enum_metric_filters(qs, object_id, vm_params)
+
+    @staticmethod
+    def apply_instance_vm_param_filters(qs, monitor_object_id, monitor_obj_name, vm_params):
+        return InstanceSearch.apply_process_instance_filters(
+            qs, monitor_obj_name, vm_params, monitor_object_id=monitor_object_id
+        )
+
+    @staticmethod
+    def apply_process_host_filters(qs, monitor_obj_name, vm_params):
+        """Process：按归属主机 instance_id（支持逗号多值）过滤。"""
+        if monitor_obj_name != "Process":
+            return qs
+        if not isinstance(vm_params, dict):
+            return qs
+        host_ids = InstanceSearch.normalize_csv_values(vm_params.get("instance_id"))
+        if not host_ids:
+            return qs
+        matching_ids = []
+        for process_id in qs.values_list("id", flat=True):
+            parts = parse_instance_id(process_id)
+            if parts and str(parts[0]) in host_ids:
+                matching_ids.append(process_id)
+        return qs.filter(id__in=matching_ids)
+
+    @staticmethod
+    def apply_asset_ip_filters(qs, vm_params):
+        """按 summary_facts['asset.ip']（缺省回落模型 ip）多值过滤。"""
+        if not isinstance(vm_params, dict):
+            return qs
+        ips = InstanceSearch.normalize_csv_values(vm_params.get("asset.ip"))
+        if not ips:
+            return qs
+        matching_ids = []
+        for instance_id, ip, facts in qs.values_list("id", "ip", "summary_facts"):
+            fact_ip = None
+            if isinstance(facts, dict):
+                raw = facts.get("asset.ip")
+                if raw not in (None, ""):
+                    fact_ip = str(raw).strip()
+            candidate = fact_ip or (str(ip).strip() if ip not in (None, "") else "")
+            if candidate and candidate in ips:
+                matching_ids.append(instance_id)
+        return qs.filter(id__in=matching_ids)
+
+    @staticmethod
+    def normalize_csv_values(raw):
+        """兼容单值、逗号分隔字符串与列表，去掉空串。"""
+        if raw is None:
+            return set()
+        if isinstance(raw, (list, tuple, set)):
+            parts = [str(item).strip() for item in raw]
+        else:
+            parts = [part.strip() for part in str(raw).split(",")]
+        return {part for part in parts if part}
+
+    @staticmethod
+    def parse_enum_unit_option_ids(unit):
+        """从 Enum metric.unit JSON 解析全部选项 id（字符串集合）。"""
+        if not unit or not isinstance(unit, str):
+            return set()
+        try:
+            options = json.loads(unit)
+        except (TypeError, ValueError, json.JSONDecodeError):
+            return set()
+        if not isinstance(options, list):
+            return set()
+        ids = set()
+        for item in options:
+            if not isinstance(item, dict) or "id" not in item:
+                continue
+            ids.add(str(item["id"]).strip())
+        return {i for i in ids if i}
+
+    @staticmethod
+    def enum_value_matches(raw_value, selected_values):
+        """枚举取值匹配：支持 0.5 / 0.50 / 1.0 等数值等价。"""
+        if not selected_values:
+            return False
+        raw = "" if raw_value is None else str(raw_value).strip()
+        if raw in selected_values:
+            return True
+        try:
+            numeric = float(raw)
+        except (TypeError, ValueError):
+            return False
+        for selected in selected_values:
+            try:
+                if abs(numeric - float(selected)) < 1e-9:
+                    return True
+            except (TypeError, ValueError):
+                continue
+        return False
+
+    @staticmethod
+    def _replace_promql_labels(query, labels):
+        if "__$labels__" not in query:
+            return query
+        if labels:
+            return query.replace("__$labels__", labels)
+        return (
+            query.replace(", __$labels__", "")
+            .replace(",__$labels__", "")
+            .replace("__$labels__, ", "")
+            .replace("__$labels__,", "")
+            .replace("__$labels__", "")
+        )
+
+    @staticmethod
+    def _promql_label_clause(key, raw_value):
+        values = sorted(InstanceSearch.normalize_csv_values(raw_value))
+        if not values:
+            return None
+        if len(values) == 1:
+            return f'{key}="{InstanceSearch._escape_promql_label_value(values[0])}"'
+        joined = "|".join(
+            InstanceSearch._escape_promql_label_value(re.escape(v)) for v in values
+        )
+        return f'{key}=~"{joined}"'
+
+    @staticmethod
+    def apply_enum_metric_filters(qs, monitor_object_id, vm_params):
+        """按 vm_params 中的 Enum 指标名做多值过滤；多指标 AND，同指标多值 OR。"""
+        if not monitor_object_id or not isinstance(vm_params, dict):
+            return qs
+
+        metrics = (
+            Metric.objects.filter(
+                monitor_object_id=monitor_object_id, data_type="Enum"
+            )
+            .exclude(query="")
+            .order_by("id")
+        )
+        seen_names = set()
+        unique_metrics = []
+        for metric in metrics:
+            if metric.name in seen_names or metric.name in _VM_PARAM_RESERVED_KEYS:
+                continue
+            seen_names.add(metric.name)
+            unique_metrics.append(metric)
+
+        label_parts = []
+        instance_clause = InstanceSearch._promql_label_clause(
+            "instance_id", vm_params.get("instance_id")
+        )
+        if instance_clause:
+            label_parts.append(instance_clause)
+        node_clause = InstanceSearch._promql_label_clause("node", vm_params.get("node"))
+        if node_clause:
+            label_parts.append(node_clause)
+        labels = ", ".join(label_parts)
+
+        for metric in unique_metrics:
+            selected = InstanceSearch.normalize_csv_values(vm_params.get(metric.name))
+            if not selected:
+                continue
+            all_ids = InstanceSearch.parse_enum_unit_option_ids(metric.unit)
+            if all_ids and selected >= all_ids:
+                continue
+
+            query = InstanceSearch._replace_promql_labels(metric.query, labels)
+            metrics_result = VictoriaMetricsAPI().query(query, step="20m")
+            matched_ids = []
+            instance_id_keys = metric.instance_id_keys or []
+            for metric_info in metrics_result.get("data", {}).get("result", []):
+                metric_labels = metric_info.get("metric") or {}
+                value = metric_info.get("value") or [None, None]
+                raw = value[1]
+                if not InstanceSearch.enum_value_matches(raw, selected):
+                    continue
+                if not instance_id_keys:
+                    continue
+                parts = [metric_labels.get(key) for key in instance_id_keys]
+                if any(part is None or str(part).strip() == "" for part in parts):
+                    continue
+                matched_ids.append(str(tuple(str(part) for part in parts)))
+            qs = qs.filter(id__in=matched_ids)
+        return qs
+
+    @staticmethod
+    def apply_status_filter_to_qs(qs, instance_map, status_raw):
+        """按上报状态过滤 QuerySet：normal=有指标时间，unavailable=无。"""
+        statuses = InstanceSearch.normalize_csv_values(status_raw) & {
+            "normal",
+            "unavailable",
+        }
+        if not statuses or statuses == {"normal", "unavailable"}:
+            return qs
+        normal_ids = set((instance_map or {}).keys())
+        if statuses == {"normal"}:
+            return qs.filter(id__in=normal_ids)
+        if statuses == {"unavailable"}:
+            return qs.exclude(id__in=normal_ids)
+        return qs
+
+    @staticmethod
+    def apply_status_filter_to_items(items, status_raw):
+        """按上报状态过滤已带 time 字段的结果列表。"""
+        statuses = InstanceSearch.normalize_csv_values(status_raw) & {
+            "normal",
+            "unavailable",
+        }
+        if not statuses or statuses == {"normal", "unavailable"}:
+            return items
+        if statuses == {"normal"}:
+            return [item for item in items if item.get("time")]
+        if statuses == {"unavailable"}:
+            return [item for item in items if not item.get("time")]
+        return items
+
+    @staticmethod
+    def _normalize_process_alive_values(alive_raw):
+        """兼容旧测试：仅保留 0/1。"""
+        return InstanceSearch.normalize_csv_values(alive_raw) & {"0", "1"}
+
     def get_objs(self):
         qs = self.qs.filter(
             monitor_object_id=self.monitor_obj.id,
@@ -399,6 +714,7 @@ class InstanceSearch:
         name = self.query_data.get("name")
         if name:
             qs = qs.filter(name__icontains=name)
+        qs = self._apply_process_filters(qs)
 
         # 去除重复
         qs = qs.distinct()
@@ -415,6 +731,7 @@ class InstanceSearch:
         name = self.query_data.get("name")
         if name:
             qs = qs.filter(name__icontains=name)
+        qs = self._apply_process_filters(qs)
 
         # 去除重复
         qs = qs.distinct()
@@ -501,10 +818,17 @@ class InstanceSearch:
         if not isinstance(vm_params, dict):
             raise BaseAppException("vm_params must be an object")
 
-        params_str = ",".join([f'{k}="{self._escape_promql_label_value(v)}"' for k, v in vm_params.items() if v is not None and str(v) != ""])
-        if vm_params:
+        # 仅把真实 PromQL 标签写入查询；status / Enum 指标名留给业务过滤。
+        promql_keys = {"instance_id", "node"}
+        label_parts = []
+        for key in promql_keys:
+            clause = InstanceSearch._promql_label_clause(key, vm_params.get(key))
+            if clause:
+                label_parts.append(clause)
+        params_str = ",".join(label_parts)
+        if params_str:
             if "}" in query:
-                query = query.replace("}", f",{params_str}}}")
+                query = query.replace("}", f",{params_str}}}", 1)
             else:
                 query = f"{query}{{{params_str}}}"
         metrics = VictoriaMetricsAPI().query(query, step="20m")

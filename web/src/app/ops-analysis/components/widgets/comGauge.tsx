@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo } from 'react';
 import ReactEcharts from 'echarts-for-react';
-import { Empty, Spin } from 'antd';
+import { Spin } from 'antd';
+import WidgetState from '@/app/ops-analysis/components/widget-state';
 import type {
   ScreenRenderContext,
   ValueConfig,
@@ -244,11 +245,7 @@ const ComGauge: React.FC<ComGaugeProps> = ({
   }
 
   if (!hasData) {
-    return (
-      <div className="h-full flex items-center justify-center">
-        <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} />
-      </div>
-    );
+    return <WidgetState />;
   }
 
   return (

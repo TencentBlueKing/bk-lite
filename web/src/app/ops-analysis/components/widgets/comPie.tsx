@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useCallback, useState } from 'react';
 import ReactEcharts from 'echarts-for-react';
-import { Spin, Empty } from 'antd';
+import { Spin } from 'antd';
 import { randomColorForLegend } from '@/app/ops-analysis/utils/randomColorForChart';
 import { ChartDataTransformer } from '@/app/ops-analysis/utils/chartDataTransform';
 import {
@@ -10,6 +10,7 @@ import {
   resolveOpsChartThemeName,
 } from '@/app/ops-analysis/utils/chartTheme';
 import ChartLegend from '@/app/ops-analysis/components/chartLegend';
+import WidgetState from '@/app/ops-analysis/components/widget-state';
 import type {
   ScreenRenderContext,
   ValueConfig,
@@ -53,8 +54,10 @@ const OsPie: React.FC<OsPieProps> = ({
   };
 
   const chartData = transformData(rawData);
-  const isDataReady = chartData.length > 0;
-  const showLegend = chartData.length > 0;
+  const isDataReady = chartData.some(
+    (item) => Number.isFinite(item.value) && item.value > 0,
+  );
+  const showLegend = isDataReady;
 
   useEffect(() => {
     if (!loading) {
@@ -169,11 +172,7 @@ const OsPie: React.FC<OsPieProps> = ({
   }
 
   if (!isDataReady || !chartData || chartData.length === 0) {
-    return (
-      <div className="h-full flex flex-col items-center justify-center">
-        <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} />
-      </div>
-    );
+    return <WidgetState />;
   }
 
   return (

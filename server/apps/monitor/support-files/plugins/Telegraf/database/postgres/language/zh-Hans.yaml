@@ -37,6 +37,9 @@ monitor_object_metric:
     postgresql_blks_read_rate:
       name: 磁盘数据块读取速率
       desc: 评估磁盘 I/O 负载及缓存不足情况
+    postgresql_cache_hit_ratio:
+      name: 缓存命中率
+      desc: 共享缓冲区命中次数占总块访问次数的百分比，低命中率通常伴随更高的物理 IO
     postgresql_deadlocks_rate:
       name: 死锁发生速率
       desc: 检测事务间死锁发生频率

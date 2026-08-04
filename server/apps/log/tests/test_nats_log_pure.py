@@ -7,6 +7,11 @@ from django.db.models import Q
 
 from apps.log.nats import log as nats_log
 
+RFC3339_TIME_RANGE = (
+    "2026-08-03T04:17:25.000Z",
+    "2026-08-03T05:17:25.000Z",
+)
+
 # ----------------------- _normalize_positive_int -----------------------
 
 
@@ -223,7 +228,6 @@ def test_log_query_forged_superuser_still_applies_object_permission(mocker, endp
         "build_query_with_groups",
         return_value=("SCOPED", []),
     )
-    mocker.patch.object(nats_log, "format_time_iso", side_effect=lambda value: value)
     victoria_logs = mocker.patch.object(nats_log, "VictoriaMetricsAPI")
     victoria_logs.return_value.query.return_value = [{"message": "leaked"}]
     victoria_logs.return_value.hits.return_value = {"hits": [{"timestamps": ["t1"], "values": [1]}]}
@@ -236,11 +240,11 @@ def test_log_query_forged_superuser_still_applies_object_permission(mocker, endp
     }
 
     if endpoint == "search":
-        result = nats_log.log_search("q", ("start", "end"), user_info=user_info)
+        result = nats_log.log_search("q", RFC3339_TIME_RANGE, user_info=user_info)
     else:
         result = nats_log.log_hits(
             "q",
-            ("start", "end"),
+            RFC3339_TIME_RANGE,
             "host",
             user_info=user_info,
         )
@@ -353,21 +357,50 @@ def test_resolve_log_group_scope_rejects_forged_superuser_before_permission(mock
 
 def test_log_search_returns_data(mocker):
     mocker.patch.object(nats_log, "_apply_log_group_scope", return_value="SCOPED")
-    mocker.patch.object(nats_log, "format_time_iso", side_effect=lambda v: f"iso:{v}")
     vm = mocker.patch.object(nats_log, "VictoriaMetricsAPI").return_value
     vm.query.return_value = [{"a": 1}]
-    out = nats_log.log_search("q", ("s", "e"), limit=5, user_info={"user": "u"})
+    time_range = RFC3339_TIME_RANGE
+
+    out = nats_log.log_search("q", time_range, limit=5, user_info={"user": "u"})
+
     assert out == {"result": True, "data": [{"a": 1}], "message": ""}
-    vm.query.assert_called_once_with("SCOPED", "iso:s", "iso:e", 5)
+    vm.query.assert_called_once_with("SCOPED", *time_range, 5)
 
 
 def test_log_search_invalid_limit_returns_error(mocker):
     mocker.patch.object(nats_log, "_apply_log_group_scope", return_value="SCOPED")
-    mocker.patch.object(nats_log, "format_time_iso", side_effect=lambda v: v)
-    out = nats_log.log_search("q", ("s", "e"), limit="not-int")
+    out = nats_log.log_search("q", RFC3339_TIME_RANGE, limit="not-int")
     assert out["result"] is False
     assert out["data"] == []
     assert "整数" in out["message"]
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("endpoint", ["search", "hits"])
+@pytest.mark.parametrize(
+    "time_range",
+    [
+        ["2026-08-03 04:17:25", "2026-08-03T05:17:25Z"],
+        ["2026-08-03T04:17:25Z"],
+    ],
+)
+def test_log_query_rejects_invalid_time_range_without_vm_query(
+    mocker,
+    endpoint,
+    time_range,
+):
+    mocker.patch.object(nats_log, "_apply_log_group_scope", return_value="SCOPED")
+    victoria_logs = mocker.patch.object(nats_log, "VictoriaMetricsAPI")
+
+    if endpoint == "search":
+        result = nats_log.log_search("q", time_range)
+    else:
+        result = nats_log.log_hits("q", time_range, "host")
+
+    assert result["result"] is False
+    assert result["data"] == []
+    assert "time range" in result["message"]
+    victoria_logs.assert_not_called()
 
 
 @pytest.mark.parametrize("user_info", [None, {}, {"user": "incomplete"}])
@@ -375,12 +408,11 @@ def test_log_search_denied_scope_returns_empty_without_victorialogs(
     mocker,
     user_info,
 ):
-    mocker.patch.object(nats_log, "format_time_iso", side_effect=lambda value: value)
     victoria_logs = mocker.patch.object(nats_log, "VictoriaMetricsAPI")
 
     result = nats_log.log_search(
         "q",
-        ("start", "end"),
+        RFC3339_TIME_RANGE,
         user_info=user_info,
     )
 
@@ -393,12 +425,11 @@ def test_log_hits_denied_scope_returns_empty_without_victorialogs(
     mocker,
     user_info,
 ):
-    mocker.patch.object(nats_log, "format_time_iso", side_effect=lambda value: value)
     victoria_logs = mocker.patch.object(nats_log, "VictoriaMetricsAPI")
 
     result = nats_log.log_hits(
         "q",
-        ("start", "end"),
+        RFC3339_TIME_RANGE,
         "host",
         user_info=user_info,
     )
@@ -412,18 +443,16 @@ def test_log_hits_denied_scope_returns_empty_without_victorialogs(
 
 def test_log_hits_flattens_timestamps_and_values(mocker):
     mocker.patch.object(nats_log, "_apply_log_group_scope", return_value="SCOPED")
-    mocker.patch.object(nats_log, "format_time_iso", side_effect=lambda v: v)
     vm = mocker.patch.object(nats_log, "VictoriaMetricsAPI").return_value
     vm.hits.return_value = {"hits": [{"timestamps": ["t1", "t2"], "values": [1, 2]}]}
-    out = nats_log.log_hits("q", ("s", "e"), "host", fields_limit=5)
+    out = nats_log.log_hits("q", RFC3339_TIME_RANGE, "host", fields_limit=5)
     assert out["result"] is True
     assert out["data"] == [{"name": "t1", "value": 1}, {"name": "t2", "value": 2}]
 
 
 def test_log_hits_invalid_fields_limit(mocker):
     mocker.patch.object(nats_log, "_apply_log_group_scope", return_value="SCOPED")
-    mocker.patch.object(nats_log, "format_time_iso", side_effect=lambda v: v)
-    out = nats_log.log_hits("q", ("s", "e"), "host", fields_limit="bad")
+    out = nats_log.log_hits("q", RFC3339_TIME_RANGE, "host", fields_limit="bad")
     assert out["result"] is False
     assert "整数" in out["message"]
 
