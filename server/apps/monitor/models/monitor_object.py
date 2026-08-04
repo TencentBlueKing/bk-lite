@@ -27,11 +27,28 @@ class MonitorObject(TimeInfo, MaintainerInfo):
         (CLEANUP_POLICY_TIMEOUT, "Timeout cleanup"),
     ]
     CLEANUP_TIMEOUT_UNIT_DAY = "day"
+    CLEANUP_TIMEOUT_UNIT_HOUR = "hour"
     CLEANUP_TIMEOUT_UNIT_MINUTE = "minute"
     CLEANUP_TIMEOUT_UNIT_CHOICES = [
-        (CLEANUP_TIMEOUT_UNIT_DAY, "Day"),
         (CLEANUP_TIMEOUT_UNIT_MINUTE, "Minute"),
+        (CLEANUP_TIMEOUT_UNIT_HOUR, "Hour"),
+        (CLEANUP_TIMEOUT_UNIT_DAY, "Day"),
     ]
+    CLEANUP_TIMEOUT_MAX_BY_UNIT = {
+        CLEANUP_TIMEOUT_UNIT_MINUTE: 1440,
+        CLEANUP_TIMEOUT_UNIT_HOUR: 720,
+        CLEANUP_TIMEOUT_UNIT_DAY: 365,
+    }
+    CLEANUP_TIMEOUT_UNIT_LABELS = {
+        CLEANUP_TIMEOUT_UNIT_MINUTE: "分钟",
+        CLEANUP_TIMEOUT_UNIT_HOUR: "小时",
+        CLEANUP_TIMEOUT_UNIT_DAY: "天",
+    }
+    CLEANUP_TIMEOUT_SECONDS_BY_UNIT = {
+        CLEANUP_TIMEOUT_UNIT_MINUTE: 60,
+        CLEANUP_TIMEOUT_UNIT_HOUR: 60 * 60,
+        CLEANUP_TIMEOUT_UNIT_DAY: 24 * 60 * 60,
+    }
 
     name = models.CharField(unique=True, max_length=100, verbose_name='监控对象')
     display_name = models.CharField(max_length=100, blank=True, default='', verbose_name='监控对象显示名称')
@@ -89,9 +106,7 @@ class MonitorObject(TimeInfo, MaintainerInfo):
 
     @property
     def cleanup_timeout_seconds(self):
-        if self.cleanup_timeout_unit == self.CLEANUP_TIMEOUT_UNIT_MINUTE:
-            return self.cleanup_timeout_days * 60
-        return self.cleanup_timeout_days * 24 * 60 * 60
+        return self.cleanup_timeout_days * self.CLEANUP_TIMEOUT_SECONDS_BY_UNIT[self.cleanup_timeout_unit]
 
 
 class MonitorInstance(TimeInfo, MaintainerInfo):

@@ -125,6 +125,43 @@ class TracePage:
 
 
 @dataclass(frozen=True)
+class TopologyTarget:
+    service_namespace: str
+    service_name: str
+    environment: str
+
+
+@dataclass(frozen=True)
+class TopologyNode:
+    id: str
+    service_namespace: str
+    service_name: str
+    environment: str
+    health: str
+    sampled_spans: int
+    error_spans: int
+
+
+@dataclass(frozen=True)
+class TopologyEdge:
+    source: str
+    target: str
+    health: str
+    sampled_calls: int
+    error_calls: int
+    average_duration_ms: float
+
+
+@dataclass(frozen=True)
+class TopologyGraph:
+    nodes: tuple[TopologyNode, ...]
+    edges: tuple[TopologyEdge, ...]
+    sampled_traces: int
+    truncated: bool
+    data_state: str
+
+
+@dataclass(frozen=True)
 class ServiceMetricQuery:
     service_namespace: str
     service_name: str
@@ -160,6 +197,36 @@ class ServiceRed:
     p99_ms: float | None
     timeseries: tuple[ServiceRedPoint, ...] = ()
     top_endpoints: tuple[ServiceEndpointRed, ...] = ()
+
+
+@dataclass(frozen=True)
+class SloMetricQuery:
+    service_namespace: str
+    service_name: str
+    environment: str
+    started_at: datetime
+    ended_at: datetime
+    sli_type: str
+    endpoint: str = ""
+    latency_threshold_ms: int | None = None
+
+
+@dataclass(frozen=True)
+class SloMeasurement:
+    compliance_percent: float | None
+    good_rate: float | None
+    total_rate: float | None
+    data_state: MetricDataState
+
+
+@dataclass(frozen=True)
+class SloEvaluation:
+    current_rate: float | None
+    budget_remaining: float | None
+    data_state: str
+    started_at: datetime | None
+    ended_at: datetime
+    reason: str = ""
 
 
 @dataclass(frozen=True)
@@ -245,6 +312,8 @@ class TraceStore(Protocol):
 
 class MetricStore(Protocol):
     def service_red(self, query: ServiceMetricQuery) -> ServiceRed: ...
+
+    def slo_measurement(self, query: SloMetricQuery) -> SloMeasurement: ...
 
     def instance_activity(self, query: InstanceActivityQuery) -> list[InstanceActivity]: ...
 

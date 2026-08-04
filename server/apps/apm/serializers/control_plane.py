@@ -1,9 +1,10 @@
 from datetime import timedelta
+from decimal import Decimal
 
 from django.utils import timezone
 from rest_framework import serializers
 
-from apps.apm.models import ApmIngestSource, ApmPolicy, ApmService, ApmServiceInstance
+from apps.apm.models import ApmIngestSource, ApmPolicy, ApmService, ApmServiceInstance, ApmSlo
 from apps.apm.services.status import catalog_status
 
 
@@ -155,6 +156,54 @@ class ApmServiceInstanceSerializer(serializers.ModelSerializer):
 
     def get_status(self, obj):
         return catalog_status(last_seen_at=obj.last_seen_at, archived_at=obj.archived_at)
+
+
+class ApmSloSerializer(serializers.ModelSerializer):
+    service_id = serializers.UUIDField(required=False)
+    service_namespace = serializers.CharField(source="service.namespace", read_only=True)
+    service_name = serializers.CharField(source="service.name", read_only=True)
+
+    class Meta:
+        model = ApmSlo
+        fields = (
+            "id",
+            "name",
+            "service_id",
+            "service_namespace",
+            "service_name",
+            "environment",
+            "endpoint",
+            "sli_type",
+            "objective",
+            "latency_threshold_ms",
+            "evaluation_window",
+            "is_enabled",
+            "created_at",
+            "updated_at",
+            "created_by",
+            "updated_by",
+        )
+        extra_kwargs = {
+            "name": {"max_length": 128},
+            "environment": {"allow_blank": False},
+            "endpoint": {"allow_blank": True},
+            "objective": {"min_value": Decimal("0.001"), "max_value": Decimal("100")},
+            "latency_threshold_ms": {"min_value": 1, "required": False, "allow_null": True},
+        }
+
+    def validate(self, attrs):
+        if self.instance is None and "service_id" not in attrs:
+            raise serializers.ValidationError({"service_id": "该字段必填。"})
+        sli_type = attrs.get("sli_type", getattr(self.instance, "sli_type", None))
+        threshold = attrs.get(
+            "latency_threshold_ms",
+            getattr(self.instance, "latency_threshold_ms", None),
+        )
+        if sli_type == ApmSlo.SliType.AVAILABILITY:
+            attrs["latency_threshold_ms"] = None
+        elif not threshold:
+            raise serializers.ValidationError({"latency_threshold_ms": "时延 SLO 必须配置正数阈值。"})
+        return attrs
 
 
 class ServiceMetricQuerySerializer(serializers.Serializer):

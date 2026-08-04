@@ -245,8 +245,6 @@ class MonitorObjectViewSet(viewsets.ModelViewSet):
     def visibility(self, request, pk=None):
         """切换对象可见性"""
         obj = self.get_object()
-        if obj.is_builtin:
-            raise ValidationAppException("内置监控对象只能修改清理策略")
         is_visible = request.data.get("is_visible")
         if is_visible is None:
             return WebUtils.response_error("is_visible is required")
@@ -258,8 +256,6 @@ class MonitorObjectViewSet(viewsets.ModelViewSet):
     def display_fields(self, request, pk=None):
         """保存对象的视图列表展示列配置（用户自定义后 re-seed 不再覆盖）"""
         obj = self.get_object()
-        if obj.is_builtin:
-            raise ValidationAppException("内置监控对象只能修改清理策略")
         try:
             normalized = validate_display_fields(obj, request.data.get("display_fields", []))
         except Exception as e:
@@ -268,6 +264,13 @@ class MonitorObjectViewSet(viewsets.ModelViewSet):
         obj.display_fields_customized = True
         obj.save(update_fields=["display_fields", "display_fields_customized"])
         return WebUtils.response_success(normalized)
+
+    def destroy(self, request, *args, **kwargs):
+        """内置对象的定义与生命周期受保护，运行配置使用独立 action 管理。"""
+        instance = self.get_object()
+        if instance.is_builtin:
+            raise ValidationAppException("内置监控对象不能删除")
+        return super().destroy(request, *args, **kwargs)
 
     @action(methods=["get", "put"], detail=True, url_path="view_column_preference")
     def view_column_preference(self, request, pk=None):
@@ -381,7 +384,7 @@ class MonitorObjectViewSet(viewsets.ModelViewSet):
         if instance.is_builtin:
             disallowed_keys = set(data.keys()) - cleanup_keys
             if children is not None or disallowed_keys:
-                raise ValidationAppException("内置监控对象只能修改清理策略")
+                raise ValidationAppException("内置监控对象定义不可修改")
             policy = data.get("cleanup_policy", instance.cleanup_policy)
             timeout_value = data.get(
                 "cleanup_timeout_value",

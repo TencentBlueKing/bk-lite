@@ -1,4 +1,4 @@
-export type CleanupTimeoutUnit = 'day' | 'minute';
+export type CleanupTimeoutUnit = 'minute' | 'hour' | 'day';
 
 interface CleanupTimeoutSource {
   cleanup_timeout_value?: number;
@@ -6,8 +6,14 @@ interface CleanupTimeoutSource {
   cleanup_timeout_days?: number;
 }
 
+const CLEANUP_TIMEOUT_MAX_BY_UNIT: Record<CleanupTimeoutUnit, number> = {
+  minute: 1440,
+  hour: 720,
+  day: 365
+};
+
 export const getCleanupTimeoutMax = (unit: CleanupTimeoutUnit): number =>
-  unit === 'minute' ? 1440 : 365;
+  CLEANUP_TIMEOUT_MAX_BY_UNIT[unit];
 
 export const normalizeCleanupTimeout = (
   source: CleanupTimeoutSource

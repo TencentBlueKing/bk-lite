@@ -155,6 +155,7 @@ const LayoutWithProviders = ({ children }: { children: React.ReactNode }) => {
   const excludedPaths = ['/no-permission', '/no-found', '/', ...authPaths];
   const hasResolvedPathname = pathname !== null;
   const isAuthRoute = Boolean(pathname && authPaths.includes(pathname));
+  const isResponsiveAppRoute = pathname?.startsWith('/apm');
   const isDashboardRoute = isProfessionalDashboardRoute(pathname);
   const isDashboardShareRoute = pathname?.startsWith('/ops-analysis/share/');
   const isDashboardRenderRoute = pathname?.startsWith(
@@ -292,7 +293,7 @@ const LayoutWithProviders = ({ children }: { children: React.ReactNode }) => {
   }
 
   const layoutContent = (
-    <div className={`flex flex-col ${isDashboardShareRoute ? 'h-screen overflow-hidden' : 'min-h-screen'} ${!isAuthRoute ? 'min-w-[1280px]' : ''}`}>
+    <div className={`flex flex-col ${isDashboardShareRoute ? 'h-screen overflow-hidden' : 'min-h-screen'} ${!isAuthRoute && !isResponsiveAppRoute ? 'min-w-[1280px]' : ''}`}>
       {isAuthenticated && hasResolvedPathname && !isAuthRoute && (
         <header className="sticky top-0 left-0 right-0 flex justify-between items-center header-bg">
           <TopMenu hideMainMenu={hideTopMenu} />
