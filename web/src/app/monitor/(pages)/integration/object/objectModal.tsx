@@ -448,7 +448,7 @@ const ObjectModal = forwardRef<ModalRef, ModalProps>(
                             min={1}
                             max={getCleanupTimeoutMax(timeoutUnit)}
                             precision={0}
-                            className="flex-1"
+                            style={{ width: 'calc(100% - 112px)' }}
                           />
                         </Form.Item>
                         <Form.Item<ObjectFormData>
@@ -458,7 +458,7 @@ const ObjectModal = forwardRef<ModalRef, ModalProps>(
                         >
                           <Select
                             aria-label={t('monitor.object.timeoutUnit')}
-                            className="w-28 shrink-0"
+                            style={{ width: 112 }}
                             options={[
                               { value: 'minute', label: t('monitor.object.minute') },
                               { value: 'hour', label: t('monitor.object.hour') },

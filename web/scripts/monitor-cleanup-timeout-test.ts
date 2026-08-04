@@ -40,6 +40,23 @@ const objectPageSource = readFileSync(
   ),
   'utf8'
 );
+const objectModalSource = readFileSync(
+  resolve(
+    process.cwd(),
+    'src/app/monitor/(pages)/integration/object/objectModal.tsx'
+  ),
+  'utf8'
+);
+assert.match(
+  objectModalSource,
+  /<InputNumber[\s\S]*?style=\{\{ width: 'calc\(100% - 112px\)' \}\}/,
+  '超时时间数字输入框必须保留明确的可见宽度'
+);
+assert.match(
+  objectModalSource,
+  /aria-label=\{t\('monitor\.object\.timeoutUnit'\)\}[\s\S]*?style=\{\{ width: 112 \}\}/,
+  '超时时间单位选择框必须使用固定宽度'
+);
 const displayAction = objectPageSource.match(
   /<Button[\s\S]*?displayFieldsModalRef\.current\?\.showModal[\s\S]*?<\/Button>/
 )?.[0];
