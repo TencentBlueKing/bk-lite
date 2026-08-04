@@ -22,8 +22,13 @@ if [ -z "$ID" ]; then
     exit 1
 fi
 
+# 校验资源标识并把路径限制在 compose 根目录内
+if ! COMPOSE_PATH=$(get_compose_path "$ID"); then
+    json_error "" "Invalid ID"
+    exit 1
+fi
+
 # 检查目录是否存在
-COMPOSE_PATH="$COMPOSE_DIR/$ID"
 if [ ! -d "$COMPOSE_PATH" ]; then
     json_error "$ID" "Compose directory not found"
     exit 1

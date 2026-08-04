@@ -11,7 +11,12 @@ source "$SCRIPT_DIR/common.sh"
 # 获取单个服务的状态
 get_single_status() {
     local id="$1"
-    local compose_path="$COMPOSE_DIR/$id"
+    local compose_path
+
+    if ! compose_path=$(get_compose_path "$id"); then
+        echo '{"id":"","status":"error","message":"Invalid ID"}'
+        return 1
+    fi
     
     if [ ! -d "$compose_path" ]; then
         echo "{\"id\":\"$id\",\"status\":\"error\",\"message\":\"Compose directory not found\"}"
@@ -64,6 +69,14 @@ fi
 
 # 处理多个 ID
 if [ -n "$IDS" ]; then
+    # 先验证完整批次，避免非法 ID 导致部分服务已被查询。
+    while IFS= read -r service_id; do
+        if [ -n "$service_id" ] && ! get_compose_path "$service_id" >/dev/null; then
+            json_error "" "Invalid ID"
+            exit 1
+        fi
+    done <<< "$IDS"
+
     RESULTS="["
     FIRST=true
     
@@ -86,7 +99,10 @@ fi
 
 # 处理单个 ID
 if [ -n "$ID" ]; then
-    COMPOSE_PATH="$COMPOSE_DIR/$ID"
+    if ! COMPOSE_PATH=$(get_compose_path "$ID"); then
+        json_error "" "Invalid ID"
+        exit 1
+    fi
     if [ ! -d "$COMPOSE_PATH" ]; then
         echo "{\"id\":\"$ID\",\"status\":\"error\",\"message\":\"Compose directory not found\"}"
         exit 1
