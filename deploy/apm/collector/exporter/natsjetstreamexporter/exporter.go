@@ -29,11 +29,12 @@ type jetStreamPublisher interface {
 }
 
 type tracesExporter struct {
-	cfg           *Config
-	publisher     jetStreamPublisher
-	conn          *nats.Conn
-	publishACKs   metric.Int64Counter
-	duplicateACKs metric.Int64Counter
+	cfg            *Config
+	publisher      jetStreamPublisher
+	conn           *nats.Conn
+	publishACKs    metric.Int64Counter
+	duplicateACKs  metric.Int64Counter
+	lastPublishACK metric.Int64Gauge
 }
 
 func (exporter *tracesExporter) start(_ context.Context, _ component.Host) error {
@@ -121,6 +122,7 @@ func (exporter *tracesExporter) pushTraces(ctx context.Context, traces ptrace.Tr
 	ack, err := exporter.publisher.PublishMsg(ctx, message)
 	if err == nil {
 		exporter.publishACKs.Add(ctx, 1)
+		exporter.lastPublishACK.Record(ctx, time.Now().Unix())
 		if ack.Duplicate {
 			exporter.duplicateACKs.Add(ctx, 1)
 		}

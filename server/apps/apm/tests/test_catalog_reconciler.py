@@ -3,7 +3,7 @@ from datetime import timedelta
 import pytest
 from django.utils import timezone
 
-from apps.apm.adapters import InMemoryMetricStore
+from apps.apm.adapters import InMemoryMetricStore, TelemetryStoreUnavailable
 from apps.apm.models import ApmService, ApmServiceInstance
 from apps.apm.services import DjangoTelemetryCatalogService, TelemetryCatalogReconciler
 from apps.apm.services.contracts import CatalogDiscovery, InstanceActivity
@@ -55,6 +55,18 @@ def test_reconciler_skips_metrics_for_unknown_applications():
     assert result.discovered_instances == 1
     assert result.unknown_applications == 1
     assert list(ApmServiceInstance.objects.values_list("instance_id", flat=True)) == ["live-pod"]
+
+
+def test_reconciler_does_not_archive_when_victoria_traces_query_fails(mocker):
+    store = mocker.Mock()
+    store.instance_activity.side_effect = TelemetryStoreUnavailable("VictoriaTraces unavailable")
+    catalog = mocker.Mock()
+
+    with pytest.raises(TelemetryStoreUnavailable):
+        TelemetryCatalogReconciler(store, catalog).reconcile(observed_at=timezone.now())
+
+    catalog.discover.assert_not_called()
+    catalog.archive_stale.assert_not_called()
 
 
 def test_stale_instances_archive_and_new_activity_unarchives_history():

@@ -45,6 +45,7 @@ type tracesReceiver struct {
 	deliveryRetries metric.Int64Counter
 	poisonMessages  metric.Int64Counter
 	ackFailures     metric.Int64Counter
+	lastDeliveryACK metric.Int64Gauge
 }
 
 func natsOptions(cfg *Config) []nats.Option {
@@ -135,6 +136,7 @@ func (receiver *tracesReceiver) handleMessage(message jetstream.Msg) {
 			receiver.logger.Error("NATS JetStream trace ACK failed", zap.Error(ackErr))
 		} else {
 			receiver.deliveryACKs.Add(ctx, 1)
+			receiver.lastDeliveryACK.Record(ctx, time.Now().Unix())
 		}
 	case deliveryTerminate:
 		receiver.poisonMessages.Add(ctx, 1)

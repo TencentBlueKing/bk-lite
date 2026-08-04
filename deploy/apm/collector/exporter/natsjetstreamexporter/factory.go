@@ -56,7 +56,19 @@ func createTracesExporter(
 	if err != nil {
 		return nil, err
 	}
-	instance := &tracesExporter{cfg: cfg, publishACKs: publishACKs, duplicateACKs: duplicateACKs}
+	lastPublishACK, err := meter.Int64Gauge(
+		"bklite.apm.nats.last_publish_ack_unixtime",
+		metric.WithDescription("Unix time of the last persisted JetStream publish acknowledgement"),
+	)
+	if err != nil {
+		return nil, err
+	}
+	instance := &tracesExporter{
+		cfg:            cfg,
+		publishACKs:    publishACKs,
+		duplicateACKs:  duplicateACKs,
+		lastPublishACK: lastPublishACK,
+	}
 	return exporterhelper.NewTraces(
 		ctx,
 		settings,

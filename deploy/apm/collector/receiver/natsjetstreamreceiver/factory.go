@@ -55,6 +55,13 @@ func createTracesReceiver(
 	if err != nil {
 		return nil, err
 	}
+	lastDeliveryACK, err := meter.Int64Gauge(
+		"bklite.apm.nats.last_delivery_ack_unixtime",
+		metric.WithDescription("Unix time of the last trace batch synchronously acknowledged after downstream success"),
+	)
+	if err != nil {
+		return nil, err
+	}
 	return &tracesReceiver{
 		cfg:             configuration.(*Config),
 		next:            next,
@@ -63,5 +70,6 @@ func createTracesReceiver(
 		deliveryRetries: deliveryRetries,
 		poisonMessages:  poisonMessages,
 		ackFailures:     ackFailures,
+		lastDeliveryACK: lastDeliveryACK,
 	}, nil
 }

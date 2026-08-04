@@ -86,6 +86,7 @@ docker compose -f deploy/apm/compose.yaml up -d --wait
 区域队列和 Stream 使用 70%/85% 两级告警；pending 消息年龄接近 max age、持续 publish/VT
 失败和 max-delivery advisory 必须告警。生产容量至少按峰值 bytes/s、区域中断容忍时长、
 35 天 Trace 日写入量、存储放大、副本数和 30% 余量计算，不能直接照搬本地 256 MiB Stream。
+具体输入、公式和告警门槛见 [CAPACITY.md](./CAPACITY.md)。
 
 ## 验证
 
@@ -106,3 +107,4 @@ JetStream 持久化/ACK、VT 查询、保留字段清理和重复批次去重；
 或 VT 不可用只使 APM 运行期 degraded，不能阻断 Server 启动。升级时先部署 Stream/中心/VT，
 再逐区域切换 4317/4318，最后停止旧 Edge、tail sampling 和 APM Span Metrics 写读。不得删除或
 修改 Monitor 的 VictoriaMetrics 数据与配置；旧镜像和路由至少保留一个发布窗口用于回滚。
+逐步升级、验证、回滚和可恢复清理步骤见 [MIGRATION.md](./MIGRATION.md)。

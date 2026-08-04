@@ -9,6 +9,8 @@ BUILDER_CONFIG = REPOSITORY_ROOT / "deploy/apm/collector/builder-config.yaml"
 TRACE_GUARD = REPOSITORY_ROOT / "deploy/apm/collector/processor/traceguardprocessor/processor.go"
 NATS_CONFIG = REPOSITORY_ROOT / "deploy/apm/nats/nats-server.conf"
 COMPOSE_CONFIG = REPOSITORY_ROOT / "deploy/apm/compose.yaml"
+MIGRATION_GUIDE = REPOSITORY_ROOT / "deploy/apm/MIGRATION.md"
+CAPACITY_GUIDE = REPOSITORY_ROOT / "deploy/apm/CAPACITY.md"
 
 
 def _yaml(path: Path):
@@ -166,3 +168,18 @@ def test_regional_queue_is_initialized_once_without_elevating_collector():
     assert collector["user"] == "${APM_COLLECTOR_UID:-65532}:${APM_COLLECTOR_GID:-65532}"
     assert collector["depends_on"]["apm-regional-queue-init"]["condition"] == "service_completed_successfully"
     assert queue_init["volumes"] == ["apm_regional_queue:/var/lib/otelcol/queue"]
+
+
+def test_runtime_health_metrics_and_recoverable_migration_are_explicit():
+    exporter = (REPOSITORY_ROOT / "deploy/apm/collector/exporter/natsjetstreamexporter/factory.go").read_text()
+    receiver = (REPOSITORY_ROOT / "deploy/apm/collector/receiver/natsjetstreamreceiver/factory.go").read_text()
+    migration = MIGRATION_GUIDE.read_text()
+    capacity = CAPACITY_GUIDE.read_text()
+
+    assert "last_publish_ack_unixtime" in exporter
+    assert "last_delivery_ack_unixtime" in receiver
+    assert "不得删除共享或 Monitor VictoriaMetrics" in migration
+    assert "只读快照" in migration
+    assert "regional_queue_bytes" in capacity
+    assert "victoria_traces_bytes" in capacity
+    assert "70%" in capacity and "85%" in capacity
