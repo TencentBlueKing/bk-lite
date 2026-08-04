@@ -111,6 +111,8 @@ def test_apm_compose_is_traces_only_without_edge_or_victoria_metrics():
     assert all("victoriametrics" not in name.lower() for name in services)
     assert any(":4318" in port for port in regional["ports"])
     assert any(":4317" in port for port in regional["ports"])
+    assert any(":8888" in port for port in regional["ports"])
+    assert any(":8888" in port for port in services["apm-system-collector"]["ports"])
     assert "-servicegraph.enableTask=true" in traces["command"]
     assert "-retentionPeriod=${APM_TRACE_RETENTION:-35d}" in traces["command"]
     rendered = COMPOSE_CONFIG.read_text()

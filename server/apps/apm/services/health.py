@@ -141,6 +141,8 @@ class RuntimeDependencyHealthProbe:
 
         ack_count = sample("bklite_apm_nats_publish_acks_total")
         if ack_count is None:
+            ack_count = sample("bklite_apm_nats_publish_acks")
+        if ack_count is None:
             return {
                 "status": "degraded",
                 "last_failed_at": checked_at,

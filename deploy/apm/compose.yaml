@@ -105,6 +105,8 @@ services:
     ports:
       - "${APM_OTLP_HTTP_BIND:-127.0.0.1}:${APM_OTLP_HTTP_PORT:-4318}:4318"
       - "${APM_OTLP_GRPC_BIND:-127.0.0.1}:${APM_OTLP_GRPC_PORT:-4317}:4317"
+      - "${APM_REGIONAL_HEALTH_BIND:-127.0.0.1}:${APM_REGIONAL_HEALTH_PORT:-13133}:13133"
+      - "${APM_REGIONAL_METRICS_BIND:-127.0.0.1}:${APM_REGIONAL_METRICS_PORT:-18888}:8888"
     expose: [13133, 8888]
     volumes:
       - ./otel/regional.yaml:/etc/bklite-apm/regional.yaml:ro
@@ -146,6 +148,9 @@ services:
       APM_COLLECTOR_MEMORY_SPIKE_MIB: ${APM_SYSTEM_MEMORY_SPIKE_MIB:-96}
       APM_VICTORIATRACES_OTLP_ENDPOINT: ${APM_VICTORIATRACES_OTLP_ENDPOINT:-http://apm-victoria-traces:10428/insert/opentelemetry/v1/traces}
     expose: [13133, 8888]
+    ports:
+      - "${APM_SYSTEM_HEALTH_BIND:-127.0.0.1}:${APM_SYSTEM_HEALTH_PORT:-23133}:13133"
+      - "${APM_SYSTEM_METRICS_BIND:-127.0.0.1}:${APM_SYSTEM_METRICS_PORT:-18889}:8888"
     volumes:
       - ./otel/system.yaml:/etc/bklite-apm/system.yaml:ro
     healthcheck:
