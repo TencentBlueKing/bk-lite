@@ -17,6 +17,24 @@ export function shouldShowLoginAuthUnmatchedUserAction(providerKey?: string | nu
   return providerKey === 'wechat';
 }
 
+export function getLoginAuthInstanceNotFoundContent({
+  loading,
+  hasAvailableInstances,
+  loadingText,
+  emptyText,
+}: {
+  loading: boolean;
+  hasAvailableInstances: boolean;
+  loadingText: string;
+  emptyText: string;
+}): string | undefined {
+  if (loading) {
+    return loadingText;
+  }
+
+  return hasAvailableInstances ? undefined : emptyText;
+}
+
 export function resolveLoginAuthProviderKey(
   integrationInstanceId: number | undefined,
   availableInstances: AvailableInstance[],

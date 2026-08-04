@@ -35,6 +35,7 @@ import {
   buildLoginAuthBindingPayload,
   resolveLoginAuthDefaultIcon,
   resolveLoginAuthDefaultExternalField,
+  getLoginAuthInstanceNotFoundContent,
   resolveLoginAuthProviderKey,
   resolveLoginAuthTemplate,
   isBuiltinLoginAuthBinding,
@@ -62,6 +63,7 @@ const LoginAuthPage: React.FC = () => {
   const [editingBinding, setEditingBinding] = useState<LoginAuthBinding | null>(null);
   const [selectedIcon, setSelectedIcon] = useState<string>('');
   const [availableInstances, setAvailableInstances] = useState<AvailableInstance[]>([]);
+  const [availableInstancesLoading, setAvailableInstancesLoading] = useState(false);
   const [providers, setProviders] = useState<ProviderManifest[]>([]);
   const [unmatchedAction, setUnmatchedAction] = useState<string>('deny');
   const watchedIntegrationInstance = Form.useWatch('integration_instance', form);
@@ -92,12 +94,15 @@ const LoginAuthPage: React.FC = () => {
   };
 
   const fetchAvailableInstances = async () => {
+    setAvailableInstancesLoading(true);
     try {
       const data = await getAvailableInstances();
       const nextInstances = data || [];
       setAvailableInstances(nextInstances);
     } catch {
       setAvailableInstances([]);
+    } finally {
+      setAvailableInstancesLoading(false);
     }
   };
 
@@ -475,6 +480,13 @@ const LoginAuthPage: React.FC = () => {
               >
                 <Select
                   placeholder={t('system.user.loginAuthPage.integrationInstancePlaceholder')}
+                  loading={availableInstancesLoading}
+                  notFoundContent={getLoginAuthInstanceNotFoundContent({
+                    loading: availableInstancesLoading,
+                    hasAvailableInstances: availableInstances.length > 0,
+                    loadingText: t('common.loading'),
+                    emptyText: t('system.user.loginAuthPage.noAvailableIntegrationInstances'),
+                  })}
                   options={availableInstances.map((i) => ({
                     value: i.id,
                     label: formatIntegrationInstanceDisplayName(i, t),
