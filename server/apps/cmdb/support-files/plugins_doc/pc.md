@@ -78,6 +78,17 @@ Test-NetConnection <pc_ip> -Port 5986
 nc -vz <pc_ip> 22
 ```
 
+本机 macOS 开发自测可直接运行仓库内的只读验证入口，无需先写入 CMDB：
+
+```bash
+cd agents/stargazer
+.venv/bin/python scripts/test_pc_macos_local.py
+```
+
+该命令依次执行身份脚本和全量发现脚本，校验 JSON 协议、设备身份、软件计数、
+快照关联、内存和磁盘字段，并且只输出脱敏摘要。某个应用的 `Info.plist` 不可读时，
+结果会是 `partial`；这是阻止软件误删的安全行为，不代表整台 PC 采集失败。
+
 ---
 
 ### 创建任务

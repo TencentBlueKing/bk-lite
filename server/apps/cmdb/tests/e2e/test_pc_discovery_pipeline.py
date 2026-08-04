@@ -207,6 +207,60 @@ def test_executor_stdout_matches_vm_rows_identity(load_fixture, os_type):
     assert int(pc_row["software_expected_count"]) == stdout["software_expected_count"]
 
 
+# ---------------------------------------------- VM 查询 → 图库写入公开链路
+
+
+@pytest.mark.django_db
+def test_macos_vm_query_writes_pc_software_and_install_on(
+    load_fixture, graph, monkeypatch
+):
+    """PCCollectionPlugin.run 必须经真实 VM 查询封装把 macOS 快照写入图库。"""
+    expected = EXPECTED["macos"]
+    vm_doc = load_fixture("pc/macos_vm_rows.json")
+    task = _db_task()
+    requests = []
+
+    class _VMResponse:
+        status_code = 200
+        text = ""
+
+        @staticmethod
+        def json():
+            return vm_doc
+
+    def _post(url, data, timeout):
+        requests.append({"url": url, "data": data, "timeout": timeout})
+        return _VMResponse()
+
+    monkeypatch.setattr("apps.cmdb.collection.query_vm.requests.post", _post)
+
+    plugin = PCCollectionPlugin(
+        inst_name="", inst_id=f"cmdb_{task.id}", task_id=task.id
+    )
+    result = plugin.run()
+
+    assert result == {"pc": []}
+    assert len(requests) == 1
+    assert requests[0]["url"].endswith("/prometheus/api/v1/query")
+    assert requests[0]["timeout"] == 60
+    query = requests[0]["data"]["query"]
+    assert query.startswith("last_over_time((pc_info{")
+    assert f"instance_id='cmdb_{task.id}'" in query
+    assert "pc_software_info" in query
+    assert query.endswith(")[1h:])")
+
+    assert expected["pc_inst_name"] in graph.store
+    assert expected["software_inst_name"] in graph.store
+    assert len(graph.edges) == 1
+    assert graph.edges[0]["asst_id"] == "install_on"
+    assert graph.edges[0]["src_inst_id"] == graph.store[expected["software_inst_name"]]["_id"]
+    assert graph.edges[0]["dst_inst_id"] == graph.store[expected["pc_inst_name"]]["_id"]
+
+    summary = plugin.result[PCCollectionPlugin.TASK_FORMAT_DATA_KEY]["pc_summary"]
+    assert summary["pc_complete"] == 1
+    assert summary["software_added"] == 1
+
+
 # ---------------------------------------------------------------- Windows 四轮
 
 

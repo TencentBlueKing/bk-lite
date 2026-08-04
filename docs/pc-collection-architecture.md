@@ -393,6 +393,9 @@ VictoriaMetrics 标签或对外错误文案。
 
 任何影响身份、快照完整性或删除条件的修改都属于高风险变更，至少需要覆盖
 Stargazer 合同、Server 对账和端到端流水线三个测试接缝。
+Server 端到端测试必须至少有一条通过 `PCCollectionPlugin.run()` 调用真实
+`Collection.query()` 封装，以 VM HTTP 响应为外部边界，随后验证 PC、软件实体和
+`install_on` 关系写入图库；不能全部绕过查询层直接调用 `format_data()`。
 
 ## 7. 验证与验收
 
