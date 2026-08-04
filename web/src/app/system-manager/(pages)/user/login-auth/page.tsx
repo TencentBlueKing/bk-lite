@@ -11,6 +11,8 @@ import {
   Select,
   Space,
   Switch,
+  Tag,
+  Tooltip,
 } from 'antd';
 import CustomTable from '@/components/custom-table';
 import Icon from '@/components/icon';
@@ -33,6 +35,7 @@ import { formatIntegrationInstanceDisplayName } from '@/app/system-manager/utils
 import { ColumnItem } from '@/types';
 import {
   buildLoginAuthBindingPayload,
+  getLoginAuthUnavailableEditingInstance,
   resolveLoginAuthDefaultIcon,
   resolveLoginAuthDefaultExternalField,
   getLoginAuthInstanceNotFoundContent,
@@ -119,6 +122,25 @@ const LoginAuthPage: React.FC = () => {
     [availableInstances, editingBinding, watchedIntegrationInstance],
   );
   const showUnmatchedUserAction = shouldShowLoginAuthUnmatchedUserAction(currentProviderKey);
+  const unavailableEditingInstance = useMemo(
+    () => getLoginAuthUnavailableEditingInstance(availableInstances, editingBinding),
+    [availableInstances, editingBinding],
+  );
+  const integrationInstanceOptions = useMemo(() => {
+    const availableOptions = availableInstances.map((instance) => ({
+      value: instance.id,
+      label: formatIntegrationInstanceDisplayName(instance, t),
+    }));
+    if (!unavailableEditingInstance) {
+      return availableOptions;
+    }
+
+    return [{
+      value: unavailableEditingInstance.id,
+      label: `${formatIntegrationInstanceDisplayName(unavailableEditingInstance, t)} (${t('system.user.loginAuthPage.currentInstanceUnavailable')})`,
+      disabled: true,
+    }, ...availableOptions];
+  }, [availableInstances, t, unavailableEditingInstance]);
   const resolvedTemplate = useMemo(
     () => resolveLoginAuthTemplate(watchedIntegrationInstance, availableInstances, providers),
     [availableInstances, providers, watchedIntegrationInstance],
@@ -329,10 +351,22 @@ const LoginAuthPage: React.FC = () => {
       title: t('system.user.loginAuthPage.integratedSystems'),
       dataIndex: 'integration_instance_name',
       render: (_, record) => {
-        if(record.provider_key && record.provider_key !== "bk_lite_builtin")
-          return (<>{record.integration_instance_name} / {t(`system.integrationCenter.provider.${record.provider_key}`)}</>)
-        return (<>{record.integration_instance_name}</>)
-      }
+        const dependencyStatus = record.dependency_status;
+        return (
+          <div className="flex items-center gap-2">
+            <span>
+              {record.provider_key && record.provider_key !== 'bk_lite_builtin'
+                ? `${record.integration_instance_name} / ${t(`system.integrationCenter.provider.${record.provider_key}`)}`
+                : record.integration_instance_name}
+            </span>
+            {dependencyStatus?.available === false ? (
+              <Tooltip title={t(`system.user.loginAuthPage.dependencyReason.${dependencyStatus.reason}`)}>
+                <Tag color="warning">{t('system.user.loginAuthPage.dependencyPaused')}</Tag>
+              </Tooltip>
+            ) : null}
+          </div>
+        );
+      },
     },
     {
       key: 'description',
@@ -487,10 +521,7 @@ const LoginAuthPage: React.FC = () => {
                     loadingText: t('common.loading'),
                     emptyText: t('system.user.loginAuthPage.noAvailableIntegrationInstances'),
                   })}
-                  options={availableInstances.map((i) => ({
-                    value: i.id,
-                    label: formatIntegrationInstanceDisplayName(i, t),
-                  }))}
+                  options={integrationInstanceOptions}
                   onChange={handleIntegrationInstanceChange}
                 />
               </Form.Item>

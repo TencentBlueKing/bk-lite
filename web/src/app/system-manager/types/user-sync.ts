@@ -29,10 +29,16 @@ export interface UserSyncSource {
   root_scope_field?: string;
   schedule_config: ScheduleConfig | null;
   latest_run: UserSyncRun | null;
+  dependency_status: DependencyStatus;
   created_by?: string;
   updated_by?: string;
   created_at?: string;
   updated_at?: string;
+}
+
+export interface DependencyStatus {
+  available: boolean;
+  reason: '' | 'instance_disabled' | 'instance_not_ready' | 'capability_disabled' | 'capability_not_ready';
 }
 
 export interface UserSyncRun {

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 
 import {
   buildLoginAuthBindingPayload,
+  getLoginAuthUnavailableEditingInstance,
   getLoginAuthInstanceNotFoundContent,
   resolveLoginAuthDefaultIcon,
   resolveLoginAuthDefaultExternalField,
@@ -58,6 +59,50 @@ assert.equal(
     default_group_name: '',
   }),
   'wechat'
+);
+assert.deepEqual(
+  getLoginAuthUnavailableEditingInstance(
+    [{ id: 12, name: 'WeChat', provider_key: 'wechat', provider_name: 'WeChat' }],
+    {
+      id: 1,
+      name: 'Feishu Login',
+      integration_instance: 2,
+      integration_instance_name: 'Feishu SSO',
+      provider_key: 'feishu',
+      icon: '',
+      description: '',
+      order: 1,
+      enabled: true,
+      external_field: '',
+      platform_field: 'email',
+      unmatched_user_action: 'deny',
+      default_group_name: '',
+      dependency_status: { available: false, reason: 'capability_not_ready' },
+    },
+  ),
+  { id: 2, name: 'Feishu SSO', provider_key: 'feishu', provider_name: '' },
+);
+assert.equal(
+  getLoginAuthUnavailableEditingInstance(
+    [{ id: 2, name: 'Feishu SSO', provider_key: 'feishu', provider_name: 'Feishu' }],
+    {
+      id: 1,
+      name: 'Feishu Login',
+      integration_instance: 2,
+      integration_instance_name: 'Feishu SSO',
+      provider_key: 'feishu',
+      icon: '',
+      description: '',
+      order: 1,
+      enabled: true,
+      external_field: '',
+      platform_field: 'email',
+      unmatched_user_action: 'deny',
+      default_group_name: '',
+      dependency_status: { available: true, reason: '' },
+    },
+  ),
+  null,
 );
 assert.equal(resolveLoginAuthDefaultIcon('feishu'), 'feishu');
 assert.equal(resolveLoginAuthDefaultIcon('wechat'), 'wechat');

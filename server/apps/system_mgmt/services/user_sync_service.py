@@ -15,6 +15,7 @@ from apps.core.logger import system_mgmt_logger as logger
 from apps.core.utils.permission_cache import clear_users_permission_cache
 from apps.system_mgmt.models import Group, User, UserSyncRun, UserSyncRunStatusChoices, UserSyncSource, UserSyncTriggerModeChoices
 from apps.system_mgmt.providers import RuntimeApplicationService
+from apps.system_mgmt.services.capability_contract_service import get_integration_capability_availability
 
 DEFAULT_FIELD_MAPPING = {
     "username": "user_id",
@@ -408,7 +409,7 @@ def execute_user_sync(source_id: int, trigger_mode: str = UserSyncTriggerModeCho
         return _create_failed_user_sync_run(source, trigger_mode, "User sync source is disabled")
 
     instance = source.integration_instance
-    if not instance.enabled or instance.status != "ready" or instance.capability_status.get("user_sync") != "ready":
+    if not get_integration_capability_availability(instance, "user_sync")["available"]:
         return {"result": False, "message": "User sync source is not ready"}
 
     released_count = _release_stale_user_sync_runs(source)
@@ -596,7 +597,7 @@ def preview_user_sync(source: UserSyncSource) -> dict:
     Returns estimated counts and provider result metadata.
     """
     instance = source.integration_instance
-    if not instance.enabled or instance.status != "ready" or instance.capability_status.get("user_sync") != "ready":
+    if not get_integration_capability_availability(instance, "user_sync")["available"]:
         return {"result": False, "message": "User sync source is not ready"}
 
     runtime_service = RuntimeApplicationService()

@@ -10,6 +10,7 @@ import type {
   IMNotificationChannelPayload,
 } from '@/app/system-manager/types/im-notification';
 import { formatIntegrationInstanceDisplayName } from '@/app/system-manager/utils/integrationCenter';
+import { getImNotificationUnavailableEditingInstance } from '@/app/system-manager/utils/imNotificationUtils';
 
 export interface IMNotificationChannelFormValues extends IMNotificationChannelPayload {
   schedule_enabled?: boolean;
@@ -48,8 +49,22 @@ const IMNotificationConfigModal: React.FC<IMNotificationConfigModalProps> = ({
   t,
   onOk,
   onCancel,
-}) => (
-  <OperateModal
+}) => {
+  const unavailableEditingInstance = getImNotificationUnavailableEditingInstance(availableInstances, editing);
+  const integrationInstanceOptions = [
+    ...(unavailableEditingInstance ? [{
+      value: unavailableEditingInstance.id,
+      label: `${formatIntegrationInstanceDisplayName(unavailableEditingInstance, t)} (${t('system.channel.imNotificationPage.currentInstanceUnavailable')})`,
+      disabled: true,
+    }] : []),
+    ...availableInstances.map((instance) => ({
+      value: instance.id,
+      label: formatIntegrationInstanceDisplayName(instance, t),
+    })),
+  ];
+
+  return (
+    <OperateModal
     title={editing ? t('common.edit') : t('common.add')}
     open={open}
     onOk={onOk}
@@ -75,10 +90,7 @@ const IMNotificationConfigModal: React.FC<IMNotificationConfigModalProps> = ({
         >
           <Select
             placeholder={t('system.channel.imNotificationPage.integrationInstancePlaceholder')}
-            options={availableInstances.map((instance) => ({
-              value: instance.id,
-              label: formatIntegrationInstanceDisplayName(instance, t),
-            }))}
+            options={integrationInstanceOptions}
           />
         </Form.Item>
         <Form.Item name="description" label={t('system.channel.imNotificationPage.description')}>
@@ -184,7 +196,8 @@ const IMNotificationConfigModal: React.FC<IMNotificationConfigModalProps> = ({
         </Form.Item>
       </div>
     </Form>
-  </OperateModal>
-);
+    </OperateModal>
+  );
+};
 
 export default IMNotificationConfigModal;

@@ -35,6 +35,22 @@ export function getLoginAuthInstanceNotFoundContent({
   return hasAvailableInstances ? undefined : emptyText;
 }
 
+export function getLoginAuthUnavailableEditingInstance(
+  availableInstances: AvailableInstance[],
+  editingBinding: LoginAuthBinding | null,
+): AvailableInstance | null {
+  if (!editingBinding || availableInstances.some((item) => item.id === editingBinding.integration_instance)) {
+    return null;
+  }
+
+  return {
+    id: editingBinding.integration_instance,
+    name: editingBinding.integration_instance_name,
+    provider_key: editingBinding.provider_key || '',
+    provider_name: '',
+  };
+}
+
 export function resolveLoginAuthProviderKey(
   integrationInstanceId: number | undefined,
   availableInstances: AvailableInstance[],

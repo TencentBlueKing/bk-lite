@@ -223,6 +223,17 @@
         "integratedSystems": "集成系统",
         "currentOrder": "当前排序",
         "integrationInstancePlaceholder": "请选择集成系统",
+        "noAvailableIntegrationInstances": "暂无可用的登录认证集成实例",
+        "currentInstanceUnavailable": "当前绑定实例不可用",
+        "dependencyStatus": "依赖状态",
+        "dependencyAvailable": "可用",
+        "dependencyPaused": "已暂停",
+        "dependencyReason": {
+          "instance_disabled": "集成实例已禁用",
+          "instance_not_ready": "集成实例未就绪",
+          "capability_disabled": "集成实例的登录认证能力已禁用",
+          "capability_not_ready": "集成实例的登录认证能力未就绪"
+        },
         "description": "描述",
         "descriptionPlaceholder": "例如：面向内部员工移动端登录",
         "icon": "图标",
@@ -243,6 +254,13 @@
         "deleteConfirm": "确定要删除此认证绑定吗？"
       },
       "userSyncPage": {
+        "dependencyPaused": "已暂停",
+        "dependencyReason": {
+          "instance_disabled": "集成实例已禁用",
+          "instance_not_ready": "集成实例未就绪",
+          "capability_disabled": "集成实例的用户同步能力已禁用",
+          "capability_not_ready": "集成实例的用户同步能力未就绪"
+        },
         "rootGroupNameLabel": "根组织名称",
         "rootGroupNameConflict": "根组织名称已被其他用户同步源使用，请更换后重试",
         "integrationSystem": "集成系统",
@@ -917,6 +935,16 @@
         "name": "名称",
         "integrationInstance": "集成系统",
         "integrationInstancePlaceholder": "请选择集成系统",
+        "currentInstanceUnavailable": "当前绑定实例不可用",
+        "dependencyStatus": "依赖状态",
+        "dependencyAvailable": "可用",
+        "dependencyPaused": "已暂停",
+        "dependencyReason": {
+          "instance_disabled": "集成实例已禁用",
+          "instance_not_ready": "集成实例未就绪",
+          "capability_disabled": "集成实例的 IM 应用通知能力已禁用",
+          "capability_not_ready": "集成实例的 IM 应用通知能力未就绪"
+        },
         "description": "描述",
         "namePlaceholder": "请输入名称",
         "descriptionPlaceholder": "请输入描述",
