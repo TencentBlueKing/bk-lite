@@ -53,6 +53,9 @@ celery-inspect:
 start-nats:
 	uv run python manage.py nats_listener
 
+devshell:
+	uv run python manage.py shell
+
 test:
 	uv run pytest
 

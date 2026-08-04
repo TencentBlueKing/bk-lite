@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<title>聚合告警 → 自动分派 链路图</title>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js"></script>
+<style>
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    max-width: 1200px;
+    margin: 24px auto;
+    padding: 0 24px;
+    color: #1f2328;
+    line-height: 1.6;
+  }
+  h1 { border-bottom: 2px solid #d0d7de; padding-bottom: 8px; }
+  h2 { color: #0969da; margin-top: 32px; }
+  .legend {
+    background: #f6f8fa;
+    border-left: 4px solid #0969da;
+    padding: 12px 16px;
+    border-radius: 4px;
+    margin: 16px 0;
+  }
+  .mermaid { background: #fff; padding: 16px; border: 1px solid #d0d7de; border-radius: 6px; }
+  table { border-collapse: collapse; width: 100%; margin: 12px 0; }
+  th, td { border: 1px solid #d0d7de; padding: 8px 12px; text-align: left; }
+  th { background: #f6f8fa; }
+  code { background: #f6f8fa; padding: 2px 6px; border-radius: 3px; font-family: SFMono-Regular, Consolas, monospace; font-size: 0.9em; }
+  .file-line { color: #656d76; font-size: 0.9em; }
+  .risk { color: #cf222e; font-weight: 600; }
+</style>
+</head>
+<body>
+<h1>聚合告警 → 自动分派 触发链路</h1>
+
+<div class="legend">
+  <strong>图例说明</strong>：
+  实线 = 正常调用；虚线 = 兜底/重试路径；粗框 = 中间层 / 锁 / 表。
+  节点颜色：<span style="color:#0969da">蓝</span>=beat & 任务；<span style="color:#cf222e">红</span>=关键中间层(锁/DB)；
+  <span style="color:#1a7f37">绿</span>=终点。
+</div>
+
+<h2>1. 主链路(Mermaid)</h2>
+<div class="mermaid">
+flowchart TB
+    Beat["Celery Beat<br/>(每分钟)"]
+    schedule["config.py:25<br/>crontab minute=*"]
+    entry["event_aggregation_alert()<br/>tasks.py:65<br/>@shared_task"]
+    lock{{"cache.add(AGGREGATION_LOCK_KEY, 60min)<br/>tasks.py:39-43"}}
+    lockSkip["log warning + return<br/>(上一轮未结束,跳过本次)"]
+    path1["路径1: 主聚合<br/>AggregationProcessor.process_aggregation()<br/>aggregation_processor.py:66"]
+    newIds["new_alert_ids 收集"]
+    sched1["_schedule_auto_assignment<br/>aggregation_processor.py:622,696"]
+    path2["路径2: 会话超时检查<br/>TimeoutChecker.check_session_timeouts()<br/>timeout_checker.py:13"]
+    confirm["session_status: OBSERVING -> CONFIRMED"]
+    trig2["_trigger_auto_assignment<br/>timeout_checker.py:55,63,129"]
+    lifecycle["dispatch_alert_lifecycle(..., auto_assign=True)<br/>service/alert_lifecycle.py:7"]
+    action1["ActionEngine.dispatch_async<br/>(非分派副作用)"]
+    enqueue["enqueue_outbox('auto_assignment', {alert_ids}, idem_key)<br/>service/outbox.py:8"]
+    db[("AlertOutbox 表<br/>(PENDING, idempotency_key)")]
+    onCommit["transaction.on_commit<br/>-> _schedule_delivery"]
+    scheduleDeliver["deliver_alert_outbox.delay(record_id)<br/>tasks.py:35<br/>@shared_task autoretry=5"]
+    deliver["deliver_outbox_record(record_id)<br/>service/outbox.py:62"]
+    selLock["SELECT FOR UPDATE<br/>PENDING -> DELIVERING"]
+    payload["_deliver_payload(kind='auto_assignment', payload)<br/>service/outbox.py:31,40-44"]
+    target["async_auto_assignment_for_alerts(alert_ids)<br/>tasks.py:187"]
+    done(["-> common/assignment.py:389<br/>execute_auto_assignment_for_alerts<br/>(本图终点)"])
+    fallback["兜底: dispatch_pending_alert_outbox<br/>config.py:25 (每分钟)<br/>tasks.py:44"]
+    retry["失败: FAILED + 指数退避<br/>(2^attempts x 15s, max 1h)"]
+
+    Beat --> schedule --> entry
+    entry --> lock
+    lock -->|锁失败| lockSkip
+    lock -->|锁成功| path1
+    path1 --> newIds --> sched1
+    sched1 --> lifecycle
+    path2 --> confirm --> trig2
+    trig2 --> lifecycle
+    lifecycle --> enqueue
+    lifecycle -.-> action1
+    enqueue --> db
+    enqueue --> onCommit --> scheduleDeliver
+    scheduleDeliver --> deliver
+    fallback -.->|扫描 PENDING<br/>next_retry_at <= now| deliver
+    deliver --> selLock --> payload --> target
+    target -->|<= 200| done
+    target -->|> 200| enqueue
+    payload -->|抛异常| retry
+</div>
+
+<h2>2. 关键设计点</h2>
+<table>
+  <tr>
+    <th>#</th>
+    <th>节点 / 边</th>
+    <th>设计意图</th>
+  </tr>
+  <tr>
+    <td>①</td>
+    <td><strong>单例锁 <code>AGGREGATION_LOCK_KEY</code></strong></td>
+    <td>防两次聚合并发对同一 fingerprint 重复建警(<code>Alert.fingerprint</code> 无唯一约束、<code>select_for_update</code> 只锁"更新"不锁"建新")</td>
+  </tr>
+  <tr>
+    <td>②</td>
+    <td><strong>两条平行路径</strong></td>
+    <td>路径1 常规指纹聚合,路径2 会话窗口超时转正,都产生"新可分派告警"</td>
+  </tr>
+  <tr>
+    <td>③</td>
+    <td><strong>outbox 必经中间层</strong></td>
+    <td><code>enqueue_outbox</code> 走 <code>get_or_create(idempotency_key)</code> + <code>transaction.on_commit</code> 再发 celery —— 解决"聚合事务未提交 celery 已跑"和"重复派发"</td>
+  </tr>
+  <tr>
+    <td>④</td>
+    <td><strong>target 节点自循环</strong> <span class="risk">(关键设计)</span></td>
+    <td>收到 &gt; 200 alert_ids 时按 200 分片,<strong>重新入 outbox 队列</strong>(tasks.py:215-220),不会无限递归(分片后每片 ≤ 200)</td>
+  </tr>
+  <tr>
+    <td>⑤</td>
+    <td><strong>deliver 两个入口</strong></td>
+    <td>正常路径走 <code>on_commit -> deliver_alert_outbox.delay</code>；<strong>失败重试路径</strong>走 <code>dispatch_pending_alert_outbox</code>(每分钟扫 PENDING + 到期)</td>
+  </tr>
+  <tr>
+    <td>⑥</td>
+    <td><strong>payload 异常走 retry 节点</strong></td>
+    <td><code>deliver_outbox_record</code> 捕获后写 FAILED + <code>next_retry_at = now + 2^attempts×15s</code>(封顶 1h),<code>attempts ≥ max_attempts</code> 永久 FAILED</td>
+  </tr>
+</table>
+
+<h2>3. 节点文件索引</h2>
+<table>
+  <tr><th>文件:行号</th><th>职责</th></tr>
+  <tr><td><code>config.py:25</code></td><td>beat 调度配置</td></tr>
+  <tr><td><code>tasks/tasks.py:39-43</code></td><td>单例锁</td></tr>
+  <tr><td><code>tasks/tasks.py:65</code></td><td>event_aggregation_alert 入口</td></tr>
+  <tr><td><code>tasks/tasks.py:35</code></td><td>deliver_alert_outbox task</td></tr>
+  <tr><td><code>tasks/tasks.py:44</code></td><td>dispatch_pending_alert_outbox 兜底</td></tr>
+  <tr><td><code>tasks/tasks.py:187</code></td><td>async_auto_assignment_for_alerts</td></tr>
+  <tr><td><code>tasks/tasks.py:215-220</code></td><td>&gt; 200 分片自调度</td></tr>
+  <tr><td><code>aggregation/processor/aggregation_processor.py:66</code></td><td>process_aggregation</td></tr>
+  <tr><td><code>aggregation/processor/aggregation_processor.py:622,696</code></td><td>_schedule_auto_assignment</td></tr>
+  <tr><td><code>aggregation/recovery/timeout_checker.py:13,55,63,129</code></td><td>会话超时检查 + 触发分派</td></tr>
+  <tr><td><code>service/alert_lifecycle.py:7</code></td><td>dispatch_alert_lifecycle 汇合点</td></tr>
+  <tr><td><code>service/outbox.py:8</code></td><td>enqueue_outbox</td></tr>
+  <tr><td><code>service/outbox.py:31</code></td><td>_deliver_payload</td></tr>
+  <tr><td><code>service/outbox.py:62</code></td><td>deliver_outbox_record</td></tr>
+  <tr><td><code>service/outbox.py:79-92</code></td><td>失败重试</td></tr>
+  <tr><td><code>common/assignment.py:389</code></td><td>本图终点(未展开)</td></tr>
+</table>
+
+<script>
+  mermaid.initialize({ startOnLoad: true, theme: 'default', securityLevel: 'loose' });
+</script>
+</body>
+</html>

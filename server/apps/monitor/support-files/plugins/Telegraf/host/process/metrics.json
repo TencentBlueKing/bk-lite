@@ -15,7 +15,7 @@
     {"fact": "asset.ip", "title": "monitor.views.hostIp", "order": 10}
   ],
   "name": "Process",
-  "icon": "mm-host_主机",
+  "icon": "mm-process_进程",
   "type": "OS",
   "description": "",
   "default_metric": "any({instance_type='process'}) by (instance_id, process_name)",

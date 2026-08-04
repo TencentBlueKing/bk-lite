@@ -21,6 +21,7 @@ def test_batch1_plugin_manifests_have_expected_defaults():
         "oceanbase": ("database", "protocol", "enterprise.plugins.inputs.oceanbase.oceanbase_info", "OceanBaseInfo"),
         "highgo": ("database", "protocol", "enterprise.plugins.inputs.highgo.highgo_info", "HighGoInfo"),
         "server_bmc": ("host_manage", "protocol", "enterprise.plugins.inputs.server_bmc.server_bmc_info", "ServerBmcInfo"),
+        "winsphere": ("cloud", "protocol", "enterprise.plugins.inputs.winsphere.winsphere_info", "WinSphereInfo"),
     }
 
     for model_id, (category, default_executor, module, class_name) in expected.items():
@@ -54,6 +55,7 @@ def test_protocol_collectors_are_importable():
         "enterprise.plugins.inputs.oceanbase.oceanbase_info": "OceanBaseInfo",
         "enterprise.plugins.inputs.highgo.highgo_info": "HighGoInfo",
         "enterprise.plugins.inputs.server_bmc.server_bmc_info": "ServerBmcInfo",
+        "enterprise.plugins.inputs.winsphere.winsphere_info": "WinSphereInfo",
     }
     for module_name, class_name in imports.items():
         module = importlib.import_module(module_name)

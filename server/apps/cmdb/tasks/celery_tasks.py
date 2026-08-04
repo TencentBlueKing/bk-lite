@@ -2,6 +2,7 @@
 # @File: tasks.py
 # @Time: 2025/3/3 15:34
 # @Author: windyzhao
+import json
 import os
 import time
 from datetime import timedelta
@@ -10,7 +11,8 @@ from uuid import uuid4
 from celery import shared_task
 from django.db import transaction
 from django.db.models import Q
-from django.utils.timezone import now
+from django.utils.dateparse import parse_datetime
+from django.utils.timezone import is_aware, now
 
 from apps.cmdb.collection.collect_plugin.base import is_failed_vm_metric
 from apps.cmdb.collection.collect_tasks.job_collect import JobCollect
@@ -30,6 +32,70 @@ _COLLECT_TERMINAL_STATUSES = (
     CollectRunStatusType.FORCE_STOP,
     CollectRunStatusType.PARTIAL_SUCCESS,
 )
+_NODE_MGMT_RAW_DATA_MAX_ROWS = 50_000
+_NODE_MGMT_RAW_DATA_MAX_BYTES = 64 * 1024 * 1024
+_NODE_MGMT_RAW_METRIC_TYPES = {
+    "host_info_gauge": "host",
+    "host_proc_usage_info_gauge": "process",
+}
+
+
+def _bound_node_mgmt_raw_data(instance: CollectModels, format_data):
+    """在节点同步结果持久化前裁剪逐行指标，同时保留裁剪前真实计数。"""
+    if (
+        not instance.is_system
+        or not str(instance.system_code or "").startswith("node_mgmt_sync_host_collect_")
+        or not isinstance(format_data, dict)
+    ):
+        return {}
+    raw_rows = format_data.get("__raw_data__", [])
+    if not isinstance(raw_rows, list):
+        format_data["__raw_data__"] = []
+        return {
+            "raw_total": 0,
+            "raw_host": 0,
+            "raw_process": 0,
+            "raw_dropped": 0,
+            "raw_input_truncated": False,
+        }
+
+    retained = []
+    retained_bytes = 0
+    counts = {"host": 0, "process": 0}
+    raw_dropped = 0
+    latest_metric_time = None
+    from apps.cmdb.services.node_mgmt_sync_raw import sanitize_node_mgmt_raw_data_item
+
+    for row in raw_rows:
+        metric_type = _NODE_MGMT_RAW_METRIC_TYPES.get(row.get("__name__")) if isinstance(row, dict) else None
+        if metric_type is None:
+            raw_dropped += 1
+            continue
+        counts[metric_type] += 1
+        metric_time = parse_datetime(str(row.get("__time__") or ""))
+        if metric_time is not None and is_aware(metric_time):
+            if latest_metric_time is None or metric_time > latest_metric_time:
+                latest_metric_time = metric_time
+        safe_row = sanitize_node_mgmt_raw_data_item(row)
+        encoded_size = len(
+            json.dumps(safe_row, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str).encode()
+        )
+        if (
+            len(retained) < _NODE_MGMT_RAW_DATA_MAX_ROWS
+            and retained_bytes + encoded_size <= _NODE_MGMT_RAW_DATA_MAX_BYTES
+        ):
+            retained.append(safe_row)
+            retained_bytes += encoded_size
+    format_data["__raw_data__"] = retained
+    return {
+        "raw_total": len(raw_rows),
+        "raw_host": counts["host"],
+        "raw_process": counts["process"],
+        "raw_dropped": raw_dropped,
+        "raw_input_truncated": len(retained) < counts["host"] + counts["process"],
+        "raw_input_last_time": latest_metric_time.isoformat() if latest_metric_time is not None else "",
+        "raw_input_retained_bytes": retained_bytes,
+    }
 
 
 def _read_bounded_int_env(name: str, default: int, minimum: int, maximum: int) -> int:
@@ -218,21 +284,70 @@ def _node_mgmt_collect_version_allowed(instance_id, execution_id, config_id, con
         return True
     from apps.cmdb.models.node_mgmt_sync import NodeMgmtSyncConfig
 
-    with transaction.atomic():
-        config = NodeMgmtSyncConfig.objects.select_for_update().filter(pk=config_id).first()
-        if config and config.auto_collect_enabled and config.version == config_version:
-            return True
-        CollectModels._default_manager.filter(
-            id=instance_id,
-            task_id=execution_id,
-            exec_status=CollectRunStatusType.RUNNING,
-        ).update(
-            exec_status=CollectRunStatusType.ERROR,
-            execution_claim_token=None,
-            collect_digest={"message": "NODE_MGMT_CONFIG_STALE"},
-            updated_at=now(),
-        )
-        return False
+    allowed = NodeMgmtSyncConfig.objects.filter(
+        pk=config_id,
+        auto_collect_enabled=True,
+        version=config_version,
+    ).exists()
+    if allowed:
+        return True
+    CollectModels._default_manager.filter(
+        id=instance_id,
+        task_id=execution_id,
+        exec_status=CollectRunStatusType.RUNNING,
+    ).update(
+        exec_status=CollectRunStatusType.ERROR,
+        execution_claim_token=None,
+        collect_digest={"message": "NODE_MGMT_CONFIG_STALE"},
+        updated_at=now(),
+    )
+    return False
+
+
+def _apply_pc_digest(collect_digest, format_data):
+    """把 PC 插件的 pc_summary 复制进任务摘要；非 PC 任务返回 None。"""
+    pc_summary = (format_data or {}).get("pc_summary")
+    if isinstance(pc_summary, dict):
+        collect_digest["pc_summary"] = pc_summary
+        return pc_summary
+    return None
+
+
+def _decide_collect_exec_status(collect_digest, raw_data, pc_summary=None):
+    """任务状态判定：全部失败 ERROR / 混合 PARTIAL_SUCCESS / 全成功 SUCCESS。
+
+    PC 任务以逐 PC 行（add/update/delete/association 计数）为口径；
+    完整空软件快照 raw_data 为空但有 pc_summary 时，不以空原始数据误判 ERROR。
+    """
+    if len(raw_data) == 0 and not pc_summary:
+        return CollectRunStatusType.ERROR
+    data_keys = ("add", "update", "delete")
+    data_total = sum(collect_digest.get(k, 0) for k in data_keys)
+    data_error = sum(collect_digest.get(f"{k}_error", 0) for k in data_keys)
+    data_success = data_total - data_error
+    any_failure = any(
+        collect_digest.get(f"{k}_error", 0) > 0 for k in ("add", "update", "delete", "association")
+    )
+    collect_success = collect_digest.get("collect_success", 0)
+    collect_failed = collect_digest.get("collect_failed", 0)
+    if isinstance(pc_summary, dict):
+        pc_failed = int(pc_summary.get("pc_failed", 0) or 0)
+        pc_partial = int(pc_summary.get("pc_partial", 0) or 0)
+        pc_complete = int(pc_summary.get("pc_complete", 0) or 0)
+        pc_total = int(pc_summary.get("pc_total", 0) or 0) or pc_complete + pc_partial + pc_failed
+        if pc_total == 0:
+            return CollectRunStatusType.ERROR
+        if pc_total > 0 and pc_failed >= pc_total:
+            return CollectRunStatusType.ERROR
+        if pc_partial > 0 or pc_failed > 0:
+            return CollectRunStatusType.PARTIAL_SUCCESS
+    if collect_success == 0 and collect_failed > 0:
+        return CollectRunStatusType.ERROR
+    if data_total > 0 and data_success == 0:
+        return CollectRunStatusType.ERROR
+    if any_failure or collect_failed > 0:
+        return CollectRunStatusType.PARTIAL_SUCCESS
+    return CollectRunStatusType.SUCCESS
 
 
 def _count_raw_collection_outcomes(raw_data) -> tuple[int, int]:
@@ -425,6 +540,7 @@ def sync_collect_task(self, instance_id, execution_id=None, node_config_id=None,
         task_exec_status = CollectRunStatusType.ERROR
 
     try:
+        node_mgmt_raw_summary = _bound_node_mgmt_raw_data(instance, format_data)
         instance.collect_data = result
         instance.format_data = format_data
         collect_digest = {
@@ -438,7 +554,9 @@ def sync_collect_task(self, instance_id, execution_id=None, node_config_id=None,
             "association_error": len([i for i in format_data.get("association", []) if i.get("_status") != "success"]),
             "all": format_data.get("all", 0),  # 总数是发现的正常数据总数，例如：扫描了10个ip，其中6个是真的ip，4个ip不存在，总数为6
         }
+        pc_summary = _apply_pc_digest(collect_digest, format_data)
         raw_data = format_data.get("__raw_data__", [])
+        collect_digest.update(node_mgmt_raw_summary)
         collect_success, collect_failed = _count_raw_collection_outcomes(raw_data)
         collect_digest["collect_success"] = collect_success
         collect_digest["collect_failed"] = collect_failed
@@ -454,7 +572,14 @@ def sync_collect_task(self, instance_id, execution_id=None, node_config_id=None,
                 collect_digest["traceback"] = exec_traceback_excerpt
         elif config_file_pending:
             collect_digest["message"] = "配置文件采集已触发，等待回传中"
-        elif len(raw_data) == 0:
+        elif (
+            len(raw_data) == 0
+            and not pc_summary
+            and not (
+                collect_digest.get("raw_host", 0)
+                or collect_digest.get("raw_process", 0)
+            )
+        ):
             collect_digest["message"] = "未发现任何有效数据，请检查采集目标连通性、凭据与采集范围配置"
             instance.exec_status = CollectRunStatusType.ERROR
         else:
@@ -464,27 +589,31 @@ def sync_collect_task(self, instance_id, execution_id=None, node_config_id=None,
                 if i.get("__time__"):
                     if i["__time__"] > last_time:
                         last_time = i["__time__"]
-            collect_digest["last_time"] = last_time
+            collect_digest["last_time"] = node_mgmt_raw_summary.get("raw_input_last_time") or last_time
 
             # 任务状态判定以"整体成败"为口径，而非单个操作类型是否全挂：
             # - 实例数据(add/update/delete)有要写、但成功 0 条 → ERROR（写库整体失败，最危险）
             # - 否则只要存在任意失败(含 association) → PARTIAL_SUCCESS（部分成功，需运维感知）
             # - 全部成功 → 保持 SUCCESS
             # 注：association 失败不单独升级为 ERROR（目标实例未采到等场景常见且非致命）。
-            data_keys = ("add", "update", "delete")
-            data_total = sum(collect_digest.get(k, 0) for k in data_keys)
-            data_error = sum(collect_digest.get(f"{k}_error", 0) for k in data_keys)
-            data_success = data_total - data_error
-            any_failure = any(
-                collect_digest.get(f"{k}_error", 0) > 0 for k in ("add", "update", "delete", "association")
+            has_unretained_node_metrics = bool(
+                collect_digest.get("raw_host", 0)
+                or collect_digest.get("raw_process", 0)
             )
-            if collect_success == 0 and collect_failed > 0:
+            decided = _decide_collect_exec_status(
+                collect_digest,
+                raw_data,
+                pc_summary or has_unretained_node_metrics,
+            )
+            if decided == CollectRunStatusType.ERROR:
                 instance.exec_status = CollectRunStatusType.ERROR
-                collect_digest["message"] = "本轮采集结果全部失败，请检查原始数据中的采集错误"
-            elif data_total > 0 and data_success == 0:
-                instance.exec_status = CollectRunStatusType.ERROR
-                collect_digest["message"] = "实例数据写入全部失败，请检查 add/update/delete 错误数"
-            elif any_failure or collect_failed > 0:
+                if isinstance(pc_summary, dict) and int(pc_summary.get("pc_total", 0) or 0) == 0:
+                    collect_digest["message"] = "未发现 PC 最新上报结果，请检查目标采集是否已完成及数据上报时间"
+                elif collect_success == 0 and collect_failed > 0:
+                    collect_digest["message"] = "本轮采集结果全部失败，请检查原始数据中的采集错误"
+                else:
+                    collect_digest["message"] = "实例数据写入全部失败，请检查 add/update/delete 错误数"
+            elif decided == CollectRunStatusType.PARTIAL_SUCCESS:
                 instance.exec_status = CollectRunStatusType.PARTIAL_SUCCESS
                 collect_digest["message"] = "部分采集或数据写入失败，请检查原始数据及错误数"
         update_values = {

@@ -194,3 +194,35 @@ def test_diagnosis_incident_not_found(superuser):
     response = IncidentUpdateViewSet.as_view({"get": "diagnosis"})(request, incident_pk="999")
     _render(response)
     assert response.status_code == 400
+
+
+@pytest.mark.django_db
+def test_diagnosis_created_at_respects_activated_timezone(superuser):
+    """diagnosis 接口的 created_at 应按请求激活的用户时区输出，与序列化器路径一致。"""
+    from django.utils import timezone as dj_timezone
+    import zoneinfo
+
+    incident = _make_incident(operator=["testuser"])
+    update = IncidentUpdate.objects.create(
+        incident=incident, author="testuser", update_type=IncidentUpdateType.OBSERVATION,
+        content="假设", is_key_info=True,
+    )
+    # 固定 created_at 为 UTC 01:44:34
+    utc_dt = dj_timezone.datetime(2026, 7, 24, 1, 44, 34, tzinfo=dj_timezone.utc)
+    IncidentUpdate.objects.filter(pk=update.pk).update(created_at=utc_dt)
+
+    shanghai = zoneinfo.ZoneInfo("Asia/Shanghai")
+    dj_timezone.activate(shanghai)
+    try:
+        request = _request("get", "/incident/1/updates/diagnosis/", superuser)
+        response = IncidentUpdateViewSet.as_view({"get": "diagnosis"})(request, incident_pk=str(incident.id))
+        payload = _render(response)
+    finally:
+        dj_timezone.deactivate()
+
+    assert response.status_code == status.HTTP_200_OK
+    data = payload["data"] if "data" in payload else payload
+    result = data["current_hypothesis"]["created_at"]
+    assert result == "2026-07-24 09:44:34", (
+        f"diagnosis created_at 应输出用户时区钟面，实际: {result}"
+    )

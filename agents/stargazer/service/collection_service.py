@@ -236,15 +236,29 @@ class CollectionService:
 
         # 处理采集成功的情况
         result_data = result.get("result", {})
+        snapshot_meta = {}
+        if result.get("snapshot_id"):
+            snapshot_meta["snapshot_id"] = result["snapshot_id"]
+        if result.get("snapshot_status"):
+            snapshot_meta["snapshot_status"] = result["snapshot_status"]
+        snapshot_manifest = result.get("snapshot_manifest")
         for model_id, items in result_data.items():
             if model_id not in processed:
                 processed[model_id] = []
+            model_snapshot_meta = dict(snapshot_meta)
+            if model_id == "winsphere" and snapshot_manifest:
+                model_snapshot_meta["snapshot_manifest"] = snapshot_manifest
 
             if not items:
                 # 空结果也标记为成功
                 processed[model_id].append(
-                    {"bk_obj_id": model_id, "collect_status": "success"}
+                    {
+                        "bk_obj_id": model_id,
+                        "collect_status": "success",
+                        **model_snapshot_meta,
+                    }
                 )
+                self._encode_winsphere_metric_labels(processed[model_id][-1])
                 continue
 
             # 为每个item添加状态和host标签
@@ -254,7 +268,9 @@ class CollectionService:
                         if self.host:
                             item["host"] = self.host
                         item["bk_obj_id"] = model_id
-                        item["collect_status"] = "success"
+                        item.setdefault("collect_status", "success")
+                        item.update(model_snapshot_meta)
+                        self._encode_winsphere_metric_labels(item)
                 processed[model_id].extend(items)
             elif isinstance(items, dict):
                 # 单个字典的情况
@@ -262,11 +278,35 @@ class CollectionService:
                     items["host"] = self.host
                 items["collect_status"] = "success"
                 items["bk_obj_id"] = model_id
+                items.update(model_snapshot_meta)
+                self._encode_winsphere_metric_labels(items)
                 processed[model_id].append(items)
 
         return processed
 
+    def _encode_winsphere_metric_labels(self, item):
+        """仅在 Prometheus 传输边界编码 WinSphere 的结构化标签。"""
+        if self.model_id != "winsphere":
+            return
+        for key, value in list(item.items()):
+            if isinstance(value, (list, dict)):
+                item[key] = json.dumps(
+                    value,
+                    ensure_ascii=False,
+                    separators=(",", ":"),
+                )
+
     def _generate_error_response(self, error_message: str):
+        if self.model_id == "winsphere":
+            processed = self._process_result(
+                {
+                    "success": False,
+                    "result": {
+                        "cmdb_collect_error": error_message,
+                    },
+                }
+            )
+            return convert_to_prometheus_format(processed)
         return self._generate_error_metrics(Exception(error_message), self.model_id)
 
     def _generate_error_metrics(self, error: Exception, model: str) -> str:

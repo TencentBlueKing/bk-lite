@@ -6,10 +6,11 @@
 from django.db import transaction
 from django.utils import timezone
 
-from apps.alerts.models.models import  Incident
+from apps.alerts.constants.constants import IncidentStatus, IncidentOperate, LogAction, LogTargetType
+from apps.alerts.extensions.incident import incident_extensions
+from apps.alerts.models.models import Incident
 from apps.alerts.utils.operator_log import record_operator_log
 from apps.core.logger import alert_logger as logger
-from apps.alerts.constants.constants import IncidentStatus, IncidentOperate, LogAction, LogTargetType
 
 
 class IncidentOperator:
@@ -114,7 +115,7 @@ class IncidentOperator:
                     "incident_id": incident_id,
                     "status": incident.status,
                     "operator": incident.operator,
-                    "updated_at": incident.updated_at.isoformat()
+                    "updated_at": timezone.localtime(incident.updated_at).strftime("%Y-%m-%d %H:%M:%S")
                 }
             }
 
@@ -147,6 +148,9 @@ class IncidentOperator:
                 "overview": f"事故关闭, 事故[{incident.title}]状态变更: {self.status_map[IncidentStatus.PROCESSING]} -> {self.status_map[IncidentStatus.CLOSED]}"
             }
             self.operator_log(log_data)
+            transaction.on_commit(
+                lambda incident_id=incident.id: incident_extensions.incident_closed(incident_id)
+            )
 
             return {
                 "result": True,
@@ -155,7 +159,7 @@ class IncidentOperator:
                     "incident_id": incident_id,
                     "status": incident.status,
                     "operator": incident.operator,
-                    "updated_at": incident.updated_at.isoformat()
+                    "updated_at": timezone.localtime(incident.updated_at).strftime("%Y-%m-%d %H:%M:%S")
                 }
             }
 
@@ -188,6 +192,9 @@ class IncidentOperator:
                 "overview": f"事故重新打开, 事故[{incident.title}]状态变更: {self.status_map[IncidentStatus.CLOSED]} -> {self.status_map[IncidentStatus.PROCESSING]}"
             }
             self.operator_log(log_data)
+            transaction.on_commit(
+                lambda incident_id=incident.id: incident_extensions.incident_reopened(incident_id)
+            )
 
             return {
                 "result": True,
@@ -196,7 +203,7 @@ class IncidentOperator:
                     "incident_id": incident_id,
                     "status": incident.status,
                     "operator": incident.operator,
-                    "updated_at": incident.updated_at.isoformat()
+                    "updated_at": timezone.localtime(incident.updated_at).strftime("%Y-%m-%d %H:%M:%S")
                 }
             }
 

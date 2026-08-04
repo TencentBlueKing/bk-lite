@@ -8,7 +8,13 @@ from django.utils import timezone
 
 from apps.cmdb.constants.constants import CollectRunStatusType
 from apps.cmdb.models.collect_model import CollectModels
-from apps.cmdb.models.node_mgmt_sync import NodeMgmtSyncConfig, NodeMgmtSyncRegionState, NodeMgmtSyncRun
+from apps.cmdb.models.node_mgmt_sync import (
+    NodeMgmtSyncConfig,
+    NodeMgmtSyncRegionSnapshot,
+    NodeMgmtSyncRegionState,
+    NodeMgmtSyncRun,
+    NodeMgmtSyncSnapshotRow,
+)
 from apps.cmdb.services.collect_service import CollectModelService
 from apps.cmdb.services.node_mgmt_sync_service import NodeMgmtSyncError, NodeMgmtSyncService
 from apps.core.utils.web_utils import WebUtils
@@ -337,6 +343,49 @@ def test_parent_finishes_from_child_terminal_states(config, child_statuses, expe
     assert not refreshed.region_states.filter(status=NodeMgmtSyncRun.STATUS_SUBMITTED).exists()
 
 
+def test_terminal_child_is_captured_into_immutable_parent_batch(config):
+    _successful_sync(config)
+    collect_task = _collect_task(7)
+
+    with patch.object(
+        CollectModelService,
+        "exec_task",
+        side_effect=lambda task, operator: _accept_with_execution(task, "execution-7"),
+    ):
+        run = NodeMgmtSyncService.execute_collect(operator="system")
+
+    CollectModels.objects.filter(pk=collect_task.pk).update(
+        exec_status=CollectRunStatusType.SUCCESS,
+        collect_digest={"all": 1, "last_time": "2026-07-27T10:00:00+08:00"},
+        format_data={
+            "__raw_data__": [
+                {
+                    "__name__": "host_proc_usage_info_gauge",
+                    "name": "next-server",
+                    "pid": "2171",
+                    "ip": "10.10.24.11",
+                    "collect_status": "success",
+                }
+            ]
+        },
+    )
+
+    refreshed = NodeMgmtSyncService.refresh_collect_run(run.pk)
+
+    assert refreshed.snapshot_schema_version == 2
+    assert refreshed.snapshot_status == "complete"
+    assert refreshed.expected_region_count == 1
+    snapshot = NodeMgmtSyncRegionSnapshot.objects.get(run=refreshed)
+    assert snapshot.child_execution_id == "execution-7"
+    assert snapshot.capture_status == NodeMgmtSyncRegionSnapshot.CAPTURE_COMPLETE
+    assert snapshot.summary_json["raw_process"] == 1
+    row = snapshot.rows.get()
+    assert row.row_type == "process"
+    assert row.process_name == "next-server"
+    assert row.payload_json["_row_key"] == row.row_key
+    assert refreshed.detail_json["raw_data"]["data"] == [row.payload_json]
+
+
 def test_parent_stays_submitted_while_any_child_is_running(config):
     _successful_sync(config)
     first = _collect_task(7)
@@ -359,6 +408,114 @@ def test_parent_stays_submitted_while_any_child_is_running(config):
     assert refreshed.active_scope == NodeMgmtSyncService.ACTIVE_SCOPE
     assert refreshed.region_states.get(collect_task=first).status == "success"
     assert refreshed.region_states.get(collect_task=second).status == "submitted"
+
+
+def test_parent_timeout_closes_unfinished_regions_with_complete_placeholders(config):
+    _successful_sync(config)
+    _collect_task(7)
+    with patch.object(
+        CollectModelService,
+        "exec_task",
+        side_effect=lambda task, operator: _accept_with_execution(task, "execution-7"),
+    ):
+        run = NodeMgmtSyncService.execute_collect(operator="system")
+    NodeMgmtSyncRun.objects.filter(pk=run.pk).update(
+        deadline_at=timezone.now() - timedelta(seconds=1),
+    )
+
+    assert NodeMgmtSyncService.recover_stale_runs() == 1
+
+    run.refresh_from_db()
+    state = run.region_states.get()
+    assert run.status == NodeMgmtSyncRun.STATUS_TIMEOUT
+    assert run.snapshot_status == "complete"
+    assert state.status == NodeMgmtSyncRun.STATUS_FAILED
+    assert state.reason_code == NodeMgmtSyncService.REASON_TIMEOUT
+    assert state.snapshot.capture_status == NodeMgmtSyncRegionSnapshot.CAPTURE_COMPLETE
+    assert NodeMgmtSyncService.get_display_payload()["run"]["id"] == run.pk
+
+
+def test_parent_timeout_recovers_existing_capturing_snapshot(config):
+    _successful_sync(config)
+    _collect_task(7)
+    with patch.object(
+        CollectModelService,
+        "exec_task",
+        side_effect=lambda task, operator: _accept_with_execution(task, "execution-7"),
+    ):
+        run = NodeMgmtSyncService.execute_collect(operator="system")
+    state = run.region_states.get()
+    NodeMgmtSyncRegionSnapshot.objects.create(
+        run=run,
+        region_state=state,
+        cloud_region_id=state.cloud_region_id,
+        child_execution_id=state.child_execution_id,
+        status=NodeMgmtSyncRun.STATUS_SUBMITTED,
+        capture_status=NodeMgmtSyncRegionSnapshot.CAPTURE_CAPTURING,
+        capture_token="dead-worker",
+        capture_deadline=timezone.now() - timedelta(seconds=1),
+        capture_attempt=1,
+    )
+    NodeMgmtSyncRun.objects.filter(pk=run.pk).update(
+        deadline_at=timezone.now() - timedelta(seconds=1),
+    )
+
+    assert NodeMgmtSyncService.recover_stale_runs() == 1
+
+    run.refresh_from_db()
+    state.refresh_from_db()
+    snapshot = state.snapshot
+    snapshot.refresh_from_db()
+    assert run.status == NodeMgmtSyncRun.STATUS_TIMEOUT
+    assert run.snapshot_status == "complete"
+    assert snapshot.capture_status == NodeMgmtSyncRegionSnapshot.CAPTURE_COMPLETE
+    assert snapshot.capture_token == ""
+    assert snapshot.reason_code == NodeMgmtSyncService.REASON_TIMEOUT
+    assert snapshot.rows.count() == 0
+
+
+def test_active_capture_lease_is_fenced_then_reclaimed_after_expiry(config):
+    _successful_sync(config)
+    collect_task = _collect_task(7)
+    with patch.object(
+        CollectModelService,
+        "exec_task",
+        side_effect=lambda task, operator: _accept_with_execution(task, "execution-7"),
+    ):
+        run = NodeMgmtSyncService.execute_collect(operator="system")
+    state = run.region_states.get()
+    snapshot = NodeMgmtSyncRegionSnapshot.objects.create(
+        run=run,
+        region_state=state,
+        cloud_region_id=state.cloud_region_id,
+        child_execution_id=state.child_execution_id,
+        status=NodeMgmtSyncRun.STATUS_SUBMITTED,
+        capture_status=NodeMgmtSyncRegionSnapshot.CAPTURE_CAPTURING,
+        capture_token="active-worker",
+        capture_deadline=timezone.now() + timedelta(minutes=1),
+        capture_attempt=1,
+    )
+    CollectModels.objects.filter(pk=collect_task.pk).update(
+        exec_status=CollectRunStatusType.SUCCESS,
+        format_data={"__raw_data__": [{"__name__": "host_info_gauge", "ip": "10.10.24.11"}]},
+    )
+
+    still_submitted = NodeMgmtSyncService.refresh_collect_run(run.pk)
+    snapshot.refresh_from_db()
+    assert still_submitted.status == NodeMgmtSyncRun.STATUS_SUBMITTED
+    assert snapshot.capture_token == "active-worker"
+    assert snapshot.capture_attempt == 1
+
+    NodeMgmtSyncRegionSnapshot.objects.filter(pk=snapshot.pk).update(
+        capture_deadline=timezone.now() - timedelta(seconds=1),
+    )
+    completed = NodeMgmtSyncService.refresh_collect_run(run.pk)
+    snapshot.refresh_from_db()
+    assert completed.status == NodeMgmtSyncRun.STATUS_SUCCESS
+    assert snapshot.capture_status == NodeMgmtSyncRegionSnapshot.CAPTURE_COMPLETE
+    assert snapshot.capture_token == ""
+    assert snapshot.capture_attempt == 2
+    assert snapshot.rows.count() == 1
 
 
 def test_periodic_collect_refreshes_submitted_runs_before_starting_next(mocker):
@@ -410,6 +567,134 @@ def test_consecutive_collect_runs_keep_independent_region_history(config):
     node_config_state.refresh_from_db()
     assert node_config_state.run_id is None
     assert node_config_state.node_config_status == "healthy"
+
+
+def test_only_latest_complete_batch_retains_snapshot_rows(config):
+    _successful_sync(config)
+    collect_task = _collect_task(7)
+
+    def execute_and_finish(execution_id, pid):
+        with patch.object(
+            CollectModelService,
+            "exec_task",
+            side_effect=lambda task, operator: _accept_with_execution(task, execution_id),
+        ):
+            current_run = NodeMgmtSyncService.execute_collect(operator=execution_id)
+        CollectModels.objects.filter(pk=collect_task.pk).update(
+            exec_status=CollectRunStatusType.SUCCESS,
+            format_data={
+                "__raw_data__": [
+                    {
+                        "__name__": "host_proc_usage_info_gauge",
+                        "name": "next-server",
+                        "pid": pid,
+                        "ip": "10.10.24.11",
+                    }
+                ]
+            },
+        )
+        return NodeMgmtSyncService.refresh_collect_run(current_run.pk)
+
+    first = execute_and_finish("execution-first", "1")
+    second = execute_and_finish("execution-second", "2")
+
+    first_snapshot = NodeMgmtSyncRegionSnapshot.objects.get(run=first)
+    second_snapshot = NodeMgmtSyncRegionSnapshot.objects.get(run=second)
+    assert first_snapshot.rows.count() == 0
+    assert first_snapshot.detail_retained is False
+    assert first_snapshot.cleanup_status == NodeMgmtSyncRegionSnapshot.CLEANUP_SUMMARY_ONLY
+    assert first_snapshot.summary_json["raw_total"] == 1
+    assert second_snapshot.rows.count() == 1
+    assert second_snapshot.detail_retained is True
+
+
+def test_cleanup_never_deletes_newer_complete_batch_when_given_stale_keep_run(config):
+    older = NodeMgmtSyncRun.objects.create(
+        task=config,
+        run_type=NodeMgmtSyncRun.RUN_TYPE_COLLECT,
+        status=NodeMgmtSyncRun.STATUS_SUCCESS,
+        snapshot_schema_version=2,
+        snapshot_status="complete",
+        finished_at=timezone.now() - timedelta(minutes=1),
+    )
+    newer = NodeMgmtSyncRun.objects.create(
+        task=config,
+        run_type=NodeMgmtSyncRun.RUN_TYPE_COLLECT,
+        status=NodeMgmtSyncRun.STATUS_SUCCESS,
+        snapshot_schema_version=2,
+        snapshot_status="complete",
+        finished_at=timezone.now(),
+    )
+    snapshots = []
+    for run, suffix in ((older, "old"), (newer, "new")):
+        state = NodeMgmtSyncRegionState.objects.create(
+            config=config,
+            run=run,
+            scope_key=f"collect-run:{run.pk}:region:7",
+            cloud_region_id="7",
+            status=NodeMgmtSyncRun.STATUS_SUCCESS,
+        )
+        snapshot = NodeMgmtSyncRegionSnapshot.objects.create(
+            run=run,
+            region_state=state,
+            cloud_region_id="7",
+            child_execution_id=suffix,
+            status=NodeMgmtSyncRun.STATUS_SUCCESS,
+            capture_status=NodeMgmtSyncRegionSnapshot.CAPTURE_COMPLETE,
+        )
+        NodeMgmtSyncSnapshotRow.objects.create(
+            snapshot=snapshot,
+            bucket="raw_data",
+            ordinal=0,
+            row_type="host",
+            row_key=suffix,
+            payload_json={"_row_key": suffix},
+        )
+        snapshots.append(snapshot)
+
+    NodeMgmtSyncService.cleanup_old_snapshot_rows(
+        task_id=config.pk,
+        keep_run_id=older.pk,
+    )
+
+    snapshots[0].refresh_from_db()
+    snapshots[1].refresh_from_db()
+    assert snapshots[0].rows.count() == 0
+    assert snapshots[0].detail_retained is False
+    assert snapshots[1].rows.count() == 1
+    assert snapshots[1].detail_retained is True
+
+
+def test_snapshot_strictly_drops_raw_row_without_known_metric_name(config):
+    _successful_sync(config)
+    collect_task = _collect_task(7)
+    with patch.object(
+        CollectModelService,
+        "exec_task",
+        side_effect=lambda task, operator: _accept_with_execution(task, "execution-7"),
+    ):
+        run = NodeMgmtSyncService.execute_collect(operator="system")
+    CollectModels.objects.filter(pk=collect_task.pk).update(
+        exec_status=CollectRunStatusType.SUCCESS,
+        format_data={
+            "__raw_data__": [
+                {
+                    "model_id": "host",
+                    "inst_name": "must-not-be-guessed",
+                    "ip": "10.10.24.11",
+                }
+            ]
+        },
+    )
+
+    run = NodeMgmtSyncService.refresh_collect_run(run.pk)
+
+    snapshot = run.region_snapshots.get()
+    assert snapshot.summary_json["raw_total"] == 1
+    assert snapshot.summary_json["raw_host"] == 0
+    assert snapshot.summary_json["raw_process"] == 0
+    assert snapshot.summary_json["raw_dropped"] == 1
+    assert snapshot.rows.count() == 0
 
 
 def test_invalid_region_child_is_persisted_and_makes_mixed_result_partial(config):

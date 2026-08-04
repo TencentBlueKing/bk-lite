@@ -1,4 +1,8 @@
-import type { NodeMgmtSyncStatus } from '@/app/cmdb/types/autoDiscovery';
+import type {
+  CollectTaskMessage,
+  NodeMgmtSyncItem,
+  NodeMgmtSyncStatus,
+} from '@/app/cmdb/types/autoDiscovery';
 
 export type NodeMgmtSyncBadgeStatus = 'success' | 'processing' | 'default' | 'error' | 'warning';
 
@@ -135,6 +139,28 @@ export const getNodeMgmtSyncDisplayEmptyStateKey = (
     loadFailed,
   });
 };
+
+export const getNodeMgmtSyncRowKey = (record: NodeMgmtSyncItem): string => {
+  if (record._row_key) return record._row_key;
+  if (record.id !== null && record.id !== undefined && record.id !== '') return String(record.id);
+  return [
+    record.model_id || 'host',
+    record.ip_addr || record.ip || '',
+    record.pid || '',
+    record.inst_name || record.name || '',
+  ].join('|');
+};
+
+export const getNodeMgmtSyncRawCounts = (
+  message: Partial<CollectTaskMessage>
+): { total: number; host: number; process: number; dropped: number; retained: number; truncated: boolean } => ({
+  total: Number(message.raw_total || 0),
+  host: Number(message.raw_host || 0),
+  process: Number(message.raw_process || 0),
+  dropped: Number(message.raw_dropped || 0),
+  retained: Number(message.raw_retained || 0),
+  truncated: message.raw_truncated === true,
+});
 
 export interface NodeMgmtSyncGuardToken {
   generation: number;

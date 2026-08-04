@@ -277,6 +277,17 @@ export const HOST_FORM_INITIAL_VALUES = {
   cleanupDays: 3,
 };
 
+export const PC_FORM_INITIAL_VALUES = {
+  instId: undefined,
+  cycle: CYCLE_OPTIONS.INTERVAL,
+  intervalValue: 30,
+  enterType: ENTER_TYPE.AUTOMATIC,
+  osType: 'windows',
+  timeout: 120,
+  cleanupStrategy: 'immediately',
+  cleanupDays: 3,
+};
+
 export const CONFIG_FILE_FORM_INITIAL_VALUES = {
   ...HOST_FORM_INITIAL_VALUES,
   intervalValue: 15,

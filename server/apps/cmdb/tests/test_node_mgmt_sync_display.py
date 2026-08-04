@@ -46,14 +46,14 @@ def test_collect_display_aggregates_region_results_into_one_stable_payload():
     first = _collect_task(
         7,
         format_data={"add": [{"model_id": "host", "inst_name": "host-7", "ip_addr": "10.0.0.7"}]},
-        collect_digest={"all": 1, "add": 1, "add_success": 1, "last_time": "first"},
+        collect_digest={"all": 1, "add": 1, "add_success": 1, "last_time": "2026-07-27T01:00:00+00:00"},
         exec_status=CollectRunStatusType.SUCCESS,
         exec_time=earlier,
     )
     latest = _collect_task(
         8,
         format_data={"update": [{"model_id": "host", "inst_name": "host-8", "ip_addr": "10.0.0.8"}]},
-        collect_digest={"all": 1, "update": 1, "update_success": 1, "last_time": "latest"},
+        collect_digest={"all": 1, "update": 1, "update_success": 1, "last_time": "2026-07-27T02:00:00+00:00"},
         exec_status=CollectRunStatusType.PARTIAL_SUCCESS,
         exec_time=timezone.now(),
     )
@@ -68,12 +68,152 @@ def test_collect_display_aggregates_region_results_into_one_stable_payload():
     assert payload["message"]["all"] == 2
     assert payload["message"]["add_success"] == 1
     assert payload["message"]["update_success"] == 1
-    assert payload["message"]["last_time"] == "latest"
+    assert payload["message"]["last_time"] == "2026-07-27 02:00:00+0000"
     assert payload["detail"]["add"]["count"] == 1
     assert payload["detail"]["update"]["count"] == 1
     assert payload["detail"]["raw_data"]["count"] == 2
     assert payload["run"]["id"] == latest.pk
     assert payload["run"]["status"] == "partial_success"
+
+
+def test_collect_display_preserves_process_identity_and_failure_reason():
+    _config()
+    _collect_task(
+        7,
+        format_data={
+            "__raw_data__": [
+                {
+                    "__name__": "host_proc_usage_info_gauge",
+                    "name": "next-server",
+                    "pid": "2171",
+                    "ip": "10.10.24.11",
+                    "collect_status": "failed",
+                    "cmdb_collect_error": "permission denied",
+                }
+            ]
+        },
+        exec_status=CollectRunStatusType.ERROR,
+    )
+
+    payload = NodeMgmtSyncService.get_display_payload()
+
+    assert payload["detail"]["raw_data"]["count"] == 1
+    row = payload["detail"]["raw_data"]["data"][0]
+    assert row["model_id"] == "host_proc_usage"
+    assert row["pid"] == "2171"
+    assert row["_status"] == "failed"
+    assert row["_error"] == "permission denied"
+
+
+def test_collect_display_redacts_credentials_from_process_text_fields():
+    _config()
+    _collect_task(
+        7,
+        format_data={
+            "__raw_data__": [
+                {
+                    "__name__": "host_proc_usage_info_gauge",
+                    "name": "next-server",
+                    "pid": "2171",
+                    "ip": "10.10.24.11",
+                    "arg": "next-server --password hunter2 --token=raw-token",
+                    "cmdb_collect_error": "Authorization: Bearer raw-bearer",
+                }
+            ]
+        },
+        exec_status=CollectRunStatusType.ERROR,
+    )
+
+    row = NodeMgmtSyncService.get_display_payload()["detail"]["raw_data"]["data"][0]
+
+    serialized = str(row)
+    assert "hunter2" not in serialized
+    assert "raw-token" not in serialized
+    assert "raw-bearer" not in serialized
+    assert "[REDACTED]" in serialized
+
+
+def test_collect_display_reports_partial_success_when_any_region_failed():
+    _config()
+    _collect_task(
+        7,
+        format_data={"__raw_data__": [{"__name__": "host_info_gauge", "ip": "10.0.0.7"}]},
+        collect_digest={"all": 1, "message": "region 7 failed"},
+        exec_status=CollectRunStatusType.ERROR,
+        exec_time=timezone.now() - timedelta(minutes=5),
+    )
+    latest = _collect_task(
+        8,
+        format_data={"__raw_data__": [{"__name__": "host_info_gauge", "ip": "10.0.0.8"}]},
+        collect_digest={"all": 1},
+        exec_status=CollectRunStatusType.SUCCESS,
+        exec_time=timezone.now(),
+    )
+
+    payload = NodeMgmtSyncService.get_display_payload()
+
+    assert payload["run"]["id"] == latest.pk
+    assert payload["run"]["status"] == NodeMgmtSyncRun.STATUS_PARTIAL_SUCCESS
+    assert "region 7 failed" in payload["run"]["error_message"]
+
+
+def test_collect_display_uses_latest_aware_metric_time_across_regions():
+    _config()
+    _collect_task(
+        7,
+        format_data={"__raw_data__": [{"__name__": "host_info_gauge", "ip": "10.0.0.7"}]},
+        collect_digest={"all": 1, "last_time": "2026-07-27T10:00:00+08:00"},
+        exec_status=CollectRunStatusType.SUCCESS,
+    )
+    _collect_task(
+        8,
+        format_data={"__raw_data__": [{"__name__": "host_info_gauge", "ip": "10.0.0.8"}]},
+        collect_digest={"all": 1, "last_time": "2026-07-27T09:00:00+08:00"},
+        exec_status=CollectRunStatusType.SUCCESS,
+    )
+
+    payload = NodeMgmtSyncService.get_display_payload()
+
+    assert payload["message"]["last_time"] == "2026-07-27 02:00:00+0000"
+
+
+def test_collect_display_keeps_previous_complete_batch_while_new_run_is_active():
+    config = _config()
+    completed = NodeMgmtSyncRun.objects.create(
+        task=config,
+        run_type=NodeMgmtSyncRun.RUN_TYPE_COLLECT,
+        status=NodeMgmtSyncRun.STATUS_SUCCESS,
+        snapshot_schema_version=2,
+        snapshot_status="complete",
+        expected_region_count=1,
+        finished_at=timezone.now() - timedelta(minutes=5),
+        summary_json={"all": 1, "raw_total": 1, "raw_host": 1},
+        detail_json={
+            "raw_data": {
+                "data": [{"_row_key": "previous-host", "model_id": "host", "ip": "10.0.0.7"}],
+                "count": 1,
+            }
+        },
+    )
+    NodeMgmtSyncRun.objects.create(
+        task=config,
+        run_type=NodeMgmtSyncRun.RUN_TYPE_COLLECT,
+        status=NodeMgmtSyncRun.STATUS_SUBMITTED,
+        active_scope=NodeMgmtSyncService.ACTIVE_SCOPE,
+        deadline_at=timezone.now() + timedelta(minutes=10),
+    )
+    _collect_task(
+        7,
+        format_data={"__raw_data__": [{"__name__": "host_info_gauge", "ip": "10.0.0.99"}]},
+        collect_digest={"all": 1},
+        exec_status=CollectRunStatusType.RUNNING,
+    )
+
+    payload = NodeMgmtSyncService.get_display_payload()
+
+    assert payload["display_schema"] == "host_collect_v2"
+    assert payload["run"]["id"] == completed.pk
+    assert payload["detail"]["raw_data"]["data"][0]["ip"] == "10.0.0.7"
 
 
 def test_legacy_collect_instances_are_whitelisted_and_clear_stale_empty_message():

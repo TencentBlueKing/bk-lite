@@ -74,10 +74,12 @@ class CloudAkSkNodeParamsMixin:
 
     @classmethod
     def build_region_credential(cls, raw_credential):
-        raw_credential = raw_credential or {}
-        access_key = raw_credential.pop("access_key", None)
-        access_secret = raw_credential.pop("access_secret", None)
-        return {
-            "accessKey": access_key or raw_credential.get("accessKey", ""),
-            "accessSecret": access_secret or raw_credential.get("accessSecret", ""),
+        raw_credential = cls.primary_credential(raw_credential)
+        credential = {
+            "accessKey": raw_credential.get("access_key") or raw_credential.get("accessKey", ""),
+            "accessSecret": raw_credential.get("access_secret") or raw_credential.get("accessSecret", ""),
         }
+        project_id = raw_credential.get("project_id", "")
+        if project_id:
+            credential["project_id"] = project_id
+        return credential

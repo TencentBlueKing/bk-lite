@@ -1,10 +1,12 @@
 'use client';
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useId, useMemo, useState } from 'react';
 import {
+  Alert,
   Button,
   Input,
   InputNumber,
+  Popover,
   Select,
   Switch,
   Tooltip,
@@ -38,12 +40,20 @@ import {
   MAX_CREDENTIAL_POOL_SIZE,
   PASSWORD_PLACEHOLDER,
 } from '@/app/cmdb/constants/professCollection';
-import { CredentialPoolItem } from '@/app/cmdb/types/autoDiscovery';
+import {
+  CredentialPoolItem,
+  CredentialSchema,
+} from '@/app/cmdb/types/autoDiscovery';
 import { useTranslation } from '@/utils/i18n';
+import type { CredentialHelpDefinition } from './credentialHelp';
 
 import styles from '../index.module.scss';
 
-type CredentialShape = 'ssh' | 'sql' | 'snmp' | 'config_file' | 'network_config_file' | 'vm' | 'cloud' | 'ipmi';
+type CredentialShape = 'ssh' | 'sql' | 'snmp' | 'config_file' | 'network_config_file' | 'vm' | 'winsphere' | 'cloud' | 'ipmi' | 'winrm' | 'macos_ssh' | 'influxdb' | 'platform_api';
+interface CredentialDragEndEvent {
+  active: { id: string | number };
+  over: { id: string | number } | null;
+}
 
 const IPMI_PRIVILEGE_OPTIONS = [
   { label: 'callback', value: 'callback' },
@@ -66,6 +76,14 @@ export interface CredentialPoolEditorProps {
   cloudRegionLoading?: boolean;
   onCloudRegionRefresh?: () => void;
   onCredentialFieldChange?: (field: string) => void;
+  credentialHelp?: CredentialHelpDefinition;
+  cloudCredentialLabels?: {
+    accessKey: string;
+    accessSecret: string;
+    projectId?: string;
+  };
+  defaultPort?: number | string;
+  credentialSchema?: CredentialSchema;
 }
 
 const makeClientId = () => `cred-local-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
@@ -76,7 +94,12 @@ const ensureClientIds = (items: CredentialPoolItem[]) =>
     _client_id: item._client_id || makeClientId(),
   }));
 
-const createEmptyCredential = (shape: CredentialShape, showDatabase?: boolean): CredentialPoolItem => {
+const createEmptyCredential = (
+  shape: CredentialShape,
+  showDatabase?: boolean,
+  defaultPort?: number | string,
+  credentialSchema?: CredentialSchema,
+): CredentialPoolItem => {
   if (shape === 'snmp') {
     return {
       _client_id: makeClientId(),
@@ -88,9 +111,63 @@ const createEmptyCredential = (shape: CredentialShape, showDatabase?: boolean): 
     };
   }
 
+  if (shape === 'winrm') {
+    return {
+      _client_id: makeClientId(),
+      port: 5986,
+      scheme: 'https',
+      transport: 'ntlm',
+      certValidation: false,
+    };
+  }
+
+  if (shape === 'macos_ssh') {
+    return {
+      _client_id: makeClientId(),
+      port: 22,
+      authType: 'password',
+    };
+  }
+
+  if (shape === 'influxdb') {
+    return {
+      _client_id: makeClientId(),
+      scheme: 'http',
+      port: 8086,
+      verify_tls: true,
+      token: '',
+    };
+  }
+
+  if (shape === 'platform_api') {
+    return {
+      _client_id: makeClientId(),
+      username: '',
+      password: '',
+      port: 443,
+      verify_tls: true,
+    };
+  }
+
+  if (shape === 'winsphere') {
+    return {
+      _client_id: makeClientId(),
+      ...Object.fromEntries(
+        (credentialSchema?.fields || []).map((field) => [
+          field.key,
+          field.default ?? (field.type === 'boolean' ? false : ''),
+        ]),
+      ),
+    };
+  }
+
   return {
     _client_id: makeClientId(),
-    port: shape === 'sql' ? (showDatabase ? '1433' : '3306') : shape === 'vm' ? '443' : '22',
+    port: shape === 'sql'
+      ? (defaultPort ?? (showDatabase ? '1433' : '3306'))
+      : shape === 'vm'
+        ? '443'
+        : '22',
     ...(shape === 'vm' ? { ssl: false } : {}),
     ...(shape === 'cloud' ? { accessKey: '', accessSecret: '', regionId: '' } : {}),
     ...(shape === 'ipmi' ? { port: '623', privilege: 'administrator' } : {}),
@@ -113,8 +190,35 @@ function getPreviewFields(
   item: CredentialPoolItem,
   shape: CredentialShape,
   t: (key: string, defaultMessage?: string) => string,
-  passwordVisible: boolean
+  passwordVisible: boolean,
+  cloudCredentialLabels?: {
+    accessKey: string;
+    accessSecret: string;
+    projectId?: string;
+  },
 ) {
+  if (shape === 'winsphere') {
+    return [
+      {
+        label: t('Collection.WinSphereTask.user', 'WinSphere账号'),
+        value: item.user || '--',
+      },
+      {
+        label: t('password', '密码'),
+        value: passwordVisible ? item.password || '--' : getMaskedSecret(item.password),
+        isSecret: true,
+      },
+      {
+        label: t('Collection.WinSphereTask.httpsPort', 'HTTPS端口'),
+        value: String(item.https_port || 443),
+      },
+      {
+        label: t('Collection.WinSphereTask.verifyTls', 'TLS证书校验'),
+        value: item.verify_tls ? t('common.yes', '是') : t('common.no', '否'),
+      },
+    ];
+  }
+
   if (shape === 'snmp') {
     const secretValue = item.version === 'v3' ? item.authkey : item.community;
     return [
@@ -131,16 +235,94 @@ function getPreviewFields(
   }
 
   if (shape === 'cloud') {
-    return [
-      { label: t('Collection.cloudTask.accessKey', '秘匙'), value: item.accessKey || '--' },
+    const fields = [
       {
-        label: t('Collection.cloudTask.accessSecret', '秘钥'),
+        label: cloudCredentialLabels?.accessKey
+          || t('Collection.cloudTask.accessKey', '访问密钥'),
+        value: item.accessKey || '--',
+      },
+      {
+        label: cloudCredentialLabels?.accessSecret
+          || t('Collection.cloudTask.accessSecret', '访问密钥 Secret'),
         value: passwordVisible && item.accessSecret && item.accessSecret !== PASSWORD_PLACEHOLDER
           ? item.accessSecret
           : getMaskedSecret(item.accessSecret),
         isSecret: true,
       },
       { label: t('Collection.cloudTask.region', '区域'), value: item.regionName || item.regionId || '--' },
+    ];
+    if (cloudCredentialLabels?.projectId) {
+      fields.splice(2, 0, {
+        label: cloudCredentialLabels.projectId,
+        value: item.projectId || '--',
+        isSecret: false,
+      });
+    }
+    return fields;
+  }
+
+  if (shape === 'winrm') {
+    return [
+      { label: t('user', '用户'), value: item.username || '--' },
+      {
+        label: t('password', '密码'),
+        value: passwordVisible && item.password && item.password !== PASSWORD_PLACEHOLDER ? item.password : getMaskedSecret(item.password),
+        isSecret: true,
+      },
+      { label: t('Collection.port', '端口'), value: String(item.port || 5986) },
+      { label: t('Collection.PCTask.scheme', '协议'), value: (item.scheme || 'https').toUpperCase() },
+    ];
+  }
+
+  if (shape === 'macos_ssh') {
+    const isKeyAuth = item.authType === 'privateKey';
+    const secretValue = isKeyAuth ? item.private_key : item.password;
+    return [
+      { label: t('user', '用户'), value: item.username || '--' },
+      {
+        label: isKeyAuth ? t('Collection.PCTask.privateKey', '私钥') : t('password', '密码'),
+        value: passwordVisible && secretValue && secretValue !== PASSWORD_PLACEHOLDER ? secretValue : getMaskedSecret(secretValue),
+        isSecret: true,
+      },
+      { label: t('Collection.port', '端口'), value: String(item.port || 22) },
+    ];
+  }
+
+  if (shape === 'influxdb') {
+    return [
+      {
+        label: t('Collection.influxdbTask.scheme', '连接协议'),
+        value: String(item.scheme || 'http').toUpperCase(),
+      },
+      {
+        label: t('Collection.port', '端口'),
+        value: String(item.port || 8086),
+      },
+      {
+        label: t('Collection.influxdbTask.operatorToken', 'Operator Token'),
+        value: passwordVisible && item.token && item.token !== PASSWORD_PLACEHOLDER
+          ? item.token
+          : getMaskedSecret(item.token),
+        isSecret: true,
+      },
+    ];
+  }
+
+  if (shape === 'platform_api') {
+    return [
+      { label: t('user', '用户'), value: item.username || '--' },
+      {
+        label: t('password', '密码'),
+        value: passwordVisible && item.password && item.password !== PASSWORD_PLACEHOLDER
+          ? item.password
+          : getMaskedSecret(item.password),
+        isSecret: true,
+      },
+      { label: t('Collection.port', '端口'), value: String(item.port || 443) },
+      {
+        label: t('Collection.influxdbTask.verifyTls', '校验证书'),
+        value: item.verify_tls !== false ? t('common.yes', '是') : t('common.no', '否'),
+      },
     ];
   }
 
@@ -156,7 +338,7 @@ function getPreviewFields(
   ];
   if (shape === 'network_config_file') {
     fields.push({
-      label: '特权密码',
+      label: t('Collection.credentialPool.enablePassword', '特权密码'),
       value: passwordVisible && item.enable_password && item.enable_password !== PASSWORD_PLACEHOLDER
         ? item.enable_password
         : getMaskedSecret(item.enable_password),
@@ -170,10 +352,12 @@ function CredentialMetaField({
   field,
   passwordVisible,
   onToggleSecret,
+  toggleSecretLabel,
 }: {
   field: { label: string; value: string; isSecret?: boolean };
   passwordVisible: boolean;
   onToggleSecret: (event: React.MouseEvent<HTMLElement>) => void;
+  toggleSecretLabel: string;
 }) {
   return (
     <div className={`${styles.credentialMetaItem} ${field.value === '--' ? styles.credentialMetaEmpty : ''}`}>
@@ -184,7 +368,10 @@ function CredentialMetaField({
           type="text"
           size="small"
           className={styles.credentialMetaToggle}
-          icon={passwordVisible ? <EyeInvisibleOutlined /> : <EyeOutlined />}
+          aria-label={toggleSecretLabel}
+          icon={passwordVisible
+            ? <EyeInvisibleOutlined aria-hidden="true" />
+            : <EyeOutlined aria-hidden="true" />}
           onClick={onToggleSecret}
         />
       )}
@@ -193,11 +380,13 @@ function CredentialMetaField({
 }
 
 function SecretInput({
+  id,
   value,
   placeholder,
   editMode,
   onChange,
 }: {
+  id?: string;
   value?: string;
   placeholder: string;
   editMode: boolean;
@@ -205,6 +394,7 @@ function SecretInput({
 }) {
   return (
     <Input.Password
+      id={id}
       value={value}
       placeholder={placeholder}
       onChange={(event) => onChange(event.target.value)}
@@ -232,17 +422,26 @@ function InputRow({
   label,
   children,
   required = true,
+  htmlFor,
+  help,
 }: {
   label: string;
   children: React.ReactNode;
   required?: boolean;
+  htmlFor?: string;
+  help?: string;
 }) {
   return (
     <div className={styles.credentialFieldRow}>
-      <div className={styles.credentialFieldLabel}>
+      <label className={styles.credentialFieldLabel} htmlFor={htmlFor}>
         {required && <span className={styles.credentialRequiredMark}>*</span>}
         <span>{label}</span>
-      </div>
+        {help && (
+          <Tooltip title={help}>
+            <QuestionCircleOutlined aria-label={help} />
+          </Tooltip>
+        )}
+      </label>
       <div className={styles.credentialFieldControl}>{children}</div>
     </div>
   );
@@ -258,6 +457,8 @@ function renderCredentialFields({
   cloudRegionLoading,
   onCloudRegionRefresh,
   onCredentialFieldChange,
+  cloudCredentialLabels,
+  credentialSchema,
   t,
   updateItem,
 }: {
@@ -270,9 +471,94 @@ function renderCredentialFields({
   cloudRegionLoading: boolean;
   onCloudRegionRefresh?: () => void;
   onCredentialFieldChange?: (field: string) => void;
+  cloudCredentialLabels?: {
+    accessKey: string;
+    accessSecret: string;
+    projectId?: string;
+  };
+  credentialSchema?: CredentialSchema;
   t: (key: string, defaultMessage?: string) => string;
   updateItem: (index: number, patch: Partial<CredentialPoolItem>) => void;
 }) {
+  if (shape === 'winsphere') {
+    return (
+      <div className={styles.credentialFieldGrid}>
+        {credentialSchema?.fields.map((field) => {
+          const inputId = `winsphere-credential-${index}-${field.key}`;
+          const label = t(field.label_key || field.key, field.label);
+          const help = field.help
+            ? t(field.help_key || `${field.key}.help`, field.help)
+            : undefined;
+          let control: React.ReactNode;
+          if (field.type === 'password') {
+            control = (
+              <SecretInput
+                id={inputId}
+                value={item[field.key]}
+                placeholder={t('common.inputTip', '请输入')}
+                editMode={editMode}
+                onChange={(value) => updateItem(index, { [field.key]: value })}
+              />
+            );
+          } else if (field.type === 'integer') {
+            control = (
+              <InputNumber
+                id={inputId}
+                min={field.min}
+                max={field.max}
+                className="w-32"
+                value={item[field.key]}
+                onChange={(value) =>
+                  updateItem(index, { [field.key]: value ?? undefined })
+                }
+              />
+            );
+          } else if (field.type === 'boolean') {
+            control = (
+              <Switch
+                id={inputId}
+                checked={Boolean(item[field.key])}
+                onChange={(value) => updateItem(index, { [field.key]: value })}
+              />
+            );
+          } else {
+            control = (
+              <Input
+                id={inputId}
+                value={item[field.key]}
+                placeholder={t('common.inputTip', '请输入')}
+                onChange={(event) =>
+                  updateItem(index, { [field.key]: event.target.value })
+                }
+              />
+            );
+          }
+          return (
+            <InputRow
+              key={field.key}
+              label={label}
+              required={field.required}
+              htmlFor={inputId}
+              help={help}
+            >
+              {control}
+            </InputRow>
+          );
+        })}
+        {item.verify_tls === false && (
+          <Alert
+            type="warning"
+            showIcon
+            message={t(
+              'Collection.platformApiTask.tlsWarning',
+              '关闭证书校验会增加中间人攻击风险，仅应临时用于受信任网络中的自签名证书。',
+            )}
+          />
+        )}
+      </div>
+    );
+  }
+
   if (shape === 'snmp') {
     const version = item.version || 'v2';
     const level = item.level || 'authNoPriv';
@@ -290,8 +576,8 @@ function renderCredentialFields({
             min={1}
             max={65535}
             className="w-32"
-            value={item.snmp_port as any}
-            onChange={(nextValue) => updateItem(index, { snmp_port: nextValue as any })}
+            value={item.snmp_port}
+            onChange={(nextValue) => updateItem(index, { snmp_port: nextValue ?? undefined })}
           />
         </InputRow>
 
@@ -357,10 +643,149 @@ function renderCredentialFields({
     );
   }
 
+  if (shape === 'winrm') {
+    const scheme = item.scheme || 'https';
+    return (
+      <div className={styles.credentialFieldGrid}>
+        <InputRow label={t('user', '用户')}>
+          <Input
+            value={item.username}
+            placeholder={t('Collection.PCTask.usernameTip', '支持域、本地和 UPN 表达')}
+            onChange={(event) => updateItem(index, { username: event.target.value })}
+          />
+        </InputRow>
+        <InputRow label={t('password', '密码')}>
+          <SecretInput
+            value={item.password}
+            placeholder={t('common.inputTip', '请输入')}
+            editMode={editMode}
+            onChange={(nextValue) => updateItem(index, { password: nextValue })}
+          />
+        </InputRow>
+        <InputRow label={t('Collection.PCTask.scheme', '协议')}>
+          <Select
+            value={scheme}
+            onChange={(nextValue) =>
+              updateItem(index, {
+                scheme: nextValue,
+                port: nextValue === 'https' ? 5986 : 5985,
+              })
+            }
+            options={[
+              { label: 'HTTPS', value: 'https' },
+              { label: 'HTTP', value: 'http' },
+            ]}
+          />
+        </InputRow>
+        <InputRow label={t('Collection.port', '端口')}>
+          <InputNumber
+            min={1}
+            max={65535}
+            className="w-32"
+            value={item.port}
+            onChange={(nextValue) => updateItem(index, { port: nextValue ?? undefined })}
+          />
+        </InputRow>
+        <InputRow label={t('Collection.PCTask.transport', '认证方式')} required={false}>
+          <Input value="NTLM" disabled />
+        </InputRow>
+        <InputRow label={t('Collection.PCTask.certValidation', '证书校验')} required={false}>
+          <Switch
+            checked={Boolean(item.certValidation)}
+            onChange={(checked) => updateItem(index, { certValidation: checked })}
+          />
+        </InputRow>
+        {(scheme === 'http' || !item.certValidation) && (
+          <Alert
+            type="warning"
+            showIcon
+            message={
+              scheme === 'http'
+                ? t('Collection.PCTask.winrmHttpWarning', 'HTTP 明文传输凭据，仅建议在受信网络使用')
+                : t('Collection.PCTask.winrmCertWarning', '关闭证书校验存在中间人攻击风险')
+            }
+          />
+        )}
+      </div>
+    );
+  }
+
+  if (shape === 'macos_ssh') {
+    const authType = item.authType || 'password';
+    return (
+      <div className={styles.credentialFieldGrid}>
+        <InputRow label={t('user', '用户')}>
+          <Input
+            value={item.username}
+            placeholder={t('common.inputTip', '请输入')}
+            onChange={(event) => updateItem(index, { username: event.target.value })}
+          />
+        </InputRow>
+        <InputRow label={t('Collection.port', '端口')}>
+          <InputNumber
+            min={1}
+            max={65535}
+            className="w-32"
+            value={item.port}
+            onChange={(nextValue) => updateItem(index, { port: nextValue ?? undefined })}
+          />
+        </InputRow>
+        <InputRow label={t('Collection.PCTask.authType', '认证方式')}>
+          <Select
+            value={authType}
+            onChange={(nextValue) =>
+              updateItem(
+                index,
+                nextValue === 'privateKey'
+                  ? { authType: nextValue, password: '' }
+                  : { authType: nextValue, private_key: '', passphrase: '' }
+              )
+            }
+            options={[
+              { label: t('Collection.PCTask.authTypePassword', '密码'), value: 'password' },
+              { label: t('Collection.PCTask.authTypePrivateKey', 'PEM 私钥'), value: 'privateKey' },
+            ]}
+          />
+        </InputRow>
+        {authType === 'privateKey' ? (
+          <>
+            <InputRow label={t('Collection.PCTask.privateKey', '私钥')}>
+              <Input.TextArea
+                rows={4}
+                value={item.private_key === PASSWORD_PLACEHOLDER ? '' : item.private_key}
+                placeholder={t('Collection.PCTask.privateKeyTip', '粘贴 PEM 格式私钥')}
+                onChange={(event) => updateItem(index, { private_key: event.target.value })}
+              />
+            </InputRow>
+            <InputRow label={t('Collection.PCTask.passphrase', '密码短语')} required={false}>
+              <SecretInput
+                value={item.passphrase}
+                placeholder={t('Collection.PCTask.passphraseTip', '私钥有密码短语时填写')}
+                editMode={editMode}
+                onChange={(nextValue) => updateItem(index, { passphrase: nextValue })}
+              />
+            </InputRow>
+          </>
+        ) : (
+          <InputRow label={t('password', '密码')}>
+            <SecretInput
+              value={item.password}
+              placeholder={t('common.inputTip', '请输入')}
+              editMode={editMode}
+              onChange={(nextValue) => updateItem(index, { password: nextValue })}
+            />
+          </InputRow>
+        )}
+      </div>
+    );
+  }
+
   if (shape === 'cloud') {
     return (
       <div className={styles.credentialFieldGrid}>
-        <InputRow label={t('Collection.cloudTask.accessKey', '秘匙')}>
+        <InputRow
+          label={cloudCredentialLabels?.accessKey || t('Collection.cloudTask.accessKey', '访问密钥')}
+        >
           <Input
             value={item.accessKey}
             placeholder={t('common.inputTip', '请输入')}
@@ -391,7 +816,9 @@ function renderCredentialFields({
             }}
           />
         </InputRow>
-        <InputRow label={t('Collection.cloudTask.accessSecret', '秘钥')}>
+        <InputRow
+          label={cloudCredentialLabels?.accessSecret || t('Collection.cloudTask.accessSecret', '访问密钥 Secret')}
+        >
           <SecretInput
             value={item.accessSecret}
             placeholder={t('common.inputTip', '请输入')}
@@ -407,6 +834,22 @@ function renderCredentialFields({
             }}
           />
         </InputRow>
+        {cloudCredentialLabels?.projectId && (
+          <InputRow label={cloudCredentialLabels.projectId}>
+            <Input
+              value={item.projectId}
+              placeholder={t('common.inputTip', '请输入')}
+              onChange={(event) => {
+                updateItem(index, {
+                  projectId: event.target.value,
+                  regionId: undefined,
+                  regionName: undefined,
+                });
+                onCredentialFieldChange?.('projectId');
+              }}
+            />
+          </InputRow>
+        )}
         <InputRow label={t('Collection.cloudTask.region', '区域')}>
           <div className={styles.credentialInlineControl}>
             <Select
@@ -421,12 +864,111 @@ function renderCredentialFields({
             />
             <Button
               type="text"
-              icon={<SyncOutlined spin={cloudRegionLoading} />}
+              aria-label={t('common.refresh')}
+              icon={<SyncOutlined spin={cloudRegionLoading} aria-hidden />}
               onClick={onCloudRegionRefresh}
               className={styles.credentialRefreshButton}
             />
           </div>
         </InputRow>
+      </div>
+    );
+  }
+
+  if (shape === 'influxdb') {
+    return (
+      <div className={styles.credentialFieldGrid}>
+        <InputRow label={t('Collection.influxdbTask.scheme', '连接协议')}>
+          <Select
+            value={item.scheme || 'http'}
+            options={[
+              { label: 'HTTP', value: 'http' },
+              { label: 'HTTPS', value: 'https' },
+            ]}
+            onChange={(scheme) => updateItem(index, { scheme })}
+          />
+        </InputRow>
+        <InputRow label={t('Collection.port', '端口')}>
+          <InputNumber
+            min={1}
+            max={65535}
+            value={item.port}
+            onChange={(port) => updateItem(index, { port: port ?? undefined })}
+          />
+        </InputRow>
+        <InputRow
+          label={t('Collection.influxdbTask.operatorToken', 'Operator Token')}
+          required={false}
+        >
+          <SecretInput
+            value={item.token}
+            placeholder={t('Collection.influxdbTask.tokenPlaceholder', '选填，仅完整配置采集需要')}
+            editMode={editMode}
+            onChange={(token) => updateItem(index, { token })}
+          />
+        </InputRow>
+        <InputRow label={t('Collection.influxdbTask.verifyTls', '校验证书')}>
+          <Switch
+            checked={item.verify_tls !== false}
+            onChange={(verify_tls) => updateItem(index, { verify_tls })}
+          />
+        </InputRow>
+        {item.scheme === 'https' && item.verify_tls === false && (
+          <Alert
+            type="warning"
+            showIcon
+            message={t(
+              'Collection.influxdbTask.tlsWarning',
+              '关闭证书校验会增加中间人攻击风险，仅应临时用于受信任网络中的自签名证书。',
+            )}
+          />
+        )}
+      </div>
+    );
+  }
+
+  if (shape === 'platform_api') {
+    return (
+      <div className={styles.credentialFieldGrid}>
+        <InputRow label={t('user', '用户')}>
+          <Input
+            value={item.username}
+            placeholder={t('common.inputTip', '请输入')}
+            onChange={(event) => updateItem(index, { username: event.target.value })}
+          />
+        </InputRow>
+        <InputRow label={t('password', '密码')}>
+          <SecretInput
+            value={item.password}
+            placeholder={t('common.inputTip', '请输入')}
+            editMode={editMode}
+            onChange={(password) => updateItem(index, { password })}
+          />
+        </InputRow>
+        <InputRow label={t('Collection.port', '端口')}>
+          <InputNumber
+            min={1}
+            max={65535}
+            value={item.port}
+            onChange={(port) => updateItem(index, { port: port ?? undefined })}
+          />
+        </InputRow>
+        <InputRow label={t('Collection.influxdbTask.verifyTls', '校验证书')}>
+          <Switch
+            checked={item.verify_tls !== false}
+            onChange={(verify_tls) => updateItem(index, { verify_tls })}
+          />
+        </InputRow>
+        {item.verify_tls === false && (
+          <Alert
+            type="warning"
+            showIcon
+            message={t(
+              'Collection.platformApiTask.tlsWarning',
+              '关闭证书校验会增加中间人攻击风险，仅应临时用于受信任网络中的自签名证书。',
+            )}
+          />
+        )}
       </div>
     );
   }
@@ -457,8 +999,8 @@ function renderCredentialFields({
           min={1}
           max={65535}
           className="w-32"
-          value={item.port as any}
-          onChange={(nextValue) => updateItem(index, { port: nextValue as any })}
+          value={item.port}
+          onChange={(nextValue) => updateItem(index, { port: nextValue ?? undefined })}
         />
       </InputRow>
       {shape === 'sql' && showDatabase && (
@@ -516,6 +1058,10 @@ export default function CredentialPoolEditor({
   cloudRegionLoading = false,
   onCloudRegionRefresh,
   onCredentialFieldChange,
+  credentialHelp,
+  cloudCredentialLabels,
+  defaultPort,
+  credentialSchema,
 }: CredentialPoolEditorProps): React.ReactElement {
   const { t } = useTranslation();
   const sensors = useSensors(useSensor(PointerSensor));
@@ -524,6 +1070,8 @@ export default function CredentialPoolEditor({
     normalizedValue.length ? [getItemKey(normalizedValue[0], 0)] : []
   );
   const [visibleSecretKeys, setVisibleSecretKeys] = useState<string[]>([]);
+  const [helpOpen, setHelpOpen] = useState(false);
+  const helpContentId = useId();
 
   const itemKeys = useMemo(
     () => normalizedValue.map((item, index) => getItemKey(item, index)),
@@ -554,7 +1102,12 @@ export default function CredentialPoolEditor({
   };
 
   const handleAdd = () => {
-    const nextItem = createEmptyCredential(credentialShape, showDatabase);
+    const nextItem = createEmptyCredential(
+      credentialShape,
+      showDatabase,
+      defaultPort,
+      credentialSchema,
+    );
     const nextItems = [...normalizedValue, nextItem];
     emitChange(nextItems);
     setActiveKeys((prev) => [...prev, getItemKey(nextItem, nextItems.length - 1)]);
@@ -578,7 +1131,7 @@ export default function CredentialPoolEditor({
     );
   };
 
-  const onDragEnd = (event: any) => {
+  const onDragEnd = (event: CredentialDragEndEvent) => {
     const { active, over } = event;
     if (!over || active.id === over.id) {
       return;
@@ -592,45 +1145,148 @@ export default function CredentialPoolEditor({
   };
 
   const sortableEnabled = allowAdd && maxCount > 1;
+  const showPoolStrategy = allowAdd && maxCount > 1;
+  const helpContent = (
+    <div id={helpContentId} className={styles.credentialHelpContent}>
+      {credentialHelp ? (
+        <>
+          <div className={styles.credentialHelpRow}>
+            <span>{t('Collection.credentialHelp.labels.protocol', '连接协议')}</span>
+            <strong>{credentialHelp.protocol}</strong>
+          </div>
+          <div className={styles.credentialHelpRow}>
+            <span>{t('Collection.credentialHelp.labels.credentialKind', '凭据类型')}</span>
+            <strong>{credentialHelp.credentialKind}</strong>
+          </div>
+          <div className={styles.credentialHelpRow}>
+            <span>{t('Collection.credentialHelp.labels.instruction', '填写说明')}</span>
+            <strong>{credentialHelp.instruction}</strong>
+          </div>
+          <div className={styles.credentialHelpRow}>
+            <span>{t('Collection.credentialHelp.labels.defaultPort', '默认端口')}</span>
+            <strong>{credentialHelp.defaultPort || '—'}</strong>
+          </div>
+          {credentialHelp.fields?.length ? (
+            <div className={styles.credentialFieldHelpSection}>
+              <strong>
+                {t('Collection.credentialHelp.labels.fieldDetails', '字段说明')}
+              </strong>
+              <div className={styles.credentialFieldHelpList}>
+                {credentialHelp.fields.map((field, index) => (
+                  <div
+                    className={styles.credentialFieldHelpItem}
+                    key={`${field.name}-${index}`}
+                  >
+                    <div className={styles.credentialFieldHelpHeader}>
+                      <strong>{field.name}</strong>
+                      <div className={styles.credentialFieldHelpValues}>
+                        {field.defaultValue && (
+                          <span>
+                            {t(
+                              'Collection.credentialHelp.labels.defaultValue',
+                              '默认',
+                            )}
+                            ：{field.defaultValue}
+                          </span>
+                        )}
+                        {field.recommendedValue && (
+                          <span className={styles.credentialFieldHelpRecommended}>
+                            {t(
+                              'Collection.credentialHelp.labels.recommendedValue',
+                              '推荐',
+                            )}
+                            ：{field.recommendedValue}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <span>{field.description}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
+        </>
+      ) : (
+        <div className={styles.credentialHelpFallback}>
+          {t(
+            'Collection.credentialHelp.unavailableProtocol',
+            '此插件尚未提供协议说明，请以插件文档为准。',
+          )}
+        </div>
+      )}
+      {showPoolStrategy && (
+        <div className={styles.credentialHelpPoolStrategy}>
+          <strong>{t('Collection.credentialHelp.labels.poolStrategy', '多凭据策略')}</strong>
+          <span>
+            {t(
+              'Collection.credentialPoolTip',
+              '最多配置 3 个凭据，系统按顺序试探，命中后优先复用。',
+            )}
+          </span>
+        </div>
+      )}
+    </div>
+  );
 
   const renderCredentialCard = (item: CredentialPoolItem, index: number) => {
     const itemKey = getItemKey(item, index);
     const expanded = activeKeys.includes(itemKey);
     const passwordVisible = visibleSecretKeys.includes(itemKey);
-    const previewFields = getPreviewFields(item, credentialShape, t, passwordVisible);
+    const previewFields = getPreviewFields(
+      item,
+      credentialShape,
+      t,
+      passwordVisible,
+      cloudCredentialLabels,
+    );
 
     return (
       <>
         <div className={`${styles.credentialCard} ${expanded ? styles.credentialCardExpanded : ''}`}>
           <div className={styles.credentialCardHeader}>
-            <div className={styles.credentialCardSummary} onClick={() => toggleExpanded(itemKey)}>
+            <button
+              type="button"
+              className={styles.credentialCardSummary}
+              aria-expanded={expanded}
+              aria-controls={`credential-panel-${itemKey}`}
+              onClick={() => toggleExpanded(itemKey)}
+            >
               <div className={styles.credentialTitleBlock}>
                 <span className={styles.credentialOrderNumber}>{index + 1}</span>
                 <div className={styles.credentialTitle}>{`${t('Collection.credential', '凭据')} ${index + 1}`}</div>
               </div>
-              {!expanded && (
-                <div className={styles.credentialMetaList}>
-                  {previewFields.map((field) => (
-                    <CredentialMetaField
-                      key={field.label}
-                      field={field}
-                      passwordVisible={passwordVisible}
-                      onToggleSecret={(event) => {
-                        event.stopPropagation();
-                        toggleSecretVisible(itemKey);
-                      }}
-                    />
-                  ))}
-                </div>
-              )}
-            </div>
+            </button>
+            {!expanded && (
+              <div className={styles.credentialMetaList}>
+                {previewFields.map((field) => (
+                  <CredentialMetaField
+                    key={field.label}
+                    field={field}
+                    passwordVisible={passwordVisible}
+                    toggleSecretLabel={passwordVisible
+                      ? t('Collection.credentialPool.hideSecret', '隐藏凭据')
+                      : t('Collection.credentialPool.showSecret', '显示凭据')}
+                    onToggleSecret={(event) => {
+                      event.stopPropagation();
+                      toggleSecretVisible(itemKey);
+                    }}
+                  />
+                ))}
+              </div>
+            )}
             <div className={styles.credentialActions}>
               {allowRemove && (
-                <Tooltip title={normalizedValue.length <= 1 ? '至少保留 1 个凭据' : '删除凭据'}>
+                <Tooltip
+                  title={normalizedValue.length <= 1
+                    ? t('Collection.credentialPool.keepOne', '至少保留 1 个凭据')
+                    : t('Collection.credentialPool.remove', '删除凭据')}
+                >
                   <Button
                     type="text"
                     danger
-                    icon={<DeleteOutlined />}
+                    aria-label={t('Collection.credentialPool.remove', '删除凭据')}
+                    icon={<DeleteOutlined aria-hidden="true" />}
                     disabled={normalizedValue.length <= 1}
                     onClick={() => handleRemove(index)}
                   />
@@ -639,13 +1295,23 @@ export default function CredentialPoolEditor({
               <Button
                 type="text"
                 className={styles.credentialExpandButton}
-                icon={expanded ? <DownOutlined /> : <RightOutlined />}
+                aria-label={expanded
+                  ? t('Collection.credentialPool.collapse', '收起凭据')
+                  : t('Collection.credentialPool.expand', '展开凭据')}
+                aria-expanded={expanded}
+                aria-controls={`credential-panel-${itemKey}`}
+                icon={expanded
+                  ? <DownOutlined aria-hidden="true" />
+                  : <RightOutlined aria-hidden="true" />}
                 onClick={() => toggleExpanded(itemKey)}
               />
             </div>
           </div>
           {expanded && (
-            <div className={styles.credentialCardBody}>
+            <div
+              id={`credential-panel-${itemKey}`}
+              className={styles.credentialCardBody}
+            >
               {renderCredentialFields({
                 item,
                 index,
@@ -656,6 +1322,8 @@ export default function CredentialPoolEditor({
                 cloudRegionLoading,
                 onCloudRegionRefresh,
                 onCredentialFieldChange,
+                cloudCredentialLabels,
+                credentialSchema,
                 t,
                 updateItem,
               })}
@@ -671,9 +1339,24 @@ export default function CredentialPoolEditor({
       <div className={styles.credentialPoolHeader}>
         <div className={styles.credentialPoolTitle}>
           <span>{t('Collection.credential', '凭据')}</span>
-          <Tooltip title={t('Collection.credentialPoolTip', '最多配置 3 个凭据，系统按顺序试探，命中后优先复用。')}>
-            <QuestionCircleOutlined className={styles.credentialPoolHelpIcon} />
-          </Tooltip>
+          <Popover
+            content={helpContent}
+            trigger="click"
+            placement="bottomLeft"
+            open={helpOpen}
+            onOpenChange={setHelpOpen}
+            overlayStyle={{ maxWidth: 'min(520px, calc(100vw - 48px))' }}
+          >
+            <Button
+              type="text"
+              size="small"
+              className={styles.credentialPoolHelpButton}
+              aria-label={t('Collection.credentialHelp.open', '查看凭据填写说明')}
+              aria-expanded={helpOpen}
+              aria-controls={helpContentId}
+              icon={<QuestionCircleOutlined aria-hidden="true" />}
+            />
+          </Popover>
         </div>
         {allowAdd && (
           <Button
@@ -685,7 +1368,12 @@ export default function CredentialPoolEditor({
             {`${t('common.add', '添加')}${t('Collection.credential', '凭据')}`}
           </Button>
         )}
-        {!allowAdd && showCount && <div className={styles.credentialPoolCount}>{`${normalizedValue.length}/${maxCount}`}</div>}
+        {!allowAdd && showCount && (
+          <div className={styles.credentialPoolCount}>
+            <span>{`${normalizedValue.length}/${maxCount}`}</span>
+            <span>{t('Collection.credentialPool.configured', '已配置')}</span>
+          </div>
+        )}
       </div>
       {sortableEnabled ? (
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>

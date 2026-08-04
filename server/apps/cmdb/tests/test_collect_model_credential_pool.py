@@ -201,3 +201,59 @@ def test_collect_model_serializer_normalizes_legacy_dict_to_pool(monkeypatch):
     assert len(data["credential"]) == 1
     assert data["credential"][0]["credential_id"].startswith("cred_")
     assert data["credential"][0]["password"] == "******"
+
+
+# ---- PC 发现：真实加密字段集合与序列化脱敏（不 mock get_collect_model_passwords） ----
+
+
+def test_pc_encrypted_fields_cover_all_secret_kinds():
+    from apps.cmdb.services.encrypt_collect_password import get_collect_model_passwords
+
+    assert set(get_collect_model_passwords("pc", "job")) == {"password", "private_key", "passphrase"}
+
+
+@pytest.mark.django_db
+def test_pc_serializer_masks_password_private_key_and_passphrase(monkeypatch):
+    instance = CollectModels(
+        model_id="pc",
+        driver_type="job",
+        credential=[
+            {
+                "credential_id": "cred-win",
+                "username": "ACME\\alice",
+                "password": "enc:win-secret",
+                "port": 5986,
+            },
+            {
+                "credential_id": "cred-mac",
+                "username": "admin",
+                "private_key": "enc:-----BEGIN OPENSSH PRIVATE KEY-----\nKEYDATA\n-----END OPENSSH PRIVATE KEY-----",
+                "passphrase": "enc:pc-passphrase",
+                "port": 22,
+            },
+        ],
+    )
+
+    monkeypatch.setattr(
+        "apps.core.utils.serializers.get_permission_rules",
+        lambda user, current_team, app_name, permission_key, include_children: {},
+    )
+
+    request = SimpleNamespace(
+        user=SimpleNamespace(group_list=[]),
+        COOKIES={},
+    )
+
+    data = CollectModelSerializer(instance=instance, context={"request": request}).data
+
+    win, mac = data["credential"]
+    assert win["password"] == "******"
+    assert win["username"] == "ACME\\alice"
+    assert win["port"] == 5986
+    assert mac["private_key"] == "******"
+    assert mac["passphrase"] == "******"
+    assert mac["username"] == "admin"
+    blob = str(data)
+    assert "win-secret" not in blob
+    assert "KEYDATA" not in blob
+    assert "pc-passphrase" not in blob

@@ -21,7 +21,7 @@ PROVIDER_MANIFEST = ProviderManifest.model_validate(
                                 "required": True,
                                 "placeholder": "ww1234567890abcdef",
                                 "help_text": "企业微信管理后台 → 我的企业 → 企业信息 → 企业 ID",
-                                "reset_capabilities": ["login_auth", "user_sync", "im_notification"],
+                                "reset_capabilities": ["login_auth", "user_sync", "im_notification", "im_group"],
                             },
                             {
                                 "key": "corp_secret",
@@ -31,7 +31,7 @@ PROVIDER_MANIFEST = ProviderManifest.model_validate(
                                 "secret": True,
                                 "mask_strategy": "full",
                                 "placeholder": "如无需变更可留空",
-                                "reset_capabilities": ["login_auth", "user_sync", "im_notification"],
+                                "reset_capabilities": ["login_auth", "user_sync", "im_notification", "im_group"],
                             },
                             {
                                 "key": "agent_id",
@@ -40,7 +40,7 @@ PROVIDER_MANIFEST = ProviderManifest.model_validate(
                                 "required": True,
                                 "placeholder": "1000002",
                                 "help_text": "企业微信管理后台 → 应用管理 → 自建应用 → AgentId",
-                                "reset_capabilities": ["login_auth", "user_sync", "im_notification"],
+                                "reset_capabilities": ["login_auth", "user_sync", "im_notification", "im_group"],
                             },
                         ],
                     },
@@ -54,7 +54,7 @@ PROVIDER_MANIFEST = ProviderManifest.model_validate(
                                 "field_type": "string",
                                 "required": False,
                                 "default": "https://qyapi.weixin.qq.com/cgi-bin/gettoken",
-                                "reset_capabilities": ["login_auth", "user_sync", "im_notification"],
+                                "reset_capabilities": ["login_auth", "user_sync", "im_notification", "im_group"],
                             },
                             {
                                 "key": "proxy_url",
@@ -66,7 +66,7 @@ PROVIDER_MANIFEST = ProviderManifest.model_validate(
                                     "可选。BK-Lite 后端访问该企业微信实例的 HTTP(S) 网络代理；"
                                     "留空表示直接连接。仅支持 HTTP/HTTPS，不支持 SOCKS。"
                                 ),
-                                "reset_capabilities": ["login_auth", "user_sync", "im_notification"],
+                                "reset_capabilities": ["login_auth", "user_sync", "im_notification", "im_group"],
                             },
                         ],
                     }
@@ -217,6 +217,17 @@ PROVIDER_MANIFEST = ProviderManifest.model_validate(
                     },
                 ],
                 "business_template": "im_notification_form",
+            },
+            {
+                "key": "im_group",
+                "name": "IM Group",
+                "description": "WeCom internal application chat capability.",
+                "adapter_key": "wecom.im_group",
+                "adapter_path": (
+                    "apps.system_mgmt.providers.adapters.wecom."
+                    "WeComIMGroupAdapter"
+                ),
+                "connection_template": [],
             },
         ],
     }

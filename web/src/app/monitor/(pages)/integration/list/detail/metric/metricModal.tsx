@@ -5,7 +5,8 @@ import React, {
   useRef,
   forwardRef,
   useImperativeHandle,
-  useEffect
+  useEffect,
+  useMemo
 } from 'react';
 import {
   Input,
@@ -66,11 +67,13 @@ const MetricModal = forwardRef<ModalRef, ModalProps>(
     });
     const formRef = useRef<FormInstance>(null);
     const commonContext = useCommon();
-    const unitList = useRef<CascaderItem[]>(
-      (commonContext?.groupedUnitList || []).map((item: any) => ({
-        ...item,
-        value: item.label
-      }))
+    const unitList = useMemo(
+      () =>
+        (commonContext?.groupedUnitList || []).map((item: any) => ({
+          ...item,
+          value: item.label
+        })),
+      [commonContext?.groupedUnitList]
     );
     const [groupVisible, setGroupVisible] = useState<boolean>(false);
     const [confirmLoading, setConfirmLoading] = useState<boolean>(false);
@@ -104,7 +107,7 @@ const MetricModal = forwardRef<ModalRef, ModalProps>(
             );
             if (formData.data_type === 'Number') {
               formData.unit = findCascaderPath(
-                unitList.current,
+                unitList,
                 formData.unit as string
               );
             } else {
@@ -412,7 +415,7 @@ const MetricModal = forwardRef<ModalRef, ModalProps>(
                     name="unit"
                     rules={[{ required: true, message: t('common.required') }]}
                   >
-                    <Cascader showSearch options={unitList.current} />
+                    <Cascader showSearch options={unitList} />
                   </Form.Item>
                 ) : (
                   <Form.Item<MetricInfo>

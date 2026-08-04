@@ -164,3 +164,35 @@ def test_missing_requests_reports_clear_error(monkeypatch):
     out = mgr.list_all_resources()
     assert out["success"] is False
     assert "requests" in out["result"]["cmdb_collect_error"]
+
+
+def test_https_port_and_certificate_verification_are_honored(monkeypatch):
+    from plugins.inputs.fusioninsight import fusioninsight_info
+
+    class _Session:
+        pass
+
+    class _Requests:
+        @staticmethod
+        def Session():
+            return _Session()
+
+    calls = []
+    monkeypatch.setattr(fusioninsight_info, "requests", _Requests())
+    mgr = fusioninsight_info.FusionInsightManager(
+        {
+            "username": "u",
+            "password": "p",
+            "host": "fi.example.com",
+            "port": 9443,
+            "verify_tls": False,
+        }
+    )
+    mgr._handle_request = lambda method, url, **kwargs: (
+        calls.append((method, url, kwargs)) or {"result": True, "data": {}}
+    )
+
+    mgr.login()
+
+    assert mgr.basic_url == "https://fi.example.com:9443/web"
+    assert calls[0][2]["verify"] is False

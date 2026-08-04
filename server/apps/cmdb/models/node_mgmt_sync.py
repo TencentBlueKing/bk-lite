@@ -72,6 +72,9 @@ class NodeMgmtSyncRun(TimeInfo):
     summary_json = JSONField(default=dict, help_text="执行摘要")
     detail_json = JSONField(default=dict, help_text="执行明细")
     error_message = models.TextField(blank=True, default="", verbose_name="错误信息")
+    snapshot_schema_version = models.PositiveSmallIntegerField(default=0)
+    snapshot_status = models.CharField(max_length=32, blank=True, default="")
+    expected_region_count = models.PositiveIntegerField(default=0)
 
     class Meta:
         verbose_name = "节点管理同步记录"
@@ -104,3 +107,82 @@ class NodeMgmtSyncRegionState(TimeInfo):
     class Meta:
         verbose_name = "节点管理同步区域状态"
         verbose_name_plural = verbose_name
+
+
+class NodeMgmtSyncRegionSnapshot(TimeInfo):
+    CAPTURE_PENDING = "pending"
+    CAPTURE_CAPTURING = "capturing"
+    CAPTURE_COMPLETE = "complete"
+
+    CLEANUP_RETAINED = "retained"
+    CLEANUP_PENDING = "pending"
+    CLEANUP_SUMMARY_ONLY = "summary_only"
+    CLEANUP_FAILED = "failed"
+
+    run = models.ForeignKey(NodeMgmtSyncRun, related_name="region_snapshots", on_delete=models.CASCADE)
+    region_state = models.OneToOneField(
+        NodeMgmtSyncRegionState,
+        related_name="snapshot",
+        on_delete=models.CASCADE,
+    )
+    cloud_region_id = models.CharField(max_length=64)
+    child_execution_id = models.CharField(max_length=64, blank=True, default="")
+    status = models.CharField(max_length=32)
+    reason_code = models.CharField(max_length=64, blank=True, default="")
+    capture_status = models.CharField(max_length=32, default=CAPTURE_PENDING)
+    capture_token = models.CharField(max_length=64, blank=True, default="")
+    capture_deadline = models.DateTimeField(null=True, blank=True)
+    capture_attempt = models.PositiveIntegerField(default=0)
+    row_quota = models.PositiveIntegerField(default=0)
+    byte_quota = models.PositiveBigIntegerField(default=0)
+    summary_json = JSONField(default=dict)
+    detail_retained = models.BooleanField(default=True)
+    cleanup_status = models.CharField(max_length=32, default=CLEANUP_RETAINED)
+    byte_size = models.PositiveBigIntegerField(default=0)
+    truncated = models.BooleanField(default=False)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=("run", "cloud_region_id", "child_execution_id"),
+                name="cmdb_node_sync_snapshot_execution_uniq",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=("run", "capture_status"), name="cmdb_sync_snap_run_status"),
+            models.Index(fields=("cleanup_status", "updated_at"), name="cmdb_sync_snap_cleanup"),
+        ]
+
+
+class NodeMgmtSyncSnapshotRow(TimeInfo):
+    snapshot = models.ForeignKey(NodeMgmtSyncRegionSnapshot, related_name="rows", on_delete=models.CASCADE)
+    bucket = models.CharField(max_length=32, default="raw_data")
+    ordinal = models.PositiveIntegerField()
+    row_type = models.CharField(max_length=32)
+    row_key = models.CharField(max_length=64)
+    inst_name = models.CharField(max_length=512, blank=True, default="")
+    ip_addr = models.CharField(max_length=255, blank=True, default="")
+    cloud_name = models.CharField(max_length=255, blank=True, default="")
+    pid = models.CharField(max_length=64, blank=True, default="")
+    process_name = models.CharField(max_length=512, blank=True, default="")
+    payload_json = JSONField(default=dict)
+    byte_size = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=("snapshot", "bucket", "ordinal"),
+                name="cmdb_node_sync_row_ordinal_uniq",
+            ),
+            models.UniqueConstraint(
+                fields=("snapshot", "row_key"),
+                name="cmdb_node_sync_row_key_uniq",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=("snapshot", "bucket", "ordinal"), name="cmdb_sync_row_page"),
+            models.Index(fields=("snapshot", "row_type"), name="cmdb_sync_row_type"),
+            models.Index(fields=("snapshot", "ip_addr"), name="cmdb_sync_row_ip"),
+            models.Index(fields=("snapshot", "pid"), name="cmdb_sync_row_pid"),
+            models.Index(fields=("snapshot", "process_name"), name="cmdb_sync_row_process"),
+        ]

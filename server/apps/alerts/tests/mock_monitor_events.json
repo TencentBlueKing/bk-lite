@@ -1,0 +1,376 @@
+{
+  "source_type": "restful",
+  "source_id": "restful",
+  "events": [
+    {
+      "title": "CPU Usage Info",
+      "description": "CPU usage exceeded 76%",
+      "value": 76.0,
+      "item": "cpu_usage",
+      "level": "3",
+      "start_time": "1784798183",
+      "end_time": "1784798215",
+      "labels": {
+        "instance": "host-7",
+        "region": "us-west",
+        "ip": "10.178.219.112",
+        "ip_addr": "10.178.219.112"
+      },
+      "annotations": {
+        "alertname": "HighCPUUsage",
+        "summary": "High CPU usage detected on web-7",
+        "severity": "3"
+      },
+      "external_id": "7c3b7e26-7fd1-4957-9f5f-17be1bfed09b",
+      "status": "firing",
+      "resource_id": 7,
+      "resource_type": "host",
+      "resource_name": "host-7",
+      "service": "web-service",
+      "event_type": 1,
+      "tags": {
+        "environment": "staging",
+        "team": "ops"
+      },
+      "location": "us-west",
+      "action": "created",
+      "rule_id": "cpu_threshold_rule",
+      "push_source_id": "prometheus",
+      "event_id": "EVENT-83fa233ee4c2456785fed15202d2ee7c",
+      "assignee": []
+    },
+    {
+      "title": "CPU Usage Info",
+      "description": "CPU usage exceeded 74%",
+      "value": 74.0,
+      "item": "cpu_usage",
+      "level": "3",
+      "start_time": "1784798319",
+      "end_time": "1784798324",
+      "labels": {
+        "instance": "host-11",
+        "region": "us-west",
+        "ip": "10.153.201.24",
+        "ip_addr": "10.153.201.24"
+      },
+      "annotations": {
+        "alertname": "HighCPUUsage",
+        "summary": "High CPU usage detected on app-11",
+        "severity": "3"
+      },
+      "external_id": "fa80a8f0-fbd6-4820-9cf9-c4e0a41b5e01",
+      "status": "firing",
+      "resource_id": 11,
+      "resource_type": "host",
+      "resource_name": "host-11",
+      "service": "app-service",
+      "event_type": 1,
+      "tags": {
+        "environment": "production",
+        "team": "dev"
+      },
+      "location": "us-west",
+      "action": "created",
+      "rule_id": "cpu_threshold_rule",
+      "push_source_id": "prometheus",
+      "event_id": "EVENT-a820b5d20975494e8a85d72636db9df9",
+      "assignee": []
+    },
+    {
+      "title": "CPU Usage Error",
+      "description": "CPU usage exceeded 92%",
+      "value": 92.0,
+      "item": "cpu_usage",
+      "level": "1",
+      "start_time": "1784798371",
+      "end_time": "1784798410",
+      "labels": {
+        "instance": "host-11",
+        "region": "eu-central",
+        "ip": "10.101.182.253",
+        "ip_addr": "10.101.182.253"
+      },
+      "annotations": {
+        "alertname": "HighCPUUsage",
+        "summary": "High CPU usage detected on lb-11",
+        "severity": "1"
+      },
+      "external_id": "206f791d-a335-485a-b816-83968c9c7b3b",
+      "status": "resolved",
+      "resource_id": 11,
+      "resource_type": "host",
+      "resource_name": "host-11",
+      "service": "lb-service",
+      "event_type": 1,
+      "tags": {
+        "environment": "production",
+        "team": "ops"
+      },
+      "location": "eu-central",
+      "action": "created",
+      "rule_id": "cpu_threshold_rule",
+      "push_source_id": "zabbix",
+      "event_id": "EVENT-96bfd74d2f1647f48428da323d2cff64",
+      "assignee": []
+    },
+    {
+      "title": "CPU Usage Warning",
+      "description": "CPU usage exceeded 83%",
+      "value": 83.0,
+      "item": "cpu_usage",
+      "level": "2",
+      "start_time": "1784798161",
+      "end_time": "1784798210",
+      "labels": {
+        "instance": "host-3",
+        "region": "ap-southeast",
+        "ip": "10.40.111.45",
+        "ip_addr": "10.40.111.45"
+      },
+      "annotations": {
+        "alertname": "HighCPUUsage",
+        "summary": "High CPU usage detected on app-3",
+        "severity": "2"
+      },
+      "external_id": "d05b7e81-4bc1-4660-9ee9-07a96e3a9fd0",
+      "status": "firing",
+      "resource_id": 3,
+      "resource_type": "host",
+      "resource_name": "host-3",
+      "service": "app-service",
+      "event_type": 1,
+      "tags": {
+        "environment": "staging",
+        "team": "ops"
+      },
+      "location": "ap-southeast",
+      "action": "created",
+      "rule_id": "cpu_threshold_rule",
+      "push_source_id": "prometheus",
+      "event_id": "EVENT-a1bbe4187b974d0f9e03b1bfdc970e9c",
+      "assignee": []
+    },
+    {
+      "title": "CPU Usage Error",
+      "description": "CPU usage exceeded 91%",
+      "value": 91.0,
+      "item": "cpu_usage",
+      "level": "1",
+      "start_time": "1784798268",
+      "end_time": "1784798279",
+      "labels": {
+        "instance": "host-9",
+        "region": "us-east",
+        "ip": "10.122.189.172",
+        "ip_addr": "10.122.189.172"
+      },
+      "annotations": {
+        "alertname": "HighCPUUsage",
+        "summary": "High CPU usage detected on web-9",
+        "severity": "1"
+      },
+      "external_id": "0a79a0c0-2dae-450c-addc-1bc36070dc86",
+      "status": "resolved",
+      "resource_id": 9,
+      "resource_type": "host",
+      "resource_name": "host-9",
+      "service": "web-service",
+      "event_type": 1,
+      "tags": {
+        "environment": "production",
+        "team": "ops"
+      },
+      "location": "us-east",
+      "action": "created",
+      "rule_id": "cpu_threshold_rule",
+      "push_source_id": "prometheus",
+      "event_id": "EVENT-97f47a0c272c49e3a346637094812cea",
+      "assignee": []
+    },
+    {
+      "title": "CPU Usage Info",
+      "description": "CPU usage exceeded 75%",
+      "value": 75.0,
+      "item": "cpu_usage",
+      "level": "3",
+      "start_time": "1784798089",
+      "end_time": "1784798137",
+      "labels": {
+        "instance": "host-15",
+        "region": "eu-central",
+        "ip": "10.157.214.250",
+        "ip_addr": "10.157.214.250"
+      },
+      "annotations": {
+        "alertname": "HighCPUUsage",
+        "summary": "High CPU usage detected on db-15",
+        "severity": "3"
+      },
+      "external_id": "19a055dc-82b0-46ad-8e02-185e6f33a544",
+      "status": "resolved",
+      "resource_id": 15,
+      "resource_type": "host",
+      "resource_name": "host-15",
+      "service": "db-service",
+      "event_type": 1,
+      "tags": {
+        "environment": "production",
+        "team": "dev"
+      },
+      "location": "eu-central",
+      "action": "created",
+      "rule_id": "cpu_threshold_rule",
+      "push_source_id": "zabbix",
+      "event_id": "EVENT-231f76480e744ab18b52906da06188b3",
+      "assignee": []
+    },
+    {
+      "title": "CPU Usage Info",
+      "description": "CPU usage exceeded 79%",
+      "value": 79.0,
+      "item": "cpu_usage",
+      "level": "3",
+      "start_time": "1784798184",
+      "end_time": "1784798223",
+      "labels": {
+        "instance": "host-9",
+        "region": "us-west",
+        "ip": "10.109.98.167",
+        "ip_addr": "10.109.98.167"
+      },
+      "annotations": {
+        "alertname": "HighCPUUsage",
+        "summary": "High CPU usage detected on db-9",
+        "severity": "3"
+      },
+      "external_id": "cfecb8ca-ef0e-4501-996d-9ece2a3fa41a",
+      "status": "firing",
+      "resource_id": 9,
+      "resource_type": "host",
+      "resource_name": "host-9",
+      "service": "db-service",
+      "event_type": 1,
+      "tags": {
+        "environment": "staging",
+        "team": "ops"
+      },
+      "location": "us-west",
+      "action": "created",
+      "rule_id": "cpu_threshold_rule",
+      "push_source_id": "lite-monitor",
+      "event_id": "EVENT-5976344bd5a04b788ed33e250bd9c24e",
+      "assignee": []
+    },
+    {
+      "title": "CPU Usage Critical",
+      "description": "CPU usage exceeded 95%",
+      "value": 95.0,
+      "item": "cpu_usage",
+      "level": "0",
+      "start_time": "1784798292",
+      "end_time": "1784798324",
+      "labels": {
+        "instance": "host-20",
+        "region": "us-west",
+        "ip": "10.150.96.78",
+        "ip_addr": "10.150.96.78"
+      },
+      "annotations": {
+        "alertname": "HighCPUUsage",
+        "summary": "High CPU usage detected on cache-20",
+        "severity": "0"
+      },
+      "external_id": "26b73197-6b2e-4699-aa7a-e2fe3fe84875",
+      "status": "resolved",
+      "resource_id": 20,
+      "resource_type": "host",
+      "resource_name": "host-20",
+      "service": "cache-service",
+      "event_type": 1,
+      "tags": {
+        "environment": "staging",
+        "team": "dev"
+      },
+      "location": "us-west",
+      "action": "created",
+      "rule_id": "cpu_threshold_rule",
+      "push_source_id": "lite-monitor",
+      "event_id": "EVENT-9ab1b32e36ef492ba7c79a7c5b472ed7",
+      "assignee": []
+    },
+    {
+      "title": "CPU Usage Info",
+      "description": "CPU usage exceeded 79%",
+      "value": 79.0,
+      "item": "cpu_usage",
+      "level": "3",
+      "start_time": "1784798280",
+      "end_time": "1784798318",
+      "labels": {
+        "instance": "host-5",
+        "region": "eu-central",
+        "ip": "10.44.150.218",
+        "ip_addr": "10.44.150.218"
+      },
+      "annotations": {
+        "alertname": "HighCPUUsage",
+        "summary": "High CPU usage detected on db-5",
+        "severity": "3"
+      },
+      "external_id": "61699db2-9aec-47c2-a2fd-4092184be8fc",
+      "status": "firing",
+      "resource_id": 5,
+      "resource_type": "host",
+      "resource_name": "host-5",
+      "service": "db-service",
+      "event_type": 1,
+      "tags": {
+        "environment": "staging",
+        "team": "dev"
+      },
+      "location": "eu-central",
+      "action": "created",
+      "rule_id": "cpu_threshold_rule",
+      "push_source_id": "prometheus",
+      "event_id": "EVENT-9a852c5d4f694b14925df69fbc73b652",
+      "assignee": []
+    },
+    {
+      "title": "CPU Usage Info",
+      "description": "CPU usage exceeded 73%",
+      "value": 73.0,
+      "item": "cpu_usage",
+      "level": "3",
+      "start_time": "1784798195",
+      "end_time": "1784798234",
+      "labels": {
+        "instance": "host-20",
+        "region": "eu-central",
+        "ip": "10.65.151.2",
+        "ip_addr": "10.65.151.2"
+      },
+      "annotations": {
+        "alertname": "HighCPUUsage",
+        "summary": "High CPU usage detected on cache-20",
+        "severity": "3"
+      },
+      "external_id": "33443d7e-4119-4cdb-bfb6-7e4357b87340",
+      "status": "firing",
+      "resource_id": 20,
+      "resource_type": "host",
+      "resource_name": "host-20",
+      "service": "cache-service",
+      "event_type": 1,
+      "tags": {
+        "environment": "staging",
+        "team": "dev"
+      },
+      "location": "eu-central",
+      "action": "created",
+      "rule_id": "cpu_threshold_rule",
+      "push_source_id": "zabbix",
+      "event_id": "EVENT-8c9a4aa2cb3f43c982628b9fb860bb75",
+      "assignee": []
+    }
+  ]
+}
