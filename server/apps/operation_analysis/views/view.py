@@ -271,10 +271,27 @@ class DashboardModelViewSet(BuiltinVisibleMixin, AuthViewSet):
 
     @HasPermission("view-DeleteChart")
     def destroy(self, request, *args, **kwargs):
+        from django.db import transaction
+
+        from apps.operation_analysis.services.canvas_report.registry import (
+            get_canvas_report_adapter,
+        )
+        from apps.operation_analysis.services.canvas_report.types import (
+            RESOURCE_TYPE_DASHBOARD,
+        )
+
         instance = self.get_object()
         _raise_if_builtin(instance, "删除")
         name = instance.name
-        response = super(DashboardModelViewSet, self).destroy(request, *args, **kwargs)
+        with transaction.atomic():
+            adapter = get_canvas_report_adapter(RESOURCE_TYPE_DASHBOARD)
+            adapter.terminate_subscriptions_on_delete(
+                instance,
+                actor=getattr(request.user, "username", "") or "",
+                actor_domain=getattr(request.user, "domain", "") or "",
+            )
+            self.perform_destroy(instance)
+        response = Response(status=204)
         log_ops_analysis_success(request, response, "delete", f"删除仪表盘: {name}")
         return response
 
@@ -503,6 +520,32 @@ class ScreenModelViewSet(CanvasModelViewSet):
     permission_key = "directory.screen"
     canvas_label = "大屏"
     share_resource_type = "screen"
+
+    @HasPermission("view-DeleteChart")
+    def destroy(self, request, *args, **kwargs):
+        from django.db import transaction
+
+        from apps.operation_analysis.services.canvas_report.registry import (
+            get_canvas_report_adapter,
+        )
+        from apps.operation_analysis.services.canvas_report.types import (
+            RESOURCE_TYPE_SCREEN,
+        )
+
+        instance = self.get_object()
+        _raise_if_builtin(instance, "删除")
+        name = instance.name
+        with transaction.atomic():
+            adapter = get_canvas_report_adapter(RESOURCE_TYPE_SCREEN)
+            adapter.terminate_subscriptions_on_delete(
+                instance,
+                actor=getattr(request.user, "username", "") or "",
+                actor_domain=getattr(request.user, "domain", "") or "",
+            )
+            self.perform_destroy(instance)
+        response = Response(status=204)
+        log_ops_analysis_success(request, response, "delete", f"删除大屏: {name}")
+        return response
 
 
 class ReportModelViewSet(CanvasModelViewSet):

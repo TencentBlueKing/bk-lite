@@ -8,7 +8,6 @@ import useApiClient from '@/utils/request';
 import { useTranslation } from '@/utils/i18n';
 import { useClientData } from '@/context/client';
 import { useThemeMode } from '@/theme';
-import { useLocale } from '@/context/locale';
 import { ClientData, AppConfigItem } from '@/types/index';
 import OperateModal from '@/components/operate-modal'
 import { useUserInfoContext } from '@/context/userInfo';
@@ -24,7 +23,6 @@ const ControlPage = () => {
   const [confirmLoading, setConfirmLoading] = useState<boolean>(false);
   const [form] = Form.useForm();
   const { mode } = useThemeMode();
-  const { locale } = useLocale();
   const { portalName } = usePortalBranding();
   const [overlayBgClass, setOverlayBgClass] = useState<string>('bg-[url(/app/console_bg.jpg)]');
   const colorOptions = ['blue', 'geekblue', 'purple'];
@@ -40,8 +38,7 @@ const ControlPage = () => {
   const draggedIndexRef = useRef<number | null>(null);
 
   const isDemoEnv = process.env.NEXT_PUBLIC_IS_DEMO_ENV === 'true';
-  const zhlocale = locale === 'zh-CN';
-  const consoleTitle = zhlocale ? `欢迎使用${portalName}控制台` : `Welcome to ${portalName} Console`;
+  const consoleTitle = t('opsConsole.console', undefined, { portalName });
   const consoleDescription = t('opsConsole.description').replace(/BlueKing Lite/g, portalName);
 
   const displayApps = (appConfigList.length > 0 ? appConfigList : clientData).filter(item => item.name !== 'ops-console');

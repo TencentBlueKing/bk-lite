@@ -5,7 +5,7 @@ import React, {
   useRef,
   useState,
 } from 'react';
-import { Empty, Tooltip } from 'antd';
+import { Tooltip } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import type { DatasourceItem } from '@/app/ops-analysis/types/dataSource';
 import type {
@@ -26,6 +26,7 @@ import {
 } from '../shared/tableLikeData';
 import { getScreenWidgetScale } from '../shared/screenMetrics';
 import styles from '../comTable.module.scss';
+import WidgetState from '@/app/ops-analysis/components/widget-state';
 const DEFAULT_CELL_MAX_WIDTH = 260;
 
 interface EventTableProps {
@@ -213,14 +214,11 @@ const EventTable: React.FC<EventTableProps> = ({
 
   if (!configuredColumns.length) {
     return (
-      <div className="h-full flex items-center justify-center">
-        <Empty
-          image={Empty.PRESENTED_IMAGE_SIMPLE}
-          description={
-            t('dashboard.atLeastOneVisibleColumn') || '请先配置展示字段'
-          }
-        />
-      </div>
+      <WidgetState
+        description={
+          t('dashboard.atLeastOneVisibleColumn') || '请先配置展示字段'
+        }
+      />
     );
   }
 

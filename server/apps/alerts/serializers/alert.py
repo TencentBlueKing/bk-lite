@@ -21,7 +21,6 @@ class AlertModelSerializer(AuthSerializer):
     permission_key = PERMISSION_ALERT
 
     event_count = serializers.SerializerMethodField()
-    source_names = serializers.SerializerMethodField()
     # 持续时间
     duration = serializers.SerializerMethodField()
     operator_user = serializers.SerializerMethodField()
@@ -106,18 +105,14 @@ class AlertModelSerializer(AuthSerializer):
 
         for notify_result in notify_results:
             notify_object = notify_result.notify_object
-            status_map.setdefault(notify_object, []).append(
-                notify_result.notify_result == NotifyResultStatus.SUCCESS
-            )
+            status_map.setdefault(notify_object, []).append(notify_result.notify_result == NotifyResultStatus.SUCCESS)
             total_map[notify_object] = total_map.get(notify_object, 0) + 1
             records = raw_records_map.setdefault(notify_object, [])
             if len(records) < 5:
                 records.append(notify_result)
                 usernames.update(str(user) for user in (notify_result.notify_people or []))
 
-        user_map = dict(
-            User.objects.filter(username__in=usernames).values_list("username", "display_name")
-        ) if usernames else {}
+        user_map = dict(User.objects.filter(username__in=usernames).values_list("username", "display_name")) if usernames else {}
         records_map = {}
         for notify_object, notify_results in raw_records_map.items():
             records_map[notify_object] = [
@@ -171,28 +166,6 @@ class AlertModelSerializer(AuthSerializer):
             result += f"{seconds}s"
 
         return result
-
-    @staticmethod
-    def get_source_names(obj):
-        """
-        Get the names of the sources associated with the alert.
-        通过 Alert -> Events -> AlertSource 获取告警源名称
-        """
-        # 如果使用了注解（推荐）
-        if hasattr(obj, "source_names_annotated") and obj.source_names_annotated:
-            return obj.source_names_annotated
-
-        # fallback: 通过关联查询获取
-        try:
-            # Alert -> Events -> AlertSource
-            source_names = set()  # 使用set去重
-            for event in obj.events.all():
-                if event.source:
-                    source_names.add(event.source.name)
-            return ", ".join(sorted(source_names))
-        except Exception:
-            logger.warning("获取告警源名称失败", exc_info=True)
-            return ""
 
     @staticmethod
     def get_event_count(obj):

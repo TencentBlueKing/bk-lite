@@ -2,6 +2,7 @@ import pydantic.root_model  # noqa
 
 import pandas as pd
 import pytest
+from types import SimpleNamespace
 
 from apps.mlops.constants import MLflowRunStatus, TrainJobStatus
 from apps.mlops.models.anomaly_detection import AnomalyDetectionTrainJob
@@ -41,10 +42,13 @@ def test_has_run_in_runs_frame_not_found():
 
 
 def test_run_not_found_response_shape():
-    resp = AnomalyDetectionTrainJobViewSet.run_not_found_response("r9")
+    view = AnomalyDetectionTrainJobViewSet()
+    view.request = SimpleNamespace(user=SimpleNamespace(locale="en"))
+    resp = view.run_not_found_response("r9")
     assert resp.status_code == 404
     assert resp.data["code"] == "run_not_found"
     assert resp.data["run_id"] == "r9"
+    assert resp.data["error"] == "Training run record was not found"
 
 
 # ----------------- annotate_run_delete_eligibility -----------------

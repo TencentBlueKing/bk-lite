@@ -342,11 +342,15 @@ export function useGroupManagement(
             groupId: groupKey,
             groupName: editGroup.title as string,
             roleIds: editGroup.roleIds || [],
+            canRename: editGroup.syncSource == null || editGroup.parentId == null,
           });
         }
         break;
       case 'delete':
         const targetGroup = findNodeByKey(treeData, groupKey);
+        if (targetGroup?.syncSource != null) {
+          return;
+        }
         if (targetGroup) {
           const groupHasChildren = hasChildren(targetGroup);
           const confirmContent = groupHasChildren

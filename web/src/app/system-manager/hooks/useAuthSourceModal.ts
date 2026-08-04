@@ -80,7 +80,7 @@ export function useAuthSourceModal({
         await updateAuthSource(editingSource.id, updateData);
 
         const updatedSource = { ...editingSource, ...updateData };
-        const enhancedSource = enhanceAuthSourcesList([updatedSource])[0];
+        const enhancedSource = enhanceAuthSourcesList([updatedSource], t)[0];
 
         onUpdate(authSources.map(item =>
           item.id === editingSource.id ? enhancedSource : item
@@ -90,7 +90,7 @@ export function useAuthSourceModal({
       } else {
         const createData = buildCreatePayload(values, selectedRoles);
         const newSource = await createAuthSource(createData);
-        const enhancedSource = enhanceAuthSourcesList([newSource])[0];
+        const enhancedSource = enhanceAuthSourcesList([newSource], t)[0];
 
         onUpdate([...authSources, enhancedSource]);
         message.success(t('common.saveSuccess'));

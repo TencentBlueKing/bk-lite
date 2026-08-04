@@ -16,18 +16,6 @@ from .common.ldap import (
 )
 
 
-AD_LOGIN_ATTRIBUTES = [
-    "sAMAccountName",
-    "userPrincipalName",
-    "displayName",
-    "mail",
-    "telephoneNumber",
-    "mobile",
-    "mobilePhone",
-    "distinguishedName",
-]
-
-
 def _get_sync_user_attributes(source) -> list[str]:
     """仅查询当前同步源映射字段及构建组织关系必需的 DN。"""
     field_mapping = getattr(source, "field_mapping", None) or {}
@@ -119,9 +107,15 @@ class ADLoginAuthAdapter(BaseLoginAuthAdapter):
                 field="login_auth_identity_field",
             )
 
+        binding = kwargs.get("binding")
+        external_match_field = str(getattr(binding, "external_field", "") or "").strip()
+        attributes = list(
+            dict.fromkeys(attribute for attribute in [identity_field, external_match_field, "distinguishedName"] if attribute)
+        )
+
         try:
             connection_config = build_connection_config(config)
-            user = search_single_user(connection_config, identity_field, username, AD_LOGIN_ATTRIBUTES)
+            user = search_single_user(connection_config, identity_field, username, attributes)
             if not user:
                 return CapabilityExecutionResult.failed_result(
                     "AD user not found",
@@ -165,21 +159,25 @@ class ADLoginAuthAdapter(BaseLoginAuthAdapter):
                 field=identity_field,
             )
 
+        external_user = {
+            "sAMAccountName": get_ldap_scalar(user.get("sAMAccountName")),
+            "userPrincipalName": get_ldap_scalar(user.get("userPrincipalName")),
+            "name": get_ldap_scalar(user.get("displayName")) or get_ldap_scalar(user.get("sAMAccountName")) or username,
+            "email": get_ldap_scalar(user.get("mail")),
+            "mobile": (
+                get_ldap_scalar(user.get("mobile"))
+                or get_ldap_scalar(user.get("telephoneNumber"))
+                or get_ldap_scalar(user.get("mobilePhone"))
+            ),
+            "distinguishedName": distinguished_name,
+        }
+        if external_match_field:
+            external_user[external_match_field] = get_ldap_scalar(user.get(external_match_field))
+
         return CapabilityExecutionResult.success_result(
             "AD login authenticated",
             payload={
-                "external_user": {
-                    "sAMAccountName": get_ldap_scalar(user.get("sAMAccountName")),
-                    "userPrincipalName": get_ldap_scalar(user.get("userPrincipalName")),
-                    "name": get_ldap_scalar(user.get("displayName")) or get_ldap_scalar(user.get("sAMAccountName")) or username,
-                    "email": get_ldap_scalar(user.get("mail")),
-                    "mobile": (
-                        get_ldap_scalar(user.get("mobile"))
-                        or get_ldap_scalar(user.get("telephoneNumber"))
-                        or get_ldap_scalar(user.get("mobilePhone"))
-                    ),
-                    "distinguishedName": distinguished_name,
-                }
+                "external_user": external_user
             },
         )
 

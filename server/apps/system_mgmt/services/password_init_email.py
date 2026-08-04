@@ -44,23 +44,15 @@ def send_initial_password_emails(source, deliveries: list[dict]) -> dict:
         raise PasswordEmailBatchConnectionError(str(exc)) from exc
 
 
-def send_email_via_runtime(user, raw_password: str) -> dict:
-    """
-    发送初始密码邮件给同步用户。
+def _send_initial_password_email_via_channel(user, raw_password: str, channel_id) -> dict:
+    """通过指定 email channel_id 发送初始密码邮件。
 
-    Args:
-        user: User 实例(已包含 email + sync_source + temporary_pwd=True)
-        raw_password: 明文密码(sentinel 模式不会调到这里)
-
-    Returns:
-        dict: {"result": bool, "message": str}
+    内部 helper，shared by:
+    - 用户同步 send_email_via_runtime(从 sync_source.platform_config.password_init.email_channel_id 取)
+    - 本地用户 create_user(从 SystemSettings.user_create_initial_password_random_email_channel_id 取)
     """
     from apps.system_mgmt.models import Channel, User
     from apps.system_mgmt.utils.channel_utils import send_email as channel_send_email
-
-    sync_source = getattr(user, "sync_source", None)
-    password_init = ((sync_source.platform_config or {}).get("password_init") or {}) if sync_source else {}
-    channel_id = password_init.get("email_channel_id")
 
     if not channel_id:
         return {"result": False, "message": "缺少 email_channel_id"}
@@ -87,7 +79,35 @@ def send_email_via_runtime(user, raw_password: str) -> dict:
         return {"result": bool(result), "message": "已发送" if result else "发送失败"}
     except Exception as e:
         logger.error(
-            f"send_email_via_runtime 失败 user={user.username}: {e}",
+            f"发送初始密码邮件失败 user={user.username}: {e}",
             exc_info=True,
         )
         return {"result": False, "message": str(e)}
+
+
+def send_email_via_runtime(user, raw_password: str) -> dict:
+    """
+    发送初始密码邮件给同步用户。
+
+    Args:
+        user: User 实例(已包含 email + sync_source + temporary_pwd=True)
+        raw_password: 明文密码(sentinel 模式不会调到这里)
+
+    Returns:
+        dict: {"result": bool, "message": str}
+    """
+    sync_source = getattr(user, "sync_source", None)
+    password_init = ((sync_source.platform_config or {}).get("password_init") or {}) if sync_source else {}
+    channel_id = password_init.get("email_channel_id")
+    return _send_initial_password_email_via_channel(user, raw_password, channel_id)
+
+
+def send_local_user_initial_password_email(user, raw_password: str, channel_id) -> dict:
+    """发送初始密码邮件给本地用户。
+
+    与用户同步 send_email_via_runtime 共享同一邮件模板和 channel 路径,
+    但 channel_id 来自 SystemSettings.user_create_initial_password_random_email_channel_id
+    而不是 user.sync_source.platform_config.password_init.email_channel_id,
+    因为本地用户没有 sync_source。
+    """
+    return _send_initial_password_email_via_channel(user, raw_password, channel_id)

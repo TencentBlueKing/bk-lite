@@ -104,26 +104,101 @@ export const parseLegacyParamList = (value?: string | null) => {
   return Array.from(new Set(normalized));
 };
 
+/** 解析 Python 风格存储键，如 ('host', 'a,b') / ('host',) ，保留值内逗号与引号。 */
+export const parsePythonTupleString = (value?: string | null): string[] | null => {
+  if (!value) return null;
+  const trimmed = value.trim();
+  if (!trimmed.startsWith('(') || !trimmed.endsWith(')')) return null;
+
+  const parts: string[] = [];
+  let index = 1;
+  const end = trimmed.length - 1;
+  while (index < end) {
+    while (index < end && /[\s,]/.test(trimmed[index])) index += 1;
+    if (index >= end) break;
+    const quote = trimmed[index];
+    if (quote !== "'" && quote !== '"') return null;
+    index += 1;
+    let current = '';
+    while (index < end) {
+      const ch = trimmed[index];
+      if (ch === '\\' && index + 1 < end) {
+        current += trimmed[index + 1];
+        index += 2;
+        continue;
+      }
+      if (ch === quote) {
+        index += 1;
+        break;
+      }
+      current += ch;
+      index += 1;
+    }
+    parts.push(current);
+  }
+  return parts.length ? parts : null;
+};
+
+const escapePythonTupleValue = (value: string) =>
+  String(value).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+
 export const buildStorageInstanceId = (values: string[]) => {
-  const normalizedValues = values.map((value) => String(value || '').trim()).filter(Boolean);
+  const normalizedValues = values
+    .map((value) => String(value || '').trim())
+    .filter(Boolean);
   if (normalizedValues.length <= 1) {
     return normalizedValues[0] || '';
   }
-  return `(${normalizedValues.map((value) => `'${value}'`).join(', ')})`;
+  return `(${normalizedValues
+    .map((value) => `'${escapePythonTupleValue(value)}'`)
+    .join(', ')})`;
+};
+
+/** 写入 URL 的 instance_id_values：JSON 数组，避免值内逗号被拆坏。 */
+export const encodeInstanceIdValuesParam = (values: unknown) => {
+  if (Array.isArray(values)) {
+    return JSON.stringify(values.map((item) => String(item)));
+  }
+  if (values == null || values === '') return '';
+  return String(values);
+};
+
+/** 读取 URL 的 instance_id_values：优先 JSON，其次 tuple，最后兼容旧逗号串。 */
+export const parseInstanceIdValuesParam = (value?: string | null): string[] => {
+  if (!value) return [];
+  const trimmed = value.trim();
+  if (!trimmed) return [];
+  if (trimmed.startsWith('[')) {
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (Array.isArray(parsed)) {
+        return parsed.map((item) => String(item));
+      }
+    } catch {
+      // fall through
+    }
+  }
+  const fromTuple = parsePythonTupleString(trimmed);
+  if (fromTuple?.length) return fromTuple;
+  return parseLegacyParamList(trimmed);
 };
 
 export const resolveDashboardInstanceIdentity = (params: URLSearchParams) => {
   const rawInstanceId = params.get('instance_id') || '';
   const rawInstanceIdValues = params.get('instance_id_values') || '';
-  const storageInstanceId = rawInstanceId.trim() === '--' ? '' : rawInstanceId.trim();
-  const parsedLegacyInstanceIds = parseLegacyParamList(rawInstanceId);
-  const explicitValues = parseLegacyParamList(rawInstanceIdValues);
-
-  const idValues = explicitValues.length > 0
-    ? explicitValues
-    : parsedLegacyInstanceIds.length > 0
-      ? parsedLegacyInstanceIds
-      : storageInstanceId ? [storageInstanceId] : [];
+  const storageInstanceId =
+    rawInstanceId.trim() === '--' ? '' : rawInstanceId.trim();
+  const fromStorageTuple = parsePythonTupleString(storageInstanceId);
+  const explicitValues = parseInstanceIdValuesParam(rawInstanceIdValues);
+  // 旧逻辑对 tuple 存储键做逗号拆解会损坏含 , ' () 的 process_name；优先完整解析。
+  const idValues =
+    explicitValues.length > 0
+      ? explicitValues
+      : fromStorageTuple && fromStorageTuple.length > 0
+        ? fromStorageTuple
+        : storageInstanceId
+          ? [storageInstanceId]
+          : [];
 
   const instanceId = storageInstanceId || buildStorageInstanceId(idValues);
 

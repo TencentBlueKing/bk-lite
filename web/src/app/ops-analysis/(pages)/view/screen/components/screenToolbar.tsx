@@ -6,6 +6,7 @@ import {
   EditOutlined,
   FilterOutlined,
   FullscreenOutlined,
+  MailOutlined,
   PlusOutlined,
   ReloadOutlined,
   SettingOutlined,
@@ -21,6 +22,7 @@ interface ScreenToolbarProps {
   shareMode?: boolean;
   shareLoading?: boolean;
   onOpenShare?: () => void;
+  onOpenSubscription?: () => void;
   onOpenSettings: () => void;
   onOpenFilterConfig: () => void;
   onOpenWidgetSelector: () => void;
@@ -38,6 +40,7 @@ const ScreenToolbar: React.FC<ScreenToolbarProps> = ({
   shareMode = false,
   shareLoading = false,
   onOpenShare,
+  onOpenSubscription,
   onOpenSettings,
   onOpenFilterConfig,
   onOpenWidgetSelector,
@@ -82,6 +85,17 @@ const ScreenToolbar: React.FC<ScreenToolbarProps> = ({
             aria-label={t('dashboard.share')}
             className={iconButtonClassName}
             onClick={onOpenShare}
+          />
+        </Tooltip>
+      )}
+      {!shareMode && !editMode && onOpenSubscription && (
+        <Tooltip title={t('dashboard.subscriptionTitle')}>
+          <Button
+            type="text"
+            icon={<MailOutlined />}
+            aria-label={t('dashboard.subscriptionTitle')}
+            className={iconButtonClassName}
+            onClick={onOpenSubscription}
           />
         </Tooltip>
       )}

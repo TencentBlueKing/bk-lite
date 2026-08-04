@@ -24,8 +24,14 @@ interface CustomTableProps<T>
     groupFields?: GroupFieldItem[];
     searchable?: boolean;
     modalWidth?: number;
+    enableFixedFields?: boolean;
+    fixedFieldKeys?: string[];
+    defaultFixedFieldKeys?: string[];
   };
-  onSelectFields?: (fields: string[]) => void | Promise<void>;
+  onSelectFields?: (
+    fields: string[],
+    fixedFields?: string[]
+  ) => void | Promise<void>;
   rowDraggable?: boolean;
   autoScrollX?: boolean;
   onRowDragStart?: (index: number) => void;
@@ -382,6 +388,9 @@ const CustomTable = <T extends object>({
         groupFields={fieldSetting.groupFields}
         searchable={fieldSetting.searchable}
         width={fieldSetting.modalWidth}
+        enableFixedFields={fieldSetting.enableFixedFields}
+        fixedFieldKeys={fieldSetting.fixedFieldKeys}
+        defaultFixedFieldKeys={fieldSetting.defaultFixedFieldKeys}
         onConfirm={onSelectFields}
       />
     </div>

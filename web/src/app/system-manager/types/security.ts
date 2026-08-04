@@ -44,6 +44,7 @@ export interface SystemSettings {
   pwd_set_max_retry_count?: string;
   pwd_set_lock_duration?: string;
   pwd_set_expiry_reminder_days?: string;
-  user_create_initial_password_enabled?: string;
   user_create_initial_password_configured?: string;
+  user_create_initial_password_mode?: 'fixed' | 'random' | 'none' | string;
+  user_create_initial_password_random_email_channel_id?: string;
 }

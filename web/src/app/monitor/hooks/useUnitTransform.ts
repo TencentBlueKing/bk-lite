@@ -1,9 +1,8 @@
 import { useCommon } from '@/app/monitor/context/common';
 import { MetricItem } from '@/app/monitor/types';
 import { APPOINT_METRIC_IDS } from '@/app/monitor/constants';
-import { isStringArray } from '@/app/monitor/utils/common';
+import { getEnumValue, isStringArray } from '@/app/monitor/utils/common';
 import { formatMetricValue } from '@/app/monitor/utils/formatMetricValue';
-import { ListItem } from '@/app/monitor/types';
 
 export const useUnitTransform = () => {
   const commonContext = useCommon();
@@ -36,9 +35,7 @@ export const useUnitTransform = () => {
     const { unit: input = '', name } = metric || {};
     if (!id && id !== 0) return '--';
     if (isStringArray(input)) {
-      return (
-        JSON.parse(input).find((item: ListItem) => item.id === +id)?.name || id
-      );
+      return getEnumValue(metric, id);
     }
     const unit = findUnitNameById(input, displayUnit);
     return isNaN(+id) || APPOINT_METRIC_IDS.includes(name)

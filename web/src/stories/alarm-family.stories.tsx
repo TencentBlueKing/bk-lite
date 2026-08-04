@@ -50,7 +50,6 @@ const sampleAlert = {
   last_event_time: '2026-06-25T10:10:00Z',
   operator_user: 'alice',
   operator: ['alice'],
-  source_names: 'host-monitor',
   notification_status: 'success',
   resource_type: 'host',
   resource_name: 'vm-01',
@@ -925,7 +924,6 @@ const AlarmFamilyOverview = () => {
                 detail={{
                   content: 'CPU usage stayed above 90% for 10 minutes.',
                   operator_user: 'alice',
-                  source_names: 'host-monitor',
                   notification_status: 'success',
                   resource_type: 'host',
                   resource_name: 'vm-01',
@@ -935,7 +933,6 @@ const AlarmFamilyOverview = () => {
                 detail={{
                   content: '',
                   operator_user: '',
-                  source_names: null,
                   notification_status: 'unknown',
                   resource_type: '',
                   resource_name: '',
