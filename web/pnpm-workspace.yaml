@@ -1,0 +1,10 @@
+packages:
+  - 'src/app/*'
+
+allowBuilds:
+  '@parcel/watcher': true
+  core-js: false
+  core-js-pure: false
+  electron: false
+  esbuild: true
+  sharp: true

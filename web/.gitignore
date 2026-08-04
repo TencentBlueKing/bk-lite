@@ -41,9 +41,8 @@ yarn-error.log*
 *.tsbuildinfo
 tsconfig.lint.json
 
-# npm、pnpm 和 yarn lock
+# npm 和 yarn lock
 package-lock.json
-pnpm-lock.yaml
 yarn.lock
 
 .history
@@ -63,6 +62,5 @@ server.js
 server.key
 
 .env.local
-pnpm-workspace.yaml
 
 deploy/docker-compose/conf/nats/nats.conf

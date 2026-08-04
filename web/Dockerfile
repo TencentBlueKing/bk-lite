@@ -18,7 +18,7 @@ RUN if [ -n "$NEXUS_NODEJS_REPOSITY" ]; then \
   echo "Using default npm registry"; \
   fi
 
-RUN npm install -g pnpm@9.15.4
+RUN corepack enable && corepack prepare pnpm@11.20.0 --activate
 
 # 如果提供了 NEXUS_NODEJS_REPOSITY，则切换 pnpm 源
 RUN if [ -n "$NEXUS_NODEJS_REPOSITY" ]; then \
@@ -30,16 +30,13 @@ RUN if [ -n "$NEXUS_NODEJS_REPOSITY" ]; then \
 
 ADD . .
 
-RUN printf 'packages:\n  - "src/app/*"\n' > pnpm-workspace.yaml
-
 RUN echo 'NEXTAPI_URL="http://bklite-server:8000"' > .env.local
 
-RUN pnpm install --ignore-scripts
-RUN pnpm rebuild esbuild sharp unrs-resolver
+RUN pnpm install --frozen-lockfile
 RUN pnpm run build
 
 FROM node:24-alpine
-RUN npm install -g pnpm@9.15.4
+RUN corepack enable && corepack prepare pnpm@11.20.0 --activate
 
 # 在生产环境也设置内存限制
 ENV NODE_OPTIONS="--max-old-space-size=2048"

@@ -2,10 +2,14 @@
   "name": "rewind-web",
   "version": "0.1.0",
   "private": true,
+  "packageManager": "pnpm@11.20.0",
+  "engines": {
+    "node": "24.x",
+    "pnpm": "11.20.0"
+  },
   "scripts": {
     "preinstall": "npx -y only-allow pnpm",
     "prepare-enterprise": "node scripts/prepare-enterprise.mjs",
-    "generate-workspace": "node scripts/generate-workspace.js",
     "dev": "pnpm prepare-enterprise && next dev --turbo --hostname=0.0.0.0 --port=3000",
     "build": "pnpm prepare-enterprise && next build --turbo",
     "start": "next start",
