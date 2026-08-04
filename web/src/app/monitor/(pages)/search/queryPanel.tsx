@@ -28,6 +28,7 @@ import { useConditionList } from '@/app/monitor/hooks';
 import useMonitorApi from '@/app/monitor/api';
 import useViewApi from '@/app/monitor/api/view';
 import useApiClient from '@/utils/request';
+import { runWithConcurrency } from '@/app/monitor/dashboards/shared/utils/concurrency';
 import { useSearchParams } from 'next/navigation';
 import {
   ListItem,
@@ -564,8 +565,10 @@ const QueryPanel = forwardRef<QueryPanelRef, QueryPanelProps>(
 
       setConditionValueLoadingMap((prev) => ({ ...prev, [cacheKey]: true }));
       try {
-        const responses = await Promise.all(
-          group.instanceIds.map((instanceId) =>
+        const responses = await runWithConcurrency(
+          group.instanceIds,
+          4,
+          (instanceId) =>
             getMetricsInstanceQuery({
               monitor_object_id: group.object,
               instance_id: instanceId,
@@ -574,7 +577,6 @@ const QueryPanel = forwardRef<QueryPanelRef, QueryPanelProps>(
               limit: 200,
               mode: 'limited'
             })
-          )
         );
         const series = responses.flatMap(
           (resp) => resp?.data?.result || []

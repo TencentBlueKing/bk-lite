@@ -30,7 +30,8 @@ import {
   filterInstanceOptionsByCluster,
   selectFirstInstanceInCluster,
   isInstanceOptionForIdentity,
-  DashboardInstanceOption
+  DashboardInstanceOption,
+  fetchDashboardInstancePages
 } from '../../shared/utils';
 import {
   CompareFavorableDirection,
@@ -406,10 +407,10 @@ export function useSimpleDashboardData(config: SimpleDashboardConfig) {
     const loadInstances = async () => {
       try {
         setInstanceLoading(true);
-        const data = await getInstanceList(monitorObjectId, { page_size: -1 });
+        const data = await fetchDashboardInstancePages(getInstanceList, monitorObjectId);
         if (!active) return;
         const uniqueOptions = new Map<string, InstanceOption>();
-        (data?.results || []).forEach((item: any) => {
+        (data.results || []).forEach((item: any) => {
           const value = String(item.instance_id || '');
           if (!value || uniqueOptions.has(value)) return;
           const label = buildInstanceDisplayName(item);
