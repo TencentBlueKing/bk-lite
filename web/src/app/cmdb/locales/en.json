@@ -555,6 +555,9 @@
         "syncFailed": "Sync Failed",
         "ipRange": "IP Range",
         "ipRangeOrderInvalid": "Start IP must not be greater than End IP",
+        "ipRangeTooLarge": "IP range must not exceed a /21 network (2048 addresses max)",
+        "ipRangeCycleHint": "This IP range covers many addresses and may take longer to finish. Please evaluate whether a longer collection interval is needed.",
+        "hostCredentialOptionalTip": "Host credentials (SSH / WMI) are optional. Leave them empty to collect via Agent. Username and password can both be blank.",
         "chooseIp": "Choose IP",
         "chooseAsset": "Choose Asset",
         "chooseHost": "Choose Host",
@@ -960,8 +963,8 @@
                 "enablePassword": "Enable password"
             },
             "fields": {
-                "sshAccount": "The operating-system username on the target host. It must be allowed to run read-only collection commands.",
-                "sshPassword": "The login password for the operating-system account above.",
+                "sshAccount": "Optional. Operating-system username on the target host. Leave empty to collect via Agent; when filled, it must be allowed to run read-only collection commands.",
+                "sshPassword": "Optional. Login password for the operating-system account above; may be left blank.",
                 "sshPort": "The SSH service port on the target host. Change it when the service uses a non-standard port.",
                 "databaseAccount": "A database username that can sign in and read configuration or metadata.",
                 "databasePassword": "The password for the database account above.",
@@ -1053,7 +1056,7 @@
                 "networkDeviceAccount": "Network-device SSH account"
             },
             "instruction": {
-                "ssh": "Use an account that can sign in to the target host over SSH and run read-only collection commands.",
+                "ssh": "Credentials are optional; leave them empty to collect via Agent. When filled, use an account that can sign in over SSH (Linux) or WMI (Windows) and run read-only collection commands.",
                 "database": "Use a database account that can connect to the target instance and read configuration or metadata.",
                 "snmp": "For V2/V2C, enter the community string. For V3 authNoPriv, enter the username, authentication password, and hash algorithm. For authPriv, also enter the privacy algorithm and key.",
                 "influxdb": "Without a token, only basic identification is collected. Providing one enables full runtime configuration collection. An Operator Token has instance-wide administrative privileges; use it with care.",
@@ -1310,6 +1313,7 @@
     "ConfigFile": {
         "title": "Config File List",
         "description": "View the latest config file records by host",
+        "descriptionNetwork": "View the latest config file records by network device",
         "manualUpload": "Upload",
         "uploadDrawerTitle": "Upload Config File",
         "filePath": "File Path",
