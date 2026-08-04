@@ -2,8 +2,8 @@
 
 import pytest
 
-from apps.patch_mgmt.constants import OSType
-from apps.patch_mgmt.models import Patch, PatchTarget
+from apps.patch_mgmt.constants import GovernanceTaskStatus, GovernanceTaskType, OSType
+from apps.patch_mgmt.models import GovernanceTask, Patch, PatchTarget
 from apps.patch_mgmt.nats_api import get_patch_mgmt_module_data
 from apps.rpc.patch_mgmt import PatchMgmt
 
@@ -38,6 +38,46 @@ def test_module_data_returns_target_instances_and_supports_pagination():
         "items": [{"id": second.id, "name": "host-b"}],
     }
     assert first.id < second.id
+
+
+def test_governance_module_only_returns_root_execution_records():
+    install = GovernanceTask.objects.create(
+        name="治理记录",
+        task_type=GovernanceTaskType.INSTALL,
+        status=GovernanceTaskStatus.COMPLETED,
+        team=[1],
+    )
+    GovernanceTask.objects.create(
+        name="评估任务",
+        task_type=GovernanceTaskType.ASSESS,
+        status=GovernanceTaskStatus.COMPLETED,
+        team=[1],
+    )
+    GovernanceTask.objects.create(
+        name="内部验证",
+        task_type=GovernanceTaskType.VERIFY,
+        status=GovernanceTaskStatus.COMPLETED,
+        parent_task=install,
+        team=[1],
+    )
+    reboot = GovernanceTask.objects.create(
+        name="重启记录",
+        task_type=GovernanceTaskType.REBOOT,
+        status=GovernanceTaskStatus.PENDING,
+        team=[1],
+    )
+
+    result = get_patch_mgmt_module_data(
+        "patch_governance", "", 1, 10, 1, team=[1]
+    )
+
+    assert result == {
+        "count": 2,
+        "items": [
+            {"id": install.id, "name": install.name},
+            {"id": reboot.id, "name": reboot.name},
+        ],
+    }
 
 
 @pytest.mark.parametrize("module", ["patch_risk", "patch_dashboard"])

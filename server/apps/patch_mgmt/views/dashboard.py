@@ -25,6 +25,9 @@ from apps.patch_mgmt.models import (
     PatchTarget,
 )
 from apps.patch_mgmt.serializers.governance import GovernanceTaskListSerializer
+from apps.patch_mgmt.services.execution_record_service import (
+    filter_execution_record_roots,
+)
 from apps.patch_mgmt.services.risk_service import compute_risk_items
 
 
@@ -156,10 +159,7 @@ class PatchDashboardViewSet(AuthViewSet):
 
         # 与「风险治理 / 执行记录」使用同一根记录、权限、排序和状态口径。
         recent_roots = list(
-            task_qs.filter(
-                parent_task__isnull=True,
-                task_type__in=(GovernanceTaskType.INSTALL, GovernanceTaskType.REBOOT),
-            )
+            filter_execution_record_roots(task_qs)
             .select_related("source_record")
             .prefetch_related("host_results")
             .order_by("-created_at")[:10]
