@@ -1,5 +1,5 @@
 import React from 'react';
-import { Button } from 'antd';
+import { Button, Segmented } from 'antd';
 import { ArrowLeftOutlined } from '@ant-design/icons';
 import DashboardWorkspaceHeader from '@/components/dashboard-workspace-header';
 import TimeSelector from '@/components/time-selector';
@@ -24,6 +24,11 @@ export interface DashboardPageHeaderProps {
   styles: DashboardPageHeaderStyles;
 }
 
+const DISPLAY_MODE_OPTIONS = [
+  { label: '监控仪表盘', value: 'dashboard' },
+  { label: '全量指标', value: 'metrics' },
+] as const;
+
 export function DashboardPageHeader({
   title,
   displayMode,
@@ -37,6 +42,17 @@ export function DashboardPageHeader({
   showTimeSelector = true,
   styles,
 }: DashboardPageHeaderProps) {
+  const backButton = (
+    <Button
+      className={styles.toolbarBackBtn}
+      icon={<ArrowLeftOutlined aria-hidden="true" />}
+      onClick={onBack}
+      aria-label="返回"
+    >
+      返回
+    </Button>
+  );
+
   return (
     <DashboardWorkspaceHeader
       as="h1"
@@ -46,22 +62,13 @@ export function DashboardPageHeader({
       titleClassName={styles.title}
       controls={
         <div className={styles.controlsWrap}>
-          <div className={styles.modeTabs}>
-            <button
-              type="button"
-              className={`${styles.modeTab} ${displayMode === 'dashboard' ? styles.modeTabActive : ''}`}
-              onClick={() => onDisplayModeChange('dashboard')}
-            >
-              监控仪表盘
-            </button>
-            <button
-              type="button"
-              className={`${styles.modeTab} ${displayMode === 'metrics' ? styles.modeTabActive : ''}`}
-              onClick={() => onDisplayModeChange('metrics')}
-            >
-              全量指标
-            </button>
-          </div>
+          <Segmented
+            size="middle"
+            className={styles.modeSegmented}
+            value={displayMode}
+            options={[...DISPLAY_MODE_OPTIONS]}
+            onChange={(value) => onDisplayModeChange(value as 'dashboard' | 'metrics')}
+          />
           {showTimeSelector ? (
             <div className={styles.toolbarTimeSelector}>
               <TimeSelector
@@ -74,23 +81,9 @@ export function DashboardPageHeader({
             </div>
           ) : null}
           {styles.actionButtons ? (
-            <div className={styles.actionButtons}>
-              <Button
-                className={styles.toolbarBackBtn}
-                icon={<ArrowLeftOutlined />}
-                onClick={onBack}
-              >
-                返回
-              </Button>
-            </div>
+            <div className={styles.actionButtons}>{backButton}</div>
           ) : (
-            <Button
-              className={styles.toolbarBackBtn}
-              icon={<ArrowLeftOutlined />}
-              onClick={onBack}
-            >
-              返回
-            </Button>
+            backButton
           )}
         </div>
       }

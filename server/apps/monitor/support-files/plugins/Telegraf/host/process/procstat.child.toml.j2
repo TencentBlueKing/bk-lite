@@ -1,0 +1,13 @@
+[[inputs.procstat]]
+    startup_error_behavior = "retry"
+    pattern = "{{ pattern }}"
+    pid_finder = "native"
+    pid_tag = false
+    process_name_tag = false
+    interval = "{{ interval }}s"
+    [inputs.procstat.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "process"
+        collect_type = "host"
+        config_type = "procstat"
+        process_name = "{{ process_name }}"

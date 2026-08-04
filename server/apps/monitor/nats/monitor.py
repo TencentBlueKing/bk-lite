@@ -19,7 +19,7 @@ from apps.core.utils.permission_utils import (
     get_permissions_rules,
     permission_filter,
 )
-from apps.core.utils.time_util import format_timestamp
+from apps.core.utils.time_util import parse_rfc3339_range_utc, rfc3339_to_timestamp
 from apps.monitor.constants.language import LanguageConstants
 from apps.monitor.constants.permission import PermissionConstants
 from apps.monitor.models import (
@@ -40,12 +40,10 @@ from apps.monitor.serializers.monitor_metrics import MetricGroupSerializer, Metr
 from apps.monitor.serializers.monitor_object import MonitorObjectSerializer, MonitorObjectTypeSerializer
 from apps.monitor.serializers.monitor_policy import MonitorPolicySerializer
 from apps.monitor.serializers.plugin import MonitorPluginSerializer
-from apps.monitor.services.metrics import Metrics
 from apps.monitor.services.host_resource_top import HostResourceTopService, validate_metric_type
-from apps.monitor.services.network_device_resource_top import (
-    NetworkDeviceResourceTopService,
-    validate_metric_type as validate_network_metric_type,
-)
+from apps.monitor.services.metrics import Metrics
+from apps.monitor.services.network_device_resource_top import NetworkDeviceResourceTopService
+from apps.monitor.services.network_device_resource_top import validate_metric_type as validate_network_metric_type
 from apps.monitor.utils.dimension import parse_instance_id
 from apps.monitor.utils.instance_id_keys import resolve_monitor_object_instance_id_keys
 from apps.monitor.utils.victoriametrics_api import VictoriaMetricsAPI
@@ -150,6 +148,21 @@ def _normalize_dimensions(metric, dimensions):
         raise ValueError(f"dimensions 包含未定义维度: {', '.join(invalid_keys)}")
 
     return {str(key): str(value) for key, value in dimensions.items() if value is not None}
+
+
+def _serialize_metric_plugin(metric: Metric) -> Optional[dict]:
+    plugin = metric.monitor_plugin
+    if plugin is None:
+        return None
+    return {
+        "id": plugin.id,
+        "name": plugin.name,
+        "display_name": plugin.display_name,
+        "template_id": plugin.template_id,
+        "template_type": plugin.template_type,
+        "collector": plugin.collector,
+        "collect_type": plugin.collect_type,
+    }
 
 
 def _paginate_items(items: list, page, page_size):
@@ -377,11 +390,7 @@ def _escape_label_value(value) -> str:
 
 
 def _normalize_metric_instance_id_keys(metric=None, monitor_obj=None) -> list[str]:
-    raw_keys = (
-        getattr(metric, "instance_id_keys", None)
-        or getattr(monitor_obj, "instance_id_keys", None)
-        or ["instance_id"]
-    )
+    raw_keys = getattr(metric, "instance_id_keys", None) or getattr(monitor_obj, "instance_id_keys", None) or ["instance_id"]
     keys = [str(key).strip() for key in raw_keys if key is not None and str(key).strip()]
     return keys or ["instance_id"]
 
@@ -399,11 +408,7 @@ def _build_instance_label_conditions(instance_ids, instance_id_keys: list[str]) 
                 continue
             values_by_key[key].add(str(value))
 
-    return [
-        f'{key}=~"{"|".join(_escape_label_value(value) for value in sorted(values))}"'
-        for key, values in values_by_key.items()
-        if values
-    ]
+    return [f'{key}=~"{"|".join(_escape_label_value(value) for value in sorted(values))}"' for key, values in values_by_key.items() if values]
 
 
 def _build_metric_instance_id_candidates(metric_labels: dict, instance_id_keys: list[str]) -> set[str]:
@@ -562,9 +567,7 @@ def _get_authorized_instance_queryset(permission, scope_ids=None):
         id_key="id__in",
     )
     if scope_ids is not None:
-        queryset = queryset.filter(
-            monitorinstanceorganization__organization__in=list(scope_ids)
-        ).distinct()
+        queryset = queryset.filter(monitorinstanceorganization__organization__in=list(scope_ids)).distinct()
     return queryset
 
 
@@ -658,11 +661,7 @@ def monitor_metrics(monitor_obj_id: str, *args, **kwargs):
         return {"result": False, "data": [], "message": "监控对象不存在"}
 
     # 查询监控对象关联的指标
-    metrics = (
-        Metric.objects.filter(monitor_object=monitor_obj)
-        .select_related("monitor_plugin")
-        .order_by("metric_group__sort_order", "sort_order")
-    )
+    metrics = Metric.objects.filter(monitor_object=monitor_obj).select_related("monitor_plugin").order_by("metric_group__sort_order", "sort_order")
 
     serializer = MetricSerializer(metrics, many=True)
     results = serializer.data
@@ -730,7 +729,11 @@ def monitor_object_instances(monitor_obj_id: str, *args, **kwargs):
 
 @nats_client.register
 def query_monitor_data_by_metric(query_data: dict, *args, **kwargs):
-    """查询指标数据
+    """查询同一监控对象下指定名称的所有插件指标数据。
+
+    匹配到多个插件指标时分别查询并合并 VictoriaMetrics 序列，
+    每条序列附加 ``metric_id`` 和 ``monitor_plugin`` 用于区分来源。
+
     query_data: {
         monitor_obj_id: 监控对象ID
         metric: 指标名称
@@ -771,20 +774,28 @@ def query_monitor_data_by_metric(query_data: dict, *args, **kwargs):
 
     try:
         monitor_obj = MonitorObject.objects.get(id=monitor_obj_id)
-        metric = Metric.objects.get(monitor_object=monitor_obj, name=metric_name)
-    except (MonitorObject.DoesNotExist, Metric.DoesNotExist):
+    except MonitorObject.DoesNotExist:
+        return {"result": False, "data": [], "message": "监控对象或指标不存在"}
+
+    metrics = list(
+        Metric.objects.filter(monitor_object=monitor_obj, name=metric_name)
+        .select_related("monitor_plugin")
+        .order_by("id")
+    )
+    if not metrics:
         return {"result": False, "data": [], "message": "监控对象或指标不存在"}
 
     try:
         step = _normalize_step(step)
-        dimensions = _normalize_dimensions(metric, raw_dimensions)
+        metric_queries = []
+        for metric in metrics:
+            dimensions = _normalize_dimensions(metric, raw_dimensions)
+            if not metric.query:
+                return {"result": False, "data": [], "message": "指标查询语句为空"}
+            instance_id_keys = _normalize_metric_instance_id_keys(metric, monitor_obj)
+            metric_queries.append((metric, dimensions, instance_id_keys))
     except ValueError as exc:
         return {"result": False, "data": [], "message": str(exc)}
-
-    # 构建查询语句
-    query = metric.query
-    if not query:
-        return {"result": False, "data": [], "message": "指标查询语句为空"}
 
     authorized_qs = _get_authorized_instance_queryset(permission)
 
@@ -792,48 +803,57 @@ def query_monitor_data_by_metric(query_data: dict, *args, **kwargs):
     if instance_ids:
         # 获取有权限的实例ID
         authorized_instances = list(
-            authorized_qs.filter(id__in=instance_ids, monitor_object=monitor_obj, is_deleted=False).values_list("id", flat=True)
+            authorized_qs.filter(
+                id__in=instance_ids,
+                monitor_object=monitor_obj,
+                is_deleted=False,
+            ).values_list("id", flat=True)
         )
 
         if not authorized_instances:
             return {"result": False, "data": [], "message": "没有权限访问指定的实例"}
         instance_ids = authorized_instances
 
-    instance_id_keys = _normalize_metric_instance_id_keys(metric, monitor_obj)
-    query = _build_metric_label_query(
-        query,
-        instance_ids=instance_ids,
-        dimensions=dimensions,
-        instance_id_keys=instance_id_keys,
+    authorized_instance_ids = set(
+        authorized_qs.filter(monitor_object=monitor_obj, is_deleted=False).values_list(
+            "id",
+            flat=True,
+        )
     )
 
     try:
-        # 执行范围查询
-        result = Metrics.get_metrics_range(query, start_time, end_time, step)
+        merged_result = None
+        merged_series = []
+        for metric, dimensions, instance_id_keys in metric_queries:
+            query = _build_metric_label_query(
+                metric.query,
+                instance_ids=instance_ids,
+                dimensions=dimensions,
+                instance_id_keys=instance_id_keys,
+            )
+            result = Metrics.get_metrics_range(query, start_time, end_time, step)
+            if merged_result is None:
+                merged_result = dict(result)
+                merged_data = dict(result.get("data") or {})
+                merged_data["result"] = merged_series
+                merged_result["data"] = merged_data
 
-        # 数据格式化和权限过滤
-        if "data" in result and "result" in result["data"]:
-            # 获取所有有权限的实例ID
-            authorized_instance_ids = set(authorized_qs.filter(monitor_object=monitor_obj, is_deleted=False).values_list("id", flat=True))
-
-            filtered_result = []
-            for metric_data in result["data"]["result"]:
+            plugin_data = _serialize_metric_plugin(metric)
+            for metric_data in (result.get("data") or {}).get("result") or []:
                 metric_instance_ids = _build_metric_instance_id_candidates(
                     metric_data.get("metric", {}),
                     instance_id_keys,
                 )
 
-                if metric_instance_ids:
-                    # 只返回有权限的实例数据
-                    if metric_instance_ids & authorized_instance_ids:
-                        filtered_result.append(metric_data)
-                else:
-                    # 没有实例ID的指标数据直接返回
-                    filtered_result.append(metric_data)
+                if metric_instance_ids and not metric_instance_ids & authorized_instance_ids:
+                    continue
 
-            result["data"]["result"] = filtered_result
+                enriched_metric_data = dict(metric_data)
+                enriched_metric_data["metric_id"] = metric.id
+                enriched_metric_data["monitor_plugin"] = plugin_data
+                merged_series.append(enriched_metric_data)
 
-        return {"result": True, "data": result, "message": ""}
+        return {"result": True, "data": merged_result, "message": ""}
 
     except Exception as e:
         return {"result": False, "data": [], "message": f"查询指标数据失败: {str(e)}"}
@@ -1007,9 +1027,7 @@ def query_monitor_alert_segments(query_data: dict, *args, **kwargs):
     authorized_qs = _get_authorized_instance_queryset(
         permission,
         scope_ids,
-    ).filter(
-        monitor_object_id=monitor_obj_id, is_deleted=False, is_active=True
-    )
+    ).filter(monitor_object_id=monitor_obj_id, is_deleted=False, is_active=True)
     authorized_instance_ids = set(authorized_qs.values_list("id", flat=True))
     if not authorized_instance_ids:
         return {
@@ -1024,9 +1042,7 @@ def query_monitor_alert_segments(query_data: dict, *args, **kwargs):
             return {"result": False, "data": [], "message": "没有权限访问指定的实例"}
         authorized_instance_ids = set(filtered_instance_ids)
 
-    accessible_policy_qs, policy_error = _get_nats_accessible_policy_queryset(
-        user_info
-    )
+    accessible_policy_qs, policy_error = _get_nats_accessible_policy_queryset(user_info)
     if policy_error:
         return policy_error
 
@@ -1137,9 +1153,7 @@ def query_latest_active_alerts(query_data: Optional[dict] = None, *args, **kwarg
             return {"result": False, "data": [], "message": "没有权限访问指定的实例"}
         authorized_instance_ids = set(filtered_instance_ids)
 
-    accessible_policy_qs, policy_error = _get_nats_accessible_policy_queryset(
-        user_info
-    )
+    accessible_policy_qs, policy_error = _get_nats_accessible_policy_queryset(user_info)
     if policy_error:
         return policy_error
 
@@ -1176,9 +1190,12 @@ def query_latest_active_alerts(query_data: Optional[dict] = None, *args, **kwarg
 
 @nats_client.register
 def mm_query_range(query: str, time_range: list, step="5m", *args, **kwargs):
-    start_time, end_time = time_range
-    start_time = format_timestamp(start_time)
-    end_time = format_timestamp(end_time)
+    try:
+        start_time, end_time = parse_rfc3339_range_utc(time_range)
+    except ValueError as exc:
+        return {"result": False, "data": [], "message": str(exc)}
+    start_time = rfc3339_to_timestamp(start_time)
+    end_time = rfc3339_to_timestamp(end_time)
     resp = VictoriaMetricsAPI().query_range(query, start_time, end_time, step)
     if resp.get("status") == "success":
         _result = resp["data"]["result"]
@@ -1363,20 +1380,14 @@ def _get_nats_accessible_policy_queryset(user_info):
         return MonitorPolicy.objects.none(), error
 
     queryset = (
-        MonitorPolicy.objects.filter(
-            policyorganization__organization__in=list(scope_ids)
-        )
-        .prefetch_related("policyorganization_set")
-        .distinct()
+        MonitorPolicy.objects.filter(policyorganization__organization__in=list(scope_ids)).prefetch_related("policyorganization_set").distinct()
     )
     if is_superuser:
         return queryset, None
 
     authorized_ids = []
     for policy in queryset:
-        organizations = {
-            item.organization for item in policy.policyorganization_set.all()
-        }
+        organizations = {item.organization for item in policy.policyorganization_set.all()}
         if get_instance_permissions(
             str(policy.monitor_object_id),
             policy.id,
@@ -1409,10 +1420,7 @@ def _get_nats_accessible_instance_queryset(user_info):
 
     authorized_ids = []
     for instance in queryset:
-        organizations = {
-            item.organization
-            for item in instance.monitorinstanceorganization_set.all()
-        }
+        organizations = {item.organization for item in instance.monitorinstanceorganization_set.all()}
         if get_instance_permissions(
             str(instance.monitor_object_id),
             instance.id,
@@ -1463,9 +1471,7 @@ def get_monitor_statistics(user_info=None, **kwargs):
     metric_total = Metric.objects.count()
     metric_group_total = MetricGroup.objects.count()
     # 采集配置跟随受限实例权限根。
-    collect_config_total = CollectConfig.objects.filter(
-        monitor_instance_id__in=instance_qs.values_list("id", flat=True)
-    ).count()
+    collect_config_total = CollectConfig.objects.filter(monitor_instance_id__in=instance_qs.values_list("id", flat=True)).count()
 
     # ============ 告警概览 ============
     # 下游 alert/event/snapshot/baseline 全部继承受限策略权限根。
@@ -1476,9 +1482,7 @@ def get_monitor_statistics(user_info=None, **kwargs):
     policy_threshold = policy_qs.exclude(threshold=[]).count()
     policy_no_data = policy_qs.exclude(no_data_level="").count()
 
-    alert_qs = MonitorAlert.objects.filter(
-        policy_id__in=policy_qs.values_list("id", flat=True)
-    )
+    alert_qs = MonitorAlert.objects.filter(policy_id__in=policy_qs.values_list("id", flat=True))
     alert_history = alert_qs.count()
     alert_current = alert_qs.filter(status="new").count()
     alert_recovered = alert_qs.filter(status="recovered").count()
@@ -1487,9 +1491,9 @@ def get_monitor_statistics(user_info=None, **kwargs):
     today_start = timezone.now().replace(hour=0, minute=0, second=0, microsecond=0)
     alert_today = alert_qs.filter(created_at__gte=today_start).count()
 
-    event_qs = MonitorEvent.objects.filter(
-        policy_id__in=policy_qs.values_list("id", flat=True)
-    ).filter(Q(alert__isnull=True) | Q(alert__policy_id=F("policy_id")))
+    event_qs = MonitorEvent.objects.filter(policy_id__in=policy_qs.values_list("id", flat=True)).filter(
+        Q(alert__isnull=True) | Q(alert__policy_id=F("policy_id"))
+    )
     event_total = event_qs.count()
     event_today = event_qs.filter(created_at__gte=today_start).count()
 
@@ -1498,9 +1502,7 @@ def get_monitor_statistics(user_info=None, **kwargs):
         alert__policy_id=F("policy_id"),
     ).count()
 
-    no_data_baseline_total = PolicyInstanceBaseline.objects.filter(
-        policy_id__in=policy_qs.values_list("id", flat=True)
-    ).count()
+    no_data_baseline_total = PolicyInstanceBaseline.objects.filter(policy_id__in=policy_qs.values_list("id", flat=True)).count()
 
     return {
         "result": True,

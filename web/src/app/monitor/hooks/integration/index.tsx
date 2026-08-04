@@ -35,6 +35,7 @@ import { useEsxiConfig } from './objects/vmWare/esxi';
 import { useVmConfig } from './objects/vmWare/vm';
 import { useDockerConfig } from './objects/containerManagement/docker';
 import { useHostConfig } from './objects/os/host';
+import { useProcessConfig } from './objects/os/process';
 import { useWebsiteConfig } from './objects/web/website';
 import { usePingConfig } from './objects/web/ping';
 import { useTcpPortConfig } from './objects/web/tcpPort';
@@ -106,6 +107,7 @@ export const useMonitorConfig = () => {
   const vmConfig = useVmConfig();
   const dockerConfig = useDockerConfig();
   const hostConfig = useHostConfig();
+  const processConfig = useProcessConfig();
   const websiteConfig = useWebsiteConfig();
   const pingConfig = usePingConfig();
   const tcpPortConfig = useTcpPortConfig();
@@ -164,6 +166,7 @@ export const useMonitorConfig = () => {
       vCenter: vCenterConfig,
       Docker: dockerConfig,
       Host: hostConfig,
+      Process: processConfig,
       Website: websiteConfig,
       Ping: pingConfig,
       TCPPort: tcpPortConfig,

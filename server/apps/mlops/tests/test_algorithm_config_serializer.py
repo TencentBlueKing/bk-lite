@@ -2,6 +2,7 @@ import pydantic.root_model  # noqa
 
 import pytest
 from rest_framework import serializers as drf_serializers
+from types import SimpleNamespace
 
 from apps.mlops.serializers.algorithm_config import AlgorithmConfigSerializer
 
@@ -21,6 +22,15 @@ def test_validate_form_config_non_dict_raises():
     with pytest.raises(drf_serializers.ValidationError) as exc:
         _validate(["not", "a", "dict"])
     assert "对象" in str(exc.value.detail)
+
+
+def test_validate_form_config_uses_request_locale():
+    serializer = AlgorithmConfigSerializer(
+        context={"request": SimpleNamespace(user=SimpleNamespace(locale="en"))}
+    )
+    with pytest.raises(drf_serializers.ValidationError) as exc:
+        serializer.validate_form_config(["not", "a", "dict"])
+    assert exc.value.detail == ["form_config must be an object"]
 
 
 def test_validate_form_config_hyperopt_not_list_raises():

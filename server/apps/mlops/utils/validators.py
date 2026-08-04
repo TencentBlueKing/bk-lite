@@ -7,8 +7,10 @@ from typing import Optional
 from rest_framework import status
 from rest_framework.response import Response
 
+from apps.mlops.utils.i18n import mlops_message
 
-def validate_serving_status_change(instance, new_status: str) -> Optional[Response]:
+
+def validate_serving_status_change(request, instance, new_status: str) -> Optional[Response]:
     """
     校验 serving status 变更：容器未运行时不允许设置 status=active
 
@@ -24,7 +26,7 @@ def validate_serving_status_change(instance, new_status: str) -> Optional[Respon
         container_info = instance.container_info or {}
         if container_info.get("state") != "running":
             return Response(
-                {"error": "无法将状态设为 active：容器未运行，请先启动服务"},
+                {"error": mlops_message(request, "error.serving_active_requires_running_container")},
                 status=status.HTTP_400_BAD_REQUEST,
             )
     return None

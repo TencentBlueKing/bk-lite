@@ -1,6 +1,7 @@
 from rest_framework import serializers
 
 from apps.core.utils.serializers import UsernameSerializer
+from apps.core.utils.loader import LanguageLoader
 from apps.system_mgmt.models import Channel, ChannelChoices
 
 
@@ -23,14 +24,14 @@ class ChannelSerializer(UsernameSerializer):
         if isinstance(value, (int, str)):
             value = [value]
         if not isinstance(value, (list, tuple, set)):
-            raise serializers.ValidationError("请选择渠道所属组织")
+            raise serializers.ValidationError(self._loader().get("error.channel_team_required"))
 
         team_ids = []
         for team_id in value:
             try:
                 team_ids.append(int(team_id))
             except (TypeError, ValueError) as exc:
-                raise serializers.ValidationError("请选择渠道所属组织") from exc
+                raise serializers.ValidationError(self._loader().get("error.channel_team_required")) from exc
         return team_ids
 
     def create(self, validated_data):
@@ -55,3 +56,7 @@ class ChannelSerializer(UsernameSerializer):
             Channel.encrypt_field(field, config)
             config.setdefault(field, old_config.get(field, ""))
         validated_data["config"] = config
+    def _loader(self):
+        request = self.context.get("request")
+        locale = getattr(getattr(request, "user", None), "locale", "en") or "en"
+        return LanguageLoader(app="system_mgmt", default_lang=locale)

@@ -147,6 +147,16 @@ def test_destroy_blocked_when_tasks_exist(superuser):
     assert AlgorithmConfig.objects.filter(id=cfg.id).exists()
 
 
+def test_destroy_blocked_uses_request_locale(superuser):
+    superuser.locale = "en"
+    cfg = _mk(name="LockedEnglish")
+    AnomalyDetectionTrainJob.objects.create(name="j", algorithm="LockedEnglish", team=[1])
+    request = factory.delete("/algorithm_configs/x/")
+    view = AlgorithmConfigViewSet.as_view({"delete": "destroy"})
+    resp = _call(view, request, superuser, pk=cfg.id)
+    assert resp.data["error"] == "Cannot delete the algorithm configuration because 1 training task(s) are using it"
+
+
 def test_destroy_allowed_when_no_tasks(superuser):
     cfg = _mk(name="Deletable")
     request = factory.delete("/algorithm_configs/x/")
@@ -210,3 +220,12 @@ def test_get_image_not_found(superuser):
     resp = _call(view, request, superuser)
     assert resp.status_code == 404
     assert "error" in resp.data
+
+
+def test_get_image_not_found_uses_request_locale(superuser):
+    superuser.locale = "en"
+    request = factory.get("/algorithm_configs/get_image/?algorithm_type=anomaly_detection&name=Ghost")
+    view = AlgorithmConfigViewSet.as_view({"get": "get_image"})
+    resp = _call(view, request, superuser)
+    assert resp.status_code == 404
+    assert resp.data["error"] == "Algorithm configuration was not found: anomaly_detection/Ghost"

@@ -2,6 +2,7 @@ from types import SimpleNamespace
 
 from apps.core.utils.serializers import AuthSerializer
 from apps.mlops.models.image_classification import *
+from apps.mlops.utils.i18n import serializer_message
 from rest_framework import serializers
 from apps.core.logger import mlops_logger as logger
 from apps.mlops.utils.group_scope import (
@@ -96,7 +97,7 @@ class ImageClassificationDatasetReleaseSerializer(AuthSerializer):
         import re
 
         if not re.match(r"^v\d+\.\d+\.\d+$", value):
-            raise serializers.ValidationError("版本号格式应为 vX.Y.Z，例如：v1.0.0")
+            raise serializers.ValidationError(serializer_message(self, "error.dataset_release_version_format_invalid"))
         return value
 
     def validate_dataset(self, value):
@@ -160,7 +161,7 @@ class ImageClassificationDatasetReleaseSerializer(AuthSerializer):
                     release.save(update_fields=["status", "file_size", "metadata"])
                 else:
                     logger.info(f"数据集版本已存在 - Dataset: {dataset.id}, Version: {version}, Status: {existing.status}")
-                    raise serializers.ValidationError(f"数据集 {dataset.name} 的版本 {version} 已存在或正在处理中")
+                    raise serializers.ValidationError(serializer_message(self, "error.dataset_release_version_unavailable", dataset_name=dataset.name, version=version))
             else:
                 # 创建 pending 状态的发布记录
                 validated_data["status"] = "pending"
@@ -189,7 +190,7 @@ class ImageClassificationDatasetReleaseSerializer(AuthSerializer):
                 )
                 release.status = "failed"
                 release.save(update_fields=["status"])
-                raise serializers.ValidationError("投递异步任务失败")
+                raise serializers.ValidationError(serializer_message(self, "error.dataset_release_task_enqueue_failed"))
 
             logger.info(f"创建数据集发布任务 - Release ID: {release.id}, Dataset: {dataset.id}, Version: {version}")
 
@@ -197,12 +198,12 @@ class ImageClassificationDatasetReleaseSerializer(AuthSerializer):
 
         except ImageClassificationTrainData.DoesNotExist as e:
             logger.error(f"训练数据文件不存在 - {str(e)}")
-            raise serializers.ValidationError(f"训练数据文件不存在或不属于该数据集")
+            raise serializers.ValidationError(serializer_message(self, "error.dataset_release_training_data_not_found"))
         except serializers.ValidationError:
             raise
         except Exception as e:
             logger.error(f"创建数据集发布任务失败 - {str(e)}", exc_info=True)
-            raise serializers.ValidationError("创建发布任务失败")
+            raise serializers.ValidationError(serializer_message(self, "error.dataset_release_create_failed"))
 
     def validate(self, attrs):
         """验证数据集和版本的唯一性"""
@@ -217,7 +218,7 @@ class ImageClassificationDatasetReleaseSerializer(AuthSerializer):
         # 如果未提供文件ID，dataset_file 必须提供（直接上传模式）
         if not (train_file_id and val_file_id and test_file_id):
             if not attrs.get("dataset_file"):
-                raise serializers.ValidationError({"dataset_file": "必须提供数据集文件或训练数据文件ID"})
+                raise serializers.ValidationError({"dataset_file": serializer_message(self, "error.dataset_release_file_required")})
 
         if dataset and version:
             existing_releases = ImageClassificationDatasetRelease._default_manager.filter(dataset=dataset, version=version)
@@ -230,7 +231,7 @@ class ImageClassificationDatasetReleaseSerializer(AuthSerializer):
             allow_failed_retry = bool(existing and existing.status == "failed" and (has_file_ids or has_dataset_file))
 
             if existing and not allow_failed_retry:
-                raise serializers.ValidationError({"version": f"数据集 {dataset.name} 的版本 {version} 已存在"})
+                raise serializers.ValidationError({"version": serializer_message(self, "error.dataset_release_version_exists", dataset_name=dataset.name, version=version)})
 
         return attrs
 
@@ -262,15 +263,15 @@ class ImageClassificationTrainJobSerializer(AuthSerializer):
     def validate_hyperopt_config(self, value):
         """验证训练配置格式"""
         if not isinstance(value, dict):
-            raise serializers.ValidationError("hyperopt_config 必须是字典格式")
+            raise serializers.ValidationError(serializer_message(self, "error.hyperopt_config_must_be_object"))
 
         # 验证必须包含 hyperparams 部分
         if "hyperparams" not in value:
-            raise serializers.ValidationError("hyperopt_config 必须包含 hyperparams 字段")
+            raise serializers.ValidationError(serializer_message(self, "error.hyperopt_config_hyperparams_required"))
 
         hyperparams = value["hyperparams"]
         if not isinstance(hyperparams, dict):
-            raise serializers.ValidationError("hyperparams 必须是字典格式")
+            raise serializers.ValidationError(serializer_message(self, "error.hyperparams_must_be_object"))
 
         return value
 
@@ -318,7 +319,7 @@ class ImageClassificationServingSerializer(AuthSerializer):
         team = attrs.get("team", getattr(self.instance, "team", None))
         if train_job is not None and team is not None:
             field_name = "train_job" if "train_job" in attrs or "team" not in attrs else "team"
-            assert_parent_team_matches(SimpleNamespace(team=team), train_job, field_name)
+            assert_parent_team_matches(SimpleNamespace(team=team), train_job, field_name, request=self.context.get("request"))
 
         return attrs
 
@@ -337,7 +338,7 @@ class ImageClassificationServingSerializer(AuthSerializer):
     def validate_model_version(self, value):
         """验证模型版本格式"""
         if value != "latest" and not value.isdigit():
-            raise serializers.ValidationError("模型版本必须是 'latest' 或正整数（如：1, 2, 3）")
+            raise serializers.ValidationError(serializer_message(self, "error.model_version_invalid"))
         return value
 
     def validate_team(self, value):

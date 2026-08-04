@@ -32,6 +32,13 @@
       margin-top: 16px;
     }
 
+    .pinHint {
+      margin-top: 4px;
+      color: var(--color-text-3);
+      font-size: 12px;
+      line-height: 1.4;
+    }
+
     .fieldItem {
       background: var(--color-bg-1);
       border-bottom: 1px solid var(--color-border);
@@ -43,6 +50,7 @@
       padding: 8px;
       transform-origin: center;
       will-change: transform;
+      gap: 4px;
 
       .dragTrigger {
         margin-right: 4px;
@@ -60,17 +68,48 @@
         }
       }
 
+      .fieldActions {
+        margin-left: auto;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        flex-shrink: 0;
+      }
+
+      .pinItem {
+        border: none;
+        background: transparent;
+        padding: 0;
+        cursor: pointer;
+        color: var(--color-text-3);
+        opacity: 0.45;
+        line-height: 1;
+        visibility: hidden;
+
+        &:hover,
+        &:focus-visible {
+          color: var(--color-primary);
+          opacity: 1;
+          outline: none;
+        }
+      }
+
+      .pinItemActive {
+        visibility: visible;
+        color: var(--color-primary);
+        opacity: 1;
+      }
+
       .clearItem {
         visibility: hidden;
-        position: absolute;
         cursor: pointer;
-        top: 10px;
-        right: 6px;
       }
 
       .dragLabel {
         @include hide-text;
-        width: 108px;
+        flex: 1;
+        min-width: 0;
+        max-width: 108px;
       }
 
       &:last-child {
@@ -79,12 +118,17 @@
 
       &:hover {
         .dragTrigger,
-        .clearItem {
+        .clearItem,
+        .pinItem {
           visibility: visible;
           color: var(--color-primary);
           opacity: 1;
         }
       }
+    }
+
+    .pinnedItem {
+      background: color-mix(in srgb, var(--color-primary) 6%, var(--color-bg-1));
     }
 
     .draggingItem {
@@ -134,9 +178,18 @@
 
   .dragLabel {
     overflow: hidden;
-    width: 108px;
+    flex: 1;
+    min-width: 0;
+    max-width: 108px;
     white-space: nowrap;
     text-overflow: ellipsis;
+  }
+
+  .fieldActions {
+    margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+    color: var(--color-primary);
   }
 }
 

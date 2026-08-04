@@ -6,7 +6,7 @@ import React, {
   useState,
 } from 'react';
 import ReactEcharts from 'echarts-for-react';
-import { Spin, Empty } from 'antd';
+import { Spin } from 'antd';
 import {
   getColorByThreshold,
   formatDisplayValue,
@@ -30,17 +30,16 @@ import {
 import { getValueByPath } from '@/app/ops-analysis/utils/objectPath';
 import { buildFallbackSparkline } from '@/app/ops-analysis/utils/singleValueSparkline';
 import { useTranslation } from '@/utils/i18n';
+import OpsAnalysisMetricValue from '@/app/ops-analysis/components/ops-analysis-metric-value';
+import WidgetState from '@/app/ops-analysis/components/widget-state';
 import {
-  getScreenWidgetScale,
   scaleScreenMetric,
   scaleScreenMetricFloat,
 } from './shared/screenMetrics';
 
 const MAX_SPARKLINE_POINTS = 24;
-const MIN_VALUE_FONT_SIZE = 18;
 const UNIT_FONT_SCALE = 0.48;
-const MIN_UNIT_GAP = 8;
-const MAX_UNIT_GAP = 12;
+const COMPARE_METRIC_HEIGHT_FILL_RATIO = 0.7;
 
 const toAlphaColor = (color: string, alpha: number) => {
   const normalized = color.trim();
@@ -92,35 +91,6 @@ const limitSparklinePoints = (
 
   sampled.push(values[lastIndex]);
   return sampled;
-};
-
-const getBaseFontSizeByWidth = (
-  width: number,
-  screenDark = false,
-) => {
-  const safeWidth = Math.max(width, 120);
-  return screenDark
-    ? Math.max(24, Math.min(54, safeWidth / 4.4))
-    : Math.max(24, Math.min(52, safeWidth / 4.75));
-};
-
-const getBaseFontSizeByHeight = (
-  height: number,
-  hasCompare: boolean,
-  screenDark = false,
-) => {
-  const safeHeight = Math.max(height, 120);
-  if (screenDark) {
-    return Math.max(
-      24,
-      Math.min(58, safeHeight * (hasCompare ? 0.28 : 0.34)),
-    );
-  }
-
-  return Math.max(
-    MIN_VALUE_FONT_SIZE,
-    Math.min(58, safeHeight * (hasCompare ? 0.29 : 0.36)),
-  );
 };
 
 const splitValueAndUnit = (value: string) => {
@@ -200,11 +170,7 @@ const ComSingle: React.FC<ComSingleProps> = ({
   const { t } = useTranslation();
   const chartTheme = getOpsChartThemeByMode(config?.chartThemeMode);
   const usesScreenTheme = isScreenChartThemeMode(config?.chartThemeMode);
-  const widgetScale = getScreenWidgetScale(screenRenderContext);
   const contentAreaRef = useRef<HTMLDivElement>(null);
-  const valueAreaRef = useRef<HTMLDivElement>(null);
-  const measureRef = useRef<HTMLDivElement>(null);
-  const [valueFontSize, setValueFontSize] = useState(36);
   const [compareSpacing, setCompareSpacing] = useState(10);
   const [contentAreaHeight, setContentAreaHeight] = useState(0);
 
@@ -283,78 +249,6 @@ const ComSingle: React.FC<ComSingleProps> = ({
   }, [isDataReady, loading, onReady]);
 
   useLayoutEffect(() => {
-    const valueArea = valueAreaRef.current;
-    const measureElement = measureRef.current;
-    if (!valueArea || !measureElement) {
-      return;
-    }
-
-    let frameId = 0;
-
-    const updateFontSize = () => {
-      const availableWidth = valueArea.clientWidth;
-      if (availableWidth <= 0) return;
-
-      const availableHeight = contentAreaRef.current?.clientHeight ?? 0;
-      let nextFontSize = Math.min(
-        getBaseFontSizeByWidth(availableWidth, usesScreenTheme) *
-          widgetScale,
-        getBaseFontSizeByHeight(
-          availableHeight,
-          Boolean(config?.compare),
-          usesScreenTheme,
-        ) * widgetScale,
-      );
-      if (usesScreenTheme && screenRenderContext?.enabled) {
-        const minScreenFontSize = scaleScreenMetric(18, screenRenderContext);
-        const maxScreenFontSize = scaleScreenMetric(
-          config?.compare ? 22 : 24,
-          screenRenderContext,
-        );
-        nextFontSize = Math.min(
-          Math.max(nextFontSize, minScreenFontSize),
-          maxScreenFontSize,
-        );
-      }
-      measureElement.style.fontSize = `${nextFontSize}px`;
-
-      while (
-        nextFontSize > MIN_VALUE_FONT_SIZE &&
-        measureElement.scrollWidth > availableWidth
-      ) {
-        nextFontSize -= 0.5;
-        measureElement.style.fontSize = `${nextFontSize}px`;
-      }
-
-      setValueFontSize((prev) =>
-        Math.abs(prev - nextFontSize) < 0.1 ? prev : nextFontSize,
-      );
-    };
-
-    updateFontSize();
-
-    const observer = new ResizeObserver(() => {
-      cancelAnimationFrame(frameId);
-      frameId = requestAnimationFrame(updateFontSize);
-    });
-
-    observer.observe(valueArea);
-
-    return () => {
-      cancelAnimationFrame(frameId);
-      observer.disconnect();
-    };
-  }, [
-    config?.compare,
-    displayMainValue,
-    displayUnit,
-    showSparkline,
-    unitText,
-    usesScreenTheme,
-    widgetScale,
-  ]);
-
-  useLayoutEffect(() => {
     const contentArea = contentAreaRef.current;
     if (!contentArea) {
       return;
@@ -410,26 +304,17 @@ const ComSingle: React.FC<ComSingleProps> = ({
     compareAmount === null
       ? '--'
       : `${compareAmount > 0 ? '↑' : compareAmount < 0 ? '↓' : ''}${Math.abs(compareAmount).toFixed(config?.compareMode === 'value' ? (config.decimalPlaces ?? 0) : 1)}${config?.compareMode === 'value' ? compareUnitLabel : '%'}`;
-  const heightDrivenCompareSize = Math.max(
-    scaleScreenMetric(12, screenRenderContext),
-    Math.min(
-      scaleScreenMetric(20, screenRenderContext),
-      Math.round(contentAreaHeight * 0.1),
-    ),
-  );
+  const heightDrivenCompareSize = Math.round(Math.max(contentAreaHeight, 0) * 0.1);
   const compareLabelFontSize = Math.max(
     scaleScreenMetric(11, screenRenderContext),
     Math.min(
       scaleScreenMetric(16, screenRenderContext),
-      Math.max(Math.round(valueFontSize * 0.27), heightDrivenCompareSize - 3),
+      heightDrivenCompareSize - 3,
     ),
   );
   const compareValueFontSize = Math.max(
     scaleScreenMetric(13, screenRenderContext),
-    Math.min(
-      scaleScreenMetric(22, screenRenderContext),
-      Math.max(Math.round(valueFontSize * 0.38), heightDrivenCompareSize),
-    ),
+    Math.min(scaleScreenMetric(22, screenRenderContext), heightDrivenCompareSize),
   );
   const sparklineTrendColor = config?.compare ? compareTextColor : metricColor;
   // 命中值映射文本时，用映射文本替换数值并隐藏单位
@@ -438,12 +323,6 @@ const ComSingle: React.FC<ComSingleProps> = ({
       ? valueMappingResult.text
       : displayMainValue;
   const unitLabel = compareUnitLabel;
-  const valueGap = unitLabel
-    ? Math.min(
-      MAX_UNIT_GAP * widgetScale,
-      Math.max(MIN_UNIT_GAP * widgetScale, Math.round(valueFontSize * 0.14)),
-    )
-    : 0;
   const sparklineLineColor = {
     type: 'linear' as const,
     x: 0,
@@ -515,112 +394,66 @@ const ComSingle: React.FC<ComSingleProps> = ({
     (!isDataReady || rawValue === null) &&
     valueMappingResult?.text === undefined
   ) {
-    return (
-      <div className="h-full flex flex-col items-center justify-center">
-        <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} />
-      </div>
-    );
+    return <WidgetState />;
   }
 
   return (
     <div
       className={`flex h-full w-full flex-col overflow-hidden ${
-        usesScreenTheme ? 'px-7 py-4' : 'px-2'
+        usesScreenTheme ? '' : 'px-2'
       }`}
-      style={
-        usesScreenTheme
-          ? {
-            padding: `${scaleScreenMetric(8, screenRenderContext)}px ${scaleScreenMetric(12, screenRenderContext)}px`,
-          }
-          : undefined
-      }
     >
       <div
         ref={contentAreaRef}
         className="flex min-h-0 flex-1 flex-col justify-center"
       >
-        <div className="min-w-0">
-          <div ref={valueAreaRef} className="relative min-w-0 max-w-full">
-            <div
-              className="inline-flex max-w-full items-baseline whitespace-nowrap font-semibold leading-none"
-              style={{
-                color: metricColor,
-                fontSize: `${valueFontSize}px`,
-                fontVariantNumeric: 'tabular-nums',
-                letterSpacing: 0,
-                gap: `${valueGap}px`,
-                textShadow: chartTheme.singleValueGlow,
-              }}
-            >
-              <span>{shownMainValue}</span>
-              {unitLabel ? (
-                <span
-                  className="shrink-0 font-medium leading-none"
-                  style={{
-                    color: toAlphaColor(metricColor, 0.78),
-                    fontSize: `${UNIT_FONT_SCALE}em`,
-                    transform: 'translateY(-0.02em)',
-                  }}
-                >
-                  {unitLabel}
-                </span>
-              ) : null}
-            </div>
-            <div
-              ref={measureRef}
-              className="pointer-events-none absolute left-0 top-0 inline-flex items-baseline whitespace-nowrap font-semibold leading-none opacity-0"
-              aria-hidden
-              style={{
-                fontVariantNumeric: 'tabular-nums',
-                gap: `${valueGap}px`,
-                letterSpacing: 0,
-              }}
-            >
-              <span>{shownMainValue}</span>
-              {unitLabel ? (
-                <span
-                  className="shrink-0 font-medium leading-none"
-                  style={{
-                    fontSize: `${UNIT_FONT_SCALE}em`,
-                    transform: 'translateY(-0.02em)',
-                  }}
-                >
-                  {unitLabel}
-                </span>
-              ) : null}
-            </div>
-          </div>
-
-          {config?.compare && (
-            <div
-              className="flex flex-wrap items-center gap-1"
-              style={{
-                marginTop: compareSpacing,
-                color: chartTheme.singleValueMetaColor,
-                lineHeight: 1.2,
-              }}
-            >
-              <span
-                style={{
-                  color: chartTheme.singleValueMetaColor,
-                  fontSize: compareLabelFontSize,
-                }}
-              >
-                {t('dashboard.comparePreviousShortLabel')}
-              </span>
-              <span
-                className="font-semibold"
-                style={{
-                  color: compareTextColor,
-                  fontSize: compareValueFontSize,
-                  lineHeight: 1,
-                }}
-              >
-                {compareDisplayText}
-              </span>
-            </div>
-          )}
+        <div className="min-h-0 w-full flex-1">
+          <OpsAnalysisMetricValue
+            main={shownMainValue}
+            unit={unitLabel || undefined}
+            color={metricColor}
+            unitColor={toAlphaColor(metricColor, 0.78)}
+            valueClassName="font-semibold"
+            unitClassName="font-medium"
+            fontVariantNumeric="tabular-nums"
+            textShadow={chartTheme.singleValueGlow}
+            unitScale={UNIT_FONT_SCALE}
+            unitTransform="translateY(-0.02em)"
+            heightFillRatio={
+              config?.compare ? COMPARE_METRIC_HEIGHT_FILL_RATIO : undefined
+            }
+          />
         </div>
+
+        {config?.compare && (
+          <div
+            className="flex shrink-0 flex-wrap items-center gap-1"
+            style={{
+              marginTop: compareSpacing,
+              color: chartTheme.singleValueMetaColor,
+              lineHeight: 1.2,
+            }}
+          >
+            <span
+              style={{
+                color: chartTheme.singleValueMetaColor,
+                fontSize: compareLabelFontSize,
+              }}
+            >
+              {t('dashboard.comparePreviousShortLabel')}
+            </span>
+            <span
+              className="font-semibold"
+              style={{
+                color: compareTextColor,
+                fontSize: compareValueFontSize,
+                lineHeight: 1,
+              }}
+            >
+              {compareDisplayText}
+            </span>
+          </div>
+        )}
 
         {showSparkline ? (
           <div

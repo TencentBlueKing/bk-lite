@@ -7,7 +7,7 @@ from unittest.mock import patch
 import pytest
 from rest_framework.test import APIClient
 
-from apps.system_mgmt.models import Group, Role, User
+from apps.system_mgmt.models import Group, IntegrationInstance, Role, User, UserSyncSource
 
 pytestmark = pytest.mark.django_db
 
@@ -99,6 +99,19 @@ def test_create_group_under_parent(super_client):
     assert Group.objects.filter(name="子组", parent_id=parent.id).exists()
 
 
+def test_create_group_under_synced_group_is_rejected(super_client, user_sync_source):
+    synced_root = Group.objects.create(name="同步根组织", parent_id=0, sync_source=user_sync_source)
+
+    response = super_client.post(
+        f"{BASE}/create_group/",
+        {"group_name": "不允许手动新增的子组织", "parent_group_id": synced_root.id},
+        format="json",
+    )
+
+    assert response.json()["result"] is False
+    assert not Group.objects.filter(name="不允许手动新增的子组织", parent_id=synced_root.id).exists()
+
+
 def test_create_group_parent_not_found(super_client):
     resp = super_client.post(
         f"{BASE}/create_group/",
@@ -181,6 +194,54 @@ def test_update_group_default_protected(super_client):
     assert resp.json()["result"] is False
 
 
+@pytest.fixture
+def user_sync_source(db):
+    instance = IntegrationInstance.objects.create(
+        name="group-guard-source-instance",
+        provider_key="feishu",
+        enabled=True,
+        status="ready",
+        capability_status={"user_sync": "ready"},
+        config={},
+    )
+    return UserSyncSource.objects.create(
+        name="group-guard-source",
+        integration_instance=instance,
+        root_group_name="同步根组织",
+        business_config={"root_department_id": "0"},
+        field_mapping={"username": "user_id"},
+    )
+
+
+def test_update_synced_root_group_updates_sync_source_name(super_client, user_sync_source):
+    root = Group.objects.create(name="同步根组织", parent_id=0, sync_source=user_sync_source)
+
+    response = super_client.post(
+        f"{BASE}/update_group/",
+        {"group_id": root.id, "group_name": "已改名根组织", "role_ids": []},
+        format="json",
+    )
+
+    user_sync_source.refresh_from_db()
+    assert response.json()["result"] is True
+    assert user_sync_source.root_group_name == "已改名根组织"
+
+
+def test_update_synced_child_group_rejects_name_change(super_client, user_sync_source):
+    root = Group.objects.create(name="同步根组织", parent_id=0, sync_source=user_sync_source)
+    child = Group.objects.create(name="外部子组织", parent_id=root.id, sync_source=user_sync_source)
+
+    response = super_client.post(
+        f"{BASE}/update_group/",
+        {"group_id": child.id, "group_name": "不允许的新名称", "role_ids": []},
+        format="json",
+    )
+
+    child.refresh_from_db()
+    assert response.json()["result"] is False
+    assert child.name == "外部子组织"
+
+
 # ---------------------------------------------------------------------------
 # delete_groups
 # ---------------------------------------------------------------------------
@@ -204,6 +265,15 @@ def test_delete_groups_virtual_top_protected(super_client):
     resp = super_client.post(f"{BASE}/delete_groups/", {"id": g.id}, format="json")
     assert resp.json()["result"] is False
     assert Group.objects.filter(id=g.id).exists()
+
+
+def test_delete_synced_group_is_rejected(super_client, user_sync_source):
+    root = Group.objects.create(name="同步根组织", parent_id=0, sync_source=user_sync_source)
+
+    response = super_client.post(f"{BASE}/delete_groups/", {"id": root.id}, format="json")
+
+    assert response.json()["result"] is False
+    assert Group.objects.filter(id=root.id).exists()
 
 
 # ---------------------------------------------------------------------------

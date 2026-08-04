@@ -1,8 +1,8 @@
 import { AuthSource } from '@/app/system-manager/types/security';
-import { AUTH_SOURCE_TYPE_MAP } from '@/app/system-manager/constants/authSources';
+import { getAuthSourceTypeMap } from '@/app/system-manager/constants/authSources';
 
-export const enhanceAuthSourceWithDisplayInfo = (authSource: AuthSource): AuthSource => {
-  const typeConfig = AUTH_SOURCE_TYPE_MAP[authSource.source_type];
+export const enhanceAuthSourceWithDisplayInfo = (authSource: AuthSource, t: (key: string) => string): AuthSource => {
+  const typeConfig = getAuthSourceTypeMap(t)[authSource.source_type];
   
   return {
     ...authSource,
@@ -11,6 +11,21 @@ export const enhanceAuthSourceWithDisplayInfo = (authSource: AuthSource): AuthSo
   };
 };
 
-export const enhanceAuthSourcesList = (authSources: AuthSource[]): AuthSource[] => {
-  return authSources.map(enhanceAuthSourceWithDisplayInfo);
+export const enhanceAuthSourcesList = (authSources: AuthSource[], t: (key: string) => string): AuthSource[] => {
+  return authSources.map((authSource) => enhanceAuthSourceWithDisplayInfo(authSource, t));
+};
+
+type AuthSourceRequestChannel = 'authSources' | 'roleInfo';
+
+export const createLatestRequestGuard = () => {
+  const latestRequestIds = new Map<AuthSourceRequestChannel, number>();
+
+  return {
+    begin: (channel: AuthSourceRequestChannel) => {
+      const requestId = (latestRequestIds.get(channel) || 0) + 1;
+      latestRequestIds.set(channel, requestId);
+      return requestId;
+    },
+    isCurrent: (channel: AuthSourceRequestChannel, requestId: number) => requestId === latestRequestIds.get(channel),
+  };
 };

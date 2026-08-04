@@ -1,0 +1,165 @@
+{
+  "plugin": "Process",
+  "plugin_desc": "Collect per-process CPU, memory, threads, RSS, FDs and optional TCP port liveness via Telegraf procstat (and net_response). Metric instance_id matches the host instance so process data can be shown on the host dashboard.",
+  "support_collect_detect": false,
+  "status_query": "any({instance_type='process', collect_type='host'}) by (instance_id, process_name)",
+  "instance_fact_bindings": [
+    {
+      "fact": "asset.ip",
+      "value_type": "ip",
+      "resolver": "selected_node",
+      "options": {"selection_field": "node_ids", "node_field": "ip", "required": true}
+    }
+  ],
+  "instance_summary_columns": [
+    {"fact": "asset.ip", "title": "monitor.views.hostIp", "order": 10}
+  ],
+  "name": "Process",
+  "icon": "mm-host_主机",
+  "type": "OS",
+  "description": "",
+  "default_metric": "any({instance_type='process'}) by (instance_id, process_name)",
+  "instance_id_keys": ["instance_id", "process_name"],
+  "supplementary_indicators": [
+    "process_alive",
+    "process_cpu_usage",
+    "process_mem_usage",
+    "process_port_alive",
+    "process_num_threads"
+  ],
+  "display_fields": [
+    {
+      "name": "进程存活",
+      "sort_order": 0,
+      "metrics": [
+        {"plugin": "Process", "metric": "process_alive"},
+        {"plugin": "Process Remote", "metric": "process_alive"}
+      ]
+    },
+    {
+      "name": "CPU使用率",
+      "sort_order": 1,
+      "metrics": [
+        {"plugin": "Process", "metric": "process_cpu_usage"},
+        {"plugin": "Process Remote", "metric": "process_cpu_usage"}
+      ]
+    },
+    {
+      "name": "应用内存使用率",
+      "sort_order": 2,
+      "metrics": [
+        {"plugin": "Process", "metric": "process_mem_usage"},
+        {"plugin": "Process Remote", "metric": "process_mem_usage"}
+      ]
+    },
+    {
+      "name": "端口存活",
+      "sort_order": 3,
+      "metrics": [
+        {"plugin": "Process", "metric": "process_port_alive"},
+        {"plugin": "Process Remote", "metric": "process_port_alive"}
+      ]
+    },
+    {
+      "name": "线程数",
+      "sort_order": 4,
+      "metrics": [
+        {"plugin": "Process", "metric": "process_num_threads"},
+        {"plugin": "Process Remote", "metric": "process_num_threads"}
+      ]
+    }
+  ],
+  "metrics": [
+    {
+      "metric_group": "Resource",
+      "name": "process_cpu_usage",
+      "query": "sum(procstat_cpu_usage{instance_type=\"process\", __$labels__}) by (instance_id, process_name)",
+      "display_name": "Process CPU Usage",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [
+        {"name": "process_name", "description": "process_name"}
+      ],
+      "instance_id_keys": ["instance_id", "process_name"],
+      "description": "CPU usage percent of matched processes, aggregated by process_name."
+    },
+    {
+      "metric_group": "Resource",
+      "name": "process_mem_usage",
+      "query": "sum(procstat_memory_usage{instance_type=\"process\", __$labels__}) by (instance_id, process_name)",
+      "display_name": "Process Memory Usage",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [
+        {"name": "process_name", "description": "process_name"}
+      ],
+      "instance_id_keys": ["instance_id", "process_name"],
+      "description": "Memory usage percent of matched processes relative to system memory, aggregated by process_name."
+    },
+    {
+      "metric_group": "Resource",
+      "name": "process_memory_rss",
+      "query": "sum(procstat_memory_rss{instance_type=\"process\", __$labels__}) by (instance_id, process_name)",
+      "display_name": "Process Memory RSS",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [
+        {"name": "process_name", "description": "process_name"}
+      ],
+      "instance_id_keys": ["instance_id", "process_name"],
+      "description": "Resident set size of matched processes in bytes, aggregated by process_name."
+    },
+    {
+      "metric_group": "Resource",
+      "name": "process_num_threads",
+      "query": "sum(procstat_num_threads{instance_type=\"process\", __$labels__}) by (instance_id, process_name)",
+      "display_name": "Process Thread Count",
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [
+        {"name": "process_name", "description": "process_name"}
+      ],
+      "instance_id_keys": ["instance_id", "process_name"],
+      "description": "Number of threads of matched processes, aggregated by process_name."
+    },
+    {
+      "metric_group": "Resource",
+      "name": "process_num_fds",
+      "query": "sum(procstat_num_fds{instance_type=\"process\", __$labels__}) by (instance_id, process_name)",
+      "display_name": "Process Open File Descriptors",
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [
+        {"name": "process_name", "description": "process_name"}
+      ],
+      "instance_id_keys": ["instance_id", "process_name"],
+      "description": "Number of open file descriptors of matched processes, aggregated by process_name. May require elevated privileges."
+    },
+    {
+      "metric_group": "Status",
+      "name": "process_alive",
+      "query": "clamp_max(count(procstat_cpu_usage{instance_type=\"process\", __$labels__}) by (instance_id, process_name), 1)",
+      "display_name": "Process Alive",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"失活\",\"id\":0,\"color\":\"#ff4d4f\"},{\"name\":\"存活\",\"id\":1,\"color\":\"#1ac44a\"}]",
+      "dimensions": [
+        {"name": "process_name", "description": "process_name"}
+      ],
+      "instance_id_keys": ["instance_id", "process_name"],
+      "description": "Whether at least one matched process is currently reporting metrics."
+    },
+    {
+      "metric_group": "Status",
+      "name": "process_port_alive",
+      "query": "((floor(((avg(clamp_max(net_response_result_code{instance_type=\"process\", __$labels__}, 1) == bool 0) by (instance_id, process_name)) or process_port_alive{instance_type=\"process\", __$labels__})) + ceil(((avg(clamp_max(net_response_result_code{instance_type=\"process\", __$labels__}, 1) == bool 0) by (instance_id, process_name)) or process_port_alive{instance_type=\"process\", __$labels__}))) / 2)",
+      "display_name": "Port Liveness",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"失活\",\"id\":0,\"color\":\"#ff4d4f\"},{\"name\":\"部分失活\",\"id\":0.5,\"color\":\"#faad14\"},{\"name\":\"存活\",\"id\":1,\"color\":\"#1ac44a\"}]",
+      "dimensions": [
+        {"name": "process_name", "description": "process_name"}
+      ],
+      "instance_id_keys": ["instance_id", "process_name"],
+      "description": "Port liveness status for configured ports: 1=all alive, 0=all dead, 0.5=partially dead. Missing series means no port data. Direct process_port_alive series is accepted for mock/demo data and quantized to the same three states."
+    }
+  ]
+}

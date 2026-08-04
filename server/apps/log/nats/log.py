@@ -1,13 +1,13 @@
 from datetime import datetime
 from types import SimpleNamespace
 
-import nats_client
 from django.db.models import Q
 
+import nats_client
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.utils.current_team_scope import _normalize_organization_ids
 from apps.core.utils.permission_utils import check_instance_permission, get_permission_rules, get_permissions_rules, permission_filter
-from apps.core.utils.time_util import format_time_iso
+from apps.core.utils.time_util import format_rfc3339_utc, parse_rfc3339_range_utc
 from apps.log.constants.permission import PermissionConstants
 from apps.log.constants.victoriametrics import VictoriaLogsConstants
 from apps.log.models.log_group import LogGroup
@@ -19,6 +19,11 @@ from apps.rpc.system_mgmt import SystemMgmt
 
 def _normalize_bounded_int(value, field_name: str, default, max_value: int):
     return VictoriaLogsConstants.normalize_bounded_int(value, field_name, default, max_value)
+
+
+def _normalize_query_time_range(time_range):
+    start_time, end_time = parse_rfc3339_range_utc(time_range)
+    return format_rfc3339_utc(start_time), format_rfc3339_utc(end_time)
 
 
 def _resolve_log_group_scope(user_info):
@@ -132,9 +137,10 @@ def log_search(query, time_range, limit=10, *args, **kwargs):
     user_info = kwargs.get("user_info")
     query = _apply_log_group_scope(query, user_info)
 
-    start_time, end_time = time_range
-    start_time = format_time_iso(start_time)
-    end_time = format_time_iso(end_time)
+    try:
+        start_time, end_time = _normalize_query_time_range(time_range)
+    except ValueError as exc:
+        return {"result": False, "data": [], "message": str(exc)}
     try:
         limit = VictoriaLogsConstants.normalize_query_limit(limit, default=10)
     except ValueError as exc:
@@ -152,9 +158,10 @@ def log_hits(query, time_range, field, fields_limit=5, step="5m", *args, **kwarg
     user_info = kwargs.get("user_info")
     query = _apply_log_group_scope(query, user_info)
 
-    start_time, end_time = time_range
-    start_time = format_time_iso(start_time)
-    end_time = format_time_iso(end_time)
+    try:
+        start_time, end_time = _normalize_query_time_range(time_range)
+    except ValueError as exc:
+        return {"result": False, "data": [], "message": str(exc)}
     try:
         fields_limit = VictoriaLogsConstants.normalize_hits_fields_limit(fields_limit, default=5)
     except ValueError as exc:

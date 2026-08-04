@@ -253,24 +253,24 @@ const OperationLogs: React.FC = () => {
         {detailRecord && (
           <div className="flex flex-col gap-4">
             <Descriptions column={1} bordered size="small">
-              <Descriptions.Item label={t('system.security.targetType') || '对象类型'}>
+              <Descriptions.Item label={t('system.security.targetType')}>
                 {detailRecord.target_type || '--'}
               </Descriptions.Item>
-              <Descriptions.Item label={t('system.security.targetId') || '对象ID'}>
+              <Descriptions.Item label={t('system.security.targetId')}>
                 {detailRecord.target_id || '--'}
               </Descriptions.Item>
               {detail.scenario && (
-                <Descriptions.Item label={t('system.security.scenario') || '场景'}>
+                <Descriptions.Item label={t('system.security.scenario')}>
                   {detail.scenario}
                 </Descriptions.Item>
               )}
               {detail.model_object && (
-                <Descriptions.Item label={t('system.security.modelObject') || '模型'}>
+                <Descriptions.Item label={t('system.security.modelObject')}>
                   {detail.model_object}
                 </Descriptions.Item>
               )}
               {detail.operator_object && (
-                <Descriptions.Item label={t('system.security.operatorObject') || '操作对象'}>
+                <Descriptions.Item label={t('system.security.operatorObject')}>
                   {detail.operator_object}
                 </Descriptions.Item>
               )}
@@ -279,7 +279,7 @@ const OperationLogs: React.FC = () => {
             {hasDiff && (
               <div>
                 <div className="mb-2 font-medium">
-                  {t('system.security.beforeAfter') || '变更前后对比'}
+                  {t('system.security.beforeAfter')}
                 </div>
                 <ReactDiffViewer
                   oldValue={JSON.stringify(detail.before_data ?? {}, null, 2)}
