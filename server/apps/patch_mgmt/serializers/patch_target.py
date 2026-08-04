@@ -210,16 +210,8 @@ class PatchTargetSerializer(PatchPermissionSerializer):
         ).exists()
 
     def get_has_pending_reboot(self, obj):
-        from apps.patch_mgmt.constants import GovernanceTaskStatus
-
-        return GovernanceTask.objects.filter(
-            task_type="reboot",
-            target_list__contains=[obj.id],
-            status__in=GovernanceTaskStatus.ACTIVE_STATES,
-        ).exists() or GovernanceTaskHost.objects.filter(
-            target_id=obj.id,
-            stage__in=("pending_reboot", "reboot_scheduled", "rebooting"),
-        ).exists()
+        binding = getattr(obj, "baseline_binding", None)
+        return bool(binding and binding.pending_reboot_count > 0)
 
     def get_arch(self, obj):
         return obj.arch or ""
