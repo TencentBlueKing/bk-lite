@@ -13,7 +13,7 @@ from rest_framework.response import Response
 from apps.apm.adapters import (
     SystemMgmtNotificationDispatcher,
     TelemetryStoreUnavailable,
-    VictoriaMetricsMetricStore,
+    VictoriaTracesTelemetryStore,
 )
 from apps.apm.models import (
     ApmAlertOutbox,
@@ -284,7 +284,7 @@ class ApmServiceViewSet(viewsets.ReadOnlyModelViewSet):
             include_breakdown=True,
         )
         try:
-            red = DjangoTelemetryQueryService(VictoriaMetricsMetricStore()).service_red(query)
+            red = DjangoTelemetryQueryService(VictoriaTracesTelemetryStore()).service_red(query)
         except ValueError as exc:
             return Response(
                 {"code": "invalid_query", "detail": str(exc)},
@@ -407,7 +407,7 @@ class ApmSloViewSet(viewsets.GenericViewSet):
 
     @staticmethod
     def _service():
-        return DjangoApmReliabilityService(VictoriaMetricsMetricStore())
+        return DjangoApmReliabilityService(VictoriaTracesTelemetryStore())
 
     def get_queryset(self):
         queryset = ApmSlo.objects.select_related("service").prefetch_related("service__organization_links")
@@ -513,7 +513,7 @@ class ApmPolicyViewSet(viewsets.GenericViewSet):
 
     @staticmethod
     def _service():
-        return DjangoApmPolicyService(VictoriaMetricsMetricStore(), SystemMgmtNotificationDispatcher())
+        return DjangoApmPolicyService(VictoriaTracesTelemetryStore(), SystemMgmtNotificationDispatcher())
 
     def get_queryset(self):
         queryset = ApmPolicy.objects.select_related("service", "state").prefetch_related(

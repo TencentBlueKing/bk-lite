@@ -55,7 +55,7 @@ def test_missing_instance_identity_discovers_service_without_fake_instance():
     assert ApmServiceInstance.objects.count() == 0
 
 
-def test_application_organization_changes_follow_only_inherited_instances():
+def test_application_organization_changes_sync_services_and_only_inherited_instances():
     application = create_application("shop", (10,))
     catalog = DjangoTelemetryCatalogService()
     inherited = catalog.discover(CatalogDiscovery("shop", "checkout", "pod-a", "prod")).instance
@@ -71,10 +71,42 @@ def test_application_organization_changes_follow_only_inherited_instances():
         is_enabled=True,
     )
     custom.refresh_from_db()
+    inherited.service.refresh_from_db()
 
+    assert set(inherited.service.organization_links.values_list("organization", flat=True)) == {30}
     assert set(inherited.organization_links.values_list("organization", flat=True)) == {30}
     assert set(custom.organization_links.values_list("organization", flat=True)) == {20}
     assert custom.permission_mode == ApmServiceInstance.PermissionMode.CUSTOM
+
+
+def test_application_organization_sync_rolls_back_all_catalog_levels(mocker):
+    application = create_application("shop", (10,))
+    original_name = application.name
+    discovered = DjangoTelemetryCatalogService().discover(
+        CatalogDiscovery("shop", "checkout", "pod-a", "prod")
+    )
+    mocker.patch(
+        "apps.apm.services.applications.ApmServiceInstanceOrganization.objects.bulk_create",
+        side_effect=RuntimeError("injected failure"),
+    )
+
+    with pytest.raises(RuntimeError, match="injected failure"):
+        DjangoApmApplicationService().update(
+            application.id,
+            name="renamed",
+            description="",
+            organization_ids=[30],
+            actor="tester",
+            is_enabled=True,
+        )
+
+    application.refresh_from_db()
+    discovered.service.refresh_from_db()
+    discovered.instance.refresh_from_db()
+    assert application.name == original_name
+    assert set(application.organization_links.values_list("organization", flat=True)) == {10}
+    assert set(discovered.service.organization_links.values_list("organization", flat=True)) == {10}
+    assert set(discovered.instance.organization_links.values_list("organization", flat=True)) == {10}
 
 
 def test_latest_observation_updates_metadata_without_regressing_on_stale_data():

@@ -198,7 +198,7 @@ TDD 只在以下已确认 interface 上测试，不耦合内部实现：
 - [x] 阶段 0：审计 APM/Monitor/Log；更新术语；新增本 spec 与 ADR 0006；废弃冲突规格。
 - [x] 阶段 1：云区域接入 API/UI、受信 endpoint、Shell 安全和前后端测试。
 - [x] 阶段 2：自定义 Collector、JetStream interface、区域/中心参考配置、Edge 删除和容器契约。
-- [ ] 阶段 3：VT-only Adapter、任务切换、dependencies、35d 保留期和组织一致性。
+- [x] 阶段 3：VT-only Adapter、任务切换、dependencies、35d 保留期和组织一致性。
 - [ ] 阶段 4：健康、迁移、升级/回滚和可靠性故障语义。
 - [ ] 阶段 5：单元/接口/容器/故障/数据正确性/Web 与 Storybook 全量验证。
 
