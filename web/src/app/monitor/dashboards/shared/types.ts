@@ -49,6 +49,7 @@ export type MetricUnit =
   | 'gibyteps'
   | 'tibyteps'
   | 'pibyteps'
+  | 'Bps'
   | 'ns'
   | 'µs'
   | 'us'

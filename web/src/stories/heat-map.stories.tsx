@@ -1,4 +1,4 @@
-import type { Meta, StoryObj } from '@storybook/react';
+import type { Meta, StoryObj } from '@storybook/nextjs';
 import EventHeatMap from '@/components/heat-map';
 
 const meta: Meta<typeof EventHeatMap> = {

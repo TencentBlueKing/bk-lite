@@ -580,8 +580,8 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
             onOpenShare={
               !shareMode && selectedScreen?.data_id
                 ? () => {
-                    void openShare(selectedScreen.data_id);
-                  }
+                  void openShare(selectedScreen.data_id);
+                }
                 : undefined
             }
             onOpenSubscription={

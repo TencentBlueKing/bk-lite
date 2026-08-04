@@ -44,6 +44,7 @@ import {
 import {
   collectDependencyFieldNames,
   filterColumnsByDependency,
+  FormFieldDependency,
   isDependencySatisfied
 } from '@/app/monitor/hooks/integration/formFieldDependency';
 const { confirm } = Modal;
@@ -53,6 +54,14 @@ interface CollectDetectState {
   fingerprint?: string;
   result?: Record<string, any>;
   error_message?: string;
+}
+
+interface IntegrationTableColumnConfig {
+  name: string;
+  label: string;
+  is_only?: boolean;
+  dependency?: FormFieldDependency;
+  [key: string]: unknown;
 }
 
 const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
@@ -197,9 +206,9 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     () => collectDependencyFieldNames(currentConfig?.table_columns),
     [currentConfig]
   );
-  const visibleTableColumns = useMemo(
+  const visibleTableColumns = useMemo<IntegrationTableColumnConfig[]>(
     () =>
-      filterColumnsByDependency(
+      filterColumnsByDependency<IntegrationTableColumnConfig>(
         currentConfig?.table_columns || [],
         (field) =>
           Object.prototype.hasOwnProperty.call(formSnapshot, field)

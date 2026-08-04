@@ -538,8 +538,8 @@ const ViewList: React.FC<ViewListProps> = ({
       }
       const nextIpOptions = Array.isArray(k8sQuery?.asset_ips)
         ? k8sQuery.asset_ips
-            .map((ip: unknown) => String(ip || '').trim())
-            .filter(Boolean)
+          .map((ip: unknown) => String(ip || '').trim())
+          .filter(Boolean)
         : [];
       setIpFilterOptions(nextIpOptions);
       setQueryData(queryForm);
@@ -702,15 +702,15 @@ const ViewList: React.FC<ViewListProps> = ({
             primaryMeta?.name &&
             isStringArray(primaryMeta?.unit || '')
               ? {
-                  filterMultiple: true,
-                  filterParam: primaryMeta.name,
-                  filters: (
+                filterMultiple: true,
+                filterParam: primaryMeta.name,
+                filters: (
                     JSON.parse(primaryMeta.unit || '[]') as ListItem[]
-                  ).map((item) => ({
-                    text: String(item.name ?? item.id ?? ''),
-                    value: String(item.id ?? '')
-                  }))
-                }
+                ).map((item) => ({
+                  text: String(item.name ?? item.id ?? ''),
+                  value: String(item.id ?? '')
+                }))
+              }
               : {}),
             render: (_: unknown, record: TableDataItem) => {
               const cell = resolveCell(record, col);

@@ -1,5 +1,5 @@
 import React from 'react';
-import type { Meta, StoryObj } from '@storybook/react';
+import type { Meta, StoryObj } from '@storybook/nextjs';
 import BlockResultItem from '@/app/opspilot/components/block-result';
 
 const meta: Meta<typeof BlockResultItem> = {

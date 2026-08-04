@@ -53,9 +53,6 @@ const nextConfig = withCombineLocalesAndMenus(
       },
       staticPageGenerationTimeout: 300,
       transpilePackages: ['@antv/g6'],
-      typescript: {
-        ignoreBuildErrors: true,
-      },
       experimental: {
         externalDir: true,
         outputFileTracingRoot: enterpriseWebRoot

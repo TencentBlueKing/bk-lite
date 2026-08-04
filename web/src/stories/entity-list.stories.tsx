@@ -1,5 +1,5 @@
 import React from 'react';
-import { StoryFn, Meta } from '@storybook/react';
+import { StoryFn, Meta } from '@storybook/nextjs';
 import { fn } from 'storybook/test';
 import { Menu } from 'antd';
 import EntityList from '@/components/entity-list';

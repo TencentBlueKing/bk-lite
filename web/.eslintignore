@@ -3,6 +3,9 @@ node_modules
 out
 build
 dist
+storybook-static
+enterprise
+src/app/**/(enterprise)
 public/iconfont.js
 *.config.js
 *.config.mjs

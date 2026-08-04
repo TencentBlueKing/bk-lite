@@ -661,16 +661,16 @@ const LineChart: React.FC<LineChartProps> = memo(
         const fullText =
           isStringArray(unit || '')
             ? (() => {
-                try {
-                  return (
-                    (JSON.parse(unit as string) as ListItem[]).find(
-                      (item) => item.id === Number(payload.value)
-                    )?.name || String(payload.value)
-                  );
-                } catch {
-                  return String(payload.value);
-                }
-              })()
+              try {
+                return (
+                  (JSON.parse(unit as string) as ListItem[]).find(
+                    (item) => item.id === Number(payload.value)
+                  )?.name || String(payload.value)
+                );
+              } catch {
+                return String(payload.value);
+              }
+            })()
             : formatAxisNumber(Number(payload.value));
         return (
           <text
