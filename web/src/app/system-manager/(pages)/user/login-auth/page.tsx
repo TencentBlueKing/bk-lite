@@ -37,6 +37,7 @@ import {
   resolveLoginAuthDefaultExternalField,
   resolveLoginAuthProviderKey,
   resolveLoginAuthTemplate,
+  isBuiltinLoginAuthBinding,
   shouldShowLoginAuthUnmatchedUserAction,
 } from '@/app/system-manager/utils/loginAuthFormUtils';
 
@@ -69,17 +70,6 @@ const LoginAuthPage: React.FC = () => {
     total: 0,
     pageSize: 10,
   });
-  const builtinProviderKey = 'bk_lite_builtin';
-  const attachProviderKeys = (
-    items: LoginAuthBinding[],
-    instances: AvailableInstance[] = availableInstances
-  ) => items.map((item) => ({
-    ...item,
-    provider_key:
-      item.provider_key ||
-      instances.find((instance) => instance.id === item.integration_instance)?.provider_key,
-  }));
-
   const fetchBindings = async (page = pagination.current, pageSize = pagination.pageSize) => {
     try {
       setLoading(true);
@@ -93,7 +83,7 @@ const LoginAuthPage: React.FC = () => {
         pageSize,
         total: count,
       }));
-      setBindings(attachProviderKeys(items));
+      setBindings(items);
     } catch {
       message.error(t('common.fetchFailed'));
     } finally {
@@ -106,7 +96,6 @@ const LoginAuthPage: React.FC = () => {
       const data = await getAvailableInstances();
       const nextInstances = data || [];
       setAvailableInstances(nextInstances);
-      setBindings((prev) => attachProviderKeys(prev, nextInstances));
     } catch {
       setAvailableInstances([]);
     }
@@ -118,16 +107,7 @@ const LoginAuthPage: React.FC = () => {
     void getProviders().then(setProviders).catch(() => setProviders([]));
   }, []);
 
-  const getBindingProviderKey = (binding: LoginAuthBinding) => {
-    if (binding.provider_key) return binding.provider_key;
-    return availableInstances.find((item) => item.id === binding.integration_instance)?.provider_key || '';
-  };
-
-  const isBuiltinBinding = (binding: LoginAuthBinding) => {
-    const key = getBindingProviderKey(binding);
-    if (!key) return true;
-    return getBindingProviderKey(binding) === builtinProviderKey;
-  }
+  const isBuiltinBinding = (binding: LoginAuthBinding) => isBuiltinLoginAuthBinding(binding.provider_key);
   const editingBuiltinBinding = editingBinding ? isBuiltinBinding(editingBinding) : false;
   const currentProviderKey = useMemo(
     () => resolveLoginAuthProviderKey(watchedIntegrationInstance, availableInstances, editingBinding),

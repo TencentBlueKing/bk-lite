@@ -10,6 +10,7 @@ from apps.system_mgmt.models import (
 
 class LoginAuthBindingSerializer(UsernameSerializer):
     integration_instance_name = serializers.SerializerMethodField()
+    provider_key = serializers.SerializerMethodField()
     builtin_provider_key = "bk_lite_builtin"
 
     class Meta:
@@ -18,6 +19,9 @@ class LoginAuthBindingSerializer(UsernameSerializer):
 
     def get_integration_instance_name(self, obj):
         return obj.integration_instance.name if obj.integration_instance_id else ""
+
+    def get_provider_key(self, obj):
+        return obj.integration_instance.provider_key if obj.integration_instance_id else ""
 
     def validate(self, attrs):
         if self.instance and self.instance.integration_instance.provider_key == self.builtin_provider_key:
