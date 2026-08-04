@@ -22,7 +22,7 @@ class Metrics:
     MAX_GAP_DETECTION_POINTS = 50000
     CARD_QUERY_MAX_SERIES = 200
     CARD_QUERY_MAX_POINTS = 100000
-    # 已显式配置 view_query（topk/bottomk/limitk）时的兜底硬上限；超过则截断而非拒绝。
+    # 查询本身已带 topk/bottomk/limitk 时的兜底硬上限；超过则截断而非拒绝。
     CARD_QUERY_HARD_MAX_SERIES = 2000
 
     @staticmethod
@@ -52,7 +52,7 @@ class Metrics:
 
     @staticmethod
     def query_already_limited(query: str) -> bool:
-        """True when the query already applies topk/bottomk/limitk (e.g. view_query)."""
+        """True when the query already applies topk/bottomk/limitk."""
         return bool(Metrics._LIMITING_QUERY_PATTERN.match(query or ""))
 
     @staticmethod
@@ -60,7 +60,7 @@ class Metrics:
         """Wrap an unlimited card query with limitk(N+1) for truncation detection.
 
         Returns (rewritten_query, applied). Queries that already start with
-        topk/bottomk/limitk (explicit view_query) are left unchanged.
+        topk/bottomk/limitk are left unchanged (hard cap applied in finalize).
         """
         series_limit = Metrics.CARD_QUERY_MAX_SERIES if limit is None else limit
         if Metrics.query_already_limited(query):
@@ -100,7 +100,7 @@ class Metrics:
                 truncated = True
                 data["result"] = result[:limit]
         elif len(result) > Metrics.CARD_QUERY_HARD_MAX_SERIES:
-            # view_query 路径的兜底：截断而非抛错，避免浏览器卡死。
+            # 查询已自带 limit 算子时的兜底：截断而非抛错，避免浏览器卡死。
             truncated = True
             limit = Metrics.CARD_QUERY_HARD_MAX_SERIES
             data["result"] = result[:limit]
@@ -419,7 +419,15 @@ class Metrics:
             item["values"] = result_values
 
     @staticmethod
-    def query_metric_by_instance(metric_query: str, instance_id: str, instance_id_keys: list, dimensions: list):
+    def query_metric_by_instance(
+        metric_query: str,
+        instance_id: str,
+        instance_id_keys: list,
+        dimensions: list,
+        *,
+        series_limit: int | None = None,
+        series_mode: str | None = None,
+    ):
         """
         根据实例ID查询指标，按维度分组
 
@@ -427,6 +435,8 @@ class Metrics:
         :param instance_id: 实例ID，字符串元组格式，如 "('aa', 'bb')"
         :param instance_id_keys: 实例ID对应的维度键列表，如 ["name", "id"]
         :param dimensions: 用于分组的维度列表
+        :param series_limit: 可选，限制返回序列数（列表维度预览用）
+        :param series_mode: top / bottom / limited，配合 series_limit
         :return: 查询结果
         """
         # 解析 instance_id 字符串元组
@@ -455,6 +465,21 @@ class Metrics:
             final_query = f"any({query}) by ({group_by})"
         else:
             final_query = f"any({query})"
+
+        # 列表维度预览：高维指标截断，避免浮层刷屏；完整明细走搜索页。
+        if series_limit is not None:
+            try:
+                limit = int(series_limit)
+            except (TypeError, ValueError):
+                limit = 0
+            if limit > 0:
+                mode = (series_mode or "top").lower()
+                if mode == "bottom":
+                    final_query = f"bottomk({limit}, {final_query})"
+                elif mode == "limited":
+                    final_query = f"limitk({limit}, {final_query})"
+                else:
+                    final_query = f"topk({limit}, {final_query})"
 
         return VictoriaMetricsAPI().query(final_query)
 

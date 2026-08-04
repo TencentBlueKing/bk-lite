@@ -278,7 +278,14 @@ class MonitorObjectViewSet(viewsets.ModelViewSet):
                 user=request.user,
                 monitor_object=monitor_object,
             ).first()
-            data = {"field_keys": preference.field_keys} if preference else None
+            data = (
+                {
+                    "field_keys": preference.field_keys,
+                    "fixed_field_keys": preference.fixed_field_keys or [],
+                }
+                if preference
+                else None
+            )
             return WebUtils.response_success(data)
 
         serializer = MonitorViewColumnPreferenceSerializer(data=request.data)
@@ -288,12 +295,18 @@ class MonitorObjectViewSet(viewsets.ModelViewSet):
                 error_message="列配置格式无效",
             )
         field_keys = serializer.validated_data["field_keys"]
+        fixed_field_keys = serializer.validated_data.get("fixed_field_keys") or []
         MonitorViewColumnPreference.objects.update_or_create(
             user=request.user,
             monitor_object=monitor_object,
-            defaults={"field_keys": field_keys},
+            defaults={
+                "field_keys": field_keys,
+                "fixed_field_keys": fixed_field_keys,
+            },
         )
-        return WebUtils.response_success({"field_keys": field_keys})
+        return WebUtils.response_success(
+            {"field_keys": field_keys, "fixed_field_keys": fixed_field_keys}
+        )
 
     def create(self, request, *args, **kwargs):
         """创建监控对象，支持同时创建子对象"""

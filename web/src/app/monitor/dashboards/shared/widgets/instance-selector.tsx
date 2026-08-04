@@ -12,6 +12,7 @@ export interface InstanceSelectorOption {
 export interface InstanceSelectorStyles {
   readonly inlineInstanceSelector?: string;
   readonly instanceSelectorLabel?: string;
+  readonly instanceSelectorField?: string;
   readonly [key: string]: string | undefined;
 }
 
@@ -39,12 +40,8 @@ export function InstanceSelector({
   styles
 }: InstanceSelectorProps) {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-      {label && (
-        <span className={styles.instanceSelectorLabel} style={{ color: '#8c9ab1', fontSize: 14, fontWeight: 500, whiteSpace: 'nowrap' }}>
-          {label}
-        </span>
-      )}
+    <div className={styles.instanceSelectorField}>
+      {label ? <span className={styles.instanceSelectorLabel}>{label}</span> : null}
       <Select
         className={styles.inlineInstanceSelector}
         value={value}

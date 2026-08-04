@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import useMonitorApi from '@/app/monitor/api';
 import { PROFESSIONAL_DASHBOARDS } from '../../registry';
 import { normalizeDashboardKey } from './index';
-import { buildInstanceDisplayName } from './instance';
+import { buildInstanceDisplayName, encodeInstanceIdValuesParam } from './instance';
 
 async function resolveFirstInstance(
   getInstanceList: ReturnType<typeof useMonitorApi>['getInstanceList'],
@@ -32,7 +32,7 @@ function applyInstanceParams(
 ) {
   params.set('instance_id', instance.value);
   params.set('instance_name', instance.label);
-  params.set('instance_id_values', instance.idValues.join(','));
+  params.set('instance_id_values', encodeInstanceIdValuesParam(instance.idValues));
 }
 
 export function useResolveObjectId(objectKey: string) {

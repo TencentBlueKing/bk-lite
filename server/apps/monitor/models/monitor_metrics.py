@@ -28,6 +28,7 @@ class Metric(TimeInfo, MaintainerInfo):
     display_name = models.CharField(max_length=100, default="", verbose_name="指标展示名称")
     query = models.TextField(default="", verbose_name="查询语句")
     view_query = models.TextField(default="", blank=True, verbose_name="指标卡视图查询语句")
+    view_config = models.JSONField(default=dict, blank=True, verbose_name="指标卡视图展示配置")
     unit = models.TextField(default="", verbose_name="指标单位")
     data_type = models.CharField(max_length=50, default="", verbose_name="数据类型")
     description = models.TextField(blank=True, null=True, verbose_name="指标描述")
