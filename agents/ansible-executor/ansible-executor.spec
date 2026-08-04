@@ -8,6 +8,7 @@ from PyInstaller.utils.hooks import collect_all, copy_metadata
 
 SPEC_PATH = Path(globals().get("SPEC", "ansible-executor.spec")).resolve()
 SPEC_DIR = SPEC_PATH.parent
+DIST_PATH = Path(globals().get("DISTPATH", SPEC_DIR / "dist")).resolve()
 
 BUILD_SUPPORT_SPEC = importlib.util.spec_from_file_location(
     "build_support",
@@ -69,4 +70,8 @@ coll = COLLECT(
     upx=True,
     upx_exclude=[],
     name="ansible-executor",
+)
+
+BUILD_SUPPORT_MODULE.verify_packaged_ansible_windows_collection(
+    DIST_PATH / "ansible-executor"
 )

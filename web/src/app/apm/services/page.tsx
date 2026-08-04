@@ -605,7 +605,7 @@ export default function ApmServicesPage() {
         title={`调整服务组织${organizationService ? `：${organizationService.namespace}/${organizationService.name}` : ''}`}
         organizationIds={organizationService?.organization_ids ?? []}
         submitting={organizationSubmitting}
-        description="服务组织独立于接入源与实例，仅影响此逻辑服务的可见和可操作范围。"
+        description="服务组织独立于应用与实例，仅影响此逻辑服务的可见和可操作范围。"
         onCancel={() => setOrganizationService(null)}
         onSubmit={submitOrganizations}
       />

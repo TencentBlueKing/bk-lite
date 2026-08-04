@@ -56,7 +56,7 @@ def test_runtime_task_returns_reconcile_health_without_startup_side_effects(mock
         "missing_instance_identities": 1,
         "archived_services": 4,
         "archived_instances": 5,
-        "missing_ingest_sources": 0,
+        "unknown_applications": 0,
     }
     reconcile.assert_called_once()
     delete.assert_called_once()

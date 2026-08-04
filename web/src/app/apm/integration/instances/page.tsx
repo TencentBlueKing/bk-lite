@@ -31,7 +31,6 @@ const RANGE_MS: Record<TimeRange, number> = {
 export default function ApmIntegrationInstancesPage() {
   const {
     getHealth,
-    getIngestSources,
     getInstances,
     setInstanceArchived,
     setInstanceOrganizations,
@@ -39,11 +38,10 @@ export default function ApmIntegrationInstancesPage() {
   } = useApmApi();
   const { flatGroups } = useUserInfoContext();
   const [instances, setInstances] = useState<ApmServiceInstance[]>([]);
-  const [hasMissingIdentity, setHasMissingIdentity] = useState(false);
   const [catalogDegraded, setCatalogDegraded] = useState(false);
   const [status, setStatus] = useState<CatalogStatus | undefined>();
   const [keyword, setKeyword] = useState('');
-  const [sourceName, setSourceName] = useState('all');
+  const [applicationId, setApplicationId] = useState('all');
   const [environment, setEnvironment] = useState('all');
   const [timeRange, setTimeRange] = useState<TimeRange>('7d');
   const [state, setState] = useState<PageState>('loading');
@@ -62,13 +60,11 @@ export default function ApmIntegrationInstancesPage() {
     setState('loading');
     Promise.all([
       getInstances({ status, include_archived: status === 'archived' }),
-      getIngestSources(),
       getHealth().catch(() => ({ catalog_reconcile: { status: 'degraded' as const } })),
     ])
-      .then(([items, sources, health]) => {
+      .then(([items, health]) => {
         if (!active) return;
         setInstances(items);
-        setHasMissingIdentity(sources.some((source) => source.missing_instance_identity));
         setCatalogDegraded(health.catalog_reconcile.status === 'degraded');
         setState(items.length ? 'ready' : 'empty');
       })
@@ -78,7 +74,7 @@ export default function ApmIntegrationInstancesPage() {
     return () => {
       active = false;
     };
-  }, [authLoading, getHealth, getIngestSources, getInstances, refreshKey, status]);
+  }, [authLoading, getHealth, getInstances, refreshKey, status]);
 
   const submitOrganizations = async (organizationIds: number[]) => {
     if (!organizationInstance) return;
@@ -103,7 +99,7 @@ export default function ApmIntegrationInstancesPage() {
     const normalizedKeyword = keyword.trim().toLowerCase();
     const rangeStart = Date.now() - RANGE_MS[timeRange];
     return instances
-      .filter((item) => sourceName === 'all' || item.ingest_source_name === sourceName)
+      .filter((item) => applicationId === 'all' || item.application_id === applicationId)
       .filter((item) => environment === 'all' || item.environment === environment)
       .filter((item) => new Date(item.last_seen_at).getTime() >= rangeStart)
       .filter((item) => !normalizedKeyword || (
@@ -111,11 +107,11 @@ export default function ApmIntegrationInstancesPage() {
           .toLowerCase()
           .includes(normalizedKeyword)
       ));
-  }, [environment, instances, keyword, sourceName, timeRange]);
+  }, [applicationId, environment, instances, keyword, timeRange]);
 
-  const sourceOptions = useMemo(() => Array.from(new Set(instances.map((item) => item.ingest_source_name)))
+  const applicationOptions = useMemo(() => Array.from(new Map(instances.map((item) => [item.application_id, item.application_name])).entries())
     .filter(Boolean)
-    .map((value) => ({ value, label: value })), [instances]);
+    .map(([value, label]) => ({ value, label: `${label}（${value}）` })), [instances]);
   const environmentOptions = useMemo(() => Array.from(new Set(instances.map((item) => item.environment)))
     .filter(Boolean)
     .map((value) => ({ value, label: value })), [instances]);
@@ -135,7 +131,7 @@ export default function ApmIntegrationInstancesPage() {
       render: (value) => <Typography.Text ellipsis className="block max-w-56 font-mono text-xs">{value}</Typography.Text>,
     },
     { title: '版本', dataIndex: 'version', width: 100, responsive: ['lg'], render: (value) => value || '—' },
-    { title: '接入源', dataIndex: 'ingest_source_name', width: 140, responsive: ['xl'] },
+    { title: '应用', dataIndex: 'application_name', width: 140, responsive: ['xl'], render: (value, item) => value || item.application_id || '—' },
     {
       title: '接入时间',
       dataIndex: 'first_seen_at',
@@ -202,18 +198,9 @@ export default function ApmIntegrationInstancesPage() {
 
   return (
     <ApmRouteShell
-      title="接入列表"
-      description="按接入维度查看所有已上报实例；服务健康度与 RED 指标请前往“服务”。"
+      title="接入实例"
+      description="查看由遥测数据自动发现的运行实例；服务健康度与 RED 指标请前往“服务”。"
     >
-      {hasMissingIdentity ? (
-        <Alert
-          className="mb-4"
-          type="warning"
-          showIcon
-          message="检测到最近 15 分钟内缺少 service.instance.id 的 Span"
-          description="这些 Span 仍参与服务级指标，但不会创建虚假的接入实例。请按接入片段配置动态实例 ID。"
-        />
-      ) : null}
       {catalogDegraded ? (
         <Alert
           className="mb-4"
@@ -237,10 +224,10 @@ export default function ApmIntegrationInstancesPage() {
             />
             <Select
               className="w-40"
-              aria-label="按接入源筛选"
-              value={sourceName}
-              options={[{ value: 'all', label: '全部接入方式' }, ...sourceOptions]}
-              onChange={setSourceName}
+              aria-label="按应用筛选"
+              value={applicationId}
+              options={[{ value: 'all', label: '全部应用' }, ...applicationOptions]}
+              onChange={setApplicationId}
             />
             <Select
               className="w-36"
@@ -301,7 +288,7 @@ export default function ApmIntegrationInstancesPage() {
         title={`调整实例组织${organizationInstance ? `：${organizationInstance.instance_id}` : ''}`}
         organizationIds={organizationInstance?.organization_ids ?? []}
         submitting={organizationSubmitting}
-        description="保存后此实例转为自定义组织，不再自动继承接入源后续的组织调整。"
+        description="保存后此实例转为自定义组织，不再自动继承应用后续的组织调整。"
         onCancel={() => setOrganizationInstance(null)}
         onSubmit={submitOrganizations}
       />

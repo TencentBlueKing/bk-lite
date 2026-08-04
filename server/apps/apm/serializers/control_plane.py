@@ -4,7 +4,7 @@ from decimal import Decimal
 from django.utils import timezone
 from rest_framework import serializers
 
-from apps.apm.models import ApmIngestSource, ApmPolicy, ApmService, ApmServiceInstance, ApmSlo
+from apps.apm.models import ApmApplication, ApmPolicy, ApmService, ApmServiceInstance, ApmSlo
 from apps.apm.services.status import catalog_status
 
 
@@ -18,20 +18,35 @@ class OrganizationAssignmentSerializer(serializers.Serializer):
         return sorted(set(value))
 
 
-class CreateIngestSourceSerializer(OrganizationAssignmentSerializer):
+class ApplicationMutationSerializer(OrganizationAssignmentSerializer):
+    application_id = serializers.RegexField(
+        regex=r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+        max_length=128,
+        required=False,
+        error_messages={"invalid": "应用 ID 仅支持字母、数字、点、下划线和连字符，且必须以字母或数字开头。"},
+    )
     name = serializers.CharField(max_length=128)
-    ingest_type = serializers.ChoiceField(choices=ApmIngestSource.IngestType.choices)
-    cloud_region_id = serializers.IntegerField(required=False, allow_null=True)
-    environment_hint = serializers.CharField(max_length=128, required=False, allow_blank=True)
+    description = serializers.CharField(max_length=512, required=False, allow_blank=True)
+    is_enabled = serializers.BooleanField(required=False)
+
+    def validate_application_id(self, value):
+        if ApmApplication.objects.filter(application_id=value).exists():
+            raise serializers.ValidationError("该应用 ID 已存在。")
+        return value
+
+    def validate(self, attrs):
+        if self.context.get("creating") and not attrs.get("application_id"):
+            raise serializers.ValidationError({"application_id": "该字段必填。"})
+        return attrs
 
 
 class IngestSnippetSerializer(serializers.Serializer):
-    credential = serializers.CharField(max_length=128, trim_whitespace=False, write_only=True)
+    application_id = serializers.CharField(max_length=128)
     language = serializers.ChoiceField(choices=("python", "nodejs", "java", "go"))
     runtime = serializers.ChoiceField(choices=("kubernetes", "docker", "host", "other"))
     endpoint = serializers.URLField(max_length=512)
-    service_namespace = serializers.CharField(max_length=256, allow_blank=True)
     service_name = serializers.CharField(max_length=256)
+    service_version = serializers.CharField(max_length=256, required=False, allow_blank=True)
     environment = serializers.CharField(max_length=256, allow_blank=True)
 
     def validate_endpoint(self, value):
@@ -40,24 +55,19 @@ class IngestSnippetSerializer(serializers.Serializer):
         return value
 
 
-class ApmIngestSourceSerializer(serializers.ModelSerializer):
+class ApmApplicationSerializer(serializers.ModelSerializer):
     organization_ids = serializers.SerializerMethodField()
-    missing_instance_identity = serializers.SerializerMethodField()
+    service_count = serializers.IntegerField(read_only=True, default=0)
 
     class Meta:
-        model = ApmIngestSource
+        model = ApmApplication
         fields = (
             "id",
+            "application_id",
             "name",
-            "ingest_type",
-            "cloud_region_id",
-            "environment_hint",
-            "credential_prefix",
+            "description",
             "is_enabled",
-            "first_received_at",
-            "last_received_at",
-            "last_missing_instance_identity_at",
-            "missing_instance_identity",
+            "service_count",
             "organization_ids",
             "created_at",
             "updated_at",
@@ -68,12 +78,9 @@ class ApmIngestSourceSerializer(serializers.ModelSerializer):
     def get_organization_ids(self, obj):
         return list(obj.organization_links.order_by("organization").values_list("organization", flat=True))
 
-    def get_missing_instance_identity(self, obj):
-        missing_at = obj.last_missing_instance_identity_at
-        return missing_at is not None and missing_at >= timezone.now() - timedelta(minutes=15)
-
-
 class ApmServiceSerializer(serializers.ModelSerializer):
+    application_id = serializers.CharField(source="application.application_id", read_only=True)
+    application_name = serializers.CharField(source="application.name", read_only=True)
     organization_ids = serializers.SerializerMethodField()
     status = serializers.SerializerMethodField()
     environment_views = serializers.SerializerMethodField()
@@ -82,6 +89,8 @@ class ApmServiceSerializer(serializers.ModelSerializer):
         model = ApmService
         fields = (
             "id",
+            "application_id",
+            "application_name",
             "namespace",
             "name",
             "first_seen_at",
@@ -127,7 +136,8 @@ class ApmServiceSerializer(serializers.ModelSerializer):
 class ApmServiceInstanceSerializer(serializers.ModelSerializer):
     service_namespace = serializers.CharField(source="service.namespace", read_only=True)
     service_name = serializers.CharField(source="service.name", read_only=True)
-    ingest_source_name = serializers.CharField(source="ingest_source.name", read_only=True)
+    application_id = serializers.CharField(source="service.application.application_id", read_only=True)
+    application_name = serializers.CharField(source="service.application.name", read_only=True)
     organization_ids = serializers.SerializerMethodField()
     status = serializers.SerializerMethodField()
 
@@ -137,11 +147,11 @@ class ApmServiceInstanceSerializer(serializers.ModelSerializer):
             "id",
             "service_namespace",
             "service_name",
+            "application_id",
+            "application_name",
             "instance_id",
             "environment",
             "version",
-            "ingest_source_id",
-            "ingest_source_name",
             "permission_mode",
             "first_seen_at",
             "last_seen_at",
