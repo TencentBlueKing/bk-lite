@@ -213,7 +213,7 @@ const ViewHive: React.FC<ViewListProps> = ({ objects, objectId }) => {
   const getInitData = async (name: string) => {
     const params = getParams();
     const objParams = {
-      monitor_object_id: objectId
+      monitor_object_id: String(objectId)
     };
     const getInstList = await getInstanceSearch(objectId, params);
     const getQueryParams = await getInstanceQueryParams(name, objParams);

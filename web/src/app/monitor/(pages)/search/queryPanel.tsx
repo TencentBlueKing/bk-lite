@@ -345,7 +345,7 @@ const QueryPanel = forwardRef<QueryPanelRef, QueryPanelProps>(
         setMetricsLoading((prev) => ({ ...prev, [key]: true }));
         const config = { signal: abortController.signal };
         const params = {
-          monitor_object_id: objectId,
+          monitor_object_id: String(objectId),
           ...(pluginId ? { monitor_plugin_id: String(pluginId) } : {})
         };
         const [groupList, metricsList] = await Promise.all([
@@ -873,7 +873,7 @@ const QueryPanel = forwardRef<QueryPanelRef, QueryPanelProps>(
                     .toLowerCase()
                     .includes(input.toLowerCase())
                 }
-                onChange={(val) => handleObjectChange(group.id, val)}
+                onChange={(val) => handleObjectChange(group.id, String(val))}
               >
                 {objects.map((item) => (
                   <Option
@@ -908,7 +908,7 @@ const QueryPanel = forwardRef<QueryPanelRef, QueryPanelProps>(
                     label: item.display_name || item.name || String(item.id),
                     value: item.id
                   }))}
-                  onChange={(val) => handlePluginChange(group.id, val)}
+                  onChange={(val) => handlePluginChange(group.id, String(val))}
                 />
               </div>
             )}
@@ -976,7 +976,7 @@ const QueryPanel = forwardRef<QueryPanelRef, QueryPanelProps>(
                     }));
                   }
                 }}
-                onChange={(val) => handleMetricChange(group.id, val)}
+                onChange={(val) => handleMetricChange(group.id, String(val))}
               />
             </div>
             {/* 汇聚方法 */}

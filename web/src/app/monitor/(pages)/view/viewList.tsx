@@ -489,7 +489,7 @@ const ViewList: React.FC<ViewListProps> = ({
     columnAbortControllerRef.current = abortController;
     const currentRequestId = ++columnRequestIdRef.current;
     const objParams = {
-      monitor_object_id: objectId
+      monitor_object_id: String(objectId)
     };
     const targetObject = objects.find((item) => item.id === objectId);
     const objName = targetObject?.name;

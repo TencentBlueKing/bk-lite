@@ -79,7 +79,7 @@ const useIntegrationApi = () => {
       collect_type_id?: React.Key | null;
     } = {}
   ) => {
-    return await get(`/log/collect_types/${params.collect_type_id}`);
+    return await get(`/log/collect_types/${String(params.collect_type_id)}`);
   };
 
   const batchCreateInstances = async (data: NodeConfigParam) => {
@@ -200,13 +200,13 @@ const useIntegrationApi = () => {
   const updateLogStreams = async (data: GroupInfo) => {
     const params = cloneDeep(data);
     delete params.id;
-    return await put(`/log/log_group/${data.id}/`, params);
+    return await put(`/log/log_group/${String(data.id)}/`, params);
   };
 
   const updateDefaultLogStreams = async (data: GroupInfo) => {
     const params = cloneDeep(data);
     delete params.id;
-    return await patch(`/log/log_group/${data.id}/`, params);
+    return await patch(`/log/log_group/${String(data.id)}/`, params);
   };
 
   const getLogStreams = async (
@@ -223,7 +223,7 @@ const useIntegrationApi = () => {
   };
 
   const deleteLogStream = async (id: React.Key) => {
-    return await del(`/log/log_group/${id}/`);
+    return await del(`/log/log_group/${String(id)}/`);
   };
 
   const getLogExtractors = async (collectInstance: string) => {

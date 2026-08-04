@@ -42,6 +42,12 @@
         "./src/app/system-manager/(enterprise)/*",
         "./src/lib/enterpriseStub.ts"
       ],
+      "@/app/system-manager/api/license_mgmt": [
+        "./src/app/system-manager/(enterprise)/api/license_mgmt"
+      ],
+      "@/app/system-manager/api/sensitive_info": [
+        "./src/app/system-manager/(enterprise)/api/sensitive_info"
+      ],
       "@/app/alarm/(enterprise)/*": [
         "./src/app/alarm/(enterprise)/*",
         "./src/lib/enterpriseStub.ts"
@@ -91,6 +97,7 @@
   ],
   "exclude": [
     "node_modules",
+    "scripts",
     "src/app/*/node_modules",
     "src/app/*/package.json"
   ]

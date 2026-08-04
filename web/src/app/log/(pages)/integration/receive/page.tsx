@@ -420,7 +420,7 @@ const Asset = () => {
       const params = {
         page: pagination.current,
         page_size: pagination.pageSize,
-        collect_type_id: objectId === 'all' ? '' : objectId,
+        collect_type_id: objectId === 'all' ? '' : String(objectId),
         name: type === 'clear' ? '' : searchText
       };
       const data = await getInstanceList(params, {

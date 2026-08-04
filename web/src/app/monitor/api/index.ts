@@ -77,7 +77,7 @@ const useMonitorApi = () => {
     params: InstanceParam = {},
     config?: AxiosRequestConfig
   ) => {
-    return await get(`/monitor/api/monitor_instance/${objectId}/list/`, {
+    return await get(`/monitor/api/monitor_instance/${String(objectId)}/list/`, {
       params,
       ...config
     });
@@ -90,7 +90,7 @@ const useMonitorApi = () => {
     } = {},
     config?: AxiosRequestConfig
   ) => {
-    return await get(`/monitor/api/monitor_instance/${objectId}/effective_plugins/`, {
+    return await get(`/monitor/api/monitor_instance/${String(objectId)}/effective_plugins/`, {
       params,
       ...config
     });
@@ -117,7 +117,7 @@ const useMonitorApi = () => {
       status?: string;
     }
   ) => {
-    return await patch(`/monitor/api/monitor_alert/${id}/`, data);
+    return await patch(`/monitor/api/monitor_alert/${String(id)}/`, data);
   };
 
   const getAllUsers = async () => {

@@ -53,11 +53,11 @@ const nextConfig = withCombineLocalesAndMenus(
       },
       staticPageGenerationTimeout: 300,
       transpilePackages: ['@antv/g6'],
+      outputFileTracingRoot: enterpriseWebRoot
+        ? path.resolve(process.cwd(), '../..')
+        : undefined,
       experimental: {
         externalDir: true,
-        outputFileTracingRoot: enterpriseWebRoot
-          ? path.resolve(process.cwd(), '../..')
-          : undefined,
         // proxyTimeout: 300_000, // Set timeout to 300 seconds
       },
       // async rewrites() {

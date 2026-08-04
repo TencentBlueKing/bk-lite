@@ -57,7 +57,7 @@ import {
   resizeScreenItem,
   syncScreenFilterBindings,
   updateScreenItemConfig,
-} from "./utils/layout";
+} from "./utils/layoutUtils";
 import {
   buildDefaultScreenViewSets,
   normalizeScreenViewSets,

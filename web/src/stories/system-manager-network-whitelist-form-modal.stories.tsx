@@ -49,7 +49,6 @@ const NetworkWhitelistModalStory = ({ editing, initialType }: StoryProps) => {
   }, [editing, form, initialType]);
 
   return (
-    // @ts-expect-error react-intl type incompatibility with React 19
     <IntlProvider locale="zh" messages={messages}>
       <div style={{ minHeight: 680 }}>
         <NetworkWhitelistFormModal
