@@ -49,11 +49,37 @@
         .menu {
             background: var(--color-bg-1);
             margin-top: 16px;
-            padding: 20px 10px;
+            padding: 20px 10px 12px;
             flex: 1;
-            overflow-y: auto;
+            min-height: 0;
             border-radius: 4px;
-            position: relative;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .menuBody {
+            flex: 1;
+            min-height: 0;
+            overflow-y: auto;
+        }
+
+        .backLink {
+            display: flex;
+            max-width: 100%;
+            align-items: center;
+            margin-top: 12px;
+            padding: 8px 4px;
+            border: 0;
+            border-top: 1px solid var(--color-border-1);
+            background: transparent;
+            color: var(--color-text-1);
+            font-size: 14px;
+            cursor: pointer;
+            text-align: left;
+        }
+
+        .backLink:hover {
+            color: var(--color-primary);
         }
     }
 
@@ -61,6 +87,17 @@
         width: calc(100vw - 246px);
         background-color: var(--color-bg-1);
         padding: 20px;
+        display: flex;
+        flex-direction: column;
+        min-height: calc(100vh - 90px);
+    }
+
+    .rightHeader {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 16px;
     }
 }
 

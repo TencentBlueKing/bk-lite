@@ -19,6 +19,27 @@ export interface LineBarChartData {
 
 export type PieChartData = ChartDataItem[];
 
+const DECIMAL_NUMBER_PATTERN =
+  /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/;
+
+const parseFiniteDecimal = (value: unknown): number => {
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : Number.NaN;
+  }
+
+  if (typeof value !== 'string') {
+    return Number.NaN;
+  }
+
+  const normalizedValue = value.trim();
+  if (!DECIMAL_NUMBER_PATTERN.test(normalizedValue)) {
+    return Number.NaN;
+  }
+
+  const numericValue = Number(normalizedValue);
+  return Number.isFinite(numericValue) ? numericValue : Number.NaN;
+};
+
 export class ChartDataTransformer {
   static formatCategoryValue(value: any): string {
     if (value === undefined || value === null) return '';
@@ -246,7 +267,7 @@ export class ChartDataTransformer {
       if (typeof rawData[0] === 'object' && !Array.isArray(rawData[0]) && 'name' in rawData[0] && 'value' in rawData[0]) {
         return rawData.map((item: any) => ({
           name: this.formatCategoryValue(item.name),
-          value: parseFloat(item.value) || 0,
+          value: parseFiniteDecimal(item.value),
         }));
       }
 
@@ -254,7 +275,7 @@ export class ChartDataTransformer {
       if (Array.isArray(rawData[0]) && rawData[0].length >= 2) {
         return rawData.map((item: any[]) => ({
           name: this.formatCategoryValue(item[0]),
-          value: parseFloat(item[1]) || 0,
+          value: parseFiniteDecimal(item[1]),
         }));
       }
 
@@ -262,7 +283,7 @@ export class ChartDataTransformer {
       if (typeof rawData[0] === 'object' && 'name' in rawData[0] && 'count' in rawData[0]) {
         return rawData.map((item: any) => ({
           name: item.name,
-          value: item.count,
+          value: parseFiniteDecimal(item.count),
         }));
       }
     }
@@ -328,8 +349,11 @@ export class ChartDataTransformer {
         return { isValid: false, message: errorMessage || '数据格式不匹配' };
       }
 
-      const hasValidValues = transformedData.some(item =>
-        item && typeof item.value === 'number' && !isNaN(item.value) && item.value > 0
+      const hasValidValues = transformedData.every(item =>
+        item &&
+        typeof item.value === 'number' &&
+        Number.isFinite(item.value) &&
+        item.value >= 0
       );
 
       if (!hasValidValues) {

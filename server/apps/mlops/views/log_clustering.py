@@ -4,6 +4,7 @@ from apps.mlops.constants import TrainJobStatus, DatasetReleaseStatus, MLflowRun
 from rest_framework.decorators import action
 from rest_framework import status
 from rest_framework.response import Response
+from apps.mlops.utils.i18n import mlops_message
 from apps.mlops.utils.webhook_client import (
     WebhookClient,
     WebhookError,
@@ -113,7 +114,7 @@ class LogClusteringTrainJobViewSet(TeamModelViewSet):
 
             # 检查任务状态
             if train_job.status == TrainJobStatus.RUNNING:
-                return Response({"error": "训练任务已在运行中"}, status=status.HTTP_400_BAD_REQUEST)
+                return Response({"error": mlops_message(request, "error.training_task_already_running")}, status=status.HTTP_400_BAD_REQUEST)
 
             # 获取训练配置
             try:
@@ -121,16 +122,16 @@ class LogClusteringTrainJobViewSet(TeamModelViewSet):
             except ConfigurationError as e:
                 logger.error(str(e))
                 return Response(
-                    {"error": "系统配置错误，请联系管理员"},
+                    {"error": mlops_message(request, "error.system_configuration_error")},
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 )
 
             # 检查必要字段
             if not train_job.dataset_version or not train_job.dataset_version.dataset_file:
-                return Response({"error": "数据集文件不存在"}, status=status.HTTP_400_BAD_REQUEST)
+                return Response({"error": mlops_message(request, "error.dataset_file_not_found")}, status=status.HTTP_400_BAD_REQUEST)
 
             if not train_job.config_url:
-                return Response({"error": "训练配置文件不存在"}, status=status.HTTP_400_BAD_REQUEST)
+                return Response({"error": mlops_message(request, "error.training_config_file_not_found")}, status=status.HTTP_400_BAD_REQUEST)
 
             scope_error = self.ensure_train_job_dataset_scope(request, train_job)
             if scope_error is not None:
@@ -167,7 +168,7 @@ class LogClusteringTrainJobViewSet(TeamModelViewSet):
 
             previous_status = self.claim_train_job_running(train_job)
             if previous_status is None:
-                return Response({"error": "训练任务已在运行中"}, status=status.HTTP_400_BAD_REQUEST)
+                return Response({"error": mlops_message(request, "error.training_task_already_running")}, status=status.HTTP_400_BAD_REQUEST)
 
             # 启动前清理可能残留的旧训练容器
             try:
@@ -195,7 +196,7 @@ class LogClusteringTrainJobViewSet(TeamModelViewSet):
 
             return Response(
                 {
-                    "message": "训练任务已启动",
+                    "message": mlops_message(request, "message.training_task_started"),
                     "job_id": job_id,
                     "train_job_id": train_job.id,
                 }
@@ -219,7 +220,7 @@ class LogClusteringTrainJobViewSet(TeamModelViewSet):
                 self.restore_train_job_status(train_job, previous_status)
             logger.error(f"启动训练任务失败: {str(e)}", exc_info=True)
             return Response(
-                {"error": f"启动训练任务失败: {str(e)}"},
+                {"error": mlops_message(request, "error.training_task_start_failed", detail=str(e))},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
@@ -234,7 +235,7 @@ class LogClusteringTrainJobViewSet(TeamModelViewSet):
 
             # 检查任务状态
             if train_job.status != TrainJobStatus.RUNNING:
-                return Response({"error": "训练任务未在运行中"}, status=status.HTTP_400_BAD_REQUEST)
+                return Response({"error": mlops_message(request, "error.training_task_not_running")}, status=status.HTTP_400_BAD_REQUEST)
 
             # 构建训练任务标识
             job_id = mlflow_service.build_job_id(
@@ -252,7 +253,7 @@ class LogClusteringTrainJobViewSet(TeamModelViewSet):
 
             return Response(
                 {
-                    "message": "训练任务已停止",
+                    "message": mlops_message(request, "message.training_task_stopped"),
                     "job_id": job_id,
                     "webhook_response": result,
                 }
@@ -264,7 +265,7 @@ class LogClusteringTrainJobViewSet(TeamModelViewSet):
         except Exception as e:
             logger.error(f"停止训练任务失败: {str(e)}", exc_info=True)
             return Response(
-                {"error": f"停止训练任务失败: {str(e)}"},
+                {"error": mlops_message(request, "error.training_task_stop_failed", detail=str(e))},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
@@ -277,7 +278,7 @@ class LogClusteringTrainJobViewSet(TeamModelViewSet):
         try:
             pagination = self.parse_run_list_pagination(request)
             if pagination is None:
-                return Response({"error": "分页参数必须为正整数"}, status=status.HTTP_400_BAD_REQUEST)
+                return Response({"error": mlops_message(request, "error.pagination_must_be_positive_integer")}, status=status.HTTP_400_BAD_REQUEST)
             page, page_size, use_pagination = pagination
 
             train_job = self.get_object()
@@ -299,7 +300,7 @@ class LogClusteringTrainJobViewSet(TeamModelViewSet):
                         "train_job_name": train_job.name,
                         "algorithm": train_job.algorithm,
                         "job_status": train_job.status,
-                        "message": "未找到对应的MLflow实验",
+                        "message": mlops_message(request, "message.mlflow_experiment_not_found"),
                         "count": 0,
                         "items": [],
                     }
@@ -315,7 +316,7 @@ class LogClusteringTrainJobViewSet(TeamModelViewSet):
                         "train_job_name": train_job.name,
                         "algorithm": train_job.algorithm,
                         "job_status": train_job.status,
-                        "message": "未找到训练运行记录",
+                        "message": mlops_message(request, "message.training_run_not_found"),
                         "count": 0,
                         "items": [],
                     }
@@ -390,7 +391,7 @@ class LogClusteringTrainJobViewSet(TeamModelViewSet):
         except Exception as e:
             logger.error(f"获取训练记录列表失败: {str(e)}", exc_info=True)
             return Response(
-                {"error": f"获取训练记录失败: {str(e)}"},
+                {"error": mlops_message(request, "error.training_records_fetch_failed", detail=str(e))},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
@@ -405,7 +406,7 @@ class LogClusteringTrainJobViewSet(TeamModelViewSet):
             if not allowed:
                 return Response(
                     {
-                        "error": "未找到对应的训练运行记录" if reason == "run_not_found" else "当前训练运行记录不允许删除",
+                        "error": mlops_message(request, "error.training_run_not_found" if reason == "run_not_found" else "error.training_run_cannot_delete"),
                         "code": reason,
                         "run_id": run_id,
                     },
@@ -426,7 +427,7 @@ class LogClusteringTrainJobViewSet(TeamModelViewSet):
         except Exception as e:
             logger.error(f"删除 run 失败: {str(e)}", exc_info=True)
             return Response(
-                {"result": False, "message": f"删除 run 失败: {str(e)}"},
+                {"result": False, "message": mlops_message(request, "error.run_delete_failed", detail=str(e))},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
@@ -451,7 +452,7 @@ class LogClusteringTrainJobViewSet(TeamModelViewSet):
         except Exception as e:
             logger.error(f"获取指标列表失败: {str(e)}", exc_info=True)
             return Response(
-                {"error": f"获取指标列表失败: {str(e)}"},
+                {"error": mlops_message(request, "error.metrics_list_fetch_failed", detail=str(e))},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
@@ -497,7 +498,7 @@ class LogClusteringTrainJobViewSet(TeamModelViewSet):
         except Exception as e:
             logger.error(f"获取指标历史数据失败: {str(e)}", exc_info=True)
             return Response(
-                {"error": f"获取指标历史数据失败: {str(e)}"},
+                {"error": mlops_message(request, "error.metric_history_fetch_failed", detail=str(e))},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
@@ -538,7 +539,7 @@ class LogClusteringTrainJobViewSet(TeamModelViewSet):
         except Exception as e:
             logger.error(f"获取运行参数失败: {str(e)}", exc_info=True)
             return Response(
-                {"error": f"获取运行参数失败: {str(e)}"},
+                {"error": mlops_message(request, "error.run_params_fetch_failed", detail=str(e))},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
@@ -576,7 +577,7 @@ class LogClusteringTrainJobViewSet(TeamModelViewSet):
         except Exception as e:
             logger.error(f"获取模型版本列表失败: {str(e)}", exc_info=True)
             return Response(
-                {"error": f"获取模型版本列表失败: {str(e)}"},
+                {"error": mlops_message(request, "error.model_versions_fetch_failed", detail=str(e))},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
@@ -615,7 +616,7 @@ class LogClusteringTrainJobViewSet(TeamModelViewSet):
         except Exception as e:
             logger.error(f"下载模型失败: {str(e)}", exc_info=True)
             return Response(
-                {"error": f"下载模型失败: {str(e)}"},
+                {"error": mlops_message(request, "error.model_download_failed", detail=str(e))},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
@@ -661,7 +662,7 @@ class LogClusteringDatasetReleaseViewSet(ModelViewSet):
             release = self.get_object()
 
             if not release.dataset_file or not release.dataset_file.name:
-                return Response({"error": "数据集文件不存在"}, status=status.HTTP_404_NOT_FOUND)
+                return Response({"error": mlops_message(request, "error.dataset_file_not_found")}, status=status.HTTP_404_NOT_FOUND)
 
             # 获取文件
             file = release.dataset_file.open("rb")
@@ -675,7 +676,7 @@ class LogClusteringDatasetReleaseViewSet(ModelViewSet):
         except Exception as e:
             logger.error(f"下载数据集失败: {str(e)}", exc_info=True)
             return Response(
-                {"error": f"下载失败: {str(e)}"},
+                {"error": mlops_message(request, "error.dataset_download_failed", detail=str(e))},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
@@ -690,7 +691,7 @@ class LogClusteringDatasetReleaseViewSet(ModelViewSet):
 
             if release.status == DatasetReleaseStatus.ARCHIVED:
                 return Response(
-                    {"error": "数据集版本已处于归档状态"},
+                    {"error": mlops_message(request, "error.dataset_release_already_archived")},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
@@ -698,12 +699,12 @@ class LogClusteringDatasetReleaseViewSet(ModelViewSet):
             release.description = f"[已归档] {release.description or ''}"
             release.save(update_fields=["status", "description"])
 
-            return Response({"message": "归档成功", "release_id": release.id})
+            return Response({"message": mlops_message(request, "message.archive_success"), "release_id": release.id})
 
         except Exception as e:
             logger.error(f"归档失败: {str(e)}", exc_info=True)
             return Response(
-                {"error": f"归档失败: {str(e)}"},
+                {"error": mlops_message(request, "error.dataset_release_archive_failed", detail=str(e))},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
@@ -718,7 +719,7 @@ class LogClusteringDatasetReleaseViewSet(ModelViewSet):
 
             if release.status != DatasetReleaseStatus.ARCHIVED:
                 return Response(
-                    {"error": "只能恢复已归档的数据集版本"},
+                    {"error": mlops_message(request, "error.dataset_release_not_archived")},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
@@ -730,18 +731,12 @@ class LogClusteringDatasetReleaseViewSet(ModelViewSet):
             release.status = DatasetReleaseStatus.PUBLISHED
             release.save(update_fields=["status", "description"])
 
-            return Response(
-                {
-                    "message": "恢复成功",
-                    "release_id": release.id,
-                    "status": release.status,
-                }
-            )
+            return Response({"message": mlops_message(request, "message.unarchive_success"), "release_id": release.id})
 
         except Exception as e:
             logger.error(f"恢复失败: {str(e)}", exc_info=True)
             return Response(
-                {"error": f"恢复失败: {str(e)}"},
+                {"error": mlops_message(request, "error.dataset_release_unarchive_failed", detail=str(e))},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
@@ -912,7 +907,7 @@ class LogClusteringServingViewSet(TeamModelViewSet):
             if not mlflow_tracking_uri:
                 logger.error("MLflow tracking URI not configured")
                 return Response(
-                    {"error": "系统配置错误，请联系管理员"},
+                    {"error": mlops_message(request, "error.system_configuration_error")},
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 )
 
@@ -927,7 +922,7 @@ class LogClusteringServingViewSet(TeamModelViewSet):
                 }
                 serving.save(update_fields=["container_info"])
                 response.data["container_info"] = serving.container_info
-                response.data["message"] = f"服务已创建但启动失败：{str(e)}"
+                response.data["message"] = mlops_message(request, "message.serving_created_start_failed", detail=str(e))
                 return response
 
             # 构建 serving ID
@@ -953,7 +948,7 @@ class LogClusteringServingViewSet(TeamModelViewSet):
                 serving.save(update_fields=["container_info", "port"])
 
                 response.data["container_info"] = result
-                response.data["message"] = "服务已创建并启动"
+                response.data["message"] = mlops_message(request, "message.serving_created_and_started")
 
             except WebhookError as e:
                 error_msg = str(e)
@@ -977,7 +972,7 @@ class LogClusteringServingViewSet(TeamModelViewSet):
                         serving.save(update_fields=["container_info"])
 
                         response.data["container_info"] = container_info
-                        response.data["message"] = "服务已创建，检测到容器已存在并同步容器状态"
+                        response.data["message"] = mlops_message(request, "message.serving_created_existing_container_synced")
                         response.data["warning"] = "容器已存在，已同步容器信息"
                     except WebhookError:
                         serving.container_info = {
@@ -986,17 +981,17 @@ class LogClusteringServingViewSet(TeamModelViewSet):
                         }
                         serving.save(update_fields=["container_info"])
                         response.data["container_info"] = serving.container_info
-                        response.data["message"] = "服务已创建但启动失败"
+                        response.data["message"] = mlops_message(request, "message.serving_created_start_failed_generic")
                 else:
                     # 其他错误
                     serving.container_info = {"status": "error", "message": error_msg}
                     serving.save(update_fields=["container_info"])
                     response.data["container_info"] = serving.container_info
-                    response.data["message"] = f"服务已创建但启动失败: {error_msg}"
+                    response.data["message"] = mlops_message(request, "message.serving_created_start_failed", detail=error_msg)
 
         except Exception as e:
             logger.error(f"自动启动 serving 异常: {str(e)}", exc_info=True)
-            response.data["message"] = f"服务已创建但启动异常: {str(e)}"
+            response.data["message"] = mlops_message(request, "message.serving_created_start_exception", detail=str(e))
 
         return response
 
@@ -1079,7 +1074,7 @@ class LogClusteringServingViewSet(TeamModelViewSet):
                 instance.save(update_fields=["container_info", "port"])
 
                 response.data["container_info"] = result
-                response.data["message"] = "配置已更新并重启服务"
+                response.data["message"] = mlops_message(request, "message.serving_updated_and_restarted")
 
             except Exception as e:
                 logger.error(f"自动重启失败: {str(e)}", exc_info=True)
@@ -1091,7 +1086,7 @@ class LogClusteringServingViewSet(TeamModelViewSet):
                 instance.save(update_fields=["container_info"])
 
                 response.data["container_info"] = instance.container_info
-                response.data["message"] = f"配置已更新但重启失败: {str(e)}"
+                response.data["message"] = mlops_message(request, "message.serving_updated_restart_failed", detail=str(e))
                 response.data["warning"] = "请手动调用 start 接口重新启动服务"
 
         return response
@@ -1108,7 +1103,7 @@ class LogClusteringServingViewSet(TeamModelViewSet):
             mlflow_tracking_uri = get_mlflow_tracking_uri()
             if not mlflow_tracking_uri:
                 return Response(
-                    {"error": "环境变量 MLFLOW_TRACKER_URL 未配置"},
+                    {"error": mlops_message(request, "error.mlflow_tracker_url_not_configured")},
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 )
 
@@ -1138,7 +1133,7 @@ class LogClusteringServingViewSet(TeamModelViewSet):
 
                 return Response(
                     {
-                        "message": "服务已启动",
+                        "message": mlops_message(request, "message.service_started"),
                         "serving_id": serving_id,
                         "container_info": result,
                     }
@@ -1174,7 +1169,7 @@ class LogClusteringServingViewSet(TeamModelViewSet):
                     except WebhookError as sync_error:
                         logger.error(f"同步容器状态失败: {sync_error}")
                         return Response(
-                            {"error": f"容器已存在但同步状态失败: {sync_error}"},
+                            {"error": mlops_message(request, "error.serving_container_sync_failed", detail=sync_error)},
                             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
                         )
                 else:
@@ -1187,7 +1182,7 @@ class LogClusteringServingViewSet(TeamModelViewSet):
         except Exception as e:
             logger.error(f"启动 serving 服务失败: {str(e)}", exc_info=True)
             return Response(
-                {"error": f"启动服务失败: {str(e)}"},
+                {"error": mlops_message(request, "error.serving_start_failed", detail=str(e))},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
@@ -1206,7 +1201,7 @@ class LogClusteringServingViewSet(TeamModelViewSet):
 
             return Response(
                 {
-                    "message": "服务已停止并删除",
+                    "message": mlops_message(request, "message.service_stopped_and_deleted"),
                     "serving_id": serving_id,
                     "webhook_response": result,
                 }
@@ -1218,7 +1213,7 @@ class LogClusteringServingViewSet(TeamModelViewSet):
         except Exception as e:
             logger.error(f"停止 serving 服务失败: {str(e)}", exc_info=True)
             return Response(
-                {"error": f"停止服务失败: {str(e)}"},
+                {"error": mlops_message(request, "error.serving_stop_failed", detail=str(e))},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
@@ -1245,7 +1240,7 @@ class LogClusteringServingViewSet(TeamModelViewSet):
 
             return Response(
                 {
-                    "message": "容器已删除",
+                    "message": mlops_message(request, "message.container_deleted"),
                     "serving_id": serving_id,
                     "webhook_response": result,
                 }
@@ -1257,7 +1252,7 @@ class LogClusteringServingViewSet(TeamModelViewSet):
         except Exception as e:
             logger.error(f"删除 serving 容器失败: {str(e)}", exc_info=True)
             return Response(
-                {"error": f"删除容器失败: {str(e)}"},
+                {"error": mlops_message(request, "error.serving_container_delete_failed", detail=str(e))},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
@@ -1278,15 +1273,15 @@ class LogClusteringServingViewSet(TeamModelViewSet):
             config = request.data.get("config")
 
             if not data:
-                return Response({"error": "data 参数不能为空"}, status=status.HTTP_400_BAD_REQUEST)
+                return Response({"error": mlops_message(request, "error.predict_input_required", field="data")}, status=status.HTTP_400_BAD_REQUEST)
 
             if not isinstance(data, list):
-                return Response({"error": "data 必须是数组格式"}, status=status.HTTP_400_BAD_REQUEST)
+                return Response({"error": mlops_message(request, "error.predict_input_must_be_array", field="data")}, status=status.HTTP_400_BAD_REQUEST)
 
             max_batch_size = int(os.getenv("MLOPS_PREDICT_MAX_BATCH_SIZE", "10000"))
             if len(data) > max_batch_size:
                 return Response(
-                    {"error": f"批量预测上限为 {max_batch_size} 条，当前请求包含 {len(data)} 条"},
+                    {"error": mlops_message(request, "error.predict_batch_limit_exceeded", limit=max_batch_size, count=len(data))},
                     status=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
                 )
 
@@ -1357,7 +1352,7 @@ class LogClusteringServingViewSet(TeamModelViewSet):
         except Exception as e:
             logger.error(f"预测失败: serving_id={serving.id}, error={str(e)}", exc_info=True)
             return Response(
-                {"error": f"预测失败: {str(e)}"},
+                {"error": mlops_message(request, "error.serving_prediction_failed", detail=str(e))},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
@@ -1416,7 +1411,7 @@ class LogClusteringAlgorithmConfigViewSet(ModelViewSet):
             if task_count > 0:
                 return Response(
                     {
-                        "error": f"无法禁用：有 {task_count} 个训练任务正在使用此算法",
+                        "error": mlops_message(request, "error.algorithm_in_use_cannot_disable", task_count=task_count),
                         "task_count": task_count,
                     },
                     status=status.HTTP_400_BAD_REQUEST,
@@ -1430,7 +1425,7 @@ class LogClusteringAlgorithmConfigViewSet(ModelViewSet):
         if task_count > 0:
             return Response(
                 {
-                    "error": f"无法删除：有 {task_count} 个训练任务正在使用此算法",
+                    "error": mlops_message(request, "error.algorithm_in_use_cannot_delete", task_count=task_count),
                     "task_count": task_count,
                 },
                 status=status.HTTP_400_BAD_REQUEST,
@@ -1449,9 +1444,9 @@ class LogClusteringAlgorithmConfigViewSet(ModelViewSet):
     def get_image(self, request):
         name = request.query_params.get("name")
         if not name:
-            return Response({"error": "name 参数必填"}, status=400)
+            return Response({"error": mlops_message(request, "error.algorithm_name_required")}, status=400)
         try:
             config = AlgorithmConfig.objects.get(algorithm_type="log_clustering", name=name, is_active=True)
             return Response({"image": config.image})
         except AlgorithmConfig.DoesNotExist:
-            return Response({"error": f"未找到算法配置: log_clustering/{name}"}, status=404)
+            return Response({"error": mlops_message(request, "error.algorithm_config_not_found", algorithm=f"log_clustering/{name}")}, status=404)

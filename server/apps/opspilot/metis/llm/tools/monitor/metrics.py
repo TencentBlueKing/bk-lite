@@ -49,7 +49,7 @@ def monitor_list_instance_metrics(
     )
 
 
-@tool(description="Query metric data for a monitor object and metric.")
+@tool(description="Query data for all plugin metrics with the given name on a monitor object.")
 def monitor_query_metric_data(
     monitor_obj_id: Optional[str] = None,
     metric: Optional[str] = None,

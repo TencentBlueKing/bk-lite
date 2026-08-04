@@ -1,13 +1,18 @@
 """补丁管理目标视图"""
 
+import logging
+
+from django.db import transaction
+from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
 
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.utils.viewset_utils import AuthViewSet
+from apps.patch_mgmt.constants import GovernanceTaskStatus
 from apps.patch_mgmt.filters.patch_target import PatchTargetFilter
-from apps.patch_mgmt.models import PatchTarget
+from apps.patch_mgmt.models import GovernanceTaskHost, HostBaselineBinding, PatchTarget
 from apps.patch_mgmt.serializers.patch_target import (
     PatchTargetConnectivitySerializer,
     PatchTargetSerializer,
@@ -20,6 +25,8 @@ from apps.patch_mgmt.utils.operation_log import (
     log_target_deleted,
     log_target_updated,
 )
+
+logger = logging.getLogger("app")
 
 
 class PatchTargetViewSet(AuthViewSet):
@@ -92,12 +99,68 @@ class PatchTargetViewSet(AuthViewSet):
         return response
 
     @HasPermission("patch_target-Delete")
+    @transaction.atomic
     def destroy(self, request, *args, **kwargs):
-        target = self.get_object()
+        target_id = self.get_object().id
+        target = PatchTarget.objects.select_for_update().get(pk=target_id)
         target_name = target.name
-        response = super().destroy(request, *args, **kwargs)
+
+        if GovernanceTaskHost.objects.filter(
+            target_id=target.id,
+            task__status__in=GovernanceTaskStatus.ACTIVE_STATES,
+        ).exists():
+            return Response(
+                {
+                    "code": "target_has_active_task",
+                    "message": patch_message(
+                        request,
+                        "error.target_has_active_task",
+                        "This target has an unfinished task. Wait for it to finish or cancel it before deleting the target",
+                    ),
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
+
+        has_pending_reboot = HostBaselineBinding.objects.filter(
+            target_id=target.id,
+            pending_reboot_count__gt=0,
+        ).exists()
+        if has_pending_reboot:
+            return Response(
+                {
+                    "code": "target_pending_reboot",
+                    "message": patch_message(
+                        request,
+                        "error.target_pending_reboot",
+                        "This target has patches pending reboot. Complete reboot remediation before deleting the target",
+                    ),
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
+
+        if target.ssh_key_file:
+            try:
+                target.ssh_key_file.delete(save=False)
+            except Exception:  # noqa: BLE001
+                logger.exception(
+                    "Failed to delete SSH key while deleting patch target target_id=%s",
+                    target.id,
+                )
+                return Response(
+                    {
+                        "code": "target_key_cleanup_failed",
+                        "message": patch_message(
+                            request,
+                            "error.target_key_cleanup_failed",
+                            "Failed to clean up the target SSH key. Try again later",
+                        ),
+                    },
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                )
+
+        target.delete()
         log_target_deleted(request, target_name)
-        return response
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
     @action(detail=False, methods=["get"], url_path="imported-node-ids")
     @HasPermission("patch_target-View")

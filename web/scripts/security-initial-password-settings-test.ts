@@ -11,20 +11,25 @@ const api = read('src/app/system-manager/api/security/index.ts');
 const zh = read('src/app/system-manager/locales/zh.json');
 const en = read('src/app/system-manager/locales/en.json');
 
-assert.match(page, /initialPasswordEnabled/);
+assert.match(page, /initialPasswordEmailChannelId/);
+assert.match(page, /emailChannelsError/);
 assert.match(page, /initialPasswordRequired/);
 assert.match(page, /initialPasswordEditing/);
 assert.match(page, /userCreateInitialPassword/);
 assert.match(settings, /initialPasswordConfigured/);
 assert.match(settings, /Input\.Password/);
+assert.match(settings, /Alert/);
+assert.match(settings, /onRetryEmailChannels/);
+assert.doesNotMatch(settings, /enableInitialPassword/);
 assert.match(settings, /newUserInitialPassword/);
 assert.match(settings, /changeInitialPassword/);
 assert.ok(
   settings.indexOf("newUserInitialPassword") > settings.indexOf("lockDuration"),
   '初始密码小节应在完整密码规则之后',
 );
-assert.match(api, /user_create_initial_password_enabled/);
+assert.doesNotMatch(api, /user_create_initial_password_enabled/);
 assert.match(api, /user_create_initial_password/);
 assert.match(zh, /新建本地用户初始密码/);
-assert.match(zh, /请通过安全渠道将初始密码告知用户/);
+assert.match(zh, /邮件通知通道/);
+assert.match(zh, /启用新建用户初始密码时需配置邮件通道/);
 assert.match(en, /New Local User Initial Password/);

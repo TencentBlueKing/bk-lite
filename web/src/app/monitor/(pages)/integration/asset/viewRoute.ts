@@ -1,5 +1,6 @@
 import { OBJECT_DEFAULT_ICON } from '@/app/monitor/constants';
 import { withDashboardReturnContext } from '@/app/monitor/dashboards/shared/utils';
+import { encodeInstanceIdValuesParam } from '@/app/monitor/dashboards/shared/utils/instance';
 
 type DashboardUrlResolver = (
   objectName?: string | null,
@@ -28,7 +29,7 @@ interface BuildAssetViewUrlOptions {
 }
 
 const toParamValue = (value: unknown) => {
-  if (Array.isArray(value)) return value.join(',');
+  if (Array.isArray(value)) return encodeInstanceIdValuesParam(value);
   if (value === null || value === undefined) return '';
   return String(value);
 };

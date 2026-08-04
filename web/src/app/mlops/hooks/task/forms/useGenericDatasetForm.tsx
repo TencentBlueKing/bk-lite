@@ -397,9 +397,9 @@ export const useGenericDatasetForm = ({
           />
         </Form.Item>
 
-        <Form.Item name='dataset_version' label="数据集版本" rules={[{ required: true, message: '请选择数据集版本' }]}> 
+        <Form.Item name='dataset_version' label={t('traintask.datasetVersion')} rules={[{ required: true, message: t('traintask.selectDatasetVersion') }]}>
           <Select
-            placeholder="选择一个数据集版本"
+            placeholder={t('traintask.selectDatasetVersion')}
             showSearch
             optionFilterProp="label"
             loading={loadingState.select}
@@ -417,11 +417,11 @@ export const useGenericDatasetForm = ({
 
         <Form.Item 
           name='max_evals' 
-          label="训练轮次" 
-          rules={[{ required: true, message: '请输入训练轮次' }]}
-          tooltip="超参数优化的最大迭代次数。值越大搜索空间越充分，但训练时间越长。推荐范围: 50-200"
+          label={t('traintask.maxEvals')}
+          rules={[{ required: true, message: t('traintask.inputMaxEvals') }]}
+          tooltip={t('traintask.maxEvalsTooltip')}
         >
-          <InputNumber style={{ width: '100%' }} min={1} max={1000} placeholder="超参数搜索的评估轮次" />
+          <InputNumber style={{ width: '100%' }} min={1} max={1000} placeholder={t('traintask.maxEvalsPlaceholder')} />
         </Form.Item>
 
         {/* ========== 算法特定配置 ========== */}

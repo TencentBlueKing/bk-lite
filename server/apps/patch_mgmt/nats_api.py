@@ -10,6 +10,9 @@ from apps.patch_mgmt.models import (
     PatchSource,
     PatchTarget,
 )
+from apps.patch_mgmt.services.execution_record_service import (
+    filter_execution_record_roots,
+)
 
 
 @nats_client.register
@@ -70,7 +73,10 @@ def get_patch_mgmt_module_data(
         build_json_membership_query(
             model.objects.all(), "team", [normalized_group_id]
         )
-    ).order_by("id")
+    )
+    if module == "patch_governance":
+        queryset = filter_execution_record_roots(queryset)
+    queryset = queryset.order_by("id")
     start = (normalized_page - 1) * normalized_page_size
     rows = queryset.values("id", name_field)[
         start : start + normalized_page_size

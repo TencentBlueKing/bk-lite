@@ -143,7 +143,7 @@ const Aside = ({
           >
             <ArrowLeftOutlined className="mr-2" />
           </button>
-          {!collapsed && <span>文件列表</span> }
+          {!collapsed && <span>{t('datasets.fileList')}</span> }
         </div>
         <nav
           className={`flex-1 relative rounded-md ${sideMenuStyle.nav}`}

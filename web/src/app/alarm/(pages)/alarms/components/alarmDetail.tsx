@@ -89,13 +89,6 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig & { readonly?: boolean }>(
       },
     ];
 
-    useEffect(() => {
-      if (!groupVisible || !formData.id) {
-        return;
-      }
-      getEventListData({ alert_id: formData.id });
-    }, [groupVisible, formData.id]);
-
     const getEventListData = async (params: any) => {
       setEventLoading(true);
       try {
@@ -112,10 +105,17 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig & { readonly?: boolean }>(
     };
 
     useEffect(() => {
-      if (activeTab === 'event' && groupVisible && formData.id) {
-        getEventListData({ alert_id: formData.id });
+      if (activeTab !== 'event' || !groupVisible || !formData.id) {
+        return;
       }
-    }, [pagination.current, pagination.pageSize, activeTab]);
+      getEventListData({ alert_id: formData.id });
+    }, [
+      pagination.current,
+      pagination.pageSize,
+      activeTab,
+      groupVisible,
+      formData.id,
+    ]);
 
     useImperativeHandle(ref, () => ({
       showModal: ({
@@ -132,6 +132,7 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig & { readonly?: boolean }>(
         setTitle(title);
         setFormData(form);
         setActiveTab(defaultTab);
+        setPagination((prev) => ({ ...prev, current: 1, total: 0 }));
       },
     }));
 

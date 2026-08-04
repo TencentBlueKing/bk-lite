@@ -47,6 +47,23 @@ def _normalize_id_list(values):
     return normalized_ids
 
 
+def _extract_vm_params(request):
+    """从 POST body 或 GET 查询串提取 vm_params（兼容 axios 的 vm_params[key] 形式）。"""
+    data = getattr(request, "data", None)
+    if isinstance(data, dict):
+        body_params = data.get("vm_params")
+        if isinstance(body_params, dict):
+            return body_params
+
+    params = {}
+    for key, value in request.GET.items():
+        if key.startswith("vm_params[") and key.endswith("]"):
+            params[key[len("vm_params[") : -1]] = value
+        elif key.startswith("vm_params."):
+            params[key[len("vm_params.") :]] = value
+    return params
+
+
 def _get_authorized_scope_groups(actor_context):
     groups = set(InstanceConfigService._get_actor_scope_groups(actor_context) or [])
     if not groups:
@@ -173,6 +190,7 @@ class MonitorInstanceViewSet(viewsets.ViewSet):
             add_metrics,
             request.GET.get("monitor_plugin_id"),
             visible_organization_ids=scope.data_team_ids,
+            vm_params=_extract_vm_params(request),
         )
         # 如果有权限规则，则添加到数据中
         inst_permission_map = {i["id"]: i["permission"] for i in permission.get("instance", [])}

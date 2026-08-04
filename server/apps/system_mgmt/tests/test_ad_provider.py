@@ -51,6 +51,33 @@ def test_ad_login_auth_searches_single_user_and_binds_password(mock_search_singl
 
 @patch("apps.system_mgmt.providers.adapters.ad.bind_user_dn")
 @patch("apps.system_mgmt.providers.adapters.ad.search_single_user")
+def test_ad_login_auth_requests_identity_match_and_dn_attributes(mock_search_single_user, mock_bind_user_dn):
+    mock_search_single_user.return_value = {
+        "sAMAccountName": "alice",
+        "mail": "alice@example.com",
+        "distinguishedName": "CN=Alice,OU=Users,DC=corp,DC=example,DC=com",
+    }
+
+    result = ADLoginAuthAdapter.authenticate(
+        config=_base_config(),
+        provider_key="ad",
+        capability_key="login_auth",
+        username="alice",
+        password="secret",
+        binding=SimpleNamespace(external_field="mail"),
+    )
+
+    assert result.success is True
+    assert mock_search_single_user.call_args.args[3] == [
+        "sAMAccountName",
+        "mail",
+        "distinguishedName",
+    ]
+    assert result.payload["external_user"]["mail"] == "alice@example.com"
+
+
+@patch("apps.system_mgmt.providers.adapters.ad.bind_user_dn")
+@patch("apps.system_mgmt.providers.adapters.ad.search_single_user")
 def test_ad_login_auth_unwraps_single_value_lists(mock_search_single_user, mock_bind_user_dn):
     mock_search_single_user.return_value = {
         "sAMAccountName": ["alice"],

@@ -128,14 +128,9 @@ dashboards:
         value: 10080
         alias_name: 时间范围
         filterType: filter
-      - name: group_by
-        type: string
-        value: hour
-        alias_name: 分组粒度
-        filterType: fixed
       - name: model_id
         type: string
-        value: k8s_cluster
+        value: ''
         alias_name: 模型ID
         filterType: params
   - h: 5
@@ -1715,9 +1710,9 @@ screens:
   view_sets:
     items:
     - h: 232
-      w: 425
-      x: 226
-      y: 241
+      w: 446
+      x: 155
+      y: 239
       id: alert-kpi-created
       type: widget
       title: 今日已产生
@@ -1730,10 +1725,10 @@ screens:
         chartThemeMode: screen-dark
         selectedFields:
         - today_created_count
-    - h: 223
-      w: 445
-      x: 691
-      y: 247
+    - h: 232
+      w: 454
+      x: 634
+      y: 234
       id: alert-kpi-closed
       type: widget
       title: 今日已关闭
@@ -1746,10 +1741,10 @@ screens:
         chartThemeMode: screen-dark
         selectedFields:
         - today_closed_count
-    - h: 226
-      w: 431
-      x: 1179
-      y: 241
+    - h: 241
+      w: 470
+      x: 1124
+      y: 226
       id: alert-kpi-processing
       type: widget
       title: 当前处理中
@@ -1762,10 +1757,10 @@ screens:
         chartThemeMode: screen-dark
         selectedFields:
         - processing_count
-    - h: 229
-      w: 443
-      x: 1653
-      y: 238
+    - h: 238
+      w: 446
+      x: 1628
+      y: 226
       id: alert-active-total
       type: widget
       title: 活动告警总数
@@ -1778,10 +1773,10 @@ screens:
         chartThemeMode: screen-dark
         selectedFields:
         - active_count
-    - h: 226
-      w: 440
-      x: 2145
-      y: 238
+    - h: 235
+      w: 458
+      x: 2109
+      y: 225
       id: alert-active-pending
       type: widget
       title: 待响应
@@ -1794,10 +1789,10 @@ screens:
         chartThemeMode: screen-dark
         selectedFields:
         - pending_count
-    - h: 220
-      w: 454
-      x: 2645
-      y: 241
+    - h: 229
+      w: 478
+      x: 2606
+      y: 223
       id: alert-active-processing
       type: widget
       title: 处理中
@@ -1810,10 +1805,10 @@ screens:
         chartThemeMode: screen-dark
         selectedFields:
         - processing_count
-    - h: 229
-      w: 440
-      x: 3153
-      y: 229
+    - h: 232
+      w: 481
+      x: 3126
+      y: 222
       id: alert-event-total
       type: widget
       title: 事件数
@@ -1826,10 +1821,10 @@ screens:
         chartThemeMode: screen-dark
         selectedFields:
         - event_count
-    - h: 451
-      w: 863
-      x: 220
-      y: 519
+    - h: 460
+      w: 926
+      x: 157
+      y: 509
       id: alert-level-trend
       type: widget
       title: 近7日产生告警数量
@@ -1852,10 +1847,10 @@ screens:
           value: 10080
           alias_name: time
           filterType: filter
-    - h: 463
-      w: 860
-      x: 229
-      y: 1015
+    - h: 472
+      w: 916
+      x: 168
+      y: 1008
       id: alert-access-trend
       type: widget
       title: 近7日告警接入趋势
@@ -1876,10 +1871,10 @@ screens:
           value: 10080
           alias_name: time
           filterType: fixed
-    - h: 537
-      w: 860
-      x: 226
-      y: 1525
+    - h: 570
+      w: 904
+      x: 178
+      y: 1519
       id: alert-level-distribution
       type: widget
       title: 告警等级分布
@@ -1895,10 +1890,10 @@ screens:
           value: active
           alias_name: 过滤条件
           filterType: params
-    - h: 614
-      w: 1299
-      x: 1151
-      y: 525
+    - h: 670
+      w: 1344
+      x: 1130
+      y: 508
       id: alert-duration-top
       type: widget
       title: 活动告警持续时长 TOP10
@@ -1955,10 +1950,10 @@ screens:
           value: '10'
           alias_name: 返回数量
           filterType: params
-    - h: 526
-      w: 1094
-      x: 2522
-      y: 515
+    - h: 535
+      w: 1100
+      x: 2517
+      y: 503
       id: alert-status-distribution
       type: widget
       title: 活动状态分布
@@ -1968,10 +1963,10 @@ screens:
         chartType: pie
         dataSource: 告警状态分布::alert/get_alert_status_distribution
         chartThemeMode: screen-dark
-    - h: 851
-      w: 1308
-      x: 1139
-      y: 1205
+    - h: 881
+      w: 1335
+      x: 1140
+      y: 1218
       id: alert-active-table
       type: widget
       title: 实时活跃告警信息
@@ -2024,10 +2019,10 @@ screens:
           value: '10'
           alias_name: 返回数量
           filterType: params
-    - h: 538
-      w: 1100
-      x: 2531
-      y: 1506
+    - h: 621
+      w: 1112
+      x: 2534
+      y: 1461
       id: alert-source-event-top
       type: widget
       title: 告警源事件 TOP10
@@ -2048,7 +2043,7 @@ screens:
     - h: 337
       w: 340
       x: 2531
-      y: 1093
+      y: 1086
       id: alert-aggregation-ratio
       type: widget
       title: 告警聚合压缩率
@@ -2065,8 +2060,8 @@ screens:
         conversionFactor: 100
     - h: 325
       w: 337
-      x: 2915
-      y: 1099
+      x: 2917
+      y: 1086
       id: alert-auto-recovery-rate
       type: widget
       title: 自动恢复率
@@ -2084,7 +2079,7 @@ screens:
     - h: 316
       w: 340
       x: 3295
-      y: 1107
+      y: 1086
       id: alert-session-alert-rate
       type: widget
       title: 会话告警率
@@ -2135,11 +2130,6 @@ datasources:
     value: 10080
     alias_name: 时间范围
     filterType: filter
-  - name: group_by
-    type: string
-    value: day
-    alias_name: 分组粒度
-    filterType: fixed
   - name: model_id
     type: string
     value: ''

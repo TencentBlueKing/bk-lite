@@ -20,6 +20,14 @@
   border-bottom-color: rgba(255, 255, 255, 0.08);
 }
 
+.sectionHeading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
 .chartLegendHeader {
   justify-content: flex-end;
   max-width: none;

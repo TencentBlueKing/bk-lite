@@ -16,6 +16,12 @@ import { type ToolCall } from './components/ToolCallDisplay';
 import { MessageBubble } from './components/MessageBubble';
 import { useMessageHandlers } from './hooks/useMessageHandlers';
 import { ConfirmDialog } from './components/ConfirmDialog';
+import {
+  isAbortError,
+  runOwnedStream,
+  StreamLifecycle,
+  toError,
+} from './streamLifecycle';
 import './styles/tailwind.css';
 
 export interface ChatProps extends WebChatConfig {
@@ -83,6 +89,10 @@ export const Chat = React.forwardRef<any, ChatProps>((props, ref) => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const streamingContentRef = useRef<string>('');
   const currentMessageIdRef = useRef<string | null>(null);
+  const streamLifecycleRef = useRef<StreamLifecycle | null>(null);
+  if (!streamLifecycleRef.current) {
+    streamLifecycleRef.current = new StreamLifecycle();
+  }
   // 保持 onMessageReceived 最新引用，避免 useEffect 空 deps 闭包固化旧 prop
   const onMessageReceivedRef = useRef(onMessageReceived);
   useEffect(() => {
@@ -102,6 +112,9 @@ export const Chat = React.forwardRef<any, ChatProps>((props, ref) => {
 
   // Initialize core components
   useEffect(() => {
+    const streamLifecycle = streamLifecycleRef.current;
+    streamLifecycle?.mount();
+
     // Initialize SessionManager
     sessionManagerRef.current = new SessionManager({
       enableStorage,
@@ -127,6 +140,7 @@ export const Chat = React.forwardRef<any, ChatProps>((props, ref) => {
     }
 
     return () => {
+      void streamLifecycle?.dispose();
       aguiSubscription?.unsubscribe();
       aguiHandlerRef.current?.destroy();
       unsubscribeState();
@@ -186,8 +200,7 @@ export const Chat = React.forwardRef<any, ChatProps>((props, ref) => {
 
       case 'RUN_ERROR':
         setIsThinking(false);
-        setIsLoading(false);
-        const error = (event as any).error || 'Unknown error';
+        const error = 'message' in event ? event.message : 'Unknown error';
         const errorContent = `\n\n❌ **错误**: ${error}`;
         
         // 如果有当前消息，追加错误信息到末尾
@@ -309,11 +322,6 @@ export const Chat = React.forwardRef<any, ChatProps>((props, ref) => {
         if (!currentMessageIdRef.current) {
           console.warn('⚠️ Received CONTENT without START, ignoring');
           break;
-        }
-        
-        // 收到第一个内容块时关闭 loading 状态
-        if (streamingContentRef.current === '' && delta) {
-          setIsLoading(false);
         }
         
         // 累加内容到 ref
@@ -638,7 +646,6 @@ export const Chat = React.forwardRef<any, ChatProps>((props, ref) => {
         if (currentMessageIdRef.current && sessionManagerRef.current) {
           sessionManagerRef.current.saveSession();
         }
-        setIsLoading(false);
         setIsThinking(false);
         stateMachineRef.current?.transition('connected');
         break;
@@ -662,7 +669,6 @@ export const Chat = React.forwardRef<any, ChatProps>((props, ref) => {
         metadata: data.metadata,
       };
       addMessage(botMsg);
-      setIsLoading(false);
     }
   };
 
@@ -800,6 +806,12 @@ export const Chat = React.forwardRef<any, ChatProps>((props, ref) => {
       stateMachineRef.current?.transitionToChatting();
 
       if (sseUrl) {
+        const streamLifecycle = streamLifecycleRef.current;
+        const stream = streamLifecycle?.begin();
+        if (!streamLifecycle || !stream) {
+          return;
+        }
+
         // Get current session data
         const currentSession = sessionManagerRef.current?.getSession();
         
@@ -819,31 +831,18 @@ export const Chat = React.forwardRef<any, ChatProps>((props, ref) => {
           headers['Authorization'] = `Bearer ${apiKey}`;
         }
         
-        const response = await fetch(sseUrl, {
-          method: 'POST',
-          headers,
-          body: JSON.stringify(requestBody),
-        });
-
-        if (!response.ok || !response.body) {
-          throw new Error(`HTTP error! status: ${response.status}`);
-        }
-
-        // Process SSE stream
-        const reader = response.body.getReader();
         const decoder = new TextDecoder();
-        
-        try {
-          while (true) {
-            const { done, value: chunk } = await reader.read();
-            if (done) {
-              console.log('✅ Stream complete');
-              // Ensure loading state is reset when stream completes
-              setIsLoading(false);
-              setIsThinking(false);
-              break;
-            }
-
+        await runOwnedStream({
+          lifecycle: streamLifecycle,
+          stream,
+          request: (signal) =>
+            fetch(sseUrl, {
+              method: 'POST',
+              headers,
+              body: JSON.stringify(requestBody),
+              ...(signal ? { signal } : {}),
+            }),
+          onChunk: (chunk) => {
             const text = decoder.decode(chunk, { stream: true });
             // console.log('📦 Received chunk:', text.substring(0, 100));
             const lines = text.split('\n');
@@ -872,12 +871,17 @@ export const Chat = React.forwardRef<any, ChatProps>((props, ref) => {
                 }
               }
             }
-          }
-        } catch (streamError) {
-          console.error('Error reading stream:', streamError);
-          setIsLoading(false);
-          setIsThinking(false);
-        }
+          },
+          onError: (error) => {
+            console.error('Error reading stream:', error);
+            onError?.(error);
+          },
+          onComplete: () => {
+            console.log('✅ Stream complete');
+            setIsLoading(false);
+            setIsThinking(false);
+          },
+        });
       } else {
         // Simulate response for demo
         setTimeout(() => {
@@ -893,14 +897,24 @@ export const Chat = React.forwardRef<any, ChatProps>((props, ref) => {
         }, 1000);
       }
     } catch (error) {
+      if (isAbortError(error)) {
+        return;
+      }
       console.error('Error sending message:', error);
-      onError?.(error as Error);
+      onError?.(toError(error));
       setIsLoading(false);
     }
-  }, [isLoading, sseUrl, customData, addMessage, onError, aguiHandlerRef, uploadedImages]);
+  }, [isLoading, sseUrl, customData, addMessage, onError, uploadedImages]);
+
+  const handleStopStreaming = useCallback(() => {
+    void streamLifecycleRef.current?.cancel('user-stopped');
+    setIsLoading(false);
+    setIsThinking(false);
+  }, []);
 
   // Clear messages
   const handleClear = useCallback(() => {
+    void streamLifecycleRef.current?.cancel('session-cleared');
     setMessages([]);
     // Clear and reinitialize session
     sessionManagerRef.current?.clearSession();
@@ -1091,6 +1105,7 @@ export const Chat = React.forwardRef<any, ChatProps>((props, ref) => {
                 value={inputValue}
                 onChange={setInputValue}
                 onSubmit={handleSendMessage}
+                onCancel={handleStopStreaming}
                 placeholder={placeholder}
                 loading={isLoading}
                 styles={{

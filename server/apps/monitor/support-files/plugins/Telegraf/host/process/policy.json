@@ -1,0 +1,86 @@
+{
+  "object": "Process",
+  "plugin": "Process",
+  "templates": [
+    {
+      "name": "进程失活",
+      "alert_name": "进程 ${resource_name} 失活",
+      "description": "检测指定进程是否仍有指标上报；低于存活(1)时触发告警。",
+      "metric_name": "process_alive",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 1,
+          "method": "<"
+        }
+      ],
+      "group_algorithm": "min"
+    },
+    {
+      "name": "进程 CPU 使用率过高",
+      "alert_name": "进程 ${resource_name} CPU 使用率过高",
+      "description": "检测指定进程的 CPU 使用率是否超标，超过阈值时触发告警。",
+      "metric_name": "process_cpu_usage",
+      "algorithm": "max_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">="
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">="
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">="
+        }
+      ],
+      "group_algorithm": "max"
+    },
+    {
+      "name": "进程内存使用率过高",
+      "alert_name": "进程 ${resource_name} 内存使用率过高",
+      "description": "检测指定进程的应用内存使用率是否超标，超过阈值时触发告警。",
+      "metric_name": "process_mem_usage",
+      "algorithm": "max_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 80,
+          "method": ">="
+        },
+        {
+          "level": "error",
+          "value": 60,
+          "method": ">="
+        },
+        {
+          "level": "warning",
+          "value": 40,
+          "method": ">="
+        }
+      ],
+      "group_algorithm": "max"
+    },
+    {
+      "name": "进程端口失活",
+      "alert_name": "进程 ${resource_name} 端口存活异常",
+      "description": "检测进程关联端口存活状态，低于存活(1)时触发告警（含部分失活与全部失活）。",
+      "metric_name": "process_port_alive",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 1,
+          "method": "<"
+        }
+      ],
+      "group_algorithm": "min"
+    }
+  ]
+}

@@ -45,35 +45,35 @@ interface ShowModalParams {
   form: AlgorithmConfigListItem | null;
 }
 
-// 默认表单配置模板 - 包含完整的配置示例
-const DEFAULT_FORM_CONFIG: FormConfig = {
+// 内置默认模板只在新建时本地化；保存后的 form_config 按原始内容渲染。
+const createDefaultFormConfig = (t: (key: string) => string): FormConfig => ({
   groups: {
     hyperparams: [
       {
-        title: '基础配置',
+        title: t('algorithmConfig.defaultForm.basicConfig'),
         fields: [
           {
             name: ['hyperparams', 'metric'],
-            label: '优化指标',
+            label: t('algorithmConfig.defaultForm.optimizationMetric'),
             type: 'select',
             required: true,
-            placeholder: '选择优化目标指标',
-            tooltip: '模型训练时优化的目标指标',
+            placeholder: t('algorithmConfig.defaultForm.selectOptimizationMetric'),
+            tooltip: t('algorithmConfig.defaultForm.optimizationMetricTooltip'),
             defaultValue: 'f1',
             options: [
-              { label: 'F1 Score (F1分数)', value: 'f1' },
-              { label: 'Precision (精确率)', value: 'precision' },
-              { label: 'Recall (召回率)', value: 'recall' },
-              { label: 'AUC-ROC (ROC曲线下面积)', value: 'auc' },
+              { label: t('algorithmConfig.defaultForm.f1Score'), value: 'f1' },
+              { label: t('algorithmConfig.defaultForm.precision'), value: 'precision' },
+              { label: t('algorithmConfig.defaultForm.recall'), value: 'recall' },
+              { label: t('algorithmConfig.defaultForm.aucRoc'), value: 'auc' },
             ],
           },
           {
             name: ['hyperparams', 'random_state'],
-            label: '随机种子',
+            label: t('algorithmConfig.defaultForm.randomSeed'),
             type: 'inputNumber',
             required: true,
-            tooltip: '控制随机性，确保实验可复现。相同种子+相同参数=相同结果',
-            placeholder: '例: 42',
+            tooltip: t('algorithmConfig.defaultForm.randomSeedTooltip'),
+            placeholder: t('algorithmConfig.defaultForm.randomSeedPlaceholder'),
             defaultValue: 42,
             min: 0,
             max: 2147483647,
@@ -82,59 +82,59 @@ const DEFAULT_FORM_CONFIG: FormConfig = {
         ],
       },
       {
-        title: '搜索空间 (Search Space)',
+        title: t('algorithmConfig.defaultForm.searchSpace'),
         fields: [
           {
             name: ['hyperparams', 'search_space', 'contamination'],
-            label: '污染率',
+            label: t('algorithmConfig.defaultForm.contamination'),
             type: 'stringArray',
             required: true,
-            tooltip: '预期异常数据占总数据的比例，多个值用逗号分隔',
-            placeholder: '例: 0.01,0.05,0.1',
+            tooltip: t('algorithmConfig.defaultForm.contaminationTooltip'),
+            placeholder: t('algorithmConfig.defaultForm.contaminationPlaceholder'),
             defaultValue: '0.01,0.05,0.1',
           },
         ],
       },
       {
         title: '',
-        subtitle: '高级选项',
+        subtitle: t('algorithmConfig.defaultForm.advancedOptions'),
         fields: [
           {
             name: ['hyperparams', 'use_feature_engineering'],
-            label: '启用特征工程',
+            label: t('algorithmConfig.defaultForm.enableFeatureEngineering'),
             type: 'switch',
             defaultValue: false,
             layout: 'horizontal',
-            tooltip: '启用后将生成滞后特征、滚动窗口统计、时间特征等',
+            tooltip: t('algorithmConfig.defaultForm.featureEngineeringTooltip'),
           },
         ],
       },
     ],
     preprocessing: [
       {
-        title: '数据预处理 (Preprocessing)',
+        title: t('algorithmConfig.defaultForm.preprocessing'),
         fields: [
           {
             name: ['preprocessing', 'handle_missing'],
-            label: '缺失值处理',
+            label: t('algorithmConfig.defaultForm.missingValueHandling'),
             type: 'select',
             required: true,
-            placeholder: '选择缺失值处理方式',
+            placeholder: t('algorithmConfig.defaultForm.selectMissingValueHandling'),
             defaultValue: 'interpolate',
             options: [
-              { label: '线性插值 (interpolate)', value: 'interpolate' },
-              { label: '前向填充 (ffill)', value: 'ffill' },
-              { label: '后向填充 (bfill)', value: 'bfill' },
-              { label: '删除 (drop)', value: 'drop' },
-              { label: '中位数填充 (median)', value: 'median' },
+              { label: t('algorithmConfig.defaultForm.interpolate'), value: 'interpolate' },
+              { label: t('algorithmConfig.defaultForm.forwardFill'), value: 'ffill' },
+              { label: t('algorithmConfig.defaultForm.backwardFill'), value: 'bfill' },
+              { label: t('algorithmConfig.defaultForm.drop'), value: 'drop' },
+              { label: t('algorithmConfig.defaultForm.median'), value: 'median' },
             ],
           },
           {
             name: ['preprocessing', 'max_missing_ratio'],
-            label: '最大缺失率',
+            label: t('algorithmConfig.defaultForm.maxMissingRatio'),
             type: 'inputNumber',
             required: true,
-            tooltip: '数据缺失比例超过此阈值将拒绝训练',
+            tooltip: t('algorithmConfig.defaultForm.maxMissingRatioTooltip'),
             placeholder: '0.0 - 1.0',
             defaultValue: 0.3,
             min: 0,
@@ -143,11 +143,11 @@ const DEFAULT_FORM_CONFIG: FormConfig = {
           },
           {
             name: ['preprocessing', 'label_column'],
-            label: '标签列名',
+            label: t('algorithmConfig.defaultForm.labelColumn'),
             type: 'input',
             required: true,
-            tooltip: '数据集中标签列的名称',
-            placeholder: '例: label',
+            tooltip: t('algorithmConfig.defaultForm.labelColumnTooltip'),
+            placeholder: t('algorithmConfig.defaultForm.labelColumnPlaceholder'),
             defaultValue: 'label',
           },
         ],
@@ -155,57 +155,57 @@ const DEFAULT_FORM_CONFIG: FormConfig = {
     ],
     feature_engineering: [
       {
-        title: '特征工程 (Feature Engineering)',
+        title: t('algorithmConfig.defaultForm.featureEngineering'),
         fields: [
           {
             name: ['feature_engineering', 'lag_periods'],
-            label: '滞后期',
+            label: t('algorithmConfig.defaultForm.lagPeriods'),
             type: 'stringArray',
             required: true,
-            tooltip: '使用过去N个时间点的值作为特征',
-            placeholder: '例: 1,2,3',
+            tooltip: t('algorithmConfig.defaultForm.lagPeriodsTooltip'),
+            placeholder: t('algorithmConfig.defaultForm.lagPeriodsPlaceholder'),
             defaultValue: '1,2,3',
             dependencies: [['hyperparams', 'use_feature_engineering']],
           },
           {
             name: ['feature_engineering', 'rolling_windows'],
-            label: '滚动窗口大小',
+            label: t('algorithmConfig.defaultForm.rollingWindowSize'),
             type: 'stringArray',
             required: true,
-            tooltip: '计算滚动窗口统计的窗口大小',
-            placeholder: '例: 12,24,48',
+            tooltip: t('algorithmConfig.defaultForm.rollingWindowSizeTooltip'),
+            placeholder: t('algorithmConfig.defaultForm.rollingWindowSizePlaceholder'),
             defaultValue: '12,24,48',
             dependencies: [['hyperparams', 'use_feature_engineering']],
           },
           {
             name: ['feature_engineering', 'rolling_features'],
-            label: '滚动窗口统计',
+            label: t('algorithmConfig.defaultForm.rollingWindowStatistics'),
             type: 'multiSelect',
             required: true,
-            placeholder: '选择统计函数',
+            placeholder: t('algorithmConfig.defaultForm.selectStatisticsFunction'),
             defaultValue: ['mean', 'std', 'min', 'max'],
             options: [
-              { label: '均值 (mean)', value: 'mean' },
-              { label: '标准差 (std)', value: 'std' },
-              { label: '最小值 (min)', value: 'min' },
-              { label: '最大值 (max)', value: 'max' },
+              { label: t('algorithmConfig.defaultForm.mean'), value: 'mean' },
+              { label: t('algorithmConfig.defaultForm.standardDeviation'), value: 'std' },
+              { label: t('algorithmConfig.defaultForm.minimum'), value: 'min' },
+              { label: t('algorithmConfig.defaultForm.maximum'), value: 'max' },
             ],
             dependencies: [['hyperparams', 'use_feature_engineering']],
           },
           {
             name: ['feature_engineering', 'use_temporal_features'],
-            label: '时间特征',
+            label: t('algorithmConfig.defaultForm.temporalFeatures'),
             type: 'switch',
             defaultValue: true,
             layout: 'horizontal',
-            tooltip: '添加小时、星期、月份等时间特征',
+            tooltip: t('algorithmConfig.defaultForm.temporalFeaturesTooltip'),
             dependencies: [['hyperparams', 'use_feature_engineering']],
           },
         ],
       },
     ],
   },
-};
+});
 
 const AlgorithmConfigModal = forwardRef<{ showModal: (params: ShowModalParams) => void }, AlgorithmConfigModalProps>(({ algorithmType, onSuccess }, ref) => {
   const { t } = useTranslation();
@@ -222,7 +222,7 @@ const AlgorithmConfigModal = forwardRef<{ showModal: (params: ShowModalParams) =
     title: 'addConfig',
   });
   const [formData, setFormData] = useState<AlgorithmConfigListItem | null>(null);
-  const [formConfig, setFormConfig] = useState<FormConfig>(DEFAULT_FORM_CONFIG);
+  const [formConfig, setFormConfig] = useState<FormConfig>(() => createDefaultFormConfig(t));
   const [jsonError, setJsonError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('basic');
@@ -250,9 +250,9 @@ const AlgorithmConfigModal = forwardRef<{ showModal: (params: ShowModalParams) =
         algorithm_type: algorithmType,
         is_active: true,
       });
-      setFormConfig(DEFAULT_FORM_CONFIG);
+      setFormConfig(createDefaultFormConfig(t));
     }
-  }, [modalState.isOpen, formData, modalState.type, algorithmType]);
+  }, [modalState.isOpen, formData, modalState.type, algorithmType, t]);
 
   const loadConfigDetail = async (id: number) => {
     setLoading(true);
@@ -329,7 +329,7 @@ const AlgorithmConfigModal = forwardRef<{ showModal: (params: ShowModalParams) =
       title: 'addConfig',
     });
     setFormData(null);
-    setFormConfig(DEFAULT_FORM_CONFIG);
+    setFormConfig(createDefaultFormConfig(t));
     setJsonError(null);
     form.resetFields();
   };
@@ -350,7 +350,7 @@ const AlgorithmConfigModal = forwardRef<{ showModal: (params: ShowModalParams) =
             tooltip={t('algorithmConfig.algorithmNameTooltip')}
           >
             <Input
-              placeholder="例: ECOD, XGBoost"
+              placeholder={t('algorithmConfig.algorithmNamePlaceholder')}
               disabled={modalState.type === 'edit'}
             />
           </Form.Item>
@@ -360,7 +360,7 @@ const AlgorithmConfigModal = forwardRef<{ showModal: (params: ShowModalParams) =
             label={t('algorithmConfig.displayName')}
             rules={[{ required: true, message: t('common.inputRequired') }]}
           >
-            <Input placeholder="例: ECOD 异常检测算法" />
+            <Input placeholder={t('algorithmConfig.displayNamePlaceholder')} />
           </Form.Item>
 
           <Form.Item
@@ -370,7 +370,7 @@ const AlgorithmConfigModal = forwardRef<{ showModal: (params: ShowModalParams) =
           >
             <Input.TextArea
               rows={3}
-              placeholder="描述该算法适用的业务场景"
+              placeholder={t('algorithmConfig.scenarioDescriptionPlaceholder')}
             />
           </Form.Item>
 
@@ -380,7 +380,7 @@ const AlgorithmConfigModal = forwardRef<{ showModal: (params: ShowModalParams) =
             rules={[{ required: true, message: t('common.inputRequired') }]}
             tooltip={t('algorithmConfig.imageTooltip')}
           >
-            <Input placeholder="例: registry.example.com/ml/ecod:latest" />
+            <Input placeholder={t('algorithmConfig.imagePlaceholder')} />
           </Form.Item>
 
           <Form.Item

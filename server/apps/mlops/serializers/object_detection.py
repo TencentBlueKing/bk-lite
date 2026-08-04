@@ -2,6 +2,7 @@ from types import SimpleNamespace
 
 from apps.core.utils.serializers import AuthSerializer
 from apps.mlops.models.object_detection import *
+from apps.mlops.utils.i18n import serializer_message
 from rest_framework import serializers
 from apps.core.logger import mlops_logger as logger
 from apps.mlops.utils.group_scope import (
@@ -69,56 +70,56 @@ class ObjectDetectionTrainDataSerializer(AuthSerializer):
             return value
 
         if not isinstance(value, dict):
-            raise serializers.ValidationError("metadata 必须是字典格式")
+            raise serializers.ValidationError(serializer_message(self, "error.object_metadata_must_be_object"))
 
         # 验证必需字段
         required_fields = ["format", "classes", "num_classes", "num_images", "labels"]
         missing_fields = [field for field in required_fields if field not in value]
         if missing_fields:
-            raise serializers.ValidationError(f"metadata 缺少必需字段: {', '.join(missing_fields)}")
+            raise serializers.ValidationError(serializer_message(self, "error.object_metadata_required_fields_missing", fields=", ".join(missing_fields)))
 
         # 验证 format
         if value.get("format") != "YOLO":
-            raise serializers.ValidationError("metadata.format 必须为 'YOLO'")
+            raise serializers.ValidationError(serializer_message(self, "error.object_metadata_format_must_be_yolo"))
 
         # 验证 classes
         classes = value.get("classes")
         if not isinstance(classes, list):
-            raise serializers.ValidationError("metadata.classes 必须是数组")
+            raise serializers.ValidationError(serializer_message(self, "error.object_metadata_classes_must_be_array"))
         if not classes:
-            raise serializers.ValidationError("metadata.classes 不能为空")
+            raise serializers.ValidationError(serializer_message(self, "error.object_metadata_classes_required"))
         if not all(isinstance(c, str) for c in classes):
-            raise serializers.ValidationError("metadata.classes 中的所有元素必须是字符串")
+            raise serializers.ValidationError(serializer_message(self, "error.object_metadata_classes_must_be_strings"))
 
         # 验证 num_classes
         num_classes = value.get("num_classes")
         if not isinstance(num_classes, int) or num_classes <= 0:
-            raise serializers.ValidationError("metadata.num_classes 必须是正整数")
+            raise serializers.ValidationError(serializer_message(self, "error.object_metadata_num_classes_must_be_positive"))
         if num_classes != len(classes):
-            raise serializers.ValidationError(f"metadata.num_classes ({num_classes}) 与 classes 数组长度 ({len(classes)}) 不匹配")
+            raise serializers.ValidationError(serializer_message(self, "error.object_metadata_num_classes_mismatch", num_classes=num_classes, classes_length=len(classes)))
 
         # 验证 num_images
         num_images = value.get("num_images")
         if not isinstance(num_images, int) or num_images <= 0:
-            raise serializers.ValidationError("metadata.num_images 必须是正整数")
+            raise serializers.ValidationError(serializer_message(self, "error.object_metadata_num_images_must_be_positive"))
 
         # 验证 labels
         labels = value.get("labels")
         if not isinstance(labels, dict):
-            raise serializers.ValidationError("metadata.labels 必须是对象")
+            raise serializers.ValidationError(serializer_message(self, "error.object_metadata_labels_must_be_object"))
 
         # 验证每个图片的标注
         for img_name, annotations in labels.items():
             if not isinstance(img_name, str):
-                raise serializers.ValidationError(f"metadata.labels 的键必须是字符串，发现: {type(img_name).__name__}")
+                raise serializers.ValidationError(serializer_message(self, "error.object_metadata_labels_key_must_be_string", type_name=type(img_name).__name__))
 
             if not isinstance(annotations, list):
-                raise serializers.ValidationError(f"图片 '{img_name}' 的标注必须是数组")
+                raise serializers.ValidationError(serializer_message(self, "error.object_annotation_must_be_array", image_name=img_name))
 
             # 验证每个标注框
             for idx, ann in enumerate(annotations):
                 if not isinstance(ann, dict):
-                    raise serializers.ValidationError(f"图片 '{img_name}' 的第 {idx + 1} 个标注必须是对象")
+                    raise serializers.ValidationError(serializer_message(self, "error.object_annotation_must_be_object", image_name=img_name, index=idx + 1))
 
                 # 验证必需字段
                 ann_required = [
@@ -131,24 +132,24 @@ class ObjectDetectionTrainDataSerializer(AuthSerializer):
                 ]
                 ann_missing = [field for field in ann_required if field not in ann]
                 if ann_missing:
-                    raise serializers.ValidationError(f"图片 '{img_name}' 的第 {idx + 1} 个标注缺少字段: {', '.join(ann_missing)}")
+                    raise serializers.ValidationError(serializer_message(self, "error.object_annotation_required_fields_missing", image_name=img_name, index=idx + 1, fields=", ".join(ann_missing)))
 
                 # 验证 class_id
                 class_id = ann.get("class_id")
                 if not isinstance(class_id, int):
-                    raise serializers.ValidationError(f"图片 '{img_name}' 的第 {idx + 1} 个标注: class_id 必须是整数")
+                    raise serializers.ValidationError(serializer_message(self, "error.object_annotation_class_id_must_be_integer", image_name=img_name, index=idx + 1))
                 if class_id < 0 or class_id >= num_classes:
                     raise serializers.ValidationError(
-                        f"图片 '{img_name}' 的第 {idx + 1} 个标注: class_id ({class_id}) 超出范围 [0, {num_classes - 1}]"
+                        serializer_message(self, "error.object_annotation_class_id_out_of_range", image_name=img_name, index=idx + 1, class_id=class_id, max_class_id=num_classes - 1)
                     )
 
                 # 验证 class_name
                 class_name = ann.get("class_name")
                 if not isinstance(class_name, str):
-                    raise serializers.ValidationError(f"图片 '{img_name}' 的第 {idx + 1} 个标注: class_name 必须是字符串")
+                    raise serializers.ValidationError(serializer_message(self, "error.object_annotation_class_name_must_be_string", image_name=img_name, index=idx + 1))
                 if class_id < len(classes) and class_name != classes[class_id]:
                     raise serializers.ValidationError(
-                        f"图片 '{img_name}' 的第 {idx + 1} 个标注: class_name '{class_name}' 与 classes[{class_id}] '{classes[class_id]}' 不匹配"
+                        serializer_message(self, "error.object_annotation_class_name_mismatch", image_name=img_name, index=idx + 1, class_name=class_name, class_id=class_id, expected_class_name=classes[class_id])
                     )
 
                 # 验证坐标值（归一化，范围 0-1）
@@ -156,29 +157,29 @@ class ObjectDetectionTrainDataSerializer(AuthSerializer):
                 for coord_field in coord_fields:
                     coord_value = ann.get(coord_field)
                     if not isinstance(coord_value, (int, float)):
-                        raise serializers.ValidationError(f"图片 '{img_name}' 的第 {idx + 1} 个标注: {coord_field} 必须是数字")
+                        raise serializers.ValidationError(serializer_message(self, "error.object_annotation_coordinate_must_be_number", image_name=img_name, index=idx + 1, field=coord_field))
                     if coord_value < 0 or coord_value > 1:
                         raise serializers.ValidationError(
-                            f"图片 '{img_name}' 的第 {idx + 1} 个标注: {coord_field} ({coord_value}) 必须在 [0, 1] 范围内"
+                            serializer_message(self, "error.object_annotation_coordinate_out_of_range", image_name=img_name, index=idx + 1, field=coord_field, value=coord_value)
                         )
 
         # 验证 statistics（可选，但如果存在则验证格式）
         if "statistics" in value:
             statistics = value["statistics"]
             if not isinstance(statistics, dict):
-                raise serializers.ValidationError("metadata.statistics 必须是对象")
+                raise serializers.ValidationError(serializer_message(self, "error.object_metadata_statistics_must_be_object"))
 
             # 验证 total_annotations
             if "total_annotations" in statistics:
                 total_annotations = statistics["total_annotations"]
                 if not isinstance(total_annotations, int) or total_annotations < 0:
-                    raise serializers.ValidationError("metadata.statistics.total_annotations 必须是非负整数")
+                    raise serializers.ValidationError(serializer_message(self, "error.object_metadata_total_annotations_must_be_nonnegative"))
 
             # 验证 class_distribution
             if "class_distribution" in statistics:
                 class_distribution = statistics["class_distribution"]
                 if not isinstance(class_distribution, dict):
-                    raise serializers.ValidationError("metadata.statistics.class_distribution 必须是对象")
+                    raise serializers.ValidationError(serializer_message(self, "error.object_metadata_class_distribution_must_be_object"))
 
         logger.info(f"metadata 验证通过: {num_images} 张图片, {num_classes} 个类别, {len(labels)} 个标注文件")
 
@@ -217,7 +218,7 @@ class ObjectDetectionDatasetReleaseSerializer(AuthSerializer):
         import re
 
         if not re.match(r"^v\d+\.\d+\.\d+$", value):
-            raise serializers.ValidationError("版本号格式应为 vX.Y.Z，例如：v1.0.0")
+            raise serializers.ValidationError(serializer_message(self, "error.dataset_release_version_format_invalid"))
         return value
 
     def validate_dataset(self, value):
@@ -270,7 +271,7 @@ class ObjectDetectionDatasetReleaseSerializer(AuthSerializer):
                     release.save(update_fields=["status", "file_size", "metadata"])
                 else:
                     logger.info(f"数据集版本已存在 - Dataset: {dataset.id}, Version: {version}, Status: {existing.status}")
-                    raise serializers.ValidationError(f"数据集 {dataset.name} 的版本 {version} 已存在或正在处理中")
+                    raise serializers.ValidationError(serializer_message(self, "error.dataset_release_version_unavailable", dataset_name=dataset.name, version=version))
             else:
                 validated_data["status"] = "pending"
                 validated_data["file_size"] = 0
@@ -295,7 +296,7 @@ class ObjectDetectionDatasetReleaseSerializer(AuthSerializer):
                 )
                 release.status = "failed"
                 release.save(update_fields=["status"])
-                raise serializers.ValidationError("投递异步任务失败")
+                raise serializers.ValidationError(serializer_message(self, "error.dataset_release_task_enqueue_failed"))
 
             logger.info(f"创建数据集发布任务 - Release ID: {release.id}, Dataset: {dataset.id}, Version: {version}")
 
@@ -303,12 +304,12 @@ class ObjectDetectionDatasetReleaseSerializer(AuthSerializer):
 
         except ObjectDetectionTrainData.DoesNotExist as e:
             logger.error(f"训练数据文件不存在 - {str(e)}")
-            raise serializers.ValidationError(f"训练数据文件不存在或不属于该数据集")
+            raise serializers.ValidationError(serializer_message(self, "error.dataset_release_training_data_not_found"))
         except serializers.ValidationError:
             raise
         except Exception as e:
             logger.error(f"创建数据集发布任务失败 - {str(e)}", exc_info=True)
-            raise serializers.ValidationError("创建发布任务失败")
+            raise serializers.ValidationError(serializer_message(self, "error.dataset_release_create_failed"))
 
     def validate(self, attrs):
         """验证数据集和版本的唯一性"""
@@ -321,7 +322,7 @@ class ObjectDetectionDatasetReleaseSerializer(AuthSerializer):
 
         if not (train_file_id and val_file_id and test_file_id):
             if not attrs.get("dataset_file"):
-                raise serializers.ValidationError({"dataset_file": "必须提供数据集文件或训练数据文件ID"})
+                raise serializers.ValidationError({"dataset_file": serializer_message(self, "error.dataset_release_file_required")})
 
         if dataset and version:
             existing_releases = ObjectDetectionDatasetRelease._default_manager.filter(dataset=dataset, version=version)
@@ -334,7 +335,7 @@ class ObjectDetectionDatasetReleaseSerializer(AuthSerializer):
             allow_failed_retry = bool(existing and existing.status == "failed" and (has_file_ids or has_dataset_file))
 
             if existing and not allow_failed_retry:
-                raise serializers.ValidationError({"version": f"数据集 {dataset.name} 的版本 {version} 已存在"})
+                raise serializers.ValidationError({"version": serializer_message(self, "error.dataset_release_version_exists", dataset_name=dataset.name, version=version)})
 
         return attrs
 
@@ -366,14 +367,14 @@ class ObjectDetectionTrainJobSerializer(AuthSerializer):
     def validate_hyperopt_config(self, value):
         """验证训练配置格式"""
         if not isinstance(value, dict):
-            raise serializers.ValidationError("hyperopt_config 必须是字典格式")
+            raise serializers.ValidationError(serializer_message(self, "error.hyperopt_config_must_be_object"))
 
         if "hyperparams" not in value:
-            raise serializers.ValidationError("hyperopt_config 必须包含 hyperparams 字段")
+            raise serializers.ValidationError(serializer_message(self, "error.hyperopt_config_hyperparams_required"))
 
         hyperparams = value["hyperparams"]
         if not isinstance(hyperparams, dict):
-            raise serializers.ValidationError("hyperparams 必须是字典格式")
+            raise serializers.ValidationError(serializer_message(self, "error.hyperparams_must_be_object"))
 
         return value
 
@@ -421,7 +422,7 @@ class ObjectDetectionServingSerializer(AuthSerializer):
         team = attrs.get("team", getattr(self.instance, "team", None))
         if train_job is not None and team is not None:
             field_name = "train_job" if "train_job" in attrs or "team" not in attrs else "team"
-            assert_parent_team_matches(SimpleNamespace(team=team), train_job, field_name)
+            assert_parent_team_matches(SimpleNamespace(team=team), train_job, field_name, request=self.context.get("request"))
 
         return attrs
 
@@ -440,7 +441,7 @@ class ObjectDetectionServingSerializer(AuthSerializer):
     def validate_model_version(self, value):
         """验证模型版本格式"""
         if value != "latest" and not value.isdigit():
-            raise serializers.ValidationError("模型版本必须是 'latest' 或正整数（如：1, 2, 3）")
+            raise serializers.ValidationError(serializer_message(self, "error.model_version_invalid"))
         return value
 
     def validate_team(self, value):

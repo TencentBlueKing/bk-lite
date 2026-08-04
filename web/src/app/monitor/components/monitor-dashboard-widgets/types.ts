@@ -41,6 +41,16 @@ export interface MetricItem {
   instance_id_keys?: string[];
   dimensions: Dimension[];
   query?: string;
+  view_query?: string;
+  view_config?: {
+    mode: 'top' | 'bottom' | 'limited';
+    limit?: number;
+  };
+  seriesBudget?: {
+    truncated: boolean;
+    limit: number;
+    applied?: boolean;
+  };
   unit?: string;
   displayType?: string;
   description?: string;
