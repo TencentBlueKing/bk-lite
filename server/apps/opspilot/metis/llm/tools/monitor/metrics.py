@@ -6,7 +6,7 @@ from langchain_core.tools import tool
 from apps.opspilot.metis.llm.tools.monitor.utils import call_monitor_rpc, wrap_error
 
 
-@tool(description="List metrics for a monitor object.")
+@tool(description=("【主机CPU使用率】第3步：列出该对象指标定义，确认CPU使用率等metric名称。" "查时序前先调；不要用系统命令采集。"))
 def monitor_list_object_metrics(
     monitor_obj_id: str,
     config: RunnableConfig = None,
@@ -20,7 +20,7 @@ def monitor_list_object_metrics(
     )
 
 
-@tool(description="List monitored metrics for a specific monitor instance.")
+@tool(description=("【主机CPU使用率】可选：列出某实例已采集指标，确认该主机是否有CPU数据。" "参数monitor_obj_id+instance_id；可only_with_data过滤。"))
 def monitor_list_instance_metrics(
     monitor_obj_id: str,
     instance_id: str,
@@ -49,7 +49,7 @@ def monitor_list_instance_metrics(
     )
 
 
-@tool(description="Query data for all plugin metrics with the given name on a monitor object.")
+@tool(description=("【主机CPU使用率】第4步：查询指标时序（返回CPU使用率数值）。" "必填monitor_obj_id、metric、start、end；用instance_ids指定主机。" "这是查CPU的正确方式，禁止建议top/htop/SSH。"))
 def monitor_query_metric_data(
     monitor_obj_id: Optional[str] = None,
     metric: Optional[str] = None,

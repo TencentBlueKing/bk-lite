@@ -162,6 +162,35 @@ async def test_planner_uses_compact_catalog_and_normalizes_tool_plan():
     assert accumulator.as_call_details()[0]["visible_tools"] == []
 
 
+@pytest.mark.asyncio
+async def test_planner_catalog_prepends_monitor_capability_hint():
+    tools = [
+        _tool("monitor_list_objects", "列出对象"),
+        _tool("monitor_query_metric_data", "查时序"),
+        _tool("other_tool", "无关工具"),
+    ]
+
+    class FakeLLM:
+        def __init__(self):
+            self.messages = None
+
+        async def ainvoke(self, messages, config=None):
+            self.messages = messages
+            return AIMessage(content='{"goal":"查CPU","steps":[{"objective":"列对象","tools":["monitor_list_objects"]}]}')
+
+    llm = FakeLLM()
+    planner = ToolExecutionPlanner(llm)
+    plan = await planner.plan("检查主机 boxxxxx 的CPU使用率", tools)
+
+    assert plan.steps[0].tools == ["monitor_list_objects"]
+    prompt = "\n".join(str(message.content) for message in llm.messages)
+    assert "能力导读" in prompt
+    assert "CPU使用率" in prompt
+    assert "禁止返回空 steps" in prompt
+    assert "monitor_list_objects→monitor_list_object_instances" in prompt
+    assert "必须规划对应 monitor_* 步骤" in prompt
+
+
 def test_token_usage_middleware_records_each_model_call_and_visible_tools():
     accumulator = TokenUsageAccumulator()
     middleware = TokenUsageTrackingMiddleware(accumulator)

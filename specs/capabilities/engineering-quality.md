@@ -19,7 +19,7 @@
 
 - `.husky/pre-commit`:对 `web/`、`mobile/` staged 变更自动 lint/type-check。
 - `server/.pre-commit-config.yaml`:`black` + `isort` + `flake8` + `check_migrate` + `check_requirements`。
-- Python 行宽 **150**,日志用 `loguru`。
+- Python 行宽 **150**；`server/apps/` 日志走 `apps.core.logger` 的 `{app}_logger as logger`，`algorithms/` 等独立服务可用 `loguru`。
 
 ## 3. 代码质量红线(硬性)
 

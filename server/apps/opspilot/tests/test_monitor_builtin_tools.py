@@ -16,11 +16,28 @@ def test_monitor_language_keys_exist_in_en_and_zh():
 
     assert en_loader.get("tools.monitor.name")
     assert en_loader.get("tools.monitor.description")
-    assert en_loader.get("tools.monitor.tools.monitor_list_objects.description")
-
     assert zh_loader.get("tools.monitor.name")
     assert zh_loader.get("tools.monitor.description")
-    assert zh_loader.get("tools.monitor.tools.monitor_list_objects.description")
+
+    sub_tools = [
+        "monitor_list_objects",
+        "monitor_list_object_instances",
+        "monitor_list_object_metrics",
+        "monitor_list_instance_metrics",
+        "monitor_query_metric_data",
+        "monitor_list_active_alerts",
+        "monitor_query_alert_segments",
+    ]
+    for name in sub_tools:
+        assert en_loader.get(f"tools.monitor.tools.{name}.description"), name
+        assert zh_loader.get(f"tools.monitor.tools.{name}.description"), name
+
+    zh_pkg = zh_loader.get("tools.monitor.description")
+    assert "CPU" in zh_pkg or "主机" in zh_pkg
+    assert "SSH" in zh_pkg or "top" in zh_pkg or "htop" in zh_pkg
+    assert "第" in zh_loader.get("tools.monitor.tools.monitor_list_objects.description") or "主机" in zh_loader.get(
+        "tools.monitor.tools.monitor_list_objects.description"
+    )
 
 
 def test_builtin_tool_display_name_keys_exist_in_en_and_zh():

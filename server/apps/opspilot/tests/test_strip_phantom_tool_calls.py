@@ -6,19 +6,16 @@
 - 不影响:正常文字、合法 HTML、孤立 <tool_call> 标签
 - 不抛异常,空串/None 安全
 """
+
 from __future__ import annotations
 
 import json
-import sys
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock
 
 import pytest
 
-from apps.opspilot.metis.llm.chain.report_renderers import (
-    strip_phantom_tool_calls,
-)
 from apps.opspilot.metis.llm.chain import k8s_report_tools
-
+from apps.opspilot.metis.llm.chain.report_renderers import strip_phantom_tool_calls
 
 pytestmark = pytest.mark.unit
 
@@ -27,12 +24,13 @@ pytestmark = pytest.mark.unit
 # 纯函数级 strip 测试
 # ---------------------------------------------------------------------------
 
+
 def test_strip_removes_standard_phantom_call():
     """<tool_call>call:name{args}</tool_call> 这种典型模式必须抹掉。"""
     text = (
         "已调用 3 个工具 k8s 实时状态详情\n"
-        "<tool_call>call:kubectl_get_all_resources{namespace:\"production\"}</tool_call>\n"
-        "<tool_call>call:kubectl_get_all_resources{namespace:\"dev\"}</tool_call>\n"
+        '<tool_call>call:kubectl_get_all_resources{namespace:"production"}</tool_call>\n'
+        '<tool_call>call:kubectl_get_all_resources{namespace:"dev"}</tool_call>\n'
         "现在给结论"
     )
     cleaned = strip_phantom_tool_calls(text)
@@ -44,13 +42,7 @@ def test_strip_removes_standard_phantom_call():
 
 def test_strip_removes_pipe_separated_phantom_call():
     """<|tool_call|>name(args)<|tool_call|> 这种带 pipe 的模式也抹掉。"""
-    text = (
-        "分析结果如下:\n"
-        "<|tool_call|>call:execute{name=\"foo\"}<|tool_call|>\n"
-        "继续\n"
-        "<|tool_call|>call:execute{name=\"bar\"}<|tool_call|>\n"
-        "完毕"
-    )
+    text = "分析结果如下:\n" '<|tool_call|>call:execute{name="foo"}<|tool_call|>\n' "继续\n" '<|tool_call|>call:execute{name="bar"}<|tool_call|>\n' "完毕"
     cleaned = strip_phantom_tool_calls(text)
     assert "<|tool_call|>" not in cleaned
     assert "execute" not in cleaned
@@ -67,14 +59,7 @@ def test_strip_removes_leading_pipe_phantom_call_from_screenshot():
 
 def test_strip_handles_multi_line_content():
     """phantom call 里 args 含换行也得能整段抹掉(re.DOTALL)。"""
-    text = (
-        "before\n"
-        "<tool_call>call:foo{\n"
-        "  multi: 'line',\n"
-        "  other: 'value'\n"
-        "}</tool_call>\n"
-        "after"
-    )
+    text = "before\n" "<tool_call>call:foo{\n" "  multi: 'line',\n" "  other: 'value'\n" "}</tool_call>\n" "after"
     cleaned = strip_phantom_tool_calls(text)
     assert "before" in cleaned
     assert "after" in cleaned
@@ -101,11 +86,7 @@ def test_strip_preserves_legitimate_html():
 
 def test_strip_preserves_normal_tool_call_style_text():
     """LLM 写说明文字时提到 'tool_call' 单词不应被误伤。"""
-    text = (
-        "我会使用 tool_call 来调用工具\n"
-        "这个 tool 调用的参数是 foo\n"
-        "实际是 tool_calls.json 里的字段"
-    )
+    text = "我会使用 tool_call 来调用工具\n" "这个 tool 调用的参数是 foo\n" "实际是 tool_calls.json 里的字段"
     cleaned = strip_phantom_tool_calls(text)
     assert cleaned == text
 
@@ -125,11 +106,7 @@ def test_strip_handles_text_without_phantom_calls():
 
 
 def test_strip_handles_mixed_format():
-    text = (
-        "<tool_call>call:foo{args:1}</tool_call>"
-        "中间普通文字"
-        "<|tool_call|>call:bar{args:2}<|tool_call|>"
-    )
+    text = "<tool_call>call:foo{args:1}</tool_call>" "中间普通文字" "<|tool_call|>call:bar{args:2}<|tool_call|>"
     cleaned = strip_phantom_tool_calls(text)
     assert "<tool_call>" not in cleaned
     assert "<|tool_call|>" not in cleaned
@@ -150,7 +127,6 @@ def test_strip_handles_malformed_close_tag_omitting_slash():
     assert cleaned == ""
 
 
-
 def test_strip_handles_nested_phantom_calls():
     text = "<tool_call>outer<tool_call>inner</tool_call></tool_call>"
     cleaned = strip_phantom_tool_calls(text)
@@ -168,6 +144,7 @@ def test_strip_preserves_orphan_phantom_opener():
 # shim re-export
 # ---------------------------------------------------------------------------
 
+
 def test_shim_re_exports_strip_phantom_tool_calls():
     """k8s_report_tools 兼容 shim 也必须 re-export 这个新函数。"""
     assert k8s_report_tools.strip_phantom_tool_calls is strip_phantom_tool_calls
@@ -176,6 +153,7 @@ def test_shim_re_exports_strip_phantom_tool_calls():
 # ---------------------------------------------------------------------------
 # 跨 chunk buffer 集成测试(graph.py emit 路径)
 # ---------------------------------------------------------------------------
+
 
 def _make_basic_graph():
     """构造一个 BasicGraph 的最小 concrete 子类实例,绕开 __init__ 和抽象方法。"""
@@ -224,8 +202,8 @@ def test_cross_chunk_phantom_call_strip_via_buffer():
     # 期望:拼起来 strip 后 emit 空,buffer 也清空
 
     # chunk 1
-    events1, mid, _, _ = graph._handle_chat_model_stream_content(
-        chunk=_chunk_with_content('<tool_call>call:analyze_deployment_'),
+    events1, mid, _, _, _ = graph._handle_chat_model_stream_content(
+        chunk=_chunk_with_content("<tool_call>call:analyze_deployment_"),
         encoder=encoder,
         run_id="t1",
         current_message_id="msg-1",
@@ -240,7 +218,7 @@ def test_cross_chunk_phantom_call_strip_via_buffer():
     assert "<tool_call>" in buffers["msg-1"]
 
     # chunk 2
-    events2, _, _, _ = graph._handle_chat_model_stream_content(
+    events2, _, _, _, _ = graph._handle_chat_model_stream_content(
         chunk=_chunk_with_content('configurations{namespace:["production"]}</tool_call>'),
         encoder=encoder,
         run_id="t1",
@@ -266,7 +244,7 @@ def test_cross_chunk_leading_pipe_phantom_call_strip_via_buffer():
     encoder = EventEncoder()
     buffers: dict = {}
 
-    events1, _, _, _ = graph._handle_chat_model_stream_content(
+    events1, _, _, _, _ = graph._handle_chat_model_stream_content(
         chunk=_chunk_with_content("<|tool_call>call:analyze_deployment_"),
         encoder=encoder,
         run_id="t1",
@@ -279,7 +257,7 @@ def test_cross_chunk_leading_pipe_phantom_call_strip_via_buffer():
     assert _extract_text_deltas(events1) == []
     assert buffers["msg-1"].startswith("<|tool_call>")
 
-    events2, _, _, _ = graph._handle_chat_model_stream_content(
+    events2, _, _, _, _ = graph._handle_chat_model_stream_content(
         chunk=_chunk_with_content('configurations{namespace:<|">default<|">}<|tool_call>'),
         encoder=encoder,
         run_id="t1",
@@ -304,7 +282,7 @@ def test_single_chunk_phantom_call_still_works_with_buffer():
     buffers: dict = {}
 
     full_phantom = '<tool_call>call:analyze_deployment_configurations{namespace:["production"]}</tool_call>'
-    events, _, _, _ = graph._handle_chat_model_stream_content(
+    events, _, _, _, _ = graph._handle_chat_model_stream_content(
         chunk=_chunk_with_content(full_phantom),
         encoder=encoder,
         run_id="t1",
@@ -330,7 +308,7 @@ def test_normal_text_emit_unaffected_by_buffer():
     # 用户截图里的实际场景:LMM 输出 5 个真实工具调用 + 1 个 phantom
     # 这里模拟"正常文字在前,phantom 在中,正常文字在后"
     text = "我会先扫全部 namespace,然后看看结果\n<tool_call>call:foo{ns:1}</tool_call>\n最终结论"
-    events, _, _, _ = graph._handle_chat_model_stream_content(
+    events, _, _, _, _ = graph._handle_chat_model_stream_content(
         chunk=_chunk_with_content(text),
         encoder=encoder,
         run_id="t1",
@@ -359,7 +337,7 @@ def test_message_id_change_clears_old_buffer():
     buffers: dict = {"msg-old": "<tool_call>incomplete..."}
 
     # 新的 chunk 含 phantom call(故意只开不合),让"msg-new"也 hold 在 buffer
-    events, new_mid, _, _ = graph._handle_chat_model_stream_content(
+    events, new_mid, _, _, _ = graph._handle_chat_model_stream_content(
         chunk=_chunk_with_content("<tool_call>incomplete"),
         encoder=encoder,
         run_id="t1",
