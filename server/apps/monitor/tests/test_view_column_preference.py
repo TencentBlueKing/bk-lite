@@ -21,9 +21,9 @@ def test_user_can_save_and_reload_columns_for_monitor_object(api_client, monitor
     loaded = api_client.get(url)
 
     assert saved.status_code == 200
-    assert saved.json()["data"] == {"field_keys": field_keys}
+    assert saved.json()["data"] == {"field_keys": field_keys, "fixed_field_keys": []}
     assert loaded.status_code == 200
-    assert loaded.json()["data"] == {"field_keys": field_keys}
+    assert loaded.json()["data"] == {"field_keys": field_keys, "fixed_field_keys": []}
 
 
 def test_builtin_object_allows_personal_column_preferences(api_client, monitor_object):

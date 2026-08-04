@@ -2,7 +2,7 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-    dependencies = [("monitor", "0053_monitor_object_cleanup_timeout_unit")]
+    dependencies = [("monitor", "0055_monitorviewcolumnpreference_fixed_field_keys")]
 
     operations = [
         migrations.AlterField(
