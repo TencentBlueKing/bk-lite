@@ -657,14 +657,13 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
         ...prev,
         ...form.getFieldsValue(true)
       };
+      let unchanged = false;
       try {
-        if (JSON.stringify(prev) === JSON.stringify(next)) {
-          return prev;
-        }
+        unchanged = JSON.stringify(prev) === JSON.stringify(next);
       } catch {
-        // 不可序列化时回退为更新，避免静默跳过
+        unchanged = false;
       }
-      return next;
+      return unchanged ? prev : next;
     });
     // 刻意依赖 defaultFormKey 而非 defaultForm 对象引用。
     // eslint-disable-next-line react-hooks/exhaustive-deps -- stabilize defaultForm identity
