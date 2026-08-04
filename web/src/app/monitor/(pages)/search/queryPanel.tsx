@@ -40,6 +40,7 @@ import {
   buildGroupedMetricSelectOptions,
   METRIC_SELECT_POPUP_CLASSNAME,
 } from '@/app/monitor/components/metricSelectOptions';
+import { loadMonitorPluginsByObjectCached } from '@/app/monitor/utils/monitorPluginCache';
 import {
   InstanceItem,
   PluginItem,
@@ -308,11 +309,13 @@ const QueryPanel = forwardRef<QueryPanelRef, QueryPanelProps>(
       pluginAbortControllerRef.current[key] = abortController;
       try {
         setPluginLoading((prev) => ({ ...prev, [key]: true }));
-        const data = await getMonitorPlugin(
-          { monitor_object_id: objectId },
-          { signal: abortController.signal }
-        );
-        const plugins = (data || []) as PluginItem[];
+        const plugins = (await loadMonitorPluginsByObjectCached(
+          objectId,
+          () => getMonitorPlugin({ monitor_object_id: objectId })
+        )) as PluginItem[];
+        if (abortController.signal.aborted) {
+          return [];
+        }
         setPluginsMap((prev) => ({ ...prev, [key]: plugins }));
         const selectedPlugin =
           preferredPluginId ||

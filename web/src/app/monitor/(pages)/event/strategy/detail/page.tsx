@@ -38,6 +38,7 @@ import NotificationForm from './notificationForm';
 import MetricPreview from './metricPreview';
 import VariablesTable from './variablesTable';
 import { isStringArray } from '@/app/monitor/utils/common';
+import { loadMonitorPluginsByObjectCached } from '@/app/monitor/utils/monitorPluginCache';
 import {
   getMetricDimensionNames,
   sanitizeGroupBy
@@ -383,10 +384,12 @@ const StrategyOperation = () => {
   };
 
   const getPlugins = async () => {
-    const data = await getMonitorPlugin({
-      monitor_object_id: monitorObjId
-    });
-    const plugins = data
+    const plugins = await loadMonitorPluginsByObjectCached(monitorObjId, () =>
+      getMonitorPlugin({
+        monitor_object_id: monitorObjId
+      })
+    );
+    const options = plugins
       .sort((a: PluginItem, b: PluginItem) => {
         const order = (item: PluginItem) =>
           item.is_pre ? 0 : !item.is_custom ? 1 : 2;
@@ -397,7 +400,7 @@ const StrategyOperation = () => {
         value: item.id,
         name: item.name
       }));
-    setPluginList(plugins);
+    setPluginList(options);
   };
 
   const dealDetail = (data: StrategyFields) => {
