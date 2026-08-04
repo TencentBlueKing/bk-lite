@@ -90,6 +90,7 @@ const ICON_LIST = [
   'mm-firewall_防火墙',
   'mm-hardwareDevice_硬件设备',
   'mm-host_主机',
+  'mm-process_进程',
   'mm-jetty_Jetty',
   'mm-jvm_JVM',
   'mm-k8s_K8S',
