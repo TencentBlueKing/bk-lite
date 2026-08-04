@@ -95,10 +95,10 @@ APM、Monitor、Log 是同级产品域：Monitor 只使用 VictoriaMetrics，APM
 | --- | --- | --- |
 | Stream subjects | `apm.traces.*` | 单 token 区域 Subject |
 | retention/storage/replicas | limits/file/1（生产按容量调副本） | 不创建第二套 Broker |
-| max bytes | 10 GiB | 超限 `discard old` 并告警；生产按容量测算调整 |
+| max bytes | 256 MiB（本地参考） | 超限 `discard old` 并告警；生产必须按容量测算调整 |
 | max age | 24h | 中心中断后的最大区域缓冲 |
 | max message size | 8 MiB | 与 OTLP 请求上限一致 |
-| duplicate window | 10m | 覆盖区域 exporter 重试窗口 |
+| duplicate window | 2m | 覆盖短时区域 exporter publish 重试 |
 | ack wait | 60s | 下游超时上界以上 |
 | max deliver | 8 | 有界重投并产生 max-delivery advisory |
 | max ack pending | 256 | 中心消费背压 |
@@ -196,8 +196,8 @@ TDD 只在以下已确认 interface 上测试，不耦合内部实现：
 ### 分阶段实施清单
 
 - [x] 阶段 0：审计 APM/Monitor/Log；更新术语；新增本 spec 与 ADR 0006；废弃冲突规格。
-- [ ] 阶段 1：云区域接入 API/UI、受信 endpoint、Shell 安全和前后端测试。
-- [ ] 阶段 2：自定义 Collector、JetStream interface、区域/中心参考配置、Edge 删除和容器契约。
+- [x] 阶段 1：云区域接入 API/UI、受信 endpoint、Shell 安全和前后端测试。
+- [x] 阶段 2：自定义 Collector、JetStream interface、区域/中心参考配置、Edge 删除和容器契约。
 - [ ] 阶段 3：VT-only Adapter、任务切换、dependencies、35d 保留期和组织一致性。
 - [ ] 阶段 4：健康、迁移、升级/回滚和可靠性故障语义。
 - [ ] 阶段 5：单元/接口/容器/故障/数据正确性/Web 与 Storybook 全量验证。
