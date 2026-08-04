@@ -58,6 +58,8 @@ const nextConfig = withCombineLocalesAndMenus(
         : undefined,
       experimental: {
         externalDir: true,
+        turbopackFileSystemCacheForDev: true,
+        turbopackFileSystemCacheForBuild: true,
         // proxyTimeout: 300_000, // Set timeout to 300 seconds
       },
       // async rewrites() {

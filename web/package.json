@@ -104,6 +104,9 @@
     "test:ops-analysis-dashboard-subscription": "pnpm exec vitest run src/app/ops-analysis/components/__tests__/dashboardSubscriptionModal.test.tsx",
     "test:ops-analysis-dashboard-render-page": "pnpm exec vitest run src/app/ops-analysis/components/__tests__/dashboardExecutionRenderPage.test.tsx",
     "test:ops-analysis-prepare-print": "pnpm exec vitest run src/app/ops-analysis/utils/__tests__/prepareDashboardPrintLayout.test.tsx",
+    "test:e2e": "playwright test",
+    "test:e2e:smoke": "pnpm build && playwright test",
+    "test:e2e:install": "playwright install chromium",
     "type-check": "pnpm clean && pnpm prepare-enterprise && next typegen && tsc -p tsconfig.json --noEmit",
     "precommit": "node -r dotenv/config scripts/generate-tsconfig.js dotenv_config_path=.env.local",
     "prepare": "husky install",
@@ -169,6 +172,7 @@
   "devDependencies": {
     "@ant-design/v5-patch-for-react-19": "^1.0.3",
     "@next/bundle-analyzer": "~16.3.0",
+    "@playwright/test": "~1.62.0",
     "@storybook/nextjs": "10.4.2",
     "@storybook/react": "10.4.2",
     "@tailwindcss/postcss": "^4.1.13",
