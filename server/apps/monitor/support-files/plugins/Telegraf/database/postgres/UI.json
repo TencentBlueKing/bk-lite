@@ -24,7 +24,7 @@
       "transform_on_edit": {
         "origin_path": "child.content.config.address",
         "to_form": {
-          "regex": "user=([^ ]+)"
+          "regex": "://([^:]+):"
         }
       },
       "label_en": "Username",
@@ -66,7 +66,7 @@
       "transform_on_edit": {
         "origin_path": "child.content.config.address",
         "to_form": {
-          "regex": "host=([^ ]+)"
+          "regex": "@([^:]+):"
         }
       },
       "label_en": "Host"
@@ -90,10 +90,73 @@
       "transform_on_edit": {
         "origin_path": "child.content.config.address",
         "to_form": {
-          "regex": "port=(\\d+)"
+          "regex": ":(\\d+)/"
         }
       },
       "label_en": "Port"
+    },
+    {
+      "name": "dbname",
+      "label": "数据库名",
+      "type": "input",
+      "required": true,
+      "default_value": "postgres",
+      "editable": false,
+      "description": "用于建立监控连接的数据库名",
+      "guide_short": "填写监控账号可登录的数据库名，默认 postgres；Telegraf 会通过该连接采集各库统计，并忽略 template0/template1。",
+      "guide_short_en": "Enter a database the monitoring account can log into, commonly postgres. Telegraf uses this connection to collect per-database stats and ignores template0/template1.",
+      "widget_props": {
+        "placeholder": "数据库名",
+        "placeholder_en": "Database Name"
+      },
+      "transform_on_edit": {
+        "origin_path": "child.content.config.address",
+        "to_form": {
+          "regex": "/([^/?]+)(?:\\?|$)"
+        }
+      },
+      "label_en": "Database Name",
+      "description_en": "Database name used to establish the monitoring connection"
+    },
+    {
+      "name": "sslmode",
+      "label": "SSL 模式",
+      "type": "select",
+      "required": true,
+      "default_value": "disable",
+      "editable": false,
+      "description": "PostgreSQL 连接的 SSL 模式",
+      "guide_short": "按目标要求选择 disable、prefer 或 require。本模板不支持证书路径，verify-ca / verify-full 暂不可用。",
+      "guide_short_en": "Choose disable, prefer, or require according to the target. Certificate paths are not supported; verify-ca and verify-full are unavailable in this template.",
+      "widget_props": {
+        "placeholder": "SSL 模式",
+        "placeholder_en": "SSL Mode"
+      },
+      "options": [
+        {
+          "label": "disable",
+          "value": "disable",
+          "label_en": "disable"
+        },
+        {
+          "label": "prefer",
+          "value": "prefer",
+          "label_en": "prefer"
+        },
+        {
+          "label": "require",
+          "value": "require",
+          "label_en": "require"
+        }
+      ],
+      "transform_on_edit": {
+        "origin_path": "child.content.config.address",
+        "to_form": {
+          "regex": "sslmode=([^&]+)"
+        }
+      },
+      "label_en": "SSL Mode",
+      "description_en": "SSL mode for the PostgreSQL connection"
     },
     {
       "name": "interval",

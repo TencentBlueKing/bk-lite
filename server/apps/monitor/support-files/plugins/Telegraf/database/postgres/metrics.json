@@ -10,8 +10,8 @@
   "description": "",
   "default_metric": "any({instance_type='postgres'}) by (instance_id)",
   "instance_id_keys": ["instance_id"],
-  "supplementary_indicators": ["postgresql_numbackends", "postgresql_blks_read_rate", "postgresql_temp_files_rate"],
-  "display_fields": [{"name":"活跃连接数","sort_order":0,"metrics":[{"plugin":"Postgres","metric":"postgresql_numbackends"}]}, {"name":"事务提交速率","sort_order":1,"metrics":[{"plugin":"Postgres","metric":"postgresql_xact_commit_rate"}]}, {"name":"缓冲区命中速率","sort_order":2,"metrics":[{"plugin":"Postgres","metric":"postgresql_blks_hit_rate"}]}, {"name":"死锁速率","sort_order":3,"metrics":[{"plugin":"Postgres","metric":"postgresql_deadlocks_rate"}]}],
+  "supplementary_indicators": ["postgresql_numbackends", "postgresql_blks_read_rate", "postgresql_temp_files_rate", "postgresql_cache_hit_ratio"],
+  "display_fields": [{"name":"活跃连接数","sort_order":0,"metrics":[{"plugin":"Postgres","metric":"postgresql_numbackends"}]}, {"name":"事务提交速率","sort_order":1,"metrics":[{"plugin":"Postgres","metric":"postgresql_xact_commit_rate"}]}, {"name":"缓存命中率","sort_order":2,"metrics":[{"plugin":"Postgres","metric":"postgresql_cache_hit_ratio"}]}, {"name":"死锁速率","sort_order":3,"metrics":[{"plugin":"Postgres","metric":"postgresql_deadlocks_rate"}]}],
   "metrics": [
     {
       "metric_group": "Connection",
@@ -172,6 +172,17 @@
       ],
       "description": "Evaluates disk I/O load and cache misses",
       "query": "rate(postgresql_blks_read{__$labels__}[5m])"
+    },
+    {
+      "metric_group": "Cache",
+      "name": "postgresql_cache_hit_ratio",
+      "display_name": "Buffer Cache Hit Ratio",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "description": "Ratio of shared buffer cache hits to total block accesses",
+      "query": "100 * sum(rate(postgresql_blks_hit{__$labels__}[5m])) / clamp_min(sum(rate(postgresql_blks_hit{__$labels__}[5m])) + sum(rate(postgresql_blks_read{__$labels__}[5m])), 1e-6)"
     },
     {
       "metric_group": "Concurrency",
