@@ -120,3 +120,35 @@ def test_minute_timeout_removes_instance_only_after_full_duration():
     alert.refresh_from_db()
     assert alert.status == "closed"
     assert alert.operation_logs[-1]["reason"] == "auto_cleanup_instance_deleted"
+
+
+def test_hour_timeout_removes_instance_only_after_full_duration():
+    observed_at = timezone.now()
+    monitor_object = MonitorObject.objects.create(
+        name="CleanupHourBase",
+        level="base",
+        cleanup_policy=MonitorObject.CLEANUP_POLICY_TIMEOUT,
+        cleanup_timeout_days=2,
+        cleanup_timeout_unit=MonitorObject.CLEANUP_TIMEOUT_UNIT_HOUR,
+        cleanup_policy_effective_at=observed_at - timedelta(minutes=10),
+        last_discovery_success_at=observed_at - timedelta(minutes=10),
+    )
+    instance = MonitorInstance.objects.create(
+        id="hour-timeout",
+        monitor_object=monitor_object,
+        auto=True,
+        missing_duration_seconds=109 * 60,
+    )
+
+    AutoDiscoveryLifecycleService.reconcile({}, {monitor_object.id}, observed_at)
+
+    instance.refresh_from_db()
+    assert instance.missing_duration_seconds == 119 * 60
+
+    AutoDiscoveryLifecycleService.reconcile(
+        {},
+        {monitor_object.id},
+        observed_at + timedelta(minutes=1),
+    )
+
+    assert not MonitorInstance.objects.filter(id=instance.id).exists()

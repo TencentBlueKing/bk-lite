@@ -460,8 +460,9 @@ const ObjectModal = forwardRef<ModalRef, ModalProps>(
                             aria-label={t('monitor.object.timeoutUnit')}
                             className="w-28 shrink-0"
                             options={[
-                              { value: 'day', label: t('monitor.object.day') },
-                              { value: 'minute', label: t('monitor.object.minute') }
+                              { value: 'minute', label: t('monitor.object.minute') },
+                              { value: 'hour', label: t('monitor.object.hour') },
+                              { value: 'day', label: t('monitor.object.day') }
                             ]}
                           />
                         </Form.Item>

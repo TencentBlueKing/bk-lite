@@ -18,7 +18,7 @@ export interface ChildObject {
 }
 
 // 监控对象
-export type CleanupTimeoutUnit = 'day' | 'minute';
+export type CleanupTimeoutUnit = 'minute' | 'hour' | 'day';
 
 export interface MonitorObjectItem {
   id: number;
@@ -31,7 +31,7 @@ export interface MonitorObjectItem {
   level?: string; // 'base' | 'derivative'
   parent?: number | null; // 父对象ID
   is_visible: boolean;
-  is_builtin?: boolean; // 是否内置对象（仅清理策略可编辑）
+  is_builtin?: boolean; // 是否内置对象（定义不可修改或删除，运行配置可编辑）
   cleanup_policy?: 'no_cleanup' | 'timeout';
   cleanup_timeout_value?: number;
   cleanup_timeout_unit?: CleanupTimeoutUnit;
