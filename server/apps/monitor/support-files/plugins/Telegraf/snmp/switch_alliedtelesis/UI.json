@@ -164,8 +164,25 @@
         "placeholder": "认证协议 (MD5/SHA)"
       },
       "dependency": {
-        "field": "version",
-        "value": 3
+        "field": [
+          "version",
+          "sec_level"
+        ],
+        "conditions": [
+          [
+            {
+              "equals": 3
+            }
+          ],
+          [
+            {
+              "in": [
+                "authNoPriv",
+                "authPriv"
+              ]
+            }
+          ]
+        ]
       },
       "transform_on_edit": {
         "origin_path": "child.content.config.auth_protocol",
@@ -184,8 +201,25 @@
         "placeholder_en": "Auth Password"
       },
       "dependency": {
-        "field": "version",
-        "value": 3
+        "field": [
+          "version",
+          "sec_level"
+        ],
+        "conditions": [
+          [
+            {
+              "equals": 3
+            }
+          ],
+          [
+            {
+              "in": [
+                "authNoPriv",
+                "authPriv"
+              ]
+            }
+          ]
+        ]
       },
       "transform_on_edit": {
         "origin_path": "child.content.config.auth_password",
@@ -204,8 +238,22 @@
         "placeholder": "加密协议 (DES/AES)"
       },
       "dependency": {
-        "field": "version",
-        "value": 3
+        "field": [
+          "version",
+          "sec_level"
+        ],
+        "conditions": [
+          [
+            {
+              "equals": 3
+            }
+          ],
+          [
+            {
+              "equals": "authPriv"
+            }
+          ]
+        ]
       },
       "transform_on_edit": {
         "origin_path": "child.content.config.priv_protocol",
@@ -224,8 +272,22 @@
         "placeholder_en": "Privacy Password"
       },
       "dependency": {
-        "field": "version",
-        "value": 3
+        "field": [
+          "version",
+          "sec_level"
+        ],
+        "conditions": [
+          [
+            {
+              "equals": 3
+            }
+          ],
+          [
+            {
+              "equals": "authPriv"
+            }
+          ]
+        ]
       },
       "transform_on_edit": {
         "origin_path": "child.content.config.priv_password",
