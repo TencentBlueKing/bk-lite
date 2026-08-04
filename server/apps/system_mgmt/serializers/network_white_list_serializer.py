@@ -2,6 +2,7 @@ import ipaddress
 
 from rest_framework import serializers
 
+from apps.core.utils.loader import LanguageLoader
 from apps.system_mgmt.models import NetworkWhiteList
 
 # 等于关闭全部 SSRF 防护的超网，禁止入库
@@ -28,24 +29,24 @@ class NetworkWhiteListSerializer(serializers.ModelSerializer):
     def validate_network(self, value):
         raw = (value or "").strip()
         if not raw:
-            raise serializers.ValidationError("网段不能为空")
+            raise serializers.ValidationError(self._loader().get("error.network_required"))
         try:
             net = ipaddress.ip_network(raw, strict=False)
         except ValueError:
-            raise serializers.ValidationError(f"非法的 CIDR/IP: {raw}")
+            raise serializers.ValidationError(self._loader().get("error.invalid_network").format(network=raw))
         normalized = str(net)
         if normalized in _FORBIDDEN_SUPERNETS:
-            raise serializers.ValidationError("禁止添加 0.0.0.0/0 或 ::/0（等于关闭全部防护）")
+            raise serializers.ValidationError(self._loader().get("error.forbidden_network_supernet"))
         return normalized
 
     def validate_domain_name(self, value):
         raw = (value or "").strip().lower()
         if not raw:
-            raise serializers.ValidationError("域名不能为空")
+            raise serializers.ValidationError(self._loader().get("error.domain_name_required"))
         if any(ch in raw for ch in _DOMAIN_FORBIDDEN_CHARS):
-            raise serializers.ValidationError(f"域名包含非法字符: {raw!r}")
+            raise serializers.ValidationError(self._loader().get("error.invalid_domain_name_characters").format(domain=raw))
         if raw.startswith("."):
-            raise serializers.ValidationError("域名不能以前导点开头")
+            raise serializers.ValidationError(self._loader().get("error.domain_name_leading_dot"))
         return raw
 
     def validate(self, attrs):
@@ -61,12 +62,12 @@ class NetworkWhiteListSerializer(serializers.ModelSerializer):
             changes_network_to_domain = bool(instance.network) and domain_provided and bool(attrs.get("domain_name"))
             changes_domain_to_network = bool(instance.domain_name) and network_provided and bool(attrs.get("network"))
             if changes_network_to_domain or changes_domain_to_network:
-                raise serializers.ValidationError("白名单条目类型不可变更")
+                raise serializers.ValidationError(self._loader().get("error.network_whitelist_type_immutable"))
 
         effective_network = attrs.get("network", instance.network if instance is not None else "")
         effective_domain = attrs.get("domain_name", instance.domain_name if instance is not None else "")
         if bool(effective_network) == bool(effective_domain):
-            raise serializers.ValidationError("network 与 domain_name 必须且只能填写其中一个")
+            raise serializers.ValidationError(self._loader().get("error.network_or_domain_required"))
 
         # 唯一性检查:仅在显式填了某个主字段时校验
         if attrs.get("network") or attrs.get("domain_name"):
@@ -78,5 +79,9 @@ class NetworkWhiteListSerializer(serializers.ModelSerializer):
             if instance is not None:
                 qs = qs.exclude(pk=instance.pk)
             if qs.exists():
-                raise serializers.ValidationError("网段或域名已存在")
+                raise serializers.ValidationError(self._loader().get("error.network_or_domain_exists"))
         return attrs
+    def _loader(self):
+        request = self.context.get("request")
+        locale = getattr(getattr(request, "user", None), "locale", "en") or "en"
+        return LanguageLoader(app="system_mgmt", default_lang=locale)

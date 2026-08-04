@@ -138,15 +138,32 @@ const MonitorLazyMetricItem: React.FC<MonitorLazyMetricItemProps> = ({
                   <Icon type="a-shuoming2" className="text-[14px]" />
                 </div>
               </Tooltip>
+              {item.seriesBudget?.truncated ? (
+                <Tooltip
+                  placement="top"
+                  title={t('monitor.views.seriesTruncated', '', {
+                    limit: item.seriesBudget.limit,
+                  })}
+                >
+                  <span className="ml-[8px] shrink-0 text-[12px] text-[var(--color-primary)] cursor-default whitespace-nowrap">
+                    {t('monitor.views.seriesTruncatedShort', '', {
+                      limit: item.seriesBudget.limit,
+                    })}
+                  </span>
+                </Tooltip>
+              ) : null}
             </div>
           </div>
         </div>
-        <div className="text-[var(--color-text-3)]">
+        <div className="text-[var(--color-text-3)] flex items-center">
           <Tooltip placement="topRight" title={t('monitor.views.quickSearch')}>
-            <SearchOutlined
-              className="cursor-pointer"
+            <button
+              type="button"
+              className="cursor-pointer text-[12px] hover:text-[var(--color-primary)] inline-flex items-center"
               onClick={() => onSearchClick(item)}
-            />
+            >
+              <SearchOutlined />
+            </button>
           </Tooltip>
           <Tooltip
             placement="topRight"
@@ -182,6 +199,8 @@ export default React.memo(MonitorLazyMetricItem, (prevProps, nextProps) => {
   return (
     prevProps.item.id === nextProps.item.id &&
     prevProps.item.viewData === nextProps.item.viewData &&
+    prevProps.item.seriesBudget?.truncated === nextProps.item.seriesBudget?.truncated &&
+    prevProps.item.seriesBudget?.limit === nextProps.item.seriesBudget?.limit &&
     prevProps.isLoading === nextProps.isLoading &&
     prevProps.resetKey === nextProps.resetKey &&
     prevProps.isLoaded === nextProps.isLoaded &&

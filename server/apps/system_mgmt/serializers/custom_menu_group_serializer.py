@@ -1,11 +1,17 @@
 from rest_framework import serializers
 
 from apps.core.utils.serializers import UsernameSerializer
+from apps.core.utils.loader import LanguageLoader
 from apps.system_mgmt.models import CustomMenuGroup
 
 
 class CustomMenuGroupSerializer(UsernameSerializer):
     """自定义菜单组序列化器"""
+
+    def _loader(self):
+        request = self.context.get("request")
+        locale = getattr(getattr(request, "user", None), "locale", "en") or "en"
+        return LanguageLoader(app="system_mgmt", default_lang=locale)
 
     class Meta:
         model = CustomMenuGroup
@@ -25,7 +31,9 @@ class CustomMenuGroupSerializer(UsernameSerializer):
             queryset = queryset.exclude(id=instance_id)
 
         if queryset.exists():
-            raise serializers.ValidationError(f"应用 {app} 下已存在相同显示名称的菜单组")
+            raise serializers.ValidationError(
+                self._loader().get("error.custom_menu_group_display_name_exists").format(app=app)
+            )
 
         # 如果要启用，检查是否已有启用的菜单组
         if is_enabled:
@@ -34,7 +42,9 @@ class CustomMenuGroupSerializer(UsernameSerializer):
                 existing_enabled = existing_enabled.exclude(id=instance_id)
 
             if existing_enabled.exists():
-                raise serializers.ValidationError(f"应用 {app} 已有启用的菜单组，每个应用只能启用一个菜单组")
+                raise serializers.ValidationError(
+                    self._loader().get("error.custom_menu_group_enabled_exists").format(app=app)
+                )
 
         return attrs
 

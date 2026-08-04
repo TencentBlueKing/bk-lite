@@ -297,6 +297,33 @@ def test_capability_contract_only_validates_root_dn_for_ad_user_sync():
     )
 
 
+def test_ad_user_sync_contract_allows_custom_ldap_attribute_mapping():
+    from apps.system_mgmt.providers.manifests.ad import PROVIDER_MANIFEST
+    from apps.system_mgmt.services.capability_contract_service import (
+        validate_user_sync_contract,
+    )
+
+    validate_user_sync_contract(
+        PROVIDER_MANIFEST,
+        business_config={"root_dn": "OU=A,DC=x,DC=y"},
+        field_mapping={"username": "customEmployeeId"},
+        schedule_config=None,
+    )
+
+
+def test_user_sync_contract_does_not_treat_available_fields_as_a_field_existence_check():
+    from apps.system_mgmt.providers.manifests.feishu import PROVIDER_MANIFEST
+    from apps.system_mgmt.services.capability_contract_service import (
+        validate_user_sync_contract,
+    )
+
+    validate_user_sync_contract(
+        PROVIDER_MANIFEST,
+        field_mapping={"username": "customEmployeeId"},
+        schedule_config=None,
+    )
+
+
 def test_capability_contract_still_rejects_empty_root_dn_for_ad_user_sync():
     """T4 complementary: root_dn non-empty rule must remain after base_dn removal.
 

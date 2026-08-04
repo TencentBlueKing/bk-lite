@@ -1,5 +1,5 @@
 import React from 'react';
-import { Breadcrumb, Button } from 'antd';
+import { Breadcrumb, Button, Segmented } from 'antd';
 import { ArrowLeftOutlined } from '@ant-design/icons';
 import { useRouter, useSearchParams } from 'next/navigation';
 import TimeSelector from '@/components/time-selector';
@@ -28,6 +28,11 @@ export interface DashboardPageHeaderProps {
   styles: DashboardPageHeaderStyles;
 }
 
+const DISPLAY_MODE_OPTIONS = [
+  { label: '监控仪表盘', value: 'dashboard' },
+  { label: '全量指标', value: 'metrics' }
+] as const;
+
 export function DashboardPageHeader({
   title,
   displayMode,
@@ -45,6 +50,20 @@ export function DashboardPageHeader({
   const returnNavigation = getDashboardReturnNavigation(searchParams, title);
   const onBack = () => router.push(returnNavigation.href);
 
+  const backButton = (
+    <Button
+      className={`${styles.toolbarBackBtn ?? ''} inline-flex max-w-[260px] items-center`}
+      icon={<ArrowLeftOutlined aria-hidden="true" />}
+      onClick={onBack}
+      aria-label={returnNavigation.label}
+    >
+      <EllipsisWithTooltip
+        className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap"
+        text={returnNavigation.label}
+      />
+    </Button>
+  );
+
   return (
     <div className={styles.pageTitleRow}>
       <div className={styles.titleBlock}>
@@ -52,22 +71,13 @@ export function DashboardPageHeader({
         <h1 className={styles.title}>{title}</h1>
       </div>
       <div className={styles.controlsWrap}>
-        <div className={styles.modeTabs}>
-          <button
-            type="button"
-            className={`${styles.modeTab} ${displayMode === 'dashboard' ? styles.modeTabActive : ''}`}
-            onClick={() => onDisplayModeChange('dashboard')}
-          >
-            监控仪表盘
-          </button>
-          <button
-            type="button"
-            className={`${styles.modeTab} ${displayMode === 'metrics' ? styles.modeTabActive : ''}`}
-            onClick={() => onDisplayModeChange('metrics')}
-          >
-            全量指标
-          </button>
-        </div>
+        <Segmented
+          size="middle"
+          className={styles.modeSegmented}
+          value={displayMode}
+          options={[...DISPLAY_MODE_OPTIONS]}
+          onChange={(value) => onDisplayModeChange(value as 'dashboard' | 'metrics')}
+        />
         {showTimeSelector ? (
           <div className={styles.toolbarTimeSelector}>
             <TimeSelector
@@ -80,15 +90,9 @@ export function DashboardPageHeader({
           </div>
         ) : null}
         {styles.actionButtons ? (
-          <div className={styles.actionButtons}>
-            <Button className={`${styles.toolbarBackBtn} inline-flex max-w-[260px] items-center`} icon={<ArrowLeftOutlined />} onClick={onBack}>
-              <EllipsisWithTooltip className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap" text={returnNavigation.label} />
-            </Button>
-          </div>
+          <div className={styles.actionButtons}>{backButton}</div>
         ) : (
-          <Button className={`${styles.toolbarBackBtn} inline-flex max-w-[260px] items-center`} icon={<ArrowLeftOutlined />} onClick={onBack}>
-            <EllipsisWithTooltip className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap" text={returnNavigation.label} />
-          </Button>
+          backButton
         )}
       </div>
     </div>

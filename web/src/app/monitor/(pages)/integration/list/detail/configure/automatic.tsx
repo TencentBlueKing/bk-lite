@@ -41,6 +41,11 @@ import {
   shouldAcceptCollectDetectResult,
   shouldAutoShowCollectDetectResultOnComplete
 } from './automaticCollectDetect';
+import {
+  collectDependencyFieldNames,
+  filterColumnsByDependency,
+  isDependencySatisfied
+} from '@/app/monitor/hooks/integration/formFieldDependency';
 const { confirm } = Modal;
 
 interface CollectDetectState {
@@ -187,12 +192,69 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
   }, [configsInfo]);
 
   const supportCollectDetect = !!currentConfig?.support_collect_detect;
+  const [formSnapshot, setFormSnapshot] = useState<Record<string, any>>({});
+  const tableDependencyFields = useMemo(
+    () => collectDependencyFieldNames(currentConfig?.table_columns),
+    [currentConfig]
+  );
+  const visibleTableColumns = useMemo(
+    () =>
+      filterColumnsByDependency(
+        currentConfig?.table_columns || [],
+        (field) =>
+          Object.prototype.hasOwnProperty.call(formSnapshot, field)
+            ? formSnapshot[field]
+            : form.getFieldValue(field)
+      ),
+    [currentConfig, formSnapshot, form]
+  );
 
   useEffect(() => {
     return () => {
       Object.values(collectDetectTimersRef.current).forEach(clearTimeout);
     };
   }, []);
+
+  useEffect(() => {
+    if (!currentConfig?.table_columns?.length) return;
+    const getValue = (field: string) =>
+      Object.prototype.hasOwnProperty.call(formSnapshot, field)
+        ? formSnapshot[field]
+        : form.getFieldValue(field);
+    const hiddenNames = currentConfig.table_columns
+      .filter(
+        (column: any) =>
+          column?.name && !isDependencySatisfied(column.dependency, getValue)
+      )
+      .map((column: any) => column.name as string);
+    if (!hiddenNames.length) return;
+    setDataSource((prev) => {
+      let changed = false;
+      const next = prev.map((row) => {
+        let rowChanged = false;
+        const updated: IntegrationMonitoredObject = { ...row };
+        hiddenNames.forEach((name) => {
+          const value = updated[name];
+          if (
+            value !== undefined &&
+            value !== null &&
+            value !== '' &&
+            !(Array.isArray(value) && value.length === 0)
+          ) {
+            updated[name] = undefined;
+            updated[`${name}_error`] = null;
+            rowChanged = true;
+          }
+        });
+        if (rowChanged) {
+          changed = true;
+          return updated;
+        }
+        return row;
+      });
+      return changed ? next : prev;
+    });
+  }, [currentConfig, formSnapshot, form]);
 
   const getRowNodeId = (record: IntegrationMonitoredObject) => {
     if (Array.isArray(record.node_ids)) {
@@ -466,16 +528,16 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
 
   // 动态生成 columns
   const columns = useMemo(() => {
-    if (configLoading || !currentConfig || !currentConfig.table_columns) {
+    if (configLoading || !currentConfig || !visibleTableColumns.length) {
       return [];
     }
-    const dataColumns = currentConfig.table_columns.map((columnConfig: any) =>
+    const dataColumns = visibleTableColumns.map((columnConfig: any) =>
       renderTableColumn(columnConfig, dataSource, onTableDataChange, {
         node_ids_option: nodeList
       })
     );
     // 检查是否有 enable_row_filter 为 true 的列
-    const hasRowFilter = currentConfig.table_columns.some(
+    const hasRowFilter = visibleTableColumns.some(
       (col: any) => col.enable_row_filter === true
     );
     const actionColumn = {
@@ -544,6 +606,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
   }, [
     configLoading,
     currentConfig,
+    visibleTableColumns,
     dataSource,
     nodeList,
     renderTableColumn,
@@ -579,6 +642,15 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
       setIsTableInitialized(true); // 避免无限初始化
     }
   }, [configLoading, formConfig.initTableItems, groupId]);
+
+  useEffect(() => {
+    if (configLoading || !formConfig?.defaultForm) return;
+    setFormSnapshot((prev) => ({
+      ...formConfig.defaultForm,
+      ...prev,
+      ...form.getFieldsValue(true)
+    }));
+  }, [configLoading, formConfig?.defaultForm, form]);
 
   const handleAdd = (key: string) => {
     const index = dataSource.findIndex((item) => item.key === key);
@@ -635,7 +707,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
       selectedRowKeys.includes(item.key as string)
     );
     batchEditModalRef.current?.showModal({
-      columns: currentConfig?.table_columns || [],
+      columns: visibleTableColumns,
       selectedRows,
       nodeList
     });
@@ -657,7 +729,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
   const handleImport = () => {
     excelImportModalRef.current?.showModal({
       title: t('monitor.integrations.importData'),
-      columns: currentConfig?.table_columns || [],
+      columns: visibleTableColumns,
       nodeList,
       pluginName: pluginDisplayName
     });
@@ -713,7 +785,9 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     form.setFieldsValue({
       ...(formConfig?.defaultForm || {})
     });
-    trackSnmpFilterMutexLastChanged({}, form.getFieldsValue(true), form);
+    const values = form.getFieldsValue(true);
+    setFormSnapshot(values);
+    trackSnmpFilterMutexLastChanged({}, values, form);
   };
 
   const getNodeList = async () => {
@@ -740,12 +814,12 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
   };
 
   const validateTableData = (): boolean => {
-    if (!currentConfig?.table_columns) return true;
+    if (!visibleTableColumns.length) return true;
     let hasError = false;
     const newData = [...dataSource];
     // 先清除所有字段的错误状态
     newData.forEach((row, index) => {
-      currentConfig.table_columns.forEach((column: any) => {
+      visibleTableColumns.forEach((column: any) => {
         const { name } = column;
         newData[index] = {
           ...newData[index],
@@ -754,7 +828,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
       });
     });
     // 验证所有字段
-    currentConfig.table_columns.forEach((column: any) => {
+    visibleTableColumns.forEach((column: any) => {
       const { name, rules = [], required = false } = column;
       dataSource.forEach((row, index) => {
         const value = row[name];
@@ -871,6 +945,14 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
       onValuesChange={(changed, all) => {
         clearCollectDetectState();
         trackSnmpFilterMutexLastChanged(changed, all, form);
+        if (
+          !tableDependencyFields.length ||
+          tableDependencyFields.some((field) =>
+            Object.prototype.hasOwnProperty.call(changed, field)
+          )
+        ) {
+          setFormSnapshot(all);
+        }
       }}
     >
       <div className="flex items-center justify-between mb-[10px]">
@@ -925,8 +1007,8 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
                 return Promise.reject(new Error(t('common.required')));
               }
               // 校验值得唯一性
-              if (currentConfig?.table_columns) {
-                const uniqueFields = currentConfig.table_columns.filter(
+              if (visibleTableColumns.length) {
+                const uniqueFields = visibleTableColumns.filter(
                   (col: any) => col.is_only === true
                 );
                 for (const field of uniqueFields) {

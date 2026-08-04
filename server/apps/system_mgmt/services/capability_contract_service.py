@@ -141,15 +141,6 @@ def validate_user_sync_contract(manifest, business_config=None, field_mapping=No
             f"Unsupported user_sync platform fields: {', '.join(sorted(invalid_platform_fields))}",
         )
 
-    allowed_external_fields = set(template.available_external_fields if template else [])
-    invalid_external_fields = {
-        value for value in field_mapping.values() if value and value not in allowed_external_fields
-    }
-    if invalid_external_fields:
-        raise CapabilityContractError(
-            "field_mapping",
-            f"Unsupported user_sync external fields: {', '.join(sorted(invalid_external_fields))}",
-        )
 
 
 def validate_im_notification_contract(manifest, external_match_field: str, external_receive_field: str, schedule_config=None):

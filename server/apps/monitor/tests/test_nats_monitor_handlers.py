@@ -288,6 +288,90 @@ class TestQueryMonitorDataByMetric:
         # 只保留有权限实例 ('h1',)
         assert ids == {"('h1',)"}
 
+    def test_same_metric_name_queries_all_plugins_and_returns_plugin_metadata(
+        self,
+        mocker,
+    ):
+        obj, first_metric = self._setup()
+        first_metric.query = "plugin_a_cpu{__$labels__}"
+        first_metric.save(update_fields=["query"])
+
+        second_plugin = MonitorPlugin.objects.create(
+            name="QMDPluginB",
+            display_name="Plugin B",
+            template_id="qmd-plugin-b",
+            template_type="api",
+            collector="telegraf",
+            collect_type="http",
+        )
+        second_group = MetricGroup.objects.create(
+            monitor_object=obj,
+            monitor_plugin=second_plugin,
+            name="g",
+        )
+        second_metric = Metric.objects.create(
+            monitor_object=obj,
+            monitor_plugin=second_plugin,
+            metric_group=second_group,
+            name="cpu",
+            query="plugin_b_cpu{__$labels__}",
+            instance_id_keys=["instance_id"],
+            dimensions=[],
+        )
+        MonitorInstance.objects.create(
+            id="('h1',)",
+            name="h1",
+            monitor_object=obj,
+            is_deleted=False,
+        )
+        mocker.patch("apps.monitor.nats.monitor.get_permission_rules", return_value={"team": [1]})
+        mocker.patch(
+            "apps.monitor.nats.monitor.permission_filter",
+            side_effect=lambda model, perm, **kw: model.objects.all(),
+        )
+
+        def query_metric(query, *args, **kwargs):
+            source = "plugin_a" if query.startswith("plugin_a_cpu") else "plugin_b"
+            return {
+                "status": "success",
+                "data": {
+                    "resultType": "matrix",
+                    "result": [
+                        {
+                            "metric": {"instance_id": "h1", "source": source},
+                            "values": [[0, "1"]],
+                        }
+                    ],
+                },
+            }
+
+        get_metrics_range = mocker.patch(
+            "apps.monitor.nats.monitor.Metrics.get_metrics_range",
+            side_effect=query_metric,
+        )
+
+        out = nm.query_monitor_data_by_metric(
+            {"monitor_obj_id": obj.id, "metric": "cpu", "start": 1, "end": 2},
+            user_info={"user": SimpleNamespace(username="u", domain="d"), "team": 1},
+        )
+
+        assert out["result"] is True
+        rows = out["data"]["data"]["result"]
+        assert len(rows) == 2
+        assert get_metrics_range.call_count == 2
+        assert {row["metric_id"] for row in rows} == {first_metric.id, second_metric.id}
+        plugins = {row["metric"]["source"]: row["monitor_plugin"] for row in rows}
+        assert plugins["plugin_a"]["name"] == "QMDPlugin"
+        assert plugins["plugin_b"] == {
+            "id": second_plugin.id,
+            "name": "QMDPluginB",
+            "display_name": "Plugin B",
+            "template_id": "qmd-plugin-b",
+            "template_type": "api",
+            "collector": "telegraf",
+            "collect_type": "http",
+        }
+
 
 class TestMonitorInstanceMetrics:
     def test_missing_field(self):

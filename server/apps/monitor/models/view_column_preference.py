@@ -18,6 +18,7 @@ class MonitorViewColumnPreference(TimeInfo):
         verbose_name="监控对象",
     )
     field_keys = models.JSONField(default=list, verbose_name="展示字段及顺序")
+    fixed_field_keys = models.JSONField(default=list, verbose_name="左侧固定字段及顺序")
 
     class Meta:
         verbose_name = "监控视图个人列配置"
