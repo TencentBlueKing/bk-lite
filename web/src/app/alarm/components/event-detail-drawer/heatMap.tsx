@@ -64,6 +64,9 @@ const EventHeatMap: React.FC<EventHeatMapProps> = ({
 
   const latestDate = useMemo(() => {
     if (!data.length) return dayjs();
+    // TODO(timezone): dayjs(无时区后缀串) 按浏览器本地时区解析。后端 event_time 是 DRF 输出的用户时区裸串，
+    // 浏览器=用户时区时解析正确（恒等变换）；浏览器≠用户时区时分桶和回查窗口偏移。
+    // 后续应统一为 dayjs.utc(串).tz(用户时区) 或经 convertToLocalizedTime。
     const dates = data.map((item) => dayjs(item.event_time));
     return dayjs.max(dates) || dayjs();
   }, [data]);

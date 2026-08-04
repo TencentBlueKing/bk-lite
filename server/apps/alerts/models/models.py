@@ -270,7 +270,9 @@ class Incident(MaintainerInfo):
     @property
     def format_created_at(self):
         """格式化创建时间"""
-        return self.created_at.strftime("%Y-%m-%d %H:%M:%S")
+        if not self.created_at:
+            return ""
+        return django_timezone.localtime(self.created_at).strftime("%Y-%m-%d %H:%M:%S")
 
 
 class Level(models.Model):

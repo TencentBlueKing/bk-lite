@@ -3,6 +3,7 @@
 import React, { useEffect, useRef } from 'react';
 import BaseTaskForm, { BaseTaskRef } from './baseTask';
 import { useTranslation } from '@/utils/i18n';
+import { useCollectionFormLayout } from '../hooks/useCollectionFormLayout';
 import { useTaskForm } from '../hooks/useTaskForm';
 import { getCleanupFormValues } from '../hooks/useTaskForm';
 import { TreeNode, ModelItem } from '@/app/cmdb/types/autoDiscovery';
@@ -19,6 +20,7 @@ import {
 import { Form, Spin } from 'antd';
 import useAssetManageStore from '@/app/cmdb/store/useAssetManage';
 import CredentialPoolEditor from './credentialPoolEditor';
+import { resolveCredentialHelp } from './credentialHelp';
 
 interface HostTaskFormProps {
   onClose: () => void;
@@ -36,6 +38,7 @@ const HostTask: React.FC<HostTaskFormProps> = ({
   editId,
 }) => {
   const { t } = useTranslation();
+  const collectionFormLayout = useCollectionFormLayout();
   const baseRef = useRef<BaseTaskRef>(null as any);
   const { copyTaskData, setCopyTaskData } = useAssetManageStore();
   const { model_id: modelId } = modelItem;
@@ -160,8 +163,8 @@ const HostTask: React.FC<HostTaskFormProps> = ({
   return (
     <Spin spinning={loading}>
       <Form
+        {...collectionFormLayout}
         form={form}
-        layout="vertical"
         onFinish={onFinish}
         initialValues={HOST_FORM_INITIAL_VALUES}
       >
@@ -179,7 +182,11 @@ const HostTask: React.FC<HostTaskFormProps> = ({
           }}
         >
           <Form.Item name="credentialPool">
-            <CredentialPoolEditor credentialShape="ssh" editMode={Boolean(editId)} />
+            <CredentialPoolEditor
+              credentialShape="ssh"
+              editMode={Boolean(editId)}
+              credentialHelp={resolveCredentialHelp(modelItem, t)}
+            />
           </Form.Item>
         </BaseTaskForm>
       </Form>

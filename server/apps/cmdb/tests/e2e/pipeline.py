@@ -88,17 +88,24 @@ def step2_push_to_vm(
     result_data = stargazer_payload.get("result", {})
     instance_id = f"cmdb_{task_id}"
     vector_results = []
+    snapshot_labels = {
+        key: str(stargazer_payload[key])
+        for key in ("snapshot_id", "snapshot_status")
+        if stargazer_payload.get(key)
+    }
 
     for raw_metric_key, items in result_data.items():
         # host_proc_usage 这种"附加流"对应 metric 名带 _info_gauge
         # 其他 model_id（如 nginx/redis/mysql）也是 {model_id}_info_gauge
         metric_name = f"{raw_metric_key}{metric_name_suffix}"
 
-        for item_dict in items:
+        metric_items = items or ([{}] if snapshot_labels else [])
+        for item_dict in metric_items:
             base_labels = {
                 "__name__": metric_name,
                 "instance_id": instance_id,
                 "collect_status": "success",
+                **snapshot_labels,
             }
             if extra_payload_keys is not None:
                 # 走 middleware/db/protocol 模式：业务字段 JSON 编码到 metric.result

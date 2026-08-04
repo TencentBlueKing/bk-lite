@@ -66,6 +66,10 @@ export const useCollectApi = () => {
   const getNetworkConfigBrands = () =>
     get('/cmdb/api/collect/network_config_file_supported_brands/');
 
+  // PC 发现连接测试（未落库表单直连，不写 CMDB）
+  const pcTestConnection = (params: any) =>
+    post('/cmdb/api/collect/pc_test_connection/', params);
+
   return {
     getCollectList,
     getCollectDetail,
@@ -83,5 +87,6 @@ export const useCollectApi = () => {
     getTaskOverview,
     getCollectTaskNames,
     getNetworkConfigBrands,
+    pcTestConnection,
   };
 };

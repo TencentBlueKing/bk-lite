@@ -32,6 +32,7 @@ class MetricsCannula:
         self.collect_data = {}
         self.collect_params = {}
         self.raw_data = []
+        self.collect_plugin_instance = None
         self.collection_metrics = default_metrics or self.get_collection_metrics()
         self.now_time = datetime.now(timezone.utc).isoformat()
         self.add_list = []
@@ -42,6 +43,7 @@ class MetricsCannula:
     def get_collection_metrics(self):
         """获取采集指标"""
         new_metrics = self.collect_plugin(self.inst_name, self.inst_id, self.task_id, **self.plugin_kwargs)
+        self.collect_plugin_instance = new_metrics
         result = new_metrics.run()
         self.collect_data = new_metrics.result
         for i in new_metrics.raw_data:
@@ -88,7 +90,10 @@ class MetricsCannula:
                     ["inst_name"],
                     self.now_time,
                     self.task_id,
-                    collect_plugin=self.collect_plugin,
+                    collect_plugin=(
+                        self.collect_plugin_instance
+                        or self.collect_plugin
+                    ),
                     data_cleanup_strategy=self.data_cleanup_strategy,
                 )
                 all_count = all_count + len(metrics)

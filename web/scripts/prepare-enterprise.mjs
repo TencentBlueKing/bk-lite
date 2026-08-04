@@ -21,6 +21,43 @@ const createJunction = (linkPath, targetPath) => {
   }
 };
 
+export const prepareEnterpriseDependencyLink = async ({
+  webRoot: targetWebRoot = webRoot,
+  enterpriseWebRoot: targetEnterpriseWebRoot = enterpriseWebRoot,
+} = {}) => {
+  const sourceNodeModules = path.join(targetWebRoot, 'node_modules');
+  const enterpriseNodeModules = path.join(
+    targetEnterpriseWebRoot,
+    'node_modules'
+  );
+  if (!(await fs.pathExists(sourceNodeModules))) return false;
+
+  try {
+    const existing = await fs.lstat(enterpriseNodeModules);
+    if (!existing.isSymbolicLink()) {
+      throw new Error(
+        `Enterprise dependency directory must be a generated symbolic link: ${enterpriseNodeModules}. `
+        + 'Remove that directory and run pnpm prepare-enterprise again.'
+      );
+    }
+    try {
+      const [existingTarget, expectedTarget] = await Promise.all([
+        fs.realpath(enterpriseNodeModules),
+        fs.realpath(sourceNodeModules),
+      ]);
+      if (existingTarget === expectedTarget) return true;
+    } catch {
+      // Broken generated link: replace it below.
+    }
+    await fs.remove(enterpriseNodeModules);
+  } catch (error) {
+    if (error?.code !== 'ENOENT') throw error;
+  }
+
+  createJunction(enterpriseNodeModules, sourceNodeModules);
+  return true;
+};
+
 /* ── cleanup ── */
 
 const cleanupGenerated = async () => {
@@ -408,6 +445,13 @@ export const prepareEnterpriseRoutes = async () => {
   }
 
   await cleanupGenerated();
+
+  // EE source directories are linked into this Next.js app, but module
+  // resolution follows their real path. Reuse the CE Web dependency tree so
+  // linked EE components do not need a second React/Ant Design installation.
+  if (await prepareEnterpriseDependencyLink()) {
+    console.log('  🔗 Dependencies: enterprise/web/node_modules → web/node_modules');
+  }
 
   // 0.5) Copy EE public icons into CE public, because Next.js only serves
   // assets from the current app's public/ directory.

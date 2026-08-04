@@ -257,20 +257,25 @@ const IntegrationDetailPage: React.FC = () => {
     try {
       const result = await testConnection(numericId, activeTab === 'base' ? undefined : activeTab);
       const testSucceeded = result.data.success;
-      const successMessage = savedBeforeTest
-        ? t('system.integrationCenter.saveAndTestSuccess')
-        : t('system.integrationCenter.testSuccess');
+      const successMessage = activeTab === 'im_group'
+        ? t('system.integrationCenter.checkGroupCapabilitySuccess')
+        : savedBeforeTest
+          ? t('system.integrationCenter.saveAndTestSuccess')
+          : t('system.integrationCenter.testSuccess');
+      const failedMessage = activeTab === 'im_group'
+        ? t('system.integrationCenter.checkGroupCapabilityFailed')
+        : t('system.integrationCenter.testFailed');
       setLastTestResult({ ...result, result: testSucceeded });
       setLastTestedTab(activeTab);
       message[testSucceeded ? 'success' : 'error'](
         isPipeline
           ? {
             key: saveAndTestMessageKey,
-            content: testSucceeded ? successMessage : t('system.integrationCenter.testFailed'),
+            content: testSucceeded ? successMessage : failedMessage,
           }
           : testSucceeded
             ? successMessage
-            : t('system.integrationCenter.testFailed'),
+            : failedMessage,
       );
       await fetchDetailData();
     } catch (error) {
@@ -471,6 +476,34 @@ const IntegrationDetailPage: React.FC = () => {
                 )}
               </Form>
             </div>
+          ) : activeTab === 'im_group' ? (
+            <div className="space-y-4 py-4">
+              <Alert
+                type="info"
+                showIcon
+                message={t('system.integrationCenter.imGroupOverviewTitle')}
+                description={(
+                  <div className="space-y-1">
+                    <div>{t('system.integrationCenter.imGroupOverviewDescription')}</div>
+                    <div>{t('system.integrationCenter.imGroupNoExtraConfig')}</div>
+                  </div>
+                )}
+              />
+              <div className="rounded-md border border-[var(--color-border)] px-5 py-4">
+                <div className="mb-3 text-[16px] font-semibold text-[var(--color-text)]">
+                  {t('system.integrationCenter.imGroupPreparationTitle')}
+                </div>
+                <ul className="list-disc space-y-2 pl-5 text-[14px] leading-6 text-[var(--color-text-2)]">
+                  <li>{t('system.integrationCenter.imGroupCredentialRequirement')}</li>
+                  <li>{t('system.integrationCenter.imGroupUserMappingRequirement')}</li>
+                  <li>
+                    {instance.provider_key === 'wecom'
+                      ? t('system.integrationCenter.imGroupWeComPermissionHint')
+                      : t('system.integrationCenter.imGroupFeishuPermissionHint')}
+                  </li>
+                </ul>
+              </div>
+            </div>
           ) : (
             <div className="pt-1">
               <Form form={form} layout="vertical" onValuesChange={() => setIsFormDirty(true)}>
@@ -522,9 +555,11 @@ const IntegrationDetailPage: React.FC = () => {
             <div className="text-[13px] text-[var(--color-text-3)]">
               {activeTab === 'base'
                 ? t('system.integrationCenter.baseConnectionHint')
-                : started
-                  ? t('system.integrationCenter.startedHint')
-                  : t('system.integrationCenter.notStartedHint')}
+                : activeTab === 'im_group'
+                  ? t('system.integrationCenter.imGroupCheckHint')
+                  : started
+                    ? t('system.integrationCenter.startedHint')
+                    : t('system.integrationCenter.notStartedHint')}
             </div>
             <div className="flex flex-wrap items-center justify-between gap-3 mt-3">
               <Button
@@ -536,16 +571,20 @@ const IntegrationDetailPage: React.FC = () => {
                 {t('system.integrationCenter.back')}
               </Button>
               <div className="flex flex-wrap items-center gap-3">
-                <PermissionWrapper requiredPermissions={['Edit']}>
-                  <Button onClick={handleSave} loading={saving}>
-                    {t('common.save')}
-                  </Button>
-                </PermissionWrapper>
+                {activeTab !== 'im_group' ? (
+                  <PermissionWrapper requiredPermissions={['Edit']}>
+                    <Button onClick={handleSave} loading={saving}>
+                      {t('common.save')}
+                    </Button>
+                  </PermissionWrapper>
+                ) : null}
                 <PermissionWrapper requiredPermissions={['Edit']}>
                   <Tooltip title={testDisabled ? t('system.integrationCenter.baseConnectionRequired') : undefined}>
                     <span>
                       <Button onClick={handleTestConnection} loading={testing} disabled={testDisabled} type="primary">
-                        {t('system.integrationCenter.testRequest')}
+                        {activeTab === 'im_group'
+                          ? t('system.integrationCenter.checkGroupCapability')
+                          : t('system.integrationCenter.testRequest')}
                       </Button>
                     </span>
                   </Tooltip>

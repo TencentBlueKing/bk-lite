@@ -110,6 +110,7 @@ interface BaseTaskFormProps {
   onClose: () => void;
   onTest?: () => void;
   submitText?: string;
+  singleInstanceOnly?: boolean;
 }
 
 export interface BaseTaskRef {
@@ -140,6 +141,7 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
       onClose,
       onTest,
       submitText,
+      singleInstanceOnly = false,
     },
     ref
   ) => {
@@ -208,16 +210,15 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
       return current.every((item, index) => item === next[index]);
     };
 
-    const supportsIpSelection = IP_SELECTION_TASK_TYPES.includes(
+    const supportsIpSelection = !singleInstanceOnly && IP_SELECTION_TASK_TYPES.includes(
       normalizedTaskType
     );
     const supportsAssetOnlySelection = ASSET_ONLY_SELECTION_TASK_TYPES.includes(
       normalizedTaskType
     );
 
-    const requiresSingleInstanceSelect = SINGLE_INSTANCE_SELECT_TASK_TYPES.includes(
-      normalizedTaskType
-    );
+    const requiresSingleInstanceSelect = singleInstanceOnly
+      || SINGLE_INSTANCE_SELECT_TASK_TYPES.includes(normalizedTaskType);
     const requiresAccessPointSelect = ACCESS_POINT_TASK_TYPES.includes(
       normalizedTaskType
     );
@@ -840,7 +841,7 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
                 {supportsIpSelection ? (
                   <Radio.Group
                     value={collectionType}
-                    className="mb-6"
+                    className="ml-8 mb-6"
                     onChange={(e) => handleCollectionTypeChange(e.target.value)}
                   >
                     <Radio value="ip">{t('Collection.chooseIp')}</Radio>
