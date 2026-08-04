@@ -52,6 +52,11 @@
           "isNotMenuItem": true
         },
         {
+          "url": "/monitor/view/dashboard/process",
+          "name": "process_dashboard",
+          "isNotMenuItem": true
+        },
+        {
           "url": "/monitor/view/dashboard/website",
           "name": "website_dashboard",
           "isNotMenuItem": true
@@ -211,6 +216,11 @@
         {
           "url": "/monitor/view/dashboard/host",
           "name": "host_dashboard",
+          "isNotMenuItem": true
+        },
+        {
+          "url": "/monitor/view/dashboard/process",
+          "name": "process_dashboard",
           "isNotMenuItem": true
         },
         {
