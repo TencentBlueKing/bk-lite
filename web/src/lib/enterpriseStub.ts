@@ -15,7 +15,7 @@ export const useEnterpriseConfig = (): Record<string, unknown> => ({});
 export const IncidentCollaborationExtension:
   | ComponentType<IncidentCollaborationExtensionProps>
   | null = null;
-export const INCIDENT_COLLABORATION_SIDEBAR_WIDTH_CLASS = 'w-full lg:w-[220px]';
+export const INCIDENT_COLLABORATION_SIDEBAR_WIDTH_CLASS = 'w-full lg:w-[300px]';
 
 const enterpriseStub = {};
 export default enterpriseStub;

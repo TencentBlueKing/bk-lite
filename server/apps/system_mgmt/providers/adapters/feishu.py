@@ -28,7 +28,12 @@ _FEISHU_TENANT_TOKEN_CACHE = {}
 _FEISHU_TENANT_TOKEN_CACHE_LOCK = Lock()
 
 _FEISHU_IM_GROUP_SCOPE_REQUIREMENTS = {
-    "application_self_manage": frozenset({"application:application:self_manage"}),
+    "application_self_manage": frozenset(
+        {
+            "admin:app.info:readonly",
+            "application:application:self_manage",
+        }
+    ),
     "chat_create": frozenset({"im:chat:create"}),
     "chat_read": frozenset({"im:chat", "im:chat:read"}),
     "member_write": frozenset({"im:chat", "im:chat.members:write_only"}),
@@ -278,6 +283,7 @@ def _fetch_feishu_application_info(config: dict, tenant_access_token: str):
         response = requests.get(
             FEISHU_APPLICATION_INFO_URL,
             headers={"Authorization": f"Bearer {tenant_access_token}"},
+            params={"lang": "zh_cn"},
             timeout=FEISHU_TIMEOUT,
         )
         data = response.json()
@@ -306,6 +312,27 @@ def _fetch_feishu_application_info(config: dict, tenant_access_token: str):
             code="provider.invalid_response",
             external_request_id=request_id,
         )
+    if response.status_code == 400 and str(data.get("code") or "") == "99992402":
+        error = data.get("error") or {}
+        field_violations = (
+            error.get("field_violations") or []
+            if isinstance(error, dict)
+            else []
+        )
+        first_violation = (
+            field_violations[0]
+            if field_violations and isinstance(field_violations[0], dict)
+            else {}
+        )
+        return None, request_id, CapabilityExecutionResult.failed_result(
+            "Feishu application capability verification request contains an invalid field",
+            code="provider.invalid_config",
+            field=str(first_violation.get("field") or ""),
+            external_code="99992402",
+            external_request_id=request_id,
+        )
+    if str(data.get("code") or "") == "99991672":
+        return {"scopes": None}, request_id, None
     if response.status_code != 200 or data.get("code") not in (0, None):
         if _is_retryable_http_status(response.status_code):
             return None, request_id, CapabilityExecutionResult.failed_result(
@@ -330,7 +357,7 @@ def _fetch_feishu_application_info(config: dict, tenant_access_token: str):
                 external_request_id=request_id,
             )
         return None, request_id, CapabilityExecutionResult.failed_result(
-            "Feishu application self-management permission is required to verify IM group capabilities",
+            "Feishu application information permission is required to verify IM group capabilities",
             code="provider.permission_unverified",
             external_code=str(data.get("code") or response.status_code),
             external_request_id=request_id,
@@ -1080,7 +1107,7 @@ class FeishuIMGroupAdapter(BaseIMGroupAdapter):
                 "max_initial_members": 50,
                 "max_add_members": 50,
                 "native_create_idempotency": True,
-                "requirements": ["bot_enabled", "application_self_manage"],
+                "requirements": ["bot_enabled"],
             },
         )
 
@@ -1125,12 +1152,17 @@ class FeishuIMGroupAdapter(BaseIMGroupAdapter):
         if application_error:
             return finish(application_error, request_id)
 
-        missing_requirements = _missing_feishu_im_group_scope_requirements(application.get("scopes"))
+        permissions_verified = application.get("scopes") is not None
+        missing_requirements = (
+            _missing_feishu_im_group_scope_requirements(application.get("scopes"))
+            if permissions_verified
+            else []
+        )
         if missing_requirements:
             return finish(
                 CapabilityExecutionResult.failed_result(
                     "Feishu IM group permissions are not verified; "
-                    "application:application:self_manage is required for diagnostics; "
+                    "application information access is required for diagnostics; "
                     f"missing requirements: {', '.join(missing_requirements)}",
                     code="provider.permission_unverified",
                     external_request_id=request_id,
@@ -1159,10 +1191,13 @@ class FeishuIMGroupAdapter(BaseIMGroupAdapter):
                 request_id,
             )
 
+        payload = {"external_request_id": request_id}
+        if not permissions_verified:
+            payload["permissions_verified"] = False
         return finish(
             CapabilityExecutionResult.success_result(
                 "Feishu IM group capability is ready",
-                payload={"external_request_id": request_id},
+                payload=payload,
             ),
             request_id,
         )

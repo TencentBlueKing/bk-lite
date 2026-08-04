@@ -42,19 +42,19 @@ def channel(ready_instance):
 
 
 @pytest.mark.django_db
-def test_ready_channels_require_team_mapping_and_both_capabilities(user, channel):
+def test_ready_channels_require_team_mapping_and_notification_capability(user, channel):
     user.group_list = [{"id": channel.team[0]}]
 
     assert list(IMGroupRuntimeService.list_ready_channels(user)) == [channel]
 
 
 @pytest.mark.django_db
-def test_channel_with_mapping_ready_but_group_unverified_is_hidden(user, channel):
+def test_channel_with_mapping_ready_but_group_unverified_is_available(user, channel):
     user.group_list = [{"id": channel.team[0]}]
     channel.integration_instance.capability_status = {"im_notification": "ready"}
     channel.integration_instance.save(update_fields=["capability_status"])
 
-    assert list(IMGroupRuntimeService.list_ready_channels(user)) == []
+    assert list(IMGroupRuntimeService.list_ready_channels(user)) == [channel]
 
 
 @pytest.mark.django_db
@@ -121,7 +121,6 @@ def test_common_access_rules_cover_regular_unassigned_cross_team_and_superusers(
         (lambda channel: setattr(channel.integration_instance, "provider_key", "wechat"), "im_group.provider_unsupported",),
         (lambda channel: setattr(channel.integration_instance, "enabled", False), "im_group.instance_not_ready"),
         (lambda channel: setattr(channel.integration_instance, "status", "verification_failed"), "im_group.instance_not_ready"),
-        (lambda channel: setattr(channel.integration_instance, "capability_status", {"im_notification": "ready"}), "im_group.capability_not_ready"),
     ],
 )
 def test_require_ready_channel_rejects_each_unready_state(user, channel, mutate, expected_code):

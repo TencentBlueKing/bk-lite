@@ -27,12 +27,7 @@ def test_feishu_manifest_declares_im_group_capability():
 
     assert capability.adapter_key == "feishu.im_group"
     assert capability.adapter_path.endswith("FeishuIMGroupAdapter")
-    assert {field.key for field in capability.connection_template} == {
-        "im_group_create_chat_url",
-        "im_group_chat_url",
-        "im_group_members_url",
-        "im_group_send_message_url",
-    }
+    assert capability.connection_template == []
 
 
 def test_connection_rejects_token_only_when_application_lacks_group_scopes():
@@ -178,7 +173,7 @@ def test_connection_is_ready_only_after_scope_and_bot_verification():
                     "data": {
                         "app": {
                             "scopes": [
-                                "application:application:self_manage",
+                                "admin:app.info:readonly",
                                 "im:chat:create",
                                 "im:chat",
                                 "im:message",
@@ -194,7 +189,7 @@ def test_connection_is_ready_only_after_scope_and_bot_verification():
                 request_id="req-bot",
             ),
         ],
-    ):
+    ) as get:
         result = FeishuIMGroupAdapter.test_connection(
             config={},
             provider_key="feishu",
@@ -203,6 +198,82 @@ def test_connection_is_ready_only_after_scope_and_bot_verification():
 
     assert result.success is True
     assert result.payload == {"external_request_id": "req-bot"}
+    assert get.call_args_list[0].kwargs["params"] == {"lang": "zh_cn"}
+
+
+def test_connection_exposes_feishu_field_validation_failure():
+    with mock.patch(
+        "apps.system_mgmt.providers.adapters.feishu._fetch_tenant_access_token",
+        return_value=("tenant-token", None),
+    ), mock.patch(
+        "apps.system_mgmt.providers.adapters.feishu.requests.get",
+        return_value=FakeResponse(
+            {
+                "code": 99992402,
+                "msg": "field validation failed",
+                "error": {
+                    "field_violations": [
+                        {"field": "lang", "description": "lang is required"}
+                    ]
+                },
+            },
+            status_code=400,
+            request_id="req-validation",
+        ),
+    ):
+        result = FeishuIMGroupAdapter.test_connection(
+            config={},
+            provider_key="feishu",
+            capability_key="im_group",
+        )
+
+    assert result.success is False
+    assert result.errors[0].code == "provider.invalid_config"
+    assert result.errors[0].field == "lang"
+    assert result.errors[0].external_code == "99992402"
+    assert result.errors[0].external_request_id == "req-validation"
+
+
+def test_connection_does_not_require_application_info_permission():
+    with mock.patch(
+        "apps.system_mgmt.providers.adapters.feishu._fetch_tenant_access_token",
+        return_value=("tenant-token", None),
+    ), mock.patch(
+        "apps.system_mgmt.providers.adapters.feishu.requests.get",
+        side_effect=[
+            FakeResponse(
+                {
+                    "code": 99991672,
+                    "msg": "Access denied",
+                    "error": {
+                        "permission_violations": [
+                            {
+                                "type": "action_scope_required",
+                                "subject": "application:application:self_manage",
+                            }
+                        ]
+                    },
+                },
+                status_code=400,
+                request_id="req-permission",
+            ),
+            FakeResponse(
+                {"code": 0, "bot": {"activate_status": 2, "open_id": "ou_bot"}},
+                request_id="req-bot",
+            ),
+        ],
+    ):
+        result = FeishuIMGroupAdapter.test_connection(
+            config={},
+            provider_key="feishu",
+            capability_key="im_group",
+        )
+
+    assert result.success is True
+    assert result.payload == {
+        "external_request_id": "req-bot",
+        "permissions_verified": False,
+    }
 
 
 def test_connection_treats_application_server_error_as_retryable():

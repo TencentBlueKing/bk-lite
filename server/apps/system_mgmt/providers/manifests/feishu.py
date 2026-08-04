@@ -234,36 +234,7 @@ PROVIDER_MANIFEST = ProviderManifest.model_validate(
                 "description": "Feishu group collaboration capability.",
                 "adapter_key": "feishu.im_group",
                 "adapter_path": "apps.system_mgmt.providers.adapters.feishu.FeishuIMGroupAdapter",
-                "connection_template": [
-                    {
-                        "key": "im_group_create_chat_url",
-                        "label": "创建群聊接口地址",
-                        "field_type": "string",
-                        "required": False,
-                        "default": "https://open.feishu.cn/open-apis/im/v1/chats",
-                    },
-                    {
-                        "key": "im_group_chat_url",
-                        "label": "群聊查询接口地址",
-                        "field_type": "string",
-                        "required": False,
-                        "default": "https://open.feishu.cn/open-apis/im/v1/chats/{chat_id}",
-                    },
-                    {
-                        "key": "im_group_members_url",
-                        "label": "群成员接口地址",
-                        "field_type": "string",
-                        "required": False,
-                        "default": "https://open.feishu.cn/open-apis/im/v1/chats/{chat_id}/members",
-                    },
-                    {
-                        "key": "im_group_send_message_url",
-                        "label": "群消息接口地址",
-                        "field_type": "string",
-                        "required": False,
-                        "default": "https://open.feishu.cn/open-apis/im/v1/messages",
-                    },
-                ],
+                "connection_template": [],
             },
         ],
     }

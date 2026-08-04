@@ -245,6 +245,12 @@ web/src/app/alarm/(enterprise)/incidents/im-group/index.tsx
 web/src/lib/enterpriseStub.ts
 ```
 
+目录 junction 会让 Turbopack 按企业源码的真实路径解析裸包导入。因此
+`prepare-enterprise.mjs` 同时生成
+`enterprise/web/node_modules -> web/node_modules` 依赖链接，企业组件复用主 Web 的
+唯一 React、Ant Design 和其他前端依赖树。禁止在 `enterprise/web` 再安装一套依赖，
+避免双 React、版本漂移和本地可运行但构建失败。
+
 社区侧通过 `@/app/alarm/(enterprise)/*` 尝试加载；无 enterprise overlay 时返回 `null`。
 社区组件不引用 Incident IM 类型、接口或文案，也不新增第二套企业模块发现逻辑。
 
@@ -331,9 +337,12 @@ server/apps/system_mgmt/providers/
 “Feishu User ID/Open ID”标签应在 Provider 表单内由 manifest 提供，不能把企微
 `userid` 伪装成飞书字段。
 
-`IncidentIMGroup.channel` 使用 `PROTECT`。已被任一 Incident 永久绑定的通道只能禁用，
-不能删除；这样 System Management 不需要反向识别企业模型或 `active_slot`。社区侧
-当前 `_has_active_incident_im_groups()` 特判随迁移删除。
+`IncidentIMGroup.channel` 是运行期依赖，不是绑定历史的生命周期所有者。字段使用
+可空 `SET_NULL`：System Management 可以删除通道，删除后 Incident 群绑定、成员结果、
+外部群 ID 和渠道快照继续保留，但停止一切外部调用并进入不可重试的
+`degraded / IM_CHANNEL_MISSING`。不快照凭据，不允许同名新渠道自动接管旧群。
+企业 app 通过 `IMNotificationChannel.pre_delete` 在同一删除事务中即时写入降级事实，
+社区侧当前 `_has_active_incident_im_groups()` 特判随迁移删除。
 
 企业 Alerts 新建 `IncidentIMChannelGateway`，只使用 System Management 的公开模型和
 `RuntimeApplicationService`，不依赖当前限定飞书的 `IMGroupRuntimeService`：
@@ -343,7 +352,16 @@ class IncidentIMChannelGateway:
     def list_ready_channels(self, user): ...
     def require_ready_channel(self, user, channel_id): ...
     def execute(self, channel, operation, **kwargs): ...
+    def execute_for_group(self, group, operation, **kwargs): ...
 ```
+
+创建前的约束和成员预览使用 `execute(channel, ...)`；绑定创建后的建群、增员、摘要和
+漂移复核统一使用 `execute_for_group(group, ...)`。后者每次按实时 `channel_id` 重新
+解析渠道，不信任 ORM 已缓存关系。若删除在 Worker 解析前提交，则不得发起新外呼；
+已经进入第三方平台的在途请求无法与本地删除形成分布式原子事务，允许完成，并由现有
+幂等键和本地状态收口。ACK 可以保存已确认的 `external_chat_id`、已入群成员等外部
+事实，但锁后必须再次检查 `channel_id`，不得覆盖 `degraded / IM_CHANNEL_MISSING`
+或派生新的 Outbox。这里不承诺撤销或 fencing 已发出的第三方请求。
 
 通道可选条件：
 
@@ -351,10 +369,14 @@ class IncidentIMChannelGateway:
 channel enabled + ready
 instance enabled + ready
 provider manifest 声明 im_group
-instance capability_status.im_group = ready
+instance capability_status.im_notification = ready
 adapter 已注册
 当前用户可访问 channel
 ```
+
+`capability_status.im_group` 只记录可选诊断结果，不是 Incident 选择渠道或创建群的
+前置条件。群协作页不暴露平台固定 API URL，也不要求为了诊断额外申请应用信息读取
+权限；真实建群权限在外部操作时校验并转换为可行动错误。
 
 飞书和企业微信满足相同条件后均由 Gateway 自动发现；Alerts 不使用
 `if provider == "feishu"` 或 `if provider == "wecom"` 分支。
@@ -387,12 +409,13 @@ adapter 已注册
 |---|---|
 | `id` | UUID 主键 |
 | `incident` | `alerts.Incident` 外键；数据库唯一 |
-| `channel` | `IMNotificationChannel` 外键，`PROTECT`；绑定后永久不可删除 |
+| `channel` | 可空 `IMNotificationChannel` 外键，`SET_NULL`；存在时提供运行期凭据和映射 |
+| `channel_id_snapshot` | 创建时渠道数据库 ID 快照，仅用于审计，不参与运行期解析 |
 | `provider_key` | 创建时从 IntegrationInstance 冻结；无 `feishu` 默认值 |
 | `channel_name_snapshot` | 通道名称快照 |
 | `member_id_type` | 创建时冻结的外部身份类型 |
 | `max_initial_members/max_add_members` | 创建时冻结的 Provider 批次约束，避免升级后改变既有群语义 |
-| `group_name` | 外部群名快照 |
+| `group_name` | 创建时事故名称快照；客户端不可覆盖 |
 | `external_chat_id` | 外部群 ID；得到后立即持久化 |
 | `external_owner_id` | 外部群主身份快照 |
 | `status` | 绑定状态 |
@@ -423,8 +446,25 @@ UniqueConstraint(
 外键策略：
 
 - `incident -> alerts.Incident`：`CASCADE`，遵循 Incident 删除语义；
-- `channel -> system_mgmt.IMNotificationChannel`：`PROTECT`，保证冻结通道和审计可追溯；
+- `channel -> system_mgmt.IMNotificationChannel`：可空 `SET_NULL`；删除渠道不删除
+  Incident 历史，也不阻止 System Management 清理配置；
+- 非空的 `channel_id_snapshot` 与
+  `provider_key/channel_name_snapshot/member_id_type` 共同保留创建时
+  审计事实；快照不得用于恢复凭据或自动接管新渠道；
 - System Management 不通过反向 relation 判断企业状态。
+
+渠道删除后的状态合同：
+
+```text
+channel = NULL
+├── 绑定、成员、external_chat_id 和审计快照保留
+├── Gateway 返回不可重试 IM_CHANNEL_MISSING，不再发起新的 Runtime Adapter 调用
+├── active/create/add/summary/reconcile 收敛为 degraded
+├── paused/stopped 的权威生命周期状态不被旧任务覆盖
+├── 删除事务收敛当前阶段，清理暂停任务租约，未确认的 adding 成员记为失败
+├── 前端 can_retry=false，仍允许查看和停止管理
+└── 外部群不删除，也不允许换渠道或重新建群
+```
 
 #### `IncidentIMMember`
 
@@ -548,7 +588,8 @@ incident_im_group.reconcile
 不变量：
 
 - 每个 Outbox 有稳定幂等键。
-- 单个 add-members Outbox 最多执行一次外部调用。
+- 单个 add-members Outbox 通常最多执行一次外部调用；企业微信仅在平台返回
+  `86007` 且无法指出无效成员时，按 6.7 节的预算执行有界拆分探测。
 - 同一群同一时刻最多一个有效 delivery lease。
 - 旧 worker 不能覆盖新 generation 的终态。
 - 过期且已耗尽的 `delivering` 直接转 FAILED，不再次执行外部副作用。
@@ -570,6 +611,15 @@ incident_im_group.reconcile
 - 否则默认第一名已映射负责人；
 - 所有负责人均未映射时拒绝创建。
 
+成员预览和实际提交必须区分两个集合：
+
+- “当前期望成员”完整展示，保证负责人能看到遗漏、待映射和冲突；
+- “可加入成员”仅包含所选通道下具有唯一有效映射的人员，才会提交给 Provider；
+- 待映射、映射冲突成员本次不加入，也不阻断其他成员建群；映射修复后由持续同步或
+  手工重试补拉；
+- 已映射只代表具备平台身份，不代表平台最终接受。平台判定账号不可用时转为成员级
+  `failed`，群若已创建则保持 `active_partial`，不得误报为渠道配置异常。
+
 ### 6.7 平台批次
 
 飞书安全批次为每批最多 50 人。企业微信使用 Adapter 声明并经测试租户验证的安全批次；
@@ -584,17 +634,30 @@ incident_im_group.reconcile
 ```
 
 Alerts 企业 Gateway 可读取 Adapter 暴露的安全批次上限；没有声明的平台使用保守上限，
-并在该平台接入任务中以真实文档和合同测试固定。不得在 Adapter 内把一个 Outbox
-静默拆成多次外部请求。
+并在该平台接入任务中以真实文档和合同测试固定。通常一个 Outbox 对应一次外部请求；
+企业微信 `appchat` 无法返回批次中的具体坏账号，是唯一例外：Adapter 可以在同一个
+有租约的 Delivery 内执行有界隔离请求，但必须返回明确的 `joined_member_ids`、
+`invalid_member_ids` 和 `failed_member_ids`，且所有调用都受预算限制。
 
 企业微信建群还有平台专属前置条件：
 
 - 只能使用企业自建应用和同一企业内部 `userid`；
 - 至少两名当前期望成员已映射才能提交创建；其中群主必须为已映射负责人；
 - 服务端生成不超过 32 个字母数字字符的确定性 `chatid`；
-- 重试先用确定性 `chatid` 查询，已存在时直接恢复本地事实，禁止创建第二个群；
+- 重试先用确定性 `chatid` 查询，已存在时直接恢复本地事实，禁止创建第二个群；当前
+  企微环境对“格式合法但尚未创建”的查询也可能返回 86001，因此仅在创建预检阶段把
+  86001/86003 视为不存在；86008 仍按其他应用占用处理，禁止继续创建；
 - 创建成功后发送 Incident 摘要，只有群和摘要链路完成才向前端显示“可用”；
 - `add_members` 只传 `add_user_list`，本期绝不调用 `del_user_list`。
+- `create_group` 先尝试“群主 + 一名候选人”的最小可用成员集；候选人返回 86007 时
+  尝试下一名，群主、权限、群名等错误立即失败；候选探测最多 20 次。
+- 群创建后，其余成员进入增员阶段；批次返回 86007 时二分隔离无效 `userid`，单批
+  的预检查询和增员请求合计最多执行 32 次外部调用。达到预算仍未定位的成员记为
+  成员级失败，不无限调用平台。
+- 增员前用 `appchat.get` 读取当前群成员并跳过已存在人员，保证部分增员成功后 Worker
+  崩溃重放不会重复推断成员事实。
+- 隔离过程中若部分成员已成功、随后遇到限流或网络类可重试错误，先保存平台已确认的
+  已入群/无效账号事实；未完成成员保持 `pending`，由 Outbox 重试，不降级为永久失败。
 
 飞书仍允许“至少一名负责人已映射”创建；企业微信的两人下限属于 Provider readiness
 预览的一部分。Modal 必须展示平台专属阻断原因，而不是提交后才返回通用失败。
@@ -643,7 +706,9 @@ success
 partial_success
 retryable
 external_chat_id
+joined_member_ids
 invalid_member_ids
+failed_member_ids
 request_id
 errors[{code, field, message}]
 ```
@@ -730,7 +795,7 @@ errors[{code, field, message}]
       ]
     }
   ],
-  "default_group_name": "[P1] 数据库连接异常 · INC-1042",
+  "default_group_name": "数据库连接异常",
   "permissions": {
     "can_create": true
   }
@@ -809,7 +874,7 @@ enterprise/web/src/app/alarm/incidents/im-group/
 
 - 群卡片位于 Incident 协作页右侧栏；
 - 放在协作者列表上方；
-- 沿用右侧栏现有宽度和信息密度；
+- 右侧栏扩展为 300px，优先保证 IM 群状态、错误和动作可读；协作者列表采用紧凑行距和头像；
 - 复杂成员与错误明细进入 Drawer；
 - 创建配置进入 Modal；
 - 不创建独立“IM 群管理”页面。
@@ -831,7 +896,7 @@ enterprise/web/src/app/alarm/incidents/im-group/
 
 1. IM 平台；
 2. 应用通道；
-3. 群名称；
+3. 群名称（事故名称，只读）；
 4. 群主；
 5. 成员映射预览；
 6. 持续同步开关；
@@ -842,8 +907,15 @@ enterprise/web/src/app/alarm/incidents/im-group/
 - 平台来自 `options.providers`。
 - 切换平台时清空通道、群主和预览。
 - 选择通道后加载该通道的群主候选和成员预览。
+- 群名称由服务端根据 `Incident.title` 生成；前端只读展示，创建接口即使收到其他名称
+  也必须以事务内重新读取的事故名称为准。
+- 建群成功后必须保存平台返回的 `external_chat_id`；后续系统消息通过群绑定的
+  `provider_key + channel + external_chat_id` 路由，不得解析群名称定位外部群。
 - 至少一名已映射负责人，否则提交禁用。
-- 未映射成员以 Warning 显示，但不阻塞。
+- 预览汇总使用“本次可加入 / 暂不加入”，逐人显示“预计加入 / 待映射本次不加入 /
+  映射冲突本次不加入”；未映射和冲突以 Warning 显示但不阻塞。
+- 提交按钮显示预计加入人数；平台执行后若某个已映射账号被拒绝，详情 Drawer 展示
+  具体成员和安全、可行动的账号状态或应用可见范围提示。
 - Modal 主体限高并内部滚动，底部按钮保持可见。
 - 提交按钮有 loading，防止重复提交。
 
@@ -957,17 +1029,26 @@ operation
 result
 group_id
 incident_id
-provider_key
+provider
+channel_id_snapshot
+stage
 status
 error_code
+error_detail
+external_code
 request_id
 external_request_id
+exception_type
 member_count
 joined_count
 failed_count
 duration_ms
 retryable
 ```
+
+其中 `error_detail` 只能来自 Provider 明确声明为安全的诊断详情；平台未归一化的异常
+只记录异常类型，不记录异常消息。建群、增员、摘要发送的失败与重试事件必须使用同一
+组关联字段，便于从 Celery 日志定位到具体 Incident、群绑定、通道、阶段和第三方请求。
 
 禁止：
 
@@ -1082,6 +1163,9 @@ RED：
 - HTTP 请求等待 Provider；
 - 重复请求创建两个绑定；
 - 创建失败未分类。
+- 单个企微无效 `userid` 导致整个群创建失败；
+- Provider 未明确确认的成员被本地误记为已入群；
+- 企微隔离请求无预算导致外部调用风暴。
 
 GREEN：
 
@@ -1089,6 +1173,9 @@ GREEN：
 - 重复请求稳定冲突；
 - 所有负责人未映射时拒绝；
 - 部分未映射不阻断。
+- 企微使用最小可用群创建，坏候选人形成成员失败而有效成员继续；
+- Delivery 仅把 `joined_member_ids` 标记为已入群，未尝试成员保持 `pending`；
+- 增员隔离有界，ACK 丢失时先读取群成员恢复外部事实。
 
 #### Slice 6：外部群和 ACK
 
@@ -1265,7 +1352,7 @@ GREEN：
 | Lifecycle | 轮询、切换 Incident、取消请求、失败恢复 |
 | Confirmation | 暂停、恢复、持续同步、不可逆停止管理 |
 | Accessibility | 键盘、aria、非颜色状态、焦点和危险确认 |
-| Visual | 亮色、暗色、220px 右栏、长中英文 |
+| Visual | 亮色、暗色、300px 右栏、紧凑协作者列表、长中英文 |
 
 ### 10.5 测试纪律
 
@@ -1279,8 +1366,8 @@ GREEN：
 ## 11. 真实双平台验证前置条件
 
 - 飞书专用测试租户、企业微信专用测试企业和各自测试应用，不使用生产用户。
-- IntegrationInstance 和通道 ready。
-- `im_notification` 与 `im_group` capability 均 ready。
+- IntegrationInstance、通知渠道和用户映射 ready。
+- `im_notification` capability ready；`im_group` 可选诊断不作为验收前置条件。
 - Alerts 企业 `0001` 已部署。
 - `WEB_BASE_URL` 可从飞书和企业微信客户端访问。
 - 至少准备：
@@ -1354,7 +1441,7 @@ GREEN：
 | Outbox 硬编码 IM kind | Outbox Handler Registry |
 | Alerts URL 直接注册企业 ViewSet | Alerts URL Pattern Registry |
 | 协作页直接 import IM Panel | 基于 `(enterprise)` junction/fallback 的 app-local facade |
-| System Management 反查 `active_slot` | 企业模型对 channel 使用 `PROTECT` |
+| System Management 反查 `active_slot` | 企业模型使用可空 `SET_NULL` channel 与不可变渠道快照 |
 
 ### 13.3 删除
 
@@ -1386,7 +1473,7 @@ GREEN：
 
 - 社区版只保留 Incident、Outbox、路由和 Web 四个通用扩展 seam；无企业包回归
   `40 passed`。
-- 企业版 Alerts、飞书与企业微信 Provider 合同联合回归 `294 passed`，其中包含
+- 企业版 Alerts、飞书与企业微信 Provider 合同联合回归 `395 passed`，其中包含
   Enterprise → Runtime → WeCom 的创建、增员、摘要、暂停、恢复和停止纵向链路。
 - Provider 约束读取失败时 fail closed，不使用默认批次值继续创建；企业微信超过
   500 人时只校验并创建首批，剩余成员按冻结的增员批次持续入群。

@@ -547,7 +547,7 @@ const CollaborationTab: React.FC<CollaborationTabProps> = ({
             refreshVersion={imGroupRefreshVersion}
           />
         )}
-        <div className="flex justify-between items-center mb-4">
+        <div className="flex justify-between items-center mb-2">
           <h4 className="text-sm font-semibold m-0">{t('incidents.collaborators')}</h4>
           <PermissionWrapper requiredPermissions={['Edit']}>
             <Tooltip title={t('incidents.inviteCollaborator')}>
@@ -562,14 +562,14 @@ const CollaborationTab: React.FC<CollaborationTabProps> = ({
         </div>
 
         {/* Owner */}
-        <div className="mb-4">
-          <div className="text-xs text-gray-400 mb-2 font-medium">{t('incidents.owner')}</div>
+        <div className="mb-3">
+          <div className="text-xs text-gray-400 mb-1 font-medium">{t('incidents.owner')}</div>
           {operators.map((username: string) => {
             const user = userList.find((u: UserItem) => u.username === username);
             const displayName = (user?.display_name as string) || username;
             return (
-              <div key={username} className="flex items-center gap-2.5 mb-3">
-                <Avatar size={32} style={{ backgroundColor: getAvatarColor(username), fontSize: 14 }}>
+              <div key={username} className="flex items-center gap-2 mb-2">
+                <Avatar size={28} style={{ backgroundColor: getAvatarColor(username), fontSize: 12 }}>
                   {displayName[0]?.toUpperCase()}
                 </Avatar>
                 <div className="flex-1 min-w-0">
@@ -583,7 +583,7 @@ const CollaborationTab: React.FC<CollaborationTabProps> = ({
 
         {/* Collaborators */}
         <div>
-          <div className="text-xs text-gray-400 mb-2 font-medium">
+          <div className="text-xs text-gray-400 mb-1 font-medium">
             {t('incidents.collaborator')} ({collaborators.length})
           </div>
           {collaborators.length === 0 ? (
@@ -593,8 +593,8 @@ const CollaborationTab: React.FC<CollaborationTabProps> = ({
               const user = userList.find((u: UserItem) => u.username === username);
               const displayName = (user?.display_name as string) || username;
               return (
-                <div key={username} className="flex items-center gap-2.5 mb-3 group">
-                  <Avatar size={32} style={{ backgroundColor: getAvatarColor(username), fontSize: 14 }}>
+                <div key={username} className="flex items-center gap-2 mb-2 group">
+                  <Avatar size={28} style={{ backgroundColor: getAvatarColor(username), fontSize: 12 }}>
                     {displayName[0]?.toUpperCase()}
                   </Avatar>
                   <div className="flex-1 min-w-0">
@@ -621,7 +621,7 @@ const CollaborationTab: React.FC<CollaborationTabProps> = ({
               type="dashed"
               size="small"
               block
-              className="mt-2"
+              className="mt-1"
               icon={<UserAddOutlined />}
               onClick={() => setInviteVisible(true)}
             >
