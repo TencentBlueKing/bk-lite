@@ -154,17 +154,25 @@ export interface ApmApplicationInput {
 
 export interface ApmIngestSnippetInput {
   application_id: string;
+  cloud_region_id: number;
   language: 'python' | 'nodejs' | 'java' | 'go';
   runtime: 'kubernetes' | 'docker' | 'host' | 'other';
-  endpoint: string;
   service_name: string;
   service_version?: string;
   environment: string;
 }
 
+export interface ApmCloudRegion {
+  id: number;
+  name: string;
+}
+
 export interface ApmIngestSnippet {
   application_id: string;
   application_name: string;
+  cloud_region: ApmCloudRegion;
+  http_endpoint: string;
+  grpc_endpoint: string;
   environment: Record<string, string>;
   code: string;
 }

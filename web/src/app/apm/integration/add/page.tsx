@@ -7,7 +7,7 @@ import { Alert, Button, Card, Form, Input, message, Modal, Segmented, Select, Sp
 import useApmApi from '@/app/apm/api';
 import ApmRouteShell, { ApmSurface } from '@/app/apm/components/apm-route-shell';
 import CatalogState, { catalogErrorKind, type CatalogStateKind } from '@/app/apm/components/catalog-state';
-import type { ApmApplication, ApmIngestSnippet, ApmIngestSnippetInput } from '@/app/apm/types';
+import type { ApmApplication, ApmCloudRegion, ApmIngestSnippet, ApmIngestSnippetInput } from '@/app/apm/types';
 
 interface IntegrationMethod {
   key: string;
@@ -35,12 +35,7 @@ const INTEGRATION_GROUPS: { key: string; title: string; icon: ReactNode; methods
 
 type PageState = CatalogStateKind | 'ready';
 type SnippetMode = 'agent' | 'docker';
-type SnippetForm = Omit<ApmIngestSnippetInput, 'endpoint' | 'language' | 'runtime'>;
-
-function publicOtlpEndpoint() {
-  if (typeof window === 'undefined') return 'http://localhost:4318';
-  return `${window.location.protocol}//${window.location.hostname}:4318`;
-}
+type SnippetForm = Omit<ApmIngestSnippetInput, 'language' | 'runtime'>;
 
 async function copyText(value: string) {
   if (navigator.clipboard?.writeText) return navigator.clipboard.writeText(value);
@@ -54,35 +49,57 @@ async function copyText(value: string) {
   document.body.removeChild(textarea);
 }
 
+function requestErrorMessage(error: unknown) {
+  const detail = (error as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail;
+  if (typeof detail === 'string' && detail.trim()) return detail;
+  return error instanceof Error && error.message ? error.message : '生成接入配置失败，请稍后重试。';
+}
+
 export default function ApmIntegrationAddPage() {
   const [messageApi, messageContextHolder] = message.useMessage();
   const [modalApi, modalContextHolder] = Modal.useModal();
-  const { getApplications, getIngestSnippet, isLoading } = useApmApi();
+  const { getApplications, getCloudRegions, getIngestSnippet, isLoading } = useApmApi();
   const [applications, setApplications] = useState<ApmApplication[]>([]);
+  const [cloudRegions, setCloudRegions] = useState<ApmCloudRegion[]>([]);
   const [state, setState] = useState<PageState>('loading');
+  const [emptyDescription, setEmptyDescription] = useState('请先创建并启用一个应用，再生成接入配置。');
   const [selectedMethod, setSelectedMethod] = useState<IntegrationMethod | null>(null);
   const [mode, setMode] = useState<SnippetMode>('agent');
   const [snippet, setSnippet] = useState<ApmIngestSnippet | null>(null);
   const [generating, setGenerating] = useState(false);
+  const [generationError, setGenerationError] = useState<string | null>(null);
 
-  const loadApplications = useCallback(async () => {
+  const loadCatalog = useCallback(async () => {
     if (isLoading) return;
     setState('loading');
     try {
-      const items = await getApplications();
+      const [items, regions] = await Promise.all([getApplications(), getCloudRegions()]);
       setApplications(items.filter((item) => item.is_enabled));
-      setState(items.some((item) => item.is_enabled) ? 'ready' : 'empty');
+      setCloudRegions(regions);
+      if (!items.some((item) => item.is_enabled)) {
+        setEmptyDescription('请先创建并启用一个应用，再生成接入配置。');
+        setState('empty');
+      } else if (regions.length === 0) {
+        setEmptyDescription('暂无可用云区域，请联系运维配置区域 APM OTLP 接入端点。');
+        setState('empty');
+      } else {
+        setState('ready');
+      }
     } catch (error) {
       setState(catalogErrorKind(error));
     }
-  }, [getApplications, isLoading]);
+  }, [getApplications, getCloudRegions, isLoading]);
 
-  useEffect(() => { void loadApplications(); }, [loadApplications]);
+  useEffect(() => { void loadCatalog(); }, [loadCatalog]);
 
   const applicationOptions = useMemo(() => applications.map((application) => ({
     value: application.application_id,
     label: `${application.name}（${application.application_id}）`,
   })), [applications]);
+  const cloudRegionOptions = useMemo(() => cloudRegions.map((region) => ({
+    value: region.id,
+    label: region.name,
+  })), [cloudRegions]);
 
   const openMethod = (method: IntegrationMethod) => {
     if (!method.available || !method.language) {
@@ -92,20 +109,33 @@ export default function ApmIntegrationAddPage() {
     setSelectedMethod(method);
     setMode('agent');
     setSnippet(null);
+    setGenerationError(null);
+  };
+
+  const copyWithFeedback = async (value: string, success: string) => {
+    try {
+      await copyText(value);
+      messageApi.success(success);
+    } catch {
+      messageApi.error('复制失败，请手动选择并复制');
+    }
   };
 
   const generate = async (values: SnippetForm) => {
     if (!selectedMethod?.language) return;
     setGenerating(true);
+    setGenerationError(null);
     try {
       const result = await getIngestSnippet({
         ...values,
         language: selectedMethod.language,
         runtime: mode === 'docker' ? 'docker' : 'host',
-        endpoint: publicOtlpEndpoint(),
       });
       setSnippet(result);
       messageApi.success('接入配置已生成；关闭窗口后不会保存');
+    } catch (error) {
+      setSnippet(null);
+      setGenerationError(requestErrorMessage(error));
     } finally {
       setGenerating(false);
     }
@@ -120,8 +150,8 @@ export default function ApmIntegrationAddPage() {
         <ApmSurface><CatalogState kind={state} /></ApmSurface>
       ) : state === 'empty' ? (
         <ApmSurface>
-          <CatalogState kind="empty" description="请先创建并启用一个应用，再生成接入配置。" />
-          <div className="mt-3 text-center"><Link href="/apm/integration/applications"><Button type="primary">前往应用管理</Button></Link></div>
+          <CatalogState kind="empty" description={emptyDescription} />
+          {applications.length === 0 ? <div className="mt-3 text-center"><Link href="/apm/integration/applications"><Button type="primary">前往应用管理</Button></Link></div> : null}
         </ApmSurface>
       ) : (
         <div className="flex flex-col gap-4">
@@ -157,7 +187,7 @@ export default function ApmIntegrationAddPage() {
         </div>
       )}
 
-      <Modal title={`${selectedMethod?.title ?? ''} 接入`} open={Boolean(selectedMethod)} width={920} footer={null} onCancel={() => setSelectedMethod(null)} destroyOnHidden>
+      <Modal title={`${selectedMethod?.title ?? ''} 接入`} open={Boolean(selectedMethod)} width={920} footer={null} onCancel={() => setSelectedMethod(null)} destroyOnHidden styles={{ body: { maxHeight: 'calc(100vh - 180px)', overflowY: 'auto' } }}>
         <div className="flex flex-col gap-4 pt-2">
           <ApmSurface>
             <div className="mb-4 flex items-center gap-2"><span className="grid h-7 w-7 place-items-center rounded-full bg-[var(--color-primary)] text-sm font-semibold text-white">1</span><Typography.Text strong>上报端点</Typography.Text></div>
@@ -166,12 +196,20 @@ export default function ApmIntegrationAddPage() {
                 <Typography.Text type="secondary" className="mb-1 block text-xs">OTLP/HTTP 端点</Typography.Text>
                 <Space.Compact block>
                   <Button disabled>POST</Button>
-                  <Input readOnly value={publicOtlpEndpoint()} />
-                  <Button icon={<CopyOutlined />} onClick={() => void copyText(publicOtlpEndpoint())}>复制</Button>
+                  <Input readOnly value={snippet?.http_endpoint ?? '生成配置后显示'} />
+                  <Button disabled={!snippet} icon={<CopyOutlined />} onClick={() => snippet && void copyWithFeedback(snippet.http_endpoint, 'HTTP 端点已复制')}>复制</Button>
                 </Space.Compact>
               </div>
-              <div><Typography.Text type="secondary" className="mb-1 block text-xs">鉴权</Typography.Text><Input readOnly value="当前版本无需 APM Token" /></div>
+              <div>
+                <Typography.Text type="secondary" className="mb-1 block text-xs">OTLP/gRPC 端点</Typography.Text>
+                <Space.Compact block>
+                  <Button disabled>gRPC</Button>
+                  <Input readOnly value={snippet?.grpc_endpoint ?? '生成配置后显示'} />
+                  <Button disabled={!snippet} icon={<CopyOutlined />} onClick={() => snippet && void copyWithFeedback(snippet.grpc_endpoint, 'gRPC 端点已复制')}>复制</Button>
+                </Space.Compact>
+              </div>
             </div>
+            <Typography.Text type="secondary" className="mt-3 block text-xs">当前版本无需 APM Token；端点由所选云区域的受信配置提供。</Typography.Text>
           </ApmSurface>
 
           <ApmSurface>
@@ -182,18 +220,22 @@ export default function ApmIntegrationAddPage() {
               layout="vertical"
               initialValues={{
                 application_id: applications[0]?.application_id,
+                cloud_region_id: cloudRegions[0]?.id,
                 service_name: '',
                 service_version: '',
                 environment: 'production',
               }}
+              onValuesChange={() => { setSnippet(null); setGenerationError(null); }}
               onFinish={(values) => void generate(values)}
             >
               <div className="grid gap-x-5 md:grid-cols-2">
                 <Form.Item name="application_id" label="应用" rules={[{ required: true, message: '请选择应用' }]}><Select showSearch optionFilterProp="label" options={applicationOptions} /></Form.Item>
+                <Form.Item name="cloud_region_id" label="云区域" rules={[{ required: true, message: '请选择云区域' }]}><Select showSearch optionFilterProp="label" options={cloudRegionOptions} /></Form.Item>
                 <Form.Item name="service_name" label="服务名称" rules={[{ required: true, whitespace: true, message: '请输入服务名称' }, { max: 256 }]}><Input placeholder="service.name，例如 checkout" /></Form.Item>
                 <Form.Item name="service_version" label="服务版本" rules={[{ max: 256 }]}><Input placeholder="service.version，例如 1.4.0（可选）" /></Form.Item>
                 <Form.Item name="environment" label="部署环境" rules={[{ required: true, whitespace: true, message: '请输入部署环境' }, { max: 256 }]}><Input placeholder="deployment.environment，例如 production" /></Form.Item>
               </div>
+              {generationError ? <Alert className="mb-4" showIcon type="error" message="配置生成失败" description={generationError} /> : null}
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <Segmented value={mode} onChange={(value) => { setMode(value as SnippetMode); setSnippet(null); }} options={[{ label: `${selectedMethod?.title ?? ''} 自动探针`, value: 'agent' }, { label: 'Docker 运行（-e 注入）', value: 'docker' }]} />
                 <Button htmlType="submit" type="primary" icon={<RocketOutlined />} loading={generating}>生成临时配置</Button>
@@ -203,7 +245,7 @@ export default function ApmIntegrationAddPage() {
 
           {snippet ? (
             <ApmSurface>
-              <div className="mb-3 flex items-center justify-between"><div><Typography.Text strong>Shell 接入片段</Typography.Text><Typography.Text type="secondary" className="ml-2 text-xs">仅在本窗口保留</Typography.Text></div><Button icon={<CopyOutlined />} onClick={() => void copyText(snippet.code).then(() => messageApi.success('片段已复制'))}>复制片段</Button></div>
+              <div className="mb-3 flex items-center justify-between"><div><Typography.Text strong>Shell 接入片段</Typography.Text><Typography.Text type="secondary" className="ml-2 text-xs">{snippet.cloud_region.name} · 仅在本窗口保留</Typography.Text></div><Button icon={<CopyOutlined />} onClick={() => void copyWithFeedback(snippet.code, '片段已复制')}>复制片段</Button></div>
               <pre className="max-h-[420px] overflow-auto rounded-lg bg-[#0f172a] p-4 text-xs leading-6 text-slate-100"><code>{snippet.code}</code></pre>
             </ApmSurface>
           ) : null}

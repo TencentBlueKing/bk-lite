@@ -3,6 +3,7 @@ import useApiClient from '@/utils/request';
 import type {
   ApmApplication,
   ApmApplicationInput,
+  ApmCloudRegion,
   ApmIngestSnippet,
   ApmIngestSnippetInput,
   ApmEvent,
@@ -87,6 +88,11 @@ const useApmApi = () => {
   );
 
   const getApplications = useCallback(() => get<ApmApplication[]>('/apm/applications/'), [get]);
+
+  const getCloudRegions = useCallback(
+    () => get<ApmCloudRegion[]>('/apm/integration-config/regions/'),
+    [get]
+  );
 
   const createApplication = useCallback(
     (payload: ApmApplicationInput) => post<ApmApplication>('/apm/applications/', payload),
@@ -216,6 +222,7 @@ const useApmApi = () => {
     setServiceOrganizations,
     setServiceArchived,
     getApplications,
+    getCloudRegions,
     createApplication,
     updateApplication,
     getIngestSnippet,

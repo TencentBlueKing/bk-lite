@@ -1,3 +1,4 @@
+import logging
 from dataclasses import asdict
 
 from django.db import transaction
@@ -9,6 +10,11 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.generics import get_object_or_404
 from rest_framework.response import Response
 
+from apps.apm.adapters import (
+    SystemMgmtNotificationDispatcher,
+    TelemetryStoreUnavailable,
+    VictoriaMetricsMetricStore,
+)
 from apps.apm.models import (
     ApmAlertOutbox,
     ApmApplication,
@@ -21,8 +27,8 @@ from apps.apm.models import (
 )
 from apps.apm.renderers import ApmRenderer
 from apps.apm.serializers import (
-    ApmEventQuerySerializer,
     ApmApplicationSerializer,
+    ApmEventQuerySerializer,
     ApmPolicySerializer,
     ApmServiceInstanceSerializer,
     ApmServiceSerializer,
@@ -35,18 +41,13 @@ from apps.apm.serializers import (
     OrganizationAssignmentSerializer,
     ServiceMetricQuerySerializer,
 )
-from apps.apm.adapters import (
-    SystemMgmtNotificationDispatcher,
-    TelemetryStoreUnavailable,
-    VictoriaMetricsMetricStore,
-)
 from apps.apm.services import (
+    DeliveryStateConflict,
+    DjangoApmApplicationService,
     DjangoApmEventReader,
     DjangoApmPolicyService,
     DjangoApmReliabilityService,
-    DjangoApmApplicationService,
     DjangoIntegrationConfigurationService,
-    DeliveryStateConflict,
     DjangoNotificationDeliveryService,
     DjangoTelemetryCatalogService,
     DjangoTelemetryQueryService,
@@ -58,9 +59,13 @@ from apps.apm.services.access import (
     validate_assignable_organizations,
 )
 from apps.apm.services.contracts import IngestSnippetRequest, MetricDataState, ServiceMetricQuery
+from apps.apm.services.integration_configuration import CloudRegionConfigurationError
 from apps.apm.services.status import ACTIVE_WINDOW, ARCHIVE_WINDOW
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.utils.user_group import normalize_user_group_ids
+from apps.rpc.node_mgmt import NodeMgmt
+
+logger = logging.getLogger(__name__)
 
 
 def _notification_actor_context(request, organization_id: int) -> dict:
@@ -81,9 +86,7 @@ class ApmApplicationViewSet(viewsets.GenericViewSet):
     service = DjangoApmApplicationService()
 
     def get_queryset(self) -> QuerySet[ApmApplication]:
-        queryset = ApmApplication.objects.prefetch_related("organization_links").annotate(
-            service_count=Count("services", distinct=True)
-        )
+        queryset = ApmApplication.objects.prefetch_related("organization_links").annotate(service_count=Count("services", distinct=True))
         return filter_current_organization(queryset, self.request, "organization_links")
 
     @HasPermission("applications-View,integration_add-View")
@@ -140,6 +143,20 @@ class ApmIntegrationConfigurationViewSet(viewsets.GenericViewSet):
     renderer_classes = (ApmRenderer,)
     service = DjangoIntegrationConfigurationService()
 
+    @action(methods=("get",), detail=False)
+    @HasPermission("integration_add-View")
+    def regions(self, request, *args, **kwargs):
+        try:
+            return Response(self.service.list_regions(NodeMgmt()))
+        except CloudRegionConfigurationError as exc:
+            return Response({"code": exc.code, "detail": exc.detail}, status=status.HTTP_502_BAD_GATEWAY)
+        except Exception as exc:
+            logger.warning("APM cloud region listing failed: %s", type(exc).__name__)
+            return Response(
+                {"code": "cloud_region_unavailable", "detail": "云区域目录暂时不可用，请稍后重试。"},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+
     @HasPermission("integration_add-View")
     def create(self, request, *args, **kwargs):
         serializer = IngestSnippetSerializer(data=request.data)
@@ -151,11 +168,22 @@ class ApmIntegrationConfigurationViewSet(viewsets.GenericViewSet):
             "organization_links",
         )
         application = get_object_or_404(applications, application_id=data["application_id"])
+        try:
+            endpoints = self.service.resolve_region(NodeMgmt(), data["cloud_region_id"])
+        except CloudRegionConfigurationError as exc:
+            response_status = status.HTTP_404_NOT_FOUND if exc.code == "cloud_region_not_found" else status.HTTP_400_BAD_REQUEST
+            return Response({"code": exc.code, "detail": exc.detail}, status=response_status)
+        except Exception as exc:
+            logger.warning("APM cloud region endpoint resolution failed: %s", type(exc).__name__)
+            return Response(
+                {"code": "cloud_region_unavailable", "detail": "云区域配置暂时不可用，请稍后重试。"},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
         snippet = self.service.render_snippet(
             IngestSnippetRequest(
                 language=data["language"],
                 runtime=data["runtime"],
-                endpoint=data["endpoint"],
+                endpoint=endpoints.http_endpoint,
                 service_namespace=application.application_id,
                 service_name=data["service_name"],
                 service_version=data.get("service_version", ""),
@@ -166,6 +194,9 @@ class ApmIntegrationConfigurationViewSet(viewsets.GenericViewSet):
             {
                 "application_id": application.application_id,
                 "application_name": application.name,
+                "cloud_region": {"id": endpoints.region_id, "name": endpoints.region_name},
+                "http_endpoint": f"{endpoints.http_endpoint}/v1/traces",
+                "grpc_endpoint": endpoints.grpc_endpoint,
                 "environment": snippet.environment,
                 "code": snippet.code,
             }
@@ -270,9 +301,7 @@ class ApmServiceViewSet(viewsets.ReadOnlyModelViewSet):
                 "environment": data["environment"],
                 "started_at": data["started_at"],
                 "ended_at": data["ended_at"],
-                "data_state": str(
-                    MetricDataState.NO_DATA if red.request_rate is None else MetricDataState.AVAILABLE
-                ),
+                "data_state": str(MetricDataState.NO_DATA if red.request_rate is None else MetricDataState.AVAILABLE),
                 "request_rate": red.request_rate,
                 "error_rate": red.error_rate,
                 "p95_ms": red.p95_ms,
@@ -307,15 +336,9 @@ class ApmServiceInstanceViewSet(viewsets.ReadOnlyModelViewSet):
     catalog = DjangoTelemetryCatalogService()
 
     def get_queryset(self) -> QuerySet[ApmServiceInstance]:
-        queryset = ApmServiceInstance.objects.select_related("service", "service__application").prefetch_related(
-            "organization_links"
-        )
+        queryset = ApmServiceInstance.objects.select_related("service", "service__application").prefetch_related("organization_links")
         requested_status = self.request.query_params.get("status")
-        if (
-            self.action != "restore"
-            and requested_status != "archived"
-            and self.request.query_params.get("include_archived") != "true"
-        ):
+        if self.action != "restore" and requested_status != "archived" and self.request.query_params.get("include_archived") != "true":
             queryset = queryset.filter(archived_at__isnull=True)
         environment = self.request.query_params.get("environment")
         if environment is not None:
@@ -526,25 +549,19 @@ class ApmPolicyViewSet(viewsets.GenericViewSet):
         if policy is not None and not notification_fields.intersection(data):
             return None
         requested_targets = data.get("notification_targets")
-        notice = (
-            bool(requested_targets)
-            if requested_targets is not None
-            else data.get("notice", getattr(policy, "notice", False))
-        )
+        notice = bool(requested_targets) if requested_targets is not None else data.get("notice", getattr(policy, "notice", False))
         if not notice:
             return []
         if requested_targets is None:
             legacy_channel_ids = data.get("notice_type_ids")
             if legacy_channel_ids is None and policy is not None:
                 requested_targets = [
-                    {"channel_id": target.channel_id, "recipients": list(target.recipients)}
-                    for target in policy.notification_targets.all()
+                    {"channel_id": target.channel_id, "recipients": list(target.recipients)} for target in policy.notification_targets.all()
                 ]
             else:
                 legacy_recipients = data.get("notice_users", getattr(policy, "notice_users", []))
                 requested_targets = [
-                    {"channel_id": channel_id, "recipients": list(legacy_recipients or [])}
-                    for channel_id in legacy_channel_ids or []
+                    {"channel_id": channel_id, "recipients": list(legacy_recipients or [])} for channel_id in legacy_channel_ids or []
                 ]
         if not requested_targets:
             raise ValidationError({"notification_targets": "启用通知时至少选择一个渠道。"})

@@ -366,7 +366,7 @@ function IntegrationCatalog() {
           showIcon
           type="info"
           style={{ marginTop: 20, borderRadius: 8 }}
-          message="APM 不向业务侧签发任何凭证或鉴权 token;OTLP 入口鉴权由部署环境的反向代理 / mTLS / Header 校验负责,APM 业务层不参与鉴权决策。"
+          message="APM 不向业务侧签发任何凭证或鉴权 token；区域 Collector 的 OTLP 入口鉴权由部署环境的 mTLS / Header 配置治理，APM 业务层不参与鉴权决策。"
         />
       </Content>
     </div>
@@ -384,24 +384,21 @@ function IntegrationCatalog() {
  * 上报端点 / 接入配置 双 tab
  * ============================================================ */
 
-/** 模拟云区域 → API 端点映射
- *  SDK / Agent 走 telegraf/api(POST 上报 OTLP 通用通道)
- *  OTel Collector 走 v1/traces(otlphttp 协议专用 traces 端点)
- */
+/** 模拟服务端按云区域解析出的区域 Collector 端点。 */
 const REGION_ENDPOINTS: Record<string, string> = {
-  default: 'https://bklite.canway.net/telegraf/api',
-  cn_north: 'https://bklite.cn-north.canway.net/telegraf/api',
-  cn_east: 'https://bklite.cn-east.canway.net/telegraf/api',
-  hk: 'https://bklite.hk.canway.net/telegraf/api',
-  global: 'https://bklite.global.canway.net/telegraf/api',
+  default: 'https://apm.bklite.cloud:4318',
+  cn_north: 'https://apm.cn-north.bklite.cloud:4318',
+  cn_east: 'https://apm.cn-east.bklite.cloud:4318',
+  hk: 'https://apm.hk.bklite.cloud:4318',
+  global: 'https://apm.global.bklite.cloud:4318',
 };
 
 const OTC_TRACES_ENDPOINTS: Record<string, string> = {
-  default: 'https://replay.bklite.cloud/v1/traces',
-  cn_north: 'https://replay.bklite.cn-north/v1/traces',
-  cn_east: 'https://replay.bklite.cn-east/v1/traces',
-  hk: 'https://replay.bklite.hk/v1/traces',
-  global: 'https://replay.bklite.global/v1/traces',
+  default: 'https://apm.bklite.cloud:4318/v1/traces',
+  cn_north: 'https://apm.cn-north.bklite.cloud:4318/v1/traces',
+  cn_east: 'https://apm.cn-east.bklite.cloud:4318/v1/traces',
+  hk: 'https://apm.hk.bklite.cloud:4318/v1/traces',
+  global: 'https://apm.global.bklite.cloud:4318/v1/traces',
 };
 
 function EndpointPanel({
