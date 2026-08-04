@@ -347,13 +347,10 @@ class VictoriaMetricsMetricStore:
 
     def instance_activity(self, query: InstanceActivityQuery) -> list[InstanceActivity]:
         window = _window_seconds(query.started_at, query.ended_at)
-        source_filter = ""
-        if query.ingest_source_id is not None:
-            source_filter = f'bk_ingest_source_id={_promql_string(str(query.ingest_source_id))}'
-        selector = "{" + source_filter + "}"
+        selector = "{}"
         dimensions = (
             "service_namespace,service_name,service_instance_id,"
-            "deployment_environment,service_version,bk_ingest_source_id"
+            "deployment_environment,service_version"
         )
         promql = (
             f"max(tlast_over_time(bklite_apm_calls_total{selector}[{window}s])) "
@@ -365,13 +362,8 @@ class VictoriaMetricsMetricStore:
         activities: dict[tuple[str, ...], InstanceActivity] = {}
         for series in result:
             metric = series.get("metric", {})
-            source_id = metric.get("bk_ingest_source_id", "")
             service_name = metric.get("service_name", "").strip()
             if not service_name:
-                continue
-            try:
-                parsed_source_id = UUID(source_id)
-            except (TypeError, ValueError):
                 continue
             try:
                 last_seen_at = datetime.fromtimestamp(float(series["value"][1]), tz=timezone.utc)
@@ -384,7 +376,6 @@ class VictoriaMetricsMetricStore:
                 instance_id=instance_id,
                 environment=metric.get("deployment_environment", ""),
                 version=metric.get("service_version", ""),
-                ingest_source_id=parsed_source_id,
                 last_seen_at=last_seen_at,
             )
             key = (
@@ -393,7 +384,6 @@ class VictoriaMetricsMetricStore:
                 activity.instance_id or "",
                 activity.environment,
                 activity.version,
-                str(activity.ingest_source_id),
             )
             activities[key] = activity
         return list(activities.values())

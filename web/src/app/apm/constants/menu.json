@@ -97,6 +97,12 @@
           "name": "integration_add"
         },
         {
+          "title": "应用管理",
+          "icon": "mulu",
+          "url": "/apm/integration/applications",
+          "name": "applications"
+        },
+        {
           "title": "接入实例",
           "icon": "caijiqi",
           "url": "/apm/integration/instances",
@@ -206,6 +212,12 @@
           "icon": "settings-fill",
           "url": "/apm/integration/add",
           "name": "integration_add"
+        },
+        {
+          "title": "Applications",
+          "icon": "mulu",
+          "url": "/apm/integration/applications",
+          "name": "applications"
         },
         {
           "title": "Reporting instances",

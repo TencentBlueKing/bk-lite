@@ -98,7 +98,6 @@ class InMemoryMetricStore:
             item
             for item in self._activities
             if query.started_at <= item.last_seen_at <= query.ended_at
-            and (query.ingest_source_id is None or item.ingest_source_id == query.ingest_source_id)
         ]
 
 

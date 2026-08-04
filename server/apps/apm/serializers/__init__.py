@@ -1,11 +1,11 @@
 from apps.apm.serializers.control_plane import (
-    ApmIngestSourceSerializer,
+    ApmApplicationSerializer,
     ApmEventQuerySerializer,
     ApmPolicySerializer,
     ApmServiceInstanceSerializer,
     ApmServiceSerializer,
     ApmSloSerializer,
-    CreateIngestSourceSerializer,
+    ApplicationMutationSerializer,
     IngestSnippetSerializer,
     OrganizationAssignmentSerializer,
     NotificationDeliveryQuerySerializer,
@@ -16,13 +16,13 @@ from apps.apm.serializers.control_plane import (
 )
 
 __all__ = [
-    "ApmIngestSourceSerializer",
+    "ApmApplicationSerializer",
     "ApmEventQuerySerializer",
     "ApmPolicySerializer",
     "ApmServiceInstanceSerializer",
     "ApmServiceSerializer",
     "ApmSloSerializer",
-    "CreateIngestSourceSerializer",
+    "ApplicationMutationSerializer",
     "IngestSnippetSerializer",
     "OrganizationAssignmentSerializer",
     "NotificationDeliveryQuerySerializer",
