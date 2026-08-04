@@ -1,9 +1,14 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import type { ReactNode } from 'react';
 import Link from 'next/link';
 import {
+  ApiOutlined,
+  CodeOutlined,
   CopyOutlined,
+  ExperimentOutlined,
+  GlobalOutlined,
   KeyOutlined,
   PlusOutlined,
   ReloadOutlined,
@@ -15,6 +20,7 @@ import {
 import {
   Alert,
   Button,
+  Card,
   Form,
   Input,
   message,
@@ -22,6 +28,7 @@ import {
   Popconfirm,
   Select,
   Space,
+  Steps,
   Table,
   Tag,
   Typography,
@@ -55,6 +62,54 @@ const RUNTIME_OPTIONS = [
   { value: 'host', label: '固定主机' },
   { value: 'other', label: '其他运行环境' },
 ] satisfies { value: ApmIngestSnippetInput['runtime']; label: string }[];
+
+interface IntegrationMethod {
+  key: string;
+  title: string;
+  description: string;
+  badge?: string;
+  language?: ApmIngestSnippetInput['language'];
+  available: boolean;
+}
+
+const INTEGRATION_GROUPS: { key: string; title: string; icon: ReactNode; methods: IntegrationMethod[] }[] = [
+  {
+    key: 'sdk',
+    title: 'SDK',
+    icon: <CodeOutlined />,
+    methods: [
+      { key: 'nodejs', title: 'Node.js', description: '零代码自动探针接入，支持 Express / Nest / Koa / Fastify', badge: '推荐', language: 'nodejs', available: true },
+      { key: 'java', title: 'Java', description: '字节码注入零代码接入，支持 Spring / Dubbo / gRPC', badge: '推荐', language: 'java', available: true },
+      { key: 'python', title: 'Python', description: '运行时 SDK 接入，支持 Django / Flask / FastAPI', language: 'python', available: true },
+      { key: 'dotnet', title: '.NET', description: '基于 OpenTelemetry .NET 自动探针', available: false },
+      { key: 'go', title: 'Go', description: '编译期引入 SDK 接入，需要在代码中埋点', language: 'go', available: true },
+    ],
+  },
+  {
+    key: 'otel',
+    title: 'OpenTelemetry',
+    icon: <ApiOutlined />,
+    methods: [
+      { key: 'otel-collector', title: 'OTel Collector（链路）', description: '复用自建 Collector，通过 exporter 将链路推送至本平台', available: true },
+    ],
+  },
+  {
+    key: 'ebpf',
+    title: 'eBPF',
+    icon: <ExperimentOutlined />,
+    methods: [
+      { key: 'ebpf-obi', title: 'eBPF 自动注入（OBI）', description: '无需改代码，通过内核态 eBPF 捕获服务链路', badge: '低侵入', available: false },
+    ],
+  },
+  {
+    key: 'kubernetes',
+    title: 'Kubernetes',
+    icon: <GlobalOutlined />,
+    methods: [
+      { key: 'otel-operator', title: 'Kubernetes 自动注入（OTel Operator）', description: '安装 Operator 后通过 Pod 注解自动注入探针', available: false },
+    ],
+  },
+];
 
 type SecretState = Pick<ApmIngestSourceWithCredential, 'credential'> & {
   source: ApmIngestSource;
@@ -99,6 +154,8 @@ export default function ApmIntegrationAddPage() {
   const [state, setState] = useState<PageState>('loading');
   const [stateDescription, setStateDescription] = useState('');
   const [createOpen, setCreateOpen] = useState(false);
+  const [guideMethod, setGuideMethod] = useState<IntegrationMethod | null>(null);
+  const [preferredLanguage, setPreferredLanguage] = useState<ApmIngestSnippetInput['language']>();
   const [createSubmitting, setCreateSubmitting] = useState(false);
   const [secret, setSecret] = useState<SecretState | null>(null);
   const [snippet, setSnippet] = useState<ApmIngestSnippet | null>(null);
@@ -135,14 +192,24 @@ export default function ApmIntegrationAddPage() {
     if (!secret) return;
     setSnippet(null);
     snippetForm.setFieldsValue({
-      language: 'python',
+      language: preferredLanguage ?? 'python',
       runtime: 'kubernetes',
       endpoint: publicOtlpEndpoint(secret.source.ingest_type),
       service_namespace: '',
       service_name: secret.source.name,
       environment: secret.source.environment_hint || 'production',
     });
-  }, [secret, snippetForm]);
+  }, [preferredLanguage, secret, snippetForm]);
+
+  const openCreate = useCallback((method?: IntegrationMethod) => {
+    setPreferredLanguage(method?.language);
+    createForm.setFieldsValue({
+      ingest_type: 'otlp_http',
+      organization_ids: selectedGroup ? [Number(selectedGroup.id)] : [],
+      environment_hint: 'production',
+    });
+    setCreateOpen(true);
+  }, [createForm, selectedGroup]);
 
   const revealCredential = useCallback((created: ApmIngestSourceWithCredential) => {
     const { credential, ...source } = created;
@@ -327,10 +394,63 @@ export default function ApmIntegrationAddPage() {
 
   return (
     <ApmRouteShell
-      title="APM 接入"
-      description="创建受控 OTLP 接入源，并生成包含鉴权与动态实例身份的可执行配置。"
+      title="接入方式总览"
+      description="按语言和运行环境选择接入方式，再创建受控 OTLP 接入源与可执行配置。"
     >
       <div className="flex flex-col gap-4">
+        {INTEGRATION_GROUPS.map((group) => (
+          <section key={group.key} aria-labelledby={`integration-${group.key}`}>
+            <div className="mb-2 flex items-center gap-2">
+              <span className="text-[var(--color-primary)]" aria-hidden="true">{group.icon}</span>
+              <Typography.Title id={`integration-${group.key}`} level={2} className="!m-0 !text-sm !font-semibold">
+                {group.title}
+              </Typography.Title>
+              <Tag bordered={false}>{group.methods.length} 种</Tag>
+            </div>
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+              {group.methods.map((method) => (
+                <Card
+                  key={method.key}
+                  size="small"
+                  hoverable
+                  className="h-full border-[var(--color-border-2)]"
+                  styles={{ body: { height: '100%', padding: 16 } }}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => setGuideMethod(method)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault();
+                      setGuideMethod(method);
+                    }
+                  }}
+                >
+                  <div className="flex h-full min-h-28 flex-col">
+                    <div className="flex items-center gap-2">
+                      <Typography.Text strong>{method.title}</Typography.Text>
+                      {method.badge ? <Tag bordered={false} color={method.available ? 'blue' : 'default'}>{method.badge}</Tag> : null}
+                      {!method.available ? <Tag bordered={false}>规划中</Tag> : null}
+                    </div>
+                    <Typography.Text type="secondary" className="mt-2 block text-xs leading-5">
+                      {method.description}
+                    </Typography.Text>
+                    <Typography.Text className="mt-auto self-start text-xs text-[var(--color-primary)]">
+                      查看接入详情 →
+                    </Typography.Text>
+                  </div>
+                </Card>
+              ))}
+            </div>
+          </section>
+        ))}
+
+        <Alert
+          type="info"
+          showIcon
+          message="本地 MVP 使用受控 Token 保护 OTLP 入口；凭证仅在创建或轮换后展示一次。"
+          description="这与原型中的无业务层鉴权假设不同，当前实现保留已落地的安全边界。"
+        />
+
         <ApmSurface padding="compact">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
@@ -348,14 +468,7 @@ export default function ApmIntegrationAddPage() {
                 <Button
                   type="primary"
                   icon={<PlusOutlined />}
-                  onClick={() => {
-                    createForm.setFieldsValue({
-                      ingest_type: 'otlp_http',
-                      organization_ids: selectedGroup ? [Number(selectedGroup.id)] : [],
-                      environment_hint: 'production',
-                    });
-                    setCreateOpen(true);
-                  }}
+                  onClick={() => openCreate()}
                 >
                   创建接入源
                 </Button>
@@ -372,6 +485,43 @@ export default function ApmIntegrationAddPage() {
           message="接入凭证只在创建或轮换成功时展示一次；实例 ID 必须按 Pod、容器或主机动态生成，不能在多个副本间复用。"
         />
       </div>
+
+      <Modal
+        title={guideMethod ? `${guideMethod.title} 接入指南` : '接入指南'}
+        open={Boolean(guideMethod)}
+        width={720}
+        okText={guideMethod?.available ? '创建受控接入源' : '知道了'}
+        cancelText="返回目录"
+        onCancel={() => setGuideMethod(null)}
+        onOk={() => {
+          if (guideMethod?.available) {
+            const method = guideMethod;
+            setGuideMethod(null);
+            openCreate(method);
+          } else {
+            setGuideMethod(null);
+          }
+        }}
+      >
+        {guideMethod ? (
+          <div className="flex flex-col gap-4">
+            <Typography.Paragraph type="secondary">{guideMethod.description}</Typography.Paragraph>
+            {guideMethod.available ? (
+              <Steps
+                direction="vertical"
+                size="small"
+                items={[
+                  { title: '创建接入源', description: '选择组织、协议与默认环境，生成一次性 Token。' },
+                  { title: '生成配置', description: '填写服务身份和运行环境，生成对应 SDK 或 Collector 配置。' },
+                  { title: '验证上报', description: '启动应用后，在接入列表确认实例最近上报时间和状态。' },
+                ]}
+              />
+            ) : (
+              <Alert type="info" showIcon message="当前 MVP 尚未开放此接入方式" description="目录先与产品设计对齐；后端接入与配置生成能力完成后再开放操作。" />
+            )}
+          </div>
+        ) : null}
+      </Modal>
 
       <Modal
         title="创建 APM 接入源"

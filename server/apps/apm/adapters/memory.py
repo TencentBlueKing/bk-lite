@@ -9,6 +9,8 @@ from apps.apm.services.contracts import (
     NotificationDeliveryResult,
     ServiceMetricQuery,
     ServiceRed,
+    SloMeasurement,
+    SloMetricQuery,
     TraceDetail,
     TracePage,
     TraceSearchQuery,
@@ -67,9 +69,11 @@ class InMemoryMetricStore:
         self,
         *,
         service_metrics: Iterable[tuple[ServiceMetricQuery, ServiceRed]] = (),
+        slo_measurements: Iterable[tuple[SloMetricQuery, SloMeasurement]] = (),
         activities: Iterable[InstanceActivity] = (),
     ):
         self._service_metrics = list(service_metrics)
+        self._slo_measurements = list(slo_measurements)
         self._activities = list(activities)
 
     def set_service_red(self, query: ServiceMetricQuery, value: ServiceRed) -> None:
@@ -79,8 +83,15 @@ class InMemoryMetricStore:
     def add_activity(self, activity: InstanceActivity) -> None:
         self._activities.append(activity)
 
+    def set_slo_measurement(self, query: SloMetricQuery, value: SloMeasurement) -> None:
+        self._slo_measurements = [(key, item) for key, item in self._slo_measurements if key != query]
+        self._slo_measurements.append((query, value))
+
     def service_red(self, query: ServiceMetricQuery) -> ServiceRed:
         return next(value for key, value in self._service_metrics if key == query)
+
+    def slo_measurement(self, query: SloMetricQuery) -> SloMeasurement:
+        return next(value for key, value in self._slo_measurements if key == query)
 
     def instance_activity(self, query: InstanceActivityQuery) -> list[InstanceActivity]:
         return [

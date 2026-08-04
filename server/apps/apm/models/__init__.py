@@ -12,6 +12,7 @@ from apps.apm.models.control_plane import (
     ApmServiceInstance,
     ApmServiceInstanceOrganization,
     ApmServiceOrganization,
+    ApmSlo,
 )
 
 __all__ = [
@@ -28,4 +29,5 @@ __all__ = [
     "ApmServiceInstance",
     "ApmServiceInstanceOrganization",
     "ApmServiceOrganization",
+    "ApmSlo",
 ]

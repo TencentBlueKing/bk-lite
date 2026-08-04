@@ -165,6 +165,47 @@ class ApmServiceInstanceOrganization(AuditedModel):
         ]
 
 
+class ApmSlo(AuditedModel):
+    class SliType(models.TextChoices):
+        AVAILABILITY = "availability", "可用性"
+        LATENCY_P95 = "latency_p95", "P95 时延"
+        LATENCY_P99 = "latency_p99", "P99 时延"
+
+    class EvaluationWindow(models.TextChoices):
+        ROLLING_7D = "rolling7d", "滚动 7 天"
+        ROLLING_30D = "rolling30d", "滚动 30 天"
+        CALENDAR_MONTH = "calendarMonth", "自然月"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    name = models.CharField(max_length=128)
+    service = models.ForeignKey(ApmService, on_delete=models.CASCADE, related_name="slos")
+    environment = models.CharField(max_length=256)
+    endpoint = models.CharField(max_length=512, blank=True, default="")
+    sli_type = models.CharField(max_length=32, choices=SliType.choices)
+    objective = models.DecimalField(max_digits=6, decimal_places=3)
+    latency_threshold_ms = models.PositiveIntegerField(null=True, blank=True)
+    evaluation_window = models.CharField(max_length=32, choices=EvaluationWindow.choices)
+    is_enabled = models.BooleanField(default=True, db_index=True)
+
+    class Meta:
+        verbose_name = "APM SLO"
+        verbose_name_plural = "APM SLO"
+        ordering = ("name", "id")
+        constraints = [
+            models.CheckConstraint(
+                check=Q(objective__gt=0) & Q(objective__lte=100),
+                name="apm_slo_objective_range",
+            ),
+            models.CheckConstraint(
+                check=(
+                    Q(sli_type="availability", latency_threshold_ms__isnull=True)
+                    | Q(sli_type__in=("latency_p95", "latency_p99"), latency_threshold_ms__gt=0)
+                ),
+                name="apm_slo_latency_threshold_shape",
+            ),
+        ]
+
+
 class ApmPolicy(AuditedModel):
     class MetricType(models.TextChoices):
         ERROR_RATE = "error_rate", "错误率"

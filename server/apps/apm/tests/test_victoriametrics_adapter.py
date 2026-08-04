@@ -6,7 +6,7 @@ import requests
 from django.utils import timezone
 
 from apps.apm.adapters import TelemetryStoreUnavailable, VictoriaMetricsMetricStore
-from apps.apm.services.contracts import InstanceActivityQuery, ServiceMetricQuery
+from apps.apm.services.contracts import InstanceActivityQuery, MetricDataState, ServiceMetricQuery, SloMetricQuery
 
 
 def _response(result):
@@ -137,6 +137,64 @@ def test_service_red_treats_missing_error_series_as_zero_when_requests_exist():
     assert red.error_rate == 0
     assert red.p95_ms == 125
     assert red.p99_ms == 250
+
+
+def test_slo_measurement_uses_real_event_ratios_and_endpoint_scope():
+    now = timezone.now()
+    session = Mock()
+    session.get.side_effect = [
+        _response([{"value": [0, "100"]}]),
+        _response([{"value": [0, "0.5"]}]),
+    ]
+    store = VictoriaMetricsMetricStore(endpoint="http://metrics.test", session=session)
+
+    measurement = store.slo_measurement(
+        SloMetricQuery(
+            service_namespace="shop",
+            service_name="checkout",
+            environment="production",
+            endpoint="POST /checkout",
+            sli_type="availability",
+            latency_threshold_ms=None,
+            started_at=now - timedelta(days=7),
+            ended_at=now,
+        )
+    )
+
+    assert measurement.compliance_percent == 99.5
+    assert measurement.good_rate == 99.5
+    assert measurement.data_state == MetricDataState.AVAILABLE
+    queries = [call.kwargs["params"]["query"] for call in session.get.call_args_list]
+    assert all('span_name="POST /checkout"' in query for query in queries)
+    assert 'status_code="STATUS_CODE_ERROR"' in queries[1]
+
+
+def test_latency_slo_uses_histogram_bucket_and_preserves_no_samples():
+    now = timezone.now()
+    session = Mock()
+    session.get.side_effect = [
+        _response([{"value": [0, "20"]}]),
+        _response([{"value": [0, "19"]}]),
+        _response([]),
+    ]
+    store = VictoriaMetricsMetricStore(endpoint="http://metrics.test", session=session)
+    query = SloMetricQuery(
+        service_namespace="shop",
+        service_name="checkout",
+        environment="production",
+        sli_type="latency_p95",
+        latency_threshold_ms=250,
+        started_at=now - timedelta(days=30),
+        ended_at=now,
+    )
+
+    measurement = store.slo_measurement(query)
+    no_data = store.slo_measurement(query)
+
+    assert measurement.compliance_percent == 95
+    assert 'le="250"' in session.get.call_args_list[1].kwargs["params"]["query"]
+    assert no_data.data_state == MetricDataState.NO_DATA
+    assert no_data.compliance_percent is None
 
 
 def test_instance_activity_only_accepts_complete_trusted_catalog_dimensions():

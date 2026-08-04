@@ -17,6 +17,7 @@ from apps.apm.models import (
     ApmPolicyState,
     ApmService,
     ApmServiceInstance,
+    ApmSlo,
 )
 from apps.apm.renderers import ApmRenderer
 from apps.apm.serializers import (
@@ -25,6 +26,7 @@ from apps.apm.serializers import (
     ApmPolicySerializer,
     ApmServiceInstanceSerializer,
     ApmServiceSerializer,
+    ApmSloSerializer,
     CreateIngestSourceSerializer,
     IngestSnippetSerializer,
     NotificationDeliveryQuerySerializer,
@@ -41,6 +43,7 @@ from apps.apm.adapters import (
 from apps.apm.services import (
     DjangoApmEventReader,
     DjangoApmPolicyService,
+    DjangoApmReliabilityService,
     DjangoIngestSourceService,
     DeliveryStateConflict,
     DjangoNotificationDeliveryService,
@@ -385,6 +388,111 @@ class ApmServiceInstanceViewSet(viewsets.ReadOnlyModelViewSet):
         instance = self.get_object()
         restored = self.catalog.restore_instance(instance.id, actor=request.user.username)
         return Response(self.get_serializer(restored).data)
+
+
+class ApmSloViewSet(viewsets.GenericViewSet):
+    renderer_classes = (ApmRenderer,)
+    serializer_class = ApmSloSerializer
+
+    @staticmethod
+    def _service():
+        return DjangoApmReliabilityService(VictoriaMetricsMetricStore())
+
+    def get_queryset(self):
+        queryset = ApmSlo.objects.select_related("service").prefetch_related("service__organization_links")
+        return filter_current_organization(queryset, self.request, "service__organization_links")
+
+    def _visible_service(self, service_id):
+        queryset = filter_current_organization(
+            ApmService.objects.all(),
+            self.request,
+            "organization_links",
+        )
+        return get_object_or_404(queryset, id=service_id)
+
+    def _serialize(self, slo):
+        data = self.get_serializer(slo).data
+        try:
+            evaluation = self._service().evaluate(slo, evaluated_at=timezone.now())
+            data.update(asdict(evaluation))
+        except (TelemetryStoreUnavailable, ValueError) as exc:
+            data.update(
+                {
+                    "current_rate": None,
+                    "budget_remaining": None,
+                    "data_state": "unavailable",
+                    "started_at": None,
+                    "ended_at": timezone.now(),
+                    "reason": str(exc),
+                }
+            )
+        return data
+
+    @HasPermission("services-View")
+    def list(self, request, *args, **kwargs):
+        return Response([self._serialize(slo) for slo in self.get_queryset()[:200]])
+
+    @HasPermission("services-View")
+    def retrieve(self, request, *args, **kwargs):
+        return Response(self._serialize(self.get_object()))
+
+    @HasPermission("services-Operate")
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = dict(serializer.validated_data)
+        service = self._visible_service(data.pop("service_id"))
+        slo = ApmSlo.objects.create(
+            service=service,
+            created_by=request.user.username,
+            updated_by=request.user.username,
+            **data,
+        )
+        return Response(self._serialize(slo), status=status.HTTP_201_CREATED)
+
+    def _update(self, request, *, partial):
+        slo = self.get_object()
+        serializer = self.get_serializer(slo, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        data = dict(serializer.validated_data)
+        service_id = data.pop("service_id", None)
+        if service_id is not None:
+            slo.service = self._visible_service(service_id)
+        for field, value in data.items():
+            setattr(slo, field, value)
+        slo.updated_by = request.user.username
+        slo.save()
+        return Response(self._serialize(slo))
+
+    @HasPermission("services-Operate")
+    def update(self, request, *args, **kwargs):
+        return self._update(request, partial=False)
+
+    @HasPermission("services-Operate")
+    def partial_update(self, request, *args, **kwargs):
+        return self._update(request, partial=True)
+
+    @HasPermission("services-Operate")
+    def destroy(self, request, *args, **kwargs):
+        self.get_object().delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    def _set_enabled(self, request, *, enabled):
+        slo = self.get_object()
+        slo.is_enabled = enabled
+        slo.updated_by = request.user.username
+        slo.save(update_fields=("is_enabled", "updated_by", "updated_at"))
+        return Response(self._serialize(slo))
+
+    @action(methods=("post",), detail=True)
+    @HasPermission("services-Operate")
+    def enable(self, request, *args, **kwargs):
+        return self._set_enabled(request, enabled=True)
+
+    @action(methods=("post",), detail=True)
+    @HasPermission("services-Operate")
+    def disable(self, request, *args, **kwargs):
+        return self._set_enabled(request, enabled=False)
 
 
 class ApmPolicyViewSet(viewsets.GenericViewSet):

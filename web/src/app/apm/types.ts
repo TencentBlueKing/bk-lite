@@ -66,6 +66,68 @@ export interface ApmServiceEndpointRed {
   p99_ms: number | null;
 }
 
+export type ApmSliType = 'availability' | 'latency_p95' | 'latency_p99';
+export type ApmSloEvaluationWindow = 'rolling7d' | 'rolling30d' | 'calendarMonth';
+export type ApmMetricDataState = 'available' | 'no_data' | 'unavailable';
+
+export interface ApmSloInput {
+  name: string;
+  service_id: string;
+  environment: string;
+  endpoint?: string;
+  sli_type: ApmSliType;
+  objective: number | string;
+  latency_threshold_ms?: number | null;
+  evaluation_window: ApmSloEvaluationWindow;
+  is_enabled: boolean;
+}
+
+export interface ApmSlo extends Omit<ApmSloInput, 'objective'> {
+  id: string;
+  objective: string;
+  service_namespace: string;
+  service_name: string;
+  current_rate: number | null;
+  budget_remaining: number | null;
+  data_state: ApmMetricDataState;
+  started_at: string | null;
+  ended_at: string;
+  reason?: string;
+  created_at: string;
+  updated_at: string;
+  created_by: string;
+  updated_by: string;
+}
+
+export type ApmTopologyHealth = 'healthy' | 'warning' | 'critical' | 'unknown';
+
+export interface ApmTopologyNode {
+  id: string;
+  service_namespace: string;
+  service_name: string;
+  environment: string;
+  health: ApmTopologyHealth;
+  sampled_spans: number;
+  error_spans: number;
+}
+
+export interface ApmTopologyEdge {
+  source: string;
+  target: string;
+  health: ApmTopologyHealth;
+  sampled_calls: number;
+  error_calls: number;
+  average_duration_ms: number;
+}
+
+export interface ApmTopologyGraph {
+  nodes: ApmTopologyNode[];
+  edges: ApmTopologyEdge[];
+  sampled_traces: number;
+  truncated: boolean;
+  data_state: 'available' | 'no_data';
+}
+
 export interface ApmIngestSource {
   id: string;
   name: string;
@@ -227,6 +289,8 @@ export interface ApmPolicy extends Omit<ApmPolicyInput, 'threshold'> {
   } | null;
   created_at: string;
   updated_at: string;
+  created_by: string;
+  updated_by: string;
 }
 
 export interface ApmPolicyQueryResult {
@@ -244,7 +308,7 @@ export interface ApmEvent {
   description: string;
   severity: ApmPolicySeverity | 'info';
   action: 'created' | 'recovery';
-  status: string;
+  status: 'firing' | 'recovered';
   service: string;
   item: ApmPolicyMetric;
   value: number | null;
