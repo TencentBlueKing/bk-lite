@@ -12,7 +12,10 @@ for (const required of [
   "const SAVED_SECRET = '********'",
   'record.has_auth_password ? SAVED_SECRET : undefined',
   'payload.auth_password === SAVED_SECRET',
+  'editingSource?.has_auth_password && !payload.auth_password',
   "sourceType !== 'wsus'",
+  "patchManager.settingsPage.authUserRequired",
+  "patchManager.settingsPage.authPasswordRequired",
   'has_auth_password?: boolean',
 ]) {
   if (!`${settingsPage}\n${types}`.includes(required)) {

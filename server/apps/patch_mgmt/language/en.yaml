@@ -66,6 +66,8 @@ error:
   patch_in_active_task: "This patch is in an active task and cannot be deleted"
   patch_not_found: "Some selected patches do not exist: {ids}"
   source_address_required: "No source address is available for testing"
+  wsus_auth_user_required: "WSUS authentication username is required"
+  wsus_auth_password_required: "WSUS authentication password is required"
   assessment_execution_failed: "Assessment execution failed"
 message:
   hosts_cancelled: "Cancelled {count} waiting targets"

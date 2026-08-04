@@ -18,6 +18,39 @@ MVP_SOURCE_TYPES = {
 }
 
 
+def validate_wsus_credentials(serializer, attrs, instance=None):
+    """校验 WSUS WinRM 凭据。
+
+    新增时用户名和密码都必填；编辑时允许未提交的字段沿用已保存值。
+    """
+    source_type = attrs.get(
+        "source_type", getattr(instance, "source_type", None)
+    )
+    if source_type != PatchSourceType.WSUS:
+        return attrs
+
+    auth_user = attrs.get("auth_user", getattr(instance, "auth_user", ""))
+    auth_password = attrs.get("auth_password") or getattr(
+        instance, "auth_password", ""
+    )
+    errors = {}
+    if not str(auth_user or "").strip():
+        errors["auth_user"] = serializer_message(
+            serializer,
+            "error.wsus_auth_user_required",
+            "Enter the WSUS WinRM username",
+        )
+    if not auth_password:
+        errors["auth_password"] = serializer_message(
+            serializer,
+            "error.wsus_auth_password_required",
+            "Enter the WSUS WinRM password",
+        )
+    if errors:
+        raise serializers.ValidationError(errors)
+    return attrs
+
+
 class PatchSourceConnectivitySerializer(serializers.Serializer):
     """校验尚未保存的补丁源连接参数。"""
 
@@ -30,6 +63,9 @@ class PatchSourceConnectivitySerializer(serializers.Serializer):
     proxy_port = serializers.IntegerField(required=False, allow_null=True, min_value=1, max_value=65535)
     auth_user = serializers.CharField(required=False, allow_blank=True, default="")
     auth_password = serializers.CharField(required=False, allow_blank=True, default="")
+
+    def validate(self, attrs):
+        return validate_wsus_credentials(self, attrs, self.instance)
 
 
 def infer_distro_name(source_type: str, url: str) -> str:
@@ -140,6 +176,7 @@ class PatchSourceSerializer(PatchPermissionSerializer):
         return value
 
     def validate(self, attrs):
+        attrs = validate_wsus_credentials(self, attrs, self.instance)
         source_type = attrs.get("source_type")
         url = attrs.get("url", "")
         if source_type and source_type in MVP_SOURCE_TYPES and not attrs.get("distro_name"):

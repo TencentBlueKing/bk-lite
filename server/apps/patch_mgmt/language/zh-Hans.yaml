@@ -66,6 +66,8 @@ error:
   patch_in_active_task: "该补丁正在执行任务中，暂不能删除"
   patch_not_found: "部分选中的补丁不存在：{ids}"
   source_address_required: "缺少可测试的源地址"
+  wsus_auth_user_required: "WSUS 认证用户名不能为空"
+  wsus_auth_password_required: "WSUS 认证密码不能为空"
   assessment_execution_failed: "评估执行失败"
 message:
   hosts_cancelled: "已取消 {count} 台尚未执行的主机"

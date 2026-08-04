@@ -312,7 +312,7 @@
       "connectivity": { "connected": "连通", "failed": "失败", "undetected": "未检测" },
       "confirmDeleteSource": "确定删除该补丁源？", "addSource": "新增补丁源", "editSource": "编辑补丁源",
       "nameRequired": "请输入名称", "namePlaceholder": "例如：公司 WSUS", "typeRequired": "请选择类型", "urlRequired": "请输入 URL",
-      "proxyPlaceholder": "可选，如 http://proxy.intranet:8080", "authUserPlaceholder": "可选，如 DOMAIN\\svc-wsus", "authPasswordPlaceholder": "请输入认证密码",
+      "proxyPlaceholder": "可选，如 http://proxy.intranet:8080", "authUserPlaceholder": "如 DOMAIN\\svc-wsus", "authUserRequired": "请输入 WSUS WinRM 认证用户名", "authPasswordPlaceholder": "请输入认证密码", "authPasswordRequired": "请输入 WSUS WinRM 认证密码",
       "applicableSystemRequired": "请输入适用发行版或系统", "applicableSystemPlaceholder": "如 Ubuntu / Rocky Linux",
       "osVersionPlaceholder": "如 22.04 / 9（apt 源必填，用于映射代号）", "archPlaceholder": "如 x86_64 / amd64（可选）",
       "connectivityPassed": "连通性测试通过", "connectivityFailed": "连通性测试失败", "scanSaved": "扫描设置已保存",

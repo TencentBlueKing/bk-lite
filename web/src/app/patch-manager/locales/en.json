@@ -312,7 +312,7 @@
       "connectivity": { "connected": "Connected", "failed": "Failed", "undetected": "Not checked" },
       "confirmDeleteSource": "Delete this patch source?", "addSource": "Add Patch Source", "editSource": "Edit Patch Source",
       "nameRequired": "Enter a name", "namePlaceholder": "For example: Corporate WSUS", "typeRequired": "Select a type", "urlRequired": "Enter a URL",
-      "proxyPlaceholder": "Optional, e.g. http://proxy.intranet:8080", "authUserPlaceholder": "Optional, e.g. DOMAIN\\svc-wsus", "authPasswordPlaceholder": "Enter the authentication password",
+      "proxyPlaceholder": "Optional, e.g. http://proxy.intranet:8080", "authUserPlaceholder": "e.g. DOMAIN\\svc-wsus", "authUserRequired": "Enter the WSUS WinRM username", "authPasswordPlaceholder": "Enter the authentication password", "authPasswordRequired": "Enter the WSUS WinRM password",
       "applicableSystemRequired": "Enter an applicable distribution or system", "applicableSystemPlaceholder": "e.g. Ubuntu / Rocky Linux",
       "osVersionPlaceholder": "e.g. 22.04 / 9 (required for apt codename mapping)", "archPlaceholder": "e.g. x86_64 / amd64 (optional)",
       "connectivityPassed": "Connectivity test passed", "connectivityFailed": "Connectivity test failed", "scanSaved": "Scan settings saved",

@@ -135,7 +135,10 @@ function SourcesTab({ activeKey }: { activeKey: string }) {
     }
     const payload: Record<string, any> = { ...values, proxy_host: proxyHost, proxy_port: proxyPort };
     delete payload.proxy;
-    if (payload.auth_password === SAVED_SECRET) {
+    if (
+      payload.auth_password === SAVED_SECRET
+      || (editingSource?.has_auth_password && !payload.auth_password)
+    ) {
       delete payload.auth_password;
     }
     return payload;
@@ -354,10 +357,18 @@ function SourcesTab({ activeKey }: { activeKey: string }) {
           </Form.Item>
           {sourceType === 'wsus' && (
             <>
-              <Form.Item label={t('patchManager.authUser')} name="auth_user">
+              <Form.Item
+                label={t('patchManager.authUser')}
+                name="auth_user"
+                rules={[{ required: true, message: t('patchManager.settingsPage.authUserRequired') }]}
+              >
                 <Input placeholder={t('patchManager.settingsPage.authUserPlaceholder')} />
               </Form.Item>
-              <Form.Item label={t('patchManager.authPassword')} name="auth_password">
+              <Form.Item
+                label={t('patchManager.authPassword')}
+                name="auth_password"
+                rules={[{ required: true, message: t('patchManager.settingsPage.authPasswordRequired') }]}
+              >
                 <Password
                   placeholder={t('patchManager.settingsPage.authPasswordPlaceholder')}
                   clickToEdit={Boolean(editingSource?.has_auth_password)}
