@@ -3,6 +3,7 @@ import MongodbDashboard from './objects/mongodb';
 import RedisDashboard from './objects/redis';
 import ElasticsearchDashboard from './objects/elasticsearch';
 import HostDashboard from './objects/host';
+import ProcessDashboard from './objects/process';
 import MssqlDashboard from './objects/mssql';
 import NginxDashboard from './objects/nginx';
 import DockerDashboard from './objects/docker';
@@ -181,6 +182,15 @@ const COMMUNITY_DASHBOARDS: ProfessionalDashboardRegistryItem[] = [
     objectDisplayName: '主机',
     inheritedPermissionPath: '/monitor/view',
     component: HostDashboard
+  },
+  {
+    key: 'process',
+    aliases: ['进程'],
+    groupKey: 'os',
+    objectName: 'Process',
+    objectDisplayName: '进程',
+    inheritedPermissionPath: '/monitor/view',
+    component: ProcessDashboard
   },
   {
     key: 'website',

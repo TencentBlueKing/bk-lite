@@ -135,6 +135,12 @@ export const formatEnumValue = (value: number, enumMap?: MetricEnumMap) => {
     return { value: '--', color: undefined as string | undefined };
   }
 
+  // 优先精确匹配（如端口部分失活 0.5），避免 Math.round(0.5)→1 误映射为存活。
+  const exactMatch = enumMap[value];
+  if (exactMatch) {
+    return { value: exactMatch.label, color: exactMatch.color };
+  }
+
   const normalizedValue = Math.round(value);
   const match = enumMap[normalizedValue];
   if (match) {
