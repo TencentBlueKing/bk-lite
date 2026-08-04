@@ -17,6 +17,9 @@ from apps.patch_mgmt.serializers.governance import (
     GovernanceTaskDetailSerializer,
     GovernanceTaskListSerializer,
 )
+from apps.patch_mgmt.services.execution_record_service import (
+    filter_execution_record_roots,
+)
 from apps.patch_mgmt.services.governance_service import (
     HostBusyError,
     create_assess_task,
@@ -51,10 +54,7 @@ class GovernanceTaskViewSet(AuthViewSet):
         queryset = super().get_queryset().select_related("source_record")
         if self.action == "host_log":
             return queryset
-        queryset = queryset.filter(
-            parent_task__isnull=True,
-            task_type__in=[GovernanceTaskType.INSTALL, GovernanceTaskType.REBOOT],
-        )
+        queryset = filter_execution_record_roots(queryset)
         requested_type = getattr(self, "request", None) and self.request.query_params.get(
             "task_type"
         )
