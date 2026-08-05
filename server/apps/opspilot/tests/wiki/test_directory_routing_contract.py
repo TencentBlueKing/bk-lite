@@ -3,6 +3,7 @@ from types import MappingProxyType
 
 import pytest
 
+from apps.opspilot.services.wiki import candidate_adapter_contract as candidate_contract
 from apps.opspilot.services.wiki.candidate_adapter_contract import (
     CANDIDATE_METHOD_CONTRACTS,
     IDENTITY_CONFLICT_KEY_FIELDS,
@@ -11,12 +12,14 @@ from apps.opspilot.services.wiki.candidate_adapter_contract import (
     CandidateHandle,
     CandidateHandling,
     CandidateTrigger,
+    IdentityConflictKey,
     InvalidCandidateHandle,
     InvalidIdentityConflictKey,
     KnowledgeCandidateAdapter,
     UnknownCandidateTrigger,
     candidate_handling_for,
     identity_conflict_key,
+    normalize_title_identity_key,
 )
 from apps.opspilot.services.wiki.directory_routing_contract import (
     AmbiguousTypeDefault,
@@ -69,6 +72,7 @@ def _route(directories, **overrides):
     options = {
         "knowledge_base_id": KB_ID,
         "page_type": "procedure",
+        "revision_page_types": frozenset({"concept", "procedure", "faq"}),
         "assignment_mode": AssignmentMode.AUTO,
         "directories": directories,
         "current_directory_key": None,
@@ -77,7 +81,7 @@ def _route(directories, **overrides):
         "classification_root_key": None,
         "type_default_keys": (),
         "unclassified_key": "__unclassified__",
-        "schema_mismatch": False,
+        "suggestion_schema_mismatch": False,
         "low_confidence": False,
     }
     options.update(overrides)
@@ -113,7 +117,7 @@ def test_manual_route_preserves_invalid_suggestion_and_confidence_trace():
         assignment_mode=AssignmentMode.MANUAL,
         current_directory_key=manual.key,
         suggested_key="missing",
-        schema_mismatch=True,
+        suggestion_schema_mismatch=True,
         low_confidence=True,
     )
 
@@ -208,7 +212,7 @@ def test_directory_snapshot_copies_mutable_scope_inputs():
         (
             _directory("schema_flag"),
             "schema_flag",
-            {"schema_mismatch": True},
+            {"suggestion_schema_mismatch": True},
             RoutingTraceCode.SCHEMA_MISMATCH,
         ),
     ],
@@ -232,6 +236,49 @@ def test_invalid_llm_key_records_reason_and_falls_back_to_type_default(
     assert decision.directory_key == default.key
     assert decision.source is DirectoryRouteSource.TYPE_DEFAULT
     assert expected_trace in decision.trace
+
+
+@pytest.mark.parametrize("page_type", ["", "   ", "unknown"])
+def test_unknown_revision_page_type_skips_unrestricted_routes_and_uses_unclassified(page_type):
+    root = _directory("root")
+    suggested = _directory("suggested", ancestor_keys=(root.key,))
+    default = _directory("default", ancestor_keys=(root.key,))
+
+    decision = _route(
+        _directories(root, suggested, default),
+        page_type=page_type,
+        revision_page_types=frozenset({"procedure"}),
+        suggested_key=suggested.key,
+        classification_root_key=root.key,
+        type_default_keys=(default.key,),
+    )
+
+    assert decision.directory_key == "__unclassified__"
+    assert decision.source is DirectoryRouteSource.UNCLASSIFIED
+    assert RoutingTraceCode.SCHEMA_MISMATCH in decision.trace
+
+
+def test_unknown_revision_page_type_keeps_manual_directory_and_records_mismatch():
+    manual = _directory("manual")
+
+    decision = _route(
+        _directories(manual),
+        page_type="unknown",
+        revision_page_types=frozenset({"procedure"}),
+        assignment_mode=AssignmentMode.MANUAL,
+        current_directory_key=manual.key,
+    )
+
+    assert decision.directory_key == manual.key
+    assert decision.source is DirectoryRouteSource.MANUAL
+    assert RoutingTraceCode.SCHEMA_MISMATCH in decision.trace
+
+
+def test_empty_suggested_key_is_traced_as_unknown_in_auto_mode():
+    decision = _route(_directories(), suggested_key="")
+
+    assert decision.source is DirectoryRouteSource.UNCLASSIFIED
+    assert RoutingTraceCode.UNKNOWN_KEY in decision.trace
 
 
 def test_out_of_scope_llm_key_and_default_fall_back_to_receiving_root():
@@ -350,6 +397,32 @@ def test_only_persisted_reference_sources_follow_merged_redirect_with_trace(sour
     assert RoutingTraceCode.MERGED_REDIRECT_FOLLOWED in decision.trace
 
 
+@pytest.mark.parametrize(
+    ("target", "expected_rejection"),
+    [
+        (_directory("target", allowed_page_types={"concept"}), RoutingTraceCode.SCHEMA_MISMATCH),
+        (_directory("target"), RoutingTraceCode.OUT_OF_SCOPE_KEY),
+    ],
+)
+def test_persisted_redirect_to_active_context_mismatch_uses_fallback(target, expected_rejection):
+    root = _directory("root")
+    merged = _directory("old", status=DirectoryStatus.MERGED, merged_into_key=target.key)
+    default = _directory("default", ancestor_keys=(root.key,))
+
+    decision = _route(
+        _directories(root, merged, target, default),
+        suggested_key=merged.key,
+        suggestion_source=DirectoryReferenceSource.NATIVE_IMPORT,
+        classification_root_key=root.key,
+        type_default_keys=(default.key,),
+    )
+
+    assert decision.directory_key == default.key
+    assert decision.redirect_chain == (merged.key, target.key)
+    assert RoutingTraceCode.MERGED_REDIRECT_FOLLOWED in decision.trace
+    assert expected_rejection in decision.trace
+
+
 def test_foreign_merged_key_cannot_redirect_back_into_the_current_knowledge_base():
     foreign = _directory(
         "foreign_old",
@@ -429,23 +502,18 @@ def test_candidate_adapter_method_shapes_are_keyword_only_and_stable():
 
     assert tuple(body_parameters) == (
         "self",
-        "knowledge_base_id",
-        "page_id",
-        "locked_current_version_id",
+        "conflict_key",
         "candidate_body",
         "build_record_id",
         "generation_id",
-        "participants",
         "reason",
         "created_by",
     )
     assert tuple(identity_parameters) == (
         "self",
-        "knowledge_base_id",
+        "conflict_key",
         "incoming_candidate_ref",
         "competing_page_ids",
-        "canonical_title_key",
-        "page_type",
         "build_record_id",
         "generation_id",
         "reason",
@@ -453,6 +521,8 @@ def test_candidate_adapter_method_shapes_are_keyword_only_and_stable():
     )
     assert all(parameter.kind is Parameter.KEYWORD_ONLY for name, parameter in body_parameters.items() if name != "self")
     assert all(parameter.kind is Parameter.KEYWORD_ONLY for name, parameter in identity_parameters.items() if name != "self")
+    with pytest.raises(TypeError):
+        isinstance(object(), KnowledgeCandidateAdapter)
 
 
 def test_candidate_method_semantics_are_immutable_and_keep_directory_issues_out():
@@ -467,6 +537,13 @@ def test_candidate_method_semantics_are_immutable_and_keep_directory_issues_out(
     assert body.auto_merges_pages is False
     assert body.blocks_generation_activation is False
     assert body.idempotent_open_conflict_key is True
+    assert body.stable_conflict_key_fields == (
+        "knowledge_base_id",
+        "page_id",
+        "locked_current_version_id",
+        "content_contract_fingerprint",
+        "participants",
+    )
 
     assert identity.candidate_version_required is False
     assert identity.locks_current_version is False
@@ -476,36 +553,126 @@ def test_candidate_method_semantics_are_immutable_and_keep_directory_issues_out(
     assert identity.idempotent_open_conflict_key is True
     assert identity.stable_conflict_key_fields == IDENTITY_CONFLICT_KEY_FIELDS
     assert identity.diagnostic_only_fields == IDENTITY_DIAGNOSTIC_ONLY_FIELDS
-    assert IDENTITY_CONFLICT_KEY_FIELDS == ("knowledge_base_id", "canonical_title_key")
+    assert IDENTITY_CONFLICT_KEY_FIELDS == ("knowledge_base_id", "normalized_title_key")
     assert IDENTITY_DIAGNOSTIC_ONLY_FIELDS == ("page_type",)
 
     with pytest.raises(TypeError):
         CANDIDATE_METHOD_CONTRACTS[CandidateDecisionType.PAGE_IDENTITY] = body
 
 
-def test_identity_conflict_key_is_global_per_kb_title_and_ignores_page_type_context():
-    keys_across_page_types = {
-        identity_conflict_key(
-            knowledge_base_id=KB_ID,
-            canonical_title_key="installation guide",
-        )
-        for _page_type in ("concept", "procedure", "qa")
-    }
+def test_body_conflict_key_is_canonical_and_independent_of_runtime_attempts():
+    factory = getattr(candidate_contract, "body_conflict_key", None)
+    key_type = getattr(candidate_contract, "BodyConflictKey", None)
+    fields = getattr(candidate_contract, "BODY_CONFLICT_KEY_FIELDS", None)
 
-    assert len(keys_across_page_types) == 1
-    key = keys_across_page_types.pop()
-    assert len(key) == 64
+    assert callable(factory)
+    assert key_type is not None
+    assert fields == (
+        "knowledge_base_id",
+        "page_id",
+        "locked_current_version_id",
+        "content_contract_fingerprint",
+        "participants",
+    )
+    assert tuple(signature(factory).parameters) == fields
+
+    participant_a = candidate_contract.CandidateParticipant(material_id=7, content_hash="hash-a")
+    participant_b = candidate_contract.CandidateParticipant(material_id=9, content_hash="hash-b")
+    key = factory(
+        knowledge_base_id=KB_ID,
+        page_id=31,
+        locked_current_version_id=47,
+        content_contract_fingerprint="schema-v3",
+        participants=(participant_b, participant_a, participant_b),
+    )
+    retried = factory(
+        knowledge_base_id=KB_ID,
+        page_id=31,
+        locked_current_version_id=47,
+        content_contract_fingerprint="schema-v3",
+        participants=(participant_a, participant_b),
+    )
+
+    assert isinstance(key, key_type)
+    assert key.participants == (participant_a, participant_b)
+    assert len(key.digest) == 64
+    assert retried.digest == key.digest
+
+
+def test_body_conflict_key_rejects_incomplete_or_noncanonical_identity():
+    factory = getattr(candidate_contract, "body_conflict_key", None)
+    error_type = getattr(candidate_contract, "InvalidBodyConflictKey", None)
+
+    assert callable(factory)
+    assert isinstance(error_type, type)
+
+    valid = {
+        "knowledge_base_id": KB_ID,
+        "page_id": 31,
+        "locked_current_version_id": 47,
+        "content_contract_fingerprint": "schema-v3",
+        "participants": (candidate_contract.CandidateParticipant(material_id=7, content_hash="hash-a"),),
+    }
+    invalid_overrides = (
+        {"knowledge_base_id": True},
+        {"page_id": 0},
+        {"locked_current_version_id": "47"},
+        {"content_contract_fingerprint": " schema-v3"},
+        {"participants": ()},
+    )
+
+    for override in invalid_overrides:
+        with pytest.raises(error_type):
+            factory(**(valid | override))
+
+
+def test_title_identity_normalization_is_exact_and_does_not_use_legacy_compaction():
+    assert normalize_title_identity_key(" Ａ\u00a0 Guide\t") == "a guide"
+    assert normalize_title_identity_key("Straße") == "strasse"
+    assert normalize_title_identity_key("a-b") == "a-b"
+    assert normalize_title_identity_key("a-b") != normalize_title_identity_key("ab")
+
+    for invalid in (None, 7, " \u2003 "):
+        with pytest.raises(InvalidIdentityConflictKey):
+            normalize_title_identity_key(invalid)
+
+
+def test_identity_conflict_key_requires_normalized_title_and_excludes_page_type():
+    key = identity_conflict_key(
+        knowledge_base_id=KB_ID,
+        normalized_title_key="installation guide",
+    )
+
+    assert isinstance(key, IdentityConflictKey)
+    assert key.knowledge_base_id == KB_ID
+    assert key.normalized_title_key == "installation guide"
+    assert len(key.digest) == 64
+    assert key == identity_conflict_key(
+        knowledge_base_id=KB_ID,
+        normalized_title_key="installation guide",
+    )
     assert key != identity_conflict_key(
         knowledge_base_id=OTHER_KB_ID,
-        canonical_title_key="installation guide",
+        normalized_title_key="installation guide",
     )
     assert key != identity_conflict_key(
         knowledge_base_id=KB_ID,
-        canonical_title_key="another guide",
+        normalized_title_key="another guide",
     )
 
-    with pytest.raises(InvalidIdentityConflictKey):
-        identity_conflict_key(knowledge_base_id=KB_ID, canonical_title_key="")
+    for invalid_title in ("", " Installation Guide", "Ａ  Guide", "Straße"):
+        with pytest.raises(InvalidIdentityConflictKey):
+            identity_conflict_key(
+                knowledge_base_id=KB_ID,
+                normalized_title_key=invalid_title,
+            )
+
+    for invalid_kb_id in (0, -1, True, 7.5, "7"):
+        with pytest.raises(InvalidIdentityConflictKey):
+            identity_conflict_key(
+                knowledge_base_id=invalid_kb_id,
+                normalized_title_key="installation guide",
+            )
 
 
 def test_candidate_handle_enforces_body_and_identity_result_shapes():

@@ -33,6 +33,7 @@ def _structure_request():
         "base_generation_id": 41,
         "structure": {
             "format_version": 1,
+            "page_types": ["concept", "procedure", "faq"],
             "directories": [
                 {
                     "kind": "existing",
@@ -264,6 +265,20 @@ def test_structure_save_request_rejects_mixed_parent_identity_and_missing_cas():
     _assert_invalid(SchemaName.STRUCTURE_SAVE_REQUEST, extra)
 
 
+def test_structure_snapshot_freezes_revision_page_type_domain():
+    payload = _structure_request()
+    _validate(SchemaName.STRUCTURE_SAVE_REQUEST, payload)
+
+    missing = deepcopy(payload)
+    missing["structure"].pop("page_types")
+    _assert_invalid(SchemaName.STRUCTURE_SAVE_REQUEST, missing)
+
+    for invalid_page_types in ([], ["procedure", "procedure"], ["procedure", "   "]):
+        invalid = deepcopy(payload)
+        invalid["structure"]["page_types"] = invalid_page_types
+        _assert_invalid(SchemaName.STRUCTURE_SAVE_REQUEST, invalid)
+
+
 def test_structure_save_response_returns_canonical_snapshot_and_client_ref_map():
     payload = {
         "structure_revision": {
@@ -274,6 +289,7 @@ def test_structure_save_response_returns_canonical_snapshot_and_client_ref_map()
         "active_generation": _active_generation(),
         "structure": {
             "format_version": 1,
+            "page_types": ["concept", "procedure", "faq"],
             "directories": [
                 _canonical_directory(),
                 _canonical_directory(14, "dir_install", _directory_ref()),

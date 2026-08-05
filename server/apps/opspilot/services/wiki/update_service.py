@@ -9,12 +9,21 @@ import logging
 from django.db import transaction
 from django.utils import timezone
 
-from apps.opspilot.metis.llm.chain.entity import BasicLLMRequest
-from apps.opspilot.metis.llm.common.llm_client_factory import LLMClientFactory
-from apps.opspilot.models import BuildRecord, CheckItem, KnowledgePage, LLMModel, Material, MaterialVersion, PageEvidence, WikiKnowledgeBase
+from apps.opspilot.models import (
+    BuildRecord,
+    CheckItem,
+    KnowledgePage,
+    Material,
+    MaterialVersion,
+    PageEvidence,
+    WikiGenerationPage,
+    WikiKnowledgeBase,
+    WikiStructureRevision,
+)
 from apps.opspilot.services.wiki import decision_service
 from apps.opspilot.services.wiki.cascade_service import cascade
 from apps.opspilot.services.wiki.material_service import load_parsed_markdown
+from apps.opspilot.services.wiki.wiki_budget_service import WikiBudgetExceeded, new_material_call_budget
 
 logger = logging.getLogger("opspilot")
 
@@ -152,28 +161,505 @@ def apply_material_update(page, new_body, material=None, build_record=None, oper
     return action, decision_trace
 
 
-def _default_generator(page, material, llm_model_id):
-    """默认正文生成:用更新后的资料为该页面重写正文(LLM)。无模型则返回空(跳过)。"""
+def _default_generator(
+    page,
+    material,
+    llm_model_id,
+    *,
+    budget,
+    current_body=None,
+    title=None,
+):
+    """Rewrite one affected page inside the material-scoped hard budget."""
+
     if not llm_model_id:
         return ""
     text = (load_parsed_markdown(material) or material.ai_summary or material.text_content or "").strip()
     if not text:
         return ""
-    try:
-        llm = LLMModel.objects.get(id=llm_model_id)
-        current = page.current_version.body if page.current_version_id else ""
-        prompt = "资料已更新,请据此重写指定知识页面的正文,保持标题主题不变,只输出 markdown 正文。\n\n" f"# 页面标题\n{page.title}\n\n# 现有正文\n{current}\n\n# 更新后的资料\n{text}\n"
-        request = BasicLLMRequest(
-            openai_api_base=llm.openai_api_base,
-            openai_api_key=llm.openai_api_key,
-            model=llm.model_name,
-            temperature=0.2,
-            user_message=prompt,
+    from apps.opspilot.services.wiki.build_service import _invoke_llm, _page_type_body_guidance
+
+    current = current_body if current_body is not None else (page.current_version.body if page.current_version_id else "")
+    display_title = title if title is not None else page.title
+    page_type = page.page_type or "concept"
+    prompt = (
+        "资料已更新,请据此重写指定知识页面的正文,保持标题主题和页面类型不变,只输出 markdown 正文。\n"
+        "不得把来源摘要、实体、概念、对比或综合页退化成同一种通用摘要。\n\n"
+        f"# 页面标题\n{display_title}\n\n"
+        f"# 页面类型\n{page_type}\n\n"
+        f"# 写作契约\n{_page_type_body_guidance(page_type)}\n\n"
+        f"# 现有正文\n{current}\n\n# 更新后的资料\n{text}\n"
+    )
+    return str(
+        _invoke_llm(
+            llm_model_id,
+            prompt,
+            budget=budget,
+            stage=f"material_update_page:{page.pk}",
+            output_reserve=6000,
         )
-        return (LLMClientFactory.invoke_isolated(request, [{"role": "user", "content": prompt}]) or "").strip()
-    except Exception:
-        logger.exception("wiki 资料更新重写失败 page=%s", page.id)
-        return ""
+        or ""
+    ).strip()
+
+
+_GENERATION_IDENTITY_FIELDS = (
+    "base_generation_id",
+    "structure_revision_id",
+    "structure_version",
+    "structure_fingerprint",
+    "pipeline_version",
+    "source_fingerprints",
+    "classification_root_id",
+)
+
+
+def _validate_frozen_generation_identity(
+    knowledge_base,
+    frozen_identity,
+    *,
+    source_fingerprints,
+    classification_root_id=None,
+    context=None,
+):
+    from apps.opspilot.services.wiki.build_generation_service import PIPELINE_VERSION, BuildGenerationError
+
+    incomplete_sources = [
+        fingerprint
+        for fingerprint in source_fingerprints
+        if not fingerprint.get("material_version_id")
+        or not str(fingerprint.get("content_hash") or "").strip()
+        or not str(fingerprint.get("source_identity") or "").strip()
+    ]
+    if incomplete_sources:
+        raise BuildGenerationError(
+            "source_identity_incomplete",
+            "generation 更新任务缺少完整资料来源身份",
+            details={"source_fingerprints": incomplete_sources},
+        )
+    if frozen_identity is None:
+        return
+    if not isinstance(frozen_identity, dict):
+        raise ValueError("frozen_identity 必须为对象")
+    missing = [field for field in _GENERATION_IDENTITY_FIELDS if field not in frozen_identity]
+    if missing:
+        raise ValueError(f"generation task identity 缺少字段: {', '.join(missing)}")
+    revision = knowledge_base.active_structure_revision
+    expected = {
+        "base_generation_id": context.base_generation_id if context is not None else knowledge_base.active_generation_id,
+        "structure_revision_id": context.structure_revision_id if context is not None else getattr(revision, "pk", None),
+        "structure_version": context.structure_version if context is not None else getattr(revision, "revision_no", None),
+        "structure_fingerprint": context.structure_fingerprint if context is not None else getattr(revision, "fingerprint", ""),
+        "pipeline_version": context.pipeline_version if context is not None else PIPELINE_VERSION,
+        "source_fingerprints": list(source_fingerprints),
+        "classification_root_id": classification_root_id,
+    }
+    mismatches = {
+        field: {"expected": expected[field], "actual": frozen_identity.get(field)}
+        for field in _GENERATION_IDENTITY_FIELDS
+        if frozen_identity.get(field) != expected[field]
+    }
+    if mismatches:
+        raise BuildGenerationError(
+            "frozen_generation_identity_mismatch",
+            "任务固定身份与当前 generation 上下文不一致",
+            retryable=True,
+            details={"mismatches": mismatches},
+        )
+
+
+def _base_generation_members_for_material(context, material):
+    page_ids = _material_evidence_page_ids(material.pk)
+    if not page_ids:
+        return []
+    return list(
+        WikiGenerationPage.objects.filter(
+            generation_id=context.base_generation_id,
+            page_id__in=page_ids,
+            page_status="active",
+        )
+        .select_related("page", "page_version", "directory")
+        .order_by("page_id")
+    )
+
+
+def _generation_body_candidate(page, member, material, build, context, candidate_body, operator):
+    from apps.opspilot.services.wiki.build_generation_service import BuildGenerationError, material_fingerprint
+    from apps.opspilot.services.wiki.candidate_adapter_contract import CandidateParticipant, DjangoKnowledgeCandidateAdapter, body_conflict_key
+    from apps.opspilot.services.wiki.decision_service import build_participants_from_page_evidence
+
+    participants = []
+    for item in build_participants_from_page_evidence(
+        page,
+        incoming_snapshot=material_fingerprint(material),
+    ):
+        material_id = item.get("material_id")
+        content_hash = str(item.get("content_hash") or "").strip()
+        if type(material_id) is not int or material_id <= 0 or not content_hash:
+            raise BuildGenerationError(
+                "source_identity_incomplete",
+                "human/mixed 正文候选缺少完整来源身份",
+                details={"page_id": page.pk, "participant": item},
+            )
+        participants.append(
+            CandidateParticipant(
+                material_id=material_id,
+                content_hash=content_hash,
+            )
+        )
+    conflict = body_conflict_key(
+        knowledge_base_id=page.knowledge_base_id,
+        page_id=page.pk,
+        locked_current_version_id=member.page_version_id,
+        content_contract_fingerprint=context.structure_fingerprint,
+        participants=participants,
+    )
+    return DjangoKnowledgeCandidateAdapter().create_body_conflict(
+        conflict_key=conflict,
+        candidate_body=candidate_body,
+        build_record_id=build.pk,
+        generation_id=context.candidate_generation_id,
+        reason="资料更新产生了不同知识结论，保持当前正文并等待人工决策",
+        created_by=operator or "",
+    )
+
+
+def _propose_update_generation(
+    material,
+    *,
+    llm_model_id=None,
+    operator="",
+    generator=None,
+    classification_root_id=None,
+    frozen_identity=None,
+):
+    from apps.opspilot.services.wiki.build_generation_service import (
+        BuildGenerationError,
+        begin_build_generation,
+        fail_build_generation,
+        finalize_build_generation,
+        material_fingerprint,
+        stage_ai_page,
+    )
+    from apps.opspilot.services.wiki.build_service import _canonical_title, _invoke_llm
+    from apps.opspilot.services.wiki.directory_assignment_service import resolve_page_directory
+    from apps.opspilot.services.wiki.generation_wikilink_enrichment_service import apply_generation_wikilink_trace, enrich_generation_pages_wikilinks
+    from apps.opspilot.services.wiki.title_service import title_alias_terms_for_enrichment as _title_alias_terms_for_enrichment
+
+    kb = WikiKnowledgeBase.objects.select_related("active_structure_revision").get(pk=material.knowledge_base_id)
+    material = Material.objects.select_related("current_version", "knowledge_base").get(pk=material.pk, knowledge_base=kb)
+    frozen_material_fingerprint = material_fingerprint(material)
+    source_fingerprints = [frozen_material_fingerprint]
+    if frozen_identity is not None:
+        classification_root_id = frozen_identity.get("classification_root_id")
+    _validate_frozen_generation_identity(
+        kb,
+        frozen_identity,
+        source_fingerprints=source_fingerprints,
+        classification_root_id=classification_root_id,
+    )
+    build = BuildRecord.objects.create(
+        knowledge_base=kb,
+        trigger="material_update",
+        operator=operator,
+        inputs={
+            "material_id": material.pk,
+            "material_name": material.name,
+            "classification_root_id": classification_root_id,
+            "source_trace": {"page_actions": []},
+            **({"task_identity": dict(frozen_identity)} if frozen_identity is not None else {}),
+        },
+        stage="generating",
+        status="running",
+    )
+    budget = new_material_call_budget(material.pk)
+    context = None
+    try:
+        context = begin_build_generation(
+            kb,
+            build,
+            source_fingerprints=source_fingerprints,
+            operator=operator,
+        )
+        _validate_frozen_generation_identity(
+            kb,
+            frozen_identity,
+            source_fingerprints=source_fingerprints,
+            classification_root_id=classification_root_id,
+            context=context,
+        )
+        revision = WikiStructureRevision.objects.get(pk=context.structure_revision_id, knowledge_base=kb)
+        counts = {"new": 0, "updated": 0, "unchanged": 0, "pending_review": 0}
+        affected = []
+        page_actions = []
+        directory_trace = []
+        evidence_records = []
+        pending_material_ids_by_page = {}
+        enrichment_page_ids = set()
+        source_trace = {"page_actions": []}
+        for member in _base_generation_members_for_material(context, material):
+            page = member.page
+            display = dict(member.page_display_snapshot or {})
+            title = display.get("title") or page.title
+            page_type = display.get("page_type") or page.page_type or "concept"
+            tags = list(display.get("tags") or [])
+            contribution = display.get("contribution") or page.contribution
+            current_body = member.page_version.body or ""
+            new_body = (
+                generator(page, material)
+                if generator is not None
+                else _default_generator(
+                    page,
+                    material,
+                    llm_model_id,
+                    budget=budget,
+                    current_body=current_body,
+                    title=title,
+                )
+            )
+            new_body = (new_body or "").strip()
+            if not new_body:
+                continue
+
+            if contribution == "ai":
+                assignment = resolve_page_directory(
+                    knowledge_base=kb,
+                    structure_revision=revision,
+                    page_type=page_type,
+                    assignment_mode=member.assignment_mode,
+                    current_directory=member.directory,
+                    suggested_key=member.directory_key_snapshot,
+                    suggestion_source="historical_link",
+                    classification_root_id=classification_root_id,
+                    suggestion_reason="资料更新沿用固定 generation 的目录上下文",
+                )
+                staged = stage_ai_page(
+                    context,
+                    title=title,
+                    page_type=page_type,
+                    tags=tags,
+                    body=new_body,
+                    directory_id=assignment.directory.pk,
+                    assignment_mode=assignment.assignment_mode,
+                    build_record=build,
+                    operator=operator,
+                    update_method="material_update",
+                    change_type="material_update",
+                    body_strategy="replace",
+                )
+                enrichment_page_ids.add(staged.page_id)
+                action = "updated" if staged.action == "update" else "unchanged"
+                counts[action] += 1
+                action_item = {
+                    "page_id": staged.page_id,
+                    "page_version_id": staged.page_version_id,
+                    "title": staged.title,
+                    "action": staged.action,
+                    "material_id": material.pk,
+                    "directory_id": staged.directory_id,
+                    "assignment_mode": staged.assignment_mode,
+                }
+                directory_item = assignment.as_build_trace()
+                directory_item.update(
+                    {
+                        "page_id": staged.page_id,
+                        "title": staged.title,
+                        "material_id": material.pk,
+                    }
+                )
+                directory_trace.append(directory_item)
+                pending_material_ids_by_page.setdefault(staged.page_id, set()).add(material.pk)
+                evidence_records.append(
+                    {
+                        "page_id": staged.page_id,
+                        "material": material,
+                        "material_version": material.current_version,
+                        "locator": "",
+                    }
+                )
+            elif new_body == current_body.strip():
+                action = "unchanged"
+                counts[action] += 1
+                action_item = {
+                    "page_id": page.pk,
+                    "page_version_id": member.page_version_id,
+                    "title": title,
+                    "action": action,
+                    "material_id": material.pk,
+                    "contribution": contribution,
+                }
+                pending_material_ids_by_page.setdefault(page.pk, set()).add(material.pk)
+                evidence_records.append(
+                    {
+                        "page_id": page.pk,
+                        "material": material,
+                        "material_version": material.current_version,
+                        "locator": "",
+                    }
+                )
+            else:
+                handle = _generation_body_candidate(
+                    page,
+                    member,
+                    material,
+                    build,
+                    context,
+                    new_body,
+                    operator,
+                )
+                action = "pending_review"
+                counts[action] += 1
+                action_item = {
+                    "page_id": page.pk,
+                    "page_version_id": member.page_version_id,
+                    "candidate_version_id": handle.candidate_version_id,
+                    "check_id": handle.check_id,
+                    "title": title,
+                    "action": "candidate",
+                    "material_id": material.pk,
+                    "contribution": contribution,
+                    "candidate_created": handle.created,
+                    "blocks_generation_activation": handle.blocks_generation_activation,
+                }
+
+            affected.append(page.pk)
+            page_actions.append(action_item)
+            source_trace["page_actions"].append(action_item)
+
+        enrichment_results = enrich_generation_pages_wikilinks(
+            context.candidate_generation_id,
+            enrichment_page_ids,
+            None,
+            _invoke_llm,
+            build_record=build,
+            operator=operator,
+            canonicalize=lambda value: _canonical_title(kb, value),
+            alias_terms_resolver=lambda value: _title_alias_terms_for_enrichment(
+                kb,
+                value,
+            ),
+        )
+        apply_generation_wikilink_trace(page_actions, enrichment_results)
+        apply_generation_wikilink_trace(
+            source_trace["page_actions"],
+            enrichment_results,
+        )
+
+        published_build = None
+
+        def activation_hook(_candidate, locked_kb, relation_result):
+            nonlocal published_build
+            locked_build = BuildRecord.objects.select_for_update().get(
+                pk=build.pk,
+                knowledge_base=locked_kb,
+            )
+            locked_material = Material.objects.select_for_update().get(pk=material.pk, knowledge_base=locked_kb)
+            if material_fingerprint(locked_material) != frozen_material_fingerprint:
+                raise BuildGenerationError(
+                    "source_content_changed",
+                    "资料内容在更新期间已变化，请重试",
+                    retryable=True,
+                    details={"material_id": material.pk},
+                )
+            locked_build.counts = counts
+            locked_build.affected_pages = list(dict.fromkeys(affected))
+            locked_build.inputs = {
+                **(locked_build.inputs or {}),
+                "source_trace": source_trace,
+                "budget_trace": budget.trace(),
+            }
+            locked_build.maintenance = {
+                **(locked_build.maintenance or {}),
+                "generation_relations": relation_result,
+            }
+            locked_build.budget_trace = budget.trace()
+            locked_build.errors = []
+            locked_build.stage = "done"
+            locked_build.status = "success"
+            locked_build.progress = 100
+            locked_build.save(
+                update_fields=[
+                    "counts",
+                    "affected_pages",
+                    "inputs",
+                    "maintenance",
+                    "budget_trace",
+                    "errors",
+                    "stage",
+                    "status",
+                    "progress",
+                    "updated_at",
+                ]
+            )
+            locked_material.status = "built"
+            locked_material.save(update_fields=["status", "updated_at"])
+            published_build = locked_build
+
+        def pre_activation_hook(candidate):
+            from apps.opspilot.services.wiki.generation_navigation_service import enhance_generation_overviews
+
+            result = enhance_generation_overviews(
+                candidate.pk,
+                llm_model_id=llm_model_id,
+                budget=budget,
+                invoke_llm=_invoke_llm,
+            )
+            source_trace["semantic_overview"] = result
+
+        finalize_build_generation(
+            context,
+            build_record=build,
+            page_actions=page_actions,
+            directory_trace=directory_trace,
+            pending_material_ids_by_page=pending_material_ids_by_page,
+            evidence_records=evidence_records,
+            pre_activation_hook=pre_activation_hook,
+            activation_hook=activation_hook,
+        )
+        return published_build or build
+    except Exception as exc:
+        logger.exception("wiki generation 资料更新失败 material=%s", material.pk)
+        if context is not None:
+            fail_build_generation(context, build_record=build, error=exc)
+        build.refresh_from_db()
+        is_budget_error = isinstance(exc, WikiBudgetExceeded)
+        build.stage = "budget_exhausted" if is_budget_error else "failed"
+        build.status = "budget_exhausted" if is_budget_error else "failed"
+        build.budget_trace = budget.trace()
+        build.errors = (
+            [
+                {
+                    "code": exc.code,
+                    "message": str(exc),
+                    "details": exc.details,
+                }
+            ]
+            if is_budget_error
+            else [str(exc)]
+        )
+        build.checkpoint = (
+            {
+                "stopped_stage": exc.details.get("next_stage") or "budget_exhausted",
+                "partial_map_outputs": list(exc.details.get("partial_map_outputs") or []),
+                "map_chunk_count": exc.details.get("map_chunk_count"),
+                "completed_map_calls": exc.details.get(
+                    "completed_map_calls",
+                    0,
+                ),
+            }
+            if is_budget_error
+            else build.checkpoint
+        )
+        build.save(
+            update_fields=[
+                "stage",
+                "status",
+                "budget_trace",
+                "errors",
+                "checkpoint",
+                "updated_at",
+            ]
+        )
+        raise
 
 
 _MATERIAL_DELETE_METRIC_KEYS = (
@@ -387,134 +873,217 @@ def _finalize_material_delete_maintenance(
     )
 
 
-def handle_material_deletion(material, operator=""):
-    """短事务提交物理删除，再在事务外 best-effort 维护派生结构。"""
-    kb = material.knowledge_base
+def _handle_material_deletion_generation(
+    material,
+    operator="",
+    *,
+    classification_root_id=None,
+    frozen_identity=None,
+):
+    """Delete one material through a complete staging generation and CAS activation."""
+
+    from apps.opspilot.services.wiki.build_generation_service import (
+        BuildGenerationError,
+        begin_build_generation,
+        fail_build_generation,
+        finalize_build_generation,
+        material_fingerprint,
+    )
+    from apps.opspilot.services.wiki.generation_service import GENERATION_PAGE_ACTIONS_KEY, remove_generation_member
+
     knowledge_base_id = material.knowledge_base_id
-    material_id = material.id
-    frozen_page_ids = _material_evidence_page_ids(material_id)
-
-    with transaction.atomic():
-        kb = WikiKnowledgeBase.objects.select_for_update().get(pk=knowledge_base_id)
-        locked_checks = list(CheckItem.objects.select_for_update().filter(knowledge_base_id=knowledge_base_id).order_by("id"))
-        pages = list(KnowledgePage.objects.select_for_update().filter(knowledge_base_id=knowledge_base_id, id__in=frozen_page_ids).order_by("id"))
-        material = Material.objects.select_for_update().get(
-            pk=material_id,
-            knowledge_base_id=knowledge_base_id,
-        )
-        current_page_ids = _material_evidence_page_ids(material_id)
-        if current_page_ids != frozen_page_ids:
-            raise RuntimeError("资料关联页面已并发变化，请重试删除")
-        material_name = material.name
-        rules_revoked = decision_service.revoke_rules_for_materials(
-            [material],
-            reason="资料已物理删除",
-            operator=operator,
-        )
-        all_evidence_page_ids = [page.id for page in pages]
-        active_pages = [page for page in pages if page.status == "active"]
-        archived_pages = [page for page in pages if page.status == "archived"]
-        inactive_pages = [page for page in pages if page.status not in {"active", "archived"}]
-        build = BuildRecord.objects.create(
-            knowledge_base=kb,
-            trigger="material_delete",
-            operator=operator,
-            inputs={
-                "material_id": material_id,
-                "material_name": material_name,
-                "all_evidence_page_ids": all_evidence_page_ids,
-            },
-            stage="done",
-            status="partial",
-            progress=100,
-        )
-
-        material.delete()
-
-        remaining_page_ids = set(PageEvidence.objects.filter(page_id__in=all_evidence_page_ids).values_list("page_id", flat=True).distinct())
-        invalidated_pages = [page for page in active_pages if page.id not in remaining_page_ids]
-        shared_pages = [page for page in active_pages if page.id in remaining_page_ids]
-        invalidated_page_ids = [page.id for page in invalidated_pages]
-        shared_page_ids = [page.id for page in shared_pages]
-        archived_recoverable_page_ids = [page.id for page in archived_pages]
-        inactive_source_loss_page_ids = [page.id for page in inactive_pages]
-        shared_page_id_set = set(shared_page_ids)
-        # 归档/既有失效页保持状态，但同样进入 material_delete 维护以清理残留关系与索引。
-        maintenance_prune_page_ids = [page.id for page in pages if page.id not in shared_page_id_set]
-        for page in invalidated_pages:
-            page.status = "source_invalid"
-            page.save(update_fields=["status", "updated_at"])
-
-        checks_auto_resolved = _auto_resolve_material_deletion_checks(
+    material_id = material.pk
+    kb = WikiKnowledgeBase.objects.select_related("active_structure_revision").get(pk=knowledge_base_id)
+    material = Material.objects.select_related("current_version", "knowledge_base").get(
+        pk=material_id,
+        knowledge_base=kb,
+    )
+    source_fingerprints = [material_fingerprint(material)]
+    frozen_evidence_page_ids = _material_evidence_page_ids(material_id)
+    if frozen_identity is not None:
+        classification_root_id = frozen_identity.get("classification_root_id")
+    _validate_frozen_generation_identity(
+        kb,
+        frozen_identity,
+        source_fingerprints=source_fingerprints,
+        classification_root_id=classification_root_id,
+    )
+    build = BuildRecord.objects.create(
+        knowledge_base=kb,
+        trigger="material_delete",
+        operator=operator,
+        inputs={
+            "material_id": material_id,
+            "material_name": material.name,
+            "classification_root_id": classification_root_id,
+            **({"task_identity": dict(frozen_identity)} if frozen_identity is not None else {}),
+        },
+        stage="generating",
+        status="running",
+    )
+    context = None
+    try:
+        context = begin_build_generation(
             kb,
-            material_id=material_id,
-            invalidated_page_ids=invalidated_page_ids,
-            checks=locked_checks,
+            build,
+            source_fingerprints=source_fingerprints,
+            operator=operator,
         )
-        pending_maintenance = _combine_material_delete_maintenance(
-            (
-                _pending_material_delete_maintenance(
-                    maintenance_prune_page_ids,
-                    "material_delete",
-                )
-                if maintenance_prune_page_ids
-                else {}
-            ),
-            (_pending_material_delete_maintenance(shared_page_ids, "build") if shared_page_ids else {}),
-            maintenance_prune_page_ids,
-            shared_page_ids,
+        _validate_frozen_generation_identity(
+            kb,
+            frozen_identity,
+            source_fingerprints=source_fingerprints,
+            classification_root_id=classification_root_id,
+            context=context,
         )
-        build.inputs = {
-            **(build.inputs or {}),
-            "invalidated_page_ids": invalidated_page_ids,
-            "shared_page_ids": shared_page_ids,
-            "archived_recoverable_page_ids": archived_recoverable_page_ids,
-            "inactive_source_loss_page_ids": inactive_source_loss_page_ids,
-            "maintenance_prune_page_ids": maintenance_prune_page_ids,
-            **({"archived_source_loss": "页面可恢复，但被删除的资料来源不可恢复"} if archived_recoverable_page_ids else {}),
-            "rules_revoked": rules_revoked,
-            "checks_auto_resolved": checks_auto_resolved,
-        }
-        counts = {
-            "new": 0,
-            "updated": len(invalidated_page_ids),
-            "unchanged": len(shared_page_ids),
-            "pending_review": 0,
-        }
-        if archived_recoverable_page_ids:
-            counts["archived_recoverable"] = len(archived_recoverable_page_ids)
-        if inactive_source_loss_page_ids:
-            counts["inactive_source_loss"] = len(inactive_source_loss_page_ids)
-        build.counts = counts
-        build.affected_pages = all_evidence_page_ids
-        build.maintenance = pending_maintenance
-        has_maintenance = bool(maintenance_prune_page_ids or shared_page_ids)
-        build.stage = "done"
-        build.status = "partial" if has_maintenance else "success"
-        build.progress = 100
-        build.save(
-            update_fields=[
-                "inputs",
-                "counts",
-                "affected_pages",
-                "maintenance",
-                "stage",
-                "status",
-                "progress",
-                "updated_at",
-            ]
+        members = _base_generation_members_for_material(context, material)
+        member_page_ids = [member.page_id for member in members]
+        remaining_source_page_ids = set(
+            PageEvidence.objects.filter(page_id__in=member_page_ids).exclude(material_id=material_id).values_list("page_id", flat=True).distinct()
         )
+        invalidated_page_ids = [member.page_id for member in members if member.page_id not in remaining_source_page_ids]
+        shared_page_ids = [member.page_id for member in members if member.page_id in remaining_source_page_ids]
+        page_actions = [
+            {
+                "page_id": page_id,
+                "action": "source_invalid",
+                "target_status": "source_invalid",
+                "material_id": material_id,
+            }
+            for page_id in invalidated_page_ids
+        ]
 
-        if has_maintenance:
-            transaction.on_commit(
-                lambda: _finalize_material_delete_maintenance(
-                    build,
-                    kb,
-                    maintenance_prune_page_ids,
-                    shared_page_ids,
+        with transaction.atomic():
+            locked_kb = WikiKnowledgeBase.objects.select_for_update().get(pk=knowledge_base_id)
+            # 可空 FK（current_version）不可与 FOR UPDATE 联表，否则 PG/部分信创库会报错。
+            # 先锁资料行，版本再单独读取（通用写法，避免 of=("self",) 等方言参数）。
+            locked_material = Material.objects.select_for_update().get(pk=material_id, knowledge_base=locked_kb)
+            if locked_material.current_version_id:
+                locked_material.current_version = MaterialVersion.objects.get(pk=locked_material.current_version_id)
+            else:
+                locked_material.current_version = None
+            # FOR UPDATE 不可与 DISTINCT 同用；锁证据行后在应用侧去重 page_id
+            locked_evidence_page_ids = list(
+                dict.fromkeys(
+                    PageEvidence.objects.select_for_update()
+                    .filter(material_id=material_id)
+                    .order_by("page_id", "id")
+                    .values_list("page_id", flat=True)
                 )
             )
-    return build
+            if locked_evidence_page_ids != frozen_evidence_page_ids:
+                raise BuildGenerationError(
+                    "material_evidence_changed",
+                    "资料关联页面已并发变化，请重试删除",
+                    retryable=True,
+                )
+            if material_fingerprint(locked_material) != source_fingerprints[0]:
+                raise BuildGenerationError(
+                    "source_identity_changed",
+                    "资料来源身份已变化，请重试删除",
+                    retryable=True,
+                )
+            locked_checks = list(CheckItem.objects.select_for_update().filter(knowledge_base=locked_kb).order_by("id"))
+            rules_revoked = decision_service.revoke_rules_for_materials(
+                [locked_material],
+                reason="资料已物理删除",
+                operator=operator,
+            )
+            for page_id in invalidated_page_ids:
+                remove_generation_member(
+                    context.candidate_generation_id,
+                    page_id=page_id,
+                )
+
+            build.maintenance = {
+                **(build.maintenance or {}),
+                GENERATION_PAGE_ACTIONS_KEY: page_actions,
+            }
+            build.inputs = {
+                **(build.inputs or {}),
+                "all_evidence_page_ids": locked_evidence_page_ids,
+                "invalidated_page_ids": invalidated_page_ids,
+                "shared_page_ids": shared_page_ids,
+                "rules_revoked": rules_revoked,
+                "source_loss": "被删除的资料来源不可恢复",
+            }
+            build.save(update_fields=["maintenance", "inputs", "updated_at"])
+
+            locked_material.delete()
+            checks_auto_resolved = _auto_resolve_material_deletion_checks(
+                locked_kb,
+                material_id=material_id,
+                invalidated_page_ids=invalidated_page_ids,
+                checks=locked_checks,
+            )
+            activation, relation_result = finalize_build_generation(
+                context,
+                build_record=build,
+                page_actions=page_actions,
+                directory_trace=[],
+            )
+            build.refresh_from_db()
+            build.inputs = {
+                **(build.inputs or {}),
+                "checks_auto_resolved": checks_auto_resolved,
+            }
+            build.counts = {
+                "new": 0,
+                "updated": len(invalidated_page_ids),
+                "unchanged": len(shared_page_ids),
+                "pending_review": 0,
+            }
+            build.affected_pages = frozen_evidence_page_ids
+            build.maintenance = {
+                **(build.maintenance or {}),
+                GENERATION_PAGE_ACTIONS_KEY: page_actions,
+                "generation_relations": relation_result,
+            }
+            build.stage = "done"
+            build.status = "success"
+            build.progress = 100
+            build.errors = []
+            build.save(
+                update_fields=[
+                    "inputs",
+                    "counts",
+                    "affected_pages",
+                    "maintenance",
+                    "stage",
+                    "status",
+                    "progress",
+                    "errors",
+                    "updated_at",
+                ]
+            )
+        return build
+    except Exception as exc:
+        logger.exception("wiki generation 资料删除失败 material=%s", material_id)
+        if context is not None:
+            fail_build_generation(context, build_record=build, error=exc)
+        build.refresh_from_db()
+        build.stage = "failed"
+        build.status = "failed"
+        build.errors = [str(exc)]
+        build.save(update_fields=["stage", "status", "errors", "updated_at"])
+        raise
+
+
+def handle_material_deletion(
+    material,
+    operator="",
+    *,
+    classification_root_id=None,
+    frozen_identity=None,
+):
+    """Publish material deletion through a new generation only."""
+
+    return _handle_material_deletion_generation(
+        material,
+        operator=operator,
+        classification_root_id=classification_root_id,
+        frozen_identity=frozen_identity,
+    )
 
 
 def _maintenance_errors(maintenance):
@@ -538,95 +1107,22 @@ def _maintenance_errors(maintenance):
     return [error for error in errors if not (";" in error and all(part.strip() in errors for part in error.split(";") if part.strip()))]
 
 
-def _run_update_cascade(knowledge_base, affected_page_ids):
-    try:
-        return cascade(knowledge_base, affected_page_ids, "material_update")
-    except Exception as exc:
-        logger.exception("wiki 资料更新级联维护异常 kb=%s", knowledge_base.id)
-        error = str(exc)
-        return {
-            "status": "partial",
-            "event": "material_update",
-            "affected_page_ids": list(affected_page_ids),
-            "stages": {"cascade": {"status": "failed", "error": error}},
-            "error": error,
-        }
+def propose_update(
+    material,
+    llm_model_id=None,
+    operator="",
+    generator=None,
+    *,
+    classification_root_id=None,
+    frozen_identity=None,
+):
+    """Publish material updates through a new generation only."""
 
-
-def propose_update(material, llm_model_id=None, operator="", generator=None):
-    """资料更新后,对受影响页面执行安全合并,返回 BuildRecord。"""
-    kb = material.knowledge_base
-    build = BuildRecord.objects.create(
-        knowledge_base=kb,
-        trigger="material_update",
+    return _propose_update_generation(
+        material,
+        llm_model_id=llm_model_id,
         operator=operator,
-        inputs={
-            "material_id": material.id,
-            "material_name": material.name,
-            "source_trace": {"page_actions": []},
-        },
-        stage="generating",
-        status="running",
+        generator=generator,
+        classification_root_id=classification_root_id,
+        frozen_identity=frozen_identity,
     )
-    try:
-        gen = generator or (lambda p, m: _default_generator(p, m, llm_model_id))
-        counts = {"new": 0, "updated": 0, "unchanged": 0, "pending_review": 0}
-        affected = []
-        cascade_ids = []
-        maintenance = {}
-        source_trace = {"page_actions": []}
-        for page in affected_pages(material):
-            new_body = gen(page, material)
-            if not (new_body or "").strip():
-                continue
-            action, result = apply_material_update(
-                page,
-                new_body,
-                material=material,
-                build_record=build,
-                operator=operator,
-            )
-            counts[action] += 1
-            page_trace = {
-                "page_id": page.id,
-                "title": page.title,
-                "page_type": page.page_type,
-                "action": action,
-            }
-            if isinstance(result, dict):
-                page_trace.update(result)
-            source_trace["page_actions"].append(page_trace)
-            affected.append(page.id)
-            if action != "pending_review":
-                cascade_ids.append(page.id)
-        if cascade_ids:
-            maintenance = _run_update_cascade(kb, cascade_ids)
-        build.counts = counts
-        build.affected_pages = affected
-        build.inputs = {**(build.inputs or {}), "source_trace": source_trace}
-        build.maintenance = maintenance
-        build.errors = _maintenance_errors(maintenance)
-        build.stage = "done"
-        build.status = "partial" if maintenance.get("status") in {"partial", "failed"} else "success"
-        build.progress = 100
-        build.save(
-            update_fields=[
-                "counts",
-                "affected_pages",
-                "inputs",
-                "maintenance",
-                "errors",
-                "stage",
-                "status",
-                "progress",
-                "updated_at",
-            ]
-        )
-        return build
-    except Exception as exc:
-        logger.exception("wiki 资料更新失败 material=%s", material.id)
-        build.stage = "failed"
-        build.status = "failed"
-        build.errors = [str(exc)]
-        build.save(update_fields=["stage", "status", "errors", "updated_at"])
-        raise

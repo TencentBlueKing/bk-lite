@@ -191,6 +191,102 @@ async def test_planner_catalog_prepends_monitor_capability_hint():
     assert "必须规划对应 monitor_* 步骤" in prompt
 
 
+def test_parse_tool_execution_plan_payload_accepts_markdown_and_step_list():
+    from apps.opspilot.metis.llm.agent.tool_execution_planner import ToolPlanningError, parse_tool_execution_plan_payload
+
+    fenced = parse_tool_execution_plan_payload(
+        """好的，计划如下：
+```json
+{"goal":"定位 Pod 告警","steps":[{"objective":"查事件","tools":["list_events"]}]}
+```
+"""
+    )
+    assert fenced["goal"] == "定位 Pod 告警"
+    assert fenced["steps"][0]["tools"] == ["list_events"]
+
+    as_list = parse_tool_execution_plan_payload('[{"objective":"查日志","tools":["get_logs"]},{"objective":"查YAML","tools":["get_yaml"]}]')
+    assert as_list["goal"] == ""
+    assert len(as_list["steps"]) == 2
+
+    with pytest.raises(ToolPlanningError, match="规划模型未返回 JSON 对象"):
+        parse_tool_execution_plan_payload("我先分析一下告警原因，稍后再给计划。")
+
+
+@pytest.mark.asyncio
+async def test_planner_recovers_from_markdown_wrapped_plan():
+    tools = [_tool("list_events"), _tool("get_logs")]
+
+    class FakeLLM:
+        async def ainvoke(self, messages, config=None):
+            return AIMessage(
+                content=(
+                    "Here is the plan:\n"
+                    "```json\n"
+                    '{"goal":"排查 Unhealthy","steps":[{"objective":"查事件","tools":["list_events","get_logs"]}]}\n'
+                    "```\n"
+                )
+            )
+
+    plan = await ToolExecutionPlanner(FakeLLM()).plan("Unhealthy startup probe", tools)
+    assert plan.goal == "排查 Unhealthy"
+    assert plan.steps[0].tools == ["list_events", "get_logs"]
+
+
+@pytest.mark.asyncio
+async def test_planner_retries_when_model_claims_empty_message():
+    tools = [_tool("list_events"), _tool("get_logs")]
+    calls = []
+
+    class FakeLLM:
+        async def ainvoke(self, messages, config=None):
+            calls.append(messages)
+            if len(calls) == 1:
+                return AIMessage(content="It looks like your message came through empty! How can I help you today?")
+            return AIMessage(content='{"goal":"排查探针失败","steps":[{"objective":"查事件","tools":["list_events","get_logs"]}]}')
+
+    plan = await ToolExecutionPlanner(FakeLLM()).plan(
+        "告警：Unhealthy startup probe failed connection refused",
+        tools,
+    )
+    assert len(calls) == 2
+    assert plan.goal == "排查探针失败"
+    assert plan.steps[0].tools == ["list_events", "get_logs"]
+    # 重试应把指令与任务合并到单条 user，降低空消息误判
+    assert len(calls[1]) == 1
+    assert "告警：Unhealthy" in str(calls[1][0].content)
+    assert "只输出一个 JSON 对象" in str(calls[1][0].content)
+
+
+@pytest.mark.asyncio
+async def test_planner_catalog_respects_char_budget():
+    tools = [_tool(f"tool_{i}", "很长的工具描述" * 40) for i in range(40)]
+
+    class FakeLLM:
+        def __init__(self):
+            self.messages = None
+
+        async def ainvoke(self, messages, config=None):
+            self.messages = messages
+            return AIMessage(content='{"goal":"g","steps":[{"objective":"o","tools":["tool_0"]}]}')
+
+    llm = FakeLLM()
+    planner = ToolExecutionPlanner(llm, catalog_description_limit=48, catalog_char_budget=800)
+    await planner.plan("查一下", tools)
+    catalog = "\n".join(str(message.content) for message in llm.messages)
+    # 预算内不应接近旧版 61 工具 × 120 字那种近万字符目录
+    assert "紧凑工具目录" in catalog
+    assert catalog.count("- tool_") == 40
+    assert len(catalog) < 2500
+
+
+def test_is_context_size_error_detects_provider_messages():
+    from apps.opspilot.metis.llm.agent.tool_execution_planner import is_context_size_error
+
+    assert is_context_size_error("BadRequestError: request (9132 tokens) exceeds the available context size (8192 tokens)")
+    assert is_context_size_error({"error": {"type": "exceed_context_size_error"}})
+    assert not is_context_size_error("connection refused")
+
+
 def test_token_usage_middleware_records_each_model_call_and_visible_tools():
     accumulator = TokenUsageAccumulator()
     middleware = TokenUsageTrackingMiddleware(accumulator)

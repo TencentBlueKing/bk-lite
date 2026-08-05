@@ -125,9 +125,10 @@ def test_build_record_inputs_include_source_trace(monkeypatch):
 
 
 @pytest.mark.django_db
-def test_rebuilding_material_after_partial_page_delete_does_not_duplicate_existing_pages():
+def test_rebuilding_material_after_logical_archive_reuses_existing_page_identity(api_client, monkeypatch):
     from apps.opspilot.models import KnowledgePage, Material, PageEvidence, PageVersion, WikiKnowledgeBase
     from apps.opspilot.services.wiki import build_service
+    from apps.opspilot.viewsets import wiki_page_view
 
     kb = WikiKnowledgeBase.objects.create(name="kb", team=[1], purpose_md="# P", schema_md="# S")
     material = Material.objects.create(knowledge_base=kb, name="m", material_type="text", text_content="t")
@@ -138,10 +139,25 @@ def test_rebuilding_material_after_partial_page_delete_does_not_duplicate_existi
     ):
         first_record = build_service.build_from_material(material, llm_model_id=1)
 
+    monkeypatch.setattr(
+        wiki_page_view,
+        "cascade",
+        lambda knowledge_base, page_ids, event, **kwargs: {
+            "status": "success",
+            "event": event,
+            "affected_page_ids": list(page_ids),
+            "stages": {},
+        },
+    )
+
     deleted_page = KnowledgePage.objects.get(knowledge_base=kb, title="重启服务")
+    deleted_page_id = deleted_page.id
     kept_page = KnowledgePage.objects.get(knowledge_base=kb, title="如何重启")
     kept_page_id = kept_page.id
-    deleted_page.delete()
+    response = api_client.delete(f"/api/v1/opspilot/wiki_mgmt/page/{deleted_page.id}/")
+    assert response.status_code == 200, response.content
+    deleted_page.refresh_from_db()
+    assert deleted_page.status == "archived"
 
     with (
         patch.object(build_service, "_llm_extract_facts", return_value="facts"),
@@ -150,8 +166,8 @@ def test_rebuilding_material_after_partial_page_delete_does_not_duplicate_existi
         second_record = build_service.build_from_material(material, llm_model_id=1)
 
     assert first_record.counts["new"] == 2
-    assert second_record.counts == {"new": 1, "updated": 0, "unchanged": 1, "pending_review": 0}
-    assert KnowledgePage.objects.filter(knowledge_base=kb, title="重启服务").count() == 1
+    assert second_record.counts == {"new": 0, "updated": 1, "unchanged": 1, "pending_review": 0}
+    assert KnowledgePage.objects.get(knowledge_base=kb, title="重启服务").id == deleted_page_id
     assert KnowledgePage.objects.filter(knowledge_base=kb, title="如何重启").count() == 1
     assert KnowledgePage.objects.get(knowledge_base=kb, title="如何重启").id == kept_page_id
     assert PageVersion.objects.filter(page_id=kept_page_id).count() == 1
@@ -391,6 +407,40 @@ def test_parse_pages_handles_code_fence_and_missing_json_object():
     assert build_service._parse_pages("no json here") == []
 
 
+def test_parse_pages_tolerates_deepseek_style_wrappers():
+    from apps.opspilot.services.wiki import build_service
+
+    with_think = "<think>先规划再输出</think>\n" "下面是结果：\n" '```json\n{"pages":[{"page_type":"concept","title":"配置平台","body":"定义"}]}\n```'
+    assert build_service._parse_pages(with_think)[0]["title"] == "配置平台"
+
+    fullwidth = '｛"pages":［｛"page_type":"entity","title":"作业平台","body":"能力"｝］｝'
+    assert build_service._parse_pages(fullwidth)[0]["title"] == "作业平台"
+
+    bare_array = '[{"page_type":"concept","title":"节点管理","body":"说明"}]'
+    assert build_service._parse_pages(bare_array)[0]["title"] == "节点管理"
+
+    noisy_fences = "```\nnot json\n```\n" '最终 JSON：\n```json\n{"pages":[{"page_type":"concept","title":"监控","body":"指标"}]}\n```'
+    assert build_service._parse_pages(noisy_fences)[0]["title"] == "监控"
+
+
+def test_bounded_generation_prompt_includes_json_only_rules():
+    from types import SimpleNamespace
+
+    from apps.opspilot.services.wiki import build_service
+
+    prompt = build_service._bounded_generation_prompt(
+        SimpleNamespace(purpose_md="目的"),
+        "资料正文",
+        structure_revision=SimpleNamespace(structure_snapshot={"page_types": ["concept"], "directories": []}),
+        classification_root_id=None,
+        source_metadata={"source_title": "资料A"},
+    )
+    assert "第一个非空白字符必须是 {" in prompt
+    assert "不要用 ``` 代码块包裹" in prompt
+    assert "Fixed Structure Schema" in prompt
+    assert "资料正文" in prompt
+
+
 def test_wiki_llm_invocation_uses_wiki_timeout(monkeypatch):
     from apps.opspilot.services.wiki import build_service
 
@@ -398,10 +448,13 @@ def test_wiki_llm_invocation_uses_wiki_timeout(monkeypatch):
         openai_api_base = "https://api.openai.com"
         openai_api_key = "sk-key"
         model_name = "wiki-model"
+        protocol_type = "openai"
+        vendor_id = None
 
     captured = {}
 
     monkeypatch.setenv("WIKI_LLM_INVOKE_TIMEOUT", "240")
+    monkeypatch.setattr(build_service.LLMModel.objects, "select_related", lambda *args: build_service.LLMModel.objects)
     monkeypatch.setattr(build_service.LLMModel.objects, "get", lambda id: FakeModel())
 
     def fake_invoke(request, messages):
@@ -412,6 +465,142 @@ def test_wiki_llm_invocation_uses_wiki_timeout(monkeypatch):
 
     assert build_service._invoke_llm(1, "prompt") == "ok"
     assert captured["request"].extra_config["timeout"] == 240.0
+    assert captured["request"].protocol_type == "openai"
+    assert captured["request"].temperature == build_service._WIKI_LLM_TEMPERATURE
+    assert "response_format" not in (captured["request"].extra_config or {})
+
+    assert build_service._invoke_llm(1, "prompt", force_json=True) == "ok"
+    assert captured["request"].extra_config["response_format"] == {"type": "json_object"}
+
+
+def test_finalize_coerces_missing_page_type_and_promotes_source_only_output():
+    from types import SimpleNamespace
+
+    from apps.opspilot.services.wiki import build_service
+
+    kb = SimpleNamespace(id=1)
+    structure_revision = SimpleNamespace(structure_snapshot={"page_types": ["source", "concept"], "directories": []})
+
+    coerced = build_service._finalize_material_pages(
+        [
+            {"title": "配置平台", "body": "配置平台负责资源模型与实例管理。"},
+            {
+                "page_type": "source",
+                "title": "资料A",
+                "body": "本资料介绍配置平台与作业平台的职责边界。",
+            },
+        ],
+        kb=kb,
+        structure_revision=structure_revision,
+        source_metadata={"source_title": "资料A", "display_name": "资料A"},
+    )
+    assert any(page["page_type"] == "concept" and page["title"] == "配置平台" for page in coerced)
+    assert any(page["page_type"] == "source" for page in coerced)
+
+    promoted = build_service._finalize_material_pages(
+        [
+            {
+                "page_type": "source",
+                "title": "资料A",
+                "body": "这是足够长的来源正文，用于在缺少主题页时提升为概念页，避免整次构建失败。",
+            }
+        ],
+        kb=kb,
+        structure_revision=structure_revision,
+        source_metadata={"source_title": "资料A", "display_name": "资料A"},
+    )
+    assert any(page["page_type"] == "concept" for page in promoted)
+    assert any(page["page_type"] == "source" for page in promoted)
+
+
+def test_generate_and_finalize_pages_retries_once_on_empty_topic_pages(monkeypatch):
+    from types import SimpleNamespace
+
+    from apps.opspilot.services.wiki import build_service
+
+    calls = []
+
+    def fake_invoke(_model_id, prompt, *, budget=None, stage="wiki_llm", output_reserve=1500, force_json=False):
+        calls.append({"stage": stage, "force_json": force_json, "prompt": prompt})
+        if stage == "material_generate":
+            return '{"pages":[{"page_type":"source","title":"资料A","body":"仅来源"}]}'
+        return '{"pages":[' '{"page_type":"source","title":"资料A","body":"来源页"},' '{"page_type":"concept","title":"主题A","body":"主题正文"}' "]}"
+
+    monkeypatch.setattr(build_service, "_invoke_llm", fake_invoke)
+    kb = SimpleNamespace(purpose_md="")
+    structure_revision = SimpleNamespace(
+        structure_snapshot={
+            "page_types": ["source", "concept"],
+            "directories": [],
+        }
+    )
+    pages = build_service._generate_and_finalize_pages(
+        llm_model_id=1,
+        prompt="base prompt",
+        budget=None,
+        stage="material_generate",
+        output_reserve=1000,
+        kb=kb,
+        structure_revision=structure_revision,
+        source_metadata={"source_title": "资料A", "display_name": "资料A"},
+    )
+
+    assert [item["stage"] for item in calls] == ["material_generate", "material_generate_retry_2"]
+    assert all(item["force_json"] for item in calls)
+    assert "Previous output rejected" in calls[1]["prompt"]
+    assert {page["page_type"] for page in pages} >= {"source", "concept"}
+
+
+def test_isolated_openai_falls_back_when_response_format_unsupported(monkeypatch):
+    from types import SimpleNamespace
+
+    from apps.opspilot.metis.llm.chain.entity import BasicLLMRequest
+    from apps.opspilot.metis.llm.common import llm_client_factory as factory
+
+    class FakeCompletions:
+        def __init__(self):
+            self.calls = []
+
+        def create(self, **kwargs):
+            self.calls.append(kwargs)
+            if "response_format" in kwargs:
+                raise RuntimeError("Unsupported parameter: 'response_format'")
+            return SimpleNamespace(
+                usage=SimpleNamespace(prompt_tokens=1, completion_tokens=2),
+                choices=[
+                    SimpleNamespace(
+                        finish_reason="stop",
+                        message=SimpleNamespace(content='{"pages":[]}', refusal=None),
+                    )
+                ],
+            )
+
+    class FakeClient:
+        def __init__(self):
+            self.chat = SimpleNamespace(completions=FakeCompletions())
+
+    fake_client = FakeClient()
+    monkeypatch.setattr(factory.LLMClientFactory, "_create_isolated_openai_client", lambda request: fake_client)
+
+    request = BasicLLMRequest(
+        openai_api_base="https://api.openai.com",
+        openai_api_key="sk",
+        model="deepseek-chat",
+        temperature=0,
+        user_message="hi",
+        max_output_tokens=100,
+        protocol_type="openai",
+        extra_config={"response_format": {"type": "json_object"}},
+    )
+    text = factory.LLMClientFactory._invoke_isolated_openai(
+        request,
+        [{"role": "user", "content": "hi"}],
+    )
+
+    assert text == '{"pages":[]}'
+    assert len(fake_client.chat.completions.calls) == 2
+    assert "response_format" in fake_client.chat.completions.calls[0]
+    assert "response_format" not in fake_client.chat.completions.calls[1]
 
 
 def test_wiki_llm_invocation_falls_back_on_invalid_timeout_and_errors(monkeypatch):
@@ -425,9 +614,75 @@ def test_wiki_llm_invocation_falls_back_on_invalid_timeout_and_errors(monkeypatc
     def raise_model_error(id):
         raise RuntimeError("boom")
 
+    monkeypatch.setattr(build_service.LLMModel.objects, "select_related", lambda *args: build_service.LLMModel.objects)
     monkeypatch.setattr(build_service.LLMModel.objects, "get", raise_model_error)
 
     assert build_service._invoke_llm(1, "prompt") == ""
+
+
+def test_budgeted_wiki_llm_raises_on_empty_output(monkeypatch):
+    from apps.opspilot.services.wiki import build_service
+    from apps.opspilot.services.wiki.wiki_budget_service import LLMCallBudget
+
+    class FakeModel:
+        openai_api_base = "https://api.openai.com"
+        openai_api_key = "sk-key"
+        model_name = "wiki-model"
+        protocol_type = "openai"
+        vendor_id = None
+
+    monkeypatch.setattr(build_service.LLMModel.objects, "select_related", lambda *args: build_service.LLMModel.objects)
+    monkeypatch.setattr(build_service.LLMModel.objects, "get", lambda id: FakeModel())
+
+    def fake_invoke(request, messages):
+        request.extra_config = {
+            **(request.extra_config or {}),
+            "_isolated_finish_reason": "stop",
+            "_isolated_usage": {"prompt_tokens": 12, "completion_tokens": 0},
+        }
+        return ""
+
+    monkeypatch.setattr(build_service.LLMClientFactory, "invoke_isolated", fake_invoke)
+    budget = LLMCallBudget(max_calls=2, max_total_tokens=60000, scope="wiki_material:empty")
+
+    with pytest.raises(build_service.BuildOutputInvalid) as exc:
+        build_service._invoke_llm(
+            1,
+            "prompt",
+            budget=budget,
+            stage="material_generate",
+            output_reserve=6000,
+        )
+
+    assert "build_output_empty_llm" in str(exc.value)
+    assert "material_generate" in str(exc.value)
+
+
+def test_budgeted_wiki_llm_raises_on_provider_error(monkeypatch):
+    from apps.opspilot.services.wiki import build_service
+    from apps.opspilot.services.wiki.wiki_budget_service import LLMCallBudget
+
+    class FakeModel:
+        openai_api_base = "https://api.openai.com"
+        openai_api_key = "sk-key"
+        model_name = "wiki-model"
+        protocol_type = "openai"
+        vendor_id = None
+
+    monkeypatch.setattr(build_service.LLMModel.objects, "select_related", lambda *args: build_service.LLMModel.objects)
+    monkeypatch.setattr(build_service.LLMModel.objects, "get", lambda id: FakeModel())
+    monkeypatch.setattr(
+        build_service.LLMClientFactory,
+        "invoke_isolated",
+        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("provider down")),
+    )
+    budget = LLMCallBudget(max_calls=2, max_total_tokens=60000, scope="wiki_material:error")
+
+    with pytest.raises(build_service.BuildOutputInvalid) as exc:
+        build_service._invoke_llm(1, "prompt", budget=budget, stage="material_generate")
+
+    assert "build_output_llm_error" in str(exc.value)
+    assert "provider down" in str(exc.value)
 
 
 @pytest.mark.django_db

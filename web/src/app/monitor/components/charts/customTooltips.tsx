@@ -64,8 +64,8 @@ const CustomTooltip: React.FC<CustomToolTipProps> = ({
   if (active && payload?.length && visible) {
     // 对payload进行排序
     const sortedPayload = [...payload].sort((a, b) => {
-      const valueA = getEnumValue(metric as MetricItem, a.value);
-      const valueB = getEnumValue(metric as MetricItem, b.value);
+      const valueA = Number(getEnumValue(metric as MetricItem, a.value));
+      const valueB = Number(getEnumValue(metric as MetricItem, b.value));
       return valueB - valueA; // 从大到小排序
     });
 

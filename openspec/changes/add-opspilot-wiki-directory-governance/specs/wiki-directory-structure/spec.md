@@ -1,14 +1,14 @@
 ## ADDED Requirements
 
-### Requirement: 结构化目录配置是机器真相
-系统 MUST 使用结构化目录配置的完整快照驱动目录树、页面归类和构建校验；`schema_md` MUST 仅作为用途说明与生成规则上下文，不能覆盖结构化配置中的目录身份、父子关系、顺序或状态。
+### Requirement: 结构化 Schema 是唯一机器真相
+系统 MUST 只向管理员提供一份位于「用途与结构」中的结构化 Schema，并使用其完整快照驱动目录树、页面归类和构建校验。`WikiStructureRevision` MUST 冻结该 Schema，`WikiDirectory` MUST 仅作为稳定目录身份、查询与页面外键所需的运行时投影；系统 MUST NOT 再提供一套可独立修改的目录结构配置。
 
-#### Scenario: 保存合法结构
+#### Scenario: 保存合法 Schema
 - **WHEN** 有知识库管理权限的用户提交完整结构快照、当前 `structure_version` 与 `base_generation_id`
 - **THEN** 系统 MUST 自动完成确定性校验、创建不可变 revision 与基于当前知识快照的轻量 governance generation，并原子激活相互绑定的 structure revision 和 generation
 - **AND** 保存流程 MUST 不创建草稿、审批或人工验证步骤
 
-#### Scenario: 保存非法结构
+#### Scenario: 保存非法 Schema
 - **WHEN** 提交的结构包含重复 key、跨知识库父节点、循环、超过最大深度、重复同级名称或非法系统目录变更
 - **THEN** 系统 MUST 整体拒绝保存并返回可定位到节点的错误
 - **AND** 当前 active revision 与目录树 MUST 保持不变
@@ -46,7 +46,7 @@
 系统 MUST 为每个知识库创建且仅创建一个系统“待归类”目录。该目录 MUST 可接收页面，但不能被重命名、移动、排序到普通目录内部、合并、退役或删除。
 
 #### Scenario: 初始化知识库
-- **WHEN** 新知识库创建或存量知识库执行目录 bootstrap
+- **WHEN** 新知识库在创建事务中完成目录 bootstrap
 - **THEN** 系统 MUST 幂等创建系统待归类目录并将其纳入结构读取结果
 
 #### Scenario: 修改系统目录

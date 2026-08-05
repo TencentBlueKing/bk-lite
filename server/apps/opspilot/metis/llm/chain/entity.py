@@ -371,6 +371,8 @@ class BasicLLMResponse(BaseModel):
     completion_tokens: int = 0
     llm_call_count: int = 0
     token_usage_calls: List[Dict[str, Any]] = Field(default_factory=list)
+    finish_reason: Optional[str] = None
+    output_truncated: bool = False
     browser_steps: List[str] = []  # browser_use 步骤信息，格式: ["step1 xxx", "step2 xxx", ..., "最终结果: xxx"]
 
 
@@ -403,6 +405,7 @@ class BasicLLMRequest(BaseModel):
     enable_suggest: bool = False
     enable_query_rewrite: bool = False
     temperature: float = 0.7
+    max_output_tokens: int = Field(default=0, description="单次输出 token 上限（0=provider 默认）")
 
     user_message: str = ""
 
@@ -430,6 +433,7 @@ class BasicLLMRequest(BaseModel):
 
     # stopWhen 灵活停止配置
     max_steps: int = Field(default=50, description="最大步数限制（0=不限制，由 recursion_limit 兜底）")
+    max_model_calls: int = Field(default=0, description="单次请求模型调用硬上限（0=不限制）")
     max_tokens_budget: int = Field(default=0, description="累计 token 预算上限（0=不限制）")
     soft_budget_ratio: float = Field(default=0.8, description="软预算比例（0-1），达到时注入 wrap-up 提示；1.0=禁用软预算")
     stop_when_conditions: List[Any] = Field(default_factory=list, description="自定义停止条件列表", exclude=True)

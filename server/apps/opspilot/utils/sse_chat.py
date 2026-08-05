@@ -8,9 +8,11 @@ from django.http import StreamingHttpResponse
 from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.models import LLMModel
 from apps.opspilot.services.chat_service import chat_service
+from apps.opspilot.services.wiki.active_generation_query_service import ActiveGenerationReadError
+from apps.opspilot.services.wiki.wiki_budget_service import WikiBudgetExceeded
+from apps.opspilot.utils import stream_common
 from apps.opspilot.utils.agent_factory import create_agent_instance, create_sse_response_headers, normalize_llm_error_message
 from apps.opspilot.utils.bot_utils import insert_skill_log
-from apps.opspilot.utils import stream_common
 
 
 def create_error_stream_response(error_message):
@@ -274,9 +276,19 @@ def create_stream_generator(params, skill_name, kwargs, current_ip, user_message
                     # 发送流式数据
                     yield chunk
 
+        except (WikiBudgetExceeded, ActiveGenerationReadError) as e:
+            logger.warning(
+                "Wiki stream request rejected: code=%s details=%s",
+                e.code,
+                e.details,
+            )
+            error_chunk = _create_error_chunk(str(e), skill_name)
+            error_chunk["error_code"] = e.code
+            error_chunk["error_details"] = e.details
+            yield f"data: {json.dumps(error_chunk, ensure_ascii=False)}\n\n"
         except Exception as e:
             logger.error(f"Stream chat error: {e}", exc_info=True)
             error_chunk = _create_error_chunk(f"聊天错误: {str(e)}", skill_name)
-            yield f"data: {json.dumps(error_chunk)}\n\n"
+            yield f"data: {json.dumps(error_chunk, ensure_ascii=False)}\n\n"
 
     return generate_stream()

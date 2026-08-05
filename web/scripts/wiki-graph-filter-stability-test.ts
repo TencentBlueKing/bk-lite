@@ -21,6 +21,8 @@ const expectations: Array<[string, RegExp, string]> = [
   ['explorer', /edges=\{graph\.edges\}/, 'GraphExplorer should pass the full edge set to GraphCanvas.'],
   ['explorer', /visibleNodeIds=\{shownNodeIds\}/, 'GraphExplorer should pass filtered visibility separately.'],
   ['explorer', /visibleEdgeIds=\{shownEdgeIds\}/, 'GraphExplorer should pass filtered edge visibility separately.'],
+  ['explorer', /selectedCommunity/, 'GraphExplorer should support community selection state.'],
+  ['explorer', /toggleCommunityFilter/, 'GraphExplorer should allow clicking community legend items to filter.'],
 ];
 
 const sourceByName: Record<string, string> = { canvas, explorer };

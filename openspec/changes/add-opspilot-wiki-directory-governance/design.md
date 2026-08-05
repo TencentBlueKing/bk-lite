@@ -21,7 +21,7 @@ OpsPilot Wiki 已有知识库、资料、页面、页面版本、证据、关系
 
 - Django ORM 必须保持仓库当前数据库兼容性，避免方言专属 JSON 查询或条件唯一约束。
 - 页面标题在单个知识库内全局唯一，目录不是页面身份。
-- 结构化目录配置是机器真相；`schema_md` 是说明和生成上下文。
+- 「用途与结构」中的结构化 Schema 是唯一管理员配置与机器真相；`WikiDirectory` 是其查询和页面外键投影，不再存在可独立编辑的第二套目录配置。
 - 知识库构建通常由管理员发起，不增加结构审批、构建审批或目录 ACL。
 - 本阶段不新增向量生成、检索、重建、权重和 UI。
 - 开发在 `.claude/worktrees/opspilot-wiki-hierarchy` 的 `codex/opspilot-wiki-hierarchy` 分支进行，本地数据库默认名为 `opspilot`。
@@ -35,7 +35,7 @@ OpsPilot Wiki 已有知识库、资料、页面、页面版本、证据、关系
 - 保留页面稳定 ID、版本链和人工目录选择，并在结构变化后安全重归类 auto 页面。
 - 使页面集合、当前版本、目录、关键词消费面和关系图谱通过 generation 一致切换。
 - 提供目录 CRUD、排序、合并、退役、页面移动、待归类和恢复自动归类的完整前后端链路。
-- 分阶段迁移存量知识，支持灰度、回退、浏览器真实点击验证和可观测性。
+- 从空数据库建立完整约束，支持 Generation 回退、浏览器真实点击验证和可观测性。
 
 **Non-Goals:**
 
@@ -56,16 +56,15 @@ OpsPilot Wiki 已有知识库、资料、页面、页面版本、证据、关系
 | 当前目录树 | `active_structure_revision.structure_snapshot`，`WikiDirectory` 是该 revision 的活动查询投影 | 展示路径缓存 |
 | 当前知识集合 | `active_generation` 的完整 `WikiGenerationPage` 成员、PageVersion、目录/模式/状态/元数据快照 | `KnowledgePage.current_version/status/directory/assignment_mode` 仅为旧路径兼容镜像 |
 | 正文 | 不可变 `PageVersion` | Markdown 渲染缓存 |
-| WikiLink/关系/关键词/图谱 | 从 active generation 的 PageVersion 派生且按 generation 隔离的结果 | 旧无 generation 数据仅在 legacy 模式读取 |
+| WikiLink/关系/关键词/图谱 | 从 active generation 的 PageVersion 派生且按 generation 隔离的结果 | 可重建缓存 |
 | 历史与解释 | 不可变 structure revision、generation、BuildRecord、PageDirectoryChange | 日志/指标 |
 
 目录能力达到 `ready` 后，任何页面、目录或结构写入都不能直接修改上述 active 快照。人工创建、改名、移动、恢复 auto、正文编辑、逻辑归档和结构保存均创建一个以当前 `active_generation` 为 base 的轻量 governance generation；结构保存同时产生新 revision。激活时在知识库行锁内执行 base generation CAS，结构写还复验 base structure revision，成功后原子切换相互兼容的 active 指针。
 
 因此已激活 generation 和 revision 永远不可变；两个构建、人工变更与构建、结构保存与构建之间的胜负规则统一为“第一个成功 CAS 的候选获胜，其他候选 superseded/rebase”。历史 breadcrumb 由 generation 固定的 structure revision 与成员目录显示快照恢复，不依赖后来被重命名的活动投影。
 
-legacy/ready 期间旧平面 UI 可以读取兼容镜像，但 baseline 完成后所有写入口已进入 generation-aware 服务。只有 `directory_migration_state=legacy` 且尚未开始 backfill 的知识库允许旧写路径。
 
-### 1. 结构配置快照与规范化目录表共同组成机器真相
+### 1. 结构化 Schema 快照是机器真相，规范化目录表是运行时投影
 
 新增以下领域模型：
 
@@ -86,15 +85,16 @@ legacy/ready 期间旧平面 UI 可以读取兼容镜像，但 baseline 完成�
   - `merged_into`
 - `PageDirectoryChange`
   - 页面、前后目录、前后模式、结构 revision、来源、操作者和说明
-- `WikiKnowledgeBase.active_structure_revision`、`active_generation`、`directory_enabled` 与 `directory_migration_state=legacy|backfilling|ready|enabled`；API 暴露的 `structure_version` 直接取 active revision 的单调 `revision_no`，不维护第二个可写版本源
+- `WikiKnowledgeBase.active_structure_revision`、`active_generation` 与 `directory_enabled`；API 暴露的 `structure_version` 直接取 active revision 的单调 `revision_no`，不维护第二个可写版本源
 
-revision 的 JSON 快照用于审计、构建固定和完整恢复；`WikiDirectory` 是活动查询、FK、树读取和约束的规范化投影。两者必须在同一保存事务中一致更新。
+管理员只在「用途与结构」中编辑一份结构化 Schema；revision 的 JSON 快照用于审计、构建固定和完整恢复，`WikiDirectory` 仅是活动查询、FK、树读取和约束的规范化投影。快照与投影必须在同一保存事务中一致更新，系统不得再暴露另一套独立目录设置。
 
 推荐结构快照格式：
 
 ```json
 {
   "format_version": 1,
+  "page_types": ["concept", "procedure", "faq"],
   "directories": [
     {
       "key": "dir_opaque_key",
@@ -111,6 +111,8 @@ revision 的 JSON 快照用于审计、构建固定和完整恢复；`WikiDirect
   ]
 }
 ```
+
+`page_types` 是该 revision 冻结的合法类型域，目录 `allowed_page_types/default_for_page_types` 只能引用其中的值。构建、导入、重建和回退必须读取同一快照，不能从目录规则并集反推类型域，也不能在运行中读取知识库上的另一份自由 Schema 文本。
 
 已有节点由 UI 隐藏回传服务端先前提供的只读 ID/key，后端校验它们与存量节点匹配且未被替换；新节点只提交前端 `client_ref`，后端生成 ID/key 并返回映射。用户和 LLM 都不能随意声明新的稳定 key。系统待归类使用保留 key，但数据库 ID 仍由系统生成。
 
@@ -149,17 +151,23 @@ directory_assignment_mode -> auto | manual
 
 ### 4. 标题是知识库内全局页面身份，目录与 page type 不是 identity
 
-数据库最终增加 `(knowledge_base, title)` 普通唯一约束；统一算法对输入执行 Unicode NFKC、首尾 trim、连续 Unicode 空白折叠，并用 casefold 值比较，持久化标题保留清理后的展示大小写。所有 readiness/写入口在知识库行锁内执行相同算法，数据库唯一约束作为最终并发后盾。归档、pending、source-invalid 和 staging 页面都占用标题身份。
+数据库最终增加 `(knowledge_base, title)` 普通唯一约束；统一算法对输入执行 Unicode NFKC、首尾 trim、连续 Unicode 空白折叠，并用 casefold 值比较，持久化标题保留清理后的展示大小写。所有页面写入口在知识库行锁内执行相同算法，数据库唯一约束作为最终并发后盾。归档、pending、source-invalid 和 staging 页面都占用标题身份。
 
 构建、导入和人工创建按同一规则处理：
 
 - 命中活动页面：复用 ID。
 - 命中唯一归档页面：恢复并复用 ID。
 - 未命中：创建 staging/新页面。
-- 存量重复或身份歧义：阻止该 KB 启用或 generation 激活，不自动改名/合并。
+- 并发重复或身份歧义：阻止 generation 激活，不自动改名或合并。
 - 与已有标题冲突的正文候选：保存到已有页面的候选 `PageVersion/CheckItem`，不创建重复页面。
 
 `page_type` 继续影响内容规则和默认目录，但不参与全局标题唯一键，也不作为目录身份。
+
+身份冲突开放记录的幂等键固定为“知识库 ID + 已由统一标题服务产生的规范标题键”。候选 adapter 只接收经过校验的 `IdentityConflictKey`；`page_type` 不进入该持久化边界，只能作为 BuildRecord 等外部诊断上下文。adapter 不得自行静默规范化标题，也不得复用仍包含 page type 的旧决策回放签名。
+
+正文冲突开放记录的幂等键固定为 `BodyConflictKey v1 = knowledge_base_id + page_id + locked_current_version_id + content_contract_fingerprint + sorted_unique(material_id, content_hash)`。`content_contract_fingerprint` 覆盖固定 structure revision 和实际影响正文生成的内容规则；键以版本化 canonical JSON 计算 SHA-256。候选正文/hash、build/generation、reason/operator、page type、目录、归类建议、confidence、locator、参与者顺序、当前/新增资料角色和 candidate version ID 都不进入键。同一 digest 且仍 open 时，adapter 必须在创建 PageVersion 前返回被冻结的既有候选；当前版本、内容契约或来源内容任一变化时产生新 digest，旧 open 项走既有过期生命周期。
+
+`llm_wiki@9b71ade` 的 review store 使用 `type + normalized title` 生成稳定 ID，并排除可变 `sourcePath`，证明“内容派生稳定键排除运行路径”的方向；但它没有 OpsPilot 的 locked current version、完整来源集、内容契约、非当前候选版本与 open CheckItem 生命周期，因此不能复制其过粗键。
 
 页面改名保留页面 ID，并通过轻量 governance generation 发布新标题及重新派生的 WikiLink/关系；v1 不保留旧标题 alias，执行前必须提示旧标题引用影响。
 
@@ -188,11 +196,23 @@ directory_assignment_mode -> auto | manual
 4. 允许接收页面的 classification root；
 5. 系统待归类。
 
-结构保存校验同一有效范围内每个 page type 最多一个默认目录。classification root 只限制 auto 候选；越界默认被忽略。当前 LLM 输出 merged/retired key 视为非法建议，而原生导入、历史链接和审计读取可以跟随持久 redirect 并记录重定向。
+结构保存校验目录规则只引用 revision 的 `page_types` 域，且同一有效范围内每个 page type 最多一个默认目录。空白或未知 page type 记录 schema mismatch：manual 页面保留人工目录，auto 页面跳过 LLM key、类型默认和 root，进入待归类。classification root 只限制 auto 候选；越界默认被忽略。当前 LLM 输出 merged/retired key 视为非法建议，而原生导入、历史链接和审计读取可以跟随持久 redirect 并记录重定向。
+
+持久 merged redirect 的结构有效性与当前路由上下文必须分开判断：缺失目标、循环、跨知识库、非活动目标或目标不接收页面属于结构损坏，必须失败关闭；活动目标仅因当前 classification root 越界或 `page_type` 规则不符而不可用时，记录 `out_of_scope_key`/`schema_mismatch` 后执行确定性 fallback。
 
 confidence 只用于构建追踪，不是页面事实，也不触发审批。未知、退役、当前 LLM 返回的 merged、跨知识库、越过 classification root 或违反硬规则的 key 不自动建目录、不丢弃页面，继续 fallback。
 
 **对照 `llm_wiki`：** 保留其“Schema 注入提示 + 写前确定性验证”，但把 FILE path 改为稳定 key，并把 mismatch 的结果从“丢页”改为“确定性 fallback + 追踪”。
+
+### 5.1 通用知识页采用稳定主题类型，Index/Overview 保持系统派生
+
+通用模板默认提供 `entity`、`concept`、`source`、`query`、`comparison` 与 `synthesis` 六类目录。解析分块仅作为证据边界，最终页面按稳定主题组织：具名对象成为实体，架构/机制/依赖成为概念，每份资料形成且只形成一个来源摘要；query 只接收资料明确留下的问题，comparison 只接收具有共同维度的事实对比，synthesis 只接收证据充分的跨主题或多来源结论。后面三类允许为空，系统不得为了填满目录而虚构页面。
+
+`index.md`、根/目录 Overview 和日志继续由同一 Generation 的结构化导航数据派生，普通知识生成不得输出 `index`、`overview` 或 `log` 页面。来源摘要通过 `PageEvidence.material` 绑定资料身份；同一资料重建优先复用既有 source 页面标题和页面 ID，不以文件路径作为身份。不同资料的 source 候选只允许精确标题/别名匹配，不参与宽泛正文相似冲突比较，避免无意义 LLM 消耗。
+
+单资料生成仍只使用一次最终页面生成请求；长资料可先执行有界 Map/Reduce，但不得按 Chunk 机械建页。模型漏掉 source 页时，服务端从本次已生成主题确定性补一份来源导航；整个文件未生成任何有效页面、页面正文为空或 JSON 无效时，必须把该文件构建标记失败，不得出现“解析完成但知识未构建却报告成功”。每个文件独立记录解析、生成、候选发布和激活结果。
+
+**对照 `llm_wiki@9b71ade`：** 借鉴 entity/concept/source/query/comparison/synthesis 的页面粒度、类型正文骨架和“不为填目录造页”；保留 OpsPilot 的稳定页面 ID、精确 PageEvidence、Generation 原子发布和确定性 fallback。本次实物核查还发现示例项目中的 PDF 只有解析缓存而没有知识页，因此 OpsPilot 额外要求逐文件构建终态与零页面失败保护。
 
 ### 6. 人工移动形成 manual lock，目录治理不修改正文
 
@@ -221,7 +241,7 @@ confidence 只用于构建追踪，不是页面事实，也不触发审批。未
 - `PageRelation.generation`
 - `WikiKnowledgeBase.active_generation`
 
-所有历史引用 FK 使用保护性删除语义：`KnowledgePage.directory` 与 generation member/version/directory、`PageRelation.generation` 不得因 CASCADE 破坏保留快照。旧 PageRelation 唯一约束先 expand 为 generation-aware 唯一键，回填 baseline 关系后再移除旧约束。
+所有历史引用 FK 使用保护性删除语义：`KnowledgePage.directory` 与 generation member/version/directory、`PageRelation.generation` 不得因 CASCADE 破坏保留快照。最终重新生成的 migration 直接创建 generation-aware `PageRelation` 唯一键，不保留旧无 generation 约束或关系回填步骤。
 
 页面身份可以被多个 preparing generation 复用，但每个 generation 拥有独立 PageVersion/成员。失败清理按引用计数执行：只有 active/retained generation、其他 staging version 和候选均不引用时，才能删除纯 staging 页面身份。
 
@@ -312,7 +332,7 @@ manifest 保存格式版本、KB 信息、structure revision/hash、完整树、
 
 导入成功后更新页面版本、目录历史、WikiLink、关系、图谱、计数和关键词消费面，不修改向量。
 
-### 12. 前端采用真实树 + 页面列表，并把结构编辑隔离成模式
+### 12. 前端采用真实树 + 页面列表，并将结构 Schema 收敛到一个设置入口
 
 知识页面布局：
 
@@ -322,28 +342,17 @@ manifest 保存格式版本、KB 信息、structure revision/hash、完整树、
 - URL 保存 directory、子树、分页、搜索和 page type 状态。
 - 页面行展示主目录、page type、auto/manual、来源、冲突和更新时间。
 
-日常树只导航；管理员进入结构编辑模式后才能改树。结构保存提交完整快照、`structure_version` 与 `base_generation_id`。任一结构/base generation 409 冲突时保留本地树、加载服务端最新 revision/generation 并显示差异。
+日常树只导航；管理员在「用途与结构」的结构 Schema 编辑器中改树，系统不再显示独立「目录结构」页签。结构保存提交完整快照、`structure_version` 与 `base_generation_id`。任一结构/base generation 409 冲突时保留本地树、加载服务端最新 revision/generation 并显示差异。
 
-目录树筛选在列表、关键词和图谱间共享。灰度期未就绪 KB 继续使用旧平面列表，不删除目录数据。
+目录树筛选在列表、关键词和图谱间共享。目录界面启用前复验 active Structure Revision、active Generation 和系统待归类一致。
 
 **对照 `llm_wiki`：** 借鉴轻量左侧打开体验；不复制其按 frontmatter type 分组、隐藏空目录、只读 FileTree 和物理文件删除语义。
 
-### 13. 迁移使用 expand/backfill/reconcile/grey/contract
+### 13. 空库重建替代存量迁移与灰度兼容
 
-数据库 schema migration 只做 expand：创建新表、索引、nullable FK 和 active 指针，不调用 LLM、不一次性扫描大表。
+当前数据均为本地测试数据，本变更不实现 expand/backfill/reconcile/grey/contract 状态机。目录、Structure Revision、Generation 以及后续 Index/Overview/预算模型冻结后，保留 0066 及以前 migration，删除其后未发布 migration，清空本地数据库并从最终模型生成连续 migration。
 
-独立可恢复任务完成：
-
-1. 预检查所有状态的重复标题、异常页面和旧 running build。
-2. 在知识库锁内排空旧构建，把 migration state 置为 `backfilling` 并开启可重试写入围栏。
-3. 幂等创建待归类、baseline structure revision 和 baseline generation，分批回填页面/现有关系。
-4. baseline 完成后置为 `ready`；即使仍使用旧平面 UI，全部生产写入口也已走 generation-aware 服务。
-5. 由管理员查看一次结构初始化预览并保存机器真相。
-6. 按固定 revision 自动归类合法结果，歧义留待归类；不逐页审批。
-7. readiness 在知识库锁内复验后按 KB 开启目录 UI/新管线。
-8. 全部 KB 写入口已收敛并完成回填后增加非空、枚举和 `(knowledge_base,title)` 唯一约束。
-
-旧平面读路径保留一个灰度周期。关闭功能开关只切回旧 UI，不降级数据库。结构回滚以旧快照创建新的递增 revision；generation 回退从保留快照创建新的 rollback_of generation，必要时联动新 revision。
+新知识库在创建事务内直接建立系统待归类、首个 Structure Revision 和空 baseline Generation；任何初始化失败都回滚整个知识库创建。标题唯一、目录非空和 Generation 约束在最终 migration 中直接成立，不提供 legacy 双读或写入围栏。
 
 ### 14. 浏览器真实点击与关联 ID 是发布硬门禁
 
@@ -364,11 +373,13 @@ manifest 保存格式版本、KB 信息、structure revision/hash、完整树、
 
 当前仓库没有 Playwright/Cypress E2E 框架；v1 使用浏览器工具完成真实验收，稳定路径后续可以单独 change 固化为 CI E2E。
 
+### 15. Index/Overview 与预算由独立 change 承担
+
+本 change 的完成边界是目录、Structure Revision、Generation、页面归属、原子激活/回退和目录消费面。`add-opspilot-wiki-generation-navigation` 在此基础上增加结构化 Index、根/目录 Overview、查询级联和冲突候选路由；`add-opspilot-wiki-minimal-context-budget` 增加五个系统环境变量、问答与单文件硬上限。两个后续 change 必须复用 active Generation，不得新增 `active_manifest` 或把 Markdown 变成运行时真相。
 ## Risks / Trade-offs
 
 - **[完整 generation 成员快照增加存储]** → 只保留最近成功 generation，候选失败数据及时清理；规模证据表明需要时再引入 copy-on-write，不在 v1 提前复杂化。
 - **[频繁治理 generation 增加写放大与竞争]** → 使用批量成员克隆、base CAS 和 superseded/rebase；回退前展示页面/目录/结构差异并显式确认，后续再评估 copy-on-write。
-- **[存量标题重复阻塞唯一约束]** → 先 dry-run 输出 KB 级冲突清单，未清理 KB 保持旧平面模式，不自动改名或合并。
 - **[长时间构建期间结构变化]** → 全程固定 revision，激活前复验；过期 generation 不切换并基于最新 revision 重试。
 - **[消费面遗漏 generation 过滤]** → 建立统一 active-generation query service，并以契约测试覆盖列表、检索、图谱、导出、概览和 Agent 工具。
 - **[目录树循环和跨库 FK 无法只靠普通 FK 保证]** → 领域服务、事务锁和模型/接口测试共同保证；数据库约束负责可表达的唯一/非空条件。
@@ -379,15 +390,11 @@ manifest 保存格式版本、KB 信息、structure revision/hash、完整树、
 
 ## Migration Plan
 
-1. 在独立 worktree 完成模型/迁移和纯领域测试，所有新字段保持 nullable/兼容读取。
-2. 引入目录/结构服务、统一页面身份/归类服务和 active-generation query service；先迁移所有生产写入与消费读取路径。
-3. 实现幂等 bootstrap/backfill/preflight 命令和按 KB 写入围栏，使用 `opspilot` 数据库做迁移 dry-run，确认不会修改正文、版本、证据、Chunk 或向量，也不会在 backfill 后产生新的 generation 外写入。
-4. 实现普通构建、资料更新、导入和重建 staging generation；接入关系/图谱和关键词消费面后再开放 activation。
-5. 实现目录 API、导入导出和 Web 目录树/结构编辑；目录功能默认关闭。
-6. 选择测试 KB 完成结构初始化、存量自动归类和浏览器真实点击验收。
-7. 按 KB 灰度启用，监控 null directory、待归类比例、未知 key、generation failure/superseded、409 和消费面 generation 不一致。
-8. 全部 KB 通过 readiness 后增加非空与标题唯一约束；保留旧平面读取一个发布周期。
-9. 回滚应用时关闭目录 UI/新任务入口并保留新表；应用回退只关闭新入口并保留数据；业务回退从上一成功快照创建新 rollback_of generation，结构按需从旧快照生成新 revision，不执行破坏性 down migration。
+1. 暂停在 0066 之后继续叠加未发布 migration，先冻结 Directory Governance、Generation Navigation 和 Minimal Context Budget 的最终模型。
+2. 保留 0066 及以前 migration，删除其后未发布 migration并清空本地数据库。
+3. 从最终模型重新生成连续 migration，从空库执行 migrate 和初始化。
+4. 运行领域、API、并发、导入导出和浏览器验收；失败时修正最终模型并重新生成，而不是增加旧测试数据兼容层。
+5. 应用回退仍使用 Generation rollback_of 和递增 Structure Revision；数据库不提供破坏性 down migration。
 
 ## Open Questions
 

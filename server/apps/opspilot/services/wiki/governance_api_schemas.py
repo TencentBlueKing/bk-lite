@@ -62,11 +62,29 @@ def _key(*, read_only=False):
         "type": "string",
         "minLength": 1,
         "maxLength": 128,
-        "pattern": "^[A-Za-z][A-Za-z0-9._:-]*$",
+        "pattern": r"^(?:[A-Za-z][A-Za-z0-9._:-]*|__unclassified__)$",
     }
     if read_only:
         schema["readOnly"] = True
     return schema
+
+
+def _page_type():
+    return {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 128,
+        "pattern": r"\S",
+    }
+
+
+def _page_types():
+    return {
+        "type": "array",
+        "minItems": 1,
+        "items": _page_type(),
+        "uniqueItems": True,
+    }
 
 
 def _hash():
@@ -93,12 +111,12 @@ def _directory_defs():
         {
             "allowed_page_types": {
                 "type": "array",
-                "items": {"type": "string", "minLength": 1},
+                "items": _page_type(),
                 "uniqueItems": True,
             },
             "default_for_page_types": {
                 "type": "array",
-                "items": {"type": "string", "minLength": 1},
+                "items": _page_type(),
                 "uniqueItems": True,
             },
         },
@@ -218,9 +236,9 @@ def _root(name, title, properties, required, *, defs=None, comment=None, **keywo
     return schema
 
 
-def _target_only_for_merge():
+def _target_for_migrating_operation():
     return {
-        "if": {"properties": {"action": {"const": "merge"}}, "required": ["action"]},
+        "if": {"properties": {"action": {"enum": ["merge", "retire"]}}, "required": ["action"]},
         "then": {"required": ["target"]},
         "else": {"not": {"required": ["target"]}},
     }
@@ -234,6 +252,7 @@ def _structure_save_request():
                 "const": STRUCTURE_FORMAT_VERSION,
                 "default": STRUCTURE_FORMAT_VERSION,
             },
+            "page_types": _page_types(),
             "directories": {
                 "type": "array",
                 "minItems": 1,
@@ -245,7 +264,7 @@ def _structure_save_request():
                 },
             },
         },
-        ("format_version", "directories"),
+        ("format_version", "page_types", "directories"),
     )
     return _root(
         SchemaName.STRUCTURE_SAVE_REQUEST,
@@ -272,13 +291,14 @@ def _structure_save_response():
                         "const": STRUCTURE_FORMAT_VERSION,
                         "default": STRUCTURE_FORMAT_VERSION,
                     },
+                    "page_types": _page_types(),
                     "directories": {
                         "type": "array",
                         "minItems": 1,
                         "items": {"$ref": "#/$defs/canonical_directory"},
                     },
                 },
-                ("format_version", "directories"),
+                ("format_version", "page_types", "directories"),
             ),
         }
     )
@@ -605,7 +625,7 @@ def _operation_request(name, title, *, token=False):
         properties,
         required,
         defs=_operation_defs(),
-        allOf=[_target_only_for_merge()],
+        allOf=[_target_for_migrating_operation()],
     )
 
 
@@ -629,7 +649,7 @@ def _operation_binding():
             "source",
             "impact_hash",
         ),
-        allOf=[_target_only_for_merge()],
+        allOf=[_target_for_migrating_operation()],
     )
 
 

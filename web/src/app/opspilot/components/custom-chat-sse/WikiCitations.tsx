@@ -36,7 +36,7 @@ const WikiCitations: React.FC<{ citations: WikiCitation[]; content?: string }> =
     try {
       if (c.kind.includes('material')) {
         const info = await fetchMaterialInfo(c.id);
-        setBody(info.original || info.ai_summary || '');
+        setBody(info.parsed_markdown || info.original || info.ai_summary || '');
       } else {
         const page = await fetchPage(c.id);
         setBody(page.body || '');

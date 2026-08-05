@@ -51,6 +51,31 @@
 - **THEN** 系统 MUST 把它视为非法建议并执行 fallback
 - **AND** 只有原生导入、历史链接或审计读取 MAY 跟随持久 merged redirect 到活动目标，并记录发生了 redirect
 
+#### Scenario: 持久 redirect 的活动目标不符合当前路由上下文
+- **WHEN** 原生导入、历史链接或审计读取跟随持久 merged redirect 到活动目标，但目标位于当前 classification root 外或拒绝页面的 `page_type`
+- **THEN** 系统 MUST 记录 `out_of_scope_key` 或 `schema_mismatch`，不采用该目标并继续执行确定性 fallback
+- **AND** 该上下文不匹配 MUST 不被误报为 redirect 结构损坏
+
+#### Scenario: 持久 redirect 结构损坏
+- **WHEN** 持久 redirect 缺少目标、形成循环、跨知识库、指向非活动目录或指向不允许接收页面的目录
+- **THEN** 系统 MUST 失败关闭并报告结构错误，不得静默采用目标或把损坏链当作普通 fallback
+
+### Requirement: page type 合法域由固定 structure revision 冻结
+每个 structure revision MUST 保存完整且显式的 `page_types` 合法域；目录的 `allowed_page_types` 与 `default_for_page_types` 只能引用该域。构建、导入、重建和回退 MUST 使用任务开始时固定 revision 的同一快照，不得从目录规则并集反推类型域，也不得在任务中回读后来变化的 `schema_md`。
+
+#### Scenario: 目录规则引用类型域外的值
+- **WHEN** 管理员保存的结构让 `allowed_page_types` 或 `default_for_page_types` 引用固定 revision 的 `page_types` 域外值
+- **THEN** 服务端 MUST 拒绝整个结构保存并返回可定位的校验错误
+
+#### Scenario: auto 页面类型为空白或未知
+- **WHEN** auto 页面输出空白 `page_type` 或不在固定 revision `page_types` 域中的值
+- **THEN** 系统 MUST 记录 schema mismatch，跳过 LLM key、类型默认和 classification root，并把页面路由到系统待归类
+- **AND** 系统 MUST 保留已生成正文且不创建目录审批项
+
+#### Scenario: manual 页面类型为空白或未知
+- **WHEN** manual 页面当前 `page_type` 为空白或不在固定 revision 的合法域中
+- **THEN** 系统 MUST 保留其人工目录并记录 schema mismatch，不得由构建覆盖人工归类
+
 ### Requirement: LLM 路由输出受到结构契约约束
 生成提示 MUST 包含固定 structure revision 的目录 key、名称、层级、说明和允许规则；LLM MUST 输出结构化 `directory_key`，不能把自由文件路径作为领域契约。服务端 MUST 在持久化前重新执行确定性校验。
 
@@ -60,7 +85,7 @@
 - **AND** 系统 MUST 不直接丢弃已生成页面正文
 
 ### Requirement: 页面标题在知识库内全局唯一
-系统 MUST 对同一知识库的所有页面状态执行规范标题唯一约束，包括 active、archived、pending 和 source-invalid 页面；不同知识库可以存在相同标题。规范化算法 MUST 固定为 Unicode NFKC、去除首尾空白、把连续 Unicode 空白折叠为一个空格，并以 casefold 值比较；持久化标题保留清理后的展示大小写。readiness、创建、改名、导入、构建和重建 MUST 在知识库行锁下使用同一算法，数据库 `(knowledge_base,title)` 唯一约束作为最终并发后盾。
+系统 MUST 对同一知识库的所有页面状态执行规范标题唯一约束，包括 active、archived、pending 和 source-invalid 页面；不同知识库可以存在相同标题。规范化算法 MUST 固定为 Unicode NFKC、去除首尾空白、把连续 Unicode 空白折叠为一个空格，并以 casefold 值比较；持久化标题保留清理后的展示大小写。创建、改名、导入、构建和重建 MUST 在知识库行锁下使用同一算法，数据库 `(knowledge_base,title)` 唯一约束作为最终并发后盾。
 
 #### Scenario: 新结果命中活动页面
 - **WHEN** 构建、导入或人工创建产生与同知识库活动页面相同的规范标题
@@ -83,10 +108,15 @@
 - **THEN** 系统 MUST 保留页面 ID，通过轻量 governance generation 发布新标题与派生 WikiLink/关系结果
 - **AND** v1 不创建旧标题 alias；这一限制 MUST 在影响提示中明确
 
-#### Scenario: 存量重复标题
-- **WHEN** 迁移预检查发现同一知识库存在重复标题
-- **THEN** 系统 MUST 阻止该知识库启用目录能力并输出冲突清单
-- **AND** 系统 MUST 不自动改名或调用 LLM 自动合并
+
+#### Scenario: 页面身份冲突重试
+- **WHEN** 同一知识库对同一规范标题身份重复创建开放页面身份冲突
+- **THEN** adapter MUST 以“知识库 ID + 规范标题键”作为唯一稳定幂等键并返回既有开放记录
+- **AND** `page_type`、目录、来源、build/generation、理由和操作者 MUST 不参与该键
+
+#### Scenario: adapter 收到未规范化标题键
+- **WHEN** 页面身份冲突 adapter 收到未经过统一 NFKC、空白折叠与 casefold 算法的标题键
+- **THEN** adapter MUST 拒绝输入，不得静默规范化或沿用仍包含 `page_type` 的旧决策签名
 
 ### Requirement: page type 与目录承担不同职责
 `page_type` MUST 继续描述内容类型和生成规则，但 MUST 不再作为知识列表的层级身份或唯一分组依据。同一 page type 可以分布在多个目录，同一目录可以按结构规则容纳多个 page type。
@@ -118,18 +148,15 @@
 - **WHEN** incoming 正文会覆盖 human/mixed 页面且系统无法确定合并结果
 - **THEN** 系统 MUST 保留当前正文、创建非阻塞候选并允许构建其余页面继续
 
-### Requirement: 存量页面目录回填不改变知识内容
-存量迁移 MUST 先把页面分批、幂等地放入待归类并设置 auto，再按固定 structure revision 自动归类；该过程 MUST 不修改页面 ID、正文版本、证据、关系、Chunk 或既有向量字段。每个知识库开始 backfill 前 MUST 排空旧构建并进入写入围栏，临时拒绝页面/构建写入；baseline 完成后即使仍展示旧平面 UI，所有写入口也 MUST 使用 generation-aware 领域服务，防止产生新的 null directory 或 generation 外数据。
+### Requirement: 正文冲突候选使用稳定内容身份幂等创建
+正文冲突开放记录的 v1 稳定键 MUST 仅由 `knowledge_base_id`、`page_id`、`locked_current_version_id`、`content_contract_fingerprint` 和按 `(material_id, content_hash)` 排序去重的非空完整来源集合组成，并 MUST 以版本化 canonical JSON 的 SHA-256 digest 持久化。`candidate_body` 或其 hash、build/generation ID、reason、operator、page type、目录、归类建议、confidence、locator、参与者顺序和 candidate version ID MUST 不参与该键。
 
-#### Scenario: 重跑中断的回填
-- **WHEN** 回填任务在部分页面完成后中断并再次启动
-- **THEN** 系统 MUST 跳过已完成且满足目标状态的页面，继续处理剩余页面
-- **AND** 重跑 MUST 不产生重复目录历史或页面版本
+#### Scenario: 同一正文冲突构建重试
+- **WHEN** 重试具有相同锁定当前版本、内容契约和来源内容身份的正文冲突，但 build/generation、候选措辞、理由或操作者发生变化
+- **THEN** adapter MUST 在创建新的 `PageVersion` 前按稳定 digest 返回既有开放候选并设置 `created=false`
+- **AND** 系统 MUST 不替换该开放候选已冻结的正文
 
-#### Scenario: backfill 期间收到写请求
-- **WHEN** 知识库 migration state 为 `backfilling`
-- **THEN** 页面创建/编辑/删除和构建入口 MUST 返回可重试的围栏错误，不得写入旧平面状态
-
-#### Scenario: baseline 完成但目录 UI 尚未启用
-- **WHEN** knowledge base 已进入 `ready` 但 `directory_enabled=false`
-- **THEN** 旧平面 UI MAY 继续读取兼容镜像，但所有写入 MUST 产生并激活 generation，readiness 与 enable 必须在知识库锁内复验
+#### Scenario: 正文冲突身份边界变化
+- **WHEN** 锁定当前版本、内容契约指纹或任一来源的 material ID/content hash 发生变化
+- **THEN** 系统 MUST 计算不同稳定 digest，不得复用旧开放候选
+- **AND** 旧候选 MUST 由既有过期生命周期关闭，而不是改写为新输入

@@ -85,8 +85,31 @@
 - **THEN** 系统 MUST 创建 staging 页面身份，并仅在 generation 激活后进入活动消费面
 
 #### Scenario: 身份歧义
-- **WHEN** 迁移遗留数据或并发异常导致同一标题无法唯一确定页面身份
+- **WHEN** 并发异常导致同一标题无法唯一确定页面身份
 - **THEN** 系统 MUST 阻止 generation 激活并创建页面身份冲突记录
+
+### Requirement: 单资料构建生成稳定主题页
+通用知识库的单资料构建 MUST 按固定 Structure Revision 生成 `entity`、`concept`、`source`、`query`、`comparison` 与 `synthesis` 类型中的有证据页面，并 MUST 将解析 Chunk 仅作为证据而非页面边界。系统 MUST NOT 生成普通 `index`、`overview` 或 `log` 页面；这些内容 MUST 由同一 Generation 的导航数据派生。
+
+#### Scenario: 一份资料生成多个稳定主题
+- **WHEN** 一份资料同时描述多个平台组件、架构关系和运维机制
+- **THEN** 系统 MUST 按独立实体和可复用概念生成多页知识，并用 WikiLink、PageRelation 和 PageEvidence 建立关系与来源
+- **AND** 系统 MUST NOT 按解析 Chunk 数量机械生成页面
+
+#### Scenario: 每份资料只有一个来源摘要
+- **WHEN** 固定 revision 允许 `source` 类型且当前资料产生有效主题页面
+- **THEN** 系统 MUST 生成且只生成一个绑定该 Material 的来源摘要页
+- **AND** 同一资料重建 MUST 通过 PageEvidence 复用既有来源页面身份；缺失模型 source 输出时 MAY 确定性生成来源导航而不得追加 LLM 调用
+
+#### Scenario: 证据不足的可选类型
+- **WHEN** 资料没有明确未解决问题、共同对比维度或跨主题综合结论
+- **THEN** query、comparison 或 synthesis 目录 MAY 为空
+- **AND** 系统 MUST NOT 为填满目录而编造页面
+
+#### Scenario: 文件未生成有效知识
+- **WHEN** 非空资料的最终结构化输出无有效页面、页面正文为空或 JSON 无法解析
+- **THEN** 该文件的构建 MUST 失败并保留解析阶段诊断
+- **AND** 其他资料的独立构建终态 MUST 不受影响
 
 ### Requirement: 重建保留人工目录和人工正文边界
 全量重建 MUST 保留 manual 页面目录。AI 页面可以自动更新；human/mixed 页面正文不能被自动覆盖，只有内容冲突时创建候选。未被新 generation 匹配的旧 AI 页面只能在新 generation 成功激活时归档。
@@ -148,12 +171,13 @@ ready generation MUST 在系统校验通过后自动激活，不得等待管理�
 - **WHEN** generation 因结构 revision 变化未激活
 - **THEN** 构建记录 MUST 明确返回 superseded 原因和最新 revision，而不是报告普通成功
 
-### Requirement: 旧构建任务不能污染目录消费面
-目录能力按知识库启用前 MUST 排空或终止没有 structure revision/pipeline version 的旧任务。启用后，缺少固定 revision 的任务 MUST 不得激活 generation。
+### Requirement: 缺少 Generation 身份的任务不得激活
+任何构建任务 MUST 固定 base Generation、Structure Revision 和 pipeline version。缺少任一身份或激活前身份已变化的任务 MUST 不得写入活动消费面。
 
-#### Scenario: 启用时存在旧任务
-- **WHEN** readiness 检查发现知识库仍有旧版 running build
-- **THEN** 系统 MUST 阻止该知识库启用目录能力，直到任务结束或被安全取消
+#### Scenario: 无固定 base 的任务尝试激活
+- **WHEN** 构建任务没有 base generation、structure revision 或 pipeline version
+- **THEN** 系统 MUST 拒绝激活并记录无效任务身份
+- **AND** 当前 active Generation MUST 保持不变
 
 ### Requirement: 向量能力不属于新 generation 范围
 本变更 MUST 不新增、清理、重建或切换 PageVersion embedding、PageChunk embedding、语义检索、混合检索和向量 UI。既有向量字段和服务 MUST 保持当前行为，且不得成为目录功能验收门槛。

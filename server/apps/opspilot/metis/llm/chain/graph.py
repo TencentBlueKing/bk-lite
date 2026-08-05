@@ -1116,6 +1116,7 @@ class BasicGraph(ABC):
         pending_turn_text = ""
         turn_saw_tool_call_chunks = False
         pending_turn_strip_key = "__pending_turn__"
+        output_truncated = False
         # 跨 streaming chunk 的 phantom tool call strip buffer。
         # key = message_id,value = 该 message 累积的未 emit tail。
         # 当 message_id 变化时清理旧 entry(消息结束 → 它的 tail 不再有用了)。
@@ -1191,6 +1192,10 @@ class BasicGraph(ABC):
 
                 if event_type == "on_chat_model_stream":
                     chunk = event_data.get("chunk")
+                    chunk_metadata = dict(getattr(chunk, "response_metadata", {}) or {})
+                    chunk_reason = str(chunk_metadata.get("finish_reason") or chunk_metadata.get("stop_reason") or "").casefold()
+                    if chunk_reason in {"length", "max_tokens", "max_output_tokens", "token_limit"}:
+                        output_truncated = True
                     # 正文按轮缓冲：thinking 仍即时推送；TEXT 等到 chat_model_end 再裁定，
                     # 避免 DeepSeek 等先旁白再 tool_calls 时英文过程话泄漏到前端。
                     content_events, _, message_started, thinking_started, text_piece = self._handle_chat_model_stream_content(
@@ -1238,7 +1243,6 @@ class BasicGraph(ABC):
                                 "AGUI LLM call did not report token usage: run_id=%s",
                                 event.get("run_id"),
                             )
-
                     leftover_strip = text_strip_buffers.pop(pending_turn_strip_key, "")
                     if leftover_strip:
                         pending_turn_text += strip_phantom_tool_calls(leftover_strip)
@@ -1252,6 +1256,14 @@ class BasicGraph(ABC):
                     if turn_has_tools:
                         pending_turn_text = ""
 
+                    model_metadata = dict(getattr(output, "response_metadata", {}) or {})
+                    model_reason = str(model_metadata.get("finish_reason") or model_metadata.get("stop_reason") or "").casefold()
+                    token_usage = model_metadata.get("token_usage") or {}
+                    completion_tokens = token_usage.get("completion_tokens") or token_usage.get("output_tokens") or 0
+                    if model_reason in {"length", "max_tokens", "max_output_tokens", "token_limit"} or (
+                        request.max_output_tokens > 0 and isinstance(completion_tokens, int) and completion_tokens >= request.max_output_tokens
+                    ):
+                        output_truncated = True
                     chat_model_end_events = self._handle_chat_model_end_event(
                         event_data,
                         encoder,
@@ -1320,6 +1332,32 @@ class BasicGraph(ABC):
             except asyncio.QueueEmpty:
                 pass
 
+            if output_truncated and (request.extra_config or {}).get("wiki_budget") is not None:
+                warning_message_id = current_message_id or str(uuid.uuid4())
+                if not message_started:
+                    yield encoder.encode(
+                        TextMessageStartEvent(
+                            type=EventType.TEXT_MESSAGE_START,
+                            message_id=warning_message_id,
+                            timestamp=int(time.time() * 1000),
+                        )
+                    )
+                yield encoder.encode(
+                    TextMessageContentEvent(
+                        type=EventType.TEXT_MESSAGE_CONTENT,
+                        message_id=warning_message_id,
+                        delta="\n\n> 回答已达到输出 token 上限，内容可能被截断",
+                        timestamp=int(time.time() * 1000),
+                    )
+                )
+                if not message_started:
+                    yield encoder.encode(
+                        TextMessageEndEvent(
+                            type=EventType.TEXT_MESSAGE_END,
+                            message_id=warning_message_id,
+                            timestamp=int(time.time() * 1000),
+                        )
+                    )
             # 发送消息结束事件
             if message_started and current_message_id is not None:
                 yield encoder.encode(
@@ -1468,7 +1506,13 @@ class BasicGraph(ABC):
                     token_usage_accumulator.missing_usage_calls,
                 )
             usage = token_usage_accumulator.as_openai_usage()
-            last_message_content = result["messages"][-1].content if result["messages"] else ""
+            last_message = result["messages"][-1] if result["messages"] else None
+            last_message_content = last_message.content if last_message is not None else ""
+            metadata = dict(last_message.response_metadata or {}) if isinstance(last_message, AIMessage) else {}
+            finish_reason = str(metadata.get("finish_reason") or metadata.get("stop_reason") or "").strip() or None
+            output_truncated = str(finish_reason or "").casefold() in {"length", "max_tokens", "max_output_tokens", "token_limit"} or (
+                request.max_output_tokens > 0 and usage["completion_tokens"] >= request.max_output_tokens
+            )
             return BasicLLMResponse(
                 message=last_message_content,
                 total_tokens=usage["total_tokens"],
@@ -1476,6 +1520,8 @@ class BasicGraph(ABC):
                 completion_tokens=usage["completion_tokens"],
                 llm_call_count=token_usage_accumulator.call_count,
                 token_usage_calls=token_usage_accumulator.as_call_details(),
+                finish_reason=finish_reason,
+                output_truncated=output_truncated,
                 browser_steps=browser_steps_collector,
             )
         except Exception as e:

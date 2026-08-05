@@ -43,8 +43,8 @@
 - **WHEN** 页面目录名称变化但稳定 ID 不变
 - **THEN** 列表 MUST 显示最新面包屑，页面 URL 和页面身份 MUST 保持有效
 
-### Requirement: 日常浏览与结构编辑模式分离
-普通目录树 MUST 只提供导航和页面操作；只有知识库管理员进入“编辑目录结构”模式后才能新增、重命名、移动、排序、合并、退役或归档目录。编辑器 MUST 保存完整结构快照而不是逐节点无版本写入。
+### Requirement: 日常浏览与结构 Schema 编辑分离
+普通目录树 MUST 只提供导航和页面操作；只有知识库管理员进入「用途与结构」中的结构 Schema 编辑器后才能新增、重命名、移动、排序、合并、退役或归档目录。系统 MUST NOT 再提供独立的「目录结构」设置页签；编辑器 MUST 保存完整结构快照而不是逐节点无版本写入。
 
 #### Scenario: 浏览模式拖拽目录
 - **WHEN** 用户未进入结构编辑模式时尝试拖拽目录
@@ -104,12 +104,17 @@
 - **WHEN** 两个页面没有 WikiLink、共享来源或 AI 识别关系但位于同一目录
 - **THEN** 系统 MUST 不仅因同目录而创建 PageRelation 或提升关系权重
 
-### Requirement: 灰度期间保留平面读取回退
-目录能力 MUST 支持按知识库启用。未达到 readiness 条件或功能开关关闭时，现有平面列表读取 MUST 继续可用；关闭开关不能删除目录、revision 或 generation 数据。
+### Requirement: 目录界面必须基于已初始化 Generation 启用
+新知识库 MUST 在创建事务中具有待归类、首个 Structure Revision 和 baseline Generation。目录界面可以由管理员显式启用，但启用前 MUST 复验三个 active 对象一致，不得依赖 legacy/readiness/backfill 双读状态。
 
-#### Scenario: 知识库尚未完成回填
-- **WHEN** 目录 readiness 检查未通过
-- **THEN** UI MUST 使用旧平面视图并阻止目录写操作，同时给管理员显示未就绪原因
+#### Scenario: 管理员启用目录界面
+- **WHEN** 知识库 active structure、active generation 和系统待归类均有效
+- **THEN** UI MUST 切换到真实目录树
+- **AND** 后续读写 MUST 继续使用 active Generation
+
+#### Scenario: 初始化状态非法
+- **WHEN** 任一 active 指针或系统待归类缺失
+- **THEN** 系统 MUST 拒绝启用并返回可定位的初始化错误
 
 ### Requirement: 浏览器真实点击是发布硬门禁
 发布验收 MUST 使用浏览器工具从真实 UI 完成结构保存、资料上传、构建、页面移动、恢复自动归类、并发冲突、generation 失败隔离、导出导入及目录检索/图谱路径。写操作不能由直接调用 API 代替。

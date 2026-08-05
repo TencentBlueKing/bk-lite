@@ -15,6 +15,8 @@ from apps.opspilot.services.builtin_tools import BUILTIN_ATTACHMENT_FILE_TOOL_NA
 from apps.opspilot.services.caller_identity import CALLER_IDENTITY_CONFIG_KEY
 from apps.opspilot.services.chat_service import ChatService, chat_service
 from apps.opspilot.services.skill_package.runtime import build_skill_package_prompt, build_skill_package_strategy, hydrate_skill_packages
+from apps.opspilot.services.wiki.active_generation_query_service import ActiveGenerationReadError
+from apps.opspilot.services.wiki.wiki_budget_service import WikiBudgetExceeded
 from apps.opspilot.services.workflow_attachment_service import build_signed_attachment_download_url
 from apps.opspilot.utils.agent_factory import create_agent_instance
 from apps.opspilot.utils.agui_chat import _build_sse_line
@@ -334,7 +336,24 @@ class AgentNode(BaseNodeExecutor):
         skill_type = llm_params.get("skill_type")
         llm_params.pop("group", 0)
 
-        chat_kwargs, _, _ = chat_service.format_chat_server_kwargs(llm_params, llm_model)
+        try:
+            chat_kwargs, _, _ = chat_service.format_chat_server_kwargs(
+                llm_params,
+                llm_model,
+            )
+        except (WikiBudgetExceeded, ActiveGenerationReadError) as error:
+            error_payload = {
+                "type": "ERROR",
+                "error": str(error),
+                "error_code": error.code,
+                "error_details": error.details,
+                "timestamp": int(time.time() * 1000),
+            }
+
+            async def generate_wiki_error_stream():
+                yield _build_sse_line(error_payload)
+
+            return generate_wiki_error_stream()
         # 创建 agent 实例
         graph, request = create_agent_instance(skill_type, chat_kwargs)
         token_usage_accumulator = TokenUsageAccumulator()

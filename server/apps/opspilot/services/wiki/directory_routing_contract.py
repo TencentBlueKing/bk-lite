@@ -186,8 +186,6 @@ def _follow_redirect(
     directories: Mapping[str, DirectorySnapshot],
     *,
     knowledge_base_id: int,
-    page_type: str,
-    classification_root_key: str | None,
 ) -> tuple[DirectorySnapshot, tuple[str, ...]]:
     current = start
     visited: set[str] = set()
@@ -207,15 +205,10 @@ def _follow_redirect(
         current = target
     if current.key in visited:
         raise InvalidDirectoryRedirect(f"cyclic merged redirect at {current.key!r}")
-    rejection = _suggestion_rejection(
-        current,
-        knowledge_base_id=knowledge_base_id,
-        page_type=page_type,
-        classification_root_key=classification_root_key,
-        schema_mismatch=False,
-    )
-    if rejection is not None:
-        raise InvalidDirectoryRedirect(f"merged redirect target {current.key!r} is not routable: {rejection.value}")
+    if current.status is not DirectoryStatus.ACTIVE:
+        raise InvalidDirectoryRedirect(f"merged redirect target {current.key!r} is not active")
+    if not current.accepts_pages:
+        raise InvalidDirectoryRedirect(f"merged redirect target {current.key!r} does not accept pages")
     chain.append(current.key)
     return current, tuple(chain)
 
@@ -278,13 +271,13 @@ def _manual_trace(
     trace: list[RoutingTraceCode] = []
     if low_confidence:
         _append_trace(trace, RoutingTraceCode.LOW_CONFIDENCE)
+    if schema_mismatch:
+        _append_trace(trace, RoutingTraceCode.SCHEMA_MISMATCH)
     if suggested_key is None:
         return tuple(trace)
 
     if suggested_key != manual.key:
         _append_trace(trace, RoutingTraceCode.MANUAL_SUGGESTION_IGNORED)
-    if schema_mismatch:
-        _append_trace(trace, RoutingTraceCode.SCHEMA_MISMATCH)
     suggested = directories.get(suggested_key)
     if suggested is None:
         _append_trace(trace, RoutingTraceCode.UNKNOWN_KEY)
@@ -309,6 +302,7 @@ def route_directory(
     *,
     knowledge_base_id: int,
     page_type: str,
+    revision_page_types: frozenset[str],
     assignment_mode: AssignmentMode | str,
     directories: Mapping[str, DirectorySnapshot],
     current_directory_key: str | None,
@@ -317,7 +311,7 @@ def route_directory(
     classification_root_key: str | None,
     type_default_keys: Sequence[str],
     unclassified_key: str,
-    schema_mismatch: bool,
+    suggestion_schema_mismatch: bool,
     low_confidence: bool,
 ) -> DirectoryRoutingDecision:
     """Resolve a page against one fixed structure revision.
@@ -329,6 +323,9 @@ def route_directory(
 
     mode = _assignment_mode(assignment_mode)
     source = _reference_source(suggestion_source)
+    page_type_in_revision = (
+        isinstance(revision_page_types, frozenset) and isinstance(page_type, str) and bool(page_type.strip()) and page_type in revision_page_types
+    )
     if mode is AssignmentMode.MANUAL:
         manual = _validate_manual(
             directories.get(current_directory_key) if current_directory_key else None,
@@ -346,7 +343,7 @@ def route_directory(
                 suggested_key=suggested_key,
                 source=source,
                 classification_root_key=classification_root_key,
-                schema_mismatch=schema_mismatch,
+                schema_mismatch=suggestion_schema_mismatch or not page_type_in_revision,
                 low_confidence=low_confidence,
             ),
         )
@@ -360,9 +357,11 @@ def route_directory(
     trace: list[RoutingTraceCode] = []
     if low_confidence:
         _append_trace(trace, RoutingTraceCode.LOW_CONFIDENCE)
+    if suggestion_schema_mismatch or not page_type_in_revision:
+        _append_trace(trace, RoutingTraceCode.SCHEMA_MISMATCH)
     redirect_chain: tuple[str, ...] = ()
 
-    if suggested_key:
+    if suggested_key is not None:
         suggested = directories.get(suggested_key)
         if suggested is None:
             _append_trace(trace, RoutingTraceCode.UNKNOWN_KEY)
@@ -380,8 +379,6 @@ def route_directory(
                         suggested,
                         directories,
                         knowledge_base_id=knowledge_base_id,
-                        page_type=page_type,
-                        classification_root_key=classification_root_key,
                     )
                     route_source = DirectoryRouteSource.REDIRECTED_KEY
                     _append_trace(trace, RoutingTraceCode.MERGED_REDIRECT_FOLLOWED)
@@ -391,7 +388,7 @@ def route_directory(
                     knowledge_base_id=knowledge_base_id,
                     page_type=page_type,
                     classification_root_key=classification_root_key,
-                    schema_mismatch=schema_mismatch,
+                    schema_mismatch=suggestion_schema_mismatch or not page_type_in_revision,
                 )
                 if rejection is None:
                     return DirectoryRoutingDecision(
@@ -405,7 +402,7 @@ def route_directory(
 
     valid_defaults: list[DirectorySnapshot] = []
     seen_default_keys: set[str] = set()
-    for key in type_default_keys:
+    for key in type_default_keys if page_type_in_revision else ():
         if key in seen_default_keys:
             continue
         seen_default_keys.add(key)
@@ -440,7 +437,7 @@ def route_directory(
         )
 
     if root is not None:
-        if root.accepts_pages and _allows_page_type(root, page_type):
+        if page_type_in_revision and root.accepts_pages and _allows_page_type(root, page_type):
             return DirectoryRoutingDecision(
                 directory_key=root.key,
                 assignment_mode=AssignmentMode.AUTO,

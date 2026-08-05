@@ -22,7 +22,6 @@ from pydantic import BaseModel as PydanticBaseModel
 from pydantic import Field as PydanticField
 
 from apps.core.logger import opspilot_logger as logger
-from apps.opspilot.metis.llm.agent.tool_execution_planner import CompletedExecutionStep, ToolExecutionPlan, ToolExecutionPlanner, ToolPlanningError
 from apps.opspilot.metis.llm.chain.entity import BasicLLMRequest, DoneToolConfig, ExtraConfig
 
 # ---------------------------------------------------------------------------
@@ -2693,6 +2692,18 @@ class ToolsNodes(BasicNode):
             return None
         return {name: True for name in target_names}
 
+    @staticmethod
+    def _should_use_lightweight_direct_reply(tools, skill_sources) -> bool:
+        """无业务工具且无技能包时走轻量直答，避免规划器 + DeepAgent 内置工具烧 token。"""
+        if any(getattr(tool, "name", None) for tool in (tools or [])):
+            return False
+        return not bool(skill_sources)
+
+    @staticmethod
+    def _build_lightweight_system_prompt(user_system_message: str = "") -> str:
+        role = (user_system_message or "").strip() or "你是运维助手。"
+        return f"{role}\n\n" "直接用中文简洁回答用户。" "当前没有可用工具与技能，不要假装调用工具或读写文件。" "严禁泄露密码、密钥、令牌等敏感信息。"
+
     async def build_deepagent_nodes(  # noqa: C901
         self,
         graph_builder: StateGraph,
@@ -2717,6 +2728,15 @@ class ToolsNodes(BasicNode):
 
         async def deep_wrapper_node(state: Dict[str, Any], config: RunnableConfig) -> Dict[str, Any]:
             """DeepAgent 包装节点 - 返回完整消息列表以支持实时 SSE 流式输出"""
+            # 惰性导入：避免 apps.opspilot.metis.llm.agent.__init__ → deep_agent → node 循环依赖
+            from apps.opspilot.metis.llm.agent.tool_execution_planner import (
+                CompletedExecutionStep,
+                ToolExecutionPlan,
+                ToolExecutionPlanner,
+                ToolPlanningError,
+                is_context_size_error,
+            )
+
             graph_request = config["configurable"]["graph_request"]
 
             # 创建系统提示
@@ -2726,12 +2746,42 @@ class ToolsNodes(BasicNode):
             )
 
             llm = self.get_llm_client(graph_request)
+            if getattr(graph_request, "max_model_calls", 0) == 1:
+                response = await llm.ainvoke(
+                    [SystemMessage(content=final_system_prompt), *list(state.get("messages") or [])],
+                    config=config,
+                )
+                return {"messages": [response]}
             tools = self._collect_deepagent_tools(graph_request)
             registered_tools = list(tools)
             original_messages = list(state.get("messages") or [])
             backend, skill_sources, sandbox_dir = self._build_skill_backend_and_sources(graph_request)
             interrupt_on = self._build_interrupt_on(graph_request, tools)
             token_usage_accumulator = config["configurable"].get("token_usage_accumulator")
+
+            # 无业务工具、无技能包：跳过规划器与 DeepAgent 内置 FS/execute 工具，直接短 system 回答。
+            if self._should_use_lightweight_direct_reply(registered_tools, skill_sources):
+                light_system = self._build_lightweight_system_prompt(getattr(graph_request, "system_message_prompt", "") or "")
+                if additional_system_prompt:
+                    light_system = f"{light_system}\n\n{additional_system_prompt}"
+                logger.info(
+                    "DeepAgent 轻量直答: tools=0, skills=0, system_prompt_len=%s",
+                    len(light_system),
+                )
+                try:
+                    response = await llm.ainvoke(
+                        [SystemMessage(content=light_system), *original_messages],
+                        config=config,
+                    )
+                    if isinstance(token_usage_accumulator, TokenUsageAccumulator):
+                        token_usage_accumulator.middleware_tracking = True
+                        token_usage_accumulator.add(None, response, visible_tools=[])
+                    if not isinstance(response, AIMessage):
+                        return {"messages": [AIMessage(content=str(getattr(response, "content", "") or ""))]}
+                    return {"messages": [response]}
+                finally:
+                    if sandbox_dir:
+                        self._cleanup_sandbox(sandbox_dir)
 
             # 紧急关闭：回退全量 Schema + 单次 DeepAgent 调用
             if not is_progressive_tools_enabled():
@@ -2817,10 +2867,21 @@ class ToolsNodes(BasicNode):
                 return {"messages": new_messages}
 
             active_tools = []
-            always_visible = set(PLANNED_EXECUTION_ALWAYS_VISIBLE_FS_TOOLS)
+            # 无技能包时不常驻 FS 工具：read_file/ls 等不是用户附件能力，却会吃掉 8K 窗口。
+            always_visible = set()
+            if skill_sources:
+                always_visible |= set(PLANNED_EXECUTION_ALWAYS_VISIBLE_FS_TOOLS)
             always_visible |= {
                 name for name in PLANNED_EXECUTION_ALWAYS_ON_BUSINESS_TOOLS if any(getattr(tool, "name", "") == name for tool in registered_tools)
             }
+            # 无技能时用短 system，避免 deepagent 技能/沙箱长文案挤爆小上下文模型。
+            if not skill_sources:
+                final_system_prompt = TemplateLoader.render_template(
+                    "prompts/graph/base_node_system_message",
+                    {"user_system_message": graph_request.system_message_prompt},
+                )
+                if additional_system_prompt:
+                    final_system_prompt = f"{final_system_prompt}\n\n{additional_system_prompt}"
             visibility_middleware = ToolVisibilityMiddleware(
                 business_tools=registered_tools,
                 active_tools=active_tools,
@@ -2837,15 +2898,14 @@ class ToolsNodes(BasicNode):
                     exit_behavior="end",
                 ),
             ]
-            final_system_prompt += (
-                "\n\n【分步工具执行】外部规划器已经拆分任务。" "每次只完成当前步骤，只调用当前可见工具；不要自行创建待办、子任务或重复规划。" "工具证据足够后立即结束当前步骤。" "如需落盘大段内容可使用文件工具；需要向用户提问时可使用交互工具。"
-            )
+            final_system_prompt += "\n\n【分步工具执行】外部规划器已经拆分任务。" "每次只完成当前步骤，只调用当前可见工具；不要自行创建待办、子任务或重复规划。" "工具证据足够后立即结束当前步骤。" "需要向用户提问时可使用交互工具。"
 
             if isinstance(token_usage_accumulator, TokenUsageAccumulator):
                 runtime_middleware.append(TokenUsageTrackingMiddleware(token_usage_accumulator))
 
+            planner_llm = self.get_llm_client(graph_request, disable_stream=True, isolated=True)
             planner = ToolExecutionPlanner(
-                llm,
+                planner_llm,
                 accumulator=(token_usage_accumulator if isinstance(token_usage_accumulator, TokenUsageAccumulator) else None),
             )
 
@@ -3003,6 +3063,20 @@ class ToolsNodes(BasicNode):
                         )
                     except Exception as step_exc:
                         failure = f"步骤“{step.objective}”执行异常 " f"{type(step_exc).__name__}: {str(step_exc)[:800]}"
+                        # 上下文溢出再带着 61 工具目录重规划只会重复撞墙并烧 token。
+                        if is_context_size_error(step_exc):
+                            logger.warning(
+                                "DeepAgent 步骤因上下文窗口不足失败，停止重规划: %s",
+                                failure,
+                            )
+                            completed_steps.append(
+                                CompletedExecutionStep(
+                                    objective=step.objective,
+                                    result="本步骤因模型上下文窗口不足未能执行。",
+                                )
+                            )
+                            pending_steps.clear()
+                            break
                         if replan_count >= 2:
                             raise
                         replan_count += 1
@@ -3028,6 +3102,19 @@ class ToolsNodes(BasicNode):
                     failure = _step_failure(step_messages)
                     agent_state = step_result
                     if failure:
+                        if is_context_size_error(failure):
+                            logger.warning(
+                                "DeepAgent 步骤工具结果提示上下文不足，停止重规划: %s",
+                                failure,
+                            )
+                            completed_steps.append(
+                                CompletedExecutionStep(
+                                    objective=step.objective,
+                                    result="本步骤因模型上下文窗口不足未能完成。",
+                                )
+                            )
+                            pending_steps.clear()
+                            break
                         if replan_count >= 2:
                             raise ToolPlanningError(failure)
                         replan_count += 1
@@ -3085,8 +3172,13 @@ class ToolsNodes(BasicNode):
             except Exception as _await_exc:
                 # deepagent 框架层异常(典型:execute 工具撞 sandbox 命令白名单)会把整
                 # 个 graph 标 ERROR,LLM 没机会拿到 ToolMessage 写 follow-up。
-                # 这里直接调一次 LLM,把失败原因作为用户消息送进去,让 LLM 产出
-                # 人话版的失败说明 + 替代方案,再走 chat_model_end 正常 emit。
+                # 上下文不足时不要再喂长 system/工具目录给模型“解释失败”，避免二次浪费。
+                if is_context_size_error(_await_exc):
+                    logger.warning(
+                        "DeepAgent 因上下文窗口不足失败，直接返回短提示: %s",
+                        str(_await_exc)[:400],
+                    )
+                    return {"messages": [AIMessage(content=("当前模型上下文窗口不足，无法完成本次带工具的诊断。" "请换用更大上下文的模型，或减少启用的工具类别后再试。"))]}
                 try:
                     err_prompt = (
                         f"上一轮工具执行失败(异常 {type(_await_exc).__name__}:"

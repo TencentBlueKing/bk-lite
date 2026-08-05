@@ -1,7 +1,9 @@
 from rest_framework import serializers
 
 from apps.opspilot.models import BuildRecord, CheckItem, KnowledgePage, Material, MaterialVersion, PageVersion, WikiKnowledgeBase
+from apps.opspilot.services.wiki.active_generation_query_service import page_snapshot
 from apps.opspilot.services.wiki.index_status_service import page_index_detail
+from apps.opspilot.services.wiki.parsed_media_service import rewrite_media_urls_for_display
 
 
 class WikiKnowledgeBaseSerializer(serializers.ModelSerializer):
@@ -41,6 +43,10 @@ class WikiKnowledgeBaseSerializer(serializers.ModelSerializer):
 
 
 class MaterialSerializer(serializers.ModelSerializer):
+    build_started_at = serializers.SerializerMethodField()
+    build_finished_at = serializers.SerializerMethodField()
+    build_duration_seconds = serializers.SerializerMethodField()
+
     class Meta:
         model = Material
         fields = [
@@ -53,20 +59,122 @@ class MaterialSerializer(serializers.ModelSerializer):
             "sync_policy",
             "text_content",
             "ocr_enhance",
+            "source_relative_path",
+            "source_identity",
+            "source_folder_path",
+            "classification_root",
             "content_hash",
             "ai_summary",
             "status",
             "error_message",
+            "build_started_at",
+            "build_finished_at",
+            "build_duration_seconds",
             "created_by",
             "created_at",
             "updated_at",
         ]
         # file 必须可写,否则 multipart 上传的文件会被序列化器丢弃(create 后 file=None,解析必失败)
-        read_only_fields = ["id", "content_hash", "ai_summary", "status", "error_message", "created_by", "created_at", "updated_at"]
+        read_only_fields = [
+            "id",
+            "source_identity",
+            "source_folder_path",
+            "content_hash",
+            "ai_summary",
+            "status",
+            "error_message",
+            "build_started_at",
+            "build_finished_at",
+            "build_duration_seconds",
+            "created_by",
+            "created_at",
+            "updated_at",
+        ]
+
+    _TERMINAL_BUILD_STATUSES = frozenset({"success", "failed", "partial", "cancelled"})
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # many=True 时 child 也会拿到整份 instance 列表,此处一次预取最新构建,避免 get_* N+1
+        self._prefetch_latest_builds(self.instance)
+
+    @staticmethod
+    def _material_ids_from_instance(instance):
+        if instance is None:
+            return []
+        if isinstance(instance, Material):
+            return [instance.pk] if instance.pk else []
+        try:
+            return [obj.pk for obj in instance if getattr(obj, "pk", None)]
+        except TypeError:
+            return []
+
+    def _prefetch_latest_builds(self, instance):
+        material_ids = self._material_ids_from_instance(instance)
+        if not material_ids:
+            return
+        cache = self.context.setdefault("_material_latest_builds", {})
+        missing = [mid for mid in material_ids if mid not in cache]
+        if not missing:
+            return
+        # 先占位 None,保证无构建记录的资料也不会在 get_* 里再查库
+        for mid in missing:
+            cache[mid] = None
+        missing_set = set(missing)
+        for build in (
+            BuildRecord.objects.filter(inputs__material_id__in=missing).order_by("-id").only("id", "status", "created_at", "updated_at", "inputs")
+        ):
+            raw_id = (build.inputs or {}).get("material_id")
+            try:
+                material_id = int(raw_id)
+            except (TypeError, ValueError):
+                continue
+            if material_id in missing_set and cache.get(material_id) is None:
+                cache[material_id] = build
+
+    def _latest_build(self, obj):
+        return self.context.get("_material_latest_builds", {}).get(obj.pk)
+
+    def get_build_started_at(self, obj):
+        build = self._latest_build(obj)
+        if not build or not build.created_at:
+            return None
+        # SerializerMethodField 直接返回 datetime 会按 UTC 编码,需走 DateTimeField
+        # 才能落到请求线程里 activate 的用户时区(与普通 created_at 字段一致)
+        return serializers.DateTimeField().to_representation(build.created_at)
+
+    def get_build_finished_at(self, obj):
+        build = self._latest_build(obj)
+        if not build or build.status not in self._TERMINAL_BUILD_STATUSES or not build.updated_at:
+            return None
+        return serializers.DateTimeField().to_representation(build.updated_at)
+
+    def get_build_duration_seconds(self, obj):
+        build = self._latest_build(obj)
+        if not build or not build.created_at:
+            return None
+        if build.status not in self._TERMINAL_BUILD_STATUSES or not build.updated_at:
+            return None
+        return max(0, int((build.updated_at - build.created_at).total_seconds()))
 
 
 class KnowledgePageSerializer(serializers.ModelSerializer):
+    page_type = serializers.SerializerMethodField()
+    title = serializers.SerializerMethodField()
+    tags = serializers.SerializerMethodField()
+    contribution = serializers.SerializerMethodField()
+    update_method = serializers.SerializerMethodField()
+    status = serializers.SerializerMethodField()
+    current_version = serializers.SerializerMethodField()
     body = serializers.SerializerMethodField()
+    directory = serializers.SerializerMethodField()
+    directory_key = serializers.SerializerMethodField()
+    directory_breadcrumb = serializers.SerializerMethodField()
+    directory_assignment_mode = serializers.SerializerMethodField()
+    generation_id = serializers.SerializerMethodField()
+    source_summary = serializers.SerializerMethodField()
+    pending_conflict_count = serializers.SerializerMethodField()
+    conflict_summary = serializers.SerializerMethodField()
     index_status = serializers.SerializerMethodField()
     chunk_index_status = serializers.SerializerMethodField()
     index_detail = serializers.SerializerMethodField()
@@ -76,6 +184,14 @@ class KnowledgePageSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "knowledge_base",
+            "generation_id",
+            "source_summary",
+            "pending_conflict_count",
+            "conflict_summary",
+            "directory",
+            "directory_key",
+            "directory_breadcrumb",
+            "directory_assignment_mode",
             "page_type",
             "title",
             "tags",
@@ -92,13 +208,74 @@ class KnowledgePageSerializer(serializers.ModelSerializer):
             "updated_at",
         ]
 
+    def _snapshot(self, obj):
+        cache = self.context.setdefault("_wiki_page_snapshot_cache", {})
+        if obj.id not in cache:
+            cache[obj.id] = page_snapshot(obj)
+        return cache[obj.id]
+
+    def _display_value(self, obj, key, default=""):
+        return self._snapshot(obj).display.get(key, default)
+
+    def get_page_type(self, obj):
+        return self._display_value(obj, "page_type")
+
+    def get_title(self, obj):
+        return self._display_value(obj, "title")
+
+    def get_tags(self, obj):
+        tags = self._display_value(obj, "tags", [])
+        return list(tags) if isinstance(tags, list) else []
+
+    def get_contribution(self, obj):
+        return self._display_value(obj, "contribution")
+
+    def get_update_method(self, obj):
+        return self._display_value(obj, "update_method")
+
+    def get_status(self, obj):
+        return self._snapshot(obj).page_status
+
+    def get_current_version(self, obj):
+        return self._snapshot(obj).page_version_id
+
     def get_body(self, obj):
-        return obj.current_version.body if obj.current_version_id else ""
+        # 知识页可能引用 wiki/media 稳定路径；展示时签发可访问 URL
+        return rewrite_media_urls_for_display(self._snapshot(obj).body or "")
+
+    def get_directory(self, obj):
+        return self._snapshot(obj).directory_id
+
+    def get_directory_key(self, obj):
+        return self._snapshot(obj).directory_key
+
+    def get_directory_breadcrumb(self, obj):
+        return list(self._snapshot(obj).directory_breadcrumb)
+
+    def get_directory_assignment_mode(self, obj):
+        return self._snapshot(obj).assignment_mode
+
+    def get_generation_id(self, obj):
+        return self._snapshot(obj).generation_id
+
+    def get_source_summary(self, obj):
+        return (self.context.get("source_summary_lookup") or {}).get(obj.pk, "")
+
+    def get_pending_conflict_count(self, obj):
+        return int((self.context.get("conflict_lookup") or {}).get(obj.pk, {}).get("count", 0))
+
+    def get_conflict_summary(self, obj):
+        return (self.context.get("conflict_lookup") or {}).get(obj.pk, {}).get("summary", "")
 
     def _index_detail(self, obj):
         cache = self.context.setdefault("_wiki_index_detail_cache", {})
         if obj.id not in cache:
-            cache[obj.id] = page_index_detail(obj, failure_lookup=self.context.get("index_failure_lookup"))
+            snapshot = self._snapshot(obj)
+            cache[obj.id] = page_index_detail(
+                obj,
+                failure_lookup=self.context.get("index_failure_lookup"),
+                page_version=snapshot.page_version,
+            )
         return cache[obj.id]
 
     def get_index_status(self, obj):
@@ -568,6 +745,8 @@ class BuildRecordSerializer(serializers.ModelSerializer):
             "affected_pages",
             "affected_page_details",
             "errors",
+            "budget_trace",
+            "checkpoint",
             "maintenance",
             "status",
             "created_at",
