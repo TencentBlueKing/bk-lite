@@ -1,3 +1,5 @@
+import type { Key } from 'react';
+
 import { unwrapMonitorPluginList } from './monitorPluginList';
 
 type PluginRow = Record<string, any>;
@@ -6,13 +8,13 @@ type PluginRow = Record<string, any>;
 const pluginCache = new Map<string, PluginRow[]>();
 const inflight = new Map<string, Promise<PluginRow[]>>();
 
-const cacheKey = (monitorObjectId: string | number | null | undefined) =>
+const cacheKey = (monitorObjectId: Key | null | undefined) =>
   monitorObjectId == null || monitorObjectId === ''
     ? '__all__'
     : String(monitorObjectId);
 
 export const invalidateMonitorPluginCache = (
-  monitorObjectId?: string | number | null
+  monitorObjectId?: Key | null
 ) => {
   if (monitorObjectId === undefined) {
     pluginCache.clear();
@@ -25,7 +27,7 @@ export const invalidateMonitorPluginCache = (
 };
 
 export const loadMonitorPluginsByObjectCached = async (
-  monitorObjectId: string | number | null | undefined,
+  monitorObjectId: Key | null | undefined,
   fetcher: () => Promise<unknown>
 ): Promise<PluginRow[]> => {
   const key = cacheKey(monitorObjectId);

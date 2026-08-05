@@ -3,14 +3,11 @@
  * 各 use*Config 实际是无 hook 的工厂函数，可安全在异步路径调用。
  */
 
-type ObjectConfig = {
-  instance_type?: string;
-  collectTypes?: Record<string, string>;
-  groupIds?: { list?: string[]; default?: string[] };
-  dashboardDisplay?: Array<Record<string, unknown>>;
-  plugins?: Record<string, { getPluginCfg?: (data: unknown) => unknown }>;
-};
-type ObjectConfigFactory = () => ObjectConfig;
+import type {
+  ObjectConfig,
+  ObjectConfigFactory
+} from './configContracts';
+
 type ObjectConfigLoader = () => Promise<ObjectConfigFactory>;
 
 const COMMUNITY_OBJECT_CONFIG_LOADERS: Record<string, ObjectConfigLoader> = {

@@ -72,12 +72,15 @@ const flattenMessages = (nestedMessages, prefix = '') => {
   }, {});
 };
 
-const combineLocales = async () => {
-  const publicLocalesDir = path.resolve(process.cwd(), 'public/locales');
-
+const combineLocales = async ({
+  communityAppRoots = COMMUNITY_APP_ROOTS,
+  enterpriseAppRoot = ENTERPRISE_APP_ROOT,
+  baseLocalesRoot = path.resolve(process.cwd(), 'src/locales'),
+  destinationRoot = path.resolve(process.cwd(), 'public/locales'),
+} = {}) => {
   const baseLocales = {
-    en: await fs.readJSON(path.join(process.cwd(), 'src/locales/en.json')),
-    zh: await fs.readJSON(path.join(process.cwd(), 'src/locales/zh.json')),
+    en: await fs.readJSON(path.join(baseLocalesRoot, 'en.json')),
+    zh: await fs.readJSON(path.join(baseLocalesRoot, 'zh.json')),
   };
 
   const mergedMessages = {
@@ -85,7 +88,7 @@ const combineLocales = async () => {
     zh: flattenMessages(baseLocales.zh),
   };
 
-  for (const rootPath of [COMMUNITY_APP_ROOT, ENTERPRISE_APP_ROOT]) {
+  for (const rootPath of [...communityAppRoots, enterpriseAppRoot]) {
     const apps = await getAppDirectories(rootPath);
     for (const app of apps) {
       if (app.isDirectory() && !EXCLUDED_DIRECTORIES.includes(app.name)) {
@@ -99,27 +102,31 @@ const combineLocales = async () => {
             }
           } catch (error) {
             console.error(`Error loading locale for ${app.name}:`, error);
+            throw error;
           }
         }
       }
     }
   }
 
-  await fs.ensureDir(publicLocalesDir);
+  await fs.ensureDir(destinationRoot);
 
-  await fs.writeJSON(path.join(publicLocalesDir, 'en.json'), mergedMessages.en, { spaces: 2 });
-  await fs.writeJSON(path.join(publicLocalesDir, 'zh.json'), mergedMessages.zh, { spaces: 2 });
+  await fs.writeJSON(path.join(destinationRoot, 'en.json'), mergedMessages.en, { spaces: 2 });
+  await fs.writeJSON(path.join(destinationRoot, 'zh.json'), mergedMessages.zh, { spaces: 2 });
 
   console.log('Locales combined successfully to public/locales directory');
 };
 
-const combineMenus = async () => {
-  const publicMenusDir = path.resolve(process.cwd(), 'public/menus');
+const combineMenus = async ({
+  communityAppRoots = COMMUNITY_APP_ROOTS,
+  enterpriseMenusManifestPath = ENTERPRISE_MENUS_MANIFEST_PATH,
+  destinationRoot = path.resolve(process.cwd(), 'public/menus'),
+} = {}) => {
   let allMenusEn = [];
   let allMenusZh = [];
   const allMenuPatchesEn = [];
   const allMenuPatchesZh = [];
-  for (const rootPath of COMMUNITY_APP_ROOTS) {
+  for (const rootPath of communityAppRoots) {
     const directories = await getAppDirectories(rootPath);
     for (const dirent of directories) {
       if (dirent.isDirectory() && !EXCLUDED_DIRECTORIES.includes(dirent.name)) {
@@ -134,12 +141,13 @@ const combineMenus = async () => {
           }
         } catch (err) {
           console.error(`Failed to load menu for ${dirent.name}:`, err);
+          throw err;
         }
       }
     }
   }
-  if (await fs.pathExists(ENTERPRISE_MENUS_MANIFEST_PATH)) {
-    const enterpriseMenus = await fs.readJSON(ENTERPRISE_MENUS_MANIFEST_PATH);
+  if (await fs.pathExists(enterpriseMenusManifestPath)) {
+    const enterpriseMenus = await fs.readJSON(enterpriseMenusManifestPath);
     allMenusEn = allMenusEn.concat(enterpriseMenus.en || []);
     allMenusZh = allMenusZh.concat(enterpriseMenus.zh || []);
     allMenuPatchesEn.push(...(enterpriseMenus.en_patches || []));
@@ -151,9 +159,9 @@ const combineMenus = async () => {
   if (allMenuPatchesZh.length > 0) {
     applyPatches(allMenusZh, allMenuPatchesZh);
   }
-  await fs.ensureDir(publicMenusDir);
-  await fs.writeJSON(path.join(publicMenusDir, 'en.json'), allMenusEn, { spaces: 2 });
-  await fs.writeJSON(path.join(publicMenusDir, 'zh.json'), allMenusZh, { spaces: 2 });
+  await fs.ensureDir(destinationRoot);
+  await fs.writeJSON(path.join(destinationRoot, 'en.json'), allMenusEn, { spaces: 2 });
+  await fs.writeJSON(path.join(destinationRoot, 'zh.json'), allMenusZh, { spaces: 2 });
   console.log('Menus combined successfully to public/menus directory');
 };
 
@@ -191,6 +199,7 @@ const copyPublicDirectories = ({
           console.log(`Copied contents of ${sourcePath} to ${destinationPath}`);
         } catch (err) {
           console.error(`Failed to copy contents of ${sourcePath} to ${destinationPath}:`, err);
+          throw err;
         }
       } else {
         console.log(`No public directory found for ${app}`);
@@ -208,6 +217,7 @@ const copyPublicDirectories = ({
       console.log(`Copied contents of ${enterprisePublicRoot} to ${mainDestinationPath}`);
     } catch (err) {
       console.error(`Failed to copy contents of ${enterprisePublicRoot} to ${mainDestinationPath}:`, err);
+      throw err;
     }
   }
 };
