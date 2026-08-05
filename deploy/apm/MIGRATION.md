@@ -19,9 +19,9 @@
 1. 每次只选一个云区域，部署区域 Collector 到新的受控地址，验证 OTLP HTTP/gRPC、清洗、
    publish ACK、Stream backlog 和中心写入。
 2. 确认 NodeMgmt 中该云区域的受信代理地址已经激活，并把代理地址的 TCP 4318 映射到区域
-   Collector。Server 将据此生成 `http://<proxy_address>:4318/v1/traces`，不再读取 APM 专用
-   endpoint 环境变量。旧 Edge 与新 Collector 不能同时绑定同一宿主端口；使用负载均衡后端
-   切换或隔离端口。
+   Collector；直连区域可继续使用 `NODE_SERVER_URL` 的主机名。Server 将据此生成
+   `http://<receiver_host>:4318/v1/traces`，不再读取 APM 专用 endpoint 环境变量。旧 Edge 与新
+   Collector 不能同时绑定同一宿主端口；使用负载均衡后端切换或隔离端口。
 3. 观察至少一个区域故障恢复演练：断开 NATS 后本地队列增长并恢复；暂停中心消费者后 Stream
    积压并恢复；暂停 VT 后消息不 ACK，恢复后不产生 RED/SLO 双计数。
 4. 所有区域完成后切换 Server 到 `VictoriaTracesTelemetryStore`，核对目录、Trace、RED、端点、

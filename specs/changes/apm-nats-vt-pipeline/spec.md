@@ -58,16 +58,20 @@ APM、Monitor、Log 是同级产品域：Monitor 只使用 VictoriaMetrics，APM
 - `service_name`、可选 `service_version`
 - `environment`
 
-客户端不得提交 endpoint。Server 通过 NodeMgmt 公开 interface，按当前组织权限读取该区域受信
-`CloudRegion.proxy_address`（为空时由 NodeMgmt 回退 `PROXY_ADDRESS`），并固定生成：
+客户端不得提交 endpoint。Server 先校验当前组织可访问所选 APM 应用，再通过 NodeMgmt 公开
+interface 读取该区域受信 `CloudRegion.proxy_address`（为空时由 NodeMgmt 回退 `PROXY_ADDRESS`）；
+直连区域仍无代理地址时，从受信 envconfig 的 `NODE_SERVER_URL` 提取主机名。APM SDK/Agent 在
+接入前不要求成为节点管理中的节点，因此接入地址解析不得用 `NodeOrganization` 作为云区域授权
+条件，否则会形成“先有关联节点才能获取接入地址”的循环依赖。Server 固定生成：
 
-- SDK/探针基础端点：`http://<proxy_address>:4318`；
-- 页面展示的 Trace 上报端点：`http://<proxy_address>:4318/v1/traces`；
+- SDK/探针基础端点：`http://<receiver_host>:4318`；
+- 页面展示的 Trace 上报端点：`http://<receiver_host>:4318/v1/traces`；
 - 协议：`OTLP/HTTP`，`OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf`。
 
 代理地址只允许 NodeMgmt 规范化后的 IP、IPv6 或域名，不允许 scheme、端口、路径、userinfo、
-query、fragment 或控制字符。区域不存在、无当前组织权限或没有代理地址返回稳定 404；代理地址
-格式非法返回 400；NodeMgmt 不可用返回 503。不得回退到浏览器 hostname、Server hostname 或
+query、fragment 或控制字符；`NODE_SERVER_URL` 只允许 `http`/`https`，且只提取其主机名。
+区域不存在、当前组织无权访问应用或没有接收地址返回稳定 404；接收地址格式非法返回 400；
+NodeMgmt 不可用返回 503。不得回退到浏览器 hostname、Server hostname 或
 `/telegraf/api`。响应只包含区域 ID/名称、实际使用的 HTTP endpoint、标准 OTEL 环境变量与 Shell
 片段，不包含 gRPC endpoint、NATS 配置或凭据。区域 Collector 可继续监听 4317 作为手工接入兼容
 能力，但普通接入页面不暴露协议选择。

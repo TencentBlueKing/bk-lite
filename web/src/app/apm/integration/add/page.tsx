@@ -101,7 +101,7 @@ function requestErrorMessage(error: unknown) {
     : error instanceof Error && error.message
       ? error.message
       : '';
-  if (/没有可用的被动接收地址|云区域代理地址/.test(rawMessage)) {
+  if (/没有可用的被动接收地址|云区域(?:代理|接收)地址/.test(rawMessage)) {
     return '所选云区域没有可用的接收地址，请联系管理员检查云区域代理配置后重试。';
   }
   return rawMessage || '生成接入配置失败，请稍后重试。';
