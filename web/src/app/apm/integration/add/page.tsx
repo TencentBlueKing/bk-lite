@@ -3,11 +3,12 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import Link from 'next/link';
 import { ApiOutlined, CodeOutlined, CopyOutlined, ExperimentOutlined, GlobalOutlined, RocketOutlined } from '@ant-design/icons';
-import { Alert, Button, Card, Form, Input, message, Modal, Segmented, Select, Space, Tag, Typography } from 'antd';
+import { Alert, Button, Card, Form, Input, message, Modal, Result, Segmented, Select, Space, Tag, Typography } from 'antd';
 import useApmApi from '@/app/apm/api';
 import ApmRouteShell, { ApmSurface } from '@/app/apm/components/apm-route-shell';
-import CatalogState, { catalogErrorKind, type CatalogStateKind } from '@/app/apm/components/catalog-state';
+import CatalogState from '@/app/apm/components/catalog-state';
 import type { ApmApplication, ApmCloudRegion, ApmIngestSnippet, ApmIngestSnippetInput } from '@/app/apm/types';
+import { HandledRequestError } from '@/utils/request';
 
 interface IntegrationMethod {
   key: string;
@@ -33,9 +34,53 @@ const INTEGRATION_GROUPS: { key: string; title: string; icon: ReactNode; methods
   { key: 'kubernetes', title: 'Kubernetes', icon: <GlobalOutlined />, methods: [{ key: 'otel-operator', title: 'Kubernetes 自动注入', description: '通过 OTel Operator 和 Pod 注解自动注入探针', available: false }] },
 ];
 
-type PageState = CatalogStateKind | 'ready';
+type PageState = 'loading' | 'empty' | 'ready' | 'error';
 type SnippetMode = 'agent' | 'docker';
 type SnippetForm = Omit<ApmIngestSnippetInput, 'language' | 'runtime'>;
+type CatalogSource = 'applications' | 'cloud-regions';
+
+interface CatalogLoadFailure {
+  source: CatalogSource;
+  error: unknown;
+}
+
+interface CatalogLoadError {
+  status: '403' | 'warning' | 'error';
+  title: string;
+  description: string;
+}
+
+function catalogLoadError(source: CatalogSource, error: unknown): CatalogLoadError {
+  const status = error instanceof HandledRequestError ? error.status : undefined;
+  if (source === 'cloud-regions') {
+    if (status === 403) {
+      return {
+        status: '403',
+        title: '无权查看云区域',
+        description: '请联系管理员为当前组织配置云区域查看权限。',
+      };
+    }
+    return {
+      status: status === 503 ? 'warning' : 'error',
+      title: '云区域暂不可用',
+      description: status === 503
+        ? '暂时无法加载可用于接入的云区域。请重新加载；若持续失败，请联系管理员检查云区域服务。'
+        : '云区域加载失败，请检查网络后重新加载。',
+    };
+  }
+  if (status === 403) {
+    return {
+      status: '403',
+      title: '无权查看应用',
+      description: '请联系管理员为当前组织配置 APM 应用查看权限。',
+    };
+  }
+  return {
+    status: status === 503 ? 'warning' : 'error',
+    title: '应用列表暂不可用',
+    description: '暂时无法加载可用于接入的应用，请重新加载。',
+  };
+}
 
 async function copyText(value: string) {
   if (navigator.clipboard?.writeText) return navigator.clipboard.writeText(value);
@@ -62,6 +107,7 @@ export default function ApmIntegrationAddPage() {
   const [applications, setApplications] = useState<ApmApplication[]>([]);
   const [cloudRegions, setCloudRegions] = useState<ApmCloudRegion[]>([]);
   const [state, setState] = useState<PageState>('loading');
+  const [catalogError, setCatalogError] = useState<CatalogLoadError | null>(null);
   const [emptyDescription, setEmptyDescription] = useState('请先创建并启用一个应用，再生成接入配置。');
   const [selectedMethod, setSelectedMethod] = useState<IntegrationMethod | null>(null);
   const [mode, setMode] = useState<SnippetMode>('agent');
@@ -72,8 +118,19 @@ export default function ApmIntegrationAddPage() {
   const loadCatalog = useCallback(async () => {
     if (isLoading) return;
     setState('loading');
+    setCatalogError(null);
     try {
-      const [items, regions] = await Promise.all([getApplications(), getCloudRegions()]);
+      const requestConfig = { suppressErrorNotification: true };
+      const [items, regions] = await Promise.all([
+        getApplications(requestConfig).catch((error) => Promise.reject({
+          source: 'applications',
+          error,
+        } satisfies CatalogLoadFailure)),
+        getCloudRegions(requestConfig).catch((error) => Promise.reject({
+          source: 'cloud-regions',
+          error,
+        } satisfies CatalogLoadFailure)),
+      ]);
       setApplications(items.filter((item) => item.is_enabled));
       setCloudRegions(regions);
       if (!items.some((item) => item.is_enabled)) {
@@ -85,8 +142,13 @@ export default function ApmIntegrationAddPage() {
       } else {
         setState('ready');
       }
-    } catch (error) {
-      setState(catalogErrorKind(error));
+    } catch (failure) {
+      const normalized = failure as Partial<CatalogLoadFailure>;
+      setCatalogError(catalogLoadError(
+        normalized.source === 'applications' ? 'applications' : 'cloud-regions',
+        normalized.error ?? failure
+      ));
+      setState('error');
     }
   }, [getApplications, getCloudRegions, isLoading]);
 
@@ -132,7 +194,7 @@ export default function ApmIntegrationAddPage() {
         runtime: mode === 'docker' ? 'docker' : 'host',
       });
       setSnippet(result);
-      messageApi.success('接入配置已生成；关闭窗口后不会保存');
+      messageApi.success('临时接入配置已生成');
     } catch (error) {
       setSnippet(null);
       setGenerationError(requestErrorMessage(error));
@@ -145,9 +207,19 @@ export default function ApmIntegrationAddPage() {
     <ApmRouteShell title="添加接入" description="选择语言与应用，即时生成可复制的 OpenTelemetry 接入配置。">
       {messageContextHolder}
       {modalContextHolder}
-      <Alert className="mb-4" showIcon type="info" message="接入配置不会保存" description="应用是持久化的业务边界；服务与接入实例将在遥测数据首次上报后自动发现。当前版本不签发或校验 APM Token。" />
-      {state === 'loading' || state === 'error' || state === 'degraded' ? (
-        <ApmSurface><CatalogState kind={state} /></ApmSurface>
+      {state === 'loading' ? (
+        <ApmSurface><CatalogState kind="loading" /></ApmSurface>
+      ) : state === 'error' && catalogError ? (
+        <ApmSurface>
+          <div role="alert">
+            <Result
+              status={catalogError.status}
+              title={catalogError.title}
+              subTitle={catalogError.description}
+              extra={<Button type="primary" onClick={() => void loadCatalog()}>重新加载</Button>}
+            />
+          </div>
+        </ApmSurface>
       ) : state === 'empty' ? (
         <ApmSurface>
           <CatalogState kind="empty" description={emptyDescription} />
@@ -209,7 +281,7 @@ export default function ApmIntegrationAddPage() {
                 </Space.Compact>
               </div>
             </div>
-            <Typography.Text type="secondary" className="mt-3 block text-xs">当前版本无需 APM Token；端点由所选云区域的受信配置提供。</Typography.Text>
+            <Typography.Text type="secondary" className="mt-3 block text-xs">平台将根据所选云区域提供上报端点。</Typography.Text>
           </ApmSurface>
 
           <ApmSurface>

@@ -36,7 +36,12 @@ const setToken = (token: string | null) => {
   tokenRef.current = token;
 };
 
-/** Error already shown to user by the request interceptor — callers should stay silent. */
+export interface RequestConfig extends AxiosRequestConfig {
+  /** The caller renders a persistent inline error with recovery controls. */
+  suppressErrorNotification?: boolean;
+}
+
+/** Normalized request error that callers may map to a local error state. */
 export class HandledRequestError extends Error {
   readonly presentation?: RequestErrorPresentation;
   status?: number;
@@ -98,6 +103,7 @@ apiClient.interceptors.response.use(
       const { status } = error.response;
       const messageText = error.response?.data?.message ?? error.response?.data?.error;
       const presentation = getRequestErrorPresentation(error.response?.data);
+      const suppressErrorNotification = Boolean(error.config?.suppressErrorNotification);
       if (status === 460) {
         void forceLogoutAndRedirect();
         return Promise.reject(error);
@@ -105,24 +111,24 @@ apiClient.interceptors.response.use(
         emitSessionExpired({ reason: 'api-session-expired', status });
         return Promise.reject(error);
       } else if ([400, 403].includes(status)) {
-        if (presentation) {
+        if (!suppressErrorNotification && presentation) {
           message.error({
             content: renderRequestErrorPresentation(presentation),
             duration: 8,
           });
-        } else {
+        } else if (!suppressErrorNotification) {
           message.error(messageText);
         }
         return Promise.reject(
           new HandledRequestError(messageText, presentation ?? undefined).withStatus(status)
         );
       } else if (status === 500) {
-        message.error(messageText);
+        if (!suppressErrorNotification) message.error(messageText);
         return Promise.reject(
           new HandledRequestError(messageText || 'Internal Server Error').withStatus(status)
         );
       } else {
-        message.error(messageText);
+        if (!suppressErrorNotification) message.error(messageText);
         return Promise.reject(new HandledRequestError(messageText).withStatus(status));
       }
     }
@@ -162,12 +168,12 @@ const useApiClient = () => {
     }
   }, [token]);
 
-  const get = useCallback(async <T = any>(url: string, config?: AxiosRequestConfig): Promise<T> => {
+  const get = useCallback(async <T = any>(url: string, config?: RequestConfig): Promise<T> => {
     const response = await apiClient.get<T>(url, config);
     return config?.responseType === 'blob' ? response.data : handleResponse(response);
   }, []);
 
-  const post = useCallback(async <T = any>(url: string, data?: unknown, config?: AxiosRequestConfig): Promise<T> => {
+  const post = useCallback(async <T = any>(url: string, data?: unknown, config?: RequestConfig): Promise<T> => {
     try {
       const response = await apiClient.post<T>(url, data, config);
       if (config?.responseType === 'blob') {
@@ -179,7 +185,7 @@ const useApiClient = () => {
     }
   }, []);
 
-  const put = useCallback(async <T = any>(url: string, data?: unknown, config?: AxiosRequestConfig): Promise<T> => {
+  const put = useCallback(async <T = any>(url: string, data?: unknown, config?: RequestConfig): Promise<T> => {
     try {
       const response = await apiClient.put<T>(url, data, config);
       if (config?.responseType === 'blob') {
@@ -191,7 +197,7 @@ const useApiClient = () => {
     }
   }, []);
 
-  const del = useCallback(async <T = any>(url: string, config?: AxiosRequestConfig): Promise<T> => {
+  const del = useCallback(async <T = any>(url: string, config?: RequestConfig): Promise<T> => {
     try {
       const response = await apiClient.delete<T>(url, config);
       if (config?.responseType === 'blob') {
@@ -203,7 +209,7 @@ const useApiClient = () => {
     }
   }, []);
 
-  const patch = useCallback(async <T = any>(url: string, data?: unknown, config?: AxiosRequestConfig): Promise<T> => {
+  const patch = useCallback(async <T = any>(url: string, data?: unknown, config?: RequestConfig): Promise<T> => {
     try {
       const response = await apiClient.patch<T>(url, data, config);
       if (config?.responseType === 'blob') {
