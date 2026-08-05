@@ -42,7 +42,7 @@ const { Title, Text } = Typography;
  *  2) 接入详情页:顶部接入自检 4 项 + 中部 5 步任务路径 + 底部"上报端点 / 接入配置"双 tab
  *  3) 不带同比 delta;5 步完成状态由后端"近窗判定"实时计算,不依赖用户手动勾选
  *  4) 上报端点 OTLP/HTTP + OTLP/gRPC,平台统一分配,不允许自定义
- *  5) 资源属性 service.name + service.namespace 联合唯一,缺一不计入服务目录
+ *  5) 资源属性 service.name + service.namespace 联合唯一；空 namespace 归入内置“未归类应用”
  * ============================================================ */
 
 const TOKENS = {
@@ -708,7 +708,7 @@ function EbpfConfigPanel() {
         showIcon
         type="warning"
         style={{ marginBottom: 12, borderRadius: 6 }}
-        message="eBPF 模式无需改代码,内核态自动捕获;但需要特权 Pod 或节点级部署,适合低侵入试点。"
+        message="eBPF 模式无需改代码，内核态自动捕获；未设置 service.namespace 的服务会归入内置未归类应用。"
       />
       <CodeBlock
         code={`# 1. 部署 OBI(OpenTelemetry eBPF Instrumentation)
@@ -717,7 +717,6 @@ kubectl apply -f https://github.com/open-telemetry/opentelemetry-go-instrumentat
 # 2. 配置 OTLP exporter
 export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
 export OTEL_SERVICE_NAME=auto-instrumented
-export OTEL_SERVICE_NAMESPACE=default
 export OTEL_SERVICE_VERSION=v1.0.0
 
 # 3. 启动 OBI

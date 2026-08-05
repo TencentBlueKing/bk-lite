@@ -53,7 +53,7 @@ class TelemetryCatalogReconciler:
         archived_services, archived_instances = self.catalog.archive_stale(observed_at=observed_at)
         if unknown_applications:
             logger.warning(
-                "APM telemetry ignored unknown or disabled applications",
+                "APM telemetry ignored unknown applications",
                 extra={
                     "unknown_application_count": len(unknown_applications),
                     "unknown_application_samples": sorted(unknown_applications)[:MAX_UNKNOWN_APPLICATION_SAMPLES],

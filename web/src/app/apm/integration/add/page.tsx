@@ -108,7 +108,7 @@ export default function ApmIntegrationAddPage() {
   const [cloudRegions, setCloudRegions] = useState<ApmCloudRegion[]>([]);
   const [state, setState] = useState<PageState>('loading');
   const [catalogError, setCatalogError] = useState<CatalogLoadError | null>(null);
-  const [emptyDescription, setEmptyDescription] = useState('请先创建并启用一个应用，再生成接入配置。');
+  const [emptyDescription, setEmptyDescription] = useState('请先创建一个应用，再生成接入配置。');
   const [selectedMethod, setSelectedMethod] = useState<IntegrationMethod | null>(null);
   const [mode, setMode] = useState<SnippetMode>('agent');
   const [snippet, setSnippet] = useState<ApmIngestSnippet | null>(null);
@@ -131,10 +131,10 @@ export default function ApmIntegrationAddPage() {
           error,
         } satisfies CatalogLoadFailure)),
       ]);
-      setApplications(items.filter((item) => item.is_enabled));
+      setApplications(items.filter((item) => !item.is_builtin));
       setCloudRegions(regions);
-      if (!items.some((item) => item.is_enabled)) {
-        setEmptyDescription('请先创建并启用一个应用，再生成接入配置。');
+      if (!items.some((item) => !item.is_builtin)) {
+        setEmptyDescription('请先创建一个应用，再生成接入配置。');
         setState('empty');
       } else if (regions.length === 0) {
         setEmptyDescription('暂无可用云区域，请联系运维配置区域 APM OTLP 接入端点。');

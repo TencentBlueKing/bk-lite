@@ -27,7 +27,6 @@ class ApplicationMutationSerializer(OrganizationAssignmentSerializer):
     )
     name = serializers.CharField(max_length=128)
     description = serializers.CharField(max_length=512, required=False, allow_blank=True)
-    is_enabled = serializers.BooleanField(required=False)
 
     def validate_application_id(self, value):
         if ApmApplication.objects.filter(application_id=value).exists():
@@ -65,7 +64,7 @@ class ApmApplicationSerializer(serializers.ModelSerializer):
             "application_id",
             "name",
             "description",
-            "is_enabled",
+            "is_builtin",
             "service_count",
             "organization_ids",
             "created_at",

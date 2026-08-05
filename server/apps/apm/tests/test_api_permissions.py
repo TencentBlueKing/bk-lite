@@ -25,9 +25,10 @@ def test_application_crud_persists_business_boundary_without_a_token(apm_api_cli
 
     assert created.status_code == 201
     assert created.data["application_id"] == "shop"
+    assert created.data["is_builtin"] is False
     assert created.data["organization_ids"] == [10, 20]
     assert "credential" not in created.data
-    assert ApmApplication.objects.count() == 1
+    assert ApmApplication.objects.filter(is_builtin=False).count() == 1
 
     updated = apm_api_client.put(
         f"/api/v1/apm/applications/{created.data['id']}/",
@@ -35,14 +36,38 @@ def test_application_crud_persists_business_boundary_without_a_token(apm_api_cli
             "name": "电商应用",
             "description": "",
             "organization_ids": [10],
-            "is_enabled": False,
+            "is_builtin": True,
         },
         format="json",
     )
     assert updated.status_code == 200
     assert updated.data["application_id"] == "shop"
     assert updated.data["name"] == "电商应用"
-    assert updated.data["is_enabled"] is False
+    assert updated.data["is_builtin"] is False
+
+
+def test_builtin_application_is_visible_but_cannot_be_modified(apm_api_client):
+    application = ApmApplication.objects.get(application_id="", is_builtin=True)
+
+    listed = apm_api_client.get("/api/v1/apm/applications/")
+    updated = apm_api_client.put(
+        f"/api/v1/apm/applications/{application.id}/",
+        {
+            "name": "被篡改的名称",
+            "description": "",
+            "organization_ids": [10],
+        },
+        format="json",
+    )
+    deleted = apm_api_client.delete(f"/api/v1/apm/applications/{application.id}/")
+
+    assert listed.status_code == 200
+    assert listed.data[0]["is_builtin"] is True
+    assert updated.status_code == 409
+    assert updated.data["detail"] == "内置应用不可修改。"
+    assert deleted.status_code == 405
+    application.refresh_from_db()
+    assert application.name == "未归类应用"
 
 
 def test_application_id_validation_and_uniqueness_are_explicit(apm_api_client):
@@ -105,7 +130,7 @@ def test_integration_config_is_stateless_and_maps_standard_resource_attributes(a
     assert response.data["http_endpoint"] == "https://apm-east.example.com:4318/v1/traces"
     assert response.data["grpc_endpoint"] == "https://apm-east.example.com:4317"
     assert response.data["environment"]["OTEL_EXPORTER_OTLP_ENDPOINT"] == "https://apm-east.example.com:4318"
-    assert ApmApplication.objects.count() == 1
+    assert ApmApplication.objects.filter(is_builtin=False).count() == 1
 
 
 def test_integration_config_rejects_unknown_or_out_of_scope_application(apm_api_client):
@@ -258,7 +283,7 @@ def test_permissions_separate_application_management_from_config_generation(apm_
         format="json",
     )
     assert denied.status_code == 403
-    assert ApmApplication.objects.count() == 0
+    assert ApmApplication.objects.filter(is_builtin=False).count() == 0
 
 
 def test_service_and_instance_lists_keep_independent_organization_scopes(apm_api_client):

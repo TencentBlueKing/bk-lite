@@ -135,7 +135,7 @@ export interface ApmApplication {
   application_id: string;
   name: string;
   description: string;
-  is_enabled: boolean;
+  is_builtin: boolean;
   service_count: number;
   organization_ids: number[];
   created_at: string;
@@ -148,7 +148,6 @@ export interface ApmApplicationInput {
   application_id?: string;
   name: string;
   description?: string;
-  is_enabled?: boolean;
   organization_ids: number[];
 }
 

@@ -11,6 +11,7 @@ const apmApi = read('src/app/apm/api/index.ts');
 const request = read('src/utils/request.ts');
 const applications = read('src/app/apm/integration/applications/page.tsx');
 const instances = read('src/app/apm/integration/instances/page.tsx');
+const integrationStories = read('src/stories/apm-integration-pages.components.tsx');
 
 for (const method of ['Node.js', 'Java', 'Python', '.NET', 'Go', 'OTel Collector', 'eBPF', 'Kubernetes']) {
   assert.ok(catalog.includes(method), `接入目录应包含 ${method}`);
@@ -55,6 +56,13 @@ assert.match(instances, /全部环境/, '接入列表应支持按环境筛选');
 assert.match(applications, /createApplication\(/, '应用管理必须支持创建应用');
 assert.match(applications, /updateApplication\(/, '应用管理必须支持编辑应用');
 assert.match(applications, /name="application_id"/, '应用管理必须维护稳定的应用 ID');
+assert.match(applications, /item\.is_builtin/, '应用管理必须识别内置应用');
+assert.match(applications, /内置/, '内置应用必须有文字标识，不能只依赖颜色');
+assert.match(applications, /系统维护/, '内置应用必须呈现明确的只读状态');
+assert.doesNotMatch(applications, /允许发现新服务|name="is_enabled"|<Switch/, '应用管理不应暴露多余的启用开关');
+assert.match(catalog, /!item\.is_builtin/, '内置未归类应用不能用于生成普通接入配置');
+assert.doesNotMatch(catalog, /item\.is_enabled|创建并启用/, '接入页不应依赖已移除的应用启用状态');
+assert.doesNotMatch(integrationStories, /OTEL_SERVICE_NAMESPACE=default/, 'eBPF 示例不应伪造默认 namespace');
 
 for (const source of [catalog, applications, instances]) {
   assert.doesNotMatch(source, /(?:stories|fixtures?)\//i, '接入生产页面不得导入 Story/fixture');
