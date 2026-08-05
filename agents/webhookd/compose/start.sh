@@ -35,8 +35,11 @@ if [ ! -d "$COMPOSE_PATH" ]; then
     exit 1
 fi
 
-# 检查配置文件是否存在
-COMPOSE_FILE="$COMPOSE_PATH/docker-compose.yml"
+# 检查配置文件是否存在且不是符号链接
+if ! COMPOSE_FILE=$(get_compose_file "$ID"); then
+    json_error "$ID" "Invalid compose file"
+    exit 1
+fi
 if [ ! -f "$COMPOSE_FILE" ]; then
     json_error "$ID" "Compose file not found, please run setup first"
     exit 1

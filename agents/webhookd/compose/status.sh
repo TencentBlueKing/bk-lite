@@ -12,9 +12,14 @@ source "$SCRIPT_DIR/common.sh"
 get_single_status() {
     local id="$1"
     local compose_path
+    local compose_file
 
     if ! compose_path=$(get_compose_path "$id"); then
         echo '{"id":"","status":"error","message":"Invalid ID"}'
+        return 1
+    fi
+    if ! compose_file=$(get_compose_file "$id"); then
+        echo "{\"id\":\"$id\",\"status\":\"error\",\"message\":\"Invalid compose file\"}"
         return 1
     fi
     
@@ -57,21 +62,31 @@ if [ -n "$id" ]; then
 elif [ -n "$1" ]; then
     # JSON 数据
     JSON_DATA="$1"
-    
-    # 尝试解析 ids 数组
-    IDS=$(echo "$JSON_DATA" | jq -r '.ids[]? // empty' 2>/dev/null)
-    
-    if [ -z "$IDS" ]; then
-        # 如果没有 ids 数组，尝试解析单个 id
-        ID=$(echo "$JSON_DATA" | jq -r '.id // empty' 2>/dev/null)
+
+    if ! echo "$JSON_DATA" | jq -e 'type == "object"' >/dev/null 2>&1; then
+        json_error "" "Invalid JSON data"
+        exit 1
+    fi
+    if echo "$JSON_DATA" | jq -e 'has("ids")' >/dev/null; then
+        if ! echo "$JSON_DATA" | jq -e '.ids | type == "array" and length > 0' >/dev/null; then
+            json_error "" "Invalid IDs"
+            exit 1
+        fi
+        IDS=$(echo "$JSON_DATA" | jq -c '.ids[]')
+    elif echo "$JSON_DATA" | jq -e 'has("id")' >/dev/null; then
+        if ! ID=$(echo "$JSON_DATA" | jq -er 'if ((.id | type) == "string" and (.id | length) > 0) then .id else error("invalid id") end'); then
+            json_error "" "Invalid ID"
+            exit 1
+        fi
     fi
 fi
 
 # 处理多个 ID
 if [ -n "$IDS" ]; then
     # 先验证完整批次，避免非法 ID 导致部分服务已被查询。
-    while IFS= read -r service_id; do
-        if [ -n "$service_id" ] && ! get_compose_path "$service_id" >/dev/null; then
+    while IFS= read -r service_json; do
+        service_id=$(printf '%s' "$service_json" | jq -r 'if type == "string" then . else empty end')
+        if ! get_compose_file "$service_id" >/dev/null; then
             json_error "" "Invalid ID"
             exit 1
         fi
@@ -80,16 +95,15 @@ if [ -n "$IDS" ]; then
     RESULTS="["
     FIRST=true
     
-    while IFS= read -r service_id; do
-        if [ -n "$service_id" ]; then
-            if [ "$FIRST" = true ]; then
-                FIRST=false
-            else
-                RESULTS="$RESULTS,"
-            fi
-            STATUS_RESULT=$(get_single_status "$service_id")
-            RESULTS="$RESULTS$STATUS_RESULT"
+    while IFS= read -r service_json; do
+        service_id=$(printf '%s' "$service_json" | jq -r 'if type == "string" then . else empty end')
+        if [ "$FIRST" = true ]; then
+            FIRST=false
+        else
+            RESULTS="$RESULTS,"
         fi
+        STATUS_RESULT=$(get_single_status "$service_id")
+        RESULTS="$RESULTS$STATUS_RESULT"
     done <<< "$IDS"
     
     RESULTS="$RESULTS]"
@@ -101,6 +115,10 @@ fi
 if [ -n "$ID" ]; then
     if ! COMPOSE_PATH=$(get_compose_path "$ID"); then
         json_error "" "Invalid ID"
+        exit 1
+    fi
+    if ! get_compose_file "$ID" >/dev/null; then
+        json_error "$ID" "Invalid compose file"
         exit 1
     fi
     if [ ! -d "$COMPOSE_PATH" ]; then

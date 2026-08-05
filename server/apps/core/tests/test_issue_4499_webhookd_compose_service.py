@@ -1,6 +1,7 @@
 import json
 import os
 import subprocess
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
@@ -103,6 +104,25 @@ def test_setup_rejects_compose_file_symlinked_to_directory(compose_env):
     assert not calls_file.exists()
 
 
+def test_setup_rejects_compose_file_symlinked_outside(compose_env):
+    env, compose_dir, calls_file = compose_env
+    service_dir = compose_dir / "safe"
+    service_dir.mkdir()
+    outside_file = compose_dir.parent / "outside.yml"
+    outside_file.write_text("known-good\n", encoding="utf-8")
+    (service_dir / "docker-compose.yml").symlink_to(outside_file)
+
+    result = run_compose_script(
+        "setup.sh",
+        {"id": "safe", "compose": "services: {}"},
+        env,
+    )
+
+    assert result.returncode != 0
+    assert outside_file.read_text(encoding="utf-8") == "known-good\n"
+    assert not calls_file.exists()
+
+
 def test_setup_invalid_config_preserves_existing_file(compose_env):
     env, compose_dir, calls_file = compose_env
     service_dir = compose_dir / "safe"
@@ -129,6 +149,7 @@ def test_setup_valid_config_atomically_replaces_existing_file(compose_env):
     service_dir.mkdir()
     compose_file = service_dir / "docker-compose.yml"
     compose_file.write_text("old\n", encoding="utf-8")
+    previous_inode = compose_file.stat().st_ino
 
     result = run_compose_script(
         "setup.sh",
@@ -138,6 +159,7 @@ def test_setup_valid_config_atomically_replaces_existing_file(compose_env):
 
     assert result.returncode == 0
     assert compose_file.read_text(encoding="utf-8") == "services: {}\n"
+    assert compose_file.stat().st_ino != previous_inode
     response = json.loads(result.stdout)
     assert response == {
         "status": "success",
@@ -150,6 +172,50 @@ def test_setup_valid_config_atomically_replaces_existing_file(compose_env):
     assert compose_args[-1] == "config"
     assert calls_file.with_suffix(".pwd").read_text(encoding="utf-8").strip() == str(service_dir)
     assert not list(service_dir.glob(".docker-compose.yml.*"))
+
+
+def test_concurrent_setup_keeps_one_complete_config_without_temp_files(compose_env):
+    env, compose_dir, _ = compose_env
+    configs = ("services: {first: {}}", "services: {second: {}}")
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        results = list(
+            executor.map(
+                lambda config: run_compose_script(
+                    "setup.sh",
+                    {"id": "safe", "compose": config},
+                    env,
+                ),
+                configs,
+            )
+        )
+
+    assert all(result.returncode == 0 for result in results)
+    service_dir = compose_dir / "safe"
+    assert (service_dir / "docker-compose.yml").read_text(encoding="utf-8") in {f"{config}\n" for config in configs}
+    assert not list(service_dir.glob(".docker-compose.yml.*"))
+
+
+def test_setup_mktemp_failure_returns_json_and_preserves_existing_file(compose_env):
+    env, compose_dir, calls_file = compose_env
+    service_dir = compose_dir / "safe"
+    service_dir.mkdir()
+    compose_file = service_dir / "docker-compose.yml"
+    compose_file.write_text("known-good\n", encoding="utf-8")
+    fake_mktemp = Path(env["PATH"].split(os.pathsep)[0]) / "mktemp"
+    fake_mktemp.write_text("#!/bin/sh\nexit 1\n", encoding="utf-8")
+    fake_mktemp.chmod(0o755)
+
+    result = run_compose_script(
+        "setup.sh",
+        {"id": "safe", "compose": "services: {}"},
+        env,
+    )
+
+    assert result.returncode != 0
+    assert json.loads(result.stdout)["message"] == "Failed to create temporary compose file"
+    assert compose_file.read_text(encoding="utf-8") == "known-good\n"
+    assert not calls_file.exists()
 
 
 @pytest.mark.parametrize("script_name", ["start.sh", "stop.sh", "status.sh"])
@@ -166,6 +232,21 @@ def test_single_service_actions_reject_traversal_before_compose_call(
     )
 
     result = run_compose_script(script_name, {"id": "../escaped"}, env)
+
+    assert result.returncode != 0
+    assert not calls_file.exists()
+
+
+@pytest.mark.parametrize("script_name", ["start.sh", "stop.sh", "status.sh"])
+def test_single_service_actions_reject_symlinked_compose_file(compose_env, script_name):
+    env, compose_dir, calls_file = compose_env
+    service_dir = compose_dir / "safe"
+    service_dir.mkdir()
+    outside_file = compose_dir.parent / "outside.yml"
+    outside_file.write_text("services: {}\n", encoding="utf-8")
+    (service_dir / "docker-compose.yml").symlink_to(outside_file)
+
+    result = run_compose_script(script_name, {"id": "safe"}, env)
 
     assert result.returncode != 0
     assert not calls_file.exists()
@@ -241,6 +322,75 @@ def test_status_rejects_invalid_batch_before_any_compose_call(compose_env):
         "status.sh",
         {"ids": ["safe", "../escaped"]},
         env,
+    )
+
+    assert result.returncode != 0
+    assert not calls_file.exists()
+
+
+@pytest.mark.parametrize("invalid_id", ["", "safe\nother"])
+def test_status_rejects_every_invalid_batch_element_before_compose_call(compose_env, invalid_id):
+    env, compose_dir, calls_file = compose_env
+    service_dir = compose_dir / "safe"
+    service_dir.mkdir()
+    (service_dir / "docker-compose.yml").write_text("services: {}\n", encoding="utf-8")
+
+    result = run_compose_script(
+        "status.sh",
+        {"ids": ["safe", invalid_id]},
+        env,
+    )
+
+    assert result.returncode != 0
+    assert not calls_file.exists()
+
+
+def test_status_prevalidates_every_batch_compose_file_before_calls(compose_env):
+    env, compose_dir, calls_file = compose_env
+    for service_id in ("safe", "linked"):
+        service_dir = compose_dir / service_id
+        service_dir.mkdir()
+        (service_dir / "docker-compose.yml").write_text("services: {}\n", encoding="utf-8")
+    outside_file = compose_dir.parent / "outside.yml"
+    outside_file.write_text("services: {}\n", encoding="utf-8")
+    (compose_dir / "linked" / "docker-compose.yml").unlink()
+    (compose_dir / "linked" / "docker-compose.yml").symlink_to(outside_file)
+
+    result = run_compose_script(
+        "status.sh",
+        {"ids": ["safe", "linked"]},
+        env,
+    )
+
+    assert result.returncode != 0
+    assert not calls_file.exists()
+
+
+@pytest.mark.parametrize("payload", [{"ids": "safe"}, {"ids": []}, {"id": 1}, {"id": ""}])
+def test_status_rejects_invalid_json_shapes_without_listing_all(compose_env, payload):
+    env, compose_dir, calls_file = compose_env
+    service_dir = compose_dir / "safe"
+    service_dir.mkdir()
+    (service_dir / "docker-compose.yml").write_text("services: {}\n", encoding="utf-8")
+
+    result = run_compose_script("status.sh", payload, env)
+
+    assert result.returncode != 0
+    assert not calls_file.exists()
+
+
+def test_status_rejects_malformed_json_without_listing_all(compose_env):
+    env, compose_dir, calls_file = compose_env
+    service_dir = compose_dir / "safe"
+    service_dir.mkdir()
+    (service_dir / "docker-compose.yml").write_text("services: {}\n", encoding="utf-8")
+
+    result = subprocess.run(
+        ["bash", str(COMPOSE_SCRIPTS / "status.sh"), "{not-json"],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
     )
 
     assert result.returncode != 0

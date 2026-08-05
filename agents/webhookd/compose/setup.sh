@@ -42,26 +42,33 @@ if ! COMPOSE_PATH=$(get_compose_path "$ID"); then
     exit 1
 fi
 
-# 定义文件路径
-COMPOSE_FILE="$COMPOSE_PATH/docker-compose.yml"
-if [ -L "$COMPOSE_FILE" ] || { [ -e "$COMPOSE_FILE" ] && [ ! -f "$COMPOSE_FILE" ]; }; then
+# 定义并校验文件路径
+if ! COMPOSE_FILE=$(get_compose_file "$ID"); then
     json_error "$ID" "Invalid compose file"
     exit 1
 fi
-TEMP_FILE=$(mktemp "$COMPOSE_PATH/.docker-compose.yml.XXXXXX")
+if ! TEMP_FILE=$(mktemp "$COMPOSE_PATH/.docker-compose.yml.XXXXXX"); then
+    json_error "$ID" "Failed to create temporary compose file"
+    exit 1
+fi
 cleanup() {
     rm -f -- "$TEMP_FILE"
 }
 trap cleanup EXIT
 
 # 先在同目录临时文件中校验，成功后再以 rename 原子提交。
-printf '%s\n' "$COMPOSE_CONFIG" > "$TEMP_FILE"
+if ! printf '%s\n' "$COMPOSE_CONFIG" > "$TEMP_FILE"; then
+    json_error "$ID" "Failed to write temporary compose file"
+    exit 1
+fi
 
 # 保留既有项目目录语义（.env、相对 build/env_file 路径等）。
 cd "$COMPOSE_PATH"
 if VALIDATION_OUTPUT=$(docker-compose -f "$TEMP_FILE" config 2>&1); then
-    chmod 0644 "$TEMP_FILE"
-    mv -f -- "$TEMP_FILE" "$COMPOSE_FILE"
+    if ! chmod 0644 "$TEMP_FILE" || ! mv -f -- "$TEMP_FILE" "$COMPOSE_FILE"; then
+        json_error "$ID" "Failed to store compose file"
+        exit 1
+    fi
     trap - EXIT
     json_success "$ID" "Configuration is valid" "file" "$COMPOSE_FILE"
     exit 0

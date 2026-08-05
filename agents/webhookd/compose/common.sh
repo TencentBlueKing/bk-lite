@@ -51,9 +51,14 @@ get_compose_path() {
 get_compose_file() {
     local id="$1"
     local compose_path
+    local compose_file
 
     compose_path=$(get_compose_path "$id") || return 1
-    printf '%s/docker-compose.yml\n' "$compose_path"
+    compose_file="$compose_path/docker-compose.yml"
+    if [ -L "$compose_file" ] || { [ -e "$compose_file" ] && [ ! -f "$compose_file" ]; }; then
+        return 1
+    fi
+    printf '%s\n' "$compose_file"
 }
 
 # 返回列表响应（compose 专用）
