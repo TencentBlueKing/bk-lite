@@ -23,7 +23,7 @@ export const resolveSidebarTreeSelection = ({
     };
   }
 
-  const nextSelectedKeys = selectedKeys.length > 0 ? selectedKeys : [nodeKey];
+  const nextSelectedKeys: Key[] = selectedKeys.length > 0 ? selectedKeys : [nodeKey];
   return {
     selectedKeys: nextSelectedKeys,
     navigationKey: String(nextSelectedKeys[0]),
