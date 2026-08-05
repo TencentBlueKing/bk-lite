@@ -20,6 +20,11 @@ def _load_builtin_alert_screen():
     return next(screen for screen in payload["screens"] if screen.get("name", "").startswith("告警运营大屏"))
 
 
+def _load_builtin_room3d_screen():
+    payload = yaml.safe_load(BUILTIN_CANVASES_PATH.read_text(encoding="utf-8"))
+    return next(screen for screen in payload["screens"] if screen["key"] == "screen::3D机房大屏_内置")
+
+
 def _count_nested_key(value, target_key):
     if isinstance(value, list):
         return sum(_count_nested_key(item, target_key) for item in value)
@@ -28,13 +33,48 @@ def _count_nested_key(value, target_key):
     return 0
 
 
-def test_builtin_yaml_contains_only_new_alert_screen():
+def test_builtin_yaml_contains_alert_and_room3d_screens():
     payload = yaml.safe_load(BUILTIN_CANVASES_PATH.read_text(encoding="utf-8"))
 
-    assert payload["meta"]["object_counts"]["screens"] == 1
-    assert [screen["key"] for screen in payload["screens"]] == ["screen::告警运营大屏_内置"]
-    assert [screen["name"] for screen in payload["screens"]] == ["告警运营大屏_内置"]
+    assert payload["meta"]["object_counts"]["screens"] == 2
+    assert [screen["key"] for screen in payload["screens"]] == [
+        "screen::告警运营大屏_内置",
+        "screen::3D机房大屏_内置",
+    ]
+    assert [screen["name"] for screen in payload["screens"]] == ["告警运营大屏_内置", "3D机房大屏_内置"]
     assert "基础资源态势大屏_内置" not in BUILTIN_CANVASES_PATH.read_text(encoding="utf-8")
+
+
+def test_builtin_room3d_screen_yaml_uses_dynamic_room_switch():
+    payload = yaml.safe_load(BUILTIN_CANVASES_PATH.read_text(encoding="utf-8"))
+    screen = _load_builtin_room3d_screen()
+    assert screen["view_sets"]["viewport"] == {
+        "theme": "screen-dark",
+        "width": 1920,
+        "height": 1080,
+        "background": {"key": "tech-grid", "type": "builtIn"},
+    }
+    assert screen["view_sets"]["decorations"] == {"title": "3D机房大屏", "showClock": False, "showTitle": False}
+    assert len(screen["view_sets"]["items"]) == 1
+    widget = screen["view_sets"]["items"][0]
+    assert widget["chartType"] == "room3D"
+    assert widget["valueConfig"]["appearance"] == {"frame": "bare"}
+    assert widget["valueConfig"]["dataSource"] == "CMDB 3D机房布局::cmdb/get_room3d_layout"
+
+    datasource = next(item for item in payload["datasources"] if item["key"] == widget["valueConfig"]["dataSource"])
+    room_param = datasource["params"][0]
+    assert room_param["name"] == "server_room_id"
+    assert room_param["value"] == ""
+    assert room_param["inputConfig"] == {
+        "control": "select",
+        "componentSwitch": True,
+        "optionsSource": {
+            "type": "dynamic",
+            "sourceRef": {"type": "rest_api", "value": "cmdb/get_room_list"},
+            "valueField": "_id",
+            "labelField": "inst_name",
+        },
+    }
 
 
 def test_builtin_alert_screen_yaml_uses_page_configurable_nodes_only():
@@ -161,6 +201,18 @@ def test_init_builtin_canvases_creates_builtin_alert_screen():
     source_top_fields = {field["key"]: field["title"] for field in source_top_datasource.field_schema}
     assert source_top_fields["source_name"] == "告警源"
     assert source_top_fields["count"] == "事件数"
+
+    room3d_screen = Screen.objects.get(name="3D机房大屏_内置", is_build_in=True)
+    assert room3d_screen.build_in_key == "screen::3D机房大屏_内置"
+    assert room3d_screen.directory.build_in_key == "__builtin__"
+    assert room3d_screen.view_sets["decorations"] == {"title": "3D机房大屏", "showClock": False, "showTitle": False}
+    room3d_widget = room3d_screen.view_sets["items"][0]
+    room3d_datasource = DataSourceAPIModel.objects.get(name="CMDB 3D机房布局")
+    assert room3d_widget["chartType"] == "room3D"
+    assert room3d_widget["valueConfig"]["dataSource"] == room3d_datasource.id
+    assert room3d_widget["valueConfig"]["appearance"] == {"frame": "bare"}
+    room_param = room3d_datasource.params[0]
+    assert room_param["inputConfig"]["componentSwitch"] is True
 
     alert_dashboard = Dashboard.objects.get(name="统一告警中心仪表盘", is_build_in=True)
     dashboard_widget_by_id = {widget["id"]: widget for widget in alert_dashboard.view_sets}

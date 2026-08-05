@@ -1,4 +1,5 @@
 import * as assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 
 import {
   getRoom3DDisplayOptions,
@@ -544,3 +545,54 @@ assert.equal(screenWithUnsupportedBareLine.items[0].chartType, "line");
 assert.deepEqual(screenWithUnsupportedBareLine.items[0].valueConfig.appearance, {
   frame: "panel",
 });
+
+const room3DComponentSource = readFileSync(
+  new URL(
+    "../src/app/ops-analysis/components/widgets/room3D/index.tsx",
+    import.meta.url,
+  ),
+  "utf8",
+);
+const room3DStyleSource = readFileSync(
+  new URL(
+    "../src/app/ops-analysis/components/widgets/room3D/room3D.module.scss",
+    import.meta.url,
+  ),
+  "utf8",
+);
+const screenWidgetFrameSource = readFileSync(
+  new URL(
+    "../src/app/ops-analysis/(pages)/view/screen/components/screenWidgetFrame.tsx",
+    import.meta.url,
+  ),
+  "utf8",
+);
+const componentSwitchSource = readFileSync(
+  new URL(
+    "../src/app/ops-analysis/components/componentParamSwitchControl.tsx",
+    import.meta.url,
+  ),
+  "utf8",
+);
+const screenThemeSource = readFileSync(
+  new URL(
+    "../src/app/ops-analysis/(pages)/view/screen/utils/screenTheme.ts",
+    import.meta.url,
+  ),
+  "utf8",
+);
+assert.match(room3DComponentSource, /roomSwitchOverlay/);
+assert.match(room3DComponentSource, /chromeVisible|room3DChromeVisible/);
+assert.match(room3DComponentSource, /showRoomSummary = !componentSwitchControl/);
+assert.match(room3DComponentSource, /styles\.roomTitle/);
+assert.match(room3DComponentSource, /roomSummaryText/);
+assert.match(room3DStyleSource, /\.roomTitle\b/);
+assert.match(room3DStyleSource, /\.room3DImmersive:hover/);
+assert.doesNotMatch(
+  room3DStyleSource,
+  /\.room3DImmersive[^\{]*\.roomSwitchOverlay/,
+);
+assert.match(screenWidgetFrameSource, /screen-widget-frame__drag-surface/);
+assert.doesNotMatch(componentSwitchSource, /component-param-switch-control/);
+assert.match(screenThemeSource, /--screen-component-switch-bg/g);
+assert.match(screenThemeSource, /--screen-component-switch-selected-bg/g);
