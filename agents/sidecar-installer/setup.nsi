@@ -1,6 +1,8 @@
 ; Collector Sidecar Installer
 ; NSIS + Go worker architecture
-; Key: Worker runs from $INSTDIR (not TEMP) to avoid malware detection
+; Key: Worker runs from $PLUGINSDIR, never from $INSTDIR, because it activates
+; Windows packages by renaming $INSTDIR and cannot rename a directory that the
+; installer or the worker itself is running from or working in.
 
 !include "MUI2.nsh"
 !include "nsDialogs.nsh"
