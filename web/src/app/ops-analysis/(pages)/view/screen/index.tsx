@@ -36,6 +36,7 @@ import type {
   ScreenProps,
   ScreenViewSets,
   ScreenViewportConfig,
+  ScreenWidgetItem,
 } from "@/app/ops-analysis/types/screen";
 import {
   AppViewFullscreenExit,
@@ -59,7 +60,7 @@ import {
   resizeScreenItem,
   syncScreenFilterBindings,
   updateScreenItemConfig,
-} from "./utils/layout";
+} from "./utils/layoutUtils";
 import {
   buildDefaultScreenViewSets,
   normalizeScreenViewSets,
@@ -546,12 +547,39 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
     [currentConfigItem, rebuildDraftFilters, t],
   );
 
+  const handleTopologyLayoutChange = useCallback(
+    (
+      itemId: string,
+      nextTopology: NonNullable<
+        NonNullable<ScreenWidgetItem["valueConfig"]>["networkStatusTopology"]
+      >,
+    ) => {
+      if (!editMode || shareMode) return;
+      setDraftViewSets((current) => ({
+        ...current,
+        items: current.items.map((item) =>
+          item.id === itemId
+            ? {
+              ...item,
+              valueConfig: {
+                ...item.valueConfig,
+                networkStatusTopology: nextTopology,
+              },
+            }
+            : item,
+        ),
+      }));
+    },
+    [editMode, shareMode],
+  );
+
   const screenCanvas = useMemo(
     () => (
       <ScreenCanvas
         viewSets={activeViewSets}
         fullscreen={isFullscreen}
         editMode={editMode}
+        shareMode={shareMode}
         selectedItemId={selectedItemId}
         refreshVersion={refreshVersion}
         screenId={selectedScreen?.data_id}
@@ -566,6 +594,9 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
         onResizeItem={handleResizeItem}
         onEditItem={handleOpenItemConfig}
         onDeleteItem={handleDeleteItem}
+        onTopologyLayoutChange={
+          editMode && !shareMode ? handleTopologyLayoutChange : undefined
+        }
       />
     ),
     [
@@ -576,6 +607,7 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
       handleOpenItemConfig,
       handleMoveItem,
       handleResizeItem,
+      handleTopologyLayoutChange,
       queryState.appliedFilterValues,
       queryState.appliedNamespaceId,
       queryState.definitions,
@@ -585,6 +617,7 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
       isFullscreen,
       selectedItemId,
       selectedScreen?.data_id,
+      shareMode,
     ],
   );
 

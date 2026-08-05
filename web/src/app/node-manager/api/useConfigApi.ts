@@ -83,7 +83,7 @@ const useConfigApi = () => {
 
   // 删除子配置
   const deleteSubConfig = async (id: React.Key) => {
-    return await del(`/node_mgmt/api/child_config/${id}/`);
+    return await del(`/node_mgmt/api/child_config/${String(id)}/`);
   };
 
   // 应用指定采集器配置文件到指定节点

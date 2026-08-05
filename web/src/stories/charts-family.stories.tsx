@@ -128,7 +128,9 @@ const getAreaCanvasTooltipItems = (payload: unknown[]) =>
   payload.map((item) => {
     const payloadItem = item as AreaCanvasTooltipPayloadItem;
     return {
-      key: payloadItem.dataKey,
+      key: typeof payloadItem.dataKey === 'symbol'
+        ? String(payloadItem.dataKey)
+        : payloadItem.dataKey,
       color: payloadItem.color,
       value: Number(payloadItem.value ?? 0).toFixed(2),
       sortValue: Number(payloadItem.value ?? 0),

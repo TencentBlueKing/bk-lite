@@ -81,6 +81,12 @@ interface DashboardCanvasProps {
   onDeleteEntireGroup: (groupId: string) => void;
   onEditWidget: (id: string) => void;
   onDeleteWidget: (id: string) => void;
+  onTopologyLayoutChange?: (
+    widgetId: string,
+    next: NonNullable<
+      NonNullable<DashboardWidgetLayoutItem['valueConfig']>['networkStatusTopology']
+    >,
+  ) => void;
   renderMode?: boolean;
   onWidgetRenderStatus?: (result: DashboardWidgetRenderResult) => void;
 }
@@ -110,6 +116,7 @@ const DashboardCanvas: React.FC<DashboardCanvasProps> = ({
   onDeleteEntireGroup,
   onEditWidget,
   onDeleteWidget,
+  onTopologyLayoutChange,
   renderMode = false,
   onWidgetRenderStatus,
 }) => {
@@ -549,6 +556,12 @@ const DashboardCanvas: React.FC<DashboardCanvasProps> = ({
                   filterDefinitions={appliedFilterDefinitions}
                   builtinNamespaceId={appliedNamespaceId}
                   onRenderStatus={onWidgetRenderStatus}
+                  layoutEditable={isEditMode}
+                  onTopologyLayoutChange={
+                    isEditMode && onTopologyLayoutChange
+                      ? (next) => onTopologyLayoutChange(item.i, next)
+                      : undefined
+                  }
                 />
               </div>
             </div>
@@ -569,6 +582,7 @@ const DashboardCanvas: React.FC<DashboardCanvasProps> = ({
       namespaceSearchVersion,
       onDeleteWidget,
       onEditWidget,
+      onTopologyLayoutChange,
       t,
       widgetReloadVersions,
       onWidgetRenderStatus,

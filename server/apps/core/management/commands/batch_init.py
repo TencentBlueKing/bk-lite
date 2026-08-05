@@ -3,6 +3,7 @@
 避免多次启动 Python 进程，大幅提升启动速度
 """
 
+import logging
 import os
 
 from django.apps import apps as django_apps
@@ -10,6 +11,8 @@ from django.core.management import call_command
 from django.core.management.base import BaseCommand, CommandError
 
 from apps.core.utils.loader import preload_language_cache
+
+logger = logging.getLogger("app")
 
 
 class Command(BaseCommand):
@@ -31,7 +34,18 @@ class Command(BaseCommand):
 
         # 如果为空，初始化所有应用
         if not apps:
-            apps_list = ["system_mgmt", "cmdb", "monitor", "node_mgmt", "alerts", "operation_analysis", "opspilot", "log", "mlops"]
+            apps_list = [
+                "system_mgmt",
+                "cmdb",
+                "monitor",
+                "node_mgmt",
+                "alerts",
+                "operation_analysis",
+                "opspilot",
+                "log",
+                "mlops",
+                "patch_mgmt",
+            ]
         else:
             apps_list = [app.strip() for app in apps.split(",")]
 
@@ -64,6 +78,8 @@ class Command(BaseCommand):
                     self._init_log()
                 elif app == "mlops":
                     self._init_mlops()
+                elif app == "patch_mgmt":
+                    self._init_patch_mgmt()
                 else:
                     self.stdout.write(self.style.WARNING(f"未知模块: {app}"))
             except Exception as e:
@@ -173,6 +189,15 @@ class Command(BaseCommand):
         """MLOPS资源初始化"""
         self.stdout.write("MLOPS资源初始化...")
         call_command("init_algorithm_config")
+
+    def _init_patch_mgmt(self):
+        """补丁管理本地内置数据初始化。"""
+        self.stdout.write("补丁管理资源初始化...")
+        try:
+            call_command("init_patch_sources")
+        except Exception as error:  # noqa: BLE001 - 非关键可重建数据不得阻断启动
+            logger.warning("内置补丁源初始化失败，可运行 init_patch_sources 重试", exc_info=True)
+            self.stdout.write(self.style.WARNING(f"内置补丁源初始化跳过（{type(error).__name__}）: {error}"))
 
     def _preload_language_cache(self):
         """预热语言缓存"""

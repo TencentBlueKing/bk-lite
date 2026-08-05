@@ -13,7 +13,7 @@ const resolveJsonFilePath = (relativePath: string) => {
     if (!fullPath.startsWith(base + path.sep)) {
       continue;
     }
-    if (fs.existsSync(fullPath)) {
+    if (fs.existsSync(/* turbopackIgnore: true */ fullPath)) {
       return fullPath;
     }
   }
@@ -43,7 +43,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'File not found' }, { status: 404 });
     }
 
-    const fileContents = fs.readFileSync(fullPath, 'utf8');
+    const fileContents = fs.readFileSync(/* turbopackIgnore: true */ fullPath, 'utf8');
     const jsonContent = JSON.parse(fileContents);
     return NextResponse.json(jsonContent, { status: 200 });
   } catch (error) {

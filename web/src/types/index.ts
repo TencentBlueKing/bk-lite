@@ -9,7 +9,7 @@ export interface ColumnItem {
   title: string;
   dataIndex: string;
   key: string;
-  render?: (_: unknown, record: any) => React.ReactElement;
+  render?: (_: unknown, record: any) => React.ReactNode;
   [key: string]: unknown;
 }
 
@@ -25,6 +25,7 @@ export interface ListItem {
   name?: string;
   id?: string | number;
   value?: string | number;
+  color?: string;
 }
 
 export interface groupProps {

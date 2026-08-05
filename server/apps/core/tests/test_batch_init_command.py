@@ -110,6 +110,13 @@ class TestHandleDispatch:
         cmd.handle(apps="monitor", continue_on_error=False)
         assert [c[0] for c in calls] == ["plugin_init"]
 
+    def test_patch_mgmt_initializes_builtin_patch_sources(self, calls):
+        cmd = _make_command()
+
+        cmd.handle(apps="patch_mgmt", continue_on_error=False)
+
+        assert [c[0] for c in calls] == ["init_patch_sources"]
+
     def test_multiple_apps_dispatched_in_order(self, calls):
         cmd = _make_command()
         cmd.handle(apps="log,mlops", continue_on_error=False)
@@ -163,6 +170,27 @@ class TestHandleDispatch:
 
 
 class TestErrorHandlingPolicy:
+    def test_patch_source_init_failure_warns_and_does_not_block_startup(self, monkeypatch):
+        calls = []
+
+        def fake_call_command(name, *args, **kwargs):
+            calls.append(name)
+            if name == "init_patch_sources":
+                raise RuntimeError("patch source seed failed")
+
+        monkeypatch.setattr(bi, "call_command", fake_call_command)
+        monkeypatch.setattr(
+            bi,
+            "preload_language_cache",
+            lambda *args, **kwargs: {"loaded": [], "skipped": [], "failed": []},
+        )
+        cmd = _make_command()
+
+        cmd.handle(apps="patch_mgmt,node_mgmt", continue_on_error=False)
+
+        assert calls == ["init_patch_sources", "node_init"]
+        assert any("WARN:内置补丁源初始化跳过（RuntimeError）: patch source seed failed" in message for message in cmd.stdout.messages)
+
     def test_invalid_default_namespace_config_warns_and_continues_operation_analysis_init(self, monkeypatch):
         calls = []
 

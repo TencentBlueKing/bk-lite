@@ -1,4 +1,4 @@
-import type { Meta, StoryObj } from '@storybook/react';
+import type { Meta, StoryObj } from '@storybook/nextjs';
 import PermissionWrapper from '@/components/permission';
 
 const meta: Meta<typeof PermissionWrapper> = {

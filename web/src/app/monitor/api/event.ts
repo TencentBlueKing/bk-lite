@@ -90,7 +90,7 @@ const useEventApi = () => {
   };
 
   const deleteMonitorPolicy = async (id: React.Key) => {
-    return await del(`/monitor/api/monitor_policy/${id}/`);
+    return await del(`/monitor/api/monitor_policy/${String(id)}/`);
   };
 
   const getTemplateObjects = async () => {
@@ -105,7 +105,7 @@ const useEventApi = () => {
     } = {}
   ) => {
     const { id, ...rest } = params;
-    return await get(`/monitor/api/monitor_alert/snapshots/${id}/`, {
+    return await get(`/monitor/api/monitor_alert/snapshots/${String(id)}/`, {
       params: rest,
     });
   };

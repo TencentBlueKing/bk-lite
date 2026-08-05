@@ -136,7 +136,9 @@ function transformRoleTreeData(
         ? [...new Map([...personalRoleIds, ...leafKeys].map((key) => [String(key), key])).values()]
         : personalRoleIds.filter((key) => !leafKeys.some((leafKey) => String(leafKey) === String(key)));
 
-      onChange(nextPersonalRoleIds);
+      onChange(nextPersonalRoleIds.filter(
+        (key): key is Exclude<React.Key, symbol> => typeof key !== 'symbol'
+      ));
     };
 
     return {

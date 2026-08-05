@@ -57,6 +57,7 @@ const BINARY_SCALE_CONFIG: Record<string, string[]> = {
   gibibytes: ['GiB', 'TiB', 'PiB'],
   tebibytes: ['TiB', 'PiB'],
   byteps: ['B/s', 'KiB/s', 'MiB/s', 'GiB/s', 'TiB/s', 'PiB/s'],
+  Bps: ['B/s', 'KiB/s', 'MiB/s', 'GiB/s', 'TiB/s', 'PiB/s'],
   kibyteps: ['KiB/s', 'MiB/s', 'GiB/s', 'TiB/s', 'PiB/s'],
   mibyteps: ['MiB/s', 'GiB/s', 'TiB/s', 'PiB/s'],
   gibyteps: ['GiB/s', 'TiB/s', 'PiB/s'],
