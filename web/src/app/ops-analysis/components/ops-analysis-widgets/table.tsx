@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Button, DatePicker, Input, Select, Tooltip, message } from 'antd';
 import { SearchOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
@@ -29,6 +29,8 @@ import {
   resolveTableLikeColumns,
   type TableLikePaginationState,
 } from '@/app/ops-analysis/components/ops-analysis-widgets/table-like-data';
+import { supportsServerPagination } from '@/app/ops-analysis/utils/tablePagination';
+import { useTableBodyScrollY } from '@/app/ops-analysis/components/widgets/shared/useTableBodyScrollY';
 
 const { RangePicker } = DatePicker;
 const DEFAULT_CELL_MAX_WIDTH = 260;
@@ -56,6 +58,7 @@ const OpsAnalysisTable: React.FC<OpsAnalysisTableProps> = ({
 }) => {
   const { t } = useTranslation();
   const shareMode = useShareMode();
+  const tableContainerRef = useRef<HTMLDivElement | null>(null);
   const [filters, setFilters] = useState<Record<string, any>>({});
   const [keywordDrafts, setKeywordDrafts] = useState<Record<string, string>>({});
   const [activeKeywordFieldKey, setActiveKeywordFieldKey] = useState<string>('');
@@ -64,14 +67,28 @@ const OpsAnalysisTable: React.FC<OpsAnalysisTableProps> = ({
     pageSize: 20,
   });
 
-  const { tableData, pagination } = useMemo(() => {
-    const parsed = parseTableLikeData<TableDataItem>(rawData, queryPagination);
+  const supportsPaginationParams = useMemo(
+    () => supportsServerPagination(dataSource?.params),
+    [dataSource?.params],
+  );
+
+  const { tableData, pagination, isPaginated } = useMemo(() => {
+    const parsed = parseTableLikeData<TableDataItem>(
+      rawData,
+      queryPagination,
+      supportsPaginationParams,
+    );
 
     return {
       tableData: parsed.rows,
       pagination: parsed.pagination,
+      isPaginated: parsed.isPaginated,
     };
-  }, [rawData, queryPagination.current, queryPagination.pageSize]);
+  }, [rawData, queryPagination.current, queryPagination.pageSize, supportsPaginationParams]);
+  const tableScrollY = useTableBodyScrollY({
+    containerRef: tableContainerRef,
+    hasPagination: isPaginated,
+  });
 
   const filterFields = useMemo<TableFilterFieldConfig[]>(() => {
     return config?.tableConfig?.filterFields || [];
@@ -278,10 +295,11 @@ const OpsAnalysisTable: React.FC<OpsAnalysisTableProps> = ({
   useEffect(() => {
     if (!onQueryChange) return;
 
-    const queryParams: Record<string, any> = {
-      page: queryPagination.current,
-      page_size: queryPagination.pageSize,
-    };
+    const queryParams: Record<string, any> = {};
+    if (supportsPaginationParams) {
+      queryParams.page = queryPagination.current;
+      queryParams.page_size = queryPagination.pageSize;
+    }
     const queryList: Array<Record<string, any>> = [];
 
     Object.entries(filters).forEach(([key, value]) => {
@@ -317,7 +335,7 @@ const OpsAnalysisTable: React.FC<OpsAnalysisTableProps> = ({
     }
 
     onQueryChange(queryParams);
-  }, [onQueryChange, queryPagination, filters]);
+  }, [onQueryChange, queryPagination, filters, supportsPaginationParams]);
 
   useEffect(() => {
     if (!loading) {
@@ -497,25 +515,29 @@ const OpsAnalysisTable: React.FC<OpsAnalysisTableProps> = ({
     <div className="flex h-full flex-col">
       {renderFilters()}
 
-      <div className="min-h-0 flex-1 overflow-visible">
+      <div ref={tableContainerRef} className="min-h-0 flex-1 overflow-hidden">
         <CustomTable
           columns={antColumns}
           dataSource={tableData}
           loading={loading}
           rowKey={(record, index) => record.id || record.key || index?.toString() || '0'}
           size="small"
-          pagination={{
-            current: pagination.current,
-            pageSize: pagination.pageSize,
-            total: pagination.total,
-            showSizeChanger: {
-              getPopupContainer: () => document.body,
-            },
-            showQuickJumper: true,
-            showTotal: (total) => `${t('common.total')} ${total} ${t('common.items')}`,
-          }}
-          onChange={handleTableChange}
-          scroll={{ x: 'max-content' }}
+          pagination={
+            isPaginated
+              ? {
+                current: pagination.current,
+                pageSize: pagination.pageSize,
+                total: pagination.total,
+                showSizeChanger: {
+                  getPopupContainer: () => document.body,
+                },
+                showQuickJumper: true,
+                showTotal: (total) => `${t('common.total')} ${total} ${t('common.items')}`,
+              }
+              : false
+          }
+          onChange={isPaginated ? handleTableChange : undefined}
+          scroll={{ x: 'max-content', y: tableScrollY }}
         />
       </div>
     </div>

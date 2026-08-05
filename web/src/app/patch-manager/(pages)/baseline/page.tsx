@@ -19,6 +19,10 @@ import {
   createPatchManagerPollFrequencyOptions,
   PATCH_MANAGER_MANUAL_POLL_INTERVAL_MS,
 } from '@/app/patch-manager/constants/polling';
+import {
+  formatArchitectures,
+  normalizeArchitectures,
+} from '@/app/patch-manager/constants/architecture';
 
 export default function BaselineManagementPage() {
   const { t } = useTranslation();
@@ -362,7 +366,7 @@ export default function BaselineManagementPage() {
     { title: t('patchManager.severity'), dataIndex: 'patch_severity', width: 90, render: (v: string) => <SeverityTag severity={v} /> },
     { title: t('patchManager.baseline.description'), dataIndex: 'patch_title', ellipsis: true },
     { title: t('patchManager.baseline.applicableVersion'), dataIndex: 'patch_version', width: 100, render: (v: string) => v || '--' },
-    { title: t('patchManager.arch'), dataIndex: 'patch_arch', width: 80, render: (v: string) => v || '--' },
+    { title: t('patchManager.arch'), dataIndex: 'patch_arch', width: 80, render: (v: string) => formatArchitectures(v, '--') },
     {
       title: t('patchManager.operation'),
       width: 60,
@@ -407,7 +411,7 @@ export default function BaselineManagementPage() {
               ? {
                 kb_number: r.patch_kb_number,
                 product_list: r.patch_version ? r.patch_version.split('、') : [],
-                architectures: r.patch_arch ? r.patch_arch.split('、') : [],
+                architectures: normalizeArchitectures(r.patch_arch),
               }
               : null,
           linux_detail:
@@ -416,7 +420,7 @@ export default function BaselineManagementPage() {
                 pkg_name: r.patch_pkg_name,
                 os_version_range: r.patch_version,
                 distro_name: r.patch_version,
-                architectures: r.patch_arch ? r.patch_arch.split('、') : [],
+                architectures: normalizeArchitectures(r.patch_arch),
               }
               : null,
         });
@@ -701,7 +705,7 @@ export default function BaselineManagementPage() {
             { title: t('patchManager.severity'), dataIndex: 'severity', width: 90, render: (v: string) => <SeverityTag severity={v} /> },
             { title: t('patchManager.baseline.description'), dataIndex: 'title', ellipsis: true },
             { title: t('patchManager.baseline.applicableVersion'), width: 100, render: (_: unknown, r: any) => r.windows_detail?.product_list?.join('、') || r.linux_detail?.os_version_range || r.linux_detail?.distro_name || '--' },
-            { title: t('patchManager.arch'), width: 80, render: (_: unknown, r: any) => r.windows_detail?.architectures?.join('、') || r.linux_detail?.architectures?.join('、') || '--' },
+            { title: t('patchManager.arch'), width: 80, render: (_: unknown, r: any) => formatArchitectures(r.windows_detail?.architectures || r.linux_detail?.architectures, '--') },
           ]}
           selectedKeys={pickerSelected}
           onChange={setPickerSelected}

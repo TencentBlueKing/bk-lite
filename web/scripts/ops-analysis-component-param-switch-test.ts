@@ -11,7 +11,9 @@ import {
   isComponentSwitchCandidate,
   reconcileComponentParamValue,
   reconcileComponentSwitchResult,
+  resolveComponentSwitchRequestGate,
   resolveComponentSwitchRuntime,
+  supportsComponentSwitch,
   validateComponentParamSwitch,
   validateComponentSwitchDetails,
 } from '../src/app/ops-analysis/utils/componentParamSwitch';
@@ -76,7 +78,44 @@ assert.equal((clearComponentParamSwitch({ ...switchParam, inputConfig: invalidIn
 
 const resolvedRuntime = resolveComponentSwitchRuntime('topN', switchParam, options, 'missing');
 assert.deepEqual(resolvedRuntime, { value: 1, params: { group_by: 1 } });
+assert.equal(supportsComponentSwitch('topN'), true);
+assert.equal(supportsComponentSwitch('room3D'), true);
+assert.equal(supportsComponentSwitch('bar'), false);
+assert.deepEqual(resolveComponentSwitchRuntime('room3D', switchParam, options, '1'), {
+  value: '1',
+  params: { group_by: '1' },
+});
 assert.deepEqual(resolveComponentSwitchRuntime('bar', switchParam, options, '1'), { value: undefined, params: {} });
+assert.equal(resolveComponentSwitchRequestGate({
+  hasComponentSwitchParam: false,
+  optionStatus: 'loading',
+  runtimeParams: {},
+}), 'ready');
+assert.equal(resolveComponentSwitchRequestGate({
+  hasComponentSwitchParam: true,
+  optionStatus: 'loading',
+  runtimeParams: {},
+}), 'pending');
+assert.equal(resolveComponentSwitchRequestGate({
+  hasComponentSwitchParam: true,
+  optionStatus: 'idle',
+  runtimeParams: {},
+}), 'pending');
+assert.equal(resolveComponentSwitchRequestGate({
+  hasComponentSwitchParam: true,
+  optionStatus: 'success',
+  runtimeParams: { group_by: 1 },
+}), 'ready');
+assert.equal(resolveComponentSwitchRequestGate({
+  hasComponentSwitchParam: true,
+  optionStatus: 'success',
+  runtimeParams: {},
+}), 'blocked');
+assert.equal(resolveComponentSwitchRequestGate({
+  hasComponentSwitchParam: true,
+  optionStatus: 'error',
+  runtimeParams: {},
+}), 'blocked');
 const runtimeExtraParams = buildWidgetExtraParams({ isTableLikeChart: false, tableQueryParams: {}, runtimeParams: resolvedRuntime.params });
 assert.equal(buildWidgetRequestSignatureParams({
   config: { dataSourceParams: [switchParam] },
@@ -199,6 +238,7 @@ const widgetConfigSource = readFileSync(new URL('../src/app/ops-analysis/compone
 const rendererSource = readFileSync(new URL('../src/app/ops-analysis/components/widgetDataRenderer.tsx', import.meta.url), 'utf8');
 const widgetRendererSource = readFileSync(new URL('../src/app/ops-analysis/components/widgetRenderer.tsx', import.meta.url), 'utf8');
 const topNSource = readFileSync(new URL('../src/app/ops-analysis/components/widgets/comTopN.tsx', import.meta.url), 'utf8');
+const room3DSource = readFileSync(new URL('../src/app/ops-analysis/components/widgets/room3D/index.tsx', import.meta.url), 'utf8');
 const controlSource = readFileSync(new URL('../src/app/ops-analysis/components/componentParamSwitchControl.tsx', import.meta.url), 'utf8');
 const paramInputControlSource = readFileSync(new URL('../src/app/ops-analysis/components/paramInputControl.tsx', import.meta.url), 'utf8');
 const dashboardSource = readFileSync(new URL('../src/app/ops-analysis/(pages)/view/dashBoard/index.tsx', import.meta.url), 'utf8');
@@ -211,10 +251,15 @@ assert.doesNotMatch(widgetConfigSource, /runtimeParamControl/);
 assert.match(rendererSource, /useParamInputOptions\(componentSwitchParam\?\.inputConfig\)/);
 assert.match(rendererSource, /getTypedValueKey\(savedComponentSwitchValue\)/);
 assert.match(rendererSource, /resolveComponentSwitchRuntime/);
+assert.match(rendererSource, /resolveComponentSwitchRequestGate/);
+assert.match(rendererSource, /componentSwitchRequestGate === "ready"/);
+assert.match(rendererSource, /componentSwitchRequestGate === "blocked"/);
+assert.match(rendererSource, /isWaitingForSwitchOptions/);
 assert.match(rendererSource, /requestExtraParams/);
 assert.match(rendererSource, /headerRuntimeSlot \? null : componentSwitchControl/);
 assert.match(widgetRendererSource, /componentSwitchControl/);
 assert.match(topNSource, /\{componentSwitchControl\}/);
+assert.match(room3DSource, /\{componentSwitchControl\}/);
 assert.match(controlSource, /inputConfig/);
 assert.match(controlSource, /<Segmented/);
 assert.match(controlSource, /<Select/);

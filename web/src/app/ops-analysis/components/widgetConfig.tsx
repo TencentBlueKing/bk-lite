@@ -43,6 +43,7 @@ import {
   clearComponentParamSwitch,
   findComponentSwitchParams,
   reconcileComponentParamValue,
+  supportsComponentSwitch,
 } from '@/app/ops-analysis/utils/componentParamSwitch';
 import type {
   DatasourceItem,
@@ -76,7 +77,7 @@ import {
   canConfigureScreenWidgetFrame,
   getDefaultScreenWidgetAppearance,
   resolveScreenWidgetAppearance,
-} from '@/app/ops-analysis/(pages)/view/screen/utils/layout';
+} from '@/app/ops-analysis/(pages)/view/screen/utils/layoutUtils';
 
 interface ViewConfigPropsWithManager extends ViewConfigProps {
   dataSourceManager: ReturnType<typeof useDataSourceManager>;
@@ -498,7 +499,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
         getDefaultScreenWidgetAppearance(newChartType),
       );
     }
-    if (newChartType !== 'topN') {
+    if (!supportsComponentSwitch(newChartType)) {
       setWidgetParamOverrides((previous) =>
         previous.map(clearComponentParamSwitch),
       );
@@ -911,6 +912,27 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
       if (isTableLikeChartType) {
         tableConfig.setDisplayColumnsError('');
       }
+
+      if (
+        values.sceneWidgetType === 'networkStatusTopology' ||
+        chartType === 'networkStatusTopology'
+      ) {
+        const existingTopology = widgetItem?.valueConfig?.networkStatusTopology;
+        const formTopology = values.networkStatusTopology;
+        values.networkStatusTopology = {
+          modelId: formTopology?.modelId || existingTopology?.modelId || '',
+          instId: formTopology?.instId || existingTopology?.instId || '',
+          depth: formTopology?.depth || existingTopology?.depth || 2,
+          layoutMode: formTopology?.layoutMode ?? existingTopology?.layoutMode,
+          layoutByMode:
+            formTopology?.layoutByMode ?? existingTopology?.layoutByMode,
+          nodePositions:
+            formTopology?.nodePositions ?? existingTopology?.nodePositions,
+          linkVertices:
+            formTopology?.linkVertices ?? existingTopology?.linkVertices,
+        };
+      }
+
       const submitResult = buildWidgetSubmitConfig({
         values,
         chartType,
@@ -1299,7 +1321,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
         onConfirm={handleInputConfigConfirm}
         onCancel={() => setEditingInputConfigParam(null)}
         excludeSourceIds={selectedDataSource ? [selectedDataSource.id] : []}
-        componentSwitchEnabled={chartType === 'topN'}
+        componentSwitchEnabled={supportsComponentSwitch(chartType)}
         componentSwitchOwner={componentSwitchOwner}
         editingParamName={editingInputConfigParam?.name}
       />

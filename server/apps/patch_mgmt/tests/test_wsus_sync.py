@@ -134,6 +134,7 @@ class TestWsusClientGetApprovedUpdates:
                 "SecurityBulletins": ["MS25-001"],
                 "Description": "A security update",
                 "ArrivalDate": "2025-11-10T00:00:00",
+                "SupersedingUpdateIds": ["def-456"],
             },
         ])
 
@@ -154,6 +155,7 @@ class TestWsusClientGetApprovedUpdates:
         assert u.severity == "Critical"
         assert u.products == ["Windows 10", "Windows 11"]
         assert u.security_bulletins == ["MS25-001"]
+        assert u.replacement_update_ids == ["def-456"]
 
     def test_get_updates_empty(self, monkeypatch):
         source = _make_source()
@@ -242,6 +244,7 @@ class TestSyncWsus:
                 "SecurityBulletins": ["MS25-9999"],
                 "Description": "desc",
                 "ArrivalDate": "2025-11-10T00:00:00",
+                "SupersedingUpdateIds": ["uid-2"],
             },
             {
                 "UpdateId": "uid-2",
@@ -280,7 +283,12 @@ class TestSyncWsus:
         detail1 = WindowsPatchDetail.objects.get(patch=p1)
         assert detail1.kb_number == "KB5072653"
         assert detail1.product_list == ["Windows 10"]
+        assert detail1.architectures == ["x86_64"]
         assert detail1.ms_bulletin == "MS25-9999"
+        p2 = patches.get(title="5034441")
+        p1.refresh_from_db()
+        assert p1.applicable_rules["wsus_update_id"] == "uid-1"
+        assert p1.replacement_ids == [p2.id]
 
     def test_sync_updates_existing_patch(self, monkeypatch):
         source = _make_source()
@@ -408,7 +416,9 @@ class TestSyncWsus:
         result = SourceSyncService.ingest_selected(source, ["uid-ready"])
 
         assert result["created"] == 1
-        assert Patch.objects.get(title="5072654").pkg_status == PackageStatus.READY
+        patch = Patch.objects.get(title="5072654")
+        assert patch.pkg_status == PackageStatus.READY
+        assert patch.windows_detail.architectures == ["x86_64"]
 
     def test_preview_normalizes_kb_name(self, monkeypatch):
         source = _make_source()
@@ -423,6 +433,7 @@ class TestSyncWsus:
         candidates = SourceSyncService.preview_sync_candidates(source)
 
         assert candidates[0]["name"] == "KB5072653"
+        assert candidates[0]["arch"] == "x86_64"
 
     def test_preview_and_ingest_skip_update_without_kb(self, monkeypatch):
         source = _make_source()

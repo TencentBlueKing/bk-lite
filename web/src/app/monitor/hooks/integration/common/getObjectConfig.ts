@@ -1,5 +1,6 @@
 import { useCallback } from 'react';
 import { useMonitorConfig } from '../index';
+import { normalizeDashboardDisplay } from '../configContracts';
 
 export const useObjectConfigInfo = (objectName?: string | null) => {
   const { resolveConfig, ready } = useMonitorConfig(objectName);
@@ -31,7 +32,7 @@ export const useObjectConfigInfo = (objectName?: string | null) => {
   const getDashboardDisplay = useCallback(
     (name: string) => {
       const objectConfig = resolveConfig(name);
-      return objectConfig?.dashboardDisplay || [];
+      return normalizeDashboardDisplay(objectConfig?.dashboardDisplay);
     },
     [resolveConfig]
   );

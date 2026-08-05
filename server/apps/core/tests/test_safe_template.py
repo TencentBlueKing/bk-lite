@@ -3,11 +3,15 @@ import pytest
 from apps.core.utils.safe_template import (
     TemplateSecurityError,
     build_sandboxed_env,
+    build_trusted_file_template_env,
     check_dangerous_patterns,
     safe_render,
     sanitize_template_context,
     validate_template_variables,
 )
+
+
+UNSAFE_DEFAULT_GLOBALS = {"lipsum", "cycler", "joiner", "namespace"}
 
 
 class TestCheckDangerousPatterns:
@@ -155,3 +159,56 @@ class TestBuildSandboxedEnv:
         result = tpl.render(instance_id="192.168.1.1", port="161", version="2")
         assert "192.168.1.1" in result
         assert "161" in result
+
+
+@pytest.mark.unit
+class TestBuildTrustedFileTemplateEnv:
+    def test_clears_default_namespaces(self):
+        env = build_trusted_file_template_env()
+
+        assert UNSAFE_DEFAULT_GLOBALS.isdisjoint(env.globals)
+        assert env.filters == {}
+        assert env.tests == {}
+
+    def test_blocks_dunder_attribute_chains(self):
+        from jinja2.sandbox import SecurityError as JinjaSandboxError
+
+        env = build_trusted_file_template_env()
+        template = env.from_string("{{ value.__class__.__mro__ }}")
+
+        with pytest.raises(JinjaSandboxError):
+            template.render(value="blueking")
+
+    def test_lipsum_globals_payload_cannot_resolve_default_object(self):
+        from jinja2 import UndefinedError
+        from jinja2.sandbox import SecurityError as JinjaSandboxError
+
+        env = build_trusted_file_template_env()
+        template = env.from_string("{{ lipsum.__globals__ }}")
+
+        with pytest.raises((JinjaSandboxError, UndefinedError)):
+            template.render()
+
+    def test_only_enables_explicit_filters_and_tests(self):
+        env = build_trusted_file_template_env(
+            extra_filters={"upper": str.upper},
+            extra_tests={"same": lambda value, expected: value == expected},
+        )
+
+        template = env.from_string("{% if name is same('blueking') %}{{ name | upper }}{% endif %}")
+
+        assert template.render(name="blueking") == "BLUEKING"
+
+    def test_supports_macros_and_public_callables_for_repository_templates(self):
+        env = build_trusted_file_template_env()
+        template = env.from_string(
+            "{% macro collect(values) %}"
+            "{% set output = [] %}"
+            "{% for key, value in values.items() %}"
+            "{% set _ = output.append(key) %}{{ value }}"
+            "{% endfor %}"
+            "{% endmacro %}"
+            "{{ collect(values) }}"
+        )
+
+        assert template.render(values={"name": "blueking"}) == "blueking"

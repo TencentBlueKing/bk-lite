@@ -9,7 +9,7 @@ import pytest
 from django.utils import timezone
 
 from apps.alerts.constants.constants import AlertStatus, LevelType
-from apps.alerts.models.models import Alert, Level
+from apps.alerts.models.models import Alert, Event, Incident, Level
 from apps.alerts.nats import nats as N
 
 # --------------------------------------------------------------------------
@@ -110,7 +110,46 @@ def test_generate_time_periods_day():
     start = timezone.make_aware(datetime.datetime(2026, 1, 1), tz)
     end = timezone.make_aware(datetime.datetime(2026, 1, 3), tz)
     periods = N._generate_time_periods("day", start, end)
-    assert len(periods) == 3
+    assert periods == [datetime.date(2026, 1, 1), datetime.date(2026, 1, 2)]
+
+
+@pytest.mark.unit
+def test_generate_time_periods_day_excludes_end_midnight():
+    tz = timezone.get_current_timezone()
+    start = timezone.make_aware(datetime.datetime(2026, 7, 29), tz)
+    end = timezone.make_aware(datetime.datetime(2026, 8, 5), tz)
+
+    periods = N._generate_time_periods("day", start, end)
+
+    assert periods == [
+        datetime.date(2026, 7, 29),
+        datetime.date(2026, 7, 30),
+        datetime.date(2026, 7, 31),
+        datetime.date(2026, 8, 1),
+        datetime.date(2026, 8, 2),
+        datetime.date(2026, 8, 3),
+        datetime.date(2026, 8, 4),
+    ]
+
+
+@pytest.mark.unit
+def test_generate_time_periods_rolling_seven_days_can_span_eight_calendar_days():
+    tz = timezone.get_current_timezone()
+    start = timezone.make_aware(datetime.datetime(2026, 7, 28, 17, 44, 47), tz)
+    end = start + datetime.timedelta(days=7)
+
+    periods = N._generate_time_periods("day", start, end)
+
+    assert periods == [
+        datetime.date(2026, 7, 28),
+        datetime.date(2026, 7, 29),
+        datetime.date(2026, 7, 30),
+        datetime.date(2026, 7, 31),
+        datetime.date(2026, 8, 1),
+        datetime.date(2026, 8, 2),
+        datetime.date(2026, 8, 3),
+        datetime.date(2026, 8, 4),
+    ]
 
 
 def test_generate_time_periods_hour():
@@ -294,6 +333,126 @@ def test_get_alert_statistics_permission_error():
 
 
 @pytest.mark.django_db
+@pytest.mark.integration
+def test_get_alert_period_statistics_uses_each_domain_time_and_half_open_window(user_info):
+    from apps.alerts.models.alert_source import AlertSource
+
+    source = AlertSource.objects.create(name="source", source_id="period-source", source_type="restful", secret="x")
+    start = timezone.now().replace(microsecond=0) - datetime.timedelta(days=30)
+    end = timezone.now().replace(microsecond=0) + datetime.timedelta(minutes=1)
+    old_alert = Alert.objects.create(
+        alert_id="OLD-PERIOD",
+        level="0",
+        title="old",
+        content="c",
+        fingerprint="old-period",
+        team=[1],
+    )
+    new_alert = Alert.objects.create(
+        alert_id="NEW-PERIOD",
+        level="0",
+        title="new",
+        content="c",
+        fingerprint="new-period",
+        team=[1],
+        is_session_alert=True,
+    )
+    Alert.objects.filter(pk=old_alert.pk).update(created_at=start - datetime.timedelta(days=1))
+    Alert.objects.filter(pk=new_alert.pk).update(created_at=start)
+
+    for index, alert in enumerate([old_alert, old_alert, old_alert, new_alert]):
+        event = Event.objects.create(
+            source=source,
+            raw_data={},
+            title=f"event-{index}",
+            level="0",
+            start_time=start,
+            event_id=f"PERIOD-EVENT-{index}",
+        )
+        Event.objects.filter(pk=event.pk).update(received_at=start + datetime.timedelta(hours=index + 1))
+        alert.events.add(event)
+    boundary_event = Event.objects.create(
+        source=source,
+        raw_data={},
+        title="boundary",
+        level="0",
+        start_time=end,
+        event_id="PERIOD-EVENT-END",
+    )
+    Event.objects.filter(pk=boundary_event.pk).update(received_at=end)
+    new_alert.events.add(boundary_event)
+
+    old_incident = Incident.objects.create(incident_id="OLD-INCIDENT", level="0", title="old", team=[1])
+    new_incident = Incident.objects.create(incident_id="NEW-INCIDENT", level="0", title="new", team=[1])
+    old_incident.alert.add(old_alert)
+    new_incident.alert.add(new_alert)
+    Incident.objects.filter(pk=old_incident.pk).update(created_at=start - datetime.timedelta(days=1))
+    Incident.objects.filter(pk=new_incident.pk).update(created_at=start)
+
+    result = N.get_alert_period_statistics(user_info=user_info, time=[start.isoformat(), end.isoformat()])
+
+    assert result == {
+        "result": True,
+        "data": {
+            "new_alert_count": 1,
+            "linked_event_count": 4,
+            "affected_alert_count": 2,
+            "new_incident_count": 1,
+            "session_alert_count": 1,
+            "session_alert_rate": 100.0,
+            "aggregation_ratio": 2.0,
+        },
+        "message": "",
+    }
+
+
+@pytest.mark.django_db
+@pytest.mark.integration
+def test_get_alert_period_statistics_requires_time(user_info):
+    result = N.get_alert_period_statistics(user_info=user_info)
+
+    assert result == {"result": False, "data": {}, "message": "time range is required."}
+
+
+@pytest.mark.django_db
+@pytest.mark.integration
+def test_get_alert_snapshot_statistics_keeps_old_active_alerts_and_ignores_time(user_info):
+    old_time = timezone.now() - datetime.timedelta(days=60)
+    statuses = [
+        AlertStatus.UNASSIGNED,
+        AlertStatus.PENDING,
+        AlertStatus.PROCESSING,
+        AlertStatus.AUTO_RECOVERY,
+    ]
+    for index, status in enumerate(statuses):
+        alert = Alert.objects.create(
+            alert_id=f"SNAPSHOT-{index}",
+            level="0",
+            title="snapshot",
+            content="c",
+            fingerprint=f"snapshot-{index}",
+            team=[1],
+            status=status,
+        )
+        Alert.objects.filter(pk=alert.pk).update(created_at=old_time)
+
+    result = N.get_alert_snapshot_statistics(
+        user_info=user_info,
+        time=[timezone.now().isoformat(), (timezone.now() + datetime.timedelta(days=1)).isoformat()],
+    )
+
+    assert result["result"] is True
+    assert result["data"] == {
+        "active_count": 3,
+        "unassigned_count": 1,
+        "pending_count": 1,
+        "processing_count": 1,
+        "auto_recovery_count": 1,
+        "auto_recovery_rate": 25.0,
+    }
+
+
+@pytest.mark.django_db
 def test_get_alert_today_status_summary_counts_created_closed_and_processing(user_info):
     now = timezone.now()
     old_alert = Alert.objects.create(
@@ -352,33 +511,28 @@ def test_get_alert_today_status_summary_counts_created_closed_and_processing(use
 
 @pytest.mark.django_db
 def test_get_alert_status_distribution_returns_active_status_labels(user_info):
-    Alert.objects.create(
-        alert_id="A1",
-        level="0",
-        title="t",
-        content="c",
-        fingerprint="fp1",
-        team=[1],
-        status=AlertStatus.UNASSIGNED,
-    )
-    Alert.objects.create(
-        alert_id="A2",
-        level="0",
-        title="t",
-        content="c",
-        fingerprint="fp2",
-        team=[1],
-        status=AlertStatus.PENDING,
-    )
-    Alert.objects.create(
-        alert_id="A3",
-        level="0",
-        title="t",
-        content="c",
-        fingerprint="fp3",
-        team=[1],
-        status=AlertStatus.PROCESSING,
-    )
+    expected_counts = {
+        AlertStatus.UNASSIGNED: 8,
+        AlertStatus.PENDING: 8,
+        AlertStatus.PROCESSING: 4,
+    }
+    alerts = []
+    for status, count in expected_counts.items():
+        for index in range(count):
+            alerts.append(
+                Alert.objects.create(
+                    alert_id=f"{status}-{index}",
+                    level="0",
+                    title="t",
+                    content="c",
+                    fingerprint=f"{status}-fp-{index}",
+                    team=[1],
+                    status=status,
+                )
+            )
+    now = timezone.now()
+    for index, alert in enumerate(alerts):
+        Alert.objects.filter(pk=alert.pk).update(updated_at=now - datetime.timedelta(minutes=index))
     Alert.objects.create(
         alert_id="A4",
         level="0",
@@ -393,8 +547,48 @@ def test_get_alert_status_distribution_returns_active_status_labels(user_info):
 
     assert result["result"] is True
     assert result["data"] == [
-        {"name": "未分派", "value": 1},
-        {"name": "待响应", "value": 1},
+        {"name": "未分派", "value": 8},
+        {"name": "待响应", "value": 8},
+        {"name": "处理中", "value": 4},
+    ]
+
+
+@pytest.mark.django_db
+def test_get_alert_status_distribution_aggregates_multiple_alerts_per_status(user_info):
+    """同状态下多条告警必须正确聚合。
+
+    Alert.Meta.ordering 含 updated_at；若不在聚合前 order_by()，部分数据库会把排序列
+    加入 GROUP BY，导致每个状态被拆成多条 count=1，dict 覆盖后恒为 1（issue #4478）。
+    """
+    now = timezone.now()
+    for i, status in enumerate(
+        [
+            AlertStatus.UNASSIGNED,
+            AlertStatus.UNASSIGNED,
+            AlertStatus.UNASSIGNED,
+            AlertStatus.PENDING,
+            AlertStatus.PENDING,
+            AlertStatus.PROCESSING,
+        ]
+    ):
+        alert = Alert.objects.create(
+            alert_id=f"S{i}",
+            level="0",
+            title="t",
+            content="c",
+            fingerprint=f"fp-status-{i}",
+            team=[1],
+            status=status,
+        )
+        # 错开 updated_at，放大默认排序对 GROUP BY 的干扰
+        Alert.objects.filter(pk=alert.pk).update(updated_at=now - datetime.timedelta(minutes=i))
+
+    result = N.get_alert_status_distribution(user_info=user_info)
+
+    assert result["result"] is True
+    assert result["data"] == [
+        {"name": "未分派", "value": 3},
+        {"name": "待响应", "value": 2},
         {"name": "处理中", "value": 1},
     ]
 
@@ -656,7 +850,7 @@ def test_get_alert_trend_data_returns_series(user_info):
     )
     assert result["result"] is True
     assert "告警数" in result["data"]
-    assert "事件数" in result["data"]
+    assert "告警关联事件数" in result["data"]
 
 
 @pytest.mark.django_db
@@ -678,18 +872,31 @@ def test_get_alert_trend_data_with_events_in_window(user_info):
 
 @pytest.mark.django_db
 def test_get_alert_source_event_top(user_info):
-    from django.utils import timezone
-
     from apps.alerts.models.alert_source import AlertSource
-    from apps.alerts.models.models import Event
 
     src = AlertSource.objects.create(name="Zabbix", source_id="s1", source_type="zabbix", secret="x")
     alert = Alert.objects.create(alert_id="A1", level="0", title="t", content="c", fingerprint="fp", team=[1])
+    start = timezone.now().replace(microsecond=0) - datetime.timedelta(days=1)
+    end = timezone.now().replace(microsecond=0) + datetime.timedelta(minutes=1)
     event = Event.objects.create(source=src, raw_data={}, title="e", level="0", start_time=timezone.now(), event_id="E1")
+    Event.objects.filter(pk=event.pk).update(received_at=start)
     alert.events.add(event)
-    result = N.get_alert_source_event_top(user_info=user_info, limit=5)
+    old_event = Event.objects.create(source=src, raw_data={}, title="old", level="0", start_time=start, event_id="E2")
+    Event.objects.filter(pk=old_event.pk).update(received_at=start - datetime.timedelta(seconds=1))
+    alert.events.add(old_event)
+
+    result = N.get_alert_source_event_top(user_info=user_info, limit=5, time=[start.isoformat(), end.isoformat()])
     assert result["result"] is True
     assert result["data"][0] == {"source_name": "Zabbix", "count": 1}
+
+
+@pytest.mark.django_db
+@pytest.mark.integration
+def test_get_alert_source_event_top_requires_time(user_info):
+    result = N.get_alert_source_event_top(user_info=user_info, limit=5)
+
+    assert result["result"] is False
+    assert result["data"] == []
 
 
 @pytest.mark.django_db
@@ -742,12 +949,14 @@ def test_get_alert_source_statistics(user_info):
     result = N.get_alert_source_statistics(user_info=user_info)
 
     assert result["result"] is True
-    assert result["data"]["total_count"] == 1
-    assert result["data"]["enabled_count"] == 0
+    assert result["data"]["total_count"] == 2
+    assert result["data"]["enabled_count"] == 1
+    assert result["data"]["enabled_rate"] == 50.0
 
 
 @pytest.mark.django_db
-def test_get_alert_source_statistics_counts_only_sources_from_authorized_alerts(user_info):
+@pytest.mark.integration
+def test_get_alert_source_statistics_counts_all_configured_sources_and_scopes_activity(user_info):
     from apps.alerts.models.alert_source import AlertSource
     from apps.alerts.models.models import Event
 
@@ -811,8 +1020,8 @@ def test_get_alert_source_statistics_counts_only_sources_from_authorized_alerts(
     result = N.get_alert_source_statistics(user_info=user_info)
 
     assert result["result"] is True
-    assert result["data"]["total_count"] == 1
-    assert result["data"]["enabled_count"] == 1
+    assert result["data"]["total_count"] == 3
+    assert result["data"]["enabled_count"] == 3
     assert result["data"]["active_count"] == 1
     assert AlertSource.objects.filter(pk=unused_source.pk).exists()
 
@@ -879,6 +1088,21 @@ def test_get_notification_statistics(user_info):
 
 
 @pytest.mark.django_db
+@pytest.mark.integration
+def test_get_notification_statistics_empty_sample_has_no_rate(user_info):
+    result = N.get_notification_statistics(user_info=user_info)
+
+    assert result["result"] is True
+    assert result["data"] == {
+        "total_count": 0,
+        "success_count": 0,
+        "failed_count": 0,
+        "success_rate": None,
+        "failed_rate": None,
+    }
+
+
+@pytest.mark.django_db
 def test_get_notification_statistics_counts_only_authorized_alerts(user_info):
     from apps.alerts.constants.constants import NotifyResultStatus
     from apps.alerts.models import NotifyResult
@@ -908,17 +1132,81 @@ def test_get_notification_statistics_counts_only_authorized_alerts(user_info):
 def test_get_alert_data_quality_empty(user_info):
     result = N.get_alert_data_quality(user_info=user_info)
     assert result["result"] is True
-    assert result["data"]["total_count"] == 0
+    assert result["data"] == {
+        "alert_quality": {
+            "total_count": 0,
+            "missing_resource_id_count": 0,
+            "missing_resource_id_rate": None,
+            "missing_rule_id_count": 0,
+            "missing_rule_id_rate": None,
+        },
+        "event_quality": {
+            "total_count": 0,
+            "missing_service_count": 0,
+            "missing_service_rate": None,
+            "missing_item_count": 0,
+            "missing_item_rate": None,
+            "missing_external_id_count": 0,
+            "missing_external_id_rate": None,
+        },
+    }
 
 
 @pytest.mark.django_db
 def test_get_alert_data_quality_with_data(user_info):
-    Alert.objects.create(alert_id="A1", level="0", title="t", content="c", fingerprint="fp", team=[1], resource_id="", rule_id="")
-    result = N.get_alert_data_quality(user_info=user_info)
+    from apps.alerts.models.alert_source import AlertSource
+
+    start = timezone.now().replace(microsecond=0) - datetime.timedelta(days=1)
+    end = timezone.now().replace(microsecond=0) + datetime.timedelta(minutes=1)
+    alert = Alert.objects.create(alert_id="A1", level="0", title="t", content="c", fingerprint="fp", team=[1], resource_id="", rule_id="")
+    source = AlertSource.objects.create(name="quality", source_id="quality", source_type="restful", secret="x")
+    period_event = Event.objects.create(
+        source=source,
+        raw_data={},
+        title="period",
+        level="0",
+        start_time=start,
+        event_id="QUALITY-PERIOD",
+        service="",
+        item="cpu",
+        external_id="",
+    )
+    old_event = Event.objects.create(
+        source=source,
+        raw_data={},
+        title="old",
+        level="0",
+        start_time=start,
+        event_id="QUALITY-OLD",
+        service="service",
+        item="",
+        external_id="external",
+    )
+    Event.objects.filter(pk=period_event.pk).update(received_at=start)
+    Event.objects.filter(pk=old_event.pk).update(received_at=start - datetime.timedelta(seconds=1))
+    alert.events.add(period_event, old_event)
+
+    result = N.get_alert_data_quality(user_info=user_info, time=[start.isoformat(), end.isoformat()])
+
     assert result["result"] is True
-    assert result["data"]["total_count"] == 1
-    # 缺失 resource_id → 100%
-    assert result["data"]["missing_resource_id_rate"] == 100.0
+    assert result["data"] == {
+        "alert_quality": {
+            "total_count": 1,
+            "missing_resource_id_count": 1,
+            "missing_resource_id_rate": 100.0,
+            "missing_rule_id_count": 1,
+            "missing_rule_id_rate": 100.0,
+        },
+        "event_quality": {
+            "total_count": 1,
+            "missing_service_count": 1,
+            "missing_service_rate": 100.0,
+            "missing_item_count": 0,
+            "missing_item_rate": 0.0,
+            "missing_external_id_count": 1,
+            "missing_external_id_rate": 100.0,
+        },
+    }
 
 
 # --------------------------------------------------------------------------

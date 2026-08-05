@@ -37,7 +37,10 @@ assert.equal(link.props.target, '_blank');
 assert.equal(link.props.rel, 'noopener noreferrer');
 
 const requestSource = readFileSync(new URL('../src/utils/request.ts', import.meta.url), 'utf8');
-assert.match(requestSource, /new HandledRequestError\(messageText, presentation \?\? undefined\)/);
+assert.match(
+  requestSource,
+  /new HandledRequestError\(messageText,[\s\S]*presentation: presentation \?\? undefined/,
+);
 
 const channelModalSource = readFileSync(
   new URL('../src/app/system-manager/components/channel/channelModal.tsx', import.meta.url),

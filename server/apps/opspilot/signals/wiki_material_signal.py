@@ -6,6 +6,8 @@ Material.file 是上传文件在 MinIO 的对象。Django FileField 默认不会
 
 MaterialVersion.content_locator 指向 wiki/parsed 下的解析 markdown。资料删除或知识库级联删除时,
 MaterialVersion 也会被级联删除,因此在 MaterialVersion 的 post_delete 中清理解析产物。
+
+wiki/media/<kb>/<material>/ 下的解析嵌入图片在 Material post_delete 中一并清理。
 """
 
 import logging
@@ -16,6 +18,7 @@ from django.dispatch import receiver
 
 from apps.opspilot.models import Material, MaterialVersion
 from apps.opspilot.services.wiki.material_service import delete_parsed_markdown, is_parsed_markdown_locator_for_material
+from apps.opspilot.services.wiki.parsed_media_service import delete_material_media
 
 logger = logging.getLogger("opspilot")
 
@@ -25,19 +28,26 @@ def delete_material_file_on_delete(sender, instance, **kwargs):
     """事务提交后删除 MinIO 文件；回滚时自动丢弃回调。"""
     file_field = instance.file
     file_name = getattr(file_field, "name", "")
-    if not file_name:
-        return
-    storage = file_field.storage
+    knowledge_base_id = instance.knowledge_base_id
     material_id = instance.pk
+    storage = file_field.storage if file_name else None
 
     def cleanup():
+        if file_name and storage is not None:
+            try:
+                storage.delete(file_name)
+            except Exception:
+                logger.exception(
+                    "删除资料 MinIO 文件失败 material=%s file=%s",
+                    material_id,
+                    file_name,
+                )
         try:
-            storage.delete(file_name)
+            delete_material_media(knowledge_base_id, material_id)
         except Exception:
             logger.exception(
-                "删除资料 MinIO 文件失败 material=%s file=%s",
+                "删除资料解析图片失败 material=%s",
                 material_id,
-                file_name,
             )
 
     transaction.on_commit(cleanup, using=kwargs.get("using"))

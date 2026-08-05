@@ -2,7 +2,9 @@
 
 import logging
 
+from django.db.models import Q
 from rest_framework.decorators import action
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 
 logger = logging.getLogger(__name__)
@@ -42,12 +44,44 @@ class PatchSourceViewSet(AuthViewSet):
         "auth_password",
     }
 
+    @staticmethod
+    def _require_builtin_manager(request, source):
+        if source.is_builtin and not getattr(request.user, "is_superuser", False):
+            raise PermissionDenied(
+                patch_message(
+                    request,
+                    "error.builtin_source_superuser_required",
+                    "Only platform superusers can manage built-in patch sources",
+                )
+            )
+
+    def get_queryset_by_permission(self, request, queryset, permission_key=None):
+        """内置源全局可见，自定义源仍使用原有团队/实例权限。"""
+        custom_queryset = super().get_queryset_by_permission(
+            request,
+            queryset.filter(is_builtin=False),
+            permission_key=permission_key,
+        )
+        custom_ids = custom_queryset.values_list("id", flat=True)
+        return queryset.filter(Q(is_builtin=True) | Q(id__in=custom_ids))
+
     @HasPermission("patch_source-View")
     def list(self, request, *args, **kwargs):
-        return super().list(request, *args, **kwargs)
+        queryset = self.filter_queryset(self.get_queryset())
+        custom_queryset = self.get_queryset_by_permission(
+            request, queryset.filter(is_builtin=False)
+        )
+        custom_ids = custom_queryset.values_list("id", flat=True)
+        visible_queryset = queryset.filter(
+            Q(is_builtin=True) | Q(id__in=custom_ids)
+        ).order_by(self.ORDERING_FIELD)
+        return self._list(visible_queryset)
 
     @HasPermission("patch_source-View")
     def retrieve(self, request, *args, **kwargs):
+        instance = self.get_object()
+        if instance.is_builtin:
+            return Response(self.get_serializer(instance).data)
         return super().retrieve(request, *args, **kwargs)
 
     @HasPermission("patch_source-Add")
@@ -65,13 +99,22 @@ class PatchSourceViewSet(AuthViewSet):
     @HasPermission("patch_source-Edit")
     def update(self, request, *args, **kwargs):
         instance = self.get_object()
+        self._require_builtin_manager(request, instance)
         changed_connection = any(
             field in request.data
             and request.data.get(field) not in (None, "")
             and str(request.data.get(field)) != str(getattr(instance, field))
             for field in self.CONNECTION_FIELDS
         )
-        response = super().update(request, *args, **kwargs)
+        # AuthViewSet 的超管分支会丢失 partial 标记；补丁源页面统一使用
+        # PATCH，因此在本模块内保留局部更新语义。
+        if getattr(request.user, "is_superuser", False) and kwargs.get("partial"):
+            serializer = self.get_serializer(instance, data=request.data, partial=True)
+            serializer.is_valid(raise_exception=True)
+            self.perform_update(serializer)
+            response = Response(serializer.data)
+        else:
+            response = super().update(request, *args, **kwargs)
         instance = self.get_object()
         log_source_changed(request, "update", instance.name)
         if changed_connection:
@@ -136,6 +179,14 @@ class PatchSourceViewSet(AuthViewSet):
     @HasPermission("patch_source-Delete")
     def destroy(self, request, *args, **kwargs):
         source = self.get_object()
+        if source.is_builtin:
+            raise PermissionDenied(
+                patch_message(
+                    request,
+                    "error.builtin_source_delete_forbidden",
+                    "Built-in patch sources cannot be deleted",
+                )
+            )
         log_source_changed(request, "delete", source.name)
         return super().destroy(request, *args, **kwargs)
 
@@ -147,6 +198,7 @@ class PatchSourceViewSet(AuthViewSet):
         from rest_framework.exceptions import ValidationError as DRFValidationError
 
         instance = self.get_object()
+        self._require_builtin_manager(request, instance)
         require_authorized_ids(
             self, request, PatchSource.objects.all(), [instance.id], "patch_source"
         )
@@ -180,6 +232,18 @@ class PatchSourceViewSet(AuthViewSet):
         )
 
         source = self.get_object()
+        self._require_builtin_manager(request, source)
+        if source.is_builtin:
+            return Response(
+                {
+                    "error": patch_message(
+                        request,
+                        "error.builtin_source_selected_ingest_required",
+                        "Use preview and selected ingestion for built-in patch sources",
+                    )
+                },
+                status=drf_status.HTTP_400_BAD_REQUEST,
+            )
         require_authorized_ids(
             self, request, PatchSource.objects.all(), [source.id], "patch_source"
         )
@@ -215,10 +279,15 @@ class PatchSourceViewSet(AuthViewSet):
         from apps.patch_mgmt.services.source_sync_service import SourceSyncError, SourceSyncService
 
         source = self.get_object()
-        require_authorized_ids(
-            self, request, PatchSource.objects.all(), [source.id],
-            "patch_source", operation="View"
-        )
+        if not source.is_builtin:
+            require_authorized_ids(
+                self,
+                request,
+                PatchSource.objects.all(),
+                [source.id],
+                "patch_source",
+                operation="View",
+            )
         search = (request.data.get("search") or "").strip().lower()
         page = int(request.data.get("page") or 1)
         page_size = int(request.data.get("page_size") or 20)
@@ -250,7 +319,7 @@ class PatchSourceViewSet(AuthViewSet):
         })
 
     @action(detail=True, methods=["post"])
-    @HasPermission("patch_source-Edit")
+    @HasPermission("patch-Add")
     def ingest(self, request, pk=None):
         """将选中的候选补丁入库（创建 Patch 记录）。
 
@@ -267,9 +336,16 @@ class PatchSourceViewSet(AuthViewSet):
         from apps.patch_mgmt.tasks import ingest_patch_source
 
         source = self.get_object()
-        require_authorized_ids(
-            self, request, PatchSource.objects.all(), [source.id], "patch_source"
-        )
+        current_team = self._validate_current_team_permission(request)
+        if not source.is_builtin:
+            require_authorized_ids(
+                self,
+                request,
+                PatchSource.objects.all(),
+                [source.id],
+                "patch_source",
+                operation="View",
+            )
         keys = request.data.get("keys") or []
         severity_overrides = request.data.get("severity_overrides") or {}
         if not isinstance(keys, list) or not keys:
@@ -283,7 +359,10 @@ class PatchSourceViewSet(AuthViewSet):
 
         try:
             result = SourceSyncService.ingest_selected(
-                source, [str(k) for k in keys], severity_overrides=severity_overrides
+                source,
+                [str(k) for k in keys],
+                severity_overrides=severity_overrides,
+                team_id=current_team,
             )
         except (SourceSyncError, RepoSyncError) as exc:
             return Response({"error": str(exc)}, status=drf_status.HTTP_400_BAD_REQUEST)
@@ -298,13 +377,16 @@ class PatchSourceViewSet(AuthViewSet):
     def check_connectivity(self, request, pk=None):
         """用编辑表单参数测试连接；缺省字段复用库中配置且不写回。"""
         source = self.get_object()
+        self._require_builtin_manager(request, source)
         require_authorized_ids(
             self, request, PatchSource.objects.all(), [source.id], "patch_source"
         )
         submitted = dict(request.data)
         if hasattr(request.data, "dict"):
             submitted = request.data.dict()
-        serializer = PatchSourceConnectivitySerializer(data=submitted, partial=True)
+        serializer = PatchSourceConnectivitySerializer(
+            source, data=submitted, partial=True
+        )
         serializer.is_valid(raise_exception=True)
         values = {
             field: getattr(source, field)
@@ -312,8 +394,15 @@ class PatchSourceViewSet(AuthViewSet):
             if field != "auth_password"
         }
         values["auth_password"] = source.get_auth_password()
-        values.update(serializer.validated_data)
-        candidate = PatchSource(**values)
+        overrides = dict(serializer.validated_data)
+        # 编辑态的密码组件在用户点击编辑后可能提交空字符串。空值表示沿用已保存
+        # 的密码，不能覆盖数据库中的凭据；未保存过密码时仍会由完整校验报错。
+        if not overrides.get("auth_password"):
+            overrides.pop("auth_password", None)
+        values.update(overrides)
+        candidate_serializer = PatchSourceConnectivitySerializer(data=values)
+        candidate_serializer.is_valid(raise_exception=True)
+        candidate = PatchSource(**candidate_serializer.validated_data)
         result = probe_source(candidate)
         return Response({
             "source_id": source.id,
@@ -339,6 +428,18 @@ class PatchSourceViewSet(AuthViewSet):
         source_ids = request.data.get("source_ids") or []
         if not isinstance(source_ids, list) or not source_ids:
             raise DRFValidationError({"source_ids": [patch_message(request, "error.source_ids_required", "Select at least one patch source")]})
+
+        builtin_sources = PatchSource.objects.filter(
+            id__in=source_ids, is_builtin=True
+        )
+        if builtin_sources.exists() and not getattr(request.user, "is_superuser", False):
+            raise PermissionDenied(
+                patch_message(
+                    request,
+                    "error.builtin_source_superuser_required",
+                    "Only platform superusers can manage built-in patch sources",
+                )
+            )
 
         results = []
         allowed_source_ids = require_authorized_ids(

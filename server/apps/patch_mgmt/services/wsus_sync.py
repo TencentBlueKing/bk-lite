@@ -23,6 +23,7 @@ import winrm
 from django.utils import timezone
 
 from apps.patch_mgmt.models import PatchSource
+from apps.patch_mgmt.utils.architecture import X86_64
 
 logger = logging.getLogger("app")
 
@@ -48,6 +49,7 @@ class WsusUpdate:
     security_bulletins: List[str] = field(default_factory=list)
     description: str = ""
     arrival_date: str = ""
+    replacement_update_ids: List[str] = field(default_factory=list)
 
 
 class WsusClient:
@@ -138,6 +140,8 @@ class WsusClient:
             "$updates = $wsus.GetUpdates($updateScope);"
             "$result = @();"
             "foreach($u in $updates){"
+            "$superseding=@();"
+            "try{$superseding=@($u.GetRelatedUpdates([Microsoft.UpdateServices.Administration.UpdateRelationship]::UpdatesThatSupersedeThisUpdate) | ForEach-Object {$_.Id.UpdateId.ToString()})}catch{};"
             "$result += @{"
             "UpdateId=$u.Id.UpdateId.ToString();"
             "Title=$u.Title;"
@@ -148,6 +152,7 @@ class WsusClient:
             "SecurityBulletins=@($u.SecurityBulletins);"
             "Description=$u.Description;"
             "ArrivalDate=if($u.ArrivalDate){$u.ArrivalDate.ToString('o')}else{''};"
+            "SupersedingUpdateIds=$superseding;"
             "}"
             "};"
             "$json = $result | ConvertTo-Json -Depth 3 -AsArray -Compress;"
@@ -181,6 +186,9 @@ class WsusClient:
             security_bulletins = item.get("SecurityBulletins") or []
             if isinstance(security_bulletins, str):
                 security_bulletins = [security_bulletins]
+            replacement_update_ids = item.get("SupersedingUpdateIds") or []
+            if isinstance(replacement_update_ids, str):
+                replacement_update_ids = [replacement_update_ids]
 
             updates.append(WsusUpdate(
                 update_id=item.get("UpdateId") or "",
@@ -192,6 +200,7 @@ class WsusClient:
                 security_bulletins=security_bulletins,
                 description=item.get("Description") or "",
                 arrival_date=item.get("ArrivalDate") or "",
+                replacement_update_ids=replacement_update_ids,
             ))
 
             if len(updates) >= MAX_UPDATES:
@@ -293,13 +302,21 @@ def sync_wsus(source: PatchSource) -> dict:
         patch.severity = severity
         patch.pkg_status = PackageStatus.READY
         patch.last_synced_at = now
-        patch.save(update_fields=["patch_type", "severity", "pkg_status", "last_synced_at", "updated_at"])
+        patch.applicable_rules = {
+            **(patch.applicable_rules or {}),
+            "wsus_update_id": upd.update_id,
+        }
+        patch.save(update_fields=[
+            "patch_type", "severity", "pkg_status", "last_synced_at",
+            "applicable_rules", "updated_at",
+        ])
 
         WindowsPatchDetail.objects.update_or_create(
             patch=patch,
             defaults={
                 "kb_number": normalized_kb,
                 "product_list": upd.products or [],
+                "architectures": [X86_64],
                 "ms_bulletin": (upd.security_bulletins[0] if upd.security_bulletins else ""),
             },
         )
@@ -308,6 +325,8 @@ def sync_wsus(source: PatchSource) -> dict:
             created += 1
         else:
             updated += 1
+
+    apply_wsus_replacement_relationships(updates)
 
     logger.info(
         "sync_wsus: source_id=%s total=%s created=%s updated=%s",
@@ -319,3 +338,28 @@ def sync_wsus(source: PatchSource) -> dict:
         "updated": updated,
         "skipped": skipped,
     }
+
+
+def apply_wsus_replacement_relationships(updates: List[WsusUpdate]) -> None:
+    """把 WSUS 的 supersedence UpdateID 关系映射到 Patch replacement_ids。"""
+    from apps.patch_mgmt.models import Patch
+
+    patches = list(Patch.objects.filter(os_type="windows"))
+    patch_by_update_id = {
+        str((patch.applicable_rules or {}).get("wsus_update_id") or ""): patch
+        for patch in patches
+        if (patch.applicable_rules or {}).get("wsus_update_id")
+    }
+    for update in updates:
+        patch = patch_by_update_id.get(str(update.update_id))
+        if patch is None:
+            continue
+        replacement_patch_ids = [
+            patch_by_update_id[update_id].id
+            for update_id in update.replacement_update_ids
+            if update_id in patch_by_update_id
+        ]
+        merged = list(dict.fromkeys([*(patch.replacement_ids or []), *replacement_patch_ids]))
+        if merged != (patch.replacement_ids or []):
+            patch.replacement_ids = merged
+            patch.save(update_fields=["replacement_ids", "updated_at"])

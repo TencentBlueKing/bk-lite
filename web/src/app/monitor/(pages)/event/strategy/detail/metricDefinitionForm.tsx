@@ -53,7 +53,7 @@ interface MetricDefinitionFormProps {
   labelsByRef: Record<string, string[]>;
   groupedUnitOptions: CascaderItem[];
   unitList: UnitListItem[];
-  onCollectTypeChange: (id: string) => void;
+  onCollectTypeChange: (id: string | number) => void;
   onMetricRowsChange: (rows: MetricExpressionRow[]) => void;
   onResultNameChange: (value: string) => void;
   onExpressionChange: (value: string) => void;

@@ -10,7 +10,9 @@ export type ComplianceStatus =
   | 'pending'
   | 'evaluating'
   | 'failed'
-  | 'unconfigured';
+  | 'unconfigured'
+  | 'unknown'
+  | 'not_applicable';
 
 const COMP_COLOR: Record<ComplianceStatus, string> = {
   compliant: 'success',
@@ -19,6 +21,8 @@ const COMP_COLOR: Record<ComplianceStatus, string> = {
   evaluating: 'processing',
   failed: 'warning',
   unconfigured: 'gold',
+  unknown: 'warning',
+  not_applicable: 'default',
 };
 
 function isComplianceStatus(value: string | undefined): value is ComplianceStatus {

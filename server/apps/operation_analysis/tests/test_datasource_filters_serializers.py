@@ -86,6 +86,45 @@ def test_validate_field_schema_valid():
     assert _validate_field_schema(value) == value
 
 
+def _validate_params(value):
+    from apps.operation_analysis.serializers.datasource_serializers import DataSourceAPIModelSerializer
+
+    serializer = DataSourceAPIModelSerializer.__new__(DataSourceAPIModelSerializer)
+    return DataSourceAPIModelSerializer.validate_params(serializer, value)
+
+
+@pytest.mark.parametrize("param_type", ["number", "boolean", "date"])
+@pytest.mark.unit
+def test_validate_params_rejects_unsupported_unified_filter_types(param_type):
+    with pytest.raises(serializers.ValidationError):
+        _validate_params(
+            [
+                {
+                    "name": "invalid_filter",
+                    "alias_name": "非法筛选",
+                    "type": param_type,
+                    "filterType": "filter",
+                    "value": None,
+                }
+            ]
+        )
+
+
+@pytest.mark.parametrize("param_type", ["string", "timeRange", "dateRange"])
+@pytest.mark.unit
+def test_validate_params_accepts_supported_unified_filter_types(param_type):
+    value = [
+        {
+            "name": "valid_filter",
+            "alias_name": "合法筛选",
+            "type": param_type,
+            "filterType": "filter",
+            "value": None,
+        }
+    ]
+    assert _validate_params(value) == value
+
+
 def _serializer_request(user):
     request = APIRequestFactory().post("/operation_analysis/api/data_source/", data={}, format="json")
     request.COOKIES["current_team"] = "1"
@@ -147,6 +186,35 @@ def test_datasource_serializer_rejects_unknown_source_type(authenticated_user):
 
     assert not serializer.is_valid()
     assert "source_type" in serializer.errors
+
+
+@pytest.mark.django_db
+@pytest.mark.integration
+def test_datasource_serializer_cannot_forge_builtin_identity(authenticated_user):
+    from apps.operation_analysis.serializers.datasource_serializers import DataSourceAPIModelSerializer
+
+    serializer = DataSourceAPIModelSerializer(
+        context={"request": _serializer_request(authenticated_user)},
+        data={
+            "name": "custom",
+            "rest_api": "custom/query",
+            "source_type": "nats",
+            "connection_config": {},
+            "query_config": {},
+            "params": [],
+            "chart_type": ["single"],
+            "field_schema": [],
+            "groups": [1],
+            "namespaces": [],
+            "tag": [],
+            "is_build_in": True,
+            "build_in_key": "forged",
+        },
+    )
+
+    assert serializer.is_valid(), serializer.errors
+    assert "is_build_in" not in serializer.validated_data
+    assert "build_in_key" not in serializer.validated_data
 
 
 @pytest.mark.django_db

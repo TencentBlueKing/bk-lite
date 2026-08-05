@@ -1,7 +1,7 @@
-'use client';
+"use client";
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Button, Checkbox, Empty, Slider, Tooltip } from 'antd';
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { Button, Checkbox, Empty, Slider, Tooltip } from "antd";
 import {
   AimOutlined,
   ApartmentOutlined,
@@ -13,8 +13,8 @@ import {
   MinusOutlined,
   PlusOutlined,
   ReloadOutlined,
-} from '@ant-design/icons';
-import { useTranslation } from '@/utils/i18n';
+} from "@ant-design/icons";
+import { useTranslation } from "@/utils/i18n";
 import {
   GraphEdge,
   GraphNode,
@@ -22,8 +22,13 @@ import {
   WikiGraphBridgeNode,
   WikiGraphCrossCommunityEdge,
   WikiGraphSparseCommunity,
-} from '@/app/opspilot/types/wiki';
-import GraphCanvas, { GraphCanvasHandle, communityColor, graphEdgeId } from '@/app/opspilot/components/wiki/GraphCanvas';
+} from "@/app/opspilot/types/wiki";
+import GraphCanvas, {
+  GraphCanvasHandle,
+  communityColor,
+  graphEdgeId,
+} from "@/app/opspilot/components/wiki/GraphCanvas";
+import { pageTypeLabelKey } from "./wikiFormat";
 
 interface GraphExplorerProps {
   graph: WikiGraph;
@@ -39,9 +44,9 @@ interface GraphExplorerProps {
 }
 
 const panelCls =
-  'absolute z-20 rounded-lg border border-[var(--color-border-1)] bg-[var(--color-bg-1)] shadow-lg';
+  "absolute z-20 rounded-lg border border-[var(--color-border-1)] bg-[var(--color-bg-1)] shadow-lg";
 const chipCls =
-  'inline-flex items-center rounded-full bg-[var(--color-fill-2)] px-2 py-0.5 text-xs text-[var(--color-text-2)]';
+  "inline-flex items-center rounded-full bg-[var(--color-fill-2)] px-2 py-0.5 text-xs text-[var(--color-text-2)]";
 
 const GraphExplorer: React.FC<GraphExplorerProps> = ({
   graph,
@@ -57,37 +62,45 @@ const GraphExplorer: React.FC<GraphExplorerProps> = ({
   const canvasRef = useRef<GraphCanvasHandle>(null);
 
   const [showFilter, setShowFilter] = useState(initialPanels?.filter ?? false);
-  const [showInsights, setShowInsights] = useState(initialPanels?.insights ?? false);
+  const [showInsights, setShowInsights] = useState(
+    initialPanels?.insights ?? false,
+  );
   const [showLegend, setShowLegend] = useState(initialPanels?.legend ?? true);
   const [fullscreen, setFullscreen] = useState(false);
 
-  const [nodeScale, setNodeScale] = useState(100); // 百分比,100% = 默认;实时原地改尺寸(不重排)
+  const [nodeScale, setNodeScale] = useState(100); // 百分比；基准尺寸已减半，100% ≈ 旧版 50%
   const [spacing, setSpacing] = useState(100); // 已应用的间距(映射到 linkDistance),仅松手时更新
   const [spacingInput, setSpacingInput] = useState(100); // 拖动中的显示值(松手前不触发重排)
   const [hiddenTypes, setHiddenTypes] = useState<Set<string>>(new Set());
   const [hideIsolated, setHideIsolated] = useState(false);
+  const [selectedCommunity, setSelectedCommunity] = useState<number | null>(
+    null,
+  );
 
   // ESC 退出全屏
   useEffect(() => {
     if (!fullscreen) return;
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setFullscreen(false);
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    const onKey = (e: KeyboardEvent) =>
+      e.key === "Escape" && setFullscreen(false);
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
   }, [fullscreen]);
 
   // 各页面类型及数量(过滤器按类型筛选)
   const typeCounts = useMemo(() => {
     const m = new Map<string, number>();
     graph.nodes.forEach((n) => {
-      const k = n.page_type || 'other';
+      const k = n.page_type || "other";
       m.set(k, (m.get(k) || 0) + 1);
     });
     return Array.from(m.entries()).map(([type, count]) => ({ type, count }));
   }, [graph.nodes]);
 
-  // 过滤后的节点/边
-  const shownNodes = useMemo(() => {
-    let ns = graph.nodes.filter((n) => !hiddenTypes.has(n.page_type || 'other'));
+  // 类型/孤立点过滤后的节点；社区图例基于此计算，避免选中社区后图例塌缩
+  const typedNodes = useMemo(() => {
+    let ns = graph.nodes.filter(
+      (n) => !hiddenTypes.has(n.page_type || "other"),
+    );
     if (hideIsolated) {
       const connected = new Set<number>();
       graph.edges.forEach((e) => {
@@ -98,33 +111,57 @@ const GraphExplorer: React.FC<GraphExplorerProps> = ({
     }
     return ns;
   }, [graph.nodes, graph.edges, hiddenTypes, hideIsolated]);
-  const shownNodeIds = useMemo(() => new Set(shownNodes.map((n) => String(n.id))), [shownNodes]);
+
+  // 过滤后的节点/边（可叠加社区筛选）
+  const shownNodes = useMemo(() => {
+    if (selectedCommunity === null) return typedNodes;
+    return typedNodes.filter(
+      (n) => (n.community ?? 0) === selectedCommunity,
+    );
+  }, [typedNodes, selectedCommunity]);
+  const shownNodeIds = useMemo(
+    () => new Set(shownNodes.map((n) => String(n.id))),
+    [shownNodes],
+  );
   const shownEdges = useMemo(
-    () => graph.edges.filter((e) => shownNodeIds.has(String(e.from)) && shownNodeIds.has(String(e.to))),
-    [graph.edges, shownNodeIds]
+    () =>
+      graph.edges.filter(
+        (e) =>
+          shownNodeIds.has(String(e.from)) && shownNodeIds.has(String(e.to)),
+      ),
+    [graph.edges, shownNodeIds],
   );
   const shownEdgeIds = useMemo(
     () =>
       new Set(
         graph.edges
           .map((edge, index) => ({ edge, index }))
-          .filter(({ edge }) => shownNodeIds.has(String(edge.from)) && shownNodeIds.has(String(edge.to)))
-          .map(({ edge, index }) => graphEdgeId(edge, index))
+          .filter(
+            ({ edge }) =>
+              shownNodeIds.has(String(edge.from)) &&
+              shownNodeIds.has(String(edge.to)),
+          )
+          .map(({ edge, index }) => graphEdgeId(edge, index)),
       ),
-    [graph.edges, shownNodeIds]
+    [graph.edges, shownNodeIds],
   );
   const hiddenCount = graph.nodes.length - shownNodes.length;
 
   useEffect(() => {
     if (!shownNodes.length) return;
     canvasRef.current?.resizeToFit();
-    const frame = window.requestAnimationFrame(() => canvasRef.current?.resizeToFit());
-    const timer = window.setTimeout(() => canvasRef.current?.resizeToFit(), 180);
+    const frame = window.requestAnimationFrame(() =>
+      canvasRef.current?.resizeToFit(),
+    );
+    const timer = window.setTimeout(
+      () => canvasRef.current?.resizeToFit(),
+      180,
+    );
     return () => {
       window.cancelAnimationFrame(frame);
       window.clearTimeout(timer);
     };
-  }, [fullscreen, shownNodes.length]);
+  }, [fullscreen, shownNodes.length, selectedCommunity]);
 
   // 社区图例:以社区内连接度最高的节点标题作为该社区的代表名
   const legend = useMemo(() => {
@@ -134,7 +171,7 @@ const GraphExplorer: React.FC<GraphExplorerProps> = ({
       deg.set(e.to, (deg.get(e.to) || 0) + 1);
     });
     const byComm = new Map<number, GraphNode[]>();
-    shownNodes.forEach((n) => {
+    typedNodes.forEach((n) => {
       const c = n.community ?? 0;
       if (!byComm.has(c)) byComm.set(c, []);
       byComm.get(c)!.push(n);
@@ -142,16 +179,31 @@ const GraphExplorer: React.FC<GraphExplorerProps> = ({
     return Array.from(byComm.entries())
       .sort((a, b) => a[0] - b[0])
       .map(([c, list]) => {
-        const hub = [...list].sort((x, y) => (deg.get(y.id) || 0) - (deg.get(x.id) || 0))[0];
-        return { community: c, label: hub?.title || `${t('wiki.communities')} ${c + 1}`, count: list.length };
+        const hub = [...list].sort(
+          (x, y) => (deg.get(y.id) || 0) - (deg.get(x.id) || 0),
+        )[0];
+        return {
+          community: c,
+          label: hub?.title || `${t("wiki.communities")} ${c + 1}`,
+          breadcrumb: (hub?.directory_breadcrumb || [])
+            .map((item) => item.name)
+            .join(" / "),
+          count: list.length,
+        };
       });
-  }, [shownNodes, graph.edges, t]);
+  }, [typedNodes, graph.edges, t]);
 
   const ins = (graph.insights || {}) as Record<string, unknown>;
-  const strongest = ((graph.insights?.strongest_edges as GraphEdge[] | undefined) || []).slice(0, 6);
+  const strongest = (
+    (graph.insights?.strongest_edges as GraphEdge[] | undefined) || []
+  ).slice(0, 6);
   const rawBridgeNodes = ins.bridge_nodes as WikiGraphBridgeNode[] | undefined;
-  const rawSparseCommunities = ins.sparse_communities as WikiGraphSparseCommunity[] | undefined;
-  const rawCrossCommunityEdges = ins.cross_community_edges as WikiGraphCrossCommunityEdge[] | undefined;
+  const rawSparseCommunities = ins.sparse_communities as
+    | WikiGraphSparseCommunity[]
+    | undefined;
+  const rawCrossCommunityEdges = ins.cross_community_edges as
+    | WikiGraphCrossCommunityEdge[]
+    | undefined;
   const bridgeNodes = (rawBridgeNodes || []).slice(0, 8);
   const sparseCommunities = (rawSparseCommunities || []).slice(0, 6);
   const crossCommunityEdges = (rawCrossCommunityEdges || []).slice(0, 6);
@@ -169,11 +221,25 @@ const GraphExplorer: React.FC<GraphExplorerProps> = ({
     setSpacingInput(100);
     setHiddenTypes(new Set());
     setHideIsolated(false);
+    setSelectedCommunity(null);
+  };
+  const toggleCommunityFilter = (community: number) => {
+    setSelectedCommunity((prev) => (prev === community ? null : community));
   };
 
-  const toggleBtn = (active: boolean, icon: React.ReactNode, label: string, onClick: () => void) => (
+  const toggleBtn = (
+    active: boolean,
+    icon: React.ReactNode,
+    label: string,
+    onClick: () => void,
+  ) => (
     <Tooltip title={label}>
-      <Button size="small" type={active ? 'primary' : 'default'} icon={icon} onClick={onClick}>
+      <Button
+        size="small"
+        type={active ? "primary" : "default"}
+        icon={icon}
+        onClick={onClick}
+      >
         {label}
       </Button>
     </Tooltip>
@@ -183,10 +249,12 @@ const GraphExplorer: React.FC<GraphExplorerProps> = ({
     <div
       className={
         fullscreen
-          ? 'fixed inset-0 z-[1000] bg-[var(--color-bg-1)]'
-          : 'relative w-full min-h-[480px] overflow-hidden rounded-lg border border-[var(--color-border-1)] bg-[var(--color-bg-1)]'
+          ? "fixed inset-0 z-[1000] bg-[var(--color-bg-1)]"
+          : "relative w-full min-h-[480px] overflow-hidden rounded-lg border border-[var(--color-border-1)] bg-[var(--color-bg-1)]"
       }
-      style={fullscreen ? undefined : { height: height ?? 'calc(100vh - 210px)' }}
+      style={
+        fullscreen ? undefined : { height: height ?? "calc(100vh - 210px)" }
+      }
     >
       {/* 图谱铺满 */}
       <div className="absolute inset-0">
@@ -218,35 +286,54 @@ const GraphExplorer: React.FC<GraphExplorerProps> = ({
         <div className="pointer-events-auto flex flex-wrap items-center gap-2">
           <span className="flex items-center gap-1.5 font-medium text-[var(--color-text-1)]">
             <ApartmentOutlined className="text-[var(--color-primary)]" />
-            {t('wiki.graph')}
+            {t("wiki.graph")}
           </span>
           <span className={chipCls}>
-            {shownNodes.length}/{graph.nodes.length} {t('wiki.page')}
+            {shownNodes.length}/{graph.nodes.length} {t("wiki.page")}
           </span>
           <span className={chipCls}>
-            {shownEdges.length}/{graph.edges.length} {t('wiki.edges')}
+            {shownEdges.length}/{graph.edges.length} {t("wiki.edges")}
           </span>
           {hiddenCount > 0 && (
             <span className="inline-flex items-center rounded-full bg-[var(--color-primary-bg)] px-2 py-0.5 text-xs text-[var(--color-primary)]">
-              {hiddenCount} {t('wiki.hidden')}
+              {hiddenCount} {t("wiki.hidden")}
             </span>
           )}
         </div>
         <div className="pointer-events-auto flex items-center gap-1.5">
-          {toggleBtn(showFilter, <FilterOutlined />, t('wiki.filters'), () => setShowFilter((v) => !v))}
-          {toggleBtn(showLegend, <ApartmentOutlined />, t('wiki.communities'), () => setShowLegend((v) => !v))}
-          {toggleBtn(showInsights, <BulbOutlined />, t('wiki.insights'), () => setShowInsights((v) => !v))}
+          {toggleBtn(showFilter, <FilterOutlined />, t("wiki.filters"), () =>
+            setShowFilter((v) => !v),
+          )}
+          {toggleBtn(
+            showLegend,
+            <ApartmentOutlined />,
+            t("wiki.communities"),
+            () => setShowLegend((v) => !v),
+          )}
+          {toggleBtn(showInsights, <BulbOutlined />, t("wiki.insights"), () =>
+            setShowInsights((v) => !v),
+          )}
           {onCreateInsightChecks && (
-            <Tooltip title={t('wiki.createInsightChecks')}>
-              <Button size="small" icon={<BulbOutlined />} loading={creatingInsightChecks} onClick={onCreateInsightChecks}>
-                {t('wiki.createInsightChecks')}
+            <Tooltip title={t("wiki.createInsightChecks")}>
+              <Button
+                size="small"
+                icon={<BulbOutlined />}
+                loading={creatingInsightChecks}
+                onClick={onCreateInsightChecks}
+              >
+                {t("wiki.createInsightChecks")}
               </Button>
             </Tooltip>
           )}
           {onRebuild && (
-            <Tooltip title={t('wiki.rebuildRelations')}>
-              <Button size="small" icon={<ReloadOutlined />} loading={rebuilding} onClick={onRebuild}>
-                {t('wiki.rebuildRelations')}
+            <Tooltip title={t("wiki.rebuildRelations")}>
+              <Button
+                size="small"
+                icon={<ReloadOutlined />}
+                loading={rebuilding}
+                onClick={onRebuild}
+              >
+                {t("wiki.rebuildRelations")}
               </Button>
             </Tooltip>
           )}
@@ -255,20 +342,37 @@ const GraphExplorer: React.FC<GraphExplorerProps> = ({
 
       {/* 缩放 / 全屏 控件(右下) */}
       <div className="absolute bottom-3 right-3 z-20 flex flex-col gap-1.5">
-        <Tooltip title={t('wiki.zoomIn')} placement="left">
-          <Button shape="circle" icon={<PlusOutlined />} onClick={() => canvasRef.current?.zoomBy(1.2)} />
-        </Tooltip>
-        <Tooltip title={t('wiki.zoomOut')} placement="left">
-          <Button shape="circle" icon={<MinusOutlined />} onClick={() => canvasRef.current?.zoomBy(0.83)} />
-        </Tooltip>
-        <Tooltip title={t('wiki.resetView')} placement="left">
-          <Button shape="circle" icon={<AimOutlined />} onClick={() => canvasRef.current?.resetView()} />
-        </Tooltip>
-        <Tooltip title={fullscreen ? t('wiki.exitFullscreen') : t('wiki.fullscreen')} placement="left">
+        <Tooltip title={t("wiki.zoomIn")} placement="left">
           <Button
             shape="circle"
-            type={fullscreen ? 'primary' : 'default'}
-            icon={fullscreen ? <FullscreenExitOutlined /> : <FullscreenOutlined />}
+            icon={<PlusOutlined />}
+            onClick={() => canvasRef.current?.zoomBy(1.2)}
+          />
+        </Tooltip>
+        <Tooltip title={t("wiki.zoomOut")} placement="left">
+          <Button
+            shape="circle"
+            icon={<MinusOutlined />}
+            onClick={() => canvasRef.current?.zoomBy(0.83)}
+          />
+        </Tooltip>
+        <Tooltip title={t("wiki.resetView")} placement="left">
+          <Button
+            shape="circle"
+            icon={<AimOutlined />}
+            onClick={() => canvasRef.current?.resetView()}
+          />
+        </Tooltip>
+        <Tooltip
+          title={fullscreen ? t("wiki.exitFullscreen") : t("wiki.fullscreen")}
+          placement="left"
+        >
+          <Button
+            shape="circle"
+            type={fullscreen ? "primary" : "default"}
+            icon={
+              fullscreen ? <FullscreenExitOutlined /> : <FullscreenOutlined />
+            }
             onClick={() => setFullscreen((v) => !v)}
           />
         </Tooltip>
@@ -279,19 +383,30 @@ const GraphExplorer: React.FC<GraphExplorerProps> = ({
         <div className={`${panelCls} left-3 top-14 w-[260px] p-3`}>
           <div className="mb-2 flex items-center justify-between">
             <span className="flex items-center gap-1.5 text-sm font-medium text-[var(--color-text-1)]">
-              <FilterOutlined /> {t('wiki.filters')}
+              <FilterOutlined /> {t("wiki.filters")}
             </span>
-            <Button type="link" size="small" className="px-0" onClick={resetFilters}>
-              {t('wiki.reset')}
+            <Button
+              type="link"
+              size="small"
+              className="px-0"
+              onClick={resetFilters}
+            >
+              {t("wiki.reset")}
             </Button>
           </div>
           <div className="mb-1 flex items-center justify-between text-xs text-[var(--color-text-3)]">
-            <span>{t('wiki.nodeSize')}</span>
+            <span>{t("wiki.nodeSize")}</span>
             <span>{nodeScale}%</span>
           </div>
-          <Slider min={60} max={140} value={nodeScale} onChange={setNodeScale} tooltip={{ open: false }} />
+          <Slider
+            min={40}
+            max={140}
+            value={nodeScale}
+            onChange={setNodeScale}
+            tooltip={{ open: false }}
+          />
           <div className="mb-1 flex items-center justify-between text-xs text-[var(--color-text-3)]">
-            <span>{t('wiki.spacing')}</span>
+            <span>{t("wiki.spacing")}</span>
             <span>{spacingInput}%</span>
           </div>
           {/* 拖动只改显示值;松手(onChangeComplete)才更新间距 → 仅重排一次,避免拖动中持续重排 */}
@@ -303,37 +418,49 @@ const GraphExplorer: React.FC<GraphExplorerProps> = ({
             onChangeComplete={(v) => setSpacing(v as number)}
             tooltip={{ open: false }}
           />
-          <div className="mb-1 mt-2 text-xs text-[var(--color-text-3)]">{t('wiki.nodeTypes')}</div>
+          <div className="mb-1 mt-2 text-xs text-[var(--color-text-3)]">
+            {t("wiki.nodeTypes")}
+          </div>
           <div className="grid grid-cols-2 gap-x-2 gap-y-1">
-            {typeCounts.map(({ type, count }) => (
-              <Checkbox
-                key={type}
-                checked={!hiddenTypes.has(type)}
-                onChange={() => toggleType(type)}
-                className="!ml-0 text-xs"
-              >
-                <span className="text-[var(--color-text-2)]">
-                  {type} <span className="text-[var(--color-text-3)]">{count}</span>
-                </span>
-              </Checkbox>
-            ))}
+            {typeCounts.map(({ type, count }) => {
+              const labelKey = pageTypeLabelKey(type);
+              const label = labelKey ? t(labelKey) : type;
+              return (
+                <Checkbox
+                  key={type}
+                  checked={!hiddenTypes.has(type)}
+                  onChange={() => toggleType(type)}
+                  className="!ml-0 text-xs"
+                >
+                  <span className="text-[var(--color-text-2)]">
+                    {label}{" "}
+                    <span className="text-[var(--color-text-3)]">{count}</span>
+                  </span>
+                </Checkbox>
+              );
+            })}
           </div>
           <Checkbox
             checked={hideIsolated}
             onChange={(e) => setHideIsolated(e.target.checked)}
             className="!ml-0 mt-2 text-xs"
           >
-            <span className="text-[var(--color-text-2)]">{t('wiki.hideIsolated')}</span>
+            <span className="text-[var(--color-text-2)]">
+              {t("wiki.hideIsolated")}
+            </span>
           </Checkbox>
         </div>
       )}
 
       {/* 洞察面板(右上):统计 + 最强关联 */}
       {showInsights && (
-        <div className={`${panelCls} right-3 top-14 max-h-[calc(100%-120px)] w-[300px] overflow-auto p-3`}>
+        <div
+          className={`${panelCls} right-3 top-14 max-h-[calc(100%-120px)] w-[300px] overflow-auto p-3`}
+        >
           <div className="mb-2 flex items-center justify-between">
             <span className="flex items-center gap-1.5 text-sm font-medium text-[var(--color-text-1)]">
-              <BulbOutlined className="text-[var(--color-primary)]" /> {t('wiki.insights')}
+              <BulbOutlined className="text-[var(--color-primary)]" />{" "}
+              {t("wiki.insights")}
             </span>
             <CloseOutlined
               className="cursor-pointer text-[var(--color-text-3)]"
@@ -342,24 +469,50 @@ const GraphExplorer: React.FC<GraphExplorerProps> = ({
           </div>
           <div className="grid grid-cols-2 gap-2">
             {[
-              { label: t('wiki.page'), value: Number(ins.node_count ?? graph.nodes.length) },
-              { label: t('wiki.edges'), value: Number(ins.edge_count ?? graph.edges.length) },
-              { label: t('wiki.community'), value: Number(ins.community_count ?? legend.length) },
-              { label: t('wiki.largest'), value: Number(ins.largest_community ?? 0) },
+              {
+                label: t("wiki.page"),
+                value: Number(ins.node_count ?? graph.nodes.length),
+              },
+              {
+                label: t("wiki.edges"),
+                value: Number(ins.edge_count ?? graph.edges.length),
+              },
+              {
+                label: t("wiki.community"),
+                value: Number(ins.community_count ?? legend.length),
+              },
+              {
+                label: t("wiki.largest"),
+                value: Number(ins.largest_community ?? 0),
+              },
             ].map((s) => (
-              <div key={s.label} className="rounded-md bg-[var(--color-fill-1)] px-2 py-1.5">
-                <div className="text-xs text-[var(--color-text-3)]">{s.label}</div>
-                <div className="text-lg font-semibold text-[var(--color-text-1)]">{s.value}</div>
+              <div
+                key={s.label}
+                className="rounded-md bg-[var(--color-fill-1)] px-2 py-1.5"
+              >
+                <div className="text-xs text-[var(--color-text-3)]">
+                  {s.label}
+                </div>
+                <div className="text-lg font-semibold text-[var(--color-text-1)]">
+                  {s.value}
+                </div>
               </div>
             ))}
           </div>
-          <div className="mb-1 mt-3 text-xs font-medium text-[var(--color-text-2)]">{t('wiki.strongestRelations')}</div>
+          <div className="mb-1 mt-3 text-xs font-medium text-[var(--color-text-2)]">
+            {t("wiki.strongestRelations")}
+          </div>
           {strongest.length ? (
             <ul className="space-y-1.5">
               {strongest.map((e, i) => (
-                <li key={i} className="flex items-center justify-between gap-2 text-xs">
+                <li
+                  key={i}
+                  className="flex items-center justify-between gap-2 text-xs"
+                >
                   <span className="min-w-0 flex-1 truncate text-[var(--color-text-2)]">
-                    {titleOf(e.from)} <span className="text-[var(--color-text-4)]">↔</span> {titleOf(e.to)}
+                    {titleOf(e.from)}{" "}
+                    <span className="text-[var(--color-text-4)]">↔</span>{" "}
+                    {titleOf(e.to)}
                   </span>
                   <span className="shrink-0 rounded bg-[var(--color-fill-2)] px-1.5 text-[var(--color-text-3)]">
                     {e.weight ?? 1}
@@ -370,14 +523,22 @@ const GraphExplorer: React.FC<GraphExplorerProps> = ({
           ) : (
             <div className="text-xs text-[var(--color-text-3)]">--</div>
           )}
-          <div className="mb-1 mt-3 text-xs font-medium text-[var(--color-text-2)]">{t('wiki.bridgeNodes')}</div>
+          <div className="mb-1 mt-3 text-xs font-medium text-[var(--color-text-2)]">
+            {t("wiki.bridgeNodes")}
+          </div>
           {bridgeNodes.length ? (
             <ul className="space-y-1.5">
               {bridgeNodes.map((item) => (
-                <li key={item.id} className="rounded-md bg-[var(--color-fill-1)] px-2 py-1.5 text-xs">
-                  <div className="truncate font-medium text-[var(--color-text-1)]">{item.title || titleOf(item.id)}</div>
+                <li
+                  key={item.id}
+                  className="rounded-md bg-[var(--color-fill-1)] px-2 py-1.5 text-xs"
+                >
+                  <div className="truncate font-medium text-[var(--color-text-1)]">
+                    {item.title || titleOf(item.id)}
+                  </div>
                   <div className="mt-1 text-[var(--color-text-3)]">
-                    {t('wiki.edges')}: {item.degree} · {t('wiki.graphInsightChecks')}:{' '}
+                    {t("wiki.edges")}: {item.degree} ·{" "}
+                    {t("wiki.graphInsightChecks")}:{" "}
                     {item.component_count_after_removal}
                   </div>
                 </li>
@@ -387,20 +548,23 @@ const GraphExplorer: React.FC<GraphExplorerProps> = ({
             <div className="text-xs text-[var(--color-text-3)]">--</div>
           )}
           <div className="mb-1 mt-3 text-xs font-medium text-[var(--color-text-2)]">
-            {t('wiki.crossCommunityEdges')}
+            {t("wiki.crossCommunityEdges")}
           </div>
           {crossCommunityEdges.length ? (
             <ul className="space-y-1.5">
               {crossCommunityEdges.map((item) => (
-                <li key={`${item.from}-${item.to}`} className="rounded-md bg-[var(--color-fill-1)] px-2 py-1.5 text-xs">
+                <li
+                  key={`${item.from}-${item.to}`}
+                  className="rounded-md bg-[var(--color-fill-1)] px-2 py-1.5 text-xs"
+                >
                   <div className="line-clamp-2 font-medium text-[var(--color-text-1)]">
                     {item.from_title || titleOf(item.from)}
                     <span className="mx-1 text-[var(--color-text-4)]">↔</span>
                     {item.to_title || titleOf(item.to)}
                   </div>
                   <div className="mt-1 text-[var(--color-text-3)]">
-                    {t('wiki.community')}: {item.from_community + 1}/{item.to_community + 1} ·{' '}
-                    {t('wiki.weight')}: {item.weight}
+                    {t("wiki.community")}: {item.from_community + 1}/
+                    {item.to_community + 1} · {t("wiki.weight")}: {item.weight}
                   </div>
                 </li>
               ))}
@@ -408,16 +572,23 @@ const GraphExplorer: React.FC<GraphExplorerProps> = ({
           ) : (
             <div className="text-xs text-[var(--color-text-3)]">--</div>
           )}
-          <div className="mb-1 mt-3 text-xs font-medium text-[var(--color-text-2)]">{t('wiki.sparseCommunities')}</div>
+          <div className="mb-1 mt-3 text-xs font-medium text-[var(--color-text-2)]">
+            {t("wiki.sparseCommunities")}
+          </div>
           {sparseCommunities.length ? (
             <ul className="space-y-1.5">
               {sparseCommunities.map((item) => (
-                <li key={item.page_ids.join('-')} className="rounded-md bg-[var(--color-fill-1)] px-2 py-1.5 text-xs">
+                <li
+                  key={item.page_ids.join("-")}
+                  className="rounded-md bg-[var(--color-fill-1)] px-2 py-1.5 text-xs"
+                >
                   <div className="line-clamp-2 font-medium text-[var(--color-text-1)]">
-                    {(item.titles || []).join(' · ') || item.page_ids.map(titleOf).join(' · ')}
+                    {(item.titles || []).join(" · ") ||
+                      item.page_ids.map(titleOf).join(" · ")}
                   </div>
                   <div className="mt-1 text-[var(--color-text-3)]">
-                    {t('wiki.page')}: {item.size} · {t('wiki.density')}: {item.density}
+                    {t("wiki.page")}: {item.size} · {t("wiki.density")}:{" "}
+                    {item.density}
                   </div>
                 </li>
               ))}
@@ -428,21 +599,72 @@ const GraphExplorer: React.FC<GraphExplorerProps> = ({
         </div>
       )}
 
-      {/* 社区图例(左下) */}
+      {/* 社区图例(左下)：点击条目筛选该社区，再点取消 */}
       {showLegend && legend.length > 0 && (
         <div className={`${panelCls} bottom-3 left-3 max-w-[260px] p-3`}>
-          <div className="mb-1.5 text-xs font-medium text-[var(--color-text-2)]">{t('wiki.communities')}</div>
+          <div className="mb-1.5 flex items-center justify-between gap-2">
+            <span className="text-xs font-medium text-[var(--color-text-2)]">
+              {t("wiki.communities")}
+            </span>
+            {selectedCommunity !== null && (
+              <button
+                type="button"
+                className="text-[11px] text-[var(--color-primary)] hover:underline"
+                onClick={() => setSelectedCommunity(null)}
+              >
+                {t("wiki.clearCommunityFilter")}
+              </button>
+            )}
+          </div>
+          <div className="mb-1.5 text-[11px] text-[var(--color-text-3)]">
+            {t("wiki.filterCommunityTip")}
+          </div>
           <ul className="space-y-1">
-            {legend.map((l) => (
-              <li key={l.community} className="flex items-center gap-2 text-xs">
-                <span
-                  className="inline-block h-2.5 w-2.5 shrink-0 rounded-full"
-                  style={{ background: communityColor(l.community) }}
-                />
-                <span className="min-w-0 flex-1 truncate text-[var(--color-text-2)]">{l.label}</span>
-                <span className="shrink-0 text-[var(--color-text-3)]">{l.count}</span>
-              </li>
-            ))}
+            {legend.map((l) => {
+              const active = selectedCommunity === l.community;
+              return (
+                <li key={l.community}>
+                  <button
+                    type="button"
+                    title={t("wiki.filterCommunityTip")}
+                    aria-pressed={active}
+                    onClick={() => toggleCommunityFilter(l.community)}
+                    className={`flex w-full items-start gap-2 rounded-md px-1.5 py-1 text-left text-xs transition-colors ${
+                      active
+                        ? "bg-[var(--color-primary-bg)] text-[var(--color-primary)]"
+                        : "hover:bg-[var(--color-fill-2)]"
+                    }`}
+                  >
+                    <span
+                      className="mt-1 inline-block h-2.5 w-2.5 shrink-0 rounded-full"
+                      style={{ background: communityColor(l.community) }}
+                    />
+                    <div className="min-w-0 flex-1">
+                      <div
+                        className={`truncate ${
+                          active
+                            ? "font-medium text-[var(--color-primary)]"
+                            : "text-[var(--color-text-2)]"
+                        }`}
+                      >
+                        {l.label}
+                      </div>
+                      {l.breadcrumb && (
+                        <div
+                          className="truncate text-[11px] text-[var(--color-text-3)]"
+                          title={l.breadcrumb}
+                        >
+                          {l.breadcrumb}
+                        </div>
+                      )}
+                    </div>
+                    <span className="shrink-0 text-[var(--color-text-3)]">
+                      {l.count}
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
           </ul>
         </div>
       )}

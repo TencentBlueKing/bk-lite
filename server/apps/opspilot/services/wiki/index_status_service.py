@@ -10,6 +10,7 @@ from apps.opspilot.services.wiki.embedding_service import chunk_markdown
 
 _INDEX_STAGE_KEYS = ("page_embedding", "chunk_embedding")
 _INDEX_REBUILD_TRIGGERS = {"kb_reindex", "material_reindex", "page_reindex"}
+_UNSPECIFIED_PAGE_VERSION = object()
 
 
 def _stage_failure(stage):
@@ -74,8 +75,8 @@ def _indexed(**extra):
     return {"status": "indexed", **extra}
 
 
-def page_index_detail(page, failure_lookup=None):
-    """返回页面级和 chunk 级索引状态明细。"""
+def page_index_detail(page, failure_lookup=None, *, page_version=_UNSPECIFIED_PAGE_VERSION):
+    """返回指定页面版本的页面级和 chunk 级索引状态明细。"""
     failures = (failure_lookup or {}).get(page.id) or {}
     page_failure = failures.get("page_embedding")
     chunk_failure = failures.get("chunk_embedding")
@@ -87,7 +88,7 @@ def page_index_detail(page, failure_lookup=None):
         detail["status"] = _combined_status(detail)
         return detail
 
-    current_version = page.current_version
+    current_version = page.current_version if page_version is _UNSPECIFIED_PAGE_VERSION else page_version
     body = (current_version.body if current_version else "") or ""
     if not current_version:
         page_status = _not_indexed(reason="no_current_version")

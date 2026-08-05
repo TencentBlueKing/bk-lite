@@ -139,7 +139,7 @@ def test_windows_pure_wua_format_marks_update_as_missing():
         "KB5040430|Important|Cumulative Update",
         [SimpleNamespace(id=3, patch=patch)],
     )
-    assert result[3].reason == "未安装 KB5040430"
+    assert result[3].reason == "KB5040430 适用但未安装"
     assert result[3].evidence["installed_kbs"] == []
 
 

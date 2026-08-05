@@ -61,6 +61,7 @@ import {
   CheckOutlined,
   BranchesOutlined,
 } from '@ant-design/icons';
+import { resolveSidebarTreeSelection } from '@/app/ops-analysis/utils/sidebarSelection';
 
 const Sidebar = forwardRef<SidebarRef, SidebarProps>(
   ({ onSelect, onDataUpdate }, ref) => {
@@ -722,10 +723,17 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
                 selectedKeys={selectedKeys}
                 onExpand={(keys) => setExpandedKeys(keys)}
                 onSelect={(selectedKeys, info) => {
-                  const key = (selectedKeys as string[])[0];
-                  setSelectedKeys(selectedKeys);
-                  if (onSelect && key && info.selectedNodes.length > 0) {
-                    const item = findItemById(filteredDirs, key);
+                  const selection = resolveSidebarTreeSelection({
+                    selectedKeys,
+                    nodeKey: info.node.key,
+                    selected: info.selected,
+                  });
+                  setSelectedKeys(selection.selectedKeys);
+                  if (onSelect && selection.navigationKey) {
+                    const item = findItemById(
+                      filteredDirs,
+                      selection.navigationKey,
+                    );
                     if (item && item.type !== 'directory') {
                       onSelect(item.type, item);
                     }

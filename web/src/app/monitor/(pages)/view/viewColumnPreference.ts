@@ -72,8 +72,9 @@ export const resolveViewColumns = <T extends ViewColumnLike>(
         return { ...column, fixed: 'left' as const };
       }
       if (column.fixed === 'left') {
-        const { fixed: _fixed, ...rest } = column;
-        return rest as T;
+        const nextColumn = { ...column };
+        delete nextColumn.fixed;
+        return nextColumn;
       }
       return column;
     })

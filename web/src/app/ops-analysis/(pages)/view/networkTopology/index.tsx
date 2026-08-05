@@ -1150,8 +1150,8 @@ const NetworkTopology = forwardRef<NetworkTopologyRef, NetworkTopologyProps>(
         onOpenShare={
           !shareMode && selectedNetworkTopology?.data_id
             ? () => {
-                void openShare(selectedNetworkTopology.data_id);
-              }
+              void openShare(selectedNetworkTopology.data_id);
+            }
             : undefined
         }
         onZoomIn={() => graph?.zoom(0.1)}

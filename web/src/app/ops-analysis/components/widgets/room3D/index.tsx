@@ -31,6 +31,8 @@ interface Room3DProps {
   config?: ValueConfig;
   screenRenderContext?: ScreenRenderContext;
   onReady?: (ready: boolean) => void;
+  componentSwitchControl?: React.ReactNode;
+  errorMessage?: string;
 }
 
 interface PointerState {
@@ -50,6 +52,8 @@ const Room3D: React.FC<Room3DProps> = ({
   config,
   screenRenderContext,
   onReady,
+  componentSwitchControl,
+  errorMessage,
 }) => {
   const { t } = useTranslation();
   const roomRef = useRef<HTMLDivElement | null>(null);
@@ -337,15 +341,32 @@ const Room3D: React.FC<Room3DProps> = ({
 
   if (loading) {
     return (
-      <div className={styles.stateBox}>
+      <div className={`${styles.stateBox} ${styles.stateBoxWithControl}`}>
+        {componentSwitchControl && (
+          <div className={styles.roomSwitch}>{componentSwitchControl}</div>
+        )}
         <Spin />
+      </div>
+    );
+  }
+
+  if (errorMessage) {
+    return (
+      <div className={`${styles.stateBox} ${styles.stateBoxWithControl}`}>
+        {componentSwitchControl && (
+          <div className={styles.roomSwitch}>{componentSwitchControl}</div>
+        )}
+        <Alert type="error" showIcon message={errorMessage} />
       </div>
     );
   }
 
   if (!validation.ok) {
     return (
-      <div className={styles.stateBox}>
+      <div className={`${styles.stateBox} ${styles.stateBoxWithControl}`}>
+        {componentSwitchControl && (
+          <div className={styles.roomSwitch}>{componentSwitchControl}</div>
+        )}
         <Alert
           type="error"
           showIcon
@@ -358,7 +379,10 @@ const Room3D: React.FC<Room3DProps> = ({
 
   if (!roomData.racks.length) {
     return (
-      <div className={styles.stateBox}>
+      <div className={`${styles.stateBox} ${styles.stateBoxWithControl}`}>
+        {componentSwitchControl && (
+          <div className={styles.roomSwitch}>{componentSwitchControl}</div>
+        )}
         <div className={styles.stateContent}>
           {notice && <Alert type="warning" showIcon message={notice} />}
           <Empty description={t("dashboard.room3DNoData")} />
@@ -367,6 +391,7 @@ const Room3D: React.FC<Room3DProps> = ({
     );
   }
 
+  const showRoomSummary = !componentSwitchControl;
   const roomRackCount = roomData.racks.length;
   const roomSummaryText = `${t("dashboard.room3DRoomNameLabel")}${roomData.room.name}${t("dashboard.room3DRackCountPrefix")}${roomRackCount}${t("dashboard.room3DRackCountSuffix")}`;
 
@@ -387,18 +412,23 @@ const Room3D: React.FC<Room3DProps> = ({
       } as React.CSSProperties}
     >
       <div ref={mountRef} className={styles.canvas} />
+      {componentSwitchControl && (
+        <div className={styles.roomSwitchOverlay}>{componentSwitchControl}</div>
+      )}
       <div className={styles.topBar}>
-        <div className={styles.roomTitle} title={roomSummaryText}>
-          <span className={styles.roomTitleLabel}>
-            {t("dashboard.room3DRoomNameLabel")}
-          </span>
-          <strong className={styles.roomTitleName}>{roomData.room.name}</strong>
-          <span className={styles.roomTitleCount}>
-            {t("dashboard.room3DRackCountPrefix")}
-            {roomRackCount}
-            {t("dashboard.room3DRackCountSuffix")}
-          </span>
-        </div>
+        {showRoomSummary && (
+          <div className={styles.roomTitle} title={roomSummaryText}>
+            <span className={styles.roomTitleLabel}>
+              {t("dashboard.room3DRoomNameLabel")}
+            </span>
+            <strong className={styles.roomTitleName}>{roomData.room.name}</strong>
+            <span className={styles.roomTitleCount}>
+              {t("dashboard.room3DRackCountPrefix")}
+              {roomRackCount}
+              {t("dashboard.room3DRackCountSuffix")}
+            </span>
+          </div>
+        )}
         <Button
           size="small"
           icon={<ReloadOutlined />}

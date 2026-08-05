@@ -5,7 +5,7 @@
 支持的输入：
 - Linux apt: `apt-get -s upgrade`
 - Linux yum/dnf: `yum --security check-update` / `dnf --security check-update`
-- Windows: `Get-HotFix | Select-Object -ExpandProperty HotFixID`
+- Windows: WUA 当前已安装/待安装更新 + `Get-HotFix` 兼容补充
 
 MVP 判断逻辑：
 - Linux：如果基线要求的包名出现在「可升级包列表」中，则认为不满足；否则认为满足。
@@ -18,8 +18,18 @@ from __future__ import annotations
 
 import logging
 import re
-from dataclasses import dataclass, field
+from dataclasses import replace
 from typing import Iterable
+
+from apps.patch_mgmt.constants import OSType, RequirementAssessmentStatus
+from apps.patch_mgmt.services.compliance_evaluator import (
+    HostAssessmentFacts,
+    LinuxPackageFact,
+    RequirementAssessment,
+    RequirementSpec,
+    WindowsUpdateFacts,
+    evaluate_requirements,
+)
 
 logger = logging.getLogger("app")
 
@@ -44,16 +54,6 @@ def _backfill_patch_severity(patch, severity_text: str) -> None:
     patch.severity = mapped
     patch.save(update_fields=["severity", "updated_at"])
     logger.info("WUA 回填 severity: patch_id=%s -> %s", patch.id, mapped)
-
-
-@dataclass
-class RequirementAssessment:
-    """单条基线要求的评估结果"""
-
-    requirement_id: int
-    satisfied: bool
-    evidence: dict = field(default_factory=dict)
-    reason: str = ""
 
 
 def _strip_arch(name: str) -> str:
@@ -178,49 +178,76 @@ def _detect_linux_parser(stdout: str):
     return parse_yum_dnf_upgradable
 
 
-def assess_linux_requirements(stdout: str, requirements: Iterable) -> dict[int, RequirementAssessment]:
-    """对 Linux 基线要求做评估。"""
-    parse = _detect_linux_parser(stdout)
-    upgradable = parse(stdout)
-
-    result: dict[int, RequirementAssessment] = {}
-    for req in requirements:
-        req_id = req.id
+def _linux_specs(requirements: list) -> list[RequirementSpec]:
+    specs = []
+    for requirement in requirements:
         try:
-            detail = req.patch.linux_detail
-            pkg_name = detail.pkg_name
+            detail = requirement.patch.linux_detail
+            package_name = (getattr(detail, "pkg_name", "") or "").strip()
+            required_version = (getattr(detail, "pkg_version", "") or "").strip()
+            configuration_error = "" if package_name else "missing package name"
         except Exception:  # noqa: BLE001
-            logger.warning("要求 %s 缺少 Linux 补丁详情，无法评估", req_id)
-            result[req_id] = RequirementAssessment(
-                requirement_id=req_id,
-                satisfied=False,
-                evidence={"error": "missing linux_detail"},
-                reason="补丁缺少 Linux 详情，无法判断",
+            package_name = ""
+            required_version = ""
+            configuration_error = "missing linux_detail"
+        specs.append(
+            RequirementSpec(
+                requirement.id,
+                OSType.LINUX,
+                package_name,
+                required_version=required_version,
+                configuration_error=configuration_error,
             )
-            continue
-
-        if not pkg_name:
-            result[req_id] = RequirementAssessment(
-                requirement_id=req_id,
-                satisfied=False,
-                evidence={},
-                reason="补丁未配置包名",
-            )
-            continue
-
-        missing = pkg_name in upgradable
-        result[req_id] = RequirementAssessment(
-            requirement_id=req_id,
-            satisfied=not missing,
-            evidence={
-                "pkg_name": pkg_name,
-                "upgradable": missing,
-                "upgradable_packages": sorted(upgradable),
-            },
-            reason=f"检测到 {pkg_name} 有待更新" if missing else f"{pkg_name} 已满足版本要求",
         )
+    return specs
 
-    return result
+
+def _parse_linux_facts(stdout: str) -> HostAssessmentFacts:
+    packages: dict[str, LinuxPackageFact] = {}
+    parsed_lines = 0
+    for raw_line in stdout.splitlines():
+        if not raw_line.startswith("BKPATCH_LINUX|"):
+            continue
+        parts = raw_line.split("|", 6)
+        if len(parts) != 7:
+            continue
+        _, _requirement_id, package_name, state, installed_version, comparison, error = parts
+        package_name = package_name.strip()
+        if not package_name:
+            continue
+        parsed_lines += 1
+        parsed_comparison = None
+        if comparison.strip() in {"-1", "0", "1"}:
+            parsed_comparison = int(comparison.strip())
+        installed = {"installed": True, "absent": False}.get(state.strip())
+        packages[package_name] = LinuxPackageFact(
+            installed=installed,
+            installed_version=installed_version.strip(),
+            comparison=parsed_comparison,
+            error=error.strip(),
+        )
+    if parsed_lines == 0:
+        return HostAssessmentFacts(collection_error="评估输出缺少结构化 Linux 包事实")
+    return HostAssessmentFacts(linux_packages=packages)
+
+
+def assess_linux_requirements(stdout: str, requirements: Iterable) -> dict[int, RequirementAssessment]:
+    """使用目标机原生版本比较结果评估 Linux 基线要求。"""
+    requirements = list(requirements)
+    return evaluate_requirements(_linux_specs(requirements), _parse_linux_facts(stdout))
+
+
+def _replacement_kbs(requirement) -> tuple[str, ...]:
+    replacement_ids = list(getattr(requirement.patch, "replacement_ids", None) or [])
+    if not replacement_ids:
+        return ()
+    from apps.patch_mgmt.models import WindowsPatchDetail
+
+    return tuple(
+        WindowsPatchDetail.objects.filter(patch_id__in=replacement_ids)
+        .exclude(kb_number="")
+        .values_list("kb_number", flat=True)
+    )
 
 
 def assess_windows_requirements(stdout: str, requirements: Iterable) -> dict[int, RequirementAssessment]:
@@ -228,15 +255,24 @@ def assess_windows_requirements(stdout: str, requirements: Iterable) -> dict[int
 
     解析 combined WUA Search + Get-HotFix 输出：
     - ===WUA=== 段：WUA Search IsInstalled=0 返回的未安装更新（KB号|Severity|Title）
+    - ===WUA_INSTALLED=== 段：WUA Search IsInstalled=1 返回的当前已安装更新
     - ===HOTFIX=== 段：Get-HotFix 返回的已安装 KB 号列表
 
     判断逻辑：
     - KB 在已安装列表 -> 满足
     - KB 在未安装列表 -> 未满足（缺失，可安装）
-    - KB 两个列表都没有 -> 未满足（Windows Update 不存在此 KB）
+    - KB 两个列表都没有 -> 未知（不能据此证明不适用或已被替代）
     """
-    # 分段解析
-    if '===HOTFIX===' in stdout:
+    # 分段解析。Defender 安全情报等 WUA 更新不会出现在
+    # Get-HotFix 中，必须使用 IsInstalled=1 才能证明其当前安装状态。
+    if '===WUA_INSTALLED===' in stdout:
+        wua_part, _, installed_and_hotfix = stdout.partition('===WUA_INSTALLED===')
+        installed_part, hotfix_marker, hotfix_part = installed_and_hotfix.partition('===HOTFIX===')
+        wua_results = parse_wua_search(wua_part)
+        installed_kbs = parse_windows_hotfixes(installed_part)
+        if hotfix_marker:
+            installed_kbs.update(parse_windows_hotfixes(hotfix_part))
+    elif '===HOTFIX===' in stdout:
         wua_part, _, hotfix_part = stdout.partition('===HOTFIX===')
         wua_results = parse_wua_search(wua_part)
         installed_kbs = parse_windows_hotfixes(hotfix_part)
@@ -250,75 +286,47 @@ def assess_windows_requirements(stdout: str, requirements: Iterable) -> dict[int
         installed_kbs = parse_windows_hotfixes(stdout)
 
     missing_kbs = set(wua_results.keys())
-
-    result: dict[int, RequirementAssessment] = {}
+    requirements = list(requirements)
+    specs = []
     for req in requirements:
-        req_id = req.id
         try:
             detail = req.patch.windows_detail
             kb_number = (detail.kb_number or "").upper()
+            configuration_error = "" if kb_number else "missing KB number"
         except Exception:  # noqa: BLE001
-            logger.warning("要求 %s 缺少 Windows 补丁详情，无法评估", req_id)
-            result[req_id] = RequirementAssessment(
-                requirement_id=req_id,
-                satisfied=False,
-                evidence={"error": "missing windows_detail"},
-                reason="补丁缺少 Windows 详情，无法判断",
+            logger.warning("要求 %s 缺少 Windows 补丁详情，无法评估", req.id)
+            kb_number = ""
+            configuration_error = "missing windows_detail"
+        specs.append(
+            RequirementSpec(
+                req.id,
+                OSType.WINDOWS,
+                kb_number,
+                replacement_identifiers=_replacement_kbs(req),
+                configuration_error=configuration_error,
             )
-            continue
+        )
 
-        if not kb_number:
-            result[req_id] = RequirementAssessment(
-                requirement_id=req_id,
-                satisfied=False,
-                evidence={"installed_kbs": sorted(installed_kbs)},
-                reason="补丁未配置 KB 号",
-            )
-            continue
-
-        if kb_number in installed_kbs:
-            # 已安装
-            result[req_id] = RequirementAssessment(
-                requirement_id=req_id,
-                satisfied=True,
-                evidence={
-                    "required_kb": kb_number,
-                    "missing_kbs": sorted(missing_kbs),
-                    "installed_kbs": sorted(installed_kbs),
-                },
-                reason=f"已安装 {kb_number}",
-            )
-        elif kb_number in missing_kbs:
-            # 缺失，可安装
+    facts = HostAssessmentFacts(
+        windows=WindowsUpdateFacts(
+            installed_kbs=frozenset(installed_kbs),
+            applicable_missing_kbs=frozenset(missing_kbs),
+        ),
+        collection_error="" if stdout.strip() else "Windows 更新评估输出为空",
+    )
+    result = evaluate_requirements(specs, facts)
+    for req in requirements:
+        assessment = result.get(req.id)
+        if assessment and assessment.status == RequirementAssessmentStatus.MISSING:
+            kb_number = assessment.evidence.get("required_kb", "")
             wua_info = wua_results.get(kb_number, {})
             severity = wua_info.get('severity', '')
-            title = wua_info.get('title', '')
-            result[req_id] = RequirementAssessment(
-                requirement_id=req_id,
-                satisfied=False,
-                evidence={
-                    "required_kb": kb_number,
-                    "missing_kbs": sorted(missing_kbs),
-                    "installed_kbs": sorted(installed_kbs),
-                    "severity": severity,
-                },
-                reason=f"未安装 {kb_number}",
-            )
             if severity:
+                result[req.id] = replace(
+                    assessment,
+                    evidence={**assessment.evidence, "severity": severity},
+                )
                 _backfill_patch_severity(req.patch, severity)
-        else:
-            # 两个列表都没有，KB 不存在
-            result[req_id] = RequirementAssessment(
-                requirement_id=req_id,
-                satisfied=False,
-                evidence={
-                    "required_kb": kb_number,
-                    "missing_kbs": sorted(missing_kbs),
-                    "installed_kbs": sorted(installed_kbs),
-                },
-                reason=f"{kb_number} 未在 Windows Update 中找到，可能 KB 号有误",
-            )
-
     return result
 
 

@@ -977,6 +977,7 @@ function renderCredentialFields({
     <div className={styles.credentialFieldGrid}>
       <InputRow
         label={shape === 'sql' || shape === 'vm' ? t('Collection.VMTask.username', '用户') : t('user', '用户')}
+        required={shape !== 'ssh'}
       >
         <Input
           value={shape === 'sql' ? item.user : item.username}
@@ -986,6 +987,7 @@ function renderCredentialFields({
       </InputRow>
       <InputRow
         label={shape === 'sql' || shape === 'vm' ? t('Collection.VMTask.password', '密码') : t('password', '密码')}
+        required={shape !== 'ssh'}
       >
         <SecretInput
           value={item.password}

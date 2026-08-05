@@ -1,9 +1,9 @@
-export type FormFieldDependency = {
+export interface FormFieldDependency {
   field?: string | string[];
   value?: unknown;
   includes?: unknown;
   conditions?: Array<Array<{ equals?: unknown; in?: unknown[] }>>;
-};
+}
 
 type GetFieldValue = (field: string) => unknown;
 

@@ -126,27 +126,27 @@ const useIntegrationApi = () => {
         );
       },
       getUiTemplate: async (data: { id: React.Key }) => {
-        return await get(`/monitor/api/monitor_plugin/${data.id}/ui_template/`);
+        return await get(`/monitor/api/monitor_plugin/${String(data.id)}/ui_template/`);
       },
       getTemplateAccessGuide: async (
         id: React.Key,
         params: { organization_id: React.Key; cloud_region_id: React.Key }
       ) => {
-        return await get(`/monitor/api/monitor_plugin/${id}/access_guide/`, {
+        return await get(`/monitor/api/monitor_plugin/${String(id)}/access_guide/`, {
           params,
         });
       },
       getPluginGuide: async (id: React.Key): Promise<PluginGuideDoc> => {
-        return await get(`/monitor/api/monitor_plugin/${id}/guide/`);
+        return await get(`/monitor/api/monitor_plugin/${String(id)}/guide/`);
       },
       createCustomTemplate: async (data: Record<string, any>) => {
         return await post(`/monitor/api/monitor_plugin/`, data);
       },
       updateCustomTemplate: async (id: React.Key, data: Record<string, any>) => {
-        return await put(`/monitor/api/monitor_plugin/${id}/`, data);
+        return await put(`/monitor/api/monitor_plugin/${String(id)}/`, data);
       },
       deleteCustomTemplate: async (id: React.Key) => {
-        return await del(`/monitor/api/monitor_plugin/${id}/`);
+        return await del(`/monitor/api/monitor_plugin/${String(id)}/`);
       },
       getUiTemplateByParams: async (params: {
         collector: string;
@@ -158,18 +158,18 @@ const useIntegrationApi = () => {
         });
       },
       getUiTemplateByPlugin: async (pluginId: React.Key) => {
-        return await get(`/monitor/api/monitor_plugin/${pluginId}/ui_template/`);
+        return await get(`/monitor/api/monitor_plugin/${String(pluginId)}/ui_template/`);
       },
       getSnmpCollectTemplate: async (
         pluginId: React.Key
       ): Promise<SnmpCollectTemplateDoc> => {
-        return await get(`/monitor/api/monitor_plugin/${pluginId}/collect_template/`);
+        return await get(`/monitor/api/monitor_plugin/${String(pluginId)}/collect_template/`);
       },
       updateSnmpCollectTemplate: async (
         pluginId: React.Key,
         data: { content: string }
       ): Promise<SnmpCollectTemplateDoc> => {
-        return await put(`/monitor/api/monitor_plugin/${pluginId}/collect_template/`, data);
+        return await put(`/monitor/api/monitor_plugin/${String(pluginId)}/collect_template/`, data);
       },
       getInstanceListByPrimaryObject: async (
         params: {
@@ -182,7 +182,7 @@ const useIntegrationApi = () => {
       ) => {
         const { id, ...rest } = params;
         return await post(
-          `/monitor/api/monitor_instance/${id}/list_by_primary_object/`,
+          `/monitor/api/monitor_instance/${String(id)}/list_by_primary_object/`,
           rest,
           config
         );
@@ -268,7 +268,7 @@ const useIntegrationApi = () => {
         return await post('/monitor/api/collect_detect/', data);
       },
       getCollectDetectTask: async (taskId: React.Key) => {
-        return await get(`/monitor/api/collect_detect/${taskId}/`);
+        return await get(`/monitor/api/collect_detect/${String(taskId)}/`);
       },
     } satisfies FlowIntegrationApi),
     [del, get, post, put]

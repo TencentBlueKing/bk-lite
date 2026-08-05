@@ -32,7 +32,7 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    const fileContents = fs.readFileSync(fullPath, 'utf8');
+    const fileContents = fs.readFileSync(/* turbopackIgnore: true */ fullPath, 'utf8');
     return NextResponse.json({ content: fileContents }, { status: 200 });
   } catch {
     return NextResponse.json({ error: 'Failed to read the file' }, { status: 500 });

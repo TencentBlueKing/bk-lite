@@ -1,7 +1,7 @@
 import React from 'react';
 import { Tag } from 'antd';
 
-export { getOrganizationColumnWidth } from './layout';
+export { getOrganizationColumnWidth } from './layoutUtils';
 
 export interface OrganizationTagsProps {
   names?: string[] | null;

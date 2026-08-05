@@ -267,6 +267,40 @@ class TestJobFileDistribute:
         assert result["result"] is False
         assert "不存在" in result["message"]
 
+    @pytest.mark.parametrize("file_team", [1, None])
+    def test_unauthorized_file_is_rejected(self, file_team):
+        from django.utils import timezone
+
+        from apps.job_mgmt.models import DistributionFile, JobExecution
+        from apps.job_mgmt.nats_api import job_file_distribute
+
+        DistributionFile.objects.create(
+            original_name="team-a-package.tar.gz",
+            file_key="job-files/team-a-package.tar.gz",
+            expire_at=timezone.now() + timedelta(days=1),
+            team=file_team,
+        )
+        data = {
+            "name": "cross-team-file",
+            "file_keys": ["job-files/team-a-package.tar.gz"],
+            "target_source": "node_mgmt",
+            "target_list": [{"node_id": "n1", "name": "h1", "ip": "1.1.1.1", "os": "linux", "cloud_region_id": "r1"}],
+            "target_path": "/tmp/",
+            "team": [2],
+        }
+
+        with patch("apps.job_mgmt.services.dangerous_checker.DangerousChecker.check_path") as mock_check, patch(
+            "apps.job_mgmt.nats_api.distribute_files_task.delay"
+        ) as mock_delay:
+            mock_check.return_value = MagicMock(can_execute=True, forbidden=[])
+            mock_delay.return_value.id = "must-not-dispatch"
+            result = job_file_distribute(data)
+
+        assert result["result"] is False
+        assert "无权" in result["message"]
+        assert not JobExecution.objects.filter(name="cross-team-file").exists()
+        mock_delay.assert_not_called()
+
 
 @pytest.mark.unit
 @pytest.mark.django_db

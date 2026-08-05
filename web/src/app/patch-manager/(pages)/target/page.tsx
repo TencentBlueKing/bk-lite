@@ -23,6 +23,10 @@ import {
   createPatchManagerPollFrequencyOptions,
   PATCH_MANAGER_MANUAL_POLL_INTERVAL_MS,
 } from '@/app/patch-manager/constants/polling';
+import {
+  formatArchitecture,
+  normalizeArchitecture,
+} from '@/app/patch-manager/constants/architecture';
 
 interface HostRow {
   key: string;
@@ -80,13 +84,6 @@ function mapConnectivity(status?: string): HostRow['connectivity'] {
 function mapNodeOsType(os?: string): OSType {
   if (!os) return 'linux';
   return /windows/i.test(os) ? 'windows' : 'linux';
-}
-
-function mapNodeArch(arch?: string): string {
-  if (!arch) return '';
-  if (/x86_64|amd64/i.test(arch)) return 'x64';
-  if (/aarch64|arm64/i.test(arch)) return 'aarch64';
-  return arch;
 }
 
 function mapTargetToRow(item: PatchTargetItem): HostRow {
@@ -595,7 +592,7 @@ export default function TargetPage() {
             source_type: 'node_mgmt',
             node_id: String(node.id),
             cloud_region_id: node.cloud_region_id ?? null,
-            arch: mapNodeArch(node.arch),
+            arch: normalizeArchitecture(node.arch),
             connectivity_status: 'unknown',
             ssh_port: 22,
             winrm_port: 5986,
@@ -779,7 +776,7 @@ export default function TargetPage() {
             }}
             allowClear
             options={[
-              ...(['compliant', 'non_compliant', 'pending', 'evaluating', 'failed', 'unconfigured'] as const).map((value) => ({ label: t(`patchManager.complianceStatus.${value}`), value })),
+              ...(['compliant', 'non_compliant', 'pending', 'evaluating', 'failed', 'unknown', 'not_applicable', 'unconfigured'] as const).map((value) => ({ label: t(`patchManager.complianceStatus.${value}`), value })),
             ]}
           />
         </Space>
@@ -1079,7 +1076,7 @@ export default function TargetPage() {
             { title: t('patchManager.targetPage.host'), dataIndex: 'name', width: 120 },
             { title: 'IP', dataIndex: 'ip', width: 120 },
             { title: 'OS', dataIndex: 'os', width: 100 },
-            { title: t('patchManager.arch'), dataIndex: 'arch', width: 90 },
+            { title: t('patchManager.arch'), dataIndex: 'arch', width: 90, render: (value: string) => formatArchitecture(value) },
           ]}
           selectedKeys={selectedNodes}
           onChange={setSelectedNodes}

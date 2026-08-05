@@ -40,8 +40,9 @@ from apps.opspilot.services.wiki.decision_service import (
     page_identity_context_stale_reason,
     subject_key_for_page,
 )
-from apps.opspilot.services.wiki.embedding_service import clear_page_vectors
+from apps.opspilot.services.wiki.directory_service import archive_pages
 from apps.opspilot.services.wiki.graph_service import analyze_graph
+from apps.opspilot.services.wiki.page_service import edit_page
 from apps.opspilot.services.wiki.relation_service import LINK_RE, normalize_wikilink_key
 from apps.opspilot.services.wiki.title_service import canonical_title, compact_title_key
 
@@ -780,35 +781,33 @@ def create_candidate(
 @transaction.atomic
 def accept_candidate(check, operator=""):
     """接受候选版本:置为当前有效版本,关闭检查。"""
+    original_check = check
+    knowledge_base = WikiKnowledgeBase.objects.select_for_update().get(pk=check.knowledge_base_id)
+    check = CheckItem.objects.select_for_update().get(pk=check.pk, knowledge_base=knowledge_base)
+    if check.status != "open":
+        raise ValueError(f"check not open: status={check.status}")
     candidate = check.candidate_version
     if not candidate:
         raise ValueError("check has no candidate_version")
     page = candidate.page
-    page.page_versions.filter(is_current=True).update(is_current=False)
-    candidate.is_current = True
-    candidate.save(update_fields=["is_current"])
-    page.current_version = candidate
-    if page.contribution == "human":
-        page.contribution = "mixed"
-    update_fields = ["current_version", "contribution", "updated_at"]
-    if page.status != "active":
-        page.status = "active"
-        update_fields.append("status")
-    if candidate.change_type == "qa_answer_candidate":
-        page.update_method = "qa_answer"
-        update_fields.append("update_method")
-    page.save(update_fields=update_fields)
+
+    page = KnowledgePage.objects.select_for_update().get(pk=page.pk, knowledge_base=knowledge_base)
+    contribution = "mixed"
+    result_version = edit_page(
+        page,
+        body=candidate.body,
+        updated_by=operator,
+        contribution=contribution,
+        update_method="qa_answer" if candidate.change_type == "qa_answer_candidate" else page.update_method,
+        change_type=candidate.change_type,
+        meta_snapshot=candidate.meta_snapshot,
+        build_record=candidate.build_record,
+    )
     check.status = "resolved"
     check.save(update_fields=["status", "updated_at"])
     _recount_pending_review(check)
-    _schedule_check_maintenance(
-        check,
-        [page.id],
-        "accept",
-        operator=operator,
-        source_build_record_id=candidate.build_record_id,
-    )
-    return candidate
+    original_check.status = check.status
+    return result_version
 
 
 @transaction.atomic
@@ -1026,36 +1025,30 @@ def decide_check(  # noqa: C901
     )
     original_body_hash = _body_hash(current_version.body) if current_version else ""
 
+    if action in {"use_new", "edit_accept"} and evidence_material is not None:
+        _add_evidence_for_decision(
+            page,
+            evidence_material,
+            evidence_material_version,
+            source="decide_check",
+        )
+
     if action == "keep_current":
         result_version = current_version
-    elif action == "use_new":
-        page.page_versions.filter(is_current=True).update(is_current=False)
-        candidate.is_current = True
-        candidate.save(update_fields=["is_current", "updated_at"])
-        page.current_version = candidate
-        update_fields = ["current_version", "updated_at"]
-        if page.contribution == "human":
-            page.contribution = "mixed"
-            update_fields.append("contribution")
-        if page.status != "active":
-            page.status = "active"
-            update_fields.append("status")
-        page.save(update_fields=update_fields)
-        result_version = candidate
     else:
-        result_version = _create_edited_version(page, body, candidate=candidate)
-        page.page_versions.filter(is_current=True).update(is_current=False)
-        result_version.is_current = True
-        result_version.save(update_fields=["is_current", "updated_at"])
-        page.current_version = result_version
-        update_fields = ["current_version", "updated_at"]
-        if page.contribution == "human":
-            page.contribution = "mixed"
-            update_fields.append("contribution")
-        if page.status != "active":
-            page.status = "active"
-            update_fields.append("status")
-        page.save(update_fields=update_fields)
+        accepted_body = candidate.body if action == "use_new" else body
+        contribution = "mixed"
+        result_version = edit_page(
+            page,
+            body=accepted_body,
+            updated_by=operator,
+            contribution=contribution,
+            update_method=page.update_method,
+            change_type=candidate.change_type if action == "use_new" else "human_edit",
+            meta_snapshot=candidate.meta_snapshot,
+            build_record=candidate.build_record,
+        )
+        page.refresh_from_db()
 
     if action in {"use_new", "edit_accept"} and evidence_material is not None:
         _add_evidence_for_decision(
@@ -1147,13 +1140,6 @@ def decide_check(  # noqa: C901
         rule=rule,
     )
     _recount_pending_review(check)
-    _schedule_check_maintenance(
-        check,
-        [page.id],
-        "accept",
-        operator=operator,
-        source_build_record_id=candidate.build_record_id,
-    )
     original_check.status = check.status
     original_check.related = check.related
     original_check.updated_by = check.updated_by
@@ -1416,61 +1402,47 @@ def _move_page_evidence(target, sources):
     return moved
 
 
+@transaction.atomic
 def _merge_page_identity_pages(pages, target, canonical, operator):
     """Apply the page mutations shared by reviewed and rule-first merges."""
     sources = [page for page in pages if page.id != target.id]
     source_ids = [page.id for page in sources]
     source_titles = [page.title for page in sources]
     body = _merged_duplicate_body(target, sources)
-    target.page_versions.filter(is_current=True).update(is_current=False)
-    last = target.page_versions.order_by("-no").first()
-    version = PageVersion.objects.create(
-        page=target,
-        no=(last.no + 1) if last else 1,
+    moved_evidence = _move_page_evidence(target, sources)
+    version = edit_page(
+        target,
         body=body,
+        title=canonical or target.title,
+        tags=list(dict.fromkeys(sum((page.tags or [] for page in pages), []))),
+        updated_by=operator,
+        contribution="mixed",
+        update_method="merge_duplicate",
         change_type="merge_duplicate",
-        is_current=True,
-        created_by=operator or "",
         meta_snapshot={
             "merged_page_ids": source_ids,
             "merged_titles": source_titles,
             "canonical_title": canonical or target.title,
         },
     )
-    if canonical:
-        target.title = canonical
-    target.current_version = version
-    target.tags = list(dict.fromkeys(sum((page.tags or [] for page in pages), [])))
-    target.status = "active"
-    target.contribution = "mixed"
-    target.update_method = "merge_duplicate"
-    target.updated_by = operator or ""
-    target.save(
-        update_fields=[
-            "title",
-            "tags",
-            "current_version",
-            "status",
-            "contribution",
-            "update_method",
-            "updated_by",
-            "updated_at",
-        ]
+    knowledge_base = target.knowledge_base
+    knowledge_base.refresh_from_db(fields=["active_generation", "active_structure_revision"])
+    archive_result = archive_pages(
+        knowledge_base,
+        page_ids=source_ids,
+        base_generation_id=knowledge_base.active_generation_id,
+        structure_version=knowledge_base.active_structure_revision.revision_no,
+        operator=operator,
     )
-
-    for source in sources:
-        source.status = "archived"
-        source.update_method = "merge_duplicate"
-        source.updated_by = operator or ""
-        source.save(update_fields=["status", "update_method", "updated_by", "updated_at"])
-
-    moved_evidence = _move_page_evidence(target, sources)
-    clear_page_vectors(source_ids)
+    target.refresh_from_db()
     return {
         "target_page_id": target.id,
         "archived_page_ids": source_ids,
         "moved_evidence": moved_evidence,
         "_archived_titles": source_titles,
+        "_generation_published": True,
+        "governance_build_record_id": archive_result.get("build_record_id"),
+        "result_version_id": version.pk,
     }
 
 
@@ -1483,6 +1455,7 @@ def _apply_page_identity_merge(check, pages, target, canonical, operator):
     )
     source_ids = merge_result["archived_page_ids"]
     source_titles = merge_result.pop("_archived_titles")
+    generation_published = merge_result.pop("_generation_published", False)
     related = dict(check.related) if isinstance(check.related, dict) else {}
     related["merged_into"] = target.id
     related["archived_pages"] = source_ids
@@ -1491,6 +1464,12 @@ def _apply_page_identity_merge(check, pages, target, canonical, operator):
     check.updated_by = operator or ""
     check.save(update_fields=["related", "status", "updated_by", "updated_at"])
     _recount_pending_review(check)
+    if generation_published:
+        return {
+            **merge_result,
+            "maintenance": {},
+            "maintenance_build_record_id": None,
+        }
     maintenance_record = _schedule_check_maintenance(
         check,
         [target.id, *source_ids],
@@ -1537,6 +1516,7 @@ def _replay_page_identity_rule(knowledge_base, pages, related, rule):
         "decision_replay",
     )
     source_titles = merge_result.pop("_archived_titles")
+    generation_published = merge_result.pop("_generation_published", False)
     result_version = target.current_version if target.current_version_id else None
     live_target_identity = _page_identity_snapshot(knowledge_base, target)
     rule.result_page = target
@@ -1554,12 +1534,13 @@ def _replay_page_identity_rule(knowledge_base, pages, related, rule):
     }
     rule.updated_by = "decision_replay"
     rule.save(update_fields=["result_page", "result_version", "result_snapshot", "updated_by", "updated_at"])
-    _schedule_rule_replay_maintenance(
-        rule,
-        [target.id, *merge_result["archived_page_ids"]],
-        "merge_duplicate",
-        deleted_titles=source_titles,
-    )
+    if not generation_published:
+        _schedule_rule_replay_maintenance(
+            rule,
+            [target.id, *merge_result["archived_page_ids"]],
+            "merge_duplicate",
+            deleted_titles=source_titles,
+        )
     return True
 
 

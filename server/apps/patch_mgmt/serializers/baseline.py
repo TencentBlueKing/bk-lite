@@ -170,20 +170,9 @@ class PatchBaselineListSerializer(PatchPermissionSerializer):
 
     def get_compliance_distribution(self, obj):
         """按已绑定主机的合规状态聚合分布（含评估中）。"""
-        bindings = list(obj.host_bindings.all())
+        bindings = list(obj.host_bindings.select_related("target").all())
         if not bindings:
             return []
-
-        target_ids = [b.target_id for b in bindings]
-        active_target_ids = set(
-            GovernanceTask.objects.filter(
-                host_results__target_id__in=target_ids,
-                task_type__in=(GovernanceTaskType.ASSESS, GovernanceTaskType.VERIFY),
-                status__in=GovernanceTaskStatus.ACTIVE_STATES,
-            )
-            .values_list("host_results__target_id", flat=True)
-            .distinct()
-        )
 
         status_meta = {
             ComplianceStatus.COMPLIANT: (serializer_message(self, "status.compliance.compliant", "Compliant"), "success", "compliant"),
@@ -191,14 +180,14 @@ class PatchBaselineListSerializer(PatchPermissionSerializer):
             ComplianceStatus.PENDING: (serializer_message(self, "status.compliance.pending", "Pending assessment"), "default", "pending"),
             ComplianceStatus.EVALUATING: (serializer_message(self, "status.compliance.evaluating", "Assessing"), "processing", "evaluating"),
             ComplianceStatus.FAILED: (serializer_message(self, "status.compliance.failed", "Assessment failed"), "default", "failed"),
+            ComplianceStatus.UNKNOWN: (serializer_message(self, "status.compliance.unknown", "Assessment unknown"), "warning", "unknown"),
+            ComplianceStatus.NOT_APPLICABLE: (serializer_message(self, "status.compliance.not_applicable", "Not applicable"), "default", "not_applicable"),
         }
         counts = {key: 0 for key in status_meta}
+        from apps.patch_mgmt.services.risk_service import compute_host_compliance_status
+
         for binding in bindings:
-            key = (
-                ComplianceStatus.EVALUATING
-                if binding.target_id in active_target_ids
-                else binding.compliance_status
-            )
+            key = compute_host_compliance_status(binding.target)
             if key in counts:
                 counts[key] += 1
 

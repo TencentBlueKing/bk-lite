@@ -4,6 +4,11 @@ type SwitchableInputConfig = NonNullable<ParamItem['inputConfig']> & {
   componentSwitch?: boolean;
 };
 
+const COMPONENT_SWITCH_CHART_TYPES = new Set(['topN', 'room3D']);
+
+export const supportsComponentSwitch = (chartType?: string): boolean =>
+  Boolean(chartType && COMPONENT_SWITCH_CHART_TYPES.has(chartType));
+
 export const getTypedValueKey = (value: string | number): string =>
   `${typeof value}:${String(value)}`;
 
@@ -103,7 +108,7 @@ export const resolveComponentSwitchRuntime = (
   options: InputOption[],
   currentValue: ParamItem['value'] | undefined,
 ): { value: string | number | undefined; params: Record<string, string | number> } => {
-  if (chartType !== 'topN' || !param || !isComponentSwitchCandidate(param) || !options.length) {
+  if (!supportsComponentSwitch(chartType) || !param || !isComponentSwitchCandidate(param) || !options.length) {
     return { value: undefined, params: {} };
   }
   const reconciled = reconcileComponentSwitchResult(currentValue, options).value;
@@ -112,4 +117,25 @@ export const resolveComponentSwitchRuntime = (
   }
   const params = buildComponentSwitchRuntimeParams(param, reconciled, options);
   return Object.keys(params).length ? { value: reconciled, params } : { value: undefined, params: {} };
+};
+
+export type ComponentSwitchRequestGate = 'ready' | 'pending' | 'blocked';
+
+/**
+ * componentSwitch 依赖动态选项时，主数据请求必须等选项就绪并解析出有效参数，
+ * 否则会带着空默认值先打一次无效请求（如 server_room_id 必填）。
+ */
+export const resolveComponentSwitchRequestGate = ({
+  hasComponentSwitchParam,
+  optionStatus,
+  runtimeParams,
+}: {
+  hasComponentSwitchParam: boolean;
+  optionStatus: 'idle' | 'loading' | 'success' | 'error';
+  runtimeParams: Record<string, unknown>;
+}): ComponentSwitchRequestGate => {
+  if (!hasComponentSwitchParam) return 'ready';
+  if (optionStatus === 'idle' || optionStatus === 'loading') return 'pending';
+  if (optionStatus === 'success' && Object.keys(runtimeParams).length > 0) return 'ready';
+  return 'blocked';
 };

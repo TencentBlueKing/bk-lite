@@ -718,6 +718,13 @@ const NetworkTopo: React.FC<NetworkTopoProps> = ({ modelId, instId }) => {
               centerId={centerId}
               editing={editing}
               graphRef={graphRef}
+              // 身份 / 布局模式变化时适配视口；不含坐标，避免拖点触发 fitView
+              fitViewKey={[
+                layoutMode,
+                centerId,
+                graphData.nodes.map((node) => node.id).join(','),
+                graphData.edges.map((edge) => edge.id).join(','),
+              ].join('|')}
               onGraphReady={setGraphInstance}
               onNodeClick={handleCanvasNodeClick}
               toolbar={{

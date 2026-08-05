@@ -9,6 +9,7 @@
 """
 
 import pytest
+from django.core.files.storage import InMemoryStorage
 from django.core.files.uploadedfile import SimpleUploadedFile
 
 from apps.opspilot.models import Material, WikiKnowledgeBase
@@ -16,6 +17,17 @@ from apps.opspilot.models import Material, WikiKnowledgeBase
 
 def _kb():
     return WikiKnowledgeBase.objects.create(name="kb", team=[1])
+
+
+@pytest.fixture(autouse=True)
+def _local_material_storage():
+    file_field = Material._meta.get_field("file")
+    original_storage = file_field.storage
+    file_field.storage = InMemoryStorage(base_url="/test-media/")
+    try:
+        yield
+    finally:
+        file_field.storage = original_storage
 
 
 @pytest.mark.django_db
@@ -45,7 +57,7 @@ def test_batch_create_requires_files(api_client):
 
 
 @pytest.mark.django_db
-def test_batch_create_creates_materials_and_enqueues_ingest(api_client, monkeypatch):
+def test_batch_create_creates_unbuilt_materials_without_ingest(api_client, monkeypatch):
     kb = _kb()
     dispatched = []
 
@@ -75,10 +87,10 @@ def test_batch_create_creates_materials_and_enqueues_ingest(api_client, monkeypa
     created_names = sorted(item["name"] for item in body["data"]["items"])
     assert created_names == ["a.md", "b.md", "c.md"]
     assert Material.objects.filter(knowledge_base=kb).count() == 3
-    assert sorted(dispatched) == sorted(m.id for m in Material.objects.all())
+    assert dispatched == []
     for material in Material.objects.all():
         assert material.material_type == "file"
-        assert material.status == "parsing"
+        assert material.status == "pending"
         assert material.ocr_enhance is False
 
 

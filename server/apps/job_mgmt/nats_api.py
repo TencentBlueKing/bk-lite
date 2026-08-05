@@ -495,6 +495,7 @@ def job_file_distribute(data: dict):
     overwrite_strategy = data.get("overwrite_strategy", "overwrite")
     timeout = data.get("timeout", 600)
     team = data.get("team", [])
+    authorized_team_ids = normalize_team(team)
     callback_type = data.get("callback_type", CallbackType.WEB)
     callback_url = data.get("callback_url")
     callback_subject = data.get("callback_subject")
@@ -509,8 +510,8 @@ def job_file_distribute(data: dict):
         return {"result": False, "message": "目标列表不能为空"}
     if not target_path:
         return {"result": False, "message": "target_path 不能为空"}
-    if not team:
-        return {"result": False, "message": "team 不能为空"}
+    if not authorized_team_ids:
+        return {"result": False, "message": "team 不能为空或格式非法"}
 
     # 回调配置校验（web 通道 SSRF 校验、nats 通道 subject 必填）
     cb_err = _validate_callback_config(callback_type, callback_url, callback_subject, "job_file_distribute")
@@ -523,12 +524,13 @@ def job_file_distribute(data: dict):
         forbidden_rules = [r["rule_name"] for r in check_result.forbidden]
         return {"result": False, "message": f"目标路径为高危路径，禁止分发: {', '.join(forbidden_rules)}"}
 
-    # 验证文件存在
-    distribution_files = DistributionFile.objects.filter(file_key__in=file_keys)
-    found_keys = set(distribution_files.values_list("file_key", flat=True))
+    # 文件必须属于本次作业声明的团队。将团队范围直接落到 ORM 查询，
+    # 对跨团队文件与历史无归属文件统一 fail-closed，避免泄露其存在性。
+    distribution_files = list(DistributionFile.objects.filter(file_key__in=file_keys, team__in=authorized_team_ids))
+    found_keys = {df.file_key for df in distribution_files}
     missing_keys = [k for k in file_keys if k not in found_keys]
     if missing_keys:
-        return {"result": False, "message": f"部分文件不存在或已过期: {', '.join(missing_keys)}"}
+        return {"result": False, "message": f"部分文件不存在、已过期或无权访问: {', '.join(missing_keys)}"}
 
     # 构建文件信息
     files_info = [{"name": df.original_name, "file_key": df.file_key} for df in distribution_files]

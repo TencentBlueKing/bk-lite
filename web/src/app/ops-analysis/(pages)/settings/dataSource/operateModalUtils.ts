@@ -6,6 +6,9 @@ import {
   ResponseFieldDefinition,
 } from "@/app/ops-analysis/types/dataSource";
 import { validateDateRangeValue } from "@/app/ops-analysis/utils/dateRange";
+import {
+  isBindableDataSourceParamType,
+} from "@/app/ops-analysis/utils/dataSourceParamContract";
 
 export const SOURCE_TYPE_NATS: DataSourceSourceType = "nats";
 export const SOURCE_TYPE_MYSQL: DataSourceSourceType = "mysql";
@@ -64,6 +67,7 @@ export const validateParams = (currentParams: ParamItem[]) => {
   const emptyNames: string[] = [];
   const emptyAliases: string[] = [];
   const invalidDateRangeIds: string[] = [];
+  const invalidFilterBindingIds: string[] = [];
   let hasInvalidDateRange = false;
 
   currentParams.forEach((param) => {
@@ -80,6 +84,14 @@ export const validateParams = (currentParams: ParamItem[]) => {
     if (param.type === "dateRange" && !validateDateRangeValue(param.value).valid) {
       hasInvalidDateRange = true;
       if (param.id) invalidDateRangeIds.push(param.id);
+    }
+
+    if (
+      param.filterType === "filter" &&
+      !isBindableDataSourceParamType(param.type) &&
+      param.id
+    ) {
+      invalidFilterBindingIds.push(param.id);
     }
   });
 
@@ -103,12 +115,14 @@ export const validateParams = (currentParams: ParamItem[]) => {
     emptyNames,
     emptyAliases,
     invalidDateRangeIds,
+    invalidFilterBindingIds,
     hasEmptyFixedValue,
     isValid:
       duplicateNames.length === 0 &&
       emptyNames.length === 0 &&
       emptyAliases.length === 0 &&
       !hasInvalidDateRange &&
+      invalidFilterBindingIds.length === 0 &&
       !hasEmptyFixedValue,
   };
 };

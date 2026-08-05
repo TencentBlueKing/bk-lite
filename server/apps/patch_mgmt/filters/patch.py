@@ -4,6 +4,7 @@ from django.db.models import Count, Q
 from django_filters import rest_framework as filters
 
 from apps.patch_mgmt.models import Patch
+from apps.patch_mgmt.utils.architecture import UnsupportedArchitecture, normalize_architecture
 
 
 class PatchFilter(filters.FilterSet):
@@ -58,6 +59,10 @@ class PatchFilter(filters.FilterSet):
     def filter_arch(self, queryset, name, value):
         if not value:
             return queryset
+        try:
+            value = normalize_architecture(value)
+        except UnsupportedArchitecture:
+            return queryset.none()
         return queryset.filter(
             Q(windows_detail__architectures__contains=value)
             | Q(linux_detail__architectures__contains=value)

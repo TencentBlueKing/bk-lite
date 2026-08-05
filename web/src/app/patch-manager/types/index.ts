@@ -10,7 +10,7 @@ export type WinRMScheme = 'http' | 'https';
 export type WinRMTransport = 'basic' | 'ntlm' | 'kerberos' | 'credssp';
 export type PatchSourceType = 'wsus' | 'yum_repo' | 'dnf_repo' | 'apt_repo';
 export type PatchTargetSource = 'manual' | 'node_mgmt';
-export type ComplianceStatus = 'compliant' | 'non_compliant' | 'pending' | 'evaluating' | 'failed' | 'unconfigured';
+export type ComplianceStatus = 'compliant' | 'non_compliant' | 'pending' | 'evaluating' | 'failed' | 'unconfigured' | 'unknown' | 'not_applicable';
 
 // ── 通知配置候选 ──────────────────────────────────────────────────────────────
 
@@ -37,6 +37,7 @@ export interface ListResponse<T> {
 export interface PatchSource {
   id: number;
   name: string;
+  is_builtin: boolean;
   source_type: PatchSourceType;
   source_type_display?: string;
   connectivity_status_display?: string;
@@ -249,6 +250,8 @@ export interface PatchDashboardStats {
   coverage_rate?: number;
   non_compliant_hosts?: number;
   unconfigured_hosts?: number;
+  unknown_hosts?: number;
+  not_applicable_hosts?: number;
   pending_risk_count?: number;
   failed_tasks?: number;
   compliance_distribution?: ComplianceDistributionItem[];

@@ -17,6 +17,7 @@ from apps.patch_mgmt.constants import (
 )
 from apps.patch_mgmt.models import PatchSource
 from apps.patch_mgmt.services.patch_source_service import PatchSourceService
+from apps.patch_mgmt.utils.architecture import X86_64, normalize_architecture, normalize_architectures
 
 logger = logging.getLogger("app")
 
@@ -186,7 +187,10 @@ class SourceSyncService:
                     "pkg_version": first_pkg.version if first_pkg else "",
                     "distro_name": source.distro_name or "",
                     "os_version_range": source.os_version or "",
-                    "architectures": sorted({p.arch for p in adv.packages if p.arch}),
+                    "architectures": normalize_architectures(
+                        (p.arch for p in adv.packages),
+                        fallback=source.arch or X86_64,
+                    ),
                     "repo_type": PackageManagerType.normalize(source.source_type),
                     "install_deps": adv.install_deps or {},
                 },
@@ -266,7 +270,10 @@ class SourceSyncService:
                     "title": adv.title,
                     "version": first_pkg.version if first_pkg else "",
                     "dist": source.distro_name or "",
-                    "arch": (first_pkg.arch if first_pkg and first_pkg.arch else source.arch or ""),
+                    "arch": normalize_architecture(
+                        first_pkg.arch if first_pkg and first_pkg.arch else source.arch,
+                        default=X86_64,
+                    ),
                     "added": adv.advisory_id in existing_titles or adv.title in existing_titles,
                     "severity": adv.severity or "",
                 })
@@ -293,7 +300,7 @@ class SourceSyncService:
                     "title": upd.title,
                     "version": ", ".join(upd.products[:3]) if upd.products else "",
                     "dist": "",
-                    "arch": source.arch or "x64",
+                    "arch": X86_64,
                     "added": name in existing_titles or upd.kb_number in existing_titles or upd.title in existing_titles,
                 })
             return candidates
@@ -301,18 +308,35 @@ class SourceSyncService:
         raise SourceSyncError(f"源类型 {source.source_type!r} 不支持预览同步")
 
     @classmethod
-    def ingest_selected(cls, source: PatchSource, keys: list, severity_overrides: dict = None) -> dict:
+    def ingest_selected(
+        cls,
+        source: PatchSource,
+        keys: list,
+        severity_overrides: dict = None,
+        *,
+        team_id: int | None = None,
+    ) -> dict:
         """将选中的候选补丁入库（创建 Patch 记录）。
 
         Args:
             source: 补丁源实例。
             keys: 选中的候选 key 列表（advisory_id 或 update_id）。
             severity_overrides: 前端传入的严重级别覆盖，{advisory_id: severity_value}。
+            team_id: 发起入库的可信当前团队；传入时补丁只增加该团队归属。
 
         Returns:
             {"created": N, "updated": N, "skipped": N, "total": N}
         """
         severity_overrides = severity_overrides or {}
+        if source.is_builtin and team_id is None:
+            raise SourceSyncError("内置补丁源入库必须指定当前团队")
+        if team_id is not None:
+            try:
+                team_id = int(team_id)
+            except (TypeError, ValueError) as exc:
+                raise SourceSyncError("入库团队 ID 无效") from exc
+            if team_id <= 0:
+                raise SourceSyncError("入库团队 ID 无效")
         from apps.patch_mgmt.constants import (
             OSType,
             PackageStatus,
@@ -325,6 +349,21 @@ class SourceSyncService:
         key_set = set(keys)
         created = updated = skipped = 0
         now = timezone.now()
+
+        def initial_teams() -> list[int]:
+            if team_id is not None:
+                return [team_id]
+            return list(source.team or [])
+
+        def add_ingest_team(patch) -> bool:
+            if team_id is None:
+                return False
+            teams = list(patch.team or [])
+            if team_id in teams:
+                return False
+            teams.append(team_id)
+            patch.team = teams
+            return True
 
         if source.is_linux_source:
             advisories = fetch_advisories(source)
@@ -353,7 +392,7 @@ class SourceSyncService:
                         "patch_type": patch_type,
                         "severity": severity,
                         "cve_list": adv.cve_list,
-                        "team": list(source.team or []),
+                        "team": initial_teams(),
                         "pkg_status": PackageStatus.READY,
                     },
                 )
@@ -363,7 +402,17 @@ class SourceSyncService:
                 patch.cve_list = adv.cve_list
                 patch.pkg_status = PackageStatus.READY
                 patch.last_synced_at = now
-                patch.save(update_fields=["patch_type", "severity", "cve_list", "pkg_status", "last_synced_at", "updated_at"])
+                update_fields = [
+                    "patch_type",
+                    "severity",
+                    "cve_list",
+                    "pkg_status",
+                    "last_synced_at",
+                    "updated_at",
+                ]
+                if add_ingest_team(patch):
+                    update_fields.append("team")
+                patch.save(update_fields=update_fields)
 
                 first_pkg = adv.packages[0] if adv.packages else None
                 LinuxPatchDetail.objects.update_or_create(
@@ -373,7 +422,10 @@ class SourceSyncService:
                         "pkg_version": first_pkg.version if first_pkg else "",
                         "distro_name": source.distro_name or "",
                         "os_version_range": source.os_version or "",
-                        "architectures": sorted({p.arch for p in adv.packages if p.arch}),
+                        "architectures": normalize_architectures(
+                            (p.arch for p in adv.packages),
+                            fallback=source.arch or X86_64,
+                        ),
                         "repo_type": PackageManagerType.normalize(source.source_type),
                         "install_deps": adv.install_deps or {},
                     },
@@ -386,6 +438,7 @@ class SourceSyncService:
         elif source.source_type == "wsus":
             from apps.patch_mgmt.services.wsus_sync import (
                 WsusClient,
+                apply_wsus_replacement_relationships,
                 normalize_wsus_kb,
                 resolve_wsus_patch,
             )
@@ -420,7 +473,7 @@ class SourceSyncService:
                         "patch_type": PatchType.SECURITY,
                         "severity": severity,
                         "cve_list": [],
-                        "team": list(source.team or []),
+                        "team": initial_teams(),
                         "pkg_status": PackageStatus.READY,
                     },
                 )
@@ -432,13 +485,28 @@ class SourceSyncService:
                 patch.severity = severity
                 patch.pkg_status = PackageStatus.READY
                 patch.last_synced_at = now
-                patch.save(update_fields=["patch_type", "severity", "pkg_status", "last_synced_at", "updated_at"])
+                patch.applicable_rules = {
+                    **(patch.applicable_rules or {}),
+                    "wsus_update_id": upd.update_id,
+                }
+                update_fields = [
+                    "patch_type",
+                    "severity",
+                    "pkg_status",
+                    "last_synced_at",
+                    "applicable_rules",
+                    "updated_at",
+                ]
+                if add_ingest_team(patch):
+                    update_fields.append("team")
+                patch.save(update_fields=update_fields)
 
                 WindowsPatchDetail.objects.update_or_create(
                     patch=patch,
                     defaults={
                         "kb_number": normalized_kb,
                         "product_list": upd.products or [],
+                        "architectures": [X86_64],
                         "ms_bulletin": (upd.security_bulletins[0] if upd.security_bulletins else ""),
                     },
                 )
@@ -446,6 +514,7 @@ class SourceSyncService:
                     created += 1
                 else:
                     updated += 1
+            apply_wsus_replacement_relationships(updates)
         else:
             raise SourceSyncError(f"源类型 {source.source_type!r} 不支持入库")
 

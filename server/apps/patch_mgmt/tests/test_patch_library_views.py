@@ -37,7 +37,7 @@ class TestPatchWriteViewApi:
             pkg_name="gmp",
             pkg_version="6.2.0-13.el9",
             distro_name="Rocky",
-            architectures=["i686"],
+            architectures=["x86_64"],
             repo_type="yum_repo",
         )
 
@@ -53,7 +53,7 @@ class TestPatchWriteViewApi:
                     "pkg_version": "6.2.0-13.el9",
                     "distro_name": "Rocky",
                     "os_version_range": "",
-                    "architectures": ["i686"],
+                    "architectures": ["x86_64"],
                     "repo_type": "yum_repo",
                 },
             },
@@ -230,6 +230,7 @@ class TestPatchMetadataOnlyViewApi:
         assert resp.status_code == status.HTTP_201_CREATED
         patch = Patch.objects.get(pk=resp.data["id"])
         assert patch.pkg_status == PackageStatus.READY
+        assert patch.windows_detail.architectures == ["x86_64"]
         assert resp.data["package_info"]["file_name"] == "windows-kb6000010.msu"
 
     def test_update_failed_manual_windows_patch_in_one_multipart_request(self, su_client):
@@ -344,6 +345,26 @@ class TestPatchMetadataOnlyViewApi:
 
         assert resp.status_code == status.HTTP_201_CREATED
         assert resp.data["windows_detail"]["kb_number"] == "KB2203112"
+
+    def test_create_manual_windows_patch_defaults_architecture_to_x86_64(self, su_client):
+        resp = su_client.post(
+            PATCH_URL,
+            {
+                "title": "Windows 默认架构",
+                "os_type": OSType.WINDOWS,
+                "severity": "important",
+                "team": [1],
+                "windows_detail": {
+                    "kb_number": "KB2203113",
+                    "product_list": ["Windows Server 2022"],
+                    "ms_bulletin": "",
+                },
+            },
+            format="json",
+        )
+
+        assert resp.status_code == status.HTTP_201_CREATED
+        assert resp.data["windows_detail"]["architectures"] == ["x86_64"]
 
     def test_create_api_marks_manual_windows_patch_as_downloading(self, su_client):
         resp = su_client.post(

@@ -7,10 +7,6 @@ import zipfile
 from dataclasses import dataclass, field
 from pathlib import PurePosixPath
 
-from django.db import transaction
-
-from apps.opspilot.services.wiki.page_service import import_markdown_page
-
 _MARKDOWN_EXTENSIONS = {".md", ".markdown"}
 _FRONT_MATTER_BOUNDARY = "---"
 _HEADING_RE = re.compile(r"^\s*#\s+(.+?)\s*$", re.MULTILINE)
@@ -26,25 +22,9 @@ class MarkdownDocument:
     tags: list[str] = field(default_factory=list)
     original_id: str = ""
 
-
-@dataclass
-class MarkdownImportResult:
-    created: int = 0
-    updated: int = 0
-    skipped: int = 0
-    pages: list[dict] = field(default_factory=list)
-
     @property
-    def page_ids(self):
-        return [page["id"] for page in self.pages]
-
-    def as_dict(self):
-        return {
-            "created": self.created,
-            "updated": self.updated,
-            "skipped": self.skipped,
-            "pages": self.pages,
-        }
+    def archive_path(self):
+        return self.filename
 
 
 def _parse_scalar(value):
@@ -138,6 +118,17 @@ def parse_markdown_document(filename, content):
     )
 
 
+def _safe_archive_path(value):
+    if not isinstance(value, str) or not value or "\x00" in value or "\\" in value:
+        raise ValueError("压缩包包含非法路径")
+    if value.startswith("/") or re.match(r"^[A-Za-z]:", value):
+        raise ValueError("压缩包包含绝对路径")
+    path = PurePosixPath(value)
+    if any(part in {"", ".", ".."} for part in path.parts):
+        raise ValueError("压缩包包含路径穿越")
+    return path.as_posix()
+
+
 def _iter_markdown_files(content, filename):
     suffix = PurePosixPath(filename or "").suffix.lower()
     if suffix in _MARKDOWN_EXTENSIONS:
@@ -147,52 +138,16 @@ def _iter_markdown_files(content, filename):
         raise ValueError("仅支持导入 Markdown 文件或 Markdown zip")
 
     with zipfile.ZipFile(io.BytesIO(content)) as archive:
+        archive_paths = set()
         for info in archive.infolist():
+            archive_path = _safe_archive_path(info.filename.rstrip("/"))
+            identity = archive_path.casefold()
+            if identity in archive_paths:
+                raise ValueError("ZIP 存在大小写等价的重复路径")
+            archive_paths.add(identity)
             if info.is_dir():
                 continue
-            name = info.filename
-            if PurePosixPath(name).suffix.lower() not in _MARKDOWN_EXTENSIONS:
-                yield name, None
+            if PurePosixPath(archive_path).suffix.lower() not in _MARKDOWN_EXTENSIONS:
+                yield archive_path, None
                 continue
-            yield name, archive.read(info).decode("utf-8")
-
-
-@transaction.atomic
-def import_markdown_archive(knowledge_base, content, filename="", operator=""):
-    """Import .md or .zip Markdown content as Wiki pages."""
-    result = MarkdownImportResult()
-    for doc_filename, doc_content in _iter_markdown_files(content, filename):
-        if doc_content is None:
-            result.skipped += 1
-            continue
-        document = parse_markdown_document(doc_filename, doc_content)
-        if not document.title:
-            result.skipped += 1
-            continue
-        page, created = import_markdown_page(
-            knowledge_base,
-            page_type=document.page_type,
-            title=document.title,
-            body=document.body,
-            tags=document.tags,
-            operator=operator,
-            source_meta={
-                "type": "markdown_import",
-                "filename": document.filename,
-                "original_id": document.original_id,
-            },
-        )
-        if created:
-            result.created += 1
-        else:
-            result.updated += 1
-        result.pages.append(
-            {
-                "id": page.id,
-                "title": page.title,
-                "page_type": page.page_type,
-                "status": page.status,
-                "action": "created" if created else "updated",
-            }
-        )
-    return result
+            yield archive_path, archive.read(info).decode("utf-8")
