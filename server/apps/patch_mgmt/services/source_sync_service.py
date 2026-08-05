@@ -328,6 +328,8 @@ class SourceSyncService:
             {"created": N, "updated": N, "skipped": N, "total": N}
         """
         severity_overrides = severity_overrides or {}
+        if source.is_builtin and team_id is None:
+            raise SourceSyncError("内置补丁源入库必须指定当前团队")
         if team_id is not None:
             try:
                 team_id = int(team_id)
@@ -436,6 +438,7 @@ class SourceSyncService:
         elif source.source_type == "wsus":
             from apps.patch_mgmt.services.wsus_sync import (
                 WsusClient,
+                apply_wsus_replacement_relationships,
                 normalize_wsus_kb,
                 resolve_wsus_patch,
             )
@@ -482,11 +485,16 @@ class SourceSyncService:
                 patch.severity = severity
                 patch.pkg_status = PackageStatus.READY
                 patch.last_synced_at = now
+                patch.applicable_rules = {
+                    **(patch.applicable_rules or {}),
+                    "wsus_update_id": upd.update_id,
+                }
                 update_fields = [
                     "patch_type",
                     "severity",
                     "pkg_status",
                     "last_synced_at",
+                    "applicable_rules",
                     "updated_at",
                 ]
                 if add_ingest_team(patch):
@@ -506,6 +514,7 @@ class SourceSyncService:
                     created += 1
                 else:
                     updated += 1
+            apply_wsus_replacement_relationships(updates)
         else:
             raise SourceSyncError(f"源类型 {source.source_type!r} 不支持入库")
 

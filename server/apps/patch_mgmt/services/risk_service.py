@@ -15,6 +15,7 @@ from apps.patch_mgmt.constants import (
     GovernanceTaskStatus,
     GovernanceTaskType,
     RemediationStatus,
+    RequirementAssessmentStatus,
     RiskCompliance,
 )
 from apps.patch_mgmt.models import (
@@ -301,6 +302,8 @@ def compute_risk_items() -> list[RiskItem]:
             ComplianceStatus.EVALUATING,
             ComplianceStatus.UNCONFIGURED,
             ComplianceStatus.FAILED,
+            ComplianceStatus.UNKNOWN,
+            ComplianceStatus.NOT_APPLICABLE,
         ):
             continue
 
@@ -310,6 +313,11 @@ def compute_risk_items() -> list[RiskItem]:
 
             if snapshot:
                 # 有评估快照时优先按快照判断
+                if snapshot.status in (
+                    RequirementAssessmentStatus.UNKNOWN,
+                    RequirementAssessmentStatus.NOT_APPLICABLE,
+                ):
+                    continue
                 compliance = RiskCompliance.SATISFIED if snapshot.satisfied else RiskCompliance.MISSING
             else:
                 compliance = _compute_compliance(has_binding=True)
@@ -502,8 +510,14 @@ def compute_host_compliance_status(target: PatchTarget) -> str:
     if not binding:
         return ComplianceStatus.UNCONFIGURED
 
-    # 有正在进行的评估/验证任务时，显示评估中
-    if _has_active_assessment(target.id):
+    from apps.patch_mgmt.services.governance_convergence import (
+        project_target_assessment_status,
+    )
+
+    projected = project_target_assessment_status(target.id)
+    if projected == "failed":
+        return ComplianceStatus.FAILED
+    if projected == "evaluating":
         return ComplianceStatus.EVALUATING
 
     # 已绑定但还未执行过评估：显示待评估

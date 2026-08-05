@@ -192,6 +192,8 @@ class ComplianceStatus:
     EVALUATING = "evaluating"
     FAILED = "failed"
     UNCONFIGURED = "unconfigured"
+    UNKNOWN = "unknown"
+    NOT_APPLICABLE = "not_applicable"
 
     CHOICES = (
         (COMPLIANT, "合规"),
@@ -200,6 +202,24 @@ class ComplianceStatus:
         (EVALUATING, "评估中"),
         (FAILED, "评估失败"),
         (UNCONFIGURED, "未配置"),
+        (UNKNOWN, "评估未知"),
+        (NOT_APPLICABLE, "不适用"),
+    )
+
+
+class RequirementAssessmentStatus:
+    """单条基线要求的评估结果。"""
+
+    SATISFIED = "satisfied"
+    MISSING = "missing"
+    UNKNOWN = "unknown"
+    NOT_APPLICABLE = "not_applicable"
+
+    CHOICES = (
+        (SATISFIED, "满足"),
+        (MISSING, "缺失"),
+        (UNKNOWN, "未知"),
+        (NOT_APPLICABLE, "不适用"),
     )
 
 

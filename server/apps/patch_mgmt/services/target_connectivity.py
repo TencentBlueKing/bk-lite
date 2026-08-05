@@ -8,6 +8,9 @@ import uuid
 from dataclasses import dataclass
 from typing import Any, Optional
 
+import winrm
+from django.conf import settings
+
 from apps.core.mixinx import EncryptMixin
 from apps.patch_mgmt.constants import OSType
 from apps.patch_mgmt.models import PatchTarget
@@ -84,6 +87,15 @@ def probe_target_data(data: dict) -> TargetProbeResult:
     """沿与补丁执行一致的路由探测目标；表单数据中的凭据必须是明文。"""
     route: Optional[TargetExecutionRoute] = None
     try:
+        if (
+            data.get("source_type") == "manual"
+            and data.get("os_type") == OSType.WINDOWS
+            and getattr(settings, "PATCH_MGMT_WINDOWS_EXECUTION_MODE", "executor")
+            == "direct_winrm"
+        ):
+            if not settings.DEBUG:
+                raise RuntimeError("direct_winrm 仅允许在 DEBUG=True 的本地环境使用")
+            return _probe_direct_winrm(data)
         route = resolve_target_execution_route(data)
         if route.transport == TargetTransport.NODE_EXECUTOR:
             return _probe_node_executor(data, route)
@@ -102,6 +114,32 @@ def probe_target_data(data: dict) -> TargetProbeResult:
             result.detail,
         )
         return result
+
+
+def _probe_direct_winrm(data: dict) -> TargetProbeResult:
+    scheme = data.get("winrm_scheme") or "http"
+    port = int(data.get("winrm_port") or 5985)
+    cert_validation = "validate" if data.get("winrm_cert_validation", True) else "ignore"
+    endpoint = f"{scheme}://{data['ip']}:{port}/wsman"
+    session = winrm.Session(
+        endpoint,
+        auth=(data.get("winrm_user") or "", data.get("winrm_password") or ""),
+        transport=data.get("winrm_transport") or "ntlm",
+        server_cert_validation=cert_validation,
+        operation_timeout_sec=PROBE_TIMEOUT,
+        read_timeout_sec=PROBE_TIMEOUT + 10,
+    )
+    raw = session.run_ps(f"Write-Output {PROBE_MARKER}")
+    route = TargetExecutionRoute(TargetTransport.DIRECT_WINRM, "local-debug", port)
+    return _command_result(
+        {
+            "exit_code": raw.status_code,
+            "stdout": raw.std_out.decode("utf-8", errors="replace") if raw.std_out else "",
+            "stderr": raw.std_err.decode("utf-8", errors="replace") if raw.std_err else "",
+        },
+        route,
+        "本地 DEBUG WinRM 已在目标机成功执行探测命令",
+    )
 
 
 def _probe_node_executor(data: dict, route: TargetExecutionRoute) -> TargetProbeResult:
