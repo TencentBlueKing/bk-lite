@@ -22,6 +22,16 @@ import {
   type WikiDecisionSnapshot,
   type DecisionSubmittingState,
 } from './wikiDecisionModel';
+import {
+  buildConflictListSubtitle,
+  buildKnowledgeConflictDiff,
+  formatDiffHighlightLabel,
+  type DiffSegment,
+  type DiffSegmentStatus,
+  type KnowledgeConflictDiff,
+} from './wikiDecisionDiff';
+import ContributionTag from './ContributionTag';
+import { formatWikiTime, pageTypeLabelKey } from './wikiFormat';
 
 const markdown = new MarkdownIt({ html: false, linkify: true, breaks: true });
 const markdownHtml = (body: string) => ({ __html: DOMPurify.sanitize(markdown.render(body || '')) });
@@ -64,7 +74,145 @@ export interface WikiDecisionCenterProps {
   onRefresh?: () => boolean | void | Promise<boolean | void>;
 }
 
-const formatTimestamp = (value?: string | null) => value?.replace('T', ' ').slice(0, 16) || '';
+const SnapshotMeta = ({
+  snapshot,
+  incoming,
+}: {
+  snapshot: WikiDecisionSnapshot;
+  incoming: boolean;
+}) => {
+  const { t } = useTranslation();
+  const pageTypeKey = pageTypeLabelKey(snapshot.pageType);
+  return (
+    <div className="mb-3 flex flex-wrap items-center gap-2 text-xs">
+      {snapshot.sourceLabel && (
+        <span
+          className="max-w-full truncate rounded-full px-2.5 py-1"
+          style={
+            incoming
+              ? { background: 'var(--color-primary-bg-active)', color: 'var(--color-primary)' }
+              : { background: 'var(--color-fill-2)', color: 'var(--color-text-2)' }
+          }
+          title={snapshot.sourceLabel}
+        >
+          {snapshot.sourceLabel}
+        </span>
+      )}
+      {snapshot.pageType && (
+        <span className="text-[var(--color-text-3)]">
+          {pageTypeKey ? t(pageTypeKey) : snapshot.pageType}
+        </span>
+      )}
+      {snapshot.contribution && <ContributionTag value={snapshot.contribution} />}
+    </div>
+  );
+};
+
+const DIFF_SEGMENT_STYLE: Record<
+  DiffSegmentStatus,
+  { background?: string; color?: string; boxShadow?: string }
+> = {
+  equal: {},
+  changed: {
+    background: 'color-mix(in srgb, var(--color-warning) 18%, transparent)',
+    boxShadow: 'inset 3px 0 0 var(--color-warning)',
+  },
+  removed: {
+    background: 'color-mix(in srgb, var(--color-fail) 14%, transparent)',
+    boxShadow: 'inset 3px 0 0 var(--color-fail)',
+  },
+  added: {
+    background: 'color-mix(in srgb, var(--color-success) 16%, transparent)',
+    boxShadow: 'inset 3px 0 0 var(--color-success)',
+  },
+};
+
+const DiffSegmentList = ({ segments }: { segments: DiffSegment[] }) => {
+  if (!segments.length) {
+    return <div className="flex min-h-24 items-center justify-center text-sm text-[var(--color-text-3)]">--</div>;
+  }
+  return (
+    <div className="min-h-24 space-y-2 text-sm leading-7 text-[var(--color-text-2)]">
+      {segments.map((segment, index) => (
+        <p
+          key={`${segment.status}-${index}-${segment.text.slice(0, 24)}`}
+          className="m-0 whitespace-pre-wrap break-words rounded-md px-2 py-1"
+          style={DIFF_SEGMENT_STYLE[segment.status]}
+        >
+          {segment.text}
+        </p>
+      ))}
+    </div>
+  );
+};
+
+const DiffSnapshotCard = ({
+  snapshot,
+  eyebrow,
+  incoming,
+  segments,
+  sourceCountLabel,
+  relationCountLabel,
+  contentLabel,
+}: {
+  snapshot: WikiDecisionSnapshot;
+  eyebrow: string;
+  incoming: boolean;
+  segments: DiffSegment[];
+  sourceCountLabel: string;
+  relationCountLabel: string;
+  contentLabel: string;
+}) => (
+  <section
+    className="min-w-0 overflow-hidden rounded-[14px] border"
+    style={{
+      borderTopWidth: 3,
+      borderColor: 'var(--color-border-1)',
+      borderTopColor: incoming ? 'var(--color-primary)' : 'var(--color-text-3)',
+      background: 'var(--color-bg)',
+    }}
+  >
+    <div className="flex min-h-16 items-start justify-between gap-3 border-b border-[var(--color-border-1)] px-4 py-3">
+      <div className="min-w-0">
+        <div className="mb-1 text-xs text-[var(--color-text-3)]">{eyebrow}</div>
+        <div className="truncate text-base font-bold leading-6 text-[var(--color-text-1)]" title={snapshot.title}>
+          {snapshot.title || '--'}
+        </div>
+      </div>
+      {snapshot.versionLabel && (
+        <Tag
+          bordered={false}
+          className="m-0 shrink-0 rounded-md"
+          style={
+            incoming
+              ? { color: 'var(--color-primary)', background: 'var(--color-primary-bg-active)' }
+              : { color: 'var(--color-text-2)', background: 'var(--color-fill-2)' }
+          }
+        >
+          {snapshot.versionLabel}
+        </Tag>
+      )}
+    </div>
+
+    <div className="px-4 py-4">
+      <SnapshotMeta snapshot={snapshot} incoming={incoming} />
+
+      <div className="mb-2 text-sm font-bold text-[var(--color-text-1)]">{contentLabel}</div>
+      <DiffSegmentList segments={segments} />
+
+      {(snapshot.sourceCount !== undefined || snapshot.relationCount !== undefined) && (
+        <div className="mt-4 flex flex-wrap gap-5 border-t border-[var(--color-border)] pt-3 text-xs text-[var(--color-text-3)]">
+          {snapshot.sourceCount !== undefined && (
+            <span>{sourceCountLabel}: <span className="tabular-nums">{snapshot.sourceCount}</span></span>
+          )}
+          {snapshot.relationCount !== undefined && (
+            <span>{relationCountLabel}: <span className="tabular-nums">{snapshot.relationCount}</span></span>
+          )}
+        </div>
+      )}
+    </div>
+  </section>
+);
 
 const SnapshotCard = ({
   snapshot,
@@ -115,23 +263,7 @@ const SnapshotCard = ({
     </div>
 
     <div className="px-4 py-4">
-      <div className="mb-3 flex flex-wrap items-center gap-2 text-xs">
-        {snapshot.sourceLabel && (
-          <span
-            className="max-w-full truncate rounded-full px-2.5 py-1"
-            style={
-              incoming
-                ? { background: 'var(--color-primary-bg-active)', color: 'var(--color-primary)' }
-                : { background: 'var(--color-fill-2)', color: 'var(--color-text-2)' }
-            }
-            title={snapshot.sourceLabel}
-          >
-            {snapshot.sourceLabel}
-          </span>
-        )}
-        {snapshot.pageType && <span className="text-[var(--color-text-3)]">{snapshot.pageType}</span>}
-        {snapshot.contribution && <span className="text-[var(--color-text-3)]">{snapshot.contribution}</span>}
-      </div>
+      <SnapshotMeta snapshot={snapshot} incoming={incoming} />
 
       <div className="mb-2 text-sm font-bold text-[var(--color-text-1)]">{contentLabel}</div>
       {content ? (
@@ -206,6 +338,18 @@ const WikiDecisionCenter: React.FC<WikiDecisionCenterProps> = ({
     [activeId, decisionItems]
   );
   const model = useMemo(() => (activeItem ? buildDecisionViewModel(activeItem) : null), [activeItem]);
+  const conflictDiff = useMemo<KnowledgeConflictDiff | null>(() => {
+    if (!model || model.kind !== 'knowledge_conflict') return null;
+    return buildKnowledgeConflictDiff(model.current.body, model.incoming.body);
+  }, [model]);
+  const highlightLabels = useMemo(
+    () => ({
+      added: t('wiki.decisionDiffAddedPrefix'),
+      removed: t('wiki.decisionDiffRemovedPrefix'),
+      changed: t('wiki.decisionDiffChangedTemplate'),
+    }),
+    [t],
+  );
   const activeInteraction = useMemo(
     () => activeItem ? getDecisionInteractionState(activeItem, submitting, outdatedItemId) : null,
     [activeItem, outdatedItemId, submitting]
@@ -310,7 +454,7 @@ const WikiDecisionCenter: React.FC<WikiDecisionCenterProps> = ({
   const renderProcessedSummary = (item: CheckItem) => {
     const rule = item.decision_rule;
     const ruleActive = rule?.status === 'active';
-    const lastReplay = formatTimestamp(rule?.last_replayed_at);
+    const lastReplay = formatWikiTime(rule?.last_replayed_at);
     return (
       <div
         className="mt-4 rounded-xl border px-4 py-3.5"
@@ -336,7 +480,7 @@ const WikiDecisionCenter: React.FC<WikiDecisionCenterProps> = ({
                 {t('wiki.decisionOperator')} · {t('wiki.decisionProcessedAt')}
               </div>
               <div className="text-sm font-semibold text-[var(--color-text-1)]">
-                {[item.decision_operator, formatTimestamp(item.decision_processed_at)].filter(Boolean).join(' · ')}
+                {[item.decision_operator, formatWikiTime(item.decision_processed_at)].filter(Boolean).join(' · ')}
               </div>
             </div>
           )}
@@ -433,6 +577,23 @@ const WikiDecisionCenter: React.FC<WikiDecisionCenterProps> = ({
                   const itemModel = buildDecisionViewModel(item);
                   if (!itemModel) return null;
                   const active = item.id === activeItem?.id;
+                  const itemDiff =
+                    itemModel.kind === 'knowledge_conflict'
+                      ? buildKnowledgeConflictDiff(
+                        itemModel.current.body,
+                        itemModel.incoming.body,
+                      )
+                      : null;
+                  const listSummary =
+                    itemModel.kind === 'knowledge_conflict'
+                      ? buildConflictListSubtitle(
+                        itemModel.triggerSource,
+                        itemDiff?.highlights[0],
+                        highlightLabels,
+                      ) ||
+                        itemModel.summary ||
+                        t('wiki.decisionKnowledgeSummaryFallback')
+                      : itemModel.summary || t('wiki.decisionIdentitySummaryFallback');
                   return (
                     <button
                       key={item.id}
@@ -455,16 +616,14 @@ const WikiDecisionCenter: React.FC<WikiDecisionCenterProps> = ({
                               : t('wiki.decisionPageIdentity')}
                         </Tag>
                         <span className="text-xs tabular-nums text-[var(--color-text-3)]">
-                          {formatTimestamp(item.updated_at || item.created_at)}
+                          {formatWikiTime(item.updated_at || item.created_at)}
                         </span>
                       </div>
                       <div className="truncate text-sm font-bold leading-6 text-[var(--color-text-1)]" title={itemModel.title}>
                         {itemModel.title || '--'}
                       </div>
-                      <p className="mb-0 mt-1 line-clamp-2 text-xs leading-5 text-[var(--color-text-3)]">
-                        {itemModel.summary || (itemModel.kind === 'knowledge_conflict'
-                          ? t('wiki.decisionKnowledgeSummaryFallback')
-                          : t('wiki.decisionIdentitySummaryFallback'))}
+                      <p className="mb-0 mt-1 line-clamp-2 text-xs leading-5 text-[var(--color-text-3)]" title={listSummary}>
+                        {listSummary}
                       </p>
                     </button>
                   );
@@ -553,24 +712,64 @@ const WikiDecisionCenter: React.FC<WikiDecisionCenterProps> = ({
                 <div className="mb-2 mt-5 text-sm font-semibold text-[var(--color-text-1)]">
                   {model.kind === 'knowledge_conflict' ? t('wiki.decisionCompareKnowledge') : t('wiki.decisionCompareIdentity')}
                 </div>
+                {model.kind === 'knowledge_conflict' && conflictDiff && conflictDiff.highlights.length > 0 && (
+                  <div className="mb-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-fill-1)] px-4 py-3">
+                    <div className="mb-1.5 text-xs font-semibold text-[var(--color-text-1)]">
+                      {t('wiki.decisionDiffPoints')}
+                    </div>
+                    <ul className="mb-0 list-disc space-y-1 pl-5 text-xs leading-5 text-[var(--color-text-2)]">
+                      {conflictDiff.highlights.map((highlight, index) => (
+                        <li key={`point-${highlight.kind}-${index}`}>
+                          {formatDiffHighlightLabel(highlight, highlightLabels)}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
                 <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_40px_minmax(0,1fr)] xl:items-stretch">
-                  <SnapshotCard
-                    snapshot={model.current}
-                    eyebrow={t('wiki.decisionCurrentKnowledge')}
-                    incoming={false}
-                    sourceCountLabel={t('wiki.decisionSourceCount')}
-                    relationCountLabel={t('wiki.decisionRelationCount')}
-                    contentLabel={t('wiki.decisionKnowledgeContent')}
-                  />
-                  <ComparisonConnector />
-                  <SnapshotCard
-                    snapshot={model.incoming}
-                    eyebrow={t('wiki.decisionNewKnowledge')}
-                    incoming
-                    sourceCountLabel={t('wiki.decisionSourceCount')}
-                    relationCountLabel={t('wiki.decisionRelationCount')}
-                    contentLabel={t('wiki.decisionKnowledgeContent')}
-                  />
+                  {model.kind === 'knowledge_conflict' && conflictDiff ? (
+                    <>
+                      <DiffSnapshotCard
+                        snapshot={model.current}
+                        eyebrow={t('wiki.decisionCurrentKnowledge')}
+                        incoming={false}
+                        segments={conflictDiff.leftSegments}
+                        sourceCountLabel={t('wiki.decisionSourceCount')}
+                        relationCountLabel={t('wiki.decisionRelationCount')}
+                        contentLabel={t('wiki.decisionKnowledgeContent')}
+                      />
+                      <ComparisonConnector />
+                      <DiffSnapshotCard
+                        snapshot={model.incoming}
+                        eyebrow={t('wiki.decisionNewKnowledge')}
+                        incoming
+                        segments={conflictDiff.rightSegments}
+                        sourceCountLabel={t('wiki.decisionSourceCount')}
+                        relationCountLabel={t('wiki.decisionRelationCount')}
+                        contentLabel={t('wiki.decisionKnowledgeContent')}
+                      />
+                    </>
+                  ) : (
+                    <>
+                      <SnapshotCard
+                        snapshot={model.current}
+                        eyebrow={t('wiki.decisionCurrentKnowledge')}
+                        incoming={false}
+                        sourceCountLabel={t('wiki.decisionSourceCount')}
+                        relationCountLabel={t('wiki.decisionRelationCount')}
+                        contentLabel={t('wiki.decisionKnowledgeContent')}
+                      />
+                      <ComparisonConnector />
+                      <SnapshotCard
+                        snapshot={model.incoming}
+                        eyebrow={t('wiki.decisionNewKnowledge')}
+                        incoming
+                        sourceCountLabel={t('wiki.decisionSourceCount')}
+                        relationCountLabel={t('wiki.decisionRelationCount')}
+                        contentLabel={t('wiki.decisionKnowledgeContent')}
+                      />
+                    </>
+                  )}
                 </div>
 
                 {activeItem.status !== 'open' && revokedReasonText && (

@@ -10,6 +10,7 @@ revert 解耦修复(还原为不传 wiki_kb_ids)后,所有三个测试均失败�
 import pytest
 
 from apps.opspilot.models import WikiKnowledgeBase
+from apps.opspilot.services.caller_identity import CALLER_IDENTITY_CONFIG_KEY
 from apps.opspilot.utils.chat_flow_utils.engine.core.variable_manager import VariableManager
 from apps.opspilot.utils.chat_flow_utils.nodes.agent.agent import AgentNode
 
@@ -95,13 +96,100 @@ def test_agent_node_wiki_kb_ids_preserves_int_type(agent_node, db):
     assert isinstance(out_ids[0], int)
 
 
-def test_agent_node_passes_nats_entry_type(agent_node):
-    skill = _make_skill_with_kb(team=1, kb_ids=[])
+def test_agent_node_passes_captured_caller_identity_from_flow_input(agent_node):
+    """入口捕获的调用方身份快照必须原样且以独立字典透传给 ChatService。"""
+    skill = _make_skill_with_kb(team=99, kb_ids=[])
+    snapshot = {
+        "username": "alice",
+        "domain": "example.com",
+        "team_id": 7,
+        "include_children": True,
+    }
 
     params = agent_node._build_llm_params(
         skill,
-        final_message="K8s Warning Failed on Pod/ns/pod-1",
-        flow_input={"user_id": "u1", "entry_type": "nats"},
+        final_message="hi",
+        flow_input={CALLER_IDENTITY_CONFIG_KEY: snapshot},
     )
 
-    assert params["entry_type"] == "nats"
+    assert params[CALLER_IDENTITY_CONFIG_KEY] == snapshot
+    assert params[CALLER_IDENTITY_CONFIG_KEY] is not snapshot
+
+
+def test_agent_node_does_not_infer_caller_identity_when_snapshot_is_absent(agent_node):
+    """无入口快照时不得从 Skill 的 team 或其它运行参数合成 Monitor 身份。"""
+    skill = _make_skill_with_kb(team=99, kb_ids=[])
+
+    params = agent_node._build_llm_params(
+        skill,
+        final_message="hi",
+        flow_input={"user_id": "alice"},
+    )
+
+    assert CALLER_IDENTITY_CONFIG_KEY not in params
+
+
+def test_agent_node_ignores_explicit_none_caller_identity(agent_node):
+    """显式 None 不代表已捕获快照，行为应与字段缺失一致。"""
+    skill = _make_skill_with_kb(team=99, kb_ids=[])
+
+    params = agent_node._build_llm_params(
+        skill,
+        final_message="hi",
+        flow_input={CALLER_IDENTITY_CONFIG_KEY: None},
+    )
+
+    assert CALLER_IDENTITY_CONFIG_KEY not in params
+
+
+@pytest.mark.parametrize(
+    ("entry_type", "expected_trigger"),
+    [
+        ("celery", "unattended"),
+        ("nats", "third_party"),
+        ("dingtalk", "third_party"),
+        ("enterprise_wechat_aibot", "third_party"),
+    ],
+)
+def test_agent_node_non_a_entry_omits_identity_and_labels_trigger(agent_node, entry_type, expected_trigger):
+    """非 A 入口不得合成身份，但必须透传 entry/trigger 供 Monitor 报错说明。"""
+    skill = _make_skill_with_kb(team=99, kb_ids=[])
+
+    params = agent_node._build_llm_params(
+        skill,
+        final_message="hi",
+        flow_input={"user_id": "bot-owner", "entry_type": entry_type},
+    )
+
+    assert CALLER_IDENTITY_CONFIG_KEY not in params
+    assert params["entry_type"] == entry_type
+    assert params["trigger_type"] == expected_trigger
+
+
+def test_agent_celery_path_monitor_tool_fails_with_celery_message(agent_node, mocker):
+    """Celery 风格运行时配置调用 Monitor 时，应返回点名 Celery 的明确错误。"""
+    from apps.opspilot.metis.llm.tools.monitor import utils
+    from apps.opspilot.metis.llm.tools.monitor.objects import monitor_list_objects
+
+    skill = _make_skill_with_kb(team=99, kb_ids=[])
+    params = agent_node._build_llm_params(
+        skill,
+        final_message="查告警",
+        flow_input={"user_id": "bot-owner", "entry_type": "celery"},
+    )
+    rpc_cls = mocker.patch.object(utils, "MonitorOperationAnaRpc")
+
+    result = monitor_list_objects.invoke(
+        {},
+        config={
+            "configurable": {
+                "trigger_type": params["trigger_type"],
+                "entry_type": params["entry_type"],
+            }
+        },
+    )
+
+    assert result["success"] is False
+    assert "Celery 定时任务" in result["error"]
+    assert "caller_identity" in result["error"]
+    rpc_cls.assert_not_called()

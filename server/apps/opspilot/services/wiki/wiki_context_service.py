@@ -9,26 +9,40 @@ import logging
 
 from django.db.models import Q
 
-from apps.opspilot.models import PageRelation, WikiKnowledgeBase
-from apps.opspilot.services.wiki.embedding_service import chunk_semantic_search as wiki_chunk_search
+from apps.opspilot.models import WikiKnowledgeBase
+from apps.opspilot.services.wiki.active_generation_query_service import (
+    ActiveGenerationReadError,
+    assert_read_scope_current,
+    bind_read_scope,
+    directory_scope_ids,
+    page_queryset,
+    page_snapshot,
+    relation_queryset,
+)
+from apps.opspilot.services.wiki.generation_query_routing_service import OverviewRouteResult, route_overview_scopes
 from apps.opspilot.services.wiki.retrieval_service import hybrid_search as wiki_hybrid_search
 from apps.opspilot.services.wiki.retrieval_service import search as wiki_search
+from apps.opspilot.services.wiki.wiki_budget_service import WikiBudgetExceeded, estimate_tokens, load_wiki_budget_config, new_query_call_budget
 
 logger = logging.getLogger("opspilot")
 
-_TOKEN_CHAR_RATIO = 4
 _RETRIEVAL_MODES = {"keyword", "hybrid", "chunk"}
 
 
 def _estimate_tokens(text):
-    text = text or ""
-    if not text:
-        return 0
-    return max(1, (len(text) + _TOKEN_CHAR_RATIO - 1) // _TOKEN_CHAR_RATIO)
+    return estimate_tokens(text)
 
 
 def _context_prefix(n, hit):
-    return f"[{n}] 《{hit['title']}》(知识库: {hit['kb_name']})\n"
+    metadata = []
+    breadcrumb = hit.get("directory_breadcrumb") or []
+    if breadcrumb:
+        metadata.append("知识目录: " + " / ".join(item.get("name", "") for item in breadcrumb))
+    heading_path = (hit.get("heading_path") or "").strip()
+    if heading_path:
+        metadata.append(f"Markdown 标题: {heading_path}")
+    location = f"; {'; '.join(metadata)}" if metadata else ""
+    return f"[{n}] 《{hit['title']}》(知识库: {hit['kb_name']}{location})\n"
 
 
 def _context_line(n, hit):
@@ -39,14 +53,24 @@ def _truncate_context_line(n, hit, token_budget):
     prefix = _context_prefix(n, hit)
     if _estimate_tokens(prefix) > token_budget:
         return ""
-    max_chars = max(token_budget * _TOKEN_CHAR_RATIO - len(prefix), 0)
     snippet = hit.get("snippet") or ""
-    if len(snippet) > max_chars:
-        marker = "..."
-        snippet = snippet[: max(max_chars - len(marker), 0)].rstrip()
-        snippet = f"{snippet}{marker}" if snippet else marker[:max_chars]
     line = f"{prefix}{snippet}"
-    return line if _estimate_tokens(line) <= token_budget else ""
+    if _estimate_tokens(line) <= token_budget:
+        return line
+
+    marker = "..."
+    low, high = 0, len(snippet)
+    best = ""
+    while low <= high:
+        midpoint = (low + high) // 2
+        candidate_text = snippet[:midpoint].rstrip()
+        candidate = f"{prefix}{candidate_text}{marker}" if candidate_text else f"{prefix}{marker}"
+        if _estimate_tokens(candidate) <= token_budget:
+            best = candidate
+            low = midpoint + 1
+        else:
+            high = midpoint - 1
+    return best
 
 
 def _hit_key(hit):
@@ -63,29 +87,41 @@ def _dedupe_hits(hits):
     return list(by_key.values())
 
 
-def _chunk_hit(result):
-    explanation = result.get("explanation") or {}
-    chunk_index = explanation.get("chunk_index")
-    heading = (result.get("heading_path") or "").strip()
-    title = f"{result['title']} / {heading}" if heading else result["title"]
-    return {
-        "kind": "page_chunk",
-        "id": f"{result['page_id']}:{chunk_index}",
-        "page_id": result["page_id"],
-        "title": title,
-        "heading_path": heading,
-        "snippet": result.get("snippet", ""),
-        "score": result.get("score", 0),
-        "explanation": explanation,
-    }
-
-
-def _search_kb(kb, query, per_kb, retrieval_mode="keyword", embed_fn=None):
+def _search_kb(
+    kb,
+    query,
+    per_kb,
+    retrieval_mode="keyword",
+    embed_fn=None,
+    *,
+    read_scope=None,
+    directory_id=None,
+    include_descendants=False,
+):
     if retrieval_mode == "chunk":
-        return [_chunk_hit(result) for result in wiki_chunk_search(kb, query, top_k=per_kb, embed_fn=embed_fn)]
+        raise ActiveGenerationReadError(
+            "chunk_retrieval_not_generation_safe",
+            "当前知识库代际模式暂不支持 Chunk 检索，请使用 keyword 或 hybrid",
+            details={"knowledge_base_id": kb.pk},
+        )
     if retrieval_mode == "hybrid":
-        return wiki_hybrid_search(kb, query, top_k=per_kb, embed_fn=embed_fn)
-    return wiki_search(kb, query, top_k=per_kb)
+        return wiki_hybrid_search(
+            kb,
+            query,
+            top_k=per_kb,
+            embed_fn=embed_fn,
+            directory_id=directory_id,
+            include_descendants=include_descendants,
+            read_scope=read_scope,
+        )
+    return wiki_search(
+        kb,
+        query,
+        top_k=per_kb,
+        directory_id=directory_id,
+        include_descendants=include_descendants,
+        read_scope=read_scope,
+    )
 
 
 def _normalize_retrieval_mode(retrieval_mode):
@@ -93,22 +129,22 @@ def _normalize_retrieval_mode(retrieval_mode):
     return mode if mode in _RETRIEVAL_MODES else "keyword"
 
 
-def _page_snippet(page):
-    body = page.current_version.body if page.current_version_id else ""
-    return (body or "")[:300]
-
-
-def _graph_hit(kb, page, source_hit, relation, hop):
+def _graph_hit(kb, snapshot, source_hit, relation, hop):
     source_score = source_hit.get("score", 0) or 0
     score = max(source_score * (0.75**hop), 0.01)
     return {
         "kind": "page",
-        "id": page.id,
-        "title": page.title,
-        "snippet": _page_snippet(page),
+        "id": snapshot.page_id,
+        "title": snapshot.title,
+        "snippet": (snapshot.body or "")[:2000],
         "score": score,
         "kb_id": kb.id,
         "kb_name": kb.name,
+        "generation_id": snapshot.generation_id,
+        "directory_id": snapshot.directory_id,
+        "directory_key": snapshot.directory_key,
+        "directory_breadcrumb": list(snapshot.directory_breadcrumb),
+        "heading_path": "",
         "explanation": {
             "matched_by": ["graph"],
             "graph_hop": hop,
@@ -120,42 +156,75 @@ def _graph_hit(kb, page, source_hit, relation, hop):
     }
 
 
-def _expand_graph_hits(kb, hits, graph_hops=1, limit_per_seed=2):
+def _expand_graph_hits(
+    kb,
+    hits,
+    graph_hops=1,
+    limit_per_seed=2,
+    *,
+    read_scope,
+    directory_id=None,
+    include_descendants=False,
+):
     if not graph_hops:
         return hits
     page_hits = {hit["id"]: hit for hit in hits if hit.get("kind") == "page"}
     if not page_hits:
         return hits
 
+    scoped_directory_ids = directory_scope_ids(
+        kb,
+        directory_id=directory_id,
+        include_descendants=include_descendants,
+        read_scope=read_scope,
+    )
     expanded = list(hits)
     seen_page_ids = set(page_hits)
     frontier_ids = set(page_hits)
     for hop in range(1, graph_hops + 1):
         rels = (
-            PageRelation.objects.filter(
-                Q(from_page_id__in=frontier_ids) | Q(to_page_id__in=frontier_ids),
-                from_page__knowledge_base=kb,
-                to_page__knowledge_base=kb,
-            )
-            .select_related("from_page", "from_page__current_version", "to_page", "to_page__current_version")
+            relation_queryset(kb, read_scope=read_scope)
+            .filter(Q(from_page_id__in=frontier_ids) | Q(to_page_id__in=frontier_ids))
             .order_by("-weight", "id")
         )
-        additions, per_seed_count = [], {}
-        for relation in rels:
-            pairs = (
-                (relation.from_page_id, relation.to_page),
-                (relation.to_page_id, relation.from_page),
+        relations = list(rels)
+        neighbor_ids = {
+            neighbor_id
+            for relation in relations
+            for source_id, neighbor_id in (
+                (relation.from_page_id, relation.to_page_id),
+                (relation.to_page_id, relation.from_page_id),
             )
-            for source_id, neighbor in pairs:
-                if source_id not in frontier_ids or neighbor.id in seen_page_ids or neighbor.status != "active":
+            if source_id in frontier_ids and neighbor_id not in seen_page_ids
+        }
+        snapshots = {}
+        if neighbor_ids:
+            neighbors = page_queryset(
+                kb,
+                statuses=("active",),
+                directory_ids=scoped_directory_ids,
+                read_scope=read_scope,
+            ).filter(pk__in=neighbor_ids)
+            for page in neighbors:
+                snapshot = page_snapshot(page, knowledge_base=kb)
+                snapshots[snapshot.page_id] = snapshot
+        additions, per_seed_count = [], {}
+        for relation in relations:
+            pairs = (
+                (relation.from_page_id, relation.to_page_id),
+                (relation.to_page_id, relation.from_page_id),
+            )
+            for source_id, neighbor_id in pairs:
+                snapshot = snapshots.get(neighbor_id)
+                if source_id not in frontier_ids or snapshot is None or neighbor_id in seen_page_ids:
                     continue
                 count = per_seed_count.get(source_id, 0)
                 if count >= limit_per_seed:
                     continue
                 source_hit = page_hits[source_id]
-                hit = _graph_hit(kb, neighbor, source_hit, relation, hop)
+                hit = _graph_hit(kb, snapshot, source_hit, relation, hop)
                 additions.append(hit)
-                seen_page_ids.add(neighbor.id)
+                seen_page_ids.add(neighbor_id)
                 per_seed_count[source_id] = count + 1
         if not additions:
             break
@@ -196,6 +265,11 @@ def _render_context(hits, token_budget=None):
                 "kind": hit["kind"],
                 "id": hit["id"],
                 "title": hit["title"],
+                "generation_id": hit.get("generation_id"),
+                "directory_id": hit.get("directory_id"),
+                "directory_key": hit.get("directory_key", ""),
+                "directory_breadcrumb": list(hit.get("directory_breadcrumb") or []),
+                "heading_path": hit.get("heading_path", ""),
                 "explanation": hit.get("explanation", {}),
             }
         )
@@ -212,23 +286,120 @@ def build_context(
     graph_limit_per_seed=2,
     retrieval_mode="keyword",
     embed_fn=None,
+    directory_id=None,
+    include_descendants=False,
+    llm_model_id=None,
 ):
-    """跨多个 Wiki 知识库检索,返回 {context, citations, hits}。
+    """Search compact Index first and spend at most one call on Overview routing."""
 
-    - context:编号 markdown 文本,可直接拼进系统提示词;
-    - citations:[{n, kb_id, kind, id, title}],供前端/回答标注来源;
-    - hits:原始检索命中(含 score),供调用方进一步处理。
-    """
     retrieval_mode = _normalize_retrieval_mode(retrieval_mode)
+    config = load_wiki_budget_config()
+    requested_budget = int(token_budget) if token_budget is not None and int(token_budget) > 0 else config.qa_max_knowledge_tokens
+    effective_budget = min(requested_budget, config.qa_max_knowledge_tokens)
+    call_budget = new_query_call_budget()
     hits = []
+    scopes = []
+    initial_hits_by_kb = {}
     for kb in WikiKnowledgeBase.objects.filter(id__in=list(kb_ids or [])):
-        kb_hits = [{**r, "kb_id": kb.id, "kb_name": kb.name} for r in _search_kb(kb, query, per_kb, retrieval_mode, embed_fn)]
-        hits.extend(_expand_graph_hits(kb, kb_hits, graph_hops=graph_hops, limit_per_seed=graph_limit_per_seed))
-    hits = _dedupe_hits(hits)
-    hits.sort(key=lambda h: h["score"], reverse=True)
-    hits = hits[:top_k]
+        read_scope = bind_read_scope(kb)
+        scopes.append((kb, read_scope))
+        kb_hits = [
+            {**result, "kb_id": kb.id, "kb_name": kb.name}
+            for result in _search_kb(
+                kb,
+                query,
+                per_kb,
+                retrieval_mode,
+                embed_fn,
+                read_scope=read_scope,
+                directory_id=directory_id,
+                include_descendants=include_descendants,
+            )
+        ]
+        initial_hits_by_kb[kb.pk] = kb_hits
+        hits.extend(
+            _expand_graph_hits(
+                kb,
+                kb_hits,
+                graph_hops=graph_hops,
+                limit_per_seed=graph_limit_per_seed,
+                read_scope=read_scope,
+                directory_id=directory_id,
+                include_descendants=include_descendants,
+            )
+        )
 
-    lines, citations, budget = _render_context(hits, token_budget=token_budget)
+    route = OverviewRouteResult((), 0, False, "not_needed")
+    needs_overview_route = (
+        retrieval_mode == "keyword"
+        and directory_id is None
+        and any(not kb_hits or kb_hits[0].get("route_confidence") != "high" for kb_hits in initial_hits_by_kb.values())
+    )
+    if needs_overview_route:
+        from apps.opspilot.services.wiki.build_service import _invoke_llm
+
+        route = route_overview_scopes(
+            scopes,
+            query,
+            llm_model_id=llm_model_id,
+            call_budget=call_budget,
+            knowledge_token_limit=effective_budget,
+            invoke_llm=_invoke_llm,
+        )
+        scope_map = {kb.pk: (kb, read_scope) for kb, read_scope in scopes}
+        for kb_id, routed_directory_id in route.scopes:
+            item = scope_map.get(kb_id)
+            if item is None:
+                continue
+            kb, read_scope = item
+            routed_hits = [
+                {**result, "kb_id": kb.id, "kb_name": kb.name}
+                for result in _search_kb(
+                    kb,
+                    query,
+                    per_kb,
+                    retrieval_mode,
+                    embed_fn,
+                    read_scope=read_scope,
+                    directory_id=routed_directory_id,
+                    include_descendants=True,
+                )
+            ]
+            hits.extend(
+                _expand_graph_hits(
+                    kb,
+                    routed_hits,
+                    graph_hops=graph_hops,
+                    limit_per_seed=graph_limit_per_seed,
+                    read_scope=read_scope,
+                    directory_id=routed_directory_id,
+                    include_descendants=True,
+                )
+            )
+
+    hits = _dedupe_hits(hits)
+    hits.sort(key=lambda item: item["score"], reverse=True)
+    hits = hits[:top_k]
+    remaining_budget = max(effective_budget - route.knowledge_tokens, 0)
+    lines, citations, budget = _render_context(hits, token_budget=remaining_budget)
+    budget.update(
+        {
+            "configured_token_budget": config.qa_max_knowledge_tokens,
+            "effective_token_budget": effective_budget,
+            "overview_tokens": route.knowledge_tokens,
+            "overview_status": route.status,
+            "overview_scopes": [{"kb_id": kb_id, "directory_id": routed_directory_id} for kb_id, routed_directory_id in route.scopes],
+            "llm_budget": call_budget.trace(),
+        }
+    )
+    for _knowledge_base, read_scope in scopes:
+        assert_read_scope_current(read_scope)
+    if budget["truncated"]:
+        raise WikiBudgetExceeded(
+            "wiki_query_token_budget_exceeded",
+            "知识库查询结果超过单次 token 上限",
+            details=budget,
+        )
     return {
         "context": "\n\n".join(lines),
         "citations": citations,
@@ -236,6 +407,41 @@ def build_context(
         "budget": budget,
         "retrieval_mode": retrieval_mode,
     }
+
+
+def augment_prompt_with_trace(
+    system_prompt,
+    kb_ids,
+    query,
+    top_k=5,
+    retrieval_mode="keyword",
+    graph_hops=1,
+    token_budget=None,
+    embed_fn=None,
+    llm_model_id=None,
+):
+    if not kb_ids or not (query or "").strip():
+        return system_prompt, [], {}
+    result = build_context(
+        kb_ids,
+        query,
+        top_k=top_k,
+        retrieval_mode=retrieval_mode,
+        graph_hops=graph_hops,
+        token_budget=token_budget,
+        embed_fn=embed_fn,
+        llm_model_id=llm_model_id,
+    )
+    if not result["context"]:
+        return system_prompt, [], result["budget"]
+    augmented = (
+        f"{system_prompt or ''}\n\n"
+        "【相关知识库信息】请严格依据以下知识库内容回答用户问题,并在末尾用 [n] 标注所引用的条目;"
+        "若以下内容未覆盖用户的问题,请明确回复「知识库中暂无相关内容」,"
+        "不得使用知识库以外的信息,也不得自行推测或编造。\n"
+        f"{result['context']}"
+    )
+    return augmented, result["citations"], result["budget"]
 
 
 def augment_prompt(
@@ -247,14 +453,12 @@ def augment_prompt(
     graph_hops=1,
     token_budget=None,
     embed_fn=None,
+    llm_model_id=None,
 ):
-    """把 Wiki 检索上下文拼接进系统提示词,返回 (新提示词, citations)。
+    """Backward-compatible two-value wrapper around the budget-aware query path."""
 
-    无所选知识库 / 无查询 / 无命中时,原样返回提示词与空引用,确保对聊天链零副作用。
-    """
-    if not kb_ids or not (query or "").strip():
-        return system_prompt, []
-    result = build_context(
+    augmented, citations, _trace = augment_prompt_with_trace(
+        system_prompt,
         kb_ids,
         query,
         top_k=top_k,
@@ -262,14 +466,6 @@ def augment_prompt(
         graph_hops=graph_hops,
         token_budget=token_budget,
         embed_fn=embed_fn,
+        llm_model_id=llm_model_id,
     )
-    if not result["context"]:
-        return system_prompt, []
-    augmented = (
-        f"{system_prompt or ''}\n\n"
-        "【相关知识库信息】请严格依据以下知识库内容回答用户问题,并在末尾用 [n] 标注所引用的条目;"
-        "若以下内容未覆盖用户的问题,请明确回复「知识库中暂无相关内容」,"
-        "不得使用知识库以外的信息,也不得自行推测或编造。\n"
-        f"{result['context']}"
-    )
-    return augmented, result["citations"]
+    return augmented, citations

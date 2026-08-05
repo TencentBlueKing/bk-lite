@@ -12,6 +12,7 @@ from apps.opspilot.metis.llm.chain.report_renderers import strip_phantom_tool_ca
 from apps.opspilot.models import LLMModel, SkillTools, SkillTypeChoices
 from apps.opspilot.services.builtin_tools import (
     BUILTIN_ATTACHMENT_FILE_TOOL_NAME,
+    BUILTIN_MONITOR_TOOL_ID,
     BUILTIN_MONITOR_TOOL_NAME,
     BUILTIN_MSSQL_TOOL_NAME,
     BUILTIN_MYSQL_TOOL_NAME,
@@ -24,9 +25,12 @@ from apps.opspilot.services.builtin_tools import (
     build_builtin_oracle_runtime_tool,
     build_builtin_redis_runtime_tool,
 )
+from apps.opspilot.services.caller_identity import CALLER_IDENTITY_CONFIG_KEY
 from apps.opspilot.services.chat_request import ChatRequest
 from apps.opspilot.services.history_service import history_service
-from apps.opspilot.services.wiki.wiki_context_service import augment_prompt
+from apps.opspilot.services.wiki.active_generation_query_service import ActiveGenerationReadError
+from apps.opspilot.services.wiki.wiki_budget_service import WikiBudgetExceeded, load_wiki_budget_config
+from apps.opspilot.services.wiki.wiki_context_service import augment_prompt_with_trace
 from apps.opspilot.utils.agent_factory import create_agent_instance
 from apps.opspilot.utils.prompt_utils import resolve_skill_params
 
@@ -180,6 +184,7 @@ class ChatService:
         # 将原始 kwargs 一次性解析为类型化的 ChatRequest（容忍未知键），
         # 缺失的可选键使用其默认值，缺失的必需键给出清晰错误（仍为 KeyError 子类）。
         request = ChatRequest.from_kwargs(kwargs)
+        wiki_kb_ids = kwargs.get("wiki_kb_ids") or []
 
         llm_model = LLMModel.objects.get(id=request.llm_model)
         show_think = request.show_think
@@ -189,7 +194,28 @@ class ChatService:
         kwargs.pop("group", 0)
 
         # 处理用户消息和图片
-        chat_kwargs, doc_map, title_map = ChatService.format_chat_server_kwargs(kwargs, llm_model)
+        try:
+            chat_kwargs, doc_map, title_map = ChatService.format_chat_server_kwargs(
+                kwargs,
+                llm_model,
+            )
+        except (WikiBudgetExceeded, ActiveGenerationReadError) as exc:
+            return (
+                {
+                    "message": str(exc),
+                    "success": False,
+                    "error": str(exc),
+                    "error_type": type(exc).__name__,
+                    "error_code": exc.code,
+                    "error_details": exc.details,
+                    "total_tokens": 0,
+                    "prompt_tokens": 0,
+                    "completion_tokens": 0,
+                    "browser_steps": [],
+                },
+                {},
+                {},
+            )
 
         try:
             # 创建 agent 实例并直接执行
@@ -240,9 +266,15 @@ class ChatService:
                 "completion_tokens": response.completion_tokens,
                 "llm_call_count": response.llm_call_count,
                 "token_usage_calls": response.token_usage_calls,
+                "finish_reason": response.finish_reason,
+                "output_truncated": response.output_truncated,
                 "browser_steps": response.browser_steps,
             }
 
+            if wiki_kb_ids and response.output_truncated:
+                result["warning_code"] = "wiki_answer_output_truncated"
+                result["warning"] = "回答已达到输出 token 上限，内容可能被截断"
+                result["message"] = f"{result['message']}\n\n> 回答已达到输出 token 上限，内容可能被截断"
             # 处理内容（可选隐藏思考过程）
             if not show_think:
                 content = re.sub(r"<think>.*?</think>", "", result["message"], flags=re.DOTALL).strip()
@@ -326,37 +358,61 @@ class ChatService:
             BUILTIN_MSSQL_TOOL_NAME: build_builtin_mssql_runtime_tool,
         }
 
+        selected_tool_ids = [tool["id"] for tool in selected_tools if isinstance(tool.get("id"), int) and tool["id"] > 0]
+        # 正 ID 的工具名称以服务端记录为准。查询必须早于密码解密，才能在客户端
+        # 伪装 name 时仍先识别 Monitor 并丢弃历史凭据。
+        skill_tools_queryset = list(SkillTools.objects.filter(id__in=selected_tool_ids))
+        skill_tools_by_id = {skill_tool.id: skill_tool for skill_tool in skill_tools_queryset}
+
+        def _resolved_tool_name(tool):
+            tool_id = tool.get("id")
+            if tool_id == BUILTIN_MONITOR_TOOL_ID:
+                return BUILTIN_MONITOR_TOOL_NAME
+            if isinstance(tool_id, int) and tool_id > 0:
+                skill_tool = skill_tools_by_id.get(tool_id)
+                return skill_tool.name if skill_tool else tool.get("name")
+            return tool.get("name")
+
+        def _runtime_tool_kwargs(tool):
+            return {item["key"]: item["value"] for item in tool.get("kwargs", []) if item.get("key") and item["key"] != CALLER_IDENTITY_CONFIG_KEY}
+
         for tool in selected_tools:
-            for i in tool.get("kwargs", []):
-                if i.get("type") == "password":
-                    EncryptMixin.decrypt_field("value", i)
-            if tool.get("name") in builtin_tool_names:
-                selected_builtin_kwargs[tool["name"]] = {u["key"]: u["value"] for u in tool.get("kwargs", []) if u.get("key")}
+            resolved_name = _resolved_tool_name(tool)
+            if resolved_name == BUILTIN_MONITOR_TOOL_NAME:
+                # Monitor 只使用服务端受理时的 caller_identity，旧配置中的所有
+                # kwargs（尤其密码）在任何解密、prompt 或 extra_config 合并前清空。
+                tool["kwargs"] = []
+            else:
+                for item in tool.get("kwargs", []):
+                    if item.get("key") == CALLER_IDENTITY_CONFIG_KEY:
+                        continue
+                    if item.get("type") == "password":
+                        EncryptMixin.decrypt_field("value", item)
+            if resolved_name in builtin_tool_names:
+                selected_builtin_kwargs[resolved_name] = _runtime_tool_kwargs(tool)
 
-        tool_map = {
-            i["id"]: {u["key"]: u["value"] for u in i["kwargs"] if u.get("key")}
-            for i in selected_tools
-            if isinstance(i.get("id"), int) and i["id"] > 0
-        }
+        tool_map = {tool["id"]: _runtime_tool_kwargs(tool) for tool in selected_tools if isinstance(tool.get("id"), int) and tool["id"] > 0}
 
-        skill_tools_queryset = SkillTools.objects.filter(id__in=list(tool_map.keys()))
         tools = []
         loaded_tool_names = set()
 
         for skill_tool in skill_tools_queryset:
             loaded_tool_names.add(skill_tool.name)
-            tool_params = skill_tool.params.copy()
-            tool_params.pop("kwargs", None)
-
             is_builtin = skill_tool.is_build_in or skill_tool.name in builtin_tool_names
-            if is_builtin:
+            tool_kwargs_for_builtin = tool_map.get(skill_tool.id, {})
+            if skill_tool.name == BUILTIN_MONITOR_TOOL_NAME:
+                # DB 中可能仍保存旧版凭据或 extra_param_prompt；Monitor 运行时
+                # descriptor 必须完全由安全 builder 重建。
+                tool_params = build_builtin_monitor_runtime_tool(tool_kwargs_for_builtin)
+            else:
+                tool_params = skill_tool.params.copy()
+                tool_params.pop("kwargs", None)
+
+            if is_builtin and skill_tool.name != BUILTIN_MONITOR_TOOL_NAME:
                 tool_params["url"] = f"langchain:{skill_tool.name}"
-                tool_kwargs_for_builtin = tool_map.get(skill_tool.id, {})
                 builder = builtin_builders.get(skill_tool.name)
                 if builder:
                     tool_params["extra_tools_prompt"] = builder(tool_kwargs_for_builtin)["extra_tools_prompt"]
-            else:
-                pass
 
             # 多实例检测（不区分 builtin 与否）
             tool_kwargs = tool_map.get(skill_tool.id, {})
@@ -450,11 +506,19 @@ class ChatService:
         resolved_prompt = resolve_skill_params(kwargs["skill_prompt"], kwargs.get("skill_params", []))
 
         # Wiki 知识库复用:若技能选择了 Wiki 知识库,则检索并把上下文注入系统提示词
+        wiki_budget_trace = {}
         wiki_kb_ids = kwargs.get("wiki_kb_ids")
         if wiki_kb_ids:
-            resolved_prompt, wiki_citations = augment_prompt(resolved_prompt, wiki_kb_ids, user_message, **_wiki_context_options(kwargs))
+            resolved_prompt, wiki_citations, wiki_budget_trace = augment_prompt_with_trace(
+                resolved_prompt,
+                wiki_kb_ids,
+                user_message,
+                llm_model_id=llm_model.pk,
+                **_wiki_context_options(kwargs),
+            )
             if wiki_citations:
                 extra_config["wiki_citations"] = wiki_citations
+            extra_config["wiki_budget"] = wiki_budget_trace
 
         # 构建聊天参数
         chat_kwargs = {
@@ -475,6 +539,26 @@ class ChatService:
             "locale": kwargs.get("locale", "en"),
         }
 
+        if wiki_kb_ids:
+            budget_config = load_wiki_budget_config()
+            route_calls = int((wiki_budget_trace.get("llm_budget") or {}).get("used_calls") or 0)
+            remaining_calls = budget_config.qa_max_llm_calls - route_calls
+            if remaining_calls <= 0:
+                raise WikiBudgetExceeded(
+                    "wiki_llm_call_budget_exceeded",
+                    "知识库问答 LLM 调用次数已达到上限",
+                    details=wiki_budget_trace,
+                )
+            chat_kwargs["max_steps"] = remaining_calls
+            chat_kwargs["max_model_calls"] = 1
+            chat_kwargs["max_output_tokens"] = budget_config.qa_max_output_tokens
+            chat_kwargs["enable_query_rewrite"] = False
+            chat_kwargs["enable_suggest"] = False
+            extra_config["wiki_budget"] = {
+                **wiki_budget_trace,
+                "remaining_answer_calls": remaining_calls,
+                "max_output_tokens": budget_config.qa_max_output_tokens,
+            }
         if kwargs.get("thread_id"):
             chat_kwargs["thread_id"] = str(kwargs["thread_id"])
         elif kwargs.get("execution_id"):
@@ -528,6 +612,15 @@ class ChatService:
             if kwargs.get("entry_type"):
                 extra_config["entry_type"] = kwargs["entry_type"]
             chat_kwargs.update({"extra_config": extra_config})
+
+        # caller_identity 是服务端受理快照的保留键。工具 kwargs 无权创建或
+        # 覆盖它；仅当服务端显式提供非 None 值时，才在所有配置合并后最终写入。
+        runtime_extra_config = chat_kwargs.get("extra_config")
+        if runtime_extra_config is not None:
+            runtime_extra_config.pop(CALLER_IDENTITY_CONFIG_KEY, None)
+            server_caller_identity = kwargs.get(CALLER_IDENTITY_CONFIG_KEY)
+            if server_caller_identity is not None:
+                runtime_extra_config[CALLER_IDENTITY_CONFIG_KEY] = server_caller_identity
         return chat_kwargs, doc_map, title_map
 
 

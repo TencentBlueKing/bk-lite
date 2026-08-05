@@ -17,6 +17,9 @@ def _is_persisted_superuser(user_obj):
     return Role.objects.filter(id__in=role_ids, name="admin").filter(Q(app="") | Q(app="system-manager")).exists()
 
 
+# SECURITY COMPATIBILITY: 仅为已知仓外消费者限时恢复；不得新增消费者。
+# 风险接受与 NATS 身份/ACL 迁移跟踪见 #4533，截止 2026-09-04。
+@nats_client.register
 def get_group_users(group=None, include_children=False):
     """
     获取组织下的用户列表
@@ -76,6 +79,8 @@ def _get_actor_user_scope(actor_context, include_children=False):
     return user_obj, authorized_groups
 
 
+# SECURITY COMPATIBILITY: actor_context 仍来自消息体，不构成可信调用身份；见 #4533。
+@nats_client.register
 def get_group_users_scoped(actor_context, group=None, include_children=False):
     """
     在调用方授权范围内查询组织用户列表。
@@ -148,6 +153,8 @@ def get_assignable_groups(actor_context):
     return {"result": True, "data": groups}
 
 
+# SECURITY COMPATIBILITY: 限时风险接受的 legacy subject；见 #4533。
+@nats_client.register
 def get_all_users():
     data = User.objects.all().values(*User.display_fields())
     return {"result": True, "data": list(data)}
@@ -159,6 +166,8 @@ def search_groups(query_params):
     return {"result": True, "data": list(groups)}
 
 
+# SECURITY COMPATIBILITY: 限时风险接受的 legacy subject；见 #4533。
+@nats_client.register
 def search_users(query_params):
     page = int(query_params.get("page", 1))
     page_size = int(query_params.get("page_size", 10))

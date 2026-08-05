@@ -17,4 +17,5 @@ def test_skill_tools_list_includes_builtin_monitor_tool(mocker):
     response = SkillToolsViewSet.list.__wrapped__(viewset, request)
 
     assert response.status_code == 200
-    assert any(item["name"] == "monitor" for item in response.data)
+    monitor_tool = next(item for item in response.data if item["name"] == "monitor")
+    assert monitor_tool["params"]["kwargs"] == []

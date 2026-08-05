@@ -14,9 +14,11 @@
       transition: background 800ms ease-out;
     }
   }
+  // 宽表按内容展开；由外层 overflow-x 横向滚动，避免 width:100% 把单元格压成竖排字
   table {
     border-collapse: collapse;
-    width: 100%;
+    width: max-content;
+    max-width: none;
     margin-bottom: 16px;
     tr {
       background-color: transparent !important;
@@ -25,6 +27,7 @@
       border: 1px solid var(--color-border-1);
       padding: 8px 16px;
       background-color: transparent;
+      white-space: nowrap;
     }
     th {
       background-color: var(--color-fill-2);
@@ -33,6 +36,16 @@
     tbody {
       background-color: inherit;
     }
+  }
+
+  img {
+    max-width: 100%;
+    height: auto;
+    display: block;
+    margin: 12px 0;
+    border-radius: 6px;
+    border: 1px solid var(--color-border-1);
+    background: var(--color-fill-1);
   }
 
   :global(.md-code-block) {

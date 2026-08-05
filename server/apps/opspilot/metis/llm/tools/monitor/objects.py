@@ -1,37 +1,27 @@
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 
-from apps.opspilot.metis.llm.tools.monitor.utils import call_monitor_rpc, resolve_monitor_runtime_params, wrap_error
+from apps.opspilot.metis.llm.tools.monitor.utils import call_monitor_rpc, wrap_error
 
 
-@tool(description="List available monitor objects.")
+@tool(description=("【主机CPU使用率】第1步：列出BK-Lite已纳管监控对象类型，找到「主机」的monitor_obj_id。" "问主机名xxx的CPU/内存/磁盘时必须先调；用平台监控，不要SSH/top/htop。"))
 def monitor_list_objects(
-    username: Optional[str] = None,
-    password: Optional[str] = None,
-    domain: Optional[str] = None,
-    team_id: Optional[int] = None,
     config: RunnableConfig = None,
 ) -> Dict[str, Any]:
-    runtime_params = resolve_monitor_runtime_params(config, username=username, password=password, domain=domain, team_id=team_id)
-    return call_monitor_rpc("monitor_objects", **runtime_params)
+    return call_monitor_rpc("monitor_objects", config)
 
 
-@tool(description="List monitor instances for a monitor object.")
+@tool(description=("【主机CPU使用率】第2步：按monitor_obj_id列出实例（含主机名）。" "在结果里用名称匹配如boxxxxx，得到instance_id；不要SSH登录。"))
 def monitor_list_object_instances(
     monitor_obj_id: str,
-    username: Optional[str] = None,
-    password: Optional[str] = None,
-    domain: Optional[str] = None,
-    team_id: Optional[int] = None,
     config: RunnableConfig = None,
 ) -> Dict[str, Any]:
     if not monitor_obj_id:
         return wrap_error("monitor_obj_id is required")
-    runtime_params = resolve_monitor_runtime_params(config, username=username, password=password, domain=domain, team_id=team_id)
     return call_monitor_rpc(
         "monitor_object_instances",
-        **runtime_params,
+        config,
         monitor_obj_id=monitor_obj_id,
     )

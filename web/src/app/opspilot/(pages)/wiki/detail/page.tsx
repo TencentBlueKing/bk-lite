@@ -23,6 +23,7 @@ import KnowledgeTab from '@/app/opspilot/components/wiki/KnowledgeTab';
 import MaterialTab from '@/app/opspilot/components/wiki/MaterialTab';
 import OverviewTab from '@/app/opspilot/components/wiki/OverviewTab';
 import SettingsTab from '@/app/opspilot/components/wiki/SettingsTab';
+import { buildWikiDetailTabPath } from '@/app/opspilot/utils/wikiMaterialRoutes';
 
 const WIKI_MENU_ICON_CLASS_NAME = 'text-[16px]';
 
@@ -48,21 +49,26 @@ const WikiDetailPage: React.FC = () => {
   // 首次进入(无 tab)补上 ?tab=overview,使左侧菜单默认高亮"概览"(replace 不污染后退栈)
   useEffect(() => {
     if (kbId && !searchParams?.get('tab')) {
-      const p = new URLSearchParams(searchParams?.toString() || '');
-      p.set('tab', 'overview');
-      router.replace(`/opspilot/wiki/detail?${p.toString()}`);
+      router.replace(
+        buildWikiDetailTabPath({
+          kbId,
+          tab: 'overview',
+          searchParams,
+        }),
+      );
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [kbId, searchParams]);
 
   // 左侧菜单(统一 opspilot 详情布局,参考智能体/记忆):activeKeyword 模式按 ?tab= 区分页签,
-  // 菜单 url 需自带完整查询串(保留 id/name/desc + 设置 tab),激活态匹配 item.name。
+  // 菜单 url 只保留共享查询 + 目标页签私有状态，避免资料详情 materialId 串到其他页签。
   const menuItems: MenuItem[] = useMemo(() => {
-    const base = (tab: string) => {
-      const p = new URLSearchParams(searchParams?.toString() || '');
-      p.set('tab', tab);
-      return `/opspilot/wiki/detail?${p.toString()}`;
-    };
+    const base = (tab: string) =>
+      buildWikiDetailTabPath({
+        kbId,
+        tab,
+        searchParams,
+      });
     return [
       {
         title: t('wiki.overview'),
@@ -114,7 +120,7 @@ const WikiDetailPage: React.FC = () => {
       },
     ];
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [t, searchParams]);
+  }, [t, kbId, searchParams]);
 
   if (!kbId) {
     return <div className="p-4 text-gray-500">{t('wiki.empty')}</div>;

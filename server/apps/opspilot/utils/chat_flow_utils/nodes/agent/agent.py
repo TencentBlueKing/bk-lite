@@ -12,8 +12,11 @@ from apps.core.utils.safe_template import TemplateSecurityError, safe_render
 from apps.opspilot.metis.llm.common.token_usage import TokenUsageAccumulator
 from apps.opspilot.models import LLMModel, LLMSkill, SkillRequestLog, WorkflowAttachmentAsset
 from apps.opspilot.services.builtin_tools import BUILTIN_ATTACHMENT_FILE_TOOL_NAME
+from apps.opspilot.services.caller_identity import CALLER_IDENTITY_CONFIG_KEY
 from apps.opspilot.services.chat_service import ChatService, chat_service
 from apps.opspilot.services.skill_package.runtime import build_skill_package_prompt, build_skill_package_strategy, hydrate_skill_packages
+from apps.opspilot.services.wiki.active_generation_query_service import ActiveGenerationReadError
+from apps.opspilot.services.wiki.wiki_budget_service import WikiBudgetExceeded
 from apps.opspilot.services.workflow_attachment_service import build_signed_attachment_download_url
 from apps.opspilot.utils.agent_factory import create_agent_instance
 from apps.opspilot.utils.agui_chat import _build_sse_line
@@ -236,7 +239,7 @@ class AgentNode(BaseNodeExecutor):
             available_tool_names={tool.get("name") for tool in (skill.tools or []) if isinstance(tool, dict) and tool.get("name")},
         )
         skill_package_strategy = build_skill_package_strategy(matched_skill_packages)
-        return {
+        params = {
             "llm_model": skill.llm_model_id,
             "skill_prompt": resolved_prompt,
             "matched_skill_packages": matched_skill_packages,
@@ -267,6 +270,15 @@ class AgentNode(BaseNodeExecutor):
             # 与 /opspilot/skill/detail 路径行为一致,Issue #3919。
             "wiki_kb_ids": list(skill.wiki_knowledge_bases.values_list("id", flat=True)),
         }
+        entry_type = flow_input.get("entry_type")
+        if isinstance(entry_type, str) and entry_type.strip():
+            params["entry_type"] = entry_type
+        caller_identity = flow_input.get(CALLER_IDENTITY_CONFIG_KEY)
+        if caller_identity is not None:
+            # 只透传 HTTP 入口已经校验并捕获的快照。不要从 Skill 的 team
+            # 或其它运行参数推断身份；无快照的非交互入口应由 Monitor 明确拒绝。
+            params[CALLER_IDENTITY_CONFIG_KEY] = dict(caller_identity)
+        return params
 
     @staticmethod
     def _skill_supports_attachment_generation(skill: LLMSkill) -> bool:
@@ -324,7 +336,24 @@ class AgentNode(BaseNodeExecutor):
         skill_type = llm_params.get("skill_type")
         llm_params.pop("group", 0)
 
-        chat_kwargs, _, _ = chat_service.format_chat_server_kwargs(llm_params, llm_model)
+        try:
+            chat_kwargs, _, _ = chat_service.format_chat_server_kwargs(
+                llm_params,
+                llm_model,
+            )
+        except (WikiBudgetExceeded, ActiveGenerationReadError) as error:
+            error_payload = {
+                "type": "ERROR",
+                "error": str(error),
+                "error_code": error.code,
+                "error_details": error.details,
+                "timestamp": int(time.time() * 1000),
+            }
+
+            async def generate_wiki_error_stream():
+                yield _build_sse_line(error_payload)
+
+            return generate_wiki_error_stream()
         # 创建 agent 实例
         graph, request = create_agent_instance(skill_type, chat_kwargs)
         token_usage_accumulator = TokenUsageAccumulator()
@@ -382,10 +411,15 @@ class AgentNode(BaseNodeExecutor):
         entry_type = flow_input.get("entry_type", "")
         if entry_type in ("celery", "test"):
             return "unattended"
-        elif entry_type in ("enterprise_wechat", "dingtalk", "wechat_official"):
+        if entry_type in (
+            "enterprise_wechat",
+            "enterprise_wechat_aibot",
+            "dingtalk",
+            "wechat_official",
+            "nats",
+        ):
             return "third_party"
-        else:
-            return "interactive"
+        return "interactive"
 
     def set_llm_params(self, node_id: str, config: Dict[str, Any], input_data: Dict[str, Any]):
         """设置LLM参数

@@ -1691,24 +1691,6 @@ def test_views_validate_openai_token_empty_token():
     assert "choices" in resp
 
 
-@pytest.mark.django_db(transaction=True)
-def test_views_validate_header_token_empty():
-    """validate_header_token：空 token 返回失败。"""
-    from apps.opspilot.views import validate_header_token
-
-    ok, resp = validate_header_token("", bot_id=1)
-    assert ok is False
-
-
-@pytest.mark.django_db(transaction=True)
-def test_views_validate_header_token_bot_not_online(db):
-    """validate_header_token：bot 不在线或不存在返回失败。"""
-    from apps.opspilot.views import validate_header_token
-
-    ok, resp = validate_header_token("sometoken", bot_id=99999)
-    assert ok is False
-
-
 def test_views_extract_token_usage():
     """_extract_token_usage：解析 usage 字段。"""
     from apps.opspilot.views import _extract_token_usage
@@ -1919,13 +1901,6 @@ def test_views_module_exposes_openai_completions():
     assert callable(views.openai_completions)
 
 
-def test_views_module_exposes_lobe_skill_execute():
-    """lobe_skill_execute 函数存在。"""
-    from apps.opspilot import views
-
-    assert callable(views.lobe_skill_execute)
-
-
 def test_views_module_exposes_skill_execute():
     """skill_execute 函数存在。"""
     from apps.opspilot import views
@@ -1956,7 +1931,6 @@ def test_views_module_exposes_chat_helpers():
         "format_knowledge_sources",
         "get_chat_msg",
         "_build_chat_completion_service",
-        "_lobe_persist_history",
         "invoke_chat",
         "get_skill_and_params",
         "get_skill_execute_result",
@@ -2248,15 +2222,6 @@ def test_validate_openai_token_with_token_invalid_path(mocker):
     )
 
     ok, resp = validate_openai_token("some-token", team=1, is_mobile=False)
-    assert ok is False
-
-
-def test_validate_header_token_with_token_bot_not_online(mocker):
-    """validate_header_token：token 非空但 bot 不在线。"""
-    from apps.opspilot.views import validate_header_token
-
-    mocker.patch("apps.opspilot.views.Bot.objects.filter", return_value=mocker.MagicMock(first=lambda: None))
-    ok, resp = validate_header_token("token", bot_id=99999)
     assert ok is False
 
 

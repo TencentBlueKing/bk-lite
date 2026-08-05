@@ -3,37 +3,38 @@ import json
 import pytest
 
 
-def _kb(schema="# schema"):
-    from apps.opspilot.models import WikiKnowledgeBase
-
-    return WikiKnowledgeBase.objects.create(name="kb", team=[1], schema_md=schema)
+def _kb(wiki_factory, schema="# schema"):
+    return wiki_factory.knowledge_base(name="kb", team=[1], schema_md=schema)
 
 
-def _material(kb, name="m"):
-    from apps.opspilot.models import Material
+def _material(wiki_factory, kb, name="m"):
+    return wiki_factory.material(
+        knowledge_base=kb,
+        name=name,
+        material_type="text",
+        text_content="facts",
+    )
 
-    return Material.objects.create(knowledge_base=kb, name=name, material_type="text", text_content="facts")
 
-
-def _page(kb, title, contribution):
-    from apps.opspilot.models import KnowledgePage, PageVersion
-
-    page = KnowledgePage.objects.create(knowledge_base=kb, page_type="concept", title=title, contribution=contribution)
-    v = PageVersion.objects.create(page=page, no=1, body="old", change_type="ai_create", is_current=True)
-    page.current_version = v
-    page.save(update_fields=["current_version"])
-    return page
+def _page(wiki_factory, kb, title, contribution):
+    return wiki_factory.page(
+        knowledge_base=kb,
+        page_type="concept",
+        title=title,
+        body="old",
+        contribution=contribution,
+    )
 
 
 @pytest.mark.django_db
-def test_rebuild_archives_ai_keeps_human_and_regenerates():
+def test_rebuild_archives_ai_keeps_human_and_regenerates(wiki_factory):
     from apps.opspilot.models import CheckItem, KnowledgePage
     from apps.opspilot.services.wiki.rebuild_service import rebuild_knowledge_base
 
-    kb = _kb()
-    mat = _material(kb)
-    ai_page = _page(kb, "OldAI", "ai")
-    human_page = _page(kb, "Human", "mixed")
+    kb = _kb(wiki_factory)
+    mat = _material(wiki_factory, kb)
+    ai_page = _page(wiki_factory, kb, "OldAI", "ai")
+    human_page = _page(wiki_factory, kb, "Human", "mixed")
 
     build = rebuild_knowledge_base(kb, generator=lambda m: [{"page_type": "concept", "title": f"New-{m.name}", "tags": [], "body": "fresh"}])
 
@@ -49,12 +50,12 @@ def test_rebuild_archives_ai_keeps_human_and_regenerates():
 
 
 @pytest.mark.django_db
-def test_rebuild_with_no_generated_pages():
+def test_rebuild_with_no_generated_pages(wiki_factory):
     from apps.opspilot.services.wiki.rebuild_service import rebuild_knowledge_base
 
-    kb = _kb()
-    _material(kb)
-    _page(kb, "AI", "ai")
+    kb = _kb(wiki_factory)
+    _material(wiki_factory, kb)
+    _page(wiki_factory, kb, "AI", "ai")
 
     build = rebuild_knowledge_base(kb, generator=lambda m: [])
     assert build.counts["new"] == 0 and build.counts["archived"] == 1
@@ -62,11 +63,11 @@ def test_rebuild_with_no_generated_pages():
 
 
 @pytest.mark.django_db
-def test_rebuild_default_generator_extracts_facts_before_generating_pages(monkeypatch):
+def test_rebuild_default_generator_extracts_facts_before_generating_pages(wiki_factory, monkeypatch):
     from apps.opspilot.services.wiki import rebuild_service
 
-    kb = _kb()
-    _material(kb)
+    kb = _kb(wiki_factory)
+    _material(wiki_factory, kb)
     seen = {}
 
     def fake_extract(text, llm_model_id):
@@ -74,7 +75,7 @@ def test_rebuild_default_generator_extracts_facts_before_generating_pages(monkey
         seen["extract_model"] = llm_model_id
         return "EXTRACTED_FACTS"
 
-    def fake_generate(kb_arg, source_text, llm_model_id):
+    def fake_generate(kb_arg, source_text, llm_model_id, **kwargs):
         seen["generate_text"] = source_text
         seen["generate_model"] = llm_model_id
         return [{"page_type": "concept", "title": "FromFacts", "tags": [], "body": "body"}]
@@ -95,13 +96,13 @@ def test_rebuild_default_generator_extracts_facts_before_generating_pages(monkey
 
 
 @pytest.mark.django_db
-def test_rebuild_merges_same_title_generated_from_multiple_materials():
+def test_rebuild_merges_same_title_generated_from_multiple_materials(wiki_factory):
     from apps.opspilot.models import KnowledgePage, PageEvidence
     from apps.opspilot.services.wiki.rebuild_service import rebuild_knowledge_base
 
-    kb = _kb()
-    first = _material(kb, "first")
-    second = _material(kb, "second")
+    kb = _kb(wiki_factory)
+    first = _material(wiki_factory, kb, "first")
+    second = _material(wiki_factory, kb, "second")
 
     build = rebuild_knowledge_base(
         kb,
@@ -124,13 +125,13 @@ def test_rebuild_merges_same_title_generated_from_multiple_materials():
 
 
 @pytest.mark.django_db
-def test_rebuild_merges_abbreviation_and_full_name_generated_from_multiple_materials():
+def test_rebuild_merges_abbreviation_and_full_name_generated_from_multiple_materials(wiki_factory):
     from apps.opspilot.models import KnowledgePage, PageEvidence
     from apps.opspilot.services.wiki.rebuild_service import rebuild_knowledge_base
 
-    kb = _kb()
-    first = _material(kb, "first")
-    second = _material(kb, "second")
+    kb = _kb(wiki_factory)
+    first = _material(wiki_factory, kb, "first")
+    second = _material(wiki_factory, kb, "second")
 
     def generator(material):
         title = "CMDB" if material == first else "配置平台"
@@ -155,13 +156,13 @@ def test_rebuild_merges_abbreviation_and_full_name_generated_from_multiple_mater
 
 
 @pytest.mark.django_db
-def test_rebuild_records_source_chunk_locator_for_generated_page():
+def test_rebuild_records_source_chunk_locator_for_generated_page(wiki_factory):
     from apps.opspilot.models import PageEvidence
     from apps.opspilot.services.wiki.rebuild_service import rebuild_knowledge_base
 
-    kb = _kb()
+    kb = _kb(wiki_factory)
     marker = "REBUILD_TAIL_COMPONENT"
-    material = _material(kb)
+    material = _material(wiki_factory, kb)
     material.text_content = ("head content\n" * 1200) + f"\n{marker} 是全量重建尾部事实。"
     material.save(update_fields=["text_content"])
 
@@ -186,14 +187,14 @@ def test_rebuild_records_source_chunk_locator_for_generated_page():
 
 
 @pytest.mark.django_db
-def test_rebuild_traces_pending_review_and_skips_titleless_page_data():
+def test_rebuild_traces_pending_review_and_skips_titleless_page_data(wiki_factory):
     from apps.opspilot.models import CheckItem, KnowledgePage
     from apps.opspilot.services.wiki.rebuild_service import rebuild_knowledge_base
 
-    kb = _kb()
-    _page(kb, "人工页面", "mixed")
-    _material(kb, "first")
-    _material(kb, "second")
+    kb = _kb(wiki_factory)
+    _page(wiki_factory, kb, "人工页面", "mixed")
+    _material(wiki_factory, kb, "first")
+    _material(wiki_factory, kb, "second")
 
     build = rebuild_knowledge_base(
         kb,
@@ -218,17 +219,17 @@ def test_rebuild_traces_pending_review_and_skips_titleless_page_data():
 
 @pytest.mark.django_db
 class TestRebuildView:
-    def test_rebuild_endpoint_enqueues_task_and_returns_running_record(self, api_client, monkeypatch):
+    def test_rebuild_endpoint_enqueues_task_and_returns_running_record(self, wiki_factory, api_client, monkeypatch):
         from apps.opspilot import tasks
         from apps.opspilot.models import BuildRecord
 
-        kb = _kb()
+        kb = _kb(wiki_factory)
         calls = []
 
         class Task:
             @staticmethod
-            def delay(kb_id, llm_model_id, operator, build_record_id):
-                calls.append((kb_id, llm_model_id, operator, build_record_id))
+            def delay(kb_id, llm_model_id, operator, build_record_id, retry_count=None, task_identity=None):
+                calls.append((kb_id, llm_model_id, operator, build_record_id, retry_count, task_identity))
 
         monkeypatch.setattr(tasks, "wiki_rebuild_kb_task", Task)
 
@@ -239,13 +240,13 @@ class TestRebuildView:
         assert data["status"] == "running"
         assert data["stage"] == "queued"
         assert BuildRecord.objects.filter(id=data["id"], knowledge_base=kb, status="running").exists()
-        assert calls == [(kb.id, kb.llm_model_id, data["operator"], data["id"])]
+        assert calls == [(kb.id, kb.llm_model_id, data["operator"], data["id"], None, None)]
 
-    def test_rebuild_endpoint_rejects_when_build_running(self, api_client, monkeypatch):
+    def test_rebuild_endpoint_rejects_when_build_running(self, wiki_factory, api_client, monkeypatch):
         from apps.opspilot import tasks
         from apps.opspilot.models import BuildRecord
 
-        kb = _kb()
+        kb = _kb(wiki_factory)
         BuildRecord.objects.create(knowledge_base=kb, trigger="rebuild", status="running", stage="generating")
 
         class Task:
@@ -260,10 +261,10 @@ class TestRebuildView:
         assert "运行中" in r.json()["message"]
         assert BuildRecord.objects.filter(knowledge_base=kb, status="running").count() == 1
 
-    def test_delete_endpoint_rejects_when_build_running(self, api_client):
+    def test_delete_endpoint_rejects_when_build_running(self, wiki_factory, api_client):
         from apps.opspilot.models import BuildRecord, WikiKnowledgeBase
 
-        kb = _kb()
+        kb = _kb(wiki_factory)
         BuildRecord.objects.create(knowledge_base=kb, trigger="rebuild", status="running", stage="generating")
 
         r = api_client.delete(f"/api/v1/opspilot/wiki_mgmt/knowledge_base/{kb.id}/")
@@ -271,10 +272,10 @@ class TestRebuildView:
         assert "运行中" in r.json()["message"]
         assert WikiKnowledgeBase.objects.filter(id=kb.id).exists()
 
-    def test_build_record_list_can_filter_running_status(self, api_client):
+    def test_build_record_list_can_filter_running_status(self, wiki_factory, api_client):
         from apps.opspilot.models import BuildRecord
 
-        kb = _kb()
+        kb = _kb(wiki_factory)
         BuildRecord.objects.create(knowledge_base=kb, trigger="rebuild", status="running", stage="generating")
         BuildRecord.objects.create(knowledge_base=kb, trigger="rebuild", status="success", stage="done")
 
@@ -285,10 +286,10 @@ class TestRebuildView:
         assert data["items"][0]["status"] == "running"
 
 
-def _versioned_rebuild_material(kb, name, content_hash):
+def _versioned_rebuild_material(wiki_factory, kb, name, content_hash):
     from apps.opspilot.models import MaterialVersion
 
-    material = _material(kb, name)
+    material = _material(wiki_factory, kb, name)
     material.text_content = f"source-{name}"
     material.content_hash = content_hash
     version = MaterialVersion.objects.create(material=material, content_hash=content_hash)
@@ -298,14 +299,14 @@ def _versioned_rebuild_material(kb, name, content_hash):
 
 
 @pytest.mark.django_db
-def test_rebuild_conflict_has_real_candidate_and_full_context_without_schema_check():
+def test_rebuild_conflict_has_real_candidate_and_full_context_without_schema_check(wiki_factory):
     from apps.opspilot.models import CheckItem, PageEvidence
     from apps.opspilot.services.wiki.rebuild_service import rebuild_knowledge_base
 
-    kb = _kb()
-    material_a, version_a = _versioned_rebuild_material(kb, "A", "hash-a")
-    material_b, version_b = _versioned_rebuild_material(kb, "B", "hash-b")
-    page = _page(kb, "共享知识", "mixed")
+    kb = _kb(wiki_factory)
+    material_a, version_a = _versioned_rebuild_material(wiki_factory, kb, "A", "hash-a")
+    material_b, version_b = _versioned_rebuild_material(wiki_factory, kb, "B", "hash-b")
+    page = _page(wiki_factory, kb, "共享知识", "mixed")
     PageEvidence.objects.create(
         page=page,
         material=material_a,
@@ -348,16 +349,16 @@ def test_rebuild_conflict_has_real_candidate_and_full_context_without_schema_che
 
 
 @pytest.mark.django_db
-def test_rebuild_replays_prior_conflict_and_preserves_decision_trace(monkeypatch):
+def test_rebuild_replays_prior_conflict_and_preserves_decision_trace(wiki_factory, monkeypatch):
     from apps.opspilot.models import CheckItem, PageEvidence, PageVersion
     from apps.opspilot.services.wiki import build_service
     from apps.opspilot.services.wiki.check_service import decide_check
     from apps.opspilot.services.wiki.rebuild_service import rebuild_knowledge_base
 
-    kb = _kb()
-    material_a, version_a = _versioned_rebuild_material(kb, "A", "hash-a")
-    material_b, _version_b = _versioned_rebuild_material(kb, "B", "hash-b")
-    page = _page(kb, "共享知识", "human")
+    kb = _kb(wiki_factory)
+    material_a, version_a = _versioned_rebuild_material(wiki_factory, kb, "A", "hash-a")
+    material_b, _version_b = _versioned_rebuild_material(wiki_factory, kb, "B", "hash-b")
+    page = _page(wiki_factory, kb, "共享知识", "human")
     page.current_version.body = "knowledge-a"
     page.current_version.save(update_fields=["body", "updated_at"])
     PageEvidence.objects.create(
@@ -374,7 +375,7 @@ def test_rebuild_replays_prior_conflict_and_preserves_decision_trace(monkeypatch
     monkeypatch.setattr(
         build_service,
         "_llm_generate_pages",
-        lambda kb, source_text, llm_model_id: [
+        lambda kb, source_text, llm_model_id, **kwargs: [
             {
                 "page_type": "concept",
                 "title": "共享知识",
@@ -420,16 +421,16 @@ def test_rebuild_replays_prior_conflict_and_preserves_decision_trace(monkeypatch
 
 
 @pytest.mark.django_db
-def test_rebuild_archived_pages_clear_relations_and_vectors():
+def test_rebuild_archived_pages_clear_relations_and_vectors(wiki_factory):
     from django.db.models import Q
 
     from apps.opspilot.models import PageChunk, PageRelation
     from apps.opspilot.services.wiki.rebuild_service import rebuild_knowledge_base
 
-    kb = _kb()
-    _material(kb, "source")
-    archived_page = _page(kb, "OldAI", "ai")
-    active_page = _page(kb, "Human", "human")
+    kb = _kb(wiki_factory)
+    _material(wiki_factory, kb, "source")
+    archived_page = _page(wiki_factory, kb, "OldAI", "ai")
+    active_page = _page(wiki_factory, kb, "Human", "human")
     archived_version = archived_page.current_version
     archived_version.embedding = [0.1, 0.2]
     archived_version.save(update_fields=["embedding", "updated_at"])
@@ -470,12 +471,13 @@ def test_rebuild_archived_pages_clear_relations_and_vectors():
 
 
 @pytest.mark.django_db
-def test_rebuild_keeps_page_identity_rule_for_new_page_ids_and_future_scan(monkeypatch):
-    from apps.opspilot.models import CheckItem, WikiDecisionRule
+def test_rebuild_preserves_all_state_title_identity_after_archive(wiki_factory, monkeypatch):
+    from apps.opspilot.models import WikiDecisionRule
     from apps.opspilot.services.wiki import rebuild_service
-    from apps.opspilot.services.wiki.check_service import decide_check, ensure_check, scan_health
+    from apps.opspilot.services.wiki.check_service import decide_check, ensure_check
+    from apps.opspilot.services.wiki.page_service import PageServiceError
 
-    kb = _kb()
+    kb = _kb(wiki_factory)
     kb.generation_rules = {
         "title_aliases": [
             {
@@ -485,9 +487,9 @@ def test_rebuild_keeps_page_identity_rule_for_new_page_ids_and_future_scan(monke
         ]
     }
     kb.save(update_fields=["generation_rules", "updated_at"])
-    _material(kb, "source")
-    original_target = _page(kb, "配置平台", "ai")
-    original_source = _page(kb, "CMDB", "ai")
+    _material(wiki_factory, kb, "source")
+    original_target = _page(wiki_factory, kb, "配置平台", "ai")
+    original_source = _page(wiki_factory, kb, "CMDB", "ai")
     original_check = ensure_check(
         kb,
         "duplicate",
@@ -523,34 +525,27 @@ def test_rebuild_keeps_page_identity_rule_for_new_page_ids_and_future_scan(monke
     assert rule.status == WikiDecisionRule.STATUS_ACTIVE
     assert "rules_revoked" not in build.inputs
 
-    fresh_target = _page(kb, "配置平台", "ai")
-    fresh_source = _page(kb, "CMDB", "ai")
-    assert {fresh_target.id, fresh_source.id}.isdisjoint({original_target.id, original_source.id})
-
-    scan_health(kb)
-
-    rule.refresh_from_db()
-    assert rule.status == WikiDecisionRule.STATUS_ACTIVE
-    assert rule.replay_count == 1
-    open_identity_checks = CheckItem.objects.filter(
-        knowledge_base=kb,
-        check_type__in=["duplicate", "conflict"],
-        status="open",
-    )
-    assert not any(fresh_target.id in (check.related or {}).get("pages", []) for check in open_identity_checks)
+    with pytest.raises(PageServiceError) as target_conflict:
+        _page(wiki_factory, kb, "配置平台", "ai")
+    with pytest.raises(PageServiceError) as source_conflict:
+        _page(wiki_factory, kb, "CMDB", "ai")
+    assert target_conflict.value.code == "page_title_conflict"
+    assert source_conflict.value.code == "page_title_conflict"
+    assert target_conflict.value.details["conflict_page_id"] == original_target.id
+    assert source_conflict.value.details["conflict_page_id"] == original_source.id
 
 
 @pytest.mark.django_db
-def test_rebuild_unchanged_adds_frozen_evidence_with_locator_idempotently():
+def test_rebuild_unchanged_adds_frozen_evidence_with_locator_idempotently(wiki_factory):
     import json
 
     from apps.opspilot.models import CheckItem, PageEvidence
     from apps.opspilot.services.wiki.rebuild_service import rebuild_knowledge_base
 
-    kb = _kb()
-    material_a, version_a = _versioned_rebuild_material(kb, "A", "hash-a")
-    material_b, version_b = _versioned_rebuild_material(kb, "B", "hash-b")
-    page = _page(kb, "SharedSame", "mixed")
+    kb = _kb(wiki_factory)
+    material_a, version_a = _versioned_rebuild_material(wiki_factory, kb, "A", "hash-a")
+    material_b, version_b = _versioned_rebuild_material(wiki_factory, kb, "B", "hash-b")
+    page = _page(wiki_factory, kb, "SharedSame", "mixed")
     page.current_version.body = "same body"
     page.current_version.save(update_fields=["body", "updated_at"])
     PageEvidence.objects.create(
@@ -592,14 +587,14 @@ def test_rebuild_unchanged_adds_frozen_evidence_with_locator_idempotently():
 
 
 @pytest.mark.django_db
-def test_rebuild_generator_failure_keeps_old_pages_and_persists_failed_record():
+def test_rebuild_generator_failure_keeps_old_pages_and_persists_failed_record(wiki_factory):
     from apps.opspilot.models import BuildRecord, KnowledgePage
     from apps.opspilot.services.wiki.rebuild_service import rebuild_knowledge_base
 
-    kb = _kb()
-    _material(kb, "first")
-    _material(kb, "second")
-    old_page = _page(kb, "OldAI", "ai")
+    kb = _kb(wiki_factory)
+    _material(wiki_factory, kb, "first")
+    _material(wiki_factory, kb, "second")
+    old_page = _page(wiki_factory, kb, "OldAI", "ai")
     generated_for = []
 
     def generator(material):
@@ -643,6 +638,7 @@ def test_rebuild_generator_failure_keeps_old_pages_and_persists_failed_record():
 )
 @pytest.mark.django_db
 def test_rebuild_aborts_safely_when_context_changes_after_prepare(
+    wiki_factory,
     monkeypatch,
     mutation,
     expected_error,
@@ -650,8 +646,8 @@ def test_rebuild_aborts_safely_when_context_changes_after_prepare(
     from apps.opspilot.models import BuildRecord, KnowledgePage, Material, MaterialVersion, WikiKnowledgeBase
     from apps.opspilot.services.wiki import rebuild_service
 
-    kb = _kb()
-    material = _material(kb, "source")
+    kb = _kb(wiki_factory)
+    material = _material(wiki_factory, kb, "source")
     if mutation == "version":
         current_version = MaterialVersion.objects.create(
             material=material,
@@ -666,7 +662,7 @@ def test_rebuild_aborts_safely_when_context_changes_after_prepare(
                 "updated_at",
             ]
         )
-    old_page = _page(kb, "OldAI", "ai")
+    old_page = _page(wiki_factory, kb, "OldAI", "ai")
     apply_prepared = rebuild_service._apply_prepared_rebuild
 
     def mutate_material_then_apply(*args, **kwargs):
@@ -674,7 +670,7 @@ def test_rebuild_aborts_safely_when_context_changes_after_prepare(
         if mutation == "delete":
             live_material.delete()
         elif mutation == "add":
-            _material(kb, "added-after-prepare")
+            _material(wiki_factory, kb, "added-after-prepare")
         elif mutation == "version":
             replacement = MaterialVersion.objects.create(
                 material=live_material,
@@ -722,14 +718,15 @@ def test_rebuild_aborts_safely_when_context_changes_after_prepare(
 
 @pytest.mark.django_db
 def test_rebuild_core_apply_failure_rolls_back_all_page_changes_but_keeps_failed_record(
+    wiki_factory,
     monkeypatch,
 ):
     from apps.opspilot.models import BuildRecord, KnowledgePage
     from apps.opspilot.services.wiki import rebuild_service
 
-    kb = _kb()
-    _material(kb, "source")
-    old_page = _page(kb, "OldAI", "ai")
+    kb = _kb(wiki_factory)
+    _material(wiki_factory, kb, "source")
+    old_page = _page(wiki_factory, kb, "OldAI", "ai")
     create_page = rebuild_service._create_ai_page
 
     def fail_after_create(*args, **kwargs):
@@ -770,14 +767,15 @@ def test_rebuild_core_apply_failure_rolls_back_all_page_changes_but_keeps_failed
 
 @pytest.mark.django_db
 def test_rebuild_cascade_exception_keeps_core_commit_and_records_retryable_partial(
+    wiki_factory,
     monkeypatch,
 ):
     from apps.opspilot.models import KnowledgePage
     from apps.opspilot.services.wiki import rebuild_service
 
-    kb = _kb()
-    _material(kb, "source")
-    old_page = _page(kb, "OldAI", "ai")
+    kb = _kb(wiki_factory)
+    _material(wiki_factory, kb, "source")
+    old_page = _page(wiki_factory, kb, "OldAI", "ai")
     monkeypatch.setattr(rebuild_service, "enrich_pages_wikilinks", lambda *args, **kwargs: [])
     monkeypatch.setattr(
         rebuild_service,
@@ -813,12 +811,12 @@ def test_rebuild_cascade_exception_keeps_core_commit_and_records_retryable_parti
 
 
 @pytest.mark.django_db
-def test_rebuild_enrichment_exception_is_partial_after_core_commit(monkeypatch):
+def test_rebuild_enrichment_exception_is_partial_after_core_commit(wiki_factory, monkeypatch):
     from apps.opspilot.models import KnowledgePage
     from apps.opspilot.services.wiki import rebuild_service
 
-    kb = _kb()
-    _material(kb, "source")
+    kb = _kb(wiki_factory)
+    _material(wiki_factory, kb, "source")
     monkeypatch.setattr(
         rebuild_service,
         "enrich_pages_wikilinks",
