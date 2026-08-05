@@ -295,7 +295,7 @@ def reconcile_governance_host(task_id: int, target_id: int) -> None:
     reconcile_host_result(task_id, target_id)
 
 
-@shared_task(max_retries=0)
+@shared_task(queue="patch_maintenance", max_retries=0)
 def watch_governance_timeouts() -> None:
     """周期收口调度/阶段超时；安装和重启只进入结果确认，不直接判失败。"""
     from apps.patch_mgmt.config import DISPATCH_TIMEOUT, RECONCILE_TIMEOUT
@@ -386,6 +386,18 @@ def watch_governance_timeouts() -> None:
             reconcile_governance_host.apply_async(args=[task_id, target_id])
 
     for task in GovernanceTask.objects.filter(pk__in=changed_task_ids):
+        _finalize_task_status(task)
+
+    # 独立收敛父任务与子任务的终态不一致；没有子结果的刚启动任务不在此误收口。
+    inconsistent_tasks = (
+        GovernanceTask.objects.filter(
+            status__in=GovernanceTaskStatus.ACTIVE_STATES,
+            host_results__isnull=False,
+        )
+        .distinct()
+        .order_by("id")[:500]
+    )
+    for task in inconsistent_tasks:
         _finalize_task_status(task)
 
 

@@ -96,3 +96,5 @@ status:
     pending: "Pending assessment"
     evaluating: "Assessing"
     failed: "Assessment failed"
+    unknown: "Assessment unknown"
+    not_applicable: "Not applicable"

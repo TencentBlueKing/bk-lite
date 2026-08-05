@@ -8,6 +8,7 @@
 
 import base64
 from datetime import timedelta
+from types import SimpleNamespace
 
 import pytest
 from django.test import RequestFactory
@@ -70,6 +71,24 @@ def test_install_commands_linux():
     assert 'apt-get install -y' in cmd and 'apt-pkg' in cmd
 
 
+def test_linux_assess_uses_rpm_native_version_comparison_not_provides_lookup():
+    requirement = SimpleNamespace(
+        id=17,
+        patch=SimpleNamespace(
+            linux_detail=SimpleNamespace(
+                pkg_name='ledmon',
+                pkg_version='0.95-6.el9',
+            )
+        ),
+    )
+
+    command = pes._assess_command(OSType.LINUX, [requirement])
+
+    assert 'rpm.vercmp' in command
+    assert 'BKPATCH_INSTALLED' in command
+    assert '--whatprovides' not in command
+
+
 @pytest.mark.django_db
 def test_install_commands_multiple_pkgs_one_command():
     """多个补丁的包名合并到同一条安装命令。"""
@@ -116,6 +135,15 @@ def test_install_commands_windows_uses_scheduled_task():
     assert 'InstallResult' in cmd
     # 不应使用 base64 编码（避免命令行过长）
     assert 'FromBase64String' not in cmd
+
+
+def test_windows_assess_command_collects_offered_and_installed_wua_updates():
+    command = pes._assess_command(OSType.WINDOWS)
+
+    assert '$sr.Search("IsInstalled=0")' in command
+    assert '$sr.Search("IsInstalled=1")' in command
+    assert '===WUA_INSTALLED===' in command
+    assert '===HOTFIX===' in command
 
 
 @pytest.mark.django_db
@@ -793,13 +821,16 @@ def test_run_assess_success_parses_output_and_writes_snapshot(monkeypatch):
     target = _make_node_mgmt_target()
     HostBaselineBinding.objects.create(target=target, baseline=baseline)
     patch = Patch.objects.create(title='gzip update', os_type=OSType.LINUX, team=[1])
-    LinuxPatchDetail.objects.create(patch=patch, pkg_name='gzip')
-    BaselineRequirement.objects.create(baseline=baseline, patch=patch)
+    LinuxPatchDetail.objects.create(patch=patch, pkg_name='gzip', pkg_version='1.10')
+    requirement = BaselineRequirement.objects.create(baseline=baseline, patch=patch)
     task = _make_task(GovernanceTaskType.ASSESS, [target.id])
 
     class FakeExecutor:
         def execute_local_stream(self, command, **kwargs):
-            return {'exit_code': 0, 'stdout': APT_SAMPLE}
+            return {
+                'exit_code': 0,
+                'stdout': f'BKPATCH_LINUX|{requirement.id}|gzip|installed|1.10|0|',
+            }
 
     monkeypatch.setattr(pes, 'Executor', lambda instance_id: FakeExecutor())
     pes.run_governance_task(task)
@@ -820,8 +851,8 @@ def test_run_verify_freezes_pair_result_snapshot(monkeypatch):
     target = _make_node_mgmt_target()
     HostBaselineBinding.objects.create(target=target, baseline=baseline)
     patch = Patch.objects.create(title='gzip update', os_type=OSType.LINUX, team=[1])
-    LinuxPatchDetail.objects.create(patch=patch, pkg_name='gzip')
-    BaselineRequirement.objects.create(baseline=baseline, patch=patch)
+    LinuxPatchDetail.objects.create(patch=patch, pkg_name='gzip', pkg_version='1.10')
+    requirement = BaselineRequirement.objects.create(baseline=baseline, patch=patch)
     risk_item_id = f'{target.id}:{patch.id}:{baseline.id}'
     task = _make_task(GovernanceTaskType.VERIFY, [target.id], [patch.id])
     task.risk_snapshot = [{
@@ -834,7 +865,10 @@ def test_run_verify_freezes_pair_result_snapshot(monkeypatch):
 
     class FakeExecutor:
         def execute_local_stream(self, command, **kwargs):
-            return {'exit_code': 0, 'stdout': APT_SAMPLE}
+            return {
+                'exit_code': 0,
+                'stdout': f'BKPATCH_LINUX|{requirement.id}|gzip|installed|1.10|0|',
+            }
 
     monkeypatch.setattr(pes, 'Executor', lambda instance_id: FakeExecutor())
     pes.run_governance_task(task)
@@ -858,11 +892,11 @@ def test_run_assess_yum_exit_100_treated_as_success(monkeypatch):
     target = _make_node_mgmt_target()
     HostBaselineBinding.objects.create(target=target, baseline=baseline)
     patch = Patch.objects.create(title='gzip update', os_type=OSType.LINUX, team=[1])
-    LinuxPatchDetail.objects.create(patch=patch, pkg_name='gzip')
-    BaselineRequirement.objects.create(baseline=baseline, patch=patch)
+    LinuxPatchDetail.objects.create(patch=patch, pkg_name='gzip', pkg_version='1.10')
+    requirement = BaselineRequirement.objects.create(baseline=baseline, patch=patch)
     task = _make_task(GovernanceTaskType.ASSESS, [target.id])
 
-    stdout = 'Available Upgrades\ngzip.x86_64     1.10-10ubuntu4.1     noble-updates\n'
+    stdout = f'BKPATCH_LINUX|{requirement.id}|gzip|installed|1.9|-1|'
 
     class FakeExecutor:
         def execute_local_stream(self, command, **kwargs):

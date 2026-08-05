@@ -97,8 +97,14 @@ def _step_status(task_type: str, stage: str) -> str:
     return "unknown"
 
 
+def _host_stage(host: GovernanceTaskHost) -> str:
+    from apps.patch_mgmt.services.governance_convergence import project_host_state
+
+    return project_host_state(host).stage
+
+
 def _attempt(task: GovernanceTask, host: GovernanceTaskHost, include_log: bool) -> dict:
-    status = _step_status(task.task_type, host.stage)
+    status = _step_status(task.task_type, _host_stage(host))
     display, color = STATUS_META[status]
     data = {
         "id": host.id,
@@ -201,7 +207,7 @@ def _item_status(root: GovernanceTask, item: dict) -> str:
 
     root_host = _root_host(root, target_id)
     if root_host:
-        root_status = _step_status(root.task_type, root_host.stage)
+        root_status = _step_status(root.task_type, _host_stage(root_host))
         if root_status in {"failed", "cancelled", "unknown"}:
             return root_status
         if root.auto_reboot and root_host.error_code == "reboot_requirement_unknown":
@@ -355,9 +361,9 @@ def _skipped_step_reason(
             return "skipped", "安装已取消，未执行重启"
         if root_host and root_host.error_code == "reboot_requirement_unknown":
             return "skipped", "无法判断是否需要重启，未执行自动重启"
-        if root_host and root_host.stage == "pending_reboot" and not root.auto_reboot:
+        if root_host and _host_stage(root_host) == "pending_reboot" and not root.auto_reboot:
             return "skipped", "未设置安装后自动重启"
-        if root_host and root_host.stage == "completed":
+        if root_host and _host_stage(root_host) == "completed":
             return "skipped", "安装后确认无需重启"
         if install_status in {"completed", "failed", "cancelled"}:
             return "skipped", "本次动作未执行重启"
@@ -370,7 +376,7 @@ def _skipped_step_reason(
         if root_host and root.task_type == GovernanceTaskType.INSTALL:
             if root_host.error_code == "reboot_requirement_unknown":
                 return "skipped", "重启需求无法判定，未执行验证"
-            if root_host.stage == "pending_reboot" and not root.auto_reboot:
+            if _host_stage(root_host) == "pending_reboot" and not root.auto_reboot:
                 return "skipped", "未执行重启，本次记录不执行验证"
         if reboot and reboot[-1]["status"] == "failed":
             return "skipped", "重启失败，未执行验证"

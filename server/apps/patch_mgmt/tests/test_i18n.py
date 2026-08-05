@@ -112,7 +112,10 @@ def test_backend_static_translation_references_resolve_to_string_values():
 def test_backend_dynamic_status_translation_contracts_exist():
     contracts = {
         "status.task_type": ("assess", "install", "reboot", "verify"),
-        "status.compliance": ("compliant", "non_compliant", "pending", "evaluating", "failed"),
+        "status.compliance": (
+            "compliant", "non_compliant", "pending", "evaluating", "failed",
+            "unknown", "not_applicable",
+        ),
     }
     for locale in ("en", "zh-Hans"):
         messages = _flatten(_load_messages(locale))
