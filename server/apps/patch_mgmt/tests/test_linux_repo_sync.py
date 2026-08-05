@@ -51,7 +51,12 @@ UPDATEINFO = """<?xml version="1.0"?>
       <reference href="h" id="CVE-2024-0002" type="cve" title="CVE-2024-0002"/>
     </references>
     <pkglist>
-      <collection short="s"><package name="openssl" version="1.1.1k" release="7.el8" arch="x86_64"/></collection>
+      <collection short="s">
+        <package name="openssl" version="1.1.1k" release="7.el8" arch="x86_64"/>
+        <package name="openssl-libs" version="1.1.1k" release="7.el8" arch="x86_64"/>
+        <package name="openssl-libs" version="1.1.1k" release="7.el8" arch="x86_64"/>
+        <package name="" version="1.1.1k" release="7.el8" arch="x86_64"/>
+      </collection>
     </pkglist>
   </update>
   <update type="bugfix" version="1">
@@ -102,6 +107,12 @@ class TestFetchAdvisories:
         assert sec.packages[0].name == "openssl"
         assert sec.packages[0].version == "1.1.1k-7.el8"
         assert sec.packages[0].arch == "x86_64"
+        assert [package.name for package in sec.packages] == [
+            "openssl",
+            "openssl-libs",
+            "openssl-libs",
+            "",
+        ]
 
     def test_no_updateinfo_returns_empty(self, mocker):
         _make_get(mocker, repomd=REPOMD_NO_UPDATEINFO)
@@ -335,6 +346,42 @@ class TestSyncLinuxRepo:
         assert detail.distro_name == "centos"
         assert detail.repo_type == PackageManagerType.YUM
         assert detail.architectures == ["x86_64"]
+        assert getattr(detail, "packages", []) == [
+            {"name": "openssl", "version": "1.1.1k-7.el8", "arch": "x86_64"},
+            {"name": "openssl-libs", "version": "1.1.1k-7.el8", "arch": "x86_64"},
+        ]
+
+    def test_preview_exposes_all_unique_packages_without_changing_legacy_name(
+        self, mocker
+    ):
+        _make_get(mocker)
+        source = _source()
+
+        candidates = SourceSyncService.preview_sync_candidates(source)
+
+        candidate = candidates[0]
+        assert candidate["name"] == "openssl"
+        assert candidate["version"] == "1.1.1k-7.el8"
+        assert candidate["packages"] == [
+            {"name": "openssl", "version": "1.1.1k-7.el8", "arch": "x86_64"},
+            {"name": "openssl-libs", "version": "1.1.1k-7.el8", "arch": "x86_64"},
+        ]
+
+    def test_sync_rolls_back_advisory_when_detail_persistence_fails(
+        self, mocker
+    ):
+        _make_get(mocker)
+        source = _source()
+        mocker.patch.object(
+            LinuxPatchDetail.objects,
+            "update_or_create",
+            side_effect=RuntimeError("detail write failed"),
+        )
+
+        with pytest.raises(RuntimeError, match="detail write failed"):
+            SourceSyncService.sync_linux_repo(source)
+
+        assert Patch.objects.filter(title="RHSA-2024:0001").exists() is False
 
     def test_bugfix_maps_to_generic_moderate(self, mocker):
         _make_get(mocker)
@@ -351,6 +398,8 @@ class TestSyncLinuxRepo:
         result2 = SourceSyncService.sync_linux_repo(source)
         assert result2 == {"total": 2, "created": 0, "updated": 2}
         assert Patch.objects.filter(sources=source).count() == 2
+        detail = LinuxPatchDetail.objects.get(patch__title="RHSA-2024:0001")
+        assert len(getattr(detail, "packages", [])) == 2
 
     def test_non_linux_source_raises(self, mocker):
         _make_get(mocker)

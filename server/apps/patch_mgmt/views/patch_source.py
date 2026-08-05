@@ -304,6 +304,11 @@ class PatchSourceViewSet(AuthViewSet):
             candidates = [
                 c for c in candidates
                 if search in c.get("name", "").lower()
+                or any(
+                    search in str(package.get("name") or "").lower()
+                    for package in c.get("packages", [])
+                    if isinstance(package, dict)
+                )
             ]
 
         total = len(candidates)
