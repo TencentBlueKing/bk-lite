@@ -1,5 +1,10 @@
 export type CatalogStatus = 'active' | 'silent' | 'archived';
 
+export interface ApmPage<T> {
+  count: number;
+  items: T[];
+}
+
 export interface ApmEnvironmentView {
   environment: string;
   last_seen_at: string;

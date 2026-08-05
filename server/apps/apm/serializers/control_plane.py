@@ -53,6 +53,25 @@ class IngestSnippetSerializer(serializers.Serializer):
         raise serializers.ValidationError("OTLP 端点必须由服务器根据云区域配置解析，客户端不得提交。")
 
 
+class CatalogListQuerySerializer(serializers.Serializer):
+    page = serializers.IntegerField(min_value=1, required=False)
+    page_size = serializers.IntegerField(min_value=1, required=False)
+    application = serializers.CharField(max_length=128, required=False, allow_blank=True)
+    environment = serializers.CharField(max_length=256, required=False, allow_blank=True)
+    status = serializers.ChoiceField(choices=("active", "silent", "archived"), required=False)
+    include_archived = serializers.BooleanField(required=False, default=False)
+    started_at = serializers.DateTimeField(required=False)
+    ended_at = serializers.DateTimeField(required=False)
+    keyword = serializers.CharField(max_length=256, required=False, allow_blank=True)
+
+    def validate(self, attrs):
+        started_at = attrs.get("started_at")
+        ended_at = attrs.get("ended_at")
+        if started_at is not None and ended_at is not None and started_at >= ended_at:
+            raise serializers.ValidationError("started_at 必须早于 ended_at。")
+        return attrs
+
+
 class ApmApplicationSerializer(serializers.ModelSerializer):
     organization_ids = serializers.SerializerMethodField()
     service_count = serializers.IntegerField(read_only=True, default=0)

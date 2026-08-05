@@ -1,5 +1,8 @@
 {
   "apm": {
+    "instances": {
+      "defaultActiveHelp": "默认显示活跃实例；切换状态或时间范围可查看静默、归档与历史实例。"
+    },
     "integration": {
       "copyEndpoint": "复制 HTTP 上报端点",
       "copyEndpointSuccess": "HTTP 上报端点已复制",

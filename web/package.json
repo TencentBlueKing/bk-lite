@@ -48,6 +48,7 @@
     "test:apm-event-workflow": "pnpm exec tsx scripts/apm-event-workflow-test.ts",
     "test:apm-explore-workflow": "pnpm exec tsx scripts/apm-explore-workflow-test.ts",
     "test:apm-integration-workflow": "pnpm exec tsx scripts/apm-integration-workflow-test.ts && pnpm exec vitest run src/app/apm/integration/add/__tests__/page.test.tsx",
+    "test:apm-instance-workflow": "pnpm exec vitest run src/app/apm/integration/instances/__tests__/page.test.tsx",
     "test:apm-service-workflow": "pnpm exec tsx scripts/apm-service-workflow-test.ts && pnpm exec vitest run src/app/apm/services/__tests__/page.test.tsx",
     "test:apm-real-query-wiring": "pnpm exec tsx scripts/apm-real-query-wiring-test.ts",
     "test:apm-notification-closure": "pnpm exec tsx scripts/apm-notification-closure-test.ts",

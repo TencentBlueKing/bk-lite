@@ -1,5 +1,8 @@
 {
   "apm": {
+    "instances": {
+      "defaultActiveHelp": "Active instances are shown by default. Change the status or time range to view silent, archived, and historical instances."
+    },
     "integration": {
       "copyEndpoint": "Copy HTTP ingest endpoint",
       "copyEndpointSuccess": "HTTP ingest endpoint copied",

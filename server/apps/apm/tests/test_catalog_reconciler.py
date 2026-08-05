@@ -4,7 +4,7 @@ import pytest
 from django.utils import timezone
 
 from apps.apm.adapters import InMemoryMetricStore, TelemetryStoreUnavailable
-from apps.apm.models import ApmService, ApmServiceInstance
+from apps.apm.models import ApmServiceInstance
 from apps.apm.services import DjangoTelemetryCatalogService, TelemetryCatalogReconciler
 from apps.apm.services.contracts import CatalogDiscovery, InstanceActivity
 from apps.apm.tests.helpers import create_application

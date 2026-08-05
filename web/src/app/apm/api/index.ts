@@ -18,6 +18,7 @@ import type {
   ApmPolicy,
   ApmPolicyInput,
   ApmPolicyQueryResult,
+  ApmPage,
   ApmNotificationChannel,
   ApmNotificationDelivery,
   ApmNotificationRecipient,
@@ -29,9 +30,15 @@ import type {
 } from '@/app/apm/types';
 
 interface InstanceQuery {
+  application?: string;
   environment?: string;
   status?: CatalogStatus;
   include_archived?: boolean;
+  started_at?: string;
+  ended_at?: string;
+  keyword?: string;
+  page?: number;
+  page_size?: number;
 }
 
 const useApmApi = () => {
@@ -53,6 +60,11 @@ const useApmApi = () => {
 
   const getInstances = useCallback(
     (params: InstanceQuery = {}) => get<ApmServiceInstance[]>('/apm/instances/', { params }),
+    [get]
+  );
+
+  const getInstancePage = useCallback(
+    (params: InstanceQuery) => get<ApmPage<ApmServiceInstance>>('/apm/instances/', { params }),
     [get]
   );
 
@@ -225,6 +237,7 @@ const useApmApi = () => {
     getServices,
     getService,
     getInstances,
+    getInstancePage,
     setInstanceOrganizations,
     setInstanceArchived,
     setServiceOrganizations,
