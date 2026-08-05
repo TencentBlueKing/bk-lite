@@ -121,6 +121,29 @@ func (fake *fakeWindowsServiceController) Remove() error {
 	return nil
 }
 
+// observingWindowsServiceController records whether a backup directory was in
+// place when the new service was started, which is the only moment where a
+// transactional upgrade is distinguishable from a fresh install.
+type observingWindowsServiceController struct {
+	backupDir            string
+	backupExistedOnStart bool
+}
+
+func (fake *observingWindowsServiceController) Stop() (bool, error) {
+	return false, nil
+}
+
+func (fake *observingWindowsServiceController) Start(_ string, _ bool) error {
+	if _, err := os.Stat(fake.backupDir); err == nil {
+		fake.backupExistedOnStart = true
+	}
+	return nil
+}
+
+func (fake *observingWindowsServiceController) Remove() error {
+	return nil
+}
+
 func writeControllerZip(t *testing.T, files map[string]string) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "controller.zip")
@@ -293,6 +316,50 @@ func TestInstallerStepPositionUsesNewEightStepProtocol(t *testing.T) {
 	index, total := installerStepPosition("download_package")
 	if index != 4 || total != 8 {
 		t.Fatalf("expected download step 4/8, got %d/%d", index, total)
+	}
+}
+
+func TestInstallWindowsPackageTreatsPreCreatedEmptyDirectoryAsFreshInstall(t *testing.T) {
+	installDir := filepath.Join(t.TempDir(), "fusion-collectors")
+	if err := os.MkdirAll(installDir, 0755); err != nil {
+		t.Fatalf("create install dir: %v", err)
+	}
+	zipPath := writeControllerZip(t, map[string]string{
+		"controller/collector-sidecar.exe": "new-binary",
+	})
+	controller := &observingWindowsServiceController{backupDir: installDir + ".bklite-backup"}
+	cfg := &Config{
+		ServerURL:  "https://bk.example",
+		APIToken:   "token",
+		NodeID:     "node-1",
+		NodeName:   "node-1",
+		ZoneID:     "1",
+		GroupID:    "1",
+		OS:         "windows",
+		InstallDir: installDir,
+		Package:    PackageConfig{CPUArchitecture: "x86_64"},
+	}
+
+	if err := installWindowsPackage(cfg, zipPath, controller); err != nil {
+		t.Fatalf("install Windows package: %v", err)
+	}
+	if controller.backupExistedOnStart {
+		t.Fatal("fresh install must not back up the pre-created empty directory")
+	}
+	if _, err := os.Stat(installDir + ".bklite-backup"); !os.IsNotExist(err) {
+		t.Fatalf("fresh install must not leave a backup directory: %v", err)
+	}
+	for _, marker := range []string{windowsActivationPendingMarker, windowsActivationCommittedMarker} {
+		if _, err := os.Stat(filepath.Join(installDir, marker)); !os.IsNotExist(err) {
+			t.Fatalf("fresh install must not leave activation marker %s: %v", marker, err)
+		}
+	}
+	content, err := os.ReadFile(filepath.Join(installDir, "collector-sidecar.exe"))
+	if err != nil {
+		t.Fatalf("read installed binary: %v", err)
+	}
+	if string(content) != "new-binary" {
+		t.Fatalf("new installation was not activated: %q", content)
 	}
 }
 

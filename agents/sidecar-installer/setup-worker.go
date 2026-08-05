@@ -1539,6 +1539,28 @@ func writeWindowsInstallFence(fencePath string, content []byte) error {
 	return replaceFileAtomically(temporaryPath, fencePath)
 }
 
+// discardEmptyWindowsInstallDir removes an installation directory that exists but
+// holds nothing. Launchers such as the NSIS GUI may create it before the worker
+// runs; treating that empty directory as a previous installation would push a
+// fresh install through the backup, rollback and service-restart path it does not
+// need. A running installation always has files, so this never discards one.
+func discardEmptyWindowsInstallDir(installDir string) error {
+	entries, err := os.ReadDir(installDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	if len(entries) > 0 {
+		return nil
+	}
+	if err := os.Remove(installDir); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	return nil
+}
+
 func installWindowsPackage(cfg *Config, zipPath string, controller windowsServiceController) error {
 	installDir := filepath.Clean(cfg.InstallDir)
 	stagingDir := installDir + ".bklite-staging"
@@ -1580,6 +1602,9 @@ func installWindowsPackage(cfg *Config, zipPath string, controller windowsServic
 		}
 	} else if !os.IsNotExist(err) {
 		return err
+	}
+	if err := discardEmptyWindowsInstallDir(installDir); err != nil {
+		return fmt.Errorf("discard empty installation directory: %w", err)
 	}
 	if err := os.RemoveAll(stagingDir); err != nil {
 		return fmt.Errorf("clean staging directory: %w", err)
