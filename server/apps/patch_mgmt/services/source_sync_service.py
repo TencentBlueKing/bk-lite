@@ -17,6 +17,7 @@ from apps.patch_mgmt.constants import (
 )
 from apps.patch_mgmt.models import PatchSource
 from apps.patch_mgmt.services.patch_source_service import PatchSourceService
+from apps.patch_mgmt.utils.architecture import X86_64, normalize_architecture, normalize_architectures
 
 logger = logging.getLogger("app")
 
@@ -186,7 +187,10 @@ class SourceSyncService:
                     "pkg_version": first_pkg.version if first_pkg else "",
                     "distro_name": source.distro_name or "",
                     "os_version_range": source.os_version or "",
-                    "architectures": sorted({p.arch for p in adv.packages if p.arch}),
+                    "architectures": normalize_architectures(
+                        (p.arch for p in adv.packages),
+                        fallback=source.arch or X86_64,
+                    ),
                     "repo_type": PackageManagerType.normalize(source.source_type),
                     "install_deps": adv.install_deps or {},
                 },
@@ -266,7 +270,10 @@ class SourceSyncService:
                     "title": adv.title,
                     "version": first_pkg.version if first_pkg else "",
                     "dist": source.distro_name or "",
-                    "arch": (first_pkg.arch if first_pkg and first_pkg.arch else source.arch or ""),
+                    "arch": normalize_architecture(
+                        first_pkg.arch if first_pkg and first_pkg.arch else source.arch,
+                        default=X86_64,
+                    ),
                     "added": adv.advisory_id in existing_titles or adv.title in existing_titles,
                     "severity": adv.severity or "",
                 })
@@ -293,7 +300,7 @@ class SourceSyncService:
                     "title": upd.title,
                     "version": ", ".join(upd.products[:3]) if upd.products else "",
                     "dist": "",
-                    "arch": source.arch or "x64",
+                    "arch": X86_64,
                     "added": name in existing_titles or upd.kb_number in existing_titles or upd.title in existing_titles,
                 })
             return candidates
@@ -373,7 +380,10 @@ class SourceSyncService:
                         "pkg_version": first_pkg.version if first_pkg else "",
                         "distro_name": source.distro_name or "",
                         "os_version_range": source.os_version or "",
-                        "architectures": sorted({p.arch for p in adv.packages if p.arch}),
+                        "architectures": normalize_architectures(
+                            (p.arch for p in adv.packages),
+                            fallback=source.arch or X86_64,
+                        ),
                         "repo_type": PackageManagerType.normalize(source.source_type),
                         "install_deps": adv.install_deps or {},
                     },
@@ -439,6 +449,7 @@ class SourceSyncService:
                     defaults={
                         "kb_number": normalized_kb,
                         "product_list": upd.products or [],
+                        "architectures": [X86_64],
                         "ms_bulletin": (upd.security_bulletins[0] if upd.security_bulletins else ""),
                     },
                 )
