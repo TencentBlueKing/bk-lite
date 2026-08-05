@@ -17,7 +17,7 @@ import TopMenu from '@/app/(core)/components/top-menu';
 import { Watermark, message } from 'antd';
 import Spin from '@/components/spin';
 import { portalBrandingDefaults, usePortalBranding } from '@/hooks/usePortalBranding';
-import { getProfessionalDashboardPermissionPath } from '@/app/monitor/dashboards/registry';
+import { getProfessionalDashboardPermissionPath } from '@/app/monitor/dashboards/metadata';
 import { isProfessionalDashboardRoute } from '@/app/monitor/dashboards/shared/utils';
 import '@/styles/globals.css';
 import { MenuItem } from '@/types/index'

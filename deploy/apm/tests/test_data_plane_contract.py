@@ -187,7 +187,7 @@ def _eventually(fetch, predicate, *, timeout: float = 45):
     raise AssertionError(f"condition not met before timeout; last value={last_value!r}")
 
 
-def test_otlp_reaches_trace_and_metric_stores_with_trusted_identity():
+def test_otlp_reaches_trace_and_metric_stores_without_apm_token_auth():
     _AuthHandler.enabled = True
     _AuthHandler.unavailable = False
     _AuthHandler.calls = 0
@@ -237,11 +237,11 @@ def test_otlp_reaches_trace_and_metric_stores_with_trusted_identity():
         )
         assert started.returncode == 0, f"{started.stdout}\n{started.stderr}"
 
-        assert _post_trace(edge_port, "0" * 31 + "1", "unauthorized", token=None, is_error=True)[0] == 401
-        assert _post_trace(edge_port, "0" * 31 + "2", "wrong-token", token="wrong", is_error=True)[0] == 401
+        assert _post_trace(edge_port, "0" * 31 + "1", "no-token", token=None, is_error=True)[0] == 200
+        assert _post_trace(edge_port, "0" * 31 + "2", "ignored-token", token="wrong", is_error=True)[0] == 200
         grpc_missing = _post_empty_grpc_trace(grpc_port, token=None)
         grpc_valid = _post_empty_grpc_trace(grpc_port, token=VALID_TOKEN)
-        assert " 401 " in grpc_missing[1], grpc_missing
+        assert grpc_missing[0] == 0 and " 200 " in grpc_missing[1], grpc_missing
         assert grpc_valid[0] == 0 and " 200 " in grpc_valid[1], grpc_valid
         assert "grpc-status: 0" in grpc_valid[2].lower(), grpc_valid
 
@@ -262,38 +262,12 @@ def test_otlp_reaches_trace_and_metric_stores_with_trusted_identity():
             is_error=False,
         )[0] == 200
 
-        # 正向结果应由边缘缓存；禁用后的撤销窗口不超过 10 秒。
-        _AuthHandler.enabled = False
-        assert _post_trace(
-            edge_port,
-            "0" * 31 + "3",
-            "cached-auth",
-            token=VALID_TOKEN,
-            is_error=True,
-        )[0] == 200
-        time.sleep(9.5)
-        assert _post_trace(
-            edge_port,
-            "0" * 31 + "4",
-            "revoked-auth",
-            token=VALID_TOKEN,
-            is_error=True,
-        )[0] == 401
-        _AuthHandler.enabled = True
-        _AuthHandler.unavailable = True
-        assert _post_trace(
-            edge_port,
-            "0" * 31 + "5",
-            "unavailable-auth",
-            token="uncached-token",
-            is_error=True,
-        )[0] == 503
-        _AuthHandler.unavailable = False
+        assert _AuthHandler.calls == 0
 
         trace_url = f"http://127.0.0.1:{traces_port}/select/tempo/api/v2/traces/{error_trace_id}"
         trace_status, trace_body = _eventually(
             lambda: _request(trace_url),
-            lambda value: value[0] == 200 and TRUSTED_SOURCE_ID in value[1],
+            lambda value: value[0] == 200 and "apm-contract-error" in value[1],
         )
         assert trace_status == 200
         assert "forged-header" not in trace_body
@@ -315,7 +289,7 @@ def test_otlp_reaches_trace_and_metric_stores_with_trusted_identity():
             lambda: _request(metric_url),
             lambda value: value[0] == 200 and "apm-contract-unsampled" in value[1],
         )
-        assert TRUSTED_SOURCE_ID in metric_body
+        assert TRUSTED_SOURCE_ID not in metric_body
         assert "unbounded-user" not in metric_body
     finally:
         auth_server.shutdown()

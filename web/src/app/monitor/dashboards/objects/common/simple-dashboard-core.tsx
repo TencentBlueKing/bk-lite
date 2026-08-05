@@ -9,6 +9,7 @@ import useViewApi from '@/app/monitor/api/view';
 import {
   normalizeDisplayText,
   resolveDashboardInstanceIdentity,
+  encodeInstanceIdValuesParam,
   buildInstanceDisplayName,
   buildInstanceSearchTokens,
   formatEnumValue,
@@ -29,7 +30,8 @@ import {
   filterInstanceOptionsByCluster,
   selectFirstInstanceInCluster,
   isInstanceOptionForIdentity,
-  DashboardInstanceOption
+  DashboardInstanceOption,
+  fetchDashboardInstancePages
 } from '../../shared/utils';
 import {
   CompareFavorableDirection,
@@ -88,6 +90,14 @@ export interface SummaryCardConfig {
   enumMap?: MetricEnumMap;
   /** 标记为运行时长卡片，启用 relaxed 布局 + 运行状态指示器 */
   isUptimeCard?: boolean;
+  /**
+   * 无序列时主值文案（缺省 '--'）。用于可选能力（如未配置端口探测）明示「未配置」而非空白。
+   */
+  emptyValue?: string;
+  /**
+   * 指标已成功返回且无序列时不展示该 KPI（可选采集项）；加载中/失败仍保留卡片避免闪烁。
+   */
+  hideWhenNoData?: boolean;
 }
 
 export interface ChartConfig {
@@ -397,10 +407,10 @@ export function useSimpleDashboardData(config: SimpleDashboardConfig) {
     const loadInstances = async () => {
       try {
         setInstanceLoading(true);
-        const data = await getInstanceList(monitorObjectId, { page_size: -1 });
+        const data = await fetchDashboardInstancePages(getInstanceList, monitorObjectId);
         if (!active) return;
         const uniqueOptions = new Map<string, InstanceOption>();
-        (data?.results || []).forEach((item: any) => {
+        (data.results || []).forEach((item: any) => {
           const value = String(item.instance_id || '');
           if (!value || uniqueOptions.has(value)) return;
           const label = buildInstanceDisplayName(item);
@@ -648,16 +658,24 @@ export function useSimpleDashboardData(config: SimpleDashboardConfig) {
   }, [getTransformedValue, hasMetricData, metricMap]);
 
   const summaryCards = useMemo<PreparedSummaryCard[]>(() => (
-    config.summaryCards.map((card) => {
-      const healthResult = card.formatter === 'enumHealth' && !card.enumMap && hasMetricData(card.metric)
+    config.summaryCards
+      .filter((card) => {
+        if (!card.hideWhenNoData) return true;
+        const target = metricMap[card.metric];
+        // 仅在查询成功且无序列时隐藏；加载中/失败保留卡片，避免可选指标闪烁。
+        return !(target?.loadState === 'success' && (!Array.isArray(target.viewData) || target.viewData.length === 0));
+      })
+      .map((card) => {
+      const hasData = hasMetricData(card.metric);
+      const healthResult = card.formatter === 'enumHealth' && !card.enumMap && hasData
         ? formatClusterHealth(getLatest(card.metric))
         : null;
-      const enumResult = card.enumMap && hasMetricData(card.metric)
+      const enumResult = card.enumMap && hasData
         ? formatMappedEnum(getLatest(card.metric), card.enumMap)
         : null;
 
-      const mainValue = !hasMetricData(card.metric)
-        ? { value: '--', unit: '' }
+      const mainValue = !hasData
+        ? { value: card.emptyValue || '--', unit: '' }
         : card.formatter === 'duration'
           ? { value: formatDuration(getLatest(card.metric)), unit: '' }
           : healthResult
@@ -667,7 +685,7 @@ export function useSimpleDashboardData(config: SimpleDashboardConfig) {
               : formatMetricValue(getLatest(card.metric), card.unit || metricMap[card.metric]?.unit || 'none');
 
       const uptimeState = card.isUptimeCard
-        ? !hasMetricData(card.metric)
+        ? !hasData
           ? { label: '状态未知', tone: 'empty' as const }
           : countRestartsInRange(metricMap[card.metric]?.viewData || []) > 0
             ? { label: '期间有重启', tone: 'warning' as const }
@@ -677,7 +695,7 @@ export function useSimpleDashboardData(config: SimpleDashboardConfig) {
       return {
         card,
         mainValue,
-        valueColor: enumResult?.color || healthResult?.color,
+        valueColor: enumResult?.color || healthResult?.color || (!hasData && card.emptyValue ? '#8c95a8' : undefined),
         compare: card.compare
           ? getPeriodCompare(getLatest(card.metric), getLatestChartValue(previousMetricMap[card.metric]?.viewData || []))
           : null,
@@ -855,7 +873,7 @@ export function useSimpleDashboardData(config: SimpleDashboardConfig) {
     const params = new URLSearchParams(searchParams.toString());
     params.set('instance_id', value);
     params.set('instance_name', String(target?.label || normalizedInstanceName || resolvedInstanceName || ''));
-    params.set('instance_id_values', (target?.instanceIdValues || [value]).join(','));
+    params.set('instance_id_values', encodeInstanceIdValuesParam(target?.instanceIdValues || [value]));
     router.push(`/monitor/view/dashboard/${config.routeKey}?${params.toString()}`);
   };
   const onClusterFilterChange = (cluster: string) => {

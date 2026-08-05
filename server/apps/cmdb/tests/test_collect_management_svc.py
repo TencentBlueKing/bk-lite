@@ -148,7 +148,54 @@ def test_contrast_routes_changed_business_field_to_update(monkeypatch):
     new = [{"inst_name": "a", "ip_addr": "10.0.0.2"}]
     m = _mgmt(monkeypatch, fake, old, new)
     assert [item["_id"] for item in m.update_list] == [1]
+
+
+def test_complete_empty_snapshot_can_delete_stale_instances(monkeypatch):
+    fake = FakeGraph()
+
+    class CompleteSnapshotPlugin:
+        _MODEL_ID = "winsphere"
+
+        @staticmethod
+        def is_authoritative_snapshot(model_id):
+            return True
+
+    m = _mgmt(
+        monkeypatch,
+        fake,
+        [{"inst_name": "stale-vm", "_id": 1}],
+        [],
+        collect_plugin=CompleteSnapshotPlugin(),
+        data_cleanup_strategy=DataCleanupStrategy.IMMEDIATELY,
+    )
+
+    assert [item["_id"] for item in m.delete_list] == [1]
     assert m.heartbeat_list == []
+
+
+def test_non_authoritative_snapshot_never_deletes_missing_instances(monkeypatch):
+    fake = FakeGraph()
+
+    class PartialSnapshotPlugin:
+        _MODEL_ID = "winsphere"
+
+        @staticmethod
+        def is_authoritative_snapshot(model_id):
+            return False
+
+    m = _mgmt(
+        monkeypatch,
+        fake,
+        [
+            {"inst_name": "current-vm", "_id": 1},
+            {"inst_name": "possibly-missing-vm", "_id": 2},
+        ],
+        [{"inst_name": "current-vm"}],
+        collect_plugin=PartialSnapshotPlugin(),
+        data_cleanup_strategy=DataCleanupStrategy.IMMEDIATELY,
+    )
+
+    assert m.delete_list == []
 
 
 def test_contrast_ignores_old_fields_absent_from_incremental_payload(monkeypatch):

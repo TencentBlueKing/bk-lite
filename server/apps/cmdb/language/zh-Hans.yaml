@@ -24,6 +24,7 @@ CLASSIFICATION:
   fixed_asset: 固定资产
   fusioninsight: FusionInsight
   ip_manager: IP管理
+  h3c_cas: 华三 UIS
 MODEL:
   biz: 应用
   module: 模块
@@ -147,6 +148,15 @@ MODEL:
   system: 应用系统
   tidb: TiDB
   tongweb: TongWeb
+  h3c_cas: 华三 UIS
+  h3c_cas_host_pool: UIS 主机池
+  h3c_cas_cluster: UIS 集群
+  h3c_cas_host: UIS 主机
+  h3c_cas_vm: UIS 虚拟机
+  h3c_cas_storage: UIS 存储池
+  h3c_cas_ds_pool: UIS 硬盘池
+  h3c_cas_data_pool: UIS 数据池
+  h3c_cas_vswitch: UIS 虚拟交换机
 ATTR:
   pc:
     inst_name: 实例

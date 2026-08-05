@@ -21,10 +21,10 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({
   const searchParams = useSearchParams();
   const { isLoading } = useApiClient();
   const { checkMonitorInstance } = useIntegrationApi();
-  const configs = useMonitorConfig();
   const pluginName = searchParams.get('plugin_name') || '';
   const objId = searchParams.get('id') || '';
   const objectName = searchParams.get('name') || '';
+  const configs = useMonitorConfig(objectName);
   const [confirmLoading, setConfirmLoading] = useState<boolean>(false);
   const [configMsg, setConfigMsg] = useState<string>('');
 
@@ -34,7 +34,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({
       mode: 'manual',
       pluginName,
     });
-  }, [pluginName, objectName]);
+  }, [pluginName, objectName, configs]);
 
   const formItems = useMemo(() => {
     return configsInfo.formItems;

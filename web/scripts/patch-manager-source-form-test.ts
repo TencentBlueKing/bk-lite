@@ -6,17 +6,38 @@ const read = (path: string) => readFileSync(resolve(root, path), 'utf8');
 const settingsPage = read('src/app/patch-manager/(pages)/settings/page.tsx');
 const targetPage = read('src/app/patch-manager/(pages)/target/page.tsx');
 const types = read('src/app/patch-manager/types/index.ts');
+const sourceLocales = `${read('src/app/patch-manager/locales/zh.json')}\n${read('src/app/patch-manager/locales/en.json')}`;
 
 for (const required of [
   "import Password from '@/components/password'",
   "const SAVED_SECRET = '********'",
   'record.has_auth_password ? SAVED_SECRET : undefined',
   'payload.auth_password === SAVED_SECRET',
+  'editingSource?.has_auth_password && !payload.auth_password',
+  "label: 'patchManager.catalogUrl'",
+  "label: 'patchManager.repoUrl'",
+  'extra={sourceUrlHelp}',
+  'patchManager.settingsPage.wsusUrlHelp',
+  'patchManager.settingsPage.yumRepoUrlHelp',
+  'patchManager.settingsPage.dnfRepoUrlHelp',
+  'patchManager.settingsPage.aptRepoUrlHelp',
   "sourceType !== 'wsus'",
+  "patchManager.settingsPage.authUserRequired",
+  "patchManager.settingsPage.authPasswordRequired",
   'has_auth_password?: boolean',
 ]) {
   if (!`${settingsPage}\n${types}`.includes(required)) {
     throw new Error(`补丁源编辑表单缺少约束: ${required}`);
+  }
+}
+
+for (const example of [
+  'https://mirrors.aliyun.com/rockylinux/8/BaseOS/x86_64/os/',
+  'https://mirrors.aliyun.com/rockylinux/9/BaseOS/x86_64/os/',
+  'https://mirrors.aliyun.com/ubuntu',
+]) {
+  if (!sourceLocales.includes(example)) {
+    throw new Error(`补丁源表单缺少真实仓库示例: ${example}`);
   }
 }
 

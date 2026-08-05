@@ -45,7 +45,7 @@ const ConditionSelector: React.FC<ConditionSelectorProps> = ({
 }) => {
   const { t } = useTranslation();
   const CONDITION_LIST = useConditionList();
-  const { getGroupIds } = useObjectConfigInfo();
+  const { getGroupIds } = useObjectConfigInfo(monitorName);
   const [conditions, setConditions] = useState<FilterItem[]>(
     data.filters || []
   );

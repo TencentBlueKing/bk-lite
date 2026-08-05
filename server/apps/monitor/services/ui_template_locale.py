@@ -32,6 +32,36 @@ _FILE_OVERLAY_TOP_KEYS = ("advanced_panel",)
 
 _EN_LOCALES = {"en", "en-us", "en-gb"}
 
+# UI.json 磁盘 overlay 按路径+mtime 缓存，避免每次 enrich 重复读盘。
+_UI_FILE_OVERLAY_CACHE: dict[str, tuple[float, dict]] = {}
+_UI_FILE_OVERLAY_CACHE_MAX = 256
+
+
+def _load_ui_file_overlay(ui_file: Path) -> dict | None:
+    try:
+        mtime = ui_file.stat().st_mtime
+    except OSError:
+        return None
+    key = str(ui_file)
+    hit = _UI_FILE_OVERLAY_CACHE.get(key)
+    if hit and hit[0] == mtime:
+        return hit[1]
+    try:
+        file_ui = json.loads(ui_file.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError, TypeError):
+        return None
+    if not isinstance(file_ui, dict):
+        return None
+    if len(_UI_FILE_OVERLAY_CACHE) >= _UI_FILE_OVERLAY_CACHE_MAX:
+        _UI_FILE_OVERLAY_CACHE.clear()
+    _UI_FILE_OVERLAY_CACHE[key] = (mtime, file_ui)
+    return file_ui
+
+
+def clear_ui_file_overlay_cache() -> None:
+    _UI_FILE_OVERLAY_CACHE.clear()
+
+
 # UI.json 的历史模板中有一小组重复的输入提示尚未提供 ``*_en`` 字段。
 # 仅对这里审定过的精确文案回退，避免把任意中文内容当作可自动翻译的文本。
 _EN_FALLBACKS = {
@@ -265,10 +295,7 @@ def enrich_ui_template_from_plugin_files(content: dict | None, plugin: MonitorPl
     if plugin_dir is not None:
         ui_file = Path(plugin_dir) / "UI.json"
         if ui_file.is_file():
-            try:
-                file_ui = json.loads(ui_file.read_text(encoding="utf-8"))
-            except (OSError, json.JSONDecodeError, TypeError):
-                file_ui = None
+            file_ui = _load_ui_file_overlay(ui_file)
 
             if isinstance(file_ui, dict):
                 file_fields = {

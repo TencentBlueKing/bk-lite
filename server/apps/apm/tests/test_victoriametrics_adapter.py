@@ -209,14 +209,12 @@ def test_instance_activity_only_accepts_complete_trusted_catalog_dimensions():
                     "service_instance_id": "pod-a",
                     "deployment_environment": "production",
                     "service_version": "1.0",
-                    "bk_ingest_source_id": "11111111-2222-4333-8444-555555555555",
                 },
                 "value": [0, str(now.timestamp())],
             },
             {
                 "metric": {
-                    "service_name": "ignored-invalid-source",
-                    "bk_ingest_source_id": "not-a-uuid",
+                    "service_name": "accepted-without-source",
                 },
                 "value": [0, str(now.timestamp())],
             },
@@ -228,12 +226,13 @@ def test_instance_activity_only_accepts_complete_trusted_catalog_dimensions():
         InstanceActivityQuery(started_at=now - timedelta(minutes=20), ended_at=now)
     )
 
-    assert len(activities) == 1
+    assert len(activities) == 2
     assert activities[0].instance_id == "pod-a"
     assert activities[0].last_seen_at == now
     promql = session.get.call_args.kwargs["params"]["query"]
     assert "tlast_over_time" in promql
-    assert "bk_ingest_source_id" in promql
+    assert "bk_ingest_source_id" not in promql
+    assert "service_version" in promql
 
 
 def test_transport_failures_are_mapped_to_degraded_store_error():

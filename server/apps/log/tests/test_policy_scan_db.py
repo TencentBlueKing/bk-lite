@@ -132,6 +132,37 @@ class TestKeywordAlertDetection:
 
 
 class TestAggregateAlertDetection:
+    def test_group_source_id_stays_within_storage_limit(self, mocker):
+        policy = _make_policy(
+            alert_type="aggregate",
+            alert_name="${url} 聚合",
+            alert_condition={
+                "query": "*",
+                "group_by": ["url"],
+                "rule": {
+                    "mode": "and",
+                    "conditions": [{"func": "count", "field": "_msg", "op": ">", "value": 2}],
+                },
+            },
+        )
+        scan = LogPolicyScan(policy)
+        mocker.patch.object(
+            scan.vlogs_api,
+            "query",
+            return_value=[{"url": f"https://example.com/{'x' * 200}", "count__msg": "9"}],
+        )
+
+        event = scan.aggregate_alert_detection()[0]
+
+        assert len(event["source_id"]) <= 100
+        assert event["source_id"].startswith(f"policy_{policy.id}_g2_")
+        assert "source_id_aliases" not in event
+
+        persisted_event = scan.create_events([event])[0]
+        assert persisted_event.source_id == event["source_id"]
+        assert persisted_event.alert.source_id == event["source_id"]
+        assert AlertSnapshot.objects.get(alert=persisted_event.alert).source_id == event["source_id"]
+
     def test_emits_event_when_condition_met(self, mocker):
         policy = _make_policy(
             alert_type="aggregate",
@@ -155,7 +186,36 @@ class TestAggregateAlertDetection:
         assert len(events) == 1
         assert events[0]["value"] == 9
         assert events[0]["content"] == "h1 聚合"
-        assert events[0]["source_id"].startswith(f"policy_{policy.id}_host=h1")
+        assert events[0]["source_id"].startswith(f"policy_{policy.id}_g2_")
+        assert events[0]["source_id_aliases"] == [f"policy_{policy.id}_host=h1"]
+
+    def test_ambiguous_legacy_group_keys_have_distinct_source_ids(self, mocker):
+        policy = _make_policy(
+            alert_type="aggregate",
+            alert_name="歧义分组",
+            alert_condition={
+                "query": "*",
+                "group_by": ["a", "b"],
+                "rule": {
+                    "mode": "and",
+                    "conditions": [{"func": "count", "field": "_msg", "op": ">", "value": 2}],
+                },
+            },
+        )
+        scan = LogPolicyScan(policy)
+        mocker.patch.object(
+            scan.vlogs_api,
+            "query",
+            return_value=[
+                {"a": "x, b=y", "b": "z", "count__msg": "9"},
+                {"a": "x", "b": "y, b=z", "count__msg": "8"},
+            ],
+        )
+
+        events = scan.aggregate_alert_detection()
+
+        assert events[0]["source_id"] != events[1]["source_id"]
+        assert events[0]["source_id_aliases"] == events[1]["source_id_aliases"]
 
     def test_no_rule_conditions_returns_empty(self):
         policy = _make_policy(alert_type="aggregate", alert_condition={"query": "*", "rule": {}})
@@ -181,6 +241,347 @@ class TestAggregateAlertDetection:
 
 
 class TestCreateEvents:
+    def test_group_identity_upgrade_reuses_legacy_active_alert(self, mocker):
+        policy = _make_policy(
+            alert_type="aggregate",
+            alert_name="${host} 聚合",
+            alert_condition={
+                "query": "*",
+                "group_by": ["host"],
+                "rule": {
+                    "mode": "and",
+                    "conditions": [{"func": "count", "field": "_msg", "op": ">", "value": 2}],
+                },
+            },
+        )
+        legacy_source_id = f"policy_{policy.id}_host=h1"
+        legacy_alert = Alert.objects.create(
+            id="legacy-group-alert",
+            policy=policy,
+            source_id=legacy_source_id,
+            level="warning",
+            value=1,
+            content="旧告警",
+            status=AlertConstants.STATUS_NEW,
+            start_event_time=timezone.now(),
+            end_event_time=timezone.now(),
+        )
+        scan = LogPolicyScan(policy)
+        mocker.patch.object(scan.vlogs_api, "query", return_value=[{"host": "h1", "count__msg": "9"}])
+        event = scan.aggregate_alert_detection()[0]
+
+        created_events = scan.create_events([event])
+
+        assert Alert.objects.filter(policy=policy).count() == 1
+        assert created_events[0].alert_id == legacy_alert.id
+        legacy_alert.refresh_from_db()
+        assert legacy_alert.source_id == legacy_source_id
+
+    def test_new_safe_group_keeps_legacy_alert_identity_for_rollback_handoff(self, mocker):
+        policy = _make_policy(
+            alert_type="aggregate",
+            alert_name="${host} 聚合",
+            alert_condition={
+                "query": "*",
+                "group_by": ["host"],
+                "rule": {
+                    "mode": "and",
+                    "conditions": [{"func": "count", "field": "_msg", "op": ">", "value": 2}],
+                },
+            },
+        )
+        scan_time = timezone.now()
+        new_scan = LogPolicyScan(policy, scan_time=scan_time, execution_key="new-worker")
+        mocker.patch.object(new_scan.vlogs_api, "query", return_value=[{"host": "h1", "count__msg": "9"}])
+        new_event = new_scan.create_events(new_scan.aggregate_alert_detection())[0]
+        legacy_source_id = f"policy_{policy.id}_host=h1"
+
+        assert new_event.source_id.startswith(f"policy_{policy.id}_g2_")
+        assert new_event.alert.source_id == legacy_source_id
+        assert AlertSnapshot.objects.get(alert=new_event.alert).source_id == legacy_source_id
+
+        old_scan = LogPolicyScan(
+            policy,
+            scan_time=scan_time + timezone.timedelta(minutes=1),
+            execution_key="old-worker",
+        )
+        old_event = old_scan.create_events(
+            [{"source_id": legacy_source_id, "level": "warning", "content": "旧 worker 命中", "value": 10, "raw_data": []}]
+        )[0]
+
+        assert old_event.alert_id == new_event.alert_id
+        assert Alert.objects.filter(policy=policy).count() == 1
+
+    def test_grouped_alias_claim_uses_policy_row_lock(self, mocker):
+        policy = _make_policy(alert_type="aggregate")
+        lock = mocker.spy(Policy.objects, "select_for_update")
+        source_id = f"policy_{policy.id}_g2_deadbeef"
+
+        LogPolicyScan(policy).create_events(
+            [
+                {
+                    "source_id": source_id,
+                    "source_id_aliases": [f"policy_{policy.id}_host=h1"],
+                    "level": "warning",
+                    "content": "命中",
+                    "value": 1,
+                    "raw_data": [],
+                }
+            ]
+        )
+
+        lock.assert_called_once_with()
+
+    def test_ambiguous_legacy_alias_is_claimed_by_only_one_new_group(self, mocker):
+        policy = _make_policy(
+            alert_type="aggregate",
+            alert_name="歧义分组",
+            alert_condition={
+                "query": "*",
+                "group_by": ["a", "b"],
+                "rule": {
+                    "mode": "and",
+                    "conditions": [{"func": "count", "field": "_msg", "op": ">", "value": 2}],
+                },
+            },
+        )
+        legacy_source_id = f"policy_{policy.id}_a=x, b=y, b=z"
+        legacy_alert = Alert.objects.create(
+            id="ambiguous-legacy-alert",
+            policy=policy,
+            source_id=legacy_source_id,
+            level="warning",
+            value=1,
+            content="旧告警",
+            status=AlertConstants.STATUS_NEW,
+            start_event_time=timezone.now(),
+            end_event_time=timezone.now(),
+        )
+        scan = LogPolicyScan(policy)
+        mocker.patch.object(
+            scan.vlogs_api,
+            "query",
+            return_value=[
+                {"a": "x, b=y", "b": "z", "count__msg": "9"},
+                {"a": "x", "b": "y, b=z", "count__msg": "8"},
+            ],
+        )
+
+        created_events = scan.create_events(scan.aggregate_alert_detection())
+
+        assert Alert.objects.filter(policy=policy).count() == 2
+        assert len({event.alert_id for event in created_events}) == 2
+        assert legacy_alert.id in {event.alert_id for event in created_events}
+        assert len({event.source_id for event in created_events}) == 2
+        assert Alert.objects.filter(policy=policy, source_id=legacy_source_id).count() == 1
+
+    def test_legacy_alias_claim_persists_across_scans(self, mocker):
+        policy = _make_policy(
+            alert_type="aggregate",
+            alert_name="歧义分组",
+            alert_condition={
+                "query": "*",
+                "group_by": ["a", "b"],
+                "rule": {
+                    "mode": "and",
+                    "conditions": [{"func": "count", "field": "_msg", "op": ">", "value": 2}],
+                },
+            },
+        )
+        first_scan_time = timezone.now()
+        legacy_source_id = f"policy_{policy.id}_a=x, b=y, b=z"
+        legacy_alert = Alert.objects.create(
+            id="persisted-legacy-claim",
+            policy=policy,
+            source_id=legacy_source_id,
+            level="warning",
+            value=1,
+            content="旧告警",
+            status=AlertConstants.STATUS_NEW,
+            start_event_time=first_scan_time - timezone.timedelta(minutes=1),
+            end_event_time=first_scan_time - timezone.timedelta(minutes=1),
+        )
+        legacy_event = Event.objects.create(
+            id="persisted-legacy-event",
+            policy=policy,
+            source_id=legacy_source_id,
+            alert=legacy_alert,
+            event_time=first_scan_time - timezone.timedelta(minutes=1),
+            value=1,
+            level="warning",
+            content="旧事件",
+        )
+        first_scan = LogPolicyScan(policy, scan_time=first_scan_time, execution_key="first-scan")
+        mocker.patch.object(first_scan.vlogs_api, "query", return_value=[{"a": "x, b=y", "b": "z", "count__msg": "9"}])
+        first_event = first_scan.create_events(first_scan.aggregate_alert_detection())[0]
+        assert first_event.alert_id == legacy_alert.id
+        assert first_event.id != legacy_event.id
+        assert first_event.source_id.startswith(f"policy_{policy.id}_g2_")
+        legacy_event.refresh_from_db()
+        assert legacy_event.source_id == legacy_source_id
+
+        second_scan = LogPolicyScan(
+            policy,
+            scan_time=first_scan.scan_time + timezone.timedelta(minutes=1),
+            execution_key="second-scan",
+        )
+        mocker.patch.object(second_scan.vlogs_api, "query", return_value=[{"a": "x", "b": "y, b=z", "count__msg": "8"}])
+
+        second_event = second_scan.create_events(second_scan.aggregate_alert_detection())[0]
+
+        assert Alert.objects.filter(policy=policy).count() == 2
+        assert second_event.alert_id != legacy_alert.id
+
+    def test_snapshot_failure_keeps_legacy_event_discoverable_for_rollback(self, mocker):
+        policy = _make_policy(alert_type="aggregate")
+        scan_time = timezone.now()
+        legacy_source_id = f"policy_{policy.id}_host=h1"
+        legacy_alert = Alert.objects.create(
+            id="rollback-legacy-alert",
+            policy=policy,
+            source_id=legacy_source_id,
+            level="warning",
+            value=1,
+            content="旧告警",
+            status=AlertConstants.STATUS_NEW,
+            start_event_time=scan_time - timezone.timedelta(minutes=1),
+            end_event_time=scan_time - timezone.timedelta(minutes=1),
+        )
+        legacy_event = Event.objects.create(
+            id="rollback-legacy-event",
+            policy=policy,
+            source_id=legacy_source_id,
+            alert=legacy_alert,
+            event_time=scan_time - timezone.timedelta(minutes=1),
+            value=1,
+            level="warning",
+            content="旧事件",
+        )
+        new_scan = LogPolicyScan(policy, scan_time=scan_time, execution_key="upgrade-scan")
+        mocker.patch.object(new_scan, "_create_snapshots_for_alerts", side_effect=RuntimeError("snapshot down"))
+
+        with pytest.raises(RuntimeError, match="snapshot down"):
+            new_scan.create_events(
+                [
+                    {
+                        "source_id": f"policy_{policy.id}_g2_deadbeef",
+                        "source_id_aliases": [legacy_source_id],
+                        "level": "warning",
+                        "content": "新版本命中",
+                        "value": 2,
+                        "raw_data": [],
+                    }
+                ]
+            )
+
+        legacy_event.refresh_from_db()
+        assert legacy_event.source_id == legacy_source_id
+        assert Event.objects.filter(policy=policy).count() == 2
+
+        rollback_event = LogPolicyScan(
+            policy,
+            scan_time=scan_time + timezone.timedelta(minutes=1),
+            execution_key="rollback-scan",
+        ).create_events(
+            [
+                {
+                    "source_id": legacy_source_id,
+                    "level": "warning",
+                    "content": "回滚版本命中",
+                    "value": 3,
+                    "raw_data": [],
+                }
+            ]
+        )[0]
+
+        assert rollback_event.id == legacy_event.id
+        assert rollback_event.alert_id == legacy_alert.id
+        assert Event.objects.filter(policy=policy).count() == 2
+
+    def test_primary_identity_reuses_alert_when_group_field_order_changes(self, mocker):
+        policy = _make_policy(
+            alert_type="aggregate",
+            alert_name="字段顺序调整",
+            alert_condition={
+                "query": "*",
+                "group_by": ["a", "b"],
+                "rule": {
+                    "mode": "and",
+                    "conditions": [{"func": "count", "field": "_msg", "op": ">", "value": 2}],
+                },
+            },
+        )
+        first_scan_time = timezone.now()
+        first_scan = LogPolicyScan(policy, scan_time=first_scan_time, execution_key="first-order")
+        mocker.patch.object(first_scan.vlogs_api, "query", return_value=[{"a": "x", "b": "y", "count__msg": "9"}])
+        first_event = first_scan.create_events(first_scan.aggregate_alert_detection())[0]
+        Event.objects.bulk_create(
+            [
+                Event(
+                    id=f"group-order-history-{index}",
+                    policy=policy,
+                    source_id=first_event.source_id,
+                    alert=first_event.alert,
+                    event_time=first_scan_time - timezone.timedelta(days=index + 1),
+                    value=index,
+                    level="warning",
+                    content="历史事件",
+                )
+                for index in range(3)
+            ]
+        )
+
+        policy.alert_condition = {**policy.alert_condition, "group_by": ["b", "a"]}
+        second_scan = LogPolicyScan(
+            policy,
+            scan_time=first_scan.scan_time + timezone.timedelta(minutes=1),
+            execution_key="second-order",
+            cursor_time=first_scan_time,
+        )
+        mocker.patch.object(second_scan.vlogs_api, "query", return_value=[{"a": "x", "b": "y", "count__msg": "8"}])
+
+        second_event = second_scan.create_events(second_scan.aggregate_alert_detection())[0]
+
+        assert second_event.source_id == first_event.source_id
+        assert second_event.alert_id == first_event.alert_id
+        assert Alert.objects.filter(policy=policy).count() == 1
+
+    @pytest.mark.skipif(not connection.features.has_select_for_update, reason="测试数据库不支持行锁")
+    @pytest.mark.django_db(transaction=True)
+    def test_concurrent_new_groups_claim_same_legacy_alias_only_once(self):
+        policy = _make_policy(alert_type="aggregate")
+        legacy_source_id = f"policy_{policy.id}_a=x, b=y, b=z"
+        ready = Barrier(2)
+
+        def create_once(suffix):
+            close_old_connections()
+            try:
+                ready.wait(timeout=5)
+                return LogPolicyScan(
+                    Policy.objects.get(id=policy.id),
+                    execution_key=f"claim-{suffix}",
+                ).create_events(
+                    [
+                        {
+                            "source_id": f"policy_{policy.id}_g2_{suffix}",
+                            "source_id_aliases": [legacy_source_id],
+                            "level": "warning",
+                            "content": f"分组 {suffix}",
+                            "value": 1,
+                            "raw_data": [],
+                        }
+                    ]
+                )[0]
+            finally:
+                close_old_connections()
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            created_events = list(executor.map(create_once, ["first", "second"]))
+
+        assert len({event.alert_id for event in created_events}) == 2
+        assert Alert.objects.filter(policy=policy).count() == 2
+        assert Alert.objects.filter(policy=policy, source_id=legacy_source_id).count() == 1
+
     def test_creates_alert_event_and_snapshot(self, mocker):
         policy = _make_policy()
         scan = LogPolicyScan(policy)

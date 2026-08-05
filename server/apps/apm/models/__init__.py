@@ -1,9 +1,9 @@
 from apps.apm.models.control_plane import (
     ApmAlert,
     ApmAlertOutbox,
+    ApmApplication,
+    ApmApplicationOrganization,
     ApmEvent,
-    ApmIngestSource,
-    ApmIngestSourceOrganization,
     ApmNotificationDeliveryRetry,
     ApmPolicy,
     ApmPolicyNotificationTarget,
@@ -18,9 +18,9 @@ from apps.apm.models.control_plane import (
 __all__ = [
     "ApmAlert",
     "ApmAlertOutbox",
+    "ApmApplication",
+    "ApmApplicationOrganization",
     "ApmEvent",
-    "ApmIngestSource",
-    "ApmIngestSourceOrganization",
     "ApmNotificationDeliveryRetry",
     "ApmPolicy",
     "ApmPolicyNotificationTarget",

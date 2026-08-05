@@ -39,7 +39,8 @@ import {
   getCollectionStatus,
   runWithConcurrency,
   formatMetricValue,
-  useLoadSequence
+  useLoadSequence,
+  fetchDashboardInstancePages
 } from '../../shared/utils';
 import useViewApi from '@/app/monitor/api/view';
 import MetricViews from '@/app/monitor/components/metric-views';
@@ -168,10 +169,10 @@ export default function MongoDashboardPage() {
     const loadInstances = async () => {
       try {
         setInstanceLoading(true);
-        const data = await getInstanceList(monitorObjectId, { page_size: -1 });
+        const data = await fetchDashboardInstancePages(getInstanceList, monitorObjectId);
         if (!active) return;
         const uniqueOptions = new Map<string, InstanceOption>();
-        (data?.results || []).forEach((item: any) => {
+        (data.results || []).forEach((item: any) => {
           const value = String(item.instance_id || '');
           if (!value || uniqueOptions.has(value)) return;
           const label = buildInstanceDisplayName(item);

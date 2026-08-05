@@ -6,6 +6,7 @@ from apps.core.mixinx import EncryptMixin
 from apps.core.models.maintainer_info import MaintainerInfo
 from apps.core.models.time_info import TimeInfo
 from apps.patch_mgmt.constants import ConnectivityStatus, PatchSourceType
+from apps.patch_mgmt.utils.architecture import ARCHITECTURE_CHOICES
 
 
 class PatchSource(TimeInfo, MaintainerInfo):
@@ -28,7 +29,13 @@ class PatchSource(TimeInfo, MaintainerInfo):
     # Linux 源专用字段
     distro_name = models.CharField(max_length=64, blank=True, default="", verbose_name="发行版名称")
     os_version = models.CharField(max_length=64, blank=True, default="", verbose_name="系统版本")
-    arch = models.CharField(max_length=32, blank=True, default="", verbose_name="架构")
+    arch = models.CharField(
+        max_length=32,
+        choices=ARCHITECTURE_CHOICES,
+        blank=True,
+        default="",
+        verbose_name="架构",
+    )
 
     # WSUS 网络代理配置
     proxy_host = models.CharField(max_length=256, blank=True, default="", verbose_name="代理主机")

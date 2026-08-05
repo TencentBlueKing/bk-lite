@@ -6,7 +6,9 @@ import {
   createNodeMgmtSyncRequestGuard,
   getNodeMgmtSyncDisplayEmptyStateKey,
   getNodeMgmtSyncEmptyStateKey,
+  getNodeMgmtSyncRawCounts,
   getNodeMgmtSyncReasonTextKey,
+  getNodeMgmtSyncRowKey,
   normalizeNodeMgmtSyncStatus,
 } from '../src/app/cmdb/(pages)/assetManage/autoDiscovery/collection/profess/components/nodeMgmtSyncViewModel';
 
@@ -67,6 +69,27 @@ assert.equal(
   }),
   'Collection.nodeMgmtSync.empty.noAccessPoint',
   '真实展示 payload 的父任务 NO_ACCESS_POINT 必须进入专用空态'
+);
+assert.equal(
+  getNodeMgmtSyncRowKey({ _row_key: 'persisted-row', name: 'same', pid: '1' }),
+  'persisted-row',
+  'v2 原始行必须使用后端持久键'
+);
+assert.notEqual(
+  getNodeMgmtSyncRowKey({ model_id: 'host_proc_usage', name: 'same', ip: '10.0.0.1', pid: '1' }),
+  getNodeMgmtSyncRowKey({ model_id: 'host_proc_usage', name: 'same', ip: '10.0.0.1', pid: '2' }),
+  'legacy 同名进程必须由 PID 区分'
+);
+assert.deepEqual(
+  getNodeMgmtSyncRawCounts({
+    raw_total: 4,
+    raw_host: 1,
+    raw_process: 3,
+    raw_dropped: 0,
+    raw_retained: 4,
+    raw_truncated: false,
+  }),
+  { total: 4, host: 1, process: 3, dropped: 0, retained: 4, truncated: false }
 );
 
 interface Deferred<T> {
@@ -137,6 +160,8 @@ const testRequestGuard = async () => {
     assert.ok(nodeMgmtSync.reason?.unknown, `${locale}: 缺少未知错误码脱敏 fallback`);
     assert.ok(nodeMgmtSync.reason?.nodeSourceEmpty, `${locale}: 缺少节点源为空文案`);
     assert.ok(nodeMgmtSync.reason?.noValidNodes, `${locale}: 缺少无有效节点文案`);
+    assert.ok(nodeMgmtSync.rawSummary, `${locale}: 缺少原始指标双口径文案`);
+    assert.ok(nodeMgmtSync.table?.pid, `${locale}: 缺少 PID 列文案`);
   }
 };
 

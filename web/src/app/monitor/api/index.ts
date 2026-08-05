@@ -102,6 +102,9 @@ const useMonitorApi = () => {
       // 搜索关键字(后端在 i18n 翻译完成后,对 name / display_name /
       // display_description / parent_object_display_name 做 icontains 内存匹配)
       keyword?: string;
+      // 传 page_size>0 时后端返回 {count, items};不传或 -1/0 仍返回全量数组
+      page?: number;
+      page_size?: number;
     } = {},
     config?: AxiosRequestConfig
   ) => {

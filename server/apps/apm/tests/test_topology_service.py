@@ -4,7 +4,7 @@ import pytest
 from django.utils import timezone
 
 from apps.apm.adapters import InMemoryTraceStore
-from apps.apm.services import DjangoApmTopologyService, DjangoIngestSourceService, DjangoTelemetryCatalogService
+from apps.apm.services import DjangoApmTopologyService, DjangoTelemetryCatalogService
 from apps.apm.services.contracts import (
     CatalogDiscovery,
     SpanDetail,
@@ -12,16 +12,17 @@ from apps.apm.services.contracts import (
     TraceDetail,
     TraceSummary,
 )
+from apps.apm.tests.helpers import create_application
 
 
-def _telemetry(now, source_id=None):
+def _telemetry(now):
     trace_id = "a" * 32
-    summary = TraceSummary(trace_id, now, 30, "shop", "gateway", "prod", "gateway-1", "error", ingest_source_id=source_id)
+    summary = TraceSummary(trace_id, now, 30, "shop", "gateway", "prod", "gateway-1", "error")
     spans = (
-        SpanDetail("1" * 16, None, "GET /checkout", now, 30, "ok", service_namespace="shop", service_name="gateway", environment="prod", instance_id="gateway-1", ingest_source_id=source_id),
-        SpanDetail("2" * 16, "1" * 16, "POST /pay", now, 20, "error", service_namespace="shop", service_name="payment", environment="prod", instance_id="payment-1", ingest_source_id=source_id),
+        SpanDetail("1" * 16, None, "GET /checkout", now, 30, "ok", service_namespace="shop", service_name="gateway", environment="prod", instance_id="gateway-1"),
+        SpanDetail("2" * 16, "1" * 16, "POST /pay", now, 20, "error", service_namespace="shop", service_name="payment", environment="prod", instance_id="payment-1"),
     )
-    detail = TraceDetail(trace_id, spans, "shop", "gateway", "prod", "gateway-1", source_id)
+    detail = TraceDetail(trace_id, spans, "shop", "gateway", "prod", "gateway-1")
     return summary, detail
 
 
@@ -50,16 +51,11 @@ def test_topology_builds_bounded_service_edges_from_real_trace_relationships():
 @pytest.mark.django_db
 def test_topology_api_only_queries_targets_visible_to_current_organization(apm_api_client, mocker):
     now = timezone.now()
-    source = DjangoIngestSourceService().create(
-        name="topology-source",
-        ingest_type="otlp_http",
-        organization_ids=[10],
-        actor="tester",
-    ).source
+    create_application("shop", (10,))
     catalog = DjangoTelemetryCatalogService()
-    catalog.discover(CatalogDiscovery(source.id, "shop", "gateway", "gateway-1", "prod", seen_at=now))
-    catalog.discover(CatalogDiscovery(source.id, "shop", "payment", "payment-1", "prod", seen_at=now))
-    summary, detail = _telemetry(now, source.id)
+    catalog.discover(CatalogDiscovery("shop", "gateway", "gateway-1", "prod", seen_at=now))
+    catalog.discover(CatalogDiscovery("shop", "payment", "payment-1", "prod", seen_at=now))
+    summary, detail = _telemetry(now)
     service = DjangoApmTopologyService(InMemoryTraceStore(summaries=[summary], details=[detail]))
     mocked = mocker.patch("apps.apm.views.topology.ApmTopologyViewSet._service", return_value=service)
 
@@ -74,23 +70,18 @@ def test_topology_api_only_queries_targets_visible_to_current_organization(apm_a
 @pytest.mark.django_db
 def test_topology_api_uses_service_visibility_instead_of_instance_visibility(apm_api_client, mocker):
     now = timezone.now()
-    source = DjangoIngestSourceService().create(
-        name="instance-private-topology-source",
-        ingest_type="otlp_http",
-        organization_ids=[20],
-        actor="tester",
-    ).source
+    create_application("shop", (20,))
     catalog = DjangoTelemetryCatalogService()
     gateway = catalog.discover(
-        CatalogDiscovery(source.id, "shop", "gateway", "gateway-1", "prod", seen_at=now)
+        CatalogDiscovery("shop", "gateway", "gateway-1", "prod", seen_at=now)
     )
     payment = catalog.discover(
-        CatalogDiscovery(source.id, "shop", "payment", "payment-1", "prod", seen_at=now)
+        CatalogDiscovery("shop", "payment", "payment-1", "prod", seen_at=now)
     )
     catalog.set_service_organizations(gateway.service.id, [10], actor="tester")
     catalog.set_service_organizations(payment.service.id, [10], actor="tester")
 
-    summary, detail = _telemetry(now, source.id)
+    summary, detail = _telemetry(now)
     service = DjangoApmTopologyService(InMemoryTraceStore(summaries=[summary], details=[detail]))
     mocker.patch("apps.apm.views.topology.ApmTopologyViewSet._service", return_value=service)
 
@@ -104,22 +95,17 @@ def test_topology_api_uses_service_visibility_instead_of_instance_visibility(apm
 @pytest.mark.django_db
 def test_topology_api_does_not_leak_related_services_outside_service_scope(apm_api_client, mocker):
     now = timezone.now()
-    source = DjangoIngestSourceService().create(
-        name="cross-scope-topology-source",
-        ingest_type="otlp_http",
-        organization_ids=[20],
-        actor="tester",
-    ).source
+    create_application("shop", (20,))
     catalog = DjangoTelemetryCatalogService()
     gateway = catalog.discover(
-        CatalogDiscovery(source.id, "shop", "gateway", "gateway-1", "prod", seen_at=now)
+        CatalogDiscovery("shop", "gateway", "gateway-1", "prod", seen_at=now)
     )
     catalog.discover(
-        CatalogDiscovery(source.id, "shop", "payment", "payment-1", "prod", seen_at=now)
+        CatalogDiscovery("shop", "payment", "payment-1", "prod", seen_at=now)
     )
     catalog.set_service_organizations(gateway.service.id, [10], actor="tester")
 
-    summary, detail = _telemetry(now, source.id)
+    summary, detail = _telemetry(now)
     service = DjangoApmTopologyService(InMemoryTraceStore(summaries=[summary], details=[detail]))
     mocker.patch("apps.apm.views.topology.ApmTopologyViewSet._service", return_value=service)
 

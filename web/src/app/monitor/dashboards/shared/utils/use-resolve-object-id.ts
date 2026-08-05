@@ -3,7 +3,7 @@
 import { useEffect, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import useMonitorApi from '@/app/monitor/api';
-import { PROFESSIONAL_DASHBOARDS } from '../../registry';
+import { findProfessionalDashboardMetaByKey } from '../../metadata';
 import { normalizeDashboardKey } from './index';
 import { buildInstanceDisplayName, encodeInstanceIdValuesParam } from './instance';
 
@@ -48,14 +48,7 @@ export function useResolveObjectId(objectKey: string) {
     if (resolving.current || !objectKey) return;
 
     if (!monitorObjId) {
-      const normalizedKey = normalizeDashboardKey(objectKey);
-      const registryItem = PROFESSIONAL_DASHBOARDS.find(
-        (item) =>
-          [item.key, ...(item.aliases || []), item.objectName, item.objectDisplayName]
-            .filter(Boolean)
-            .map((value) => normalizeDashboardKey(value))
-            .includes(normalizedKey)
-      );
+      const registryItem = findProfessionalDashboardMetaByKey(objectKey);
       if (!registryItem) return;
       const registryCandidates = [registryItem.key, ...(registryItem.aliases || []), registryItem.objectName, registryItem.objectDisplayName]
         .filter(Boolean)

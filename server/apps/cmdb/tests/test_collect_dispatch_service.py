@@ -253,6 +253,62 @@ def test_sync_collect_task_uses_raw_vm_outcomes_for_status(
 
 
 @pytest.mark.django_db
+def test_sync_collect_task_marks_influxdb_operator_token_warning_partial(
+    monkeypatch,
+):
+    task = _create_task(
+        task_type=CollectPluginTypes.PROTOCOL,
+        driver_type=CollectDriverTypes.PROTOCOL,
+    )
+    task.model_id = "influxdb"
+    task.credential = [
+        {
+            "credential_id": "cred-1",
+            "scheme": "https",
+            "port": 8086,
+            "verify_tls": True,
+            "token": "operator-secret",
+        }
+    ]
+    task.save(update_fields=["model_id", "credential"])
+    collect = MagicMock()
+    collect.main.return_value = (
+        {},
+        {
+            "add": [],
+            "update": [],
+            "delete": [],
+            "association": [],
+            "__raw_data__": [
+                {"version": "2.7.5", "ip_addr": "10.0.0.1"},
+                {
+                    "ip_addr": "10.0.0.1",
+                    "collect_status": "failed",
+                    "collect_error": "Operator Token 无效或权限不足，无法读取 InfluxDB 运行配置",
+                },
+            ],
+            "all": 1,
+        },
+    )
+    monkeypatch.setattr(
+        "apps.cmdb.services.collect_service.CollectModelService.repair_host_cloud_snapshot",
+        lambda instance: None,
+    )
+    monkeypatch.setattr(
+        "apps.cmdb.tasks.celery_tasks.ProtocolCollect",
+        lambda task: collect,
+    )
+
+    sync_collect_task(task.id)
+    task.refresh_from_db()
+
+    assert task.exec_status == CollectRunStatusType.PARTIAL_SUCCESS
+    assert task.collect_digest["collect_success"] == 1
+    assert task.collect_digest["collect_failed"] == 1
+    assert "operator-secret" not in str(task.collect_digest)
+
+
+@pytest.mark.django_db
 def test_sync_collect_task_keeps_single_credential_config_file_on_legacy_path(monkeypatch):
     task = _create_single_credential_config_file_task()
     collect = MagicMock()

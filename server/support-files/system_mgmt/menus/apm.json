@@ -20,6 +20,11 @@
           "operation": ["View", "Operate"]
         },
         {
+          "id": "applications",
+          "name": "Applications",
+          "operation": ["View", "Operate"]
+        },
+        {
           "id": "integration_instances",
           "name": "Reporting instances",
           "operation": ["View", "Operate"]
@@ -68,6 +73,7 @@
       "role_name": "apm_normal",
       "menus": [
         "integration_add-View",
+        "applications-View",
         "integration_instances-View",
         "services-View",
         "traces-View",

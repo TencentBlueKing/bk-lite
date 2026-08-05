@@ -3,6 +3,7 @@
 import React, { useEffect, useRef } from 'react';
 import BaseTaskForm, { BaseTaskRef } from './baseTask';
 import { useTranslation } from '@/utils/i18n';
+import { useCollectionFormLayout } from '../hooks/useCollectionFormLayout';
 import { useTaskForm } from '../hooks/useTaskForm';
 import { getCleanupFormValues } from '../hooks/useTaskForm';
 import { TreeNode, ModelItem } from '@/app/cmdb/types/autoDiscovery';
@@ -24,6 +25,7 @@ import {
 import { QuestionCircleOutlined } from '@ant-design/icons';
 import { Form, InputNumber, Select, Spin, Switch, Tooltip } from 'antd';
 import CredentialPoolEditor from './credentialPoolEditor';
+import { buildSnmpCredentialHelp } from './credentialHelp';
 
 const LONG_TOOLTIP_OVERLAY_STYLE = {
   maxWidth: 'min(520px, calc(100vw - 48px))',
@@ -45,6 +47,7 @@ const SNMPTask: React.FC<SNMPTaskFormProps> = ({
   editId,
 }) => {
   const { t } = useTranslation();
+  const collectionFormLayout = useCollectionFormLayout();
   const baseRef = useRef<BaseTaskRef>(null as any);
   const { copyTaskData, setCopyTaskData } = useAssetManageStore();
   const { model_id: modelId } = modelItem;
@@ -191,8 +194,8 @@ const SNMPTask: React.FC<SNMPTaskFormProps> = ({
   return (
     <Spin spinning={loading}>
       <Form
+        {...collectionFormLayout}
         form={form}
-        layout="vertical"
         onFinish={onFinish}
         initialValues={initialFormValues}
       >
@@ -301,7 +304,11 @@ const SNMPTask: React.FC<SNMPTaskFormProps> = ({
           </Form.Item>
 
           <Form.Item name="credentialPool">
-            <CredentialPoolEditor credentialShape="snmp" editMode={Boolean(editId)} />
+            <CredentialPoolEditor
+              credentialShape="snmp"
+              editMode={Boolean(editId)}
+              credentialHelp={buildSnmpCredentialHelp(t)}
+            />
           </Form.Item>
         </BaseTaskForm>
       </Form>

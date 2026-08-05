@@ -62,14 +62,14 @@ UPDATEINFO = """<?xml version="1.0"?>
 </updates>"""
 
 
-def _make_get(mocker, repomd=REPOMD):
+def _make_get(mocker, repomd=REPOMD, updateinfo=UPDATEINFO):
     def fake_get(url, **kwargs):
         resp = mocker.Mock()
         resp.raise_for_status = mocker.Mock()
         if url.endswith("repomd.xml"):
             resp.content = repomd.encode()
         elif "updateinfo" in url:
-            resp.content = gzip.compress(UPDATEINFO.encode())
+            resp.content = gzip.compress(updateinfo.encode())
         else:
             resp.content = b""
         return resp
@@ -107,6 +107,63 @@ class TestFetchAdvisories:
         _make_get(mocker, repomd=REPOMD_NO_UPDATEINFO)
         assert fetch_advisories(_source()) == []
 
+    def test_x86_source_filters_i686_and_drops_advisories_without_matching_packages(
+        self,
+        mocker,
+    ):
+        updateinfo = """<?xml version="1.0"?>
+<updates>
+  <update type="security">
+    <id>MIXED-1</id><title>mixed</title>
+    <pkglist><collection>
+      <package name="lib64" version="1" release="1" arch="x86_64"/>
+      <package name="common" version="1" release="1" arch="noarch"/>
+      <package name="lib32" version="1" release="1" arch="i686"/>
+    </collection></pkglist>
+  </update>
+  <update type="security">
+    <id>I686-ONLY</id><title>32 bit only</title>
+    <pkglist><collection>
+      <package name="lib32" version="1" release="1" arch="i686"/>
+    </collection></pkglist>
+  </update>
+</updates>"""
+        _make_get(mocker, updateinfo=updateinfo)
+
+        advisories = fetch_advisories(_source(arch="x86_64"))
+
+        assert [advisory.advisory_id for advisory in advisories] == ["MIXED-1"]
+        assert [package.name for package in advisories[0].packages] == [
+            "lib64",
+            "common",
+        ]
+        assert {package.arch for package in advisories[0].packages} == {"x86_64"}
+
+    def test_arm_source_keeps_aarch64_and_noarch_packages_as_canonical_arm64(
+        self,
+        mocker,
+    ):
+        updateinfo = """<?xml version="1.0"?>
+<updates>
+  <update type="security">
+    <id>ARM-1</id><title>arm update</title>
+    <pkglist><collection>
+      <package name="arm" version="1" release="1" arch="aarch64"/>
+      <package name="common" version="1" release="1" arch="noarch"/>
+      <package name="intel" version="1" release="1" arch="x86_64"/>
+    </collection></pkglist>
+  </update>
+</updates>"""
+        _make_get(mocker, updateinfo=updateinfo)
+
+        advisories = fetch_advisories(_source(arch="arm64"))
+
+        assert [package.name for package in advisories[0].packages] == [
+            "arm",
+            "common",
+        ]
+        assert {package.arch for package in advisories[0].packages} == {"arm64"}
+
     def test_apt_source_fetches_packages_gz(self, mocker):
         """apt 源走 Packages.gz，不走 USN API。"""
         from apps.patch_mgmt.services import apt_sync
@@ -124,12 +181,22 @@ Description: SSL library
         resp = mocker.Mock()
         resp.raise_for_status = mocker.Mock()
         resp.content = gzip.compress(packages_gz_content.encode())
-        mocker.patch.object(apt_sync.requests, "get", return_value=resp)
+        get = mocker.patch.object(apt_sync.requests, "get", return_value=resp)
 
-        advs = fetch_advisories(_source(source_type=PatchSourceType.APT_REPO, url="https://mirrors.aliyun.com/ubuntu/", os_version="22.04", distro_name="Ubuntu", arch="amd64"))
+        advs = fetch_advisories(
+            _source(
+                source_type=PatchSourceType.APT_REPO,
+                url="https://mirrors.aliyun.com/ubuntu/",
+                os_version="22.04",
+                distro_name="Ubuntu",
+                arch="x86_64",
+            )
+        )
         assert len(advs) == 1
+        assert get.call_args.args[0].endswith("/binary-amd64/Packages.gz")
         assert advs[0].packages[0].name == "openssl"
         assert advs[0].packages[0].version == "3.0.2-0ubuntu1.10"
+        assert advs[0].packages[0].arch == "x86_64"
         assert advs[0].severity == ""
         assert advs[0].install_deps.get("depends") == "libc6 (>= 2.38), libssl3"
         assert advs[0].install_deps.get("conflicts") == "old-openssl"
@@ -262,7 +329,13 @@ Description: Test package
         resp.content = gzip.compress(packages_gz_content.encode())
         mocker.patch.object(apt_sync.requests, "get", return_value=resp)
 
-        source = _source(source_type=PatchSourceType.APT_REPO, url="https://mirrors.aliyun.com/ubuntu/", os_version="22.04", distro_name="Ubuntu", arch="amd64")
+        source = _source(
+            source_type=PatchSourceType.APT_REPO,
+            url="https://mirrors.aliyun.com/ubuntu/",
+            os_version="22.04",
+            distro_name="Ubuntu",
+            arch="x86_64",
+        )
         resp = su_client.post(f"/api/v1/patch_mgmt/api/patch_source/{source.id}/sync/")
         assert resp.status_code == 200
         assert resp.data["total"] == 1

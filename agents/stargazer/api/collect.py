@@ -529,3 +529,40 @@ async def collect(request):
             content_type='text/plain; version=0.0.4; charset=utf-8',
             status=500
         )
+
+
+@collect_router.post("/pc_test_connection")
+async def pc_test_connection(request):
+    """
+    PC 发现连接测试（HTTP debug 端点，同步返回）。
+
+    复用真实 WinRM/SSH 链路执行最小只读身份命令：验证网络与认证、
+    读取硬件 UUID/序列号，不执行软件扫描、不写 CMDB、不回传数据。
+
+    请求体（JSON）：host, os_type(windows|macos), node_id, username, port,
+    password|private_key|passphrase, winrm_scheme, winrm_transport, winrm_cert_validation。
+
+    返回：{success, os_type, inst_name, hardware_uuid, serial_number, error_code, message}
+    安全约束：请求体含秘密，绝不记录原始 body，错误只含稳定错误码。
+    """
+    from service.debug.pc_debug import run_pc_test_connection
+
+    params = request.json or {}
+    logger.info(
+        "PC test connection request: os_type=%s host=%s",
+        params.get("os_type"), params.get("host"),
+    )
+    try:
+        result = await run_pc_test_connection(params)
+    except Exception as e:  # noqa: BLE001 - 统一兜底为稳定错误码，不泄露内部细节
+        logger.error("PC test connection unexpected error: %s", type(e).__name__)
+        result = {
+            "success": False,
+            "os_type": "",
+            "inst_name": "",
+            "hardware_uuid": "",
+            "serial_number": "",
+            "error_code": "SCRIPT_OUTPUT_INVALID",
+            "message": type(e).__name__,
+        }
+    return response.json(result, status=200)

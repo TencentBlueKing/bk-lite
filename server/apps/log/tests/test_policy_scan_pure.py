@@ -248,28 +248,6 @@ class TestRenderAlertName:
         assert scan._render_alert_name({"host": None}, ["host"]) == "x"
 
 
-class TestBuildGroupKey:
-    def test_empty_group_by(self):
-        assert _scan()._build_group_key({}, []) == ""
-
-    def test_scalar_values(self):
-        assert _scan()._build_group_key({"host": "h1"}, ["host"]) == "host=h1"
-
-    def test_list_value_joined(self):
-        out = _scan()._build_group_key({"tags": ["a", "b"]}, ["tags"])
-        assert out == "tags=a,b"
-
-    def test_dict_value_stringified(self):
-        out = _scan()._build_group_key({"meta": {"x": 1}}, ["meta"])
-        assert "meta=" in out
-
-    def test_none_value_null(self):
-        assert _scan()._build_group_key({"host": None}, ["host"]) == "host=null"
-
-    def test_missing_field_unknown(self):
-        assert _scan()._build_group_key({}, ["host"]) == "host=unknown"
-
-
 class TestCheckRuleConditions:
     def test_no_conditions_false(self):
         assert _scan()._check_rule_conditions({}, {"conditions": []}) is False

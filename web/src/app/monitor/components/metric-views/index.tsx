@@ -23,6 +23,7 @@ import {
   renderChart,
   getRecentTimeRange
 } from '@/app/monitor/utils/common';
+import { loadMonitorPluginsByObjectCached } from '@/app/monitor/utils/monitorPluginCache';
 import { calculateQueryStep } from '@/app/monitor/utils/queryStep';
 import { attachGapIntervals, buildGapDetectionParams } from '@/app/monitor/utils/gapIntervals';
 
@@ -307,12 +308,13 @@ const MetricViews: React.FC<ViewDetailProps> = ({
       // 外部已指定 queryInstanceIdKeys 时（纯进程对象视图）直接拉插件列表。
       if (queryInstanceIdKeys?.length && !isHostView) {
         try {
-          const pluginResp = await getMonitorPlugin({
-            monitor_object_id: monitorObjectId
-          });
-          const list = Array.isArray(pluginResp)
-            ? pluginResp
-            : pluginResp?.items || pluginResp?.results || [];
+          const list = await loadMonitorPluginsByObjectCached(
+            monitorObjectId,
+            () =>
+              getMonitorPlugin({
+                monitor_object_id: monitorObjectId
+              })
+          );
           responseData = list as IntegrationItem[];
         } catch {
           responseData = [];

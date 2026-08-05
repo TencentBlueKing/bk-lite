@@ -2,6 +2,7 @@ from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.viewsets import ModelViewSet
 
+from apps.core.decorators.api_permission import HasPermission
 from apps.core.utils.loader import LanguageLoader
 from apps.node_mgmt.constants.collector import CollectorConstants
 from apps.node_mgmt.constants.language import LanguageConstants
@@ -53,6 +54,11 @@ class CollectorViewSet(ModelViewSet):
         result["display_introduction"] = lan.get(desc_key) or result.get("introduction", "")
         result["architecture_display"] = arch_display
 
+    @staticmethod
+    def _invalidate_collectors_etag():
+        cache.delete("collectors_etag")
+
+    @HasPermission("collector_list-Add")
     def create(self, request, *args, **kwargs):
         data = request.data
         data.update(is_pre=False)
@@ -60,14 +66,19 @@ class CollectorViewSet(ModelViewSet):
         serializer.is_valid(raise_exception=True)
         self.perform_create(serializer)
 
-        # 清除cache中的etag
-        cache.delete("collectors_etag")
+        self._invalidate_collectors_etag()
 
         headers = self.get_success_headers(serializer.data)
         return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
 
+    @HasPermission("collector_list-Edit")
     def update(self, request, *args, **kwargs):
-        return super().update(request, *args, **kwargs)
+        response = super().update(request, *args, **kwargs)
+        self._invalidate_collectors_etag()
+        return response
 
+    @HasPermission("collector_list-Delete")
     def destroy(self, request, *args, **kwargs):
-        return super().destroy(request, *args, **kwargs)
+        response = super().destroy(request, *args, **kwargs)
+        self._invalidate_collectors_etag()
+        return response

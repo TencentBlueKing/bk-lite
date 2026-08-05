@@ -184,6 +184,21 @@ def test_model_doc_not_found_returns_placeholder(superuser):
     assert body["data"] == "未找到对应的文档！"
 
 
+@pytest.mark.django_db
+def test_model_doc_pc_returns_operator_guide(superuser):
+    request = _req("get", superuser, query={"id": "pc"})
+    resp = CollectModelViewSet.as_view({"get": "model_doc"})(request)
+    body = _body(resp)
+
+    assert body["result"] is True
+    assert "Windows" in body["data"]
+    assert "macOS" in body["data"]
+    assert "同步最新结果" in body["data"]
+    assert "安装软件" in body["data"]
+    assert "WinRM" in body["data"]
+    assert "SSH" in body["data"]
+
+
 # --------------------------------------------------------------------------
 # nodes（NodeMgmt 打桩）
 # --------------------------------------------------------------------------

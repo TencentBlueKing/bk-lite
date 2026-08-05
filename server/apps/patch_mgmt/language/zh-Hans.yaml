@@ -40,6 +40,7 @@ error:
   duplicate_baseline_name: "同名基线已存在"
   duplicate_target_name: "同名目标主机已存在"
   invalid_choice: "不是合法选项。"
+  unsupported_architecture: "仅支持 x86_64 和 ARM64；Windows 当前仅支持 x86_64。"
   invalid_kb_number: "KB 编号必须为 KB 加数字"
   hour_interval_range: "小时间隔必须在 1-24 之间"
   weekday_range: "周几必须在 1-7 之间"
@@ -66,6 +67,8 @@ error:
   patch_in_active_task: "该补丁正在执行任务中，暂不能删除"
   patch_not_found: "部分选中的补丁不存在：{ids}"
   source_address_required: "缺少可测试的源地址"
+  wsus_auth_user_required: "WSUS 认证用户名不能为空"
+  wsus_auth_password_required: "WSUS 认证密码不能为空"
   assessment_execution_failed: "评估执行失败"
 message:
   hosts_cancelled: "已取消 {count} 台尚未执行的主机"

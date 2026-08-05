@@ -13,6 +13,7 @@ from apps.patch_mgmt.constants import (
     WinRMScheme,
     WinRMTransport,
 )
+from apps.patch_mgmt.utils.architecture import ARCHITECTURE_CHOICES
 
 SSH_KEY_BUCKET = "patch-mgmt-private"
 
@@ -56,7 +57,13 @@ class PatchTarget(TimeInfo, MaintainerInfo):
     node_id = models.CharField(max_length=64, blank=True, default="", verbose_name="节点ID")
 
     # CPU 架构（节点管理同步而来；手动录入可留空）
-    arch = models.CharField(max_length=32, blank=True, default="", verbose_name="架构")
+    arch = models.CharField(
+        max_length=32,
+        choices=ARCHITECTURE_CHOICES,
+        blank=True,
+        default="",
+        verbose_name="架构",
+    )
 
     # SSH 凭据
     ssh_port = models.IntegerField(default=22, verbose_name="SSH端口")

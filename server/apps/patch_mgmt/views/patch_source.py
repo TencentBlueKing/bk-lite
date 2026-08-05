@@ -304,7 +304,9 @@ class PatchSourceViewSet(AuthViewSet):
         submitted = dict(request.data)
         if hasattr(request.data, "dict"):
             submitted = request.data.dict()
-        serializer = PatchSourceConnectivitySerializer(data=submitted, partial=True)
+        serializer = PatchSourceConnectivitySerializer(
+            source, data=submitted, partial=True
+        )
         serializer.is_valid(raise_exception=True)
         values = {
             field: getattr(source, field)
@@ -312,8 +314,15 @@ class PatchSourceViewSet(AuthViewSet):
             if field != "auth_password"
         }
         values["auth_password"] = source.get_auth_password()
-        values.update(serializer.validated_data)
-        candidate = PatchSource(**values)
+        overrides = dict(serializer.validated_data)
+        # 编辑态的密码组件在用户点击编辑后可能提交空字符串。空值表示沿用已保存
+        # 的密码，不能覆盖数据库中的凭据；未保存过密码时仍会由完整校验报错。
+        if not overrides.get("auth_password"):
+            overrides.pop("auth_password", None)
+        values.update(overrides)
+        candidate_serializer = PatchSourceConnectivitySerializer(data=values)
+        candidate_serializer.is_valid(raise_exception=True)
+        candidate = PatchSource(**candidate_serializer.validated_data)
         result = probe_source(candidate)
         return Response({
             "source_id": source.id,

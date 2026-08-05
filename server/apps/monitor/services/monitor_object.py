@@ -1,5 +1,7 @@
 import re
+import time
 import uuid
+import hashlib
 
 from django.db import transaction
 
@@ -25,6 +27,13 @@ from apps.monitor.utils.display_fields_metrics import (
 )
 from apps.monitor.utils.victoriametrics_api import VictoriaMetricsAPI
 from apps.monitor.tasks.grouping_rule import sync_instance_and_group
+
+# 实例 status 映射短 TTL 缓存，缓解列表/轮询重复打 VM。
+_INSTANCE_STATUS_CACHE_TTL_SECONDS = 15.0
+_INSTANCE_STATUS_CACHE_MAX = 128
+_instance_status_cache: dict[str, tuple[float, dict]] = {}
+# status 查询硬上限，避免无界 series 打爆 VM；已带 topk/bottomk/limitk 的查询不改写。
+STATUS_QUERY_MAX_SERIES = 10000
 
 
 class MonitorObjectService:
@@ -63,9 +72,30 @@ class MonitorObjectService:
             raise BaseAppException("实例名称已存在")
 
     @staticmethod
+    def clear_instance_status_cache() -> None:
+        _instance_status_cache.clear()
+
+    @staticmethod
     def get_instances_by_metric(metric: str, instance_id_keys: list):
         """获取监控对象实例"""
-        metrics = VictoriaMetricsAPI().query(metric, step="20m")
+        if not metric:
+            return {}
+
+        cache_key = hashlib.md5(
+            f"{metric}|{','.join(instance_id_keys or [])}".encode("utf-8")
+        ).hexdigest()
+        now = time.monotonic()
+        cached = _instance_status_cache.get(cache_key)
+        if cached and now - cached[0] < _INSTANCE_STATUS_CACHE_TTL_SECONDS:
+            return cached[1]
+
+        from apps.monitor.services.metrics import Metrics
+
+        query = metric
+        if not Metrics.query_already_limited(metric):
+            query = f"limitk({STATUS_QUERY_MAX_SERIES}, {metric})"
+
+        metrics = VictoriaMetricsAPI().query(query, step="20m")
         instance_map = {}
         for metric_info in metrics.get("data", {}).get("result", []):
             instance_id = str(tuple([metric_info["metric"].get(i) for i in instance_id_keys]))
@@ -88,6 +118,9 @@ class MonitorObjectService:
                         "time": _time,
                     }
 
+        if len(_instance_status_cache) >= _INSTANCE_STATUS_CACHE_MAX:
+            _instance_status_cache.clear()
+        _instance_status_cache[cache_key] = (now, instance_map)
         return instance_map
 
     @staticmethod

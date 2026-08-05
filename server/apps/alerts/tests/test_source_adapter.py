@@ -152,6 +152,31 @@ def test_timestamp_to_datetime_invalid_returns_now():
     assert isinstance(dt, datetime.datetime)
 
 
+def test_timestamp_to_datetime_always_utc():
+    """timestamp_to_datetime 必须显式按 UTC 解释时间戳，不依赖 OS 时区。
+
+    模拟 OS 时区非 UTC 的场景：即使进程时区被 activate 为 Asia/Shanghai，
+    转换结果仍应与 UTC 时刻一致。
+    """
+    from django.utils import timezone as dj_timezone
+    import zoneinfo
+
+    ts = "1753321474"  # 2025-07-24 01:44:34 UTC
+    expected = datetime.datetime(2025, 7, 24, 1, 44, 34, tzinfo=datetime.timezone.utc)
+
+    # 模拟 worker 进程被激活为非 UTC 时区（如请求线程残留）
+    shanghai = zoneinfo.ZoneInfo("Asia/Shanghai")
+    dj_timezone.activate(shanghai)
+    try:
+        result = AlertSourceAdapter.timestamp_to_datetime(ts)
+    finally:
+        dj_timezone.deactivate()
+
+    assert result == expected, (
+        f"timestamp_to_datetime 应输出 UTC 时刻，实际: {result} (期望 {expected})"
+    )
+
+
 def test_add_start_time_defaults():
     data = {}
     AlertSourceAdapter.add_start_time(data)

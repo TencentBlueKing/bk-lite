@@ -527,12 +527,14 @@ class AlertSourceAdapter(ABC):
 
     @staticmethod
     def timestamp_to_datetime(timestamp: str) -> datetime:
-        """将时间戳转换为datetime对象"""
-        # 先转为 naive datetime timestamp 微妙
+        """将时间戳转换为datetime对象（始终按 UTC 解释，不依赖进程时区）"""
+        # TODO(timezone): 2026-07-27 修复——原实现用 fromtimestamp() 依赖 OS 时区 + make_aware(get_current_timezone())，
+        # 在 OS 时区非 UTC 或线程激活时区被污染时会导致入库时间偏移。已改为显式 UTC。
+        # 存量数据：若历史事件在 OS 时区非 UTC 时入库，start_time 已存在偏移，本次未做数据迁移。
         try:
-            dt = datetime.datetime.fromtimestamp(int(timestamp) / 1000 if len(timestamp) == 13 else int(timestamp))
-            # 转为 aware datetime（带时区）
-            return timezone.make_aware(dt, timezone.get_current_timezone())
+            ts = int(timestamp)
+            seconds = ts / 1000 if len(str(ts)) == 13 else ts
+            return datetime.datetime.fromtimestamp(seconds, tz=datetime.timezone.utc)
         except Exception as e:
             logger.error("[AlertSource] 时间戳转换失败 timestamp=%s: %s", timestamp, e)
             return timezone.now()
