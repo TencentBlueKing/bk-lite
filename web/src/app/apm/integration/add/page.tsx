@@ -96,8 +96,15 @@ async function copyText(value: string) {
 
 function requestErrorMessage(error: unknown) {
   const detail = (error as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail;
-  if (typeof detail === 'string' && detail.trim()) return detail;
-  return error instanceof Error && error.message ? error.message : '生成接入配置失败，请稍后重试。';
+  const rawMessage = typeof detail === 'string' && detail.trim()
+    ? detail.trim()
+    : error instanceof Error && error.message
+      ? error.message
+      : '';
+  if (/APM_OTLP_(?:HTTP|GRPC)_ENDPOINT|缺少 APM 接入端点配置/.test(rawMessage)) {
+    return '所选云区域尚未配置 APM 接入端点，请联系运维完善区域配置后重试。';
+  }
+  return rawMessage || '生成接入配置失败，请稍后重试。';
 }
 
 export default function ApmIntegrationAddPage() {
@@ -270,31 +277,8 @@ export default function ApmIntegrationAddPage() {
       >
         <div className="flex flex-col gap-4 pt-2">
           <ApmSurface>
-            <div className="mb-4 flex items-center gap-2"><span className="grid h-7 w-7 place-items-center rounded-full bg-[var(--color-primary)] text-sm font-semibold text-white">1</span><Typography.Text strong>上报端点</Typography.Text></div>
-            <div className="grid gap-4 md:grid-cols-2">
-              <div>
-                <Typography.Text type="secondary" className="mb-1 block text-xs">OTLP/HTTP 端点</Typography.Text>
-                <Space.Compact block>
-                  <Button disabled>POST</Button>
-                  <Input readOnly value={snippet?.http_endpoint ?? '生成配置后显示'} />
-                  <Button disabled={!snippet} icon={<CopyOutlined />} onClick={() => snippet && void copyWithFeedback(snippet.http_endpoint, 'HTTP 端点已复制')}>复制</Button>
-                </Space.Compact>
-              </div>
-              <div>
-                <Typography.Text type="secondary" className="mb-1 block text-xs">OTLP/gRPC 端点</Typography.Text>
-                <Space.Compact block>
-                  <Button disabled>gRPC</Button>
-                  <Input readOnly value={snippet?.grpc_endpoint ?? '生成配置后显示'} />
-                  <Button disabled={!snippet} icon={<CopyOutlined />} onClick={() => snippet && void copyWithFeedback(snippet.grpc_endpoint, 'gRPC 端点已复制')}>复制</Button>
-                </Space.Compact>
-              </div>
-            </div>
-            <Typography.Text type="secondary" className="mt-3 block text-xs">平台将根据所选云区域提供上报端点。</Typography.Text>
-          </ApmSurface>
-
-          <ApmSurface>
-            <div className="mb-1 flex items-center gap-2"><span className="grid h-7 w-7 place-items-center rounded-full bg-[var(--color-primary)] text-sm font-semibold text-white">2</span><Typography.Text strong>接入配置</Typography.Text></div>
-            <Typography.Text type="secondary" className="mb-4 block text-xs">应用 ID、服务名称和版本将分别映射到标准 OpenTelemetry 资源属性。</Typography.Text>
+            <div className="mb-1 flex items-center gap-2"><span className="grid h-7 w-7 place-items-center rounded-full bg-[var(--color-primary)] text-sm font-semibold text-white">1</span><Typography.Text strong>接入配置</Typography.Text></div>
+            <Typography.Text type="secondary" className="mb-4 block text-xs">应用 ID、服务名称和版本将映射到标准 OpenTelemetry 资源属性；平台根据所选云区域分配上报端点。</Typography.Text>
             <Form<SnippetForm>
               key={selectedMethod?.key ?? 'integration-form'}
               layout="vertical"
@@ -315,9 +299,11 @@ export default function ApmIntegrationAddPage() {
                 <Form.Item name="service_version" label="服务版本" rules={[{ max: 256 }]}><Input placeholder="service.version，例如 1.4.0（可选）" /></Form.Item>
                 <Form.Item name="environment" label="部署环境" rules={[{ required: true, whitespace: true, message: '请输入部署环境' }, { max: 256 }]}><Input placeholder="deployment.environment，例如 production" /></Form.Item>
               </div>
+              <Form.Item label="运行方式" className="!mb-4">
+                <Segmented aria-label="运行方式" value={mode} onChange={(value) => { setMode(value as SnippetMode); setSnippet(null); setGenerationError(null); }} options={[{ label: `${selectedMethod?.title ?? ''} 自动探针`, value: 'agent' }, { label: 'Docker 运行（-e 注入）', value: 'docker' }]} />
+              </Form.Item>
               {generationError ? <Alert className="mb-4" showIcon type="error" message="配置生成失败" description={generationError} /> : null}
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <Segmented value={mode} onChange={(value) => { setMode(value as SnippetMode); setSnippet(null); }} options={[{ label: `${selectedMethod?.title ?? ''} 自动探针`, value: 'agent' }, { label: 'Docker 运行（-e 注入）', value: 'docker' }]} />
+              <div className="flex justify-end">
                 <Button htmlType="submit" type="primary" icon={<RocketOutlined />} loading={generating}>生成临时配置</Button>
               </div>
             </Form>
@@ -325,8 +311,35 @@ export default function ApmIntegrationAddPage() {
 
           {snippet ? (
             <ApmSurface>
-              <div className="mb-3 flex items-center justify-between"><div><Typography.Text strong>Shell 接入片段</Typography.Text><Typography.Text type="secondary" className="ml-2 text-xs">{snippet.cloud_region.name} · 仅在本窗口保留</Typography.Text></div><Button icon={<CopyOutlined />} onClick={() => void copyWithFeedback(snippet.code, '片段已复制')}>复制片段</Button></div>
-              <pre className="max-h-[420px] overflow-auto rounded-lg bg-[#0f172a] p-4 text-xs leading-6 text-slate-100"><code>{snippet.code}</code></pre>
+              <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <div className="flex items-center gap-2"><span className="grid h-7 w-7 place-items-center rounded-full bg-[var(--color-primary)] text-sm font-semibold text-white">2</span><Typography.Text strong>生成结果</Typography.Text></div>
+                  <Typography.Text type="secondary" className="mt-1 block text-xs">{snippet.cloud_region.name} · 仅在本窗口保留</Typography.Text>
+                </div>
+                <Button icon={<CopyOutlined />} onClick={() => void copyWithFeedback(snippet.code, '片段已复制')}>复制片段</Button>
+              </div>
+              <div className="grid gap-4 md:grid-cols-2">
+                <div>
+                  <Typography.Text type="secondary" className="mb-1 block text-xs">OTLP/HTTP 端点</Typography.Text>
+                  <Space.Compact block>
+                    <Button disabled>POST</Button>
+                    <Input readOnly value={snippet.http_endpoint} />
+                    <Button icon={<CopyOutlined />} onClick={() => void copyWithFeedback(snippet.http_endpoint, 'HTTP 端点已复制')}>复制</Button>
+                  </Space.Compact>
+                </div>
+                <div>
+                  <Typography.Text type="secondary" className="mb-1 block text-xs">OTLP/gRPC 端点</Typography.Text>
+                  <Space.Compact block>
+                    <Button disabled>gRPC</Button>
+                    <Input readOnly value={snippet.grpc_endpoint} />
+                    <Button icon={<CopyOutlined />} onClick={() => void copyWithFeedback(snippet.grpc_endpoint, 'gRPC 端点已复制')}>复制</Button>
+                  </Space.Compact>
+                </div>
+              </div>
+              <div className="mt-4 border-t border-[var(--color-border)] pt-4">
+                <Typography.Text strong className="mb-2 block">Shell 接入片段</Typography.Text>
+                <pre className="max-h-[420px] overflow-auto rounded-lg bg-[#0f172a] p-4 text-xs leading-6 text-slate-100"><code>{snippet.code}</code></pre>
+              </div>
             </ApmSurface>
           ) : null}
         </div>
