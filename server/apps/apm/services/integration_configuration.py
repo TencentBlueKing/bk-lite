@@ -1,6 +1,9 @@
 import shlex
 from dataclasses import dataclass
-from urllib.parse import urlsplit, urlunsplit
+from urllib.parse import urlsplit
+
+from django.core.exceptions import ValidationError
+from django.core.validators import URLValidator
 
 from apps.apm.services.contracts import IngestSnippet, IngestSnippetRequest
 
@@ -17,28 +20,27 @@ class CloudRegionEndpoints:
     region_id: int
     region_name: str
     http_endpoint: str
-    grpc_endpoint: str
 
 
-def _normalize_otlp_endpoint(value: object, *, protocol: str) -> str:
+OTLP_HTTP_PORT = 4318
+
+
+def _normalize_proxy_address(value: object) -> str:
     raw = str(value or "").strip()
-    if not raw or any(character in raw for character in ("\r", "\n", "\0")):
+    if not raw or "://" in raw or any(character in raw for character in ("\r", "\n", "\0")):
         raise ValueError("empty or contains control characters")
     try:
-        parsed = urlsplit(raw)
+        parsed = urlsplit(f"http://{raw}")
         _ = parsed.port
     except ValueError as exc:
-        raise ValueError("invalid URL") from exc
-    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
-        raise ValueError("scheme and host are required")
-    if parsed.username or parsed.password or parsed.query or parsed.fragment:
-        raise ValueError("userinfo, query and fragment are not allowed")
-    path = parsed.path.rstrip("/")
-    if protocol == "grpc" and path:
-        raise ValueError("gRPC endpoint must not contain a path")
-    if protocol == "http" and path.endswith("/v1/traces"):
-        path = path.removesuffix("/v1/traces")
-    return urlunsplit((parsed.scheme, parsed.netloc, path, "", ""))
+        raise ValueError("invalid proxy address") from exc
+    if parsed.username or parsed.password or parsed.port is not None or parsed.path or parsed.query or parsed.fragment:
+        raise ValueError("proxy address must only contain a host")
+    try:
+        URLValidator(schemes=("http",))(f"http://{raw}")
+    except ValidationError as exc:
+        raise ValueError("invalid proxy address") from exc
+    return raw.lower()
 
 
 class DjangoIntegrationConfigurationService:
@@ -65,32 +67,33 @@ class DjangoIntegrationConfigurationService:
             normalized.append({"id": region_id, "name": region_name})
         return normalized
 
-    def resolve_region(self, node_mgmt, cloud_region_id: int) -> CloudRegionEndpoints:
+    def resolve_region(self, node_mgmt, cloud_region_id: int, *, organization_ids: list[int]) -> CloudRegionEndpoints:
+        if not organization_ids:
+            raise CloudRegionConfigurationError(
+                "cloud_region_receiver_unavailable",
+                "当前组织无法使用所选云区域的被动接收地址。",
+            )
         regions = self.list_regions(node_mgmt)
         region = next((item for item in regions if item["id"] == cloud_region_id), None)
         if region is None:
             raise CloudRegionConfigurationError("cloud_region_not_found", "云区域不存在或已不可用。")
-        env = node_mgmt.get_cloud_region_envconfig(cloud_region_id) or {}
-        required = ("APM_OTLP_HTTP_ENDPOINT", "APM_OTLP_GRPC_ENDPOINT")
-        missing = [key for key in required if not str(env.get(key, "")).strip()]
-        if missing:
+        proxy_address = node_mgmt.get_cloud_region_proxy_address(cloud_region_id, organization_ids)
+        if not str(proxy_address or "").strip():
             raise CloudRegionConfigurationError(
-                "cloud_region_endpoint_missing",
-                f"云区域缺少 APM 接入端点配置：{', '.join(missing)}。",
+                "cloud_region_receiver_unavailable",
+                "所选云区域没有可用的被动接收地址。",
             )
         try:
-            http_endpoint = _normalize_otlp_endpoint(env["APM_OTLP_HTTP_ENDPOINT"], protocol="http")
-            grpc_endpoint = _normalize_otlp_endpoint(env["APM_OTLP_GRPC_ENDPOINT"], protocol="grpc")
+            proxy_address = _normalize_proxy_address(proxy_address)
         except ValueError as exc:
             raise CloudRegionConfigurationError(
-                "invalid_cloud_region_endpoint",
-                "云区域 APM 接入端点格式无效，请联系运维检查配置。",
+                "invalid_cloud_region_proxy_address",
+                "云区域代理地址格式无效，请联系管理员检查配置。",
             ) from exc
         return CloudRegionEndpoints(
             region_id=region["id"],
             region_name=region["name"],
-            http_endpoint=http_endpoint,
-            grpc_endpoint=grpc_endpoint,
+            http_endpoint=f"http://{proxy_address}:{OTLP_HTTP_PORT}",
         )
 
     def render_snippet(self, request: IngestSnippetRequest) -> IngestSnippet:

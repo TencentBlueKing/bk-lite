@@ -50,8 +50,10 @@ docker compose -f deploy/apm/compose.yaml up -d --wait
 ```
 
 区域 Collector 的宿主机绑定默认是 `127.0.0.1:4317/4318`。生产应把
-`APM_OTLP_GRPC_BIND`、`APM_OTLP_HTTP_BIND` 配置为区域内受控地址，并由网络策略限制来源；
-不得通过浏览器提交 endpoint。VT 默认保留 35 天，覆盖产品 30 天/月历月 SLO 窗口。
+`APM_OTLP_GRPC_BIND`、`APM_OTLP_HTTP_BIND` 配置为区域内受控地址，并把 NodeMgmt 中该云区域
+受信代理地址的 4318 映射到 HTTP receiver；Server 固定生成
+`http://<proxy_address>:4318/v1/traces`，不得通过浏览器提交 endpoint。4317 保留给手工 gRPC
+接入兼容，普通接入页面不展示。VT 默认保留 35 天，覆盖产品 30 天/月历月 SLO 窗口。
 
 本地 Stream/Consumer 创建是幂等的“存在则复用、缺失则创建”。生产升级不能只跳过已存在
 对象：运维必须对照以下边界检查漂移，再显式 edit/reconcile：

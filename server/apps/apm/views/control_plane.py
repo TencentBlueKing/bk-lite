@@ -165,6 +165,9 @@ class ApmIntegrationConfigurationViewSet(viewsets.GenericViewSet):
         serializer = IngestSnippetSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
+        organization_id = current_organization_id(request)
+        if organization_id is None:
+            return Response({"detail": "当前组织不在用户授权范围内。"}, status=status.HTTP_403_FORBIDDEN)
         applications = filter_current_organization(
             ApmApplication.objects.filter(is_builtin=False),
             request,
@@ -172,9 +175,17 @@ class ApmIntegrationConfigurationViewSet(viewsets.GenericViewSet):
         )
         application = get_object_or_404(applications, application_id=data["application_id"])
         try:
-            endpoints = self.service.resolve_region(NodeMgmt(), data["cloud_region_id"])
+            endpoints = self.service.resolve_region(
+                NodeMgmt(),
+                data["cloud_region_id"],
+                organization_ids=[organization_id],
+            )
         except CloudRegionConfigurationError as exc:
-            response_status = status.HTTP_404_NOT_FOUND if exc.code == "cloud_region_not_found" else status.HTTP_400_BAD_REQUEST
+            response_status = (
+                status.HTTP_404_NOT_FOUND
+                if exc.code in {"cloud_region_not_found", "cloud_region_receiver_unavailable"}
+                else status.HTTP_400_BAD_REQUEST
+            )
             return Response({"code": exc.code, "detail": exc.detail}, status=response_status)
         except Exception as exc:
             logger.warning("APM cloud region endpoint resolution failed: %s", type(exc).__name__)
@@ -199,7 +210,6 @@ class ApmIntegrationConfigurationViewSet(viewsets.GenericViewSet):
                 "application_name": application.name,
                 "cloud_region": {"id": endpoints.region_id, "name": endpoints.region_name},
                 "http_endpoint": f"{endpoints.http_endpoint}/v1/traces",
-                "grpc_endpoint": endpoints.grpc_endpoint,
                 "environment": snippet.environment,
                 "code": snippet.code,
             }

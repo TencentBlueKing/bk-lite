@@ -68,8 +68,7 @@ describe('APM 添加接入', () => {
       application_id: 'bklite',
       application_name: 'BK-Lite',
       cloud_region: { id: 1, name: '默认云区域' },
-      http_endpoint: 'https://apm.example.com/v1/traces',
-      grpc_endpoint: 'apm.example.com:4317',
+      http_endpoint: 'http://proxy.example.com:4318/v1/traces',
       environment: {},
       code: 'export OTEL_SERVICE_NAME=checkout',
     });
@@ -82,8 +81,8 @@ describe('APM 添加接入', () => {
     await user.type(screen.getByRole('textbox', { name: /服务名称/ }), 'checkout');
     await user.click(screen.getByRole('button', { name: /生成临时配置/ }));
 
-    expect(await screen.findByDisplayValue('https://apm.example.com/v1/traces')).not.toBeNull();
-    expect(screen.getByDisplayValue('apm.example.com:4317')).not.toBeNull();
+    expect(await screen.findByDisplayValue('http://proxy.example.com:4318/v1/traces')).not.toBeNull();
+    expect(screen.queryByText('OTLP/gRPC 端点')).toBeNull();
   });
 
   it('将运行方式呈现为有名称的表单选择组', async () => {
@@ -95,11 +94,11 @@ describe('APM 添加接入', () => {
     expect(screen.getByRole('radiogroup', { name: '运行方式' })).not.toBeNull();
   });
 
-  it('将区域端点配置错误转换为可恢复的用户提示', async () => {
+  it('将区域接收地址缺失转换为可恢复的用户提示', async () => {
     api.getIngestSnippet.mockRejectedValue({
       response: {
         data: {
-          detail: '云区域缺少 APM 接入端点配置：APM_OTLP_HTTP_ENDPOINT, APM_OTLP_GRPC_ENDPOINT。',
+          detail: '所选云区域没有可用的被动接收地址。',
         },
       },
     });
@@ -110,7 +109,6 @@ describe('APM 添加接入', () => {
     await user.type(screen.getByRole('textbox', { name: /服务名称/ }), 'checkout');
     await user.click(screen.getByRole('button', { name: /生成临时配置/ }));
 
-    expect(await screen.findByText('所选云区域尚未配置 APM 接入端点，请联系运维完善区域配置后重试。')).not.toBeNull();
-    expect(screen.queryByText(/APM_OTLP_HTTP_ENDPOINT|APM_OTLP_GRPC_ENDPOINT/)).toBeNull();
+    expect(await screen.findByText('所选云区域没有可用的接收地址，请联系管理员检查云区域代理配置后重试。')).not.toBeNull();
   });
 });

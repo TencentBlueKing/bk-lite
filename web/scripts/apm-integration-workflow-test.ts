@@ -44,7 +44,8 @@ assert.match(catalog, /Segmented/, 'SDK 接入模式应使用可切换的分段�
 assert.doesNotMatch(catalog, /name="endpoint"/, '平台分配的 OTLP 端点不应再要求用户手工填写');
 assert.doesNotMatch(catalog, /window\.location|publicOtlpEndpoint/, '浏览器不得根据当前 hostname 拼接 APM 端点');
 assert.match(catalog, /snippet\.http_endpoint/, '页面应展示服务端解析的 OTLP\/HTTP 端点');
-assert.match(catalog, /snippet\.grpc_endpoint/, '页面应展示服务端解析的 OTLP\/gRPC 端点');
+assert.doesNotMatch(catalog, /snippet\.grpc_endpoint|OTLP\/gRPC 端点/, '普通接入页面不得增加无必要的 gRPC 协议选择');
+assert.match(catalog, /OTLP\/HTTP（http\/protobuf）/, '普通接入页面必须明确固定使用 OTLP\/HTTP');
 assert.match(catalog, /generationError/, '生成失败必须保留明确的页面内错误态');
 assert.match(catalog, /复制失败/, '复制操作必须反馈失败');
 assert.match(instances, /title="接入实例"/, '接入实例页应使用产品术语“接入实例”');

@@ -101,8 +101,8 @@ function requestErrorMessage(error: unknown) {
     : error instanceof Error && error.message
       ? error.message
       : '';
-  if (/APM_OTLP_(?:HTTP|GRPC)_ENDPOINT|缺少 APM 接入端点配置/.test(rawMessage)) {
-    return '所选云区域尚未配置 APM 接入端点，请联系运维完善区域配置后重试。';
+  if (/没有可用的被动接收地址|云区域代理地址/.test(rawMessage)) {
+    return '所选云区域没有可用的接收地址，请联系管理员检查云区域代理配置后重试。';
   }
   return rawMessage || '生成接入配置失败，请稍后重试。';
 }
@@ -144,7 +144,7 @@ export default function ApmIntegrationAddPage() {
         setEmptyDescription('请先创建一个应用，再生成接入配置。');
         setState('empty');
       } else if (regions.length === 0) {
-        setEmptyDescription('暂无可用云区域，请联系运维配置区域 APM OTLP 接入端点。');
+        setEmptyDescription('暂无可用云区域，请联系管理员检查云区域配置。');
         setState('empty');
       } else {
         setState('ready');
@@ -318,23 +318,14 @@ export default function ApmIntegrationAddPage() {
                 </div>
                 <Button icon={<CopyOutlined />} onClick={() => void copyWithFeedback(snippet.code, '片段已复制')}>复制片段</Button>
               </div>
-              <div className="grid gap-4 md:grid-cols-2">
-                <div>
-                  <Typography.Text type="secondary" className="mb-1 block text-xs">OTLP/HTTP 端点</Typography.Text>
-                  <Space.Compact block>
-                    <Button disabled>POST</Button>
-                    <Input readOnly value={snippet.http_endpoint} />
-                    <Button icon={<CopyOutlined />} onClick={() => void copyWithFeedback(snippet.http_endpoint, 'HTTP 端点已复制')}>复制</Button>
-                  </Space.Compact>
-                </div>
-                <div>
-                  <Typography.Text type="secondary" className="mb-1 block text-xs">OTLP/gRPC 端点</Typography.Text>
-                  <Space.Compact block>
-                    <Button disabled>gRPC</Button>
-                    <Input readOnly value={snippet.grpc_endpoint} />
-                    <Button icon={<CopyOutlined />} onClick={() => void copyWithFeedback(snippet.grpc_endpoint, 'gRPC 端点已复制')}>复制</Button>
-                  </Space.Compact>
-                </div>
+              <div>
+                <Typography.Text type="secondary" className="mb-1 block text-xs">OTLP/HTTP 上报端点</Typography.Text>
+                <Space.Compact block>
+                  <Button disabled>POST</Button>
+                  <Input readOnly value={snippet.http_endpoint} />
+                  <Button icon={<CopyOutlined />} onClick={() => void copyWithFeedback(snippet.http_endpoint, 'HTTP 端点已复制')}>复制</Button>
+                </Space.Compact>
+                <Typography.Text type="secondary" className="mt-2 block text-xs">平台使用所选云区域的被动接收地址，固定通过 OTLP/HTTP（http/protobuf）上报。</Typography.Text>
               </div>
               <div className="mt-4 border-t border-[var(--color-border)] pt-4">
                 <Typography.Text strong className="mb-2 block">Shell 接入片段</Typography.Text>

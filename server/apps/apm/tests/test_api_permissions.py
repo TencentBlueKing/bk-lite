@@ -97,10 +97,7 @@ def test_integration_config_is_stateless_and_maps_standard_resource_attributes(a
 
     region = Mock()
     region.cloud_region_list.return_value = [{"id": 7, "name": "华东一区"}]
-    region.get_cloud_region_envconfig.return_value = {
-        "APM_OTLP_HTTP_ENDPOINT": "https://apm-east.example.com:4318/v1/traces",
-        "APM_OTLP_GRPC_ENDPOINT": "https://apm-east.example.com:4317",
-    }
+    region.get_cloud_region_proxy_address.return_value = "apm-east.example.com"
 
     with pytest.MonkeyPatch.context() as monkeypatch:
         monkeypatch.setattr("apps.apm.views.control_plane.NodeMgmt", lambda: region)
@@ -127,9 +124,11 @@ def test_integration_config_is_stateless_and_maps_standard_resource_attributes(a
     assert "Authorization" not in response.data["code"]
     assert "OTEL_EXPORTER_OTLP_HEADERS" not in response.data["environment"]
     assert response.data["cloud_region"] == {"id": 7, "name": "华东一区"}
-    assert response.data["http_endpoint"] == "https://apm-east.example.com:4318/v1/traces"
-    assert response.data["grpc_endpoint"] == "https://apm-east.example.com:4317"
-    assert response.data["environment"]["OTEL_EXPORTER_OTLP_ENDPOINT"] == "https://apm-east.example.com:4318"
+    assert response.data["http_endpoint"] == "http://apm-east.example.com:4318/v1/traces"
+    assert "grpc_endpoint" not in response.data
+    assert response.data["environment"]["OTEL_EXPORTER_OTLP_ENDPOINT"] == "http://apm-east.example.com:4318"
+    region.get_cloud_region_proxy_address.assert_called_once_with(7, [10])
+    region.get_cloud_region_envconfig.assert_not_called()
     assert ApmApplication.objects.filter(is_builtin=False).count() == 1
 
 
@@ -138,10 +137,7 @@ def test_integration_config_rejects_unknown_or_out_of_scope_application(apm_api_
 
     region = Mock()
     region.cloud_region_list.return_value = [{"id": 7, "name": "华东一区"}]
-    region.get_cloud_region_envconfig.return_value = {
-        "APM_OTLP_HTTP_ENDPOINT": "https://apm-east.example.com:4318",
-        "APM_OTLP_GRPC_ENDPOINT": "https://apm-east.example.com:4317",
-    }
+    region.get_cloud_region_proxy_address.return_value = "apm-east.example.com"
 
     payload = {
         "cloud_region_id": 7,
@@ -204,14 +200,11 @@ def test_integration_config_reports_region_directory_unavailable(apm_api_client)
     assert "rpc timeout" not in str(response.data)
 
 
-def test_integration_config_rejects_client_endpoint_and_invalid_region_configuration(apm_api_client):
+def test_integration_config_rejects_client_endpoint_and_invalid_region_proxy_address(apm_api_client):
     create_application("shop", (10,))
     region = Mock()
     region.cloud_region_list.return_value = [{"id": 7, "name": "华东一区"}]
-    region.get_cloud_region_envconfig.return_value = {
-        "APM_OTLP_HTTP_ENDPOINT": "http://valid.example.com:4318",
-        "APM_OTLP_GRPC_ENDPOINT": "not-a-url",
-    }
+    region.get_cloud_region_proxy_address.return_value = "https://attacker.example.com/path"
     payload = {
         "application_id": "shop",
         "cloud_region_id": 7,
@@ -237,14 +230,14 @@ def test_integration_config_rejects_client_endpoint_and_invalid_region_configura
     assert injected.status_code == 400
     assert "服务器" in str(injected.data)
     assert invalid_config.status_code == 400
-    assert invalid_config.data["code"] == "invalid_cloud_region_endpoint"
+    assert invalid_config.data["code"] == "invalid_cloud_region_proxy_address"
 
 
-def test_integration_config_distinguishes_unknown_region_and_missing_endpoint(apm_api_client):
+def test_integration_config_distinguishes_unknown_region_and_missing_proxy_address(apm_api_client):
     create_application("shop", (10,))
     region = Mock()
     region.cloud_region_list.return_value = [{"id": 7, "name": "华东一区"}]
-    region.get_cloud_region_envconfig.return_value = {}
+    region.get_cloud_region_proxy_address.return_value = ""
     payload = {
         "application_id": "shop",
         "language": "python",
@@ -267,8 +260,8 @@ def test_integration_config_distinguishes_unknown_region_and_missing_endpoint(ap
         )
 
     assert unknown.status_code == 404
-    assert missing.status_code == 400
-    assert missing.data["code"] == "cloud_region_endpoint_missing"
+    assert missing.status_code == 404
+    assert missing.data["code"] == "cloud_region_receiver_unavailable"
 
 
 def test_permissions_separate_application_management_from_config_generation(apm_user):
