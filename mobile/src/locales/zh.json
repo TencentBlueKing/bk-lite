@@ -10,13 +10,12 @@
         "save": "保存",
         "cancel": "取消",
         "confirm": "确认",
+        "done": "完成",
         "retry": "重试",
         "refresh": "刷新",
         "loading": "加载中...",
         "send": "发送",
         "back": "返回",
-        "online": "在线",
-        "offline": "离线",
         "me": "我",
         "settings": "设置",
         "logout": "退出登录",
@@ -47,11 +46,103 @@
     },
     "navigation": {
         "conversations": "对话",
+        "todo": "待办",
+        "monitor": "监控",
+        "assets": "资产",
         "apps": "智能应用",
         "workbench": "工作台",
         "profile": "我的",
         "primaryNavigation": "主导航"
     },
+    "availability": {
+        "loadFailed": "业务模块权限与许可加载失败，当前仅保留“我的”。"
+    },
+    "moduleShell": {
+        "todoTitle": "待办模块",
+        "monitorTitle": "监控模块",
+        "assetsTitle": "资产模块",
+        "phaseOnePlaceholder": "基础壳已就绪，业务内容将在后续阶段接入"
+    },
+    "todo": {
+        "title": "待办",
+        "detailTitle": "告警详情",
+        "searchAlerts": "搜索告警",
+        "searchPlaceholder": "输入关键词后搜索",
+        "searchField": "搜索字段",
+        "searchHint": "输入告警关键词开始搜索",
+        "searchFailed": "搜索失败",
+        "noSearchResults": "没有匹配的告警",
+        "tryAnotherKeyword": "请更换关键词或搜索字段",
+        "resultCount": "共 {count} 条结果",
+        "loadFailed": "告警加载失败",
+        "detailLoadFailed": "告警详情加载失败",
+        "detailForbidden": "没有查看此告警的权限",
+        "detailMissing": "告警不存在或已删除",
+        "backToTodo": "返回待办",
+        "sectionLoadFailed": "内容加载失败",
+        "retryHint": "请检查网络或权限后重试",
+        "levelPermissionDenied": "无法读取告警级别",
+        "noChangePermission": "没有查看变更记录的权限",
+        "empty": "当前没有告警",
+        "emptyHint": "下拉刷新可获取最新告警",
+        "noEvents": "暂无事件",
+        "noChanges": "暂无变更记录",
+        "unassigned": "未分派",
+        "assigneeLoadFailed": "处理人加载失败",
+        "searchAssignee": "搜索处理人",
+        "actionSuccess": "操作成功",
+        "actionFailed": "操作失败，请刷新后重试",
+        "acknowledgeConfirm": "认领后告警将进入“处理中”，确定继续吗？",
+        "closeConfirm": "关闭后告警将退出当前待办，确定继续吗？",
+        "submitting": "提交中...",
+        "views": { "mine": "需我处理", "open": "全部", "high": "高优先级" },
+        "moreActions": "更多",
+        "searchFields": { "title": "标题", "content": "内容", "alertId": "告警 ID" },
+        "status": { "unassigned": "未分派", "pending": "待响应", "processing": "处理中", "closed": "已关闭" },
+        "sections": { "summary": "摘要", "events": "事件", "changes": "变更记录", "alertInfo": "告警信息" },
+        "fields": {
+            "level": "级别", "status": "状态", "duration": "持续时间", "operator": "处理人",
+            "firstEvent": "首次事件", "lastEvent": "最近事件", "source": "来源", "alertId": "告警 ID",
+            "resourceType": "资源类型", "resourceName": "资源名称", "notifyStatus": "通知状态", "content": "告警内容"
+        },
+        "actions": { "assign": "分派", "acknowledge": "认领", "reassign": "转派", "close": "关闭" }
+    },
+
+    "monitor": {
+        "tabs": { "all": "全部实例", "recent": "最近查看" },
+        "objectTree": "监控对象", "selectObject": "按分类选择", "selectObjectFirst": "请先选择监控对象", "selectObjectHint": "实例只在当前对象范围内查询",
+        "recentPlaceholder": "最近查看暂未开放",
+        "objects": "监控对象", "instances": "监控实例", "searchWithin": "在{name}中搜索", "resultCount": "共 {count} 个实例",
+        "allObjects": "选择", "selectObjectAction": "选择", "selectObjectTitle": "选择监控对象", "searchObjects": "搜索对象名称", "searchInstances": "搜索实例", "currentObject": "当前",
+        "listModes": "实例视图", "modeAll": "全部", "modeLoadedIssue": "异常",
+        "shortCount": "{count} 个",
+        "loadedIssueCount": "异常 {issue}/{loaded}",
+        "noLoadedIssues": "已加载数据中暂无异常实例",
+        "columnName": "名称", "columnStatus": "状态", "columnReported": "上报", "summaryField": "摘要",
+        "objectLoadFailed": "监控对象加载失败", "instanceLoadFailed": "实例加载失败", "detailLoadFailed": "实例指标加载失败", "detailForbidden": "没有查看此实例的权限", "detailMissing": "实例不存在或已删除", "backToMonitor": "返回监控", "retryHint": "请检查网络或权限后重试",
+        "noObjects": "暂无可见监控对象", "noInstances": "当前对象暂无实例", "noSearchResults": "没有匹配的实例", "endOfList": "已经到底了",
+        "noReportTime": "暂无上报时间", "detailTitle": "实例详情", "instanceId": "实例 ID", "dataSource": "数据源", "selectPluginTitle": "选择数据源", "selectPluginAction": "选择", "currentPlugin": "当前", "timeRange": "时间范围",
+        "detailTabs": { "metrics": "指标", "about": "信息" },
+        "fields": {
+            "object": "监控对象", "instance": "实例名", "status": "状态", "reportedAt": "最近上报", "interval": "采集间隔", "intervalSeconds": "{count} 秒"
+        },
+        "pluginStatus": { "normal": "在线", "offline": "离线" },
+        "expandGroup": "点击展开", "collapseGroup": "收起", "groupCount": "{count} 项",
+        "noMetricsConfigured": "当前实例未配置指标", "noMetricsConfiguredHint": "有效插件下没有可展示的指标定义", "noRangeData": "当前时间范围暂无数据", "metricLoadFailed": "指标加载失败", "seriesCount": "{count} 个数据序列", "otherMetrics": "其他指标",
+        "status": { "normal": "正常", "unavailable": "异常" },
+        "ranges": { "15": "15 分钟", "30": "30 分钟", "60": "1 小时", "360": "6 小时", "720": "12 小时", "1440": "24 小时", "10080": "7 天", "43200": "30 天" }
+    },
+
+    "assets": {
+        "tabs": { "followed": "我关注的", "all": "全部资产" }, "search": "搜索资产", "searchLauncherHint": "按名称、IP 或其他资产属性快速定位", "followedAssets": "我关注的资产", "assetCategories": "资产分类",
+        "browseByCategory": "全部分类", "backToCategories": "返回全部分类", "viewAllCategories": "查看全部分类", "selectClassificationTitle": "选择分类", "selectClassificationAction": "选择", "currentClassification": "当前", "noClassifications": "暂无可见资产分类", "categoryModelCount": "{count} 个模型", "categorySwitchLabel": "{name}（{count}）", "categoryRowMeta": "{models} 个模型 · {assets} 实例",
+        "loadFailed": "资产目录加载失败", "instanceLoadFailed": "资产实例加载失败", "detailLoadFailed": "资产详情加载失败", "detailForbidden": "没有查看此资产的权限", "detailMissing": "资产不存在或已删除", "backToAssets": "返回资产", "retryHint": "请检查网络或权限后重试",
+        "resultCount": "共 {count} 项", "shortCount": "{count} 项", "catalogSummary": "{assets} 项资产 · {models} 个模型", "categorySummary": "{assets} 项资产 · {models} 个模型", "organization": "组织", "ipAddress": "IP", "noFollowed": "还没有关注资产", "noFollowedHint": "进入资产详情后可添加关注，结果与 Web 同步", "noModels": "暂无可见资产模型", "noInstances": "当前模型暂无资产", "noInstancesHint": "可切换上方模型继续浏览", "endOfList": "已经到底了",
+        "currentModel": "当前模型", "changeModel": "选择", "selectModelTitle": "选择模型", "searchModels": "筛选模型名称", "selectModelAction": "选择", "currentModelBadge": "当前", "columnName": "名称",
+        "searchModel": "在「{name}」中筛选", "searchPlaceholder": "输入资产关键词", "searchHint": "搜索全部资产", "searchHintDescription": "输入关键词后按模型查看真实命中结果", "searchResultsByModel": "按模型切换搜索结果", "searchFailed": "资产搜索失败", "noSearchResults": "没有匹配的资产", "exactMatch": "精确匹配", "searchForbidden": "没有全局资产搜索权限",
+        "detailTitle": "资产详情", "follow": "关注", "unfollow": "取消关注", "followUnavailable": "关注不可用", "followSuccess": "已关注", "unfollowSuccess": "已取消关注", "followFailed": "关注状态保存失败，请重试", "noFieldGroups": "当前模型没有可展示字段", "yes": "是", "no": "否"
+    },
+
     "conversations": {
         "loadFailed": "无法加载对话",
         "loadFailedDescription": "请检查网络后重试",
@@ -145,7 +236,9 @@
         "continueConversation": "继续对话",
         "startConversation": "快速发起对话",
         "loadFailed": "无法加载应用",
-        "loadFailedDescription": "请检查网络后重试"
+        "loadFailedDescription": "请检查网络后重试",
+        "empty": "当前分类暂无应用",
+        "emptyHint": "可切换分类或下拉刷新"
     },
     "search": {
         "searchConversation": "搜索对话",
@@ -176,7 +269,9 @@
         "user": "用户",
         "superAdmin": "超级管理员",
         "normalUser": "普通用户",
-        "otherApp": "其他应用"
+        "otherApp": "其他应用",
+        "accountOverview": "账号概览",
+        "loadFailed": "账号资料加载失败"
     },
     "avatar": {
         "viewAvatar": "查看头像",

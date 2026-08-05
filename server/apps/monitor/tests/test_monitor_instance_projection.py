@@ -1,16 +1,32 @@
 import types
 
-from apps.monitor.models import (
-    Metric,
-    MetricGroup,
-    MonitorInstance,
-    MonitorInstanceOrganization,
-    MonitorObject,
-)
+from apps.monitor.models import Metric, MetricGroup, MonitorInstance, MonitorInstanceOrganization, MonitorObject
 from apps.monitor.models.plugin import MonitorPlugin
 from apps.monitor.services.monitor_instance import InstanceSearch
 from apps.monitor.services.monitor_object import MonitorObjectService
 from apps.monitor.utils.dimension import build_safe_instance_id
+
+
+def test_monitor_instance_status_failure_degrades_to_empty_status_map(monkeypatch):
+    def raise_status_error(*args, **kwargs):
+        raise RuntimeError("VictoriaMetrics unavailable")
+
+    monkeypatch.setattr(MonitorObjectService, "get_instances_by_metric", raise_status_error)
+
+    assert MonitorObjectService._safe_get_instances_by_metric("up", ["instance_id"]) == {}
+
+
+def test_monitor_instance_display_metric_failure_keeps_base_rows(monkeypatch):
+    rows = [{"instance_id": "('demo-host-01',)", "instance_name": "demo-host-01"}]
+
+    def raise_metric_error(*args, **kwargs):
+        raise RuntimeError("VictoriaMetrics unavailable")
+
+    monkeypatch.setattr(MonitorObjectService, "_fill_display_metrics", raise_metric_error)
+
+    MonitorObjectService._safe_fill_display_metrics(19, {}, rows)
+
+    assert rows == [{"instance_id": "('demo-host-01',)", "instance_name": "demo-host-01"}]
 
 
 def test_monitor_object_service_projects_flow_asset_fields_for_existing_asset_prefill(db):
@@ -460,10 +476,7 @@ def test_monitor_instance_list_add_metrics_escapes_flow_instance_regex_for_promq
         monitor_object=monitor_object,
         metric_group=metric_group,
         name="device_total_incoming_netflow_traffic",
-        query=(
-            "sum(netflow_in_bytes{instance_type='switch', collect_type='netflow', __$labels__}) "
-            "by (instance_id)"
-        ),
+        query=("sum(netflow_in_bytes{instance_type='switch', collect_type='netflow', __$labels__}) " "by (instance_id)"),
         instance_id_keys=["instance_id"],
     )
     instance = MonitorInstance.objects.create(
@@ -509,6 +522,5 @@ def test_monitor_instance_list_add_metrics_escapes_flow_instance_regex_for_promq
 
     assert data["count"] == 1
     assert captured_queries[1] == (
-        "sum(netflow_in_bytes{instance_type='switch', collect_type='netflow', "
-        f'instance_id=~"{logical_id}"}}) by (instance_id)'
+        "sum(netflow_in_bytes{instance_type='switch', collect_type='netflow', " f'instance_id=~"{logical_id}"}}) by (instance_id)'
     )

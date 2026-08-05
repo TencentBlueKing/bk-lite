@@ -15,6 +15,7 @@ interface MobilePageHeaderProps {
   title: string;
   searchType?: SearchType;
   backHref?: string;
+  onBeforeBack?: () => boolean;
   actions?: Array<{
     href: string;
     icon: ReactNode;
@@ -26,11 +27,15 @@ export default function MobilePageHeader({
   title,
   searchType,
   backHref,
+  onBeforeBack,
   actions = [],
 }: MobilePageHeaderProps) {
   const router = useRouter();
   const { t } = useTranslation();
-  const handleBack = useMobileBack({ fallbackHref: backHref || '/workbench' });
+  const handleBack = useMobileBack({
+    fallbackHref: backHref || '/workbench',
+    onBeforeBack,
+  });
 
   return (
     <MobileSafeHeader contentClassName={styles.headerContent}>

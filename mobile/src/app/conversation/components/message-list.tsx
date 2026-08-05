@@ -10,6 +10,8 @@ import { InformationCard } from './custom-components/information-card';
 import { SelectionButtons } from './custom-components/selection-buttons';
 import { useTranslation } from '@/utils/i18n';
 import { DownOutline } from 'antd-mobile-icons';
+import { useLocale } from '@/context/locale';
+import { useAuth } from '@/context/auth';
 interface MessageListProps {
     messages: Message[];
     thinkingExpanded: Record<string, boolean>;
@@ -58,6 +60,9 @@ export const MessageList: React.FC<MessageListProps> = ({
     onFormSubmit,
 }) => {
     const { t } = useTranslation();
+    const { locale } = useLocale();
+    const { userInfo } = useAuth();
+    const timezone = userInfo?.timezone || 'Asia/Shanghai';
 
     return (
         <>
@@ -85,7 +90,7 @@ export const MessageList: React.FC<MessageListProps> = ({
                             {showTime && (
                                 <div className="flex justify-center">
                                     <div className="text-xs text-[var(--color-text-4)] px-3 py-1">
-                                        {formatMessageTime(msg.timestamp, t)}
+                                        {formatMessageTime(msg.timestamp, locale, timezone, t('common.yesterday'))}
                                     </div>
                                 </div>
                             )}
@@ -198,7 +203,7 @@ export const MessageList: React.FC<MessageListProps> = ({
                         {showTime && (
                             <div className="flex justify-center">
                                 <div className="text-xs text-[var(--color-text-4)] px-3 py-1">
-                                    {formatMessageTime(msg.timestamp, t)}
+                                    {formatMessageTime(msg.timestamp, locale, timezone, t('common.yesterday'))}
                                 </div>
                             </div>
                         )}
