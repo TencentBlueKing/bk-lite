@@ -1,11 +1,4 @@
-export interface WidgetRequestCacheEntry {
-  rawData: any;
-  baselineData: any;
-  errorMessage?: string;
-  errorCode?: string;
-}
-
-const widgetRequestCache = new Map<string, WidgetRequestCacheEntry>();
+const inflightWidgetRequests = new Map<string, Promise<unknown>>();
 
 export const buildWidgetRequestCacheKey = ({
   scopeId,
@@ -17,26 +10,16 @@ export const buildWidgetRequestCacheKey = ({
   requestSignature: string;
 }) => `${scopeId ?? 'dashboard'}:${requestVersionKey}:${requestSignature}`;
 
-export const getCachedWidgetRequest = (
+export const getOrCreateInflightWidgetRequest = async <T,>(
   requestKey: string,
-): WidgetRequestCacheEntry | undefined => widgetRequestCache.get(requestKey);
+  createRequest: () => Promise<T>,
+): Promise<T> => {
+  const existingRequest = inflightWidgetRequests.get(requestKey) as Promise<T> | undefined;
+  if (existingRequest) return existingRequest;
 
-export const setWidgetRequestSuccessCache = (
-  requestKey: string,
-  entry: WidgetRequestCacheEntry,
-) => {
-  widgetRequestCache.set(requestKey, entry);
-};
-
-export const setWidgetRequestFailureCache = (
-  requestKey: string,
-  message: string,
-  errorCode?: string,
-) => {
-  widgetRequestCache.set(requestKey, {
-    rawData: null,
-    baselineData: null,
-    errorMessage: message,
-    ...(errorCode ? { errorCode } : {}),
+  const requestPromise = createRequest().finally(() => {
+    inflightWidgetRequests.delete(requestKey);
   });
+  inflightWidgetRequests.set(requestKey, requestPromise as Promise<unknown>);
+  return requestPromise;
 };

@@ -26,6 +26,7 @@ import {
 import type {
   ComponentSelectorConfigItem,
   FilterValue,
+  LayoutItem,
   UnifiedFilterDefinition,
   WidgetConfig,
 } from "@/app/ops-analysis/types/dashBoard";
@@ -117,6 +118,27 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
   const currentConfigItem = useMemo(
     () => draftViewSets.items.find((item) => item.id === configItemId),
     [configItemId, draftViewSets.items],
+  );
+  const currentViewConfigItem = useMemo<LayoutItem | null>(
+    () =>
+      currentConfigItem
+        ? {
+          i: currentConfigItem.id,
+          x: 0,
+          y: 0,
+          w: 1,
+          h: 1,
+          name: currentConfigItem.title || currentConfigItem.chartType,
+          valueConfig: {
+            ...currentConfigItem.valueConfig,
+            chartType: currentConfigItem.chartType,
+            appearance: normalizeScreenWidgetAppearance(
+              currentConfigItem.valueConfig?.appearance,
+            ),
+          },
+        }
+        : null,
+    [currentConfigItem],
   );
   const pendingViewConfigItem = useMemo(
     () =>
@@ -508,6 +530,7 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
     () => (
       <ScreenCanvas
         viewSets={activeViewSets}
+        fullscreen={isFullscreen}
         editMode={editMode}
         selectedItemId={selectedItemId}
         refreshVersion={refreshVersion}
@@ -539,88 +562,81 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
       queryState.filterSearchVersion,
       queryState.namespaceSearchVersion,
       refreshVersion,
+      isFullscreen,
       selectedItemId,
       selectedScreen?.data_id,
     ],
   );
 
-  if (isFullscreen) {
-    return (
-      <div className="fixed inset-0 z-[1000] bg-slate-950">
-        <AppViewFullscreenExit visible onExit={exitFullscreen} />
-        <ScreenCanvas
-          viewSets={activeViewSets}
-          fullscreen
-          refreshVersion={refreshVersion}
-          screenId={selectedScreen?.data_id}
-          dataSourceResolver={dataSourceResolver}
-          filterDefinitions={queryState.definitions}
-          unifiedFilterValues={queryState.appliedFilterValues}
-          filterSearchVersion={queryState.filterSearchVersion}
-          namespaceSearchVersion={queryState.namespaceSearchVersion}
-          builtinNamespaceId={queryState.appliedNamespaceId}
-        />
-      </div>
-    );
-  }
-
   return (
     <>
-      <ViewWorkspace
-        selectedItem={selectedScreen}
-        loading={loading}
-        titleFallback={t("opsAnalysis.screen.title")}
-        emptyDescription={t("opsAnalysis.screen.selectFirst")}
-        toolbar={
-          <ScreenToolbar
-            selectedScreen={selectedScreen}
-            editMode={editMode}
-            shareMode={shareMode}
-            shareLoading={shareLoading}
-            onOpenShare={
-              !shareMode && selectedScreen?.data_id
-                ? () => {
-                    void openShare(selectedScreen.data_id);
-                  }
-                : undefined
-            }
-            onOpenSubscription={
-              !shareMode && selectedScreen?.data_id
-                ? () => setSubscriptionModalVisible(true)
-                : undefined
-            }
-            saving={saving}
-            onRefresh={handleRefresh}
-            onOpenSettings={() => setSettingsOpen(true)}
-            onOpenFilterConfig={() => setFilterConfigOpen(true)}
-            onOpenWidgetSelector={() => setWidgetSelectorOpen(true)}
-            onPreview={enterFullscreen}
-            onEdit={handleStartEdit}
-            onCancel={handleCancelEdit}
-            onSave={handleSave}
-          />
-        }
-        filterBar={
-          (queryState.definitions.length > 0 ||
-            namespaceSelectorElement ||
-            editMode) && (
-            <UnifiedFilterBar
-              definitions={queryState.definitions}
-              values={queryState.filterValues}
-              onChange={queryState.setFilterValues}
-              onSearch={(values) =>
-                queryState.applyQuery(values, queryState.namespaceDraftId)
-              }
-              onReset={(values) =>
-                queryState.applyQuery(values, queryState.namespaceDraftId)
-              }
-              prefixContent={namespaceSelectorElement}
-            />
-          )
+      <div
+        className={
+          isFullscreen
+            ? "fixed inset-0 z-[1000] bg-slate-950"
+            : "h-full min-h-0 w-full"
         }
       >
-        {screenCanvas}
-      </ViewWorkspace>
+        <AppViewFullscreenExit visible={isFullscreen} onExit={exitFullscreen} />
+        <ViewWorkspace
+          selectedItem={selectedScreen}
+          loading={loading}
+          titleFallback={t("opsAnalysis.screen.title")}
+          emptyDescription={t("opsAnalysis.screen.selectFirst")}
+          headerVisible={!isFullscreen}
+          filterBarVisible={!isFullscreen}
+          contentClassName={isFullscreen ? "bg-slate-950" : undefined}
+          toolbar={
+            <ScreenToolbar
+              selectedScreen={selectedScreen}
+              editMode={editMode}
+              shareMode={shareMode}
+              shareLoading={shareLoading}
+              onOpenShare={
+                !shareMode && selectedScreen?.data_id
+                  ? () => {
+                    void openShare(selectedScreen.data_id);
+                  }
+                  : undefined
+              }
+              onOpenSubscription={
+                !shareMode && selectedScreen?.data_id
+                  ? () => setSubscriptionModalVisible(true)
+                  : undefined
+              }
+              saving={saving}
+              onRefresh={handleRefresh}
+              onOpenSettings={() => setSettingsOpen(true)}
+              onOpenFilterConfig={() => setFilterConfigOpen(true)}
+              onOpenWidgetSelector={() => setWidgetSelectorOpen(true)}
+              onPreview={enterFullscreen}
+              onEdit={handleStartEdit}
+              onCancel={handleCancelEdit}
+              onSave={handleSave}
+            />
+          }
+          filterBar={
+            (queryState.definitions.length > 0 ||
+              namespaceSelectorElement ||
+              editMode) && (
+              <UnifiedFilterBar
+                definitions={queryState.definitions}
+                values={queryState.filterValues}
+                onChange={queryState.setFilterValues}
+                onSearch={(values) =>
+                  queryState.applyQuery(values, queryState.namespaceDraftId)
+                }
+                onReset={(values) =>
+                  queryState.applyQuery(values, queryState.namespaceDraftId)
+                }
+                prefixContent={namespaceSelectorElement}
+              />
+            )
+          }
+        >
+          {screenCanvas}
+        </ViewWorkspace>
+      </div>
       <ViewSelector
         visible={widgetSelectorOpen}
         onCancel={() => setWidgetSelectorOpen(false)}
@@ -664,24 +680,10 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
         }))}
         dataSources={dataSources}
       />
-      {currentConfigItem && (
+      {currentViewConfigItem && (
         <ViewConfig
           open={Boolean(configItemId)}
-          item={{
-            i: currentConfigItem.id,
-            x: 0,
-            y: 0,
-            w: 1,
-            h: 1,
-            name: currentConfigItem.title || currentConfigItem.chartType,
-            valueConfig: {
-              ...currentConfigItem.valueConfig,
-              chartType: currentConfigItem.chartType,
-              appearance: normalizeScreenWidgetAppearance(
-                currentConfigItem.valueConfig?.appearance,
-              ),
-            },
-          }}
+          item={currentViewConfigItem}
           dataSourceManager={dataSourceManager}
           showChartThemeMode={false}
           surface="screen"

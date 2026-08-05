@@ -3,6 +3,7 @@ import React, {
   useState,
   useMemo,
   useCallback,
+  useRef,
 } from 'react';
 import { Button, Input, Select, DatePicker, Tooltip, message } from 'antd';
 import { SearchOutlined } from '@ant-design/icons';
@@ -37,6 +38,8 @@ import {
   resolveDashboardActionParams,
 } from '@/app/ops-analysis/utils/dashboardActions';
 import { getScreenWidgetScale } from './shared/screenMetrics';
+import { supportsServerPagination } from '@/app/ops-analysis/utils/tablePagination';
+import { useTableBodyScrollY } from './shared/useTableBodyScrollY';
 
 const { RangePicker } = DatePicker;
 const DEFAULT_CELL_MAX_WIDTH = 260;
@@ -66,6 +69,7 @@ const ComTable: React.FC<ComTableProps> = ({
 }) => {
   const { t } = useTranslation();
   const shareMode = useShareMode();
+  const tableContainerRef = useRef<HTMLDivElement | null>(null);
   const [filters, setFilters] = useState<Record<string, any>>({});
   const [keywordDrafts, setKeywordDrafts] = useState<Record<string, string>>(
     {},
@@ -108,14 +112,29 @@ const ComTable: React.FC<ComTableProps> = ({
     } as React.CSSProperties;
   }, [screenTableTheme, usesScreenTheme, widgetScale]);
   
-  const { tableData, pagination } = useMemo(() => {
-    const parsed = parseTableLikeData<TableDataItem>(rawData, queryPagination);
+  const supportsPaginationParams = useMemo(
+    () => supportsServerPagination(dataSource?.params),
+    [dataSource?.params],
+  );
+
+  const { tableData, pagination, isPaginated } = useMemo(() => {
+    const parsed = parseTableLikeData<TableDataItem>(
+      rawData,
+      queryPagination,
+      supportsPaginationParams,
+    );
 
     return {
       tableData: parsed.rows,
       pagination: parsed.pagination,
+      isPaginated: parsed.isPaginated,
     };
-  }, [rawData, queryPagination.current, queryPagination.pageSize]);
+  }, [rawData, queryPagination.current, queryPagination.pageSize, supportsPaginationParams]);
+  const tableScrollY = useTableBodyScrollY({
+    containerRef: tableContainerRef,
+    hasPagination: isPaginated,
+    scale: widgetScale,
+  });
 
   const filterFields = useMemo<TableFilterFieldConfig[]>(() => {
     return config?.tableConfig?.filterFields || [];
@@ -256,10 +275,11 @@ const ComTable: React.FC<ComTableProps> = ({
   useEffect(() => {
     if (!onQueryChange) return;
 
-    const queryParams: Record<string, any> = {
-      page: queryPagination.current,
-      page_size: queryPagination.pageSize,
-    };
+    const queryParams: Record<string, any> = {};
+    if (supportsPaginationParams) {
+      queryParams.page = queryPagination.current;
+      queryParams.page_size = queryPagination.pageSize;
+    }
     const queryList: Array<Record<string, any>> = [];
 
     Object.entries(filters).forEach(([key, value]) => {
@@ -304,6 +324,7 @@ const ComTable: React.FC<ComTableProps> = ({
     onQueryChange,
     queryPagination,
     filters,
+    supportsPaginationParams,
   ]);
 
   useEffect(() => {
@@ -483,10 +504,11 @@ const ComTable: React.FC<ComTableProps> = ({
       {renderFilters()}
 
       <div
+        ref={tableContainerRef}
         className={`flex-1 min-h-0 ${
           usesScreenTheme
             ? `overflow-hidden ${styles.screenDarkTableWrap}`
-            : 'overflow-visible'
+            : 'overflow-hidden'
         }`}
       >
         <CustomTable
@@ -498,19 +520,23 @@ const ComTable: React.FC<ComTableProps> = ({
             record.id || record.key || index?.toString() || '0'
           }
           size="small"
-          pagination={{
-            current: pagination.current,
-            pageSize: pagination.pageSize,
-            total: pagination.total,
-            showSizeChanger: {
-              getPopupContainer: () => document.body,
-            },
-            showQuickJumper: true,
-            showTotal: (total) =>
-              `${t('common.total')} ${total} ${t('common.items')}`,
-          }}
-          onChange={handleTableChange}
-          scroll={{ x: 'max-content' }}
+          pagination={
+            isPaginated
+              ? {
+                current: pagination.current,
+                pageSize: pagination.pageSize,
+                total: pagination.total,
+                showSizeChanger: {
+                  getPopupContainer: () => document.body,
+                },
+                showQuickJumper: true,
+                showTotal: (total) =>
+                  `${t('common.total')} ${total} ${t('common.items')}`,
+              }
+              : false
+          }
+          onChange={isPaginated ? handleTableChange : undefined}
+          scroll={{ x: 'max-content', y: tableScrollY }}
         />
       </div>
     </div>

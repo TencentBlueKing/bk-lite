@@ -49,28 +49,30 @@
     ]
   },
   {
-    "name": "告警趋势",
-    "desc": "查询告警趋势的数据",
+        "key": "告警趋势::alert/get_alert_trend_data",
+"name": "告警与关联事件趋势",
+    "desc": "跟随时间范围，返回告警数、关联事件数和已恢复告警数的时间序列",
     "rest_api": "alert/get_alert_trend_data",
     "tag": [
       "alerts"
     ],
     "chart_type": [
-      "single"
+      "line",
+      "bar"
     ],
     "params": [
       {
         "name": "time",
         "type": "timeRange",
         "value": 10080,
-        "alias_name": "time",
+        "alias_name": "时间范围",
         "filterType": "filter"
       },
       {
         "name": "group_by",
         "type": "string",
         "value": "day",
-        "alias_name": "group_by",
+        "alias_name": "聚合粒度",
         "filterType": "fixed"
       }
     ]
@@ -346,8 +348,9 @@
     ]
 },
 {
-    "name": "今日告警状态总览",
-    "desc": "今日产生、今日关闭与当前处理中告警统计",
+        "key": "今日告警状态总览::alert/get_alert_today_status_summary",
+"name": "今日产生关闭与当前处理中",
+    "desc": "今日新产生与关闭的告警数，以及当前处理中告警数；前两项为今日口径，处理中为当前快照",
     "rest_api": "alert/get_alert_today_status_summary",
     "tag": [
         "alerts"
@@ -359,12 +362,13 @@
     "field_schema": [
         {"key": "today_created_count", "title": "今日产生告警数", "value_type": "number", "description": "今日 0 点起新产生的告警数"},
         {"key": "today_closed_count", "title": "今日关闭告警数", "value_type": "number", "description": "今日关闭、自动关闭或自动恢复的告警数"},
-        {"key": "processing_count", "title": "当前处理中告警数", "value_type": "number", "description": "当前处理中的告警数"}
+        {"key": "processing_count", "title": "处理中告警数", "value_type": "number", "description": "当前处理中的告警数"}
     ]
 },
 {
-    "name": "告警状态分布",
-    "desc": "活跃告警按未分派、待响应、处理中状态分布",
+        "key": "告警状态分布::alert/get_alert_status_distribution",
+"name": "活跃告警状态分布",
+    "desc": "未分派、待响应、处理中分布，不受时间范围影响",
     "rest_api": "alert/get_alert_status_distribution",
     "tag": [
         "alerts"
@@ -379,8 +383,9 @@
     ]
 },
 {
-    "name": "近7日告警等级趋势",
-    "desc": "指定时间范围内按告警等级分组的趋势数据",
+        "key": "告警等级趋势::alert/get_alert_level_trend",
+"name": "告警等级趋势",
+    "desc": "跟随时间范围，按告警等级分组的时间序列",
     "rest_api": "alert/get_alert_level_trend",
     "tag": [
         "alerts"
@@ -394,14 +399,14 @@
             "name": "group_by",
             "type": "string",
             "value": "day",
-            "alias_name": "group_by",
+            "alias_name": "聚合粒度",
             "filterType": "fixed"
         },
         {
             "name": "time",
             "type": "timeRange",
             "value": 10080,
-            "alias_name": "time",
+            "alias_name": "时间范围",
             "filterType": "filter"
         }
     ],
@@ -434,7 +439,7 @@
         {"key": "policy_total", "title": "告警策略总数", "value_type": "number", "description": "告警策略总数"},
         {"key": "policy_enabled", "title": "启用策略数", "value_type": "number", "description": "启用的告警策略数"},
         {"key": "policy_disabled", "title": "禁用策略数", "value_type": "number", "description": "禁用的告警策略数"},
-        {"key": "alert_current", "title": "当前告警总数", "value_type": "number", "description": "当前未处理的告警总数"},
+        {"key": "alert_current", "title": "告警总数", "value_type": "number", "description": "当前未处理的告警总数"},
         {"key": "alert_history", "title": "历史告警总数", "value_type": "number", "description": "历史告警总数"},
         {"key": "alert_today", "title": "今日新增告警数", "value_type": "number", "description": "今日新增的告警数"},
         {"key": "alert_recovered", "title": "已恢复告警数", "value_type": "number", "description": "已恢复状态的告警数"},
@@ -483,7 +488,7 @@
 },
 {
     "name": "云资源成本汇总",
-    "desc": "云资源成本分析 KPI 汇总卡(总费用/实例数/日均/同环比)",
+    "desc": "按筛选条件汇总计费时段内总费用、计费实例数、日均费用和环比",
     "rest_api": "cmdb/get_cloud_resource_cost_summary",
     "tag": [
       "cmdb"
@@ -497,11 +502,16 @@
       {"name": "inst_type", "type": "string", "value": "", "alias_name": "对象类型", "filterType": "filter"},
       {"name": "billing_period", "type": "dateRange", "value": "", "alias_name": "计费日期", "filterType": "filter"}
     ],
-    "field_schema": []
+    "field_schema": [
+      {"key": "total_cost", "title": "总费用(元)", "value_type": "string", "description": "所选计费时段内的费用合计"},
+      {"key": "instance_count", "title": "计费实例数", "value_type": "number", "description": "所选时段内按资源实例 ID 去重后的实例数"},
+      {"key": "avg_daily_cost", "title": "日均费用(元)", "value_type": "string", "description": "总费用除以所选计费时段的日历天数"},
+      {"key": "mom_change_pct", "title": "环比变化(%)", "value_type": "string", "description": "与上一等长时段的费用变化比例；无法计算时返回空值"}
+    ]
 },
 {
     "name": "云资源费用分布",
-    "desc": "云资源费用按对象类型/使用部门/申请人分布",
+    "desc": "按对象类型、使用部门或申请人汇总计费时段内费用和实例数",
     "rest_api": "cmdb/get_cloud_resource_cost_distribution",
     "tag": [
       "cmdb"
@@ -514,18 +524,36 @@
       {"name": "applying_user", "type": "string", "value": "", "alias_name": "申请人", "filterType": "filter"},
       {"name": "inst_type", "type": "string", "value": "", "alias_name": "对象类型", "filterType": "filter"},
       {"name": "billing_period", "type": "dateRange", "value": "", "alias_name": "计费日期", "filterType": "filter"},
-      {"name": "group_by", "type": "string", "value": "instance_type", "alias_name": "排行主体", "filterType": "params"}
+      {
+        "name": "group_by",
+        "type": "string",
+        "value": "instance_type",
+        "alias_name": "分组维度",
+        "filterType": "params",
+        "required": true,
+        "inputConfig": {
+          "control": "select",
+          "optionsSource": {
+            "type": "static",
+            "staticItems": [
+              {"label": "对象类型", "value": "instance_type"},
+              {"label": "使用部门", "value": "department"},
+              {"label": "申请人", "value": "user"}
+            ]
+          }
+        }
+      }
     ],
     "field_schema": [
-        {"key": "key", "title": "分组值", "value_type": "string", "description": "group_by 对应字段的取值(对象类型/部门/申请人)"},
-        {"key": "total_cost", "title": "费用合计(元)", "value_type": "number", "description": "该分组窗口内 total_cost SUM"},
-        {"key": "instance_count", "title": "实例数", "value_type": "number", "description": "该分组下按 object_id 去重的实例数"},
-        {"key": "pct", "title": "占比(%)", "value_type": "number", "description": "该分组 total_cost 占全局的百分比"}
+        {"key": "key", "title": "分组值", "value_type": "string", "description": "当前分组维度对应的对象类型、使用部门或申请人"},
+        {"key": "total_cost", "title": "费用合计(元)", "value_type": "number", "description": "所选计费时段内该分组的费用合计"},
+        {"key": "instance_count", "title": "实例数", "value_type": "number", "description": "该分组中按资源实例 ID 去重后的实例数"},
+        {"key": "pct", "title": "费用占比(%)", "value_type": "number", "description": "该分组费用占所有分组费用合计的百分比"}
     ]
 },
 {
     "name": "云资源账单明细",
-    "desc": "云资源账单明细表(已发生总费用/单价 元/天,分页)",
+    "desc": "分页展示计费时段内账单，可按费用、实例名称或使用部门排序",
     "rest_api": "cmdb/get_cloud_resource_cost_bill_detail",
     "tag": [
         "cmdb"
@@ -539,22 +567,58 @@
         {"name": "inst_type", "type": "string", "value": "", "alias_name": "对象类型", "filterType": "filter"},
         {"name": "billing_period", "type": "dateRange", "value": "", "alias_name": "计费日期", "filterType": "filter"},
         {"name": "page", "type": "number", "value": 1, "alias_name": "页码", "filterType": "params"},
-        {"name": "page_size", "type": "number", "value": 20, "alias_name": "每页数量", "filterType": "params"}
+        {"name": "page_size", "type": "number", "value": 20, "alias_name": "每页数量", "filterType": "params"},
+        {
+          "name": "sort_by",
+          "type": "string",
+          "value": "total_cost_incurred",
+          "alias_name": "排序字段",
+          "filterType": "params",
+          "inputConfig": {
+            "control": "select",
+            "optionsSource": {
+              "type": "static",
+              "staticItems": [
+                {"label": "已发生费用", "value": "total_cost_incurred"},
+                {"label": "实例名称", "value": "instance_name"},
+                {"label": "使用部门", "value": "department"}
+              ]
+            }
+          }
+        },
+        {
+          "name": "order",
+          "type": "string",
+          "value": "desc",
+          "alias_name": "排序方向",
+          "filterType": "params",
+          "inputConfig": {
+            "control": "select",
+            "optionsSource": {
+              "type": "static",
+              "staticItems": [
+                {"label": "降序", "value": "desc"},
+                {"label": "升序", "value": "asc"}
+              ]
+            }
+          }
+        }
     ],
     "field_schema": [
-        {"key": "instance_name", "title": "实例名称", "value_type": "string", "description": "bill 上的 inst_name"},
-        {"key": "object_type", "title": "对象类型", "value_type": "string", "description": "database / cache / compute 等"},
-        {"key": "object_name", "title": "对象名称", "value_type": "string", "description": "业务侧资源名"},
-        {"key": "department", "title": "使用部门", "value_type": "string", "description": "bill.user_department"},
-        {"key": "user", "title": "申请人", "value_type": "string", "description": "bill.applicant"},
-        {"key": "object_id", "title": "资源实例 ID", "value_type": "string", "description": "资源实例 id"},
-        {"key": "total_cost_incurred", "title": "已发生费用(元)", "value_type": "string", "description": "窗口内 log.total_cost SUM"},
-        {"key": "unit_price", "title": "单价(元/天)", "value_type": "string", "description": "total_cost_incurred / 窗口天数"}
+        {"key": "instance_name", "title": "实例名称", "value_type": "string", "description": "计费资源实例的显示名称"},
+        {"key": "object_type", "title": "对象类型", "value_type": "string", "description": "资源所属的对象类型，如数据库、缓存或计算资源"},
+        {"key": "object_name", "title": "对象名称", "value_type": "string", "description": "业务侧资源对象名称"},
+        {"key": "department", "title": "使用部门", "value_type": "string", "description": "账单归属的使用部门"},
+        {"key": "user", "title": "申请人", "value_type": "string", "description": "账单记录的资源申请人"},
+        {"key": "object_id", "title": "资源实例 ID", "value_type": "string", "description": "计费资源实例的唯一标识"},
+        {"key": "total_cost_incurred", "title": "已发生费用(元)", "value_type": "string", "description": "所选计费时段内该账单的费用合计"},
+        {"key": "unit_price", "title": "日均费用(元/天)", "value_type": "string", "description": "已发生费用除以所选时段的日历天数；未选择时段时按账单日志跨度计算"}
     ]
 },
 {
-    "name": "CMDB 机房列表",
-    "desc": "返回 CMDB 中所有 server_room 列表（按当前用户权限过滤），保留原始字段 _id/inst_name 等。供运维分析参数动态选项源使用；本身不直接出图。",
+        "key": "CMDB 机房列表::cmdb/get_room_list",
+"name": "CMDB 机房列表（选项）",
+    "desc": "机房列表，供参数动态选项使用，本身不直接出图",
     "rest_api": "cmdb/get_room_list",
     "tag": [
         "cmdb"
@@ -564,8 +628,9 @@
     "field_schema": []
 },
 {
-    "name": "CMDB 变更趋势",
-    "desc": "查询 CMDB 在时间范围内的新增、修改、删除趋势",
+        "key": "CMDB 变更趋势::cmdb/get_change_trend",
+"name": "CMDB 变更趋势",
+    "desc": "跟随时间范围，统计实例新增、修改和删除趋势，可按模型筛选",
     "rest_api": "cmdb/get_change_trend",
     "tag": ["cmdb"],
     "chart_type": ["line", "bar"],
@@ -581,27 +646,36 @@
             "name": "model_id",
             "type": "string",
             "value": "",
-            "alias_name": "模型ID",
+            "alias_name": "模型 ID",
             "filterType": "params"
+        },
+        {
+            "name": "group_by",
+            "type": "string",
+            "value": "day",
+            "alias_name": "聚合粒度",
+            "filterType": "fixed"
         }
     ],
     "field_schema": []
 },
 {
-    "name": "CMDB 模型分类列表",
-    "desc": "返回当前用户可见的 CMDB 模型分类，供参数动态选项使用",
+        "key": "CMDB 模型分类列表::cmdb/get_model_classification_options",
+"name": "CMDB 模型分类列表（选项）",
+    "desc": "模型分类列表，供参数动态选项使用，本身不直接出图",
     "rest_api": "cmdb/get_model_classification_options",
     "tag": ["cmdb"],
     "chart_type": [],
     "params": [],
     "field_schema": [
-        {"key": "classification_id", "title": "模型分类ID", "value_type": "string"},
-        {"key": "classification_name", "title": "模型分类名称", "value_type": "string"}
+        {"key": "classification_id", "title": "模型分类 ID", "value_type": "string", "description": "模型分类唯一标识"},
+        {"key": "classification_name", "title": "模型分类名称", "value_type": "string", "description": "当前语言下的模型分类显示名称"}
     ]
 },
 {
-    "name": "分类模型实例数量",
-    "desc": "返回指定模型分类下各模型的实例数量，过滤零实例并按数量降序",
+        "key": "分类模型实例数量::cmdb/get_classification_model_instance_counts",
+"name": "分类下模型实例数",
+    "desc": "指定模型分类下各模型的实例数量，过滤零实例并降序；依赖分类参数",
     "rest_api": "cmdb/get_classification_model_instance_counts",
     "tag": ["cmdb"],
     "chart_type": ["multiValue"],
@@ -625,13 +699,14 @@
         }
     ],
     "field_schema": [
-        {"key": "label", "title": "模型名称", "value_type": "string"},
-        {"key": "value", "title": "实例数量", "value_type": "number"}
+        {"key": "label", "title": "模型名称", "value_type": "string", "description": "指定分类下实例数大于零的模型名称"},
+        {"key": "value", "title": "实例数量", "value_type": "number", "description": "当前权限范围内该模型的实例数量"}
     ]
 },
 {
-    "name": "CMDB 地区列表",
-    "desc": "返回当前用户可见模型定义中所有 region 标签候选值，供运营分析参数动态选项使用",
+        "key": "CMDB 地区列表::cmdb/get_region_options",
+"name": "CMDB 地区列表（选项）",
+    "desc": "地区标签候选项，供参数动态选项使用，本身不直接出图",
     "rest_api": "cmdb/get_region_options",
     "tag": ["cmdb"],
     "chart_type": [],
@@ -642,8 +717,9 @@
     ]
 },
 {
-    "name": "地区资源概览",
-    "desc": "按 region 标签统计当前权限范围内各 CMDB 模型分类的实例总数",
+        "key": "地区资源概览::cmdb/get_region_resource_overview",
+"name": "地区分类实例数",
+    "desc": "按地区标签统计各模型分类的实例总数；依赖地区参数",
     "rest_api": "cmdb/get_region_resource_overview",
     "tag": ["cmdb"],
     "chart_type": ["multiValue"],
@@ -712,15 +788,16 @@
     ]
 },
 {
-    "name": "告警来源分布",
-    "desc": "按告警来源名称统计当前权限范围内的全部告警，空来源归为未知来源",
+        "key": "告警来源分布::alert/get_alert_source_distribution",
+"name": "告警按来源分布",
+    "desc": "按来源统计全部告警存量，不受时间范围影响；空来源归为未知来源，非关联事件口径",
     "rest_api": "alert/get_alert_source_distribution",
     "tag": ["alerts"],
     "chart_type": ["pie"],
     "params": [],
     "field_schema": [
-        {"key": "name", "title": "告警来源", "value_type": "string"},
-        {"key": "value", "title": "告警数量", "value_type": "number"}
+        {"key": "name", "title": "告警来源", "value_type": "string", "description": "告警数据中的来源名称，空值归为未知来源"},
+        {"key": "value", "title": "告警数量", "value_type": "number", "description": "当前权限范围内该来源的全部告警数量"}
     ]
 }
 ]

@@ -118,6 +118,8 @@ class DataSourceAPIModel(MaintainerInfo, TimeInfo, Groups):
     tag = models.ManyToManyField(to=DataSourceTag, related_name="data_sources", help_text="数据源标签", blank=True)
     chart_type = JSONField(help_text="图表类型", default=list, blank=True, null=True)
     field_schema = JSONField(default=list, blank=True, help_text="接口返回字段定义（数据源级配置，表格默认列可使用）")
+    is_build_in = models.BooleanField(default=False, db_index=True, verbose_name="是否内置")
+    build_in_key = models.CharField(max_length=512, null=True, blank=True, unique=True, verbose_name="内置配置稳定键")
 
     class Meta:
         db_table = "operation_analysis_data_source_api"
