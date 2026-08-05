@@ -1174,16 +1174,16 @@ class SpellModel(BaseLogClusterModel):
         return lcs
 
     def _get_lcs_match_indices(self, sequence: List[str], lcs: List[str]) -> Set[int]:
-        """返回 LCS 在原序列中按顺序匹配到的位置。"""
+        """返回 LCS 在原序列中按回溯顺序匹配到的位置。"""
         matched_indices: Set[int] = set()
-        lcs_position = 0
+        lcs_position = len(lcs) - 1
 
-        for sequence_position, token in enumerate(sequence):
-            if lcs_position >= len(lcs):
+        for sequence_position in range(len(sequence) - 1, -1, -1):
+            if lcs_position < 0:
                 break
-            if token == lcs[lcs_position]:
+            if sequence[sequence_position] == lcs[lcs_position]:
                 matched_indices.add(sequence_position)
-                lcs_position += 1
+                lcs_position -= 1
 
         return matched_indices
     

@@ -246,6 +246,7 @@ class TestSpellModel:
             }
         )
         assert position_model._lcs_similarity(["A", "B", "A"], ["B", "A"]) == pytest.approx(3 / 7)
+        assert position_model._lcs_similarity(["A", "X", "A"], ["A"]) == pytest.approx(2 / 7)
 
     def test_lcs_match_indices_handle_empty_and_unmatched_sequences(self):
         """空 LCS 或完全不匹配时不应产生匹配位置。"""
@@ -254,6 +255,7 @@ class TestSpellModel:
         assert model._get_lcs_match_indices([], []) == set()
         assert model._get_lcs_match_indices(["A", "B"], []) == set()
         assert model._get_lcs_match_indices(["A", "B"], ["C"]) == set()
+        assert model._get_lcs_match_indices(["A", "X", "A"], ["A"]) == {2}
 
     def test_explanation_uses_the_same_lcs_occurrence_matches(self):
         """解释输出应与相似度使用同一组 LCS 匹配位置。"""
@@ -265,7 +267,7 @@ class TestSpellModel:
 
         assert explanation["matched_tokens"] == ["A", "B"]
         assert explanation["unmatched_tokens"] == ["A"]
-        assert "匹配:   ✓ ✗ ✓" in explanation["match_details"]
+        assert "匹配:   ✗ ✓ ✓" in explanation["match_details"]
 
 
 # ---------------------------------------------------------------------------
