@@ -17,6 +17,7 @@ import {
   UnifiedFilterConfigModal,
 } from "@/app/ops-analysis/components/unifiedFilter";
 import { useOpsAnalysis } from "@/app/ops-analysis/context/common";
+import { useCanvasResources } from "@/app/ops-analysis/hooks/useCanvasResources";
 import { useDataSourceManager } from "@/app/ops-analysis/hooks/useDataSource";
 import { useOpsAnalysisQueryState } from "@/app/ops-analysis/hooks/useOpsAnalysisQueryState";
 import {
@@ -85,7 +86,8 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
   const { shareLoading, openShare } = useCanvasShareAction('screen');
   const { namespaceList } = useOpsAnalysis();
   const dataSourceManager = useDataSourceManager();
-  const { dataSources, loadCanvasDataSources } = dataSourceManager;
+  const { dataSources } = dataSourceManager;
+  const { syncCanvasResources } = useCanvasResources();
   const queryState = useOpsAnalysisQueryState();
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -207,6 +209,16 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
     hasUnsavedChanges,
   }));
 
+  const syncScreenCanvasResources = useCallback(
+    (nextViewSets: ScreenViewSets) =>
+      syncCanvasResources({
+        source: nextViewSets,
+        getDataSourceIds: collectScreenDataSourceIds,
+        getNamespaceIds: collectScreenNamespaceIds,
+      }),
+    [syncCanvasResources],
+  );
+
   useEffect(() => {
     const screenId = selectedScreen?.data_id;
     if (!screenId) {
@@ -227,11 +239,15 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
 
     let cancelled = false;
     setLoading(true);
-    getScreenDetail(screenId)
-      .then((data) => {
+    void (async () => {
+      try {
+        const data = await getScreenDetail(screenId);
         if (cancelled) return;
 
         const normalized = normalizeScreenViewSets(data?.view_sets);
+        await syncScreenCanvasResources(normalized);
+        if (cancelled) return;
+
         setViewSets(normalized);
         setSavedViewSets(normalized);
         setDraftViewSets(normalized);
@@ -243,8 +259,7 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
         queryState.resetQueryState({
           definitions: normalized.filters ?? [],
         });
-      })
-      .catch((error) => {
+      } catch (error) {
         console.error("Failed to load screen:", error);
         if (!cancelled) {
           const fallback = buildDefaultScreenViewSets();
@@ -260,22 +275,27 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
             definitions: fallback.filters ?? [],
           });
         }
-      })
-      .finally(() => {
+      } finally {
         if (!cancelled) {
           setLoading(false);
         }
-      });
+      }
+    })();
 
     return () => {
       cancelled = true;
     };
-  }, [getScreenDetail, queryState.resetQueryState, selectedScreen?.data_id]);
+  }, [
+    getScreenDetail,
+    queryState.resetQueryState,
+    selectedScreen?.data_id,
+    syncScreenCanvasResources,
+  ]);
 
   useEffect(() => {
-    if (!selectedScreen?.data_id) return;
-    void loadCanvasDataSources(collectScreenDataSourceIds(activeViewSets));
-  }, [activeViewSets, loadCanvasDataSources, selectedScreen?.data_id]);
+    if (!selectedScreen?.data_id || !editMode) return;
+    void syncScreenCanvasResources(activeViewSets);
+  }, [activeViewSets, editMode, selectedScreen?.data_id, syncScreenCanvasResources]);
 
   useEffect(() => {
     if (namespaceOptions.length === 0) {

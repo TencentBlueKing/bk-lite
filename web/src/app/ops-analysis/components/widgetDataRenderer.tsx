@@ -714,11 +714,15 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
       setRawData(null);
       setLoading(widgetDataSourceState === "loading");
       setTableLoading(false);
-      setDataValidation({
-        isValid: false,
-        message: t("dashboard.dataFetchFailed"),
-        errorCode: "datasource_missing",
-      });
+      if (widgetDataSourceState === "loading") {
+        setDataValidation(null);
+      } else {
+        setDataValidation({
+          isValid: false,
+          message: t("dashboard.dataFetchFailed"),
+          errorCode: "datasource_missing",
+        });
+      }
       return;
     }
 
