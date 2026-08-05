@@ -45,6 +45,7 @@ const nextConfig = withCombineLocalesAndMenus(
       enabled: process.env.ANALYZE === 'true',
     })({
       reactStrictMode: true,
+      allowedDevOrigins: ['bklite.weops.com'],
       env: {
         ENTERPRISE_WEB_ROOT: enterpriseWebRoot,
       },

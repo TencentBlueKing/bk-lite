@@ -34,6 +34,7 @@
     "test:alarm-notification-tooltip": "pnpm exec tsx scripts/alarm-notification-tooltip-test.ts",
     "test:incident-im-group-ui": "pnpm exec tsx enterprise/scripts/incident-im-group-ui-test.ts",
     "test:prepare-enterprise-dependency-link": "node scripts/prepare-enterprise-dependency-link-test.mjs",
+    "test:next-dev-origin": "node scripts/next-dev-origin-config-test.mjs",
     "test:alert-assignment-level-multiselect": "pnpm exec tsx scripts/alert-assignment-level-multiselect-test.ts",
     "test:alert-assignment-notification-target": "pnpm exec tsx scripts/alert-assignment-notification-target-test.ts",
     "test:flow-access-complete-navigation": "pnpm exec tsx scripts/flow-access-complete-navigation-test.ts",
