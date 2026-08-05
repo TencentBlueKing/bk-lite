@@ -5,6 +5,7 @@ import type {
   UnifiedFilterDefinition,
 } from '@/app/ops-analysis/types/dashBoard';
 import type { InputOption, ParamItem } from '@/app/ops-analysis/types/dataSource';
+import { supportsComponentSwitch } from '@/app/ops-analysis/utils/componentParamSwitch';
 import { formatOpsRequestTime } from '@/app/ops-analysis/utils/dateTime';
 import {
   DateRangeResolutionContext,
@@ -380,7 +381,7 @@ export const shouldShowInitialWidgetLoading = ({
 export const hasActiveWidgetRuntimeParams = (
   chartType: string | undefined,
   runtimeParams: Record<string, unknown>,
-): boolean => chartType === 'topN' && Object.keys(runtimeParams).length > 0;
+): boolean => supportsComponentSwitch(chartType) && Object.keys(runtimeParams).length > 0;
 
 export const buildWidgetRequestParams = ({
   config,

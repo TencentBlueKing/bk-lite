@@ -83,6 +83,7 @@ error:
   system_configuration_error: "System configuration error. Please contact an administrator."
   mlflow_tracker_url_not_configured: "MLFLOW_TRACKER_URL environment variable is not configured"
   algorithm_config_not_found: "Algorithm configuration was not found: {algorithm}"
+  container_image_reference_invalid: "Enter a valid container image reference"
   form_config_must_be_object: "form_config must be an object"
   hyperopt_config_must_be_array: "hyperopt_config must be an array"
   hyperopt_config_item_must_be_object: "Each item in hyperopt_config must be an object"

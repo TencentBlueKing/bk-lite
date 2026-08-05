@@ -107,6 +107,22 @@ class TestFetchAdvisories:
         _make_get(mocker, repomd=REPOMD_NO_UPDATEINFO)
         assert fetch_advisories(_source()) == []
 
+    def test_yum_source_fetch_uses_configured_proxy(self, mocker):
+        get = _make_get(mocker)
+        source = _source(proxy_host="proxy.example.com", proxy_port=8080)
+
+        fetch_advisories(source)
+
+        assert get.call_count == 2
+        assert all(
+            call.kwargs["proxies"]
+            == {
+                "http": "http://proxy.example.com:8080",
+                "https": "http://proxy.example.com:8080",
+            }
+            for call in get.call_args_list
+        )
+
     def test_x86_source_filters_i686_and_drops_advisories_without_matching_packages(
         self,
         mocker,
@@ -246,6 +262,40 @@ class TestSyncLinuxRepo:
         assert result == {"created": 1, "updated": 0, "skipped": 0, "total": 1}
         detail = LinuxPatchDetail.objects.get(patch__title=advisory.advisory_id)
         assert detail.repo_type == expected_repo_type
+
+    def test_ingest_selected_adds_current_team_idempotently_for_builtin_source(
+        self, mocker
+    ):
+        advisory = ParsedAdvisory(
+            advisory_id="ADV-GLOBAL-1",
+            title="Global security update",
+            adv_type="security",
+            severity="Important",
+            packages=[ParsedPackage("kernel", "1.0", "x86_64")],
+        )
+        mocker.patch(
+            "apps.patch_mgmt.services.linux_repo_sync.fetch_advisories",
+            return_value=[advisory],
+        )
+        source = _source(
+            source_type=PatchSourceType.DNF_REPO,
+            name="builtin-global",
+            team=[],
+            is_builtin=True,
+            builtin_key="test-global-source",
+        )
+
+        first = SourceSyncService.ingest_selected(
+            source, [advisory.advisory_id], team_id=1
+        )
+        second = SourceSyncService.ingest_selected(
+            source, [advisory.advisory_id], team_id=1
+        )
+
+        patch = Patch.objects.get(title=advisory.advisory_id)
+        assert first["created"] == 1
+        assert second["updated"] == 1
+        assert patch.team == [1]
 
     def test_creates_patches_and_details(self, mocker):
         _make_get(mocker)

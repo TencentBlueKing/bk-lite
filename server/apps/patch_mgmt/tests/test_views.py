@@ -1383,3 +1383,36 @@ class TestBaselineViewApi:
         resp = su_client.post(f"{BASELINE_URL}{baseline.id}/bind_hosts/", {"target_ids": [target.id]}, format="json")
         assert resp.status_code == status.HTTP_200_OK
         assert HostBaselineBinding.objects.filter(target=target, baseline=baseline).exists()
+
+    def test_hosts_api_returns_bound_targets_with_permissions(self, su_client):
+        from apps.patch_mgmt.models import HostBaselineBinding, PatchBaseline
+
+        target = PatchTarget.objects.create(
+            name="bound-web-01",
+            ip="10.0.0.2",
+            os_type=OSType.LINUX,
+            team=[1],
+        )
+        baseline = PatchBaseline.objects.create(
+            name="Linux baseline",
+            os_type=OSType.LINUX,
+            team=[1],
+        )
+        HostBaselineBinding.objects.create(target=target, baseline=baseline)
+
+        resp = su_client.get(f"{BASELINE_URL}{baseline.id}/hosts/")
+
+        assert resp.status_code == status.HTTP_200_OK
+        assert resp.data == [
+            {
+                "id": resp.data[0]["id"],
+                "target": target.id,
+                "target_name": target.name,
+                "target_ip": target.ip,
+                "baseline": baseline.id,
+                "baseline_name": baseline.name,
+                "permission": ["View", "Operate"],
+                "created_by": "",
+                "created_at": resp.data[0]["created_at"],
+            }
+        ]

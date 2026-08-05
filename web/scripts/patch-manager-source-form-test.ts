@@ -7,6 +7,9 @@ const settingsPage = read('src/app/patch-manager/(pages)/settings/page.tsx');
 const targetPage = read('src/app/patch-manager/(pages)/target/page.tsx');
 const types = read('src/app/patch-manager/types/index.ts');
 const sourceLocales = `${read('src/app/patch-manager/locales/zh.json')}\n${read('src/app/patch-manager/locales/en.json')}`;
+const baseZhLocales = JSON.parse(read('src/locales/zh.json'));
+const baseEnLocales = JSON.parse(read('src/locales/en.json'));
+const sourceOriginBadge = read('src/components/source-origin-badge/index.tsx');
 
 for (const required of [
   "import Password from '@/components/password'",
@@ -16,7 +19,7 @@ for (const required of [
   'editingSource?.has_auth_password && !payload.auth_password',
   "label: 'patchManager.catalogUrl'",
   "label: 'patchManager.repoUrl'",
-  'extra={sourceUrlHelp}',
+  'tooltip={sourceUrlHelp}',
   'patchManager.settingsPage.wsusUrlHelp',
   'patchManager.settingsPage.yumRepoUrlHelp',
   'patchManager.settingsPage.dnfRepoUrlHelp',
@@ -25,10 +28,62 @@ for (const required of [
   "patchManager.settingsPage.authUserRequired",
   "patchManager.settingsPage.authPasswordRequired",
   'has_auth_password?: boolean',
+  'is_builtin: boolean',
+  "import SourceOriginBadge from '@/components/source-origin-badge'",
+  'const { isSuperUser } = useUserInfoContext()',
+  '<SourceOriginBadge kind="builtin"',
+  "title: t('patchManager.builtin')",
+  "dataIndex: 'is_builtin'",
+  "t('patchManager.yes')",
+  "t('patchManager.no')",
+  'r.is_builtin ? (',
+  '<Button type="link" danger disabled',
+  'patchManager.settingsPage.builtinDeleteDisabled',
 ]) {
-  if (!`${settingsPage}\n${types}`.includes(required)) {
+  if (!`${settingsPage}\n${types}\n${read('src/app/patch-manager/api/index.ts')}`.includes(required)) {
     throw new Error(`补丁源编辑表单缺少约束: ${required}`);
   }
+}
+
+for (const message of [
+  '"builtinDeleteDisabled": "内置补丁源暂不支持删除"',
+  '"builtinDeleteDisabled": "Built-in patch sources cannot be deleted yet"',
+]) {
+  if (!sourceLocales.includes(message)) {
+    throw new Error(`内置源禁用删除提示缺少双语文案: ${message}`);
+  }
+}
+
+for (const removed of ['extra={sourceUrlHelp}', 'restorePatchSourceDefaults', 'restoreDefaults', 'confirmRestoreSource', 'sourceRestored']) {
+  if (`${settingsPage}\n${read('src/app/patch-manager/api/index.ts')}\n${sourceLocales}`.includes(removed)) {
+    throw new Error(`补丁源页面不应保留交互: ${removed}`);
+  }
+}
+
+const sourceNameColumn = settingsPage.match(
+  /title: t\('patchManager\.pluginName'\),([\s\S]*?)title: t\('patchManager\.builtin'\)/,
+)?.[1] || '';
+if (sourceNameColumn.includes('SourceOriginBadge')) {
+  throw new Error('内置属性必须独立成列，不能放在补丁源名称列');
+}
+
+const sourceForm = settingsPage.match(/<Form form=\{form\}([\s\S]*?)<\/Form>/)?.[0] || '';
+if (!sourceForm || /name=["']is_builtin["']/.test(sourceForm)) {
+  throw new Error('内置属性不能出现在补丁源新增或编辑表单');
+}
+
+for (const [locale, messages, expected] of [
+  ['zh', baseZhLocales, { custom: '自定义', imported: '已导入' }],
+  ['en', baseEnLocales, { custom: 'Custom', imported: 'Imported' }],
+] as const) {
+  for (const [key, value] of Object.entries(expected)) {
+    if (messages.common?.[key] !== value) {
+      throw new Error(`来源徽标缺少 ${locale} 文案 common.${key}`);
+    }
+  }
+}
+if (!sourceOriginBadge.includes('t(LABEL_KEY_BY_KIND[kind])')) {
+  throw new Error('来源徽标必须只解析当前类型的翻译键');
 }
 
 for (const example of [

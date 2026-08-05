@@ -1,15 +1,14 @@
 from rest_framework import serializers
 
 from apps.mlops.models import AlgorithmConfig
+from apps.mlops.utils.container_image import is_valid_container_image_reference
 from apps.mlops.utils.i18n import serializer_message
 
 
 class AlgorithmConfigSerializer(serializers.ModelSerializer):
     """算法配置序列化器"""
 
-    algorithm_type_display = serializers.CharField(
-        source="get_algorithm_type_display", read_only=True
-    )
+    algorithm_type_display = serializers.CharField(source="get_algorithm_type_display", read_only=True)
 
     class Meta:
         model = AlgorithmConfig
@@ -18,6 +17,16 @@ class AlgorithmConfigSerializer(serializers.ModelSerializer):
             "created_by": {"read_only": True},
             "updated_by": {"read_only": True},
         }
+
+    def validate_image(self, value):
+        if not is_valid_container_image_reference(value):
+            raise serializers.ValidationError(
+                serializer_message(
+                    self,
+                    "error.container_image_reference_invalid",
+                )
+            )
+        return value
 
     def validate_form_config(self, value):
         """
@@ -67,9 +76,7 @@ class AlgorithmConfigSerializer(serializers.ModelSerializer):
 class AlgorithmConfigListSerializer(serializers.ModelSerializer):
     """算法配置列表序列化器 - 用于下拉选择，不返回完整的 form_config"""
 
-    algorithm_type_display = serializers.CharField(
-        source="get_algorithm_type_display", read_only=True
-    )
+    algorithm_type_display = serializers.CharField(source="get_algorithm_type_display", read_only=True)
 
     class Meta:
         model = AlgorithmConfig

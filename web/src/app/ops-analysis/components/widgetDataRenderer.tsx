@@ -28,7 +28,9 @@ import {
   findComponentSwitchParams,
   getTypedValueKey,
   reconcileComponentSwitchValue,
+  resolveComponentSwitchRequestGate,
   resolveComponentSwitchRuntime,
+  supportsComponentSwitch,
 } from "@/app/ops-analysis/utils/componentParamSwitch";
 import { useParamInputOptions } from "@/app/ops-analysis/hooks/useParamInputOptions";
 import { fetchCompareData } from "@/app/ops-analysis/utils/compareQuery";
@@ -281,7 +283,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     });
   }, [config?.dataSourceParams, dataSource?.params]);
   const componentSwitchParam = useMemo(
-    () => chartType === "topN" ? findComponentSwitchParams(effectiveComponentParams)[0] : undefined,
+    () => supportsComponentSwitch(chartType) ? findComponentSwitchParams(effectiveComponentParams)[0] : undefined,
     [chartType, effectiveComponentParams],
   );
   const optionState = useParamInputOptions(componentSwitchParam?.inputConfig);
@@ -387,6 +389,9 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
         headerRuntimeSlot,
       )
       : null;
+  const inlineComponentSwitchControl = chartType === "room3D"
+    ? componentSwitchControl
+    : headerRuntimeSlot ? null : componentSwitchControl;
 
   const fetchIdRef = useRef(0);
   const tableQueryKey = useMemo(
@@ -417,11 +422,6 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
 
     return dataSource?.namespaces?.[0];
   }, [builtinNamespaceId, dataSource?.namespaces]);
-  const requestEnabled =
-    Boolean(normalizedDataSourceId) &&
-    Boolean(dataSource) &&
-    dataSource?.hasAuth !== false &&
-    (!widgetUsesNamespace || effectiveNamespaceId !== undefined);
   const runtimeParams = useMemo(
     () => optionState.status === "success"
       ? resolveComponentSwitchRuntime(
@@ -438,6 +438,21 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
       runtimeParamValue,
     ],
   );
+  const componentSwitchRequestGate = useMemo(
+    () =>
+      resolveComponentSwitchRequestGate({
+        hasComponentSwitchParam: Boolean(componentSwitchParam),
+        optionStatus: optionState.status,
+        runtimeParams,
+      }),
+    [componentSwitchParam, optionState.status, runtimeParams],
+  );
+  const requestEnabled =
+    Boolean(normalizedDataSourceId) &&
+    Boolean(dataSource) &&
+    dataSource?.hasAuth !== false &&
+    (!widgetUsesNamespace || effectiveNamespaceId !== undefined) &&
+    componentSwitchRequestGate === "ready";
   const requestExtraParams = useMemo(
     () =>
       buildWidgetExtraParams({
@@ -744,12 +759,26 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
       });
       return;
     }
+
+    if (componentSwitchRequestGate === "blocked") {
+      setRawData(null);
+      setBaselineData(null);
+      setLoading(false);
+      setTableLoading(false);
+      hasSettledRequestRef.current = true;
+      setHasSettledRequest(true);
+      setDataValidation({
+        isValid: false,
+        message: t("dashboard.noData"),
+      });
+    }
   }, [
     isSceneWidget,
     normalizedDataSourceId,
     dataSource,
     dataSource?.hasAuth,
     widgetDataSourceState,
+    componentSwitchRequestGate,
     t,
   ]);
 
@@ -908,6 +937,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     requestEnabled,
     hasRequested: previousRequestRef.current.hasRequested,
   });
+  const isWaitingForSwitchOptions = componentSwitchRequestGate === "pending";
   const isInitialNonTableLoading =
     shouldShowInitialWidgetLoading({
       loading,
@@ -917,7 +947,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     });
 
   useEffect(() => {
-    if (isInitialNonTableLoading || isWaitingForInitialData) {
+    if (isInitialNonTableLoading || isWaitingForInitialData || isWaitingForSwitchOptions) {
       onRenderStatus?.({ widgetId, status: "loading" });
       return;
     }
@@ -938,6 +968,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     hasActiveRuntimeControl,
     isInitialNonTableLoading,
     isWaitingForInitialData,
+    isWaitingForSwitchOptions,
     onRenderStatus,
     t,
     widgetId,
@@ -965,7 +996,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     );
   }
 
-  if (isInitialNonTableLoading || isWaitingForInitialData) {
+  if (isInitialNonTableLoading || isWaitingForInitialData || isWaitingForSwitchOptions) {
     return (
       <>
         {runtimeHeaderControl}
@@ -1025,7 +1056,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
           screenRenderContext={screenRenderContext}
           onReady={handleRendererReady}
           onQueryChange={isTableLikeChart ? handleTableQueryChange : undefined}
-          componentSwitchControl={headerRuntimeSlot ? null : componentSwitchControl}
+          componentSwitchControl={inlineComponentSwitchControl}
           errorMessage={
             hasActiveRuntimeControl && dataValidation && !dataValidation.isValid
               ? dataValidation.message || t("dashboard.dataCannotRenderAsChart")
