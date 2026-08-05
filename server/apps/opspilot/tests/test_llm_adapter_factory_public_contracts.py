@@ -13,7 +13,6 @@ from apps.opspilot.metis.llm.chain.entity import BasicLLMRequest
 from apps.opspilot.metis.llm.common import anthropic_compatible_adapter as adapter
 from apps.opspilot.metis.llm.common.llm_client_factory import LLMClientFactory
 
-
 pytestmark = pytest.mark.unit
 
 
@@ -111,6 +110,21 @@ def test_anthropic_payload_preserves_system_tools_and_tool_results():
 
 
 @pytest.mark.parametrize(
+    ("api_base", "vendor", "expected"),
+    [
+        ("", "deepseek", "https://api.anthropic.com"),
+        ("https://api.openai.com", "deepseek", "https://api.anthropic.com"),
+        ("https://api.deepseek.com", "deepseek", "https://api.deepseek.com/anthropic"),
+        ("https://api.deepseek.com/v1", "deepseek", "https://api.deepseek.com/anthropic"),
+        ("https://api.deepseek.com/anthropic", "deepseek", "https://api.deepseek.com/anthropic"),
+        ("https://llm.example/v1", "other", "https://llm.example/v1"),
+    ],
+)
+def test_normalize_anthropic_compatible_api_base(api_base, vendor, expected):
+    assert adapter.normalize_anthropic_compatible_api_base(api_base, vendor) == expected
+
+
+@pytest.mark.parametrize(
     ("choice", "expected"),
     [
         ("auto", {"type": "auto"}),
@@ -131,9 +145,7 @@ def test_anthropic_payload_omits_disabled_optional_fields():
         tools=[],
         tool_choice="none",
     )
-    assert payload["messages"] == [
-        {"role": "assistant", "content": [{"type": "text", "text": "answer"}]}
-    ]
+    assert payload["messages"] == [{"role": "assistant", "content": [{"type": "text", "text": "answer"}]}]
     assert "system" not in payload
     assert "tools" not in payload
     assert "tool_choice" not in payload
@@ -149,9 +161,7 @@ def test_anthropic_connection_validation_posts_minimal_request(monkeypatch):
         return response
 
     monkeypatch.setattr(adapter, "safe_post_llm_endpoint", fake_post)
-    adapter.AnthropicCompatibleAdapter.validate_minimal_connection(
-        "https://llm.example/", "key", "model-a"
-    )
+    adapter.AnthropicCompatibleAdapter.validate_minimal_connection("https://llm.example/", "key", "model-a")
     assert calls == {
         "url": "https://llm.example/v1/messages",
         "headers": adapter.build_anthropic_headers("key"),
@@ -245,22 +255,16 @@ def test_llm_factory_timeout_has_stable_floor_and_fallback(monkeypatch, raw, exp
         ("anthropic", True, "_create_anthropic_compatible_client"),
     ],
 )
-def test_llm_factory_routes_public_client_creation(
-    monkeypatch, protocol, capability, creator
-):
+def test_llm_factory_routes_public_client_creation(monkeypatch, protocol, capability, creator):
     request = BasicLLMRequest(protocol_type=protocol, vendor_type="vendor")
     created = SimpleNamespace(callbacks=["tracked"])
     monkeypatch.setattr(
         "apps.opspilot.metis.llm.common.llm_client_factory.build_anthropic_runtime_capabilities",
         lambda *_: SimpleNamespace(use_anthropic_compatible_adapter=capability),
     )
-    selected = monkeypatch.setattr(
-        LLMClientFactory, creator, lambda *_args: created
-    )
+    selected = monkeypatch.setattr(LLMClientFactory, creator, lambda *_args: created)
 
-    result = LLMClientFactory.create_client(
-        request, disable_stream=True, isolated=True, timeout=12
-    )
+    result = LLMClientFactory.create_client(request, disable_stream=True, isolated=True, timeout=12)
     assert result is created
     assert result.callbacks is None
     assert selected is None
@@ -269,11 +273,7 @@ def test_llm_factory_routes_public_client_creation(
 @pytest.mark.parametrize("protocol", ["openai", "anthropic"])
 def test_llm_factory_public_isolated_invocation_routes_protocol(monkeypatch, protocol):
     request = BasicLLMRequest(protocol_type=protocol)
-    method = (
-        "_invoke_isolated_anthropic"
-        if protocol == "anthropic"
-        else "_invoke_isolated_openai"
-    )
+    method = "_invoke_isolated_anthropic" if protocol == "anthropic" else "_invoke_isolated_openai"
     monkeypatch.setattr(LLMClientFactory, method, lambda _request, messages: messages[0])
     assert LLMClientFactory.invoke_isolated(request, ["answer"]) == "answer"
 
@@ -282,24 +282,20 @@ def test_isolated_openai_invocation_converts_mixed_messages(monkeypatch):
     create = pytest.MonkeyPatch()
     calls = {}
     completion = SimpleNamespace(
-        create=lambda **kwargs: (
-            calls.update(kwargs)
-            or SimpleNamespace(
-                choices=[SimpleNamespace(message=SimpleNamespace(content="ok"))]
-            )
-        )
+        create=lambda **kwargs: (calls.update(kwargs) or SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content="ok"))]))
     )
     client = SimpleNamespace(chat=SimpleNamespace(completions=completion))
-    monkeypatch.setattr(
-        LLMClientFactory, "_create_isolated_openai_client", lambda _request: client
-    )
+    monkeypatch.setattr(LLMClientFactory, "_create_isolated_openai_client", lambda _request: client)
     request = BasicLLMRequest(model="qwen3", temperature=0.3)
     custom = SimpleNamespace(type="assistant", content="prior")
 
-    assert LLMClientFactory._invoke_isolated_openai(
-        request,
-        [HumanMessage(content="hello"), {"role": "user", "content": "world"}, custom],
-    ) == "ok"
+    assert (
+        LLMClientFactory._invoke_isolated_openai(
+            request,
+            [HumanMessage(content="hello"), {"role": "user", "content": "world"}, custom],
+        )
+        == "ok"
+    )
     assert calls["messages"] == [
         {"role": "user", "content": "hello"},
         {"role": "user", "content": "world"},
@@ -309,33 +305,51 @@ def test_isolated_openai_invocation_converts_mixed_messages(monkeypatch):
     create.undo()
 
 
-def test_isolated_anthropic_invocation_separates_system_message(monkeypatch):
-    calls = {}
-    messages_api = SimpleNamespace(
-        create=lambda **kwargs: (
-            calls.update(kwargs)
-            or SimpleNamespace(content=[SimpleNamespace(text="done")])
+def test_isolated_openai_normalizes_none_and_part_list_content(monkeypatch):
+    from apps.opspilot.metis.llm.common.llm_client_factory import _normalize_message_content
+
+    assert _normalize_message_content(None) == ""
+    assert _normalize_message_content([{"type": "text", "text": "alpha"}, {"type": "text", "text": "beta"}]) == "alpha\nbeta"
+
+    request = BasicLLMRequest(model="gpt-test", temperature=0.1, max_output_tokens=128)
+    client = SimpleNamespace(
+        chat=SimpleNamespace(
+            completions=SimpleNamespace(
+                create=lambda **kwargs: SimpleNamespace(
+                    usage=SimpleNamespace(prompt_tokens=1, completion_tokens=0),
+                    choices=[SimpleNamespace(message=SimpleNamespace(content=None), finish_reason="stop")],
+                )
+            )
         )
     )
+    monkeypatch.setattr(LLMClientFactory, "_create_isolated_openai_client", lambda _request: client)
+    assert LLMClientFactory._invoke_isolated_openai(request, [{"role": "user", "content": "hi"}]) == ""
+    assert request.extra_config["_isolated_finish_reason"] == "stop"
+
+
+def test_isolated_anthropic_invocation_separates_system_message(monkeypatch):
+    calls = {}
+    messages_api = SimpleNamespace(create=lambda **kwargs: (calls.update(kwargs) or SimpleNamespace(content=[SimpleNamespace(text="done")])))
     client = SimpleNamespace(messages=messages_api)
     monkeypatch.setattr(
         LLMClientFactory,
         "_create_isolated_anthropic_client",
         lambda _request: client,
     )
-    request = BasicLLMRequest(
-        protocol_type="anthropic", model="claude", temperature=0.4
-    )
+    request = BasicLLMRequest(protocol_type="anthropic", model="claude", temperature=0.4)
     custom = SimpleNamespace(type="assistant", content="previous")
 
-    assert LLMClientFactory._invoke_isolated_anthropic(
-        request,
-        [
-            {"role": "system", "content": "Be concise"},
-            HumanMessage(content="hello"),
-            custom,
-        ],
-    ) == "done"
+    assert (
+        LLMClientFactory._invoke_isolated_anthropic(
+            request,
+            [
+                {"role": "system", "content": "Be concise"},
+                HumanMessage(content="hello"),
+                custom,
+            ],
+        )
+        == "done"
+    )
     assert calls == {
         "model": "claude",
         "messages": [
@@ -346,3 +360,32 @@ def test_isolated_anthropic_invocation_separates_system_message(monkeypatch):
         "max_tokens": 4096,
         "system": "Be concise",
     }
+
+
+def test_stream_isolated_openai_yields_deltas_and_finish_reason(monkeypatch):
+    chunks = [
+        SimpleNamespace(
+            usage=None,
+            choices=[
+                SimpleNamespace(
+                    delta=SimpleNamespace(content="hello"),
+                    finish_reason=None,
+                )
+            ],
+        ),
+        SimpleNamespace(
+            usage=SimpleNamespace(prompt_tokens=2, completion_tokens=1),
+            choices=[
+                SimpleNamespace(
+                    delta=SimpleNamespace(content=" world"),
+                    finish_reason="length",
+                )
+            ],
+        ),
+    ]
+    client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=lambda **_kwargs: iter(chunks))))
+    monkeypatch.setattr(LLMClientFactory, "_create_isolated_openai_client", lambda _request: client)
+    request = BasicLLMRequest(model="gpt-test", temperature=0.1, max_output_tokens=64)
+    assert list(LLMClientFactory.stream_isolated(request, [{"role": "user", "content": "hi"}])) == ["hello", " world"]
+    assert request.extra_config["_isolated_finish_reason"] == "length"
+    assert request.extra_config["_isolated_output_truncated"] is True

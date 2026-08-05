@@ -1,16 +1,19 @@
-import base64
-import zipfile
+import json
 
-from django.http import HttpResponse, JsonResponse
+from django.db import transaction
+from django.db.models.deletion import ProtectedError
+from django.http import HttpResponse, JsonResponse, StreamingHttpResponse
 from rest_framework.decorators import action
 
-from apps.core.logger import opspilot_logger as logger
+from apps.core.decorators.api_permission import HasPermission
 from apps.core.utils.viewset_utils import AuthViewSet
 from apps.opspilot import tasks as _opspilot_tasks
-from apps.opspilot.models import BuildRecord, KnowledgePage, WikiKnowledgeBase
+from apps.opspilot.models import BuildRecord, KnowledgePage, Material, WikiKnowledgeBase
 from apps.opspilot.serializers.wiki_serializers import BuildRecordSerializer, WikiKnowledgeBaseSerializer
-from apps.opspilot.services.wiki.cascade_service import cascade
+from apps.opspilot.services.wiki.active_generation_query_service import ActiveGenerationReadError
+from apps.opspilot.services.wiki.build_generation_service import BuildGenerationError
 from apps.opspilot.services.wiki.check_service import scan_health
+from apps.opspilot.services.wiki.directory_enable_service import WikiDirectoryEnableError, enable_wiki_directory
 from apps.opspilot.services.wiki.embedding_service import chunk_semantic_search as wiki_chunk_search
 from apps.opspilot.services.wiki.embedding_service import index_version
 from apps.opspilot.services.wiki.embedding_service import reindex_chunks as wiki_reindex_chunks
@@ -18,20 +21,31 @@ from apps.opspilot.services.wiki.embedding_service import reindex_page_chunks
 from apps.opspilot.services.wiki.embedding_service import semantic_search as wiki_semantic_search
 from apps.opspilot.services.wiki.graph_service import analyze_graph, build_graph
 from apps.opspilot.services.wiki.index_rebuild_service import rebuild_page_indexes
-from apps.opspilot.services.wiki.markdown_export_service import QuotaExceededError, build_markdown_export_zip
-from apps.opspilot.services.wiki.markdown_import_service import import_markdown_archive
+from apps.opspilot.services.wiki.kb_delete_service import delete_knowledge_base
+from apps.opspilot.services.wiki.markdown_export_service import QuotaExceededError
+from apps.opspilot.services.wiki.markdown_import_governance_service import (
+    MarkdownImportGovernanceError,
+    execute_markdown_import,
+    preflight_markdown_import,
+)
+from apps.opspilot.services.wiki.native_markdown_export_service import build_native_markdown_export_zip
 from apps.opspilot.services.wiki.overview_service import get_overview
-from apps.opspilot.services.wiki.parsed_storage_service import delete_knowledge_base_parsed_markdown
+from apps.opspilot.services.wiki.parsed_media_service import sign_media_locators
 from apps.opspilot.services.wiki.purpose_schema_service import generate_purpose_schema, list_templates
 from apps.opspilot.services.wiki.rebuild_service import create_rebuild_record, running_build_record
-from apps.opspilot.services.wiki.relation_service import list_relations, rebuild_relations
+from apps.opspilot.services.wiki.relation_service import list_relations
 from apps.opspilot.services.wiki.retrieval_service import answer as wiki_answer
 from apps.opspilot.services.wiki.retrieval_service import hybrid_search as wiki_hybrid_search
 from apps.opspilot.services.wiki.retrieval_service import search as wiki_search
+from apps.opspilot.services.wiki.retrieval_service import stream_answer as wiki_stream_answer
+from apps.opspilot.services.wiki.rollback_service import RollbackServiceError, execute_generation_rollback, preview_generation_rollback
+from apps.opspilot.services.wiki.structure_service import StructureServiceError, bootstrap_knowledge_base
 from apps.opspilot.services.wiki.title_service import canonical_title, compact_title_key, title_alias_map
+from apps.opspilot.services.wiki.wiki_budget_service import WikiBudgetExceeded
 from apps.opspilot.services.wiki.wiki_context_service import build_context
 from apps.opspilot.viewsets.wiki_team_scope import WikiTeamScopeMixin
 from apps.system_mgmt.utils.operation_log_utils import log_operation
+from config.drf.renderers import CustomRenderer, EventStreamRenderer
 
 
 def _int_param(params, key, default, minimum=0):
@@ -46,11 +60,47 @@ def _optional_int_param(params, key, minimum=1):
     raw = params.get(key)
     if raw in (None, ""):
         return None
+
     try:
         value = int(raw)
     except (TypeError, ValueError):
         return None
     return max(value, minimum)
+
+
+def _bool_param(params, key, default=False):
+    raw = params.get(key)
+    if raw is None:
+        return bool(default)
+    if isinstance(raw, bool):
+        return raw
+    return str(raw).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _governance_error(error, status=409):
+    return JsonResponse(
+        {
+            "result": False,
+            "message": str(error),
+            "code": getattr(error, "code", "wiki_governance_error"),
+            "retryable": bool(getattr(error, "retryable", False)),
+            "details": dict(getattr(error, "details", {}) or {}),
+        },
+        status=status,
+    )
+
+
+def _rollback_error(error):
+    return JsonResponse(
+        {
+            "result": False,
+            "message": str(error),
+            "code": error.code,
+            "retryable": error.retryable,
+            "details": error.details,
+        },
+        status=error.status_code,
+    )
 
 
 class WikiKnowledgeBaseViewSet(WikiTeamScopeMixin, AuthViewSet):
@@ -62,6 +112,7 @@ class WikiKnowledgeBaseViewSet(WikiTeamScopeMixin, AuthViewSet):
     search_fields = ("name",)
     team_scope_field = "id"
 
+    @HasPermission("wiki_list-View")
     def list(self, request, *args, **kwargs):
         queryset = self.get_queryset()
         search = (request.GET.get("search") or "").strip()
@@ -79,11 +130,13 @@ class WikiKnowledgeBaseViewSet(WikiTeamScopeMixin, AuthViewSet):
         serializer = self.get_serializer(page_items, many=True)
         return JsonResponse({"result": True, "data": {"count": total, "items": serializer.data}})
 
+    @HasPermission("wiki_list-View")
     def retrieve(self, request, *args, **kwargs):
         instance = self.get_object()
         serializer = self.get_serializer(instance)
         return JsonResponse({"result": True, "data": serializer.data})
 
+    @HasPermission("wiki_list-Add")
     def create(self, request, *args, **kwargs):
         params = request.data.copy()
         if not params.get("team"):
@@ -91,10 +144,20 @@ class WikiKnowledgeBaseViewSet(WikiTeamScopeMixin, AuthViewSet):
         self.validate_team_assignment(params.get("team"))
         serializer = self.get_serializer(data=params)
         serializer.is_valid(raise_exception=True)
-        self.perform_create(serializer)
+        operator = getattr(request.user, "username", "") or ""
+        try:
+            with transaction.atomic():
+                self.perform_create(serializer)
+                bootstrap_knowledge_base(
+                    serializer.instance,
+                    operator=operator,
+                )
+        except StructureServiceError as error:
+            return _governance_error(error, status=error.status_code)
         log_operation(request, "create", "opspilot", f"新增知识库: {serializer.data.get('name', '')}")
         return JsonResponse({"result": True, "data": serializer.data}, status=201)
 
+    @HasPermission("wiki_list-Edit")
     def update(self, request, *args, **kwargs):
         partial = kwargs.pop("partial", False)
         instance = self.get_object()
@@ -106,32 +169,125 @@ class WikiKnowledgeBaseViewSet(WikiTeamScopeMixin, AuthViewSet):
         log_operation(request, "update", "opspilot", f"编辑知识库: {serializer.data.get('name', '')}")
         return JsonResponse({"result": True, "data": serializer.data})
 
+    @HasPermission("wiki_list-Edit")
+    @action(methods=["POST"], detail=True)
+    def rollback_preview(self, request, pk=None):
+        knowledge_base = self.get_object()
+        try:
+            data = preview_generation_rollback(
+                knowledge_base,
+                request.data,
+            )
+        except RollbackServiceError as error:
+            return _rollback_error(error)
+        return JsonResponse({"result": True, "data": data})
+
+    @HasPermission("wiki_list-Edit")
+    @action(methods=["POST"], detail=True)
+    def rollback_execute(self, request, pk=None):
+        knowledge_base = self.get_object()
+        operator = getattr(request.user, "username", "") or ""
+        try:
+            data = execute_generation_rollback(
+                knowledge_base,
+                request.data,
+                operator=operator,
+            )
+        except RollbackServiceError as error:
+            return _rollback_error(error)
+        log_operation(
+            request,
+            "execute",
+            "opspilot",
+            (f"回退知识库 generation: {knowledge_base.name} " f"-> {data['active_generation']['id']}"),
+        )
+        return JsonResponse({"result": True, "data": data})
+
+    @HasPermission("wiki_list-Edit")
+    @action(methods=["POST"], detail=True)
+    def directory_enable(self, request, pk=None):
+        knowledge_base = self.get_object()
+        operator = getattr(request.user, "username", "") or ""
+        try:
+            enabled = enable_wiki_directory(
+                knowledge_base,
+                operator=operator,
+            )
+        except WikiDirectoryEnableError as error:
+            return _governance_error(error, status=409)
+        except Exception as error:
+            readiness = getattr(error, "result", None)
+            if readiness is None:
+                raise
+            return JsonResponse(
+                {
+                    "result": False,
+                    "message": str(error),
+                    "code": getattr(error, "code", "wiki_directory_not_ready"),
+                    "retryable": False,
+                    "details": {"readiness": readiness.to_dict()},
+                },
+                status=422,
+            )
+        data = {
+            "knowledge_base_id": enabled.knowledge_base_id,
+            "directory_enabled": enabled.directory_enabled,
+            "changed": enabled.changed,
+            "readiness": enabled.readiness.to_dict(),
+        }
+        log_operation(request, "execute", "opspilot", f"启用知识目录: {knowledge_base.name}")
+        return JsonResponse({"result": True, "data": data})
+
+    @HasPermission("wiki_list-Edit")
     def partial_update(self, request, *args, **kwargs):
         kwargs["partial"] = True
         return self.update(request, *args, **kwargs)
 
+    @HasPermission("wiki_list-Delete")
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
         if running_build_record(instance):
             return JsonResponse({"result": False, "message": "知识库存在运行中的构建任务,请等待完成后再操作"}, status=400)
         knowledge_base_id = instance.id
         name = instance.name
-        instance.delete()
-        delete_knowledge_base_parsed_markdown(knowledge_base_id)
+        try:
+            delete_knowledge_base(instance)
+        except ProtectedError:
+            return JsonResponse(
+                {
+                    "result": False,
+                    "message": "知识库仍被受保护引用占用，无法删除，请稍后重试或联系管理员",
+                    "code": "knowledge_base_protected",
+                },
+                status=409,
+            )
+        except Exception as error:  # noqa: BLE001 - 返回可读失败，避免裸 500
+            return JsonResponse(
+                {
+                    "result": False,
+                    "message": f"删除知识库失败: {error}",
+                    "code": "knowledge_base_delete_failed",
+                },
+                status=500,
+            )
         log_operation(request, "delete", "opspilot", f"删除知识库: {name}")
-        return JsonResponse({"result": True})
+        return JsonResponse({"result": True, "data": {"id": knowledge_base_id}})
 
+    @HasPermission("wiki_list-View")
     @action(methods=["GET"], detail=False)
     def templates(self, request):
         """返回创建知识库的场景模板列表。"""
         return JsonResponse({"result": True, "data": list_templates()})
 
+    @HasPermission("wiki_list-View")
     @action(methods=["GET"], detail=True)
     def export_markdown(self, request, pk=None):
         """导出当前知识库启用中的知识页面为 Markdown zip。带配额审计。"""
         kb = self.get_object()
         try:
-            content, count = build_markdown_export_zip(kb)
+            content, count = build_native_markdown_export_zip(kb)
+        except ActiveGenerationReadError as error:
+            return _governance_error(error, status=409)
         except QuotaExceededError as exc:
             # 审计失败导出尝试:留给运维/安全审计
             log_operation(
@@ -154,92 +310,78 @@ class WikiKnowledgeBaseViewSet(WikiTeamScopeMixin, AuthViewSet):
         response["Content-Disposition"] = f'attachment; filename="wiki-kb-{kb.id}-markdown.zip"'
         return response
 
+    @HasPermission("wiki_list-Edit")
     @action(methods=["POST"], detail=True)
-    def import_markdown(self, request, pk=None):
-        """导入 Markdown 或 Markdown zip 为内部知识页面,并触发增量维护。
-
-        治理增强:同步导入失败时(解析/级联异常),自动落 BuildRecord(stage=failed)
-        并投递 Celery 异步重试任务(最多 3 次退避)。OperationLog 记录尝试与最终结果。
-        """
-        kb = self.get_object()
+    def import_markdown_preflight(self, request, pk=None):
+        knowledge_base = self.get_object()
         upload = request.FILES.get("file")
         if not upload:
             return JsonResponse({"result": False, "message": "file 必填"}, status=400)
-        operator = getattr(request.user, "username", "")
-        content = upload.read()
+        operator = getattr(request.user, "username", "") or ""
+        raw_options = request.data.get("options") or "{}"
         try:
-            result = import_markdown_archive(kb, content, filename=upload.name, operator=operator)
-        except (UnicodeDecodeError, ValueError, zipfile.BadZipFile) as exc:
-            log_operation(
-                request,
-                "create",
-                "opspilot",
-                f"导入 Markdown 失败(可重试): 知识库={kb.name} file={upload.name} error={exc}",
+            options = json.loads(raw_options) if isinstance(raw_options, str) else dict(raw_options)
+            for field in ("classification_root_id", "target_directory_id"):
+                if request.data.get(field) not in (None, ""):
+                    options[field] = int(request.data.get(field))
+            if request.data.get("restore_structure") not in (None, ""):
+                options["restore_structure"] = _bool_param(request.data, "restore_structure")
+            data = preflight_markdown_import(
+                knowledge_base,
+                upload.read(),
+                filename=upload.name,
+                actor=operator,
+                options=options,
             )
-            return JsonResponse({"result": False, "message": str(exc)}, status=400)
-        except Exception as exc:  # noqa: BLE001 - 任何意外都进重试队列
-            logger.exception("wiki markdown 导入意外失败,投递重试")
-            record = BuildRecord.objects.create(
-                knowledge_base=kb,
-                trigger="markdown_import",
-                operator=operator,
-                inputs={"filename": upload.name},
-                stage="failed",
-                progress=0,
-                errors=[f"导入异常: {exc}"],
-                status="failed",
-            )
-            try:
-                encoded = base64.b64encode(content).decode("ascii")
-                _opspilot_tasks.wiki_retry_markdown_import_task.delay(kb.id, record.id, encoded, upload.name, operator)
-            except Exception:  # noqa: BLE001 - 重试队列投递失败不阻塞返回
-                logger.exception("wiki markdown 重试任务投递失败")
-            log_operation(
-                request,
-                "create",
-                "opspilot",
-                f"导入 Markdown 投递重试: 知识库={kb.name} build_record={record.id}",
-            )
-            return JsonResponse(
-                {
-                    "result": False,
-                    "code": "import_retry",
-                    "message": "导入异常,已加入重试队列",
-                    "data": {"build_record": BuildRecordSerializer(record).data},
-                },
-                status=202,
-            )
-
-        maintenance = cascade(kb, result.page_ids, "markdown_import") if result.page_ids else {}
-        status = maintenance.get("status", "success") if result.page_ids else "success"
-        record = BuildRecord.objects.create(
-            knowledge_base=kb,
-            trigger="markdown_import",
-            operator=operator,
-            inputs={"filename": upload.name, **result.as_dict()},
-            stage="done",
-            progress=100,
-            counts={"created": result.created, "updated": result.updated, "skipped": result.skipped},
-            affected_pages=result.page_ids,
-            maintenance=maintenance,
-            status=status,
-        )
+        except (TypeError, ValueError, json.JSONDecodeError) as error:
+            return JsonResponse({"result": False, "message": str(error), "code": "import_options_invalid"}, status=400)
+        except MarkdownImportGovernanceError as error:
+            return _governance_error(error, status=error.status_code)
         log_operation(
             request,
             "create",
             "opspilot",
-            f"导入 Markdown 成功: 知识库={kb.name} 创建={result.created} 更新={result.updated} 跳过={result.skipped}",
+            f"预检 Markdown 导入: 知识库={knowledge_base.name} file={upload.name}",
         )
-        return JsonResponse(
-            {
-                "result": True,
-                "data": {
-                    **result.as_dict(),
-                    "build_record": BuildRecordSerializer(record).data,
-                },
-            }
-        )
+        return JsonResponse({"result": True, "data": data})
 
+    @HasPermission("wiki_list-Edit")
+    @action(methods=["POST"], detail=True)
+    def import_markdown_execute(self, request, pk=None):
+        knowledge_base = self.get_object()
+        upload = request.FILES.get("file")
+        token = request.data.get("token")
+        if not upload or not token:
+            return JsonResponse({"result": False, "message": "file 与 token 必填"}, status=400)
+        operator = getattr(request.user, "username", "") or ""
+        try:
+            data = execute_markdown_import(
+                knowledge_base,
+                token,
+                upload.read(),
+                filename=upload.name,
+                actor=operator,
+            )
+        except MarkdownImportGovernanceError as error:
+            return _governance_error(error, status=error.status_code)
+        except BuildGenerationError as error:
+            return _governance_error(error, status=409 if error.retryable else 422)
+        log_operation(
+            request,
+            "create",
+            "opspilot",
+            f"执行 Markdown 导入: 知识库={knowledge_base.name} generation={data.get('generation_id')}",
+        )
+        return JsonResponse({"result": True, "data": data})
+
+    @HasPermission("wiki_list-Edit")
+    @action(methods=["POST"], detail=True)
+    def import_markdown(self, request, pk=None):
+        """兼容旧入口：只执行安全预检，不再绕过一次性 token 直接写入。"""
+
+        return self.import_markdown_preflight(request, pk=pk)
+
+    @HasPermission("wiki_list-Add")
     @action(methods=["POST"], detail=False)
     def generate_purpose_schema(self, request):
         """根据模板 + 用户描述,AI 生成 purpose_md / schema_md 草稿(无模型/失败时回退模板骨架)。"""
@@ -250,21 +392,41 @@ class WikiKnowledgeBaseViewSet(WikiTeamScopeMixin, AuthViewSet):
         )
         return JsonResponse({"result": True, "data": {"purpose_md": purpose, "schema_md": schema}})
 
+    @HasPermission("wiki_list-View")
     @action(methods=["GET", "POST"], detail=True)
     def search(self, request, pk=None):
         """在知识库内检索(知识页面 + 资料摘要)。"""
         kb = self.get_object()
-        query = request.data.get("query") if request.method == "POST" else request.GET.get("query", "")
-        results = wiki_search(kb, query or "", top_k=int(request.GET.get("top_k", 5)))
+        params = request.data if request.method == "POST" else request.GET
+        query = params.get("query", "")
+        try:
+            results = wiki_search(
+                kb,
+                query or "",
+                top_k=_int_param(params, "top_k", 5, minimum=1),
+                directory_id=_optional_int_param(params, "directory_id"),
+                include_descendants=_bool_param(params, "include_descendants"),
+            )
+        except ActiveGenerationReadError as error:
+            return _governance_error(error, status=409)
         return JsonResponse({"result": True, "data": results})
 
+    @HasPermission("wiki_list-View")
     @action(methods=["POST"], detail=True)
     def hybrid_search(self, request, pk=None):
         """混合检索:关键词召回 + 语义重排 + RRF 融合(知识库需配置 EmbedProvider 才启用语义)。"""
         kb = self.get_object()
-        results = wiki_hybrid_search(kb, request.data.get("query", ""), top_k=int(request.data.get("top_k", 5)))
+        try:
+            results = wiki_hybrid_search(
+                kb,
+                request.data.get("query", ""),
+                top_k=int(request.data.get("top_k", 5)),
+            )
+        except ActiveGenerationReadError as error:
+            return _governance_error(error, status=409)
         return JsonResponse({"result": True, "data": results})
 
+    @HasPermission("wiki_list-Edit")
     @action(methods=["POST"], detail=True)
     def reindex(self, request, pk=None):
         """重建知识库全部有效页面的页面级和 chunk 级索引,并落构建记录供诊断追踪。"""
@@ -285,6 +447,7 @@ class WikiKnowledgeBaseViewSet(WikiTeamScopeMixin, AuthViewSet):
         log_operation(request, "execute", "opspilot", f"重建知识库索引: {kb.name}")
         return JsonResponse({"result": True, "data": BuildRecordSerializer(record).data})
 
+    @HasPermission("wiki_list-View")
     @action(methods=["POST"], detail=True)
     def semantic_search(self, request, pk=None):
         """纯语义检索:基于已存储的页面嵌入做余弦相似检索(需先 reindex 且配置 EmbedProvider)。"""
@@ -292,6 +455,7 @@ class WikiKnowledgeBaseViewSet(WikiTeamScopeMixin, AuthViewSet):
         results = wiki_semantic_search(kb, request.data.get("query", ""), top_k=int(request.data.get("top_k", 5)))
         return JsonResponse({"result": True, "data": results})
 
+    @HasPermission("wiki_list-Edit")
     @action(methods=["POST"], detail=True)
     def reindex_chunks(self, request, pk=None):
         """构建/刷新分块索引:按标题切分页面正文,块级嵌入入库(细粒度语义检索)。"""
@@ -299,6 +463,7 @@ class WikiKnowledgeBaseViewSet(WikiTeamScopeMixin, AuthViewSet):
         n_pages, n_chunks = wiki_reindex_chunks(kb)
         return JsonResponse({"result": True, "data": {"pages": n_pages, "chunks": n_chunks}})
 
+    @HasPermission("wiki_list-View")
     @action(methods=["POST"], detail=True)
     def chunk_search(self, request, pk=None):
         """块级语义检索:返回最相关的页面分块(含所属标题),需先 reindex_chunks。"""
@@ -306,13 +471,62 @@ class WikiKnowledgeBaseViewSet(WikiTeamScopeMixin, AuthViewSet):
         results = wiki_chunk_search(kb, request.data.get("query", ""), top_k=int(request.data.get("top_k", 5)))
         return JsonResponse({"result": True, "data": results})
 
+    @HasPermission("wiki_list-View")
     @action(methods=["POST"], detail=True)
     def qa(self, request, pk=None):
         """问答试用:检索 + 作答 + 引用(可追溯到资料)。"""
         kb = self.get_object()
-        result = wiki_answer(kb, request.data.get("query", ""), llm_model_id=kb.llm_model_id)
+        try:
+            result = wiki_answer(
+                kb,
+                request.data.get("query", ""),
+                llm_model_id=kb.llm_model_id,
+            )
+        except (WikiBudgetExceeded, ActiveGenerationReadError) as error:
+            return _governance_error(error, status=422)
         return JsonResponse({"result": True, "data": result})
 
+    @HasPermission("wiki_list-View")
+    @action(
+        methods=["POST"],
+        detail=True,
+        renderer_classes=[CustomRenderer, EventStreamRenderer],
+    )
+    def qa_stream(self, request, pk=None):
+        """检索测试流式回答:SSE meta/delta/done/error。"""
+        kb = self.get_object()
+        query = request.data.get("query", "")
+
+        def event_stream():
+            try:
+                for event in wiki_stream_answer(
+                    kb,
+                    query,
+                    llm_model_id=kb.llm_model_id,
+                ):
+                    yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+            except (WikiBudgetExceeded, ActiveGenerationReadError) as error:
+                payload = {
+                    "event": "error",
+                    "code": getattr(error, "code", "wiki_qa_error"),
+                    "message": str(error),
+                    "details": getattr(error, "details", None),
+                }
+                yield f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
+            except Exception as error:
+                payload = {
+                    "event": "error",
+                    "code": "wiki_qa_stream_failed",
+                    "message": str(error) or "wiki qa stream failed",
+                }
+                yield f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
+
+        response = StreamingHttpResponse(event_stream(), content_type="text/event-stream")
+        response["Cache-Control"] = "no-cache"
+        response["X-Accel-Buffering"] = "no"
+        return response
+
+    @HasPermission("wiki_list-Edit")
     @action(methods=["POST"], detail=True)
     def scan(self, request, pk=None):
         """系统检查扫描:发现孤立页面、缺来源等并写入检查事项。"""
@@ -320,6 +534,7 @@ class WikiKnowledgeBaseViewSet(WikiTeamScopeMixin, AuthViewSet):
         created = scan_health(kb)
         return JsonResponse({"result": True, "data": {"created": len(created)}})
 
+    @HasPermission("wiki_list-View")
     @action(methods=["GET"], detail=True, url_path="preview_merge")
     def preview_merge(self, request, pk=None):
         """合并预览:按 title_aliases 规则归一 KB 内所有 active 页面,返回会被合并到同一规范标题的页面集合(不写库)。"""
@@ -370,48 +585,143 @@ class WikiKnowledgeBaseViewSet(WikiTeamScopeMixin, AuthViewSet):
             }
         )
 
+    @HasPermission("wiki_list-Edit")
     @action(methods=["POST"], detail=True)
     def rebuild(self, request, pk=None):
         """Schema 变更后全量重建:归档旧 AI 页、保留并标记人工页、按新 Schema 重生成。"""
         kb = self.get_object()
-        if running_build_record(kb):
-            return JsonResponse({"result": False, "message": "知识库存在运行中的构建任务,请等待完成后再操作"}, status=400)
         operator = getattr(request.user, "username", "")
-        record = create_rebuild_record(kb, operator=operator)
-        _opspilot_tasks.wiki_rebuild_kb_task.delay(kb.id, kb.llm_model_id, operator, record.id)
+        try:
+            with transaction.atomic():
+                kb = WikiKnowledgeBase.objects.select_for_update().get(pk=kb.pk)
+                if running_build_record(kb):
+                    return JsonResponse(
+                        {
+                            "result": False,
+                            "message": "知识库存在运行中的构建任务,请等待完成后再操作",
+                        },
+                        status=400,
+                    )
+                materials = list(Material.objects.select_for_update().filter(knowledge_base=kb).select_related("current_version").order_by("id"))
+                task_identity = _opspilot_tasks._freeze_wiki_task_identity(
+                    kb,
+                    materials,
+                )
+                record = create_rebuild_record(kb, operator=operator)
+                _opspilot_tasks._persist_wiki_task_identity(record, task_identity)
+        except BuildGenerationError as error:
+            return _governance_error(
+                error,
+                status=409 if error.retryable else 422,
+            )
+
+        try:
+            _opspilot_tasks.wiki_rebuild_kb_task.delay(
+                kb.id,
+                kb.llm_model_id,
+                operator,
+                record.id,
+                None,
+                task_identity,
+            )
+        except Exception as error:
+            with transaction.atomic():
+                WikiKnowledgeBase.objects.select_for_update().get(pk=kb.pk)
+                failed = BuildRecord.objects.select_for_update().get(pk=record.pk)
+                _opspilot_tasks._fail_wiki_task_build(
+                    failed,
+                    "task_dispatch_failed",
+                    str(error),
+                    retryable=True,
+                )
+            return _governance_error(
+                BuildGenerationError(
+                    "task_dispatch_failed",
+                    "重建任务下发失败，请重试",
+                    retryable=True,
+                ),
+                status=503,
+            )
         return JsonResponse({"result": True, "data": BuildRecordSerializer(record).data})
 
+    @HasPermission("wiki_list-Edit")
     @action(methods=["POST"], detail=True)
     def rebuild_relations(self, request, pk=None):
         """重建页面关系(共享资料/正文引用)。"""
         kb = self.get_object()
-        created = rebuild_relations(kb)
-        return JsonResponse({"result": True, "data": {"relations": len(created)}})
+        from apps.opspilot.services.wiki.relation_governance_service import rebuild_active_generation_relations
 
+        try:
+            result = rebuild_active_generation_relations(
+                kb,
+                operator=getattr(request.user, "username", "") or "",
+            )
+        except BuildGenerationError as error:
+            return _governance_error(error, status=409 if error.retryable else 422)
+        return JsonResponse(
+            {
+                "result": True,
+                "data": {
+                    "generation_id": result["generation_id"],
+                    "relations": result["relations"]["relation_count"],
+                    "build_record_id": result["build_record"].pk,
+                },
+            }
+        )
+
+    @HasPermission("wiki_list-View")
     @action(methods=["GET"], detail=True)
     def relations(self, request, pk=None):
         """返回知识库的页面关系边(供校验与图谱)。"""
         kb = self.get_object()
-        return JsonResponse({"result": True, "data": list_relations(kb)})
+        try:
+            data = list_relations(kb)
+        except ActiveGenerationReadError as error:
+            return _governance_error(error, status=409)
+        return JsonResponse({"result": True, "data": data})
 
+    @HasPermission("wiki_list-View")
     @action(methods=["GET"], detail=True)
     def graph(self, request, pk=None):
         """返回知识图谱:节点 + 边 + 连通分量社区 + 洞察。"""
         kb = self.get_object()
-        return JsonResponse({"result": True, "data": build_graph(kb)})
+        try:
+            data = build_graph(
+                kb,
+                directory_id=_optional_int_param(request.GET, "directory_id"),
+                include_descendants=_bool_param(request.GET, "include_descendants"),
+            )
+        except ActiveGenerationReadError as error:
+            return _governance_error(error, status=409)
+        return JsonResponse({"result": True, "data": data})
 
+    @HasPermission("wiki_list-View")
     @action(methods=["GET"], detail=True)
     def graph_analysis(self, request, pk=None):
         """返回 4 信号关联度加权图 + 标签传播社区 + 洞察。"""
         kb = self.get_object()
-        return JsonResponse({"result": True, "data": analyze_graph(kb)})
+        try:
+            data = analyze_graph(
+                kb,
+                directory_id=_optional_int_param(request.GET, "directory_id"),
+                include_descendants=_bool_param(request.GET, "include_descendants"),
+            )
+        except ActiveGenerationReadError as error:
+            return _governance_error(error, status=409)
+        return JsonResponse({"result": True, "data": data})
 
+    @HasPermission("wiki_list-View")
     @action(methods=["GET"], detail=True)
     def overview(self, request, pk=None):
         """概览工作区:页面/资料/构建/检查/关系统计 + 健康摘要。"""
         kb = self.get_object()
-        return JsonResponse({"result": True, "data": get_overview(kb)})
+        try:
+            data = get_overview(kb)
+        except ActiveGenerationReadError as error:
+            return _governance_error(error, status=409)
+        return JsonResponse({"result": True, "data": data})
 
+    @HasPermission("wiki_list-View")
     @action(methods=["POST"], detail=False)
     def context(self, request):
         """多智能体复用:按所选知识库 + 问题取回可注入提示词的上下文 + 引用。"""
@@ -428,16 +738,39 @@ class WikiKnowledgeBaseViewSet(WikiTeamScopeMixin, AuthViewSet):
         graph_hops = _int_param(request.data, "graph_hops", 1, minimum=0)
         token_budget = _optional_int_param(request.data, "token_budget", minimum=1)
         retrieval_mode = request.data.get("retrieval_mode", "keyword")
-        return JsonResponse(
-            {
-                "result": True,
-                "data": build_context(
-                    kb_ids,
-                    query,
-                    top_k=top_k,
-                    graph_hops=graph_hops,
-                    token_budget=token_budget,
-                    retrieval_mode=retrieval_mode,
-                ),
-            }
-        )
+        directory_id = _optional_int_param(request.data, "directory_id")
+        include_descendants = _bool_param(request.data, "include_descendants")
+        if directory_id is not None and len(kb_ids) != 1:
+            return JsonResponse(
+                {
+                    "result": False,
+                    "message": "目录范围检索一次只能选择一个知识库",
+                    "code": "directory_scope_requires_single_knowledge_base",
+                },
+                status=422,
+            )
+        try:
+            data = build_context(
+                kb_ids,
+                query,
+                top_k=top_k,
+                graph_hops=graph_hops,
+                token_budget=token_budget,
+                retrieval_mode=retrieval_mode,
+                directory_id=directory_id,
+                include_descendants=include_descendants,
+            )
+        except (WikiBudgetExceeded, ActiveGenerationReadError) as error:
+            return _governance_error(error, status=422)
+        return JsonResponse({"result": True, "data": data})
+
+    @HasPermission("wiki_list-View")
+    @action(methods=["POST"], detail=True)
+    def sign_media(self, request, pk=None):
+        """按知识库批量签发 wiki/media（知识页正文展示兜底）。"""
+        kb = self.get_object()
+        locators = request.data.get("locators") if isinstance(request.data, dict) else None
+        if not isinstance(locators, list):
+            return JsonResponse({"result": False, "message": "locators 必须为列表"}, status=400)
+        urls = sign_media_locators(locators, knowledge_base_id=kb.id)
+        return JsonResponse({"result": True, "data": {"urls": urls}})

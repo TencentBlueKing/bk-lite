@@ -1,14 +1,33 @@
-'use client';
+"use client";
 
-import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef } from 'react';
-import { Graph, type IElementEvent } from '@antv/g6';
-import { GraphEdge, GraphNode } from '@/app/opspilot/types/wiki';
+import React, {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+} from "react";
+import { Graph, type IElementEvent } from "@antv/g6";
+import { GraphEdge, GraphNode } from "@/app/opspilot/types/wiki";
 
 // 社区配色:柔和的现代主题色,饱和度适中、不刺眼(导出供图例复用,保证颜色一致)
-export const GRAPH_PALETTE = ['#5B8FF9', '#5AD8A6', '#5D7092', '#F6BD16', '#E8684A', '#6DC8EC', '#9270CA', '#FF9D4D', '#269A99', '#FF99C3'];
-export const communityColor = (community: number) => GRAPH_PALETTE[community % GRAPH_PALETTE.length];
+export const GRAPH_PALETTE = [
+  "#5B8FF9",
+  "#5AD8A6",
+  "#5D7092",
+  "#F6BD16",
+  "#E8684A",
+  "#6DC8EC",
+  "#9270CA",
+  "#FF9D4D",
+  "#269A99",
+  "#FF99C3",
+];
+export const communityColor = (community: number) =>
+  GRAPH_PALETTE[community % GRAPH_PALETTE.length];
 export const graphEdgeId = (edge: GraphEdge, index: number) =>
-  `${edge.from}->${edge.to}:${edge.relation_type || 'relation'}:${index}`;
+  `${edge.from}->${edge.to}:${edge.relation_type || "relation"}:${index}`;
 
 export interface GraphCanvasHandle {
   zoomBy: (ratio: number) => void;
@@ -27,7 +46,18 @@ interface GraphCanvasProps {
 }
 
 const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
-  ({ nodes, edges, visibleNodeIds, visibleEdgeIds, height = 460, nodeScale = 1, linkDistance = 160 }, ref) => {
+  (
+    {
+      nodes,
+      edges,
+      visibleNodeIds,
+      visibleEdgeIds,
+      height = 460,
+      nodeScale = 1,
+      linkDistance = 160,
+    },
+    ref,
+  ) => {
     const containerRef = useRef<HTMLDivElement | null>(null);
     const graphRef = useRef<Graph | null>(null);
     // 用 ref 持有最新的尺寸/间距,供「创建图」时读取,而不把它们放进创建 effect 的依赖(否则改滑块会整图重建+重排)
@@ -41,14 +71,23 @@ const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
     const visibleEdgeIdsRef = useRef<Set<string> | undefined>(visibleEdgeIds);
 
     const allNodeIds = useMemo(() => nodes.map((n) => String(n.id)), [nodes]);
-    const allEdgeIds = useMemo(() => edges.map((e, index) => graphEdgeId(e, index)), [edges]);
+    const allEdgeIds = useMemo(
+      () => edges.map((e, index) => graphEdgeId(e, index)),
+      [edges],
+    );
     const visibleNodeIdsKey = useMemo(
-      () => (visibleNodeIds ? Array.from(visibleNodeIds).sort().join('|') : '__all__'),
-      [visibleNodeIds]
+      () =>
+        visibleNodeIds
+          ? Array.from(visibleNodeIds).sort().join("|")
+          : "__all__",
+      [visibleNodeIds],
     );
     const visibleEdgeIdsKey = useMemo(
-      () => (visibleEdgeIds ? Array.from(visibleEdgeIds).sort().join('|') : '__all__'),
-      [visibleEdgeIds]
+      () =>
+        visibleEdgeIds
+          ? Array.from(visibleEdgeIds).sort().join("|")
+          : "__all__",
+      [visibleEdgeIds],
     );
 
     allNodeIdsRef.current = allNodeIds;
@@ -65,18 +104,23 @@ const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
       });
       return m;
     }, [edges]);
-    const baseSize = useCallback((id: string) => Math.min(54, 26 + (degree.get(id) || 0) * 4), [degree]);
+    const baseSize = useCallback(
+      // 基准约为原先一半：默认 100% 即旧版约 50% 的观感，复杂图谱更易读
+      (id: string) => Math.min(27, 13 + (degree.get(id) || 0) * 2),
+      [degree],
+    );
 
     const fitGraphToContainer = useCallback(() => {
       const graph = graphRef.current;
       const container = containerRef.current;
       if (!graph || !container) return;
       try {
-        const { width, height: containerHeight } = container.getBoundingClientRect();
+        const { width, height: containerHeight } =
+          container.getBoundingClientRect();
         if (width > 0 && containerHeight > 0) {
           graph.setSize(Math.floor(width), Math.floor(containerHeight));
         }
-        graph.fitView({ when: 'always', direction: 'both' });
+        graph.fitView({ when: "always", direction: "both" });
       } catch {
         /* 已销毁或布局尚未就绪时忽略 */
       }
@@ -86,15 +130,17 @@ const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
       const graph = graphRef.current;
       if (!graph) return;
 
-      const shownNodeIds = visibleNodeIdsRef.current ?? new Set(allNodeIdsRef.current);
-      const shownEdgeIds = visibleEdgeIdsRef.current ?? new Set(allEdgeIdsRef.current);
-      const visibility: Record<string, 'visible' | 'hidden'> = {};
+      const shownNodeIds =
+        visibleNodeIdsRef.current ?? new Set(allNodeIdsRef.current);
+      const shownEdgeIds =
+        visibleEdgeIdsRef.current ?? new Set(allEdgeIdsRef.current);
+      const visibility: Record<string, "visible" | "hidden"> = {};
 
       allNodeIdsRef.current.forEach((id) => {
-        visibility[id] = shownNodeIds.has(id) ? 'visible' : 'hidden';
+        visibility[id] = shownNodeIds.has(id) ? "visible" : "hidden";
       });
       allEdgeIdsRef.current.forEach((id) => {
-        visibility[id] = shownEdgeIds.has(id) ? 'visible' : 'hidden';
+        visibility[id] = shownEdgeIds.has(id) ? "visible" : "hidden";
       });
 
       void graph.setElementVisibility(visibility, false).catch(() => {
@@ -119,7 +165,7 @@ const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
           fitGraphToContainer();
         },
       }),
-      [fitGraphToContainer]
+      [fitGraphToContainer],
     );
 
     // 创建图:仅在 nodes/edges 变化时重建(滑块改尺寸/间距不在此触发,避免整图重排)
@@ -134,33 +180,50 @@ const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
         data: {
           nodes: nodes.map((n) => ({
             id: String(n.id),
-            data: { label: n.title, community: n.community ?? 0, size: Math.round(baseSize(String(n.id)) * nodeScaleRef.current) },
+            data: {
+              label: n.title,
+              directoryBreadcrumb: (n.directory_breadcrumb || [])
+                .map((item) => item.name)
+                .join(" / "),
+              community: n.community ?? 0,
+              size: Math.round(baseSize(String(n.id)) * nodeScaleRef.current),
+            },
           })),
-          edges: edges.map((e, index) => ({ id: graphEdgeId(e, index), source: String(e.from), target: String(e.to) })),
+          edges: edges.map((e, index) => ({
+            id: graphEdgeId(e, index),
+            source: String(e.from),
+            target: String(e.to),
+          })),
         },
         node: {
           style: {
-            size: (d) => Number(d.data?.size ?? 28),
+            size: (d) => Number(d.data?.size ?? 14),
             fill: (d) => communityColor(Number(d.data?.community ?? 0)),
             opacity: 1,
             labelOpacity: 1,
-            stroke: '#ffffff',
+            stroke: "#ffffff",
             lineWidth: 2,
-            shadowColor: 'rgba(15, 23, 42, 0.18)',
+            shadowColor: "rgba(15, 23, 42, 0.18)",
             shadowBlur: 12,
             shadowOffsetY: 2,
-            labelText: (d) => String((d.data?.label as string) ?? d.id),
-            labelPlacement: 'bottom',
-            labelFill: '#1f2937',
+            labelText: (d) => {
+              const label = String((d.data?.label as string) ?? d.id);
+              const breadcrumb = String(
+                (d.data?.directoryBreadcrumb as string) ?? "",
+              );
+              return breadcrumb ? `${label}\n${breadcrumb}` : label;
+            },
+            labelPlacement: "bottom",
+            labelFill: "#1f2937",
             labelFontSize: 12,
             labelFontWeight: 500,
             labelBackground: true,
-            labelBackgroundFill: 'rgba(255,255,255,0.85)',
+            labelBackgroundFill: "rgba(255,255,255,0.85)",
             labelBackgroundRadius: 4,
             labelPadding: [2, 6],
-            labelMaxWidth: 120,
+            labelMaxWidth: 180,
             labelWordWrap: true,
-            labelMaxLines: 2,
+            labelMaxLines: 3,
           },
           state: {
             active: { lineWidth: 3, halo: true, haloLineWidth: 8 },
@@ -169,33 +232,46 @@ const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
         },
         edge: {
           style: {
-            stroke: '#D0D5DD',
+            stroke: "#D0D5DD",
             lineWidth: 1.2,
             strokeOpacity: 0.75,
             endArrow: true,
-            endArrowType: 'vee',
+            endArrowType: "vee",
             endArrowSize: 3,
           },
           state: {
-            active: { stroke: '#5B8FF9', strokeOpacity: 1, lineWidth: 2 },
+            active: { stroke: "#5B8FF9", strokeOpacity: 1, lineWidth: 2 },
             inactive: { strokeOpacity: 0.06 },
           },
         },
-        layout: { type: 'force', linkDistance: linkDistanceRef.current, preventOverlap: true, nodeSize: 80, nodeSpacing: 24, collideStrength: 0.9 },
-        behaviors: ['drag-canvas', 'zoom-canvas', 'drag-element'],
+        layout: {
+          type: "force",
+          linkDistance: linkDistanceRef.current,
+          preventOverlap: true,
+          nodeSize: 80,
+          nodeSpacing: 24,
+          collideStrength: 0.9,
+        },
+        behaviors: ["drag-canvas", "zoom-canvas", "drag-element"],
       });
 
       graphRef.current = graph;
 
       // hover 聚焦高亮:进入节点→高亮该节点及邻居与相连边、其余淡化;离开→清空
       const applyFocus = (id: string) => {
-        const keep = new Set<string>([id, ...graph.getNeighborNodesData(id).map((n) => String(n.id))]);
+        const keep = new Set<string>([
+          id,
+          ...graph.getNeighborNodesData(id).map((n) => String(n.id)),
+        ]);
         const states: Record<string, string> = {};
         graph.getNodeData().forEach((n) => {
-          states[String(n.id)] = keep.has(String(n.id)) ? 'active' : 'inactive';
+          states[String(n.id)] = keep.has(String(n.id)) ? "active" : "inactive";
         });
         graph.getEdgeData().forEach((e) => {
-          states[String(e.id)] = keep.has(String(e.source)) && keep.has(String(e.target)) ? 'active' : 'inactive';
+          states[String(e.id)] =
+            keep.has(String(e.source)) && keep.has(String(e.target))
+              ? "active"
+              : "inactive";
         });
         graph.setElementState(states, false);
       };
@@ -205,17 +281,19 @@ const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
         graph.getEdgeData().forEach((e) => (states[String(e.id)] = []));
         graph.setElementState(states, false);
       };
-      graph.on('node:pointerenter', (e: IElementEvent) => applyFocus(String(e.target.id)));
-      graph.on('node:pointerleave', clearFocus);
+      graph.on("node:pointerenter", (e: IElementEvent) =>
+        applyFocus(String(e.target.id)),
+      );
+      graph.on("node:pointerleave", clearFocus);
 
       const fit = () => {
         try {
-          graph.fitView({ when: 'always', direction: 'both' });
+          graph.fitView({ when: "always", direction: "both" });
         } catch {
           /* 图谱已销毁或无节点时忽略 */
         }
       };
-      graph.on('afterlayout', fit);
+      graph.on("afterlayout", fit);
       graph.render().then(() => {
         applyVisibility();
         fit();
@@ -243,7 +321,12 @@ const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
       if (!g) return;
       try {
         // 尺寸映射读 d.data.size,故更新 data.size(更新 style.size 无效);draw 重渲染不重布局,位置不动
-        g.updateNodeData(nodes.map((n) => ({ id: String(n.id), data: { size: Math.round(baseSize(String(n.id)) * nodeScale) } })));
+        g.updateNodeData(
+          nodes.map((n) => ({
+            id: String(n.id),
+            data: { size: Math.round(baseSize(String(n.id)) * nodeScale) },
+          })),
+        );
         g.draw();
       } catch {
         /* 忽略 */
@@ -264,7 +347,7 @@ const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
         try {
           g.setLayout((prev) => ({ ...prev, linkDistance }));
           await g.layout();
-          g.fitView({ when: 'always', direction: 'both' });
+          g.fitView({ when: "always", direction: "both" });
         } catch {
           /* 忽略 */
         }
@@ -272,9 +355,9 @@ const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [linkDistance]);
 
-    return <div ref={containerRef} style={{ width: '100%', height }} />;
-  }
+    return <div ref={containerRef} style={{ width: "100%", height }} />;
+  },
 );
 
-GraphCanvas.displayName = 'GraphCanvas';
+GraphCanvas.displayName = "GraphCanvas";
 export default GraphCanvas;

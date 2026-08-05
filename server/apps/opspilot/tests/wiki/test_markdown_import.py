@@ -177,18 +177,10 @@ def test_import_markdown_zip_ignores_directories_and_non_markdown_entries():
 
 
 @pytest.mark.django_db
-def test_import_markdown_endpoint_returns_counts_and_runs_incremental_cascade(api_client, monkeypatch):
-    from apps.opspilot.models import BuildRecord, KnowledgePage
-    from apps.opspilot.viewsets import wiki_kb_view
+def test_legacy_import_endpoint_returns_safe_preflight_without_writes(api_client):
+    from apps.opspilot.models import BuildRecord, KnowledgePage, WikiImportPreflight
 
     kb = _kb()
-    calls = []
-
-    def fake_cascade(knowledge_base, page_ids, event, **kwargs):
-        calls.append((knowledge_base.id, list(page_ids), event, kwargs))
-        return {"status": "success", "affected_page_ids": list(page_ids)}
-
-    monkeypatch.setattr(wiki_kb_view, "cascade", fake_cascade, raising=False)
     upload = SimpleUploadedFile(
         "wiki.zip",
         _zip_with_markdown({"pages/cmdb.md": _export_style_markdown(title="CMDB", page_type="entity")}),
@@ -203,13 +195,8 @@ def test_import_markdown_endpoint_returns_counts_and_runs_incremental_cascade(ap
 
     assert response.status_code == 200, response.content
     data = response.json()["data"]
-    assert data["created"] == 1
-    assert data["updated"] == 0
-    page = KnowledgePage.objects.get(knowledge_base=kb, title="CMDB")
-    assert calls == [(kb.id, [page.id], "markdown_import", {})]
-    assert BuildRecord.objects.filter(
-        knowledge_base=kb,
-        trigger="markdown_import",
-        affected_pages=[page.id],
-        status="success",
-    ).exists()
+    assert data["token"]
+    assert data["preview"]["pages"][0]["title"] == "配置平台"
+    assert not KnowledgePage.objects.filter(knowledge_base=kb).exists()
+    assert not BuildRecord.objects.filter(knowledge_base=kb, trigger="markdown_import").exists()
+    assert WikiImportPreflight.objects.filter(knowledge_base=kb, consumed_at__isnull=True).count() == 1

@@ -2,36 +2,30 @@ import pytest
 
 
 @pytest.mark.django_db
-def test_wiki_models_importable_and_defaults():
-    from apps.opspilot.models import (
-        BuildRecord,
-        CheckItem,
-        KnowledgePage,
-        Material,
-        MaterialVersion,
-        PageEvidence,
-        PageRelation,
-        PageVersion,
-        WikiKnowledgeBase,
-    )
+def test_wiki_models_importable_and_defaults(wiki_factory):
+    from apps.opspilot.models import BuildRecord, CheckItem, MaterialVersion, PageEvidence, PageRelation
 
-    kb = WikiKnowledgeBase.objects.create(name="kb1", team=[1], purpose_md="# P", schema_md="# S")
+    kb = wiki_factory.knowledge_base(name="kb1", team=[1], purpose_md="# P", schema_md="# S")
     assert kb.status == "active"
     assert kb.generation_language == "zh"
 
-    material = Material.objects.create(knowledge_base=kb, name="m1", material_type="text", status="pending")
+    material = wiki_factory.material(knowledge_base=kb, name="m1", material_type="text", status="pending")
     assert material.material_type == "text" and material.status == "pending"
     mv = MaterialVersion.objects.create(material=material, content_locator="loc", content_hash="h")
     material.current_version = mv
     material.save()
 
-    page = KnowledgePage.objects.create(knowledge_base=kb, page_type="concept", title="t", contribution="ai")
-    pv = PageVersion.objects.create(page=page, no=1, body="b", change_type="ai_create", is_current=True)
-    page.current_version = pv
-    page.save()
+    page = wiki_factory.page(
+        knowledge_base=kb,
+        page_type="concept",
+        title="t",
+        body="b",
+        contribution="ai",
+    )
+    pv = page.current_version
     assert pv.is_current is True
 
-    page2 = KnowledgePage.objects.create(knowledge_base=kb, page_type="entity", title="t2")
+    page2 = wiki_factory.page(knowledge_base=kb, page_type="entity", title="t2")
     rel = PageRelation.objects.create(from_page=page, to_page=page2, relation_type="reference")
     assert rel.weight == 1.0
 

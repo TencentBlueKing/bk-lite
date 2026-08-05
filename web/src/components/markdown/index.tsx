@@ -9,6 +9,11 @@ import gfm from 'remark-gfm';
 import 'github-markdown-css/github-markdown.css';
 import styles from './index.module.scss';
 import { stripLeadingH1 } from './sectionMarkdown';
+import {
+  extractMarkdownImages,
+  repairBareWikiMediaImgSrcs,
+  restoreMarkdownImages,
+} from './wikiMarkdownImages';
 import { getClientIdFromRoute } from '@/utils/route';
 import { useTranslation } from '@/utils/i18n';
 
@@ -63,11 +68,15 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
     try {
       setLoading(true);
       if (processedContent) {
+        const { markdown: mdWithoutImages, images } =
+          extractMarkdownImages(processedContent);
         const processedContentResult = await remark()
           .use(gfm)
           .use(html)
-          .process(processedContent);
+          .process(mdWithoutImages);
         let htmlString = sanitizeMarkdownHtml(processedContentResult.toString());
+        htmlString = restoreMarkdownImages(htmlString, images);
+        htmlString = repairBareWikiMediaImgSrcs(htmlString, processedContent);
         // 二次兜底：消毒后若仍残留 H1，一律去掉。
         if (stripDocumentTitle) {
           htmlString = htmlString.replace(/<h1\b[^>]*>[\s\S]*?<\/h1>\s*/gi, '');

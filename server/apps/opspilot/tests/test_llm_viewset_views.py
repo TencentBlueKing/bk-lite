@@ -102,6 +102,140 @@ def test_apply_skill_packages_records_visible_match_summary(mocker):
     assert params["skill_package_workflows"] == {"after_config_analysis": [{"type": "choice"}]}
 
 
+def _execution_skill():
+    return SimpleNamespace(
+        id=7,
+        name="runtime-skill",
+        skill_type=1,
+        tools=[],
+        team=[999],
+        enable_suggest=False,
+        enable_query_rewrite=False,
+        show_think=False,
+        skill_params=[],
+        skill_packages=[],
+        skill_prompt="",
+        wiki_knowledge_bases=SimpleNamespace(values_list=lambda *args, **kwargs: []),
+    )
+
+
+def _execution_request(*, current_team=None, group_list=None, is_superuser=False):
+    cookies = {"include_children": "1"}
+    if current_team is not None:
+        cookies["current_team"] = current_team
+    return SimpleNamespace(
+        user=SimpleNamespace(
+            id=11,
+            username="alice",
+            domain="example.com",
+            locale="zh-Hans",
+            group_list=[] if group_list is None else group_list,
+            is_superuser=is_superuser,
+            is_authenticated=True,
+        ),
+        data={
+            "skill_id": 7,
+            "user_message": "hello",
+            "group": 123,
+            "caller_identity": {
+                "username": "mallory",
+                "domain": "evil.example",
+                "team_id": 123,
+                "include_children": False,
+                "token": "forged-secret",
+            },
+        },
+        COOKIES=cookies,
+        META={"REMOTE_ADDR": "127.0.0.1"},
+    )
+
+
+@pytest.mark.parametrize(
+    ("action_name", "downstream_name"),
+    [
+        ("execute", "stream_chat"),
+        ("execute_agui", "stream_agui_chat"),
+    ],
+)
+def test_skill_execution_overwrites_forged_caller_identity(action_name, downstream_name, mocker):
+    viewset = LLMViewSet()
+    viewset.loader = None
+    request = _execution_request(current_team="7", group_list=[{"id": 7}])
+    skill = _execution_skill()
+    mocker.patch.object(LLMViewSet, "get_has_permission", return_value=True)
+    mocker.patch.object(LLMViewSet, "_apply_skill_packages_to_params")
+    mocker.patch("apps.opspilot.viewsets.llm_view.merge_skill_params", return_value=[])
+    mocker.patch("apps.opspilot.viewsets.llm_view.LLMSkill.objects.get", return_value=skill)
+    sentinel = object()
+    downstream = mocker.patch(
+        f"apps.opspilot.viewsets.llm_view.{downstream_name}",
+        return_value=sentinel,
+    )
+
+    response = getattr(LLMViewSet, action_name).__wrapped__(viewset, request)
+
+    assert response is sentinel
+    forwarded_params = downstream.call_args.args[0]
+    assert forwarded_params["caller_identity"] == {
+        "username": "alice",
+        "domain": "example.com",
+        "team_id": 7,
+        "include_children": True,
+    }
+    assert "forged-secret" not in json.dumps(forwarded_params)
+
+
+@pytest.mark.parametrize(
+    ("current_team", "group_list", "is_superuser", "message_part"),
+    [
+        (None, [7], False, "current team"),
+        ("not-a-team", [7], False, "positive integer"),
+        ("7", [8], True, "not a member"),
+    ],
+)
+@pytest.mark.parametrize(
+    ("action_name", "downstream_name"),
+    [
+        ("execute", "stream_chat"),
+        ("execute_agui", "stream_agui_chat"),
+    ],
+)
+def test_skill_execution_rejects_invalid_current_team_before_downstream(
+    action_name,
+    downstream_name,
+    current_team,
+    group_list,
+    is_superuser,
+    message_part,
+    mocker,
+):
+    viewset = LLMViewSet()
+    viewset.loader = None
+    request = _execution_request(
+        current_team=current_team,
+        group_list=group_list,
+        is_superuser=is_superuser,
+    )
+    skill_get = mocker.patch(
+        "apps.opspilot.viewsets.llm_view.LLMSkill.objects.get",
+        return_value=_execution_skill(),
+    )
+    downstream = mocker.patch(f"apps.opspilot.viewsets.llm_view.{downstream_name}")
+    sentinel = object()
+    error_response = mocker.patch.object(
+        LLMViewSet,
+        "create_error_stream_response",
+        return_value=sentinel,
+    )
+
+    response = getattr(LLMViewSet, action_name).__wrapped__(viewset, request)
+
+    assert response is sentinel
+    assert message_part in error_response.call_args.args[0]
+    skill_get.assert_not_called()
+    downstream.assert_not_called()
+
+
 class _FakeSkill:
     """最小化的 LLMSkill 替身：仅暴露白名单可能写入的属性与受保护字段。"""
 

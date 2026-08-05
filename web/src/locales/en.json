@@ -89,6 +89,7 @@
     "searchKeywordPlaceholder": "Enter keywords to search...",
     "yes": "Yes",
     "no": "No",
+    "back": "Back",
     "updatedTime": "Updated Time",
     "inputTip": "Please input",
     "serverError": "Server error, please try again later.",

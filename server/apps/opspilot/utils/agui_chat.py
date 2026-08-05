@@ -16,6 +16,8 @@ from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.metis.llm.common.token_usage import TokenUsageAccumulator
 from apps.opspilot.models import LLMModel, SkillRequestLog
 from apps.opspilot.services.chat_service import chat_service
+from apps.opspilot.services.wiki.active_generation_query_service import ActiveGenerationReadError
+from apps.opspilot.services.wiki.wiki_budget_service import WikiBudgetExceeded
 from apps.opspilot.utils.agent_factory import create_agent_instance, create_sse_response_headers
 from apps.opspilot.utils.stream_common import is_interrupt_requested_async
 from apps.opspilot.utils.stream_common import process_think_content as _process_think_content
@@ -511,6 +513,21 @@ async def _generate_agui_stream(params, skill_name, skill_type, show_think, fina
 
             threading.Thread(target=log_in_background, daemon=True).start()
 
+    except (WikiBudgetExceeded, ActiveGenerationReadError) as e:
+        logger.warning(
+            "[AGUI Chat] Wiki request rejected: code=%s details=%s",
+            e.code,
+            e.details,
+        )
+        yield _build_sse_line(
+            {
+                "type": "ERROR",
+                "error": str(e),
+                "error_code": e.code,
+                "error_details": e.details,
+                "timestamp": int(time.time() * 1000),
+            }
+        )
     except Exception as e:
         logger.error(f"[AGUI Chat] async stream error: {e}", exc_info=True)
         error_data = {"type": "ERROR", "error": f"聊天错误: {str(e)}", "timestamp": int(time.time() * 1000)}
@@ -587,8 +604,7 @@ def _log_and_update_tokens_agui(final_stats, skill_name, skill_id, current_ip, k
                 call.get("total_tokens", 0),
             )
         logger.info(
-            "AGUI token usage recorded: skill_id=%s, skill_name=%s, llm_call_count=%s, "
-            "prompt_tokens=%s, completion_tokens=%s, total_tokens=%s",
+            "AGUI token usage recorded: skill_id=%s, skill_name=%s, llm_call_count=%s, " "prompt_tokens=%s, completion_tokens=%s, total_tokens=%s",
             skill_id,
             skill_name,
             llm_call_count,

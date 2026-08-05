@@ -207,10 +207,23 @@ tools:
   monitor:
     name: 监控
     description: |
-      使用当前用户的监控身份查询 BK-Lite 监控对象、实例、指标和告警。
+      【主机CPU使用率】用当前用户身份查 BK-Lite 已纳管对象、实例、指标时序与告警。
+      典型顺序：对象类型 → 按主机名匹配实例 → 确认指标名 → 查时序。优先本工具集，不要 SSH/top/htop。
     tools:
       monitor_list_objects:
-        description: 获取可用的监控对象类型列表。
+        description: 【主机CPU】第1步，列出对象类型并找到主机 monitor_obj_id。
+      monitor_list_object_instances:
+        description: 【主机CPU】第2步，按对象列出实例，用主机名匹配得到 instance_id。
+      monitor_list_object_metrics:
+        description: 【主机CPU】第3步，列出指标定义，确认 CPU 使用率等 metric 名。
+      monitor_list_instance_metrics:
+        description: 【主机CPU】可选，确认某实例是否已采集 CPU 等指标。
+      monitor_query_metric_data:
+        description: 【主机CPU】第4步，查询指标时序；需对象、metric、时间窗、可选 instance_ids。
+      monitor_list_active_alerts:
+        description: 【主机告警】查询当前活跃告警，可按对象/实例/级别过滤。
+      monitor_query_alert_segments:
+        description: 【主机告警历史】按时间窗查询告警片段。
   attachment_file:
     name: 工作流附件文件
     description: |

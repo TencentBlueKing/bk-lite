@@ -16,12 +16,12 @@ from unittest.mock import MagicMock, patch
 import pytest
 from langchain_core.messages import HumanMessage
 
+from apps.opspilot.metis.llm.chain.node import ToolsNodes
 from apps.opspilot.metis.llm.middleware.tool_runtime import (
     PLANNED_EXECUTION_HIDDEN_DEEPAGENT_TOOLS,
     ToolVisibilityMiddleware,
+    is_progressive_tools_enabled,
 )
-from apps.opspilot.metis.llm.chain.node import ToolsNodes
-
 
 pytestmark = pytest.mark.unit
 
@@ -100,9 +100,7 @@ class TestSkillBackendSources:
         pkgs = [{"name": "k8s-triage"}, {"name": "log-analysis"}]
         with patch.object(ToolsNodes, "_resolve_skill_packages", return_value=pkgs), patch(
             "deepagents.backends.LocalShellBackend", return_value=MagicMock()
-        ) as backend_cls, patch(
-            "apps.opspilot.services.skill_package.materializer.materialize_skill_package"
-        ) as mat:
+        ) as backend_cls, patch("apps.opspilot.services.skill_package.materializer.materialize_skill_package") as mat:
             backend, sources, sandbox_dir = n._build_skill_backend_and_sources(_request())
         assert backend is not None
         assert sources == ["/skills/"]
@@ -176,6 +174,26 @@ class _FakeGraphBuilder:
         self.nodes[name] = fn
 
 
+def test_should_use_lightweight_direct_reply():
+    from apps.opspilot.metis.llm.chain.node import ToolsNodes
+
+    assert ToolsNodes._should_use_lightweight_direct_reply([], []) is True
+    assert ToolsNodes._should_use_lightweight_direct_reply([], None) is True
+    assert ToolsNodes._should_use_lightweight_direct_reply([_tool("shell")], []) is False
+    assert ToolsNodes._should_use_lightweight_direct_reply([], ["/skills/"]) is False
+
+
+def test_build_lightweight_system_prompt_is_short():
+    from apps.opspilot.metis.llm.chain.node import ToolsNodes
+
+    prompt = ToolsNodes._build_lightweight_system_prompt("你是运维助手")
+    assert "你是运维助手" in prompt
+    assert "DeepAgent" not in prompt
+    assert "write_todos" not in prompt
+    assert "read_file" not in prompt
+    assert len(prompt) < 500
+
+
 class TestBuildDeepagentNodes:
     def _run_wrapper(
         self,
@@ -186,6 +204,7 @@ class TestBuildDeepagentNodes:
         plan_payload=None,
         plan_payloads=None,
         failing_agent_calls=(),
+        direct_reply_content=None,
     ):
         gb = _FakeGraphBuilder()
 
@@ -205,25 +224,26 @@ class TestBuildDeepagentNodes:
 
         async def _ainvoke(payload, config=None):
             captured.setdefault("ainvoke_messages", []).append(payload["messages"])
+            middleware_list = list(captured["create_kwargs"].get("middleware") or [])
             visibility = next(
-                middleware
-                for middleware in captured["create_kwargs"]["middleware"]
-                if isinstance(middleware, ToolVisibilityMiddleware)
+                (middleware for middleware in middleware_list if isinstance(middleware, ToolVisibilityMiddleware)),
+                None,
             )
-            visible_request = visibility._filter_request(
-                SimpleNamespace(
-                    tools=[
-                        *captured["create_kwargs"]["tools"],
-                        _tool("write_todos"),
-                        _tool("task"),
-                        _tool("execute"),
-                    ],
-                    override=lambda **changes: SimpleNamespace(**changes),
+            if visibility is not None:
+                visible_request = visibility._filter_request(
+                    SimpleNamespace(
+                        tools=[
+                            *captured["create_kwargs"]["tools"],
+                            _tool("write_todos"),
+                            _tool("task"),
+                            _tool("execute"),
+                        ],
+                        override=lambda **changes: SimpleNamespace(**changes),
+                    )
                 )
-            )
-            captured.setdefault("visible_tool_calls", []).append(
-                [tool.name for tool in visible_request.tools]
-            )
+                captured.setdefault("visible_tool_calls", []).append([tool.name for tool in visible_request.tools])
+            else:
+                captured.setdefault("visible_tool_calls", []).append([tool.name for tool in captured["create_kwargs"]["tools"]])
             call_index = len(captured["visible_tool_calls"])
             appended_messages = [AIMessage(content=f"执行结果 {call_index}")]
             if call_index in failing_agent_calls:
@@ -240,8 +260,7 @@ class TestBuildDeepagentNodes:
                 )
             return {
                 **payload,
-                "messages": list(payload["messages"])
-                + appended_messages,
+                "messages": list(payload["messages"]) + appended_messages,
             }
 
         fake_agent.ainvoke = _ainvoke
@@ -254,21 +273,30 @@ class TestBuildDeepagentNodes:
 
         class _FakeLLM:
             async def ainvoke(self, messages, config=None):
-                captured.setdefault("planner_calls", []).append(messages)
-                payload = (
-                    next(planned_responses)
-                    if plan_payloads is not None
-                    else plan_payload or {"goal": "直接回答", "steps": []}
-                )
+                captured.setdefault("llm_calls", []).append(messages)
+                joined = "\n".join(str(getattr(message, "content", "") or "") for message in messages)
+                is_planner = "工具执行规划器" in joined or "紧凑工具目录" in joined
+                if is_planner:
+                    captured.setdefault("planner_calls", []).append(messages)
+                    payload = next(planned_responses) if plan_payloads is not None else plan_payload or {"goal": "直接回答", "steps": []}
+                    return AIMessage(
+                        content=json.dumps(
+                            payload,
+                            ensure_ascii=False,
+                        ),
+                        usage_metadata={
+                            "input_tokens": 100,
+                            "output_tokens": 20,
+                            "total_tokens": 120,
+                        },
+                    )
+                captured.setdefault("direct_reply_calls", []).append(messages)
                 return AIMessage(
-                    content=json.dumps(
-                        payload,
-                        ensure_ascii=False,
-                    ),
+                    content=direct_reply_content or "轻量直答",
                     usage_metadata={
-                        "input_tokens": 100,
-                        "output_tokens": 20,
-                        "total_tokens": 120,
+                        "input_tokens": 80,
+                        "output_tokens": 10,
+                        "total_tokens": 90,
                     },
                 )
 
@@ -280,6 +308,90 @@ class TestBuildDeepagentNodes:
             # 用 `asyncio.run()` 自管理 loop 创建/关闭。
             result = asyncio.run(wrapper({"messages": input_messages}, config))
         return result
+
+    def test_lightweight_direct_reply_skips_planner_and_deepagent(self):
+        node = ToolsNodes()
+        node.all_tools = []
+        req = _request(user_message="你好", system_message_prompt="你是助手")
+        captured = {}
+
+        with patch.object(ToolsNodes, "_build_knowledge_retrieve_tool", return_value=None), patch.object(
+            ToolsNodes, "_build_skill_backend_and_sources", return_value=(None, [], None)
+        ):
+            result = self._run_wrapper(
+                node,
+                req,
+                captured,
+                direct_reply_content="你好！有什么可以帮你的？",
+            )
+
+        assert "create_kwargs" not in captured
+        assert captured.get("planner_calls") in (None, [])
+        assert len(captured["direct_reply_calls"]) == 1
+        system_text = str(captured["direct_reply_calls"][0][0].content)
+        assert "DeepAgent" not in system_text
+        assert "read_file" not in system_text
+        assert result["messages"][0].content == "你好！有什么可以帮你的？"
+
+    def test_context_overflow_stops_replan_and_returns_short_message(self):
+        node = ToolsNodes()
+        node.all_tools = [_tool("list_kubernetes_events"), _tool("get_kubernetes_pod_logs")]
+        req = _request(user_message="告警：Unhealthy startup probe")
+        captured = {}
+
+        gb = _FakeGraphBuilder()
+        name = asyncio.run(node.build_deepagent_nodes(gb, composite_node_name="deep_agent"))
+        wrapper = gb.nodes[name]
+
+        from langchain_core.messages import AIMessage, HumanMessage
+
+        class _OverflowLLM:
+            async def ainvoke(self, messages, config=None):
+                captured.setdefault("planner_calls", []).append(messages)
+                return AIMessage(
+                    content=json.dumps(
+                        {
+                            "goal": "诊断",
+                            "steps": [{"objective": "查事件", "tools": ["list_kubernetes_events"]}],
+                        },
+                        ensure_ascii=False,
+                    )
+                )
+
+        fake_agent = MagicMock()
+
+        async def _ainvoke(payload, config=None):
+            captured.setdefault("agent_calls", 0)
+            captured["agent_calls"] += 1
+            if captured["agent_calls"] == 1:
+                raise Exception(
+                    "BadRequestError: Error code: 400 - "
+                    "{'error': {'message': 'request (9132 tokens) exceeds the available context size (8192 tokens)', "
+                    "'type': 'exceed_context_size_error'}}"
+                )
+            return {
+                **payload,
+                "messages": list(payload["messages"]) + [AIMessage(content="已根据现有信息给出结论")],
+            }
+
+        fake_agent.ainvoke = _ainvoke
+
+        with patch("apps.opspilot.metis.llm.chain.node.create_deep_agent", return_value=fake_agent), patch.object(
+            ToolsNodes, "get_llm_client", return_value=_OverflowLLM()
+        ), patch.object(ToolsNodes, "_build_knowledge_retrieve_tool", return_value=None), patch.object(
+            ToolsNodes, "_build_skill_backend_and_sources", return_value=(None, [], None)
+        ):
+            result = asyncio.run(
+                wrapper(
+                    {"messages": [HumanMessage(content="告警：Unhealthy")]},
+                    {"configurable": {"graph_request": req}},
+                )
+            )
+
+        # 规划 1 次；步骤撞上下文后不再重规划，只再走一次总结
+        assert len(captured["planner_calls"]) == 1
+        assert captured["agent_calls"] == 2
+        assert result["messages"][0].content == "已根据现有信息给出结论"
 
     def test_passes_tools_and_returns_only_new_messages(self):
         node = ToolsNodes()
@@ -342,10 +454,7 @@ class TestBuildDeepagentNodes:
         ]
         assert len(captured["ainvoke_messages"]) == 3
         assert len(result["messages"]) == 3
-        assert all(
-            not isinstance(message, HumanMessage)
-            for message in result["messages"]
-        )
+        assert all(not isinstance(message, HumanMessage) for message in result["messages"])
 
     def test_planned_execution_hides_deepagent_builtin_tools(self):
         from langchain.agents.middleware import ModelCallLimitMiddleware
@@ -377,21 +486,17 @@ class TestBuildDeepagentNodes:
             )
 
         kwargs = captured["create_kwargs"]
-        visibility = next(
-            middleware
-            for middleware in kwargs["middleware"]
-            if isinstance(middleware, ToolVisibilityMiddleware)
-        )
+        visibility = next(middleware for middleware in kwargs["middleware"] if isinstance(middleware, ToolVisibilityMiddleware))
         assert visibility._hidden_tools == PLANNED_EXECUTION_HIDDEN_DEEPAGENT_TOOLS
+        assert "write_todos" in visibility._hidden_tools
+        assert "task" in visibility._hidden_tools
+        # 无技能包时不常驻 FS 工具，避免 8K 模型被 read_file/ls schema 撑爆。
+        assert "read_file" not in visibility._always_visible_tools
         assert captured["visible_tool_calls"] == [
             ["list_kubernetes_events"],
             [],
         ]
-        call_limit = next(
-            middleware
-            for middleware in kwargs["middleware"]
-            if isinstance(middleware, ModelCallLimitMiddleware)
-        )
+        call_limit = next(middleware for middleware in kwargs["middleware"] if isinstance(middleware, ModelCallLimitMiddleware))
         assert call_limit.run_limit == 3
         assert call_limit.thread_limit == 10
 
@@ -441,9 +546,7 @@ class TestBuildDeepagentNodes:
             [],
         ]
         assert len(captured["planner_calls"]) == 2
-        replan_prompt = "\n".join(
-            str(message.content) for message in captured["planner_calls"][1]
-        )
+        replan_prompt = "\n".join(str(message.content) for message in captured["planner_calls"][1])
         assert "确认时间: 执行结果 1" in replan_prompt
         assert "connection refused" in replan_prompt
 
@@ -493,11 +596,59 @@ class TestBuildDeepagentNodes:
             self._run_wrapper(node, req, captured)
 
         assert call_counter["n"] == 1, (
-            f"期望 deep_wrapper_node 整个 setup 期间 _build_skill_backend_and_sources "
-            f"只调 1 次,实际 {call_counter['n']} 次。"
-            f"S2 修复前为 2 次(setup 块被复制粘贴)。"
+            f"期望 deep_wrapper_node 整个 setup 期间 _build_skill_backend_and_sources " f"只调 1 次,实际 {call_counter['n']} 次。" f"S2 修复前为 2 次(setup 块被复制粘贴)。"
         )
         # 同时确认 kwargs 透传正确(防御 setup 块改坏后端到端数据流)
         kwargs = captured["create_kwargs"]
         assert kwargs["backend"] is fake_backend
         assert kwargs["skills"] == ["/skills/"]
+
+    def test_planned_execution_keeps_hitl_tools_always_on_until_summary(self):
+        node = ToolsNodes()
+        node.all_tools = [
+            _tool("list_kubernetes_events"),
+            _tool("request_user_choice"),
+            _tool("restart_pod"),
+        ]
+        req = _request(user_message="检查事件")
+        captured = {}
+
+        with patch.object(ToolsNodes, "_build_knowledge_retrieve_tool", return_value=None):
+            self._run_wrapper(
+                node,
+                req,
+                captured,
+                plan_payload={
+                    "goal": "检查事件",
+                    "steps": [
+                        {
+                            "objective": "读取事件",
+                            "tools": ["list_kubernetes_events"],
+                        }
+                    ],
+                },
+            )
+
+        assert captured["visible_tool_calls"] == [
+            ["list_kubernetes_events", "request_user_choice"],
+            [],
+        ]
+
+    def test_progressive_disabled_skips_planner_and_binds_all_tools(self, monkeypatch):
+        monkeypatch.setenv("OPSPILOT_DEEPAGENT_PROGRESSIVE_TOOLS", "0")
+        assert is_progressive_tools_enabled() is False
+
+        node = ToolsNodes()
+        node.all_tools = [_tool("shell"), _tool("k8s")]
+        req = _request(user_message="随便问问")
+        captured = {}
+
+        with patch.object(ToolsNodes, "_build_knowledge_retrieve_tool", return_value=None):
+            self._run_wrapper(node, req, captured, plan_payload={"goal": "x", "steps": []})
+
+        assert "planner_calls" not in captured
+        assert [tool.name for tool in captured["create_kwargs"]["tools"]] == ["shell", "k8s"]
+        middleware = captured["create_kwargs"].get("middleware") or []
+        assert not any(isinstance(item, ToolVisibilityMiddleware) for item in middleware)
+        assert len(captured["ainvoke_messages"]) == 1
+        assert captured["ainvoke_messages"][0][0].content == "排查 pod 崩溃"
