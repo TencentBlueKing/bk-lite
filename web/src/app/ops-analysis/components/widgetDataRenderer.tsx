@@ -40,9 +40,7 @@ import { getRequestErrorMessage, classifyWidgetQueryError } from "@/app/ops-anal
 import { getValueByPath } from "@/app/ops-analysis/utils/objectPath";
 import {
   buildWidgetRequestCacheKey,
-  getCachedWidgetRequest,
-  setWidgetRequestFailureCache,
-  setWidgetRequestSuccessCache,
+  getOrCreateInflightWidgetRequest,
 } from "@/app/ops-analysis/utils/widgetRequestCache";
 import {
   buildWidgetRequestVersionKey,
@@ -201,26 +199,6 @@ const validateEventTableData = (
     : { isValid: false, message: failMessage };
 };
 
-const inflightWidgetRequests = new Map<string, Promise<unknown>>();
-const getOrCreateInflightRequest = async <T,>(
-  requestKey: string,
-  createRequest: () => Promise<T>,
-): Promise<T> => {
-  const existingRequest = inflightWidgetRequests.get(requestKey) as
-    | Promise<T>
-    | undefined;
-  if (existingRequest) {
-    return existingRequest;
-  }
-
-  const requestPromise = createRequest().finally(() => {
-    inflightWidgetRequests.delete(requestKey);
-  });
-
-  inflightWidgetRequests.set(requestKey, requestPromise as Promise<unknown>);
-  return requestPromise;
-};
-
 export interface WidgetWrapperProps {
   dashboardId?: number | string;
   widgetId: string;
@@ -267,7 +245,6 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
   const [loading, setLoading] = useState(true);
   const [hasSettledRequest, setHasSettledRequest] = useState(false);
   const hasSettledRequestRef = useRef(false);
-  const suppressInitialCacheRequestKeyRef = useRef<string | null>(null);
   const [tableLoading, setTableLoading] = useState(false);
   const [dataValidation, setDataValidation] = useState<{
     isValid: boolean;
@@ -275,7 +252,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     errorCode?: string;
   } | null>(null);
   const [tableQueryParams, setTableQueryParams] = useState<Record<string, any>>(
-    { page: 1, page_size: 20 },
+    {},
   );
   const { canvasDataSourceLookupStatus } = useOpsAnalysis();
   const { getSourceDataByApiId } = useDataSourceApi();
@@ -466,12 +443,14 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
         isTableLikeChart,
         tableQueryParams,
         runtimeParams,
+        dataSourceParams: dataSource?.params,
       }),
     [
       effectiveNamespaceId,
       isTableLikeChart,
       runtimeParams,
       tableQueryParams,
+      dataSource?.params,
       widgetUsesNamespace,
     ],
   );
@@ -670,7 +649,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
       }
       setDataValidation(null);
 
-      const data = await getOrCreateInflightRequest(requestKey, () =>
+      const data = await getOrCreateInflightWidgetRequest(requestKey, () =>
         fetchCompareData({
           dataSourceId: normalizedDataSourceId,
           getSourceDataByApiId,
@@ -692,10 +671,6 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
 
       const validation = validateChartData(data.currentData, chartType);
       setDataValidation(validation);
-      setWidgetRequestSuccessCache(requestKey, {
-        rawData: data.currentData,
-        baselineData: data.baselineData,
-      });
     } catch (err) {
       if (currentFetchId !== fetchIdRef.current) return;
       console.error("获取数据失败:", err);
@@ -711,7 +686,6 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
         message,
         ...(errorCode ? { errorCode } : {}),
       });
-      setWidgetRequestFailureCache(requestKey, message, errorCode);
     } finally {
       if (currentFetchId !== fetchIdRef.current) return;
       hasSettledRequestRef.current = true;
@@ -746,11 +720,15 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
       setRawData(null);
       setLoading(widgetDataSourceState === "loading");
       setTableLoading(false);
-      setDataValidation({
-        isValid: false,
-        message: t("dashboard.dataFetchFailed"),
-        errorCode: "datasource_missing",
-      });
+      if (widgetDataSourceState === "loading") {
+        setDataValidation(null);
+      } else {
+        setDataValidation({
+          isValid: false,
+          message: t("dashboard.dataFetchFailed"),
+          errorCode: "datasource_missing",
+        });
+      }
       return;
     }
 
@@ -805,55 +783,6 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
   );
 
   useEffect(() => {
-    if (!requestEnabled || !requestSignature || !requestKey) {
-      return;
-    }
-
-    const cached = getCachedWidgetRequest(requestKey);
-
-    if (!cached) {
-      return;
-    }
-
-    setRawData(cached.rawData);
-    setBaselineData(cached.baselineData);
-    setDataValidation(
-      cached.errorMessage
-        ? {
-          isValid: false,
-          message: cached.errorMessage,
-          ...(cached.errorCode ? { errorCode: cached.errorCode } : {}),
-        }
-        : validateChartData(cached.rawData, chartType),
-    );
-    setLoading(false);
-    setTableLoading(false);
-    if (
-      !hasSettledRequestRef.current &&
-      !previousRequestRef.current.hasRequested
-    ) {
-      suppressInitialCacheRequestKeyRef.current = requestKey;
-    }
-    hasSettledRequestRef.current = true;
-    setHasSettledRequest(true);
-  }, [
-    filterSearchVersion,
-    namespaceSearchVersion,
-    reloadVersion,
-    requestEnabled,
-    requestKey,
-    requestSignature,
-    tableQueryKey,
-    chartType,
-    validateChartData,
-  ]);
-
-  useEffect(() => {
-    const suppressInitialCacheFetch =
-      suppressInitialCacheRequestKeyRef.current === requestKey;
-    if (suppressInitialCacheFetch) {
-      suppressInitialCacheRequestKeyRef.current = null;
-    }
     const decision = decideWidgetRequest({
       history: previousRequestRef.current,
       current: {
@@ -869,7 +798,6 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
         widgetUsesNamespace,
         isTableLikeChart,
       },
-      suppressInitialCacheFetch,
     });
     previousRequestRef.current = decision.nextHistory;
 

@@ -195,6 +195,7 @@
   },
   "dataSource": {
     "duplicateParamNames": "Duplicate parameter names: ",
+    "invalidFilterParamType": "Only string, time range, and date range parameters can be configured as filters.",
     "addParam": "Add Parameter",
     "paramTypes": {
       "timeRange": "Time Range",
@@ -562,7 +563,7 @@
     "lineColor": "Line Color",
     "pageSize": "Page Size",
     "selectDataSource": "Please select data source",
-    "dataSourceNotFound": "The data source does not exist",
+    "dataSourceNotFound": "The data source does not exist.",
     "dataSourceLoadFailed": "Failed to load the data source",
     "dataFetchFailed": "Data query failed",
     "inputName": "Please enter widget name",

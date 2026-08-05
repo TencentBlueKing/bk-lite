@@ -84,6 +84,7 @@ interface DragSession {
 
 interface ScreenRndItemProps {
   item: ScreenWidgetItem;
+  editable: boolean;
   selected: boolean;
   scale: number;
   children: React.ReactNode;
@@ -126,6 +127,7 @@ const getMovedScreenGeometry = (
 const ScreenRndItem: React.FC<ScreenRndItemProps> = React.memo(
   ({
     item,
+    editable,
     selected,
     scale,
     children,
@@ -178,6 +180,7 @@ const ScreenRndItem: React.FC<ScreenRndItemProps> = React.memo(
       event: React.PointerEvent<HTMLDivElement>,
       node: HTMLElement | null,
     ) => {
+      if (!editable) return;
       if (event.button !== 0) return;
 
       const target = event.target;
@@ -314,10 +317,10 @@ const ScreenRndItem: React.FC<ScreenRndItemProps> = React.memo(
           right: false,
           bottom: false,
           left: false,
-          topRight: selected,
-          bottomRight: selected,
-          bottomLeft: selected,
-          topLeft: selected,
+          topRight: editable && selected,
+          bottomRight: editable && selected,
+          bottomLeft: editable && selected,
+          topLeft: editable && selected,
         }}
         resizeHandleClasses={{
           top: "screen-rnd-handle screen-rnd-handle--n",
@@ -329,16 +332,20 @@ const ScreenRndItem: React.FC<ScreenRndItemProps> = React.memo(
           bottomLeft: "screen-rnd-handle screen-rnd-handle--sw",
           topLeft: "screen-rnd-handle screen-rnd-handle--nw",
         }}
-        className={getScreenRndNodeClassName(selected)}
+        className={getScreenRndNodeClassName(editable && selected)}
         style={{ zIndex: item.zIndex }}
-        onClick={(event: React.MouseEvent) => {
-          event.stopPropagation();
-          if (suppressClickRef.current) {
-            suppressClickRef.current = false;
-            return;
-          }
-          onSelectItem?.(item.id);
-        }}
+        onClick={
+          editable
+            ? (event: React.MouseEvent) => {
+              event.stopPropagation();
+              if (suppressClickRef.current) {
+                suppressClickRef.current = false;
+                return;
+              }
+              onSelectItem?.(item.id);
+            }
+            : undefined
+        }
         onResizeStart={(_, __, ref) => {
           interactingRef.current = true;
           ref.style.zIndex = "10000";
@@ -388,6 +395,7 @@ const ScreenRndItem: React.FC<ScreenRndItemProps> = React.memo(
           onPointerUp={finishMove}
           onPointerCancel={finishMove}
           onDoubleClick={(event) => {
+            if (!editable) return;
             event.stopPropagation();
             onEditItem?.(item.id);
           }}
@@ -487,12 +495,13 @@ const ScreenCanvas: React.FC<ScreenCanvasProps> = ({
 
   const renderScreenItem = (item: ScreenWidgetItem) => {
     const selected = selectedItemId === item.id;
+    const editable = editMode && !fullscreen;
 
     const content = (
       <ScreenWidgetRenderer
         item={item}
-        selected={selected}
-        editMode={editMode}
+        selected={editable && selected}
+        editMode={editable}
         refreshVersion={refreshVersion}
         screenId={screenId}
         fitScale={scale}
@@ -517,29 +526,12 @@ const ScreenCanvas: React.FC<ScreenCanvasProps> = ({
       />
     );
 
-    if (!editMode || fullscreen) {
-      return (
-        <div
-          key={item.id}
-          style={{
-            position: "absolute",
-            left: item.x,
-            top: item.y,
-            width: item.w,
-            height: item.h,
-            zIndex: item.zIndex,
-          }}
-        >
-          {content}
-        </div>
-      );
-    }
-
     return (
       <ScreenRndItem
         key={item.id}
         item={item}
-        selected={selected}
+        editable={editable}
+        selected={editable && selected}
         scale={scale}
         onSelectItem={onSelectItem}
         onMoveItem={onMoveItem}

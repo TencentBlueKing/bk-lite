@@ -3,7 +3,7 @@
 export const PARALLEL_EDGE_OFFSET_STEP = 16;
 export const STATUS_TOPOLOGY_PARALLEL_CONNECTOR = 'status-topology-parallel';
 
-export type Point = { x: number; y: number };
+export interface Point { x: number; y: number }
 
 export const getDevicePairKey = (source: string, target: string) =>
   [String(source), String(target)].sort().join('__');

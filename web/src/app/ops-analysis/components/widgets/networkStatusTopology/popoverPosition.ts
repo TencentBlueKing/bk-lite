@@ -1,14 +1,14 @@
 import type { Graph } from '@antv/x6';
 
-export type PopoverPoint = { x: number; y: number };
-export type PopoverSize = { width: number; height: number };
+export interface PopoverPoint { x: number; y: number }
+export interface PopoverSize { width: number; height: number }
 export type PopoverRect = PopoverPoint & PopoverSize;
 
-export type IconLayout = {
+export interface IconLayout {
   nodeWidth: number;
   iconSize: number;
   iconTop: number;
-};
+}
 
 /** 与 STATUS_TOPOLOGY_VISUAL 对齐；本地常量避免测试拉入重依赖 */
 export const NODE_ICON_LAYOUT: IconLayout = {

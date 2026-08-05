@@ -125,7 +125,8 @@ def test_batch_init_warns_and_continues_when_default_namespace_config_is_invalid
     assert "默认命名空间初始化跳过（CommandError）" in output.getvalue()
     assert "NATS_SERVERS 配置非法" in output.getvalue()
     assert "批量初始化完成" in output.getvalue()
-    assert DataSourceTag.objects.exists()
+    # 命名空间不可用时，画布、数据源与标签作为一个声明式集合回滚。
+    assert not DataSourceTag.objects.exists()
     assert not DataSourceAPIModel.objects.exists()
 
     settings.NATS_SERVERS = "nats.internal:4222"
@@ -411,6 +412,51 @@ def test_init_source_api_data_force_update_is_idempotent(settings):
 
 
 @pytest.mark.django_db
+def test_init_source_api_data_force_update_reclaims_legacy_identity_regardless_of_creator(settings):
+    settings.NATS_SERVERS = "nats://admin:secret@127.0.0.1:4222"
+    call_command("init_default_namespace")
+    legacy = DataSourceAPIModel.objects.create(
+        name="今日告警状态总览",
+        rest_api="alert/get_alert_today_status_summary",
+        desc="曾由管理员编辑的旧内置数据源",
+        created_by="admin",
+        updated_by="admin",
+    )
+
+    call_command("init_source_api_data", "--force-update")
+
+    legacy.refresh_from_db()
+    assert legacy.is_build_in is True
+    assert legacy.build_in_key == "今日告警状态总览::alert/get_alert_today_status_summary"
+    assert legacy.name == "今日产生关闭与当前处理中"
+    assert legacy.updated_by == "system"
+    assert legacy.desc != "曾由管理员编辑的旧内置数据源"
+
+
+@pytest.mark.django_db
+def test_init_source_api_data_force_update_does_not_claim_custom_same_rest_api_only(settings):
+    settings.NATS_SERVERS = "nats://admin:secret@127.0.0.1:4222"
+    call_command("init_default_namespace")
+    custom = DataSourceAPIModel.objects.create(
+        name="我的今日告警总览",
+        rest_api="alert/get_alert_today_status_summary",
+        desc="用户自定义同接口数据源",
+        created_by="user",
+        updated_by="user",
+    )
+
+    call_command("init_source_api_data", "--force-update")
+
+    custom.refresh_from_db()
+    assert custom.is_build_in is False
+    assert custom.build_in_key in (None, "")
+    assert custom.name == "我的今日告警总览"
+    builtin = DataSourceAPIModel.objects.get(build_in_key="今日告警状态总览::alert/get_alert_today_status_summary")
+    assert builtin.pk != custom.pk
+    assert builtin.name == "今日产生关闭与当前处理中"
+
+
+@pytest.mark.django_db
 def test_init_source_api_data_backfills_empty_groups_on_existing_sources(settings):
     from apps.system_mgmt.models.user import Group
 
@@ -419,7 +465,7 @@ def test_init_source_api_data_backfills_empty_groups_on_existing_sources(setting
     call_command("init_default_namespace")
     call_command("init_source_api_data")
 
-    source = DataSourceAPIModel.objects.get(name="今日告警状态总览")
+    source = DataSourceAPIModel.objects.get(name="今日产生关闭与当前处理中")
     source.groups = []
     source.save(update_fields=["groups"])
 
@@ -438,7 +484,7 @@ def test_init_source_api_data_keeps_existing_non_empty_groups(settings):
     call_command("init_default_namespace")
     call_command("init_source_api_data")
 
-    source = DataSourceAPIModel.objects.get(name="今日告警状态总览")
+    source = DataSourceAPIModel.objects.get(name="今日产生关闭与当前处理中")
     source.groups = [99]
     source.save(update_fields=["groups"])
 

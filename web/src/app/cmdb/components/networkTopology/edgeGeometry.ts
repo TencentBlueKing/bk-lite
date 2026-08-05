@@ -1,4 +1,4 @@
-export type EdgeGeometryPoint = { x: number; y: number };
+export interface EdgeGeometryPoint { x: number; y: number }
 
 /** 折点与相邻点过近时视为冗余 */
 export const MANUAL_EDGE_VERTEX_MIN_SEGMENT = 4;

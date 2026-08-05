@@ -195,6 +195,7 @@
   },
   "dataSource": {
     "duplicateParamNames": "参数名重复：",
+    "invalidFilterParamType": "只有字符串、时间范围和日期范围参数可以配置为筛选。",
     "addParam": "添加参数",
     "paramTypes": {
       "timeRange": "时间范围",

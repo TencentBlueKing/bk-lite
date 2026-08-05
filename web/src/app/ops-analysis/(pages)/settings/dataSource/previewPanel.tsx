@@ -14,6 +14,7 @@ interface PreviewPanelProps {
   previewLoading: boolean;
   onPreview: () => void;
   onApplyPreviewFields: () => void;
+  readOnly?: boolean;
 }
 
 const PreviewPanel: React.FC<PreviewPanelProps> = ({
@@ -21,6 +22,7 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({
   previewLoading,
   onPreview,
   onApplyPreviewFields,
+  readOnly = false,
 }) => {
   const { t } = useTranslation();
   const previewColumns = React.useMemo(() => {
@@ -59,27 +61,29 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({
         }}
       >
         <span>{t("dataSource.previewData")}：</span>
-        <div>
-          {previewData?.fields?.length ? (
+        {readOnly ? null : (
+          <div>
+            {previewData?.fields?.length ? (
+              <Button
+                type="link"
+                size="small"
+                onClick={onApplyPreviewFields}
+                style={{ paddingInline: 4 }}
+              >
+                {t("dataSource.applyPreviewFields")}
+              </Button>
+            ) : null}
             <Button
-              type="link"
+              type="primary"
               size="small"
-              onClick={onApplyPreviewFields}
-              style={{ paddingInline: 4 }}
+              loading={previewLoading}
+              onClick={onPreview}
+              style={{ marginLeft: 10 }}
             >
-              {t("dataSource.applyPreviewFields")}
+              {t("dataSource.samplePreview")}
             </Button>
-          ) : null}
-          <Button
-            type="primary"
-            size="small"
-            loading={previewLoading}
-            onClick={onPreview}
-            style={{ marginLeft: 10 }}
-          >
-            {t("dataSource.samplePreview")}
-          </Button>
-        </div>
+          </div>
+        )}
       </div>
       {previewData?.items?.length ? (
         <CustomTable

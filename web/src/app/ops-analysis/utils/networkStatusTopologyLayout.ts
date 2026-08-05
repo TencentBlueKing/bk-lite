@@ -17,7 +17,7 @@ export type { EdgeGeometryPoint } from '@/app/cmdb/components/networkTopology/ed
 export const DEFAULT_NETWORK_STATUS_TOPOLOGY_LAYOUT_MODE: NetworkTopologyLayoutMode =
   'hierarchical';
 
-export type TopologyPoint = { x: number; y: number };
+export interface TopologyPoint { x: number; y: number }
 
 export type TopologyNodePositions = Record<string, TopologyPoint>;
 export type TopologyLinkVertices = Record<string, TopologyPoint[]>;

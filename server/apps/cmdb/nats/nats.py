@@ -887,9 +887,12 @@ def get_cmdb_statistics(user_info=None, **kwargs):
         {
             "result": True,
             "data": {
+                "classification_count": 5,
                 "model_count": 15,
                 "instance_count": 1234,
-                "classification_count": 5
+                "model_with_instance_count": 12,
+                "empty_model_count": 3,
+                "model_coverage_rate": 80.0
             },
             "message": ""
         }
@@ -899,7 +902,14 @@ def get_cmdb_statistics(user_info=None, **kwargs):
     if model_permissions_map is None or instance_permissions_map is None:
         return {
             "result": True,
-            "data": {"model_count": 0, "instance_count": 0, "classification_count": 0},
+            "data": {
+                "classification_count": 0,
+                "model_count": 0,
+                "instance_count": 0,
+                "model_with_instance_count": 0,
+                "empty_model_count": 0,
+                "model_coverage_rate": 0,
+            },
             "message": "",
         }
 

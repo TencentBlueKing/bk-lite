@@ -94,7 +94,7 @@ const ScreenWidgetFrame: React.FC<ScreenWidgetFrameProps> = ({
       } as React.CSSProperties}
     >
       {!isBare && (
-        <>
+        <React.Fragment key="decoration">
           <div className="screen-widget-frame__corners" aria-hidden="true" />
           <header className="screen-widget-frame__header screen-widget-frame__drag-handle">
             <span className="screen-widget-frame__title">
@@ -102,16 +102,17 @@ const ScreenWidgetFrame: React.FC<ScreenWidgetFrameProps> = ({
             </span>
             <span className="screen-widget-frame__signal" aria-hidden="true" />
           </header>
-        </>
+        </React.Fragment>
       )}
       {isBare && editMode && (
         <div
+          key="drag-surface"
           className="screen-widget-frame__drag-surface screen-widget-frame__drag-handle"
           aria-hidden="true"
         />
       )}
       {editMode && (
-        <div className="screen-widget-frame__actions">
+        <div key="actions" className="screen-widget-frame__actions">
           <MoreActionsDropdown
             items={menuItems}
             ariaLabel={t('common.more')}
@@ -121,7 +122,7 @@ const ScreenWidgetFrame: React.FC<ScreenWidgetFrameProps> = ({
           />
         </div>
       )}
-      <div className="screen-widget-frame__body">{children}</div>
+      <div key="body" className="screen-widget-frame__body">{children}</div>
     </section>
   );
 };

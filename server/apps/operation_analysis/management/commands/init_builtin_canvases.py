@@ -2,11 +2,11 @@
 """
 内置画布初始化命令
 
-从 support-files/builtin_canvases.yaml 读取内置画布定义，
-复用 ImportService 执行导入，导入后将画布标记为内置对象并放入内置目录。
+合并 source_api.json 与 support-files/builtin_canvases.yaml 中的内置定义，
+复用 ImportService 在一个事务中同步数据源和画布。
 
 - YAML 文件不存在或为空时静默跳过
-- 命名空间/数据源冲突策略为 skip（复用已有）
+- 命名空间冲突复用已有对象，内置数据源按稳定 key 覆盖更新
 - 画布冲突策略为 skip（用户同名画布优先保留，内置不覆盖）
 - 导入前先删除旧内置画布，避免 ImportService 按 name 匹配到旧内置
 - 内置目录和内置对象只属于 Default 组织、只读
@@ -20,6 +20,7 @@ from django.core.management import BaseCommand
 from django.db import transaction
 
 from apps.core.logger import operation_analysis_logger as logger
+from apps.operation_analysis.common.load_json_data import load_support_json
 from apps.operation_analysis.constants.import_export import YAML_SCHEMA_VERSION
 
 BUILTIN_DIRECTORY_KEY = "__builtin__"
@@ -76,8 +77,9 @@ def _get_or_create_builtin_directory(groups):
 
 def _build_conflict_decisions(doc):
     """
-    构建冲突决策：全部 skip。
-    - namespace/datasource：复用已有
+    构建冲突决策。
+    - namespace：复用已有
+    - datasource：系统内置定义覆盖更新
     - canvas（dashboard/topology/architecture）：保护用户同名画布不被覆盖
       导入前已删除旧内置画布，所以 ImportService 只会匹配到用户同名画布（此时 skip 保护用户数据）
     """
@@ -85,7 +87,7 @@ def _build_conflict_decisions(doc):
     for ns in doc.namespaces:
         decisions[ns.key] = "skip"
     for ds in doc.datasources:
-        decisions[ds.key] = "skip"
+        decisions[ds.key] = "overwrite"
     for db in doc.dashboards:
         decisions[db.key] = "skip"
     for tp in doc.topologies:
@@ -121,18 +123,91 @@ def _merge_yaml_documents(documents):
     for section in MERGEABLE_SECTIONS:
         merged[section] = []
 
+    datasource_defaults = {
+        "rest_api": "",
+        "source_type": "nats",
+        "connection_config": {},
+        "query_config": {},
+        "desc": "",
+        "is_active": True,
+        "params": [],
+        "tags": [],
+        "chart_type": [],
+        "field_schema": [],
+        "namespace_keys": [],
+    }
+
+    def normalize_datasource(item):
+        normalized = {"key": item.get("key"), "name": item.get("name")}
+        for field, default in datasource_defaults.items():
+            value = item.get(field, default)
+            normalized[field] = sorted(value) if field in {"tags", "namespace_keys"} else value
+        return normalized
+
     for data in documents:
         for section in MERGEABLE_SECTIONS:
-            existing_keys = {item.get("key") for item in merged[section] if isinstance(item, dict)}
+            existing_by_key = {item.get("key"): item for item in merged[section] if isinstance(item, dict)}
             for item in data.get(section) or []:
-                if isinstance(item, dict) and item.get("key") in existing_keys:
+                if isinstance(item, dict) and item.get("key") in existing_by_key:
+                    if section == "datasources" and normalize_datasource(existing_by_key[item.get("key")]) != normalize_datasource(item):
+                        raise ValueError(f"内置数据源重复定义不一致: {item.get('key')}")
                     continue
                 merged[section].append(item)
                 if isinstance(item, dict):
-                    existing_keys.add(item.get("key"))
+                    existing_by_key[item.get("key")] = item
 
     merged["meta"]["object_counts"] = {section: len(merged[section]) for section in MERGEABLE_SECTIONS}
     return merged
+
+
+def _load_source_api_document():
+    tag_names = {item["tag_id"]: item["name"] for item in load_support_json("tags.json")}
+    datasources = []
+    for source in load_support_json("source_api.json"):
+        item = dict(source)
+        tags = item.pop("tag", [])
+        rest_api = item.get("rest_api", "")
+        # 显式 key 优先，避免改展示名时拖动稳定身份与画布引用。
+        stable_key = item.pop("key", None) or f"{item['name']}::{rest_api}"
+        item.update(
+            {
+                "key": stable_key,
+                "tags": [tag_names.get(tag, tag) for tag in tags],
+                "namespace_keys": ["默认命名空间"] if item.get("source_type", "nats") == "nats" else [],
+            }
+        )
+        datasources.append(item)
+    return {"datasources": datasources}
+
+
+def _ensure_builtin_tags():
+    from apps.operation_analysis.models.datasource_models import DataSourceTag
+
+    for data in load_support_json("tags.json"):
+        defaults = dict(data)
+        tag_id = defaults.pop("tag_id")
+        DataSourceTag.objects.update_or_create(tag_id=tag_id, defaults=defaults)
+
+
+def _claim_legacy_builtin_datasources(doc):
+    from apps.operation_analysis.common.builtin_datasource_identity import find_claimable_datasource
+    from apps.operation_analysis.models.datasource_models import DataSourceAPIModel
+
+    for item in doc.datasources:
+        # 仅按 build_in_key / 精确 (name, rest_api) / key 内历史名认领；禁止只按 rest_api。
+        instance = find_claimable_datasource(
+            DataSourceAPIModel,
+            stable_key=item.key,
+            name=item.name,
+            rest_api=item.rest_api,
+        )
+        if not instance:
+            continue
+        instance.name = item.name
+        instance.rest_api = item.rest_api
+        instance.is_build_in = True
+        instance.build_in_key = item.key
+        instance.save(update_fields=["name", "rest_api", "is_build_in", "build_in_key", "updated_at"])
 
 
 class Command(BaseCommand):
@@ -140,7 +215,8 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         # 1. 读取 YAML 文件
-        yaml_documents = []
+        yaml_documents = [_load_source_api_document()]
+        loaded_yaml_count = 0
         for file_path in _get_builtin_canvas_file_paths():
             if not os.path.isfile(file_path):
                 self.stdout.write(self.style.WARNING(f"内置画布 YAML 文件不存在，跳过: {file_path}"))
@@ -158,8 +234,9 @@ class Command(BaseCommand):
                 self.stdout.write(self.style.WARNING(f"内置画布 YAML 解析结果为空，跳过: {file_path}"))
                 continue
             yaml_documents.append(data)
+            loaded_yaml_count += 1
 
-        if not yaml_documents:
+        if loaded_yaml_count == 0:
             self.stdout.write(self.style.WARNING("内置画布 YAML 无可导入内容，跳过"))
             return
 
@@ -183,7 +260,6 @@ class Command(BaseCommand):
 
         # 4. 准备环境
         groups = _get_default_group_ids()
-        builtin_dir = _get_or_create_builtin_directory(groups)
         conflict_decisions = _build_conflict_decisions(doc)
 
         self.stdout.write(
@@ -201,6 +277,10 @@ class Command(BaseCommand):
         #     如果导入失败，整个事务回滚（包括删除），避免旧内置丢失
         try:
             with transaction.atomic():
+                _ensure_builtin_tags()
+                _claim_legacy_builtin_datasources(doc)
+                builtin_dir = _get_or_create_builtin_directory(groups)
+
                 # 5. 先删除旧内置画布（这样 ImportService 不会按 name 匹配到旧内置，
                 #    只会匹配用户同名画布 → skip 保护用户数据）
                 for model in (Dashboard, Topology, Architecture, Screen, Report):
@@ -265,8 +345,24 @@ class Command(BaseCommand):
                     )
                     marked_count += 1
 
-        except RuntimeError:
-            # 导入失败，事务已回滚，旧内置画布恢复
+                from apps.operation_analysis.models.datasource_models import DataSourceAPIModel
+
+                builtin_keys = {item.key for item in doc.datasources}
+                for item in doc.datasources:
+                    DataSourceAPIModel.objects.filter(name=item.name, rest_api=item.rest_api).update(
+                        is_build_in=True,
+                        build_in_key=item.key,
+                        groups=groups,
+                        updated_by="system",
+                    )
+                stale_count, _ = DataSourceAPIModel.objects.filter(is_build_in=True).exclude(build_in_key__in=builtin_keys).delete()
+                if stale_count:
+                    self.stdout.write(f"清理已移除内置数据源: {stale_count} 个")
+
+        except Exception as error:
+            # 非关键本地初始化保持 fail-open；事务已回滚，不留下半更新。
+            self.stdout.write(self.style.ERROR(f"内置画布与数据源同步失败，已回滚: {type(error).__name__}: {error}"))
+            logger.error("[BuiltinCanvas] 内置画布与数据源同步失败，已回滚：%s", error, exc_info=True)
             return
 
         self.stdout.write(self.style.SUCCESS(f"内置画布导入完成: {result['summary']}, 标记 {marked_count} 个内置对象"))

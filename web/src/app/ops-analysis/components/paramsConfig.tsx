@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import dayjs from 'dayjs';
 import TimeSelector from '@/components/time-selector';
-import { Form, Input, Select, DatePicker, Switch, InputNumber, Button, Tooltip } from 'antd';
+import { Form, Input, Select, DatePicker, InputNumber, Button, Tooltip } from 'antd';
 import type { FormInstance } from 'antd';
 import { SettingOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
@@ -13,7 +12,7 @@ import type {
 import CompactEmptyState from '@/app/ops-analysis/components/compactEmptyState';
 import { ParamInputControl } from '@/app/ops-analysis/components/paramInputControl';
 import { normalizeInputConfig } from '@/app/ops-analysis/utils/paramInputConfigUtils';
-import { DEFAULT_DATE_RANGE_VALUE } from '@/app/ops-analysis/types/dateRange';
+import { getDataSourceFormParamInitialValue } from '@/app/ops-analysis/utils/dataSourceFormParams';
 import DateRangeSelector from './dateRangeSelector';
 import {
   getTimeSelectorDefaultValue,
@@ -22,15 +21,17 @@ import {
 } from './paramsConfigTimeRange';
 
 const FormTimeSelector: React.FC<{
-  value?: TimeValue;
+  value?: TimeValue | null;
   disabled?: boolean;
-  onChange?: (value: TimeValue) => void;
+  onChange?: (value: TimeValue | null) => void;
 }> = ({ value, disabled = false, onChange }) => {
   const handleChange = (range: number[], originValue: number | null) => {
-    if (originValue === 0 && range.length === 2) {
+    if (originValue == null) {
+      onChange?.(null);
+    } else if (originValue === 0 && range.length === 2) {
       const tupleRange: [number, number] = [range[0], range[1]];
       onChange?.(tupleRange);
-    } else if (originValue !== null) {
+    } else {
       onChange?.(originValue);
     }
   };
@@ -45,6 +46,7 @@ const FormTimeSelector: React.FC<{
       <TimeSelector
         key={getTimeSelectorKey(value)}
         onlyTimeSelect
+        clearable={!disabled}
         className="w-full"
         defaultValue={defaultValue}
         onChange={handleChange}
@@ -52,6 +54,29 @@ const FormTimeSelector: React.FC<{
     </div>
   );
 };
+
+const NullableBooleanSelect: React.FC<{
+  value?: boolean | null;
+  disabled?: boolean;
+  yesLabel: string;
+  noLabel: string;
+  onChange?: (value: boolean | null) => void;
+}> = ({ value, disabled = false, yesLabel, noLabel, onChange }) => (
+  <Select<number>
+    value={value == null ? undefined : value ? 1 : 0}
+    disabled={disabled}
+    allowClear={!disabled}
+    placeholder="--"
+    style={{ width: '100%' }}
+    options={[
+      { label: yesLabel, value: 1 },
+      { label: noLabel, value: 0 },
+    ]}
+    onChange={(nextValue) =>
+      onChange?.(nextValue == null ? null : nextValue === 1)
+    }
+  />
+);
 
 interface DataSourceParamsConfigProps {
   selectedDataSource?: DatasourceItem;
@@ -104,6 +129,7 @@ const DataSourceParamsConfig: React.FC<DataSourceParamsConfigProps> = ({
             placeholder={t('common.selectTip')}
             style={{ width: '100%' }}
             disabled={isDisabled}
+            allowClear={!isDisabled}
             options={options}
           />
         );
@@ -125,7 +151,13 @@ const DataSourceParamsConfig: React.FC<DataSourceParamsConfigProps> = ({
             />
           );
         case 'boolean':
-          return <Switch disabled={isDisabled} />;
+          return (
+            <NullableBooleanSelect
+              disabled={isDisabled}
+              yesLabel={t('common.yes')}
+              noLabel={t('common.no')}
+            />
+          );
         case 'number':
           return (
             <InputNumber
@@ -163,37 +195,19 @@ const DataSourceParamsConfig: React.FC<DataSourceParamsConfigProps> = ({
     );
   };
 
-  const getParamInitialValue = (param: ParamItem) => {
-    const { type = 'string', value } = param;
-    switch (type) {
-      case 'boolean':
-        return value ?? false;
-      case 'number':
-        return value ?? 0;
-      case 'timeRange':
-        return value ?? 10080;
-      case 'dateRange':
-        return value === undefined ? { ...DEFAULT_DATE_RANGE_VALUE } : value;
-      case 'date':
-        if (value && (typeof value === 'string' || typeof value === 'number')) {
-          return dayjs(value);
-        }
-        return null;
-      default:
-        return value ?? '';
-    }
-  };
-
   return (
     <>
       {configParams.map((param: ParamItem) => {
         const fieldName = [fieldPrefix, param.name];
-        const initialValue = getParamInitialValue(param);
+        const initialValue = getDataSourceFormParamInitialValue(param);
         const labelText = param.alias_name || param.name;
         const isLongText = labelText.length > 18;
         const isVeryLongText = labelText.length > 30;
         const showInputConfigButton =
-          onEditInputConfig && (param.type || 'string') === 'string' && !readonly;
+          onEditInputConfig &&
+          (param.type || 'string') === 'string' &&
+          param.filterType !== 'fixed' &&
+          !readonly;
 
         const getLabelStyle = (): React.CSSProperties => {
           const baseStyle = {

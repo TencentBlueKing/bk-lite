@@ -167,8 +167,11 @@ class Command(BaseCommand):
         except CommandError as error:
             self.stdout.write(self.style.WARNING(f"默认命名空间初始化跳过（{type(error).__name__}）: {error}"))
         call_command("init_default_groups")
-        call_command("init_source_api_data", force_update=True)
-        call_command("init_builtin_canvases")
+        try:
+            call_command("init_builtin_canvases")
+        except Exception as error:
+            # 内置画布/数据源是可重建的非关键资源，同步失败不应阻断服务启动。
+            self.stdout.write(self.style.WARNING(f"内置画布与数据源同步跳过（{type(error).__name__}）: {error}"))
 
     def _init_opspilot(self):
         """OpsPilot资源初始化"""
@@ -194,19 +197,13 @@ class Command(BaseCommand):
             call_command("init_patch_sources")
         except Exception as error:  # noqa: BLE001 - 非关键可重建数据不得阻断启动
             logger.warning("内置补丁源初始化失败，可运行 init_patch_sources 重试", exc_info=True)
-            self.stdout.write(
-                self.style.WARNING(
-                    f"内置补丁源初始化跳过（{type(error).__name__}）: {error}"
-                )
-            )
+            self.stdout.write(self.style.WARNING(f"内置补丁源初始化跳过（{type(error).__name__}）: {error}"))
 
     def _preload_language_cache(self):
         """预热语言缓存"""
         self.stdout.write("预热语言缓存...")
         try:
             result = preload_language_cache()
-            self.stdout.write(
-                self.style.SUCCESS(f"语言缓存预热完成: {len(result['loaded'])} 已加载, {len(result['skipped'])} 已跳过, {len(result['failed'])} 失败")
-            )
+            self.stdout.write(self.style.SUCCESS(f"语言缓存预热完成: {len(result['loaded'])} 已加载, {len(result['skipped'])} 已跳过, {len(result['failed'])} 失败"))
         except Exception as e:
             self.stdout.write(self.style.WARNING(f"语言缓存预热失败: {str(e)}"))

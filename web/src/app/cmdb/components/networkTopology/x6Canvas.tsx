@@ -212,9 +212,9 @@ const buildStructureKey = (data: NetworkTopologyX6GraphData) =>
       edge.target,
       Array.isArray(edge.labels)
         ? edge.labels.map((label: any) => [
-            label?.position,
-            label?.attrs?.txt?.text,
-          ])
+          label?.position,
+          label?.attrs?.txt?.text,
+        ])
         : null,
     ]),
   });

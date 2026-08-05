@@ -215,7 +215,7 @@ const NetworkStatusTopology: React.FC<NetworkStatusTopologyProps> = ({
       setLoading(false);
     }
     // API hooks return fresh function references; fetching is driven by widget config.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [t, topoConfig?.depth, topoConfig?.instId, topoConfig?.modelId]);
 
   useEffect(() => {
@@ -312,9 +312,9 @@ const NetworkStatusTopology: React.FC<NetworkStatusTopologyProps> = ({
       const mergedPositions = canPersistLayout
         ? activeModeGeometry.nodePositions
         : {
-            ...(activeModeGeometry.nodePositions || {}),
-            ...ephemeralPositions,
-          };
+          ...(activeModeGeometry.nodePositions || {}),
+          ...ephemeralPositions,
+        };
       return applyNodePositionsToLayout(computed, mergedPositions);
     },
     [
@@ -401,13 +401,13 @@ const NetworkStatusTopology: React.FC<NetworkStatusTopologyProps> = ({
       const geometryPatch =
         patch.nodePositions !== undefined || patch.linkVertices !== undefined
           ? {
-              ...(patch.nodePositions !== undefined
-                ? { nodePositions: patch.nodePositions }
-                : {}),
-              ...(patch.linkVertices !== undefined
-                ? { linkVertices: patch.linkVertices }
-                : {}),
-            }
+            ...(patch.nodePositions !== undefined
+              ? { nodePositions: patch.nodePositions }
+              : {}),
+            ...(patch.linkVertices !== undefined
+              ? { linkVertices: patch.linkVertices }
+              : {}),
+          }
           : undefined;
       const layoutByMode = geometryPatch
         ? patchLayoutByMode(topoConfig, layoutMode, geometryPatch)

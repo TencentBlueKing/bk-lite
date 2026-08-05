@@ -589,6 +589,8 @@ class DataSourceAPIModelViewSet(AuthViewSet):
     @HasPermission("data_source-Edit")
     def update(self, request, *args, **kwargs):
         instance = self.get_object()
+        if instance.is_build_in:
+            return Response({"detail": "内置数据源不允许通过普通接口修改"}, status=status.HTTP_403_FORBIDDEN)
         response = super(DataSourceAPIModelViewSet, self).update(request, *args, **kwargs)
         name = get_response_name(response, request.data.get("name", instance.name))
         log_ops_analysis_success(request, response, "update", f"编辑数据源: {name}")
@@ -597,6 +599,8 @@ class DataSourceAPIModelViewSet(AuthViewSet):
     @HasPermission("data_source-Delete")
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
+        if instance.is_build_in:
+            return Response({"detail": "内置数据源不允许通过普通接口删除"}, status=status.HTTP_403_FORBIDDEN)
         name = instance.name
         current_team = self._parse_current_team_cookie(request)
 

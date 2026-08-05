@@ -5,7 +5,7 @@ export type NetworkStatusTopologyLayoutMode =
   | 'force'
   | 'circular';
 
-export type NetworkStatusTopologyPoint = { x: number; y: number };
+export interface NetworkStatusTopologyPoint { x: number; y: number }
 
 /** 单个布局模式下的手工几何 */
 export interface NetworkStatusTopologyModeLayout {

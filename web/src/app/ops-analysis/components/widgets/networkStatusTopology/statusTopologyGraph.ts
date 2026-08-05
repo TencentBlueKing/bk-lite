@@ -29,13 +29,13 @@ export type StatusTopologyPositionedLink = NetworkTopologyLink & {
  */
 export const STATUS_TOPOLOGY_NODE_SHAPE = 'topo-network-status-device-v6';
 
-export type StatusTopologyPalette = {
+export interface StatusTopologyPalette {
   nameFill: string;
   typeFill: string;
   edgeStroke: string;
   selectedStroke: string;
   portLabelFill: string;
-};
+}
 
 export const STATUS_TOPOLOGY_VISUAL = {
   nodeWidth: 160,
@@ -445,19 +445,19 @@ export const buildStatusTopologyX6GraphData = ({
     const labels = [
       sourcePort
         ? buildPortLabel(
-            STATUS_TOPOLOGY_VISUAL.portLabelPosition.source,
-            sourcePort,
-            palette,
-            dimmed,
-          )
+          STATUS_TOPOLOGY_VISUAL.portLabelPosition.source,
+          sourcePort,
+          palette,
+          dimmed,
+        )
         : null,
       targetPort
         ? buildPortLabel(
-            STATUS_TOPOLOGY_VISUAL.portLabelPosition.target,
-            targetPort,
-            palette,
-            dimmed,
-          )
+          STATUS_TOPOLOGY_VISUAL.portLabelPosition.target,
+          targetPort,
+          palette,
+          dimmed,
+        )
         : null,
     ].filter(Boolean);
 
@@ -477,17 +477,17 @@ export const buildStatusTopologyX6GraphData = ({
       },
       ...(edgeGeometry.kind === 'manual'
         ? {
-            connector: { name: 'normal' },
-            vertices: edgeGeometry.vertices,
-          }
+          connector: { name: 'normal' },
+          vertices: edgeGeometry.vertices,
+        }
         : {
-            // 用 connector 按当前端点实时算平行路径，避免绝对 vertices 拖动时卡住
-            connector: {
-              name: STATUS_TOPOLOGY_PARALLEL_CONNECTOR,
-              args: { offset: edgeGeometry.parallelOffset },
-            },
-            vertices: [],
-          }),
+          // 用 connector 按当前端点实时算平行路径，避免绝对 vertices 拖动时卡住
+          connector: {
+            name: STATUS_TOPOLOGY_PARALLEL_CONNECTOR,
+            args: { offset: edgeGeometry.parallelOffset },
+          },
+          vertices: [],
+        }),
       labels,
       zIndex: 1,
       data: { link },
