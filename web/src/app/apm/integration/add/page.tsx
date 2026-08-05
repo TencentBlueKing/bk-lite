@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import Link from 'next/link';
 import { ApiOutlined, CodeOutlined, CopyOutlined, ExperimentOutlined, GlobalOutlined, RocketOutlined } from '@ant-design/icons';
-import { Alert, Button, Card, Form, Input, message, Modal, Result, Segmented, Select, Space, Tag, Typography } from 'antd';
+import { Alert, Button, Card, Drawer, Form, Input, message, Modal, Result, Segmented, Select, Space, Tag, Typography } from 'antd';
 import useApmApi from '@/app/apm/api';
 import ApmRouteShell, { ApmSurface } from '@/app/apm/components/apm-route-shell';
 import CatalogState from '@/app/apm/components/catalog-state';
@@ -259,7 +259,15 @@ export default function ApmIntegrationAddPage() {
         </div>
       )}
 
-      <Modal title={`${selectedMethod?.title ?? ''} 接入`} open={Boolean(selectedMethod)} width={920} footer={null} onCancel={() => setSelectedMethod(null)} destroyOnHidden styles={{ body: { maxHeight: 'calc(100vh - 180px)', overflowY: 'auto' } }}>
+      <Drawer
+        destroyOnHidden
+        open={Boolean(selectedMethod)}
+        placement="right"
+        title={`${selectedMethod?.title ?? ''} 接入`}
+        width="min(960px, calc(100vw - 24px))"
+        styles={{ body: { overflowY: 'auto' } }}
+        onClose={() => setSelectedMethod(null)}
+      >
         <div className="flex flex-col gap-4 pt-2">
           <ApmSurface>
             <div className="mb-4 flex items-center gap-2"><span className="grid h-7 w-7 place-items-center rounded-full bg-[var(--color-primary)] text-sm font-semibold text-white">1</span><Typography.Text strong>上报端点</Typography.Text></div>
@@ -322,7 +330,7 @@ export default function ApmIntegrationAddPage() {
             </ApmSurface>
           ) : null}
         </div>
-      </Modal>
+      </Drawer>
     </ApmRouteShell>
   );
 }
