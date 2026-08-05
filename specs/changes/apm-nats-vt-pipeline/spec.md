@@ -42,7 +42,8 @@ APM、Monitor、Log 是同级产品域：Monitor 只使用 VictoriaMetrics，APM
 
 - 普通 APM 应用由用户创建；平台提供不可删改的内置“未归类应用”。非空 `service.namespace` 必须等于一个当前可见的普通应用 ID，空值归入未归类应用，非空未知值不得进入目录并产生有界诊断计数/日志。
 - APM 服务由 `service.namespace + service.name` 发现；实例由服务身份 + `service.instance.id` 发现；版本和环境是查询维度。
-- 接入片段必须为每个运行实例提供 `service.instance.id`：主机进程默认在启动时生成 UUID，并允许运维通过 `APM_INSTANCE_ID` 显式覆盖；Docker 使用容器 hostname，Kubernetes 使用 Pod UID。片段不得要求未由平台或 OpenTelemetry 提供的隐式环境变量。
+- 接入片段必须为每个运行实例提供 `service.instance.id`，但 Server 生成配置时不得固化实例 UUID。主机进程在每次启动片段时生成一次 UUID，进程生命周期内复用；新进程或副本生成新 UUID。Docker 默认使用容器 hostname，Kubernetes 使用 Downward API 提供的 Pod UID；`APM_INSTANCE_ID` 只作为运维显式覆盖，且每个并发副本必须使用不同值。片段不得要求未由平台或 OpenTelemetry 提供的隐式环境变量。
+- Host、Docker、Kubernetes 和 other 共用一个运行时身份 profile：profile 只负责身份来源、同一份非空/字符/512 长度校验和面向操作者的提示。Host 的 `/proc/sys/kernel/random/uuid` 与 `uuidgen` 都不可用、返回空值或非法 UUID 时必须非零退出；other 没有可靠运行时身份时必须要求显式 `APM_INSTANCE_ID`，不得猜测。
 - 区域 Collector 删除客户端提交的全部 `bk.*` 保留属性后注入可信 `bk.cloud_region.id`。组织 ID、NATS 凭据和 endpoint 不进入 Span。
 - 应用组织更新必须在一个事务内同步继承态实例和该应用下服务的 `ApmServiceOrganization`；自定义实例组织仍不被覆盖。
 - 原始 Span 不写 PostgreSQL；目录、策略、SLO、告警和通知生命周期仍由既有 Django 领域模型持有。
@@ -77,9 +78,9 @@ NodeMgmt 不可用返回 503。不得回退到浏览器 hostname、Server hostna
 片段，不包含 gRPC endpoint、NATS 配置或凭据。区域 Collector 可继续监听 4317 作为手工接入兼容
 能力，但普通接入页面不暴露协议选择。
 
-### Shell 安全
+### Shell 与 OpenTelemetry 属性安全
 
-所有用户或配置值通过单一 POSIX shell literal 函数引用；不得把内容插入已有单引号字符串。Docker `sh -c` 脚本和 `-e` 参数分别引用，恶意值中的单引号、换行、`$()`、反引号、反斜杠和 shell 元字符均只能成为字面量。复制失败、生成失败和 endpoint 缺失有显式 UI 状态。
+Shell literal 与 `OTEL_RESOURCE_ATTRIBUTES` 是两个独立边界。所有用户或配置值先按 OpenTelemetry 环境变量格式编码：属性仍以逗号分隔、键值以等号分隔，值只保留 RFC 3986 unreserved 字符，其余 UTF-8 字节使用百分号编码；因此 `%`、逗号、等号、Unicode、换行都不能结束当前值或伪造下一属性。完整属性串再通过单一 POSIX shell literal 函数引用，不得把内容插入已有单引号字符串。Docker `sh -c` 脚本和 `-e` 参数分别引用，恶意值中的单引号、换行、`$()`、反引号、反斜杠和 shell 元字符均只能成为字面量。响应 `environment` DTO 与实际 Shell 导出使用同一编码结果；复制失败、生成失败和 endpoint 缺失有显式 UI 状态。
 
 ## JetStream 传输 interface
 
@@ -126,7 +127,7 @@ NodeMgmt 不可用返回 503。不得回退到浏览器 hostname、Server hostna
 1. memory limiter；
 2. 删除 span/event/link/scope/resource 的 `bk.*` 与敏感键，删除请求/响应正文和完整 URL；
 3. 注入 `bk.cloud_region.id`；
-4. 限制资源/Span/Event/Link 属性数量为 64/100/32/32，字符串长度 4096，批次与请求体不超过部署上限；
+4. 限制资源/Span/Event/Link 属性数量为 64/100/32/32，一般字符串长度 4096，批次与请求体不超过部署上限；目录身份另按 Django 契约校验：`service.namespace`、`service.name`、`service.version`、`deployment.environment` 最长 256 个 Unicode code point，`service.instance.id` 最长 512；`service.name` 必须是非空字符串。身份非法时逐个丢弃对应 ResourceSpans 并输出仅含数量的有界诊断，不得先截断再入库造成身份碰撞，也不得改变一般属性 4096 上限；
 5. batch；
 6. 写入启用 file storage 的有界 exporter queue，重试并等待 JetStream ACK。
 
@@ -158,9 +159,17 @@ VT 开启 `-servicegraph.enableTask=true`。拓扑使用 dependencies 接口，�
 
 - 目录对账、服务 RED、端点、SLO 和策略任务全部切到 `TelemetryStore`；不改变 Django 模型和 ADR 0004 告警生命周期。
 - 目录接纳 `service.namespace` 对应已有应用的数据，并把空 namespace 归入内置“未归类应用”。非空未知 namespace 逐项跳过，不阻断同批有效应用，并更新 `unknown_application` 诊断计数与采样日志。
+- VT activity DTO 是不可信运行期输入。Django 目录写入前再次按 Collector 相同的 256/512 身份边界校验；空 `service.name`、超长 namespace/name/instance/version/environment 逐项跳过，诊断最多采样 20 条且只记录字段、原因、长度和上限，不记录原值。单条非法活动不得触发 `DataError` 或回滚同批合法活动；缺少 `service.instance.id` 时仍发现并计数服务，但不创建伪实例。
 - “未归类应用”复用现有应用组织过滤，其组织范围始终是普通 APM 应用当前组织的并集；组织变化同时同步到已发现的未归类服务和继承态实例。
 - VT 查询失败保留原始异常类型和稳定错误码，运行期有界重试；失败不能推进归档游标、触发/恢复告警或把 SLO 标成 no_data。
 - 应用组织更新在事务锁内重读应用，原子替换应用组织、继承态实例组织和服务组织；失败整体回滚。
+- 当前遥测中没有可靠且跨 Host/Container/Pod 一致的第二 runtime identity，因此 Collector 不根据主机名或网络属性猜测重复实例，也不建立冲突模型；未来只有在存在明确运行时身份时，才可对“同一 service instance ID 同时对应多个 runtime identity”增加最小计数诊断。
+
+## 目录列表 interface
+
+- `GET /api/v1/apm/instances/` 与 `GET /api/v1/apm/services/` 在显式提交正整数 `page_size` 时返回 `{count, items}`，支持正整数 `page`，单页最多 100；零、负数或非法分页参数返回 400；不带 `page_size` 的既有调用暂时保持数组响应，避免破坏现有选择器与页面。
+- 分页前先应用当前组织权限，再在服务端处理 `application`、`environment`、`status`、`started_at`、`ended_at` 和最多 8 个 keyword token；非法状态、时间或逆序时间窗返回 400，结果按 `last_seen_at` 倒序和 ID 稳定排序。
+- Web 实例目录只使用有界分页 interface，默认请求 `active`，不再一次加载全部非归档实例或在浏览器过滤。静默、归档、30 天和全部历史仍可显式选择；切换筛选、页码或每页数量时重新查询服务端。频繁重启产生的旧静默 UUID 不进入默认活跃视图。
 
 ## 健康与启动语义
 
@@ -203,11 +212,11 @@ VT bytes ≈ average_ingest_bytes_per_day × retention_days × storage_amplifica
 
 TDD 只在以下已确认 interface 上测试，不耦合内部实现：
 
-1. `POST /api/v1/apm/integration-config/`：权限、区域、endpoint、Shell 安全和响应 DTO。
-2. 自定义 Collector 的 exporter/receiver：OTLP Protobuf、Subject、headers、publish ACK、显式 ACK、重投、清洗和资源边界。
+1. `POST /api/v1/apm/integration-config/`：权限、区域、endpoint、运行时身份成功/覆盖/失败、OTel 属性编码、Shell 安全和响应 DTO。
+2. 自定义 Collector 的 exporter/receiver：OTLP Protobuf、Subject、headers、publish ACK、显式 ACK、重投、清洗、身份专用边界和一般属性 4096 边界。
 3. `TelemetryStore`：受控 VT 请求构造、映射、去重、no_data/degraded、目录/RED/SLO/策略/错误/拓扑。
-4. APM Web 接入页：区域选择、空/错/权限态、表单、复制和 Storybook/生产一致性。
-5. APM 应用与目录：内置标识和不可修改、空 namespace 归类、非空未知 namespace 拒绝，以及 Web 只读呈现。
+4. APM Web 接入页：区域选择、空/错/权限态、表单、完整代码复制、Clipboard 降级/失败反馈和 Storybook/生产一致性。
+5. APM 应用与目录：内置标识和不可修改、空 namespace 归类、非空未知 namespace 拒绝、非法身份批次隔离、兼容分页/过滤/权限，以及 Web 默认活跃实例呈现。
 
 ### 分阶段实施清单
 
@@ -225,6 +234,8 @@ TDD 只在以下已确认 interface 上测试，不耦合内部实现：
 - 同一消息重投不产生目录重复，RED/SLO/策略对唯一 Span 的统计不双计；空 namespace 进入内置未归类应用，非空未知应用不入目录且可诊断。
 - 全量请求数、错误率、P95/P99、服务/版本/实例发现、Trace、依赖图和 SLO 由 VT 数据对账正确。
 - Web 可选择有权限云区域、显示服务端 endpoint、生成并安全复制配置；缺配置和越权有明确状态；Storybook 不再出现 `/telegraf/api` 或 hostname 拼接。
+- Web 接入片段说明实例 ID 在应用进程启动时生成且每副本唯一；复制按钮与代码块就近放置，成功、浏览器降级和失败路径均有反馈，图标不污染 accessible name。
+- 实例目录默认只显示活跃实例，所有实际列表请求都有 100 条单页上限；应用、环境、状态、时间和关键字过滤在权限约束后的服务端执行，归档和历史可显式查看。
 - 服务目录的应用视角以应用目录为事实来源；即使尚未发现任何空 namespace 服务，也显示零服务的内置“未归类应用”，不得只从服务列表反推应用。
 - 使用 Makefile 启停 Server API/Worker/Beat/Listener；启动前无重复进程。外部数据面停止不阻断启动，只产生 APM degraded。
 - 每阶段有新鲜聚焦测试和中文提交；最终列出提交、命令结果、运维待办与限制，不自动推送或合并。
