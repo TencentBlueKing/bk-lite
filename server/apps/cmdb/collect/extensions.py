@@ -25,4 +25,5 @@ _EMPTY_COLLECT_EXTENSION = CollectEnterpriseExtension()
 
 
 def get_collect_enterprise_extension() -> CollectEnterpriseExtension:
-    return registry.get("collect", _EMPTY_COLLECT_EXTENSION)
+    impl = registry.get("collect", _EMPTY_COLLECT_EXTENSION)
+    return impl() if callable(impl) else impl
