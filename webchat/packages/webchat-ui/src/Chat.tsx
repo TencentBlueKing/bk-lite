@@ -10,6 +10,7 @@ import {
   Message,
   MessageType,
   generateId,
+  normalizeWebChatConfig,
 } from '@webchat/core';
 import { AGUIHandler, AGUIConfig, AGUIEvent } from './agui';
 import { type ToolCall } from './components/ToolCallDisplay';
@@ -49,16 +50,11 @@ const defaultUserAvatar = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzIiIGhlaWd
 export const Chat = React.forwardRef<any, ChatProps>((props, ref) => {
   const {
     sseUrl,
-    // socketUrl,
-    // socketPath,
     customData,
     // theme = 'light',
     title = 'Chat',
     subtitle,
     placeholder = 'Type a message...',
-    // reconnectAttempts = 5,
-    // reconnectDelay = 1000,
-    // enableSSE = true,
     enableStorage = true,
     storageKey = 'webchat_session',
     onStateChange,
@@ -71,7 +67,7 @@ export const Chat = React.forwardRef<any, ChatProps>((props, ref) => {
     showFullscreenButton = true,
     showClearButton = false,
     apiKey,
-  } = props;
+  } = normalizeWebChatConfig(props) as ChatProps;
 
   // State
   const [messages, setMessages] = useState<Message[]>([]);
