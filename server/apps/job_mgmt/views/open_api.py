@@ -188,7 +188,6 @@ class OpenFileDeleteView(TeamResolveMixin, APIView):
 
         # 校验格式并匹配删除
         deleted_count = 0
-        no_permission = []  # 无权限的文件
         not_found = []  # 不存在的文件
         failed = []  # S3 删除失败的文件
         for item in files:
@@ -197,16 +196,12 @@ class OpenFileDeleteView(TeamResolveMixin, APIView):
             if not file_id or not file_key:
                 continue
 
-            # 先查询文件是否存在
+            # 将团队归属纳入查询条件，跨团队文件与不存在文件使用同一响应，
+            # 避免调用方利用差异化结果枚举其他团队的文件。
             try:
-                df = DistributionFile.objects.get(id=file_id, file_key=file_key)
+                df = DistributionFile.objects.get(id=file_id, file_key=file_key, team=user_team)
             except DistributionFile.DoesNotExist:
                 not_found.append({"file_id": file_id, "file_key": file_key})
-                continue
-
-            # 校验 team 权限
-            if df.team != user_team:
-                no_permission.append({"file_id": file_id, "file_key": file_key})
                 continue
 
             # 删除对象存储文件；若失败则跳过 DB 删除，避免产生孤儿 S3 对象
@@ -221,8 +216,6 @@ class OpenFileDeleteView(TeamResolveMixin, APIView):
             deleted_count += 1
 
         result = {"deleted": deleted_count}
-        if no_permission:
-            result["no_permission"] = no_permission
         if not_found:
             result["not_found"] = not_found
         if failed:
