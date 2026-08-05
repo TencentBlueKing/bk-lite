@@ -18,7 +18,9 @@ assert.deepEqual(
   }),
   {
     username: 'admin',
+    accessKey: 'admin',
     password: 'secret',
+    accessSecret: 'secret',
     port: 8088,
     verify_tls: false,
   },
@@ -71,5 +73,40 @@ assert.equal(
   getCredentialDescriptor({ model_id: 'storage' })?.formKind,
   'platform_api',
 );
+assert.equal(
+  getCredentialDescriptor({ model_id: 'h3c_cas' })?.formKind,
+  'platform_api',
+);
+assert.equal(
+  getCredentialDescriptor({ model_id: 'h3c_cas' })?.defaultPort,
+  443,
+);
+assert.equal(
+  getCredentialDescriptor({ model_id: 'fusioncompute' })?.defaultPort,
+  7443,
+);
+assert.equal(
+  getCredentialDescriptor({ model_id: 'zstack' })?.defaultPort,
+  8080,
+);
+assert.equal(
+  getCredentialDescriptor({ model_id: 'aws' })?.formKind,
+  'cloud',
+);
+for (const modelId of [
+  'openstack',
+  'smartx',
+  'manageone',
+  'nutanixhci',
+  'sangforscp',
+  'inspurincloudrail',
+  'azure',
+]) {
+  assert.equal(
+    getCredentialDescriptor({ model_id: modelId })?.formKind,
+    'platform_api',
+    modelId,
+  );
+}
 
 console.log('CMDB platform API credential contract passed');

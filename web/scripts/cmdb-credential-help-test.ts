@@ -93,6 +93,14 @@ assert.equal(
   443,
 );
 assert.equal(
+  getCredentialDescriptor({ model_id: 'h3c_cas' })?.formKind,
+  'platform_api',
+);
+assert.equal(
+  getCredentialDescriptor({ model_id: 'aws' })?.formKind,
+  'cloud',
+);
+assert.equal(
   getCredentialDescriptor({ model_id: 'vmware_vc' })?.formKind,
   'vmware',
 );
