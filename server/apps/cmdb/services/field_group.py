@@ -329,8 +329,12 @@ class FieldGroupService:
         groups = FieldGroup.objects.filter(model_id=model_id).order_by("order")
         groups_count = groups.count()
 
-        # 3. 解析属性
-        attrs = ModelManage.parse_attrs(model_info.get("attrs", "[]"))
+        # 3. 解析属性（系统联动 ID 不对用户暴露于分组表单/模型设计）
+        from apps.cmdb.services.module_ingest import filter_user_facing_attrs
+
+        attrs = filter_user_facing_attrs(
+            ModelManage.parse_attrs(model_info.get("attrs", "[]"))
+        )
         # 4. 按分组组织属性
         groups_data = []
         for idx, group in enumerate(groups):

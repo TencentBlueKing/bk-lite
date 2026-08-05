@@ -17,6 +17,7 @@ from apps.cmdb.instance_ops.extensions import get_instance_enterprise_extension
 from apps.cmdb.services.instance import InstanceManage
 from apps.cmdb.services.model import ModelManage
 from apps.cmdb.services.model_visibility import BusinessModelVisibility
+from apps.cmdb.services.module_push import CmdbToMonitorPushService, build_cmdb_push_actor_scope
 from apps.cmdb.utils.base import (
     format_group_params,
     format_groups_params,
@@ -331,6 +332,42 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
         )
         return WebUtils.response_success(instance)
 
+    @HasPermission("asset_info-Edit")
+    @action(methods=["post"], detail=True, url_path="push_to_monitor")
+    def push_to_monitor(self, request, pk=None):
+        """显式推送到监控：无级联，带 causation。"""
+        instance = InstanceManage.query_entity_by_id(int(pk))
+        if not instance or not self._is_instance_model_visible(instance):
+            return WebUtils.response_error("实例不存在", status_code=status.HTTP_404_NOT_FOUND)
+
+        if not self.check_creator_and_organizations(request, instance):
+            organizations = self.organizations(request, instance)
+            if not organizations:
+                return WebUtils.response_error(
+                    "抱歉！您没有此实例的权限", status_code=status.HTTP_403_FORBIDDEN
+                )
+            has_permission = self.check_instance_permission(
+                request, instance, operator=OPERATE
+            )
+            if not has_permission:
+                return WebUtils.response_error(
+                    "抱歉！您没有此实例的权限", status_code=status.HTTP_403_FORBIDDEN
+                )
+
+        actor_scope = build_cmdb_push_actor_scope(request)
+        try:
+            result = CmdbToMonitorPushService.push_instance(
+                int(pk), actor_scope=actor_scope
+            )
+        except ValueError as exc:
+            return WebUtils.response_error(str(exc), status_code=status.HTTP_400_BAD_REQUEST)
+        except Exception:
+            logger.exception("[push_to_monitor] failed inst_id=%s", pk)
+            return WebUtils.response_error(
+                "推送到监控失败", status_code=status.HTTP_502_BAD_GATEWAY
+            )
+        return WebUtils.response_success(result)
+
     # ---- 附件/图片文件（企业版；社区版返回未启用） -----------------------
 
     def _check_instance_read_permission(self, request, instance) -> bool:
@@ -402,7 +439,9 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
         from apps.cmdb.services.operation_service import OperationConflict, OperationService
 
         model_id = request.data.get("model_id")
-        instance_info = request.data.get("instance_info")
+        from apps.cmdb.services.module_ingest import strip_system_link_fields
+
+        instance_info = strip_system_link_fields(request.data.get("instance_info"))
         if not model_id or not self._is_model_visible(model_id):
             return WebUtils.response_error("模型不存在", status_code=status.HTTP_404_NOT_FOUND)
         allowed_org_ids = self._get_allowed_org_ids(request)
@@ -548,7 +587,11 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
             user_groups = format_group_params(current_team)
         allowed_org_ids = self._get_allowed_org_ids(request)
 
-        update_attr = {k: v for k, v in request.data.items() if k != "_scenario"}
+        from apps.cmdb.services.module_ingest import strip_system_link_fields
+
+        update_attr = strip_system_link_fields(
+            {k: v for k, v in request.data.items() if k != "_scenario"}
+        )
         scenario = request.data.get("_scenario") or ORDINARY_ATTRIBUTE_CHANGE
         if scenario not in INSTANCE_EDIT_CORRECTABLE_SCENARIOS:
             scenario = ORDINARY_ATTRIBUTE_CHANGE

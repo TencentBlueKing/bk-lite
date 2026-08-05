@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>节点 / CMDB / 监控推送联动 · 一期方案</title>
+  <style>
+    :root {
+      --bg: #0f1419;
+      --bg-elevated: #1a222c;
+      --bg-soft: #151c24;
+      --stroke: #2a3542;
+      --stroke-strong: #3d4d5f;
+      --text: #e8eef4;
+      --text-secondary: #9aabbc;
+      --text-tertiary: #6b7c8d;
+      --accent: #3d9cf0;
+      --accent-soft: rgba(61, 156, 240, 0.14);
+      --success: #3ecf8e;
+      --success-soft: rgba(62, 207, 142, 0.14);
+      --warning: #e6b84d;
+      --warning-soft: rgba(230, 184, 77, 0.14);
+      --info: #6cb6ff;
+      --info-soft: rgba(108, 182, 255, 0.12);
+      --font: "IBM Plex Sans", "Segoe UI", "PingFang SC", "Hiragino Sans GB",
+        "Microsoft YaHei", sans-serif;
+      --mono: "IBM Plex Mono", "SF Mono", Menlo, Consolas, monospace;
+      --radius: 10px;
+    }
+    @media (prefers-color-scheme: light) {
+      :root {
+        --bg: #f4f6f8;
+        --bg-elevated: #fff;
+        --bg-soft: #eef2f6;
+        --stroke: #d5dde6;
+        --stroke-strong: #b7c3d0;
+        --text: #1a2330;
+        --text-secondary: #5a6b7d;
+        --text-tertiary: #8494a5;
+        --accent: #1f6feb;
+        --accent-soft: rgba(31, 111, 235, 0.1);
+        --success: #1a9d6c;
+        --success-soft: rgba(26, 157, 108, 0.1);
+        --warning: #b8860b;
+        --warning-soft: rgba(184, 134, 11, 0.12);
+        --info: #1f6feb;
+        --info-soft: rgba(31, 111, 235, 0.08);
+      }
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: var(--font);
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.55;
+    }
+    .page { max-width: 1100px; margin: 0 auto; padding: 28px 24px 64px; }
+    h1 { margin: 0 0 8px; font-size: 28px; font-weight: 650; letter-spacing: -0.02em; }
+    h2 { margin: 28px 0 10px; font-size: 18px; font-weight: 650; }
+    h3 { margin: 0 0 8px; font-size: 15px; font-weight: 650; }
+    .lede { margin: 0 0 16px; color: var(--text-secondary); max-width: 820px; font-size: 15px; }
+    .chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0 18px; }
+    .chip {
+      padding: 4px 10px; border-radius: 999px; border: 1px solid var(--stroke);
+      background: var(--bg-soft); color: var(--text-secondary); font-size: 12px;
+    }
+    .callout {
+      border-radius: var(--radius); padding: 12px 14px; margin: 12px 0 18px;
+      font-size: 13px; background: var(--info-soft); color: var(--text-secondary);
+    }
+    .callout strong { color: var(--text); }
+    .callout.warn { background: var(--warning-soft); }
+    .tabs { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
+    .tab {
+      font-family: inherit; cursor: pointer; border-radius: 8px;
+      border: 1px solid var(--stroke); background: var(--bg-elevated);
+      color: var(--text-secondary); padding: 8px 12px; font-size: 13px;
+    }
+    .tab.active {
+      border-color: var(--accent); background: var(--accent-soft); color: var(--text); font-weight: 600;
+    }
+    .panel {
+      display: none; background: var(--bg-elevated); border: 1px solid var(--stroke);
+      border-radius: var(--radius); padding: 16px 18px;
+    }
+    .panel.active { display: block; }
+    .flow {
+      font-family: var(--mono); font-size: 12px; white-space: pre; overflow: auto;
+      background: var(--bg-soft); border: 1px solid var(--stroke); border-radius: 8px;
+      padding: 14px; color: var(--text-secondary); margin: 10px 0 14px;
+    }
+    table {
+      width: 100%; border-collapse: collapse; font-size: 13px;
+      border: 1px solid var(--stroke); border-radius: var(--radius); overflow: hidden;
+      margin: 10px 0 4px;
+    }
+    th, td { padding: 9px 12px; text-align: left; border-bottom: 1px solid var(--stroke); vertical-align: top; }
+    th {
+      font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em;
+      color: var(--text-tertiary); background: var(--bg-soft); font-weight: 600;
+    }
+    tr:last-child td { border-bottom: none; }
+    .mono { font-family: var(--mono); font-size: 12px; }
+    .ids {
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 12px 0;
+    }
+    @media (max-width: 720px) { .ids { grid-template-columns: 1fr; } }
+    .id-card {
+      border: 1px solid var(--stroke); border-radius: 8px; padding: 10px 12px; background: var(--bg-soft);
+    }
+    .id-card .name { font-size: 12px; color: var(--text-tertiary); margin-bottom: 6px; }
+    .id-card .row { font-family: var(--mono); font-size: 12px; color: var(--text-secondary); }
+    .id-card .row b { color: var(--text); font-weight: 600; }
+    .id-card.missing { opacity: 0.55; }
+    .pill {
+      display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px;
+      border: 1px solid var(--stroke); color: var(--text-tertiary); margin-left: 6px;
+    }
+    .pill.on { background: var(--success-soft); border-color: transparent; color: var(--success); }
+    .pill.off { background: transparent; }
+    footer {
+      margin-top: 32px; padding-top: 14px; border-top: 1px solid var(--stroke);
+      color: var(--text-tertiary); font-size: 12px;
+    }
+    .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    @media (max-width: 720px) { .grid2 { grid-template-columns: 1fr; } }
+    ul.clean { margin: 8px 0; padding-left: 18px; color: var(--text-secondary); font-size: 13px; }
+    ul.clean li { margin: 4px 0; }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <h1>节点 / CMDB / 监控推送联动</h1>
+    <p class="lede">
+      一期共识：推模型；页面默认勾选、取消则不推（无级联暗推）；推送失败节点仍成功并有限重试；
+      有 ID 只认 ID，存量无 ID 时按对象类型认领并回填 node_id。一期对象：主机 / 网络设备 / 物理服务器 IPMI。
+      规格 <span class="mono">specs/changes/node-cmdb-monitor-push-linkage/spec.md</span>。
+    </p>
+
+    <div class="chips">
+      <span class="chip">路线 B · 推模型</span>
+      <span class="chip">默认勾选 · 取消不推</span>
+      <span class="chip">失败重试 2～3 次后跳过</span>
+      <span class="chip">判同 · ID 优先 · 存量认领</span>
+      <span class="chip">一期 · 主机/网络/IPMI</span>
+      <span class="chip">退役 · 拉取同步</span>
+    </div>
+
+    <div class="callout">
+      <strong>演示用法：</strong>点选下方场景看数据流与终态 ID。键盘 <span class="mono">1–4</span> 可切换。
+    </div>
+
+    <div class="tabs" id="tabs"></div>
+
+    <!-- 0 overview -->
+    <section class="panel active" data-id="overview">
+      <h3>总览：允许的数据流</h3>
+      <div class="flow">节点管理 ──可选推送──► CMDB ◄──互相推送──► 监控中心
+    │                                    ▲
+    └──────────可选推送──────────────────┘
+
+禁止：CMDB → 节点　｜　监控 → 节点
+落地后关闭：CMDB「拉取节点同步」</div>
+      <div class="grid2">
+        <div>
+          <h3>推送由页面决定</h3>
+          <ul class="clean">
+            <li>创建节点：按<strong>已售模块</strong>默认勾选；取消则该目标不推</li>
+            <li><strong>无级联</strong>：只勾 CMDB 时不会自动再推监控</li>
+            <li>推送失败：节点仍创建；重试 2～3 次后跳过，详情可再推</li>
+            <li>字段变更不自动推；详情可补推 / 重新同步</li>
+          </ul>
+        </div>
+        <div>
+          <h3>判同规则（被推送方）</h3>
+          <ul class="clean">
+            <li>有关联 ID：<span class="mono">node_id</span> 优先，否则 <span class="mono">cmdb_id</span></li>
+            <li>存量无 ID：按对象类型认领（一期主机/网络/IPMI），成功则回填 <span class="mono">node_id</span></li>
+            <li>CMDB↔监控互推：有节点 ID 则必带</li>
+            <li>双键指向不同行 → 冲突，不静默合并</li>
+          </ul>
+        </div>
+      </div>
+      <table>
+        <thead><tr><th>允许</th><th>不允许</th></tr></thead>
+        <tbody>
+          <tr><td>节点 → CMDB</td><td>CMDB → 节点</td></tr>
+          <tr><td>节点 → 监控</td><td>监控 → 节点</td></tr>
+          <tr><td>CMDB ↔ 监控</td><td>拉取同步与推送长期双写</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- 1 full -->
+    <section class="panel" data-id="full">
+      <h3>形态 ① · 节点起点（完整联动）</h3>
+      <p class="lede" style="margin-bottom:8px">用户创建节点并确认推送 CMDB + 监控（或随后补推）。CMDB 创建后也可推监控；两边都带 <span class="mono">node_id=99</span>，监控只落一条。</p>
+      <div class="flow">1. 创建节点 id=99（默认勾选已售目标）
+2. 节点 → CMDB：CMDB 得 _id=abc，存 node_id=99；节点回填 cmdb_id=abc
+3. 节点 → 监控：监控得 m-555，存 node_id=99；（有则带 cmdb_id）
+4. CMDB → 监控：带 node_id=99 + cmdb_id=abc → upsert 同一 m-555
+5. 监控 ↔ CMDB：互推时继续带 node_id，补齐 monitor_id / cmdb_id</div>
+      <div class="ids">
+        <div class="id-card">
+          <div class="name">节点管理</div>
+          <div class="row"><b>node_id</b>=99</div>
+          <div class="row"><b>cmdb_id</b>=abc</div>
+          <div class="row"><b>monitor_id</b>=m-555</div>
+        </div>
+        <div class="id-card">
+          <div class="name">CMDB</div>
+          <div class="row"><b>cmdb_id</b>=abc</div>
+          <div class="row"><b>node_id</b>=99</div>
+          <div class="row"><b>monitor_id</b>=m-555</div>
+        </div>
+        <div class="id-card">
+          <div class="name">监控中心</div>
+          <div class="row"><b>monitor_id</b>=m-555</div>
+          <div class="row"><b>node_id</b>=99</div>
+          <div class="row"><b>cmdb_id</b>=abc</div>
+        </div>
+      </div>
+      <div class="callout">
+        <strong>防冲突：</strong>节点先推监控、再 CMDB 推监控（或反过来），只要都带同一 <span class="mono">node_id</span>，监控只认一条对象。
+      </div>
+    </section>
+
+    <!-- 2 cmdb manual -->
+    <section class="panel" data-id="cmdb-manual">
+      <h3>形态 ② · CMDB 手建 → 推监控</h3>
+      <p class="lede" style="margin-bottom:8px">资产不是从节点来的。CMDB 推监控时只有 CMDB ID；单向为主，无节点桥，不与节点推送对象自动捏合。</p>
+      <div class="flow">1. 用户在 CMDB 手动创建主机 _id=abc（无 node_id）
+2. 页面选择推送到监控
+3. 监控按 cmdb_id=abc upsert → m-777
+4. 双方互存 cmdb_id + monitor_id</div>
+      <div class="ids">
+        <div class="id-card missing">
+          <div class="name">节点管理 <span class="pill off">无</span></div>
+          <div class="row">—</div>
+        </div>
+        <div class="id-card">
+          <div class="name">CMDB</div>
+          <div class="row"><b>cmdb_id</b>=abc</div>
+          <div class="row"><b>node_id</b>=∅</div>
+          <div class="row"><b>monitor_id</b>=m-777</div>
+        </div>
+        <div class="id-card">
+          <div class="name">监控中心</div>
+          <div class="row"><b>monitor_id</b>=m-777</div>
+          <div class="row"><b>cmdb_id</b>=abc</div>
+          <div class="row"><b>node_id</b>=∅</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 3 monitor manual -->
+    <section class="panel" data-id="monitor-manual">
+      <h3>形态 ③ · 监控手建 → 推 CMDB</h3>
+      <p class="lede" style="margin-bottom:8px">从观测域补配置身份。最终同样是 CMDB ID + 监控 ID，无节点 ID。</p>
+      <div class="flow">1. 用户在监控手建对象 m-888
+2. 页面选择推送到 CMDB
+3. CMDB 创建/upsert → _id=def，回写 monitor_id
+4. 监控存 cmdb_id=def</div>
+      <div class="ids">
+        <div class="id-card missing">
+          <div class="name">节点管理 <span class="pill off">无</span></div>
+          <div class="row">—</div>
+        </div>
+        <div class="id-card">
+          <div class="name">CMDB</div>
+          <div class="row"><b>cmdb_id</b>=def</div>
+          <div class="row"><b>monitor_id</b>=m-888</div>
+          <div class="row"><b>node_id</b>=∅</div>
+        </div>
+        <div class="id-card">
+          <div class="name">监控中心</div>
+          <div class="row"><b>monitor_id</b>=m-888</div>
+          <div class="row"><b>cmdb_id</b>=def</div>
+          <div class="row"><b>node_id</b>=∅</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 4 ui -->
+    <section class="panel" data-id="ui">
+      <h3>页面行为清单</h3>
+      <table>
+        <thead><tr><th>场景</th><th>行为</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>创建节点</td>
+            <td>按已售模块默认勾选推送目标；用户可取消</td>
+          </tr>
+          <tr>
+            <td>创建时不推</td>
+            <td>详情里再点推送；或对端手建后再推（形态②/③）</td>
+          </tr>
+          <tr>
+            <td>已有未推节点</td>
+            <td>详情统一入口勾选目标补推</td>
+          </tr>
+          <tr>
+            <td>已同步</td>
+            <td>展示关联 ID；提供「重新同步」（幂等 upsert）</td>
+          </tr>
+          <tr>
+            <td>改 IP/名称等</td>
+            <td>不自动推；可提示未同步变更</td>
+          </tr>
+          <tr>
+            <td>删/卸节点</td>
+            <td>确认是否 lifecycle 退役已关联 CMDB/监控（默认归档/停采）</td>
+          </tr>
+          <tr>
+            <td>推送内容</td>
+            <td>全量事实 + 已知关联 ID；目标白名单覆盖</td>
+          </tr>
+          <tr>
+            <td>拉取节点同步</td>
+            <td>本能力上线后关闭并退役；存量不靠批量迁移，可对节点再推，由 CMDB 按对象规则认领并填 node_id</td>
+          </tr>
+          <tr>
+            <td>一期对象</td>
+            <td>主机、网络设备、物理服务器 IPMI</td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="callout warn" style="margin-top:14px">
+        <strong>主键时间线：</strong>现阶段跨模块用 CMDB 数字 ID；未来 UUID 迁移完成后再切到 UUID，数字 ID 不丢。
+      </div>
+    </section>
+
+    <footer>
+      BK-Lite · 一期推送联动方案演示 · 规格 specs/changes/node-cmdb-monitor-push-linkage/spec.md
+    </footer>
+  </div>
+
+  <script>
+    const TABS = [
+      { id: "overview", label: "0. 总览" },
+      { id: "full", label: "1. 完整（节点起点）" },
+      { id: "cmdb-manual", label: "2. CMDB 手建" },
+      { id: "monitor-manual", label: "3. 监控手建" },
+      { id: "ui", label: "4. 页面行为" },
+    ];
+    let idx = 0;
+    const tabsEl = document.getElementById("tabs");
+    tabsEl.innerHTML = TABS.map((t, i) =>
+      `<button type="button" class="tab${i === 0 ? " active" : ""}" data-i="${i}">${t.label}</button>`
+    ).join("");
+
+    function show(i) {
+      idx = i;
+      document.querySelectorAll(".tab").forEach((b, bi) => b.classList.toggle("active", bi === i));
+      document.querySelectorAll(".panel").forEach((p) => {
+        p.classList.toggle("active", p.dataset.id === TABS[i].id);
+      });
+      history.replaceState(null, "", "#" + TABS[i].id);
+    }
+    tabsEl.querySelectorAll(".tab").forEach((b) =>
+      b.addEventListener("click", () => show(Number(b.dataset.i)))
+    );
+    document.addEventListener("keydown", (e) => {
+      const n = Number(e.key);
+      if (n >= 0 && n <= 4) show(n);
+      if (e.key === "ArrowRight" && idx < TABS.length - 1) show(idx + 1);
+      if (e.key === "ArrowLeft" && idx > 0) show(idx - 1);
+    });
+    const hash = location.hash.replace(/^#/, "");
+    const hi = TABS.findIndex((t) => t.id === hash);
+    if (hi >= 0) show(hi);
+  </script>
+</body>
+</html>

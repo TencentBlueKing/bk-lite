@@ -36,6 +36,9 @@ from apps.cmdb.services.node_mgmt_sync_raw import (
 from apps.core.logger import cmdb_logger as logger
 from apps.rpc.node_mgmt import NodeMgmt
 
+# 推送联动上线后关闭拉取同步；紧急回退时可改为 False 临时恢复拉同步。
+PUSH_LINKAGE_REPLACES_PULL_SYNC = True
+
 
 def _get_positive_int_env(name, default):
     try:
@@ -64,6 +67,7 @@ class NodeMgmtSyncService:
     REASON_TIMEOUT = "RUN_TIMEOUT"
     REASON_NODE_SOURCE_EMPTY = "NODE_SOURCE_EMPTY"
     REASON_NO_VALID_NODES = "NO_VALID_NODES"
+    REASON_PUSH_LINKAGE_REPLACES_PULL = "PUSH_LINKAGE_REPLACES_PULL"
     TERMINAL_STATUSES = (
         NodeMgmtSyncRun.STATUS_SUCCESS,
         NodeMgmtSyncRun.STATUS_PARTIAL_SUCCESS,
@@ -1951,6 +1955,25 @@ class NodeMgmtSyncService:
 
     @classmethod
     def sync_hosts(cls) -> dict[str, Any]:
+        if PUSH_LINKAGE_REPLACES_PULL_SYNC:
+            logger.info(
+                "[NodeMgmtSync] 拉取同步已关闭（推送联动已接管），跳过 sync_hosts reason=%s",
+                cls.REASON_PUSH_LINKAGE_REPLACES_PULL,
+            )
+            task_config = cls.get_task()
+            current_time = now()
+            run = NodeMgmtSyncRun.objects.create(
+                task=task_config,
+                run_type=NodeMgmtSyncRun.RUN_TYPE_SYNC,
+                status=NodeMgmtSyncRun.STATUS_BLOCKED,
+                reason_code=cls.REASON_PUSH_LINKAGE_REPLACES_PULL,
+                started_at=current_time,
+                finished_at=current_time,
+                summary_json={"skipped": True},
+                detail_json={"message": "拉取同步已由推送联动替代，已跳过"},
+            )
+            return cls.serialize_run(run)
+
         logger.info("[NodeMgmtSync] ========== 开始同步节点管理主机 ==========")
         task_config = cls.get_task()
         logger.info(
