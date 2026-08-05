@@ -177,6 +177,9 @@ class EventAlertManager:
         """
         if not self.policy.notice:
             return
+        pending_alert_ids = [alert.id for alert in [*new_alerts, *upgraded_alerts]]
+        if pending_alert_ids:
+            MonitorAlert.objects.filter(id__in=pending_alert_ids).update(alert_center_notified=False)
         if new_alerts:
             transaction.on_commit(lambda: AlertLifecycleNotifier(self.policy).notify_alerts(new_alerts, action="created"))
         if upgraded_alerts:
