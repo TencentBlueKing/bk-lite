@@ -6,6 +6,7 @@ from apps.core.mixinx import EncryptMixin
 from apps.patch_mgmt.constants import PatchSourceType
 from apps.patch_mgmt.models import PatchSource
 from apps.patch_mgmt.serializers.permission import PatchPermissionSerializer
+from apps.patch_mgmt.utils.architecture import X86_64, UnsupportedArchitecture, normalize_architecture
 from apps.patch_mgmt.utils.i18n import serializer_message
 
 
@@ -51,6 +52,25 @@ def validate_wsus_credentials(serializer, attrs, instance=None):
     return attrs
 
 
+def normalize_source_architecture(serializer, attrs, instance=None):
+    """补丁源只保存平台规范架构；WSUS 源不绑定单一架构。"""
+    source_type = attrs.get("source_type", getattr(instance, "source_type", None))
+    if source_type == PatchSourceType.WSUS:
+        attrs["arch"] = ""
+        return attrs
+    if source_type not in PatchSourceType.LINUX_TYPES:
+        return attrs
+
+    value = attrs.get("arch", getattr(instance, "arch", ""))
+    try:
+        attrs["arch"] = normalize_architecture(value, default=X86_64)
+    except UnsupportedArchitecture as exc:
+        raise serializers.ValidationError(
+            {"arch": serializer_message(serializer, "error.unsupported_architecture", "Only x86_64 and ARM64 are supported")}
+        ) from exc
+    return attrs
+
+
 class PatchSourceConnectivitySerializer(serializers.Serializer):
     """校验尚未保存的补丁源连接参数。"""
 
@@ -65,7 +85,8 @@ class PatchSourceConnectivitySerializer(serializers.Serializer):
     auth_password = serializers.CharField(required=False, allow_blank=True, default="")
 
     def validate(self, attrs):
-        return validate_wsus_credentials(self, attrs, self.instance)
+        attrs = validate_wsus_credentials(self, attrs, self.instance)
+        return normalize_source_architecture(self, attrs, self.instance)
 
 
 def infer_distro_name(source_type: str, url: str) -> str:
@@ -106,6 +127,7 @@ class PatchSourceSerializer(PatchPermissionSerializer):
         source="get_connectivity_status_display", read_only=True
     )
     auth_password = serializers.CharField(write_only=True, required=False, allow_blank=True)
+    arch = serializers.CharField(required=False, allow_blank=True)
     has_auth_password = serializers.SerializerMethodField()
     permission_key = "patch_source"
 
@@ -154,7 +176,13 @@ class PatchSourceSerializer(PatchPermissionSerializer):
 
     def validate_source_type(self, value: str) -> str:
         if value not in MVP_SOURCE_TYPES:
-            raise serializers.ValidationError(serializer_message(self, "error.unsupported_source_type", "Only WSUS, yum repo, dnf repo, and apt repo are supported in the MVP"))
+            raise serializers.ValidationError(
+                serializer_message(
+                    self,
+                    "error.unsupported_source_type",
+                    "Only WSUS, yum repo, dnf repo, and apt repo are supported in the MVP",
+                )
+            )
         return value
 
     def validate_name(self, value):
@@ -172,11 +200,19 @@ class PatchSourceSerializer(PatchPermissionSerializer):
         if self.instance:
             qs = qs.exclude(pk=self.instance.pk)
         if qs.exists():
-            raise serializers.ValidationError(serializer_message(self, "error.duplicate_source_name", "A patch source with the same name already exists"))
+            raise serializers.ValidationError(
+                serializer_message(
+                    self,
+                    "error.duplicate_source_name",
+                    "A patch source with the same name already exists",
+                )
+            )
         return value
 
     def validate(self, attrs):
-        attrs = validate_wsus_credentials(self, attrs, self.instance)
+        instance = getattr(self, "instance", None)
+        attrs = validate_wsus_credentials(self, attrs, instance)
+        attrs = normalize_source_architecture(self, attrs, instance)
         source_type = attrs.get("source_type")
         url = attrs.get("url", "")
         if source_type and source_type in MVP_SOURCE_TYPES and not attrs.get("distro_name"):

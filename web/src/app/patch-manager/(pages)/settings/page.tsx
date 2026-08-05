@@ -16,6 +16,11 @@ import styles from './page.module.scss';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import { useTranslation } from '@/utils/i18n';
 import { createListRequestCoordinator } from '@/app/patch-manager/utils/list-request-coordinator';
+import {
+  formatSourceApplicableScope,
+  LINUX_ARCHITECTURE_OPTIONS,
+  normalizeArchitecture,
+} from '@/app/patch-manager/constants/architecture';
 
 const SOURCE_TYPE_OPTIONS: { label: string; value: PatchSourceType }[] = [
   { label: 'WSUS', value: 'wsus' },
@@ -143,6 +148,7 @@ function SourcesTab({ activeKey }: { activeKey: string }) {
     form.resetFields();
     form.setFieldsValue(record ? {
       ...record,
+      arch: normalizeArchitecture(record.arch),
       proxy: proxyStr,
       auth_password: record.has_auth_password ? SAVED_SECRET : undefined,
     } : { name: '', source_type: 'wsus', url: '', proxy: '', is_enabled: true });
@@ -162,6 +168,7 @@ function SourcesTab({ activeKey }: { activeKey: string }) {
     }
     const payload: Record<string, any> = { ...values, proxy_host: proxyHost, proxy_port: proxyPort };
     delete payload.proxy;
+    if (payload.source_type === 'wsus') delete payload.arch;
     if (
       payload.auth_password === SAVED_SECRET
       || (editingSource?.has_auth_password && !payload.auth_password)
@@ -291,10 +298,13 @@ function SourcesTab({ activeKey }: { activeKey: string }) {
       ),
     },
     {
-      title: t('patchManager.settingsPage.applicableSystem'),
-      width: 180,
+      title: t('patchManager.settingsPage.applicableScope'),
+      width: 220,
       ellipsis: true,
-      render: (_: unknown, r: PatchSource) => r.distro_name || r.os_version || r.arch || '—',
+      render: (_: unknown, r: PatchSource) => formatSourceApplicableScope(
+        r,
+        t('patchManager.settingsPage.wsusApplicableScope'),
+      ),
     },
     {
       title: t('patchManager.operation'),
@@ -411,17 +421,24 @@ function SourcesTab({ activeKey }: { activeKey: string }) {
           )}
           {sourceType !== 'wsus' && (
             <>
-              <Form.Item label={t('patchManager.settingsPage.applicableSystem')} name="distro_name" rules={[{ required: true, message: t('patchManager.settingsPage.applicableSystemRequired') }]}>
-                <Input placeholder={t('patchManager.settingsPage.applicableSystemPlaceholder')} />
+              <Form.Item label={t('patchManager.distro')} name="distro_name" rules={[{ required: true, message: t('patchManager.settingsPage.distroRequired') }]}>
+                <Input placeholder={t('patchManager.settingsPage.distroPlaceholder')} />
               </Form.Item>
               <Form.Item label={t('patchManager.osVersion')} name="os_version">
                 <Input placeholder={t('patchManager.settingsPage.osVersionPlaceholder')} />
               </Form.Item>
+              <Form.Item
+                label={t('patchManager.arch')}
+                name="arch"
+                rules={[{ required: true, message: t('patchManager.libraryPage.archRequired') }]}
+              >
+                <Select
+                  placeholder={t('patchManager.settingsPage.archPlaceholder')}
+                  options={LINUX_ARCHITECTURE_OPTIONS}
+                />
+              </Form.Item>
             </>
           )}
-          <Form.Item label={t('patchManager.arch')} name="arch">
-            <Input placeholder={t('patchManager.settingsPage.archPlaceholder')} />
-          </Form.Item>
           <Form.Item label={t('patchManager.enabled')} name="is_enabled" valuePropName="checked">
             <Switch />
           </Form.Item>

@@ -26,6 +26,11 @@ import requests
 
 from apps.patch_mgmt.constants import PatchSourceType
 from apps.patch_mgmt.models import PatchSource
+from apps.patch_mgmt.utils.architecture import (
+    X86_64,
+    normalize_architecture,
+    repository_package_applies,
+)
 
 logger = logging.getLogger("app")
 
@@ -168,4 +173,22 @@ def fetch_advisories(source: PatchSource) -> List[ParsedAdvisory]:
             data = gzip.decompress(data)
         except OSError as exc:
             raise RepoSyncError(f"updateinfo 解压失败: {exc}")
-    return _parse_updateinfo(data)
+    parsed_advisories = _parse_updateinfo(data)
+    canonical_arch = normalize_architecture(source.arch, default=X86_64)
+    advisories = []
+    for advisory in parsed_advisories:
+        applicable_packages = []
+        for package in advisory.packages:
+            if not repository_package_applies(
+                package.arch,
+                source_type=source.source_type,
+                target_architecture=canonical_arch,
+            ):
+                continue
+            package.arch = canonical_arch
+            applicable_packages.append(package)
+        if not applicable_packages:
+            continue
+        advisory.packages = applicable_packages
+        advisories.append(advisory)
+    return advisories

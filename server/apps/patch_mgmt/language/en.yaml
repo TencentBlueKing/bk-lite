@@ -40,6 +40,7 @@ error:
   duplicate_baseline_name: "A baseline with the same name already exists"
   duplicate_target_name: "A target with the same name already exists"
   invalid_choice: "Not a valid choice."
+  unsupported_architecture: "Only x86_64 and ARM64 are supported; Windows currently supports x86_64 only."
   invalid_kb_number: "KB number must start with KB followed by digits"
   hour_interval_range: "The hourly interval must be between 1 and 24"
   weekday_range: "The weekday must be between 1 and 7"
