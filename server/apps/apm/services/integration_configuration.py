@@ -124,7 +124,7 @@ class DjangoIntegrationConfigurationService:
         instance_expression = {
             "kubernetes": "${POD_UID:?POD_UID is required}",
             "docker": "${HOSTNAME:?container instance id is required}",
-            "host": "${BK_INSTANCE_ID:?stable platform instance id is required}",
+            "host": "${APM_INSTANCE_ID:-$(cat /proc/sys/kernel/random/uuid 2>/dev/null || uuidgen)}",
         }.get(request.runtime, "${APM_INSTANCE_ID:-$(uuidgen)}")
         protocol = "http/protobuf"
 
@@ -224,7 +224,10 @@ class DjangoIntegrationConfigurationService:
                 )
             )
         else:
-            export_lines = [f'export OTEL_SERVICE_INSTANCE_ID="{instance_expression}"']
+            export_lines = []
+            if request.runtime == "host":
+                export_lines.append("# 实例 ID 默认随进程启动生成 UUID；如需跨重启保持不变，请预先设置 APM_INSTANCE_ID")
+            export_lines.append(f'export OTEL_SERVICE_INSTANCE_ID="{instance_expression}"')
             for key, value in environment.items():
                 if key == "OTEL_RESOURCE_ATTRIBUTES":
                     export_lines.append(f"export {key}={resource_assignment}")
