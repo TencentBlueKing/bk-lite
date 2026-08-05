@@ -14,7 +14,7 @@ import type {
   NodeConfigFormValues,
   TopologyNodeData,
 } from '@/app/ops-analysis/types/topology';
-import { iconList } from '@/app/cmdb/utils/common';
+import { getModelIconUrl, DEFAULT_MODEL_ICON_URL } from '@/app/cmdb/utils/modelIcon';
 import { NODE_DEFAULTS } from '../constants/nodeDefaults';
 import { useTranslation } from '@/utils/i18n';
 import SelectIcon, {
@@ -71,10 +71,10 @@ const ShapeNodePanel: React.FC<NodeConfPanelProps> = ({
   }, [nodeType]);
 
   const getIconUrl = useCallback((iconKey: string) => {
-    const iconItem = iconList.find((item) => item.key === iconKey);
-    return iconItem
-      ? `/assets/icons/${iconItem.url}.svg`
-      : `/assets/icons/cc-default_默认.svg`;
+    if (!iconKey) {
+      return DEFAULT_MODEL_ICON_URL;
+    }
+    return getModelIconUrl({ icn: iconKey, model_id: '' });
   }, []);
 
   const initializeNewNode = useCallback(() => {
@@ -215,7 +215,7 @@ const ShapeNodePanel: React.FC<NodeConfPanelProps> = ({
   const handleSelectIcon = useCallback(() => {
     selectIconRef.current?.showModal({
       title: t('topology.nodeConfig.selectIcon'),
-      defaultIcon: selectedIcon || 'server',
+      defaultIcon: selectedIcon || 'cc-host',
     });
   }, [selectedIcon, t]);
 

@@ -10,7 +10,7 @@ import {
   resolveConfiguredNodeSize,
   resolveNodePosition,
 } from './nodeStyleUtils';
-import { iconList } from '@/app/cmdb/utils/common';
+import { getModelIconUrl, DEFAULT_MODEL_ICON_URL } from '@/app/cmdb/utils/modelIcon';
 import type {
   TopologyNodeData,
   BaseNodeData,
@@ -25,7 +25,19 @@ const NODE_TYPE_MAP = {
   'basic-shape': 'basic-shape-node'
 } as const;
 
-const DEFAULT_ICON_PATH = '/assets/icons/cc-default_默认.svg';
+const DEFAULT_ICON_PATH = DEFAULT_MODEL_ICON_URL;
+
+const getIconUrl = (nodeConfig: TopologyNodeData): string => {
+  if (nodeConfig.logoType === 'default' && nodeConfig.logoIcon) {
+    return getModelIconUrl({ icn: nodeConfig.logoIcon, model_id: '' });
+  }
+
+  if (nodeConfig.logoType === 'custom' && nodeConfig.logoUrl) {
+    return nodeConfig.logoUrl;
+  }
+
+  return DEFAULT_ICON_PATH;
+};
 
 const registerIconNode = () => {
   const { ICON_NODE } = NODE_DEFAULTS;
@@ -224,24 +236,6 @@ export const registerNodes = () => {
 
 export const getRegisteredNodeShape = (nodeType: string): string => {
   return NODE_TYPE_MAP[nodeType as keyof typeof NODE_TYPE_MAP] || 'icon-node';
-};
-
-const getIconUrl = (nodeConfig: TopologyNodeData): string => {
-  if (nodeConfig.logoType === 'default' && nodeConfig.logoIcon) {
-    if (iconList) {
-      const iconItem = iconList.find(item => item.key === nodeConfig.logoIcon);
-      if (iconItem) {
-        return `/assets/icons/${iconItem.url}.svg`;
-      }
-    }
-    return `/assets/icons/${nodeConfig.logoIcon}.svg`;
-  }
-
-  if (nodeConfig.logoType === 'custom' && nodeConfig.logoUrl) {
-    return nodeConfig.logoUrl;
-  }
-
-  return DEFAULT_ICON_PATH;
 };
 
 const createIconNode = (nodeConfig: TopologyNodeData, baseNodeData: BaseNodeData): CreatedNodeConfig => {
