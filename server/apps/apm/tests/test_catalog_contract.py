@@ -3,7 +3,13 @@ from datetime import timedelta
 import pytest
 from django.utils import timezone
 
-from apps.apm.models import ApmApplication, ApmService, ApmServiceInstance, ApmServiceOrganization
+from apps.apm.models import (
+    ApmApplication,
+    ApmApplicationOrganization,
+    ApmService,
+    ApmServiceInstance,
+    ApmServiceOrganization,
+)
 from apps.apm.services import DjangoApmApplicationService, DjangoTelemetryCatalogService
 from apps.apm.services.contracts import CatalogDiscovery
 from apps.apm.tests.helpers import create_application
@@ -27,19 +33,47 @@ def test_service_and_instance_are_discovered_under_a_known_application():
     assert set(result.instance.organization_links.values_list("organization", flat=True)) == {10, 20}
 
 
-def test_unknown_or_disabled_application_cannot_create_catalog_rows():
-    disabled = create_application("disabled", (10,))
-    disabled.is_enabled = False
-    disabled.save(update_fields=("is_enabled", "updated_at"))
+def test_unknown_application_cannot_create_catalog_rows():
     catalog = DjangoTelemetryCatalogService()
 
     with pytest.raises(ApmApplication.DoesNotExist):
         catalog.discover(CatalogDiscovery("unknown", "checkout", "pod-a", "prod"))
-    with pytest.raises(ApmApplication.DoesNotExist):
-        catalog.discover(CatalogDiscovery("disabled", "checkout", "pod-a", "prod"))
 
     assert ApmService.objects.count() == 0
     assert ApmServiceInstance.objects.count() == 0
+
+
+def test_empty_namespace_is_discovered_under_builtin_application():
+    application = ApmApplication.objects.get(application_id="", is_builtin=True)
+    ApmApplicationOrganization.objects.create(application=application, organization=10)
+
+    result = DjangoTelemetryCatalogService().discover(
+        CatalogDiscovery("", "kernel-worker", "node-a", "prod")
+    )
+
+    assert result.service.application == application
+    assert result.service.namespace == ""
+    assert set(result.service.organization_links.values_list("organization", flat=True)) == {10}
+
+
+def test_builtin_application_tracks_the_current_application_organization_union():
+    shop = create_application("shop", (10,))
+    create_application("billing", (20,))
+    uncategorized = DjangoTelemetryCatalogService().discover(
+        CatalogDiscovery("", "kernel-worker", "node-a", "prod")
+    ).service
+
+    DjangoApmApplicationService().update(
+        shop.id,
+        name=shop.name,
+        description="",
+        organization_ids=[30],
+        actor="tester",
+    )
+
+    builtin = ApmApplication.objects.get(is_builtin=True)
+    assert set(builtin.organization_links.values_list("organization", flat=True)) == {20, 30}
+    assert set(uncategorized.organization_links.values_list("organization", flat=True)) == {20, 30}
 
 
 def test_missing_instance_identity_discovers_service_without_fake_instance():
@@ -68,7 +102,6 @@ def test_application_organization_changes_sync_services_and_only_inherited_insta
         description="",
         organization_ids=[30],
         actor="tester",
-        is_enabled=True,
     )
     custom.refresh_from_db()
     inherited.service.refresh_from_db()
@@ -97,7 +130,6 @@ def test_application_organization_sync_rolls_back_all_catalog_levels(mocker):
             description="",
             organization_ids=[30],
             actor="tester",
-            is_enabled=True,
         )
 
     application.refresh_from_db()

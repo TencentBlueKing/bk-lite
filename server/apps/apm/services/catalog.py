@@ -39,7 +39,6 @@ class DjangoTelemetryCatalogService:
         seen_at = discovery.seen_at or timezone.now()
         application = ApmApplication.objects.select_for_update().get(
             application_id=normalized_namespace,
-            is_enabled=True,
         )
         missing_instance_identity = not normalize_identity(discovery.instance_id)
         application_organizations = tuple(

@@ -2,7 +2,7 @@ import logging
 from dataclasses import asdict
 
 from django.db import transaction
-from django.db.models import Count, Prefetch, QuerySet
+from django.db.models import Count, Prefetch, Q, QuerySet
 from django.utils import timezone
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
@@ -87,7 +87,10 @@ class ApmApplicationViewSet(viewsets.GenericViewSet):
 
     def get_queryset(self) -> QuerySet[ApmApplication]:
         queryset = ApmApplication.objects.prefetch_related("organization_links").annotate(service_count=Count("services", distinct=True))
-        return filter_current_organization(queryset, self.request, "organization_links")
+        organization_id = current_organization_id(self.request)
+        if organization_id is None:
+            return queryset.none()
+        return queryset.filter(Q(is_builtin=True) | Q(organization_links__organization=organization_id)).distinct()
 
     @HasPermission("applications-View,integration_add-View")
     def list(self, request, *args, **kwargs):
@@ -112,13 +115,14 @@ class ApmApplicationViewSet(viewsets.GenericViewSet):
             description=data.get("description", ""),
             organization_ids=data["organization_ids"],
             actor=request.user.username,
-            is_enabled=data.get("is_enabled", True),
         )
         return Response(self.get_serializer(application).data, status=status.HTTP_201_CREATED)
 
     @HasPermission("applications-Operate")
     def update(self, request, *args, **kwargs):
         application = self.get_object()
+        if application.is_builtin:
+            return Response({"detail": "内置应用不可修改。"}, status=status.HTTP_409_CONFLICT)
         serializer = ApplicationMutationSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
@@ -132,7 +136,6 @@ class ApmApplicationViewSet(viewsets.GenericViewSet):
             description=data.get("description", ""),
             organization_ids=data["organization_ids"],
             actor=request.user.username,
-            is_enabled=data.get("is_enabled", application.is_enabled),
         )
         return Response(self.get_serializer(updated).data)
 
@@ -163,7 +166,7 @@ class ApmIntegrationConfigurationViewSet(viewsets.GenericViewSet):
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
         applications = filter_current_organization(
-            ApmApplication.objects.filter(is_enabled=True),
+            ApmApplication.objects.filter(is_builtin=False),
             request,
             "organization_links",
         )

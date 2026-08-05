@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AppstoreAddOutlined, EditOutlined, PlusOutlined, SearchOutlined } from '@ant-design/icons';
-import { Button, Form, Input, message, Modal, Switch, Table, Tag, Typography, type TableColumnsType } from 'antd';
+import { Button, Form, Input, message, Modal, Table, Tag, Typography, type TableColumnsType } from 'antd';
 import dayjs from 'dayjs';
 import useApmApi from '@/app/apm/api';
 import ApmRouteShell, { ApmSurface } from '@/app/apm/components/apm-route-shell';
@@ -47,7 +47,7 @@ export default function ApmApplicationsPage() {
 
   const openCreate = () => {
     setEditing(null);
-    form.setFieldsValue({ name: '', application_id: '', description: '', organization_ids: [], is_enabled: true });
+    form.setFieldsValue({ name: '', application_id: '', description: '', organization_ids: [] });
     setModalOpen(true);
   };
 
@@ -57,7 +57,6 @@ export default function ApmApplicationsPage() {
       name: application.name,
       description: application.description,
       organization_ids: application.organization_ids,
-      is_enabled: application.is_enabled,
     });
     setModalOpen(true);
   };
@@ -98,7 +97,9 @@ export default function ApmApplicationsPage() {
           </span>
           <div className="min-w-0">
             <Typography.Text strong className="block">{item.name}</Typography.Text>
-            <Typography.Text type="secondary" className="block font-mono text-xs">{item.application_id}</Typography.Text>
+            <Typography.Text type="secondary" className="block font-mono text-xs">
+              {item.is_builtin ? '空 namespace' : item.application_id}
+            </Typography.Text>
           </div>
         </div>
       ),
@@ -109,20 +110,25 @@ export default function ApmApplicationsPage() {
       title: '组织', dataIndex: 'organization_ids', width: 180, responsive: ['lg'],
       render: (values: number[]) => values.map((id) => <Tag bordered={false} key={id}>{groupNames.get(id) ?? `#${id}`}</Tag>),
     },
-    { title: '状态', dataIndex: 'is_enabled', width: 100, render: (value) => <Tag color={value ? 'success' : 'default'}>{value ? '启用' : '停用'}</Tag> },
+    {
+      title: '类型', key: 'type', width: 100,
+      render: (_, item) => <Tag color={item.is_builtin ? 'blue' : undefined}>{item.is_builtin ? '内置' : '自定义'}</Tag>,
+    },
     { title: '更新时间', dataIndex: 'updated_at', width: 170, responsive: ['xl'], render: (value) => dayjs(value).format('YYYY-MM-DD HH:mm') },
     {
       title: '操作', key: 'action', width: 90, align: 'right',
-      render: (_, item) => (
-        <Permission requiredPermissions={['Operate']} permissionPath="/apm/integration/applications">
-          <Button type="link" size="small" icon={<EditOutlined />} onClick={() => openEdit(item)}>编辑</Button>
-        </Permission>
-      ),
+      render: (_, item) => item.is_builtin
+        ? <Typography.Text type="secondary">系统维护</Typography.Text>
+        : (
+          <Permission requiredPermissions={['Operate']} permissionPath="/apm/integration/applications">
+            <Button type="link" size="small" icon={<EditOutlined />} onClick={() => openEdit(item)}>编辑</Button>
+          </Permission>
+        ),
     },
   ];
 
   return (
-    <ApmRouteShell title="应用管理" description="维护 APM 应用边界；应用 ID 将写入遥测属性 service.namespace。">
+    <ApmRouteShell title="应用管理" description="维护 APM 应用边界；空 namespace 的服务自动归入内置未归类应用。">
       {messageContextHolder}
       <div className="flex flex-col gap-3">
         <ApmSurface padding="compact">
@@ -152,9 +158,6 @@ export default function ApmApplicationsPage() {
           </Form.Item>
           <Form.Item name="organization_ids" label="组织" rules={[{ required: true, type: 'array', min: 1, message: '至少选择一个组织' }]}>
             <GroupTreeSelect multiple mode="ownership" showSearch placeholder="选择可管理此应用的组织" />
-          </Form.Item>
-          <Form.Item name="is_enabled" label="允许发现新服务" valuePropName="checked">
-            <Switch checkedChildren="启用" unCheckedChildren="停用" />
           </Form.Item>
         </Form>
       </Modal>

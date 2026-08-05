@@ -40,7 +40,7 @@ APM、Monitor、Log 是同级产品域：Monitor 只使用 VictoriaMetrics，APM
 
 ## 领域与身份不变量
 
-- APM 应用由用户创建；`service.namespace` 必须等于一个已启用且当前可见的应用 ID，未知或禁用应用不得进入目录，并产生有界诊断计数/日志。
+- 普通 APM 应用由用户创建；平台提供不可删改的内置“未归类应用”。非空 `service.namespace` 必须等于一个当前可见的普通应用 ID，空值归入未归类应用，非空未知值不得进入目录并产生有界诊断计数/日志。
 - APM 服务由 `service.namespace + service.name` 发现；实例由服务身份 + `service.instance.id` 发现；版本和环境是查询维度。
 - 区域 Collector 删除客户端提交的全部 `bk.*` 保留属性后注入可信 `bk.cloud_region.id`。组织 ID、NATS 凭据和 endpoint 不进入 Span。
 - 应用组织更新必须在一个事务内同步继承态实例和该应用下服务的 `ApmServiceOrganization`；自定义实例组织仍不被覆盖。
@@ -145,7 +145,8 @@ VT 开启 `-servicegraph.enableTask=true`。拓扑使用 dependencies 接口，�
 ## 运行期发现、评估与一致性
 
 - 目录对账、服务 RED、端点、SLO 和策略任务全部切到 `TelemetryStore`；不改变 Django 模型和 ADR 0004 告警生命周期。
-- 目录只接纳 `service.namespace` 对应已启用应用的数据。未知/禁用 namespace 逐项跳过，不阻断同批有效应用，并更新 `unknown_application` 诊断计数与采样日志。
+- 目录接纳 `service.namespace` 对应已有应用的数据，并把空 namespace 归入内置“未归类应用”。非空未知 namespace 逐项跳过，不阻断同批有效应用，并更新 `unknown_application` 诊断计数与采样日志。
+- “未归类应用”复用现有应用组织过滤，其组织范围始终是普通 APM 应用当前组织的并集；组织变化同时同步到已发现的未归类服务和继承态实例。
 - VT 查询失败保留原始异常类型和稳定错误码，运行期有界重试；失败不能推进归档游标、触发/恢复告警或把 SLO 标成 no_data。
 - 应用组织更新在事务锁内重读应用，原子替换应用组织、继承态实例组织和服务组织；失败整体回滚。
 
@@ -171,6 +172,8 @@ APM 健康模型包含：区域 Collector 接收/清洗、本地发布队列、N
 4. 停止 APM spanmetrics/VM 写入，再切目录/RED/SLO/策略读取到 VT；观察至少一个最大策略窗口后才清理 APM 专用 VM 配置。Monitor 的 VM 数据、配置和保留期绝不删除。
 5. 删除 compose 中 Edge、standalone VM、APM VM env/健康项和旧 tail-sampling 配置。旧镜像/配置至少保留一个发布窗口，可通过回滚镜像与恢复旧路由恢复；VT 全量数据不删除。
 
+应用模型升级时创建内置“未归类应用”、回填空 namespace 服务并移除应用启用字段。数据库降级只移除内置标识字段，保留该应用、组织关系和目录数据，避免回滚过程删除可恢复的历史目录。
+
 迁移失败时停止切流并恢复上一版本区域入口/读路径。Stream 和 VT 数据属于可恢复运行数据，删除或缩短保留期是运维显式操作，不由应用升级执行。
 
 ## 容量模型
@@ -192,6 +195,7 @@ TDD 只在以下已确认 interface 上测试，不耦合内部实现：
 2. 自定义 Collector 的 exporter/receiver：OTLP Protobuf、Subject、headers、publish ACK、显式 ACK、重投、清洗和资源边界。
 3. `TelemetryStore`：受控 VT 请求构造、映射、去重、no_data/degraded、目录/RED/SLO/策略/错误/拓扑。
 4. APM Web 接入页：区域选择、空/错/权限态、表单、复制和 Storybook/生产一致性。
+5. APM 应用与目录：内置标识和不可修改、空 namespace 归类、非空未知 namespace 拒绝，以及 Web 只读呈现。
 
 ### 分阶段实施清单
 
@@ -206,7 +210,7 @@ TDD 只在以下已确认 interface 上测试，不耦合内部实现：
 
 - HTTP 以及 Collector 支持的 gRPC OTLP 从区域入口经真实 JetStream 到 VT 成功，链路中无 Edge、VM、spanmetrics、tail sampling。
 - NATS 断开时区域本地持久排队并恢复；中心停止时 Stream 有界积压并恢复；VT 不可用时消息不 ACK；达到上限/max-delivery 有指标和确定语义。
-- 同一消息重投不产生目录重复，RED/SLO/策略对唯一 Span 的统计不双计；未知应用不入目录且可诊断。
+- 同一消息重投不产生目录重复，RED/SLO/策略对唯一 Span 的统计不双计；空 namespace 进入内置未归类应用，非空未知应用不入目录且可诊断。
 - 全量请求数、错误率、P95/P99、服务/版本/实例发现、Trace、依赖图和 SLO 由 VT 数据对账正确。
 - Web 可选择有权限云区域、显示服务端 endpoint、生成并安全复制配置；缺配置和越权有明确状态；Storybook 不再出现 `/telegraf/api` 或 hostname 拼接。
 - 使用 Makefile 启停 Server API/Worker/Beat/Listener；启动前无重复进程。外部数据面停止不阻断启动，只产生 APM degraded。
