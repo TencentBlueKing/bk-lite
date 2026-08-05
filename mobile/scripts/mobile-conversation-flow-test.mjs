@@ -170,7 +170,8 @@ test('搜索应用卡和返回操作可通过语义化按钮访问', async () =>
   assert.match(search, /<button\s+type="button"\s+key=\{item\.id\}/);
   assert.match(search, /aria-label=\{t\('common\.back'\)\}/);
   assert.match(search, /min-h-11 min-w-11/);
-  assert.match(search, /backgroundColor: 'var\(--color-success\)'/);
+  assert.match(search, /getAppTagColor\(tag\)/);
+  assert.match(search, /backgroundColor: tagColor\.bg/);
 });
 
 test('智能应用、对话和我的页面共用一级标题样式', async () => {
