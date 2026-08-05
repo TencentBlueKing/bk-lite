@@ -52,6 +52,7 @@ class CatalogReconcileResult:
     archived_services: int
     archived_instances: int
     unknown_applications: int = 0
+    invalid_activities: int = 0
 
 
 @dataclass(frozen=True)

@@ -1,6 +1,6 @@
 import shlex
 from dataclasses import dataclass
-from urllib.parse import urlsplit
+from urllib.parse import quote, urlsplit
 
 from django.core.exceptions import ValidationError
 from django.core.validators import URLValidator
@@ -23,6 +23,91 @@ class CloudRegionEndpoints:
 
 
 OTLP_HTTP_PORT = 4318
+MAX_INSTANCE_ID_LENGTH = 512
+
+
+@dataclass(frozen=True)
+class RuntimeProfile:
+    """单个运行时的身份来源、启动校验和面向操作者的提示。"""
+
+    identity_setup: tuple[str, ...]
+    guidance: str
+    docker_environment: tuple[str, ...] = ()
+
+
+_INSTANCE_ID_VALIDATION = (
+    'case "${OTEL_SERVICE_INSTANCE_ID:-}" in',
+    '  ""|*[!A-Za-z0-9._:-]*) printf "%s\\n" "APM service.instance.id is empty or invalid" >&2; exit 1 ;;',
+    "esac",
+    f'if [ "${{#OTEL_SERVICE_INSTANCE_ID}}" -gt {MAX_INSTANCE_ID_LENGTH} ]; then',
+    '  printf "%s\\n" "APM service.instance.id exceeds 512 characters" >&2',
+    "  exit 1",
+    "fi",
+    "export OTEL_SERVICE_INSTANCE_ID",
+)
+
+
+_RUNTIME_PROFILES = {
+    "host": RuntimeProfile(
+        identity_setup=(
+            "_bk_apm_valid_uuid() {",
+            '  case "$1" in',
+            "    ????????-????-4???-[89aAbB]???-????????????)",
+            '      case "$1" in *[!0-9A-Fa-f-]*) return 1 ;; *) return 0 ;; esac',
+            "      ;;",
+            "  esac",
+            "  return 1",
+            "}",
+            "OTEL_SERVICE_INSTANCE_ID=${APM_INSTANCE_ID:-}",
+            'if [ -z "$OTEL_SERVICE_INSTANCE_ID" ]; then',
+            "  _bk_apm_generated_id=",
+            "  if command -v cat >/dev/null 2>&1; then",
+            "    _bk_apm_generated_id=$(cat /proc/sys/kernel/random/uuid 2>/dev/null) || _bk_apm_generated_id=",
+            "  fi",
+            '  if ! _bk_apm_valid_uuid "$_bk_apm_generated_id"; then',
+            "    _bk_apm_generated_id=",
+            "  fi",
+            '  if [ -z "$_bk_apm_generated_id" ] && command -v uuidgen >/dev/null 2>&1; then',
+            "    _bk_apm_generated_id=$(uuidgen 2>/dev/null) || _bk_apm_generated_id=",
+            '    if ! _bk_apm_valid_uuid "$_bk_apm_generated_id"; then',
+            "      _bk_apm_generated_id=",
+            "    fi",
+            "  fi",
+            "  OTEL_SERVICE_INSTANCE_ID=$_bk_apm_generated_id",
+            "fi",
+            *_INSTANCE_ID_VALIDATION,
+        ),
+        guidance="实例 ID 在应用进程启动时生成；每个副本必须唯一。显式设置 APM_INSTANCE_ID 时，请为每个并发副本使用不同值。",
+    ),
+    "docker": RuntimeProfile(
+        identity_setup=(
+            "OTEL_SERVICE_INSTANCE_ID=${APM_INSTANCE_ID:-${HOSTNAME:-}}",
+            *_INSTANCE_ID_VALIDATION,
+        ),
+        guidance="实例 ID 默认使用容器身份；每个副本必须唯一。显式设置 APM_INSTANCE_ID 时，请为每个并发副本使用不同值。",
+        docker_environment=("APM_INSTANCE_ID",),
+    ),
+    "kubernetes": RuntimeProfile(
+        identity_setup=(
+            "OTEL_SERVICE_INSTANCE_ID=${APM_INSTANCE_ID:-${POD_UID:-}}",
+            *_INSTANCE_ID_VALIDATION,
+        ),
+        guidance="实例 ID 默认使用 Pod UID；每个副本必须唯一。显式设置 APM_INSTANCE_ID 时，请为每个并发副本使用不同值。",
+    ),
+    "other": RuntimeProfile(
+        identity_setup=(
+            "OTEL_SERVICE_INSTANCE_ID=${APM_INSTANCE_ID:-}",
+            *_INSTANCE_ID_VALIDATION,
+        ),
+        guidance="此运行方式需要设置 APM_INSTANCE_ID；每个并发副本必须使用不同值。",
+    ),
+}
+
+
+def _otel_resource_value(value: str) -> str:
+    """按 OTEL_RESOURCE_ATTRIBUTES 语法编码值；Shell literal 由调用方另行处理。"""
+
+    return quote(value, safe="-._~")
 
 
 def _normalize_proxy_address(value: object) -> str:
@@ -121,19 +206,15 @@ class DjangoIntegrationConfigurationService:
         )
 
     def render_snippet(self, request: IngestSnippetRequest) -> IngestSnippet:
-        instance_expression = {
-            "kubernetes": "${POD_UID:?POD_UID is required}",
-            "docker": "${HOSTNAME:?container instance id is required}",
-            "host": "${APM_INSTANCE_ID:-$(cat /proc/sys/kernel/random/uuid 2>/dev/null || uuidgen)}",
-        }.get(request.runtime, "${APM_INSTANCE_ID:-$(uuidgen)}")
+        runtime_profile = _RUNTIME_PROFILES[request.runtime]
         protocol = "http/protobuf"
 
         static_resource = ",".join(
             (
-                f"service.namespace={request.service_namespace}",
-                f"service.name={request.service_name}",
-                f"service.version={request.service_version}",
-                f"deployment.environment={request.environment}",
+                f"service.namespace={_otel_resource_value(request.service_namespace)}",
+                f"service.name={_otel_resource_value(request.service_name)}",
+                f"service.version={_otel_resource_value(request.service_version)}",
+                f"deployment.environment={_otel_resource_value(request.environment)}",
             )
         )
         resource = f"{static_resource},service.instance.id=${{OTEL_SERVICE_INSTANCE_ID}}"
@@ -203,31 +284,32 @@ class DjangoIntegrationConfigurationService:
                 for key, value in {**environment, **runtime_environment}.items()
                 if key != "OTEL_RESOURCE_ATTRIBUTES"
             ]
+            docker_environment.extend(f"  -e {key} \\\n" for key in runtime_profile.docker_environment)
             docker_environment_text = "".join(docker_environment).rstrip(" \\\n")
             start_command = docker_start_commands.get(request.language, "./app")
+            docker_start_script = "\n".join(
+                (
+                    *runtime_profile.identity_setup,
+                    f"export OTEL_RESOURCE_ATTRIBUTES={resource_assignment}; exec {start_command}",
+                )
+            )
             code = "\n".join(
                 (
                     "# 1. 安装探针（将以下命令写入应用 Dockerfile）",
                     image_install_commands.get(request.language, "# Install the selected OpenTelemetry SDK in the image."),
                     "",
                     "# 2. 配置上报（端点与资源属性通过容器环境注入）",
+                    f"# {runtime_profile.guidance}",
                     "docker run \\",
                     docker_environment_text + " \\",
                     "  your-image:latest sh -c \\",
-                    "  "
-                    + shlex.quote(
-                        'export OTEL_SERVICE_INSTANCE_ID="${HOSTNAME:?container instance id is required}"; '
-                        f"export OTEL_RESOURCE_ATTRIBUTES={resource_assignment}; exec {start_command}"
-                    ),
+                    "  " + shlex.quote(docker_start_script),
                     "",
                     "# 3. 启动应用（上面的 docker run 已使用自动探针启动应用）",
                 )
             )
         else:
-            export_lines = []
-            if request.runtime == "host":
-                export_lines.append("# 实例 ID 默认随进程启动生成 UUID；如需跨重启保持不变，请预先设置 APM_INSTANCE_ID")
-            export_lines.append(f'export OTEL_SERVICE_INSTANCE_ID="{instance_expression}"')
+            export_lines = [f"# {runtime_profile.guidance}", *runtime_profile.identity_setup]
             for key, value in environment.items():
                 if key == "OTEL_RESOURCE_ATTRIBUTES":
                     export_lines.append(f"export {key}={resource_assignment}")

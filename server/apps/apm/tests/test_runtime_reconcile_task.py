@@ -2,9 +2,8 @@ import pytest
 
 from apps.apm.config import CELERY_BEAT_SCHEDULE
 from apps.apm.services.contracts import CatalogReconcileResult
-from apps.apm.tasks import probe_apm_runtime_dependencies, reconcile_telemetry_catalog
 from apps.apm.services.health import CATALOG_RECONCILE_HEALTH_KEY, RuntimeDependencyHealthProbe
-
+from apps.apm.tasks import probe_apm_runtime_dependencies, reconcile_telemetry_catalog
 
 pytestmark = pytest.mark.django_db
 
@@ -34,9 +33,7 @@ def test_catalog_reconcile_is_a_runtime_beat_task_and_not_batch_init():
         batch_init = file.read()
         assert "reconcile_telemetry_catalog" not in batch_init
         assert "probe_apm_runtime_dependencies" not in batch_init
-    assert CELERY_BEAT_SCHEDULE["apm_probe_runtime_dependencies"]["task"] == (
-        "apps.apm.tasks.probe_apm_runtime_dependencies"
-    )
+    assert CELERY_BEAT_SCHEDULE["apm_probe_runtime_dependencies"]["task"] == ("apps.apm.tasks.probe_apm_runtime_dependencies")
 
 
 def test_runtime_task_returns_reconcile_health_without_startup_side_effects(mocker):
@@ -57,6 +54,7 @@ def test_runtime_task_returns_reconcile_health_without_startup_side_effects(mock
         "archived_services": 4,
         "archived_instances": 5,
         "unknown_applications": 0,
+        "invalid_activities": 0,
     }
     reconcile.assert_called_once()
     delete.assert_called_once()

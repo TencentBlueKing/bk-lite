@@ -72,3 +72,62 @@ func TestConfigRejectsUntrustedRegionOrUnboundedLimits(t *testing.T) {
 		t.Fatal("zero limits should be rejected")
 	}
 }
+
+func TestSanitizeTracesDropsOversizedIdentityWithoutTruncatingIntoACollision(t *testing.T) {
+	cfg := createDefaultConfig().(*Config)
+	cfg.CloudRegionID = "7"
+	tracesData := ptrace.NewTraces()
+
+	validResourceSpans := tracesData.ResourceSpans().AppendEmpty()
+	validResource := validResourceSpans.Resource().Attributes()
+	validResource.PutStr("service.namespace", "shop")
+	validResource.PutStr("service.name", strings.Repeat("服", 256))
+	validResource.PutStr("service.instance.id", strings.Repeat("实", 512))
+	validResource.PutStr("service.version", strings.Repeat("版", 256))
+	validResource.PutStr("deployment.environment", strings.Repeat("环", 256))
+	validResource.PutStr("custom.long", strings.Repeat("界", 4097))
+
+	invalidResourceSpans := tracesData.ResourceSpans().AppendEmpty()
+	invalidResource := invalidResourceSpans.Resource().Attributes()
+	invalidResource.PutStr("service.namespace", "shop")
+	invalidResource.PutStr("service.name", "checkout")
+	invalidResource.PutStr("service.instance.id", strings.Repeat("x", 513))
+
+	result := sanitizeTraces(tracesData, cfg)
+
+	if result.DroppedResourceSpans != 1 {
+		t.Fatalf("unexpected dropped identity count: %+v", result)
+	}
+	if tracesData.ResourceSpans().Len() != 1 {
+		t.Fatalf("invalid resource spans survived: %d", tracesData.ResourceSpans().Len())
+	}
+	remaining := tracesData.ResourceSpans().At(0).Resource().Attributes()
+	if instance, _ := remaining.Get("service.instance.id"); len([]rune(instance.Str())) != 512 {
+		t.Fatalf("valid identity was truncated: %d", len([]rune(instance.Str())))
+	}
+	if custom, _ := remaining.Get("custom.long"); len([]rune(custom.Str())) != 4096 {
+		t.Fatalf("general attribute limit changed: %d", len([]rune(custom.Str())))
+	}
+}
+
+func TestSanitizeTracesDropsInvalidServiceIdentityButKeepsMissingInstanceForDiagnostics(t *testing.T) {
+	cfg := createDefaultConfig().(*Config)
+	cfg.CloudRegionID = "7"
+	tracesData := ptrace.NewTraces()
+
+	missingInstance := tracesData.ResourceSpans().AppendEmpty()
+	missingInstance.Resource().Attributes().PutStr("service.name", "checkout")
+	invalidName := tracesData.ResourceSpans().AppendEmpty()
+	invalidName.Resource().Attributes().PutStr("service.name", "")
+	invalidType := tracesData.ResourceSpans().AppendEmpty()
+	invalidType.Resource().Attributes().PutInt("service.name", 42)
+
+	result := sanitizeTraces(tracesData, cfg)
+
+	if result.DroppedResourceSpans != 2 || tracesData.ResourceSpans().Len() != 1 {
+		t.Fatalf("identity acceptance mismatch: result=%+v resources=%d", result, tracesData.ResourceSpans().Len())
+	}
+	if _, ok := tracesData.ResourceSpans().At(0).Resource().Attributes().Get("service.instance.id"); ok {
+		t.Fatal("missing instance identity was synthesized")
+	}
+}

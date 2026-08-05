@@ -9,6 +9,7 @@ import ApmRouteShell, { ApmSurface } from '@/app/apm/components/apm-route-shell'
 import CatalogState from '@/app/apm/components/catalog-state';
 import type { ApmApplication, ApmCloudRegion, ApmIngestSnippet, ApmIngestSnippetInput } from '@/app/apm/types';
 import { HandledRequestError } from '@/utils/request';
+import { useTranslation } from '@/utils/i18n';
 
 interface IntegrationMethod {
   key: string;
@@ -86,12 +87,16 @@ async function copyText(value: string) {
   if (navigator.clipboard?.writeText) return navigator.clipboard.writeText(value);
   const textarea = document.createElement('textarea');
   textarea.value = value;
+  textarea.setAttribute('readonly', '');
   textarea.style.position = 'fixed';
   textarea.style.opacity = '0';
   document.body.appendChild(textarea);
-  textarea.select();
-  document.execCommand('copy');
-  document.body.removeChild(textarea);
+  try {
+    textarea.select();
+    if (!document.execCommand('copy')) throw new Error('Browser copy command failed');
+  } finally {
+    textarea.remove();
+  }
 }
 
 function requestErrorMessage(error: unknown) {
@@ -108,6 +113,7 @@ function requestErrorMessage(error: unknown) {
 }
 
 export default function ApmIntegrationAddPage() {
+  const { t } = useTranslation();
   const [messageApi, messageContextHolder] = message.useMessage();
   const [modalApi, modalContextHolder] = Modal.useModal();
   const { getApplications, getCloudRegions, getIngestSnippet, isLoading } = useApmApi();
@@ -186,7 +192,7 @@ export default function ApmIntegrationAddPage() {
       await copyText(value);
       messageApi.success(success);
     } catch {
-      messageApi.error('复制失败，请手动选择并复制');
+      messageApi.error(t('apm.integration.copyFailure', '复制失败，请手动选择并复制'));
     }
   };
 
@@ -322,14 +328,33 @@ export default function ApmIntegrationAddPage() {
                 <Space.Compact block>
                   <Button disabled>POST</Button>
                   <Input readOnly value={snippet.http_endpoint} />
-                  <Button icon={<CopyOutlined />} onClick={() => void copyWithFeedback(snippet.http_endpoint, 'HTTP 端点已复制')}>复制</Button>
+                  <Button
+                    aria-label={t('apm.integration.copyEndpoint', '复制 HTTP 上报端点')}
+                    icon={<CopyOutlined aria-hidden />}
+                    onClick={() => void copyWithFeedback(
+                      snippet.http_endpoint,
+                      t('apm.integration.copyEndpointSuccess', 'HTTP 上报端点已复制')
+                    )}
+                  >复制</Button>
                 </Space.Compact>
                 <Typography.Text type="secondary" className="mt-2 block text-xs">平台使用所选云区域的被动接收地址，固定通过 OTLP/HTTP（http/protobuf）上报。</Typography.Text>
               </div>
               <div className="mt-4 border-t border-[var(--color-border)] pt-4">
-                <div role="group" aria-label="Shell 接入片段操作" className="mb-2 flex items-center justify-between gap-3">
-                  <Typography.Text strong>Shell 接入片段</Typography.Text>
-                  <Button aria-label="复制片段" icon={<CopyOutlined />} onClick={() => void copyWithFeedback(snippet.code, '片段已复制')}>复制片段</Button>
+                <div role="group" aria-labelledby="apm-shell-snippet-title" className="mb-2 flex items-center justify-between gap-3">
+                  <div>
+                    <Typography.Text id="apm-shell-snippet-title" strong>Shell 接入片段</Typography.Text>
+                    <Typography.Text type="secondary" className="mt-1 block text-xs">
+                      {t('apm.integration.instanceIdentityHelp', '实例 ID 在应用进程启动时生成，每个副本唯一。')}
+                    </Typography.Text>
+                  </div>
+                  <Button
+                    aria-label={t('apm.integration.copyShellSnippet', '复制 Shell 接入片段')}
+                    icon={<CopyOutlined aria-hidden />}
+                    onClick={() => void copyWithFeedback(
+                      snippet.code,
+                      t('apm.integration.copyShellSnippetSuccess', 'Shell 接入片段已复制')
+                    )}
+                  >复制片段</Button>
                 </div>
                 <pre className="max-h-[420px] overflow-auto rounded-lg bg-[#0f172a] p-4 text-xs leading-6 text-slate-100"><code>{snippet.code}</code></pre>
               </div>

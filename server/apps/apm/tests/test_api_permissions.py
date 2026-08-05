@@ -1,4 +1,9 @@
+import os
+import shlex
+import subprocess
+import uuid
 from unittest.mock import Mock
+from urllib.parse import unquote
 
 import pytest
 from rest_framework.test import APIClient
@@ -9,6 +14,19 @@ from apps.apm.services.contracts import CatalogDiscovery
 from apps.apm.tests.helpers import create_application
 
 pytestmark = pytest.mark.django_db
+
+
+def _configuration_script(code: str) -> str:
+    section = code.split("# 2. 配置上报", maxsplit=1)[1].split("# 3. 启动应用", maxsplit=1)[0]
+    return section.split("\n", maxsplit=1)[1]
+
+
+def _integration_region(monkeypatch):
+    region = Mock()
+    region.cloud_region_list.return_value = [{"id": 7, "name": "华东一区"}]
+    region.get_cloud_region_proxy_address.return_value = "apm-east.example.com"
+    monkeypatch.setattr("apps.apm.views.control_plane.NodeMgmt", lambda: region)
+    return region
 
 
 def test_application_crud_persists_business_boundary_without_a_token(apm_api_client):
@@ -130,6 +148,159 @@ def test_integration_config_is_stateless_and_maps_standard_resource_attributes(a
     region.get_cloud_region_proxy_address.assert_called_once_with(7)
     region.get_cloud_region_envconfig.assert_not_called()
     assert ApmApplication.objects.filter(is_builtin=False).count() == 1
+
+
+def test_integration_config_host_identity_is_generated_per_process_and_can_be_safely_overridden(
+    apm_api_client,
+    monkeypatch,
+):
+    create_application("shop", (10,))
+    _integration_region(monkeypatch)
+    response = apm_api_client.post(
+        "/api/v1/apm/integration-config/",
+        {
+            "application_id": "shop",
+            "cloud_region_id": 7,
+            "language": "python",
+            "runtime": "host",
+            "service_name": "checkout",
+            "service_version": "1.4.0",
+            "environment": "production",
+        },
+        format="json",
+    )
+
+    assert response.status_code == 200
+    configuration = _configuration_script(response.data["code"])
+    generated = []
+    for _ in range(2):
+        result = subprocess.run(
+            ["/bin/sh", "-c", f'{configuration}\nprintf %s "$OTEL_SERVICE_INSTANCE_ID"'],
+            env={key: value for key, value in os.environ.items() if key != "APM_INSTANCE_ID"},
+            text=True,
+            capture_output=True,
+            check=True,
+        )
+        generated.append(result.stdout)
+        assert uuid.UUID(result.stdout).version == 4
+    assert generated[0] != generated[1]
+
+    overridden = subprocess.run(
+        ["/bin/sh", "-c", f'{configuration}\nprintf %s "$OTEL_SERVICE_INSTANCE_ID"'],
+        env={**os.environ, "APM_INSTANCE_ID": "host-replica-a"},
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+    assert overridden.stdout == "host-replica-a"
+    assert "每个副本必须唯一" in response.data["code"]
+
+
+def test_integration_config_host_identity_generation_and_invalid_override_fail_closed(
+    apm_api_client,
+    monkeypatch,
+    tmp_path,
+):
+    create_application("shop", (10,))
+    _integration_region(monkeypatch)
+    response = apm_api_client.post(
+        "/api/v1/apm/integration-config/",
+        {
+            "application_id": "shop",
+            "cloud_region_id": 7,
+            "language": "python",
+            "runtime": "host",
+            "service_name": "checkout",
+            "environment": "production",
+        },
+        format="json",
+    )
+
+    configuration = _configuration_script(response.data["code"])
+    unavailable = subprocess.run(
+        ["/bin/sh", "-c", configuration],
+        env={"PATH": str(tmp_path)},
+        text=True,
+        capture_output=True,
+    )
+    invalid_override = subprocess.run(
+        ["/bin/sh", "-c", configuration],
+        env={**os.environ, "APM_INSTANCE_ID": "shared,replica"},
+        text=True,
+        capture_output=True,
+    )
+
+    assert unavailable.returncode != 0
+    assert invalid_override.returncode != 0
+    assert "service.instance.id" in unavailable.stderr
+    assert "service.instance.id" in invalid_override.stderr
+
+
+@pytest.mark.parametrize("runtime", ["host", "docker"])
+def test_integration_config_encodes_special_resource_values_without_shell_or_attribute_injection(
+    apm_api_client,
+    monkeypatch,
+    runtime,
+):
+    create_application("shop", (10,))
+    _integration_region(monkeypatch)
+    malicious = "checkout%'\n,service.instance.id=forged $(printf injected) `printf injected` 界"
+    response = apm_api_client.post(
+        "/api/v1/apm/integration-config/",
+        {
+            "application_id": "shop",
+            "cloud_region_id": 7,
+            "language": "python",
+            "runtime": runtime,
+            "service_name": malicious,
+            "service_version": malicious,
+            "environment": malicious,
+        },
+        format="json",
+    )
+
+    assert response.status_code == 200
+    assert subprocess.run(["/bin/sh", "-n"], input=response.data["code"], text=True).returncode == 0
+    resource_dto = response.data["environment"]["OTEL_RESOURCE_ATTRIBUTES"]
+    assert "%25" in resource_dto
+    assert "%2Cservice.instance.id%3Dforged" in resource_dto
+    assert "%0A" in resource_dto
+    assert "%E7%95%8C" in resource_dto
+
+    if runtime == "host":
+        script = _configuration_script(response.data["code"])
+        script += '\nprintf %s "$OTEL_RESOURCE_ATTRIBUTES"'
+        environment = {**os.environ, "APM_INSTANCE_ID": "host-instance"}
+    else:
+        tokens = shlex.split(response.data["code"], comments=True)
+        command_index = next(index for index in range(len(tokens) - 2) if tokens[index : index + 2] == ["sh", "-c"])
+        script_token = next(token for token in tokens[command_index + 2 :] if token.strip())
+        script = script_token.split("; exec ", maxsplit=1)[0]
+        script += '\nprintf %s "$OTEL_RESOURCE_ATTRIBUTES"'
+        environment = {
+            **{key: value for key, value in os.environ.items() if key != "APM_INSTANCE_ID"},
+            "HOSTNAME": "container-instance",
+        }
+    rendered = subprocess.run(
+        ["/bin/sh", "-c", script],
+        env=environment,
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+    pairs = dict(item.split("=", maxsplit=1) for item in rendered.stdout.split(","))
+    decoded = {key: unquote(value) for key, value in pairs.items()}
+    assert set(decoded) == {
+        "service.namespace",
+        "service.name",
+        "service.version",
+        "deployment.environment",
+        "service.instance.id",
+    }
+    assert decoded["service.name"] == malicious
+    assert decoded["service.version"] == malicious
+    assert decoded["deployment.environment"] == malicious
+    assert decoded["service.instance.id"] == ("host-instance" if runtime == "host" else "container-instance")
 
 
 def test_integration_config_falls_back_to_trusted_node_server_url_without_node_organization(apm_api_client):

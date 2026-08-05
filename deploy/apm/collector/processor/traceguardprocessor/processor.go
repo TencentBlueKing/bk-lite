@@ -32,6 +32,18 @@ var protectedResourceKeys = map[string]struct{}{
 	"deployment.environment": {},
 }
 
+var catalogIdentityLimits = map[string]int{
+	"service.namespace":      256,
+	"service.name":           256,
+	"service.instance.id":    512,
+	"service.version":        256,
+	"deployment.environment": 256,
+}
+
+type SanitizeResult struct {
+	DroppedResourceSpans int
+}
+
 func shouldDeleteAttribute(key string) bool {
 	if strings.HasPrefix(key, "bk.") || sensitiveKeyPattern.MatchString(key) {
 		return true
@@ -102,7 +114,34 @@ func sanitizeSpanName(name string, maxRunes int) string {
 	return truncateString(name, maxRunes)
 }
 
-func sanitizeTraces(tracesData ptrace.Traces, cfg *Config) {
+func hasValidCatalogIdentity(attributes pcommon.Map) bool {
+	for key, limit := range catalogIdentityLimits {
+		value, ok := attributes.Get(key)
+		if !ok {
+			if key == "service.name" {
+				return false
+			}
+			continue
+		}
+		if value.Type() != pcommon.ValueTypeStr || len([]rune(value.Str())) > limit {
+			return false
+		}
+		if key == "service.name" && strings.TrimSpace(value.Str()) == "" {
+			return false
+		}
+	}
+	return true
+}
+
+func sanitizeTraces(tracesData ptrace.Traces, cfg *Config) SanitizeResult {
+	result := SanitizeResult{}
+	tracesData.ResourceSpans().RemoveIf(func(resourceSpans ptrace.ResourceSpans) bool {
+		if hasValidCatalogIdentity(resourceSpans.Resource().Attributes()) {
+			return false
+		}
+		result.DroppedResourceSpans++
+		return true
+	})
 	for resourceIndex := 0; resourceIndex < tracesData.ResourceSpans().Len(); resourceIndex++ {
 		resourceSpans := tracesData.ResourceSpans().At(resourceIndex)
 		sanitizeAttributes(
@@ -138,4 +177,5 @@ func sanitizeTraces(tracesData ptrace.Traces, cfg *Config) {
 			}
 		}
 	}
+	return result
 }

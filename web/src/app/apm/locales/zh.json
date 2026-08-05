@@ -1,0 +1,12 @@
+{
+  "apm": {
+    "integration": {
+      "copyEndpoint": "复制 HTTP 上报端点",
+      "copyEndpointSuccess": "HTTP 上报端点已复制",
+      "copyFailure": "复制失败，请手动选择并复制",
+      "copyShellSnippet": "复制 Shell 接入片段",
+      "copyShellSnippetSuccess": "Shell 接入片段已复制",
+      "instanceIdentityHelp": "实例 ID 在应用进程启动时生成，每个副本唯一。"
+    }
+  }
+}

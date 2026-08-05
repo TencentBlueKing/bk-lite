@@ -4,20 +4,35 @@ from uuid import UUID
 from django.db import transaction
 from django.utils import timezone
 
-from apps.apm.models import (
-    ApmApplication,
-    ApmService,
-    ApmServiceInstance,
-    ApmServiceInstanceOrganization,
-    ApmServiceOrganization,
-)
+from apps.apm.models import ApmApplication, ApmService, ApmServiceInstance, ApmServiceInstanceOrganization, ApmServiceOrganization
 from apps.apm.services.contracts import CatalogDiscovery, CatalogDiscoveryResult
-from apps.apm.services.identity import (
-    normalize_identity,
-    normalize_instance_identity,
-    normalize_service_identity,
-)
+from apps.apm.services.identity import normalize_identity
 from apps.apm.services.status import ARCHIVE_WINDOW
+
+
+class InvalidCatalogIdentity(ValueError):
+    """单条遥测身份无法安全映射到目录字段。"""
+
+    def __init__(self, field: str, reason: str, *, length: int | None = None, limit: int | None = None):
+        super().__init__(f"{field}: {reason}")
+        self.field = field
+        self.reason = reason
+        self.length = length
+        self.limit = limit
+
+
+def _validate_identity(value: str | None, *, field: str, max_length: int, required: bool = False) -> str:
+    if value is not None and not isinstance(value, str):
+        raise InvalidCatalogIdentity(field, "invalid_type")
+    raw = value or ""
+    if len(raw) > max_length:
+        raise InvalidCatalogIdentity(field, "raw_too_long", length=len(raw), limit=max_length)
+    normalized = normalize_identity(raw)
+    if len(normalized) > max_length:
+        raise InvalidCatalogIdentity(field, "normalized_too_long", length=len(normalized), limit=max_length)
+    if required and not normalized:
+        raise InvalidCatalogIdentity(field, "empty")
+    return normalized
 
 
 def _organization_ids(values: Sequence[int]) -> tuple[int, ...]:
@@ -32,18 +47,38 @@ class DjangoTelemetryCatalogService:
 
     @transaction.atomic
     def discover(self, discovery: CatalogDiscovery) -> CatalogDiscoveryResult:
-        normalized_namespace, normalized_name = normalize_service_identity(
+        normalized_namespace = _validate_identity(
             discovery.service_namespace,
+            field="service.namespace",
+            max_length=256,
+        )
+        normalized_name = _validate_identity(
             discovery.service_name,
+            field="service.name",
+            max_length=256,
+            required=True,
+        )
+        normalized_instance_id = _validate_identity(
+            discovery.instance_id,
+            field="service.instance.id",
+            max_length=512,
+        )
+        normalized_environment = _validate_identity(
+            discovery.environment,
+            field="deployment.environment",
+            max_length=256,
+        )
+        normalized_version = _validate_identity(
+            discovery.version,
+            field="service.version",
+            max_length=256,
         )
         seen_at = discovery.seen_at or timezone.now()
         application = ApmApplication.objects.select_for_update().get(
             application_id=normalized_namespace,
         )
-        missing_instance_identity = not normalize_identity(discovery.instance_id)
-        application_organizations = tuple(
-            application.organization_links.order_by("organization").values_list("organization", flat=True)
-        )
+        missing_instance_identity = not normalized_instance_id
+        application_organizations = tuple(application.organization_links.order_by("organization").values_list("organization", flat=True))
         if not application_organizations:
             raise ValueError("应用没有默认组织")
 
@@ -60,19 +95,15 @@ class DjangoTelemetryCatalogService:
         )
         if service_created:
             ApmServiceOrganization.objects.bulk_create(
-                [
-                    ApmServiceOrganization(service=service, organization=organization)
-                    for organization in application_organizations
-                ]
+                [ApmServiceOrganization(service=service, organization=organization) for organization in application_organizations]
             )
         elif service.application_id is None:
             service.application = application
             service.save(update_fields=("application", "updated_at"))
-        if not service_created and (seen_at > service.last_seen_at or (
-            service.archived_at is not None
-            and service.archive_reason == "silent_timeout"
-            and seen_at >= service.last_seen_at
-        )):
+        if not service_created and (
+            seen_at > service.last_seen_at
+            or (service.archived_at is not None and service.archive_reason == "silent_timeout" and seen_at >= service.last_seen_at)
+        ):
             service.last_seen_at = max(seen_at, service.last_seen_at)
             update_fields = ["last_seen_at"]
             if service.archived_at is not None and service.archive_reason == "silent_timeout":
@@ -88,14 +119,13 @@ class DjangoTelemetryCatalogService:
                 missing_instance_identity=True,
             )
 
-        normalized_instance_id = normalize_instance_identity(discovery.instance_id)
         instance, instance_created = ApmServiceInstance.objects.get_or_create(
             service=service,
             normalized_instance_id=normalized_instance_id,
             defaults={
                 "instance_id": discovery.instance_id or "",
-                "environment": normalize_identity(discovery.environment),
-                "version": normalize_identity(discovery.version),
+                "environment": normalized_environment,
+                "version": normalized_version,
                 "first_seen_at": seen_at,
                 "last_seen_at": seen_at,
             },
@@ -119,17 +149,13 @@ class DjangoTelemetryCatalogService:
                 update_fields.append("last_seen_at")
             if is_latest_observation:
                 for field, value in (
-                    ("environment", normalize_identity(discovery.environment)),
-                    ("version", normalize_identity(discovery.version)),
+                    ("environment", normalized_environment),
+                    ("version", normalized_version),
                 ):
                     if getattr(instance, field) != value:
                         setattr(instance, field, value)
                         update_fields.append(field)
-            if (
-                instance.archived_at is not None
-                and instance.archive_reason == "silent_timeout"
-                and is_latest_observation
-            ):
+            if instance.archived_at is not None and instance.archive_reason == "silent_timeout" and is_latest_observation:
                 instance.archived_at = None
                 instance.archive_reason = ""
                 update_fields.extend(("archived_at", "archive_reason"))
