@@ -9,9 +9,6 @@ from django.utils import timezone
 from apps.apm.adapters import TelemetryStoreUnavailable, VictoriaTracesTraceStore
 from apps.apm.services.contracts import TraceSearchQuery
 
-SOURCE_ID = "11111111-2222-4333-8444-555555555555"
-
-
 def _response(payload, status_code=200):
     response = Mock()
     response.status_code = status_code
@@ -31,7 +28,6 @@ def _jaeger_trace(now):
                     {"key": "service.namespace", "value": "shop"},
                     {"key": "service.instance.id", "value": "pod-a"},
                     {"key": "deployment.environment", "value": "production"},
-                    {"key": "bk.ingest_source.id", "value": SOURCE_ID},
                 ],
             }
         },
@@ -86,7 +82,6 @@ def test_search_builds_controlled_resource_filters_and_maps_jaeger_trace():
     assert summary.root_span_name == "POST /checkout"
     assert summary.status == "error"
     assert summary.span_count == 2
-    assert str(summary.ingest_source_id) == SOURCE_ID
     params = session.get.call_args.kwargs["params"]
     assert params["service"] == "checkout"
     assert params["limit"] == 21
@@ -107,7 +102,6 @@ def test_detail_preserves_waterfall_identity_for_server_side_authorization():
 
     assert detail is not None
     assert detail.instance_id == "pod-a"
-    assert str(detail.ingest_source_id) == SOURCE_ID
     assert detail.spans[1].parent_span_id == "1" * 16
     assert detail.spans[0].kind == "server"
     assert detail.spans[0].attributes["Authorization"] == "Bearer secret"

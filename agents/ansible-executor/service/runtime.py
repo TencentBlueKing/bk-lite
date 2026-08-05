@@ -56,8 +56,18 @@ def current_entrypoint_command() -> list[str]:
     return [sys.executable, str(application_root() / "main.py")]
 
 
+def _has_ansible_windows_collection(collections_root: str | Path) -> bool:
+    root = Path(collections_root).expanduser()
+    namespace_root = root if root.name == "ansible_collections" else root / "ansible_collections"
+    return (namespace_root / "ansible" / "windows" / "plugins" / "modules" / "win_copy.ps1").is_file()
+
+
 def configure_ansible_environment() -> None:
-    if os.environ.get("ANSIBLE_COLLECTIONS_PATH"):
+    configured_path = os.environ.get("ANSIBLE_COLLECTIONS_PATH")
+    if configured_path:
+        collection_roots = [path for path in configured_path.split(os.pathsep) if path]
+        if not any(_has_ansible_windows_collection(path) for path in collection_roots):
+            raise RuntimeError(f"ANSIBLE_COLLECTIONS_PATH does not contain the ansible.windows win_copy module: {configured_path}")
         return
     root = application_root()
     candidates = [
@@ -65,10 +75,17 @@ def configure_ansible_environment() -> None:
         root / "ansible-executor" / "collections",
         root / "_internal" / "collections",
     ]
+    invalid_candidates: list[Path] = []
     for collections_dir in candidates:
         if collections_dir.exists() and collections_dir.is_dir():
+            if not _has_ansible_windows_collection(collections_dir):
+                invalid_candidates.append(collections_dir)
+                continue
             os.environ["ANSIBLE_COLLECTIONS_PATH"] = str(collections_dir)
             return
+    if invalid_candidates:
+        paths = os.pathsep.join(str(path) for path in invalid_candidates)
+        raise RuntimeError(f"bundled Ansible collection path does not contain the ansible.windows win_copy module: {paths}")
 
 
 def repair_ansible_windows_collection_layout(collections_path: str | Path) -> bool:

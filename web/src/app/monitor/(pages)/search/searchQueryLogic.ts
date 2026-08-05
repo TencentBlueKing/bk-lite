@@ -47,7 +47,7 @@ export const getMetricsMapKey = (
   pluginId?: React.Key | null
 ) =>
   pluginId !== null && pluginId !== undefined && pluginId !== ''
-    ? `${objectId}_${pluginId}`
+    ? `${String(objectId)}_${String(pluginId)}`
     : String(objectId);
 
 export const resolveInitialPlugin = (plugins: PluginItem[]): React.Key | null =>
@@ -71,6 +71,40 @@ export const resolveMetricSelection = (
   );
   if (byId) return byId;
   return metrics.find((item) => item.name === String(selectedMetric)) || null;
+};
+
+/** 从指标定义解析条件「标签」可选维度名，兼容 [{name}] / ["name"]。 */
+export const resolveMetricDimensionLabels = (
+  metric: MetricItem | null | undefined
+): string[] => {
+  const dimensions = metric?.dimensions as unknown;
+  if (!Array.isArray(dimensions) || !dimensions.length) return [];
+  return dimensions
+    .map((item) => {
+      if (typeof item === 'string') return item.trim();
+      if (item && typeof item === 'object' && 'name' in item) {
+        return String((item as { name?: unknown }).name || '').trim();
+      }
+      return '';
+    })
+    .filter(Boolean);
+};
+
+/** 从 query_by_instance 结果中提取指定维度标签的可选值。 */
+export const extractDimensionLabelValues = (
+  series: Array<{ metric?: Record<string, string> }> | null | undefined,
+  label: string | null | undefined
+): string[] => {
+  const key = String(label || '').trim();
+  if (!key || !Array.isArray(series) || !series.length) return [];
+  const values = new Set<string>();
+  for (const item of series) {
+    const raw = item?.metric?.[key];
+    if (raw === null || raw === undefined) continue;
+    const text = String(raw).trim();
+    if (text) values.add(text);
+  }
+  return Array.from(values).sort((a, b) => a.localeCompare(b));
 };
 
 interface BuildSearchQueryParamsArgs {

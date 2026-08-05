@@ -56,9 +56,11 @@ class MonitorObjectSerializer(serializers.ModelSerializer):
             "cleanup_timeout_unit",
             getattr(self.instance, "cleanup_timeout_unit", MonitorObject.CLEANUP_TIMEOUT_UNIT_DAY),
         )
-        max_value = 1440 if timeout_unit == MonitorObject.CLEANUP_TIMEOUT_UNIT_MINUTE else 365
+        max_value = MonitorObject.CLEANUP_TIMEOUT_MAX_BY_UNIT.get(timeout_unit)
+        if max_value is None:
+            raise serializers.ValidationError({"cleanup_timeout_unit": "超时时间单位不合法"})
         if type(timeout_value) is not int or not 1 <= timeout_value <= max_value:
-            unit_label = "分钟" if timeout_unit == MonitorObject.CLEANUP_TIMEOUT_UNIT_MINUTE else "天"
+            unit_label = MonitorObject.CLEANUP_TIMEOUT_UNIT_LABELS[timeout_unit]
             raise serializers.ValidationError(
                 {"cleanup_timeout_value": f"超时时间必须是 1～{max_value} {unit_label}的整数"}
             )

@@ -1,5 +1,6 @@
 # -- coding: utf-8 --
 from django.db import transaction
+from django.utils import timezone
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -193,7 +194,7 @@ class IncidentUpdateViewSet(ModelViewSet):
                     "id": update.id,
                     "content": update.content,
                     "author": update.author,
-                    "created_at": update.created_at.strftime("%Y-%m-%d %H:%M:%S"),
+                    "created_at": timezone.localtime(update.created_at).strftime("%Y-%m-%d %H:%M:%S"),
                 }
             else:
                 result[key] = None

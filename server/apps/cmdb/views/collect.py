@@ -4,39 +4,42 @@
 # @Author: windyzhao
 import re
 from pathlib import Path
+
 from django.conf import settings
 from django.db.models import Q
-from django.shortcuts import get_object_or_404
 from django.http import JsonResponse
+from django.shortcuts import get_object_or_404
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
-from apps.cmdb.node_configs.config_factory import NodeParamsFactory
-from apps.cmdb.permissions.inst_task_permission import InstanceTaskPermission
-from apps.cmdb.services.collect_object_tree import get_collect_obj_tree
-from apps.cmdb.services.network_config_file_policy import get_supported_brand_options
-from apps.cmdb.utils.base import get_current_team_from_request
-from apps.core.exceptions.base_app_exception import BaseAppException
-from apps.system_mgmt.utils.group_utils import GroupUtils
-from apps.core.utils.permission_utils import get_permission_rules
-from apps.core.decorators.api_permission import HasPermission
-from apps.core.utils.viewset_utils import AuthViewSet
-from apps.rpc.node_mgmt import NodeMgmt
-from config.drf.viewsets import ModelViewSet
-from config.drf.pagination import CustomPageNumberPagination
-from apps.core.utils.web_utils import WebUtils
-from apps.cmdb.constants.constants import CollectRunStatusType, CollectPluginTypes, PERMISSION_TASK
+from apps.cmdb.constants.constants import PERMISSION_TASK, CollectPluginTypes, CollectRunStatusType
 from apps.cmdb.filters.collect_filters import CollectModelFilter, OidModelFilter
 from apps.cmdb.models.collect_model import CollectModels, OidMapping
+from apps.cmdb.node_configs.config_factory import NodeParamsFactory
+from apps.cmdb.permissions.inst_task_permission import InstanceTaskPermission
 from apps.cmdb.serializers.collect_serializer import (
-    CollectModelSerializer,
-    CollectModelLIstSerializer,
-    OidModelSerializer,
+    COLLECT_RESULT_PAYLOAD_FIELDS,
+    CollectModelDetailSerializer,
     CollectModelIdStatusSerializer,
+    CollectModelLIstSerializer,
+    CollectModelSerializer,
+    OidModelSerializer,
 )
+from apps.cmdb.services.collect_object_tree import get_collect_obj_tree
 from apps.cmdb.services.collect_service import CollectModelService
+from apps.cmdb.services.network_config_file_policy import get_supported_brand_options
+from apps.cmdb.utils.base import get_current_team_from_request
+from apps.core.decorators.api_permission import HasPermission
+from apps.core.exceptions.base_app_exception import BaseAppException
+from apps.core.utils.permission_utils import get_permission_rules
 from apps.core.utils.team_utils import get_current_team
+from apps.core.utils.viewset_utils import AuthViewSet
+from apps.core.utils.web_utils import WebUtils
+from apps.rpc.node_mgmt import NodeMgmt
+from apps.system_mgmt.utils.group_utils import GroupUtils
+from config.drf.pagination import CustomPageNumberPagination
+from config.drf.viewsets import ModelViewSet
 
 
 class CollectModelViewSet(AuthViewSet):
@@ -65,6 +68,11 @@ class CollectModelViewSet(AuthViewSet):
     def apply_visibility_filter(queryset):
         return queryset.filter(is_visible=True, is_system=False)
 
+    @staticmethod
+    def _include_result_data(request):
+        query_params = getattr(request, "query_params", {})
+        return str(query_params.get("include_result_data", "")).lower() in {"1", "true"}
+
     @HasPermission("auto_collection-View")
     @action(methods=["get"], detail=False, url_path="network_config_file_supported_brands")
     def network_config_file_supported_brands(self, request):
@@ -86,6 +94,8 @@ class CollectModelViewSet(AuthViewSet):
         queryset = super().get_queryset()
         request = getattr(self, "request", None)
         action = getattr(self, "action", None)
+        if action == "retrieve" and not self._include_result_data(request):
+            queryset = queryset.defer(*COLLECT_RESULT_PAYLOAD_FIELDS)
         if request is not None and action in self.permission_scoped_actions:
             queryset = self.get_queryset_by_permission(request, queryset)
         if action in {"list", "task_status", "collect_task_names"}:
@@ -155,6 +165,8 @@ class CollectModelViewSet(AuthViewSet):
     def get_serializer_class(self):
         if self.action == "list":
             return CollectModelLIstSerializer
+        if self.action == "retrieve" and not self._include_result_data(getattr(self, "request", None)):
+            return CollectModelDetailSerializer
         return super().get_serializer_class()
 
     @HasPermission("auto_collection-View")
@@ -242,6 +254,43 @@ class CollectModelViewSet(AuthViewSet):
             raise BaseAppException("您没有操作该采集任务的权限！")
         result = CollectModelService.exec_task(instance=instance, operator=request.user.username)
         return result
+
+    @HasPermission("auto_collection-Execute")
+    @action(methods=["POST"], detail=False, url_path="pc_test_connection")
+    def pc_test_connection(self, request, *args, **kwargs):
+        """PC 连接测试：未落库表单经 HTTP debug 端点直连 Stargazer，不写 CMDB。
+
+        编辑场景掩码凭据按 task_id 解密（需对象权限），秘密只在转发 body 内存中传递。
+        """
+        from apps.cmdb.services.collect_tool_service import MASKED_PASSWORD
+        from apps.cmdb.services.pc_connection_test import PCConnectionTestService
+
+        payload = dict(request.data or {})
+        task_id = payload.pop("task_id", None)
+        if task_id:
+            instance = get_object_or_404(self.queryset, id=task_id)
+            if instance.model_id != "pc":
+                raise BaseAppException("仅 PC 发现任务支持凭据掩码解密")
+            user = request.user
+            current_team = get_current_team_from_request(request)
+            include_children = request.COOKIES.get("include_children", "0") == "1"
+            has_permission = self.get_has_permission(user, instance, current_team, include_children=include_children)
+            if not has_permission:
+                raise BaseAppException("您没有操作该采集任务的权限！")
+            credential = dict(payload.get("credential") or {})
+            decrypted = instance.decrypt_credentials or {}
+            if isinstance(decrypted, list):
+                decrypted = decrypted[0] if decrypted else {}
+            # 前端任务序列化掩码为 ******，调试工具掩码为 ••••••，两种占位符都识别
+            masked_sentinels = {MASKED_PASSWORD, "******"}
+            for field in PCConnectionTestService.SECRET_FIELDS:
+                if credential.get(field) in masked_sentinels:
+                    if field not in decrypted:
+                        raise BaseAppException(f"无法从原任务获取字段 {field} 的凭据")
+                    credential[field] = decrypted[field]
+            payload["credential"] = credential
+        result = PCConnectionTestService.test_connection(payload)
+        return WebUtils.response_success(result)
 
     @action(methods=["GET"], detail=False)
     @HasPermission("auto_collection-View")
@@ -353,7 +402,9 @@ class CollectModelViewSet(AuthViewSet):
         queryset = self.get_queryset()
         filter_queryset = self.get_queryset_by_permission(request=request, queryset=queryset)
         filter_queryset = self.apply_visibility_filter(filter_queryset).only(
-            "model_id", "exec_status", "exec_time",
+            "model_id",
+            "exec_status",
+            "exec_time",
         )
 
         total = normal = error = partial = 0

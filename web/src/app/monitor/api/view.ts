@@ -40,7 +40,7 @@ const useViewApi = () => {
       config?: AxiosRequestConfig
     ) => {
       return await post(
-        `/monitor/api/monitor_instance/${objectId}/search/`,
+        `/monitor/api/monitor_instance/${String(objectId)}/search/`,
         data,
         config
       );
@@ -79,7 +79,7 @@ const useViewApi = () => {
   const getViewColumnPreference = useCallback(
     async (objectId: React.Key, config?: AxiosRequestConfig) => {
       return await get<ViewColumnPreference | null>(
-        `/monitor/api/monitor_object/${objectId}/view_column_preference/`,
+        `/monitor/api/monitor_object/${String(objectId)}/view_column_preference/`,
         config
       );
     },
@@ -87,10 +87,14 @@ const useViewApi = () => {
   );
 
   const saveViewColumnPreference = useCallback(
-    async (objectId: React.Key, fieldKeys: string[]) => {
+    async (
+      objectId: React.Key,
+      fieldKeys: string[],
+      fixedFieldKeys: string[] = []
+    ) => {
       return await put<ViewColumnPreference>(
-        `/monitor/api/monitor_object/${objectId}/view_column_preference/`,
-        { field_keys: fieldKeys }
+        `/monitor/api/monitor_object/${String(objectId)}/view_column_preference/`,
+        { field_keys: fieldKeys, fixed_field_keys: fixedFieldKeys }
       );
     },
     [put]

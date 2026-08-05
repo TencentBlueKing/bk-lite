@@ -18,7 +18,9 @@ import {
   createNodeMgmtSyncRequestGuard,
   getNodeMgmtSyncDisplayEmptyStateKey,
   getNodeMgmtSyncEmptyStateKey,
+  getNodeMgmtSyncRawCounts,
   getNodeMgmtSyncReasonTextKey,
+  getNodeMgmtSyncRowKey,
   getNodeMgmtSyncStatusTextKey,
   normalizeNodeMgmtSyncStatus,
 } from './nodeMgmtSyncViewModel';
@@ -50,6 +52,13 @@ const NodeMgmtSyncDetail: React.FC<NodeMgmtSyncDetailProps> = ({ open }) => {
   const [activeTab, setActiveTab] = useState('add');
   const [searchText, setSearchText] = useState('');
   const [pendingSearchText, setPendingSearchText] = useState('');
+  const [rawRows, setRawRows] = useState<NodeMgmtSyncItem[]>([]);
+  const [rawPage, setRawPage] = useState(1);
+  const [rawPageSize, setRawPageSize] = useState(20);
+  const [rawMatchedCount, setRawMatchedCount] = useState(0);
+  const [rawLoading, setRawLoading] = useState(false);
+  const [rawLoadFailed, setRawLoadFailed] = useState(false);
+  const [rawRetryKey, setRawRetryKey] = useState(0);
   const requestGuard = useRef(createNodeMgmtSyncRequestGuard()).current;
   const savingRef = useRef(false);
 
@@ -163,6 +172,55 @@ const NodeMgmtSyncDetail: React.FC<NodeMgmtSyncDetailProps> = ({ open }) => {
     association_success: 0,
   };
   const todoItems = detail?.todo || [];
+  const rawCounts = getNodeMgmtSyncRawCounts(displayMessage);
+  useEffect(() => {
+    const runId = displayPayload?.run?.id;
+    const useServerRows = activeTab === 'raw_data'
+      && displayPayload?.display_schema === 'host_collect_v2'
+      && displayPayload?.can_view_raw_detail === true
+      && typeof runId === 'number';
+    if (!useServerRows) {
+      setRawLoadFailed(false);
+      setRawRows((detail?.raw_data?.data || []) as NodeMgmtSyncItem[]);
+      setRawMatchedCount(detail?.raw_data?.count || 0);
+      return;
+    }
+    let cancelled = false;
+    setRawLoading(true);
+    setRawLoadFailed(false);
+    void api.getNodeMgmtSyncRows({
+      run_id: runId,
+      bucket: 'raw_data',
+      page: rawPage,
+      page_size: rawPageSize,
+      search: searchText,
+    }).then((response) => {
+      if (cancelled) return;
+      setRawRows(response.data);
+      setRawMatchedCount(response.matched_retained_count);
+    }).catch((error) => {
+      if (!cancelled) {
+        console.error('Failed to fetch node management snapshot rows:', error);
+        setRawRows([]);
+        setRawMatchedCount(0);
+        setRawLoadFailed(true);
+      }
+    }).finally(() => {
+      if (!cancelled) setRawLoading(false);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    activeTab,
+    displayPayload?.can_view_raw_detail,
+    displayPayload?.display_schema,
+    displayPayload?.run?.id,
+    rawPage,
+    rawPageSize,
+    rawRetryKey,
+    searchText,
+  ]);
   const healthAlert = useMemo(() => {
     if (loadFailed) {
       return { type: 'error' as const, textKey: 'Collection.nodeMgmtSync.empty.queryFailed' };
@@ -219,6 +277,9 @@ const NodeMgmtSyncDetail: React.FC<NodeMgmtSyncDetailProps> = ({ open }) => {
 
   const filteredRows = useMemo(() => {
     const rows = (tabMap[activeTab as keyof typeof tabMap] || EMPTY_TASK_DATA).data as NodeMgmtSyncItem[];
+    if (activeTab === 'raw_data' && displayPayload?.display_schema === 'host_collect_v2') {
+      return rawRows;
+    }
     if (!searchText) {
       return rows;
     }
@@ -226,7 +287,7 @@ const NodeMgmtSyncDetail: React.FC<NodeMgmtSyncDetailProps> = ({ open }) => {
       const source = `${item.inst_name || item.name || ''} ${item.ip_addr || item.ip || ''} ${item.cloud_name || ''}`.toLowerCase();
       return source.includes(searchText.toLowerCase());
     });
-  }, [activeTab, searchText, tabMap]);
+  }, [activeTab, displayPayload?.display_schema, rawRows, searchText, tabMap]);
 
   const columns = useMemo(() => {
     if (activeTab === 'raw_data') {
@@ -242,15 +303,24 @@ const NodeMgmtSyncDetail: React.FC<NodeMgmtSyncDetailProps> = ({ open }) => {
           render: (_: string, record: NodeMgmtSyncItem) => record.inst_name || record.name || '--',
         },
         {
+          title: t('Collection.nodeMgmtSync.table.pid'),
+          dataIndex: 'pid',
+          render: (value: string | number) => value || '--',
+        },
+        {
           title: 'IP',
           dataIndex: 'ip_addr',
           render: (_: string, record: NodeMgmtSyncItem) => record.ip_addr || record.ip || '--',
         },
         {
-          title: t('organization'),
-          dataIndex: 'organization',
-          render: (value: Array<number | string>) =>
-            Array.isArray(value) && value.length ? value.join(', ') : '--',
+          title: t('Collection.nodeMgmtSync.table.status'),
+          dataIndex: '_status',
+          render: (value: string) => value || '--',
+        },
+        {
+          title: t('Collection.nodeMgmtSync.table.errorReason'),
+          dataIndex: '_error',
+          render: (value: string) => value || '--',
         },
       ];
     }
@@ -407,22 +477,72 @@ const NodeMgmtSyncDetail: React.FC<NodeMgmtSyncDetailProps> = ({ open }) => {
               placeholder={t('Collection.nodeMgmtSync.searchPlaceholder')}
               value={pendingSearchText}
               onChange={(e) => setPendingSearchText(e.target.value)}
-              onSearch={(value) => setSearchText(value)}
+              onSearch={(value) => {
+                setRawPage(1);
+                setSearchText(value);
+              }}
             />
           </div>
 
           <Tabs activeKey={activeTab} onChange={setActiveTab} items={tabItems} />
 
-          {!filteredRows.length ? (
+          {activeTab === 'raw_data' ? (
+            <Alert
+              type={rawCounts.truncated ? 'warning' : 'info'}
+              message={t('Collection.nodeMgmtSync.rawSummary', undefined, {
+                total: String(rawCounts.total),
+                host: String(rawCounts.host),
+                process: String(rawCounts.process),
+                dropped: String(rawCounts.dropped),
+                retained: String(rawCounts.retained),
+              })}
+              showIcon
+            />
+          ) : null}
+
+          {activeTab === 'raw_data' && rawLoadFailed ? (
+            <Alert
+              type="error"
+              message={t('Collection.nodeMgmtSync.loadFailed')}
+              action={(
+                <Button size="small" onClick={() => setRawRetryKey((value) => value + 1)}>
+                  {t('Collection.nodeMgmtSync.retry')}
+                </Button>
+              )}
+              showIcon
+            />
+          ) : null}
+
+          {!rawLoadFailed && !filteredRows.length ? (
             <div className="py-10">
               <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t(emptyStateKey)} />
             </div>
           ) : (
             <CustomTable
-              rowKey={(record: NodeMgmtSyncItem) => record.id || record.inst_name || record.ip_addr || record.ip || record.name}
+              rowKey={getNodeMgmtSyncRowKey}
               columns={columns}
               dataSource={filteredRows}
-              pagination={{ showSizeChanger: true, showTotal: (total) => `共 ${total} 条` }}
+              loading={rawLoading}
+              pagination={activeTab === 'raw_data' && displayPayload?.display_schema === 'host_collect_v2'
+                ? {
+                  current: rawPage,
+                  pageSize: rawPageSize,
+                  total: rawMatchedCount,
+                  showSizeChanger: true,
+                  showTotal: (total) => t('Collection.nodeMgmtSync.tableTotal', undefined, {
+                    total: String(total),
+                  }),
+                  onChange: (page, pageSize) => {
+                    setRawPage(pageSize === rawPageSize ? page : 1);
+                    setRawPageSize(pageSize);
+                  },
+                }
+                : {
+                  showSizeChanger: true,
+                  showTotal: (total) => t('Collection.nodeMgmtSync.tableTotal', undefined, {
+                    total: String(total),
+                  }),
+                }}
               scroll={{ y: 'calc(100vh - 520px)' }}
             />
           )}

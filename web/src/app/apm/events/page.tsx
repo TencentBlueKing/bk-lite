@@ -1,8 +1,8 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ReloadOutlined } from '@ant-design/icons';
-import { Badge, Button, message, Select, Space, Table, Tag, Typography, type TableColumnsType } from 'antd';
+import { Badge, Button, Input, message, Radio, Select, Space, Table, Tabs, Tag, Typography, type TableColumnsType } from 'antd';
 import dayjs from 'dayjs';
 import useApmApi from '@/app/apm/api';
 import ApmRouteShell, { ApmSurface } from '@/app/apm/components/apm-route-shell';
@@ -10,6 +10,14 @@ import CatalogState, { catalogErrorKind, type CatalogStateKind } from '@/app/apm
 import type { ApmEvent, ApmEventQuery, ApmNotificationDelivery, ApmPolicySeverity } from '@/app/apm/types';
 
 type PageState = CatalogStateKind | 'ready';
+type AlertTab = 'active' | 'history';
+type TimeRange = '1h' | '24h' | '7d';
+
+const RANGE_MS: Record<TimeRange, number> = {
+  '1h': 60 * 60 * 1000,
+  '24h': 24 * 60 * 60 * 1000,
+  '7d': 7 * 24 * 60 * 60 * 1000,
+};
 
 const SEVERITY = {
   critical: { label: '严重', color: 'red' },
@@ -18,9 +26,9 @@ const SEVERITY = {
   info: { label: '提醒', color: 'blue' },
 } as const;
 
-const ACTION = {
-  created: { label: '触发', color: 'error' },
-  recovery: { label: '恢复', color: 'success' },
+const ALERT_STATUS = {
+  firing: { label: '告警中', color: 'error' },
+  recovered: { label: '已恢复', color: 'success' },
 } as const;
 
 const DELIVERY_STATUS: Record<ApmNotificationDelivery['status'], { label: string; color: string }> = {
@@ -34,24 +42,77 @@ export default function ApmEventsPage() {
   const [events, setEvents] = useState<ApmEvent[]>([]);
   const [state, setState] = useState<PageState>('loading');
   const [query, setQuery] = useState<ApmEventQuery>({ limit: 50 });
+  const [activeTab, setActiveTab] = useState<AlertTab>('active');
+  const [timeRange, setTimeRange] = useState<TimeRange>('24h');
+  const [keyword, setKeyword] = useState('');
   const [retryingId, setRetryingId] = useState<string | null>(null);
 
   const load = useCallback(() => {
     if (authLoading) return;
     setState('loading');
-    getEvents(query)
+    const endedAt = new Date();
+    getEvents({
+      ...query,
+      started_at: new Date(endedAt.getTime() - RANGE_MS[timeRange]).toISOString(),
+      ended_at: endedAt.toISOString(),
+    })
       .then((items) => {
         setEvents(items);
         setState(items.length ? 'ready' : 'empty');
       })
       .catch((error) => setState(catalogErrorKind(error)));
-  }, [authLoading, getEvents, query]);
+  }, [authLoading, getEvents, query, timeRange]);
 
   useEffect(() => load(), [load]);
 
+  const alerts = useMemo(() => {
+    const seen = new Set<string>();
+    return events.filter((event) => {
+      if (seen.has(event.external_id)) return false;
+      seen.add(event.external_id);
+      return true;
+    });
+  }, [events]);
+
+  const activeAlerts = useMemo(
+    () => alerts.filter((event) => event.status === 'firing'),
+    [alerts],
+  );
+  const historicalAlerts = useMemo(
+    () => alerts.filter((event) => event.status === 'recovered'),
+    [alerts],
+  );
+  const visibleAlerts = useMemo(() => {
+    const source = activeTab === 'active' ? activeAlerts : historicalAlerts;
+    const normalized = keyword.trim().toLocaleLowerCase();
+    if (!normalized) return source;
+    return source.filter((event) => (
+      event.title.toLocaleLowerCase().includes(normalized)
+      || event.service.toLocaleLowerCase().includes(normalized)
+      || event.resource_name.toLocaleLowerCase().includes(normalized)
+      || event.item.toLocaleLowerCase().includes(normalized)
+    ));
+  }, [activeAlerts, activeTab, historicalAlerts, keyword]);
+  const visibleState: PageState = state === 'ready' && !visibleAlerts.length ? 'empty' : state;
+
+  const distribution = useMemo(() => {
+    const bucketCount = timeRange === '1h' ? 12 : timeRange === '24h' ? 24 : 28;
+    const rangeMs = RANGE_MS[timeRange];
+    const bucketMs = rangeMs / bucketCount;
+    const rangeStart = Date.now() - rangeMs;
+    const buckets = Array.from({ length: bucketCount }, () => ({ critical: 0, error: 0, warning: 0 }));
+    events.forEach((event) => {
+      if (event.severity === 'info') return;
+      const index = Math.min(bucketCount - 1, Math.max(0, Math.floor((new Date(event.start_time).getTime() - rangeStart) / bucketMs)));
+      buckets[index][event.severity] += 1;
+    });
+    return buckets;
+  }, [events, timeRange]);
+  const maxDistribution = Math.max(1, ...distribution.map((bucket) => bucket.critical + bucket.error + bucket.warning));
+
   const columns: TableColumnsType<ApmEvent> = [
     {
-      title: '事件',
+      title: '告警',
       dataIndex: 'title',
       fixed: 'left',
       render: (title, event) => (
@@ -72,11 +133,13 @@ export default function ApmEventsPage() {
       ),
     },
     {
-      title: '生命周期',
-      dataIndex: 'action',
+      title: '状态',
+      dataIndex: 'status',
       width: 100,
       responsive: ['sm'],
-      render: (action: ApmEvent['action']) => <Tag bordered={false} color={ACTION[action].color}>{ACTION[action].label}</Tag>,
+      render: (status: ApmEvent['status']) => (
+        <Tag bordered={false} color={ALERT_STATUS[status].color}>{ALERT_STATUS[status].label}</Tag>
+      ),
     },
     { title: '指标', dataIndex: 'item', width: 130, responsive: ['lg'] },
     {
@@ -113,23 +176,72 @@ export default function ApmEventsPage() {
 
   return (
     <ApmRouteShell
-      title="APM 事件"
-      description="查看由 APM 自己持久化和管理的告警生命周期事件。"
+      title="告警"
+      description="集中查看当前告警与已恢复的历史告警，并追踪每次通知投递结果。"
       dependency="control"
     >
       <div className="flex flex-col gap-3">
         <ApmSurface padding="compact">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <Space wrap>
-              <Select
-                allowClear
-                aria-label="按生命周期筛选"
-                className="w-36"
-                placeholder="全部生命周期"
-                value={query.action}
-                options={Object.entries(ACTION).map(([value, config]) => ({ value, label: config.label }))}
-                onChange={(action) => setQuery((current) => ({ ...current, action }))}
-              />
+          <div className="mb-3 flex flex-wrap items-center gap-3">
+            <Input.Search
+              allowClear
+              aria-label="搜索告警标题、服务或规则"
+              className="w-80"
+              placeholder="搜索告警标题 / 服务 / 规则"
+              value={keyword}
+              onChange={(event) => setKeyword(event.target.value)}
+            />
+            <div className="flex-1" />
+            <Typography.Text type="secondary" className="text-xs">时间范围</Typography.Text>
+            <Radio.Group
+              aria-label="告警时间范围"
+              buttonStyle="solid"
+              size="small"
+              value={timeRange}
+              onChange={(event) => setTimeRange(event.target.value)}
+            >
+              {(Object.keys(RANGE_MS) as TimeRange[]).map((value) => (
+                <Radio.Button key={value} value={value}>{value}</Radio.Button>
+              ))}
+            </Radio.Group>
+            <Button icon={<ReloadOutlined aria-hidden="true" />} onClick={load}>刷新</Button>
+          </div>
+          <div className="mb-3 rounded-md border border-[var(--color-border-2)] bg-[var(--color-bg-1)] p-3">
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+              <Typography.Text strong>告警分布（近 {timeRange}）</Typography.Text>
+              <Space size="middle">
+                <Typography.Text type="secondary" className="text-xs">严重 {events.filter((event) => event.severity === 'critical').length}</Typography.Text>
+                <Typography.Text type="secondary" className="text-xs">错误 {events.filter((event) => event.severity === 'error').length}</Typography.Text>
+                <Typography.Text type="secondary" className="text-xs">警告 {events.filter((event) => event.severity === 'warning').length}</Typography.Text>
+              </Space>
+            </div>
+            <div className="flex h-16 items-end gap-1" role="img" aria-label={`近 ${timeRange} 告警分布`}>
+              {distribution.map((bucket, index) => (
+                <div key={index} className="flex h-full min-w-1 flex-1 flex-col justify-end overflow-hidden rounded-t-sm" title={`第 ${index + 1} 时间段：${bucket.critical + bucket.error + bucket.warning} 条`}>
+                  <span className="block bg-[#f5222d]" style={{ height: `${(bucket.critical / maxDistribution) * 100}%` }} />
+                  <span className="block bg-[#fa8c16]" style={{ height: `${(bucket.error / maxDistribution) * 100}%` }} />
+                  <span className="block bg-[#fadb14]" style={{ height: `${(bucket.warning / maxDistribution) * 100}%` }} />
+                </div>
+              ))}
+            </div>
+          </div>
+          <Tabs
+            activeKey={activeTab}
+            className="mb-3"
+            items={[
+              {
+                key: 'active',
+                label: <Space size={6}>活跃告警<Badge count={activeAlerts.length} showZero color="var(--color-fail)" /></Space>,
+              },
+              {
+                key: 'history',
+                label: <Space size={6}>历史告警<Badge count={historicalAlerts.length} showZero /></Space>,
+              },
+            ]}
+            onChange={(key) => setActiveTab(key as AlertTab)}
+          />
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--color-border-2)] pt-3">
+            <Space wrap size="middle">
               <Select
                 allowClear
                 aria-label="按告警级别筛选"
@@ -142,22 +254,23 @@ export default function ApmEventsPage() {
                 onChange={(severity) => setQuery((current) => ({ ...current, severity }))}
               />
               <Badge
-                count={events.length}
+                count={visibleAlerts.length}
                 showZero
                 color="var(--color-primary)"
                 className="text-xs text-[var(--color-text-3)]"
               />
-              <Typography.Text type="secondary" className="text-xs">最近 7 天事件</Typography.Text>
+              <Typography.Text type="secondary" className="text-xs">
+                {activeTab === 'active' ? '当前未恢复' : '最近 7 天已恢复'}
+              </Typography.Text>
             </Space>
-            <Button icon={<ReloadOutlined aria-hidden="true" />} onClick={load}>刷新</Button>
           </div>
         </ApmSurface>
         <ApmSurface padding="none" className="overflow-hidden">
-          {state === 'ready' ? (
+          {visibleState === 'ready' ? (
             <Table
               rowKey="event_id"
               columns={columns}
-              dataSource={events}
+              dataSource={visibleAlerts}
               pagination={false}
               expandable={{
                 rowExpandable: (event) => Boolean(event.notification_deliveries?.length),
@@ -216,8 +329,12 @@ export default function ApmEventsPage() {
             />
           ) : (
             <CatalogState
-              kind={state}
-              description={state === 'empty' ? '最近 7 天当前组织没有 APM 告警事件。' : undefined}
+              kind={visibleState}
+              description={visibleState === 'empty'
+                ? activeTab === 'active'
+                  ? '当前组织没有活跃 APM 告警。'
+                  : '最近 7 天当前组织没有历史 APM 告警。'
+                : undefined}
             />
           )}
         </ApmSurface>

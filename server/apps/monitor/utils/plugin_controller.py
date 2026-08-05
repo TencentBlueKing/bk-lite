@@ -1,6 +1,7 @@
 import uuid
 
-from jinja2 import BaseLoader, DebugUndefined, Environment
+from jinja2 import BaseLoader, DebugUndefined
+from jinja2.defaults import DEFAULT_FILTERS
 
 from apps.core.exceptions.base_app_exception import BaseAppException, ValidationAppException
 from apps.core.utils.safe_template import (
@@ -17,7 +18,6 @@ from apps.monitor.utils.dimension import parse_instance_id
 from apps.rpc.node_mgmt import NodeMgmt
 
 
-_DEFAULT_JINJA_ENV = Environment()
 _MONITOR_TEMPLATE_ALLOWED_FILTERS = (
     "default",
     "lower",
@@ -83,6 +83,7 @@ _MONITOR_TEMPLATE_ALLOWED_VARIABLES = {
     "send",
     "server",
     "server_url",
+    "sslmode",
     "storage_instance_key",
     "timeout",
     "tls_ca",
@@ -175,15 +176,15 @@ class Controller:
             missing_filters = [
                 name
                 for name in _MONITOR_TEMPLATE_ALLOWED_FILTERS
-                if name not in _DEFAULT_JINJA_ENV.filters and name not in env.filters
+                if name not in DEFAULT_FILTERS and name not in env.filters
             ]
             if missing_filters:
                 raise BaseAppException(f"Missing default Jinja filters: {', '.join(missing_filters)}")
             env.filters.update(
                 {
-                    name: _DEFAULT_JINJA_ENV.filters[name]
+                    name: DEFAULT_FILTERS[name]
                     for name in _MONITOR_TEMPLATE_ALLOWED_FILTERS
-                    if name in _DEFAULT_JINJA_ENV.filters
+                    if name in DEFAULT_FILTERS
                 }
             )
             self._jinja_env = env

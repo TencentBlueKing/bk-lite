@@ -32,11 +32,14 @@ import { calculateQueryStep } from '@/app/monitor/utils/queryStep';
 import { attachGapIntervals, buildGapDetectionParams } from '@/app/monitor/utils/gapIntervals';
 import { useUnitTransform } from '@/app/monitor/hooks/useUnitTransform';
 import { useObjectConfigInfo } from '@/app/monitor/hooks/integration/common/getObjectConfig';
+import { runWithConcurrency } from '@/app/monitor/dashboards/shared/utils/concurrency';
 import dayjs, { Dayjs } from 'dayjs';
 import { useInterfaceLabelMap } from '@/app/monitor/hooks/view';
 import Icon from '@/components/icon';
 import { ColumnItem } from '@/types';
 import { cloneDeep } from 'lodash';
+
+const OVERVIEW_QUERY_CONCURRENCY = 4;
 
 const Overview: React.FC<ViewDetailProps> = ({
   monitorObjectId,
@@ -50,7 +53,7 @@ const Overview: React.FC<ViewDetailProps> = ({
   const { getMonitorMetrics } = useMonitorApi();
   const { getInstanceQuery } = useViewApi();
   const { findUnitNameById, getEnumValueUnit } = useUnitTransform();
-  const { getDashboardDisplay } = useObjectConfigInfo();
+  const { getDashboardDisplay, ready: objectConfigReady } = useObjectConfigInfo(monitorObjectName);
   const { t } = useTranslation();
   const INTERFACE_LABEL_MAP = useInterfaceLabelMap();
   const timerRef = useRef<NodeJS.Timeout | null>(null);
@@ -83,9 +86,9 @@ const Overview: React.FC<ViewDetailProps> = ({
   }, [timeValues]);
 
   useEffect(() => {
-    if (isLoading) return;
+    if (isLoading || !objectConfigReady) return;
     getInitData();
-  }, [isLoading]);
+  }, [isLoading, objectConfigReady]);
 
   const getInitData = async () => {
     setLoading(true);
@@ -128,7 +131,8 @@ const Overview: React.FC<ViewDetailProps> = ({
 
   const getParams = (item: MetricItem) => {
     const params: SearchParams = {
-      query: ((item.view_query as string | undefined) || item.query || '').replace(
+      // 卡片统一用完整 query + 通用序列预算；不再走 per-metric view_query。
+      query: (item.query || '').replace(
         /__\$labels__/g,
         mergeViewQueryKeyValues([
           { keys: item.instance_id_keys || [], values: idValues }
@@ -151,15 +155,19 @@ const Overview: React.FC<ViewDetailProps> = ({
 
   const fetchViewData = async (data: MetricItem[], type?: string) => {
     setLoading(type !== 'timer');
-    const requestQueue = data.map((item: MetricItem) =>
-      getInstanceQuery(getParams(item)).then((response) => ({
-        id: item.id,
-        data: response.data.result || [],
-        gaps: response.data.gaps || []
-      }))
-    );
     try {
-      const results = await Promise.all(requestQueue);
+      const results = await runWithConcurrency(
+        data,
+        OVERVIEW_QUERY_CONCURRENCY,
+        async (item) => {
+          const response = await getInstanceQuery(getParams(item));
+          return {
+            id: item.id,
+            data: response.data.result || [],
+            gaps: response.data.gaps || []
+          };
+        }
+      );
       results.forEach((result) => {
         const metricItem = data.find((item) => item.id === result.id);
         if (metricItem) {

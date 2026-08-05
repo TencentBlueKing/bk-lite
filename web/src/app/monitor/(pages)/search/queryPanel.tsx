@@ -6,7 +6,7 @@ import React, {
   useImperativeHandle,
   forwardRef
 } from 'react';
-import { Select, Button, Tooltip, Input, Card, message } from 'antd';
+import { Select, Button, Tooltip, AutoComplete, Input, Card, message } from 'antd';
 import {
   PlusOutlined,
   DeleteOutlined,
@@ -26,7 +26,9 @@ import {
 import { useTranslation } from '@/utils/i18n';
 import { useConditionList } from '@/app/monitor/hooks';
 import useMonitorApi from '@/app/monitor/api';
+import useViewApi from '@/app/monitor/api/view';
 import useApiClient from '@/utils/request';
+import { runWithConcurrency } from '@/app/monitor/dashboards/shared/utils/concurrency';
 import { useSearchParams } from 'next/navigation';
 import {
   ListItem,
@@ -39,6 +41,7 @@ import {
   buildGroupedMetricSelectOptions,
   METRIC_SELECT_POPUP_CLASSNAME,
 } from '@/app/monitor/components/metricSelectOptions';
+import { loadMonitorPluginsByObjectCached } from '@/app/monitor/utils/monitorPluginCache';
 import {
   InstanceItem,
   PluginItem,
@@ -56,7 +59,9 @@ import { loadSavedQueryResources } from './savedQueryLoading';
 import {
   generateSearchId,
   getMetricsMapKey,
+  extractDimensionLabelValues,
   resolveInitialPlugin,
+  resolveMetricDimensionLabels,
   resolveMetricSelection
 } from './searchQueryLogic';
 
@@ -78,6 +83,7 @@ const QueryPanel = forwardRef<QueryPanelRef, QueryPanelProps>(
       getMetricsGroup,
       getInstanceList
     } = useMonitorApi();
+    const { getMetricsInstanceQuery } = useViewApi();
     const CONDITION_LIST = useConditionList();
     const [panelCollapsed, setPanelCollapsed] = useState(false);
     const initialObjectId = searchParams.get('monitor_object');
@@ -123,7 +129,13 @@ const QueryPanel = forwardRef<QueryPanelRef, QueryPanelProps>(
     const [instancesMap, setInstancesMap] = useState<
       Record<string, InstanceItem[]>
     >({});
-    const [labelsMap, setLabelsMap] = useState<Record<string, string[]>>({});
+    // 条件值下拉：key = object_plugin_metric_instances_label
+    const [conditionValueOptionsMap, setConditionValueOptionsMap] = useState<
+      Record<string, string[]>
+    >({});
+    const [conditionValueLoadingMap, setConditionValueLoadingMap] = useState<
+      Record<string, boolean>
+    >({});
     const [metricsLoading, setMetricsLoading] = useState<
       Record<string, boolean>
     >({});
@@ -298,11 +310,13 @@ const QueryPanel = forwardRef<QueryPanelRef, QueryPanelProps>(
       pluginAbortControllerRef.current[key] = abortController;
       try {
         setPluginLoading((prev) => ({ ...prev, [key]: true }));
-        const data = await getMonitorPlugin(
-          { monitor_object_id: objectId },
-          { signal: abortController.signal }
-        );
-        const plugins = (data || []) as PluginItem[];
+        const plugins = (await loadMonitorPluginsByObjectCached(
+          objectId,
+          () => getMonitorPlugin({ monitor_object_id: objectId })
+        )) as PluginItem[];
+        if (abortController.signal.aborted) {
+          return [];
+        }
         setPluginsMap((prev) => ({ ...prev, [key]: plugins }));
         const selectedPlugin =
           preferredPluginId ||
@@ -335,7 +349,7 @@ const QueryPanel = forwardRef<QueryPanelRef, QueryPanelProps>(
         setMetricsLoading((prev) => ({ ...prev, [key]: true }));
         const config = { signal: abortController.signal };
         const params = {
-          monitor_object_id: objectId,
+          monitor_object_id: String(objectId),
           ...(pluginId ? { monitor_plugin_id: String(pluginId) } : {})
         };
         const [groupList, metricsList] = await Promise.all([
@@ -514,11 +528,6 @@ const QueryPanel = forwardRef<QueryPanelRef, QueryPanelProps>(
       const metrics =
         metricsMap[getMetricsMapKey(group.object, group.plugin)] || [];
       const target = resolveMetricSelection(metrics, metricId);
-      const labels = (target?.dimensions || []).map((item) => item.name);
-      setLabelsMap((prev) => ({
-        ...prev,
-        [`${group.object}_${group.plugin}_${metricId}`]: labels
-      }));
       updateQueryGroup(groupId, {
         metric: target?.id || metricId,
         legacyMetricName: null,
@@ -526,12 +535,78 @@ const QueryPanel = forwardRef<QueryPanelRef, QueryPanelProps>(
       });
     };
 
+    const getConditionValueOptionsKey = (
+      group: QueryGroup,
+      label: string | null | undefined
+    ) =>
+      [
+        group.object,
+        group.plugin,
+        group.metric,
+        (group.instanceIds || []).slice().sort().join(','),
+        label || ''
+      ].join('_');
+
+    const loadConditionValueOptions = async (
+      group: QueryGroup,
+      label: string | null | undefined
+    ) => {
+      const dim = String(label || '').trim();
+      if (
+        !dim ||
+        !group.object ||
+        !group.metric ||
+        !(group.instanceIds || []).length
+      ) {
+        return;
+      }
+      const cacheKey = getConditionValueOptionsKey(group, dim);
+      if (conditionValueOptionsMap[cacheKey]) return;
+
+      setConditionValueLoadingMap((prev) => ({ ...prev, [cacheKey]: true }));
+      try {
+        const responses = await runWithConcurrency(
+          group.instanceIds,
+          4,
+          (instanceId) =>
+            getMetricsInstanceQuery({
+              monitor_object_id: group.object,
+              instance_id: instanceId,
+              metric_id: group.metric as React.Key,
+              auto_convert: false,
+              limit: 200,
+              mode: 'limited'
+            })
+        );
+        const series = responses.flatMap(
+          (resp) => resp?.data?.result || []
+        );
+        const values = extractDimensionLabelValues(series, dim);
+        setConditionValueOptionsMap((prev) => ({
+          ...prev,
+          [cacheKey]: values
+        }));
+      } catch {
+        setConditionValueOptionsMap((prev) => ({
+          ...prev,
+          [cacheKey]: []
+        }));
+      } finally {
+        setConditionValueLoadingMap((prev) => ({
+          ...prev,
+          [cacheKey]: false
+        }));
+      }
+    };
+
     const handleLabelChange = (groupId: string, val: string, index: number) => {
       const group = queryGroups.find((g) => g.id === groupId);
       if (!group) return;
       const conditions = cloneDeep(group.conditions);
       conditions[index].label = val;
+      conditions[index].value = '';
       updateQueryGroup(groupId, { conditions });
+      void loadConditionValueOptions(group, val);
     };
 
     const handleConditionChange = (
@@ -548,13 +623,13 @@ const QueryPanel = forwardRef<QueryPanelRef, QueryPanelProps>(
 
     const handleValueChange = (
       groupId: string,
-      e: React.ChangeEvent<HTMLInputElement>,
+      val: string,
       index: number
     ) => {
       const group = queryGroups.find((g) => g.id === groupId);
       if (!group) return;
       const conditions = cloneDeep(group.conditions);
-      conditions[index].value = e.target.value;
+      conditions[index].value = val;
       updateQueryGroup(groupId, { conditions });
     };
 
@@ -659,8 +734,12 @@ const QueryPanel = forwardRef<QueryPanelRef, QueryPanelProps>(
       const dataKey = getMetricsMapKey(group.object, group.plugin);
       const groupMetrics = metricsGroupMap[dataKey] || [];
       const groupInstances = instancesMap[dataKey] || [];
-      const groupLabels =
-        labelsMap[`${group.object}_${group.plugin}_${group.metric}`] || [];
+      // 直接从当前指标定义取维度，避免 URL 深链只填 metric、未走 handleMetricChange 时标签为空。
+      const selectedMetric = resolveMetricSelection(
+        metricsMap[dataKey] || [],
+        group.metric
+      );
+      const groupLabels = resolveMetricDimensionLabels(selectedMetric);
       const isPluginLoading = pluginLoading[String(group.object)] || false;
       const isMetricsLoading = metricsLoading[dataKey] || false;
       const isInstanceLoading = instanceLoading[dataKey] || false;
@@ -799,7 +878,7 @@ const QueryPanel = forwardRef<QueryPanelRef, QueryPanelProps>(
                     .toLowerCase()
                     .includes(input.toLowerCase())
                 }
-                onChange={(val) => handleObjectChange(group.id, val)}
+                onChange={(val) => handleObjectChange(group.id, String(val))}
               >
                 {objects.map((item) => (
                   <Option
@@ -834,7 +913,7 @@ const QueryPanel = forwardRef<QueryPanelRef, QueryPanelProps>(
                     label: item.display_name || item.name || String(item.id),
                     value: item.id
                   }))}
-                  onChange={(val) => handlePluginChange(group.id, val)}
+                  onChange={(val) => handlePluginChange(group.id, String(val))}
                 />
               </div>
             )}
@@ -902,7 +981,7 @@ const QueryPanel = forwardRef<QueryPanelRef, QueryPanelProps>(
                     }));
                   }
                 }}
-                onChange={(val) => handleMetricChange(group.id, val)}
+                onChange={(val) => handleMetricChange(group.id, String(val))}
               />
             </div>
             {/* 汇聚方法 */}
@@ -931,58 +1010,121 @@ const QueryPanel = forwardRef<QueryPanelRef, QueryPanelProps>(
               </label>
               {group.conditions.length > 0 && (
                 <div className="space-y-2 mb-3">
-                  {group.conditions.map((conditionItem, index) => (
+                  {group.conditions.map((conditionItem, index) => {
+                    const valueOptionsKey = getConditionValueOptionsKey(
+                      group,
+                      conditionItem.label
+                    );
+                    const valueOptions =
+                      conditionValueOptionsMap[valueOptionsKey] || [];
+                    const valueLoading = Boolean(
+                      conditionValueLoadingMap[valueOptionsKey]
+                    );
+                    return (
                     <div
                       key={index}
                       className="flex items-center gap-1.5 bg-[var(--color-fill-1)] rounded-md p-1.5"
                     >
                       <Select
-                        className="w-20"
+                        className="min-w-[96px] flex-[1.1]"
                         size="small"
                         placeholder={t('monitor.label')}
                         value={conditionItem.label}
                         showSearch
+                        popupMatchSelectWidth={false}
+                        dropdownStyle={{ minWidth: 180 }}
+                        styles={{
+                          popup: {
+                            root: { minWidth: 180 }
+                          }
+                        }}
                         onChange={(val) =>
                           handleLabelChange(group.id, val, index)
                         }
-                      >
-                        {groupLabels.map((item) => (
-                          <Option key={item} value={item}>
-                            {item}
-                          </Option>
-                        ))}
-                      </Select>
+                        onDropdownVisibleChange={(open) => {
+                          if (open && conditionItem.label) {
+                            void loadConditionValueOptions(
+                              group,
+                              conditionItem.label
+                            );
+                          }
+                        }}
+                        options={groupLabels.map((item) => ({
+                          label: item,
+                          value: item
+                        }))}
+                      />
                       <Select
-                        className="w-20"
+                        className="min-w-[80px] w-[80px] shrink-0"
                         size="small"
                         placeholder={t('monitor.term')}
                         value={conditionItem.condition}
                         onChange={(val) =>
                           handleConditionChange(group.id, val, index)
                         }
-                      >
-                        {CONDITION_LIST.map((item: ListItem) => (
-                          <Option key={item.id} value={item.id}>
-                            {item.name}
-                          </Option>
-                        ))}
-                      </Select>
-                      <Input
-                        className="flex-1"
+                        options={CONDITION_LIST.map((item: ListItem) => ({
+                          label: item.name,
+                          value: item.id
+                        }))}
+                      />
+                      <AutoComplete
+                        className="min-w-[120px] flex-[1.6]"
                         size="small"
+                        allowClear
                         placeholder={t('monitor.value')}
                         value={conditionItem.value}
-                        onChange={(e) => handleValueChange(group.id, e, index)}
+                        options={valueOptions.map((item) => ({
+                          value: item,
+                          label: item
+                        }))}
+                        disabled={!conditionItem.label}
+                        popupMatchSelectWidth={false}
+                        dropdownStyle={{ minWidth: 220 }}
+                        styles={{
+                          popup: {
+                            root: { minWidth: 220 }
+                          }
+                        }}
+                        onFocus={() => {
+                          if (conditionItem.label) {
+                            void loadConditionValueOptions(
+                              group,
+                              conditionItem.label
+                            );
+                          }
+                        }}
+                        onDropdownVisibleChange={(open) => {
+                          if (open && conditionItem.label) {
+                            void loadConditionValueOptions(
+                              group,
+                              conditionItem.label
+                            );
+                          }
+                        }}
+                        filterOption={(input, option) =>
+                          String(option?.value || '')
+                            .toLowerCase()
+                            .includes(input.toLowerCase())
+                        }
+                        onChange={(val) =>
+                          handleValueChange(group.id, val || '', index)
+                        }
+                        notFoundContent={
+                          valueLoading
+                            ? t('common.loading')
+                            : t('common.noData')
+                        }
                       />
                       <Button
                         type="text"
                         size="small"
                         icon={<MinusCircleOutlined />}
-                        className="text-[var(--color-text-3)] hover:text-[var(--color-fail)]"
+                        className="shrink-0 text-[var(--color-text-3)] hover:text-[var(--color-fail)]"
                         onClick={() => deleteConditionItem(group.id, index)}
                       />
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
               <Button
@@ -1005,7 +1147,7 @@ const QueryPanel = forwardRef<QueryPanelRef, QueryPanelProps>(
         {/* 左侧面板 */}
         <div
           className={`flex flex-col border-r transition-all duration-300 h-full ${
-            panelCollapsed ? 'w-0 overflow-hidden' : 'w-[340px]'
+            panelCollapsed ? 'w-0 overflow-hidden' : 'w-[400px]'
           }`}
           style={{
             backgroundColor: 'var(--color-bg-1)',

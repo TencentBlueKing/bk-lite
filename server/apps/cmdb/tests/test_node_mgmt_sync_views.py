@@ -384,6 +384,48 @@ def test_superuser_read_keeps_complete_global_detail(action):
     assert "organization" in json.dumps(data)
 
 
+def test_non_superuser_cannot_probe_snapshot_rows_with_search():
+    with patch.object(NodeMgmtSyncService, "get_snapshot_rows") as get_rows:
+        response = _call(
+            "display_rows",
+            "GET",
+            _user("auto_collection-View"),
+            {"run_id": 7, "bucket": "raw_data", "search": "2171"},
+        )
+
+    assert response.status_code == 403
+    get_rows.assert_not_called()
+
+
+def test_superuser_can_page_snapshot_rows():
+    expected = {
+        "total_count": 2,
+        "retained_count": 2,
+        "matched_retained_count": 1,
+        "truncated": False,
+        "page": 1,
+        "page_size": 20,
+        "data": [{"_row_key": "row-1", "pid": "2171"}],
+    }
+    with patch.object(NodeMgmtSyncService, "get_snapshot_rows", return_value=expected) as get_rows:
+        response = _call(
+            "display_rows",
+            "GET",
+            _user("auto_collection-View", is_superuser=True),
+            {"run_id": 7, "bucket": "raw_data", "search": "2171"},
+        )
+
+    assert response.status_code == 200
+    assert json.loads(response.content)["data"] == expected
+    get_rows.assert_called_once_with(
+        run_id="7",
+        bucket="raw_data",
+        page="1",
+        page_size="20",
+        search="2171",
+    )
+
+
 @pytest.mark.parametrize("action", ["task", "config"])
 @pytest.mark.parametrize("field", ["auto_sync_enabled", "auto_collect_enabled"])
 @pytest.mark.parametrize("value", ["false", "0", None, 0, 1])
@@ -460,6 +502,7 @@ def test_non_superuser_display_is_rebuilt_from_fixed_schema_and_validates_scalar
     assert set(data) == {
         "display_source",
         "display_schema",
+        "can_view_raw_detail",
         "message",
         "summary",
         "detail",

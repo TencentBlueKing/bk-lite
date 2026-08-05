@@ -22,6 +22,7 @@ import {
   shouldTriggerSessionExpiry,
 } from '@/utils/sessionExpiry';
 import { forceLogoutAndRedirect } from '@/utils/forceLogout';
+import { isDashboardExecutionRenderRoute } from '@/app/routeScope';
 import {
   publishAuthRecovery,
   subscribeAuthRecovery,
@@ -92,6 +93,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const authPaths = ['/auth/signin', '/auth/signout', '/auth/callback', '/auth/signin/login-auth-result'];
   const isCurrentAuthPath = isAuthPath(pathname);
+  const isDashboardRenderRoute = isDashboardExecutionRenderRoute(pathname);
   const isSessionValid = hasValidSession(extendedSession);
   const authenticatedSessionIdentityRef = useRef<string | null>(null);
   const pageUserIdentityRef = useRef<string | null>(null);
@@ -284,7 +286,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     const performInitialAuthCheck = async () => {
       // Only check once and skip for auth pages
-      if (hasCheckedExistingAuth || isCurrentAuthPath) {
+      if (hasCheckedExistingAuth || isCurrentAuthPath || isDashboardRenderRoute) {
+        if (isDashboardRenderRoute) {
+          setHasCheckedExistingAuth(true);
+        }
         setIsCheckingAuth(false);
         return;
       }
@@ -305,11 +310,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
 
     performInitialAuthCheck();
-  }, [hasCheckedExistingAuth, isCurrentAuthPath, pathname]);
+  }, [hasCheckedExistingAuth, isCurrentAuthPath, isDashboardRenderRoute, pathname]);
 
   useEffect(() => {
     const handleSessionExpired = () => {
-      if (isCurrentAuthPath) {
+      if (isCurrentAuthPath || isDashboardRenderRoute) {
         return;
       }
 
@@ -325,7 +330,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => {
       window.removeEventListener(SESSION_EXPIRED_EVENT, handleSessionExpired as EventListener);
     };
-  }, [isCurrentAuthPath]);
+  }, [isCurrentAuthPath, isDashboardRenderRoute]);
 
   const recoverAuthenticatedSession = useCallback((event?: AuthRecoveryEvent) => {
     if (event && handledRecoveryEventIdsRef.current.has(event.eventId)) {
@@ -460,6 +465,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setIsAuthenticated(false);
       setIsCheckingAuth(false);
 
+      // Render Session 路由由 Chromium 先换票再建会话，禁止踢去普通登录页
+      if (isDashboardRenderRoute) {
+        return;
+      }
+
       // Only redirect if:
       // 1. Not currently auto signing in
       // 2. Not on auth pages
@@ -489,7 +499,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       localStorage.setItem('locale', userLocale);
       localStorage.setItem('timezone', userTimezone);
     }
-  }, [status, session, pathname, setLocale, router, isAutoSigningIn, hasCheckedExistingAuth, isCheckingExistingAuth, isCurrentAuthPath, sessionExpiredOpen, token]);
+  }, [status, session, pathname, setLocale, router, isAutoSigningIn, hasCheckedExistingAuth, isCheckingExistingAuth, isCurrentAuthPath, isDashboardRenderRoute, sessionExpiredOpen, token]);
 
   // Show loading state until authentication state is determined
   if (((status === 'loading' && !isAuthenticated) || isCheckingAuth || isAutoSigningIn || isCheckingExistingAuth) && pathname && !authPaths.includes(pathname)) {
@@ -510,7 +520,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   return (
     <AuthContext.Provider value={{ token, isAuthenticated, isCheckingAuth }}>
       {children}
-      {sessionExpiredOpen && !isCurrentAuthPath && (
+      {sessionExpiredOpen && !isCurrentAuthPath && !isDashboardRenderRoute && (
         <div
           className="fixed inset-0 z-1200 flex items-center justify-center bg-[rgba(15,23,42,0.52)] px-4 py-8"
           style={{ backdropFilter: 'blur(4px)' }}

@@ -1,15 +1,20 @@
 import os
 
 from django.conf import settings
-from jinja2 import Environment, FileSystemLoader
+from jinja2 import FileSystemLoader
+from jinja2.defaults import DEFAULT_FILTERS
 from typing import List
 from apps.alerts.aggregation.window.factory import WindowConfig
+from apps.core.utils.safe_template import build_trusted_file_template_env
 
 
 class SQLBuilder:
     def __init__(self):
         template_dir = os.path.join(settings.BASE_DIR, "apps/alerts/aggregation/templates")
-        self.env = Environment(loader=FileSystemLoader(template_dir))
+        self.env = build_trusted_file_template_env(
+            loader=FileSystemLoader(template_dir),
+            extra_filters={"default": DEFAULT_FILTERS["default"]},
+        )
 
     def build_aggregation_sql(
         self,

@@ -264,6 +264,17 @@ export const CLOUD_FORM_INITIAL_VALUES = {
   cleanupDays: 3,
 };
 
+/** FusionInsight / OceanStor / 华三 UIS 等平台 HTTPS API 采集表单默认值 */
+export const PLATFORM_API_FORM_INITIAL_VALUES = {
+  instId: undefined,
+  cycle: CYCLE_OPTIONS.INTERVAL,
+  intervalValue: 30,
+  enterType: ENTER_TYPE.AUTOMATIC,
+  timeout: 300,
+  cleanupStrategy: 'no_cleanup',
+  cleanupDays: 3,
+};
+
 export const HOST_FORM_INITIAL_VALUES = {
   instId: undefined,
   cycle: CYCLE_OPTIONS.INTERVAL,
@@ -274,6 +285,17 @@ export const HOST_FORM_INITIAL_VALUES = {
   port: '22',
   timeout: 20,
   cleanupStrategy: 'no_cleanup',
+  cleanupDays: 3,
+};
+
+export const PC_FORM_INITIAL_VALUES = {
+  instId: undefined,
+  cycle: CYCLE_OPTIONS.INTERVAL,
+  intervalValue: 30,
+  enterType: ENTER_TYPE.AUTOMATIC,
+  osType: 'windows',
+  timeout: 120,
+  cleanupStrategy: 'immediately',
   cleanupDays: 3,
 };
 

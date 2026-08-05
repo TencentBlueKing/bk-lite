@@ -16,7 +16,11 @@ import types
 import pydantic.root_model  # noqa
 import pytest
 
-from apps.cmdb.constants.constants import CollectPluginTypes, CollectRunStatusType
+from apps.cmdb.constants.constants import (
+    CollectDriverTypes,
+    CollectPluginTypes,
+    CollectRunStatusType,
+)
 from apps.cmdb.services.collect_service import CollectModelService
 from apps.core.exceptions.base_app_exception import BaseAppException
 
@@ -347,6 +351,63 @@ class TestFormatUpdateCredential:
         assert data["credential"]["user"] == "admin"
         assert data["credential"]["regions"] == ["cn-north"]
 
+    def test_华为云编辑project与region时保留掩码AKSK(self):
+        inst = fake_instance(
+            is_k8s=False,
+            decrypt_credentials={
+                "accessKey": "AK-old",
+                "accessSecret": "SK-old",
+                "project_id": "project-old",
+                "regions": {"resource_id": "cn-north-4"},
+            },
+        )
+        data = {
+            "credential": {
+                "project_id": "project-new",
+                "regions": {"resource_id": "cn-east-3"},
+            }
+        }
+
+        CollectModelService.format_update_credential(inst, data)
+
+        assert data["credential"] == {
+            "accessKey": "AK-old",
+            "accessSecret": "SK-old",
+            "project_id": "project-new",
+            "regions": {"resource_id": "cn-east-3"},
+        }
+
+    def test_华为云编辑提交掩码时沿用旧AKSK(self, mocker):
+        mocker.patch(
+            "apps.cmdb.services.collect_service.get_collect_model_passwords",
+            return_value=["accessKey", "accessSecret"],
+        )
+        inst = fake_instance(
+            is_k8s=False,
+            model_id="hwcloud",
+            driver_type=CollectDriverTypes.PROTOCOL,
+            decrypt_credentials={
+                "accessKey": "AK-old",
+                "accessSecret": "SK-old",
+                "project_id": "project-old",
+            },
+        )
+        data = {
+            "credential": {
+                "accessKey": "******",
+                "accessSecret": "******",
+                "project_id": "project-new",
+            }
+        }
+
+        CollectModelService.format_update_credential(inst, data)
+
+        assert data["credential"] == {
+            "accessKey": "AK-old",
+            "accessSecret": "SK-old",
+            "project_id": "project-new",
+        }
+
     def test_regions与其他字段共存(self):
         inst = fake_instance(is_k8s=False, decrypt_credentials={"user": "old"})
         data = {"credential": {"user": "new", "regions": ["r1"]}}
@@ -376,6 +437,78 @@ class TestFormatUpdateCredential:
         merged = data["credential"][0]
         assert merged["user"] == "u1-new"
         assert merged["pwd"] == "secret"
+
+    def test_旧单凭据dict升级为单项凭据池时保留掩码密钥(self):
+        inst = fake_instance(
+            is_k8s=False,
+            decrypt_credentials={
+                "token": "legacy-secret",
+                "scheme": "http",
+                "port": 8086,
+            },
+        )
+        data = {
+            "credential": [
+                {
+                    "credential_id": "cred-from-detail",
+                    "scheme": "https",
+                    "port": 8443,
+                    "verify_tls": True,
+                }
+            ]
+        }
+
+        CollectModelService.format_update_credential(inst, data)
+
+        assert data["credential"] == [
+            {
+                "credential_id": "cred-from-detail",
+                "token": "legacy-secret",
+                "scheme": "https",
+                "port": 8443,
+                "verify_tls": True,
+            }
+        ]
+
+    def test_凭据池编辑提交掩码时沿用旧密钥(self, mocker):
+        mocker.patch(
+            "apps.cmdb.services.collect_service.get_collect_model_passwords",
+            return_value=["token"],
+        )
+        inst = fake_instance(
+            is_k8s=False,
+            model_id="influxdb",
+            driver_type=CollectDriverTypes.PROTOCOL,
+            decrypt_credentials=[
+                {
+                    "credential_id": "cred-1",
+                    "token": "old-token",
+                    "scheme": "https",
+                    "port": 8086,
+                }
+            ],
+        )
+        data = {
+            "credential": [
+                {
+                    "credential_id": "cred-1",
+                    "token": "******",
+                    "scheme": "https",
+                    "port": 8443,
+                }
+            ]
+        }
+
+        CollectModelService.format_update_credential(inst, data)
+
+        assert data["credential"] == [
+            {
+                "credential_id": "cred-1",
+                "token": "old-token",
+                "scheme": "https",
+                "port": 8443,
+            }
+        ]
 
     def test_list池含非dict项_报错(self):
         inst = fake_instance(is_k8s=False, decrypt_credentials=[])
@@ -697,3 +830,25 @@ class TestCollectCrudSideEffects:
             CollectModelService.destroy(request, view)
 
         assert delete_calls == []
+
+    def test_destroy_pc_task_只删任务资源不操作图资产(self, mocker):
+        patch_transaction_callbacks(mocker)
+        delete_calls = []
+        instance = collect_instance(
+            model_id="pc",
+            driver_type="job",
+            delete=lambda: delete_calls.append("task-deleted"),
+        )
+        view = FakeCollectView(instance)
+        request = fake_request({})
+        mocker.patch.object(CollectModelService, "has_permission")
+        mocker.patch("apps.cmdb.services.collect_service.CeleryUtils.delete_periodic_task")
+        mocker.patch.object(CollectModelService, "delete_butch_node_params")
+        mocker.patch("apps.cmdb.services.collect_service.create_change_record")
+        graph_client = mocker.patch("apps.cmdb.services.pc_discovery.GraphClient")
+
+        result = CollectModelService.destroy(request, view)
+
+        assert result == instance.id
+        assert delete_calls == ["task-deleted"]
+        graph_client.assert_not_called()

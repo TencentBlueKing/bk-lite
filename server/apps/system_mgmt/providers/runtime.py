@@ -25,6 +25,8 @@ _EXTERNAL_API_CODES = frozenset(
     {
         "provider.auth_failed",
         "provider.permission_denied",
+        "provider.bot_not_enabled",
+        "provider.permission_unverified",
         "provider.request_failed",
         "provider.timeout",
     }
@@ -239,11 +241,15 @@ class RuntimeApplicationService:
             f"provider_key={manifest.key}, success={all_success}, "
             f"capability_status={capability_status}"
         )
+        failed_capabilities = [
+            item for item in capability_results.values() if not item["success"]
+        ]
         return CapabilityExecutionResult(
             success=all_success,
             summary=summary,
             partial_success=not all_success and any(item["success"] for item in capability_results.values()),
-            retryable=first_failure_result.retryable if first_failure_result else False,
+            retryable=bool(failed_capabilities)
+            and all(item["retryable"] for item in failed_capabilities),
             errors=first_failure_result.errors if first_failure_result else [],
             payload={
                 "provider_key": manifest.key,

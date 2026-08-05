@@ -9,6 +9,9 @@ import TimeSelector from "@/components/time-selector";
 import DateRangeSelector from "@/app/ops-analysis/components/dateRangeSelector";
 import { useTranslation } from "@/utils/i18n";
 import { formatOpsRequestTime } from "@/app/ops-analysis/utils/dateTime";
+import {
+  isBindableDataSourceParamType,
+} from "@/app/ops-analysis/utils/dataSourceParamContract";
 import type {
   DataSourceParamFilterType,
   ParamItem,
@@ -27,12 +30,14 @@ export interface ParamTableRef {
 interface ParamTableProps {
   params: ParamItem[];
   onChange: (params: ParamItem[]) => void;
+  readOnly?: boolean;
 }
 
 const FormTimeSelector: React.FC<{
   value?: any;
   onChange?: (value: any) => void;
-}> = ({ value, onChange }) => {
+  disabled?: boolean;
+}> = ({ value, onChange, disabled = false }) => {
   const [selectValue, setSelectValue] = React.useState(10080);
   const [rangeValue, setRangeValue] = React.useState<any>(null);
 
@@ -71,32 +76,45 @@ const FormTimeSelector: React.FC<{
 
   return (
     <div className="w-full">
-      <TimeSelector
-        onlyTimeSelect
-        className="w-full"
-        defaultValue={{
-          selectValue: selectValue,
-          rangePickerVaule: formatRangeValue(rangeValue),
-        }}
-        onChange={handleChange}
-      />
+      {disabled ? (
+        <Input
+          disabled
+          value={Array.isArray(value) ? value.join(" - ") : String(value ?? "")}
+        />
+      ) : (
+        <TimeSelector
+          onlyTimeSelect
+          className="w-full"
+          defaultValue={{
+            selectValue: selectValue,
+            rangePickerVaule: formatRangeValue(rangeValue),
+          }}
+          onChange={handleChange}
+        />
+      )}
     </div>
   );
 };
 
 const ParamTable = React.forwardRef<ParamTableRef, ParamTableProps>(
-  ({ params, onChange }, ref) => {
+  ({ params, onChange, readOnly = false }, ref) => {
     const { t } = useTranslation();
     const [duplicateNames, setDuplicateNames] = React.useState<string[]>([]);
     const [emptyNames, setEmptyNames] = React.useState<string[]>([]);
     const [emptyAliases, setEmptyAliases] = React.useState<string[]>([]);
-    const [invalidDateRangeIds, setInvalidDateRangeIds] = React.useState<string[]>([]);
+    const [invalidDateRangeIds, setInvalidDateRangeIds] = React.useState<
+      string[]
+    >([]);
+    const [invalidFilterBindingIds, setInvalidFilterBindingIds] = React.useState<
+      string[]
+    >([]);
 
     const clearValidation = () => {
       setDuplicateNames([]);
       setEmptyNames([]);
       setEmptyAliases([]);
       setInvalidDateRangeIds([]);
+      setInvalidFilterBindingIds([]);
     };
 
     const paramTypeOptions = [
@@ -123,6 +141,7 @@ const ParamTable = React.forwardRef<ParamTableRef, ParamTableProps>(
       setEmptyNames(result.emptyNames);
       setEmptyAliases(result.emptyAliases);
       setInvalidDateRangeIds(result.invalidDateRangeIds);
+      setInvalidFilterBindingIds(result.invalidFilterBindingIds);
       return result.isValid;
     };
 
@@ -158,7 +177,7 @@ const ParamTable = React.forwardRef<ParamTableRef, ParamTableProps>(
           if (type === "boolean") {
             newValue = val;
           } else if (type === "number") {
-            newValue = Number(val);
+            newValue = val === "" ? null : Number(val);
           } else if (type === "date") {
             if (!val) {
               newValue = "";
@@ -180,12 +199,16 @@ const ParamTable = React.forwardRef<ParamTableRef, ParamTableProps>(
         params.map((item) => {
           if (item.id !== id) return item;
           let newValue: any = "";
-          const newFilterType = item.filterType;
+          const newFilterType =
+            item.filterType === "filter" &&
+            !isBindableDataSourceParamType(val)
+              ? "params"
+              : item.filterType;
 
           if (val === "boolean") {
             newValue = false;
           } else if (val === "number") {
-            newValue = 0;
+            newValue = null;
           } else if (val === "date") {
             newValue = "";
           } else if (val === "timeRange") {
@@ -262,13 +285,14 @@ const ParamTable = React.forwardRef<ParamTableRef, ParamTableProps>(
         width: 120,
         render: (_: any, record: ParamItem) => (
           <Input
+            disabled={readOnly}
             value={record.name}
             placeholder={t("dataSource.name")}
             onChange={(e) => handleParamNameChange(e.target.value, record.id!)}
             onBlur={(e) => handleParamNameBlur(e.target.value, record.id!)}
             status={
               duplicateNames.includes(record.name) ||
-                emptyNames.includes(record.id!)
+              emptyNames.includes(record.id!)
                 ? "error"
                 : undefined
             }
@@ -282,6 +306,7 @@ const ParamTable = React.forwardRef<ParamTableRef, ParamTableProps>(
         width: 120,
         render: (_: any, record: ParamItem) => (
           <Input
+            disabled={readOnly}
             value={record.alias_name || ""}
             placeholder={t("dataSource.aliasName")}
             onChange={(e) => handleAliasChange(e.target.value, record.id!)}
@@ -297,6 +322,7 @@ const ParamTable = React.forwardRef<ParamTableRef, ParamTableProps>(
         width: 110,
         render: (_: any, record: ParamItem) => (
           <Select
+            disabled={readOnly}
             value={record.type || "string"}
             options={paramTypeOptions}
             style={{ width: "100%" }}
@@ -310,10 +336,23 @@ const ParamTable = React.forwardRef<ParamTableRef, ParamTableProps>(
         key: "filterType",
         width: 100,
         render: (_: any, record: ParamItem) => {
+          const availableFilterTypeOptions = isBindableDataSourceParamType(
+            record.type,
+          )
+            ? filterTypeOptions
+            : filterTypeOptions.filter(
+              (option) => option.value !== "filter",
+            );
           return (
             <Select
+              disabled={readOnly}
               value={record.filterType || "fixed"}
-              options={filterTypeOptions}
+              options={availableFilterTypeOptions}
+              status={
+                invalidFilterBindingIds.includes(record.id!)
+                  ? "error"
+                  : undefined
+              }
               style={{ width: "100%" }}
               onChange={(val) => handleFilterTypeChange(val, record.id!)}
             />
@@ -340,6 +379,7 @@ const ParamTable = React.forwardRef<ParamTableRef, ParamTableProps>(
           if (type === "date") {
             return (
               <DatePicker
+                disabled={readOnly}
                 showTime
                 value={text ? dayjs(text) : undefined}
                 onChange={(date: Dayjs | null) =>
@@ -353,6 +393,7 @@ const ParamTable = React.forwardRef<ParamTableRef, ParamTableProps>(
           if (type === "timeRange") {
             return (
               <FormTimeSelector
+                disabled={readOnly}
                 value={text}
                 onChange={(val: any) =>
                   handleDefaultChange(val, record.id!, "timeRange")
@@ -363,18 +404,22 @@ const ParamTable = React.forwardRef<ParamTableRef, ParamTableProps>(
           if (type === "dateRange") {
             return (
               <DateRangeSelector
+                disabled={readOnly}
                 value={text as DateRangeValue | null}
                 className="w-full"
                 onChange={(val) =>
                   handleDefaultChange(val, record.id!, "dateRange")
                 }
-                status={invalidDateRangeIds.includes(record.id!) ? "error" : undefined}
+                status={
+                  invalidDateRangeIds.includes(record.id!) ? "error" : undefined
+                }
               />
             );
           }
           if (type === "boolean") {
             return (
               <Switch
+                disabled={readOnly}
                 checked={!!text}
                 onChange={(val: boolean) =>
                   handleDefaultChange(val, record.id!, "boolean")
@@ -385,8 +430,9 @@ const ParamTable = React.forwardRef<ParamTableRef, ParamTableProps>(
           if (type === "number") {
             return (
               <Input
+                disabled={readOnly}
                 type="number"
-                value={text}
+                value={text ?? ""}
                 placeholder={
                   isFixed
                     ? t("dataSource.required")
@@ -401,6 +447,7 @@ const ParamTable = React.forwardRef<ParamTableRef, ParamTableProps>(
           }
           return (
             <Input
+              disabled={readOnly}
               value={text}
               placeholder={
                 isFixed
@@ -415,37 +462,45 @@ const ParamTable = React.forwardRef<ParamTableRef, ParamTableProps>(
           );
         },
       },
-      {
-        title: t("dataSource.operation"),
-        key: "action",
-        width: 80,
-        render: (_: any, record: ParamItem, index: number) => (
-          <div
-            style={{ display: "flex", gap: "4px", justifyContent: "center" }}
-          >
-            <Button
-              type="text"
-              size="small"
-              icon={<PlusCircleOutlined />}
-              onClick={() => handleAddParamAfter(index)}
-              style={{
-                border: "none",
-                padding: "4px",
-              }}
-            />
-            <Button
-              type="text"
-              size="small"
-              icon={<MinusCircleOutlined />}
-              onClick={() => handleDeleteParam(record.id!)}
-              style={{
-                border: "none",
-                padding: "4px",
-              }}
-            />
-          </div>
-        ),
-      },
+      ...(readOnly
+        ? []
+        : [
+          {
+            title: t("dataSource.operation"),
+            key: "action",
+            width: 80,
+            render: (_: any, record: ParamItem, index: number) => (
+                <div
+                  style={{
+                    display: "flex",
+                    gap: "4px",
+                    justifyContent: "center",
+                  }}
+                >
+                  <Button
+                    type="text"
+                    size="small"
+                    icon={<PlusCircleOutlined />}
+                    onClick={() => handleAddParamAfter(index)}
+                    style={{
+                      border: "none",
+                      padding: "4px",
+                    }}
+                  />
+                  <Button
+                    type="text"
+                    size="small"
+                    icon={<MinusCircleOutlined />}
+                    onClick={() => handleDeleteParam(record.id!)}
+                    style={{
+                      border: "none",
+                      padding: "4px",
+                    }}
+                  />
+                </div>
+            ),
+          },
+        ]),
     ];
 
     return (
@@ -461,14 +516,16 @@ const ParamTable = React.forwardRef<ParamTableRef, ParamTableProps>(
           }}
         >
           <span>{t("dataSource.params")}：</span>
-          <Button
-            type="dashed"
-            size="small"
-            icon={<PlusCircleOutlined />}
-            onClick={() => onChange([...params, createDefaultParam()])}
-          >
-            {t("dataSource.addParam")}
-          </Button>
+          {readOnly ? null : (
+            <Button
+              type="dashed"
+              size="small"
+              icon={<PlusCircleOutlined />}
+              onClick={() => onChange([...params, createDefaultParam()])}
+            >
+              {t("dataSource.addParam")}
+            </Button>
+          )}
         </div>
         {params.length > 0 ? (
           <CustomTable
@@ -494,6 +551,18 @@ const ParamTable = React.forwardRef<ParamTableRef, ParamTableProps>(
           >
             {t("dataSource.duplicateParamNames")}
             {duplicateNames.join("、")}
+          </div>
+        )}
+        {invalidFilterBindingIds.length > 0 && (
+          <div
+            style={{
+              color: "var(--color-fail)",
+              fontSize: "12px",
+              marginTop: "2px",
+              padding: "2px 8px",
+            }}
+          >
+            {t("dataSource.invalidFilterParamType")}
           </div>
         )}
       </div>

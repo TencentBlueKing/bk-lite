@@ -13,6 +13,7 @@ import type {
   ScreenViewSets,
   ScreenWidgetItem,
 } from "@/app/ops-analysis/types/screen";
+import type { DashboardWidgetRenderResult } from "@/app/ops-analysis/renderContract";
 import {
   formatScreenClock,
   getScreenRndNodeClassName,
@@ -27,6 +28,7 @@ interface ScreenCanvasProps {
   viewSets: ScreenViewSets;
   fullscreen?: boolean;
   editMode?: boolean;
+  shareMode?: boolean;
   selectedItemId?: string | null;
   refreshVersion?: number;
   screenId?: string | number;
@@ -38,11 +40,18 @@ interface ScreenCanvasProps {
   dataSourceResolver?: (
     dataSource?: string | number,
   ) => DatasourceItem | undefined;
+  onWidgetRenderStatus?: (result: DashboardWidgetRenderResult) => void;
   onSelectItem?: (itemId: string | null) => void;
   onMoveItem?: (itemId: string, position: { x: number; y: number }) => void;
   onResizeItem?: (itemId: string, size: { w: number; h: number }) => void;
   onEditItem?: (itemId: string) => void;
   onDeleteItem?: (itemId: string) => void;
+  onTopologyLayoutChange?: (
+    itemId: string,
+    next: NonNullable<
+      NonNullable<ScreenWidgetItem['valueConfig']>['networkStatusTopology']
+    >,
+  ) => void;
 }
 
 interface CanvasSize {
@@ -75,6 +84,7 @@ interface DragSession {
 
 interface ScreenRndItemProps {
   item: ScreenWidgetItem;
+  editable: boolean;
   selected: boolean;
   scale: number;
   children: React.ReactNode;
@@ -117,6 +127,7 @@ const getMovedScreenGeometry = (
 const ScreenRndItem: React.FC<ScreenRndItemProps> = React.memo(
   ({
     item,
+    editable,
     selected,
     scale,
     children,
@@ -169,6 +180,7 @@ const ScreenRndItem: React.FC<ScreenRndItemProps> = React.memo(
       event: React.PointerEvent<HTMLDivElement>,
       node: HTMLElement | null,
     ) => {
+      if (!editable) return;
       if (event.button !== 0) return;
 
       const target = event.target;
@@ -305,10 +317,10 @@ const ScreenRndItem: React.FC<ScreenRndItemProps> = React.memo(
           right: false,
           bottom: false,
           left: false,
-          topRight: selected,
-          bottomRight: selected,
-          bottomLeft: selected,
-          topLeft: selected,
+          topRight: editable && selected,
+          bottomRight: editable && selected,
+          bottomLeft: editable && selected,
+          topLeft: editable && selected,
         }}
         resizeHandleClasses={{
           top: "screen-rnd-handle screen-rnd-handle--n",
@@ -320,16 +332,20 @@ const ScreenRndItem: React.FC<ScreenRndItemProps> = React.memo(
           bottomLeft: "screen-rnd-handle screen-rnd-handle--sw",
           topLeft: "screen-rnd-handle screen-rnd-handle--nw",
         }}
-        className={getScreenRndNodeClassName(selected)}
+        className={getScreenRndNodeClassName(editable && selected)}
         style={{ zIndex: item.zIndex }}
-        onClick={(event: React.MouseEvent) => {
-          event.stopPropagation();
-          if (suppressClickRef.current) {
-            suppressClickRef.current = false;
-            return;
-          }
-          onSelectItem?.(item.id);
-        }}
+        onClick={
+          editable
+            ? (event: React.MouseEvent) => {
+              event.stopPropagation();
+              if (suppressClickRef.current) {
+                suppressClickRef.current = false;
+                return;
+              }
+              onSelectItem?.(item.id);
+            }
+            : undefined
+        }
         onResizeStart={(_, __, ref) => {
           interactingRef.current = true;
           ref.style.zIndex = "10000";
@@ -379,6 +395,7 @@ const ScreenRndItem: React.FC<ScreenRndItemProps> = React.memo(
           onPointerUp={finishMove}
           onPointerCancel={finishMove}
           onDoubleClick={(event) => {
+            if (!editable) return;
             event.stopPropagation();
             onEditItem?.(item.id);
           }}
@@ -396,6 +413,7 @@ const ScreenCanvas: React.FC<ScreenCanvasProps> = ({
   viewSets,
   fullscreen = false,
   editMode = false,
+  shareMode = false,
   selectedItemId = null,
   refreshVersion = 0,
   screenId,
@@ -405,11 +423,13 @@ const ScreenCanvas: React.FC<ScreenCanvasProps> = ({
   namespaceSearchVersion = 0,
   builtinNamespaceId,
   dataSourceResolver,
+  onWidgetRenderStatus,
   onSelectItem,
   onMoveItem,
   onResizeItem,
   onEditItem,
   onDeleteItem,
+  onTopologyLayoutChange,
 }) => {
   const { t } = useTranslation();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -475,12 +495,13 @@ const ScreenCanvas: React.FC<ScreenCanvasProps> = ({
 
   const renderScreenItem = (item: ScreenWidgetItem) => {
     const selected = selectedItemId === item.id;
+    const editable = editMode && !fullscreen;
 
     const content = (
       <ScreenWidgetRenderer
         item={item}
-        selected={selected}
-        editMode={editMode}
+        selected={editable && selected}
+        editMode={editable}
         refreshVersion={refreshVersion}
         screenId={screenId}
         fitScale={scale}
@@ -493,34 +514,24 @@ const ScreenCanvas: React.FC<ScreenCanvasProps> = ({
         filterSearchVersion={filterSearchVersion}
         namespaceSearchVersion={namespaceSearchVersion}
         builtinNamespaceId={builtinNamespaceId}
+        onRenderStatus={onWidgetRenderStatus}
         onEditConfig={() => onEditItem?.(item.id)}
         onDelete={onDeleteItem}
+        layoutEditable={editMode && !shareMode}
+        onTopologyLayoutChange={
+          editMode && !shareMode && onTopologyLayoutChange
+            ? (next) => onTopologyLayoutChange(item.id, next)
+            : undefined
+        }
       />
     );
-
-    if (!editMode || fullscreen) {
-      return (
-        <div
-          key={item.id}
-          style={{
-            position: "absolute",
-            left: item.x,
-            top: item.y,
-            width: item.w,
-            height: item.h,
-            zIndex: item.zIndex,
-          }}
-        >
-          {content}
-        </div>
-      );
-    }
 
     return (
       <ScreenRndItem
         key={item.id}
         item={item}
-        selected={selected}
+        editable={editable}
+        selected={editable && selected}
         scale={scale}
         onSelectItem={onSelectItem}
         onMoveItem={onMoveItem}
@@ -973,7 +984,10 @@ const ScreenCanvas: React.FC<ScreenCanvasProps> = ({
           padding: 0;
         }
 
-        .screen-widget-frame--kpi .screen-widget-frame__body,
+        .screen-widget-frame--kpi .screen-widget-frame__body {
+          padding: 0 calc(10px * var(--screen-widget-ui-scale));
+        }
+
         .screen-widget-frame--gauge .screen-widget-frame__body {
           padding: calc(8px * var(--screen-widget-ui-scale)) calc(10px * var(--screen-widget-ui-scale)) calc(10px * var(--screen-widget-ui-scale));
         }

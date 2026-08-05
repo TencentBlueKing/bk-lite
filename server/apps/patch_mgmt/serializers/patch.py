@@ -7,11 +7,34 @@ from rest_framework import serializers
 from apps.patch_mgmt.constants import PackageManagerType
 from apps.patch_mgmt.models import LinuxPatchDetail, Patch, WindowsPatchDetail
 from apps.patch_mgmt.serializers.permission import PatchPermissionSerializer
+from apps.patch_mgmt.utils.architecture import X86_64, UnsupportedArchitecture, normalize_architectures, validate_os_architecture
 from apps.patch_mgmt.utils.i18n import serializer_message
 
 
 class WindowsPatchDetailSerializer(serializers.ModelSerializer):
     """Windows 补丁详情序列化器（支持读写）"""
+
+    def validate_architectures(self, values):
+        try:
+            normalized = [
+                validate_os_architecture("windows", value, allow_blank=False)
+                for value in values
+            ]
+            return list(dict.fromkeys(normalized))
+        except UnsupportedArchitecture as exc:
+            raise serializers.ValidationError(
+                serializer_message(
+                    self,
+                    "error.unsupported_architecture",
+                    "Windows currently supports x86_64 only",
+                )
+            ) from exc
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        if not attrs.get("architectures"):
+            attrs["architectures"] = [X86_64]
+        return attrs
 
     class Meta:
         model = WindowsPatchDetail
@@ -30,6 +53,14 @@ class LinuxPatchDetailSerializer(serializers.ModelSerializer):
         if repo_type not in valid_values:
             raise serializers.ValidationError(serializer_message(self, "error.invalid_choice", "Not a valid choice."))
         return repo_type
+
+    def validate_architectures(self, values):
+        try:
+            return normalize_architectures(values)
+        except UnsupportedArchitecture as exc:
+            raise serializers.ValidationError(
+                serializer_message(self, "error.unsupported_architecture", "Only x86_64 and ARM64 are supported")
+            ) from exc
 
     class Meta:
         model = LinuxPatchDetail
@@ -122,7 +153,15 @@ class PatchListSerializer(PatchPermissionSerializer):
         match = re.fullmatch(r"(?i:KB)(\d+)", raw_kb)
         if not match:
             raise serializers.ValidationError(
-                {"windows_detail": {"kb_number": serializer_message(self, "error.invalid_kb_number", "KB number must start with KB followed by digits")}}
+                {
+                    "windows_detail": {
+                        "kb_number": serializer_message(
+                            self,
+                            "error.invalid_kb_number",
+                            "KB number must start with KB followed by digits",
+                        )
+                    }
+                }
             )
 
         kb_number = f"KB{match.group(1)}"
@@ -131,7 +170,16 @@ class PatchListSerializer(PatchPermissionSerializer):
             duplicate = duplicate.exclude(patch=self.instance)
         if duplicate.exists():
             raise serializers.ValidationError(
-                {"windows_detail": {"kb_number": serializer_message(self, "error.duplicate_kb", "{kb} already exists and cannot be created again", kb=kb_number)}}
+                {
+                    "windows_detail": {
+                        "kb_number": serializer_message(
+                            self,
+                            "error.duplicate_kb",
+                            "{kb} already exists and cannot be created again",
+                            kb=kb_number,
+                        )
+                    }
+                }
             )
         windows_detail["kb_number"] = kb_number
         return attrs

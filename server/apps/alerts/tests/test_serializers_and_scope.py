@@ -7,7 +7,6 @@ from types import SimpleNamespace
 
 import pytest
 from django.utils import timezone
-from rest_framework import serializers as drf_serializers
 
 from apps.alerts.models.alert_source import AlertSource
 from apps.alerts.models.models import Alert, Event, Incident
@@ -15,7 +14,6 @@ from apps.alerts.serializers.alert import AlertModelSerializer
 from apps.alerts.serializers.alert_source import AlertSourceModelSerializer
 from apps.alerts.serializers.incident import IncidentModelSerializer
 from apps.alerts.utils import operator_scope as os_mod
-
 
 # --------------------------------------------------------------------------
 # operator_scope
@@ -95,15 +93,12 @@ def test_alert_get_duration_active():
 
 
 @pytest.mark.django_db
-def test_alert_get_event_count_and_source_names():
+def test_alert_get_event_count():
     source = AlertSource.objects.create(name="源1", source_id="s1", source_type="restful", secret="x")
     alert = Alert.objects.create(alert_id="A1", level="0", title="t", content="c", fingerprint="fp")
-    event = Event.objects.create(
-        source=source, raw_data={}, title="e", level="0", start_time=timezone.now(), event_id="E1"
-    )
+    event = Event.objects.create(source=source, raw_data={}, title="e", level="0", start_time=timezone.now(), event_id="E1")
     alert.events.add(event)
     assert AlertModelSerializer.get_event_count(alert) == 1
-    assert "源1" in AlertModelSerializer.get_source_names(alert)
 
 
 def test_alert_get_notify_status_variants():
@@ -178,6 +173,28 @@ def test_alert_source_get_last_event_time_empty():
 
 
 @pytest.mark.django_db
+def test_alert_source_get_last_event_time_respects_activated_timezone():
+    """get_last_event_time 应按请求激活的用户时区输出，与 DRF DateTimeField 路径一致。"""
+    source = AlertSource.objects.create(name="源-tz", source_id="s-tz", source_type="restful", secret="x")
+    utc_dt = timezone.datetime(2026, 7, 24, 1, 44, 34, tzinfo=timezone.utc)
+    event = Event.objects.create(source=source, raw_data={}, title="e", level="0", start_time=utc_dt, event_id="E-tz")
+    # auto_now_add 无法控制，用 update 固定 received_at
+    Event.objects.filter(pk=event.pk).update(received_at=utc_dt)
+
+    shanghai = timezone.zoneinfo.ZoneInfo("Asia/Shanghai")
+    timezone.activate(shanghai)
+    try:
+        result = AlertSourceModelSerializer.get_last_event_time(source)
+    finally:
+        timezone.deactivate()
+
+    # UTC 01:44:34 在 Asia/Shanghai 下应为 09:44:34
+    assert result == "2026-07-24 09:44:34", (
+        f"get_last_event_time 应输出用户时区钟面，实际: {result}"
+    )
+
+
+@pytest.mark.django_db
 def test_alert_source_serializer_team_secrets_write_only():
     """team_secrets 必须为 write_only，GET 响应不得返回组织密钥。
 
@@ -193,8 +210,6 @@ def test_alert_source_serializer_team_secrets_write_only():
     ser = AlertSourceModelSerializer(source)
     data = ser.data
     # team_secrets 不得出现在序列化输出中（write_only=True）
-    assert "team_secrets" not in data, (
-        "team_secrets 以明文出现在 GET 响应中，存在组织密钥泄露风险"
-    )
+    assert "team_secrets" not in data, "team_secrets 以明文出现在 GET 响应中，存在组织密钥泄露风险"
     # secret 同理
     assert "secret" not in data, "secret 以明文出现在 GET 响应中"

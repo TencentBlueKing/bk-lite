@@ -123,6 +123,108 @@ def test_get_collect_obj_tree_includes_ipam_discovery(monkeypatch):
     assert discovery["encrypted_fields"] == []
 
 
+def test_simple_collect_objects_expose_real_credential_protocol(monkeypatch):
+    _patch_collect_extension(monkeypatch, [])
+    tree = get_collect_obj_tree()
+    objects = {
+        child["model_id"]: child
+        for group in tree
+        for child in group.get("children", [])
+        if child.get("model_id")
+    }
+
+    assert {
+        key: objects["mysql"][key]
+        for key in ("credential_protocol", "credential_kind", "credential_default_port")
+    } == {
+        "credential_protocol": "mysql",
+        "credential_kind": "database_account",
+        "credential_default_port": 3306,
+    }
+    assert {
+        key: objects["postgresql"][key]
+        for key in ("credential_protocol", "credential_kind", "credential_default_port")
+    } == {
+        "credential_protocol": "postgresql",
+        "credential_kind": "database_account",
+        "credential_default_port": 5432,
+    }
+    assert {
+        key: objects["mssql"][key]
+        for key in ("credential_protocol", "credential_kind", "credential_default_port")
+    } == {
+        "credential_protocol": "sql_server",
+        "credential_kind": "database_account",
+        "credential_default_port": 1433,
+    }
+    assert objects["host"]["task_type"] == CollectPluginTypes.HOST
+    assert objects["host"]["credential_protocol"] == "ssh"
+    assert objects["host"]["credential_kind"] == "host_account"
+    assert objects["host"]["credential_default_port"] == 22
+    assert objects["redis"]["task_type"] == CollectPluginTypes.DB
+    assert objects["redis"]["credential_protocol"] == "ssh"
+    assert (
+        objects["aliyun_account"]["credential_protocol"],
+        objects["aliyun_account"]["credential_kind"],
+    ) == ("aliyun_openapi", "access_key")
+    assert (
+        objects["qcloud"]["credential_protocol"],
+        objects["qcloud"]["credential_kind"],
+    ) == ("tencentcloud_api", "secret_id_key")
+    assert (
+        objects["hwcloud"]["credential_protocol"],
+        objects["hwcloud"]["credential_kind"],
+    ) == ("huaweicloud_sdk", "ak_sk_project")
+    assert {
+        key: objects["fusioninsight"][key]
+        for key in ("credential_protocol", "credential_kind", "credential_default_port")
+    } == {
+        "credential_protocol": "fusioninsight_https",
+        "credential_kind": "http_basic_account",
+        "credential_default_port": 443,
+    }
+    assert objects["fusioninsight"]["encrypted_fields"] == [
+        "accessKey",
+        "password",
+        "accessSecret",
+    ]
+    assert {
+        key: objects["storage"][key]
+        for key in ("credential_protocol", "credential_kind", "credential_default_port")
+    } == {
+        "credential_protocol": "oceanstor_https",
+        "credential_kind": "platform_api_account",
+        "credential_default_port": 8088,
+    }
+    assert objects["storage"]["encrypted_fields"] == [
+        "accessKey",
+        "password",
+        "accessSecret",
+    ]
+
+
+def test_all_builtin_job_collect_objects_declare_ssh_credential_semantics(monkeypatch):
+    _patch_collect_extension(monkeypatch, [])
+    job_objects = [
+        child
+        for group in get_collect_obj_tree()
+        for child in group.get("children", [])
+        if child.get("type") == CollectDriverTypes.JOB
+    ]
+
+    assert job_objects
+    assert {
+        child["model_id"]
+        for child in job_objects
+        if (
+            child.get("credential_protocol"),
+            child.get("credential_kind"),
+            child.get("credential_default_port"),
+        )
+        != ("ssh", "host_account", 22)
+    } == set()
+
+
 def test_get_collect_obj_tree_merge_enterprise(monkeypatch):
     base_tree = get_collect_obj_tree()
     category_id = base_tree[0]["id"]

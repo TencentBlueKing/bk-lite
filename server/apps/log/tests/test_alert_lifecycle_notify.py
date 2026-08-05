@@ -6,7 +6,6 @@ from apps.log.models.policy import Alert, Event, Policy, PolicyOrganization
 from apps.log.services.alert_lifecycle_notify import LogAlertLifecycleNotifier
 from apps.system_mgmt.models.channel import Channel
 
-
 pytestmark = pytest.mark.django_db
 
 
@@ -115,6 +114,20 @@ def test_build_created_event_uses_current_policy_and_log_event(alert_center_chan
             "status": "new",
         },
     }
+
+
+def test_created_and_closed_events_use_same_alert_resource_identity(alert_center_channel):
+    policy = _make_policy(alert_center_channel)
+    alert, event = _make_alert_event(policy)
+    alert.source_id = "policy_1_host=h1"
+    event.source_id = "policy_1_g2_abc"
+
+    notifier = LogAlertLifecycleNotifier(policy)
+    created = notifier.build_created_event(event)
+    closed = notifier.build_closed_event(alert)
+
+    assert created["resource_id"] == "policy_1_host=h1"
+    assert closed["resource_id"] == created["resource_id"]
 
 
 def test_build_closed_event_uses_stable_close_time_and_operator(alert_center_channel):

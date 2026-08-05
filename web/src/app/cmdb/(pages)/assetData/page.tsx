@@ -1133,7 +1133,7 @@ const AssetDataContent = () => {
   const buildPrefixedItems = (items: MenuProps['items'], prefix: string) =>
     items.map((item, index) => {
       if (!item) return item;
-      const baseKey = 'key' in item && item.key ? item.key : `${prefix}-${index}`;
+      const baseKey = 'key' in item && item.key ? String(item.key) : `${prefix}-${index}`;
       return {
         ...item,
         key: `${prefix}-${baseKey}`,

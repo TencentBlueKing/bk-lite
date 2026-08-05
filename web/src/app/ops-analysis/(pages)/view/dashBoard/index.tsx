@@ -12,6 +12,7 @@ import ViewSelector from '@/app/ops-analysis/components/widgetSelector';
 import ViewConfig from '@/app/ops-analysis/components/widgetConfig';
 import DashboardCanvas from './components/dashboardCanvas';
 import DashboardToolbar from './components/dashboardToolbar';
+import DashboardSubscriptionModal from '@/app/ops-analysis/components/dashboardSubscriptionModal';
 import ViewWorkspace from '../components/viewWorkspace';
 import { Input, Modal, message, Select } from 'antd';
 import { useTranslation } from '@/utils/i18n';
@@ -67,12 +68,21 @@ import {
   removeDashboardGroupHeader,
   sanitizeCollapsedGroups,
 } from '@/app/ops-analysis/utils/dashboardGroups';
+import {
+  buildDashboardRenderSignal,
+  emitDashboardRenderSignal,
+  type DashboardWidgetRenderResult,
+  type DashboardRenderSignal,
+} from '@/app/ops-analysis/renderContract';
+import { prepareDashboardPrintLayout } from '@/app/ops-analysis/utils/prepareDashboardPrintLayout';
 
 interface DashboardProps {
   selectedDashboard?: DirItem | null;
   shareMode?: boolean;
   shareSessionId?: string;
   getDashboardDetailOverride?: (id: string | number) => Promise<any>;
+  renderMode?: boolean;
+  renderFilterValues?: Record<string, FilterValue>;
 }
 
 export interface DashboardRef {
@@ -80,10 +90,16 @@ export interface DashboardRef {
 }
 
 const Dashboard = forwardRef<DashboardRef, DashboardProps>(
-  ({ selectedDashboard, shareMode = false, getDashboardDetailOverride }, ref) => {
+  ({
+    selectedDashboard,
+    shareMode = false,
+    getDashboardDetailOverride,
+    renderMode = false,
+    renderFilterValues,
+  }, ref) => {
     const { t } = useTranslation();
     const { data: session } = useSession();
-    const themeName = resolveOpsChartThemeName();
+    const themeName = renderMode ? 'light' : resolveOpsChartThemeName();
     const chartTheme = getOpsChartTheme(themeName);
     const isDarkTheme = themeName === 'dark';
     const { getDashboardDetail, saveDashboard } = useDashBoardApi();
@@ -121,6 +137,8 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
     );
     const [filterConfigModalVisible, setFilterConfigModalVisible] =
       useState(false);
+    const [subscriptionModalVisible, setSubscriptionModalVisible] =
+      useState(false);
     const [namespaceDraftId, setNamespaceDraftId] = useState<
       number | undefined
     >(undefined);
@@ -143,6 +161,10 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
       useState<number | string | null>(null);
     const { shareLoading, openShare } = useCanvasShareAction('dashboard');
     const [exporting, setExporting] = useState(false);
+    const renderResultsRef = useRef(
+      new Map<string, DashboardWidgetRenderResult>(),
+    );
+    const emittedRenderSignalRef = useRef(false);
     const resumeEditModeAfterFullscreenRef = useRef(false);
     const { isFullscreen, enterFullscreen, exitFullscreen } =
       useAppViewFullscreen();
@@ -206,6 +228,52 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
     const widgetLayoutItems = useMemo(
       () => layout.filter(isDashboardWidgetItem),
       [layout],
+    );
+
+    const emitPreparedRenderSignal = useCallback(
+      async (signal: DashboardRenderSignal) => {
+        if (emittedRenderSignalRef.current) return;
+        emittedRenderSignalRef.current = true;
+        if (signal.type === 'report-ready') {
+          try {
+            await prepareDashboardPrintLayout();
+          } catch (error) {
+            emitDashboardRenderSignal({
+              type: 'report-failed',
+              dashboardId: signal.dashboardId,
+              widgets: signal.widgets,
+              error:
+                error instanceof Error
+                  ? error.message
+                  : 'Dashboard print preparation failed',
+            });
+            return;
+          }
+        }
+        emitDashboardRenderSignal(signal);
+      },
+      [],
+    );
+
+    const handleWidgetRenderStatus = useCallback(
+      (result: DashboardWidgetRenderResult) => {
+        if (!renderMode || emittedRenderSignalRef.current) return;
+        renderResultsRef.current.set(result.widgetId, result);
+        const signal = buildDashboardRenderSignal(
+          selectedDashboard?.data_id || 'unknown',
+          widgetLayoutItems.map((item) => item.i),
+          renderResultsRef.current,
+        );
+        if (signal) {
+          void emitPreparedRenderSignal(signal);
+        }
+      },
+      [
+        emitPreparedRenderSignal,
+        renderMode,
+        selectedDashboard?.data_id,
+        widgetLayoutItems,
+      ],
     );
 
     const groupIds = useMemo(
@@ -321,7 +389,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
 
           const initialValues = syncFilterValuesWithDefinitions(
             loadedDefinitions,
-            {},
+            renderMode ? (renderFilterValues ?? {}) : {},
           );
 
           setDefinitions(loadedDefinitions);
@@ -341,6 +409,18 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
           setAppliedFilterDefinitions([]);
           setAppliedFilterValues({});
           setOriginalDefinitions([]);
+          if (renderMode && !emittedRenderSignalRef.current) {
+            emittedRenderSignalRef.current = true;
+            emitDashboardRenderSignal({
+              type: 'report-failed',
+              dashboardId: String(selectedDashboard.data_id),
+              widgets: [],
+              error:
+                error instanceof Error
+                  ? error.message
+                  : 'Dashboard layout load failed',
+            });
+          }
         } finally {
           setLoading(false);
         }
@@ -350,6 +430,8 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
       selectedDashboard?.data_id,
       loadCanvasNamespaces,
       syncDashboardCanvasResources,
+      renderMode,
+      renderFilterValues,
     ]);
 
     // 监听 selectedDashboard 的变化，重置状态
@@ -558,6 +640,32 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
         });
       },
       [isEditMode],
+    );
+
+    const handleTopologyLayoutChange = useCallback(
+      (
+        widgetId: string,
+        nextTopology: NonNullable<
+          NonNullable<DashboardWidgetLayoutItem['valueConfig']>['networkStatusTopology']
+        >,
+      ) => {
+        if (!isEditMode || shareMode) return;
+        setLayout((prevLayout) =>
+          prevLayout.map((item) => {
+            if (item.i !== widgetId || !isDashboardWidgetItem(item)) {
+              return item;
+            }
+            return {
+              ...item,
+              valueConfig: {
+                ...item.valueConfig,
+                networkStatusTopology: nextTopology,
+              },
+            };
+          }),
+        );
+      },
+      [isEditMode, shareMode],
     );
 
     const handleAddComponent = (config: WidgetConfig, draftItem: LayoutItem) => {
@@ -1069,7 +1177,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
       void openShare(selectedDashboard?.data_id);
     };
 
-    const dashboardToolbar = (
+    const dashboardToolbar = renderMode ? null : (
       <DashboardToolbar
         selectedDashboard={selectedDashboard}
         chartTheme={chartTheme}
@@ -1089,6 +1197,11 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
         shareMode={shareMode}
         shareLoading={shareLoading}
         onOpenShare={!shareMode && selectedDashboard?.data_id ? handleShare : undefined}
+        onOpenSubscriptions={
+          !shareMode && selectedDashboard?.data_id
+            ? () => setSubscriptionModalVisible(true)
+            : undefined
+        }
       />
     );
 
@@ -1105,7 +1218,12 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
     );
 
     const dashboardCanvas = (
-      <div className="h-full overflow-auto" data-export-expand="true">
+      <div
+        className={
+          renderMode ? 'w-full overflow-visible' : 'h-full overflow-auto'
+        }
+        data-export-expand="true"
+      >
         <DashboardCanvas
           dashboardId={selectedDashboard?.data_id}
           loading={loading}
@@ -1132,6 +1250,11 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
           onDeleteEntireGroup={handleDeleteEntireGroup}
           onEditWidget={handleEdit}
           onDeleteWidget={handleDelete}
+          onTopologyLayoutChange={
+            isEditMode && !shareMode ? handleTopologyLayoutChange : undefined
+          }
+          renderMode={renderMode}
+          onWidgetRenderStatus={handleWidgetRenderStatus}
         />
       </div>
     );
@@ -1141,7 +1264,9 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
         className={`flex flex-col ${
           isFullscreen
             ? 'fixed inset-0 h-screen w-screen overflow-hidden'
-            : 'h-full flex-1 overflow-auto'
+            : renderMode
+              ? 'w-full min-h-screen overflow-visible'
+              : 'h-full flex-1 overflow-auto'
         }`}
         style={{
           backgroundColor: isDarkTheme ? 'var(--color-bg-2)' : '#f7f8fa',
@@ -1149,7 +1274,14 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
         }}
       >
         <AppViewFullscreenExit visible={isFullscreen} onExit={exitFullscreen} />
-        {isFullscreen ? (
+        {renderMode ? (
+          <div
+            className="z-[9999] w-full min-h-screen overflow-visible bg-[#f7f8fa] p-4"
+            data-dashboard-render-root="true"
+          >
+            {dashboardCanvas}
+          </div>
+        ) : isFullscreen ? (
           <div
             ref={exportRef}
             className="flex-1 min-h-0 flex flex-col"
@@ -1207,6 +1339,14 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
           layoutItems={widgetLayoutItems}
           dataSources={dataSourceManager.dataSources}
         />
+        {selectedDashboard?.data_id && (
+          <DashboardSubscriptionModal
+            open={subscriptionModalVisible}
+            dashboardId={Number(selectedDashboard.data_id)}
+            appliedFilterValues={appliedFilterValues}
+            onClose={() => setSubscriptionModalVisible(false)}
+          />
+        )}
         <Modal
           title={
             isCreatingGroupName

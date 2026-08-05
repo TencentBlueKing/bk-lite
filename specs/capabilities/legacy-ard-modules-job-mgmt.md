@@ -33,7 +33,7 @@ DRF 路由前缀均带 `api/` 段；结合 app 注册前缀 `api/v1/job_mgmt/`�
 ## 5. 风险 / 待确认
 - 危险命令黑名单覆盖度与绕过风险【待确认】。
 - JetStream 日志流依赖（默认关闭）【已实现风险】。
-- 水平越权防护【已实现/已存在】：`utils/team_authz.py` 提供团队归属授权校验（BL-NEW-002 修复），视图层按 ID 加载 Script/Playbook/Target/DistributionFile 后，用 `is_team_authorized` 校验对象 `team` 是否落在「当前用户授权团队」内，防止 Team A 用户引用 Team B 的对象越权执行；无团队归属的对象对非超管一律拒绝。
+- 水平越权防护【已实现/已存在】：`utils/team_authz.py` 提供团队归属授权校验（BL-NEW-002 修复），视图层按 ID 加载 Script/Playbook/Target/DistributionFile 后，用 `is_team_authorized` 校验对象 `team` 是否落在「当前用户授权团队」内；开放删除按 `(file_id, file_key, team)` 限定文件，NATS 文件分发按请求声明的团队范围限定 `file_key`。跨团队和无团队归属文件一律 fail-closed，防止 Team A 的文件被 Team B 删除或用于自己的作业。
 
 ## 2026-07-01 Code-ARD 校准
 - `[job_mgmt#20260701-017]` 移除 `callback_test/` 回调测试端点的强结论，当前 `urls.py` 未注册该路由。

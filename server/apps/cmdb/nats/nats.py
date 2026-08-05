@@ -1,7 +1,8 @@
 import datetime
-import re
-from datetime import date, datetime as _datetime, timezone as _timezone
 import os
+from datetime import date
+from datetime import datetime as _datetime
+from datetime import timezone as _timezone
 from functools import reduce
 from operator import or_
 from types import SimpleNamespace
@@ -43,18 +44,15 @@ from apps.cmdb.services.config_file_service import ConfigFileService
 from apps.cmdb.services.instance import InstanceManage
 from apps.cmdb.services.model import ModelManage
 from apps.cmdb.services.rack_room import format_rack_location_label, parse_rack_location
-from apps.cmdb.services.region_resource_overview import (
-    build_region_resource_items,
-    extract_region_options,
-)
+from apps.cmdb.services.region_resource_overview import build_region_resource_items, extract_region_options
 from apps.cmdb.utils.base import get_default_group_id
 from apps.cmdb.utils.permission_util import CmdbRulesFormatUtil
 from apps.core.logger import cmdb_logger as logger
 from apps.core.utils.permission_utils import get_permission_rules
+from apps.core.utils.time_util import parse_rfc3339_utc
 from apps.system_mgmt.models import Group, User
 from apps.system_mgmt.models.role import Role
 from apps.system_mgmt.utils.group_utils import GroupUtils
-
 
 _CHANGE_TREND_MAX_SPAN_SECONDS = {
     "hour": int(os.getenv("CMDB_CHANGE_TREND_MAX_SPAN_HOUR", str(90 * 24 * 3600))),
@@ -62,6 +60,8 @@ _CHANGE_TREND_MAX_SPAN_SECONDS = {
     "week": int(os.getenv("CMDB_CHANGE_TREND_MAX_SPAN_WEEK", str(730 * 24 * 3600))),
     "month": int(os.getenv("CMDB_CHANGE_TREND_MAX_SPAN_MONTH", str(730 * 24 * 3600))),
 }
+
+
 def _normalize_to_list(value):
     if value in (None, ""):
         return []
@@ -163,14 +163,8 @@ def _build_nats_model_permission_map(user_info):
 def _resolve_nats_cmdb_language(user_info=None):
     user_info = user_info or {}
     user = user_info.get("user")
-    raw_language = (
-        user_info.get("locale")
-        or user_info.get("language")
-        or getattr(user, "locale", None)
-        or user_info.get("LANGUAGE_CODE")
-        or "zh-CN"
-    )
-    return "en" if str(raw_language).lower().startswith("en") else "zh"
+    raw_language = user_info.get("locale") or user_info.get("language") or getattr(user, "locale", None) or user_info.get("LANGUAGE_CODE") or "zh-CN"
+    return "en" if str(raw_language).lower().startswith("en") else "zh-Hans"
 
 
 def _get_collect_task_queryset(user_info):
@@ -312,8 +306,9 @@ def get_cmdb_module_data(module, child_module, page, page_size, group_id, user_i
         instances = CollectModels.objects.filter(
             task_type=child_module,
             is_system=False,
-        ).values("id", "name", "model_id")[start:end]
+        )
         count = instances.count()
+        instances = instances.values("id", "name", "model_id")[start:end]
         queryset = [{"id": str(i["id"]), "name": f"{i['model_id']}_{i['name']}"} for i in instances]
     elif module == PERMISSION_INSTANCES:
         # 构建真实权限 map：根据调用方传入的 user_info 查询用户在目标模型上的权限范围
@@ -424,7 +419,7 @@ def search_instances_batch(params):
     filtered = {}
     for key, instance in result.items():
         instance_org_ids = set()
-        for org_id in (instance.get("organization") or []):
+        for org_id in instance.get("organization") or []:
             try:
                 instance_org_ids.add(int(org_id))
             except (TypeError, ValueError):
@@ -892,9 +887,12 @@ def get_cmdb_statistics(user_info=None, **kwargs):
         {
             "result": True,
             "data": {
+                "classification_count": 5,
                 "model_count": 15,
                 "instance_count": 1234,
-                "classification_count": 5
+                "model_with_instance_count": 12,
+                "empty_model_count": 3,
+                "model_coverage_rate": 80.0
             },
             "message": ""
         }
@@ -904,7 +902,14 @@ def get_cmdb_statistics(user_info=None, **kwargs):
     if model_permissions_map is None or instance_permissions_map is None:
         return {
             "result": True,
-            "data": {"model_count": 0, "instance_count": 0, "classification_count": 0},
+            "data": {
+                "classification_count": 0,
+                "model_count": 0,
+                "instance_count": 0,
+                "model_with_instance_count": 0,
+                "empty_model_count": 0,
+                "model_coverage_rate": 0,
+            },
             "message": "",
         }
 
@@ -1164,21 +1169,23 @@ def _resolve_target_timezone(timezone_name=None):
 
 
 def _parse_client_datetime(value, target_tz):
+    return parse_rfc3339_utc(value).astimezone(target_tz)
+
+
+def _parse_nats_datetime(value):
+    if value in (None, ""):
+        return None
+
     text = str(value).strip()
     try:
         parsed = datetime.datetime.fromisoformat(text.replace("Z", "+00:00"))
     except ValueError:
         parsed = datetime.datetime.strptime(text, "%Y-%m-%d %H:%M:%S")
 
+    current_tz = timezone.get_current_timezone()
     if timezone.is_naive(parsed):
-        return timezone.make_aware(parsed, target_tz)
-    return parsed.astimezone(target_tz)
-
-
-def _parse_nats_datetime(value):
-    if value in (None, ""):
-        return None
-    return _parse_client_datetime(value, timezone.get_current_timezone())
+        return timezone.make_aware(parsed, current_tz)
+    return parsed.astimezone(current_tz)
 
 
 def _format_period_value(value, target_tz):
@@ -1240,7 +1247,7 @@ def get_change_trend(time=None, group_by="day", model_id=None, user_info=None, *
     获取 CMDB 变更趋势数据
 
     Args:
-        time: [start_time, end_time] - 时间范围，格式 "YYYY-MM-DD HH:MM:SS"
+        time: [start_time, end_time] - 带 Z 或显式 UTC 偏移的 RFC3339 时间范围
         group_by: "day" | "hour" | "week" | "month" - 分组方式
         model_id: str | None - 可选，按模型过滤
         user_info: { team: int, user: str }
@@ -1268,8 +1275,15 @@ def get_change_trend(time=None, group_by="day", model_id=None, user_info=None, *
 
     target_tz = _resolve_target_timezone((user_info or {}).get("timezone") or kwargs.pop("timezone", None))
     start_time, end_time = time
-    aware_start = _parse_client_datetime(start_time, target_tz)
-    aware_end = _parse_client_datetime(end_time, target_tz)
+    try:
+        aware_start = _parse_client_datetime(start_time, target_tz)
+        aware_end = _parse_client_datetime(end_time, target_tz)
+    except ValueError:
+        return {
+            "result": False,
+            "data": {},
+            "message": "time values must be RFC3339 timestamps with an explicit timezone",
+        }
     local_start = aware_start.astimezone(target_tz)
     local_end = aware_end.astimezone(target_tz)
 
@@ -1289,8 +1303,7 @@ def get_change_trend(time=None, group_by="day", model_id=None, user_info=None, *
             "result": False,
             "data": {},
             "message": (
-                f"Time range exceeds the maximum limit for {group_by} grouping "
-                f"({max_span} seconds). Use a shorter range or coarser grouping."
+                f"Time range exceeds the maximum limit for {group_by} grouping " f"({max_span} seconds). Use a shorter range or coarser grouping."
             ),
         }
 
@@ -1411,11 +1424,7 @@ def get_model_classification_options(user_info=None, **kwargs):
         language=language,
         permissions_map=model_permissions,
     )
-    allowed_classification_ids = {
-        model.get("classification_id")
-        for model in models
-        if model.get("classification_id")
-    }
+    allowed_classification_ids = {model.get("classification_id") for model in models if model.get("classification_id")}
     classifications = ClassificationManage.search_model_classification(language=language)
     return {
         "items": [
@@ -1441,10 +1450,7 @@ def get_classification_model_instance_counts(
         return {"items": []}
 
     language = _resolve_nats_cmdb_language(user_info)
-    visible_classification_ids = {
-        item.get("classification_id")
-        for item in ClassificationManage.search_model_classification(language=language)
-    }
+    visible_classification_ids = {item.get("classification_id") for item in ClassificationManage.search_model_classification(language=language)}
     if classification_id not in visible_classification_ids:
         return {"items": []}
 
@@ -1526,7 +1532,8 @@ def get_model_inst_statistics(user_info=None, **kwargs):
             "message": ""
         }
     """
-    classifications = ClassificationManage.search_model_classification()
+    language = _resolve_nats_cmdb_language(user_info)
+    classifications = ClassificationManage.search_model_classification(language=language)
     classification_map = {c["classification_id"]: c["classification_name"] for c in classifications}
 
     model_permissions_map = _build_nats_model_permission_map(user_info)
@@ -1534,7 +1541,7 @@ def get_model_inst_statistics(user_info=None, **kwargs):
     if model_permissions_map is None or instance_permissions_map is None:
         return {"result": True, "data": [], "message": ""}
 
-    models = ModelManage.search_model(permissions_map=model_permissions_map)
+    models = ModelManage.search_model(language=language, permissions_map=model_permissions_map)
     model_counts = InstanceManage.model_inst_count(permissions_map=instance_permissions_map)
 
     result_data = []
@@ -1572,7 +1579,8 @@ def get_cmdb_model_instance_top(limit=5, classification_id=None, user_info=None,
     if limit <= 0:
         limit = 5
 
-    classifications = ClassificationManage.search_model_classification()
+    language = _resolve_nats_cmdb_language(user_info)
+    classifications = ClassificationManage.search_model_classification(language=language)
     classification_map = {c["classification_id"]: c["classification_name"] for c in classifications}
 
     model_permissions_map = _build_nats_model_permission_map(user_info)
@@ -1580,7 +1588,7 @@ def get_cmdb_model_instance_top(limit=5, classification_id=None, user_info=None,
     if model_permissions_map is None or instance_permissions_map is None:
         return {"result": True, "data": [], "message": ""}
 
-    models = ModelManage.search_model(permissions_map=model_permissions_map)
+    models = ModelManage.search_model(language=language, permissions_map=model_permissions_map)
     if classification_id:
         models = [model for model in models if model.get("classification_id") == classification_id]
 
@@ -1639,7 +1647,6 @@ def model_inst_count(*args, **kwargs):
     """
     result = InstanceManage.model_inst_count(permissions_map={}, creator="")
     return {"result": True, "message": "", "data": result}
-
 
 
 # === 云资源成本分析 Report Responder ===

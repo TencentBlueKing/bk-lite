@@ -1,4 +1,4 @@
-import type { Preview } from '@storybook/react';
+import type { Preview } from '@storybook/nextjs';
 import '@/styles/globals.css';
 import Script from 'next/script';
 import { AntdRegistry } from '@ant-design/nextjs-registry';

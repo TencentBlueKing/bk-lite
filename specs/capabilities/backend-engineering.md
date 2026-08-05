@@ -58,11 +58,21 @@
 - ✅ **禁原生 SQL**:走 Django ORM(`DB_ENGINE` 多方言,raw SQL 跨库易碎);确需复杂查询用 ORM 表达式。
 - ✅ **图库(CMDB)用参数化查询**,禁拼接 Cypher / 禁 Neo4j 语法(本项目用 FalkorDB)。
 
-## 8. 架构卫生
+## 8. 日志引入
+
+- ✅ **`server/apps/<app>/` 内统一从 `apps.core.logger` 引入本 app 的 logger，并别名为 `logger`**:
+  ```python
+  from apps.core.logger import {app_name}_logger as logger
+  ```
+  现有导出见 `server/apps/core/logger.py`（如 `cmdb_logger`、`opspilot_logger`、`alert_logger`、`monitor_logger`、`node_logger`、`job_logger`、`mlops_logger`、`log_logger`、`system_mgmt_logger`、`console_mgmt_logger`、`operation_analysis_logger`、`nats_logger`、`celery_logger`）。`core` / 跨 app 共享工具可用默认 `from apps.core.logger import logger`。
+  - ❌ `from loguru import logger`、直接 `logging.getLogger(...)`、或引入其他 app 的 `*_logger`。
+  - ❌ 新增 app logger 时绕过 `apps/core/logger.py` 就地创建。
+
+## 9. 架构卫生
 
 - ✅ **控制文件/类规模**:发现 God 文件(>500 LOC)/God 类及时拆分;重复逻辑(3+ 处)抽公共 helper,避免漂移漏改。
 
-## 9. 高风险通用能力(跨模块)
+## 10. 高风险通用能力(跨模块)
 
 - ✅ **安全边界变更按迁移处理**:新增或收紧鉴权、校验、加密、超时等边界前,必须盘点存量调用方、存量数据和默认行为,并明确兼容策略、迁移步骤与回滚方案。
   - ❌ 只证明新逻辑更安全,未验证存量契约与回滚路径就直接上线。
@@ -74,6 +84,12 @@
   - ❌ 只保护 API 响应,却让凭据进入异常上下文、连接串、日志、指标或历史备份。
 - ✅ **关键路径测试覆盖不变量与失败路径**:涉及权限、并发、事务、异步任务或外部系统时,除正常路径外必须验证越权失败、重复执行、并发竞争、部分失败、超时、回滚及旧版本兼容性。
   - ❌ 只验证一次正常请求成功,未证明失败和重试后系统仍保持一致。
+- ✅ **并发授权与状态变更在锁内重读判定依据**:进入事务或取得锁后重新读取所有参与判定的关联对象,用条件更新、版本号或 fencing 提交;不得复用锁前加载的 ORM 对象或关系缓存。
+  - ❌ 锁住主对象却继续使用锁前的团队、权限或状态快照,形成 TOCTOU 并覆盖并发变更。
+- ✅ **变化数据的批量遍历使用稳定 keyset 游标**:回填、迁移或清理可能并发增删改的数据时,按不可变且唯一的键推进游标,保存断点并保证重复执行幂等。
+  - ❌ 使用 offset 或非唯一排序遍历变化数据,导致跨页遗漏、重复处理或覆盖错误对象。
+- ✅ **异步回调绑定可信执行身份**:回调必须校验 caller、访问范围、run/attempt 标识及执行令牌;重复、乱序和过期回调不得覆盖当前终态。
+  - ❌ 以“先到先得”或仅凭业务 ID 接受回调,让伪造或旧执行结果固化为最终状态。
 
 ---
 
@@ -85,8 +101,10 @@
 - [ ] 多步写有 `atomic`,通知在 `on_commit`,RMW 原子
 - [ ] 输入经校验,异常不吞,失败码语义正确(400/403 非 500)
 - [ ] serializer 无 `__all__`,敏感字段 write_only
+- [ ] 日志从 `apps.core.logger` 引入本 app 的 `*_logger as logger`,未用 loguru / 就地 getLogger
 - [ ] 无原生 SQL,图查询参数化
 - [ ] 安全边界变更已盘点存量契约,有迁移与回滚方案
 - [ ] 异步状态有 fencing/幂等,持久化与外部副作用可补偿重试
+- [ ] 并发判定在锁内重读,批量遍历使用稳定游标,回调绑定执行身份
 - [ ] 敏感数据在存储、异常、日志、指标、备份和回滚链路均不泄露
 - [ ] 新增行为有测试,关键路径覆盖失败/并发/回滚/兼容场景,覆盖率达标(见 [工程质量 §4](engineering-quality.md))

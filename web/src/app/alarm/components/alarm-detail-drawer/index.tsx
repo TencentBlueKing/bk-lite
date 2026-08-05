@@ -75,7 +75,6 @@ export interface AlarmDetailDrawerData extends AlarmActionRowData {
   operator_user?: string;
   resource_name?: string;
   resource_type?: string;
-  source_names?: string;
   title?: string;
 }
 
@@ -184,13 +183,6 @@ const AlarmDetailDrawer = forwardRef<
       },
     ];
 
-    useEffect(() => {
-      if (!groupVisible || !formData.id) {
-        return;
-      }
-      void getEventListData({ alert_id: formData.id });
-    }, [groupVisible, formData.id]);
-
     const getEventListData = async (params: Record<string, unknown>) => {
       setEventLoading(true);
       try {
@@ -207,10 +199,17 @@ const AlarmDetailDrawer = forwardRef<
     };
 
     useEffect(() => {
-      if (activeTab === 'event' && groupVisible && formData.id) {
-        void getEventListData({ alert_id: formData.id });
+      if (activeTab !== 'event' || !groupVisible || !formData.id) {
+        return;
       }
-    }, [pagination.current, pagination.pageSize, activeTab]);
+      void getEventListData({ alert_id: formData.id });
+    }, [
+      pagination.current,
+      pagination.pageSize,
+      activeTab,
+      groupVisible,
+      formData.id,
+    ]);
 
     useImperativeHandle(ref, () => ({
       showModal: ({
@@ -223,6 +222,7 @@ const AlarmDetailDrawer = forwardRef<
         setTitle(title);
         setFormData(form);
         setActiveTab(defaultTab);
+        setPagination((prev) => ({ ...prev, current: 1, total: 0 }));
       },
     }));
 

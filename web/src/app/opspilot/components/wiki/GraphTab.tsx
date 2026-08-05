@@ -1,35 +1,57 @@
-'use client';
+"use client";
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Empty, Spin, message } from 'antd';
-import { useTranslation } from '@/utils/i18n';
-import { useWikiApi } from '@/app/opspilot/api/wiki';
-import { WikiGraph } from '@/app/opspilot/types/wiki';
-import GraphExplorer from '@/app/opspilot/components/wiki/GraphExplorer';
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { Empty, Spin, message } from "antd";
+import { useTranslation } from "@/utils/i18n";
+import { useWikiApi } from "@/app/opspilot/api/wiki";
+import { WikiGraph } from "@/app/opspilot/types/wiki";
+import GraphExplorer from "@/app/opspilot/components/wiki/GraphExplorer";
 
 // 关系图谱:全幅图 + 浮动工具条/面板(过滤器、洞察、社区图例、缩放、全屏),信息以浮层 tip 形式呈现
-const GraphTab: React.FC<{ kbId: number }> = ({ kbId }) => {
+interface GraphTabProps {
+  kbId: number;
+  directoryId: number | null;
+  includeDescendants: boolean;
+}
+
+const GraphTab: React.FC<GraphTabProps> = ({
+  kbId,
+  directoryId,
+  includeDescendants,
+}) => {
   const { t } = useTranslation();
   const { fetchGraphAnalysis, rebuildRelations, scan } = useWikiApi();
   const [graph, setGraph] = useState<WikiGraph | null>(null);
   const [loading, setLoading] = useState(false);
   const [rebuilding, setRebuilding] = useState(false);
   const [creatingInsightChecks, setCreatingInsightChecks] = useState(false);
+  const loadRequestSequenceRef = useRef(0);
 
   const load = useCallback(async () => {
+    const requestSequence = ++loadRequestSequenceRef.current;
     setLoading(true);
     try {
-      setGraph(await fetchGraphAnalysis(kbId));
+      const result = await fetchGraphAnalysis(kbId, {
+        directory_id: directoryId ?? undefined,
+        include_descendants: includeDescendants,
+      });
+      if (requestSequence === loadRequestSequenceRef.current) setGraph(result);
     } finally {
-      setLoading(false);
+      if (requestSequence === loadRequestSequenceRef.current) setLoading(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [kbId]);
+  }, [kbId, directoryId, includeDescendants]);
 
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [kbId]);
+  }, [kbId, directoryId, includeDescendants]);
 
   const titleOf = useMemo(() => {
     const map = new Map<number, string>();
@@ -51,7 +73,7 @@ const GraphTab: React.FC<{ kbId: number }> = ({ kbId }) => {
     setCreatingInsightChecks(true);
     try {
       const res = await scan(kbId);
-      message.success(`${t('wiki.createInsightChecksDone')}: ${res.created}`);
+      message.success(`${t("wiki.createInsightChecksDone")}: ${res.created}`);
       await load();
     } finally {
       setCreatingInsightChecks(false);

@@ -20,7 +20,6 @@ from apps.core.logger import alert_logger as logger
 
 AUTO_ASSIGNMENT_CHUNK_SIZE = 200
 OUTBOX_DISPATCH_BATCH_SIZE = 200
-
 # D1：聚合 beat 单例锁。串行化聚合运行，防止并发聚合对同一 fingerprint 重复建警
 # （create_or_update_alert 的 select_for_update 对"建新"路径无效、Alert.fingerprint 无唯一约束）。
 # 跨进程依赖 default cache 为 Redis/DB 后端（LocMem 仅进程内有效）。
@@ -42,23 +41,33 @@ def deliver_alert_outbox(record_id):
 
 @shared_task
 def dispatch_pending_alert_outbox():
+    from apps.alerts.extensions.outbox import outbox_handlers
     from apps.alerts.models.outbox import AlertOutbox
+    from apps.alerts.service.outbox import OUTBOX_LEASE_TIMEOUT, _schedule_delivery
 
     now = timezone.now()
-    ids = list(
+    outbox_handlers.observe_backlog()
+    stale_delivering_before = now - OUTBOX_LEASE_TIMEOUT
+    record_ids = list(
         AlertOutbox.objects.filter(
-            Q(status=AlertOutbox.Status.PENDING),
+            (
+                Q(status=AlertOutbox.Status.PENDING)
+                | Q(
+                    status=AlertOutbox.Status.DELIVERING,
+                    updated_at__lte=stale_delivering_before,
+                )
+            ),
             Q(next_retry_at__isnull=True) | Q(next_retry_at__lte=now),
         )
         .order_by("pk")
         .values_list("pk", flat=True)[:OUTBOX_DISPATCH_BATCH_SIZE]
     )
-    for record_id in ids:
+    for record_id in record_ids:
         try:
-            deliver_alert_outbox.delay(record_id)
+            _schedule_delivery(record_id)
         except Exception:
             logger.exception("alert outbox reschedule failed: outbox_id=%s", record_id)
-    return {"scheduled": len(ids)}
+    return {"scheduled": len(record_ids)}
 
 
 @shared_task
@@ -188,6 +197,11 @@ def async_auto_assignment_for_alerts(alert_ids):
     """
     异步执行告警自动分配
 
+    异常不捕获：outbox 投递（deliver_outbox_record）依赖异常进入
+    PENDING/指数退避重试分支；吞掉异常会让可恢复错误被静默标记为
+    DELIVERED，永不重试。终态场景（告警已删除）由
+    AlertAssignmentOperator 内部按 WARNING 处理，不会冒泡到这里。
+
     Args:
         alert_ids: 告警ID列表
 
@@ -235,25 +249,111 @@ def async_auto_assignment_for_alerts(alert_ids):
 
     logger.info("[AlertTask] == 开始异步自动分配告警 == 告警数量: %s", len(unique_alert_ids))
 
-    try:
-        from apps.alerts.common.assignment import execute_auto_assignment_for_alerts
+    from apps.alerts.common.assignment import execute_auto_assignment_for_alerts
 
-        result = execute_auto_assignment_for_alerts(unique_alert_ids)
-        logger.info(
-            "[AlertTask] == 异步自动分配完成 == 总数=%s, 成功=%s, 失败=%s",
-            result.get("total_alerts", 0),
-            result.get("assigned_alerts", 0),
-            result.get("failed_alerts", 0),
+    result = execute_auto_assignment_for_alerts(unique_alert_ids)
+    logger.info(
+        "[AlertTask] == 异步自动分配完成 == 总数=%s, 成功=%s, 失败=%s",
+        result.get("total_alerts", 0),
+        result.get("assigned_alerts", 0),
+        result.get("failed_alerts", 0),
+    )
+    return result
+
+
+UNASSIGNED_RETRY_BATCH = 200  # 与 AUTO_ASSIGNMENT_CHUNK_SIZE 对齐
+UNASSIGNED_RETRY_WINDOW_MINUTES = 5
+UNASSIGNED_RETRY_KEY_PREFIX = "auto-assignment:retry-unassigned:"
+
+
+@shared_task
+def beat_retry_unassigned_assignment():
+    """兜底:扫描仍为 UNASSIGNED 的告警,重新入 auto_assignment outbox。
+
+    覆盖"告警变 UNASSIGNED 后没有新事件流入,主链路再无机会触发分派"的场景
+    (首次分派 0 命中/投递丢失/部署偏斜等)。观察中/已恢复的虚拟会话告警
+    由 TimeoutChecker 链路负责；已确认会话告警纳入兜底。
+    """
+    from apps.alerts.constants.constants import AlertStatus, SessionStatus
+    from apps.alerts.models.models import Alert
+    from apps.alerts.models.outbox import AlertOutbox
+
+    candidates = Alert.objects.filter(
+        status=AlertStatus.UNASSIGNED,
+    ).exclude(
+        is_session_alert=True,
+        session_status__in=SessionStatus.NO_CONFIRMED,
+    )
+    latest_retry = (
+        AlertOutbox.objects.filter(
+            kind="auto_assignment",
+            idempotency_key__startswith=UNASSIGNED_RETRY_KEY_PREFIX,
         )
-        return result
+        .order_by("-created_at", "-pk")
+        .first()
+    )
+    if latest_retry:
+        previous_ids = latest_retry.payload.get("alert_ids") or []
+        cursor = (
+            Alert.objects.filter(alert_id=previous_ids[-1])
+            .values("created_at", "pk")
+            .first()
+            if previous_ids
+            else None
+        )
+        if cursor:
+            candidates = candidates.filter(
+                Q(created_at__gt=cursor["created_at"])
+                | Q(created_at=cursor["created_at"], pk__gt=cursor["pk"])
+            )
 
-    except Exception as e:
-        logger.error("[AlertTask] 异步自动分配失败: %s", e, exc_info=True)
-        return {
-            "total_alerts": len(unique_alert_ids),
-            "assigned_alerts": 0,
-            "error": str(e),
-        }
+    candidate_ids = list(
+        candidates.order_by("created_at", "pk").values_list(
+            "alert_id", flat=True
+        )[:UNASSIGNED_RETRY_BATCH]
+    )
+    if not candidate_ids and latest_retry:
+        candidate_ids = list(
+            Alert.objects.filter(status=AlertStatus.UNASSIGNED)
+            .exclude(
+                is_session_alert=True,
+                session_status__in=SessionStatus.NO_CONFIRMED,
+            )
+            .order_by("created_at", "pk")
+            .values_list("alert_id", flat=True)[:UNASSIGNED_RETRY_BATCH]
+        )
+
+    if not candidate_ids:
+        logger.info("[AlertTask] UNASSIGNED 兜底: 无候选告警")
+        return {"retried": 0}
+
+    now = timezone.now()
+    window_start = now.replace(
+        minute=(now.minute // UNASSIGNED_RETRY_WINDOW_MINUTES)
+        * UNASSIGNED_RETRY_WINDOW_MINUTES,
+        second=0,
+        microsecond=0,
+    )
+    idempotency_key = (
+        f"{UNASSIGNED_RETRY_KEY_PREFIX}{window_start.strftime('%Y%m%dT%H%M%z')}"
+    )
+    from apps.alerts.service.outbox import enqueue_outbox
+
+    _, created = enqueue_outbox(
+        "auto_assignment",
+        {"alert_ids": candidate_ids},
+        idempotency_key,
+    )
+    if not created:
+        logger.info("[AlertTask] UNASSIGNED 兜底: 当前时间窗已入队，跳过重复执行")
+        return {"retried": 0}
+
+    logger.info(
+        "[AlertTask] UNASSIGNED 兜底: 入 outbox %s 条 (window=%s)",
+        len(candidate_ids),
+        window_start.isoformat(),
+    )
+    return {"retried": len(candidate_ids)}
 
 
 @shared_task(

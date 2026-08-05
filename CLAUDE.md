@@ -8,6 +8,8 @@
 |---|---|
 | 领域术语与产品取舍 | `CONTEXT.md`、`PRODUCT.md` |
 | 长期业务与工程事实 | `specs/capabilities/` |
+| 后端编码与高风险规则 | `specs/capabilities/backend-engineering.md` |
+| 安全、可靠性与质量红线 | `specs/capabilities/{platform-security,platform-reliability,engineering-quality}.md` |
 | 当前跨会话变更 | `specs/changes/<feature>/spec.md` |
 | UI 与组件约定 | `DESIGN.md`、`web/DESIGN.md`、`web/COMPONENT_GOVERNANCE.md` |
 | 开发、验证与运行命令 | `DEVELOP.md` |
@@ -15,7 +17,9 @@
 | 长期架构决定 | `docs/adr/` |
 | 发布记录 | `docs/changelog/` |
 
-按任务读取相关入口，并以当前代码、配置和测试为最终证据。
+按任务读取相关入口，并以当前代码、配置和测试为最终证据。修改 `server/` 或
+`agents/` 前，按影响范围阅读后端工程、安全、可靠性和质量 capability；只读取
+本次任务相关章节。
 
 ## Server 启动硬约束
 
@@ -37,6 +41,7 @@
 - 中文交流和提交；代码标识符遵循现有项目风格。
 - 凭据只由环境注入，不提交或记录 `.env`、keystore、token。
 - 数据库访问使用 Django ORM，禁止 raw SQL、`.raw()`、`RawSQL`、`cursor.execute`。
+- `server/apps/<app>/` 引入日志统一用 `from apps.core.logger import {app_name}_logger as logger`（见 `server/apps/core/logger.py`），禁止 `loguru` 或就地 `logging.getLogger`。
 - 非关键、可重建的外部资源失败不得阻断服务启动。
 - 向目标主机下发或执行操作必须有资源边界、幂等/回滚和相应测试。
 - Web 改动优先复用 Ant Design、现有组件和 Storybook；共享抽象必须已有多个真实使用方。

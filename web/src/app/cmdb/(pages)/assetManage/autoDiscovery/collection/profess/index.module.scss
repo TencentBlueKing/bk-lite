@@ -11,6 +11,46 @@
   @extend %titleBase;
 }
 
+.ipRangeCycleHintItem {
+  margin-bottom: 12px !important;
+  margin-top: -8px;
+
+  :global(.ant-form-item-control) {
+    max-width: 100%;
+  }
+}
+
+/** 采集表单内联提示：统一最小字号、紧凑单行 */
+.formFieldHint {
+  align-items: center;
+  font-size: 12px;
+  line-height: 20px;
+  padding: 4px 12px;
+
+  :global(.ant-alert-icon) {
+    font-size: 12px;
+    margin-inline-end: 8px;
+  }
+
+  :global(.ant-alert-content) {
+    min-width: 0;
+  }
+
+  :global(.ant-alert-message) {
+    color: inherit;
+    font-size: 12px;
+    line-height: 20px;
+    margin-bottom: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  :global(.ant-alert-description) {
+    display: none;
+  }
+}
+
 .panelHeader {
   font-size: 16px;
   font-weight: bold;
@@ -141,11 +181,11 @@
   vertical-align: middle;
 
   &.success {
-    background: #4acf88;
+    background: var(--color-success);
   }
 
   &.fail {
-    background: #ff6a57;
+    background: var(--color-fail);
   }
 }
 
@@ -166,7 +206,7 @@
     padding-top: 8px;
     padding-bottom: 8px;
     width: 100%;
-    background: var(--color-bg-layout, #fff);
+    background: var(--color-bg);
     z-index: 1;
 }
 
@@ -198,55 +238,161 @@
   display: inline-flex;
   font-size: 16px;
   font-weight: 600;
-  gap: 6px;
+  gap: 8px;
   line-height: 24px;
 }
 
-.credentialPoolHelpIcon {
-  color: #9aa4b2;
-  cursor: help;
-  font-size: 13px;
+.credentialPoolHelpButton {
+  color: var(--color-text-3);
+  height: 40px;
+  min-width: 40px;
+  padding: 0;
+}
+
+@media (pointer: coarse) {
+  .credentialPoolHelpButton {
+    height: 44px;
+    min-width: 44px;
+  }
+}
+
+.credentialHelpContent {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 70vh;
+  max-width: 520px;
+  overflow-y: auto;
+  padding-right: 4px;
+  width: min(520px, calc(100vw - 48px));
+}
+
+.credentialHelpRow {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 72px minmax(0, 1fr);
+
+  > span {
+    color: var(--color-text-3);
+  }
+
+  > strong {
+    color: var(--color-text-1);
+    font-weight: 400;
+    overflow-wrap: anywhere;
+  }
+}
+
+.credentialFieldHelpSection {
+  border-top: 1px solid var(--color-border);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 8px;
+
+  > strong {
+    color: var(--color-text-1);
+    font-weight: 500;
+  }
+}
+
+.credentialFieldHelpList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.credentialFieldHelpItem {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+
+  > span {
+    color: var(--color-text-3);
+    line-height: 20px;
+  }
+}
+
+.credentialFieldHelpHeader {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+
+  > strong {
+    color: var(--color-text-1);
+    font-weight: 500;
+  }
+}
+
+.credentialFieldHelpValues {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+
+  > span {
+    background: var(--color-fill-2);
+    border-radius: 4px;
+    color: var(--color-text-2);
+    font-size: 12px;
+    line-height: 20px;
+    padding: 0 8px;
+  }
+
+  > .credentialFieldHelpRecommended {
+    background: var(--color-primary-bg);
+    color: var(--color-primary);
+  }
+}
+
+.credentialHelpFallback {
+  color: var(--color-text-2);
+  overflow-wrap: anywhere;
+}
+
+.credentialHelpPoolStrategy {
+  border-top: 1px solid var(--color-border);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-top: 8px;
+
+  > strong {
+    color: var(--color-text-1);
+    font-weight: 500;
+  }
+
+  > span {
+    color: var(--color-text-3);
+  }
 }
 
 .credentialPoolCount {
-  color: #50617a;
+  align-items: baseline;
+  color: var(--color-text-2);
+  display: inline-flex;
   font-size: 13px;
   font-variant-numeric: tabular-nums;
   font-weight: 600;
+  gap: 4px;
   line-height: 22px;
-}
 
-.credentialPoolCount::after {
-  color: #98a4b5;
-  content: ' 已配置';
-  font-size: 12px;
-  font-weight: 400;
-  margin-left: 4px;
+  > span:last-child {
+    color: var(--color-text-3);
+    font-size: 12px;
+    font-weight: 400;
+  }
 }
 
 .credentialHeaderAddButton {
-  background: #eef5ff !important;
-  border-color: #2f6df6 !important;
   border-radius: 6px !important;
-  color: #155bd4 !important;
   font-weight: 500;
   height: 30px !important;
   min-width: 124px;
   padding-inline: 14px !important;
   width: auto;
   white-space: nowrap;
-
-  &:hover {
-    background: #e2edff !important;
-    border-color: #155bd4 !important;
-    color: #0f4bb4 !important;
-  }
-
-  &:disabled {
-    background: #f4f7fb !important;
-    border-color: #d8e0ec !important;
-    color: #9aa7ba !important;
-  }
 }
 
 .credentialPoolList {
@@ -262,10 +408,10 @@
 
 .credentialOrderNumber {
   align-items: center;
-  background: #f7f9fc;
-  border: 1px solid #e7ecf3;
+  background: var(--color-fill-1);
+  border: 1px solid var(--color-border);
   border-radius: 6px;
-  color: #66758c;
+  color: var(--color-text-3);
   display: inline-flex;
   flex: 0 0 22px;
   font-size: 12px;
@@ -279,7 +425,7 @@
 
 .credentialDragHandle {
   align-items: center;
-  color: #8f9daf;
+  color: var(--color-text-3);
   cursor: grab !important;
   display: inline-flex;
   flex: 0 0 16px;
@@ -294,7 +440,7 @@
 }
 
 .credentialDragHandle:hover {
-  color: #7d8ba0;
+  color: var(--color-text-2);
   cursor: grab !important;
   opacity: 1;
 }
@@ -302,17 +448,17 @@
 .credentialCard {
   flex: 1;
   min-width: 0;
-  border: 1px solid #dde5ef;
+  border: 1px solid var(--color-border);
   border-radius: 6px;
   padding: 0 12px;
-  background: #fff;
+  background: var(--color-bg);
   box-shadow: none;
   transition: border-color 0.18s ease, background-color 0.18s ease;
 }
 
 .credentialCardExpanded {
-  border-color: #c8d4e3;
-  background: #fff;
+  border-color: var(--color-border-3);
+  background: var(--color-bg);
 }
 
 .credentialCardHeader {
@@ -327,9 +473,21 @@
   display: flex;
   align-items: center;
   gap: 12px;
-  flex: 1;
+  flex: 0 0 auto;
   min-width: 0;
   cursor: pointer;
+  appearance: none;
+  background: transparent;
+  border: 0;
+  color: inherit;
+  font: inherit;
+  padding: 0;
+  text-align: left;
+
+  &:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+  }
 }
 
 .credentialTitleBlock {
@@ -350,7 +508,7 @@
 
 .credentialMetaList {
   align-items: center;
-  color: #5f6b7c;
+  color: var(--color-text-2);
   display: flex;
   flex: 1;
   gap: 12px;
@@ -370,7 +528,7 @@
 }
 
 .credentialMetaLabel {
-  color: #8a94a5;
+  color: var(--color-text-3);
   font-size: 12px;
   line-height: 20px;
   white-space: nowrap;
@@ -381,7 +539,7 @@
 }
 
 .credentialMetaValue {
-  color: #445266;
+  color: var(--color-text-2);
   font-size: 12px;
   line-height: 20px;
   min-width: 0;
@@ -392,12 +550,12 @@
 
 .credentialMetaEmpty {
   .credentialMetaValue {
-    color: #aab2bf;
+    color: var(--color-text-4);
   }
 }
 
 .credentialMetaToggle {
-  color: #9aa4b2 !important;
+  color: var(--color-text-3) !important;
   height: 20px !important;
   padding-inline: 2px !important;
   width: 20px !important;
@@ -416,7 +574,7 @@
 }
 
 .credentialExpandButton {
-  color: #4f668a !important;
+  color: var(--color-text-2) !important;
 }
 
 .credentialCardBody {
@@ -456,7 +614,7 @@
 }
 
 .credentialRequiredMark {
-  color: #ff4d4f;
+  color: var(--color-fail);
   font-family: SimSun, sans-serif;
   line-height: 1;
 }
@@ -501,7 +659,7 @@
 }
 
 .credentialRefreshButton {
-  color: #4f668a !important;
+  color: var(--color-text-2) !important;
   flex: 0 0 28px;
   height: 30px !important;
   width: 28px !important;
@@ -517,16 +675,16 @@
   min-width: 0;
   width: 156px;
   border-style: dashed !important;
-  border-color: #d6dde8 !important;
-  color: #65748a !important;
-  background: #fbfdff !important;
+  border-color: var(--color-border-3) !important;
+  color: var(--color-text-2) !important;
+  background: var(--color-bg) !important;
   border-radius: 6px !important;
 }
 
 .credentialAddButton:hover {
-  border-color: #9db7da !important;
-  color: #315f9f !important;
-  background: #f7fbff !important;
+  border-color: var(--color-primary) !important;
+  color: var(--color-primary) !important;
+  background: var(--color-primary-bg-active) !important;
 }
 
 @media (max-width: 560px) {

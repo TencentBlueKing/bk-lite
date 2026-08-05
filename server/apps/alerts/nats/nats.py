@@ -25,6 +25,7 @@ from apps.alerts.models.models import Alert, Event, Incident, Level
 from apps.alerts.utils.permission_scope import apply_team_scope_with_group_ids
 from apps.core.logger import alert_logger as logger
 from apps.core.utils.permission_utils import get_permission_rules
+from apps.core.utils.time_util import parse_rfc3339_range_utc, parse_rfc3339_utc
 from apps.core.utils.viewset_utils import GenericViewSetFun
 
 ALERT_LEVEL_DISPLAY_MAP = dict(EventLevel.CHOICES)
@@ -137,13 +138,9 @@ def _get_authorized_alert_queryset(user_info: dict):
         except (TypeError, ValueError):
             logger.warning("Invalid alert permission team id: %s", team_id)
 
-    authorized_queryset = apply_team_scope_with_group_ids(
-        Alert.objects.all(), normalized_permission_team_ids
-    )
+    authorized_queryset = apply_team_scope_with_group_ids(Alert.objects.all(), normalized_permission_team_ids)
     if instance_ids:
-        authorized_queryset = Alert.objects.filter(
-            Q(id__in=authorized_queryset.values("id")) | Q(id__in=instance_ids)
-        )
+        authorized_queryset = Alert.objects.filter(Q(id__in=authorized_queryset.values("id")) | Q(id__in=instance_ids))
     return authorized_queryset.distinct(), None
 
 
@@ -189,15 +186,24 @@ def _resolve_target_timezone(timezone_name=None):
 
 
 def _parse_client_datetime(value, target_tz):
-    text = str(value).strip()
-    try:
-        parsed = datetime.datetime.fromisoformat(text.replace("Z", "+00:00"))
-    except ValueError:
-        parsed = datetime.datetime.strptime(text, "%Y-%m-%d %H:%M:%S")
+    return parse_rfc3339_utc(value).astimezone(target_tz)
 
-    if timezone.is_naive(parsed):
-        return timezone.make_aware(parsed, target_tz)
-    return parsed.astimezone(target_tz)
+
+def _parse_optional_client_time_range(value, target_tz):
+    if value is None or value == [] or value == ():
+        return None, None, None
+
+    try:
+        start, end = parse_rfc3339_range_utc(value)
+    except ValueError as exc:
+        return None, None, str(exc)
+    return start.astimezone(target_tz), end.astimezone(target_tz), None
+
+
+def _parse_required_client_time_range(value, target_tz):
+    if value is None or value == [] or value == ():
+        return None, None, "time range is required."
+    return _parse_optional_client_time_range(value, target_tz)
 
 
 def _format_period_value(value, target_tz):
@@ -225,8 +231,10 @@ def _generate_time_periods(group_by, start_dt, end_dt):
             all_periods.append(current)
             current += datetime.timedelta(hours=1)
     elif group_by == "day":
-        num_periods = (end_dt.date() - start_dt.date()).days + 1
-        all_periods = [start_dt.date() + datetime.timedelta(days=i) for i in range(num_periods)]
+        current = start_dt.replace(hour=0, minute=0, second=0, microsecond=0)
+        while current < end_dt:
+            all_periods.append(current.date())
+            current += datetime.timedelta(days=1)
     elif group_by == "week":
         current = start_dt
         while current < end_dt:
@@ -367,7 +375,7 @@ def get_alert_trend_data(*args, **kwargs) -> Dict[str, Any]:
 
     data = {
         "告警数": _build_period_series(alert_qs, "created_at", trunc_func, target_tz, aware_start, aware_end, all_periods),
-        "事件数": _build_period_series(
+        "告警关联事件数": _build_period_series(
             Event.objects.filter(alert__in=queryset).distinct(), "received_at", trunc_func, target_tz, aware_start, aware_end, all_periods
         ),
         "已恢复告警数": _build_period_series(
@@ -392,6 +400,7 @@ def get_alert_source_event_top(*args, **kwargs) -> Dict[str, Any]:
     按告警源分组统计事件数量，返回前 N 名
 
     :param limit: 返回条数，默认 5
+    :param time: 必填时间范围 [start, end]，按 Event.received_at 过滤
 
     return:
         {
@@ -408,11 +417,19 @@ def get_alert_source_event_top(*args, **kwargs) -> Dict[str, Any]:
     queryset, error = _get_authorized_alert_queryset(user_info)
     if error:
         return error
+    target_tz = _resolve_target_timezone((user_info or {}).get("timezone") or kwargs.pop("timezone", None))
 
     limit = int(kwargs.pop("limit", 5))
+    aware_start, aware_end, time_error = _parse_required_client_time_range(kwargs.pop("time", []), target_tz)
+    if time_error:
+        return {"result": False, "data": [], "message": time_error}
 
     # 通过告警权限过滤事件
-    event_qs = Event.objects.filter(alert__in=queryset).distinct()
+    event_qs = Event.objects.filter(
+        alert__in=queryset,
+        received_at__gte=aware_start,
+        received_at__lt=aware_end,
+    ).distinct()
 
     # 按告警源名称分组统计
     top_sources = event_qs.values("source__name").annotate(count=Count("id")).order_by("-count")[:limit]
@@ -475,21 +492,21 @@ def get_alert_source_statistics(*args, **kwargs) -> Dict[str, Any]:
     time = kwargs.pop("time", [])
 
     event_qs = Event.objects.filter(alert__in=queryset).distinct()
-    visible_source_ids = event_qs.values_list("source_id", flat=True).distinct()
-    visible_sources = AlertSource.objects.filter(id__in=visible_source_ids)
+    visible_sources = AlertSource.objects.all()
 
     total_count = visible_sources.count()
     enabled_count = visible_sources.filter(is_active=True).count()
     enabled_rate = round((enabled_count / total_count * 100), 1) if total_count > 0 else 0
 
     # 活跃告警源：当前授权告警范围内，时间窗口中实际收到过事件的来源。
-    if time and len(time) == 2:
-        aware_start = _parse_client_datetime(time[0], target_tz)
-        aware_end = _parse_client_datetime(time[1], target_tz)
+    aware_start, aware_end, time_error = _parse_optional_client_time_range(time, target_tz)
+    if time_error:
+        return {"result": False, "data": {}, "message": time_error}
+    if aware_start is not None:
         active_source_ids = event_qs.filter(received_at__gte=aware_start, received_at__lt=aware_end).values_list("source_id", flat=True).distinct()
-        active_count = visible_sources.filter(id__in=active_source_ids).count()
     else:
-        active_count = total_count
+        active_source_ids = event_qs.values_list("source_id", flat=True).distinct()
+    active_count = visible_sources.filter(id__in=active_source_ids).count()
 
     return {
         "result": True,
@@ -531,9 +548,10 @@ def get_notification_statistics(*args, **kwargs) -> Dict[str, Any]:
 
     time = kwargs.pop("time", [])
 
-    if time and len(time) == 2:
-        aware_start = _parse_client_datetime(time[0], target_tz)
-        aware_end = _parse_client_datetime(time[1], target_tz)
+    aware_start, aware_end, time_error = _parse_optional_client_time_range(time, target_tz)
+    if time_error:
+        return {"result": False, "data": {}, "message": time_error}
+    if aware_start is not None:
         qs = qs.filter(notify_time__gte=aware_start, notify_time__lt=aware_end)
 
     from apps.alerts.constants.constants import NotifyResultStatus
@@ -541,8 +559,8 @@ def get_notification_statistics(*args, **kwargs) -> Dict[str, Any]:
     total_count = qs.count()
     success_count = qs.filter(notify_result=NotifyResultStatus.SUCCESS).count()
     failed_count = qs.filter(notify_result=NotifyResultStatus.FAILED).count()
-    success_rate = round((success_count / total_count * 100), 1) if total_count > 0 else 0
-    failed_rate = round((failed_count / total_count * 100), 1) if total_count > 0 else 0
+    success_rate = round((success_count / total_count * 100), 1) if total_count > 0 else None
+    failed_rate = round((failed_count / total_count * 100), 1) if total_count > 0 else None
 
     return {
         "result": True,
@@ -583,9 +601,10 @@ def get_notification_channel_stats(*args, **kwargs) -> Dict[str, Any]:
 
     time = kwargs.pop("time", [])
 
-    if time and len(time) == 2:
-        aware_start = _parse_client_datetime(time[0], target_tz)
-        aware_end = _parse_client_datetime(time[1], target_tz)
+    aware_start, aware_end, time_error = _parse_optional_client_time_range(time, target_tz)
+    if time_error:
+        return {"result": False, "data": [], "message": time_error}
+    if aware_start is not None:
         qs = qs.filter(notify_time__gte=aware_start, notify_time__lt=aware_end)
 
     from apps.alerts.constants.constants import NotifyResultStatus
@@ -621,12 +640,22 @@ def get_alert_data_quality(*args, **kwargs) -> Dict[str, Any]:
         {
             "result": True,
             "data": {
-                "total_count": 500,
-                "missing_resource_id_rate": 3.21,
-                "missing_service_rate": 2.87,
-                "missing_rule_id_rate": 1.32,
-                "missing_item_rate": 1.05,
-                "missing_external_id_rate": 2.16
+                "alert_quality": {
+                    "total_count": 500,
+                    "missing_resource_id_count": 10,
+                    "missing_resource_id_rate": 2.0,
+                    "missing_rule_id_count": 5,
+                    "missing_rule_id_rate": 1.0
+                },
+                "event_quality": {
+                    "total_count": 1000,
+                    "missing_service_count": 20,
+                    "missing_service_rate": 2.0,
+                    "missing_item_count": 10,
+                    "missing_item_rate": 1.0,
+                    "missing_external_id_count": 5,
+                    "missing_external_id_rate": 0.5
+                }
             }
         }
     """
@@ -636,50 +665,50 @@ def get_alert_data_quality(*args, **kwargs) -> Dict[str, Any]:
     queryset, error = _get_authorized_alert_queryset(user_info)
     if error:
         return error
+    authorized_queryset = queryset
 
     time = kwargs.pop("time", [])
-    if time and len(time) == 2:
-        aware_start = _parse_client_datetime(time[0], target_tz)
-        aware_end = _parse_client_datetime(time[1], target_tz)
+    aware_start, aware_end, time_error = _parse_optional_client_time_range(time, target_tz)
+    if time_error:
+        return {"result": False, "data": {}, "message": time_error}
+    if aware_start is not None:
         queryset = queryset.filter(created_at__gte=aware_start, created_at__lt=aware_end)
 
-    total_count = queryset.count()
-    if total_count == 0:
-        return {
-            "result": True,
-            "data": {
-                "total_count": 0,
-                "missing_resource_id_rate": 0,
-                "missing_service_rate": 0,
-                "missing_rule_id_rate": 0,
-                "missing_item_rate": 0,
-                "missing_external_id_rate": 0,
-            },
-            "message": "",
-        }
-
+    alert_total = queryset.count()
     missing_resource_id = queryset.filter(Q(resource_id__isnull=True) | Q(resource_id="")).count()
     missing_rule_id = queryset.filter(Q(rule_id__isnull=True) | Q(rule_id="")).count()
 
-    # service/item/external_id 字段在 Event 上，统计关联事件缺失率
-    event_qs = Event.objects.filter(alert__in=queryset).distinct()
+    # 事件完整性按 Event.received_at 独立筛选，不能沿用期间新增告警集合。
+    event_qs = Event.objects.filter(alert__in=authorized_queryset).distinct()
+    if aware_start is not None:
+        event_qs = event_qs.filter(received_at__gte=aware_start, received_at__lt=aware_end)
     event_total = event_qs.count()
-    missing_service = event_qs.filter(Q(service__isnull=True) | Q(service="")).count() if event_total > 0 else 0
-    missing_item = event_qs.filter(Q(item__isnull=True) | Q(item="")).count() if event_total > 0 else 0
-    missing_external_id = event_qs.filter(Q(external_id__isnull=True) | Q(external_id="")).count() if event_total > 0 else 0
+    missing_service = event_qs.filter(Q(service__isnull=True) | Q(service="")).count()
+    missing_item = event_qs.filter(Q(item__isnull=True) | Q(item="")).count()
+    missing_external_id = event_qs.filter(Q(external_id__isnull=True) | Q(external_id="")).count()
 
     def rate(count, total):
-        return round((count / total * 100), 2) if total > 0 else 0
+        return round((count / total * 100), 2) if total > 0 else None
 
     return {
         "result": True,
         "data": {
-            "total_count": total_count,
-            "missing_resource_id_rate": rate(missing_resource_id, total_count),
-            "missing_service_rate": rate(missing_service, event_total),
-            "missing_rule_id_rate": rate(missing_rule_id, total_count),
-            "missing_item_rate": rate(missing_item, event_total),
-            "missing_external_id_rate": rate(missing_external_id, event_total),
+            "alert_quality": {
+                "total_count": alert_total,
+                "missing_resource_id_count": missing_resource_id,
+                "missing_resource_id_rate": rate(missing_resource_id, alert_total),
+                "missing_rule_id_count": missing_rule_id,
+                "missing_rule_id_rate": rate(missing_rule_id, alert_total),
+            },
+            "event_quality": {
+                "total_count": event_total,
+                "missing_service_count": missing_service,
+                "missing_service_rate": rate(missing_service, event_total),
+                "missing_item_count": missing_item,
+                "missing_item_rate": rate(missing_item, event_total),
+                "missing_external_id_count": missing_external_id,
+                "missing_external_id_rate": rate(missing_external_id, event_total),
+            },
         },
         "message": "",
     }
@@ -827,11 +856,7 @@ def receive_alert_events(*args, **kwargs) -> Dict[str, Any]:
                 "pusher": pusher,
                 "timestamp": timezone.now().strftime("%Y-%m-%d %H:%M:%S"),
             },
-            "message": (
-                "Events received and processed successfully."
-                if fully_accepted
-                else "Alert events were only partially accepted."
-            ),
+            "message": ("Events received and processed successfully." if fully_accepted else "Alert events were only partially accepted."),
         }
 
     except Exception as e:
@@ -857,7 +882,10 @@ def alert_test(*args, **kwargs):
 @nats_client.register
 def get_alert_statistics(**kwargs):
     """
-    获取告警统计数据
+    获取兼容用的全量告警统计数据。
+
+    该接口混合当前状态与全量累计口径，不接收时间范围。仅为未知外部调用保留，
+    新的内置画布应使用 get_alert_period_statistics 或 get_alert_snapshot_statistics。
 
     Returns:
         {
@@ -912,6 +940,92 @@ def get_alert_statistics(**kwargs):
 
 
 @nats_client.register
+def get_alert_period_statistics(**kwargs):
+    """获取指定半开时间区间内的告警运营统计。"""
+    user_info = kwargs.get("user_info", {})
+    target_tz = _resolve_target_timezone((user_info or {}).get("timezone") or kwargs.get("timezone"))
+    queryset, error = _get_authorized_alert_queryset(user_info)
+    if error:
+        return error
+
+    aware_start, aware_end, time_error = _parse_required_client_time_range(kwargs.get("time", []), target_tz)
+    if time_error:
+        return {"result": False, "data": {}, "message": time_error}
+
+    new_alerts = queryset.filter(created_at__gte=aware_start, created_at__lt=aware_end)
+    period_events = Event.objects.filter(
+        alert__in=queryset,
+        received_at__gte=aware_start,
+        received_at__lt=aware_end,
+    ).distinct()
+    alert_counts = new_alerts.aggregate(
+        new_alert_count=Count("id"),
+        session_alert_count=Count("id", filter=Q(is_session_alert=True)),
+    )
+    event_counts = period_events.aggregate(
+        linked_event_count=Count("id", distinct=True),
+        affected_alert_count=Count("alert", distinct=True),
+    )
+    new_incident_count = (
+        Incident.objects.filter(
+            alert__in=queryset,
+            created_at__gte=aware_start,
+            created_at__lt=aware_end,
+        )
+        .distinct()
+        .count()
+    )
+
+    return {
+        "result": True,
+        "data": {
+            "new_alert_count": alert_counts["new_alert_count"],
+            "linked_event_count": event_counts["linked_event_count"],
+            "affected_alert_count": event_counts["affected_alert_count"],
+            "new_incident_count": new_incident_count,
+            "session_alert_count": alert_counts["session_alert_count"],
+            "session_alert_rate": (
+                round(alert_counts["session_alert_count"] / alert_counts["new_alert_count"] * 100, 1) if alert_counts["new_alert_count"] else 0
+            ),
+            "aggregation_ratio": (
+                round(event_counts["linked_event_count"] / event_counts["affected_alert_count"], 2) if event_counts["affected_alert_count"] else 0
+            ),
+        },
+        "message": "",
+    }
+
+
+@nats_client.register
+def get_alert_snapshot_statistics(**kwargs):
+    """获取不受期间筛选影响的当前告警状态快照。"""
+    queryset, error = _get_authorized_alert_queryset(kwargs.get("user_info", {}))
+    if error:
+        return error
+
+    status_counts = queryset.aggregate(
+        total_count=Count("id"),
+        unassigned_count=Count("id", filter=Q(status=AlertStatus.UNASSIGNED)),
+        pending_count=Count("id", filter=Q(status=AlertStatus.PENDING)),
+        processing_count=Count("id", filter=Q(status=AlertStatus.PROCESSING)),
+        auto_recovery_count=Count("id", filter=Q(status=AlertStatus.AUTO_RECOVERY)),
+    )
+    return {
+        "result": True,
+        "data": {
+            "active_count": status_counts["unassigned_count"] + status_counts["pending_count"] + status_counts["processing_count"],
+            "unassigned_count": status_counts["unassigned_count"],
+            "pending_count": status_counts["pending_count"],
+            "processing_count": status_counts["processing_count"],
+            "auto_recovery_count": status_counts["auto_recovery_count"],
+            "auto_recovery_rate": (
+                round(status_counts["auto_recovery_count"] / status_counts["total_count"] * 100, 1) if status_counts["total_count"] else 0
+            ),
+        },
+        "message": "",
+    }
+
+
+@nats_client.register
 def get_alert_today_status_summary(**kwargs):
     """
     获取今日告警状态摘要：今日产生、今日关闭、当前处理中。
@@ -956,7 +1070,14 @@ def get_alert_status_distribution(**kwargs):
 
     status_labels = dict(AlertStatus.CHOICES)
     status_order = [AlertStatus.UNASSIGNED, AlertStatus.PENDING, AlertStatus.PROCESSING]
-    status_counts = queryset.filter(status__in=status_order).values("status").annotate(count=Count("id"))
+    # Alert.Meta.ordering 包含 updated_at；聚合前必须清除默认排序，否则部分
+    # 数据库会把排序列加入 GROUP BY，导致同一状态被拆成多条。
+    status_counts = (
+        queryset.filter(status__in=status_order)
+        .order_by()
+        .values("status")
+        .annotate(count=Count("id"))
+    )
     counts = {item["status"]: item["count"] for item in status_counts}
 
     return {

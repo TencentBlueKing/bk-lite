@@ -6,6 +6,7 @@
 from django.core.management import BaseCommand
 
 from apps.core.logger import operation_analysis_logger as logger
+from apps.operation_analysis.common.builtin_datasource_identity import find_claimable_datasource
 from apps.operation_analysis.common.load_json_data import load_support_json
 from apps.operation_analysis.models.datasource_models import DataSourceAPIModel, DataSourceTag, NameSpace
 
@@ -94,14 +95,33 @@ class Command(BaseCommand):
             for api_data in source_api_data_list:
                 # 提取标签数据,避免在defaults中包含多对多字段
                 tags = api_data.pop("tag", [])
+                # 显式 key 优先，避免改展示名时拖动稳定身份。
+                stable_key = api_data.pop("key", None) or f"{api_data['name']}::{api_data['rest_api']}"
 
                 # 准备创建数据(排除多对多字段)
                 defaults = {k: v for k, v in api_data.items() if k not in ["name", "rest_api"]}
                 defaults["created_by"] = "system"
                 defaults["updated_by"] = "system"
                 defaults["groups"] = default_groups
+                defaults["is_build_in"] = True
+                defaults["build_in_key"] = stable_key
 
-                obj, created = DataSourceAPIModel.objects.get_or_create(name=api_data["name"], rest_api=api_data["rest_api"], defaults=defaults)
+                # 仅按 build_in_key / 精确 (name, rest_api) / key 内历史名认领；禁止只按 rest_api。
+                obj = find_claimable_datasource(
+                    DataSourceAPIModel,
+                    stable_key=stable_key,
+                    name=api_data["name"],
+                    rest_api=api_data["rest_api"],
+                )
+
+                created = False
+                if not obj:
+                    obj = DataSourceAPIModel.objects.create(
+                        name=api_data["name"],
+                        rest_api=api_data["rest_api"],
+                        **defaults,
+                    )
+                    created = True
 
                 # 获取标签实例
                 tag_instances = DataSourceTag.objects.filter(tag_id__in=tags)
@@ -113,12 +133,16 @@ class Command(BaseCommand):
                     created_count += 1
                     logger.info("[SourceApiInit] 创建数据源：%s", api_data["name"])
                 elif force_update:
-                    # 只有在强制更新模式下才更新现有数据源的配置
+                    # build_in_key / rest_api 是内置配置的稳定身份；允许覆盖展示名。
                     for key, value in api_data.items():
-                        if key not in ["name", "rest_api"]:  # name和rest_api作为唯一标识不更新
+                        if key not in ["name", "rest_api"]:
                             setattr(obj, key, value)
 
+                    obj.name = api_data["name"]
+                    obj.rest_api = api_data["rest_api"]
                     obj.updated_by = "system"
+                    obj.is_build_in = True
+                    obj.build_in_key = stable_key
                     if not obj.groups and default_groups:
                         obj.groups = default_groups
                     obj.save()

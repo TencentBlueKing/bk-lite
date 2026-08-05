@@ -102,12 +102,6 @@ const AlarmTable: React.FC<AlarmTableProps> = ({
         </Button>
       ),
     },
-    // {
-    //   title: t('alarms.source'),
-    //   dataIndex: 'source_names',
-    //   key: 'source_names',
-    //   width: 130,
-    // },
     {
       title: t('alarms.state'),
       dataIndex: 'status',

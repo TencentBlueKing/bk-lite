@@ -20,7 +20,10 @@ from apps.patch_mgmt.constants import (
 )
 from apps.patch_mgmt.models import (
     GovernanceTask,
+    GovernanceTaskHost,
+    HostBaselineBinding,
     Patch,
+    PatchBaseline,
     PatchSource,
     PatchTarget,
 )
@@ -48,12 +51,39 @@ class TestPatchSourceViewApi:
             "name": "WSUS-Local",
             "source_type": PatchSourceType.WSUS,
             "url": "http://wsus.example.com",
+            "auth_user": "svc-wsus",
+            "auth_password": "plain-secret",
             "team": [1],
         }
         resp = su_client.post(PATCH_SOURCE_URL, data, format="json")
         assert resp.status_code == status.HTTP_201_CREATED
         assert resp.data["name"] == "WSUS-Local"
         assert resp.data["source_type"] == PatchSourceType.WSUS
+
+    @pytest.mark.parametrize(
+        ("missing_field", "payload"),
+        [
+            ("auth_user", {"auth_password": "plain-secret"}),
+            ("auth_password", {"auth_user": "svc-wsus"}),
+        ],
+    )
+    def test_create_wsus_requires_winrm_credentials(
+        self, su_client, missing_field, payload
+    ):
+        resp = su_client.post(
+            PATCH_SOURCE_URL,
+            {
+                "name": "WSUS-Missing-Credential",
+                "source_type": PatchSourceType.WSUS,
+                "url": "http://wsus.example.com",
+                "team": [1],
+                **payload,
+            },
+            format="json",
+        )
+
+        assert resp.status_code == status.HTTP_400_BAD_REQUEST
+        assert missing_field in resp.data
 
     def test_create_api_encrypts_source_password(self, su_client, mocker):
         mocker.patch("apps.patch_mgmt.views.patch_source.PatchSourceViewSet._probe_connectivity")
@@ -123,6 +153,27 @@ class TestPatchSourceViewApi:
         assert resp.data["connectivity_status"] == "connected"
         assert probe.call_args.args[0].pk is None
 
+    def test_unsaved_wsus_connectivity_requires_winrm_credentials(
+        self, su_client, mocker
+    ):
+        probe = mocker.patch(
+            "apps.patch_mgmt.views.patch_source.probe_source"
+        )
+
+        resp = su_client.post(
+            f"{PATCH_SOURCE_URL}test_connectivity/",
+            {
+                "source_type": PatchSourceType.WSUS,
+                "url": "http://wsus.example.com",
+            },
+            format="json",
+        )
+
+        assert resp.status_code == status.HTTP_400_BAD_REQUEST
+        assert "auth_user" in resp.data
+        assert "auth_password" in resp.data
+        probe.assert_not_called()
+
     def test_edit_form_test_reuses_saved_password_without_mutating_source(
         self, su_client, mocker
     ):
@@ -155,6 +206,80 @@ class TestPatchSourceViewApi:
         assert tested.get_auth_password() == "saved-secret"
         source.refresh_from_db()
         assert source.auth_user == "old-user"
+
+    def test_edit_form_test_reuses_saved_password_when_request_sends_blank(
+        self, su_client, mocker
+    ):
+        from apps.core.mixinx import EncryptMixin
+
+        credentials = {"auth_password": "saved-secret"}
+        EncryptMixin.encrypt_field("auth_password", credentials)
+        source = PatchSource.objects.create(
+            name="WSUS-Blank-Password",
+            source_type=PatchSourceType.WSUS,
+            url="http://wsus.example.com",
+            auth_user="saved-user",
+            auth_password=credentials["auth_password"],
+            team=[1],
+        )
+        probe = mocker.patch(
+            "apps.patch_mgmt.views.patch_source.probe_source",
+            return_value=mocker.Mock(reachable=True, status_code=200, detail="ok"),
+        )
+
+        resp = su_client.post(
+            f"{PATCH_SOURCE_URL}{source.id}/check_connectivity/",
+            {
+                "name": source.name,
+                "source_type": PatchSourceType.WSUS,
+                "url": source.url,
+                "auth_user": "saved-user",
+                "auth_password": "",
+            },
+            format="json",
+        )
+
+        assert resp.status_code == status.HTTP_200_OK
+        tested = probe.call_args.args[0]
+        assert tested.get_auth_password() == "saved-secret"
+
+    def test_edit_form_save_reuses_saved_password_when_request_sends_blank(
+        self, su_client, mocker
+    ):
+        from apps.core.mixinx import EncryptMixin
+
+        credentials = {"auth_password": "saved-secret"}
+        EncryptMixin.encrypt_field("auth_password", credentials)
+        source = PatchSource.objects.create(
+            name="WSUS-Save-Blank-Password",
+            source_type=PatchSourceType.WSUS,
+            url="http://wsus.example.com",
+            auth_user="saved-user",
+            auth_password=credentials["auth_password"],
+            team=[1],
+        )
+        enqueue = mocker.patch(
+            "apps.patch_mgmt.tasks.check_patch_source_connectivity.delay"
+        )
+
+        resp = su_client.put(
+            f"{PATCH_SOURCE_URL}{source.id}/",
+            {
+                "name": source.name,
+                "source_type": PatchSourceType.WSUS,
+                "url": source.url,
+                "auth_user": "saved-user",
+                "auth_password": "",
+                "team": [1],
+            },
+            format="json",
+        )
+
+        assert resp.status_code == status.HTTP_200_OK
+        source.refresh_from_db()
+        assert source.auth_password == credentials["auth_password"]
+        assert source.get_auth_password() == "saved-secret"
+        enqueue.assert_not_called()
 
     def test_metadata_only_update_keeps_connectivity_and_does_not_probe(
         self, su_client, mocker
@@ -464,11 +589,166 @@ class TestPatchTargetViewApi:
         assert resp.data["ssh_key_file_name"] == "id_rsa"
         assert "ssh_key_file" not in resp.data
 
+    def test_retrieve_api_ignores_completed_pending_reboot_history(self, su_client):
+        target = PatchTarget.objects.create(name="history-host", ip="10.0.0.29", team=[1])
+        task = GovernanceTask.objects.create(
+            name="completed-install-history",
+            task_type=GovernanceTaskType.INSTALL,
+            status=GovernanceTaskStatus.COMPLETED,
+            target_list=[target.id],
+            team=[1],
+        )
+        GovernanceTaskHost.objects.create(
+            task=task,
+            target_id=target.id,
+            target_name=target.name,
+            target_ip=target.ip,
+            stage="pending_reboot",
+        )
+
+        resp = su_client.get(f"{PATCH_TARGET_URL}{target.id}/")
+
+        assert resp.status_code == status.HTTP_200_OK
+        assert resp.data["has_pending_reboot"] is False
+
+    def test_retrieve_api_marks_current_pending_reboot_binding(self, su_client):
+        target = PatchTarget.objects.create(name="current-reboot-host", ip="10.0.0.30", team=[1])
+        baseline = PatchBaseline.objects.create(name="current-reboot-baseline", os_type=OSType.LINUX, team=[1])
+        HostBaselineBinding.objects.create(
+            target=target,
+            baseline=baseline,
+            pending_reboot_count=1,
+        )
+
+        resp = su_client.get(f"{PATCH_TARGET_URL}{target.id}/")
+
+        assert resp.status_code == status.HTTP_200_OK
+        assert resp.data["has_pending_reboot"] is True
+
     def test_malformed_input_invalid_ip_returns_400(self, su_client):
         """malformed_input: 非法 IP 地址"""
         data = {"name": "bad-host", "ip": "not_an_ip", "os_type": OSType.LINUX, "team": [1]}
         resp = su_client.post(PATCH_TARGET_URL, data, format="json")
         assert resp.status_code == status.HTTP_400_BAD_REQUEST
+
+    def test_destroy_api_rejects_target_with_active_task(self, su_client):
+        target = PatchTarget.objects.create(name="busy-host", ip="10.0.0.31", team=[1])
+        task = GovernanceTask.objects.create(
+            name="active-install",
+            task_type=GovernanceTaskType.INSTALL,
+            status=GovernanceTaskStatus.RUNNING,
+            target_list=[target.id],
+            team=[1],
+        )
+        GovernanceTaskHost.objects.create(
+            task=task,
+            target_id=target.id,
+            target_name=target.name,
+            target_ip=target.ip,
+            stage="installing",
+        )
+
+        resp = su_client.delete(f"{PATCH_TARGET_URL}{target.id}/")
+
+        assert resp.status_code == status.HTTP_409_CONFLICT
+        assert resp.data["code"] == "target_has_active_task"
+        assert resp.data["message"]
+        assert PatchTarget.objects.filter(pk=target.id).exists()
+
+    def test_destroy_api_rejects_target_with_pending_reboot_binding(self, su_client):
+        target = PatchTarget.objects.create(name="pending-host", ip="10.0.0.32", team=[1])
+        baseline = PatchBaseline.objects.create(name="pending-baseline", os_type=OSType.LINUX, team=[1])
+        HostBaselineBinding.objects.create(
+            target=target,
+            baseline=baseline,
+            pending_reboot_count=1,
+        )
+
+        resp = su_client.delete(f"{PATCH_TARGET_URL}{target.id}/")
+
+        assert resp.status_code == status.HTTP_409_CONFLICT
+        assert resp.data["code"] == "target_pending_reboot"
+        assert resp.data["message"]
+        assert PatchTarget.objects.filter(pk=target.id).exists()
+
+    def test_destroy_api_allows_completed_pending_reboot_history(self, su_client):
+        target = PatchTarget.objects.create(name="reboot-host", ip="10.0.0.33", team=[1])
+        task = GovernanceTask.objects.create(
+            name="completed-install",
+            task_type=GovernanceTaskType.INSTALL,
+            status=GovernanceTaskStatus.COMPLETED,
+            target_list=[target.id],
+            team=[1],
+        )
+        GovernanceTaskHost.objects.create(
+            task=task,
+            target_id=target.id,
+            target_name=target.name,
+            target_ip=target.ip,
+            stage="pending_reboot",
+        )
+
+        resp = su_client.delete(f"{PATCH_TARGET_URL}{target.id}/")
+
+        assert resp.status_code == status.HTTP_200_OK
+        assert not PatchTarget.objects.filter(pk=target.id).exists()
+        assert GovernanceTaskHost.objects.filter(task=task, target_id=target.id).exists()
+
+    def test_destroy_api_removes_binding_and_key_but_keeps_history(self, su_client, mocker):
+        target = PatchTarget.objects.create(
+            name="retired-host",
+            ip="10.0.0.34",
+            team=[1],
+            ssh_key_file="ssh_keys/2026/08/03/id_rsa",
+        )
+        baseline = PatchBaseline.objects.create(name="retired-baseline", os_type=OSType.LINUX, team=[1])
+        HostBaselineBinding.objects.create(target=target, baseline=baseline)
+        task = GovernanceTask.objects.create(
+            name="completed-assessment",
+            task_type=GovernanceTaskType.ASSESS,
+            status=GovernanceTaskStatus.COMPLETED,
+            target_list=[target.id],
+            team=[1],
+        )
+        history = GovernanceTaskHost.objects.create(
+            task=task,
+            target_id=target.id,
+            target_name=target.name,
+            target_ip=target.ip,
+            stage="completed",
+        )
+        storage_delete = mocker.patch.object(
+            PatchTarget._meta.get_field("ssh_key_file").storage,
+            "delete",
+        )
+
+        resp = su_client.delete(f"{PATCH_TARGET_URL}{target.id}/")
+
+        assert resp.status_code == status.HTTP_200_OK
+        assert not PatchTarget.objects.filter(pk=target.id).exists()
+        assert not HostBaselineBinding.objects.filter(target_id=target.id).exists()
+        assert GovernanceTaskHost.objects.filter(pk=history.id).exists()
+        storage_delete.assert_called_once_with("ssh_keys/2026/08/03/id_rsa")
+
+    def test_destroy_api_keeps_target_when_key_cleanup_fails(self, su_client, mocker):
+        target = PatchTarget.objects.create(
+            name="key-cleanup-host",
+            ip="10.0.0.35",
+            team=[1],
+            ssh_key_file="ssh_keys/2026/08/03/id_rsa",
+        )
+        mocker.patch.object(
+            PatchTarget._meta.get_field("ssh_key_file").storage,
+            "delete",
+            side_effect=OSError("storage unavailable"),
+        )
+
+        resp = su_client.delete(f"{PATCH_TARGET_URL}{target.id}/")
+
+        assert resp.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
+        assert resp.data["code"] == "target_key_cleanup_failed"
+        assert resp.data["message"]
+        assert PatchTarget.objects.filter(pk=target.id).exists()
 
     def test_list_api_filter_by_os_type(self, su_client):
         PatchTarget.objects.create(name="win", ip="10.0.0.1", os_type=OSType.WINDOWS, team=[1])
@@ -1103,3 +1383,36 @@ class TestBaselineViewApi:
         resp = su_client.post(f"{BASELINE_URL}{baseline.id}/bind_hosts/", {"target_ids": [target.id]}, format="json")
         assert resp.status_code == status.HTTP_200_OK
         assert HostBaselineBinding.objects.filter(target=target, baseline=baseline).exists()
+
+    def test_hosts_api_returns_bound_targets_with_permissions(self, su_client):
+        from apps.patch_mgmt.models import HostBaselineBinding, PatchBaseline
+
+        target = PatchTarget.objects.create(
+            name="bound-web-01",
+            ip="10.0.0.2",
+            os_type=OSType.LINUX,
+            team=[1],
+        )
+        baseline = PatchBaseline.objects.create(
+            name="Linux baseline",
+            os_type=OSType.LINUX,
+            team=[1],
+        )
+        HostBaselineBinding.objects.create(target=target, baseline=baseline)
+
+        resp = su_client.get(f"{BASELINE_URL}{baseline.id}/hosts/")
+
+        assert resp.status_code == status.HTTP_200_OK
+        assert resp.data == [
+            {
+                "id": resp.data[0]["id"],
+                "target": target.id,
+                "target_name": target.name,
+                "target_ip": target.ip,
+                "baseline": baseline.id,
+                "baseline_name": baseline.name,
+                "permission": ["View", "Operate"],
+                "created_by": "",
+                "created_at": resp.data[0]["created_at"],
+            }
+        ]

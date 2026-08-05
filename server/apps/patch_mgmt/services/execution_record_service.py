@@ -31,6 +31,14 @@ STEP_NAMES = {
 }
 
 
+def filter_execution_record_roots(queryset):
+    """只保留可对用户公开的执行记录根任务。"""
+    return queryset.filter(
+        parent_task__isnull=True,
+        task_type__in=(GovernanceTaskType.INSTALL, GovernanceTaskType.REBOOT),
+    )
+
+
 def _task_chain(root: GovernanceTask) -> list[GovernanceTask]:
     """返回根动作和其自动子任务。
 

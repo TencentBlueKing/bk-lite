@@ -46,3 +46,43 @@ class BaseIMNotificationAdapter(BaseCapabilityAdapter):
     @classmethod
     def send_message(cls, config: dict, provider_key: str, capability_key: str, **kwargs):
         return CapabilityExecutionResult.not_implemented(capability_key, "send_message")
+
+
+class BaseIMGroupAdapter(BaseCapabilityAdapter):
+    capability_key = "im_group"
+
+    @classmethod
+    def get_constraints(cls, config: dict, provider_key: str, capability_key: str, **kwargs):
+        return CapabilityExecutionResult.success_result(
+            "IM group constraints loaded",
+            payload={
+                "member_id_type": "",
+                "min_initial_members": 1,
+                "max_initial_members": 50,
+                "max_add_members": 50,
+                "native_create_idempotency": False,
+                "requirements": [],
+            },
+        )
+
+    @classmethod
+    def validate_create(cls, config: dict, provider_key: str, capability_key: str, **kwargs):
+        return CapabilityExecutionResult.success_result(
+            "IM group create request is valid",
+        )
+
+    @classmethod
+    def create_group(cls, config: dict, provider_key: str, capability_key: str, **kwargs):
+        return CapabilityExecutionResult.not_implemented(capability_key, "create_group")
+
+    @classmethod
+    def get_group(cls, config: dict, provider_key: str, capability_key: str, **kwargs):
+        return CapabilityExecutionResult.not_implemented(capability_key, "get_group")
+
+    @classmethod
+    def add_members(cls, config: dict, provider_key: str, capability_key: str, **kwargs):
+        return CapabilityExecutionResult.not_implemented(capability_key, "add_members")
+
+    @classmethod
+    def send_group_message(cls, config: dict, provider_key: str, capability_key: str, **kwargs):
+        return CapabilityExecutionResult.not_implemented(capability_key, "send_group_message")

@@ -1,6 +1,8 @@
 ; Collector Sidecar Installer
 ; NSIS + Go worker architecture
-; Key: Worker runs from $INSTDIR (not TEMP) to avoid malware detection
+; Key: Worker runs from $PLUGINSDIR, never from $INSTDIR, because it activates
+; Windows packages by renaming $INSTDIR and cannot rename a directory that the
+; installer or the worker itself is running from or working in.
 
 !include "MUI2.nsh"
 !include "nsDialogs.nsh"
@@ -188,7 +190,10 @@ Section "Install" SecInstall
     IfFileExists "$PLUGINSDIR\setup-worker.exe" +2
         File "setup-worker.exe"
 
-    SetOutPath "$INSTDIR"
+    ; Do not SetOutPath to $INSTDIR before the worker runs: it would create the
+    ; directory up front (making a fresh install look like an upgrade) and pin
+    ; the installer's working directory inside it, so the worker could not
+    ; rename $INSTDIR during transactional activation.
     DetailPrint "Install: $INSTDIR"
     DetailPrint ""
 	FileOpen $R0 "$PLUGINSDIR\installer-session.url" w
@@ -211,6 +216,10 @@ Section "Install" SecInstall
 
     DetailPrint ""
     DetailPrint "Done!"
+
+    ; The worker has finished renaming $INSTDIR into place, so it is now safe to
+    ; make it the output directory for the icon written below.
+    SetOutPath "$INSTDIR"
 
     ; Registry
     WriteRegStr HKLM "Software\FusionCollectors\Sidecar" "InstallDir" "$INSTDIR"

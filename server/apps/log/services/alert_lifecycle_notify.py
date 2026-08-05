@@ -83,7 +83,7 @@ class LogAlertLifecycleNotifier:
             "start_time": self._timestamp(event.event_time),
             "end_time": None,
             "item": "",
-            "resource_id": event.source_id,
+            "resource_id": alert.source_id,
             "resource_type": "",
             "resource_name": self._resource_name(),
             "organizations": self._organizations(),

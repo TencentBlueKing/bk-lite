@@ -4,6 +4,13 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Input } from 'antd';
 import type { InputRef } from 'antd';
 import styles from './index.module.scss';
+import {
+  IP_RANGE_LOCKED_PREFIX_OCTETS,
+  IP_RANGE_MAX_SIZE,
+  ipRangeSize,
+  isIpRangeOrderValid,
+  isIpRangeWithinLimit,
+} from './ipRangeLimits';
 
 interface IpSegment {
   value: string;
@@ -27,10 +34,11 @@ const IpInput: React.FC<IpInputProps> = ({ value = ['', ''], onChange }) => {
     { value: '', type: 'beginInput', disabled: false },
     { value: '', type: 'beginInput', disabled: false },
   ]);
+  // /21：仅锁定前 2 段；第 3、4 段可编辑（相对原 /24 仅末段可编辑）
   const [endIpAddress, setEndIpAddress] = useState<IpSegment[]>([
     { value: '', type: 'endInput', disabled: true },
     { value: '', type: 'endInput', disabled: true },
-    { value: '', type: 'endInput', disabled: true },
+    { value: '', type: 'endInput', disabled: false },
     { value: '', type: 'endInput', disabled: false },
   ]);
 
@@ -64,16 +72,8 @@ const IpInput: React.FC<IpInputProps> = ({ value = ['', ''], onChange }) => {
     }
   }, [value]);
 
-  const validateIpRange = useCallback((beginIp: string, endIp: string) => {
-    const ipToNumber = (ip: string) =>
-      ip.split('.').reduce((acc, curr) => acc * 256 + parseInt(curr, 10), 0);
-
-    if (!beginIp || !endIp) return true;
-    return ipToNumber(endIp) >= ipToNumber(beginIp);
-  }, []);
-
-  const formatIpSegment = useCallback((value: string) => {
-    const num = parseInt(value.trim(), 10);
+  const formatIpSegment = useCallback((raw: string) => {
+    const num = parseInt(raw.trim(), 10);
     if (isNaN(num)) return '0';
     return Math.min(Math.max(num, 0), 255).toString();
   }, []);
@@ -102,8 +102,8 @@ const IpInput: React.FC<IpInputProps> = ({ value = ['', ''], onChange }) => {
   );
 
   const handleIpChange = useCallback(
-    (ipSegments: IpSegment[], index: number, value: string, type: string) => {
-      const formattedValue = formatIpSegment(value);
+    (ipSegments: IpSegment[], index: number, raw: string, type: string) => {
+      const formattedValue = formatIpSegment(raw);
       const updatedIpSegments = ipSegments.map((segment, i) =>
         i === index ? { ...segment, value: formattedValue } : segment
       );
@@ -113,27 +113,48 @@ const IpInput: React.FC<IpInputProps> = ({ value = ['', ''], onChange }) => {
           .map((item) => item.value)
           .join('.');
         const updatedEndIpAddress = [...endIpAddress];
-        for (let i = 0; i < 3; i++) {
+        for (let i = 0; i < IP_RANGE_LOCKED_PREFIX_OCTETS; i++) {
           updatedEndIpAddress[i] = {
             ...updatedEndIpAddress[i],
             value: updatedIpSegments[i].value,
           };
         }
+
+        let newEndIp = updatedEndIpAddress.map((item) => item.value).join('.');
+        // 起始变更导致顺序非法或超出 /21 时，将结束地址主机段对齐到起始地址
+        if (
+          !isIpRangeOrderValid(newBeginIp, newEndIp) ||
+          (ipRangeSize(newBeginIp, newEndIp) > IP_RANGE_MAX_SIZE)
+        ) {
+          for (let i = IP_RANGE_LOCKED_PREFIX_OCTETS; i < 4; i++) {
+            updatedEndIpAddress[i] = {
+              ...updatedEndIpAddress[i],
+              value: updatedIpSegments[i].value,
+            };
+          }
+          newEndIp = updatedEndIpAddress.map((item) => item.value).join('.');
+        }
+
         setBeginIpAddress(updatedIpSegments);
         setEndIpAddress(updatedEndIpAddress);
-        const newEndIp = `${newBeginIp.split('.').slice(0, 3).join('.')}.${endIpAddress[3].value}`;
+        setEndError(
+          !isIpRangeOrderValid(newBeginIp, newEndIp) ||
+            !isIpRangeWithinLimit(newBeginIp, newEndIp),
+        );
         onChange([newBeginIp, newEndIp]);
       } else {
         const newEndIp = updatedIpSegments.map((item) => item.value).join('.');
         const newBeginIp = beginIpAddress.map((item) => item.value).join('.');
         setEndIpAddress(updatedIpSegments);
 
-        const isValidRange = validateIpRange(newBeginIp, newEndIp);
-        setEndError(!isValidRange);
+        const isValid =
+          isIpRangeOrderValid(newBeginIp, newEndIp) &&
+          isIpRangeWithinLimit(newBeginIp, newEndIp);
+        setEndError(!isValid);
         onChange([newBeginIp, newEndIp]);
       }
     },
-    [beginIpAddress, endIpAddress, onChange, formatIpSegment, validateIpRange]
+    [beginIpAddress, endIpAddress, onChange, formatIpSegment]
   );
 
   const validateIp = () => {
@@ -141,10 +162,13 @@ const IpInput: React.FC<IpInputProps> = ({ value = ['', ''], onChange }) => {
     const endIp = value[1];
     const reg =
       /^((2[0-4]\d|25[0-5]|[01]?\d\d?)\.){3}(2[0-4]\d|25[0-5]|[01]?\d\d?)$/;
-    const flag =
-      Number(endIp.replace(/\./g, '')) < Number(beginIp.replace(/\./g, ''));
+    const orderInvalid = !isIpRangeOrderValid(beginIp, endIp);
+    const sizeInvalid =
+      reg.test(beginIp) &&
+      reg.test(endIp) &&
+      !isIpRangeWithinLimit(beginIp, endIp);
     setBeginError(!reg.test(beginIp));
-    setEndError(!reg.test(endIp) || flag);
+    setEndError(!reg.test(endIp) || orderInvalid || sizeInvalid);
   };
 
   const handleFocus = (type: string) => {

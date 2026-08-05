@@ -1,4 +1,5 @@
 import * as assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 
 import {
   getRoom3DDisplayOptions,
@@ -12,7 +13,10 @@ import {
   filterChartTypesForSurface,
   hasSupportedChartTypeForSurface,
 } from "../src/app/ops-analysis/utils/chartTypeSurface";
-import { shouldWaitForInitialWidgetData } from "../src/app/ops-analysis/utils/widgetRequestVersion";
+import {
+  resolveWidgetDataSourceState,
+  shouldWaitForInitialWidgetData,
+} from "../src/app/ops-analysis/utils/widgetRequestVersion";
 import { shouldShowInitialWidgetLoading } from "../src/app/ops-analysis/utils/widgetDataTransform";
 import {
   getDefaultScreenWidgetAppearance,
@@ -401,6 +405,7 @@ assert.equal(
     isTableLikeChart: false,
     hasDataSourceId: true,
     hasResolvedDataSource: false,
+    dataSourceLookupLoading: true,
     hasRawPayload: false,
     hasDataValidation: false,
     requestEnabled: true,
@@ -413,7 +418,49 @@ assert.equal(
     isSceneWidget: false,
     isTableLikeChart: false,
     hasDataSourceId: true,
+    hasResolvedDataSource: false,
+    dataSourceLookupLoading: false,
+    hasRawPayload: false,
+    hasDataValidation: false,
+    requestEnabled: false,
+    hasRequested: false,
+  }),
+  false,
+  "已删除的数据源匹配结束后不应继续等待",
+);
+assert.equal(
+  resolveWidgetDataSourceState({
+    hasDataSourceId: true,
+    hasResolvedDataSource: false,
+    lookupStatus: "error",
+  }),
+  "data-source-load-error",
+  "数据源元数据请求失败不能误报为数据源不存在",
+);
+assert.equal(
+  resolveWidgetDataSourceState({
+    hasDataSourceId: true,
+    hasResolvedDataSource: false,
+    lookupStatus: "success",
+  }),
+  "data-source-not-found",
+  "元数据请求成功但目标缺失时才显示数据源不存在",
+);
+assert.equal(
+  resolveWidgetDataSourceState({
+    hasDataSourceId: true,
+    hasResolvedDataSource: false,
+    lookupStatus: "loading",
+  }),
+  "loading",
+);
+assert.equal(
+  shouldWaitForInitialWidgetData({
+    isSceneWidget: false,
+    isTableLikeChart: false,
+    hasDataSourceId: true,
     hasResolvedDataSource: true,
+    dataSourceLookupLoading: false,
     hasRawPayload: false,
     hasDataValidation: false,
     requestEnabled: false,
@@ -427,6 +474,7 @@ assert.equal(
     isTableLikeChart: true,
     hasDataSourceId: true,
     hasResolvedDataSource: true,
+    dataSourceLookupLoading: false,
     hasRawPayload: false,
     hasDataValidation: false,
     requestEnabled: true,
@@ -449,6 +497,7 @@ assert.equal(
     isTableLikeChart: false,
     hasDataSourceId: true,
     hasResolvedDataSource: true,
+    dataSourceLookupLoading: false,
     hasRawPayload: true,
     hasDataValidation: false,
     requestEnabled: true,
@@ -496,3 +545,54 @@ assert.equal(screenWithUnsupportedBareLine.items[0].chartType, "line");
 assert.deepEqual(screenWithUnsupportedBareLine.items[0].valueConfig.appearance, {
   frame: "panel",
 });
+
+const room3DComponentSource = readFileSync(
+  new URL(
+    "../src/app/ops-analysis/components/widgets/room3D/index.tsx",
+    import.meta.url,
+  ),
+  "utf8",
+);
+const room3DStyleSource = readFileSync(
+  new URL(
+    "../src/app/ops-analysis/components/widgets/room3D/room3D.module.scss",
+    import.meta.url,
+  ),
+  "utf8",
+);
+const screenWidgetFrameSource = readFileSync(
+  new URL(
+    "../src/app/ops-analysis/(pages)/view/screen/components/screenWidgetFrame.tsx",
+    import.meta.url,
+  ),
+  "utf8",
+);
+const componentSwitchSource = readFileSync(
+  new URL(
+    "../src/app/ops-analysis/components/componentParamSwitchControl.tsx",
+    import.meta.url,
+  ),
+  "utf8",
+);
+const screenThemeSource = readFileSync(
+  new URL(
+    "../src/app/ops-analysis/(pages)/view/screen/utils/screenTheme.ts",
+    import.meta.url,
+  ),
+  "utf8",
+);
+assert.match(room3DComponentSource, /roomSwitchOverlay/);
+assert.match(room3DComponentSource, /chromeVisible|room3DChromeVisible/);
+assert.match(room3DComponentSource, /showRoomSummary = !componentSwitchControl/);
+assert.match(room3DComponentSource, /styles\.roomTitle/);
+assert.match(room3DComponentSource, /roomSummaryText/);
+assert.match(room3DStyleSource, /\.roomTitle\b/);
+assert.match(room3DStyleSource, /\.room3DImmersive:hover/);
+assert.doesNotMatch(
+  room3DStyleSource,
+  /\.room3DImmersive[^\{]*\.roomSwitchOverlay/,
+);
+assert.match(screenWidgetFrameSource, /screen-widget-frame__drag-surface/);
+assert.doesNotMatch(componentSwitchSource, /component-param-switch-control/);
+assert.match(screenThemeSource, /--screen-component-switch-bg/g);
+assert.match(screenThemeSource, /--screen-component-switch-selected-bg/g);

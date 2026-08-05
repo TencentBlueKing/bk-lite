@@ -20,7 +20,7 @@ const useLogEventApi = () => {
     } = {},
     config?: AxiosRequestConfig
   ) => {
-    return await get(`/log/policy/${id}`, {
+    return await get(`/log/policy/${String(id)}`, {
       params,
       ...config,
     });
@@ -41,7 +41,7 @@ const useLogEventApi = () => {
   };
 
   const deletePolicy = async (id: React.Key) => {
-    return await del(`/log/policy/${id}/`);
+    return await del(`/log/policy/${String(id)}/`);
   };
 
   const getLogAlert = async (
@@ -56,7 +56,7 @@ const useLogEventApi = () => {
 
   const patchLogAlert = async (data: LogAlertParams) => {
     const { id, ...rest } = data;
-    return await patch(`/log/alert/${id}/`, rest);
+    return await patch(`/log/alert/${String(id)}/`, rest);
   };
 
   const geEventList = async (

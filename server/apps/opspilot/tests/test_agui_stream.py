@@ -86,7 +86,100 @@ def settings():
     return _Settings()
 
 
+def test_agui_stream_suppresses_narration_when_turn_has_tool_calls(monkeypatch):
+    """同一轮先流式旁白再 tool_calls：正文不展示旁白，只保留工具事件。"""
+
+    async def _never_interrupted(_execution_id):
+        return False
+
+    monkeypatch.setattr(
+        "apps.opspilot.metis.llm.chain.graph.is_interrupt_requested_async",
+        _never_interrupted,
+    )
+
+    graph = _FakeBasicGraph(
+        [
+            {
+                "event": "on_chat_model_stream",
+                "data": {
+                    "chunk": SimpleNamespace(
+                        content="The parameters were passed incorrectly. Let me retry.",
+                        tool_call_chunks=[],
+                        additional_kwargs={},
+                    )
+                },
+            },
+            {
+                "event": "on_chat_model_stream",
+                "data": {
+                    "chunk": SimpleNamespace(
+                        content="",
+                        tool_call_chunks=[
+                            {"id": "tool-1", "name": "analyze_deployment_configurations"},
+                        ],
+                        additional_kwargs={},
+                    )
+                },
+            },
+            {
+                "event": "on_chat_model_end",
+                "data": {
+                    "output": SimpleNamespace(
+                        content="The parameters were passed incorrectly. Let me retry.",
+                        tool_calls=[
+                            {
+                                "id": "tool-1",
+                                "name": "analyze_deployment_configurations",
+                                "args": {"namespace": "bklite-prod"},
+                            }
+                        ],
+                    )
+                },
+            },
+            {
+                "event": "on_tool_end",
+                "name": "analyze_deployment_configurations",
+                "run_id": "run-tool-1",
+                "data": {"output": "probe failure evidence"},
+            },
+            {
+                "event": "on_chat_model_stream",
+                "data": {
+                    "chunk": SimpleNamespace(
+                        content="本步骤结论：未执行恢复操作。",
+                        tool_call_chunks=[],
+                        additional_kwargs={},
+                    )
+                },
+            },
+            {
+                "event": "on_chat_model_end",
+                "data": {
+                    "output": SimpleNamespace(
+                        content="本步骤结论：未执行恢复操作。",
+                        tool_calls=[],
+                    )
+                },
+            },
+        ]
+    )
+    request = BasicLLMRequest(thread_id="thread-suppress-narration", extra_config={})
+
+    async def _collect_payloads():
+        return _parse_sse_payloads([line async for line in graph.agui_stream(request)])
+
+    payloads = asyncio.run(_collect_payloads())
+    text_deltas = [p["delta"] for p in payloads if p["type"] == "TEXT_MESSAGE_CONTENT"]
+    tool_starts = [p for p in payloads if p["type"] == "TOOL_CALL_START"]
+
+    assert text_deltas == ["本步骤结论：未执行恢复操作。"]
+    assert any(p.get("toolCallName") == "analyze_deployment_configurations" for p in tool_starts)
+    assert all("parameters were passed incorrectly" not in (d or "") for d in text_deltas)
+
+
 def test_agui_stream_stops_forwarding_text_after_tool_call_chunks(monkeypatch):
+    """兼容旧用例名：有 tool_calls 的轮次不再把旁白发成 TEXT_MESSAGE。"""
+
     async def _never_interrupted(_execution_id):
         return False
 
@@ -103,6 +196,7 @@ def test_agui_stream_stops_forwarding_text_after_tool_call_chunks(monkeypatch):
                     "chunk": SimpleNamespace(
                         content="第一段检查结果",
                         tool_call_chunks=[],
+                        additional_kwargs={},
                     )
                 },
             },
@@ -114,6 +208,7 @@ def test_agui_stream_stops_forwarding_text_after_tool_call_chunks(monkeypatch):
                         tool_call_chunks=[
                             {"id": "choice-1", "name": "request_user_choice"},
                         ],
+                        additional_kwargs={},
                     )
                 },
             },
@@ -123,6 +218,7 @@ def test_agui_stream_stops_forwarding_text_after_tool_call_chunks(monkeypatch):
                     "chunk": SimpleNamespace(
                         content="第二段重复检查结果",
                         tool_call_chunks=[],
+                        additional_kwargs={},
                     )
                 },
             },
@@ -130,13 +226,14 @@ def test_agui_stream_stops_forwarding_text_after_tool_call_chunks(monkeypatch):
                 "event": "on_chat_model_end",
                 "data": {
                     "output": SimpleNamespace(
+                        content="第一段检查结果第二段重复检查结果",
                         tool_calls=[
                             {
                                 "id": "choice-1",
                                 "name": "request_user_choice",
                                 "args": {"question": "请选择修复展示方式"},
                             }
-                        ]
+                        ],
                     )
                 },
             },
@@ -148,10 +245,63 @@ def test_agui_stream_stops_forwarding_text_after_tool_call_chunks(monkeypatch):
         return _parse_sse_payloads([line async for line in graph.agui_stream(request)])
 
     payloads = asyncio.run(_collect_payloads())
-    event_types = [payload["type"] for payload in payloads]
+    text_deltas = [payload["delta"] for payload in payloads if payload["type"] == "TEXT_MESSAGE_CONTENT"]
+    assert text_deltas == []
+    assert any(p["type"] == "TOOL_CALL_START" for p in payloads)
 
-    assert event_types.count("TEXT_MESSAGE_CONTENT") == 1
-    assert [payload["delta"] for payload in payloads if payload["type"] == "TEXT_MESSAGE_CONTENT"] == ["第一段检查结果"]
+
+def test_agui_stream_emits_plain_answer_without_tools(monkeypatch):
+    """无工具的普通问答：缓冲后在 chat_model_end 发出正文一次。"""
+
+    async def _never_interrupted(_execution_id):
+        return False
+
+    monkeypatch.setattr(
+        "apps.opspilot.metis.llm.chain.graph.is_interrupt_requested_async",
+        _never_interrupted,
+    )
+
+    graph = _FakeBasicGraph(
+        [
+            {
+                "event": "on_chat_model_stream",
+                "data": {
+                    "chunk": SimpleNamespace(
+                        content="你好，",
+                        tool_call_chunks=[],
+                        additional_kwargs={},
+                    )
+                },
+            },
+            {
+                "event": "on_chat_model_stream",
+                "data": {
+                    "chunk": SimpleNamespace(
+                        content="这是结论。",
+                        tool_call_chunks=[],
+                        additional_kwargs={},
+                    )
+                },
+            },
+            {
+                "event": "on_chat_model_end",
+                "data": {
+                    "output": SimpleNamespace(
+                        content="你好，这是结论。",
+                        tool_calls=[],
+                    )
+                },
+            },
+        ]
+    )
+    request = BasicLLMRequest(thread_id="thread-plain-answer", extra_config={})
+
+    async def _collect_payloads():
+        return _parse_sse_payloads([line async for line in graph.agui_stream(request)])
+
+    payloads = asyncio.run(_collect_payloads())
+    text_deltas = [p["delta"] for p in payloads if p["type"] == "TEXT_MESSAGE_CONTENT"]
+    assert text_deltas == ["你好，这是结论。"]
 
 
 def test_agui_stream_collects_all_llm_token_usage_once_per_run(monkeypatch):
@@ -216,11 +366,7 @@ def test_agui_stream_collects_all_llm_token_usage_once_per_run(monkeypatch):
 
 
 def test_execute_returns_per_call_token_usage():
-    response = asyncio.run(
-        _FakeExecuteGraph().execute(
-            BasicLLMRequest(thread_id="thread-sync-token", extra_config={})
-        )
-    )
+    response = asyncio.run(_FakeExecuteGraph().execute(BasicLLMRequest(thread_id="thread-sync-token", extra_config={})))
 
     assert response.llm_call_count == 2
     assert response.total_tokens == 300

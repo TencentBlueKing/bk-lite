@@ -1,4 +1,4 @@
-import type { Meta, StoryObj } from '@storybook/react';
+import type { Meta, StoryObj } from '@storybook/nextjs';
 import AIEditor from '@/app/opspilot/components/ai-editor';
 
 const meta: Meta<typeof AIEditor> = {

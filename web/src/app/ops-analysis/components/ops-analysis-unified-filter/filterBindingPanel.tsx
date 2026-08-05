@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useMemo } from 'react';
-import { Switch, Tooltip } from 'antd';
+import { Switch } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import type {
   UnifiedFilterDefinition,
@@ -33,7 +33,6 @@ const FilterBindingPanel: React.FC<FilterBindingPanelProps> = ({
   definitions,
   dataSourceParams,
   filterBindings,
-  onChange,
 }) => {
   const { t } = useTranslation();
   const safeFilterBindings = filterBindings || {};
@@ -56,13 +55,6 @@ const FilterBindingPanel: React.FC<FilterBindingPanelProps> = ({
       };
     });
   }, [dataSourceParams, definitions]);
-
-  const handleBindingChange = (filterId: string, enabled: boolean) => {
-    onChange({
-      ...safeFilterBindings,
-      [filterId]: enabled,
-    });
-  };
 
   if (bindableParams.length === 0) {
     return (
@@ -121,17 +113,9 @@ const FilterBindingPanel: React.FC<FilterBindingPanelProps> = ({
               <div className="text-xs text-(--color-text-3) mt-0.5 font-mono">{param.name}</div>
             </div>
             <div className="ml-3 flex-shrink-0">
-              {canBind ? (
-                <Switch
-                  size="small"
-                  checked={isEnabled}
-                  onChange={(checked) => handleBindingChange(filterId, checked)}
-                />
-              ) : (
-                <Tooltip title={t('dashboard.filterDisabledTip')}>
-                  <Switch size="small" checked={false} disabled />
-                </Tooltip>
-              )}
+              <span>
+                <Switch size="small" checked={canBind && isEnabled} disabled />
+              </span>
             </div>
           </div>
         );

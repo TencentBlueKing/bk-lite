@@ -38,6 +38,7 @@ import NotificationForm from './notificationForm';
 import MetricPreview from './metricPreview';
 import VariablesTable from './variablesTable';
 import { isStringArray } from '@/app/monitor/utils/common';
+import { loadMonitorPluginsByObjectCached } from '@/app/monitor/utils/monitorPluginCache';
 import {
   getMetricDimensionNames,
   sanitizeGroupBy
@@ -96,7 +97,6 @@ const StrategyOperation = () => {
   const searchParams = useSearchParams();
   const [form] = Form.useForm();
   const router = useRouter();
-  const { getGroupIds } = useObjectConfigInfo();
   const userList: UserItem[] = commonContext?.userList || [];
   const instRef = useRef<ModalRef>(null);
   const formContainerRef = useRef<HTMLDivElement>(null);
@@ -110,6 +110,7 @@ const StrategyOperation = () => {
   const type = searchParams.get('type') || '';
   const detailId = searchParams.get('id');
   const detailName = searchParams.get('name') || '--';
+  const { getGroupIds, ready: objectConfigReady } = useObjectConfigInfo(monitorName);
   const [pageLoading, setPageLoading] = useState<boolean>(false);
   const [confirmLoading, setConfirmLoading] = useState<boolean>(false);
   const [templateSaving, setTemplateSaving] = useState<boolean>(false);
@@ -148,6 +149,14 @@ const StrategyOperation = () => {
   const [groupBy, setGroupBy] = useState<string[]>(
     getGroupIds(monitorName as string)?.default || defaultGroup
   );
+
+  useEffect(() => {
+    if (!objectConfigReady || !monitorName) return;
+    const defaults = getGroupIds(monitorName)?.default;
+    if (defaults?.length) {
+      setGroupBy((prev) => (prev === defaultGroup || prev.length === 0 ? defaults : prev));
+    }
+  }, [objectConfigReady, monitorName, getGroupIds]);
   const [groupAlgorithm, setGroupAlgorithm] = useState<string | null>('avg');
   const [period, setPeriod] = useState<number | null>(null);
   const [algorithm, setAlgorithm] = useState<string | null>(null);
@@ -370,7 +379,7 @@ const StrategyOperation = () => {
     setObjects(data);
   };
 
-  const changeCollectType = (id: string) => {
+  const changeCollectType = (id: string | number) => {
     getMetrics({
       monitor_object_id: monitorObjId,
       monitor_plugin_id: id
@@ -383,10 +392,12 @@ const StrategyOperation = () => {
   };
 
   const getPlugins = async () => {
-    const data = await getMonitorPlugin({
-      monitor_object_id: monitorObjId
-    });
-    const plugins = data
+    const plugins = await loadMonitorPluginsByObjectCached(monitorObjId, () =>
+      getMonitorPlugin({
+        monitor_object_id: monitorObjId
+      })
+    );
+    const options = plugins
       .sort((a: PluginItem, b: PluginItem) => {
         const order = (item: PluginItem) =>
           item.is_pre ? 0 : !item.is_custom ? 1 : 2;
@@ -397,7 +408,7 @@ const StrategyOperation = () => {
         value: item.id,
         name: item.name
       }));
-    setPluginList(plugins);
+    setPluginList(options);
   };
 
   const dealDetail = (data: StrategyFields) => {

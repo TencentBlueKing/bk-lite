@@ -33,6 +33,28 @@ def test_save_display_fields_sets_customized(api_client, host_with_metric):
 
 
 @pytest.mark.django_db
+def test_builtin_object_can_customize_display_fields(api_client, host_with_metric):
+    obj = host_with_metric
+    obj.is_builtin = True
+    obj.save(update_fields=["is_builtin"])
+    payload = {"display_fields": [
+        {"name": "CPU使用率", "sort_order": 0,
+         "metrics": [{"plugin": "UTPlugin", "metric": "cpu_usage_total"}]}
+    ]}
+
+    resp = api_client.post(
+        f"/api/v1/monitor/api/monitor_object/{obj.id}/display_fields/",
+        payload,
+        format="json",
+    )
+
+    assert resp.status_code == 200, resp.content
+    obj.refresh_from_db()
+    assert obj.display_fields == resp.json()["data"]
+    assert obj.display_fields_customized is True
+
+
+@pytest.mark.django_db
 def test_save_display_fields_rejects_unknown_metric(api_client, host_with_metric):
     obj = host_with_metric
     payload = {"display_fields": [

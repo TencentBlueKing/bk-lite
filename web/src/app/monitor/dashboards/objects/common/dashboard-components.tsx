@@ -558,14 +558,36 @@ export interface MetricsSectionProps {
   styles: DashboardStyles;
 }
 
-export const MetricsSection = ({ dashboard, styles }: MetricsSectionProps) => (
+export const MetricsSection = ({ dashboard, styles }: MetricsSectionProps) => {
+  const isHost = String(dashboard.monitorObjectName || '').toLowerCase() === 'host';
+  return (
   <div className={styles.metricsMode}>
     <div className={`${styles.panel} ${styles.fullPanel}`}>
       <div className={styles.sectionHeading}>
         <h3 className={styles.panelTitle}>
           <TitleWithGuide
             title="监控指标全量"
-            items={[{ label: '监控指标全景', detail: '承载完整原始监控视图，适合在仪表盘发现异常后继续下钻排查。' }]}
+            items={
+              isHost
+                ? [
+                  {
+                    label: '主机指标',
+                    detail: '通过插件页签切换主机采集来源，查看完整 OS 指标历史曲线。'
+                  },
+                  {
+                    label: '进程 (Telegraf)',
+                    detail:
+                        '在同一插件页签中切换「进程 (Telegraf)」，按主机 instance_id 查看该主机下进程历史折线。'
+                  }
+                ]
+                : [
+                  {
+                    label: '监控指标全景',
+                    detail:
+                        '承载完整原始监控视图，适合在仪表盘发现异常后继续下钻排查。'
+                  }
+                ]
+            }
             styles={styles}
           />
         </h3>
@@ -586,7 +608,8 @@ export const MetricsSection = ({ dashboard, styles }: MetricsSectionProps) => (
       />
     </div>
   </div>
-);
+  );
+};
 
 // ─── DashboardShell ───────────────────────────────────────────────────────────
 
@@ -594,6 +617,8 @@ export interface DashboardShellProps {
   dashboard: ReturnType<typeof useSimpleDashboardData>;
   /** Dashboard content (only shown in dashboard display mode). */
   dashboardContent: React.ReactNode;
+  /** 覆盖默认全量指标区（如主机需叠加进程指标页签）。 */
+  metricsContent?: React.ReactNode;
   /** 可选品牌标签（如 'Cisco'）：共享对象仪表盘按实例品牌在头部高亮显示，便于辨认当前盘属于哪个品牌。 */
   brandLabel?: string;
   styles: DashboardStyles;
@@ -606,6 +631,7 @@ export interface DashboardShellProps {
 export const DashboardShell = ({
   dashboard,
   dashboardContent,
+  metricsContent,
   brandLabel,
   styles
 }: DashboardShellProps) => (
@@ -661,7 +687,7 @@ export const DashboardShell = ({
       {dashboard.displayMode === 'dashboard' ? (
         <>{dashboardContent}</>
       ) : (
-        <MetricsSection dashboard={dashboard} styles={styles} />
+        metricsContent || <MetricsSection dashboard={dashboard} styles={styles} />
       )}
     </div>
   </div>

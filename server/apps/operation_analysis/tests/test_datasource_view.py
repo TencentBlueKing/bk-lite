@@ -22,6 +22,38 @@ def _build_request(user, data=None):
     return request
 
 
+@pytest.mark.django_db
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    ("method", "action"),
+    [("put", "update"), ("patch", "partial_update"), ("delete", "destroy")],
+)
+def test_builtin_datasource_rejects_regular_mutations(authenticated_user, method, action):
+    from apps.operation_analysis.models.datasource_models import DataSourceAPIModel
+
+    authenticated_user.is_superuser = True
+    datasource = DataSourceAPIModel.objects.create(
+        name="builtin",
+        rest_api="builtin/query",
+        groups=[1],
+        is_build_in=True,
+        build_in_key="builtin::builtin/query",
+    )
+    factory = APIRequestFactory()
+    request = getattr(factory, method)(
+        f"/operation_analysis/api/data_source/{datasource.pk}/",
+        data={"name": "changed"} if method != "delete" else None,
+        format="json",
+    )
+    request.COOKIES["current_team"] = "1"
+    force_authenticate(request, user=authenticated_user)
+
+    response = datasource_view.DataSourceAPIModelViewSet.as_view({method: action})(request, pk=str(datasource.pk))
+
+    assert response.status_code == status.HTTP_403_FORBIDDEN
+    assert "内置数据源" in response.data["detail"]
+
+
 def _build_instance(groups=(1,), rest_api="monitor/query_latest_active_alerts"):
     return SimpleNamespace(
         id=1,
@@ -224,11 +256,24 @@ def test_get_source_data_applies_default_values_when_request_missing(authenticat
 
 
 @pytest.mark.django_db
-def test_get_source_data_accepts_iso8601_time_range(authenticated_user, monkeypatch):
+@pytest.mark.parametrize(
+    ("time_range", "expected"),
+    [
+        (
+            ["2026-04-19T09:34:13.712Z", "2026-04-20T09:34:13.712Z"],
+            ["2026-04-19T09:34:13.712Z", "2026-04-20T09:34:13.712Z"],
+        ),
+        (
+            ["2026-04-19T17:34:13.712+08:00", "2026-04-20T17:34:13.712+08:00"],
+            ["2026-04-19T09:34:13.712Z", "2026-04-20T09:34:13.712Z"],
+        ),
+    ],
+)
+def test_get_source_data_accepts_iso8601_time_range(authenticated_user, monkeypatch, time_range, expected):
     authenticated_user.is_superuser = True
     request = _build_request(
         authenticated_user,
-        data={"time_range": ["2026-04-19T09:34:13.712Z", "2026-04-20T09:34:13.712Z"]},
+        data={"time_range": time_range},
     )
 
     response, payload, captured = _build_view_response(
@@ -239,8 +284,26 @@ def test_get_source_data_accepts_iso8601_time_range(authenticated_user, monkeypa
 
     assert response.status_code == status.HTTP_200_OK
     assert payload["result"] is True
-    assert isinstance(captured["kwargs"]["params"]["time_range"], list)
-    assert len(captured["kwargs"]["params"]["time_range"]) == 2
+    assert captured["kwargs"]["params"]["time_range"] == expected
+
+
+@pytest.mark.django_db
+def test_get_source_data_rejects_numeric_time_range_boundaries(authenticated_user, monkeypatch):
+    authenticated_user.is_superuser = True
+    request = _build_request(
+        authenticated_user,
+        data={"time_range": [1776572053712, 1776658453712]},
+    )
+
+    response, payload, _ = _build_view_response(
+        request,
+        monkeypatch,
+        {"result": True, "data": [], "message": ""},
+    )
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert payload["result"] is False
+    assert "RFC3339" in payload["message"]
 
 
 @pytest.mark.django_db

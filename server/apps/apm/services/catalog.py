@@ -5,7 +5,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from apps.apm.models import (
-    ApmIngestSource,
+    ApmApplication,
     ApmService,
     ApmServiceInstance,
     ApmServiceInstanceOrganization,
@@ -37,35 +37,23 @@ class DjangoTelemetryCatalogService:
             discovery.service_name,
         )
         seen_at = discovery.seen_at or timezone.now()
-        source = ApmIngestSource.objects.select_for_update().get(id=discovery.ingest_source_id)
-        missing_instance_identity = not normalize_identity(discovery.instance_id)
-        source_update_fields: list[str] = []
-        if source.first_received_at is None or seen_at < source.first_received_at:
-            source.first_received_at = seen_at
-            source_update_fields.append("first_received_at")
-        if source.last_received_at is None or seen_at > source.last_received_at:
-            source.last_received_at = seen_at
-            source_update_fields.append("last_received_at")
-        if missing_instance_identity and (
-            source.last_missing_instance_identity_at is None
-            or seen_at > source.last_missing_instance_identity_at
-        ):
-            source.last_missing_instance_identity_at = seen_at
-            source_update_fields.append("last_missing_instance_identity_at")
-        if source_update_fields:
-            source.save(update_fields=(*source_update_fields, "updated_at"))
-
-        source_organizations = tuple(
-            source.organization_links.order_by("organization").values_list("organization", flat=True)
+        application = ApmApplication.objects.select_for_update().get(
+            application_id=normalized_namespace,
+            is_enabled=True,
         )
-        if not source_organizations:
-            raise ValueError("接入源没有默认组织")
+        missing_instance_identity = not normalize_identity(discovery.instance_id)
+        application_organizations = tuple(
+            application.organization_links.order_by("organization").values_list("organization", flat=True)
+        )
+        if not application_organizations:
+            raise ValueError("应用没有默认组织")
 
         service, service_created = ApmService.objects.get_or_create(
             normalized_namespace=normalized_namespace,
             normalized_name=normalized_name,
             defaults={
                 "namespace": discovery.service_namespace or "",
+                "application": application,
                 "name": discovery.service_name,
                 "first_seen_at": seen_at,
                 "last_seen_at": seen_at,
@@ -75,14 +63,17 @@ class DjangoTelemetryCatalogService:
             ApmServiceOrganization.objects.bulk_create(
                 [
                     ApmServiceOrganization(service=service, organization=organization)
-                    for organization in source_organizations
+                    for organization in application_organizations
                 ]
             )
-        elif seen_at > service.last_seen_at or (
+        elif service.application_id is None:
+            service.application = application
+            service.save(update_fields=("application", "updated_at"))
+        if not service_created and (seen_at > service.last_seen_at or (
             service.archived_at is not None
             and service.archive_reason == "silent_timeout"
             and seen_at >= service.last_seen_at
-        ):
+        )):
             service.last_seen_at = max(seen_at, service.last_seen_at)
             update_fields = ["last_seen_at"]
             if service.archived_at is not None and service.archive_reason == "silent_timeout":
@@ -106,7 +97,6 @@ class DjangoTelemetryCatalogService:
                 "instance_id": discovery.instance_id or "",
                 "environment": normalize_identity(discovery.environment),
                 "version": normalize_identity(discovery.version),
-                "ingest_source": source,
                 "first_seen_at": seen_at,
                 "last_seen_at": seen_at,
             },
@@ -119,13 +109,12 @@ class DjangoTelemetryCatalogService:
                         instance=instance,
                         organization=organization,
                     )
-                    for organization in source_organizations
+                    for organization in application_organizations
                 ]
             )
         else:
             update_fields: list[str] = []
             is_latest_observation = seen_at >= instance.last_seen_at
-            source_changed = is_latest_observation and instance.ingest_source_id != source.id
             if seen_at > instance.last_seen_at:
                 instance.last_seen_at = seen_at
                 update_fields.append("last_seen_at")
@@ -133,7 +122,6 @@ class DjangoTelemetryCatalogService:
                 for field, value in (
                     ("environment", normalize_identity(discovery.environment)),
                     ("version", normalize_identity(discovery.version)),
-                    ("ingest_source", source),
                 ):
                     if getattr(instance, field) != value:
                         setattr(instance, field, value)
@@ -148,15 +136,6 @@ class DjangoTelemetryCatalogService:
                 update_fields.extend(("archived_at", "archive_reason"))
             if update_fields:
                 instance.save(update_fields=(*update_fields, "updated_at"))
-            if source_changed and instance.permission_mode == ApmServiceInstance.PermissionMode.INHERITED:
-                ApmServiceInstanceOrganization.objects.filter(instance=instance).delete()
-                ApmServiceInstanceOrganization.objects.bulk_create(
-                    [
-                        ApmServiceInstanceOrganization(instance=instance, organization=organization)
-                        for organization in source_organizations
-                    ]
-                )
-
         return CatalogDiscoveryResult(service=service, instance=instance)
 
     @transaction.atomic

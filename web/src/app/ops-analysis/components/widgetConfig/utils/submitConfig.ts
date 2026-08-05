@@ -11,6 +11,7 @@ import type { ParamItem } from '@/app/ops-analysis/types/dataSource';
 import type { OpsChartThemeMode } from '@/app/ops-analysis/utils/chartTheme';
 import type { ThresholdColorConfig } from '@/app/ops-analysis/utils/thresholdUtils';
 import type { NetworkStatusTopologyConfig } from '@/app/ops-analysis/types/sceneWidget';
+import { buildPersistedNetworkStatusTopologyConfig } from '@/app/ops-analysis/utils/networkStatusTopologyLayout';
 import { validateComponentSwitchParams } from '@/app/ops-analysis/utils/componentParamSwitch';
 
 export interface WidgetConfigFormValues {
@@ -82,11 +83,15 @@ const buildSceneWidgetConfig = (
     description: values.description,
     chartType: 'networkStatusTopology',
     sceneWidgetType: 'networkStatusTopology',
-    networkStatusTopology: {
+    networkStatusTopology: buildPersistedNetworkStatusTopologyConfig({
       modelId: topologyConfig?.modelId || '',
       instId: topologyConfig?.instId || '',
       depth: topologyConfig?.depth || 2,
-    },
+      layoutMode: topologyConfig?.layoutMode,
+      layoutByMode: topologyConfig?.layoutByMode,
+      nodePositions: topologyConfig?.nodePositions,
+      linkVertices: topologyConfig?.linkVertices,
+    }),
     appearance: values.appearance,
   };
 };

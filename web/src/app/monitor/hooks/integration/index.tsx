@@ -1,239 +1,65 @@
-import { useMemo } from 'react';
-import { TableDataItem } from '@/app/monitor/types';
-import { useHardwareConfig } from './objects/hardwareDevice/hardware';
-import { useOracleConfig } from './objects/database/oracle';
-import { useElasticSearchConfig } from './objects/database/elasticSearch';
-import { useInfluxDBConfig } from './objects/database/influxdb';
-import { useMongoDBConfig } from './objects/database/mongoDB';
-import { useMysqlConfig } from './objects/database/mysql';
-import { useRedisConfig } from './objects/database/redis';
-import { usePostgresConfig } from './objects/database/postgres';
-import { useZookeeperConfig } from './objects/middleware/zookeeper';
-import { useActiveMQConfig } from './objects/middleware/activeMQ';
-import { useNginxConfig } from './objects/middleware/nginx';
-import { useApacheConfig } from './objects/middleware/apache';
-import { useHaproxyConfig } from './objects/middleware/haproxy';
-import { useConsulConfig } from './objects/middleware/consul';
-import { useEtcdBkpullConfig } from './objects/middleware/etcd';
-import { useClickHouseConfig } from './objects/database/clickHouse';
-import { useTomcatConfig } from './objects/middleware/tomcat';
-import { useMinioBkpullConfig } from './objects/middleware/minio';
-import { useRabbitMQConfig } from './objects/middleware/rabbitMQ';
-import { useRouterConfig } from './objects/networkDevice/router';
-import { useLoadbalanceConfig } from './objects/networkDevice/loadbalance';
-import { useSwitchConfig } from './objects/networkDevice/switch';
-import { useFirewallConfig } from './objects/networkDevice/firewall';
-import { useWirelessConfig } from './objects/networkDevice/wireless';
-import { useTransmissionConfig } from './objects/networkDevice/transmission';
-import { useAccessConfig } from './objects/networkDevice/access';
-import { useNetworkServiceConfig } from './objects/networkDevice/networkService';
-import { useConsoleServerConfig } from './objects/networkDevice/consoleServer';
-import { useVoiceGatewayConfig } from './objects/networkDevice/voiceGateway';
-import { useVCenterConfig } from './objects/vmWare/vCenter';
-import { useDataStorageConfig } from './objects/vmWare/dataStorage';
-import { useEsxiConfig } from './objects/vmWare/esxi';
-import { useVmConfig } from './objects/vmWare/vm';
-import { useDockerConfig } from './objects/containerManagement/docker';
-import { useHostConfig } from './objects/os/host';
-import { useWebsiteConfig } from './objects/web/website';
-import { usePingConfig } from './objects/web/ping';
-import { useTcpPortConfig } from './objects/web/tcpPort';
-import { useSnmpTrapConfig } from './objects/other/snmpTrap';
-import { useJvmConfig } from './objects/other/jvm';
-import { useTcpConfig } from './objects/tencentCloud/tcp';
-import { useCvmConfig } from './objects/tencentCloud/cvm';
-import { useKafkaConfig } from './objects/middleware/kafka';
-import { useMssqlConfig } from './objects/database/mssql';
-import { useClusterConfig } from './objects/k8s/cluster';
-import { useNodeConfig } from './objects/k8s/node';
-import { usePodConfig } from './objects/k8s/pod';
-import { useClusterConfig as useK3sClusterConfig } from './objects/k3s/cluster';
-import { useNodeConfig as useK3sNodeConfig } from './objects/k3s/node';
-import { usePodConfig as useK3sPodConfig } from './objects/k3s/pod';
-import { useDockerContainerConfig } from './objects/containerManagement/dockerContainer';
-import { useDb2Config } from './objects/database/db2';
-import { useGreenPlumConfig } from './objects/database/greenPlum';
-import { useOpenGaussConfig } from './objects/database/openGauss';
-import { useGBase8aConfig } from './objects/database/gBase8a';
-import { useVastBaseConfig } from './objects/database/vastBase';
-import { useKingBaseConfig } from './objects/database/kingBase';
+import { useCallback, useEffect, useState } from 'react';
+import {
+  getCachedObjectConfig,
+  loadObjectConfig
+} from './configLoaders';
+import {
+  PluginConfigRequest,
+  resolvePluginConfig
+} from './configContracts';
 
-const loadEnterpriseConfig = (): (() => Record<string, any>) => {
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const mod = require('@/app/monitor/(enterprise)/hooks/integration');
-    return mod.useEnterpriseConfig || (() => ({}));
-  } catch {
-    return () => ({});
-  }
-};
+/**
+ * 按当前对象按需加载配置，避免一次挂载全部对象 hook/模块。
+ */
+export const useMonitorConfig = (objectName?: string | null) => {
+  const [configVersion, setConfigVersion] = useState(0);
+  const [ready, setReady] = useState(() => !objectName || !!getCachedObjectConfig(objectName));
 
-const useEnterpriseConfig = loadEnterpriseConfig();
+  useEffect(() => {
+    if (!objectName) {
+      setReady(true);
+      return;
+    }
+    let active = true;
+    const cached = getCachedObjectConfig(objectName);
+    setReady(!!cached);
+    loadObjectConfig(objectName).then(() => {
+      if (!active) return;
+      setConfigVersion((v) => v + 1);
+      setReady(true);
+    });
+    return () => {
+      active = false;
+    };
+  }, [objectName]);
 
-export const useMonitorConfig = () => {
-  const hardwareConfig = useHardwareConfig();
-  const oracleConfig = useOracleConfig();
-  const elasticSearchConfig = useElasticSearchConfig();
-  const influxDBConfig = useInfluxDBConfig();
-  const mongoDBConfig = useMongoDBConfig();
-  const mysqlDBConfig = useMysqlConfig();
-  const redisConfig = useRedisConfig();
-  const postgresConfig = usePostgresConfig();
-  const zookeeperConfig = useZookeeperConfig();
-  const activeMQConfig = useActiveMQConfig();
-  const nginxConfig = useNginxConfig();
-  const apacheConfig = useApacheConfig();
-  const haproxyConfig = useHaproxyConfig();
-  const consulConfig = useConsulConfig();
-  const etcdConfig = useEtcdBkpullConfig();
-  const clickHouseConfig = useClickHouseConfig();
-  const tomcatConfig = useTomcatConfig();
-  const minioBkpullConfig = useMinioBkpullConfig();
-  const rabbitMQConfig = useRabbitMQConfig();
-  const routerConfig = useRouterConfig();
-  const loadbalanceConfig = useLoadbalanceConfig();
-  const switchConfig = useSwitchConfig();
-  const firewallConfig = useFirewallConfig();
-  const wirelessConfig = useWirelessConfig();
-  const transmissionConfig = useTransmissionConfig();
-  const accessConfig = useAccessConfig();
-  const networkServiceConfig = useNetworkServiceConfig();
-  const consoleServerConfig = useConsoleServerConfig();
-  const voiceGatewayConfig = useVoiceGatewayConfig();
-  const dataStorageConfig = useDataStorageConfig();
-  const vCenterConfig = useVCenterConfig();
-  const esxiConfig = useEsxiConfig();
-  const vmConfig = useVmConfig();
-  const dockerConfig = useDockerConfig();
-  const hostConfig = useHostConfig();
-  const websiteConfig = useWebsiteConfig();
-  const pingConfig = usePingConfig();
-  const tcpPortConfig = useTcpPortConfig();
-  const snmpTrapConfig = useSnmpTrapConfig();
-  const jvmConfig = useJvmConfig();
-  const tcpConfig = useTcpConfig();
-  const cvmConfig = useCvmConfig();
-  const kafkaConfig = useKafkaConfig();
-  const mssqlConfig = useMssqlConfig();
-  const clusterConfig = useClusterConfig();
-  const podConfig = usePodConfig();
-  const nodeConfig = useNodeConfig();
-  const k3sClusterConfig = useK3sClusterConfig();
-  const k3sPodConfig = useK3sPodConfig();
-  const k3sNodeConfig = useK3sNodeConfig();
-  const dockerContainerConfig = useDockerContainerConfig();
-  const db2Config = useDb2Config();
-  const greenPlumConfig = useGreenPlumConfig();
-  const openGaussConfig = useOpenGaussConfig();
-  const gBase8aConfig = useGBase8aConfig();
-  const vastBaseConfig = useVastBaseConfig();
-  const kingBaseConfig = useKingBaseConfig();
-  const enterpriseConfig = useEnterpriseConfig();
-
-  const config: any = useMemo(
-    () => ({
-      'Hardware Server': hardwareConfig,
-      Oracle: oracleConfig,
-      ElasticSearch: elasticSearchConfig,
-      InfluxDB: influxDBConfig,
-      MongoDB: mongoDBConfig,
-      Mysql: mysqlDBConfig,
-      Redis: redisConfig,
-      Postgres: postgresConfig,
-      Zookeeper: zookeeperConfig,
-      ActiveMQ: activeMQConfig,
-      Nginx: nginxConfig,
-      Apache: apacheConfig,
-      Haproxy: haproxyConfig,
-      Consul: consulConfig,
-      Etcd: etcdConfig,
-      ClickHouse: clickHouseConfig,
-      Tomcat: tomcatConfig,
-      Minio: minioBkpullConfig,
-      RabbitMQ: rabbitMQConfig,
-      Router: routerConfig,
-      Loadbalance: loadbalanceConfig,
-      Switch: switchConfig,
-      Firewall: firewallConfig,
-      Wireless: wirelessConfig,
-      Transmission: transmissionConfig,
-      Access: accessConfig,
-      NetworkService: networkServiceConfig,
-      ConsoleServer: consoleServerConfig,
-      VoiceGateway: voiceGatewayConfig,
-      vCenter: vCenterConfig,
-      Docker: dockerConfig,
-      Host: hostConfig,
-      Website: websiteConfig,
-      Ping: pingConfig,
-      TCPPort: tcpPortConfig,
-      'SNMP Trap': snmpTrapConfig,
-      JVM: jvmConfig,
-      TCP: tcpConfig,
-      Kafka: kafkaConfig,
-      MSSQL: mssqlConfig,
-      Cluster: clusterConfig,
-      Pod: podConfig,
-      Node: nodeConfig,
-      K3SCluster: k3sClusterConfig,
-      K3SPod: k3sPodConfig,
-      K3SNode: k3sNodeConfig,
-      'Docker Container': dockerContainerConfig,
-      CVM: cvmConfig,
-      DataStorage: dataStorageConfig,
-      ESXI: esxiConfig,
-      VM: vmConfig,
-      DB2: db2Config,
-      GreenPlum: greenPlumConfig,
-      OpenGauss: openGaussConfig,
-      GBase8a: gBase8aConfig,
-      VastBase: vastBaseConfig,
-      KingBase: kingBaseConfig,
-      ...enterpriseConfig // 商业版扩展
-    }),
-    [enterpriseConfig]
+  const resolveConfig = useCallback(
+    (name?: string | null) => {
+      // configVersion 仅用于在加载完成后触发重新 resolve。
+      void configVersion;
+      return getCachedObjectConfig(name);
+    },
+    [configVersion]
   );
 
-  // 获取指定插件的手动/自动配置模式
-  const getPlugin = (data: {
-    objectName: string;
-    mode: 'manual' | 'auto' | 'edit';
-    pluginName: string;
-    dataSource?: TableDataItem[];
-    onTableDataChange?: (data: TableDataItem[]) => void;
-  }) => {
-    const objectConfig = config[data.objectName];
-    const pluginCfg =
-      objectConfig?.plugins?.[data.pluginName]?.getPluginCfg(data);
-    const commonConfig = {
-      collect_type: '',
-      config_type: [],
-      collector: '',
-      instance_type: '',
-      object_name: ''
-    };
-    let defaultPluginCfg: any = {
-      getParams: () => ({
-        instance_id: '',
-        instance_name: ''
-      }),
-      getFormItems: () => null,
-      configText: ''
-    };
-    if (data.mode === 'auto') {
-      defaultPluginCfg = {
-        formItems: null,
-        initTableItems: {},
-        defaultForm: {},
-        columns: [],
-        getParams: () => ({})
-      };
-    }
-    return pluginCfg || { ...commonConfig, ...defaultPluginCfg };
-  };
+  const getPlugin = useCallback(
+    (data: PluginConfigRequest) => {
+      const objectConfig = resolveConfig(data.objectName);
+      const pluginCfg =
+        objectConfig?.plugins?.[data.pluginName]?.getPluginCfg(data);
+      return resolvePluginConfig(pluginCfg);
+    },
+    [resolveConfig]
+  );
+
+  const config = objectName
+    ? { [objectName]: resolveConfig(objectName) }
+    : {};
 
   return {
     config,
-    getPlugin
+    getPlugin,
+    ready,
+    resolveConfig
   };
 };

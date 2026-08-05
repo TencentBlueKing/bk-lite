@@ -21,7 +21,7 @@ PROVIDER_MANIFEST = ProviderManifest.model_validate(
                                 "field_type": "string",
                                 "required": True,
                                 "placeholder": "cli_xxx",
-                                "reset_capabilities": ["login_auth", "user_sync", "im_notification"],
+                                "reset_capabilities": ["login_auth", "user_sync", "im_notification", "im_group"],
                             },
                             {
                                 "key": "app_secret",
@@ -30,7 +30,7 @@ PROVIDER_MANIFEST = ProviderManifest.model_validate(
                                 "required": True,
                                 "secret": True,
                                 "mask_strategy": "full",
-                                "reset_capabilities": ["login_auth", "user_sync", "im_notification"],
+                                "reset_capabilities": ["login_auth", "user_sync", "im_notification", "im_group"],
                             },
                         ],
                     },
@@ -241,6 +241,14 @@ PROVIDER_MANIFEST = ProviderManifest.model_validate(
                     },
                 ],
                 "business_template": "im_notification_form",
+            },
+            {
+                "key": "im_group",
+                "name": "IM Group",
+                "description": "Feishu group collaboration capability.",
+                "adapter_key": "feishu.im_group",
+                "adapter_path": "apps.system_mgmt.providers.adapters.feishu.FeishuIMGroupAdapter",
+                "connection_template": [],
             },
         ],
     }

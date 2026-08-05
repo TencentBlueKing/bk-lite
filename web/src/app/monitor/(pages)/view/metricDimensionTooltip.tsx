@@ -1,6 +1,6 @@
 'use client';
 import React, { useState, useCallback } from 'react';
-import { Tooltip, Spin } from 'antd';
+import { Tooltip, Spin, Button } from 'antd';
 import { UnorderedListOutlined } from '@ant-design/icons';
 import useViewApi from '@/app/monitor/api/view';
 import { useTranslation } from '@/utils/i18n';
@@ -21,6 +21,8 @@ const MetricDimensionTooltip: React.FC<MetricDimensionTooltipProps> = ({
   const [dimensionData, setDimensionData] = useState<
     TooltipDimensionDataItem[]
   >([]);
+  const [truncated, setTruncated] = useState(false);
+  const [previewLimit, setPreviewLimit] = useState<number | ''>('');
   const { getMetricsInstanceQuery } = useViewApi();
   const { getEnumValueUnit } = useUnitTransform();
 
@@ -56,9 +58,23 @@ const MetricDimensionTooltip: React.FC<MetricDimensionTooltipProps> = ({
     [dimensions, metricItem, metricUnit, getEnumValueUnit]
   );
 
+  const openFullDetails = useCallback(() => {
+    const params = new URLSearchParams({
+      monitor_object: String(monitorObjectId),
+      instance_id: String(instanceId),
+      metric_id: String(metricId || metricItem?.name || '')
+    });
+    window.open(
+      `/monitor/search?${params.toString()}`,
+      '_blank',
+      'noopener,noreferrer'
+    );
+  }, [instanceId, metricId, metricItem?.name, monitorObjectId]);
+
   const fetchDimensionData = useCallback(async () => {
     setLoading(true);
     try {
+      // 不传 limit/mode：后端按通用 CARD_QUERY_MAX_SERIES + limitk 截断。
       const responseData = await getMetricsInstanceQuery({
         monitor_object_id: monitorObjectId,
         instance_id: instanceId,
@@ -68,8 +84,12 @@ const MetricDimensionTooltip: React.FC<MetricDimensionTooltipProps> = ({
       const data = responseData?.data || {};
       const formattedData = formatMetricData(data.result || []);
       setDimensionData(formattedData);
+      setPreviewLimit(data.series_budget?.limit ?? '');
+      setTruncated(Boolean(data.series_budget?.truncated));
     } catch {
       setDimensionData([]);
+      setTruncated(false);
+      setPreviewLimit('');
     } finally {
       setLoading(false);
     }
@@ -88,22 +108,38 @@ const MetricDimensionTooltip: React.FC<MetricDimensionTooltipProps> = ({
   };
 
   const tooltipContent = (
-    <div className="min-w-[200px]">
+    <div className="min-w-[200px] max-w-[420px]">
       {loading ? (
         <div className="flex justify-center items-center py-[20px]">
           <Spin size="small" />
         </div>
       ) : dimensionData.length > 0 ? (
         <div className="flex flex-col gap-[8px]">
-          {dimensionData.map((item, index) => (
-            <div
-              key={index}
-              className="flex justify-between items-start gap-[16px] whitespace-nowrap"
-            >
-              <span>{item.label}</span>
-              <span className="font-medium">{item.value}</span>
+          <div className="max-h-[280px] overflow-y-auto flex flex-col gap-[8px] pr-[4px]">
+            {dimensionData.map((item, index) => (
+              <div
+                key={index}
+                className="flex justify-between items-start gap-[16px] whitespace-nowrap"
+              >
+                <span className="truncate max-w-[280px]" title={item.label}>
+                  {item.label}
+                </span>
+                <span className="font-medium shrink-0">{item.value}</span>
+              </div>
+            ))}
+          </div>
+          {truncated ? (
+            <div className="pt-[4px] border-t border-[var(--color-border-1)] flex items-center justify-between gap-[8px]">
+              <span className="text-[12px] text-[var(--color-text-3)]">
+                {t('monitor.views.dimensionPreviewTruncated', '', {
+                  limit: previewLimit
+                })}
+              </span>
+              <Button type="link" size="small" className="px-0" onClick={openFullDetails}>
+                {t('monitor.views.dimensionPreviewMore')}
+              </Button>
             </div>
-          ))}
+          ) : null}
         </div>
       ) : (
         <div className="text-center text-[var(--color-text-3)] py-[10px]">

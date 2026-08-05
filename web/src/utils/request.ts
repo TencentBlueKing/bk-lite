@@ -1,8 +1,12 @@
-import axios, { AxiosRequestConfig, AxiosResponse, InternalAxiosRequestConfig } from 'axios';
-import { useEffect, useCallback, useState } from 'react';
-import { useAuth } from '@/context/auth';
-import { message } from 'antd';
-import { useSession } from 'next-auth/react';
+import axios, {
+  AxiosRequestConfig,
+  AxiosResponse,
+  InternalAxiosRequestConfig,
+} from "axios";
+import { useEffect, useCallback, useState } from "react";
+import { useAuth } from "@/context/auth";
+import { message } from "antd";
+import { useSession } from "next-auth/react";
 import {
   createSessionExpiredRequestError,
   emitSessionExpired,
@@ -23,9 +27,9 @@ import { resolveAuthToken } from '@/utils/authRecovery';
 
 const apiClient = axios.create({
   baseURL: '/api/proxy',
-  timeout: 60000,
+  timeout: 300000,
   headers: {
-    'Content-Type': 'application/json',
+    "Content-Type": "application/json",
   },
 });
 
@@ -39,18 +43,28 @@ const setToken = (token: string | null) => {
 /** Error already shown to user by the request interceptor — callers should stay silent. */
 export class HandledRequestError extends Error {
   readonly presentation?: RequestErrorPresentation;
-  status?: number;
+  readonly status?: number;
+  readonly code?: string;
+  readonly details?: unknown;
+  readonly payload?: unknown;
 
-  constructor(message: string, presentation?: RequestErrorPresentation, status?: number) {
+  constructor(
+    message: string,
+    context: {
+      status?: number;
+      code?: string;
+      details?: unknown;
+      payload?: unknown;
+      presentation?: RequestErrorPresentation;
+    } = {},
+  ) {
     super(message);
     this.name = 'HandledRequestError';
-    this.presentation = presentation;
-    this.status = status;
-  }
-
-  withStatus(status: number) {
-    this.status = status;
-    return this;
+    this.status = context.status;
+    this.code = context.code;
+    this.details = context.details;
+    this.payload = context.payload;
+    this.presentation = context.presentation;
   }
 }
 
@@ -70,7 +84,7 @@ apiClient.interceptors.request.use(
     }
 
     if (!tokenRef.current) {
-      return Promise.reject(new Error('No token available'));
+      return Promise.reject(new Error("No token available"));
     }
 
     config.headers.Authorization = `Bearer ${tokenRef.current}`;
@@ -84,7 +98,7 @@ apiClient.interceptors.request.use(
   },
   (error) => {
     return Promise.reject(error);
-  }
+  },
 );
 
 apiClient.interceptors.response.use(
@@ -96,13 +110,22 @@ apiClient.interceptors.response.use(
 
     if (error.response) {
       const { status } = error.response;
-      const messageText = error.response?.data?.message ?? error.response?.data?.error;
-      const presentation = getRequestErrorPresentation(error.response?.data);
+      const payload = error.response?.data;
+      const messageText =
+        payload?.message ?? payload?.error ?? `Request failed (${status})`;
+      const presentation = getRequestErrorPresentation(payload);
+      const handledError = new HandledRequestError(messageText, {
+        status,
+        code: payload?.code,
+        details: payload?.details,
+        payload,
+        presentation: presentation ?? undefined,
+      });
       if (status === 460) {
         void forceLogoutAndRedirect();
         return Promise.reject(error);
       } else if (status === 401) {
-        emitSessionExpired({ reason: 'api-session-expired', status });
+        emitSessionExpired({ reason: "api-session-expired", status });
         return Promise.reject(error);
       } else if ([400, 403].includes(status)) {
         if (presentation) {
@@ -113,26 +136,22 @@ apiClient.interceptors.response.use(
         } else {
           message.error(messageText);
         }
-        return Promise.reject(
-          new HandledRequestError(messageText, presentation ?? undefined).withStatus(status)
-        );
+        return Promise.reject(handledError);
       } else if (status === 500) {
         message.error(messageText);
-        return Promise.reject(
-          new HandledRequestError(messageText || 'Internal Server Error').withStatus(status)
-        );
+        return Promise.reject(handledError);
       } else {
         message.error(messageText);
-        return Promise.reject(new HandledRequestError(messageText).withStatus(status));
+        return Promise.reject(handledError);
       }
     }
 
     // Network error / timeout / no response
-    if (!axios.isAxiosError(error) || error.code === 'ECONNABORTED') {
+    if (!axios.isAxiosError(error) || error.code === "ECONNABORTED") {
       return Promise.reject(error);
     }
-    return Promise.reject(new HandledRequestError('网络异常'));
-  }
+    return Promise.reject(new HandledRequestError("网络异常"));
+  },
 );
 
 export const isSilentRequestError = (error: unknown) => {
@@ -140,13 +159,15 @@ export const isSilentRequestError = (error: unknown) => {
 
   if (axios.isAxiosError(error)) {
     const status = error.response?.status;
-    return error.code === 'ECONNABORTED' || status === 401 || status === 460;
+    return error.code === "ECONNABORTED" || status === 401 || status === 460;
   }
 
-  return error instanceof Error && [
-    'No token available',
-    SESSION_EXPIRED_REQUEST_ERROR,
-  ].includes(error.message);
+  return (
+    error instanceof Error &&
+    ["No token available", SESSION_EXPIRED_REQUEST_ERROR].includes(
+      error.message,
+    )
+  );
 };
 
 const useApiClient = () => {
@@ -162,58 +183,87 @@ const useApiClient = () => {
     }
   }, [token]);
 
-  const get = useCallback(async <T = any>(url: string, config?: AxiosRequestConfig): Promise<T> => {
-    const response = await apiClient.get<T>(url, config);
-    return config?.responseType === 'blob' ? response.data : handleResponse(response);
-  }, []);
+  const get = useCallback(
+    async <T = any>(url: string, config?: AxiosRequestConfig): Promise<T> => {
+      const response = await apiClient.get<T>(url, config);
+      return config?.responseType === "blob"
+        ? response.data
+        : handleResponse(response);
+    },
+    [],
+  );
 
-  const post = useCallback(async <T = any>(url: string, data?: unknown, config?: AxiosRequestConfig): Promise<T> => {
-    try {
-      const response = await apiClient.post<T>(url, data, config);
-      if (config?.responseType === 'blob') {
-        return response.data;
+  const post = useCallback(
+    async <T = any>(
+      url: string,
+      data?: unknown,
+      config?: AxiosRequestConfig,
+    ): Promise<T> => {
+      try {
+        const response = await apiClient.post<T>(url, data, config);
+        if (config?.responseType === "blob") {
+          return response.data;
+        }
+        return handleResponse(response);
+      } catch (error) {
+        throw error;
       }
-      return handleResponse(response);
-    } catch (error) {
-      throw error;
-    }
-  }, []);
+    },
+    [],
+  );
 
-  const put = useCallback(async <T = any>(url: string, data?: unknown, config?: AxiosRequestConfig): Promise<T> => {
-    try {
-      const response = await apiClient.put<T>(url, data, config);
-      if (config?.responseType === 'blob') {
-        return response.data;
+  const put = useCallback(
+    async <T = any>(
+      url: string,
+      data?: unknown,
+      config?: AxiosRequestConfig,
+    ): Promise<T> => {
+      try {
+        const response = await apiClient.put<T>(url, data, config);
+        if (config?.responseType === "blob") {
+          return response.data;
+        }
+        return handleResponse(response);
+      } catch (error) {
+        throw error;
       }
-      return handleResponse(response);
-    } catch (error) {
-      throw error;
-    }
-  }, []);
+    },
+    [],
+  );
 
-  const del = useCallback(async <T = any>(url: string, config?: AxiosRequestConfig): Promise<T> => {
-    try {
-      const response = await apiClient.delete<T>(url, config);
-      if (config?.responseType === 'blob') {
-        return response.data;
+  const del = useCallback(
+    async <T = any>(url: string, config?: AxiosRequestConfig): Promise<T> => {
+      try {
+        const response = await apiClient.delete<T>(url, config);
+        if (config?.responseType === "blob") {
+          return response.data;
+        }
+        return handleResponse(response);
+      } catch (error) {
+        throw error;
       }
-      return handleResponse(response);
-    } catch (error) {
-      throw error;
-    }
-  }, []);
+    },
+    [],
+  );
 
-  const patch = useCallback(async <T = any>(url: string, data?: unknown, config?: AxiosRequestConfig): Promise<T> => {
-    try {
-      const response = await apiClient.patch<T>(url, data, config);
-      if (config?.responseType === 'blob') {
-        return response.data;
+  const patch = useCallback(
+    async <T = any>(
+      url: string,
+      data?: unknown,
+      config?: AxiosRequestConfig,
+    ): Promise<T> => {
+      try {
+        const response = await apiClient.patch<T>(url, data, config);
+        if (config?.responseType === "blob") {
+          return response.data;
+        }
+        return handleResponse(response);
+      } catch (error) {
+        throw error;
       }
-      return handleResponse(response);
-    } catch (error) {
-      throw error;
-    }
-  }, []);
+    },
+    [],
+  );
 
   return { get, post, put, del, patch, isLoading };
 };

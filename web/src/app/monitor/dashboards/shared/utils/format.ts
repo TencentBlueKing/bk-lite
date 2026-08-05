@@ -103,36 +103,44 @@ export const formatMetricValue = (value: number, unit: MetricUnit): { value: str
     return { value: '--', unit: '' };
   }
 
-  if (unit === 'percent') return { value: value.toFixed(1), unit: '%' };
-  if (unit === 'msps') return { value: value >= 100 ? value.toFixed(0) : value.toFixed(1), unit: 'ms/s' };
-  if (unit === 'cps') return formatCountRate(value);
-  if (COUNT_UNITS.includes(unit)) return formatAutoScaled(value, unit, COUNT_UNITS, COUNT_LABELS, 1000);
-  if (DATA_BITS_UNITS.includes(unit)) return formatAutoScaled(value, unit, DATA_BITS_UNITS, DATA_BITS_LABELS, 1000);
-  if (DATA_BYTES_UNITS.includes(unit)) return formatAutoScaled(value, unit, DATA_BYTES_UNITS, DATA_BYTES_LABELS, 1024);
-  if (DATA_RATE_BITS_UNITS.includes(unit)) return formatAutoScaled(value, unit, DATA_RATE_BITS_UNITS, DATA_RATE_BITS_LABELS, 1000);
-  if (DATA_RATE_BYTES_UNITS.includes(unit)) return formatAutoScaled(value, unit, DATA_RATE_BYTES_UNITS, DATA_RATE_BYTES_LABELS, 1024);
-  if ((TIME_UNITS as readonly string[]).includes(unit)) return formatTimeValue(value, unit);
-  if (unit === 'us') return formatTimeValue(value, 'µs');
-  if (HERTZ_UNITS.includes(unit)) return formatAutoScaled(value, unit, HERTZ_UNITS, HERTZ_LABELS, 1000);
-  if (unit === 'celsius') return { value: formatScaledValue(value), unit: '°C' };
-  if (unit === 'fahrenheit') return { value: formatScaledValue(value), unit: '°F' };
-  if (unit === 'kelvin') return { value: formatScaledValue(value), unit: 'K' };
-  if (unit === 'watts') return { value: formatScaledValue(value), unit: 'W' };
-  if (unit === 'volts') return { value: formatScaledValue(value), unit: 'V' };
+  const normalizedUnit = unit === 'Bps' ? 'byteps' : unit;
 
-  if (unit === 'none') {
+  if (normalizedUnit === 'percent') return { value: value.toFixed(1), unit: '%' };
+  if (normalizedUnit === 'msps') return { value: value >= 100 ? value.toFixed(0) : value.toFixed(1), unit: 'ms/s' };
+  if (normalizedUnit === 'cps') return formatCountRate(value);
+  if (COUNT_UNITS.includes(normalizedUnit)) return formatAutoScaled(value, normalizedUnit, COUNT_UNITS, COUNT_LABELS, 1000);
+  if (DATA_BITS_UNITS.includes(normalizedUnit)) return formatAutoScaled(value, normalizedUnit, DATA_BITS_UNITS, DATA_BITS_LABELS, 1000);
+  if (DATA_BYTES_UNITS.includes(normalizedUnit)) return formatAutoScaled(value, normalizedUnit, DATA_BYTES_UNITS, DATA_BYTES_LABELS, 1024);
+  if (DATA_RATE_BITS_UNITS.includes(normalizedUnit)) return formatAutoScaled(value, normalizedUnit, DATA_RATE_BITS_UNITS, DATA_RATE_BITS_LABELS, 1000);
+  if (DATA_RATE_BYTES_UNITS.includes(normalizedUnit)) return formatAutoScaled(value, normalizedUnit, DATA_RATE_BYTES_UNITS, DATA_RATE_BYTES_LABELS, 1024);
+  if ((TIME_UNITS as readonly string[]).includes(normalizedUnit)) return formatTimeValue(value, normalizedUnit);
+  if (normalizedUnit === 'us') return formatTimeValue(value, 'µs');
+  if (HERTZ_UNITS.includes(normalizedUnit)) return formatAutoScaled(value, normalizedUnit, HERTZ_UNITS, HERTZ_LABELS, 1000);
+  if (normalizedUnit === 'celsius') return { value: formatScaledValue(value), unit: '°C' };
+  if (normalizedUnit === 'fahrenheit') return { value: formatScaledValue(value), unit: '°F' };
+  if (normalizedUnit === 'kelvin') return { value: formatScaledValue(value), unit: 'K' };
+  if (normalizedUnit === 'watts') return { value: formatScaledValue(value), unit: 'W' };
+  if (normalizedUnit === 'volts') return { value: formatScaledValue(value), unit: 'V' };
+
+  if (normalizedUnit === 'none') {
     return { value: value.toFixed(2).replace(/\.00$/, '').replace(/(\.\d)0$/, '$1'), unit: '' };
   }
 
   return {
     value: formatScaledValue(value),
-    unit: String(unit || '')
+    unit: String(normalizedUnit || '')
   };
 };
 
 export const formatEnumValue = (value: number, enumMap?: MetricEnumMap) => {
   if (!Number.isFinite(value) || !enumMap) {
     return { value: '--', color: undefined as string | undefined };
+  }
+
+  // 优先精确匹配（如端口部分失活 0.5），避免 Math.round(0.5)→1 误映射为存活。
+  const exactMatch = enumMap[value];
+  if (exactMatch) {
+    return { value: exactMatch.label, color: exactMatch.color };
   }
 
   const normalizedValue = Math.round(value);

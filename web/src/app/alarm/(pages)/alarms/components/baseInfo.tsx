@@ -13,11 +13,6 @@ const BaseInfo: React.FC<{ detail: AlarmTableDataItem }> = ({ detail }) => {
       value: detail.operator_user,
     },
     {
-      key: 'source',
-      label: t('alarms.source'),
-      value: detail.source_names,
-    },
-    {
       key: 'notificationStatus',
       label: t('alarms.notificationStatus'),
       value: (

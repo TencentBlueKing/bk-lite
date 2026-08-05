@@ -595,3 +595,11 @@ def migrate_plugin():
     # 第八阶段：清理空的内置指标分组
     _cleanup_empty_builtin_metric_groups()
     logger.info(f"补充指标重算完成: 更新={reconciled_count}")
+
+    # 插件目录 / UI.json 变更后使进程内读盘缓存失效。
+    from apps.monitor.services.plugin_guide import PluginGuideService
+    from apps.monitor.services.ui_template_locale import clear_ui_file_overlay_cache
+
+    PluginGuideService.clear_plugin_dir_cache()
+    clear_ui_file_overlay_cache()
+    logger.info("插件目录与 UI 模板磁盘缓存已清理")

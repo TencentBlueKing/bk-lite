@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import json
 import os
 import time
 import uuid
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone as dt_timezone
 from typing import Any
 
 from django.db import IntegrityError, OperationalError, transaction
@@ -14,10 +15,24 @@ from django.utils import timezone
 from django.utils.timezone import localtime, now
 
 from apps.cmdb.constants.constants import CollectRunStatusType
-from apps.cmdb.models import NodeMgmtSyncConfig, NodeMgmtSyncRegionState, NodeMgmtSyncRun
+from apps.cmdb.models import (
+    NodeMgmtSyncConfig,
+    NodeMgmtSyncRegionSnapshot,
+    NodeMgmtSyncRegionState,
+    NodeMgmtSyncRun,
+    NodeMgmtSyncSnapshotRow,
+)
 from apps.cmdb.models.collect_model import CollectModels
 from apps.cmdb.services.instance import InstanceManage
 from apps.cmdb.services.model import ModelManage
+from apps.cmdb.services.node_mgmt_sync_raw import (
+    RAW_DATA_FIELDS,
+    RAW_DATA_METRIC_MODEL_IDS,
+    RAW_DEFAULT_TEXT_LIMIT,
+    RAW_TEXT_LIMITS,
+    sanitize_node_mgmt_raw_data_item,
+    sanitize_node_mgmt_raw_text,
+)
 from apps.core.logger import cmdb_logger as logger
 from apps.rpc.node_mgmt import NodeMgmt
 
@@ -79,6 +94,15 @@ class NodeMgmtSyncService:
     MAX_NODE_PAGES = 100
     HARD_MAX_NODE_COUNT = NODE_PAGE_SIZE * MAX_NODE_PAGES
     HARD_MAX_NODE_BYTES = 128 * 1024 * 1024
+    SNAPSHOT_MAX_ROWS = _get_bounded_positive_int_env("CMDB_NODE_MGMT_SNAPSHOT_MAX_ROWS", 20_000, 50_000)
+    SNAPSHOT_MAX_BYTES = _get_bounded_positive_int_env(
+        "CMDB_NODE_MGMT_SNAPSHOT_MAX_BYTES",
+        32 * 1024 * 1024,
+        64 * 1024 * 1024,
+    )
+    SNAPSHOT_INPUT_MAX_ROWS = 50_000
+    SNAPSHOT_BULK_BATCH_SIZE = 500
+    SNAPSHOT_CAPTURE_LEASE_SECONDS = 60
     MAX_NODE_COUNT = _get_bounded_positive_int_env(
         "CMDB_NODE_MGMT_MAX_NODE_COUNT",
         HARD_MAX_NODE_COUNT,
@@ -93,23 +117,10 @@ class NodeMgmtSyncService:
     MAX_EXISTING_HOST_BYTES = _get_positive_int_env("CMDB_NODE_MGMT_MAX_EXISTING_HOST_BYTES", 128 * 1024 * 1024)
     EXISTING_HOST_PAGE_SIZE = _get_positive_int_env("CMDB_NODE_MGMT_EXISTING_HOST_PAGE_SIZE", 500)
     SYSTEM_NODE_QUERY = {"skip_permission": True}
-    RAW_DATA_FIELDS = (
-        "id",
-        "_id",
-        "model_id",
-        "inst_name",
-        "name",
-        "ip_addr",
-        "ip",
-        "cloud",
-        "cloud_id",
-        "cloud_name",
-        "organization",
-        "organization_ids",
-        "__time__",
-        "_status",
-        "_error",
-    )
+    RAW_DATA_FIELDS = RAW_DATA_FIELDS
+    RAW_DATA_METRIC_MODEL_IDS = RAW_DATA_METRIC_MODEL_IDS
+    RAW_TEXT_LIMITS = RAW_TEXT_LIMITS
+    RAW_DEFAULT_TEXT_LIMIT = RAW_DEFAULT_TEXT_LIMIT
     HOST_SYNC_UPDATE_FIELDS = ("inst_name", "ip_addr", "organization", "cloud", "os_type")
 
     @staticmethod
@@ -128,6 +139,12 @@ class NodeMgmtSyncService:
             "delete_success": 0,
             "association_error": 0,
             "association_success": 0,
+            "raw_total": 0,
+            "raw_host": 0,
+            "raw_process": 0,
+            "raw_dropped": 0,
+            "raw_retained": 0,
+            "raw_truncated": False,
             "message": "",
         }
 
@@ -163,10 +180,11 @@ class NodeMgmtSyncService:
 
     @classmethod
     def _sanitize_raw_data_item(cls, item: dict[str, Any]) -> dict[str, Any]:
-        sanitized = {key: item.get(key) for key in cls.RAW_DATA_FIELDS if key in item}
-        if sanitized.get("model_id") in (None, ""):
-            sanitized["model_id"] = "host"
-        return sanitized
+        return sanitize_node_mgmt_raw_data_item(item)
+
+    @staticmethod
+    def _sanitize_raw_text(value: str, *, limit: int) -> str:
+        return sanitize_node_mgmt_raw_text(value, limit=limit)
 
     @classmethod
     def _normalize_display_message(cls, summary: dict[str, Any] | None) -> dict[str, Any]:
@@ -195,6 +213,9 @@ class NodeMgmtSyncService:
             message["message"] = str(summary.get("message") or "")
         if summary.get("last_time"):
             message["last_time"] = str(summary.get("last_time") or "")
+        for key in ("raw_total", "raw_host", "raw_process", "raw_dropped", "raw_retained"):
+            message[key] = cls._safe_count(summary.get(key))
+        message["raw_truncated"] = summary.get("raw_truncated") is True
         return message
 
     @classmethod
@@ -663,7 +684,15 @@ class NodeMgmtSyncService:
     @classmethod
     def recover_stale_runs(cls) -> int:
         current_time = now()
-        return NodeMgmtSyncRun.objects.filter(
+        stale_ids = list(
+            NodeMgmtSyncRun.objects.filter(
+                active_scope=cls.ACTIVE_SCOPE,
+                status__in=cls.ACTIVE_STATUSES,
+                deadline_at__lte=current_time,
+            ).values_list("id", flat=True)
+        )
+        recovered = NodeMgmtSyncRun.objects.filter(
+            id__in=stale_ids,
             active_scope=cls.ACTIVE_SCOPE,
             status__in=cls.ACTIVE_STATUSES,
             deadline_at__lte=current_time,
@@ -674,6 +703,41 @@ class NodeMgmtSyncService:
             finished_at=current_time,
             updated_at=current_time,
         )
+        for run in NodeMgmtSyncRun.objects.filter(
+            id__in=stale_ids,
+            run_type=NodeMgmtSyncRun.RUN_TYPE_COLLECT,
+            status=NodeMgmtSyncRun.STATUS_TIMEOUT,
+            snapshot_schema_version=2,
+        ):
+            states = list(run.region_states.all())
+            if run.expected_region_count != len(states):
+                run.expected_region_count = len(states)
+                run.save(update_fields=["expected_region_count", "updated_at"])
+            for state in states:
+                snapshot = getattr(state, "snapshot", None)
+                if (
+                    snapshot is not None
+                    and snapshot.capture_status == NodeMgmtSyncRegionSnapshot.CAPTURE_COMPLETE
+                ):
+                    continue
+                state.status = NodeMgmtSyncRun.STATUS_FAILED
+                state.reason_code = cls.REASON_TIMEOUT
+                state.error_message = ""
+                state.finished_at = current_time
+                state.save(
+                    update_fields=["status", "reason_code", "error_message", "finished_at", "updated_at"]
+                )
+                cls._capture_placeholder_snapshot(
+                    state,
+                    status=NodeMgmtSyncRun.STATUS_FAILED,
+                    reason_code=cls.REASON_TIMEOUT,
+                )
+            cls._finalize_collect_snapshot_run(
+                run,
+                status=NodeMgmtSyncRun.STATUS_TIMEOUT,
+                reason_code=cls.REASON_TIMEOUT,
+            )
+        return recovered
 
     @classmethod
     def _mark_run_failed(cls, run: NodeMgmtSyncRun, error: Exception) -> None:
@@ -1544,15 +1608,19 @@ class NodeMgmtSyncService:
 
         detail = cls._empty_display_detail()
         message = cls._empty_display_message()
+        collect_statuses: list[int | None] = []
+        error_messages: list[str] = []
+        collect_times: list[Any] = []
 
         for collect_task in collect_tasks:
+            collect_statuses.append(collect_task.exec_status)
             task_info = collect_task.info
             task_digest = collect_task.collect_digest if isinstance(collect_task.collect_digest, dict) else {}
             task_instances = collect_task.instances if isinstance(collect_task.instances, list) else []
 
             for key in ("add", "update", "delete", "relation", "raw_data"):
                 bucket = task_info.get(key, {"data": [], "count": 0})
-                cls._merge_detail_bucket(detail[key], bucket)
+                cls._merge_detail_bucket(detail[key], cls._normalize_detail_bucket(bucket))
 
             info_has_data = any(task_info.get(k, {}).get("count", 0) for k in ("add", "update", "delete", "raw_data"))
             if not info_has_data and task_instances:
@@ -1577,9 +1645,15 @@ class NodeMgmtSyncService:
             ):
                 message[key] += cls._safe_count(task_digest.get(key))
             if task_digest.get("last_time"):
-                message["last_time"] = task_digest["last_time"]
+                collect_times.append(task_digest["last_time"])
             if task_digest.get("message"):
                 message["message"] = task_digest["message"]
+                if collect_task.exec_status != CollectRunStatusType.SUCCESS:
+                    error_messages.append(str(task_digest["message"]))
+
+        latest_collect_time = cls._latest_collect_time(collect_times)
+        if latest_collect_time:
+            message["last_time"] = latest_collect_time
 
         if detail["raw_data"]["count"] == 0 and message.get("all"):
             derived_raw_data = []
@@ -1589,6 +1663,16 @@ class NodeMgmtSyncService:
 
         if message["all"] == 0:
             message["all"] = detail["raw_data"]["count"]
+
+        legacy_raw_rows = detail["raw_data"]["data"]
+        message["raw_total"] = len(legacy_raw_rows)
+        message["raw_process"] = sum(
+            1 for row in legacy_raw_rows if isinstance(row, dict) and row.get("model_id") == "host_proc_usage"
+        )
+        message["raw_host"] = message["raw_total"] - message["raw_process"]
+        message["raw_retained"] = message["raw_total"]
+        message["raw_dropped"] = 0
+        message["raw_truncated"] = False
 
         if detail["raw_data"]["count"] > 0 and message.get("message"):
             message["message"] = ""
@@ -1601,15 +1685,13 @@ class NodeMgmtSyncService:
             "id": latest_collect_task.id,
             "task_id": cls.get_task().id,
             "run_type": NodeMgmtSyncRun.RUN_TYPE_COLLECT,
-            "status": cls._collect_status_to_text(latest_collect_task.exec_status),
+            "status": cls._aggregate_collect_status(collect_statuses),
             "started_at": cls._serialize_dt(latest_collect_task.exec_time),
             "finished_at": cls._serialize_dt(latest_collect_task.updated_at),
             "message": message,
             "summary": message,
             "detail": detail,
-            "error_message": (latest_collect_task.collect_digest or {}).get("message", "")
-            if isinstance(latest_collect_task.collect_digest, dict)
-            else "",
+            "error_message": "; ".join(dict.fromkeys(error_messages)),
         }
         return {
             "display_source": source,
@@ -1663,6 +1745,40 @@ class NodeMgmtSyncService:
         return status_map.get(status, "unknown")
 
     @classmethod
+    def _aggregate_collect_status(cls, statuses: list[int | None]) -> str:
+        if not statuses:
+            return "unknown"
+        if all(status == CollectRunStatusType.SUCCESS for status in statuses):
+            return NodeMgmtSyncRun.STATUS_SUCCESS
+        failed_statuses = {
+            CollectRunStatusType.ERROR,
+            CollectRunStatusType.TIME_OUT,
+            CollectRunStatusType.FORCE_STOP,
+        }
+        if all(status in failed_statuses for status in statuses):
+            return NodeMgmtSyncRun.STATUS_FAILED
+        if len(set(statuses)) == 1:
+            return cls._collect_status_to_text(statuses[0])
+        return NodeMgmtSyncRun.STATUS_PARTIAL_SUCCESS
+
+    @staticmethod
+    def _latest_collect_time(values: list[Any]) -> str:
+        parsed_values = []
+        for value in values:
+            if not isinstance(value, str) or not value:
+                continue
+            try:
+                parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+            except ValueError:
+                continue
+            if parsed.tzinfo is None or parsed.utcoffset() is None:
+                continue
+            parsed_values.append(parsed.astimezone(dt_timezone.utc))
+        if not parsed_values:
+            return ""
+        return max(parsed_values).strftime("%Y-%m-%d %H:%M:%S%z")
+
+    @classmethod
     def _list_collect_items(cls) -> list[dict[str, Any]]:
         items: list[dict[str, Any]] = []
         for task in cls._list_region_collect_tasks():
@@ -1685,7 +1801,7 @@ class NodeMgmtSyncService:
         detail = cls._normalize_display_detail(run.detail_json or {})
         return {
             "display_source": source,
-            "display_schema": "host_collect",
+            "display_schema": "host_collect_v2" if run.snapshot_schema_version == 2 else "host_collect",
             "message": message,
             "summary": message,
             "detail": detail,
@@ -1709,6 +1825,24 @@ class NodeMgmtSyncService:
     def get_display_payload(cls) -> dict[str, Any]:
         task = cls.get_task()
         if task.auto_collect_enabled:
+            latest_complete_run = (
+                NodeMgmtSyncRun.objects.filter(
+                    task=task,
+                    run_type=NodeMgmtSyncRun.RUN_TYPE_COLLECT,
+                    snapshot_schema_version=2,
+                    snapshot_status="complete",
+                    status__in=cls.TERMINAL_STATUSES,
+                )
+                .order_by("-finished_at", "-id")
+                .first()
+            )
+            if latest_complete_run is not None:
+                payload = cls._display_payload_from_sync_run(
+                    latest_complete_run,
+                    cls.DISPLAY_SOURCE_COLLECT,
+                )
+                payload["task"] = cls.serialize_task(task)
+                return payload
             collect_payload = cls._build_collect_display_payload(cls.DISPLAY_SOURCE_COLLECT)
             collect_has_data = bool(collect_payload and cls._has_display_data(collect_payload.get("detail")))
             collect_status = (collect_payload.get("run") or {}).get("status") if collect_payload else None
@@ -1743,6 +1877,77 @@ class NodeMgmtSyncService:
         payload = cls._build_empty_display_payload(cls.DISPLAY_SOURCE_SYNC)
         payload["task"] = cls.serialize_task(task)
         return payload
+
+    @classmethod
+    def get_snapshot_rows(
+        cls,
+        *,
+        run_id: Any,
+        bucket: Any = "raw_data",
+        page: Any = 1,
+        page_size: Any = 20,
+        search: Any = "",
+    ) -> dict[str, Any]:
+        try:
+            parsed_run_id = int(run_id)
+            parsed_page = int(page)
+            parsed_page_size = int(page_size)
+        except (TypeError, ValueError):
+            raise ValueError("分页参数无效") from None
+        if parsed_run_id <= 0 or parsed_page <= 0 or not 1 <= parsed_page_size <= 100:
+            raise ValueError("分页参数无效")
+        if bucket != "raw_data":
+            raise ValueError("bucket 无效")
+        search_text = str(search or "").strip()
+        if len(search_text) > 255:
+            raise ValueError("搜索条件过长")
+
+        task = cls.get_task()
+        current_run = (
+            NodeMgmtSyncRun.objects.filter(
+                task=task,
+                run_type=NodeMgmtSyncRun.RUN_TYPE_COLLECT,
+                snapshot_schema_version=2,
+                snapshot_status="complete",
+                status__in=cls.TERMINAL_STATUSES,
+            )
+            .order_by("-finished_at", "-id")
+            .first()
+        )
+        if current_run is None or current_run.pk != parsed_run_id:
+            raise ValueError("run_id 不是当前可展示批次")
+
+        retained_query = NodeMgmtSyncSnapshotRow.objects.filter(
+            snapshot__run=current_run,
+            bucket=bucket,
+            snapshot__detail_retained=True,
+        )
+        retained_count = retained_query.count()
+        matched_query = retained_query
+        if search_text:
+            matched_query = matched_query.filter(
+                Q(inst_name__icontains=search_text)
+                | Q(ip_addr__icontains=search_text)
+                | Q(cloud_name__icontains=search_text)
+                | Q(pid__icontains=search_text)
+                | Q(process_name__icontains=search_text)
+            )
+        matched_retained_count = matched_query.count()
+        offset = (parsed_page - 1) * parsed_page_size
+        data = list(
+            matched_query.order_by("snapshot__cloud_region_id", "snapshot_id", "ordinal")
+            .values_list("payload_json", flat=True)[offset : offset + parsed_page_size]
+        )
+        summary = current_run.summary_json if isinstance(current_run.summary_json, dict) else {}
+        return {
+            "total_count": cls._safe_count(summary.get("raw_total")),
+            "retained_count": retained_count,
+            "matched_retained_count": matched_retained_count,
+            "truncated": summary.get("raw_truncated") is True,
+            "page": parsed_page,
+            "page_size": parsed_page_size,
+            "data": data,
+        }
 
     @classmethod
     def sync_hosts(cls) -> dict[str, Any]:
@@ -2158,8 +2363,69 @@ class NodeMgmtSyncService:
             return False
         return response.status_code < 400 and payload.get("result") is True
 
-    @staticmethod
-    def _mark_collect_region_blocked(state: NodeMgmtSyncRegionState, reason_code: str) -> None:
+    @classmethod
+    def _region_snapshot_quota(cls, state: NodeMgmtSyncRegionState) -> tuple[int, int]:
+        state_ids = list(state.run.region_states.order_by("cloud_region_id", "id").values_list("id", flat=True))
+        if not state_ids:
+            return 0, 0
+        position = state_ids.index(state.pk)
+        row_base, row_remainder = divmod(cls.SNAPSHOT_MAX_ROWS, len(state_ids))
+        byte_base, byte_remainder = divmod(cls.SNAPSHOT_MAX_BYTES, len(state_ids))
+        return (
+            row_base + (1 if position < row_remainder else 0),
+            byte_base + (1 if position < byte_remainder else 0),
+        )
+
+    @classmethod
+    def _capture_placeholder_snapshot(
+        cls,
+        state: NodeMgmtSyncRegionState,
+        *,
+        status: str,
+        reason_code: str,
+    ) -> NodeMgmtSyncRegionSnapshot:
+        row_quota, byte_quota = cls._region_snapshot_quota(state)
+        with transaction.atomic():
+            snapshot, created = NodeMgmtSyncRegionSnapshot.objects.select_for_update().get_or_create(
+                region_state=state,
+                defaults={
+                    "run": state.run,
+                    "cloud_region_id": state.cloud_region_id,
+                    "child_execution_id": state.child_execution_id,
+                    "status": status,
+                },
+            )
+            if not created and snapshot.capture_status == NodeMgmtSyncRegionSnapshot.CAPTURE_COMPLETE:
+                return snapshot
+            snapshot.rows.all().delete()
+            snapshot.run = state.run
+            snapshot.cloud_region_id = state.cloud_region_id
+            snapshot.child_execution_id = state.child_execution_id
+            snapshot.status = status
+            snapshot.reason_code = reason_code
+            snapshot.capture_status = NodeMgmtSyncRegionSnapshot.CAPTURE_COMPLETE
+            snapshot.capture_token = ""
+            snapshot.capture_deadline = None
+            snapshot.capture_attempt += 1
+            snapshot.row_quota = row_quota
+            snapshot.byte_quota = byte_quota
+            snapshot.summary_json = {
+                "raw_total": 0,
+                "raw_host": 0,
+                "raw_process": 0,
+                "raw_dropped": 0,
+                "raw_retained": 0,
+                "raw_truncated": False,
+            }
+            snapshot.detail_retained = True
+            snapshot.cleanup_status = NodeMgmtSyncRegionSnapshot.CLEANUP_RETAINED
+            snapshot.byte_size = 0
+            snapshot.truncated = False
+            snapshot.save()
+            return snapshot
+
+    @classmethod
+    def _mark_collect_region_blocked(cls, state: NodeMgmtSyncRegionState, reason_code: str) -> None:
         state.status = NodeMgmtSyncRun.STATUS_BLOCKED
         state.reason_code = reason_code
         state.error_message = ""
@@ -2173,6 +2439,260 @@ class NodeMgmtSyncService:
                 "updated_at",
             ]
         )
+        cls._capture_placeholder_snapshot(
+            state,
+            status=NodeMgmtSyncRun.STATUS_BLOCKED,
+            reason_code=reason_code,
+        )
+
+    @classmethod
+    def _snapshot_row_payloads(
+        cls,
+        *,
+        run: NodeMgmtSyncRun,
+        state: NodeMgmtSyncRegionState,
+        collect_task: CollectModels,
+        row_quota: int,
+        byte_quota: int,
+    ) -> tuple[list[dict[str, Any]], dict[str, Any], int]:
+        task_info = collect_task.info if isinstance(collect_task.format_data, dict) else {}
+        raw_bucket = task_info.get("raw_data") if isinstance(task_info, dict) else {}
+        source_rows = raw_bucket.get("data", []) if isinstance(raw_bucket, dict) else []
+        source_rows = source_rows if isinstance(source_rows, list) else []
+
+        normalized_rows: list[tuple[str, dict[str, Any], str]] = []
+        raw_host = 0
+        raw_process = 0
+        raw_dropped = max(len(source_rows) - cls.SNAPSHOT_INPUT_MAX_ROWS, 0)
+        for item in source_rows[: cls.SNAPSHOT_INPUT_MAX_ROWS]:
+            if not isinstance(item, dict):
+                raw_dropped += 1
+                continue
+            metric_name = item.get("__name__")
+            if metric_name not in cls.RAW_DATA_METRIC_MODEL_IDS:
+                raw_dropped += 1
+                continue
+            payload = cls._sanitize_raw_data_item(item)
+            if payload.get("model_id") == "host_proc_usage":
+                row_type = "process"
+                raw_process += 1
+            else:
+                row_type = "host"
+                raw_host += 1
+            canonical = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str)
+            normalized_rows.append((canonical, payload, row_type))
+
+        normalized_rows.sort(key=lambda row: row[0])
+        retained: list[dict[str, Any]] = []
+        retained_bytes = 0
+        occurrences: dict[str, int] = {}
+        for canonical, payload, row_type in normalized_rows:
+            if len(retained) >= row_quota:
+                break
+            occurrence = occurrences.get(canonical, 0)
+            occurrences[canonical] = occurrence + 1
+            row_key = hashlib.sha256(
+                (
+                    f"{run.generation}|{state.cloud_region_id}|{state.child_execution_id}|"
+                    f"raw_data|{canonical}|{occurrence}"
+                ).encode()
+            ).hexdigest()
+            row_payload = dict(payload)
+            row_payload["_row_key"] = row_key
+            encoded_size = len(
+                json.dumps(row_payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str).encode()
+            )
+            if retained_bytes + encoded_size > byte_quota:
+                break
+            retained.append({"payload": row_payload, "row_type": row_type, "byte_size": encoded_size})
+            retained_bytes += encoded_size
+
+        task_digest = collect_task.collect_digest if isinstance(collect_task.collect_digest, dict) else {}
+        has_persisted_input_summary = all(
+            key in task_digest for key in ("raw_total", "raw_host", "raw_process", "raw_dropped")
+        )
+        if has_persisted_input_summary:
+            raw_total = cls._safe_count(task_digest.get("raw_total"))
+            raw_host = cls._safe_count(task_digest.get("raw_host"))
+            raw_process = cls._safe_count(task_digest.get("raw_process"))
+            raw_dropped = cls._safe_count(task_digest.get("raw_dropped"))
+        else:
+            raw_total = len(source_rows)
+        summary = cls._normalize_display_message(task_digest)
+        summary.update(
+            {
+                "raw_total": raw_total,
+                "raw_host": raw_host,
+                "raw_process": raw_process,
+                "raw_dropped": raw_dropped,
+                "raw_retained": len(retained),
+                "raw_truncated": task_digest.get("raw_input_truncated") is True
+                or len(retained) < raw_host + raw_process,
+            }
+        )
+        return retained, summary, retained_bytes
+
+    @classmethod
+    def _capture_terminal_region(
+        cls,
+        state: NodeMgmtSyncRegionState,
+        *,
+        status: str,
+        reason_code: str,
+    ) -> NodeMgmtSyncRegionState:
+        current_time = now()
+        capture_token = uuid.uuid4().hex
+        with transaction.atomic():
+            collect_task = CollectModels.objects.select_for_update().get(pk=state.collect_task_id)
+            locked_run = NodeMgmtSyncRun.objects.select_for_update().get(pk=state.run_id)
+            locked_state = NodeMgmtSyncRegionState.objects.select_for_update().get(pk=state.pk)
+            if (
+                locked_run.generation != state.run.generation
+                or locked_run.status != NodeMgmtSyncRun.STATUS_SUBMITTED
+                or locked_run.active_scope != cls.ACTIVE_SCOPE
+                or locked_run.deadline_at is None
+                or locked_run.deadline_at <= current_time
+            ):
+                raise NodeMgmtSyncError("RUN_NOT_ACTIVE")
+            if (
+                locked_state.status != NodeMgmtSyncRun.STATUS_SUBMITTED
+                or str(collect_task.task_id or "") != locked_state.child_execution_id
+            ):
+                raise NodeMgmtSyncError("COLLECT_EXECUTION_SUPERSEDED")
+
+            row_quota, byte_quota = cls._region_snapshot_quota(locked_state)
+            snapshot, created = NodeMgmtSyncRegionSnapshot.objects.get_or_create(
+                region_state=locked_state,
+                defaults={
+                    "run": locked_run,
+                    "cloud_region_id": locked_state.cloud_region_id,
+                    "child_execution_id": locked_state.child_execution_id,
+                    "status": status,
+                    "reason_code": reason_code,
+                    "capture_status": NodeMgmtSyncRegionSnapshot.CAPTURE_CAPTURING,
+                    "capture_token": capture_token,
+                    "capture_deadline": min(
+                        locked_run.deadline_at,
+                        current_time + timedelta(seconds=cls.SNAPSHOT_CAPTURE_LEASE_SECONDS),
+                    ),
+                    "capture_attempt": 1,
+                    "row_quota": row_quota,
+                    "byte_quota": byte_quota,
+                },
+            )
+            if not created and snapshot.capture_status == NodeMgmtSyncRegionSnapshot.CAPTURE_COMPLETE:
+                return locked_state
+            if (
+                not created
+                and snapshot.capture_status == NodeMgmtSyncRegionSnapshot.CAPTURE_CAPTURING
+                and snapshot.capture_token
+                and snapshot.capture_deadline is not None
+                and snapshot.capture_deadline > current_time
+            ):
+                return locked_state
+            if not created:
+                snapshot.status = status
+                snapshot.reason_code = reason_code
+                snapshot.capture_status = NodeMgmtSyncRegionSnapshot.CAPTURE_CAPTURING
+                snapshot.capture_token = capture_token
+                snapshot.capture_deadline = min(
+                    locked_run.deadline_at,
+                    current_time + timedelta(seconds=cls.SNAPSHOT_CAPTURE_LEASE_SECONDS),
+                )
+                snapshot.capture_attempt += 1
+                snapshot.row_quota = row_quota
+                snapshot.byte_quota = byte_quota
+                snapshot.save(
+                    update_fields=[
+                        "status",
+                        "reason_code",
+                        "capture_status",
+                        "capture_token",
+                        "capture_deadline",
+                        "capture_attempt",
+                        "row_quota",
+                        "byte_quota",
+                        "updated_at",
+                    ]
+                )
+
+        retained, summary, retained_bytes = cls._snapshot_row_payloads(
+            run=locked_run,
+            state=locked_state,
+            collect_task=collect_task,
+            row_quota=row_quota,
+            byte_quota=byte_quota,
+        )
+
+        with transaction.atomic():
+            collect_task = CollectModels.objects.select_for_update().get(pk=state.collect_task_id)
+            locked_run = NodeMgmtSyncRun.objects.select_for_update().get(pk=state.run_id)
+            locked_state = NodeMgmtSyncRegionState.objects.select_for_update().get(pk=state.pk)
+            snapshot = NodeMgmtSyncRegionSnapshot.objects.select_for_update().get(region_state=locked_state)
+            committed_at = now()
+            if (
+                snapshot.capture_status != NodeMgmtSyncRegionSnapshot.CAPTURE_CAPTURING
+                or snapshot.capture_token != capture_token
+                or locked_run.generation != state.run.generation
+                or locked_run.status != NodeMgmtSyncRun.STATUS_SUBMITTED
+                or locked_run.active_scope != cls.ACTIVE_SCOPE
+                or locked_run.deadline_at is None
+                or locked_run.deadline_at <= committed_at
+                or locked_state.status != NodeMgmtSyncRun.STATUS_SUBMITTED
+                or str(collect_task.task_id or "") != locked_state.child_execution_id
+            ):
+                return locked_state
+
+            NodeMgmtSyncSnapshotRow.objects.filter(snapshot=snapshot).delete()
+            rows = []
+            for ordinal, retained_row in enumerate(retained):
+                payload = retained_row["payload"]
+                rows.append(
+                    NodeMgmtSyncSnapshotRow(
+                        snapshot=snapshot,
+                        bucket="raw_data",
+                        ordinal=ordinal,
+                        row_type=retained_row["row_type"],
+                        row_key=payload["_row_key"],
+                        inst_name=str(payload.get("inst_name") or ""),
+                        ip_addr=str(payload.get("ip_addr") or payload.get("ip") or ""),
+                        cloud_name=str(payload.get("cloud_name") or ""),
+                        pid=str(payload.get("pid") or ""),
+                        process_name=str(payload.get("name") or ""),
+                        payload_json=payload,
+                        byte_size=retained_row["byte_size"],
+                    )
+                )
+            NodeMgmtSyncSnapshotRow.objects.bulk_create(rows, batch_size=cls.SNAPSHOT_BULK_BATCH_SIZE)
+            snapshot.status = status
+            snapshot.reason_code = reason_code
+            snapshot.capture_status = NodeMgmtSyncRegionSnapshot.CAPTURE_COMPLETE
+            snapshot.capture_token = ""
+            snapshot.capture_deadline = None
+            snapshot.summary_json = summary
+            snapshot.byte_size = retained_bytes
+            snapshot.truncated = summary["raw_truncated"]
+            snapshot.save(
+                update_fields=[
+                    "status",
+                    "reason_code",
+                    "capture_status",
+                    "capture_token",
+                    "capture_deadline",
+                    "summary_json",
+                    "byte_size",
+                    "truncated",
+                    "updated_at",
+                ]
+            )
+            locked_state.status = status
+            locked_state.reason_code = reason_code
+            locked_state.error_message = ""
+            locked_state.finished_at = current_time
+            locked_state.save(
+                update_fields=["status", "reason_code", "error_message", "finished_at", "updated_at"]
+            )
+            return locked_state
 
     @classmethod
     def _cas_collect_region_terminal(
@@ -2212,6 +2732,184 @@ class NodeMgmtSyncService:
         if all(status in (NodeMgmtSyncRun.STATUS_FAILED, NodeMgmtSyncRun.STATUS_BLOCKED) for status in statuses):
             return NodeMgmtSyncRun.STATUS_FAILED
         return NodeMgmtSyncRun.STATUS_PARTIAL_SUCCESS
+
+    @classmethod
+    def _finalize_collect_snapshot_run(
+        cls,
+        run: NodeMgmtSyncRun,
+        *,
+        status: str,
+        reason_code: str = "",
+    ) -> NodeMgmtSyncRun:
+        snapshots = list(run.region_snapshots.order_by("cloud_region_id", "id"))
+        if len(snapshots) != run.expected_region_count or any(
+            snapshot.capture_status != NodeMgmtSyncRegionSnapshot.CAPTURE_COMPLETE for snapshot in snapshots
+        ):
+            raise NodeMgmtSyncError("COLLECT_SNAPSHOT_INCOMPLETE")
+
+        message = cls._empty_display_message()
+        times = []
+        errors = []
+        for snapshot in snapshots:
+            summary = snapshot.summary_json if isinstance(snapshot.summary_json, dict) else {}
+            for key in (
+                "all",
+                "add",
+                "update",
+                "delete",
+                "association",
+                "add_error",
+                "add_success",
+                "update_error",
+                "update_success",
+                "delete_error",
+                "delete_success",
+                "association_error",
+                "association_success",
+                "raw_total",
+                "raw_host",
+                "raw_process",
+                "raw_dropped",
+                "raw_retained",
+            ):
+                message[key] += cls._safe_count(summary.get(key))
+            message["raw_truncated"] = message["raw_truncated"] or summary.get("raw_truncated") is True
+            if summary.get("last_time"):
+                times.append(summary["last_time"])
+            if snapshot.reason_code:
+                errors.append(f"{snapshot.cloud_region_id}:{snapshot.reason_code}")
+        latest_time = cls._latest_collect_time(times)
+        if latest_time:
+            message["last_time"] = latest_time
+        message["message"] = "; ".join(errors)
+
+        raw_rows = list(
+            NodeMgmtSyncSnapshotRow.objects.filter(snapshot__run=run, bucket="raw_data")
+            .order_by("snapshot__cloud_region_id", "snapshot_id", "ordinal")
+            .values_list("payload_json", flat=True)[:20]
+        )
+        detail = cls._empty_display_detail()
+        detail["raw_data"] = {
+            "data": raw_rows,
+            "count": message["raw_retained"],
+            "total_count": message["raw_total"],
+            "retained_count": message["raw_retained"],
+            "truncated": message["raw_truncated"],
+        }
+        run.refresh_from_db()
+        if run.status == status and run.active_scope is None:
+            NodeMgmtSyncRun.objects.filter(pk=run.pk, generation=run.generation).update(
+                reason_code=reason_code,
+                summary_json=message,
+                detail_json=detail,
+                updated_at=now(),
+            )
+        else:
+            cls.finish_run(
+                run,
+                status=status,
+                reason_code=reason_code,
+                summary_json=message,
+                detail_json=detail,
+            )
+        updated = NodeMgmtSyncRun.objects.filter(
+            pk=run.pk,
+            generation=run.generation,
+            status=status,
+        ).update(
+            snapshot_schema_version=2,
+            snapshot_status="complete",
+            error_message=message["message"][:255],
+            updated_at=now(),
+        )
+        if not updated:
+            raise NodeMgmtSyncError("COLLECT_SNAPSHOT_FINALIZE_CONFLICT")
+        run.refresh_from_db()
+        try:
+            cls.cleanup_old_snapshot_rows(task_id=run.task_id, keep_run_id=run.pk)
+        except Exception:
+            logger.exception(
+                "[NodeMgmtSync] 旧快照明细清理失败 code=SNAPSHOT_CLEANUP_FAILED, run_id=%s",
+                run.pk,
+            )
+        return run
+
+    @classmethod
+    def cleanup_old_snapshot_rows(
+        cls,
+        *,
+        task_id: int,
+        keep_run_id: int,
+        batch_size: int = 100,
+    ) -> dict[str, int]:
+        latest_complete_run = (
+            NodeMgmtSyncRun.objects.filter(
+                task_id=task_id,
+                run_type=NodeMgmtSyncRun.RUN_TYPE_COLLECT,
+                snapshot_schema_version=2,
+                snapshot_status="complete",
+            )
+            .order_by("-finished_at", "-id")
+            .first()
+        )
+        if latest_complete_run is None:
+            return {"pending": 0, "cleaned": 0, "failed": 0}
+        keep_run_id = latest_complete_run.pk
+        snapshot_ids = list(
+            NodeMgmtSyncRegionSnapshot.objects.filter(
+                run__task_id=task_id,
+                run__run_type=NodeMgmtSyncRun.RUN_TYPE_COLLECT,
+                run__snapshot_schema_version=2,
+                run__snapshot_status="complete",
+                detail_retained=True,
+            )
+            .exclude(run_id=keep_run_id)
+            .order_by("run__finished_at", "run_id", "id")
+            .values_list("id", flat=True)[:batch_size]
+        )
+        if not snapshot_ids:
+            return {"pending": 0, "cleaned": 0, "failed": 0}
+        NodeMgmtSyncRegionSnapshot.objects.filter(pk__in=snapshot_ids).update(
+            cleanup_status=NodeMgmtSyncRegionSnapshot.CLEANUP_PENDING,
+            updated_at=now(),
+        )
+        try:
+            with transaction.atomic():
+                NodeMgmtSyncSnapshotRow.objects.filter(snapshot_id__in=snapshot_ids).delete()
+                cleaned = NodeMgmtSyncRegionSnapshot.objects.filter(pk__in=snapshot_ids).update(
+                    detail_retained=False,
+                    cleanup_status=NodeMgmtSyncRegionSnapshot.CLEANUP_SUMMARY_ONLY,
+                    updated_at=now(),
+                )
+        except Exception:
+            NodeMgmtSyncRegionSnapshot.objects.filter(pk__in=snapshot_ids).update(
+                cleanup_status=NodeMgmtSyncRegionSnapshot.CLEANUP_FAILED,
+                updated_at=now(),
+            )
+            raise
+        return {"pending": len(snapshot_ids), "cleaned": cleaned, "failed": 0}
+
+    @classmethod
+    def recover_snapshot_cleanup(cls, task_id: int) -> dict[str, int]:
+        keep_run = (
+            NodeMgmtSyncRun.objects.filter(
+                task_id=task_id,
+                run_type=NodeMgmtSyncRun.RUN_TYPE_COLLECT,
+                snapshot_schema_version=2,
+                snapshot_status="complete",
+            )
+            .order_by("-finished_at", "-id")
+            .first()
+        )
+        if keep_run is None:
+            return {"pending": 0, "cleaned": 0, "failed": 0}
+        try:
+            return cls.cleanup_old_snapshot_rows(task_id=task_id, keep_run_id=keep_run.pk)
+        except Exception:
+            logger.exception(
+                "[NodeMgmtSync] 快照清理补偿失败 code=SNAPSHOT_CLEANUP_RECOVERY_FAILED",
+            )
+            return {"pending": 0, "cleaned": 0, "failed": 1}
 
     @classmethod
     def _mark_collect_run_submitted(
@@ -2259,26 +2957,48 @@ class NodeMgmtSyncService:
 
         collect_tasks = cls._list_region_collect_tasks()
         logger.info("[NodeMgmtSync] 获取区域采集任务列表, task_count=%d", len(collect_tasks))
+        task_states = [
+            (
+                collect_task,
+                *cls._region_state_for_collect_task(
+                    run=run,
+                    task_config=task_config,
+                    collect_task=collect_task,
+                ),
+            )
+            for collect_task in collect_tasks
+        ]
+        NodeMgmtSyncRun.objects.filter(
+            pk=run.pk,
+            generation=run.generation,
+            status=NodeMgmtSyncRun.STATUS_RUNNING,
+        ).update(
+            snapshot_schema_version=2,
+            snapshot_status="capturing",
+            expected_region_count=len(task_states),
+            updated_at=now(),
+        )
+        run.refresh_from_db()
         if not NodeMgmtSyncConfig.objects.filter(pk=task_config.pk, version=task_config.version).exists():
             detail["failed"].append({"reason_code": "SYNC_REQUIRED", "message": "配置版本已变化"})
-            cls.finish_run(
+            for _, state, _ in task_states:
+                cls._mark_collect_region_blocked(state, "SYNC_REQUIRED")
+            cls._finalize_collect_snapshot_run(
                 run,
                 status=NodeMgmtSyncRun.STATUS_BLOCKED,
                 reason_code="COLLECT_SUBMISSION_BLOCKED",
-                summary_json=message,
-                detail_json=detail,
             )
             return run
 
-        for collect_task in collect_tasks:
+        for collect_task, state, valid_region in task_states:
             cls.heartbeat_run(run)
             message["all"] += 1
-            state, valid_region = cls._region_state_for_collect_task(
-                run=run,
-                task_config=task_config,
-                collect_task=collect_task,
-            )
             if not valid_region:
+                cls._capture_placeholder_snapshot(
+                    state,
+                    status=NodeMgmtSyncRun.STATUS_BLOCKED,
+                    reason_code="INVALID_REGION_CODE",
+                )
                 detail["failed"].append({"task_id": collect_task.id, "reason_code": "INVALID_REGION_CODE"})
                 continue
             access_point = collect_task.access_point if isinstance(collect_task.access_point, list) else []
@@ -2416,6 +3136,9 @@ class NodeMgmtSyncService:
             )
             logger.info("[NodeMgmtSync] 采集任务已提交: task_id=%d", collect_task.id)
 
+        for pending_state in run.region_states.filter(status="pending"):
+            cls._mark_collect_region_blocked(pending_state, "SYNC_REQUIRED")
+
         if accepted_count:
             cls._mark_collect_run_submitted(run, summary_json=message, detail_json=detail)
             return run
@@ -2427,13 +3150,22 @@ class NodeMgmtSyncService:
             reason_code = "COLLECT_ALREADY_RUNNING"
         else:
             reason_code = "COLLECT_SUBMISSION_BLOCKED"
-        cls.finish_run(
-            run,
-            status=NodeMgmtSyncRun.STATUS_BLOCKED,
-            reason_code=reason_code,
-            summary_json=message,
-            detail_json=detail,
-        )
+        if run.expected_region_count == run.region_snapshots.filter(
+            capture_status=NodeMgmtSyncRegionSnapshot.CAPTURE_COMPLETE
+        ).count():
+            cls._finalize_collect_snapshot_run(
+                run,
+                status=NodeMgmtSyncRun.STATUS_BLOCKED,
+                reason_code=reason_code,
+            )
+        else:
+            cls.finish_run(
+                run,
+                status=NodeMgmtSyncRun.STATUS_BLOCKED,
+                reason_code=reason_code,
+                summary_json=message,
+                detail_json=detail,
+            )
         return run
 
     @classmethod
@@ -2459,6 +3191,11 @@ class NodeMgmtSyncService:
                 continue
             collect_task = state.collect_task
             if collect_task is None:
+                cls._capture_placeholder_snapshot(
+                    state,
+                    status=NodeMgmtSyncRun.STATUS_BLOCKED,
+                    reason_code="COLLECT_TASK_MISSING",
+                )
                 state = cls._cas_collect_region_terminal(
                     state,
                     status=NodeMgmtSyncRun.STATUS_BLOCKED,
@@ -2468,6 +3205,11 @@ class NodeMgmtSyncService:
                 continue
             collect_task.refresh_from_db(fields=("task_id", "exec_status"))
             if str(collect_task.task_id or "") != state.child_execution_id:
+                cls._capture_placeholder_snapshot(
+                    state,
+                    status=NodeMgmtSyncRun.STATUS_BLOCKED,
+                    reason_code="COLLECT_EXECUTION_SUPERSEDED",
+                )
                 state = cls._cas_collect_region_terminal(
                     state,
                     status=NodeMgmtSyncRun.STATUS_BLOCKED,
@@ -2486,7 +3228,7 @@ class NodeMgmtSyncService:
             child_status = status_map.get(collect_task.exec_status)
             if child_status is None:
                 continue
-            state = cls._cas_collect_region_terminal(
+            state = cls._capture_terminal_region(
                 state,
                 status=child_status,
                 reason_code=("" if child_status == NodeMgmtSyncRun.STATUS_SUCCESS else "COLLECT_CHILD_FAILED"),
@@ -2502,7 +3244,7 @@ class NodeMgmtSyncService:
             run.refresh_from_db()
             return run
         try:
-            cls.finish_run(run, status=final_status)
+            cls._finalize_collect_snapshot_run(run, status=final_status)
         except NodeMgmtSyncError as error:
             if str(error) != "RUN_NOT_ACTIVE":
                 raise

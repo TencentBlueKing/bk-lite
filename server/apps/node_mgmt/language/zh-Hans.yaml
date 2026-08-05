@@ -51,6 +51,9 @@ collector:
   exporter_kafka_linux:
     description: Kafka Exporter（Linux）采集器通过连接Kafka采集各类监控指标。
     name: Kafka Exporter
+  exporter_kafka_linux_arm64:
+    description: Kafka Exporter（Linux ARM64）采集器通过连接Kafka采集各类监控指标。
+    name: Kafka Exporter
   telegraf_windows:
     name: Telegraf
     description: Telegraf （Windows）是一款轻量高效的指标采集器，原生具备各类对象的监控采集能力。同时作为数据中转站将其他监控、CMDB采集器收集的数据存储到平台。

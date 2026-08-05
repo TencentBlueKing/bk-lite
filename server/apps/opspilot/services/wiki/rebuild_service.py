@@ -26,13 +26,17 @@ from apps.opspilot.services.wiki.build_service import (
     _source_chunk_trace,
     _source_chunks_with_offsets,
     _source_locator_for_page,
-    _title_alias_terms_for_enrichment,
     _title_key,
+    generate_material_pages_with_budget,
+    material_source_metadata,
     resolve_knowledge_conflict,
 )
 from apps.opspilot.services.wiki.cascade_service import cascade
+from apps.opspilot.services.wiki.conflict_candidate_routing_service import route_material_conflicts
 from apps.opspilot.services.wiki.decision_service import compute_schema_fingerprint
 from apps.opspilot.services.wiki.material_service import load_parsed_markdown
+from apps.opspilot.services.wiki.title_service import title_alias_terms_for_enrichment as _title_alias_terms_for_enrichment
+from apps.opspilot.services.wiki.wiki_budget_service import new_material_call_budget
 from apps.opspilot.services.wiki.wikilink_enrichment_service import enrich_pages_wikilinks
 
 logger = logging.getLogger("opspilot")
@@ -152,7 +156,11 @@ def create_rebuild_record(kb, operator=""):
 
 def _mark_rebuild_generating(build, kb, operator):
     build.operator = operator or build.operator
-    build.inputs = {"schema_len": len(kb.schema_md or ""), "source_trace": {"materials": []}}
+    build.inputs = {
+        **(build.inputs or {}),
+        "schema_len": len(kb.schema_md or ""),
+        "source_trace": {"materials": []},
+    }
     build.stage = "generating"
     build.status = "running"
     build.progress = 0
@@ -169,14 +177,91 @@ def _material_text(material):
     return (load_parsed_markdown(material) or material.ai_summary or material.text_content or "").strip()
 
 
-def _generate_pages(kb, material, text, llm_model_id, generator):
+def _generate_pages(
+    kb,
+    material,
+    text,
+    llm_model_id,
+    generator,
+    *,
+    structure_revision=None,
+    classification_root_id=None,
+):
     if generator is not None:
-        return generator(material) or []
+        return generator(material) or [], None
+    source_metadata = material_source_metadata(material)
+    if structure_revision is not None:
+        budget = new_material_call_budget(material.pk)
+        pages = generate_material_pages_with_budget(
+            kb,
+            text,
+            llm_model_id,
+            budget=budget,
+            structure_revision=structure_revision,
+            classification_root_id=classification_root_id,
+            source_metadata=source_metadata,
+        )
+        return pages, budget
     facts = _llm_extract_facts(text, llm_model_id)
-    return _llm_generate_pages(kb, facts or text, llm_model_id) or []
+    return (
+        _llm_generate_pages(
+            kb,
+            facts or text,
+            llm_model_id,
+            structure_revision=structure_revision,
+            classification_root_id=classification_root_id,
+            source_metadata=source_metadata,
+        )
+        or [],
+        None,
+    )
 
 
-def _prepare_rebuild(kb, llm_model_id, generator):
+def _disambiguate_prepared_source_titles(kb, prepared_materials):
+    """Keep one source identity per material before a batch is applied."""
+
+    topic_title_keys = {
+        _title_key(prepared_page["page_data"].get("title"), kb)
+        for prepared_material in prepared_materials
+        for prepared_page in prepared_material["pages"]
+        if prepared_page["page_data"].get("page_type") != "source"
+    }
+    claimed_source_keys = set()
+    for prepared_material in prepared_materials:
+        material_id = prepared_material["material_id"]
+        for prepared_page in prepared_material["pages"]:
+            page_data = prepared_page["page_data"]
+            if page_data.get("page_type") != "source":
+                continue
+            original_title = str(page_data.get("title") or "").strip()
+            source_title = original_title
+            source_key = _title_key(source_title, kb)
+            if source_key in topic_title_keys or source_key in claimed_source_keys:
+                source_title = _canonical_title(kb, f"资料：{original_title}")
+                source_key = _title_key(source_title, kb)
+            if source_key in topic_title_keys or source_key in claimed_source_keys:
+                source_title = _canonical_title(kb, f"资料：{original_title} · {material_id}")
+                source_key = _title_key(source_title, kb)
+            if source_title != original_title:
+                page_data["title"] = source_title
+                body_lines = str(page_data.get("body") or "").splitlines()
+                if body_lines and body_lines[0].strip() == f"# {original_title}":
+                    body_lines[0] = f"# {source_title}"
+                    page_data["body"] = "\n".join(body_lines)
+                # Any comparison was routed with the former title. A batch-only
+                # disambiguation must not reuse that identity decision.
+                prepared_page["comparison"] = None
+            claimed_source_keys.add(source_key)
+
+
+def _prepare_rebuild(
+    kb,
+    llm_model_id,
+    generator,
+    *,
+    structure_revision=None,
+    classification_root_id=None,
+):
     """在任何核心写事务前完成全部资料读取、切块与 LLM 生成。"""
     prepared = []
     schema_fingerprint = compute_schema_fingerprint(kb)
@@ -185,13 +270,27 @@ def _prepare_rebuild(kb, llm_model_id, generator):
         text = _material_text(material)
         source_chunks = _source_chunks_with_offsets(text)
         pages = []
-        for page_data in _generate_pages(
+        generated_pages, material_budget = _generate_pages(
             kb,
             material,
             text,
             llm_model_id,
             generator,
-        ):
+            structure_revision=structure_revision,
+            classification_root_id=classification_root_id,
+        )
+        conflict_routing = None
+        if material_budget is not None:
+            conflict_routing = route_material_conflicts(
+                None,
+                generated_pages,
+                llm_model_id=llm_model_id,
+                budget=material_budget,
+                invoke_llm=_invoke_llm,
+                base_generation_id=kb.active_generation_id,
+            )
+        budget_trace = material_budget.trace() if material_budget is not None else {}
+        for incoming_index, page_data in enumerate(generated_pages):
             if not page_data.get("title"):
                 continue
             normalized = _normalize_page_data_title(kb, page_data)
@@ -201,7 +300,13 @@ def _prepare_rebuild(kb, llm_model_id, generator):
                 normalized,
                 chunks=source_chunks,
             )
-            pages.append({"page_data": normalized, "locator": locator})
+            pages.append(
+                {
+                    "page_data": normalized,
+                    "locator": locator,
+                    "comparison": (conflict_routing.comparisons.get(incoming_index) if conflict_routing is not None else None),
+                }
+            )
         prepared.append(
             {
                 "material": material,
@@ -211,8 +316,22 @@ def _prepare_rebuild(kb, llm_model_id, generator):
                 "material_updated_at": material.updated_at,
                 "source_chunks": source_chunks,
                 "pages": pages,
+                "budget_trace": budget_trace,
+                "conflict_routing": (
+                    {
+                        "compact_candidate_count": conflict_routing.compact_candidate_count,
+                        "evidence_page_ids": list(conflict_routing.evidence_page_ids),
+                        "old_evidence_tokens": conflict_routing.old_evidence_tokens,
+                        "overflow_count": conflict_routing.overflow_count,
+                        "llm_called": conflict_routing.llm_called,
+                        "unresolved_incoming_indexes": list(conflict_routing.unresolved_incoming_indexes),
+                    }
+                    if conflict_routing is not None
+                    else {}
+                ),
             }
         )
+    _disambiguate_prepared_source_titles(kb, prepared)
     return {
         "schema_fingerprint": schema_fingerprint,
         "material_ids": [material.id for material in materials],
@@ -606,6 +725,30 @@ def _mark_unexpected_maintenance_failure(build, core_result, exc):
     return partial_build
 
 
+def rebuild_knowledge_base_with_generation(
+    kb,
+    llm_model_id=None,
+    operator="",
+    generator=None,
+    build=None,
+    classification_root_id=None,
+    frozen_identity=None,
+):
+    """Generation-truth 全量重建入口；实现延迟导入以避免服务循环依赖。"""
+
+    from apps.opspilot.services.wiki.generation_rebuild_service import rebuild_with_generation
+
+    return rebuild_with_generation(
+        kb,
+        llm_model_id=llm_model_id,
+        operator=operator,
+        generator=generator,
+        build=build,
+        classification_root_id=classification_root_id,
+        frozen_identity=frozen_identity,
+    )
+
+
 def rebuild_knowledge_base(
     kb,
     llm_model_id=None,
@@ -613,34 +756,12 @@ def rebuild_knowledge_base(
     generator=None,
     build=None,
 ):
-    """预生成、原子应用，再在提交后 best-effort 维护派生结构。"""
-    build = build or create_rebuild_record(kb, operator=operator)
-    _mark_rebuild_generating(build, kb, operator)
-    try:
-        prepared = _prepare_rebuild(kb, llm_model_id, generator)
-        core_result = _apply_prepared_rebuild(
-            kb,
-            prepared,
-            build,
-            operator,
-        )
-    except Exception as exc:
-        logger.exception("wiki 全量重建失败 kb=%s", kb.id)
-        _mark_rebuild_failed(build, exc)
-        raise
+    """Rebuild and atomically publish one complete generation."""
 
-    try:
-        return _run_rebuild_maintenance(
-            kb,
-            build,
-            core_result,
-            llm_model_id,
-            operator,
-        )
-    except Exception as exc:  # noqa: BLE001 - 核心已提交，只能标记 partial
-        logger.exception("wiki 全量重建维护收口失败 kb=%s", kb.id)
-        return _mark_unexpected_maintenance_failure(
-            build,
-            core_result,
-            exc,
-        )
+    return rebuild_knowledge_base_with_generation(
+        kb,
+        llm_model_id=llm_model_id,
+        operator=operator,
+        generator=generator,
+        build=build,
+    )

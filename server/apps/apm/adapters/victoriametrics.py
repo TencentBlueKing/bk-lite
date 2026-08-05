@@ -10,10 +10,13 @@ import requests
 from apps.apm.services.contracts import (
     InstanceActivity,
     InstanceActivityQuery,
+    MetricDataState,
     ServiceMetricQuery,
     ServiceEndpointRed,
     ServiceRed,
     ServiceRedPoint,
+    SloMeasurement,
+    SloMetricQuery,
 )
 
 
@@ -296,15 +299,58 @@ class VictoriaMetricsMetricStore:
             top_endpoints=top_endpoints,
         )
 
+    def slo_measurement(self, query: SloMetricQuery) -> SloMeasurement:
+        window = _window_seconds(query.started_at, query.ended_at)
+        labels = {
+            "service_namespace": query.service_namespace,
+            "service_name": query.service_name,
+            "deployment_environment": query.environment,
+        }
+        if query.endpoint:
+            labels["span_name"] = query.endpoint
+        selector = ",".join(f"{key}={_promql_string(value)}" for key, value in labels.items())
+        entry_selector = f'{selector},span_kind=~"SPAN_KIND_SERVER|SPAN_KIND_CONSUMER"'
+        total_query = f"sum(rate(bklite_apm_calls_total{{{entry_selector}}}[{window}s]))"
+        total_rate = self._optional_scalar(self._query(total_query, evaluated_at=query.ended_at))
+        if total_rate is None or total_rate <= 0:
+            return SloMeasurement(
+                compliance_percent=None,
+                good_rate=None,
+                total_rate=total_rate,
+                data_state=MetricDataState.NO_DATA,
+            )
+
+        if query.sli_type == "availability":
+            bad_query = (
+                "sum(rate(bklite_apm_calls_total{"
+                f'{entry_selector},status_code="STATUS_CODE_ERROR"'
+                f"}}[{window}s]))"
+            )
+            bad_rate = self._optional_scalar(self._query(bad_query, evaluated_at=query.ended_at)) or 0.0
+            good_rate = max(0.0, total_rate - bad_rate)
+        else:
+            if query.latency_threshold_ms is None or query.latency_threshold_ms <= 0:
+                raise ValueError("时延 SLO 必须提供正数阈值")
+            good_query = (
+                "sum(rate(bklite_apm_duration_milliseconds_bucket{"
+                f'{entry_selector},le={_promql_string(str(query.latency_threshold_ms))}'
+                f"}}[{window}s]))"
+            )
+            good_rate = self._optional_scalar(self._query(good_query, evaluated_at=query.ended_at)) or 0.0
+        compliance = min(100.0, max(0.0, good_rate / total_rate * 100))
+        return SloMeasurement(
+            compliance_percent=compliance,
+            good_rate=good_rate,
+            total_rate=total_rate,
+            data_state=MetricDataState.AVAILABLE,
+        )
+
     def instance_activity(self, query: InstanceActivityQuery) -> list[InstanceActivity]:
         window = _window_seconds(query.started_at, query.ended_at)
-        source_filter = ""
-        if query.ingest_source_id is not None:
-            source_filter = f'bk_ingest_source_id={_promql_string(str(query.ingest_source_id))}'
-        selector = "{" + source_filter + "}"
+        selector = "{}"
         dimensions = (
             "service_namespace,service_name,service_instance_id,"
-            "deployment_environment,service_version,bk_ingest_source_id"
+            "deployment_environment,service_version"
         )
         promql = (
             f"max(tlast_over_time(bklite_apm_calls_total{selector}[{window}s])) "
@@ -316,13 +362,8 @@ class VictoriaMetricsMetricStore:
         activities: dict[tuple[str, ...], InstanceActivity] = {}
         for series in result:
             metric = series.get("metric", {})
-            source_id = metric.get("bk_ingest_source_id", "")
             service_name = metric.get("service_name", "").strip()
             if not service_name:
-                continue
-            try:
-                parsed_source_id = UUID(source_id)
-            except (TypeError, ValueError):
                 continue
             try:
                 last_seen_at = datetime.fromtimestamp(float(series["value"][1]), tz=timezone.utc)
@@ -335,7 +376,6 @@ class VictoriaMetricsMetricStore:
                 instance_id=instance_id,
                 environment=metric.get("deployment_environment", ""),
                 version=metric.get("service_version", ""),
-                ingest_source_id=parsed_source_id,
                 last_seen_at=last_seen_at,
             )
             key = (
@@ -344,7 +384,6 @@ class VictoriaMetricsMetricStore:
                 activity.instance_id or "",
                 activity.environment,
                 activity.version,
-                str(activity.ingest_source_id),
             )
             activities[key] = activity
         return list(activities.values())

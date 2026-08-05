@@ -1,6 +1,6 @@
 """告警序列化器方法补充覆盖测试。
 
-对照 specs/capabilities/legacy-prd-告警中心-告警.md：告警展示处理人、通知状态、来源、事件数。
+对照 specs/capabilities/legacy-prd-告警中心-告警.md：告警展示处理人、通知状态和事件数。
 """
 
 from types import SimpleNamespace
@@ -57,9 +57,7 @@ def test_notification_details_return_total_latest_five_and_recipient_display_nam
             notify_people=["alice", "deleted-user"],
             notify_channel="wechat",
             notify_channel_name="企业微信",
-            notify_result=(
-                NotifyResultStatus.FAILED if index == 5 else NotifyResultStatus.SUCCESS
-            ),
+            notify_result=(NotifyResultStatus.FAILED if index == 5 else NotifyResultStatus.SUCCESS),
             failure_reason="receiver rejected" if index == 5 else None,
         )
         NotifyResult.objects.filter(pk=row.pk).update(notify_time=now + timedelta(minutes=index))
@@ -91,12 +89,7 @@ def test_notification_detail_maps_use_constant_query_count(django_assert_num_que
     from apps.alerts.models import NotifyResult
     from apps.system_mgmt.models.user import User
 
-    alerts = [
-        Alert.objects.create(
-            alert_id=f"A{index}", level="0", title="t", content="c", fingerprint=f"fp-{index}"
-        )
-        for index in range(3)
-    ]
+    alerts = [Alert.objects.create(alert_id=f"A{index}", level="0", title="t", content="c", fingerprint=f"fp-{index}") for index in range(3)]
     User.objects.create(username="alice", display_name="Alice", domain="domain.com")
     for alert in alerts:
         NotifyResult.objects.create(
@@ -199,19 +192,13 @@ def test_get_event_count_annotated():
     assert AlertModelSerializer.get_event_count(obj) == 7
 
 
-def test_get_source_names_annotated():
-    obj = SimpleNamespace(source_names_annotated="Zabbix, Prometheus")
-    assert AlertModelSerializer.get_source_names(obj) == "Zabbix, Prometheus"
-
-
 def test_get_incident_name_annotated():
     obj = SimpleNamespace(incident_title_annotated="事故A")
     assert AlertModelSerializer.get_incident_name(obj) == "事故A"
 
 
 def test_validate_team_superuser():
-    request = SimpleNamespace(user=SimpleNamespace(is_superuser=True, group_list=[{"id": 1}]),
-                             COOKIES={"current_team": "1"})
+    request = SimpleNamespace(user=SimpleNamespace(is_superuser=True, group_list=[{"id": 1}]), COOKIES={"current_team": "1"})
     ser = _ser(context={"request": request})
     assert ser.validate_team([1, 2]) == [1, 2]
 
@@ -229,21 +216,6 @@ def test_get_operator_user_db_fallback():
     obj = SimpleNamespace(operator=["u1"])
     ser = _ser(context={})
     assert "用户1" in ser.get_operator_user(obj)
-
-
-@pytest.mark.django_db
-def test_get_source_names_db_fallback():
-    from django.utils import timezone
-
-    from apps.alerts.models.alert_source import AlertSource
-    from apps.alerts.models.models import Event
-
-    src = AlertSource.objects.create(name="Zabbix", source_id="s1", source_type="zabbix", secret="x")
-    alert = Alert.objects.create(alert_id="A1", level="0", title="t", content="c", fingerprint="fp")
-    ev = Event.objects.create(source=src, raw_data={}, title="e", level="0", start_time=timezone.now(), event_id="E1")
-    alert.events.add(ev)
-    # 无注解 → 走 events 关联查询
-    assert AlertModelSerializer.get_source_names(alert) == "Zabbix"
 
 
 @pytest.mark.django_db

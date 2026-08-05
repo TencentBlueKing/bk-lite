@@ -24,6 +24,15 @@ import {
 } from '@/app/patch-manager/components/candidate-selection';
 import { useTranslation } from '@/utils/i18n';
 import { PATCH_MANAGER_POLL_INTERVAL_MS } from '@/app/patch-manager/constants/polling';
+import {
+  formatArchitecture,
+  formatArchitectures,
+  LINUX_ARCHITECTURE_FILTER_OPTIONS,
+  LINUX_ARCHITECTURE_OPTIONS,
+  normalizeArchitecture,
+  WINDOWS_ARCHITECTURE_FILTER_OPTIONS,
+  WINDOWS_ARCHITECTURE_OPTIONS,
+} from '@/app/patch-manager/constants/architecture';
 
 type TabKey = 'win' | 'linux';
 type SourceType = 'auto' | 'manual';
@@ -32,12 +41,6 @@ const OS_TYPE_MAP: Record<TabKey, OSType> = {
   win: 'windows',
   linux: 'linux',
 };
-
-const ARCH_OPTIONS = [
-  { id: 'x64', name: 'x64' },
-  { id: 'x86', name: 'x86' },
-  { id: 'arm64', name: 'arm64' },
-];
 
 function mapPkgStatus(pkgStatus?: string): string {
   switch (pkgStatus) {
@@ -93,7 +96,7 @@ function getPatchArch(patch: Patch): string {
   const archs = patch.os_type === 'windows'
     ? patch.windows_detail?.architectures
     : patch.linux_detail?.architectures;
-  return (archs || []).join('、') || '—';
+  return formatArchitectures(archs);
 }
 
 function normalizeRepoType(repoType?: string): string {
@@ -247,7 +250,7 @@ export default function LibraryPage() {
         ...base,
         name: editingPatch.windows_detail?.kb_number || '',
         version: (editingPatch.windows_detail?.product_list || []).join('、') || '',
-        arch: (editingPatch.windows_detail?.architectures || [])[0] || '',
+        arch: normalizeArchitecture((editingPatch.windows_detail?.architectures || [])[0]),
         package_file: getWindowsPackageUploadState(editingPatch).fileList,
       };
     }
@@ -256,7 +259,7 @@ export default function LibraryPage() {
       name: editingPatch.linux_detail?.pkg_name || '',
       minVer: editingPatch.linux_detail?.pkg_version || '',
       dist: editingPatch.linux_detail?.distro_name || '',
-      arch: (editingPatch.linux_detail?.architectures || [])[0] || '',
+      arch: normalizeArchitecture((editingPatch.linux_detail?.architectures || [])[0]),
     };
   }, [editingPatch, activeTab]);
 
@@ -264,7 +267,7 @@ export default function LibraryPage() {
     { name: 'name', label: t('patchManager.kbNumber'), lookup_expr: 'icontains' },
     { name: 'title', label: t('patchManager.libraryPage.description'), lookup_expr: 'icontains' },
     { name: 'version', label: t('patchManager.libraryPage.applicableVersion'), lookup_expr: 'icontains', options: [{ id: '2019', name: '2019' }, { id: '2022', name: '2022' }, { id: '2008', name: '2008' }] },
-    { name: 'arch', label: t('patchManager.arch'), lookup_expr: 'in', options: ARCH_OPTIONS },
+    { name: 'arch', label: t('patchManager.arch'), lookup_expr: 'in', options: WINDOWS_ARCHITECTURE_FILTER_OPTIONS },
     { name: 'severity', label: t('patchManager.severity'), lookup_expr: 'in', options: severityFilterOptions },
     { name: 'ready', label: t('patchManager.libraryPage.readyStatus'), lookup_expr: 'in', options: readyFilterOptions },
     { name: 'sourceType', label: t('patchManager.libraryPage.sourceType'), lookup_expr: 'in', options: [{ id: 'auto', name: t('patchManager.libraryPage.automatic') }, { id: 'manual', name: t('patchManager.manual') }] },
@@ -274,7 +277,7 @@ export default function LibraryPage() {
     { name: 'name', label: t('patchManager.packageName'), lookup_expr: 'icontains' },
     { name: 'title', label: t('patchManager.libraryPage.description'), lookup_expr: 'icontains' },
     { name: 'version', label: t('patchManager.distro'), lookup_expr: 'in', options: [{ id: 'Rocky 8', name: 'Rocky 8' }, { id: 'Rocky 9', name: 'Rocky 9' }, { id: 'CentOS 7', name: 'CentOS 7' }] },
-    { name: 'arch', label: t('patchManager.arch'), lookup_expr: 'in', options: ARCH_OPTIONS },
+    { name: 'arch', label: t('patchManager.arch'), lookup_expr: 'in', options: LINUX_ARCHITECTURE_FILTER_OPTIONS },
     { name: 'severity', label: t('patchManager.severity'), lookup_expr: 'in', options: severityFilterOptions },
     { name: 'ready', label: t('patchManager.libraryPage.readyStatus'), lookup_expr: 'in', options: readyFilterOptions },
     { name: 'sourceType', label: t('patchManager.libraryPage.sourceType'), lookup_expr: 'in', options: [{ id: 'auto', name: t('patchManager.libraryPage.automatic') }, { id: 'manual', name: t('patchManager.manual') }] },
@@ -585,11 +588,11 @@ export default function LibraryPage() {
     },
     { title: t('patchManager.libraryPage.description'), dataIndex: 'title', ellipsis: true },
     ...(activeTab === 'win'
-      ? [{ title: t('patchManager.libraryPage.applicableVersion'), dataIndex: 'version', width: 100 }, { title: t('patchManager.arch'), dataIndex: 'arch', width: 80 }]
+      ? [{ title: t('patchManager.libraryPage.applicableVersion'), dataIndex: 'version', width: 100 }, { title: t('patchManager.arch'), dataIndex: 'arch', width: 80, render: (value: string) => formatArchitecture(value) }]
       : [
         { title: t('patchManager.pkgVersion'), dataIndex: 'version', width: 150, ellipsis: true },
         { title: t('patchManager.distro'), dataIndex: 'dist', width: 100 },
-        { title: t('patchManager.arch'), dataIndex: 'arch', width: 80 },
+        { title: t('patchManager.arch'), dataIndex: 'arch', width: 80, render: (value: string) => formatArchitecture(value) },
       ]),
     { title: t('patchManager.operation'), dataIndex: 'op', width: 90, fixed: 'right', render: (_: unknown, r: CandidateItem) => (
       r.added
@@ -697,7 +700,7 @@ export default function LibraryPage() {
           </Space>
         }
       >
-        <Form layout="vertical" form={createForm} preserve={false}>
+        <Form layout="vertical" form={createForm} preserve={false} initialValues={{ arch: 'x86_64' }}>
           <Form.Item label={activeTab === 'win' ? t('patchManager.kbNumber') : t('patchManager.packageName')} name="name" rules={[{ required: true, message: activeTab === 'win' ? t('patchManager.libraryPage.kbRequired') : t('patchManager.libraryPage.packageNameRequired') }]}>
             <Input placeholder={activeTab === 'win' ? t('patchManager.libraryPage.kbPlaceholder') : t('patchManager.libraryPage.packagePlaceholder')} />
           </Form.Item>
@@ -730,8 +733,8 @@ export default function LibraryPage() {
               <Form.Item label={t('patchManager.libraryPage.applicableVersion')} name="version">
                 <Input placeholder={t('patchManager.libraryPage.versionPlaceholder')} />
               </Form.Item>
-              <Form.Item label={t('patchManager.arch')} name="arch">
-                <Select placeholder={t('patchManager.libraryPage.select')} options={[{ label: 'x64', value: 'x64' }, { label: 'x86', value: 'x86' }]} />
+              <Form.Item label={t('patchManager.arch')} name="arch" rules={[{ required: true, message: t('patchManager.libraryPage.archRequired') }]}>
+                <Select placeholder={t('patchManager.libraryPage.select')} options={WINDOWS_ARCHITECTURE_OPTIONS} />
               </Form.Item>
             </>
           ) : (
@@ -743,7 +746,7 @@ export default function LibraryPage() {
                 <Input placeholder={t('patchManager.libraryPage.minimumVersionPlaceholder')} />
               </Form.Item>
               <Form.Item label={t('patchManager.arch')} name="arch" rules={[{ required: true, message: t('patchManager.libraryPage.archRequired') }]}>
-                <Select placeholder={t('patchManager.libraryPage.select')} options={[{ label: 'x64', value: 'x64' }, { label: 'x86', value: 'x86' }]} />
+                <Select placeholder={t('patchManager.libraryPage.select')} options={LINUX_ARCHITECTURE_OPTIONS} />
               </Form.Item>
             </>
           )}
@@ -993,8 +996,8 @@ export default function LibraryPage() {
               <Form.Item label={t('patchManager.libraryPage.applicableVersion')} name="version">
                 <Input />
               </Form.Item>
-              <Form.Item label={t('patchManager.arch')} name="arch">
-                <Input />
+              <Form.Item label={t('patchManager.arch')} name="arch" rules={[{ required: true, message: t('patchManager.libraryPage.archRequired') }]}>
+                <Select options={WINDOWS_ARCHITECTURE_OPTIONS} />
               </Form.Item>
             </>
           ) : (
@@ -1008,8 +1011,8 @@ export default function LibraryPage() {
               <Form.Item label={t('patchManager.distro')} name="dist">
                 <Input />
               </Form.Item>
-              <Form.Item label={t('patchManager.arch')} name="arch">
-                <Input />
+              <Form.Item label={t('patchManager.arch')} name="arch" rules={[{ required: true, message: t('patchManager.libraryPage.archRequired') }]}>
+                <Select options={LINUX_ARCHITECTURE_OPTIONS} />
               </Form.Item>
               <Form.Item label={t('patchManager.severity')} name="severity" rules={[{ required: true, message: t('patchManager.libraryPage.severityRequired') }]}>
                 <Select options={severityFilterOptions.map(({ id, name }) => ({ label: name, value: id }))} />

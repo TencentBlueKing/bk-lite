@@ -1,9 +1,39 @@
 export type SceneWidgetType = 'networkStatusTopology';
 
+export type NetworkStatusTopologyLayoutMode =
+  | 'hierarchical'
+  | 'force'
+  | 'circular';
+
+export interface NetworkStatusTopologyPoint { x: number; y: number }
+
+/** 单个布局模式下的手工几何 */
+export interface NetworkStatusTopologyModeLayout {
+  /** 节点 id → 布局算法坐标，覆盖算法布局结果 */
+  nodePositions?: Record<string, NetworkStatusTopologyPoint>;
+  /** 连线 id → 手工折点；优先于自动并行边偏移 */
+  linkVertices?: Record<string, NetworkStatusTopologyPoint[]>;
+}
+
 export interface NetworkStatusTopologyConfig {
   modelId: string;
   instId: string;
   depth: number;
+  /** 可选；缺省视为 hierarchical */
+  layoutMode?: NetworkStatusTopologyLayoutMode;
+  /** 按布局模式分桶的手工几何；写盘只使用此字段 */
+  layoutByMode?: Partial<
+    Record<NetworkStatusTopologyLayoutMode, NetworkStatusTopologyModeLayout>
+  >;
+  /**
+   * @deprecated 仅本地旧草稿读兼容；新写入不再输出。
+   * 若存在且 layoutByMode 无对应桶，归入当时 layoutMode（缺省 hierarchical）。
+   */
+  nodePositions?: Record<string, NetworkStatusTopologyPoint>;
+  /**
+   * @deprecated 仅本地旧草稿读兼容；新写入不再输出。
+   */
+  linkVertices?: Record<string, NetworkStatusTopologyPoint[]>;
 }
 
 export type NetworkNodeStatus = 'normal' | 'warning' | 'error' | 'critical';

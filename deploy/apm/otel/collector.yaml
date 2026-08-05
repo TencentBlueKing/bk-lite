@@ -25,7 +25,7 @@ processors:
     limit_mib: ${env:APM_COLLECTOR_MEMORY_LIMIT_MIB}
     spike_limit_mib: ${env:APM_COLLECTOR_MEMORY_SPIKE_MIB}
 
-  # 客户端提交的 bk.* span/resource 属性都不可信，必须在注入来源前删除。
+  # 客户端提交的 bk.* span/resource 属性属于平台保留字段，统一删除。
   attributes/drop_reserved:
     actions:
       - pattern: ^bk\..*$
@@ -43,12 +43,6 @@ processors:
       - context: spanevent
         statements:
           - delete_matching_keys(spanevent.attributes, "^bk\\..*$")
-  resource/trusted_ingest_source:
-    attributes:
-      - key: bk.ingest_source.id
-        from_context: metadata.x-bk-ingest-source-id
-        action: upsert
-
   # 对 Span 属性总数和字符串长度设置硬上限；规范化端点后立即删除可能含敏感参数的原始名称。
   transform/limits_and_route:
     error_mode: ignore
@@ -120,15 +114,12 @@ connectors:
         default: ""
       - name: service.version
         default: ""
-      - name: bk.ingest_source.id
-        default: ""
     resource_metrics_key_attributes:
       - service.namespace
       - service.name
       - service.instance.id
       - deployment.environment
       - service.version
-      - bk.ingest_source.id
     aggregation_cardinality_limit: ${env:APM_SPANMETRICS_CARDINALITY_LIMIT}
     metrics_flush_interval: 5s
 
@@ -179,7 +170,6 @@ service:
         - attributes/drop_reserved
         - resource/drop_reserved
         - transform/drop_nested_reserved
-        - resource/trusted_ingest_source
         - transform/limits_and_route
       exporters: [spanmetrics]
     traces/sampled:
@@ -189,7 +179,6 @@ service:
         - attributes/drop_reserved
         - resource/drop_reserved
         - transform/drop_nested_reserved
-        - resource/trusted_ingest_source
         - transform/limits_and_route
         - tail_sampling
         - batch/traces

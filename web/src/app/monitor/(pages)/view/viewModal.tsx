@@ -13,6 +13,7 @@ import { OBJECT_DEFAULT_ICON } from '@/app/monitor/constants';
 import { INIT_VIEW_MODAL_FORM } from '@/app/monitor/constants/view';
 import { getProfessionalDashboardUrl } from '@/app/monitor/dashboards/registry';
 import { withDashboardReturnContext } from '@/app/monitor/dashboards/shared/utils';
+import { encodeInstanceIdValuesParam } from '@/app/monitor/dashboards/shared/utils/instance';
 
 const ViewModal = forwardRef<ModalRef, ViewModalProps>(
   ({ monitorObject, monitorName, plugins, metrics, objects = [] }, ref) => {
@@ -66,14 +67,16 @@ const ViewModal = forwardRef<ModalRef, ViewModalProps>(
       const monitorItem = objects.find(
         (item: ObjectItem) => item.id === monitorObject
       );
-      const row: any = {
-        monitorObjId: monitorObject || '',
+      const row: Record<string, string> = {
+        monitorObjId: String(monitorObject || ''),
         name: monitorName,
         monitorObjDisplayName: monitorItem?.display_name || '',
         icon: monitorItem?.icon || OBJECT_DEFAULT_ICON,
-        instance_id: viewConfig.instance_id,
-        instance_name: viewConfig.instance_name,
-        instance_id_values: viewConfig.instance_id_values,
+        instance_id: String(viewConfig.instance_id || ''),
+        instance_name: String(viewConfig.instance_name || ''),
+        instance_id_values: encodeInstanceIdValuesParam(
+          viewConfig.instance_id_values
+        ),
         instance_id_keys: Array.isArray(viewConfig.instance_id_keys) && viewConfig.instance_id_keys.length
           ? viewConfig.instance_id_keys.join(',')
           : Array.isArray(monitorItem?.instance_id_keys)

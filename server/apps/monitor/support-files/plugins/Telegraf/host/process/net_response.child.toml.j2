@@ -1,0 +1,22 @@
+{% if ports %}
+{% for port_item in ports.split(',') %}
+{% set port = port_item|trim %}
+{% if port %}
+[[inputs.net_response]]
+    startup_error_behavior = "retry"
+    protocol = "tcp"
+    address = "127.0.0.1:{{ port }}"
+    timeout = "5s"
+    interval = "{{ interval }}s"
+    [inputs.net_response.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "process"
+        collect_type = "host"
+        config_type = "net_response"
+        process_name = "{{ process_name }}"
+        port = "{{ port }}"
+{% endif %}
+{% endfor %}
+{% else %}
+# No ports configured for process {{ process_name }}; skip TCP liveness probes.
+{% endif %}

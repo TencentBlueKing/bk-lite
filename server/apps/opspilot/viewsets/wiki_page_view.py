@@ -1,25 +1,170 @@
 import json
+from collections import defaultdict
 from datetime import timedelta
 from uuid import uuid4
 
 from django.db import transaction
 from django.http import JsonResponse
+from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 from rest_framework.decorators import action
 
+from apps.core.decorators.api_permission import HasPermission
 from apps.core.utils.viewset_utils import AuthViewSet
 from apps.opspilot import tasks as _opspilot_tasks
-from apps.opspilot.models import BuildRecord, KnowledgePage, Material, PageEvidence
+from apps.opspilot.models import BuildRecord, CheckItem, KnowledgePage, Material, PageEvidence, WikiDirectory, WikiKnowledgeBase
 from apps.opspilot.serializers.wiki_serializers import BuildRecordSerializer, KnowledgePageSerializer, PageVersionSerializer
+from apps.opspilot.services.wiki.active_generation_query_service import ActiveGenerationReadError, page_queryset
+from apps.opspilot.services.wiki.build_generation_service import BuildGenerationError
 from apps.opspilot.services.wiki.cascade_service import MAINTENANCE_STAGE_KEYS, cascade
-from apps.opspilot.services.wiki.decision_service import revoke_rules_for_pages
+from apps.opspilot.services.wiki.directory_service import DirectoryServiceError, archive_pages, move_pages, restore_archived_pages, restore_pages_auto
 from apps.opspilot.services.wiki.embedding_service import index_version, reindex_page_chunks
 from apps.opspilot.services.wiki.index_rebuild_service import rebuild_page_indexes
 from apps.opspilot.services.wiki.index_status_service import failed_index_stages_for_pages
-from apps.opspilot.services.wiki.page_service import create_manual_page, diff_versions, edit_page, restore_version, save_answer_page
+from apps.opspilot.services.wiki.page_service import PageServiceError, create_manual_page, diff_versions, edit_page, restore_version, save_answer_page
 from apps.opspilot.viewsets.wiki_team_scope import WikiTeamScopeMixin
 from apps.system_mgmt.utils.operation_log_utils import log_operation
+
+
+def _page_list_metadata(page_items, knowledge_base):
+    page_ids = {page.pk for page in page_items}
+    source_names = defaultdict(list)
+    if page_ids:
+        for page_id, material_name in (
+            PageEvidence.objects.filter(page_id__in=page_ids).values_list("page_id", "material__name").order_by("page_id", "material__name")
+        ):
+            name = str(material_name or "").strip()
+            if name and name not in source_names[page_id]:
+                source_names[page_id].append(name)
+
+    source_summary_lookup = {}
+    for page_id, names in source_names.items():
+        preview = "、".join(names[:2])
+        suffix = "…" if len(names) > 2 else ""
+        source_summary_lookup[page_id] = f"{len(names)} 个资料：{preview}{suffix}"
+
+    conflict_types = {
+        "conflict": "知识冲突",
+        "material_update": "资料更新冲突",
+        "duplicate": "重复知识",
+        "cannot_merge": "无法自动合并",
+    }
+    conflict_lookup = defaultdict(lambda: {"count": 0, "labels": []})
+    if page_ids:
+        checks = CheckItem.objects.filter(
+            knowledge_base=knowledge_base,
+            status="open",
+            check_type__in=tuple(conflict_types),
+        ).values("check_type", "related")
+        for check in checks:
+            related = check.get("related") or {}
+            related_pages = related.get("pages") or []
+            label = conflict_types.get(check["check_type"], check["check_type"])
+            for raw_page_id in related_pages:
+                try:
+                    page_id = int(raw_page_id)
+                except (TypeError, ValueError):
+                    continue
+                if page_id not in page_ids:
+                    continue
+                item = conflict_lookup[page_id]
+                item["count"] += 1
+                if label not in item["labels"]:
+                    item["labels"].append(label)
+    normalized_conflicts = {
+        page_id: {
+            "count": item["count"],
+            "summary": "、".join(item["labels"]),
+        }
+        for page_id, item in conflict_lookup.items()
+    }
+    return {
+        "source_summary_lookup": source_summary_lookup,
+        "conflict_lookup": normalized_conflicts,
+    }
+
+
+def _active_generation_conflict(error):
+    return JsonResponse(
+        {
+            "result": False,
+            "message": str(error),
+            "code": error.code,
+            "details": error.details,
+        },
+        status=409,
+    )
+
+
+def _directory_service_error(error):
+    return JsonResponse(
+        {
+            "result": False,
+            "message": str(error),
+            "code": error.code,
+            "retryable": error.retryable,
+            "details": error.details,
+        },
+        status=error.status_code,
+    )
+
+
+def _build_generation_error(error):
+    return JsonResponse(
+        {
+            "result": False,
+            "message": str(error),
+            "code": error.code,
+            "retryable": error.retryable,
+            "details": error.details,
+        },
+        status=409 if error.retryable else 422,
+    )
+
+
+@transaction.atomic
+def _archive_pages_by_write_route(
+    knowledge_base,
+    *,
+    page_ids,
+    base_generation_id=None,
+    structure_version=None,
+    operator="",
+):
+    """Archive pages by publishing a governance generation."""
+
+    knowledge_base_id = getattr(knowledge_base, "pk", knowledge_base)
+    locked_kb = WikiKnowledgeBase.objects.select_for_update().get(pk=knowledge_base_id)
+    return archive_pages(
+        locked_kb,
+        page_ids=page_ids,
+        base_generation_id=base_generation_id,
+        structure_version=structure_version,
+        operator=operator,
+    )
+
+
+@transaction.atomic
+def _restore_archived_pages_by_write_route(
+    knowledge_base,
+    *,
+    page_ids,
+    base_generation_id=None,
+    structure_version=None,
+    operator="",
+):
+    """Restore archived pages by publishing a governance generation."""
+
+    knowledge_base_id = getattr(knowledge_base, "pk", knowledge_base)
+    locked_kb = WikiKnowledgeBase.objects.select_for_update().get(pk=knowledge_base_id)
+    return restore_archived_pages(
+        locked_kb,
+        page_ids=page_ids,
+        base_generation_id=base_generation_id,
+        structure_version=structure_version,
+        operator=operator,
+    )
 
 
 def _decode_evidence_locator(locator):
@@ -580,49 +725,134 @@ class WikiPageViewSet(WikiTeamScopeMixin, AuthViewSet):
     serializer_class = KnowledgePageSerializer
     ordering = ("-id",)
 
+    def _directory_scope(self, request):
+        raw_directory_id = request.GET.get("directory_id")
+        if raw_directory_id in (None, ""):
+            return None, None
+        try:
+            directory_id = int(raw_directory_id)
+        except (TypeError, ValueError):
+            return None, JsonResponse(
+                {"result": False, "message": "directory_id 必须为整数"},
+                status=400,
+            )
+
+        directory = WikiDirectory.objects.filter(pk=directory_id).values("id", "knowledge_base_id").first()
+        if directory is None:
+            return None, JsonResponse(
+                {"result": False, "message": "目录不存在"},
+                status=400,
+            )
+        self.accessible_knowledge_base_or_none(directory["knowledge_base_id"])
+
+        raw_knowledge_base_id = request.GET.get("knowledge_base")
+        if raw_knowledge_base_id not in (None, ""):
+            try:
+                knowledge_base_id = int(raw_knowledge_base_id)
+            except (TypeError, ValueError):
+                return None, JsonResponse(
+                    {"result": False, "message": "knowledge_base 必须为整数"},
+                    status=400,
+                )
+            if knowledge_base_id != directory["knowledge_base_id"]:
+                return None, JsonResponse(
+                    {"result": False, "message": "目录不属于指定知识库"},
+                    status=400,
+                )
+
+        include_descendants = str(request.GET.get("include_descendants", "")).lower() in {
+            "1",
+            "true",
+            "yes",
+        }
+        if not include_descendants:
+            return [directory_id], None
+
+        children = defaultdict(list)
+        for child_id, parent_id in WikiDirectory.objects.filter(
+            knowledge_base_id=directory["knowledge_base_id"],
+            status="active",
+        ).values_list("id", "parent_id"):
+            children[parent_id].append(child_id)
+
+        directory_ids = {directory_id}
+        pending = [directory_id]
+        while pending:
+            for child_id in children[pending.pop()]:
+                if child_id in directory_ids:
+                    continue
+                directory_ids.add(child_id)
+                pending.append(child_id)
+        return directory_ids, None
+
+    @HasPermission("wiki_list-View")
     def list(self, request, *args, **kwargs):
-        queryset = self.get_queryset()
-        kb_id = request.GET.get("knowledge_base")
-        if kb_id:
-            queryset = queryset.filter(knowledge_base_id=kb_id)
-        page_type = request.GET.get("page_type")
-        if page_type:
-            queryset = queryset.filter(page_type=page_type)
+        knowledge_base = self.accessible_knowledge_base_or_none(request.GET.get("knowledge_base"))
+        if knowledge_base is None:
+            return JsonResponse(
+                {"result": False, "message": "knowledge_base 必填或知识库不存在"},
+                status=400,
+            )
+        directory_ids, directory_error = self._directory_scope(request)
+        if directory_error:
+            return directory_error
+        page_type = (request.GET.get("page_type") or "").strip()
         title_filter = (request.GET.get("title") or request.GET.get("name") or "").strip()
-        if title_filter:
-            queryset = queryset.filter(title__icontains=title_filter)
-        status_filter = request.GET.get("status")
-        if status_filter:
-            queryset = queryset.filter(status=status_filter)
-        else:
-            queryset = queryset.filter(status="active")
+        status_filter = (request.GET.get("status") or "").strip()
         try:
             page = max(int(request.GET.get("page", 1)), 1)
             page_size = max(int(request.GET.get("page_size", 20)), 1)
         except (TypeError, ValueError):
             page, page_size = 1, 20
-        total = queryset.count()
-        page_items = list(queryset.select_related("knowledge_base", "current_version")[(page - 1) * page_size : (page - 1) * page_size + page_size])
-        serializer = self.get_serializer(
-            page_items,
-            many=True,
-            context={
-                **self.get_serializer_context(),
-                "index_failure_lookup": failed_index_stages_for_pages(page_items),
-            },
-        )
-        return JsonResponse({"result": True, "data": {"count": total, "items": serializer.data}})
+        try:
+            queryset = page_queryset(
+                knowledge_base,
+                statuses=(status_filter,) if status_filter else ("active",),
+                directory_ids=directory_ids,
+                page_type=page_type,
+                title=title_filter,
+            ).order_by("-id")
+            total = queryset.count()
+            page_items = list(queryset[(page - 1) * page_size : (page - 1) * page_size + page_size])
+            page_metadata = _page_list_metadata(page_items, knowledge_base)
+            serializer = self.get_serializer(
+                page_items,
+                many=True,
+                context={
+                    **self.get_serializer_context(),
+                    "index_failure_lookup": failed_index_stages_for_pages(page_items),
+                    **page_metadata,
+                },
+            )
+            data = serializer.data
+        except ActiveGenerationReadError as error:
+            return _active_generation_conflict(error)
+        return JsonResponse({"result": True, "data": {"count": total, "items": data}})
 
+    @HasPermission("wiki_list-View")
     def retrieve(self, request, *args, **kwargs):
-        page = self.get_object()
-        serializer = self.get_serializer(
-            page,
-            context={
-                **self.get_serializer_context(),
-                "index_failure_lookup": failed_index_stages_for_pages([page]),
-            },
-        )
-        return JsonResponse({"result": True, "data": serializer.data})
+        try:
+            identity_page = self.get_object()
+            page = get_object_or_404(
+                page_queryset(
+                    identity_page.knowledge_base,
+                    statuses=("active",),
+                ),
+                pk=identity_page.pk,
+            )
+            page_metadata = _page_list_metadata([page], page.knowledge_base)
+            serializer = self.get_serializer(
+                page,
+                context={
+                    **self.get_serializer_context(),
+                    "index_failure_lookup": failed_index_stages_for_pages([page]),
+                    **page_metadata,
+                },
+            )
+            data = serializer.data
+        except ActiveGenerationReadError as error:
+            return _active_generation_conflict(error)
+        return JsonResponse({"result": True, "data": data})
 
     def _parse_ids(self, request):
         ids = request.data.get("ids")
@@ -652,23 +882,84 @@ class WikiPageViewSet(WikiTeamScopeMixin, AuthViewSet):
             return None, JsonResponse({"result": False, "message": "知识库不存在"}, status=400)
         return kb, None
 
+    @HasPermission("wiki_list-Edit")
+    @action(methods=["POST"], detail=False)
+    def move(self, request):
+        """批量移动当前 active generation 中的页面，并切换为人工锁定。"""
+        knowledge_base, error = self._parse_knowledge_base(request)
+        if error:
+            return error
+        payload = request.data
+        try:
+            result = move_pages(
+                knowledge_base,
+                page_ids=payload.get("page_ids", payload.get("ids")),
+                target_directory_id=payload.get("target_directory_id"),
+                base_generation_id=payload.get("base_generation_id"),
+                structure_version=payload.get("structure_version"),
+                operator=getattr(request.user, "username", "") or "",
+            )
+        except DirectoryServiceError as service_error:
+            return _directory_service_error(service_error)
+
+        log_operation(
+            request,
+            "update",
+            "opspilot",
+            f"移动知识页面目录({result['changed']}项)",
+        )
+        return JsonResponse({"result": True, "data": result})
+
+    @HasPermission("wiki_list-Edit")
+    @action(methods=["POST"], detail=False)
+    def restore_auto(self, request):
+        """批量解除人工锁定，并按当前结构确定性恢复自动归类。"""
+        knowledge_base, error = self._parse_knowledge_base(request)
+        if error:
+            return error
+        payload = request.data
+        try:
+            result = restore_pages_auto(
+                knowledge_base,
+                page_ids=payload.get("page_ids", payload.get("ids")),
+                base_generation_id=payload.get("base_generation_id"),
+                structure_version=payload.get("structure_version"),
+                operator=getattr(request.user, "username", "") or "",
+            )
+        except DirectoryServiceError as service_error:
+            return _directory_service_error(service_error)
+
+        log_operation(
+            request,
+            "update",
+            "opspilot",
+            f"恢复知识页面自动归类({result['changed']}项)",
+        )
+        return JsonResponse({"result": True, "data": result})
+
+    @HasPermission("wiki_list-Edit")
     def create(self, request, *args, **kwargs):
         data = request.data
         kb, error = self._parse_knowledge_base(request)
         if error:
             return error
-        page = create_manual_page(
-            knowledge_base=kb,
-            page_type=data.get("page_type", "concept"),
-            title=data["title"],
-            body=data.get("body", ""),
-            tags=data.get("tags") or [],
-            created_by=getattr(request.user, "username", ""),
-        )
+        try:
+            page = create_manual_page(
+                knowledge_base=kb,
+                page_type=data.get("page_type", "concept"),
+                title=data["title"],
+                body=data.get("body", ""),
+                tags=data.get("tags") or [],
+                created_by=getattr(request.user, "username", ""),
+                directory_id=data.get("directory_id"),
+            )
+        except PageServiceError as service_error:
+            return _directory_service_error(service_error)
         cascade(kb, [page.id], "page_create")
         log_operation(request, "create", "opspilot", f"新增知识页面: {page.title}")
         return JsonResponse({"result": True, "data": self.get_serializer(page).data}, status=201)
 
+    @HasPermission("wiki_list-Edit")
     @action(methods=["POST"], detail=False)
     def save_answer(self, request):
         """将 QA/Bot 对话回答保存为知识页面,并保留来源对话元数据。"""
@@ -686,138 +977,109 @@ class WikiPageViewSet(WikiTeamScopeMixin, AuthViewSet):
             if not str(data.get(field) or "").strip():
                 return JsonResponse({"result": False, "message": message}, status=400)
 
-        page = save_answer_page(
-            knowledge_base=kb,
-            page_type=data["page_type"],
-            title=data["title"],
-            body=data.get("body", ""),
-            tags=data.get("tags") or [],
-            source_conversation_id=data["source_conversation_id"],
-            source_message_id=data.get("source_message_id", ""),
-            source_channel=data.get("source_channel", "qa"),
-            created_by=getattr(request.user, "username", ""),
-        )
+        try:
+            page = save_answer_page(
+                knowledge_base=kb,
+                page_type=data["page_type"],
+                title=data["title"],
+                body=data.get("body", ""),
+                tags=data.get("tags") or [],
+                source_conversation_id=data["source_conversation_id"],
+                source_message_id=data.get("source_message_id", ""),
+                source_channel=data.get("source_channel", "qa"),
+                created_by=getattr(request.user, "username", ""),
+            )
+        except PageServiceError as service_error:
+            return _directory_service_error(service_error)
         cascade(kb, [page.id], "qa_answer_save")
         log_operation(request, "create", "opspilot", f"保存问答为知识页面: {page.title}")
         return JsonResponse({"result": True, "data": self.get_serializer(page).data}, status=201)
 
+    @HasPermission("wiki_list-Edit")
     def update(self, request, *args, **kwargs):
         page = self.get_object()
         if page.status == "archived":
             return JsonResponse({"result": False, "message": "已归档知识页面不可编辑,请先恢复"}, status=400)
         old_title = page.title
-        edit_page(
-            page,
-            body=request.data.get("body"),
-            title=request.data.get("title"),
-            tags=request.data.get("tags"),
-            page_type=request.data.get("page_type"),
-            updated_by=getattr(request.user, "username", ""),
-        )
+        try:
+            edit_page(
+                page,
+                body=request.data.get("body"),
+                title=request.data.get("title"),
+                tags=request.data.get("tags"),
+                page_type=request.data.get("page_type"),
+                updated_by=getattr(request.user, "username", ""),
+            )
+        except PageServiceError as service_error:
+            return _directory_service_error(service_error)
         page.refresh_from_db()
         deleted_titles = [old_title] if old_title != page.title else None
         cascade(page.knowledge_base, [page.id], "page_update", deleted_titles=deleted_titles)
         log_operation(request, "update", "opspilot", f"编辑知识页面: {page.title}")
         return JsonResponse({"result": True, "data": self.get_serializer(page).data})
 
+    @HasPermission("wiki_list-Edit")
     def partial_update(self, request, *args, **kwargs):
         return self.update(request, *args, **kwargs)
 
+    @HasPermission("wiki_list-Edit")
     def destroy(self, request, *args, **kwargs):
-        requested_page = self.get_object()
-        kb = requested_page.knowledge_base
-        operator = getattr(request.user, "username", "")
-        with transaction.atomic():
-            kb = kb.__class__.objects.select_for_update().get(pk=kb.pk)
-            page = self.scope_team_queryset(KnowledgePage.objects.select_for_update()).get(
-                pk=requested_page.pk,
-                knowledge_base=kb,
+        page = self.get_object()
+        try:
+            result = _archive_pages_by_write_route(
+                page.knowledge_base,
+                page_ids=[page.pk],
+                base_generation_id=request.query_params.get("base_generation_id"),
+                structure_version=request.query_params.get("structure_version"),
+                operator=(getattr(request.user, "username", "") or ""),
             )
-            page_id = page.id
-            title = page.title
-            revoke_rules_for_pages(
-                [page],
-                reason="page physically deleted",
-                operator=operator,
-            )
-            maintenance_record = _create_page_lifecycle_record(
-                kb,
-                [page_id],
-                "page_delete",
-                operator=operator,
-                deleted_titles=[title],
-                prune_deleted_pages=True,
-            )
-            page.delete()
-        _run_page_lifecycle_maintenance(
-            maintenance_record,
-            [page_id],
-            "page_delete",
-            deleted_titles=[title],
-            prune_deleted_pages=True,
+        except DirectoryServiceError as service_error:
+            return _directory_service_error(service_error)
+        log_operation(
+            request,
+            "delete",
+            "opspilot",
+            f"归档知识页面: {page.title}",
         )
-        log_operation(request, "delete", "opspilot", f"删除知识页面: {title}")
-        return JsonResponse({"result": True})
+        return JsonResponse({"result": True, "data": result})
 
+    @HasPermission("wiki_list-Edit")
     @action(methods=["POST"], detail=False)
     def batch_delete(self, request):
-        """批量删除当前知识库内选中的知识页面,并复用页面删除的增量清理链路。"""
+        """通过轻量 governance generation 批量逻辑归档页面。"""
         ids, error = self._parse_ids(request)
         if error:
             return error
-        self.ensure_team_accessible_ids(KnowledgePage.objects.all(), ids)
-        kb, error = self._parse_knowledge_base(request)
+        self.ensure_team_accessible_ids(
+            KnowledgePage.objects.all(),
+            ids,
+        )
+        knowledge_base, error = self._parse_knowledge_base(request)
         if error:
             return error
-
-        operator = getattr(request.user, "username", "")
-        maintenance_record = None
-        with transaction.atomic():
-            kb = kb.__class__.objects.select_for_update().get(pk=kb.pk)
-            pages = list(KnowledgePage.objects.select_for_update().filter(knowledge_base=kb, id__in=ids).only("id", "title"))
-            pages_by_id = {page.id: page for page in pages}
-            deleted_ids = [page_id for page_id in ids if page_id in pages_by_id]
-            skipped_ids = [page_id for page_id in ids if page_id not in pages_by_id]
-            deleted_titles = [pages_by_id[page_id].title for page_id in deleted_ids]
-            if deleted_ids:
-                revoke_rules_for_pages(
-                    [pages_by_id[page_id] for page_id in deleted_ids],
-                    reason="page physically deleted",
-                    operator=operator,
-                )
-                maintenance_record = _create_page_lifecycle_record(
-                    kb,
-                    deleted_ids,
-                    "page_delete",
-                    operator=operator,
-                    deleted_titles=deleted_titles,
-                    prune_deleted_pages=True,
-                )
-                KnowledgePage.objects.filter(
-                    knowledge_base=kb,
-                    id__in=deleted_ids,
-                ).delete()
-        if maintenance_record is not None:
-            _run_page_lifecycle_maintenance(
-                maintenance_record,
-                deleted_ids,
-                "page_delete",
-                deleted_titles=deleted_titles,
-                prune_deleted_pages=True,
+        try:
+            result = _archive_pages_by_write_route(
+                knowledge_base,
+                page_ids=ids,
+                base_generation_id=request.data.get("base_generation_id"),
+                structure_version=request.data.get("structure_version"),
+                operator=(getattr(request.user, "username", "") or ""),
             )
-
-        log_operation(request, "delete", "opspilot", f"批量删除知识页面({len(deleted_ids)}项)")
-        return JsonResponse(
-            {
-                "result": True,
-                "data": {
-                    "deleted": len(deleted_ids),
-                    "skipped": len(skipped_ids),
-                    "skipped_ids": skipped_ids,
-                },
-            }
+        except DirectoryServiceError as service_error:
+            return _directory_service_error(service_error)
+        log_operation(
+            request,
+            "delete",
+            "opspilot",
+            f"批量归档知识页面({result['changed']}项)",
         )
+        response_data = {
+            **result,
+            "deleted": result["changed"],
+        }
+        return JsonResponse({"result": True, "data": response_data})
 
+    @HasPermission("wiki_list-Edit")
     @action(methods=["POST"], detail=True)
     def reindex(self, request, pk=None):
         """重建单个知识页面的页面级和 chunk 级索引,并落构建记录供诊断/重试追踪。"""
@@ -844,6 +1106,7 @@ class WikiPageViewSet(WikiTeamScopeMixin, AuthViewSet):
         log_operation(request, "execute", "opspilot", f"重建知识页面索引: {page.title}")
         return JsonResponse({"result": True, "data": BuildRecordSerializer(build).data})
 
+    @HasPermission("wiki_list-View")
     @action(methods=["GET"], detail=True)
     def sources(self, request, pk=None):
         """查看知识页面的资料来源和片段定位。"""
@@ -861,6 +1124,7 @@ class WikiPageViewSet(WikiTeamScopeMixin, AuthViewSet):
             }
         )
 
+    @HasPermission("wiki_list-View")
     @action(methods=["GET"], detail=True)
     def versions(self, request, pk=None):
         """列出该页面的全部版本(用于 diff/恢复)。"""
@@ -868,6 +1132,7 @@ class WikiPageViewSet(WikiTeamScopeMixin, AuthViewSet):
         qs = page.page_versions.order_by("-no")
         return JsonResponse({"result": True, "data": PageVersionSerializer(qs, many=True).data})
 
+    @HasPermission("wiki_list-View")
     @action(methods=["GET"], detail=True)
     def diff(self, request, pk=None):
         """对比两个版本正文,返回统一 diff 行(?from=<版本id>&to=<版本id>)。"""
@@ -883,6 +1148,7 @@ class WikiPageViewSet(WikiTeamScopeMixin, AuthViewSet):
             return JsonResponse({"result": False, "message": "版本不存在"}, status=404)
         return JsonResponse({"result": True, "data": {"diff": lines}})
 
+    @HasPermission("wiki_list-Edit")
     @action(methods=["POST"], detail=True)
     def restore(self, request, pk=None):
         """恢复到指定历史版本(创建新版本,不删除历史)。"""
@@ -892,52 +1158,46 @@ class WikiPageViewSet(WikiTeamScopeMixin, AuthViewSet):
         version_id = request.data.get("version_id")
         if not version_id:
             return JsonResponse({"result": False, "message": "version_id 必填"}, status=400)
-        restore_version(page, version_id, operator=getattr(request.user, "username", ""))
+        try:
+            restore_version(page, version_id, operator=getattr(request.user, "username", ""))
+        except PageServiceError as service_error:
+            return _directory_service_error(service_error)
         page.refresh_from_db()
         cascade(page.knowledge_base, [page.id], "restore")
         log_operation(request, "execute", "opspilot", f"恢复知识页面版本: {page.title}")
         return JsonResponse({"result": True, "data": self.get_serializer(page).data})
 
+    @HasPermission("wiki_list-Edit")
     @action(methods=["POST"], detail=True)
     def restore_from_archive(self, request, pk=None):
-        """将已归档知识页面恢复为启用中,重新进入图谱/索引增量维护链路。"""
-        requested_page = self.get_object()
-        kb = requested_page.knowledge_base
-        operator = getattr(request.user, "username", "")
-        with transaction.atomic():
-            kb = kb.__class__.objects.select_for_update().get(pk=kb.pk)
-            page = self.scope_team_queryset(KnowledgePage.objects.select_for_update()).get(
-                pk=requested_page.pk,
-                knowledge_base=kb,
+        """通过 generation 发布恢复归档页面。"""
+        page = self.get_object()
+        try:
+            result = _restore_archived_pages_by_write_route(
+                page.knowledge_base,
+                page_ids=[page.pk],
+                base_generation_id=request.data.get("base_generation_id"),
+                structure_version=request.data.get("structure_version"),
+                operator=(getattr(request.user, "username", "") or ""),
             )
-            if page.status != "archived":
-                return JsonResponse(
-                    {"result": False, "message": "只有已归档知识页面可以恢复"},
-                    status=400,
-                )
-            revoke_rules_for_pages(
-                [page],
-                decision_type="page_identity",
-                actions={"merge"},
-                reason="merged source restored",
-                operator=operator,
-            )
-            page.status = "active"
-            page.update_method = "restore_archive"
-            page.save(update_fields=["status", "update_method", "updated_at"])
-            maintenance_record = _create_page_lifecycle_record(
-                kb,
-                [page.id],
-                "page_restore_archive",
-                operator=operator,
-            )
-        _run_page_lifecycle_maintenance(
-            maintenance_record,
-            [page.id],
-            "page_restore_archive",
+        except DirectoryServiceError as service_error:
+            return _directory_service_error(service_error)
+        page.refresh_from_db()
+        log_operation(
+            request,
+            "execute",
+            "opspilot",
+            f"恢复归档知识页面: {page.title}",
         )
-        log_operation(request, "execute", "opspilot", f"恢复归档知识页面: {page.title}")
-        return JsonResponse({"result": True, "data": self.get_serializer(page).data})
+        return JsonResponse(
+            {
+                "result": True,
+                "data": {
+                    "page": self.get_serializer(page).data,
+                    "generation": result,
+                },
+            }
+        )
 
 
 class WikiBuildRecordViewSet(WikiTeamScopeMixin, AuthViewSet):
@@ -948,6 +1208,7 @@ class WikiBuildRecordViewSet(WikiTeamScopeMixin, AuthViewSet):
     ordering = ("-id",)
     http_method_names = ["get", "head", "options", "post"]
 
+    @HasPermission("wiki_list-View")
     def list(self, request, *args, **kwargs):
         queryset = self.get_queryset()
         kb_id = request.GET.get("knowledge_base")
@@ -983,36 +1244,16 @@ class WikiBuildRecordViewSet(WikiTeamScopeMixin, AuthViewSet):
             page_items = queryset[(page - 1) * page_size : (page - 1) * page_size + page_size]
         return JsonResponse({"result": True, "data": {"count": total, "items": self.get_serializer(page_items, many=True).data}})
 
+    @HasPermission("wiki_list-View")
     def retrieve(self, request, *args, **kwargs):
         return JsonResponse({"result": True, "data": self.get_serializer(self.get_object()).data})
 
+    @HasPermission("wiki_list-Edit")
     @action(methods=["POST"], detail=True)
     def retry(self, request, pk=None):
-        """按原 trigger 重试同步服务对应的异步入口。"""
+        """按当前治理快照安全重试原构建入口。"""
         record = self.get_object()
         operator = getattr(request.user, "username", "")
-        if record.trigger == "rebuild":
-            record.status = "running"
-            record.stage = "queued"
-            record.progress = 0
-            record.errors = []
-            record.save(
-                update_fields=[
-                    "status",
-                    "stage",
-                    "progress",
-                    "errors",
-                    "updated_at",
-                ]
-            )
-            _opspilot_tasks.wiki_rebuild_kb_task.delay(
-                record.knowledge_base_id,
-                record.knowledge_base.llm_model_id,
-                operator,
-                record.id,
-            )
-            return JsonResponse({"result": True, "data": {"async": True}})
-
         if record.trigger in {"decision", "material_delete"}:
             return JsonResponse(
                 {
@@ -1021,21 +1262,147 @@ class WikiBuildRecordViewSet(WikiTeamScopeMixin, AuthViewSet):
                 },
                 status=400,
             )
+        if record.trigger not in {"rebuild", "material", "material_update"}:
+            return JsonResponse(
+                {
+                    "result": False,
+                    "message": "该构建类型不支持从此入口重试",
+                    "code": "build_retry_trigger_unsupported",
+                },
+                status=400,
+            )
 
-        material_id = (record.inputs or {}).get("material_id")
-        material = Material.objects.filter(id=material_id, knowledge_base=record.knowledge_base).first() if material_id else None
-        if not material:
-            return JsonResponse({"result": False, "message": "原资料不存在,无法重试"}, status=400)
-        material.status = "building"
-        material.save(update_fields=["status", "updated_at"])
-        task = _opspilot_tasks.wiki_propose_update_task if record.trigger == "material_update" else _opspilot_tasks.wiki_build_material_task
-        task.delay(
-            material.id,
-            material.knowledge_base.llm_model_id,
-            operator,
-        )
+        try:
+            with transaction.atomic():
+                knowledge_base = WikiKnowledgeBase.objects.select_for_update().get(pk=record.knowledge_base_id)
+                record = BuildRecord.objects.select_for_update().select_related("knowledge_base").get(pk=record.pk, knowledge_base=knowledge_base)
+                if record.status == "running":
+                    raise DirectoryServiceError(
+                        "build_retry_in_progress",
+                        "该构建记录正在运行，不能重复重试",
+                        status_code=409,
+                        retryable=True,
+                    )
+                if (
+                    BuildRecord.objects.filter(
+                        knowledge_base=knowledge_base,
+                        status="running",
+                    )
+                    .exclude(pk=record.pk)
+                    .exists()
+                ):
+                    raise DirectoryServiceError(
+                        "knowledge_base_build_in_progress",
+                        "知识库存在运行中的构建任务，请等待完成后再重试",
+                        status_code=409,
+                        retryable=True,
+                    )
+
+                task_identity = None
+                if record.trigger == "rebuild":
+                    materials = list(
+                        Material.objects.select_for_update().filter(knowledge_base=knowledge_base).select_related("current_version").order_by("id")
+                    )
+                    task_identity = _opspilot_tasks._freeze_wiki_task_identity(
+                        knowledge_base,
+                        materials,
+                    )
+                    record.status = "running"
+                    record.stage = "queued"
+                    record.progress = 0
+                    record.errors = []
+                    record.activation = {}
+                    record.save(
+                        update_fields=[
+                            "status",
+                            "stage",
+                            "progress",
+                            "errors",
+                            "activation",
+                            "updated_at",
+                        ]
+                    )
+                    _opspilot_tasks._persist_wiki_task_identity(
+                        record,
+                        task_identity,
+                    )
+                    task = _opspilot_tasks.wiki_rebuild_kb_task
+                    task_args = (
+                        knowledge_base.pk,
+                        knowledge_base.llm_model_id,
+                        operator,
+                        record.pk,
+                        None,
+                        task_identity,
+                    )
+                else:
+                    material_id = (record.inputs or {}).get("material_id")
+                    material = (
+                        Material.objects.select_for_update()
+                        .select_related("current_version", "classification_root")
+                        .filter(
+                            pk=material_id,
+                            knowledge_base=knowledge_base,
+                        )
+                        .first()
+                        if material_id
+                        else None
+                    )
+                    if material is None:
+                        raise DirectoryServiceError(
+                            "retry_material_missing",
+                            "原资料不存在,无法重试",
+                            status_code=400,
+                        )
+                    classification_root_id = (record.inputs or {}).get("classification_root_id")
+                    if classification_root_id in (None, ""):
+                        classification_root_id = material.classification_root_id
+                    task_identity = _opspilot_tasks._freeze_wiki_task_identity(
+                        knowledge_base,
+                        [material],
+                        classification_root_id=classification_root_id,
+                    )
+                    task = (
+                        _opspilot_tasks.wiki_propose_update_task if record.trigger == "material_update" else _opspilot_tasks.wiki_build_material_task
+                    )
+                    task_args = (
+                        material.pk,
+                        knowledge_base.llm_model_id,
+                        operator,
+                        classification_root_id,
+                        task_identity,
+                    )
+        except DirectoryServiceError as service_error:
+            return _directory_service_error(service_error)
+        except BuildGenerationError as error:
+            return _build_generation_error(error)
+
+        try:
+            task.delay(*task_args)
+        except Exception as error:
+            if record.trigger == "rebuild":
+                with transaction.atomic():
+                    WikiKnowledgeBase.objects.select_for_update().get(pk=record.knowledge_base_id)
+                    failed = BuildRecord.objects.select_for_update().get(pk=record.pk)
+                    if failed.status == "running" and failed.stage == "queued":
+                        _opspilot_tasks._fail_wiki_task_build(
+                            failed,
+                            "task_dispatch_failed",
+                            str(error),
+                            retryable=True,
+                        )
+            return JsonResponse(
+                {
+                    "result": False,
+                    "message": "构建任务下发失败，请重试",
+                    "code": "task_dispatch_failed",
+                    "retryable": True,
+                },
+                status=503,
+            )
         return JsonResponse({"result": True, "data": {"async": True}})
 
+    @HasPermission("wiki_list-Edit")
     @action(methods=["POST"], detail=True)
     def retry_maintenance(self, request, pk=None):
         """重试构建记录的级联维护:关系、索引和检查清扫按受影响页面增量重跑。"""
@@ -1059,6 +1426,7 @@ class WikiBuildRecordViewSet(WikiTeamScopeMixin, AuthViewSet):
         log_operation(request, "execute", "opspilot", f"重试构建记录维护: #{record.id}")
         return JsonResponse({"result": True, "data": self.get_serializer(record).data})
 
+    @HasPermission("wiki_list-Edit")
     @action(methods=["POST"], detail=False)
     def batch_retry_maintenance(self, request):
         """批量重试选中构建记录的级联维护,用于处理筛选出的失败阶段。"""
@@ -1121,6 +1489,7 @@ class WikiBuildRecordViewSet(WikiTeamScopeMixin, AuthViewSet):
             }
         )
 
+    @HasPermission("wiki_list-Edit")
     @action(methods=["POST"], detail=True)
     def cancel(self, request, pk=None):
         """取消:运行中的构建记录置 cancelled(运行中的 Celery 任务尽力而为,记录先落终态)。"""

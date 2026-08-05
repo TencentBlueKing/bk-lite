@@ -15,6 +15,7 @@ import GroupTreeSelector from '@/components/group-tree-select';
 import { useTranslation } from '@/utils/i18n';
 import FieldGuideTip from '@/app/monitor/(pages)/integration/list/detail/configure/fieldGuideTip';
 import { applyTableChangeHandler } from './tableChangeHandler';
+import { isDependencySatisfied } from './formFieldDependency';
 import {
   FILTER_MUTEX_PEERS,
   getSnmpFilterMutexLastKey,
@@ -265,31 +266,8 @@ export const useConfigRenderer = () => {
       return false;
     };
 
-    const isFieldVisible = (getFieldValue: any) => {
-      if (!watchField) return true;
-      if (typeof watchField === 'string') {
-        const watchValue = getFieldValue(watchField);
-        if (dependency.value !== undefined) {
-          return watchValue === dependency.value;
-        }
-      }
-      if (Array.isArray(watchField)) {
-        return watchField.every((field: string, index: number) => {
-          const watchValue = getFieldValue(field);
-          const conditions = dependency.conditions?.[index] || [];
-          return conditions.some((condition: any) => {
-            if (condition.equals !== undefined) {
-              return watchValue === condition.equals;
-            }
-            if (condition.in !== undefined) {
-              return condition.in.includes(watchValue);
-            }
-            return false;
-          });
-        });
-      }
-      return true;
-    };
+    const isFieldVisible = (getFieldValue: any) =>
+      isDependencySatisfied(dependency, getFieldValue);
 
     const locked = mode === 'edit' && editable === false;
 
@@ -579,9 +557,13 @@ export const useConfigRenderer = () => {
       options_key,
       enable_row_filter = false,
       rules = [],
-      required = false
+      required = false,
+      description,
+      guide_short,
+      tooltip
     } = columnConfig;
     const { width: columnWidth, ...componentProps } = widget_props;
+    const guideTip = guide_short || tooltip || description;
 
     let options = columnConfig.options || [];
     if (!options?.length && externalOptions) {
@@ -595,7 +577,14 @@ export const useConfigRenderer = () => {
     }
 
     const column: any = {
-      title: label,
+      title: guideTip ? (
+        <span className="inline-flex items-center">
+          <span>{label}</span>
+          <FieldGuideTip short={guideTip} />
+        </span>
+      ) : (
+        label
+      ),
       dataIndex: name,
       key: name,
       width: columnWidth || 200

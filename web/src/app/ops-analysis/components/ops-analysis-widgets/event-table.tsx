@@ -20,6 +20,8 @@ import {
   type TableLikePaginationState,
 } from '@/app/ops-analysis/components/ops-analysis-widgets/table-like-data';
 import { useTranslation } from '@/utils/i18n';
+import { supportsServerPagination } from '@/app/ops-analysis/utils/tablePagination';
+import { useTableBodyScrollY } from '@/app/ops-analysis/components/widgets/shared/useTableBodyScrollY';
 
 const DEFAULT_CELL_MAX_WIDTH = 260;
 
@@ -52,66 +54,30 @@ const OpsAnalysisEventTable: React.FC<OpsAnalysisEventTableProps> = ({
       current: 1,
       pageSize: 20,
     });
-  const [tableScrollY, setTableScrollY] = useState<string>();
+
+  const supportsPaginationParams = useMemo(
+    () => supportsServerPagination(dataSource?.params),
+    [dataSource?.params],
+  );
 
   const { rows, pagination, isPaginated } = useMemo(
-    () => parseTableLikeData<EventTableRow>(rawData, queryPagination),
-    [rawData, queryPagination],
+    () => parseTableLikeData<EventTableRow>(
+      rawData,
+      queryPagination,
+      supportsPaginationParams,
+    ),
+    [rawData, queryPagination, supportsPaginationParams],
   );
+  const tableScrollY = useTableBodyScrollY({
+    containerRef,
+    hasPagination: isPaginated,
+  });
 
   const configuredColumns = useMemo<TableColumnConfigItem[]>(() => {
     return (config?.tableConfig?.columns || [])
       .filter((col) => col.visible)
       .sort((a, b) => a.order - b.order);
   }, [config?.tableConfig?.columns]);
-
-  const supportsPaginationParams = useMemo(
-    () =>
-      Array.isArray(dataSource?.params) &&
-      dataSource.params.some(
-        (param) => param.name === 'page' || param.name === 'page_size',
-      ),
-    [dataSource?.params],
-  );
-
-  useEffect(() => {
-    const container = containerRef.current;
-
-    if (!container) {
-      return;
-    }
-
-    const TABLE_HEADER_HEIGHT = 43;
-    const PAGINATION_HEIGHT = isPaginated ? 56 : 0;
-    const MIN_BODY_HEIGHT = 120;
-
-    const updateScrollY = () => {
-      const nextHeight = Math.max(
-        container.clientHeight - TABLE_HEADER_HEIGHT - PAGINATION_HEIGHT,
-        MIN_BODY_HEIGHT,
-      );
-
-      setTableScrollY(`${nextHeight}px`);
-    };
-
-    updateScrollY();
-
-    const resizeObserver = new ResizeObserver(() => {
-      updateScrollY();
-    });
-
-    resizeObserver.observe(container);
-    if (container.parentElement) {
-      resizeObserver.observe(container.parentElement);
-    }
-
-    window.addEventListener('resize', updateScrollY);
-
-    return () => {
-      resizeObserver.disconnect();
-      window.removeEventListener('resize', updateScrollY);
-    };
-  }, [isPaginated]);
 
   useEffect(() => {
     setExpandedRowKeys([]);
@@ -128,13 +94,13 @@ const OpsAnalysisEventTable: React.FC<OpsAnalysisEventTableProps> = ({
 
     const queryParams: Record<string, any> = {};
 
-    if (supportsPaginationParams || isPaginated) {
+    if (supportsPaginationParams) {
       queryParams.page = queryPagination.current;
       queryParams.page_size = queryPagination.pageSize;
     }
 
     onQueryChange(queryParams);
-  }, [onQueryChange, queryPagination, supportsPaginationParams, isPaginated]);
+  }, [onQueryChange, queryPagination, supportsPaginationParams]);
 
   const columns = useMemo((): ColumnsType<EventTableRow> => {
     return configuredColumns.map((col) => {

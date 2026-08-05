@@ -6,9 +6,10 @@ from pathlib import PurePosixPath
 from rest_framework import serializers
 
 from apps.core.mixinx import EncryptMixin
-from apps.patch_mgmt.constants import PatchTargetSource
+from apps.patch_mgmt.constants import OSType, PatchTargetSource
 from apps.patch_mgmt.models import GovernanceTask, GovernanceTaskHost, PatchTarget
 from apps.patch_mgmt.serializers.permission import PatchPermissionSerializer
+from apps.patch_mgmt.utils.architecture import UnsupportedArchitecture, validate_os_architecture
 from apps.patch_mgmt.utils.i18n import serializer_message
 
 
@@ -90,7 +91,25 @@ class PatchTargetSerializer(PatchPermissionSerializer):
     last_detected_at = serializers.SerializerMethodField()
     has_active_task = serializers.SerializerMethodField()
     has_pending_reboot = serializers.SerializerMethodField()
-    arch = serializers.SerializerMethodField()
+    arch = serializers.CharField(required=False, allow_blank=True)
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        os_type = attrs.get("os_type", getattr(self.instance, "os_type", OSType.LINUX))
+        value = attrs.get("arch", getattr(self.instance, "arch", ""))
+        try:
+            attrs["arch"] = validate_os_architecture(os_type, value)
+        except UnsupportedArchitecture as exc:
+            raise serializers.ValidationError(
+                {
+                    "arch": serializer_message(
+                        self,
+                        "error.unsupported_architecture",
+                        "The CPU architecture is not supported for this operating system",
+                    )
+                }
+            ) from exc
+        return attrs
 
     def validate_name(self, value):
         """同 team 下名称唯一。"""
@@ -210,19 +229,8 @@ class PatchTargetSerializer(PatchPermissionSerializer):
         ).exists()
 
     def get_has_pending_reboot(self, obj):
-        from apps.patch_mgmt.constants import GovernanceTaskStatus
-
-        return GovernanceTask.objects.filter(
-            task_type="reboot",
-            target_list__contains=[obj.id],
-            status__in=GovernanceTaskStatus.ACTIVE_STATES,
-        ).exists() or GovernanceTaskHost.objects.filter(
-            target_id=obj.id,
-            stage__in=("pending_reboot", "reboot_scheduled", "rebooting"),
-        ).exists()
-
-    def get_arch(self, obj):
-        return obj.arch or ""
+        binding = getattr(obj, "baseline_binding", None)
+        return bool(binding and binding.pending_reboot_count > 0)
 
     def get_has_ssh_password(self, obj):
         return bool(obj.ssh_password)
@@ -299,7 +307,6 @@ class PatchTargetSerializer(PatchPermissionSerializer):
             "last_detected_at",
             "has_active_task",
             "has_pending_reboot",
-            "arch",
             "created_by",
             "created_at",
             "updated_by",

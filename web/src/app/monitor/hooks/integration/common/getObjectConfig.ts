@@ -1,36 +1,47 @@
+import { useCallback } from 'react';
 import { useMonitorConfig } from '../index';
+import { normalizeDashboardDisplay } from '../configContracts';
 
-export const useObjectConfigInfo = () => {
-  const { config } = useMonitorConfig();
+export const useObjectConfigInfo = (objectName?: string | null) => {
+  const { resolveConfig, ready } = useMonitorConfig(objectName);
 
-  // 获取对象的 collect_type
-  const getCollectType = (objectName: string, pluginName: string) => {
-    const objectConfig = config[objectName];
-    return objectConfig?.collectTypes?.[pluginName];
-  };
+  const getCollectType = useCallback(
+    (name: string, pluginName: string) => {
+      const objectConfig = resolveConfig(name);
+      return objectConfig?.collectTypes?.[pluginName];
+    },
+    [resolveConfig]
+  );
 
-  // 获取对象的 instance_type
-  const getInstanceType = (objectName: string) => {
-    const objectConfig = config[objectName];
-    return objectConfig?.instance_type || '--';
-  };
+  const getInstanceType = useCallback(
+    (name: string) => {
+      const objectConfig = resolveConfig(name);
+      return objectConfig?.instance_type || '--';
+    },
+    [resolveConfig]
+  );
 
-  // 获取对象的 groupIds
-  const getGroupIds = (objectName: string) => {
-    const objectConfig = config[objectName];
-    return objectConfig?.groupIds;
-  };
+  const getGroupIds = useCallback(
+    (name: string) => {
+      const objectConfig = resolveConfig(name);
+      return objectConfig?.groupIds;
+    },
+    [resolveConfig]
+  );
 
-  // 获取对象的 dashboardDisplay
-  const getDashboardDisplay = (objectName: string) => {
-    const objectConfig = config[objectName];
-    return objectConfig?.dashboardDisplay;
-  };
+  const getDashboardDisplay = useCallback(
+    (name: string) => {
+      const objectConfig = resolveConfig(name);
+      return normalizeDashboardDisplay(objectConfig?.dashboardDisplay);
+    },
+    [resolveConfig]
+  );
 
   return {
+    ready,
     getCollectType,
     getInstanceType,
     getGroupIds,
-    getDashboardDisplay,
+    getDashboardDisplay
   };
 };

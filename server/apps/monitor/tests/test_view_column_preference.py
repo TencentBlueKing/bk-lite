@@ -21,9 +21,23 @@ def test_user_can_save_and_reload_columns_for_monitor_object(api_client, monitor
     loaded = api_client.get(url)
 
     assert saved.status_code == 200
-    assert saved.json()["data"] == {"field_keys": field_keys}
+    assert saved.json()["data"] == {"field_keys": field_keys, "fixed_field_keys": []}
     assert loaded.status_code == 200
-    assert loaded.json()["data"] == {"field_keys": field_keys}
+    assert loaded.json()["data"] == {"field_keys": field_keys, "fixed_field_keys": []}
+
+
+def test_builtin_object_allows_personal_column_preferences(api_client, monitor_object):
+    monitor_object.is_builtin = True
+    monitor_object.save(update_fields=["is_builtin"])
+    url = f"/api/v1/monitor/api/monitor_object/{monitor_object.id}/view_column_preference/"
+
+    response = api_client.put(
+        url,
+        {"field_keys": ["instance_name", "summary_fact:asset.ip"]},
+        format="json",
+    )
+
+    assert response.status_code == 200
 
 
 @pytest.mark.parametrize(

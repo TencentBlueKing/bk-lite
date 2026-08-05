@@ -52,6 +52,12 @@ class TestNormalizeTemplateContext:
 
 
 class TestRenderTemplate:
+    @pytest.mark.unit
+    def test_environment_has_no_default_globals(self):
+        env = Controller({}).jinja_env
+
+        assert {"lipsum", "cycler", "joiner", "namespace"}.isdisjoint(env.globals)
+
     def test_renders_with_logical_instance_value(self):
         ctrl = Controller({})
         out = ctrl.render_template("host={{ instance_id }}", {"logical_instance_value": "h1"})

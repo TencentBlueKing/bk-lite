@@ -4,11 +4,14 @@ from django.utils.dateparse import parse_datetime
 from rest_framework.decorators import action
 from rest_framework.exceptions import MethodNotAllowed
 
+from apps.core.decorators.api_permission import HasPermission
 from apps.core.utils.viewset_utils import AuthViewSet
 from apps.opspilot.models import CheckItem, WikiDecisionRule
 from apps.opspilot.serializers.wiki_serializers import CheckItemSerializer
 from apps.opspilot.services.wiki.check_service import close_incomplete_open_decision, decide_check
 from apps.opspilot.services.wiki.decision_service import revoke_rule as revoke_decision_rule
+from apps.opspilot.services.wiki.directory_service import DirectoryServiceError
+from apps.opspilot.services.wiki.page_service import PageServiceError
 from apps.opspilot.viewsets.wiki_team_scope import WikiTeamScopeMixin
 from apps.system_mgmt.utils.operation_log_utils import log_operation
 
@@ -30,11 +33,13 @@ class WikiCheckItemViewSet(WikiTeamScopeMixin, AuthViewSet):
 
     ordering = ("-id",)
 
+    @HasPermission("wiki_list-Edit")
     def create(self, request, *args, **kwargs):
         raise MethodNotAllowed("POST", detail="检查项只能由系统决策流程创建")
 
     http_method_names = ["get", "post", "head", "options"]
 
+    @HasPermission("wiki_list-View")
     def list(self, request, *args, **kwargs):
         queryset = self.get_queryset().prefetch_related("decision_rules")
         kb_id = request.GET.get("knowledge_base")
@@ -79,42 +84,50 @@ class WikiCheckItemViewSet(WikiTeamScopeMixin, AuthViewSet):
         page_items = queryset[(page - 1) * page_size : (page - 1) * page_size + page_size]
         return JsonResponse({"result": True, "data": {"count": total, "items": self.get_serializer(page_items, many=True).data}})
 
+    @HasPermission("wiki_list-View")
     def retrieve(self, request, *args, **kwargs):
         check = self.get_object()
         if close_incomplete_open_decision(check):
             check.refresh_from_db()
         return JsonResponse({"result": True, "data": self.get_serializer(check).data})
 
+    @HasPermission("wiki_list-Edit")
     @action(methods=["POST"], detail=True)
     def accept(self, request, pk=None):
         """兼容旧客户端：通用接受入口已停用。"""
         return self._semantic_action_error()
 
+    @HasPermission("wiki_list-Edit")
     @action(methods=["POST"], detail=True)
     def reject(self, request, pk=None):
         """兼容旧客户端：通用拒绝入口已停用。"""
         return self._semantic_action_error()
 
+    @HasPermission("wiki_list-Edit")
     @action(methods=["POST"], detail=True)
     def merge(self, request, pk=None):
         """兼容旧客户端：旧合并入口已停用。"""
         return self._semantic_action_error()
 
+    @HasPermission("wiki_list-Edit")
     @action(methods=["POST"], detail=True)
     def resolve(self, request, pk=None):
         """兼容旧客户端：通用处理入口已停用。"""
         return self._semantic_action_error()
 
+    @HasPermission("wiki_list-Edit")
     @action(methods=["POST"], detail=False)
     def batch_accept(self, request):
         """兼容旧客户端：批量接受入口已停用。"""
         return self._semantic_action_error()
 
+    @HasPermission("wiki_list-Edit")
     @action(methods=["POST"], detail=False)
     def batch_reject(self, request):
         """兼容旧客户端：批量拒绝入口已停用。"""
         return self._semantic_action_error()
 
+    @HasPermission("wiki_list-Edit")
     @action(methods=["POST"], detail=False)
     def batch_resolve(self, request):
         """兼容旧客户端：批量处理入口已停用。"""
@@ -142,6 +155,7 @@ class WikiCheckItemViewSet(WikiTeamScopeMixin, AuthViewSet):
             fields["action_type"] = str(raw_action).strip()
         return fields, None
 
+    @HasPermission("wiki_list-Edit")
     @action(methods=["POST"], detail=True)
     def assign(self, request, pk=None):
         """分配/延期/动作类型:可单独或同时更新 assignee、due_at、action_type。空值表示清除。"""
@@ -162,6 +176,7 @@ class WikiCheckItemViewSet(WikiTeamScopeMixin, AuthViewSet):
         )
         return JsonResponse({"result": True, "data": self.get_serializer(check).data})
 
+    @HasPermission("wiki_list-Edit")
     @action(methods=["POST"], detail=True, url_path="decide")
     def decide(self, request, pk=None):
         """执行知识冲突或页面身份的语义化决策。"""
@@ -203,6 +218,17 @@ class WikiCheckItemViewSet(WikiTeamScopeMixin, AuthViewSet):
                 body=body,
                 material=material,
             )
+        except (PageServiceError, DirectoryServiceError) as exc:
+            return JsonResponse(
+                {
+                    "result": False,
+                    "message": str(exc),
+                    "code": exc.code,
+                    "retryable": exc.retryable,
+                    "details": exc.details,
+                },
+                status=exc.status_code,
+            )
         except ValueError as exc:
             return JsonResponse({"result": False, "message": str(exc)}, status=400)
         check.refresh_from_db()
@@ -237,6 +263,7 @@ class WikiCheckItemViewSet(WikiTeamScopeMixin, AuthViewSet):
             }
         )
 
+    @HasPermission("wiki_list-Edit")
     @action(methods=["POST"], detail=True, url_path="revoke_rule")
     def revoke_rule(self, request, pk=None):
         """撤销当前处理记录关联的规则，不回滚已生效知识。"""

@@ -113,4 +113,29 @@ class MonitorPluginSerializer(serializers.ModelSerializer):
                 CustomPullPluginService.initialize_templates(plugin)
             elif template_type == "snmp":
                 CustomSnmpPluginService.initialize_templates(plugin)
-        return plugin
+            return plugin
+
+
+class MonitorPluginListSerializer(serializers.ModelSerializer):
+    """集成卡片 / 下拉等 list 场景专用:只序列化可见字段,缩小 payload。"""
+
+    is_pre = serializers.BooleanField(read_only=True)
+    parent_monitor_object = serializers.SerializerMethodField(read_only=True)
+
+    class Meta:
+        model = MonitorPlugin
+        fields = (
+            "id",
+            "name",
+            "display_name",
+            "description",
+            "template_type",
+            "template_id",
+            "collect_type",
+            "collector",
+            "is_pre",
+            "parent_monitor_object",
+        )
+
+    def get_parent_monitor_object(self, obj):
+        return MonitorPluginSerializer.get_parent_monitor_object(self, obj)

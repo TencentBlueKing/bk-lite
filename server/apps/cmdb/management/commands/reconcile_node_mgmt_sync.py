@@ -14,6 +14,7 @@ class Command(BaseCommand):
             NodeMgmtSyncService.recover_stale_runs()
             NodeMgmtSyncService.refresh_submitted_collect_runs()
             config = NodeMgmtSyncService.get_task()
+            NodeMgmtSyncService.recover_snapshot_cleanup(config.pk)
             # 启动阶段（migrate -> init -> 起 server/NATS listener）远端响应方必然
             # 未就绪，这里只做本地 DB 对账；节点配置的远端交付由周期恢复任务
             # recover_node_mgmt_sync 在服务起来后收敛，交付失败不阻断启动。
