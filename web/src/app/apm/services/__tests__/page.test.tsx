@@ -45,7 +45,7 @@ beforeEach(() => {
     {
       id: 'bklite',
       application_id: 'bklite',
-      name: 'bklite',
+      name: '未归类应用测试',
       description: '',
       is_builtin: false,
       service_count: 1,
@@ -87,5 +87,15 @@ describe('APM 服务目录应用视角', () => {
 
     const builtinCard = await screen.findByRole('button', { name: '查看应用 未归类应用 下的服务' });
     expect(within(builtinCard).getByText(/0 个服务/)).not.toBeNull();
+  });
+
+  it('将内置未归类应用稳定排在普通应用之后', async () => {
+    render(<ApmServicesPage />);
+
+    const applicationCards = await screen.findAllByRole('button', { name: /查看应用 .* 下的服务/ });
+    expect(applicationCards.map((card) => card.getAttribute('aria-label'))).toEqual([
+      '查看应用 未归类应用测试 下的服务',
+      '查看应用 未归类应用 下的服务',
+    ]);
   });
 });
