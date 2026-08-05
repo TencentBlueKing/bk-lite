@@ -672,6 +672,120 @@ func TestInstallWindowsPackagePreservesRuntimeDataAfterSuccessfulActivation(t *t
 	}
 }
 
+func TestInstallWindowsPackagePreservesUninstallEntrypointAfterSuccessfulActivation(t *testing.T) {
+	installDir := filepath.Join(t.TempDir(), "fusion-collectors")
+	if err := os.MkdirAll(installDir, 0755); err != nil {
+		t.Fatalf("create install dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(installDir, "collector-sidecar.exe"), []byte("old-binary"), 0644); err != nil {
+		t.Fatalf("write old binary: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(installDir, "uninstall.exe"), []byte("nsis-uninstaller"), 0644); err != nil {
+		t.Fatalf("write uninstaller: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(installDir, "installer.ico"), []byte("icon"), 0644); err != nil {
+		t.Fatalf("write installer icon: %v", err)
+	}
+	zipPath := writeControllerZip(t, map[string]string{
+		"controller/collector-sidecar.exe": "new-binary",
+	})
+	controller := &fakeWindowsServiceController{serviceExisted: true}
+	cfg := &Config{
+		ServerURL:  "https://bk.example",
+		APIToken:   "token",
+		NodeID:     "node-1",
+		NodeName:   "node-1",
+		ZoneID:     "1",
+		GroupID:    "1",
+		OS:         "windows",
+		InstallDir: installDir,
+		Package:    PackageConfig{CPUArchitecture: "x86_64"},
+	}
+
+	if err := installWindowsPackage(cfg, zipPath, controller); err != nil {
+		t.Fatalf("install Windows package: %v", err)
+	}
+	newBinary, err := os.ReadFile(filepath.Join(installDir, "collector-sidecar.exe"))
+	if err != nil || string(newBinary) != "new-binary" {
+		t.Fatalf("new binary was not activated: %q, %v", newBinary, err)
+	}
+	uninstaller, err := os.ReadFile(filepath.Join(installDir, "uninstall.exe"))
+	if err != nil || string(uninstaller) != "nsis-uninstaller" {
+		t.Fatalf("uninstaller was not preserved: %q, %v", uninstaller, err)
+	}
+	icon, err := os.ReadFile(filepath.Join(installDir, "installer.ico"))
+	if err != nil || string(icon) != "icon" {
+		t.Fatalf("installer icon was not preserved: %q, %v", icon, err)
+	}
+}
+
+func TestInstallWindowsPackageKeepsPackageProvidedInstallerFiles(t *testing.T) {
+	installDir := filepath.Join(t.TempDir(), "fusion-collectors")
+	if err := os.MkdirAll(installDir, 0755); err != nil {
+		t.Fatalf("create install dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(installDir, "collector-sidecar.exe"), []byte("old-binary"), 0644); err != nil {
+		t.Fatalf("write old binary: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(installDir, "uninstall.exe"), []byte("old-uninstaller"), 0644); err != nil {
+		t.Fatalf("write old uninstaller: %v", err)
+	}
+	zipPath := writeControllerZip(t, map[string]string{
+		"controller/collector-sidecar.exe": "new-binary",
+		"controller/uninstall.exe":         "packaged-uninstaller",
+	})
+	controller := &fakeWindowsServiceController{serviceExisted: true}
+	cfg := &Config{
+		ServerURL:  "https://bk.example",
+		APIToken:   "token",
+		NodeID:     "node-1",
+		NodeName:   "node-1",
+		ZoneID:     "1",
+		GroupID:    "1",
+		OS:         "windows",
+		InstallDir: installDir,
+		Package:    PackageConfig{CPUArchitecture: "x86_64"},
+	}
+
+	if err := installWindowsPackage(cfg, zipPath, controller); err != nil {
+		t.Fatalf("install Windows package: %v", err)
+	}
+	uninstaller, err := os.ReadFile(filepath.Join(installDir, "uninstall.exe"))
+	if err != nil || string(uninstaller) != "packaged-uninstaller" {
+		t.Fatalf("package-provided uninstaller must win: %q, %v", uninstaller, err)
+	}
+}
+
+func TestInstallWindowsPackageSucceedsWithoutPreviousUninstaller(t *testing.T) {
+	installDir := filepath.Join(t.TempDir(), "fusion-collectors")
+	zipPath := writeControllerZip(t, map[string]string{
+		"controller/collector-sidecar.exe": "new-binary",
+	})
+	controller := &fakeWindowsServiceController{}
+	cfg := &Config{
+		ServerURL:  "https://bk.example",
+		APIToken:   "token",
+		NodeID:     "node-1",
+		NodeName:   "node-1",
+		ZoneID:     "1",
+		GroupID:    "1",
+		OS:         "windows",
+		InstallDir: installDir,
+		Package:    PackageConfig{CPUArchitecture: "x86_64"},
+	}
+
+	if err := installWindowsPackage(cfg, zipPath, controller); err != nil {
+		t.Fatalf("first Windows installation: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(installDir, "uninstall.exe")); !os.IsNotExist(err) {
+		t.Fatalf("first installation must not fabricate an uninstaller: %v", err)
+	}
+	newBinary, err := os.ReadFile(filepath.Join(installDir, "collector-sidecar.exe"))
+	if err != nil || string(newBinary) != "new-binary" {
+		t.Fatalf("new binary was not activated: %q, %v", newBinary, err)
+	}
+}
+
 func TestInstallWindowsPackagePreservesExistingServiceRegistration(t *testing.T) {
 	installDir := filepath.Join(t.TempDir(), "fusion-collectors")
 	if err := os.MkdirAll(installDir, 0755); err != nil {
