@@ -44,13 +44,14 @@ def test_builtin_yaml_contains_alert_and_room3d_screens():
     payload = yaml.safe_load(BUILTIN_CANVASES_PATH.read_text(encoding="utf-8"))
 
     assert payload["meta"]["object_counts"]["screens"] == 2
-    assert payload["meta"]["object_counts"]["topologies"] == 1
+    assert payload["meta"]["object_counts"]["topologies"] == 0
     assert [screen["key"] for screen in payload["screens"]] == [
         "screen::告警运营大屏_内置",
         "screen::3D机房大屏_内置",
     ]
     assert [screen["name"] for screen in payload["screens"]] == ["告警运营大屏_内置", "3D机房大屏_内置"]
     assert "基础资源态势大屏_内置" not in BUILTIN_CANVASES_PATH.read_text(encoding="utf-8")
+    assert "运营健康拓扑_内置" not in BUILTIN_CANVASES_PATH.read_text(encoding="utf-8")
 
 
 def test_builtin_room3d_screen_yaml_uses_dynamic_room_switch():
@@ -384,6 +385,7 @@ def test_init_builtin_canvases_removes_retired_builtin_topology_only():
     call_command("init_builtin_canvases")
 
     assert not Topology.objects.filter(pk=retired.pk).exists()
+    assert not Topology.objects.filter(build_in_key="topology::运营健康拓扑_内置").exists()
     assert Topology.objects.filter(pk=custom.pk, is_build_in=False).exists()
 
 
