@@ -205,22 +205,16 @@ class TestScheduledTaskActions:
         assert "高危" in resp.data.get("error", "")
         assert JobExecution.objects.count() == before_count, "高危命中时不应创建执行记录"
 
-    def test_run_now_dangerous_path_returns_400_without_creating_execution(self, su_client):
-        """run_now 在高危路径命中时应直接返回 400，不创建 JobExecution。"""
+    def test_run_now_temporary_file_distribution_returns_400_without_creating_execution(self, su_client):
+        """周期文件分发没有永久团队制品时应直接返回 400，不创建 JobExecution。"""
         from apps.job_mgmt.models import JobExecution
 
         task = _make_task(job_type=JobType.FILE_DISTRIBUTION, target_path="/etc/passwd")
-        bad_result = DangerousCheckResult()
-        bad_result.add_match(
-            SimpleNamespace(id=2, name="禁止系统路径", pattern="/etc/", level="forbidden"),
-            "/etc/passwd",
-        )
         before_count = JobExecution.objects.count()
-        with patch("apps.job_mgmt.views.scheduled_task.DangerousChecker.check_path", return_value=bad_result):
-            resp = su_client.post(f"{URL}{task.id}/run_now/", {}, format="json")
+        resp = su_client.post(f"{URL}{task.id}/run_now/", {}, format="json")
         assert resp.status_code == 400
-        assert "高危" in resp.data.get("error", "")
-        assert JobExecution.objects.count() == before_count, "高危路径命中时不应创建执行记录"
+        assert "永久" in str(resp.data)
+        assert JobExecution.objects.count() == before_count, "不支持的周期文件分发不应创建执行记录"
 
     def test_run_now_safe_script_proceeds_normally(self, su_client):
         """run_now 在安全脚本时应正常创建执行记录并触发任务。"""

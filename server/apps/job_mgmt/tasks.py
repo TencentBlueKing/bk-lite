@@ -19,6 +19,11 @@ from apps.job_mgmt.services.callback_service import send_callback
 from apps.job_mgmt.services.dangerous_checker import DangerousChecker
 from apps.job_mgmt.services.execution_stream_service import publish_done_sentinel
 from apps.job_mgmt.services.playbook_execution import PlaybookExecution
+from apps.job_mgmt.services.scheduled_task_authz import (
+    ScheduledTaskTeamBoundaryError,
+    validate_scheduled_task_resource_boundary,
+)
+from apps.job_mgmt.services.scheduled_task_service import ScheduledTaskService
 from apps.job_mgmt.utils.callback_signer import get_signed_headers
 from apps.node_mgmt.utils.s3 import delete_s3_files
 
@@ -97,6 +102,17 @@ def execute_scheduled_task(scheduled_task_id: int):
         return
     if not st_snapshot.is_enabled:
         logger.info(f"[execute_scheduled_task] 定时任务已禁用: scheduled_task_id={scheduled_task_id}")
+        return
+
+    try:
+        validate_scheduled_task_resource_boundary({}, instance=st_snapshot)
+    except ScheduledTaskTeamBoundaryError as exc:
+        ScheduledTask.objects.filter(id=scheduled_task_id, is_enabled=True).update(is_enabled=False)
+        ScheduledTaskService.toggle_periodic_task(scheduled_task_id, False)
+        logger.error(
+            "[execute_scheduled_task] 团队资源边界校验失败，任务已禁用: "
+            f"scheduled_task_id={scheduled_task_id}, field={exc.field}, reason={exc.message}"
+        )
         return
 
     team = st_snapshot.team or []
