@@ -3,7 +3,8 @@ import os
 import uuid
 from collections.abc import Mapping
 
-from jinja2 import DebugUndefined, Environment, FileSystemLoader
+from jinja2 import DebugUndefined, FileSystemLoader
+from jinja2.defaults import DEFAULT_FILTERS, DEFAULT_TESTS
 
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.utils.safe_template import build_sandboxed_env
@@ -15,7 +16,6 @@ from apps.rpc.node_mgmt import NodeMgmt
 from apps.core.logger import log_logger as logger
 
 
-_DEFAULT_JINJA_ENV = Environment()
 _LOG_TEMPLATE_ALLOWED_FILTERS = (
     "default",
     "int",
@@ -44,16 +44,16 @@ def _build_log_template_env(template_dir: str):
         },
     )
 
-    missing_filters = [name for name in _LOG_TEMPLATE_ALLOWED_FILTERS if name not in _DEFAULT_JINJA_ENV.filters]
+    missing_filters = [name for name in _LOG_TEMPLATE_ALLOWED_FILTERS if name not in DEFAULT_FILTERS]
     if missing_filters:
         raise BaseAppException(f"Missing default Jinja filters: {', '.join(missing_filters)}")
 
-    missing_tests = [name for name in _LOG_TEMPLATE_ALLOWED_TESTS if name not in _DEFAULT_JINJA_ENV.tests]
+    missing_tests = [name for name in _LOG_TEMPLATE_ALLOWED_TESTS if name not in DEFAULT_TESTS]
     if missing_tests:
         raise BaseAppException(f"Missing default Jinja tests: {', '.join(missing_tests)}")
 
-    env.filters.update({name: _DEFAULT_JINJA_ENV.filters[name] for name in _LOG_TEMPLATE_ALLOWED_FILTERS})
-    env.tests.update({name: _DEFAULT_JINJA_ENV.tests[name] for name in _LOG_TEMPLATE_ALLOWED_TESTS})
+    env.filters.update({name: DEFAULT_FILTERS[name] for name in _LOG_TEMPLATE_ALLOWED_FILTERS})
+    env.tests.update({name: DEFAULT_TESTS[name] for name in _LOG_TEMPLATE_ALLOWED_TESTS})
     return env
 
 
