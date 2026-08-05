@@ -37,6 +37,7 @@ export interface ListResponse<T> {
 export interface PatchSource {
   id: number;
   name: string;
+  is_builtin: boolean;
   source_type: PatchSourceType;
   source_type_display?: string;
   connectivity_status_display?: string;

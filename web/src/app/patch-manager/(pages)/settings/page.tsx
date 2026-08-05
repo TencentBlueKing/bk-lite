@@ -1,9 +1,10 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Tag, Button, Tabs, Input, Select, Space, TimePicker, Alert, message, Form, Switch, Modal, InputNumber, Spin, Popconfirm } from 'antd';
+import { Tag, Button, Tabs, Input, Select, Space, TimePicker, Alert, message, Form, Switch, Modal, InputNumber, Spin, Popconfirm, Tooltip } from 'antd';
 import PermissionWrapper from '@/components/permission';
 import Password from '@/components/password';
+import SourceOriginBadge from '@/components/source-origin-badge';
 import type { Dayjs } from 'dayjs';
 import dayjs from 'dayjs';
 import { PlusOutlined, ClockCircleOutlined, LinkOutlined, EditOutlined, PlayCircleOutlined, CheckCircleOutlined } from '@ant-design/icons';
@@ -16,6 +17,7 @@ import styles from './page.module.scss';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import { useTranslation } from '@/utils/i18n';
 import { createListRequestCoordinator } from '@/app/patch-manager/utils/list-request-coordinator';
+import { useUserInfoContext } from '@/context/userInfo';
 import {
   formatSourceApplicableScope,
   LINUX_ARCHITECTURE_OPTIONS,
@@ -80,6 +82,7 @@ function inferDistro(type: PatchSourceType, url: string) {
 
 function SourcesTab({ activeKey }: { activeKey: string }) {
   const { t } = useTranslation();
+  const { isSuperUser } = useUserInfoContext();
   const api = usePatchManagerApi();
   const { isLoading: authLoading } = useApiClient();
   const [selectedSources, setSelectedSources] = useState<React.Key[]>([]);
@@ -263,7 +266,20 @@ function SourcesTab({ activeKey }: { activeKey: string }) {
   };
 
   const cols: ColumnsType<PatchSource> = [
-    { title: t('patchManager.pluginName'), dataIndex: 'name', width: 150 },
+    {
+      title: t('patchManager.pluginName'),
+      dataIndex: 'name',
+      width: 220,
+    },
+    {
+      title: t('patchManager.builtin'),
+      dataIndex: 'is_builtin',
+      width: 88,
+      align: 'center',
+      render: (isBuiltin: boolean) => isBuiltin
+        ? <SourceOriginBadge kind="builtin" label={t('patchManager.yes')} />
+        : <span style={{ color: 'var(--color-text-3, #8c8c8c)' }}>{t('patchManager.no')}</span>,
+    },
     {
       title: t('patchManager.settingsPage.type'),
       dataIndex: 'source_type',
@@ -285,9 +301,12 @@ function SourcesTab({ activeKey }: { activeKey: string }) {
       title: t('patchManager.enable'),
       width: 90,
       render: (_: unknown, r: PatchSource) => (
-        <PermissionWrapper requiredPermissions={['Edit']} instPermissions={r.permission}>
-          <Switch size="small" checked={r.is_enabled} onChange={(checked) => handleToggleEnabled(r, checked)} />
-        </PermissionWrapper>
+        <Switch
+          size="small"
+          checked={r.is_enabled}
+          disabled={!r.permission?.includes('Operate')}
+          onChange={(checked) => handleToggleEnabled(r, checked)}
+        />
       ),
     },
     {
@@ -312,11 +331,25 @@ function SourcesTab({ activeKey }: { activeKey: string }) {
       fixed: 'right',
       render: (_: unknown, r: PatchSource) => (
         <Space size={10}>
-          <PermissionWrapper requiredPermissions={['Edit']} instPermissions={r.permission}><a style={{ color: 'var(--color-primary, #1677ff)' }} onClick={() => openSourceModal(r)}>{t('patchManager.edit')}</a></PermissionWrapper>
-          <PermissionWrapper requiredPermissions={['Edit']} instPermissions={r.permission}><a style={{ color: 'var(--color-primary, #1677ff)' }} onClick={() => runConnectionTest([r.id])}>{t('patchManager.testConnection')}</a></PermissionWrapper>
-          <PermissionWrapper requiredPermissions={['Delete']} instPermissions={r.permission}><Popconfirm title={t('patchManager.settingsPage.confirmDeleteSource')} onConfirm={() => handleDeleteSource(r)} okText={t('patchManager.delete')} cancelText={t('patchManager.cancel')}>
-            <a style={{ color: '#ff4d4f' }}>{t('patchManager.delete')}</a>
-          </Popconfirm></PermissionWrapper>
+          {(!r.is_builtin || isSuperUser) && (
+            <>
+              <PermissionWrapper requiredPermissions={['Edit']} instPermissions={r.permission}><a style={{ color: 'var(--color-primary, #1677ff)' }} onClick={() => openSourceModal(r)}>{t('patchManager.edit')}</a></PermissionWrapper>
+              <PermissionWrapper requiredPermissions={['Edit']} instPermissions={r.permission}><a style={{ color: 'var(--color-primary, #1677ff)' }} onClick={() => runConnectionTest([r.id])}>{t('patchManager.testConnection')}</a></PermissionWrapper>
+            </>
+          )}
+          {r.is_builtin ? (
+            <Tooltip title={t('patchManager.settingsPage.builtinDeleteDisabled')}>
+              <span>
+                <Button type="link" danger disabled size="small" style={{ padding: 0, height: 'auto' }}>
+                  {t('patchManager.delete')}
+                </Button>
+              </span>
+            </Tooltip>
+          ) : (
+            <PermissionWrapper requiredPermissions={['Delete']} instPermissions={r.permission}><Popconfirm title={t('patchManager.settingsPage.confirmDeleteSource')} onConfirm={() => handleDeleteSource(r)} okText={t('patchManager.delete')} cancelText={t('patchManager.cancel')}>
+              <a style={{ color: '#ff4d4f' }}>{t('patchManager.delete')}</a>
+            </Popconfirm></PermissionWrapper>
+          )}
         </Space>
       ),
     },
@@ -390,7 +423,7 @@ function SourcesTab({ activeKey }: { activeKey: string }) {
           <Form.Item
             label={sourceUrlLabel}
             name="url"
-            extra={sourceUrlHelp}
+            tooltip={sourceUrlHelp}
             rules={[{ required: true, message: t('patchManager.settingsPage.urlRequired') }]}
           >
             <Input placeholder={sourceUrlPlaceholder} />

@@ -28,6 +28,13 @@ const STYLE_BY_KIND = {
   },
 } as const;
 
+const LABEL_KEY_BY_KIND = {
+  builtin: 'common.builtIn',
+  external: 'common.externalApp',
+  custom: 'common.custom',
+  imported: 'common.imported',
+} as const;
+
 const SourceOriginBadge: React.FC<SourceOriginBadgeProps> = ({
   kind,
   label,
@@ -36,12 +43,7 @@ const SourceOriginBadge: React.FC<SourceOriginBadgeProps> = ({
   parenthesized = false,
 }) => {
   const { t } = useTranslation();
-  const resolvedLabel = label || {
-    builtin: t('common.builtIn'),
-    external: t('common.externalApp'),
-    custom: t('common.custom'),
-    imported: 'Imported',
-  }[kind];
+  const resolvedLabel = label ?? t(LABEL_KEY_BY_KIND[kind]);
 
   if (mode === 'inline') {
     const inlineLabel = parenthesized ? `(${resolvedLabel})` : resolvedLabel;

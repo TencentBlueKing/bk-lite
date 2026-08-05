@@ -136,6 +136,7 @@ class PatchSourceSerializer(PatchPermissionSerializer):
         fields = [
             "id",
             "name",
+            "is_builtin",
             "source_type",
             "source_type_display",
             "url",
@@ -161,6 +162,7 @@ class PatchSourceSerializer(PatchPermissionSerializer):
         ]
         read_only_fields = [
             "id",
+            "is_builtin",
             "connectivity_status",
             "last_checked_at",
             "created_by",
@@ -173,6 +175,12 @@ class PatchSourceSerializer(PatchPermissionSerializer):
     def get_has_auth_password(obj: PatchSource) -> bool:
         """只返回凭据是否存在，绝不把解密后的密码发送到前端。"""
         return bool(obj.auth_password)
+
+    def get_permission(self, instance):
+        """内置源对普通用户全局可见，但不授予源配置管理权。"""
+        if instance.is_builtin and not self._is_superuser:
+            return ["View"]
+        return super().get_permission(instance)
 
     def validate_source_type(self, value: str) -> str:
         if value not in MVP_SOURCE_TYPES:
