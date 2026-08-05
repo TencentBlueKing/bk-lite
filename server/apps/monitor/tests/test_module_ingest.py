@@ -143,3 +143,51 @@ def test_link_conflict_when_ids_disagree(host_object):
     assert conflict["created"] is False
     assert conflict["updated"] is False
     assert MonitorInstance.objects.filter(is_deleted=False).count() == 2
+
+
+@pytest.mark.django_db
+def test_lifecycle_retire_soft_deactivates_without_hard_delete(host_object):
+    created = MonitorModuleIngestService.ingest(_params(link_ids={"node_id": "n-ret"}))
+    inst_id = created["id"]
+    assert MonitorInstance.objects.filter(id=inst_id, is_deleted=False, is_active=True).exists()
+
+    result = MonitorModuleIngestService.ingest(
+        _params(
+            source_id="n-ret",
+            event_type="lifecycle",
+            link_ids={"node_id": "n-ret", "monitor_id": inst_id},
+            raw={"action": "retire"},
+        )
+    )
+
+    assert result["updated"] is True
+    assert result["id"] == inst_id
+    # 仍在库中：软删，非物理删除
+    assert MonitorInstance.objects.filter(id=inst_id).count() == 1
+    inst = MonitorInstance.objects.get(id=inst_id)
+    assert inst.is_deleted is True
+    assert inst.is_active is False
+    assert MonitorInstance.objects.filter(id=inst_id, is_deleted=False).count() == 0
+
+
+@pytest.mark.django_db
+def test_lifecycle_idempotent_when_already_retired(host_object):
+    created = MonitorModuleIngestService.ingest(_params(link_ids={"node_id": "n-ret2"}))
+    MonitorModuleIngestService.ingest(
+        _params(
+            source_id="n-ret2",
+            event_type="lifecycle",
+            link_ids={"node_id": "n-ret2", "monitor_id": created["id"]},
+            raw={"action": "retire"},
+        )
+    )
+    again = MonitorModuleIngestService.ingest(
+        _params(
+            source_id="n-ret2",
+            event_type="lifecycle",
+            link_ids={"monitor_id": created["id"]},
+            raw={"action": "retire"},
+        )
+    )
+    assert again["ignored"] is True
+    assert MonitorInstance.objects.filter(id=created["id"]).count() == 1

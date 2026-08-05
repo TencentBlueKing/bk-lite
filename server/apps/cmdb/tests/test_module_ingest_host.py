@@ -343,3 +343,58 @@ def test_ingest_requires_auth_scope():
                 "link_ids": {"node_id": "n3"},
             }
         )
+
+
+def test_lifecycle_retire_clears_node_id_without_hard_delete(mocker):
+    mocker.patch.object(
+        CmdbModuleIngestService,
+        "_find_by_cmdb_id",
+        return_value={"_id": 42, "node_id": "n-lifecycle", "ip_addr": "1.1.1.1"},
+    )
+    update = mocker.patch(
+        "apps.cmdb.services.module_ingest.InstanceManage.instance_update",
+        return_value={"_id": 42, "node_id": ""},
+    )
+    delete = mocker.patch.object(CmdbModuleIngestService, "_create_instance")
+
+    result = CmdbModuleIngestService.ingest(
+        {
+            "source_module": "node_mgmt",
+            "source_id": "n-lifecycle",
+            "event_type": "lifecycle",
+            "occurred_at": "2026-08-05T00:00:00Z",
+            "raw": {"action": "retire"},
+            "link_ids": {"node_id": "n-lifecycle", "cmdb_id": "42"},
+            "allowed_org_ids": [1],
+            "operator": "alice",
+        }
+    )
+
+    assert result["updated"] is True
+    assert result["id"] == 42
+    assert result.get("created") is False
+    update.assert_called_once()
+    assert update.call_args.kwargs["update_attr"] == {"node_id": ""}
+    delete.assert_not_called()
+
+
+def test_lifecycle_ignored_when_instance_missing(mocker):
+    mocker.patch.object(CmdbModuleIngestService, "_find_by_cmdb_id", return_value=None)
+    mocker.patch.object(CmdbModuleIngestService, "_find_by_node_id", return_value=None)
+    update = mocker.patch("apps.cmdb.services.module_ingest.InstanceManage.instance_update")
+
+    result = CmdbModuleIngestService.ingest(
+        {
+            "source_module": "node_mgmt",
+            "source_id": "n-gone",
+            "event_type": "lifecycle",
+            "occurred_at": "2026-08-05T00:00:00Z",
+            "raw": {"action": "retire"},
+            "link_ids": {"node_id": "n-gone", "cmdb_id": "99"},
+            "allowed_org_ids": [1],
+            "operator": "alice",
+        }
+    )
+
+    assert result["ignored"] is True
+    update.assert_not_called()

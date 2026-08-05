@@ -13,7 +13,12 @@ from django.db import transaction
 from apps.core.logger import monitor_logger as logger
 from apps.monitor.models import MonitorInstance, MonitorInstanceOrganization, MonitorObject
 from apps.monitor.utils.dimension import normalize_instance_identity
-from apps.node_mgmt.services.module_push_contract import LINK_CONFLICT, IngestResult
+from apps.node_mgmt.services.module_push_contract import (
+    EVENT_LIFECYCLE,
+    EVENT_UPSERT,
+    LINK_CONFLICT,
+    IngestResult,
+)
 
 HOST_OBJECT_NAME = "Host"
 RECEIVING_MODULE = "monitor"
@@ -38,6 +43,7 @@ class MonitorModuleIngestService:
 
         node_id = cls._normalize_optional_str(link_ids.get("node_id"))
         cmdb_id = cls._normalize_optional_str(link_ids.get("cmdb_id"))
+        monitor_id = cls._normalize_optional_str(link_ids.get("monitor_id"))
         # node_mgmt 信封常把节点 ID 放在 source_id；勿把 CMDB source_id 误当作 node_id
         if not node_id and params.get("source_module") == "node_mgmt":
             node_id = cls._normalize_optional_str(params.get("source_id"))
@@ -45,7 +51,9 @@ class MonitorModuleIngestService:
         # 回声抑制：本模块自推，或 causation 标明由本模块出站引起的回写
         if cls._is_echo(params):
             existing = None
-            if node_id:
+            if monitor_id:
+                existing = cls._find_by_pk(monitor_id)
+            if not existing and node_id:
                 existing = cls._find_by_node_id(node_id)
             if not existing and cmdb_id:
                 existing = cls._find_by_cmdb_id(cmdb_id)
@@ -53,6 +61,16 @@ class MonitorModuleIngestService:
                 id=existing.id if existing else None,
                 ignored=True,
             ).as_dict()
+
+        event_type = str(params.get("event_type") or EVENT_UPSERT).strip()
+        if event_type == EVENT_LIFECYCLE:
+            return cls._handle_lifecycle(
+                raw=raw,
+                node_id=node_id,
+                cmdb_id=cmdb_id,
+                monitor_id=monitor_id,
+                operator=str(params.get("operator") or ""),
+            )
 
         operator = str(params.get("operator") or "")
         allowed = [int(x) for x in allowed_org_ids]
@@ -112,6 +130,68 @@ class MonitorModuleIngestService:
             return True
         causation_id = str(params.get("causation_id") or "")
         return causation_id.startswith(f"{RECEIVING_MODULE}:")
+
+    @classmethod
+    def _handle_lifecycle(
+        cls,
+        *,
+        raw: dict[str, Any],
+        node_id: str | None,
+        cmdb_id: str | None,
+        monitor_id: str | None,
+        operator: str,
+    ) -> dict[str, Any]:
+        """lifecycle 退役：软停用（is_active=False / is_deleted=True），不硬删。"""
+        action = str((raw or {}).get("action") or "retire").strip().lower()
+        if action not in ("retire", "archive", "stop", ""):
+            logger.info(
+                "[MonitorModuleIngest] lifecycle ignored unknown action=%s monitor_id=%s",
+                action,
+                monitor_id,
+            )
+            return IngestResult(id=monitor_id, ignored=True).as_dict()
+
+        existing = None
+        if monitor_id:
+            existing = cls._find_by_pk(monitor_id)
+        if not existing and node_id:
+            existing = cls._find_by_node_id(node_id)
+        if not existing and cmdb_id:
+            existing = cls._find_by_cmdb_id(cmdb_id)
+
+        if not existing:
+            logger.info(
+                "[MonitorModuleIngest] lifecycle no-op: instance not found "
+                "monitor_id=%s node_id=%s cmdb_id=%s",
+                monitor_id,
+                node_id,
+                cmdb_id,
+            )
+            return IngestResult(id=monitor_id, ignored=True).as_dict()
+
+        if existing.is_deleted and not existing.is_active:
+            return IngestResult(id=existing.id, ignored=True).as_dict()
+
+        update_fields = ["is_active", "is_deleted", "updated_at"]
+        existing.is_active = False
+        existing.is_deleted = True
+        if operator:
+            existing.updated_by = operator
+            update_fields.append("updated_by")
+        existing.save(update_fields=update_fields)
+        logger.info(
+            "[MonitorModuleIngest] lifecycle retire soft-deactivated instance_id=%s",
+            existing.id,
+        )
+        return IngestResult(id=existing.id, updated=True).as_dict()
+
+    @classmethod
+    def _find_by_pk(cls, instance_id: str) -> MonitorInstance | None:
+        return (
+            MonitorInstance.objects.filter(id=instance_id)
+            .select_related("monitor_object")
+            .first()
+        )
 
     @classmethod
     def _find_by_node_id(cls, node_id: str) -> MonitorInstance | None:

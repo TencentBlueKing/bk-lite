@@ -16,7 +16,12 @@ from apps.cmdb.services.instance import InstanceManage
 from apps.cmdb.services.node_mgmt_sync_service import NodeMgmtSyncService
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.logger import cmdb_logger as logger
-from apps.node_mgmt.services.module_push_contract import LINK_CONFLICT, IngestResult
+from apps.node_mgmt.services.module_push_contract import (
+    EVENT_LIFECYCLE,
+    EVENT_UPSERT,
+    LINK_CONFLICT,
+    IngestResult,
+)
 
 # 一期 ingest 支持的模型（physcial_server 拼写与存量模型 id 对齐）
 SUPPORTED_INGEST_MODELS = frozenset(
@@ -175,6 +180,16 @@ class CmdbModuleIngestService:
         if cls._is_echo(params):
             return IngestResult(id=cmdb_id, ignored=True).as_dict()
 
+        event_type = str(params.get("event_type") or EVENT_UPSERT).strip()
+        if event_type == EVENT_LIFECYCLE:
+            return cls._handle_lifecycle(
+                raw=raw,
+                node_id=node_id,
+                cmdb_id=cmdb_id,
+                operator=params.get("operator") or "",
+                allowed_org_ids=list(allowed_org_ids),
+            )
+
         if not node_id and not cmdb_id and not cls._extract_ip(raw):
             raise ValueError(
                 "link_ids.node_id, link_ids.cmdb_id, or raw ip is required"
@@ -272,6 +287,80 @@ class CmdbModuleIngestService:
             return True
         causation_id = str(params.get("causation_id") or "")
         return causation_id.startswith(f"{RECEIVING_MODULE}:")
+
+    @classmethod
+    def _handle_lifecycle(
+        cls,
+        *,
+        raw: dict[str, Any],
+        node_id: str | None,
+        cmdb_id: str | None,
+        operator: str,
+        allowed_org_ids: list[int],
+    ) -> dict[str, Any]:
+        """处理 lifecycle 退役：不解绑外不硬删。
+
+        Concern：CMDB Neo4j 实例无统一 soft-delete/archive 字段；一期仅清除
+        node_id 关联指针，实例本体保留。若未来有归档语义，应在此扩展。
+        """
+        action = str((raw or {}).get("action") or "retire").strip().lower()
+        if action not in ("retire", "archive", "stop", ""):
+            logger.info(
+                "[ModuleIngest] lifecycle ignored unknown action=%s cmdb_id=%s node_id=%s",
+                action,
+                cmdb_id,
+                node_id,
+            )
+            return IngestResult(id=cmdb_id, ignored=True).as_dict()
+
+        existing = None
+        if cmdb_id:
+            existing = cls._find_by_cmdb_id(cmdb_id)
+        if not existing and node_id:
+            # 无 model_id 时默认按 host 查找；与一期节点推送落模一致
+            model_id = "host"
+            try:
+                model_id = resolve_ingest_model_id(raw) if raw else "host"
+            except ValueError:
+                model_id = "host"
+            existing = cls._find_by_node_id(model_id, node_id)
+
+        if not existing:
+            logger.info(
+                "[ModuleIngest] lifecycle no-op: instance not found cmdb_id=%s node_id=%s",
+                cmdb_id,
+                node_id,
+            )
+            return IngestResult(id=cmdb_id, ignored=True).as_dict()
+
+        inst_id = existing.get("_id")
+        existing_node_id = str(existing.get("node_id") or "").strip()
+        if not existing_node_id:
+            logger.info(
+                "[ModuleIngest] lifecycle already unlinked inst_id=%s (CMDB 无 archive 语义，仅解绑)",
+                inst_id,
+            )
+            return IngestResult(id=inst_id, ignored=True).as_dict()
+
+        # 仅清除 node_id；禁止 hard delete
+        updated = InstanceManage.instance_update(
+            user_groups=[{"id": org_id} for org_id in allowed_org_ids],
+            roles=[],
+            inst_id=int(inst_id),
+            update_attr={"node_id": ""},
+            operator=operator,
+            allowed_org_ids=allowed_org_ids,
+            skip_permission_check=False,
+        )
+        logger.warning(
+            "[ModuleIngest] lifecycle retire: cleared node_id on inst_id=%s; "
+            "CMDB 无 soft-archive，未物理删除实例",
+            inst_id,
+        )
+        return IngestResult(
+            id=(updated.get("_id") if isinstance(updated, dict) else inst_id),
+            updated=True,
+        ).as_dict()
 
     @classmethod
     def _find_by_cmdb_id(cls, cmdb_id: str) -> dict[str, Any] | None:

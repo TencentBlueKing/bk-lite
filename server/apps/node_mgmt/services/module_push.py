@@ -10,6 +10,7 @@ from apps.core.logger import node_logger as logger
 from apps.core.utils.current_team_scope import resolve_current_team_data_scope
 from apps.node_mgmt.models.sidecar import Node, NodeOrganization
 from apps.node_mgmt.services.module_push_contract import (
+    EVENT_LIFECYCLE,
     EVENT_UPSERT,
     IngestEnvelope,
     PushTargetStatus,
@@ -38,6 +39,35 @@ def build_module_push_actor_scope(request) -> dict[str, Any]:
         return {"allowed_org_ids": [], "operator": operator}
 
 
+def parse_retire_linked_flag(request) -> bool:
+    """解析销毁节点时的 retire_linked；默认 False（安全）。
+
+    优先 query，其次 body；兼容 true/1/yes/on。
+    """
+    raw = None
+    query = getattr(request, "query_params", None)
+    if query is not None and "retire_linked" in query:
+        raw = query.get("retire_linked")
+    elif hasattr(request, "data"):
+        try:
+            if "retire_linked" in request.data:
+                raw = request.data.get("retire_linked")
+        except Exception:
+            raw = None
+    if raw is None:
+        return False
+    if isinstance(raw, bool):
+        return raw
+    if isinstance(raw, (int, float)):
+        return bool(raw)
+    text = str(raw).strip().lower()
+    if text in ("1", "true", "yes", "on"):
+        return True
+    if text in ("0", "false", "no", "off", ""):
+        return False
+    return False
+
+
 class ModulePushService:
     DEFAULT_MAX_ATTEMPTS = 3
 
@@ -62,6 +92,37 @@ class ModulePushService:
             )
         except Exception:
             logger.exception("[ModulePush] best-effort push failed node_id=%s targets=%s", node_id, targets)
+            return None
+
+    @classmethod
+    def best_effort_retire_linked(
+        cls,
+        node: Node,
+        *,
+        actor_scope: dict[str, Any],
+        max_attempts: int | None = None,
+    ) -> dict[str, Any] | None:
+        """删除节点前 best-effort 对已关联模块发 lifecycle（退役）；失败不阻断删除。"""
+        targets: list[str] = []
+        if str(getattr(node, "cmdb_id", "") or "").strip():
+            targets.append("cmdb")
+        if str(getattr(node, "monitor_id", "") or "").strip():
+            targets.append("monitor")
+        if not targets:
+            return None
+        try:
+            return cls.retire_linked(
+                node,
+                targets=targets,
+                actor_scope=actor_scope,
+                max_attempts=max_attempts,
+            )
+        except Exception:
+            logger.exception(
+                "[ModulePush] best-effort retire failed node_id=%s targets=%s",
+                getattr(node, "id", None),
+                targets,
+            )
             return None
 
     @classmethod
@@ -125,6 +186,61 @@ class ModulePushService:
         return results
 
     @classmethod
+    def retire_linked(
+        cls,
+        node: Node,
+        *,
+        targets: list[str],
+        actor_scope: dict[str, Any],
+        max_attempts: int | None = None,
+    ) -> dict[str, Any]:
+        """向已关联模块发送 lifecycle 退役事件；不回填、不改 push_status（节点即将删除）。"""
+        attempts_limit = max_attempts if max_attempts is not None else cls.DEFAULT_MAX_ATTEMPTS
+        attempts_limit = max(1, int(attempts_limit))
+
+        envelope = cls._build_lifecycle_envelope(node)
+        allowed_org_ids = list(actor_scope.get("allowed_org_ids") or [])
+        operator = actor_scope.get("operator") or ""
+        results: dict[str, Any] = {}
+
+        for target in targets:
+            if target == "cmdb":
+                status = cls._push_with_retries(
+                    target="cmdb",
+                    push_fn=lambda: CMDB().ingest_from_source(
+                        **envelope,
+                        allowed_org_ids=allowed_org_ids,
+                        operator=operator,
+                    ),
+                    max_attempts=attempts_limit,
+                    on_success=lambda _result: None,
+                )
+            elif target == "monitor":
+                status = cls._push_with_retries(
+                    target="monitor",
+                    push_fn=lambda: MonitorLinkage().ingest_from_source(
+                        **envelope,
+                        allowed_org_ids=allowed_org_ids,
+                        operator=operator,
+                    ),
+                    max_attempts=attempts_limit,
+                    on_success=lambda _result: None,
+                )
+            else:
+                logger.warning(
+                    "[ModulePush] unknown retire target=%s node_id=%s",
+                    target,
+                    node.id,
+                )
+                status = PushTargetStatus(
+                    state="skipped",
+                    error=f"unknown target: {target}",
+                    attempts=0,
+                )
+            results[target] = status
+        return results
+
+    @classmethod
     def _build_envelope(cls, node: Node) -> dict[str, Any]:
         org_ids = list(
             NodeOrganization.objects.filter(node=node).values_list("organization", flat=True)
@@ -145,6 +261,32 @@ class ModulePushService:
             occurred_at=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
             raw=raw,
             link_ids={"node_id": str(node.id)},
+        )
+        return {
+            "source_module": envelope.source_module,
+            "source_id": envelope.source_id,
+            "event_type": envelope.event_type,
+            "occurred_at": envelope.occurred_at,
+            "raw": envelope.raw,
+            "link_ids": envelope.link_ids,
+        }
+
+    @classmethod
+    def _build_lifecycle_envelope(cls, node: Node) -> dict[str, Any]:
+        link_ids: dict[str, Any] = {"node_id": str(node.id)}
+        cmdb_id = str(getattr(node, "cmdb_id", "") or "").strip()
+        monitor_id = str(getattr(node, "monitor_id", "") or "").strip()
+        if cmdb_id:
+            link_ids["cmdb_id"] = cmdb_id
+        if monitor_id:
+            link_ids["monitor_id"] = monitor_id
+        envelope = IngestEnvelope(
+            source_module="node_mgmt",
+            source_id=str(node.id),
+            event_type=EVENT_LIFECYCLE,
+            occurred_at=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            raw={"action": "retire"},
+            link_ids=link_ids,
         )
         return {
             "source_module": envelope.source_module,

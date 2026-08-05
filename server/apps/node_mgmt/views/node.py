@@ -22,7 +22,11 @@ from apps.node_mgmt.serializers.node import (
     NodeSerializer,
     TaskNodesQuerySerializer,
 )
-from apps.node_mgmt.services.module_push import ModulePushService, build_module_push_actor_scope
+from apps.node_mgmt.services.module_push import (
+    ModulePushService,
+    build_module_push_actor_scope,
+    parse_retire_linked_flag,
+)
 from apps.node_mgmt.services.node import NodeService
 from apps.node_mgmt.tasks.sidecar_config import sync_node_properties_to_sidecar
 from apps.node_mgmt.utils.permission import (
@@ -295,6 +299,10 @@ class NodeViewSet(mixins.DestroyModelMixin, GenericViewSet):
         if error_response:
             return error_response
         instance = nodes[0]
+        # retire_linked 默认 false：仅删节点；true 时 best-effort 退役已关联 CMDB/监控
+        if parse_retire_linked_flag(request):
+            actor_scope = build_module_push_actor_scope(request)
+            ModulePushService.best_effort_retire_linked(instance, actor_scope=actor_scope)
         self.perform_destroy(instance)
         return WebUtils.response_success()
 
