@@ -322,14 +322,14 @@ def test_department_options_returns_400_for_manual_input_provider(api_client, au
 
 
 @pytest.mark.django_db
-def test_department_select_still_calls_list_departments_and_normalizes_all(ready_integration_instance):
+def test_department_select_still_calls_list_departments_for_real_department(ready_integration_instance):
     serializer = UserSyncSourceSerializer(
         data={
             "name": "feishu-source",
             "integration_instance": ready_integration_instance.id,
             "root_group_name": "Feishu Root",
             "business_config": {
-                "root_department_id": "__all__",
+                "root_department_id": "dept-a",
                 "department_id_type": "department_id",
             },
             "field_mapping": {"username": "user_id"},
@@ -340,9 +340,8 @@ def test_department_select_still_calls_list_departments_and_normalizes_all(ready
     payload = CapabilityExecutionResult.success_result(
         "ok",
         payload={
-            "all_department_id": "0",
             "items": [
-                {"id": "__all__", "name": "全部部门", "parent_id": None, "children": []},
+                {"id": "dept-a", "name": "部门 A", "parent_id": None, "children": []},
             ],
         },
     )
@@ -351,7 +350,8 @@ def test_department_select_still_calls_list_departments_and_normalizes_all(ready
         assert serializer.is_valid(), serializer.errors
 
     mock_execute.assert_called_once()
-    assert serializer.validated_data["business_config"]["root_department_id"] == "0"
+    assert mock_execute.call_args.kwargs["business_config"]["department_id_type"] == "department_id"
+    assert serializer.validated_data["business_config"]["root_department_id"] == "dept-a"
 
 
 @pytest.mark.django_db
@@ -372,9 +372,8 @@ def test_department_select_rejects_invalid_department(ready_integration_instance
     payload = CapabilityExecutionResult.success_result(
         "ok",
         payload={
-            "all_department_id": "0",
             "items": [
-                {"id": "__all__", "name": "全部部门", "parent_id": None, "children": []},
+                {"id": "dept-a", "name": "部门 A", "parent_id": None, "children": []},
             ],
         },
     )

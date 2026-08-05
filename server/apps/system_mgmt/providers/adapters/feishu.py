@@ -1,5 +1,6 @@
 import json
 import time
+from concurrent.futures import ThreadPoolExecutor
 from threading import Lock
 from urllib.parse import urlencode, urlsplit
 
@@ -15,10 +16,13 @@ FEISHU_TIMEOUT = 10
 FEISHU_AUTHORIZE_URL = "https://accounts.feishu.cn/open-apis/authen/v1/authorize"
 FEISHU_AUTH_ACCESS_TOKEN_URL = "https://open.feishu.cn/open-apis/authen/v1/access_token"
 FEISHU_AUTH_USER_INFO_URL = "https://open.feishu.cn/open-apis/authen/v1/user_info"
+FEISHU_CONTACT_SCOPES_URL = "https://open.feishu.cn/open-apis/contact/v3/scopes"
+FEISHU_DEPARTMENTS_BATCH_URL = "https://open.feishu.cn/open-apis/contact/v3/departments/batch"
 FEISHU_DEPARTMENT_CHILDREN_URL = "https://open.feishu.cn/open-apis/contact/v3/departments/{department_id}/children"
 FEISHU_USERS_BY_DEPARTMENT_URL = "https://open.feishu.cn/open-apis/contact/v3/users/find_by_department"
 FEISHU_SEND_MESSAGE_URL = "https://open.feishu.cn/open-apis/im/v1/messages"
 FEISHU_TOKEN_REFRESH_WINDOW = 300
+FEISHU_DEPARTMENT_CHILDREN_MAX_WORKERS = 5
 _FEISHU_TENANT_TOKEN_CACHE = {}
 _FEISHU_TENANT_TOKEN_CACHE_LOCK = Lock()
 
@@ -72,6 +76,18 @@ def _should_retry_with_refreshed_token(response_status_code: int, data: dict) ->
 
     message = str((data or {}).get("msg") or "").lower()
     return "token" in message
+
+
+def _feishu_permission_denied_result(data: dict, request_id: str):
+    if str((data or {}).get("code") or "") != "40004":
+        return None
+    return CapabilityExecutionResult.failed_result(
+        "飞书通讯录授权范围不足，请检查应用的通讯录权限范围及应用发布状态",
+        code="provider.permission_denied",
+        retryable=False,
+        external_code="40004",
+        external_request_id=request_id,
+    )
 
 
 def _request_tenant_access_token(config: dict, capability_key: str):
@@ -217,7 +233,14 @@ def _fetch_tenant_access_token(config: dict, force_refresh: bool = False):
         return token, None
 
 
-def _feishu_get_paginated(url: str, token: str, *, params: dict | None = None, config: dict | None = None):
+def _feishu_get_paginated(
+    url: str,
+    token: str,
+    *,
+    params: dict | None = None,
+    config: dict | None = None,
+    item_key: str = "items",
+):
     merged_params = dict(params or {})
     page_token = ""
     items = []
@@ -230,6 +253,7 @@ def _feishu_get_paginated(url: str, token: str, *, params: dict | None = None, c
             del merged_params["page_token"]
 
         try:
+            request_started_at = time.perf_counter()
             response = requests.get(
                 url,
                 headers={"Authorization": f"Bearer {token}"},
@@ -248,13 +272,17 @@ def _feishu_get_paginated(url: str, token: str, *, params: dict | None = None, c
 
         last_request_id = response.headers.get("X-Tt-Logid", "")
         page_data = data.get("data") or {}
-        page_items = page_data.get("items") or page_data.get("user_list") or []
+        page_items = page_data.get(item_key) or ([] if item_key != "items" else page_data.get("user_list") or [])
+        duration_ms = int((time.perf_counter() - request_started_at) * 1000)
         logger.debug(
             f"Feishu contact response: endpoint={_sanitize_url_for_log(url)}, status={response.status_code}, "
             f"request_id={last_request_id}, page_token_present={bool(page_token)}, code={data.get('code')}, "
-            f"items_count={len(page_items)}, has_more={page_data.get('has_more', False)}"
+            f"items_count={len(page_items)}, has_more={page_data.get('has_more', False)}, duration_ms={duration_ms}"
         )
         if response.status_code != 200 or data.get("code") not in (0, None):
+            permission_denied_error = _feishu_permission_denied_result(data, last_request_id)
+            if permission_denied_error:
+                return None, permission_denied_error
             if config and not retried_with_refreshed_token and _should_retry_with_refreshed_token(response.status_code, data):
                 logger.debug(
                     f"Feishu contact request auth failed, refreshing token and retrying once: "
@@ -407,88 +435,166 @@ class FeishuUserSyncAdapter(BaseUserSyncAdapter):
 
     @classmethod
     def list_departments(cls, config: dict, provider_key: str, capability_key: str, **kwargs):
-        from apps.system_mgmt.services.user_sync_service import ALL_DEPARTMENT_SELECTION_ID
-
+        operation_started_at = time.perf_counter()
         source = kwargs.get("source")
         business_config = kwargs.get("business_config") or {}
         source_business_config = getattr(source, "business_config", None) or {}
         merged_business_config = {**source_business_config, **business_config}
 
+        token_started_at = time.perf_counter()
         tenant_access_token, error = _fetch_tenant_access_token(config)
+        token_duration_ms = round((time.perf_counter() - token_started_at) * 1000)
         if error:
             return error
 
         department_id_type = merged_business_config.get("department_id_type")
-        root_department_id = str(merged_business_config.get("root_department_id") or "0")
-
-        department_params: dict = {
-            "page_size": 50,
-            "fetch_child": "true",
-        }
+        department_params: dict = {"page_size": 50}
         if department_id_type:
             department_params["department_id_type"] = department_id_type
 
-        department_payload, error = _feishu_get_paginated(
-            _get_config_value(config, "user_sync_departments_url", FEISHU_DEPARTMENT_CHILDREN_URL).format(department_id="0"),
+        scopes_started_at = time.perf_counter()
+        scopes_payload, error = _feishu_get_paginated(
+            _get_config_value(config, "user_sync_scopes_url", FEISHU_CONTACT_SCOPES_URL),
             tenant_access_token,
             params=department_params,
             config=config,
+            item_key="department_ids",
         )
         if error:
             return error
+        scopes_duration_ms = round((time.perf_counter() - scopes_started_at) * 1000)
 
-        all_department_id = "0"
-        department_items = []
-        children_map: dict[str, list[dict]] = {}
-        for item in department_payload["items"]:
+        invalid_scope_root_ids = {"", "0", "__all__", "**all**"}
+        scope_root_ids = []
+        for department_id in scopes_payload["items"]:
+            normalized_id = str(department_id or "").strip()
+            if normalized_id not in invalid_scope_root_ids and normalized_id not in scope_root_ids:
+                scope_root_ids.append(normalized_id)
+
+        nodes: dict[str, dict] = {}
+        external_request_id = scopes_payload.get("request_id") or ""
+
+        def upsert_node(item: dict, fallback_parent_id: str | None = None):
             department_id = _get_feishu_department_identifier(item, department_id_type)
             if not department_id:
-                continue
+                return None
             department_id = str(department_id)
-            parent_department_id = str(item.get("parent_department_id") or all_department_id)
-            department_node = {
-                "id": department_id,
-                "name": item.get("name") or department_id,
-                "parent_id": ALL_DEPARTMENT_SELECTION_ID if parent_department_id == all_department_id else parent_department_id,
-                "children": [],
+            parent_id = item.get("parent_department_id")
+            parent_id = str(parent_id) if parent_id not in (None, "") else fallback_parent_id
+            node = nodes.get(department_id)
+            if node is None:
+                node = {"id": department_id, "name": item.get("name") or department_id, "parent_id": parent_id}
+                nodes[department_id] = node
+            else:
+                node["name"] = item.get("name") or node["name"]
+                node["parent_id"] = parent_id
+            return department_id
+
+        root_details_started_at = time.perf_counter()
+        for start in range(0, len(scope_root_ids), 50):
+            detail_payload, error = _feishu_get_paginated(
+                _get_config_value(config, "user_sync_departments_batch_url", FEISHU_DEPARTMENTS_BATCH_URL),
+                tenant_access_token,
+                params={
+                    "department_ids": scope_root_ids[start:start + 50],
+                    **({"department_id_type": department_id_type} if department_id_type else {}),
+                },
+                config=config,
+            )
+            if error:
+                return error
+            external_request_id = detail_payload.get("request_id") or external_request_id
+            for department in detail_payload["items"]:
+                upsert_node(department)
+        root_details_duration_ms = round((time.perf_counter() - root_details_started_at) * 1000)
+
+        children_params = {**department_params, "fetch_child": "true"}
+
+        def fetch_children(scope_root_id: str):
+            child_payload, error = _feishu_get_paginated(
+                _get_config_value(config, "user_sync_departments_url", FEISHU_DEPARTMENT_CHILDREN_URL).format(
+                    department_id=scope_root_id
+                ),
+                tenant_access_token,
+                params=children_params,
+                config=config,
+            )
+            return scope_root_id, child_payload, error
+
+        children_started_at = time.perf_counter()
+        if scope_root_ids:
+            with ThreadPoolExecutor(
+                max_workers=min(FEISHU_DEPARTMENT_CHILDREN_MAX_WORKERS, len(scope_root_ids))
+            ) as executor:
+                child_requests = [executor.submit(fetch_children, scope_root_id) for scope_root_id in scope_root_ids]
+                for child_request in child_requests:
+                    scope_root_id, child_payload, error = child_request.result()
+                    if error:
+                        return error
+                    external_request_id = child_payload.get("request_id") or external_request_id
+                    for child in child_payload["items"]:
+                        upsert_node(child, scope_root_id)
+        children_duration_ms = round((time.perf_counter() - children_started_at) * 1000)
+
+        child_ids_by_parent: dict[str, list[str]] = {}
+        roots = []
+        for node in nodes.values():
+            parent_id = node["parent_id"]
+            if not parent_id or parent_id not in nodes:
+                node["parent_id"] = None
+
+        processed_ids = set()
+        for department_id in nodes:
+            if department_id in processed_ids:
+                continue
+
+            path = []
+            position = {}
+            current_id = department_id
+            while current_id and current_id in nodes and current_id not in processed_ids:
+                if current_id in position:
+                    cycle_entry_id = path[position[current_id]]
+                    nodes[cycle_entry_id]["parent_id"] = None
+                    break
+                position[current_id] = len(path)
+                path.append(current_id)
+                current_id = nodes[current_id]["parent_id"]
+            processed_ids.update(path)
+
+        for node in nodes.values():
+            parent_id = node["parent_id"]
+            if parent_id:
+                child_ids_by_parent.setdefault(parent_id, []).append(node["id"])
+            else:
+                roots.append(node["id"])
+
+        def build_node(department_id: str):
+            node = nodes[department_id]
+            return {
+                "id": node["id"],
+                "name": node["name"],
+                "parent_id": node["parent_id"],
+                "children": [build_node(child_id) for child_id in child_ids_by_parent.get(department_id, [])],
                 "selectable": True,
-                "is_all": False,
             }
-            department_items.append(department_node)
-            children_map.setdefault(department_node["parent_id"], []).append(department_node)
 
-        def build_department_tree(parent_id: str):
-            tree_nodes = []
-            for node in children_map.get(parent_id, []):
-                tree_nodes.append({**node, "children": build_department_tree(node["id"])})
-            return tree_nodes
-
-        items = [
-            {
-                "id": ALL_DEPARTMENT_SELECTION_ID,
-                "name": "全部部门",
-                "parent_id": None,
-                "children": build_department_tree(ALL_DEPARTMENT_SELECTION_ID),
-                "selectable": True,
-                "is_all": True,
-            }
-        ]
-
-        if root_department_id == all_department_id:
-            selected_id = ALL_DEPARTMENT_SELECTION_ID
-            selection_missing = False
-        else:
-            department_ids = {item["id"] for item in department_items}
-            selected_id = root_department_id if root_department_id in department_ids else ""
-            selection_missing = bool(root_department_id and not selected_id)
-
+        total_duration_ms = round((time.perf_counter() - operation_started_at) * 1000)
+        server_timing = ", ".join([
+            f"feishu-token;dur={token_duration_ms}",
+            f"feishu-scopes;dur={scopes_duration_ms}",
+            f"feishu-root-details;dur={root_details_duration_ms}",
+            f"feishu-children;dur={children_duration_ms}",
+            f"feishu-total;dur={total_duration_ms}",
+        ])
+        logger.debug(
+            f"Feishu department options timing: roots={len(scope_root_ids)}, {server_timing}"
+        )
         return CapabilityExecutionResult.success_result(
             "Feishu department options loaded",
             payload={
-                "items": items,
-                "all_department_id": all_department_id,
-                "selected_id": selected_id,
-                "selection_missing": selection_missing,
+                "items": [build_node(root_id) for root_id in roots],
+                "external_request_id": external_request_id,
+                "server_timing": server_timing,
             },
         )
 
@@ -498,11 +604,18 @@ class FeishuUserSyncAdapter(BaseUserSyncAdapter):
         from apps.system_mgmt.services.user_sync_service import get_user_sync_business_value
 
         source = kwargs.get("source")
+        root_department_id = str(get_user_sync_business_value(source, "root_department_id", "") or "").strip()
+        if root_department_id in {"", "0", "__all__", "**all**"}:
+            return CapabilityExecutionResult.failed_result(
+                "Feishu user synchronization requires a visible department root",
+                code="provider.invalid_config",
+                field="root_department_id",
+            )
+
         tenant_access_token, error = _fetch_tenant_access_token(config)
         if error:
             return error
 
-        root_department_id = get_user_sync_business_value(source, "root_department_id", "0") or "0"
         department_id_type = get_user_sync_business_value(source, "department_id_type", None)
         user_id_type = get_user_sync_business_value(source, "user_id_type", None)
 

@@ -410,7 +410,7 @@ def test_feishu_user_sync_uses_find_by_department_endpoint():
             return DummyResponse({"code": 0, "data": {"items": [], "has_more": False}})
         return DummyResponse({"code": 0, "data": {"items": [], "has_more": False}})
 
-    source = SimpleNamespace(name="preview-source", business_config={"root_department_id": "0"})
+    source = SimpleNamespace(name="preview-source", business_config={"root_department_id": "dept-root"})
 
     with patch("apps.system_mgmt.providers.adapters.feishu.requests.post", side_effect=fake_post), patch(
         "apps.system_mgmt.providers.adapters.feishu.requests.get", side_effect=fake_get
@@ -419,54 +419,6 @@ def test_feishu_user_sync_uses_find_by_department_endpoint():
 
     assert result.success is True
     assert any(url.endswith("/contact/v3/users/find_by_department") for url in requested_urls)
-
-
-def test_feishu_list_departments_returns_all_node_and_children():
-    class DummyResponse:
-        def __init__(self, payload, status_code=200, headers=None):
-            self._payload = payload
-            self.status_code = status_code
-            self.headers = headers or {}
-
-        def json(self):
-            return self._payload
-
-    requested_params = []
-
-    def fake_post(*args, **kwargs):
-        return DummyResponse({"code": 0, "tenant_access_token": "tenant-token"})
-
-    def fake_get(url, *args, **kwargs):
-        requested_params.append(kwargs.get("params") or {})
-        return DummyResponse(
-            {
-                "code": 0,
-                "data": {
-                    "items": [
-                        {"open_department_id": "dept-a", "parent_department_id": "0", "name": "Dept A"},
-                        {"open_department_id": "dept-b", "parent_department_id": "dept-a", "name": "Dept B"},
-                    ],
-                    "has_more": False,
-                },
-            }
-        )
-
-    with patch("apps.system_mgmt.providers.adapters.feishu.requests.post", side_effect=fake_post), patch(
-        "apps.system_mgmt.providers.adapters.feishu.requests.get", side_effect=fake_get
-    ):
-        result = FeishuUserSyncAdapter.list_departments(
-            {"app_id": "cli_xxx", "app_secret": "secret"},
-            "feishu",
-            "user_sync",
-            business_config={"department_id_type": "open_department_id"},
-        )
-
-    assert result.success is True
-    assert result.payload["all_department_id"] == "0"
-    assert result.payload["items"][0]["is_all"] is True
-    assert result.payload["items"][0]["children"][0]["id"] == "dept-a"
-    assert result.payload["items"][0]["children"][0]["children"][0]["id"] == "dept-b"
-    assert requested_params[0]["department_id_type"] == "open_department_id"
 
 
 def test_feishu_user_sync_uses_requested_department_id_type_for_group_ids():
@@ -492,7 +444,7 @@ def test_feishu_user_sync_uses_requested_department_id_type_for_group_ids():
                             {
                                 "department_id": "internal-dept-a",
                                 "open_department_id": "open-dept-a",
-                                "parent_department_id": "0",
+                                "parent_department_id": "open-root",
                                 "name": "Dept A",
                             }
                         ],
@@ -504,7 +456,7 @@ def test_feishu_user_sync_uses_requested_department_id_type_for_group_ids():
 
     source = SimpleNamespace(
         name="typed-source",
-        business_config={"root_department_id": "0", "department_id_type": "open_department_id"},
+        business_config={"root_department_id": "open-root", "department_id_type": "open_department_id"},
     )
 
     with patch("apps.system_mgmt.providers.adapters.feishu.requests.post", side_effect=fake_post), patch(
@@ -540,7 +492,7 @@ def test_feishu_user_sync_defaults_to_fetch_child_true():
         requested_params.append(kwargs.get("params") or {})
         return DummyResponse({"code": 0, "data": {"items": [], "has_more": False}})
 
-    source = SimpleNamespace(name="default-fetch-child-source", business_config={"root_department_id": "0"})
+    source = SimpleNamespace(name="default-fetch-child-source", business_config={"root_department_id": "dept-root"})
 
     with patch("apps.system_mgmt.providers.adapters.feishu.requests.post", side_effect=fake_post), patch(
         "apps.system_mgmt.providers.adapters.feishu.requests.get", side_effect=fake_get
@@ -562,10 +514,7 @@ def test_feishu_user_sync_serializer_drops_deprecated_fetch_child_config(ready_i
     payload = CapabilityExecutionResult.success_result(
         "departments loaded",
         payload={
-            "items": [{"id": "__all__", "name": "全部部门", "parent_id": None, "children": []}],
-            "all_department_id": "0",
-            "selected_id": "__all__",
-            "selection_missing": False,
+            "items": [{"id": "0", "name": "全部部门", "parent_id": None, "children": []}],
         },
     )
     serializer = UserSyncSourceSerializer(
@@ -590,7 +539,7 @@ def test_feishu_user_sync_serializer_drops_deprecated_fetch_child_config(ready_i
     assert "fetch_child" not in serializer.validated_data["business_config"]
 
 
-def test_feishu_list_departments_marks_missing_selection():
+def test_feishu_list_departments_returns_items_without_selection_state():
     class DummyResponse:
         def __init__(self, payload, status_code=200, headers=None):
             self._payload = payload
@@ -604,7 +553,27 @@ def test_feishu_list_departments_marks_missing_selection():
         return DummyResponse({"code": 0, "tenant_access_token": "tenant-token"})
 
     def fake_get(url, *args, **kwargs):
-        return DummyResponse({"code": 0, "data": {"items": [], "has_more": False}})
+        if url.endswith("/contact/v3/scopes"):
+            return DummyResponse(
+                {"code": 0, "data": {"department_ids": ["dept-visible"], "has_more": False}}
+            )
+        if url.endswith("/contact/v3/departments/batch"):
+            return DummyResponse(
+                {
+                    "code": 0,
+                    "data": {
+                        "items": [{
+                            "department_id": "dept-visible",
+                            "parent_department_id": "0",
+                            "name": "Visible Department",
+                        }],
+                        "has_more": False,
+                    },
+                }
+            )
+        if url.endswith("/contact/v3/departments/dept-visible/children"):
+            return DummyResponse({"code": 0, "data": {"items": [], "has_more": False}})
+        raise AssertionError(f"unexpected Feishu request: {url}")
 
     with patch("apps.system_mgmt.providers.adapters.feishu.requests.post", side_effect=fake_post), patch(
         "apps.system_mgmt.providers.adapters.feishu.requests.get", side_effect=fake_get
@@ -617,12 +586,21 @@ def test_feishu_list_departments_marks_missing_selection():
         )
 
     assert result.success is True
-    assert result.payload["selected_id"] == ""
-    assert result.payload["selection_missing"] is True
+    assert result.payload["items"] == [
+        {
+            "id": "dept-visible",
+            "name": "Visible Department",
+            "parent_id": None,
+            "children": [],
+            "selectable": True,
+        }
+    ]
+    assert "selected_id" not in result.payload
+    assert "selection_missing" not in result.payload
 
 
 @pytest.mark.django_db
-def test_user_sync_department_options_returns_all_selection_for_real_root(
+def test_department_options_marks_legacy_virtual_roots_missing(
     api_client, authenticated_user, ready_integration_instance
 ):
     authenticated_user.permission = {"system-manager": {"user_sync-View"}}
@@ -631,22 +609,24 @@ def test_user_sync_department_options_returns_all_selection_for_real_root(
     payload = CapabilityExecutionResult.success_result(
         "ok",
         payload={
-            "items": [{"id": "__all__", "name": "全部部门", "parent_id": None, "children": [], "selectable": True, "is_all": True}],
-            "all_department_id": "0",
-            "selected_id": "__all__",
-            "selection_missing": False,
+            "items": [{"id": "dept-a", "name": "A", "parent_id": None, "children": [], "selectable": True}],
         },
     )
 
     with patch("apps.system_mgmt.providers.runtime.RuntimeApplicationService.execute", return_value=payload) as mock_execute:
-        response = api_client.get(
-            "/api/v1/system_mgmt/user_sync_source/department_options/",
-            {"integration_instance": ready_integration_instance.id, "current_root_department_id": "0", "department_id_type": "department_id"},
-        )
+        for current_root_department_id in ("0", "__all__", "**all**"):
+            response = api_client.get(
+                "/api/v1/system_mgmt/user_sync_source/department_options/",
+                {
+                    "integration_instance": ready_integration_instance.id,
+                    "current_root_department_id": current_root_department_id,
+                    "department_id_type": "department_id",
+                },
+            )
 
-    assert response.status_code == 200
-    assert response.data["selected_id"] == "__all__"
-    assert response.data["selection_missing"] is False
+            assert response.status_code == 200
+            assert response.data["selected_id"] == ""
+            assert response.data["selection_missing"] is True
     assert mock_execute.call_args.kwargs["business_config"]["department_id_type"] == "department_id"
 
 
@@ -671,7 +651,7 @@ def test_feishu_user_sync_reuses_cached_token_when_not_expiring():
         auth_headers.append(kwargs["headers"]["Authorization"])
         return DummyResponse({"code": 0, "data": {"items": [], "has_more": False}})
 
-    source = SimpleNamespace(name="cache-source", business_config={"root_department_id": "0"})
+    source = SimpleNamespace(name="cache-source", business_config={"root_department_id": "dept-root"})
 
     with patch("apps.system_mgmt.providers.adapters.feishu.requests.post", side_effect=fake_post), patch(
         "apps.system_mgmt.providers.adapters.feishu.requests.get", side_effect=fake_get
@@ -713,7 +693,7 @@ def test_feishu_user_sync_refreshes_token_once_after_auth_failure():
             return DummyResponse({"code": 99991663, "msg": "tenant_access_token expired"}, status_code=401, headers={"X-Tt-Logid": "req-1"})
         return DummyResponse({"code": 0, "data": {"items": [], "has_more": False}}, headers={"X-Tt-Logid": "req-2"})
 
-    source = SimpleNamespace(name="refresh-source", business_config={"root_department_id": "0"})
+    source = SimpleNamespace(name="refresh-source", business_config={"root_department_id": "dept-root"})
 
     with patch("apps.system_mgmt.providers.adapters.feishu.requests.post", side_effect=fake_post), patch(
         "apps.system_mgmt.providers.adapters.feishu.requests.get", side_effect=fake_get
@@ -751,7 +731,7 @@ def test_feishu_user_sync_pre_refreshes_expiring_cached_token():
         auth_headers.append(kwargs["headers"]["Authorization"])
         return DummyResponse({"code": 0, "data": {"items": [], "has_more": False}})
 
-    source = SimpleNamespace(name="pre-refresh-source", business_config={"root_department_id": "0"})
+    source = SimpleNamespace(name="pre-refresh-source", business_config={"root_department_id": "dept-root"})
 
     with patch("apps.system_mgmt.providers.adapters.feishu.requests.post", side_effect=fake_post), patch(
         "apps.system_mgmt.providers.adapters.feishu.requests.get", side_effect=fake_get
@@ -787,10 +767,8 @@ def test_serializer_accepts_business_config_without_mirroring_legacy_columns(rea
     payload = CapabilityExecutionResult.success_result(
         "ok",
         payload={
-            "all_department_id": "0",
             "items": [
-                {"id": "__all__", "name": "全部部门", "parent_id": None, "children": []},
-                {"id": "dept-99", "name": "Dept 99", "parent_id": "__all__", "children": []},
+                {"id": "dept-99", "name": "Dept 99", "parent_id": None, "children": []},
             ],
         },
     )
@@ -947,21 +925,27 @@ def test_serializer_rejects_unknown_user_sync_field_mapping_key(ready_integratio
 
 
 @pytest.mark.django_db
-def test_serializer_rejects_user_sync_field_mapping_not_declared_by_manifest(ready_integration_instance):
+def test_serializer_accepts_user_sync_external_field_not_declared_by_manifest(ready_integration_instance):
     serializer = UserSyncSourceSerializer(
         data={
-            "name": "source-invalid-field-mapping-value",
+            "name": "source-custom-field-mapping-value",
             "integration_instance": ready_integration_instance.id,
             "enabled": True,
-            "root_group_name": "Invalid Mapping Value Root",
-            "business_config": {"root_department_id": "0"},
+            "root_group_name": "Custom Mapping Value Root",
+            "business_config": {"root_department_id": "dept-real"},
             "field_mapping": {"username": "private_token"},
             "schedule_config": {"mode": "disabled"},
         }
     )
+    payload = CapabilityExecutionResult.success_result(
+        "ok",
+        payload={"items": [{"id": "dept-real", "name": "Real Department", "parent_id": None, "children": []}]},
+    )
 
-    assert serializer.is_valid() is False
-    assert "field_mapping" in serializer.errors
+    with patch("apps.system_mgmt.providers.runtime.RuntimeApplicationService.execute", return_value=payload):
+        assert serializer.is_valid(), serializer.errors
+
+    assert serializer.validated_data["field_mapping"] == {"username": "private_token"}
 
 
 @pytest.mark.django_db
@@ -972,7 +956,7 @@ def test_serializer_existing_source_preview_does_not_reject_own_root_group(ready
         integration_instance=ready_integration_instance,
         enabled=True,
         root_group_name="Preview Root",
-        business_config={"root_department_id": "0"},
+        business_config={"root_department_id": "dept-real"},
         field_mapping={},
         schedule_config={},
     )
@@ -981,15 +965,14 @@ def test_serializer_existing_source_preview_does_not_reject_own_root_group(ready
 
     serializer = UserSyncSourceSerializer(
         instance=source,
-        data={"business_config": {"root_department_id": "0"}},
+        data={"business_config": {"root_department_id": "dept-real"}},
         partial=True,
     )
     payload = CapabilityExecutionResult.success_result(
         "ok",
         payload={
-            "all_department_id": "0",
             "items": [
-                {"id": "__all__", "name": "全部部门", "parent_id": None, "children": []},
+                {"id": "dept-real", "name": "Real Department", "parent_id": None, "children": []},
             ],
         },
     )
@@ -998,15 +981,12 @@ def test_serializer_existing_source_preview_does_not_reject_own_root_group(ready
 
 
 @pytest.mark.django_db
-def test_serializer_normalizes_all_department_selection_and_passes_department_id_type(ready_integration_instance):
+def test_serializer_rejects_root_outside_real_department_forest(ready_integration_instance):
     payload = CapabilityExecutionResult.success_result(
         "ok",
         payload={
-            "all_department_id": "dept-all",
             "items": [
-                {"id": "__all__", "name": "鍏ㄩ儴閮ㄩ棬", "parent_id": None, "children": []},
-                {"id": "dept-all", "name": "Dept All", "parent_id": "__all__", "children": []},
-                {"id": "dept-a", "name": "Dept A", "parent_id": "dept-all", "children": []},
+                {"id": "dept-a", "name": "Dept A", "parent_id": None, "children": []},
             ],
         },
     )
@@ -1026,13 +1006,10 @@ def test_serializer_normalizes_all_department_selection_and_passes_department_id
     )
 
     with patch("apps.system_mgmt.providers.runtime.RuntimeApplicationService.execute", return_value=payload) as mock_execute:
-        assert serializer.is_valid(), serializer.errors
+        assert serializer.is_valid() is False
 
     mock_execute.assert_called_once()
-    call_kwargs = mock_execute.call_args.kwargs
-    assert call_kwargs["operation"] == "list_departments"
-    assert call_kwargs["business_config"]["department_id_type"] == "department_id"
-    assert serializer.validated_data["business_config"]["root_department_id"] == "dept-all"
+    assert "当前同步范围已不可用，请重新选择部门" in str(serializer.errors)
 
 
 @pytest.mark.django_db
@@ -1040,10 +1017,8 @@ def test_serializer_rejects_stale_root_department_selection(ready_integration_in
     payload = CapabilityExecutionResult.success_result(
         "ok",
         payload={
-            "all_department_id": "dept-all",
             "items": [
-                {"id": "__all__", "name": "全部部门", "parent_id": None, "children": []},
-                {"id": "dept-all", "name": "Dept All", "parent_id": "__all__", "children": []},
+                {"id": "dept-all", "name": "Dept All", "parent_id": None, "children": []},
             ],
         },
     )
@@ -1087,18 +1062,26 @@ def test_serializer_requires_root_department_selection(ready_integration_instanc
     assert "business_config" in serializer.errors
 
 
-def test_normalize_root_department_selection_converts_all_marker():
-    payload = {"all_department_id": "dept-all"}
-
-    assert user_sync_service_module.normalize_root_department_selection("__all__", payload) == "dept-all"
-
-
 def test_flatten_department_ids_collects_nested_tree_ids():
     items = [
-        {"id": "__all__", "children": [{"id": "dept-all", "children": [{"id": "dept-a", "children": []}]}]},
+        {"id": "dept-root", "children": [{"id": "dept-all", "children": [{"id": "dept-a", "children": []}]}]},
     ]
 
-    assert user_sync_service_module.flatten_department_ids(items) == {"__all__", "dept-all", "dept-a"}
+    assert user_sync_service_module.flatten_department_ids(items) == {"dept-root", "dept-all", "dept-a"}
+
+
+def test_root_group_rejects_empty_root_scope_before_constructing_identity():
+    source = SimpleNamespace(id=1, root_group_name="Root", business_config={}, integration_instance=None)
+
+    with pytest.raises(ValueError, match="root scope is required"):
+        user_sync_service_module._get_or_create_root_group(source)
+
+
+def test_apply_user_sync_payload_rejects_empty_root_scope_before_syncing():
+    source = SimpleNamespace(id=1, root_group_name="Root", business_config={}, integration_instance=None)
+
+    with pytest.raises(ValueError, match="root scope is required"):
+        _apply_user_sync_payload(source, {"group_list": [], "user_list": []})
 
 
 # ---------------------------------------------------------------------------

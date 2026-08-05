@@ -23,7 +23,6 @@ DEFAULT_FIELD_MAPPING = {
     "email": "email",
     "phone": "mobile",
 }
-ALL_DEPARTMENT_SELECTION_ID = "__all__"
 DEFAULT_USER_SYNC_STALE_TIMEOUT_SECONDS = 6 * 60 * 60
 MAX_USER_SYNC_HEARTBEAT_INTERVAL_SECONDS = 60
 
@@ -384,13 +383,6 @@ def get_user_sync_root_scope_value(source, default=None):
     return business_config.get("root_department_id", default)
 
 
-def normalize_root_department_selection(selected_value: str, payload: dict) -> str:
-    selected_value = str(selected_value or "")
-    if selected_value == ALL_DEPARTMENT_SELECTION_ID:
-        return str((payload or {}).get("all_department_id") or selected_value)
-    return selected_value
-
-
 def flatten_department_ids(items: list[dict]) -> set[str]:
     flattened_ids: set[str] = set()
     for item in items or []:
@@ -693,7 +685,9 @@ def _apply_user_sync_payload(source: UserSyncSource, payload: dict, current_run:
     """
     group_list = deepcopy(payload.get("group_list") or [])
     user_list = deepcopy(payload.get("user_list") or [])
-    root_scope_value = str(get_user_sync_root_scope_value(source, "0") or "0")
+    root_scope_value = str(get_user_sync_root_scope_value(source, "") or "")
+    if not root_scope_value:
+        raise ValueError("User sync root scope is required")
 
     has_run = current_run is not None
     password_init_mode_snapshot = (
@@ -1157,7 +1151,9 @@ def _reconcile_synced_directory(
 
 
 def _get_or_create_root_group(source: UserSyncSource):
-    root_scope_value = str(get_user_sync_root_scope_value(source, "0") or "0")
+    root_scope_value = str(get_user_sync_root_scope_value(source, "") or "")
+    if not root_scope_value:
+        raise ValueError("User sync root scope is required")
     defaults = {
         "description": f"user_sync_source_{source.id}",
         "sync_source": source,

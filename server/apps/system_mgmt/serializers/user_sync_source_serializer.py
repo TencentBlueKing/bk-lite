@@ -224,15 +224,10 @@ class UserSyncSourceSerializer(UsernameSerializer):
             if not department_result.success:
                 raise serializers.ValidationError({"business_config": department_result.summary})
 
-            normalized_root_department_id = user_sync_service.normalize_root_department_selection(
-                root_scope_value,
-                department_result.payload,
-            )
             valid_department_ids = user_sync_service.flatten_department_ids(department_result.payload.get("items") or [])
-            valid_department_ids.add(str(department_result.payload.get("all_department_id") or ""))
-            if normalized_root_department_id not in valid_department_ids:
-                raise serializers.ValidationError({"business_config": "Selected root department is invalid"})
-            business_config[root_scope_field] = normalized_root_department_id
+            if root_scope_value not in valid_department_ids:
+                raise serializers.ValidationError({"business_config": "当前同步范围已不可用，请重新选择部门"})
+            business_config[root_scope_field] = root_scope_value
 
         attrs["business_config"] = business_config
         return attrs

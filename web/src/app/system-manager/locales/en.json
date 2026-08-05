@@ -430,7 +430,7 @@
         "rootDepartmentPlaceholder": "Please select a root department",
         "departmentOptionsLoading": "Loading department options",
         "departmentOptionsLoadFailed": "Failed to load department options. Please try again later.",
-        "departmentSelectionInvalid": "The current root department is no longer available. Please choose again.",
+        "departmentSelectionInvalid": "The selected department is no longer within the application's accessible scope. Please select again.",
         "accessHint": "Configure the pull range, filtering rules, and field mappings based on the user's data source connection method.",
         "manifestNotFound": "The business configuration template for this integration instance was not found. Please check the configuration in the Integration Center.",
         "fieldMappingTitle": "User Basic Field Mapping",

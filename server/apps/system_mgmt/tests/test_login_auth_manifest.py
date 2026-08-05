@@ -22,6 +22,14 @@ def test_feishu_login_auth_manifest_declares_recommended_external_field():
     assert template.default_external_match_field == "user_id"
 
 
+def test_feishu_user_sync_manifest_declares_scopes_and_department_batch_endpoints():
+    capability = FEISHU_PROVIDER_MANIFEST.get_capability("user_sync")
+    defaults = {field.key: field.default for field in capability.connection_template}
+
+    assert defaults["user_sync_scopes_url"] == "https://open.feishu.cn/open-apis/contact/v3/scopes"
+    assert defaults["user_sync_departments_batch_url"] == "https://open.feishu.cn/open-apis/contact/v3/departments/batch"
+
+
 def test_wechat_login_auth_manifest_declares_recommended_external_field():
     template = WECHAT_PROVIDER_MANIFEST.business_templates["login_auth_form"]
 

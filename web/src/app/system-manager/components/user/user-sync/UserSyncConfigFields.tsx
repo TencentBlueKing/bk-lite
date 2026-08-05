@@ -39,6 +39,7 @@ interface UserSyncConfigFieldsProps {
   mappingError?: string;
   hideRootDepartmentField?: boolean;
   rootScopeField?: string;
+  initialRootScopeValue?: string;
 }
 
 interface MappingInputRowProps {
@@ -49,8 +50,6 @@ interface MappingInputRowProps {
   invalid?: boolean;
   onChange: (index: number, value: string) => void;
 }
-
-const ALL_DEPARTMENT_SELECTION_ID = '__all__';
 
 function toTreeSelectData(nodes: UserSyncDepartmentNode[]): Array<{
   title: string;
@@ -107,6 +106,7 @@ const UserSyncConfigFields: React.FC<UserSyncConfigFieldsProps> = ({
   mappingError,
   hideRootDepartmentField = false,
   rootScopeField,
+  initialRootScopeValue = '',
 }) => {
   const form = Form.useFormInstance();
   const { getDepartmentOptions } = useUserSyncApi();
@@ -191,7 +191,7 @@ const UserSyncConfigFields: React.FC<UserSyncConfigFieldsProps> = ({
         return;
       }
 
-      if (!shouldFetchDepartmentOptions({ selectedInstanceId, template: resolvedTemplate })) {
+      if (!shouldFetchDepartmentOptions({ selectedInstanceId, template: resolvedTemplate, departmentIdType })) {
         setDepartmentNodes([]);
         setDepartmentSelectionMissing(false);
         setDepartmentLoadError('');
@@ -204,8 +204,8 @@ const UserSyncConfigFields: React.FC<UserSyncConfigFieldsProps> = ({
       try {
         const result = await getDepartmentOptions({
           integration_instance: selectedInstanceId,
-          current_root_department_id: currentRootDepartmentIdRef.current,
-          department_id_type: departmentIdType,
+          current_root_department_id: currentRootDepartmentIdRef.current || initialRootScopeValue,
+          ...(departmentIdType ? { department_id_type: departmentIdType } : {}),
         });
         if (!active) return;
 
@@ -215,7 +215,7 @@ const UserSyncConfigFields: React.FC<UserSyncConfigFieldsProps> = ({
         const currentFormValue = String(form.getFieldValue(['business_config', rootDepartmentFieldKey]) || '');
         const nextValue = result.selection_missing
           ? ''
-          : (result.selected_id || currentFormValue || ALL_DEPARTMENT_SELECTION_ID);
+          : result.selected_id;
 
         if (nextValue && nextValue !== currentFormValue) {
           form.setFieldValue(['business_config', rootDepartmentFieldKey], nextValue);
@@ -247,7 +247,7 @@ const UserSyncConfigFields: React.FC<UserSyncConfigFieldsProps> = ({
     return () => {
       active = false;
     };
-  }, [departmentIdType, currentRootDepartmentId, form, resolvedTemplate, rootDepartmentFieldKey, selectedInstanceId, t]);
+  }, [departmentIdType, form, initialRootScopeValue, resolvedTemplate, rootDepartmentFieldKey, selectedInstanceId, t]);
 
   const renderManifestField = (field: TemplateField) => {
     if (hideRootDepartmentField && (field.key === rootDepartmentFieldKey || field.key === 'department_id_type')) {

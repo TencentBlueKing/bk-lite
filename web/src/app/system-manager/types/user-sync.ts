@@ -76,7 +76,6 @@ export interface UserSyncDepartmentNode {
   parent_id: string | null;
   children: UserSyncDepartmentNode[];
   selectable: boolean;
-  is_all: boolean;
 }
 
 export interface UserSyncDepartmentOptions {

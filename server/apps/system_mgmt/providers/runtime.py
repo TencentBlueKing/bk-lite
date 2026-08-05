@@ -24,6 +24,7 @@ _PLATFORM_INTERNAL_CODES = frozenset(
 _EXTERNAL_API_CODES = frozenset(
     {
         "provider.auth_failed",
+        "provider.permission_denied",
         "provider.request_failed",
         "provider.timeout",
     }

@@ -304,7 +304,7 @@ def test_runtime_application_service_aggregates_capability_failures_into_one_log
     )
 
 
-def test_runtime_application_service_can_execute_list_departments():
+def test_runtime_application_service_returns_not_implemented_for_base_list_departments():
     manifest = SimpleNamespace(
         key="demo",
         capabilities=[SimpleNamespace(key="user_sync", adapter_key="demo.user_sync")],
@@ -324,9 +324,8 @@ def test_runtime_application_service_can_execute_list_departments():
         source=SimpleNamespace(business_config={"department_id_type": "department_id"}),
     )
 
-    assert result.success is True
-    assert result.payload["all_department_id"] == "0"
-    assert result.payload["items"][0]["id"] == "__all__"
+    assert result.success is False
+    assert result.errors[0].code == "provider.operation_not_implemented"
 
 
 def test_runtime_application_service_can_execute_ad_authenticate_with_username_password():

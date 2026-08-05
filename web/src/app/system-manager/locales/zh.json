@@ -430,7 +430,7 @@
         "rootDepartmentPlaceholder": "请选择根部门",
         "departmentOptionsLoading": "部门列表加载中",
         "departmentOptionsLoadFailed": "部门列表加载失败，请稍后重试",
-        "departmentSelectionInvalid": "当前根部门已失效，请重新选择",
+        "departmentSelectionInvalid": "当前选择的部门已不在应用可访问范围内，请重新选择",
         "accessHint": "根据用户源接入方式，配置拉取范围、过滤规则与字段映射。",
         "manifestNotFound": "未找到该集成实例对应的业务配置模板，请检查集成中心的配置。",
         "fieldMappingTitle": "用户基础字段映射",
