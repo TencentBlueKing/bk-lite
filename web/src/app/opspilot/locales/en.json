@@ -1483,6 +1483,7 @@
     "memoryTitle": "Title",
     "content": "Content",
     "deleteConfirm": "Confirm delete?",
+    "deleteConfirmContent": "Deleting will remove memory space \"{name}\" and all memories in it. This action cannot be undone.",
     "config": "Configuration",
     "memories": "Memories",
     "writeRule": "Write Rule",
