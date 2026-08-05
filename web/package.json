@@ -35,7 +35,7 @@
     "test:alarm-notification-tooltip": "pnpm exec tsx scripts/alarm-notification-tooltip-test.ts",
     "test:incident-im-group-ui": "pnpm exec tsx enterprise/scripts/incident-im-group-ui-test.ts",
     "test:prepare-enterprise-dependency-link": "node scripts/prepare-enterprise-dependency-link-test.mjs",
-    "test:build-pipeline": "node scripts/next-config-build-purity-test.mjs && node scripts/build-entry-test.mjs && node scripts/build-progress-test.mjs && node scripts/build-root-scope-test.mjs && node scripts/build-tsconfig-scope-test.mjs && node scripts/build-assets-error-test.mjs && node scripts/copy-public-error-test.mjs",
+    "test:build-pipeline": "node scripts/next-config-build-purity-test.mjs && node scripts/build-entry-test.mjs && node scripts/build-progress-test.mjs && node scripts/build-root-scope-test.mjs && node scripts/build-tsconfig-scope-test.mjs && node scripts/build-assets-error-test.mjs && node scripts/copy-public-error-test.mjs && node scripts/dockerfile-legacy-builder-test.mjs",
     "test:generate-workspace": "node scripts/generate-workspace-test.mjs",
     "test:next-dev-origin": "node scripts/next-dev-origin-config-test.mjs",
     "test:alert-assignment-level-multiselect": "pnpm exec tsx scripts/alert-assignment-level-multiselect-test.ts",
