@@ -14,6 +14,7 @@ from apps.opspilot.services.wiki.active_generation_query_service import ActiveGe
 from apps.opspilot.services.wiki.build_generation_service import BuildGenerationError
 from apps.opspilot.services.wiki.check_service import scan_health
 from apps.opspilot.services.wiki.directory_enable_service import WikiDirectoryEnableError, enable_wiki_directory
+from apps.opspilot.services.wiki.directory_readiness_service import audit_knowledge_base_readiness
 from apps.opspilot.services.wiki.embedding_service import chunk_semantic_search as wiki_chunk_search
 from apps.opspilot.services.wiki.embedding_service import index_version
 from apps.opspilot.services.wiki.embedding_service import reindex_chunks as wiki_reindex_chunks
@@ -203,6 +204,17 @@ class WikiKnowledgeBaseViewSet(WikiTeamScopeMixin, AuthViewSet):
         )
         return JsonResponse({"result": True, "data": data})
 
+    @HasPermission("wiki_list-View")
+    @action(methods=["GET"], detail=True)
+    def directory_readiness(self, request, pk=None):
+        knowledge_base = self.get_object()
+        enable_check = str(request.query_params.get("enable_check", "")).strip().lower() in {"1", "true", "yes"}
+        readiness = audit_knowledge_base_readiness(
+            knowledge_base,
+            enable_check=enable_check,
+        )
+        return JsonResponse({"result": True, "data": readiness.to_dict()})
+
     @HasPermission("wiki_list-Edit")
     @action(methods=["POST"], detail=True)
     def directory_enable(self, request, pk=None):
@@ -232,6 +244,7 @@ class WikiKnowledgeBaseViewSet(WikiTeamScopeMixin, AuthViewSet):
         data = {
             "knowledge_base_id": enabled.knowledge_base_id,
             "directory_enabled": enabled.directory_enabled,
+            "migration_state": "enabled",
             "changed": enabled.changed,
             "readiness": enabled.readiness.to_dict(),
         }

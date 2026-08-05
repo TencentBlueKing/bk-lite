@@ -38,6 +38,12 @@ class WikiKnowledgeBase(MaintainerInfo, TimeInfo):
         related_name="active_for_knowledge_bases",
     )
     directory_enabled = models.BooleanField(default=False)
+    directory_migration_state = models.CharField(
+        max_length=20,
+        default="legacy",
+        db_index=True,
+        help_text="legacy / backfilling / ready / enabled",
+    )
 
     class Meta:
         db_table = "opspilot_wiki_knowledge_base"

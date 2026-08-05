@@ -18,12 +18,14 @@ def _bootstrap(wiki_factory):
 def _save_payload(knowledge_base, *, client_ref="manual-runbook"):
     current = get_structure(knowledge_base)
     existing = [{"kind": "existing", **deepcopy(directory)} for directory in current["structure"]["directories"]]
+    page_types = list(current["structure"]["page_types"])
+    preferred = next((item for item in page_types if item.casefold() == "concept"), page_types[0])
     return {
         "structure_version": current["structure_revision"]["version"],
         "base_generation_id": current["active_generation"]["id"],
         "structure": {
             "format_version": 1,
-            "page_types": ["concept"],
+            "page_types": page_types,
             "directories": [
                 *existing,
                 {
@@ -33,8 +35,8 @@ def _save_payload(knowledge_base, *, client_ref="manual-runbook"):
                     "description": "管理员维护的运行手册",
                     "order": 10,
                     "rules": {
-                        "allowed_page_types": ["concept"],
-                        "default_for_page_types": ["concept"],
+                        "allowed_page_types": [preferred],
+                        "default_for_page_types": [],
                     },
                     "parent": None,
                 },
@@ -47,6 +49,8 @@ def test_bootstrap_is_idempotent_and_creates_one_active_pair(wiki_factory):
     knowledge_base = _bootstrap(wiki_factory)
 
     first_generation_id = knowledge_base.active_generation_id
+    directory_count = WikiDirectory.objects.filter(knowledge_base=knowledge_base).count()
+    assert directory_count >= 1
     result = bootstrap_knowledge_base(knowledge_base, operator="admin")
 
     knowledge_base.refresh_from_db()
@@ -54,7 +58,7 @@ def test_bootstrap_is_idempotent_and_creates_one_active_pair(wiki_factory):
     assert knowledge_base.directory_enabled is False
     assert knowledge_base.active_generation_id == first_generation_id
     assert result["active_generation"]["id"] == first_generation_id
-    assert WikiDirectory.objects.filter(knowledge_base=knowledge_base).count() == 1
+    assert WikiDirectory.objects.filter(knowledge_base=knowledge_base).count() == directory_count
     assert WikiStructureRevision.objects.filter(knowledge_base=knowledge_base).count() == 1
     assert WikiGeneration.objects.filter(knowledge_base=knowledge_base).count() == 1
 

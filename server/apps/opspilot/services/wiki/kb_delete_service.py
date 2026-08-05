@@ -7,10 +7,9 @@ PageRelation 等 PROTECT 外键（ProtectedError）。本服务先断开指针�
 
 from __future__ import annotations
 
-import logging
-
 from django.db import transaction
 
+from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.models import (
     BuildRecord,
     KnowledgePage,
@@ -29,8 +28,6 @@ from apps.opspilot.models import (
 )
 from apps.opspilot.services.wiki.parsed_media_service import delete_knowledge_base_media
 from apps.opspilot.services.wiki.parsed_storage_service import delete_knowledge_base_parsed_markdown
-
-logger = logging.getLogger("opspilot")
 
 
 @transaction.atomic

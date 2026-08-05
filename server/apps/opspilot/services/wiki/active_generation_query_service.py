@@ -1,14 +1,13 @@
 """Single active-generation read boundary for Wiki consumers."""
 
-import logging
 from dataclasses import dataclass
 
 from django.db.models import BigIntegerField, Count, Prefetch, Subquery, Value
 
+from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.models import KnowledgePage, PageRelation, PageVersion, WikiDirectory, WikiGenerationPage, WikiKnowledgeBase
 
 READ_GENERATION_ID_ATTRIBUTE = "_wiki_read_generation_id"
-logger = logging.getLogger("opspilot")
 
 
 class ActiveGenerationReadError(Exception):
