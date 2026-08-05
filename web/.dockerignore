@@ -2,3 +2,5 @@ node_modules
 .next
 .husky
 .env.local
+playwright-report
+test-results

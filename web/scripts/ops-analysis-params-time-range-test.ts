@@ -16,4 +16,9 @@ assert.deepEqual(custom.rangePickerVaule?.map((value) => value.valueOf()), [1000
 assert.notEqual(getTimeSelectorKey(10080), getTimeSelectorKey([1000, 2000]));
 assert.equal(getTimeSelectorKey(undefined), getTimeSelectorKey(10080));
 
+const cleared = getTimeSelectorDefaultValue(null);
+assert.equal(cleared.selectValue, null);
+assert.equal(cleared.rangePickerVaule, null);
+assert.notEqual(getTimeSelectorKey(null), getTimeSelectorKey(undefined));
+
 console.log('ops analysis params time range tests passed');

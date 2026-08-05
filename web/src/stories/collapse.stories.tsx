@@ -1,5 +1,5 @@
 import React from 'react';
-import type { Meta, StoryObj } from '@storybook/react';
+import type { Meta, StoryObj } from '@storybook/nextjs';
 import Collapse from '@/components/collapse';
 import CustomCascader from '@/components/custom-cascader';
 

@@ -469,7 +469,7 @@
         "statusInactive": "不活跃",
         "typeAll": "全部",
         "noMatch": "没有匹配的集成源",
-        "eventCount": "事件数量",
+        "eventCount": "原始事件数",
         "lastEventTime": "最近事件时间"
     },
     "settings": {

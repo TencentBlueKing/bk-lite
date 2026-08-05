@@ -399,7 +399,7 @@ const Asset = () => {
         page: pagination.current,
         page_size: pagination.pageSize,
         name: type === 'clear' ? '' : searchText,
-        id: objectId
+        id: String(objectId)
       };
       const data = await getInstanceListByPrimaryObject(params, {
         signal: abortController.signal
@@ -546,7 +546,7 @@ const Asset = () => {
 
   // 跳转到集成列表页面进行接入
   const goToIntegration = () => {
-    const targetUrl = `/monitor/integration/list?objId=${objectId}`;
+    const targetUrl = `/monitor/integration/list?objId=${String(objectId)}`;
     router.push(targetUrl);
   };
 

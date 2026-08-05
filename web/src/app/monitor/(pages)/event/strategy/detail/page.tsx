@@ -379,7 +379,7 @@ const StrategyOperation = () => {
     setObjects(data);
   };
 
-  const changeCollectType = (id: string) => {
+  const changeCollectType = (id: string | number) => {
     getMetrics({
       monitor_object_id: monitorObjId,
       monitor_plugin_id: id

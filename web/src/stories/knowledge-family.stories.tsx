@@ -1,4 +1,4 @@
-import type { Meta, StoryObj } from '@storybook/react';
+import type { Meta, StoryObj } from '@storybook/nextjs';
 import ChartEmptyState from '@/components/chart-empty-state';
 import KnowledgeDocumentSelectorDrawer from '@/app/opspilot/components/knowledge/document-selector-drawer';
 import KnowledgeDocumentTypeBadge from '@/app/opspilot/components/knowledge/document-type-badge';

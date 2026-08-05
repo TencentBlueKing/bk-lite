@@ -154,7 +154,7 @@ export interface GapInterval {
 
 export interface SegmentedItem {
   label: string;
-  value: string;
+  value: string | number;
 }
 
 export interface Pagination {

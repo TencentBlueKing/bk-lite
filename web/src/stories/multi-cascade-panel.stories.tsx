@@ -1,4 +1,4 @@
-import type { Meta, StoryObj } from '@storybook/react';
+import type { Meta, StoryObj } from '@storybook/nextjs';
 import MultiCascadePanel from '@/components/multi-cascade-panel';
 import type { CascadeNode } from '@/components/multi-cascade-panel';
 

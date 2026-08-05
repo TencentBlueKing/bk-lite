@@ -410,7 +410,7 @@ const MetricViews: React.FC<ViewDetailProps> = ({
       return;
     }
     const params = {
-      monitor_object_id: processTab ? processOid : monitorObjectId,
+      monitor_object_id: processTab ? processOid : String(monitorObjectId),
       monitor_plugin_id: processTab ? processPid : tab
     };
     setLoading(true);
@@ -919,7 +919,7 @@ const MetricViews: React.FC<ViewDetailProps> = ({
   const linkToPolicy = (row: TableDataItem) => {
     const _row = {
       monitorName: monitorObjectName,
-      monitorObjId: monitorObjectId + '',
+      monitorObjId: String(monitorObjectId),
       instanceId: instanceId as string,
       metricId: row.name,
       type: 'add'

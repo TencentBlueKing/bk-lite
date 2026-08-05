@@ -469,7 +469,7 @@
         "statusInactive": "Inactive",
         "typeAll": "All",
         "noMatch": "No matching integration sources",
-        "eventCount": "Event Count",
+        "eventCount": "Raw Event Count",
         "lastEventTime": "Last Event Time"
     },
     "settings": {

@@ -216,7 +216,11 @@ class PatchBaselineViewSet(AuthViewSet):
             "patch_baseline", operation="View"
         )
         bindings = baseline.host_bindings.select_related("target", "baseline")
-        serializer = HostBaselineBindingSerializer(bindings, many=True)
+        serializer = HostBaselineBindingSerializer(
+            bindings,
+            many=True,
+            context=self.get_serializer_context(),
+        )
         return Response(serializer.data)
 
     @action(detail=True, methods=["post"])

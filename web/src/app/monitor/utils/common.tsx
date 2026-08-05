@@ -553,11 +553,11 @@ export const getBaseInstanceColumn = (config: {
       onCell: () => ({ style: { minWidth: 150 } }),
       ...(isAssetIp
         ? {
-            filterMultiple: true,
-            filterSearch: true,
-            filterParam: 'asset.ip',
-            filters: ipFilters.length ? ipFilters : undefined
-          }
+          filterMultiple: true,
+          filterSearch: true,
+          filterParam: 'asset.ip',
+          filters: ipFilters.length ? ipFilters : undefined
+        }
         : {}),
       render: (_: unknown, record: TableDataItem) =>
         renderAssetText(formatSummaryFact(record.summary_facts?.[column.fact]))

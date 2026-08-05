@@ -5,7 +5,7 @@ import type { TablePaginationConfig } from 'antd/es/table';
 import OperateModal from './operateModal';
 import CustomTable from '@/components/custom-table';
 import PermissionWrapper from '@/components/permission';
-import { Button, Input, Card, message, Modal, Space } from 'antd';
+import { Button, Input, Card, message, Modal, Space, Tag } from 'antd';
 import { UploadOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import { DatasourceItem } from '@/app/ops-analysis/types/dataSource';
@@ -35,6 +35,7 @@ const Datasource: React.FC = () => {
   const [filteredList, setFilteredList] = useState<DatasourceItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [modalVisible, setModalVisible] = useState(false);
+  const [modalMode, setModalMode] = useState<'add' | 'edit' | 'view'>('add');
   const [currentRow, setCurrentRow] = useState<DatasourceItem | undefined>();
   const [importModalVisible, setImportModalVisible] = useState(false);
   const [exportLoading, setExportLoading] = useState<number | null>(null);
@@ -92,8 +93,9 @@ const Datasource: React.FC = () => {
     fetchDataSources(key, newPagination);
   };
 
-  const handleEdit = (type: 'add' | 'edit', row?: DatasourceItem) => {
-    if (type === 'edit' && row) {
+  const handleEdit = (type: 'add' | 'edit' | 'view', row?: DatasourceItem) => {
+    setModalMode(type);
+    if (type !== 'add' && row) {
       setCurrentRow(row);
     } else {
       setCurrentRow(undefined);
@@ -204,7 +206,34 @@ const Datasource: React.FC = () => {
   };
 
   const columns = [
-    { title: t('dataSource.name'), dataIndex: 'name', key: 'name', width: 150 },
+    {
+      title: t('dataSource.name'),
+      dataIndex: 'name',
+      key: 'name',
+      width: 180,
+      render: (name: string, row: DatasourceItem) => (
+        <Space size={6}>
+          <span>{name}</span>
+          {row.is_build_in ? (
+            <Tag
+              bordered={false}
+              style={{
+                marginInlineEnd: 0,
+                paddingInline: 6,
+                borderRadius: 4,
+                background: 'var(--color-fill-2)',
+                color: 'var(--color-text-3)',
+                fontSize: 12,
+                fontWeight: 400,
+                lineHeight: '18px',
+              }}
+            >
+              {t('common.builtIn')}
+            </Tag>
+          ) : null}
+        </Space>
+      ),
+    },
     {
       title: t('dataSource.sourceType'),
       dataIndex: 'source_type',
@@ -239,15 +268,27 @@ const Datasource: React.FC = () => {
       fixed: 'right' as const,
       render: (_: unknown, row: DatasourceItem) => (
         <div className="space-x-4">
-          <PermissionWrapper requiredPermissions={['Edit']}>
-            <Button
-              type="link"
-              size="small"
-              onClick={() => handleEdit('edit', row)}
-            >
-              {t('common.edit')}
-            </Button>
-          </PermissionWrapper>
+          {row.is_build_in ? (
+            <PermissionWrapper requiredPermissions={['View']}>
+              <Button
+                type="link"
+                size="small"
+                onClick={() => handleEdit('view', row)}
+              >
+                {t('common.view')}
+              </Button>
+            </PermissionWrapper>
+          ) : (
+            <PermissionWrapper requiredPermissions={['Edit']}>
+              <Button
+                type="link"
+                size="small"
+                onClick={() => handleEdit('edit', row)}
+              >
+                {t('common.edit')}
+              </Button>
+            </PermissionWrapper>
+          )}
           <PermissionWrapper requiredPermissions={['View']}>
             <Button
               type="link"
@@ -258,11 +299,13 @@ const Datasource: React.FC = () => {
               {t('common.export')}
             </Button>
           </PermissionWrapper>
-          <PermissionWrapper requiredPermissions={['Delete']}>
-            <Button type="link" size="small" danger onClick={() => handleDelete(row)}>
-              {t('common.delete')}
-            </Button>
-          </PermissionWrapper>
+          {!row.is_build_in ? (
+            <PermissionWrapper requiredPermissions={['Delete']}>
+              <Button type="link" size="small" danger onClick={() => handleDelete(row)}>
+                {t('common.delete')}
+              </Button>
+            </PermissionWrapper>
+          ) : null}
         </div>
       ),
     },
@@ -333,6 +376,7 @@ const Datasource: React.FC = () => {
         />
         <OperateModal
           open={modalVisible}
+          mode={modalMode}
           currentRow={currentRow}
           onClose={() => setModalVisible(false)}
           onSuccess={async () => {

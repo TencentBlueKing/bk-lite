@@ -2,7 +2,10 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 import { normalizeParamInputChangeValue } from '../src/app/ops-analysis/components/normalizeParamInputChangeValue';
-import { processDataSourceParams } from '../src/app/ops-analysis/utils/widgetDataTransform';
+import {
+  buildWidgetRequestParams,
+  processDataSourceParams,
+} from '../src/app/ops-analysis/utils/widgetDataTransform';
 import type { UnifiedFilterDefinition } from '../src/app/ops-analysis/types/dashBoard';
 
 const departmentFilter: UnifiedFilterDefinition = {
@@ -43,6 +46,33 @@ assert.deepEqual(buildRequest('数据部'), { department: '数据部' });
 assert.deepEqual(buildRequest(''), {});
 assert.deepEqual(buildRequest(null), {});
 
+const timeFilter: UnifiedFilterDefinition = {
+  id: 'time__timeRange',
+  key: 'time',
+  name: '时间范围',
+  type: 'timeRange',
+  order: 0,
+  enabled: true,
+};
+const sourceTopRequest = buildWidgetRequestParams({
+  config: {
+    dataSourceParams: [
+      { name: 'limit', type: 'string', value: '5', filterType: 'params' },
+      { name: 'time', type: 'timeRange', value: 10080, filterType: 'filter' },
+    ],
+  },
+  unifiedFilterValues: {
+    [timeFilter.id]: ['2026-07-28T00:00:00.000Z', '2026-08-04T00:00:00.000Z'],
+  },
+  filterBindings: { [timeFilter.id]: true },
+  filterDefinitions: [timeFilter],
+});
+assert.equal(sourceTopRequest.limit, '5');
+assert.deepEqual(sourceTopRequest.time, [
+  '2026-07-28T00:00:00.000Z',
+  '2026-08-04T00:00:00.000Z',
+]);
+
 const editorSource = readFileSync(
   new URL('../src/app/ops-analysis/components/paramInputConfigEditor.tsx', import.meta.url),
   'utf8',
@@ -50,6 +80,21 @@ const editorSource = readFileSync(
 const controlSource = readFileSync(
   new URL('../src/app/ops-analysis/components/paramInputControl.tsx', import.meta.url),
   'utf8',
+);
+const filterBindingPanelSource = readFileSync(
+  new URL('../src/app/ops-analysis/components/unifiedFilter/filterBindingPanel.tsx', import.meta.url),
+  'utf8',
+);
+
+assert.match(
+  filterBindingPanelSource,
+  /<Switch[\s\S]{0,160}checked=\{canBind && isEnabled\}[\s\S]{0,80}disabled/,
+  'filter 类型参数应仅展示当前画布联动状态，开关不可关闭',
+);
+assert.doesNotMatch(
+  filterBindingPanelSource,
+  /onChange=\{\(checked\).*handleBindingChange/,
+  'filter 联动开关不应再向组件层暴露关闭交互',
 );
 
 assert.match(

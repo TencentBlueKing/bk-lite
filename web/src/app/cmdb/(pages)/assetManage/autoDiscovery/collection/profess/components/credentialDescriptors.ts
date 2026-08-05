@@ -38,6 +38,28 @@ const ACCOUNT_FIELDS = [
   { key: 'databasePassword' },
 ] as const;
 
+const PLATFORM_API_FIELDS = (defaultPort: string) => [
+  { key: 'platformUsername' },
+  { key: 'platformPassword' },
+  { key: 'platformPort', defaultValue: defaultPort },
+  {
+    key: 'tlsVerify',
+    defaultValueKey: 'enabled',
+    recommendedValueKey: 'enabled',
+  },
+] as const;
+
+const platformApiDescriptor = (
+  defaultPort: number,
+): CredentialDescriptor => ({
+  formKind: 'platform_api',
+  protocolKey: 'httpsApi',
+  credentialKindKey: 'platformAccount',
+  instructionKey: 'platformApi',
+  defaultPort,
+  fields: PLATFORM_API_FIELDS(String(defaultPort)),
+});
+
 const SNMP_FIELDS = [
   {
     key: 'snmpVersion',
@@ -196,16 +218,7 @@ export const CREDENTIAL_DESCRIPTORS = {
       credentialKindKey: 'fusionInsightBasic',
       instructionKey: 'fusionInsight',
       defaultPort: 443,
-      fields: [
-        { key: 'platformUsername' },
-        { key: 'platformPassword' },
-        { key: 'platformPort', defaultValue: '443' },
-        {
-          key: 'tlsVerify',
-          defaultValueKey: 'enabled',
-          recommendedValueKey: 'enabled',
-        },
-      ],
+      fields: PLATFORM_API_FIELDS('443'),
     },
     storage: {
       formKind: 'platform_api',
@@ -213,15 +226,35 @@ export const CREDENTIAL_DESCRIPTORS = {
       credentialKindKey: 'oceanStorAccount',
       instructionKey: 'oceanStor',
       defaultPort: 8088,
+      fields: PLATFORM_API_FIELDS('8088'),
+    },
+    // 企业版云平台：HTTPS 平台账户（username/password[/port]）
+    h3c_cas: platformApiDescriptor(443),
+    fusioncompute: platformApiDescriptor(7443),
+    nutanixhci: platformApiDescriptor(443),
+    sangforscp: platformApiDescriptor(443),
+    inspurincloudrail: platformApiDescriptor(443),
+    zstack: platformApiDescriptor(8080),
+    openstack: platformApiDescriptor(443),
+    smartx: platformApiDescriptor(443),
+    manageone: platformApiDescriptor(443),
+    // Azure：现有 platform_api 可填 client_id/secret；tenant/subscription 后续专用表单补齐
+    azure: platformApiDescriptor(443),
+    aws: {
+      formKind: 'cloud',
+      protocolKey: 'aws',
+      credentialKindKey: 'aws',
+      instructionKey: 'aws',
       fields: [
-        { key: 'platformUsername' },
-        { key: 'platformPassword' },
-        { key: 'platformPort', defaultValue: '8088' },
         {
-          key: 'tlsVerify',
-          defaultValueKey: 'enabled',
-          recommendedValueKey: 'enabled',
+          key: 'awsAccessKey',
+          formLabelKey: 'Collection.cloudTask.accessKey',
         },
+        {
+          key: 'awsAccessSecret',
+          formLabelKey: 'Collection.cloudTask.accessSecret',
+        },
+        { key: 'cloudRegion' },
       ],
     },
     network: {

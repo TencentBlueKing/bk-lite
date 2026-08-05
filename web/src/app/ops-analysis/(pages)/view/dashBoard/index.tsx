@@ -642,6 +642,32 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
       [isEditMode],
     );
 
+    const handleTopologyLayoutChange = useCallback(
+      (
+        widgetId: string,
+        nextTopology: NonNullable<
+          NonNullable<DashboardWidgetLayoutItem['valueConfig']>['networkStatusTopology']
+        >,
+      ) => {
+        if (!isEditMode || shareMode) return;
+        setLayout((prevLayout) =>
+          prevLayout.map((item) => {
+            if (item.i !== widgetId || !isDashboardWidgetItem(item)) {
+              return item;
+            }
+            return {
+              ...item,
+              valueConfig: {
+                ...item.valueConfig,
+                networkStatusTopology: nextTopology,
+              },
+            };
+          }),
+        );
+      },
+      [isEditMode, shareMode],
+    );
+
     const handleAddComponent = (config: WidgetConfig, draftItem: LayoutItem) => {
       const nextUngroupedY = layout.reduce(
         (maxY, item) => Math.max(maxY, item.y + item.h),
@@ -1224,6 +1250,9 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
           onDeleteEntireGroup={handleDeleteEntireGroup}
           onEditWidget={handleEdit}
           onDeleteWidget={handleDelete}
+          onTopologyLayoutChange={
+            isEditMode && !shareMode ? handleTopologyLayoutChange : undefined
+          }
           renderMode={renderMode}
           onWidgetRenderStatus={handleWidgetRenderStatus}
         />

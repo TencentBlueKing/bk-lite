@@ -189,11 +189,7 @@ class TestErrorHandlingPolicy:
         cmd.handle(apps="patch_mgmt,node_mgmt", continue_on_error=False)
 
         assert calls == ["init_patch_sources", "node_init"]
-        assert any(
-            "WARN:内置补丁源初始化跳过（RuntimeError）: patch source seed failed"
-            in message
-            for message in cmd.stdout.messages
-        )
+        assert any("WARN:内置补丁源初始化跳过（RuntimeError）: patch source seed failed" in message for message in cmd.stdout.messages)
 
     def test_invalid_default_namespace_config_warns_and_continues_operation_analysis_init(self, monkeypatch):
         calls = []
@@ -211,10 +207,25 @@ class TestErrorHandlingPolicy:
         assert calls == [
             "init_default_namespace",
             "init_default_groups",
-            "init_source_api_data",
             "init_builtin_canvases",
         ]
         assert any("WARN:默认命名空间初始化跳过（CommandError）: NATS_SERVERS 配置非法" in message for message in cmd.stdout.messages)
+
+    def test_builtin_canvas_sync_failure_does_not_block_operation_analysis_init(self, monkeypatch):
+        calls = []
+
+        def fake_call_command(name, *args, **kwargs):
+            calls.append(name)
+            if name == "init_builtin_canvases":
+                raise RuntimeError("invalid builtin config")
+
+        monkeypatch.setattr(bi, "call_command", fake_call_command)
+        cmd = _make_command()
+
+        cmd._init_operation_analysis()
+
+        assert calls == ["init_default_namespace", "init_default_groups", "init_builtin_canvases"]
+        assert any("WARN:内置画布与数据源同步跳过（RuntimeError）: invalid builtin config" in message for message in cmd.stdout.messages)
 
     def test_cmdb_reconcile_failure_obeys_continue_on_error(self, monkeypatch):
         calls = []

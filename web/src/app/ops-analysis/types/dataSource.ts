@@ -71,6 +71,7 @@ export interface DatasourceItem {
   groups?: number[];
   hasAuth?: boolean;
   field_schema?: ResponseFieldDefinition[];
+  is_build_in?: boolean;
 }
 
 export interface DataSourcePreviewResult {
@@ -81,6 +82,7 @@ export interface DataSourcePreviewResult {
 
 export interface OperateModalProps {
   open: boolean;
+  mode: 'add' | 'edit' | 'view';
   currentRow?: DatasourceItem;
   onClose: () => void;
   onSuccess?: () => void;
@@ -128,7 +130,7 @@ export type InputControlConfig =
 export interface ParamItem {
   id?: string;
   name: string;
-  value: string | number | boolean | [number, number] | DateRangeValue | null;
+  value: string | number | boolean | [number, number] | DateRangeValue | null | undefined;
   alias_name: string;
   type?: string;
   filterType?: DataSourceParamFilterType;

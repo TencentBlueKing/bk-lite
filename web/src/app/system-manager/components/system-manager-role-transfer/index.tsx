@@ -110,7 +110,8 @@ const RoleTransfer: React.FC<TreeTransferProps> = ({
   }, [leftSearchValue, treeData]);
 
   const filteredRightData = useMemo(() => {
-    const allRightKeys = [...new Map([...selectedKeys, ...inheritedRoleIds].map((key) => [String(key), key])).values()];
+    const allRightKeys = [...new Map([...selectedKeys, ...inheritedRoleIds].map((key) => [String(key), key])).values()]
+      .filter((key): key is Exclude<React.Key, symbol> => typeof key !== 'symbol');
     let filtered = filterTreeData(treeData, allRightKeys);
 
     if (rightSearchValue) {

@@ -275,7 +275,7 @@ const MonitorView: React.FC<ViewModalProps> = ({
       return;
     }
     const params = {
-      monitor_object_id: processTab ? processOid : monitorObject,
+      monitor_object_id: String(processTab ? processOid : monitorObject),
       monitor_plugin_id: processTab ? processPid : tab,
     };
     const getGroupList = getMetricsGroup(params);
@@ -765,7 +765,7 @@ const MonitorView: React.FC<ViewModalProps> = ({
   const linkToPolicy = (row: TableDataItem) => {
     const _row = {
       monitorName: monitorName,
-      monitorObjId: monitorObject + '',
+      monitorObjId: String(monitorObject),
       instanceId: form?.instance_id || '',
       metricId: row.name,
       type: 'add',

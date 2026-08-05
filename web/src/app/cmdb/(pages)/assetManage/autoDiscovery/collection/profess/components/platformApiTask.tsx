@@ -3,6 +3,7 @@
 import React, { useEffect, useRef } from 'react';
 import { Form, Spin } from 'antd';
 
+import { PLATFORM_API_FORM_INITIAL_VALUES } from '@/app/cmdb/constants/professCollection';
 import useAssetManageStore from '@/app/cmdb/store/useAssetManage';
 import type { ModelItem, TreeNode } from '@/app/cmdb/types/autoDiscovery';
 import { useTranslation } from '@/utils/i18n';
@@ -28,6 +29,11 @@ interface PlatformApiTaskProps {
   editId?: number | null;
 }
 
+/**
+ * FusionInsight / OceanStor / 华三 UIS / 深信服 等平台 HTTPS 采集。
+ * task_type=cloud → BaseTask 走与 VCenter/公有云相同的单资产 instId 选择，
+ * 因此 instances 必须从 instOptions 解析，不能走 IP/selectedData 路径。
+ */
 const PlatformApiTask: React.FC<PlatformApiTaskProps> = ({
   onClose,
   onSuccess,
@@ -41,8 +47,8 @@ const PlatformApiTask: React.FC<PlatformApiTaskProps> = ({
   const { copyTaskData, setCopyTaskData } = useAssetManageStore();
   const modelId = modelItem.model_id;
   const initialValues = {
+    ...PLATFORM_API_FORM_INITIAL_VALUES,
     credentialPool: [createPlatformApiCredential(modelId)],
-    timeout: 60,
   };
 
   const {
@@ -67,29 +73,27 @@ const PlatformApiTask: React.FC<PlatformApiTaskProps> = ({
         modelId,
         formatCycleValue,
       });
-      const collectType = baseRef.current?.collectionType;
-      const ipRange = values.ipRange?.length ? values.ipRange : [];
+      const instance = baseRef.current?.instOptions?.find(
+        (item: any) => item.value === values.instId,
+      );
       const credential = normalizeCredentialPool(values.credentialPool)[0]
         || createPlatformApiCredential(modelId);
 
       return {
         ...baseData,
-        ip_range: collectType === 'ip' ? ipRange.join('-') : '',
-        instances: collectType === 'ip'
-          ? []
-          : baseRef.current?.selectedData || [],
+        instances: instance?.origin ? [instance.origin] : [],
         credential: [buildPlatformApiCredential(modelId, credential)],
       };
     },
   });
 
-  const buildFormValues = (values: any, isCopy: boolean, ipRange?: string[]) => ({
+  const buildFormValues = (values: any, isCopy: boolean) => ({
     ...getCleanupFormValues(values),
     ...values,
     taskName: isCopy ? '' : values.name,
     organization: values.team || [],
     accessPointId: values.access_point?.[0]?.id,
-    ipRange,
+    instId: values.instances?.[0]?._id,
     credentialPool: [
       restorePlatformApiCredential(
         modelId,
@@ -110,13 +114,7 @@ const PlatformApiTask: React.FC<PlatformApiTaskProps> = ({
         form.setFieldsValue(initialValues);
         return;
       }
-      const ipRange = values.ip_range?.split('-');
-      if (values.ip_range?.length) {
-        baseRef.current?.initCollectionType(ipRange, 'ip');
-      } else {
-        baseRef.current?.initCollectionType(values.instances, 'asset');
-      }
-      form.setFieldsValue(buildFormValues(values, Boolean(copyTaskData), ipRange));
+      form.setFieldsValue(buildFormValues(values, Boolean(copyTaskData)));
     };
     initForm();
   }, [modelId, copyTaskData, setCopyTaskData]);
@@ -148,7 +146,7 @@ const PlatformApiTask: React.FC<PlatformApiTaskProps> = ({
           instPlaceholder={t('Collection.chooseAsset')}
           timeoutProps={{
             min: 1,
-            defaultValue: 60,
+            defaultValue: PLATFORM_API_FORM_INITIAL_VALUES.timeout,
             addonAfter: t('Collection.k8sTask.second'),
           }}
         >

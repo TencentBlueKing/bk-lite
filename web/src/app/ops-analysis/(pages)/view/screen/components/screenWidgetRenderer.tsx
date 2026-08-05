@@ -32,6 +32,12 @@ interface ScreenWidgetRendererProps {
   onRenderStatus?: (result: DashboardWidgetRenderResult) => void;
   onEditConfig?: (item: ScreenWidgetItem) => void;
   onDelete?: (itemId: string) => void;
+  layoutEditable?: boolean;
+  onTopologyLayoutChange?: (
+    next: NonNullable<
+      NonNullable<ScreenWidgetItem['valueConfig']>['networkStatusTopology']
+    >,
+  ) => void;
 }
 
 const ScreenWidgetRenderer: React.FC<ScreenWidgetRendererProps> = ({
@@ -53,6 +59,8 @@ const ScreenWidgetRenderer: React.FC<ScreenWidgetRendererProps> = ({
   onRenderStatus,
   onEditConfig,
   onDelete,
+  layoutEditable,
+  onTopologyLayoutChange,
 }) => {
   const widgetConfig = useMemo(
     () => buildScreenWidgetConfig(item, chartThemeMode),
@@ -96,6 +104,8 @@ const ScreenWidgetRenderer: React.FC<ScreenWidgetRendererProps> = ({
           filterDefinitions={filterDefinitions}
           builtinNamespaceId={builtinNamespaceId}
           onRenderStatus={onRenderStatus}
+          layoutEditable={layoutEditable}
+          onTopologyLayoutChange={onTopologyLayoutChange}
         />
       </ScreenWidgetFrame>
     </WidgetViewportProvider>
