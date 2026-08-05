@@ -87,3 +87,11 @@ class TaskNodesQuerySerializer(serializers.Serializer):
         required=False,
         allow_empty=False,
     )
+
+
+class ModulePushSerializer(serializers.Serializer):
+    targets = serializers.ListField(
+        child=serializers.CharField(allow_blank=False),
+        required=True,
+        allow_empty=False,
+    )

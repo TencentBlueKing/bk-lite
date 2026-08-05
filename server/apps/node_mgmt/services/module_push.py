@@ -5,7 +5,9 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
+from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.logger import node_logger as logger
+from apps.core.utils.current_team_scope import resolve_current_team_data_scope
 from apps.node_mgmt.models.sidecar import Node, NodeOrganization
 from apps.node_mgmt.services.module_push_contract import (
     EVENT_UPSERT,
@@ -22,8 +24,44 @@ class MonitorLinkage:
         raise NotImplementedError("MonitorLinkage.ingest_from_source is not implemented yet")
 
 
+def build_module_push_actor_scope(request) -> dict[str, Any]:
+    """从请求鉴权上下文构造跨模块推送 actor_scope。"""
+    operator = getattr(getattr(request, "user", None), "username", "") or ""
+    try:
+        scope = resolve_current_team_data_scope(request)
+        return {
+            "allowed_org_ids": list(scope.data_team_ids),
+            "operator": scope.username or operator,
+        }
+    except BaseAppException:
+        return {"allowed_org_ids": [], "operator": operator}
+
+
 class ModulePushService:
     DEFAULT_MAX_ATTEMPTS = 3
+
+    @classmethod
+    def best_effort_push_node(
+        cls,
+        node_id: str,
+        *,
+        targets: list[str],
+        actor_scope: dict[str, Any],
+        max_attempts: int | None = None,
+    ) -> dict[str, Any] | None:
+        """创建/补推入口的 best-effort 包装：异常不得阻断主流程。"""
+        if not targets:
+            return None
+        try:
+            return cls.push_node(
+                node_id,
+                targets=list(targets),
+                actor_scope=actor_scope,
+                max_attempts=max_attempts,
+            )
+        except Exception:
+            logger.exception("[ModulePush] best-effort push failed node_id=%s targets=%s", node_id, targets)
+            return None
 
     @classmethod
     def push_node(

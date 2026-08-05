@@ -18,9 +18,11 @@ from apps.node_mgmt.models.sidecar import Node, NodeOrganization
 from apps.node_mgmt.serializers.node import (
     BatchBindingNodeConfigurationSerializer,
     BatchOperateNodeCollectorSerializer,
+    ModulePushSerializer,
     NodeSerializer,
     TaskNodesQuerySerializer,
 )
+from apps.node_mgmt.services.module_push import ModulePushService, build_module_push_actor_scope
 from apps.node_mgmt.services.node import NodeService
 from apps.node_mgmt.tasks.sidecar_config import sync_node_properties_to_sidecar
 from apps.node_mgmt.utils.permission import (
@@ -323,6 +325,37 @@ class NodeViewSet(mixins.DestroyModelMixin, GenericViewSet):
             sync_node_properties_to_sidecar.delay(node_id=node.id, name=name, organizations=organizations)
 
         return WebUtils.response_success()
+
+    @action(methods=["post"], detail=True, url_path="module_push")
+    @HasPermission("cloud_region_node-Edit")
+    def module_push(self, request, pk=None):
+        """详情补推/重同步：仅推送请求中列出的 targets，无级联。"""
+        nodes, error_response = authorize_node_ids(request, [pk])
+        if error_response:
+            return error_response
+        serializer = ModulePushSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        targets = serializer.validated_data["targets"]
+        actor_scope = build_module_push_actor_scope(request)
+        results = ModulePushService.best_effort_push_node(
+            nodes[0].id,
+            targets=targets,
+            actor_scope=actor_scope,
+        )
+        return WebUtils.response_success(
+            {
+                "node_id": nodes[0].id,
+                "targets": list(targets),
+                "results": {
+                    target: {
+                        "state": status.state,
+                        "error": status.error,
+                        "attempts": status.attempts,
+                    }
+                    for target, status in (results or {}).items()
+                },
+            }
+        )
 
     @action(methods=["get"], detail=False, url_path=r"enum", filter_backends=[])
     def enum(self, request, *args, **kwargs):

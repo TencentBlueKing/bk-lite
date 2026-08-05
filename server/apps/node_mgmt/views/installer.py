@@ -5,6 +5,7 @@ from rest_framework.viewsets import ViewSet
 
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.exceptions.base_app_exception import BaseAppException
+from apps.core.logger import node_logger as logger
 from apps.core.utils.current_team_scope import resolve_current_team_data_scope, validate_assignable_organizations
 from apps.core.utils.web_utils import WebUtils
 from apps.node_mgmt.constants.installer import InstallerConstants
@@ -18,6 +19,7 @@ from apps.node_mgmt.serializers.installer import (
 )
 from apps.node_mgmt.serializers.node import TaskNodesQuerySerializer
 from apps.node_mgmt.services.installer import InstallerService
+from apps.node_mgmt.services.module_push import ModulePushService, build_module_push_actor_scope
 from apps.node_mgmt.tasks.installer import (
     install_collector,
     install_controller,
@@ -80,6 +82,26 @@ class InstallerViewSet(ViewSet):
             getattr(request.user, "domain", "domain.com"),
         )
         install_controller.delay(task_id)
+
+        # 创建任务成功后按勾选目标 best-effort 推送；仅对已落库节点立刻推送。
+        # 首次 sidecar 注册后的延迟推送尚未接线（见 DONE_WITH_CONCERNS）。
+        push_targets = list(data.get("push_targets") or [])
+        if push_targets and node_ids:
+            existing_ids = set(Node.objects.filter(id__in=node_ids).values_list("id", flat=True))
+            if existing_ids:
+                actor_scope = build_module_push_actor_scope(request)
+                for node_id in existing_ids:
+                    ModulePushService.best_effort_push_node(
+                        node_id,
+                        targets=push_targets,
+                        actor_scope=actor_scope,
+                    )
+            else:
+                logger.info(
+                    "[ModulePush] install created without existing nodes; deferred sidecar push not wired yet task_id=%s",
+                    task_id,
+                )
+
         return WebUtils.response_success(dict(task_id=task_id))
 
     @action(detail=False, methods=["post"], url_path="controller/uninstall")
