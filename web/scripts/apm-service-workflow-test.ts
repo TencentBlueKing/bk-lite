@@ -12,6 +12,7 @@ const sloPage = readPage('slo');
 
 assert.match(servicesPage, /ServicePerspective = 'application' \| 'service'/, '服务目录必须支持应用与服务两种视角');
 assert.match(servicesPage, /getServiceRed/, '应用视角指标必须来自真实 RED 查询');
+assert.match(servicesPage, /getApplications/, '应用视角必须以应用目录为事实来源，不能只从已有服务反推应用');
 assert.match(servicesPage, /applicationSummaries/, '服务必须按 namespace 聚合为应用卡片');
 assert.match(servicesPage, /已归档/, '服务工具栏必须保留已归档入口');
 assert.match(servicesPage, /metricFailureKeys/, '服务目录必须单独记录 RED 查询失败，不能把故障伪装成无数据');
