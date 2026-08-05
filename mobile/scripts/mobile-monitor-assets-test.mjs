@@ -431,13 +431,18 @@ test('资产模型默认选中与同分类邻居规则可复用', async () => {
 });
 
 async function loadAssetModelIcon() {
-  const catalog = await readProjectFile('src/features/assets/model-icon-catalog.ts');
+  const catalogJson = await readProjectFile('src/features/assets/model-icon-catalog.json');
   const source = (await readProjectFile('src/features/assets/model-icon.ts')).replace(
-    /import \{ MODEL_ICON_CATALOG \} from '@\/features\/assets\/model-icon-catalog';\s*/,
-    '',
+    /import catalog from '@\/features\/assets\/model-icon-catalog\.json';\s*/,
+    `const catalog = ${catalogJson};\n`,
   );
-  const output = ts.transpileModule(`${catalog}\n${source}`, {
-    compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 },
+  const output = ts.transpileModule(source, {
+    compilerOptions: {
+      module: ts.ModuleKind.ESNext,
+      target: ts.ScriptTarget.ES2022,
+      resolveJsonModule: true,
+      esModuleInterop: true,
+    },
   }).outputText;
   return import(`data:text/javascript;base64,${Buffer.from(output).toString('base64')}#${Math.random()}`);
 }
@@ -486,7 +491,7 @@ test('资产模型 pill 颜色与 Web 首页同哈希，图标按需解析且不
   );
   assert.equal(resolveAssetModelIconUrl('../etc/passwd'), null);
   assert.doesNotMatch(await readProjectFile('src/features/assets/model-icon.ts'), /public\/assets\/icons/);
-  assert.match(await readProjectFile('src/features/assets/model-icon-catalog.ts'), /cc-hard-server_硬件服务器/);
+  assert.match(await readProjectFile('src/features/assets/model-icon-catalog.json'), /cc-hard-server_硬件服务器/);
 });
 
 test('资产详情关注操作与 Web 一致使用可访问的空心和实心星标', async () => {
