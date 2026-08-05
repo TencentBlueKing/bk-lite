@@ -42,7 +42,7 @@ const { Title, Text } = Typography;
  *  2) 接入详情页:顶部接入自检 4 项 + 中部 5 步任务路径 + 底部"上报端点 / 接入配置"双 tab
  *  3) 不带同比 delta;5 步完成状态由后端"近窗判定"实时计算,不依赖用户手动勾选
  *  4) 上报端点 OTLP/HTTP + OTLP/gRPC,平台统一分配,不允许自定义
- *  5) 资源属性 service.name + service.namespace 联合唯一,缺一不计入服务目录
+ *  5) 资源属性 service.name + service.namespace 联合唯一；空 namespace 归入内置“未归类应用”
  * ============================================================ */
 
 const TOKENS = {
@@ -366,7 +366,7 @@ function IntegrationCatalog() {
           showIcon
           type="info"
           style={{ marginTop: 20, borderRadius: 8 }}
-          message="APM 不向业务侧签发任何凭证或鉴权 token;OTLP 入口鉴权由部署环境的反向代理 / mTLS / Header 校验负责,APM 业务层不参与鉴权决策。"
+          message="APM 不向业务侧签发任何凭证或鉴权 token；区域 Collector 的 OTLP 入口鉴权由部署环境的 mTLS / Header 配置治理，APM 业务层不参与鉴权决策。"
         />
       </Content>
     </div>
@@ -384,24 +384,21 @@ function IntegrationCatalog() {
  * 上报端点 / 接入配置 双 tab
  * ============================================================ */
 
-/** 模拟云区域 → API 端点映射
- *  SDK / Agent 走 telegraf/api(POST 上报 OTLP 通用通道)
- *  OTel Collector 走 v1/traces(otlphttp 协议专用 traces 端点)
- */
+/** 模拟服务端按云区域受信代理地址生成的区域 Collector HTTP 端点。 */
 const REGION_ENDPOINTS: Record<string, string> = {
-  default: 'https://bklite.canway.net/telegraf/api',
-  cn_north: 'https://bklite.cn-north.canway.net/telegraf/api',
-  cn_east: 'https://bklite.cn-east.canway.net/telegraf/api',
-  hk: 'https://bklite.hk.canway.net/telegraf/api',
-  global: 'https://bklite.global.canway.net/telegraf/api',
+  default: 'http://proxy.bklite.cloud:4318',
+  cn_north: 'http://proxy.cn-north.bklite.cloud:4318',
+  cn_east: 'http://proxy.cn-east.bklite.cloud:4318',
+  hk: 'http://proxy.hk.bklite.cloud:4318',
+  global: 'http://proxy.global.bklite.cloud:4318',
 };
 
 const OTC_TRACES_ENDPOINTS: Record<string, string> = {
-  default: 'https://replay.bklite.cloud/v1/traces',
-  cn_north: 'https://replay.bklite.cn-north/v1/traces',
-  cn_east: 'https://replay.bklite.cn-east/v1/traces',
-  hk: 'https://replay.bklite.hk/v1/traces',
-  global: 'https://replay.bklite.global/v1/traces',
+  default: 'http://proxy.bklite.cloud:4318/v1/traces',
+  cn_north: 'http://proxy.cn-north.bklite.cloud:4318/v1/traces',
+  cn_east: 'http://proxy.cn-east.bklite.cloud:4318/v1/traces',
+  hk: 'http://proxy.hk.bklite.cloud:4318/v1/traces',
+  global: 'http://proxy.global.bklite.cloud:4318/v1/traces',
 };
 
 function EndpointPanel({
@@ -711,7 +708,7 @@ function EbpfConfigPanel() {
         showIcon
         type="warning"
         style={{ marginBottom: 12, borderRadius: 6 }}
-        message="eBPF 模式无需改代码,内核态自动捕获;但需要特权 Pod 或节点级部署,适合低侵入试点。"
+        message="eBPF 模式无需改代码，内核态自动捕获；未设置 service.namespace 的服务会归入内置未归类应用。"
       />
       <CodeBlock
         code={`# 1. 部署 OBI(OpenTelemetry eBPF Instrumentation)
@@ -720,7 +717,6 @@ kubectl apply -f https://github.com/open-telemetry/opentelemetry-go-instrumentat
 # 2. 配置 OTLP exporter
 export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
 export OTEL_SERVICE_NAME=auto-instrumented
-export OTEL_SERVICE_NAMESPACE=default
 export OTEL_SERVICE_VERSION=v1.0.0
 
 # 3. 启动 OBI

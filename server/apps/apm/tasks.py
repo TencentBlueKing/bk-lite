@@ -5,7 +5,7 @@ from celery import shared_task
 from django.core.cache import cache
 from django.utils import timezone
 
-from apps.apm.adapters import SystemMgmtNotificationDispatcher, VictoriaMetricsMetricStore
+from apps.apm.adapters import SystemMgmtNotificationDispatcher, VictoriaTracesTelemetryStore
 from apps.apm.models import ApmAlertOutbox, ApmPolicy
 from apps.apm.services import DjangoApmPolicyService, TelemetryCatalogReconciler
 from apps.apm.services.health import (
@@ -36,7 +36,7 @@ def reconcile_telemetry_catalog():
         return {"skipped": True, "reason": "already_running"}
     observed_at = timezone.now()
     try:
-        result = TelemetryCatalogReconciler(VictoriaMetricsMetricStore()).reconcile(observed_at=observed_at)
+        result = TelemetryCatalogReconciler(VictoriaTracesTelemetryStore()).reconcile(observed_at=observed_at)
         payload = asdict(result)
         cache.set(
             CATALOG_RECONCILE_HEALTH_KEY,
@@ -90,7 +90,7 @@ def dispatch_apm_policy_evaluations():
     retry_kwargs={"max_retries": 5},
 )
 def evaluate_apm_policy(policy_id: str, evaluated_at: str):
-    service = DjangoApmPolicyService(VictoriaMetricsMetricStore(), SystemMgmtNotificationDispatcher())
+    service = DjangoApmPolicyService(VictoriaTracesTelemetryStore(), SystemMgmtNotificationDispatcher())
     try:
         service.evaluate(policy_id, evaluated_at=datetime.fromisoformat(evaluated_at))
     except ApmPolicy.DoesNotExist:
@@ -113,7 +113,7 @@ def evaluate_apm_policy(policy_id: str, evaluated_at: str):
 @shared_task
 def deliver_apm_alert_outbox():
     result = DjangoApmPolicyService(
-        VictoriaMetricsMetricStore(),
+        VictoriaTracesTelemetryStore(),
         SystemMgmtNotificationDispatcher(),
     ).retry_pending_events(limit=100)
     payload = asdict(result)
