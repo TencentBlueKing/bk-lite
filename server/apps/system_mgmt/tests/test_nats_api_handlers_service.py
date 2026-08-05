@@ -76,10 +76,6 @@ def test_nats_api_compat_exports_local_and_nats_entrypoints():
         "create_default_rule",
         "bk_lite_user_login",
         "wechat_user_register",
-        "get_group_users",
-        "get_group_users_scoped",
-        "get_all_users",
-        "search_users",
     }
     registered_entrypoints = expected_entrypoints - local_only_entrypoints
 
