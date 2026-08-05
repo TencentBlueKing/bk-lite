@@ -115,3 +115,7 @@ class CMDB(object):
         """
         return_data = self.client.run("model_inst_count", **kwargs)
         return return_data
+
+    def ingest_from_source(self, **kwargs):
+        """跨模块推送写入 CMDB（host：node_id 优先 + 存量认领）。"""
+        return self.client.run("ingest_from_source", **kwargs)
