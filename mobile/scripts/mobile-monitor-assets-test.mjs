@@ -433,7 +433,7 @@ test('资产模型默认选中与同分类邻居规则可复用', async () => {
 async function loadAssetModelIcon() {
   const catalogJson = await readProjectFile('src/features/assets/model-icon-catalog.json');
   const source = (await readProjectFile('src/features/assets/model-icon.ts')).replace(
-    /import catalog from '@\/features\/assets\/model-icon-catalog\.json';\s*/,
+    /import catalog from '@\/features\/assets\/model-icon-catalog(?:\.json)?';\s*/,
     `const catalog = ${catalogJson};\n`,
   );
   const output = ts.transpileModule(source, {
