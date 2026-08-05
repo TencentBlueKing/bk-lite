@@ -264,7 +264,7 @@ export default function ApmIntegrationAddPage() {
         open={Boolean(selectedMethod)}
         placement="right"
         title={`${selectedMethod?.title ?? ''} 接入`}
-        width="min(960px, calc(100vw - 24px))"
+        width="min(960px, 100vw)"
         styles={{ body: { overflowY: 'auto' } }}
         onClose={() => setSelectedMethod(null)}
       >
