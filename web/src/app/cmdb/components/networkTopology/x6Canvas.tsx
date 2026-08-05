@@ -6,6 +6,7 @@ import {
   DownloadOutlined,
   FullscreenOutlined,
   ReloadOutlined,
+  RetweetOutlined,
   ZoomInOutlined,
   ZoomOutOutlined,
 } from '@ant-design/icons';
@@ -20,6 +21,7 @@ import {
   useGraphInstance,
 } from '@antv/xflow';
 import { NETWORK_TOPO_VISUAL } from './x6Visual';
+import { normalizeManualEdgeVertices } from './edgeGeometry';
 
 export interface NetworkTopologyX6GraphData {
   nodes: any[];
@@ -38,11 +40,14 @@ export interface NetworkTopologyToolbarConfig {
     fitView?: React.ReactNode;
     exportImage?: React.ReactNode;
     refresh?: React.ReactNode;
+    resetLayout?: React.ReactNode;
   };
   showZoom?: boolean;
   showFitView?: boolean;
   showExport?: boolean;
   showRefresh?: boolean;
+  showResetLayout?: boolean;
+  onResetLayout?: () => void;
   exportFileName?: string;
   exportDisabled?: boolean;
   refreshLoading?: boolean;
@@ -54,6 +59,8 @@ interface NetworkTopologyX6CanvasProps {
   centerId?: string;
   editing?: boolean;
   nodeMovable?: boolean;
+  /** 允许拖动边折点形成折线；仅布局编辑态开启 */
+  edgeVerticesEditable?: boolean;
   graphRef?: React.MutableRefObject<Graph | null>;
   minimap?: {
     width: number;
@@ -67,6 +74,11 @@ interface NetworkTopologyX6CanvasProps {
   fitViewKey?: string | number;
   toolbar?: NetworkTopologyToolbarConfig;
   onGraphReady?: (graph: Graph | null) => void;
+  onNodeMoved?: (nodeId: string, position: { x: number; y: number }) => void;
+  onEdgeVerticesChanged?: (
+    edgeId: string,
+    vertices: Array<{ x: number; y: number }>,
+  ) => void;
   onNodeClick?: (nodeId: string) => void;
   onNodeMouseEnter?: (nodeId: string, event: MouseEvent) => void;
   onNodeMouseMove?: (nodeId: string, event: MouseEvent) => void;
@@ -79,6 +91,39 @@ interface NetworkTopologyX6CanvasProps {
   onBlankClick?: () => void;
   onBlankContextMenu?: (event: MouseEvent) => void;
 }
+
+const edgeVertexTool = {
+  name: 'vertices',
+  args: {
+    attrs: {
+      fill: 'var(--color-primary)',
+      stroke: 'var(--color-bg)',
+      strokeWidth: 1,
+      r: 5,
+      cursor: 'move',
+    },
+    snapRadius: 20,
+    addable: true,
+    removable: true,
+    removeRedundancies: true,
+  },
+};
+
+const normalizeEdgeVertices = (
+  vertices: ReadonlyArray<{ x: number; y: number }> | undefined,
+) =>
+  (vertices ?? [])
+    .filter((point) => Number.isFinite(point.x) && Number.isFinite(point.y))
+    .map((point) => ({ x: point.x, y: point.y }));
+
+const syncEdgeVertexTools = (graph: Graph, enabled: boolean) => {
+  graph.getEdges().forEach((edge) => {
+    edge.removeTools();
+    if (enabled) {
+      edge.addTools([edgeVertexTool]);
+    }
+  });
+};
 
 const NODE_WIDTH = NETWORK_TOPO_VISUAL.node.width;
 const NODE_HEIGHT = NETWORK_TOPO_VISUAL.node.height;
@@ -150,10 +195,9 @@ const toolbarActionsStyle: React.CSSProperties = {
 
 const buildStructureKey = (data: NetworkTopologyX6GraphData) =>
   JSON.stringify({
+    // 故意不含 x/y/vertices：几何编辑只 patch，避免 initData 重置视口与交互态
     nodes: data.nodes.map((node) => [
       node.id,
-      node.x,
-      node.y,
       node.width,
       node.height,
       node.shape,
@@ -166,8 +210,6 @@ const buildStructureKey = (data: NetworkTopologyX6GraphData) =>
       edge.id,
       edge.source,
       edge.target,
-      edge.vertices,
-      edge.connector,
       Array.isArray(edge.labels)
         ? edge.labels.map((label: any) => [
             label?.position,
@@ -187,10 +229,45 @@ const fitGraphToView = (
   });
 };
 
+const applyGraphInteracting = (
+  graph: Graph,
+  nodeMovable: boolean,
+) => {
+  graph.options.interacting = {
+    ...(typeof graph.options.interacting === 'object' ? graph.options.interacting : {}),
+    nodeMovable,
+    edgeMovable: false,
+  };
+};
+
+const ensureGraphPanning = (graph: Graph) => {
+  const panning = (graph as any).enablePanning;
+  if (typeof panning === 'function') {
+    panning.call(graph);
+    return;
+  }
+  if (typeof (graph as any).setPanning === 'function') {
+    (graph as any).setPanning(true);
+  }
+};
+
 const patchGraphAttrs = (graph: Graph, data: NetworkTopologyX6GraphData) => {
   data.nodes.forEach((node) => {
     const cell = graph.getCellById(node.id) as any;
     if (!cell) return;
+    if (
+      Number.isFinite(node.x) &&
+      Number.isFinite(node.y) &&
+      typeof cell.setPosition === 'function'
+    ) {
+      const current = cell.getPosition?.() || { x: 0, y: 0 };
+      if (
+        Math.abs(current.x - node.x) > 0.5 ||
+        Math.abs(current.y - node.y) > 0.5
+      ) {
+        cell.setPosition(node.x, node.y);
+      }
+    }
     if (cell.setAttrs) {
       cell.setAttrs(node.attrs);
     } else {
@@ -369,6 +446,9 @@ const GraphLoader: React.FC<NetworkTopologyX6CanvasProps> = ({
   fitViewKey,
   onGraphReady,
   nodeMovable = true,
+  edgeVerticesEditable = false,
+  onNodeMoved,
+  onEdgeVerticesChanged,
   onNodeClick,
   onNodeMouseEnter,
   onNodeMouseMove,
@@ -386,6 +466,14 @@ const GraphLoader: React.FC<NetworkTopologyX6CanvasProps> = ({
   const structureKey = useMemo(() => buildStructureKey(data), [data]);
   const structureKeyRef = useRef('');
   const initializedRef = useRef(false);
+  const fitViewKeyRef = useRef<string | number | undefined>(undefined);
+  const pendingVerticesRef = useRef(
+    new Map<string, Array<{ x: number; y: number }>>(),
+  );
+  const onNodeMovedRef = useRef(onNodeMoved);
+  const onEdgeVerticesChangedRef = useRef(onEdgeVerticesChanged);
+  onNodeMovedRef.current = onNodeMoved;
+  onEdgeVerticesChangedRef.current = onEdgeVerticesChanged;
 
   useEffect(() => {
     ensureNetworkTopologyDeviceNodeRegistered();
@@ -393,33 +481,45 @@ const GraphLoader: React.FC<NetworkTopologyX6CanvasProps> = ({
       initializedRef.current = true;
       structureKeyRef.current = structureKey;
       initData({ nodes: data.nodes, edges: data.edges });
+      if (graph) {
+        applyGraphInteracting(graph, nodeMovable);
+        ensureGraphPanning(graph);
+        syncEdgeVertexTools(graph, edgeVerticesEditable);
+      }
       return;
     }
     if (graph) {
       patchGraphAttrs(graph, data);
+      applyGraphInteracting(graph, nodeMovable);
+      ensureGraphPanning(graph);
+      syncEdgeVertexTools(graph, edgeVerticesEditable);
     }
-  }, [graph, initData, data, structureKey]);
+  }, [graph, initData, data, structureKey, nodeMovable, edgeVerticesEditable]);
 
   useEffect(() => {
     if (!graph) return undefined;
     if (graphRef) graphRef.current = graph;
     onGraphReady?.(graph);
-    graph.options.interacting = {
-      ...(typeof graph.options.interacting === 'object' ? graph.options.interacting : {}),
-      nodeMovable,
-      edgeMovable: false,
-    };
+    applyGraphInteracting(graph, nodeMovable);
+    ensureGraphPanning(graph);
     if (!graph.getPlugin('export')) {
       graph.use(new Export());
     }
+    syncEdgeVertexTools(graph, edgeVerticesEditable);
     return () => {
       if (graphRef) graphRef.current = null;
       onGraphReady?.(null);
     };
-  }, [graph, graphRef, nodeMovable, onGraphReady]);
+  }, [graph, graphRef, nodeMovable, edgeVerticesEditable, onGraphReady]);
 
   useEffect(() => {
     if (!graph) return undefined;
+    // 只在拓扑身份 / 显式 fitViewKey 变化时适配视口，几何拖拽绝不触发
+    const nextKey = fitViewKey ?? structureKey;
+    if (fitViewKeyRef.current === nextKey) {
+      return undefined;
+    }
+    fitViewKeyRef.current = nextKey;
     const timer = window.setTimeout(() => {
       try {
         fitGraphToView(graph, fitViewOptions);
@@ -430,13 +530,51 @@ const GraphLoader: React.FC<NetworkTopologyX6CanvasProps> = ({
     return () => window.clearTimeout(timer);
   }, [
     graph,
-    fitViewKey ?? data,
+    fitViewKey,
+    structureKey,
     fitViewOptions?.maxScale,
     fitViewOptions?.padding,
   ]);
 
   useEffect(() => {
     if (!graph) return undefined;
+    const flushPendingVertices = () => {
+      if (!pendingVerticesRef.current.size) return;
+      const pending = pendingVerticesRef.current;
+      pendingVerticesRef.current = new Map();
+      pending.forEach((vertices, edgeId) => {
+        const edge = graph.getCellById(edgeId) as any;
+        let nextVertices = vertices;
+        if (edge?.isEdge?.() || edge?.getSourcePoint) {
+          const source = edge.getSourcePoint?.();
+          const target = edge.getTargetPoint?.();
+          if (
+            source &&
+            target &&
+            Number.isFinite(source.x) &&
+            Number.isFinite(source.y) &&
+            Number.isFinite(target.x) &&
+            Number.isFinite(target.y)
+          ) {
+            nextVertices = normalizeManualEdgeVertices(source, target, vertices);
+            if (
+              nextVertices.length !== vertices.length ||
+              nextVertices.some(
+                (point, index) =>
+                  Math.abs(point.x - vertices[index].x) > 0.5 ||
+                  Math.abs(point.y - vertices[index].y) > 0.5,
+              )
+            ) {
+              edge.setVertices?.(nextVertices);
+            }
+          }
+        }
+        onEdgeVerticesChangedRef.current?.(edgeId, nextVertices);
+      });
+      // 折点工具拖拽期间可能临时关闭平移；结束后强制恢复
+      ensureGraphPanning(graph);
+      applyGraphInteracting(graph, nodeMovable);
+    };
     const handleNodeClick = ({ node }: { node: any }) => onNodeClick?.(String(node.id));
     const handleNodeEnter = ({ node, e }: { node: any; e: MouseEvent }) => onNodeMouseEnter?.(String(node.id), e);
     const handleNodeMove = ({ node, e }: { node: any; e: MouseEvent }) => onNodeMouseMove?.(String(node.id), e);
@@ -444,6 +582,12 @@ const GraphLoader: React.FC<NetworkTopologyX6CanvasProps> = ({
     const handleNodeContext = ({ node, e }: { node: any; e: MouseEvent }) => {
       e.preventDefault();
       onNodeContextMenu?.(String(node.id), e);
+    };
+    const handleNodeMoved = ({ node }: { node: any }) => {
+      const position = node.getPosition?.() || { x: node.getBBox?.().x, y: node.getBBox?.().y };
+      if (!Number.isFinite(position?.x) || !Number.isFinite(position?.y)) return;
+      onNodeMovedRef.current?.(String(node.id), { x: position.x, y: position.y });
+      ensureGraphPanning(graph);
     };
     const handleEdgeEnter = ({ edge, e }: { edge: any; e: MouseEvent }) =>
       onEdgeMouseEnter?.(String(edge.id), e);
@@ -455,6 +599,11 @@ const GraphLoader: React.FC<NetworkTopologyX6CanvasProps> = ({
       e.preventDefault();
       onEdgeContextMenu?.(String(edge.id), e);
     };
+    const handleEdgeVertices = ({ edge }: { edge: any }) => {
+      if (!edgeVerticesEditable) return;
+      const vertices = normalizeEdgeVertices(edge.getVertices?.());
+      pendingVerticesRef.current.set(String(edge.id), vertices);
+    };
     const handleBlankClick = () => onBlankClick?.();
     const handleBlankContext = ({ e }: { e: MouseEvent }) => {
       e.preventDefault();
@@ -465,27 +614,43 @@ const GraphLoader: React.FC<NetworkTopologyX6CanvasProps> = ({
     graph.on('node:mousemove', handleNodeMove);
     graph.on('node:mouseleave', handleNodeLeave);
     graph.on('node:contextmenu', handleNodeContext);
+    graph.on('node:moved', handleNodeMoved);
     graph.on('edge:mouseenter', handleEdgeEnter);
     graph.on('edge:mousemove', handleEdgeMove);
     graph.on('edge:mouseleave', handleEdgeLeave);
     graph.on('edge:contextmenu', handleEdgeContext);
+    graph.on('edge:change:vertices', handleEdgeVertices);
+    graph.on('cell:mouseup', flushPendingVertices);
+    graph.on('blank:mouseup', flushPendingVertices);
     graph.on('blank:click', handleBlankClick);
     graph.on('blank:contextmenu', handleBlankContext);
+    window.addEventListener('mouseup', flushPendingVertices);
+    window.addEventListener('pointerup', flushPendingVertices);
     return () => {
+      // 卸载时只恢复交互，不再 flush，避免 cleanup 触发额外写回/重建
+      window.removeEventListener('mouseup', flushPendingVertices);
+      window.removeEventListener('pointerup', flushPendingVertices);
       graph.off('node:click', handleNodeClick);
       graph.off('node:mouseenter', handleNodeEnter);
       graph.off('node:mousemove', handleNodeMove);
       graph.off('node:mouseleave', handleNodeLeave);
       graph.off('node:contextmenu', handleNodeContext);
+      graph.off('node:moved', handleNodeMoved);
       graph.off('edge:mouseenter', handleEdgeEnter);
       graph.off('edge:mousemove', handleEdgeMove);
       graph.off('edge:mouseleave', handleEdgeLeave);
       graph.off('edge:contextmenu', handleEdgeContext);
+      graph.off('edge:change:vertices', handleEdgeVertices);
+      graph.off('cell:mouseup', flushPendingVertices);
+      graph.off('blank:mouseup', flushPendingVertices);
       graph.off('blank:click', handleBlankClick);
       graph.off('blank:contextmenu', handleBlankContext);
+      ensureGraphPanning(graph);
     };
   }, [
     graph,
+    edgeVerticesEditable,
+    nodeMovable,
     onBlankClick,
     onBlankContextMenu,
     onEdgeContextMenu,
@@ -552,6 +717,8 @@ const NetworkTopologyX6Canvas: React.FC<NetworkTopologyX6CanvasProps> = ({
   const showFitView = toolbar && toolbar.showFitView !== false;
   const showExport = toolbar && toolbar.showExport !== false;
   const showRefresh = toolbar && toolbar.showRefresh !== false && toolbar.onRefresh;
+  const showResetLayout =
+    toolbar && toolbar.showResetLayout && toolbar.onResetLayout;
   const toolbarBody = toolbar && (
     <div style={toolbarShellStyle}>
       {toolbar.layoutOptions && toolbar.layoutMode && toolbar.onLayoutChange && (
@@ -562,6 +729,17 @@ const NetworkTopologyX6Canvas: React.FC<NetworkTopologyX6CanvasProps> = ({
         />
       )}
       <div style={toolbarActionsStyle}>
+        {showResetLayout && (
+          <Tooltip title={toolbarLabels.resetLayout}>
+            <Button
+              size="small"
+              aria-label={String(toolbarLabels.resetLayout || '')}
+              icon={<RetweetOutlined />}
+              disabled={!hasGraph}
+              onClick={toolbar.onResetLayout}
+            />
+          </Tooltip>
+        )}
         {showZoom && (
           <>
             <Tooltip title={toolbarLabels.zoomOut}>
@@ -649,7 +827,7 @@ const NetworkTopologyX6Canvas: React.FC<NetworkTopologyX6CanvasProps> = ({
         </div>
       )}
       <XFlow>
-        <XFlowGraph zoomable pannable minScale={0.2} maxScale={4} fitView />
+        <XFlowGraph zoomable pannable minScale={0.2} maxScale={4} />
         <Grid
           type="dot"
           options={{

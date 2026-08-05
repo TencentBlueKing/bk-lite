@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Button, Empty, Spin } from 'antd';
+import { Alert, Button, Empty, Modal, Spin } from 'antd';
 import type { Graph } from '@antv/x6';
 import {
   NetworkTopologyX6Canvas,
@@ -16,7 +16,9 @@ import { useTranslation } from '@/utils/i18n';
 import { useShareMode } from '@/app/ops-analysis/context/shareMode';
 import { useNetworkStatusTopologyApi } from '@/app/ops-analysis/api/networkStatusTopology';
 import type {
+  NetworkStatusTopologyConfig,
   NetworkStatusTopologyLink,
+  NetworkStatusTopologyModeLayout,
   NetworkStatusTopologyNode,
   NetworkStatusTopologyResponse,
 } from '@/app/ops-analysis/types/sceneWidget';
@@ -25,6 +27,17 @@ import {
   isScreenChartThemeMode,
   resolveOpsChartThemeName,
 } from '@/app/ops-analysis/utils/chartTheme';
+import {
+  applyNodePositionsToLayout,
+  buildPersistedNetworkStatusTopologyConfig,
+  canPersistNetworkStatusTopologyLayout,
+  cellPositionToLayoutPoint,
+  normalizeNetworkStatusTopologyLayoutMode,
+  patchLayoutByMode,
+  pruneNetworkStatusTopologyLayout,
+  resetNetworkStatusTopologyLayout,
+  resolveLayoutGeometry,
+} from '@/app/ops-analysis/utils/networkStatusTopologyLayout';
 import {
   buildAlertListUrl,
   buildFaultPath,
@@ -52,6 +65,10 @@ interface NetworkStatusTopologyProps {
   config?: ValueConfig;
   refreshKey?: string | number;
   onReady?: (ready?: boolean) => void;
+  /** 父级画布可编辑且非分享时为 true */
+  layoutEditable?: boolean;
+  /** 几何相关改动写回组件实例草稿配置 */
+  onTopologyLayoutChange?: (next: NetworkStatusTopologyConfig) => void;
 }
 
 const stripDevicePrefix = (value?: string, deviceName?: string) => {
@@ -110,6 +127,8 @@ const NetworkStatusTopology: React.FC<NetworkStatusTopologyProps> = ({
   config,
   refreshKey,
   onReady,
+  layoutEditable = false,
+  onTopologyLayoutChange,
 }) => {
   const { t } = useTranslation();
   const shareMode = useShareMode();
@@ -118,8 +137,11 @@ const NetworkStatusTopology: React.FC<NetworkStatusTopologyProps> = ({
   const [data, setData] = useState<NetworkStatusTopologyResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [layoutMode, setLayoutMode] =
-    useState<NetworkTopologyLayoutMode>('hierarchical');
+  const [viewLayoutMode, setViewLayoutMode] =
+    useState<NetworkTopologyLayoutMode | null>(null);
+  const [ephemeralPositions, setEphemeralPositions] = useState<
+    Record<string, { x: number; y: number }>
+  >({});
   const [selectedNodeId, setSelectedNodeId] = useState('');
   const graphRef = useRef<Graph | null>(null);
   const canvasRef = useRef<HTMLDivElement | null>(null);
@@ -130,12 +152,45 @@ const NetworkStatusTopology: React.FC<NetworkStatusTopologyProps> = ({
   const [contextPoint, setContextPoint] = useState({ x: 0, y: 0 });
 
   const topoConfig = config?.networkStatusTopology;
+  /** 画布编辑态且非分享：几何写回草稿，随页面保存落库 */
+  const canPersistLayout = canPersistNetworkStatusTopologyLayout({
+    layoutEditable,
+    shareMode,
+    hasWriteback: Boolean(onTopologyLayoutChange),
+  });
+  const savedLayoutMode = normalizeNetworkStatusTopologyLayoutMode(topoConfig?.layoutMode);
+  const layoutMode = canPersistLayout
+    ? savedLayoutMode
+    : (viewLayoutMode ?? savedLayoutMode);
+  // 父级 onReady 常随 layout 草稿更新换新引用；不得进入 fetch 依赖，否则拖点会重取数出 loading
+  const onReadyRef = useRef(onReady);
+  onReadyRef.current = onReady;
+
+  useEffect(() => {
+    if (canPersistLayout) {
+      setViewLayoutMode(null);
+      setEphemeralPositions({});
+    }
+  }, [canPersistLayout]);
+
+  useEffect(() => {
+    // 拓扑查询身份变化时清空查看态临时摆放
+    setEphemeralPositions({});
+    setViewLayoutMode(null);
+  }, [topoConfig?.modelId, topoConfig?.instId, topoConfig?.depth]);
+
+  const emitLayoutChange = useCallback(
+    (next: NetworkStatusTopologyConfig) => {
+      onTopologyLayoutChange?.(buildPersistedNetworkStatusTopologyConfig(next));
+    },
+    [onTopologyLayoutChange],
+  );
 
   const fetchData = useCallback(async () => {
     if (!topoConfig?.modelId || !topoConfig?.instId) {
       setData(null);
       setError(t('dashboard.networkTopoMissingConfig'));
-      onReady?.(false);
+      onReadyRef.current?.(false);
       return;
     }
 
@@ -149,18 +204,19 @@ const NetworkStatusTopology: React.FC<NetworkStatusTopologyProps> = ({
       });
       setData(result);
       setSelectedNodeId('');
-      onReady?.((result.nodes || []).length > 0);
+      setEphemeralPositions({});
+      onReadyRef.current?.((result.nodes || []).length > 0);
     } catch (err) {
       console.error('network status topology fetch failed:', err);
       setData(null);
       setError(t('dashboard.networkTopoLoadFailed'));
-      onReady?.(false);
+      onReadyRef.current?.(false);
     } finally {
       setLoading(false);
     }
     // API hooks return fresh function references; fetching is driven by widget config.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [onReady, t, topoConfig?.depth, topoConfig?.instId, topoConfig?.modelId]);
+  }, [t, topoConfig?.depth, topoConfig?.instId, topoConfig?.modelId]);
 
   useEffect(() => {
     void fetchData();
@@ -239,15 +295,38 @@ const NetworkStatusTopology: React.FC<NetworkStatusTopologyProps> = ({
     graph.getNodes().forEach((node) => node.toFront());
   }, []);
 
+  const activeModeGeometry = useMemo(
+    () => resolveLayoutGeometry(topoConfig, layoutMode),
+    [layoutMode, topoConfig],
+  );
+
   const layout = useMemo(
-    () => layoutNetworkTopology({
-      nodes: canvasNodes,
-      links: parallelLinks,
-      centerId: String(data?.center_id || topoConfig?.instId || ''),
-      mode: layoutMode,
-      fitToViewport: false,
-    }),
-    [canvasNodes, data?.center_id, layoutMode, parallelLinks, topoConfig?.instId],
+    () => {
+      const computed = layoutNetworkTopology({
+        nodes: canvasNodes,
+        links: parallelLinks,
+        centerId: String(data?.center_id || topoConfig?.instId || ''),
+        mode: layoutMode,
+        fitToViewport: false,
+      });
+      const mergedPositions = canPersistLayout
+        ? activeModeGeometry.nodePositions
+        : {
+            ...(activeModeGeometry.nodePositions || {}),
+            ...ephemeralPositions,
+          };
+      return applyNodePositionsToLayout(computed, mergedPositions);
+    },
+    [
+      activeModeGeometry.nodePositions,
+      canPersistLayout,
+      canvasNodes,
+      data?.center_id,
+      ephemeralPositions,
+      layoutMode,
+      parallelLinks,
+      topoConfig?.instId,
+    ],
   );
   const graphData = useMemo(
     () => {
@@ -259,6 +338,7 @@ const NetworkStatusTopology: React.FC<NetworkStatusTopologyProps> = ({
         return {
           ...link,
           parallelOffset: withOffset?.parallelOffset ?? 0,
+          vertices: activeModeGeometry.linkVertices?.[link.id],
         };
       });
 
@@ -275,6 +355,7 @@ const NetworkStatusTopology: React.FC<NetworkStatusTopologyProps> = ({
       });
     },
     [
+      activeModeGeometry.linkVertices,
       data?.center_id,
       faultLinkIds,
       faultNodeIds,
@@ -308,6 +389,119 @@ const NetworkStatusTopology: React.FC<NetworkStatusTopologyProps> = ({
   }, [bringNodesAboveEdges, fitViewKey, graphData]);
 
   const closeContextMenu = useCallback(() => setContextNodeId(''), []);
+
+  const commitLayoutPatch = useCallback(
+    (
+      patch: {
+        layoutMode?: NetworkStatusTopologyConfig['layoutMode'];
+      } & Partial<NetworkStatusTopologyModeLayout>,
+    ) => {
+      if (!topoConfig || !onTopologyLayoutChange) return;
+      const nextMode = patch.layoutMode ?? layoutMode;
+      const geometryPatch =
+        patch.nodePositions !== undefined || patch.linkVertices !== undefined
+          ? {
+              ...(patch.nodePositions !== undefined
+                ? { nodePositions: patch.nodePositions }
+                : {}),
+              ...(patch.linkVertices !== undefined
+                ? { linkVertices: patch.linkVertices }
+                : {}),
+            }
+          : undefined;
+      const layoutByMode = geometryPatch
+        ? patchLayoutByMode(topoConfig, layoutMode, geometryPatch)
+        : topoConfig.layoutByMode;
+      const nodeIds = canvasNodes.map((node) => node.id);
+      const linkIds = canvasLinks.map((link) => link.id);
+      const pruned = pruneNetworkStatusTopologyLayout(
+        {
+          layoutMode: nextMode,
+          layoutByMode,
+        },
+        nodeIds,
+        linkIds,
+      );
+      emitLayoutChange({
+        modelId: topoConfig.modelId,
+        instId: topoConfig.instId,
+        depth: topoConfig.depth || 2,
+        ...pruned,
+      });
+    },
+    [
+      canvasLinks,
+      canvasNodes,
+      emitLayoutChange,
+      layoutMode,
+      onTopologyLayoutChange,
+      topoConfig,
+    ],
+  );
+
+  const handleLayoutModeChange = useCallback(
+    (value: string) => {
+      const nextMode = normalizeNetworkStatusTopologyLayoutMode(value);
+      if (canPersistLayout) {
+        // 只切换当前 mode；各 mode 桶保持不变
+        commitLayoutPatch({ layoutMode: nextMode });
+        return;
+      }
+      setEphemeralPositions({});
+      setViewLayoutMode(nextMode);
+    },
+    [canPersistLayout, commitLayoutPatch],
+  );
+
+  const handleNodeMoved = useCallback(
+    (nodeId: string, position: { x: number; y: number }) => {
+      const layoutPoint = cellPositionToLayoutPoint(position);
+      if (canPersistLayout) {
+        commitLayoutPatch({
+          nodePositions: {
+            ...(activeModeGeometry.nodePositions || {}),
+            [nodeId]: layoutPoint,
+          },
+        });
+        return;
+      }
+      // 查看态：仅本地临时摆放，不写回配置、不落库
+      setEphemeralPositions((current) => ({
+        ...current,
+        [nodeId]: layoutPoint,
+      }));
+    },
+    [activeModeGeometry.nodePositions, canPersistLayout, commitLayoutPatch],
+  );
+
+  const handleEdgeVerticesChanged = useCallback(
+    (edgeId: string, vertices: Array<{ x: number; y: number }>) => {
+      if (!canPersistLayout) return;
+      const nextVertices = { ...(activeModeGeometry.linkVertices || {}) };
+      if (vertices.length === 0) {
+        delete nextVertices[edgeId];
+      } else {
+        nextVertices[edgeId] = vertices;
+      }
+      commitLayoutPatch({ linkVertices: nextVertices });
+    },
+    [activeModeGeometry.linkVertices, canPersistLayout, commitLayoutPatch],
+  );
+
+  const handleResetLayout = useCallback(() => {
+    if (!canPersistLayout || !topoConfig) return;
+    Modal.confirm({
+      title: t('dashboard.networkTopoResetLayout'),
+      content: t('dashboard.networkTopoResetLayoutConfirm'),
+      okText: t('common.confirm'),
+      cancelText: t('common.cancel'),
+      centered: true,
+      onOk: () => {
+        setEphemeralPositions({});
+        emitLayoutChange(resetNetworkStatusTopologyLayout(topoConfig, layoutMode));
+      },
+    });
+  }, [canPersistLayout, emitLayoutChange, layoutMode, t, topoConfig]);
 
   const updateNodeHover = useCallback((nodeId: string, event: MouseEvent) => {
     // 双保险：即便 body 全尺寸命中，也只在 SVG image（icon）上展示浮层
@@ -444,26 +638,33 @@ const NetworkStatusTopology: React.FC<NetworkStatusTopologyProps> = ({
           data={graphData}
           centerId={String(data?.center_id || topoConfig?.instId || '')}
           graphRef={graphRef}
+          nodeMovable
+          edgeVerticesEditable={canPersistLayout}
           fitViewOptions={{ padding: 48, maxScale: 1.08 }}
           fitViewKey={fitViewKey}
           onGraphReady={(graph) => {
             if (graphRef) graphRef.current = graph;
             bringNodesAboveEdges(graph);
           }}
+          onNodeMoved={handleNodeMoved}
+          onEdgeVerticesChanged={handleEdgeVerticesChanged}
           toolbar={{
             layoutMode,
-            onLayoutChange: (value) => setLayoutMode(value as NetworkTopologyLayoutMode),
+            onLayoutChange: handleLayoutModeChange,
             layoutOptions: [
               { label: t('dashboard.networkTopoLayoutHierarchical'), value: 'hierarchical' },
               { label: t('dashboard.networkTopoLayoutForce'), value: 'force' },
               { label: t('dashboard.networkTopoLayoutCircular'), value: 'circular' },
             ],
+            showResetLayout: canPersistLayout,
+            onResetLayout: canPersistLayout ? handleResetLayout : undefined,
             labels: {
               zoomOut: t('dashboard.networkTopoZoomOut'),
               zoomIn: t('dashboard.networkTopoZoomIn'),
               fitView: t('topology.fitView'),
               exportImage: t('dashboard.networkTopoExportImage'),
               refresh: t('dashboard.networkTopoRefresh'),
+              resetLayout: t('dashboard.networkTopoResetLayout'),
             },
             exportFileName: 'network-status-topology',
             refreshLoading: loading,

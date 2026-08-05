@@ -5,6 +5,7 @@ import {
   buildParallelConnectorPath,
   STATUS_TOPOLOGY_PARALLEL_CONNECTOR,
 } from './parallelEdges';
+import { resolveLinkEdgeGeometry, layoutPointToCellPosition } from '@/app/ops-analysis/utils/networkStatusTopologyLayout';
 
 export type StatusTopologyPositionedNode = NetworkTopologyNode & {
   x: number;
@@ -17,6 +18,8 @@ export type StatusTopologyPositionedLink = NetworkTopologyLink & {
   /** 垂直于连线的平行偏移（像素）；0 表示不偏移 */
   parallelOffset?: number;
   curveOffset?: number;
+  /** 用户手工折点；存在时优先于 parallel connector */
+  vertices?: Array<{ x: number; y: number }>;
 };
 
 /**
@@ -332,8 +335,8 @@ export const buildStatusTopologyX6GraphData = ({
 
     return {
       id: node.id,
-      x: node.x - NODE_WIDTH / 2,
-      y: node.y - ICON_CENTER_Y,
+      x: layoutPointToCellPosition(node).x,
+      y: layoutPointToCellPosition(node).y,
       width: NODE_WIDTH,
       height: NODE_HEIGHT,
       shape: STATUS_TOPOLOGY_NODE_SHAPE,
@@ -433,7 +436,10 @@ export const buildStatusTopologyX6GraphData = ({
   const graphEdges = links.map((link) => {
     const active = activeLinkIds.has(link.id);
     const dimmed = dimInactive && !active;
-    const offset = Number(link.parallelOffset ?? link.curveOffset ?? 0);
+    const edgeGeometry = resolveLinkEdgeGeometry({
+      parallelOffset: Number(link.parallelOffset ?? link.curveOffset ?? 0),
+      manualVertices: link.vertices,
+    });
     const sourcePort = truncateLabel(String(link.sourcePort || ''), 14);
     const targetPort = truncateLabel(String(link.targetPort || ''), 14);
     const labels = [
@@ -469,12 +475,19 @@ export const buildStatusTopologyX6GraphData = ({
         anchor: { name: 'nodeCenter' },
         connectionPoint: { name: 'boundary', args: { selector: 'edgeHull' } },
       },
-      // 用 connector 按当前端点实时算平行路径，避免绝对 vertices 拖动时卡住
-      connector: {
-        name: STATUS_TOPOLOGY_PARALLEL_CONNECTOR,
-        args: { offset },
-      },
-      vertices: [],
+      ...(edgeGeometry.kind === 'manual'
+        ? {
+            connector: { name: 'normal' },
+            vertices: edgeGeometry.vertices,
+          }
+        : {
+            // 用 connector 按当前端点实时算平行路径，避免绝对 vertices 拖动时卡住
+            connector: {
+              name: STATUS_TOPOLOGY_PARALLEL_CONNECTOR,
+              args: { offset: edgeGeometry.parallelOffset },
+            },
+            vertices: [],
+          }),
       labels,
       zIndex: 1,
       data: { link },

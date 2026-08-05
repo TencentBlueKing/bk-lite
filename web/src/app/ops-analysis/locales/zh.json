@@ -616,6 +616,8 @@
     "networkTopoZoomIn": "放大",
     "networkTopoExportImage": "导出图片",
     "networkTopoRefresh": "刷新",
+    "networkTopoResetLayout": "重置布局",
+    "networkTopoResetLayoutConfirm": "将仅清除当前布局模式下的手工节点位置与连线折点，其它布局模式不受影响。未点击页面保存前仍可取消整页改动。",
     "networkTopoInstanceDetail": "实例详情",
     "networkTopoViewAlerts": "查看告警",
     "networkTopoStatusNormal": "正常",
