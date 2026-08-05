@@ -178,7 +178,7 @@ spec:
       restartPolicy: Never
       containers:
       - name: train
-        image: ${TRAIN_IMAGE}
+        image: "${TRAIN_IMAGE}"
         command: ["/apps/support-files/scripts/train-model.sh"]
         args: ["${BUCKET}", "${DATASET}", "${CONFIG}"]
         env:

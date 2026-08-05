@@ -4,7 +4,8 @@ import re
 
 _DOMAIN_COMPONENT = r"(?:[A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9-]*[A-Za-z0-9])"
 _DOMAIN = rf"{_DOMAIN_COMPONENT}(?:\.{_DOMAIN_COMPONENT})*"
-_REGISTRY = rf"{_DOMAIN}(?::[0-9]+)?"
+_IPV6_ADDRESS = r"\[[A-Fa-f0-9:]+\]"
+_REGISTRY = rf"(?:{_DOMAIN}|{_IPV6_ADDRESS})(?::[0-9]+)?"
 _PATH_COMPONENT = r"[a-z0-9]+(?:(?:[._]|__|[-]+)[a-z0-9]+)*"
 _NAME = rf"(?:(?:{_REGISTRY})/)?{_PATH_COMPONENT}(?:/{_PATH_COMPONENT})*"
 _TAG = r"[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}"

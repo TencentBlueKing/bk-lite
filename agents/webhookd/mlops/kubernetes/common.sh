@@ -101,7 +101,8 @@ validate_container_image_reference() {
     local reference="$1"
     local domain_component='([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9-]*[A-Za-z0-9])'
     local domain="${domain_component}(\\.${domain_component})*"
-    local registry="${domain}(:[0-9]+)?"
+    local ipv6_address='\[[A-Fa-f0-9:]+\]'
+    local registry="(${domain}|${ipv6_address})(:[0-9]+)?"
     local path_component='[a-z0-9]+(([._]|__|-+)[a-z0-9]+)*'
     local tag='[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}'
     local digest_algorithm='[A-Za-z][A-Za-z0-9]*([+._-][A-Za-z][A-Za-z0-9]*)*'

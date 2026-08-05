@@ -165,7 +165,7 @@ spec:
     spec:
       containers:
       - name: serve
-        image: ${TRAIN_IMAGE}
+        image: "${TRAIN_IMAGE}"
         ports:
         - containerPort: ${CONTAINER_PORT}
           name: http
