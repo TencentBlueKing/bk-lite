@@ -96,25 +96,25 @@ def test_ensure_host_node_id_attr_false_when_model_missing(mocker):
     create.assert_not_called()
 
 
-def test_ingest_calls_ensure_host_node_id_attr(mocker):
+def test_ingest_calls_ensure_model_node_id_attr(mocker):
     ensure = mocker.patch(
-        "apps.cmdb.services.module_ingest.ensure_host_node_id_attr",
+        "apps.cmdb.services.module_ingest.ensure_model_node_id_attr",
         return_value=True,
     )
     mocker.patch.object(CmdbModuleIngestService, "_find_by_node_id", return_value=None)
     mocker.patch.object(CmdbModuleIngestService, "_find_host_by_ip_cloud", return_value=None)
     mocker.patch.object(
         CmdbModuleIngestService,
-        "_create_host",
+        "_create_instance",
         return_value={"_id": 30, "node_id": "n3"},
     )
     CmdbModuleIngestService.ingest(_ingest_params(node_id="n3", ip="1.1.1.3"))
-    ensure.assert_called_once_with(username="tester")
+    ensure.assert_called_once_with("host", username="tester")
 
 
-def test_ingest_raises_when_ensure_host_node_id_attr_fails(mocker):
+def test_ingest_raises_when_ensure_model_node_id_attr_fails(mocker):
     mocker.patch(
-        "apps.cmdb.services.module_ingest.ensure_host_node_id_attr",
+        "apps.cmdb.services.module_ingest.ensure_model_node_id_attr",
         return_value=False,
     )
     find_node = mocker.patch.object(CmdbModuleIngestService, "_find_by_node_id")
@@ -177,7 +177,7 @@ def test_update_host_passes_node_id_when_changed(mocker):
 
 def test_ingest_host_upserts_by_node_id(mocker):
     mocker.patch(
-        "apps.cmdb.services.module_ingest.ensure_host_node_id_attr",
+        "apps.cmdb.services.module_ingest.ensure_model_node_id_attr",
         return_value=True,
     )
     mocker.patch.object(
@@ -187,7 +187,7 @@ def test_ingest_host_upserts_by_node_id(mocker):
     )
     update = mocker.patch.object(
         CmdbModuleIngestService,
-        "_update_host",
+        "_update_instance",
         return_value={"_id": 10, "node_id": "n1"},
     )
     result = CmdbModuleIngestService.ingest(
@@ -209,7 +209,7 @@ def test_ingest_host_upserts_by_node_id(mocker):
 
 def test_ingest_host_claims_existing_by_ip_cloud(mocker):
     mocker.patch(
-        "apps.cmdb.services.module_ingest.ensure_host_node_id_attr",
+        "apps.cmdb.services.module_ingest.ensure_model_node_id_attr",
         return_value=True,
     )
     mocker.patch.object(CmdbModuleIngestService, "_find_by_node_id", return_value=None)
@@ -220,7 +220,7 @@ def test_ingest_host_claims_existing_by_ip_cloud(mocker):
     )
     claim = mocker.patch.object(
         CmdbModuleIngestService,
-        "_claim_host",
+        "_claim_instance",
         return_value={"_id": 20, "node_id": "n2"},
     )
     result = CmdbModuleIngestService.ingest(_ingest_params())
@@ -231,7 +231,7 @@ def test_ingest_host_claims_existing_by_ip_cloud(mocker):
 
 def test_ingest_claim_conflicts_when_existing_has_different_node_id(mocker):
     mocker.patch(
-        "apps.cmdb.services.module_ingest.ensure_host_node_id_attr",
+        "apps.cmdb.services.module_ingest.ensure_model_node_id_attr",
         return_value=True,
     )
     mocker.patch.object(CmdbModuleIngestService, "_find_by_node_id", return_value=None)
@@ -245,7 +245,7 @@ def test_ingest_claim_conflicts_when_existing_has_different_node_id(mocker):
             "node_id": "other-node",
         },
     )
-    claim = mocker.patch.object(CmdbModuleIngestService, "_claim_host")
+    claim = mocker.patch.object(CmdbModuleIngestService, "_claim_instance")
 
     result = CmdbModuleIngestService.ingest(_ingest_params(node_id="n2"))
 
@@ -259,7 +259,7 @@ def test_ingest_claim_conflicts_when_existing_has_different_node_id(mocker):
 
 def test_ingest_claim_when_existing_node_id_empty(mocker):
     mocker.patch(
-        "apps.cmdb.services.module_ingest.ensure_host_node_id_attr",
+        "apps.cmdb.services.module_ingest.ensure_model_node_id_attr",
         return_value=True,
     )
     mocker.patch.object(CmdbModuleIngestService, "_find_by_node_id", return_value=None)
@@ -270,7 +270,7 @@ def test_ingest_claim_when_existing_node_id_empty(mocker):
     )
     claim = mocker.patch.object(
         CmdbModuleIngestService,
-        "_claim_host",
+        "_claim_instance",
         return_value={"_id": 20, "node_id": "n2"},
     )
 
@@ -284,7 +284,7 @@ def test_ingest_claim_when_existing_node_id_empty(mocker):
 
 def test_ingest_claim_when_existing_same_node_id(mocker):
     mocker.patch(
-        "apps.cmdb.services.module_ingest.ensure_host_node_id_attr",
+        "apps.cmdb.services.module_ingest.ensure_model_node_id_attr",
         return_value=True,
     )
     # node_id 查找未命中（查询异常/时序），但 ip+cloud 命中同 node_id 行 → 认领幂等成功
@@ -301,7 +301,7 @@ def test_ingest_claim_when_existing_same_node_id(mocker):
     )
     claim = mocker.patch.object(
         CmdbModuleIngestService,
-        "_claim_host",
+        "_claim_instance",
         return_value={"_id": 20, "node_id": "n2"},
     )
 
@@ -315,14 +315,14 @@ def test_ingest_claim_when_existing_same_node_id(mocker):
 
 def test_ingest_host_creates_when_no_match(mocker):
     mocker.patch(
-        "apps.cmdb.services.module_ingest.ensure_host_node_id_attr",
+        "apps.cmdb.services.module_ingest.ensure_model_node_id_attr",
         return_value=True,
     )
     mocker.patch.object(CmdbModuleIngestService, "_find_by_node_id", return_value=None)
     mocker.patch.object(CmdbModuleIngestService, "_find_host_by_ip_cloud", return_value=None)
     create = mocker.patch.object(
         CmdbModuleIngestService,
-        "_create_host",
+        "_create_instance",
         return_value={"_id": 30, "node_id": "n3"},
     )
     result = CmdbModuleIngestService.ingest(_ingest_params(node_id="n3", ip="1.1.1.3"))
