@@ -115,3 +115,30 @@ def test_push_passes_actor_scope_and_envelope(mocker, node):
     assert kwargs["link_ids"]["node_id"] == node.id
     assert kwargs["raw"]["ip"] == node.ip
     assert kwargs["raw"]["name"] == node.name
+
+
+@pytest.mark.django_db
+def test_push_monitor_calls_monitor_linkage_without_notimplemented(mocker, node):
+    monitor = mocker.patch("apps.node_mgmt.services.module_push.MonitorLinkage")
+    monitor.return_value.ingest_from_source.return_value = {
+        "id": "mon-1",
+        "created": True,
+        "updated": False,
+        "ignored": False,
+        "claimed": False,
+    }
+    from apps.node_mgmt.services.module_push import ModulePushService
+
+    ModulePushService.push_node(
+        node.id,
+        targets=["monitor"],
+        actor_scope={"allowed_org_ids": [1], "operator": "alice"},
+    )
+
+    monitor.return_value.ingest_from_source.assert_called_once()
+    kwargs = monitor.return_value.ingest_from_source.call_args.kwargs
+    assert kwargs["allowed_org_ids"] == [1]
+    assert kwargs["link_ids"]["node_id"] == node.id
+    node.refresh_from_db()
+    assert node.monitor_id == "mon-1"
+    assert node.push_status["monitor"]["state"] == "ok"

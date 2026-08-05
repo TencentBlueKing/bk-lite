@@ -50,10 +50,21 @@ def test_monitor_get_module_list(monitor):
     assert _last(monitor.client) == ("get_monitor_module_list", (), {"module": "cpu"})
 
 
+def test_monitor_ingest_from_source(monitor):
+    monitor.ingest_client = monitor.client
+    monitor.ingest_from_source(source_module="node_mgmt", allowed_org_ids=[1])
+    assert _last(monitor.client) == (
+        "monitor_ingest_from_source",
+        (),
+        {"source_module": "node_mgmt", "allowed_org_ids": [1]},
+    )
+
+
 def test_monitor_local_client_appclient_path(monkeypatch):
     monkeypatch.setenv("IS_LOCAL_RPC", "0")
     m = Monitor(is_local_client=True)
     assert m.client.path == "apps.monitor.nats.permission"
+    assert m.ingest_client.path == "apps.monitor.nats.monitor"
 
 
 def test_create_monitor_object_type(ana_rpc):

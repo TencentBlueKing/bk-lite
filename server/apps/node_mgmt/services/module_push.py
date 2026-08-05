@@ -15,13 +15,14 @@ from apps.node_mgmt.services.module_push_contract import (
     PushTargetStatus,
 )
 from apps.rpc.cmdb import CMDB
+from apps.rpc.monitor import Monitor
 
 
 class MonitorLinkage:
-    """监控联动占位客户端；Task 8 接入真实实现。"""
+    """监控联动客户端：转发至 Monitor.ingest_from_source（NATS）。"""
 
     def ingest_from_source(self, **kwargs):
-        raise NotImplementedError("MonitorLinkage.ingest_from_source is not implemented yet")
+        return Monitor().ingest_from_source(**kwargs)
 
 
 def build_module_push_actor_scope(request) -> dict[str, Any]:
