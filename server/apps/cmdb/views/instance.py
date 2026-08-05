@@ -17,6 +17,7 @@ from apps.cmdb.instance_ops.extensions import get_instance_enterprise_extension
 from apps.cmdb.services.instance import InstanceManage
 from apps.cmdb.services.model import ModelManage
 from apps.cmdb.services.model_visibility import BusinessModelVisibility
+from apps.cmdb.services.module_push import CmdbToMonitorPushService, build_cmdb_push_actor_scope
 from apps.cmdb.utils.base import (
     format_group_params,
     format_groups_params,
@@ -330,6 +331,42 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
             creator=request.user.username,
         )
         return WebUtils.response_success(instance)
+
+    @HasPermission("asset_info-Edit")
+    @action(methods=["post"], detail=True, url_path="push_to_monitor")
+    def push_to_monitor(self, request, pk=None):
+        """显式推送到监控：无级联，带 causation。"""
+        instance = InstanceManage.query_entity_by_id(int(pk))
+        if not instance or not self._is_instance_model_visible(instance):
+            return WebUtils.response_error("实例不存在", status_code=status.HTTP_404_NOT_FOUND)
+
+        if not self.check_creator_and_organizations(request, instance):
+            organizations = self.organizations(request, instance)
+            if not organizations:
+                return WebUtils.response_error(
+                    "抱歉！您没有此实例的权限", status_code=status.HTTP_403_FORBIDDEN
+                )
+            has_permission = self.check_instance_permission(
+                request, instance, operator=OPERATE
+            )
+            if not has_permission:
+                return WebUtils.response_error(
+                    "抱歉！您没有此实例的权限", status_code=status.HTTP_403_FORBIDDEN
+                )
+
+        actor_scope = build_cmdb_push_actor_scope(request)
+        try:
+            result = CmdbToMonitorPushService.push_instance(
+                int(pk), actor_scope=actor_scope
+            )
+        except ValueError as exc:
+            return WebUtils.response_error(str(exc), status_code=status.HTTP_400_BAD_REQUEST)
+        except Exception:
+            logger.exception("[push_to_monitor] failed inst_id=%s", pk)
+            return WebUtils.response_error(
+                "推送到监控失败", status_code=status.HTTP_502_BAD_GATEWAY
+            )
+        return WebUtils.response_success(result)
 
     # ---- 附件/图片文件（企业版；社区版返回未启用） -----------------------
 

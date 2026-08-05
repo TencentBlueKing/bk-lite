@@ -80,6 +80,8 @@ MODEL_NODE_ID_ATTR = {
 # 向后兼容别名
 HOST_NODE_ID_ATTR = MODEL_NODE_ID_ATTR
 
+RECEIVING_MODULE = "cmdb"
+
 
 def resolve_ingest_model_id(raw: dict[str, Any]) -> str:
     """从 envelope raw 解析目标模型。
@@ -161,39 +163,75 @@ class CmdbModuleIngestService:
         if not isinstance(link_ids, dict):
             link_ids = {}
 
-        node_id = link_ids.get("node_id") or params.get("source_id")
-        if not node_id:
-            raise ValueError("link_ids.node_id or source_id is required")
+        source_module = str(params.get("source_module") or "")
+        node_id = link_ids.get("node_id")
+        if not node_id and source_module == "node_mgmt":
+            node_id = params.get("source_id")
+        cmdb_id = link_ids.get("cmdb_id")
+        node_id = str(node_id).strip() if node_id not in (None, "") else None
+        cmdb_id = str(cmdb_id).strip() if cmdb_id not in (None, "") else None
+
+        # 回声抑制：本模块自推，或 causation 标明由本模块出站引起的回写
+        if cls._is_echo(params):
+            return IngestResult(id=cmdb_id, ignored=True).as_dict()
+
+        if not node_id and not cmdb_id and not cls._extract_ip(raw):
+            raise ValueError(
+                "link_ids.node_id, link_ids.cmdb_id, or raw ip is required"
+            )
 
         operator = params.get("operator") or ""
         model_id = resolve_ingest_model_id(raw)
         update_fields = cls._update_fields_for(model_id)
 
-        # claim/update 依赖 editable attr；缺失时 instance_update 会剥离 node_id
-        if not ensure_model_node_id_attr(model_id, username=operator or "admin"):
+        # 仅在需要写入 node_id 时 ensure attr
+        if node_id and not ensure_model_node_id_attr(
+            model_id, username=operator or "admin"
+        ):
             raise ValueError(
                 f"{model_id}.node_id attribute is required but could not be ensured"
             )
 
-        desired = cls._build_desired(model_id=model_id, raw=raw, node_id=str(node_id))
-        incoming_node_id = str(desired["node_id"])
+        desired = cls._build_desired(
+            model_id=model_id, raw=raw, node_id=node_id
+        )
 
-        existing = cls._find_by_node_id(model_id, incoming_node_id)
-        if existing:
-            updated = cls._update_instance(
-                existing,
-                desired,
-                update_fields=update_fields,
-                operator=operator,
-                allowed_org_ids=list(allowed_org_ids),
-            )
-            return IngestResult(id=updated.get("_id"), updated=True).as_dict()
+        # 1) 有 node_id → 只按 node_id upsert（未命中则走认领/新建，不回落到 cmdb_id）
+        if node_id:
+            existing = cls._find_by_node_id(model_id, node_id)
+            if existing:
+                updated = cls._update_instance(
+                    existing,
+                    desired,
+                    update_fields=update_fields,
+                    operator=operator,
+                    allowed_org_ids=list(allowed_org_ids),
+                )
+                return IngestResult(id=updated.get("_id"), updated=True).as_dict()
+        # 2) 无 node_id 但有 cmdb_id → 按实例 ID 更新
+        elif cmdb_id:
+            existing = cls._find_by_cmdb_id(cmdb_id)
+            if existing:
+                updated = cls._update_instance(
+                    existing,
+                    desired,
+                    update_fields=update_fields,
+                    operator=operator,
+                    allowed_org_ids=list(allowed_org_ids),
+                )
+                return IngestResult(id=updated.get("_id"), updated=True).as_dict()
 
+        # 3) 未按 ID 命中：存量认领
         existing = cls._find_for_claim(model_id, desired)
         if existing:
             existing_node_id = str(existing.get("node_id") or "").strip()
+            incoming_node_id = str(desired.get("node_id") or "").strip()
             # 存量已绑定其他 node_id：禁止劫持覆盖
-            if existing_node_id and existing_node_id != incoming_node_id:
+            if (
+                incoming_node_id
+                and existing_node_id
+                and existing_node_id != incoming_node_id
+            ):
                 logger.warning(
                     "[ModuleIngest] claim link_conflict model=%s existing_id=%s "
                     "existing_node_id=%s incoming_node_id=%s",
@@ -228,6 +266,25 @@ class CmdbModuleIngestService:
         return IngestResult(id=created.get("_id"), created=True).as_dict()
 
     @classmethod
+    def _is_echo(cls, params: dict[str, Any]) -> bool:
+        source_module = str(params.get("source_module") or "")
+        if source_module == RECEIVING_MODULE:
+            return True
+        causation_id = str(params.get("causation_id") or "")
+        return causation_id.startswith(f"{RECEIVING_MODULE}:")
+
+    @classmethod
+    def _find_by_cmdb_id(cls, cmdb_id: str) -> dict[str, Any] | None:
+        try:
+            found = InstanceManage.query_entity_by_id(int(cmdb_id))
+        except (TypeError, ValueError):
+            return None
+        except Exception:
+            logger.exception("[ModuleIngest] 按 cmdb_id 查找失败 cmdb_id=%s", cmdb_id)
+            raise
+        return found or None
+
+    @classmethod
     def _update_fields_for(cls, model_id: str) -> tuple[str, ...]:
         if model_id == "host":
             return HOST_INGEST_UPDATE_FIELDS
@@ -244,14 +301,16 @@ class CmdbModuleIngestService:
 
     @classmethod
     def _build_desired(
-        cls, *, model_id: str, raw: dict[str, Any], node_id: str
+        cls, *, model_id: str, raw: dict[str, Any], node_id: str | None
     ) -> dict[str, Any]:
         if model_id == "host":
             return cls._build_host_desired(raw=raw, node_id=node_id)
         return cls._build_ip_only_desired(model_id=model_id, raw=raw, node_id=node_id)
 
     @classmethod
-    def _build_host_desired(cls, *, raw: dict[str, Any], node_id: str) -> dict[str, Any]:
+    def _build_host_desired(
+        cls, *, raw: dict[str, Any], node_id: str | None
+    ) -> dict[str, Any]:
         ip = cls._extract_ip(raw)
         cloud_raw = raw.get("cloud_region_id") if "cloud_region_id" in raw else raw.get("cloud")
         try:
@@ -271,19 +330,21 @@ class CmdbModuleIngestService:
             raw.get("operating_system") or raw.get("os_type")
         )
 
-        return {
+        desired = {
             "model_id": "host",
             "inst_name": inst_name,
             "ip_addr": ip,
             "organization": organization,
             "cloud": cloud,
             "os_type": os_type,
-            "node_id": node_id,
         }
+        if node_id:
+            desired["node_id"] = node_id
+        return desired
 
     @classmethod
     def _build_ip_only_desired(
-        cls, *, model_id: str, raw: dict[str, Any], node_id: str
+        cls, *, model_id: str, raw: dict[str, Any], node_id: str | None
     ) -> dict[str, Any]:
         ip = cls._extract_ip(raw)
         organization = NodeMgmtSyncService._normalize_org_ids(
@@ -293,13 +354,15 @@ class CmdbModuleIngestService:
         if not inst_name and ip:
             inst_name = ip
 
-        return {
+        desired = {
             "model_id": model_id,
             "inst_name": inst_name,
             "ip_addr": ip,
             "organization": organization,
-            "node_id": node_id,
         }
+        if node_id:
+            desired["node_id"] = node_id
+        return desired
 
     @classmethod
     def _find_by_node_id(cls, model_id: str, node_id: str) -> dict[str, Any] | None:
@@ -421,7 +484,7 @@ class CmdbModuleIngestService:
         operator: str,
         allowed_org_ids: list[int],
     ) -> dict[str, Any]:
-        # 认领：白名单字段 + 强制写入 node_id（调用方须已排除异 node_id 冲突）
+        # 认领：白名单字段；有 incoming node_id 时强制写入（调用方须已排除异 node_id 冲突）
         existing_node_id = str(existing.get("node_id") or "").strip()
         incoming_node_id = str(desired.get("node_id") or "").strip()
         if existing_node_id and incoming_node_id and existing_node_id != incoming_node_id:
@@ -429,7 +492,10 @@ class CmdbModuleIngestService:
                 f"cannot claim instance already linked to node_id={existing_node_id}"
             )
         changes = cls._update_payload(existing, desired, update_fields)
-        changes["node_id"] = desired["node_id"]
+        if incoming_node_id:
+            changes["node_id"] = desired["node_id"]
+        if not changes:
+            return existing
         updated = InstanceManage.instance_update(
             user_groups=[{"id": org_id} for org_id in allowed_org_ids],
             roles=[],

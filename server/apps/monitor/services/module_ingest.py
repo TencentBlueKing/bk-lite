@@ -16,6 +16,7 @@ from apps.monitor.utils.dimension import normalize_instance_identity
 from apps.node_mgmt.services.module_push_contract import LINK_CONFLICT, IngestResult
 
 HOST_OBJECT_NAME = "Host"
+RECEIVING_MODULE = "monitor"
 
 
 class MonitorModuleIngestService:
@@ -40,6 +41,18 @@ class MonitorModuleIngestService:
         # node_mgmt 信封常把节点 ID 放在 source_id；勿把 CMDB source_id 误当作 node_id
         if not node_id and params.get("source_module") == "node_mgmt":
             node_id = cls._normalize_optional_str(params.get("source_id"))
+
+        # 回声抑制：本模块自推，或 causation 标明由本模块出站引起的回写
+        if cls._is_echo(params):
+            existing = None
+            if node_id:
+                existing = cls._find_by_node_id(node_id)
+            if not existing and cmdb_id:
+                existing = cls._find_by_cmdb_id(cmdb_id)
+            return IngestResult(
+                id=existing.id if existing else None,
+                ignored=True,
+            ).as_dict()
 
         operator = str(params.get("operator") or "")
         allowed = [int(x) for x in allowed_org_ids]
@@ -91,6 +104,14 @@ class MonitorModuleIngestService:
             return None
         text = str(value).strip()
         return text or None
+
+    @classmethod
+    def _is_echo(cls, params: dict[str, Any]) -> bool:
+        source_module = str(params.get("source_module") or "")
+        if source_module == RECEIVING_MODULE:
+            return True
+        causation_id = str(params.get("causation_id") or "")
+        return causation_id.startswith(f"{RECEIVING_MODULE}:")
 
     @classmethod
     def _find_by_node_id(cls, node_id: str) -> MonitorInstance | None:
