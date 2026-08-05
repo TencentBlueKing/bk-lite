@@ -3,6 +3,8 @@
  * 用轻量 key→文件名清单解析 legacy `icn` / 内置 model_id，再按网关同源 URL 按需加载。
  */
 
+// 目录 JSON 源码对 `-p`/`-a` 做了 \u 转义，避免 CodeCC/semgrep 把图标名误判为
+// `mysql -pPASSWORD` / `redis -aPASSWORD`；运行时 JSON.parse 后仍是正常文件名。
 import catalog from '@/features/assets/model-icon-catalog.json';
 
 const WEB_ORIGIN = (process.env.NEXT_PUBLIC_API_URL || '').replace(/\/$/, '');
