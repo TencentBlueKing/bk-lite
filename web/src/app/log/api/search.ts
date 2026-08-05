@@ -38,7 +38,7 @@ const useSearchApi = () => {
   };
 
   const delLogCondition = async (id: React.Key) => {
-    return await del(`/log/search_conditions/${id}/`);
+    return await del(`/log/search_conditions/${String(id)}/`);
   };
 
   return {

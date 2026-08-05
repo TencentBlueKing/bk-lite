@@ -11,12 +11,12 @@ export function isHostProcessMetricsTab(tab: string | number | null | undefined)
   return String(tab || '') === HOST_PROCESS_METRICS_TAB;
 }
 
-export type HostProcessMetricsTarget = {
+export interface HostProcessMetricsTarget {
   processObjectId: string;
   processPluginId: string;
   /** 与 Process 对象页签一致，如「进程 (Telegraf)」 */
   processPluginLabel: string;
-};
+}
 
 /**
  * 解析 Process 对象及其首个插件，供主机视图追加与 Process 页一致的插件页签。

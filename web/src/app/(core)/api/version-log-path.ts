@@ -31,7 +31,7 @@ export function resolveVersionsDirectory(clientId: string, locale: string) {
     getLegacyVersionsDirectory(clientId, locale),
   ];
 
-  return candidates.find(candidate => fs.existsSync(candidate)) ?? candidates[0];
+  return candidates.find(candidate => fs.existsSync(/* turbopackIgnore: true */ candidate)) ?? candidates[0];
 }
 
 export function resolveVersionMarkdownPath(filePath: string) {
@@ -62,7 +62,7 @@ export function resolveVersionMarkdownPath(filePath: string) {
     path.join(getLegacyVersionsDirectory(clientId, locale), fileName),
   ];
 
-  const resolvedPath = candidates.find(candidate => fs.existsSync(candidate));
+  const resolvedPath = candidates.find(candidate => fs.existsSync(/* turbopackIgnore: true */ candidate));
 
   return {
     fullPath: resolvedPath ?? candidates[0],

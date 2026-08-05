@@ -45,6 +45,7 @@ const nextConfig = withCombineLocalesAndMenus(
       enabled: process.env.ANALYZE === 'true',
     })({
       reactStrictMode: true,
+      allowedDevOrigins: ['bklite.weops.com'],
       env: {
         ENTERPRISE_WEB_ROOT: enterpriseWebRoot,
       },
@@ -53,14 +54,13 @@ const nextConfig = withCombineLocalesAndMenus(
       },
       staticPageGenerationTimeout: 300,
       transpilePackages: ['@antv/g6'],
-      typescript: {
-        ignoreBuildErrors: true,
-      },
+      outputFileTracingRoot: enterpriseWebRoot
+        ? path.resolve(process.cwd(), '../..')
+        : undefined,
       experimental: {
         externalDir: true,
-        outputFileTracingRoot: enterpriseWebRoot
-          ? path.resolve(process.cwd(), '../..')
-          : undefined,
+        turbopackFileSystemCacheForDev: true,
+        turbopackFileSystemCacheForBuild: true,
         // proxyTimeout: 300_000, // Set timeout to 300 seconds
       },
       // async rewrites() {

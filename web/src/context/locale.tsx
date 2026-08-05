@@ -68,7 +68,6 @@ export const LocaleProvider = ({ children }: { children: ReactNode }) => {
       {isLoading ? (
         <Spin></Spin>
       ) : (
-        // @ts-expect-error react-intl type incompatibility with React 19
         <IntlProvider locale={locale} messages={messages as any}>
           <ConfigProvider locale={antdLocale}>{children}</ConfigProvider>
         </IntlProvider>

@@ -17,6 +17,7 @@ export interface ListItem {
   display_name?: string;
   id?: string | number;
   value?: string | number;
+  color?: string;
 }
 
 export interface ModalConfig {

@@ -64,9 +64,7 @@ const ViewHive: React.FC<ViewListProps> = ({ objects, objectId }) => {
     pageSize: 60 // 默认值
   });
   const [frequence, setFrequence] = useState<number>(0);
-  const [queryData, setQueryData] = useState<any[]>([]);
   const [mertics, setMertics] = useState<MetricItem[]>([]);
-  const [colony, setColony] = useState<string | null>(null);
   const [node, setNode] = useState<string | null>(null);
   const [queryMetric, setQueryMetric] = useState<string | null>(null);
   const [hexColor, setHexColor] = useState<NodeThresholdColor[]>([]);
@@ -126,7 +124,7 @@ const ViewHive: React.FC<ViewListProps> = ({ objects, objectId }) => {
     if (objectId && objects?.length && !isLoading) {
       onRefresh();
     }
-  }, [colony, node]);
+  }, [node]);
 
   // 更新与销毁定时器
   useEffect(() => {
@@ -147,7 +145,6 @@ const ViewHive: React.FC<ViewListProps> = ({ objects, objectId }) => {
   }, [
     frequence,
     objectId,
-    colony,
     node,
     pagination.current,
     pagination.pageSize
@@ -207,7 +204,7 @@ const ViewHive: React.FC<ViewListProps> = ({ objects, objectId }) => {
       add_metrics: true,
       name: '',
       vm_params: {
-        instance_id: colony || '',
+        instance_id: '',
         node: node || ''
       }
     };
@@ -216,7 +213,7 @@ const ViewHive: React.FC<ViewListProps> = ({ objects, objectId }) => {
   const getInitData = async (name: string) => {
     const params = getParams();
     const objParams = {
-      monitor_object_id: objectId
+      monitor_object_id: String(objectId)
     };
     const getInstList = await getInstanceSearch(objectId, params);
     const getQueryParams = await getInstanceQueryParams(name, objParams);
@@ -240,21 +237,8 @@ const ViewHive: React.FC<ViewListProps> = ({ objects, objectId }) => {
       }
       const res = await Promise.all([getInstList, getQueryParams]);
       const k8sQuery = res[1];
-      let queryForm: any[] = [];
       if (k8sQuery?.cluster) {
-        queryForm = k8sQuery?.cluster || [];
         setNodeList(k8sQuery?.node || []);
-      } else {
-        queryForm = (k8sQuery || []).map((item: any) => {
-          if (typeof item === 'string') {
-            return { id: item, child: [] };
-          }
-          return {
-            id: item?.id,
-            name: item?.name || '',
-            child: []
-          };
-        });
       }
       const chartConfig = {
         data: res[0]?.results || [],
@@ -262,7 +246,6 @@ const ViewHive: React.FC<ViewListProps> = ({ objects, objectId }) => {
         hexColor,
         queryMetric: queryMetric as string
       };
-      setQueryData(queryForm);
       setChartData(dealChartData(chartConfig));
       setPagination((prev: Pagination) => ({
         ...prev,

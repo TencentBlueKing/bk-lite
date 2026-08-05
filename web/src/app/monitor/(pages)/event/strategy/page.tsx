@@ -259,8 +259,10 @@ const Strategy: React.FC = () => {
     const currentRequestId = ++policyRequestIdRef.current;
     try {
       setTableLoading(true);
-      const params = getParams(text);
-      params.monitor_object_id = objectId;
+      const params = {
+        ...getParams(text),
+        monitor_object_id: String(objectId)
+      };
       const data = await getMonitorPolicy('', params, {
         signal: abortController.signal
       });

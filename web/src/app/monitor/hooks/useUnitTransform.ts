@@ -31,11 +31,11 @@ export const useUnitTransform = () => {
     metric: MetricItem,
     id: number | string,
     displayUnit?: string
-  ) => {
+  ): string => {
     const { unit: input = '', name } = metric || {};
     if (!id && id !== 0) return '--';
     if (isStringArray(input)) {
-      return getEnumValue(metric, id);
+      return String(getEnumValue(metric, id));
     }
     const unit = findUnitNameById(input, displayUnit);
     return isNaN(+id) || APPOINT_METRIC_IDS.includes(name)

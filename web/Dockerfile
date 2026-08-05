@@ -1,3 +1,5 @@
+# syntax=docker/dockerfile:1.7
+
 FROM node:24-alpine AS builder
 
 ARG NEXUS_NODEJS_REPOSITY
@@ -6,6 +8,7 @@ WORKDIR /app
 
 # 设置Node.js最大堆内存为4GB
 ENV NODE_OPTIONS="--max-old-space-size=8192"
+ENV PNPM_HOME="/pnpm"
 
 # 跳过 electron 二进制下载（react-devtools 的传递依赖，构建期不需要）
 ENV ELECTRON_SKIP_BINARY_DOWNLOAD=1
@@ -18,7 +21,8 @@ RUN if [ -n "$NEXUS_NODEJS_REPOSITY" ]; then \
   echo "Using default npm registry"; \
   fi
 
-RUN npm install -g pnpm@9.15.4
+RUN corepack enable && corepack prepare pnpm@11.20.0 --activate
+RUN pnpm config set store-dir /pnpm/store
 
 # 如果提供了 NEXUS_NODEJS_REPOSITY，则切换 pnpm 源
 RUN if [ -n "$NEXUS_NODEJS_REPOSITY" ]; then \
@@ -30,16 +34,15 @@ RUN if [ -n "$NEXUS_NODEJS_REPOSITY" ]; then \
 
 ADD . .
 
-RUN printf 'packages:\n  - "src/app/*"\n' > pnpm-workspace.yaml
-
 RUN echo 'NEXTAPI_URL="http://bklite-server:8000"' > .env.local
 
-RUN pnpm install --ignore-scripts
-RUN pnpm rebuild esbuild sharp unrs-resolver
-RUN pnpm run build
+RUN --mount=type=cache,id=bk-lite-web-pnpm,target=/pnpm/store,sharing=locked \
+  pnpm install --frozen-lockfile
+RUN --mount=type=cache,id=bk-lite-web-next,target=/app/.next/cache,sharing=locked \
+  pnpm run build
 
 FROM node:24-alpine
-RUN npm install -g pnpm@9.15.4
+RUN corepack enable && corepack prepare pnpm@11.20.0 --activate
 
 # 在生产环境也设置内存限制
 ENV NODE_OPTIONS="--max-old-space-size=2048"
