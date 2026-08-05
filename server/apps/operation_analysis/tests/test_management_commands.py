@@ -231,6 +231,8 @@ def test_init_source_api_data_creates_room3d_datasource(settings):
         "alias_name": "机房ID",
         "filterType": "params",
     }
+    assert server_room_param["inputConfig"]["componentSwitch"] is True
+    assert server_room_param["inputConfig"]["control"] == "select"
     assert list(source.tag.values_list("tag_id", flat=True)) == ["cmdb"]
 
 
