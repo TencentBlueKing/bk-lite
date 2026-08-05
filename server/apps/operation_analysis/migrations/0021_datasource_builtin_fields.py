@@ -3,7 +3,7 @@ from django.db import migrations, models
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("operation_analysis", "0018_dashboardsharelink_resource_type"),
+        ("operation_analysis", "0020_dashboardreportexecution_dashboardreportsubscription_and_more"),
     ]
 
     operations = [
