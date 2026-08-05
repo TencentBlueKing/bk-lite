@@ -6,7 +6,7 @@ import React, {
   useCallback,
   useMemo
 } from 'react';
-import { Alert, Button, Form, Select, Segmented } from 'antd';
+import { Alert, Button, Checkbox, Form, Select, Segmented } from 'antd';
 import useApiClient from '@/utils/request';
 import { useTranslation } from '@/utils/i18n';
 import { TableDataItem } from '@/app/node-manager/types';
@@ -32,6 +32,8 @@ import useControllerApi from '@/app/node-manager/api/useControllerApi';
 import useCloudId from '@/app/node-manager/hooks/useCloudRegionId';
 import { useInstallWays } from '@/app/node-manager/hooks/node';
 import { useUserInfoContext } from '@/context/userInfo';
+import { useClientData } from '@/context/client';
+import { getSoldModulePushTargets } from '@/app/node-manager/utils/modulePush';
 import { message } from 'antd';
 
 interface InstallConfigProps {
@@ -51,6 +53,11 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
   const { installController } = useNodeManagerApi();
   const { manualInstallController, getControllerList } = useControllerApi();
   const commonContext = useUserInfoContext();
+  const { clientData } = useClientData();
+  const soldPushTargets = useMemo(
+    () => getSoldModulePushTargets(clientData),
+    [clientData]
+  );
   const { getPackages } = useNodeManagerApi();
   const cloudId = useCloudId();
   const searchParams = useSearchParams();
@@ -80,6 +87,10 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
   const [tableData, setTableData] = useState<TableDataItem[]>([]);
   const { confirm } = Modal;
   const { renderTableColumn, renderActionColumn } = useTableRenderer();
+
+  useEffect(() => {
+    form.setFieldsValue({ push_targets: soldPushTargets });
+  }, [form, soldPushTargets]);
   const createInfoItem = useCallback(
     (targetOS: string) => ({
       key: uuidv4(),
@@ -500,7 +511,8 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
         cloud_region_id: cloudId,
         work_node: name,
         package_id: values.sidecar_package || '',
-        cpu_architecture: cpuArchitecture
+        cpu_architecture: cpuArchitecture,
+        push_targets: values.push_targets || []
       };
       if (isRemote) {
         params.nodes = tableData.map((item) => ({
@@ -673,6 +685,24 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
             </div>
           )}
         </Form.Item>
+        {soldPushTargets.length > 0 && (
+          <Form.Item
+            name="push_targets"
+            label={t('node-manager.cloudregion.node.pushTargets')}
+            extra={t('node-manager.cloudregion.node.pushTargetsHint')}
+            initialValue={soldPushTargets}
+          >
+            <Checkbox.Group
+              options={soldPushTargets.map((target) => ({
+                label:
+                  target === 'cmdb'
+                    ? t('node-manager.cloudregion.node.pushTargetCmdb')
+                    : t('node-manager.cloudregion.node.pushTargetMonitor'),
+                value: target
+              }))}
+            />
+          </Form.Item>
+        )}
         <div className="flex items-center justify-between mb-[10px]">
           <span className="text-[14px]">
             {t('node-manager.cloudregion.node.installInfo')}

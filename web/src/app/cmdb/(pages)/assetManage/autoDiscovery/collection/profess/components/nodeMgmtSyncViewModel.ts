@@ -80,6 +80,7 @@ const REASON_TEXT_KEYS: Record<string, string> = {
   NODE_CONFIG_RECONCILE_FAILED: 'Collection.nodeMgmtSync.reason.nodeConfigFailed',
   NODE_CONFIG_DELETE_FAILED: 'Collection.nodeMgmtSync.reason.nodeConfigDeleteFailed',
   NODE_CONFIG_PUSH_FAILED: 'Collection.nodeMgmtSync.reason.nodeConfigPushFailed',
+  PUSH_LINKAGE_REPLACES_PULL: 'Collection.nodeMgmtSync.reason.pushLinkageReplacesPull',
 };
 
 const normalizeReasonCode = (reasonCode?: string) => (reasonCode || '').split(':', 1)[0];

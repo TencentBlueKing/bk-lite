@@ -738,6 +738,8 @@
         "nodeMgmtSync": {
             "entry": "Node Management Sync",
             "title": "Node Management Sync",
+            "pullReplacedNotice": "Pull sync from Node Management has been replaced by node-side push to CMDB. Use install/detail push in Node Manager; this page keeps historical status only and auto-sync is disabled.",
+            "autoSyncDisabledHint": "Pull sync is retired",
             "lastSyncTime": "Latest Sync Time",
             "lastCollectTime": "Latest Collect Time",
             "autoSync": "Auto Sync",
@@ -802,6 +804,7 @@
                 "nodeConfigFailed": "Node collection configuration reconciliation failed and will be retried.",
                 "nodeConfigDeleteFailed": "Deleting the previous node collection configuration failed and will be retried.",
                 "nodeConfigPushFailed": "Pushing the node collection configuration failed and will be retried.",
+                "pushLinkageReplacesPull": "Pull sync was skipped because node push linkage has replaced it.",
                 "unknown": "Node Management sync is temporarily unavailable. Use the error code or retry later."
             },
             "table": {

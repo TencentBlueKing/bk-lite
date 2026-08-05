@@ -23,6 +23,9 @@ class NodeSerializer(serializers.ModelSerializer):
             "install_method",
             "node_type",
             "versions",
+            "cmdb_id",
+            "monitor_id",
+            "push_status",
         ]
 
     @classmethod
