@@ -6,6 +6,7 @@ from typing import Any
 
 from apps.cmdb.services.instance import InstanceManage
 from apps.cmdb.services.node_mgmt_sync_service import NodeMgmtSyncService
+from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.logger import cmdb_logger as logger
 from apps.node_mgmt.services.module_push_contract import IngestResult
 
@@ -18,6 +19,55 @@ HOST_INGEST_UPDATE_FIELDS = (
     "os_type",
     "node_id",
 )
+
+# 与 attr-host 中 str 字段（如 ip_addr）对齐的最小可创建形态
+HOST_NODE_ID_ATTR = {
+    "attr_id": "node_id",
+    "attr_name": "节点ID",
+    "attr_type": "str",
+    "attr_group": "基本信息",
+    "editable": True,
+    "is_only": True,
+    "is_required": False,
+    "option": {
+        "validation_type": "unrestricted",
+        "custom_regex": "",
+        "widget_type": "single_line",
+    },
+    "user_prompt": "",
+    "default_value": [],
+}
+
+
+def ensure_host_node_id_attr(*, username: str = "admin") -> bool:
+    """确保 host 模型具备可写 node_id 属性。
+
+    Returns:
+        True 表示本次新建了属性；False 表示已存在或无法创建（模型缺失 / 并发重复）。
+    """
+    from apps.cmdb.services.model import ModelManage
+
+    model_info = ModelManage.search_model_info("host")
+    if not model_info:
+        logger.warning("[ModuleIngest] host 模型不存在，跳过 ensure node_id attr")
+        return False
+
+    attrs = ModelManage.parse_attrs(model_info.get("attrs", "[]"))
+    if any(attr.get("attr_id") == "node_id" for attr in attrs):
+        return False
+
+    try:
+        ModelManage.create_model_attr("host", dict(HOST_NODE_ID_ATTR), username=username)
+    except BaseAppException as exc:
+        # 并发场景下另一进程已创建：视为幂等成功
+        message = str(getattr(exc, "message", "") or exc)
+        if "repetition" in message.lower() or "重复" in message:
+            logger.info("[ModuleIngest] host.node_id 属性已存在（并发创建），跳过")
+            return False
+        raise
+
+    logger.info("[ModuleIngest] 已为 host 模型创建可写 node_id 属性")
+    return True
 
 
 class CmdbModuleIngestService:
@@ -42,6 +92,8 @@ class CmdbModuleIngestService:
             raise ValueError("link_ids.node_id or source_id is required")
 
         operator = params.get("operator") or ""
+        # claim/update 依赖 editable attr；缺失时 instance_update 会剥离 node_id
+        ensure_host_node_id_attr(username=operator or "admin")
         desired = cls._build_host_desired(raw=raw, node_id=str(node_id))
 
         existing = cls._find_by_node_id(str(node_id))
