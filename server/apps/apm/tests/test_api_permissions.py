@@ -127,9 +127,41 @@ def test_integration_config_is_stateless_and_maps_standard_resource_attributes(a
     assert response.data["http_endpoint"] == "http://apm-east.example.com:4318/v1/traces"
     assert "grpc_endpoint" not in response.data
     assert response.data["environment"]["OTEL_EXPORTER_OTLP_ENDPOINT"] == "http://apm-east.example.com:4318"
-    region.get_cloud_region_proxy_address.assert_called_once_with(7, [10])
+    region.get_cloud_region_proxy_address.assert_called_once_with(7)
     region.get_cloud_region_envconfig.assert_not_called()
     assert ApmApplication.objects.filter(is_builtin=False).count() == 1
+
+
+def test_integration_config_falls_back_to_trusted_node_server_url_without_node_organization(apm_api_client):
+    create_application("shop", (10,))
+    region = Mock()
+    region.cloud_region_list.return_value = [{"id": 7, "name": "直连区域"}]
+    region.get_cloud_region_proxy_address.return_value = ""
+    region.get_cloud_region_envconfig.return_value = {
+        "NODE_SERVER_URL": "http://10.10.10.1:8011",
+    }
+
+    with pytest.MonkeyPatch.context() as monkeypatch:
+        monkeypatch.setattr("apps.apm.views.control_plane.NodeMgmt", lambda: region)
+        response = apm_api_client.post(
+            "/api/v1/apm/integration-config/",
+            {
+                "application_id": "shop",
+                "cloud_region_id": 7,
+                "language": "nodejs",
+                "runtime": "host",
+                "service_name": "checkout",
+                "service_version": "1.4.0",
+                "environment": "production",
+            },
+            format="json",
+        )
+
+    assert response.status_code == 200
+    assert response.data["http_endpoint"] == "http://10.10.10.1:4318/v1/traces"
+    assert response.data["environment"]["OTEL_EXPORTER_OTLP_ENDPOINT"] == "http://10.10.10.1:4318"
+    region.get_cloud_region_proxy_address.assert_called_once_with(7)
+    region.get_cloud_region_envconfig.assert_called_once_with(7)
 
 
 def test_integration_config_rejects_unknown_or_out_of_scope_application(apm_api_client):

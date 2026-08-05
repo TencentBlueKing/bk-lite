@@ -43,6 +43,18 @@ def _normalize_proxy_address(value: object) -> str:
     return raw.lower()
 
 
+def _receiver_host_from_node_server_url(value: object) -> str:
+    raw = str(value or "").strip()
+    try:
+        parsed = urlsplit(raw)
+        _ = parsed.port
+    except ValueError as exc:
+        raise ValueError("invalid NODE_SERVER_URL") from exc
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname or parsed.username or parsed.password:
+        raise ValueError("NODE_SERVER_URL must contain a trusted HTTP host")
+    return f"[{parsed.hostname}]" if ":" in parsed.hostname else parsed.hostname
+
+
 class DjangoIntegrationConfigurationService:
     """无状态生成 SDK/探针配置；不创建接入源，也不持久化表单内容。"""
 
@@ -77,18 +89,30 @@ class DjangoIntegrationConfigurationService:
         region = next((item for item in regions if item["id"] == cloud_region_id), None)
         if region is None:
             raise CloudRegionConfigurationError("cloud_region_not_found", "云区域不存在或已不可用。")
-        proxy_address = node_mgmt.get_cloud_region_proxy_address(cloud_region_id, organization_ids)
+        # APM SDK/Agent 不要求先成为节点管理中的节点；这里不能用 NodeOrganization
+        # 过滤，否则新接入区域会形成“先有关联节点，才能获取接入地址”的循环依赖。
+        proxy_address = node_mgmt.get_cloud_region_proxy_address(cloud_region_id)
         if not str(proxy_address or "").strip():
-            raise CloudRegionConfigurationError(
-                "cloud_region_receiver_unavailable",
-                "所选云区域没有可用的被动接收地址。",
-            )
+            env_config = node_mgmt.get_cloud_region_envconfig(cloud_region_id)
+            node_server_url = env_config.get("NODE_SERVER_URL") if isinstance(env_config, dict) else None
+            if not str(node_server_url or "").strip():
+                raise CloudRegionConfigurationError(
+                    "cloud_region_receiver_unavailable",
+                    "所选云区域没有可用的被动接收地址。",
+                )
+            try:
+                proxy_address = _receiver_host_from_node_server_url(node_server_url)
+            except ValueError as exc:
+                raise CloudRegionConfigurationError(
+                    "invalid_cloud_region_proxy_address",
+                    "云区域接收地址格式无效，请联系管理员检查配置。",
+                ) from exc
         try:
             proxy_address = _normalize_proxy_address(proxy_address)
         except ValueError as exc:
             raise CloudRegionConfigurationError(
                 "invalid_cloud_region_proxy_address",
-                "云区域代理地址格式无效，请联系管理员检查配置。",
+                "云区域接收地址格式无效，请联系管理员检查配置。",
             ) from exc
         return CloudRegionEndpoints(
             region_id=region["id"],
