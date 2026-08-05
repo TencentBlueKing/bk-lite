@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime, timedelta
 
 from apps.apm.models import ApmApplication
@@ -8,6 +9,9 @@ from apps.apm.services.contracts import (
     InstanceActivityQuery,
     MetricStore,
 )
+
+logger = logging.getLogger(__name__)
+MAX_UNKNOWN_APPLICATION_SAMPLES = 20
 
 
 class TelemetryCatalogReconciler:
@@ -47,6 +51,14 @@ class TelemetryCatalogReconciler:
             instance_ids.add(result.instance.id)
 
         archived_services, archived_instances = self.catalog.archive_stale(observed_at=observed_at)
+        if unknown_applications:
+            logger.warning(
+                "APM telemetry ignored unknown or disabled applications",
+                extra={
+                    "unknown_application_count": len(unknown_applications),
+                    "unknown_application_samples": sorted(unknown_applications)[:MAX_UNKNOWN_APPLICATION_SAMPLES],
+                },
+            )
         return CatalogReconcileResult(
             discovered_services=len(service_ids),
             discovered_instances=len(instance_ids),

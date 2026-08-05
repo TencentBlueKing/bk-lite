@@ -1,3 +1,7 @@
+import os
+import shlex
+import subprocess
+
 import pytest
 
 from apps.apm.services import DjangoIntegrationConfigurationService
@@ -27,7 +31,7 @@ def test_snippet_uses_a_runtime_instance_identity_instead_of_a_shared_constant(r
     )
 
     assert expected_identity in snippet.code
-    assert "service.instance.id=${OTEL_SERVICE_INSTANCE_ID}" in snippet.code
+    assert "service.instance.id=${OTEL_SERVICE_INSTANCE_ID}" in snippet.environment["OTEL_RESOURCE_ATTRIBUTES"]
     assert "OTEL_EXPORTER_OTLP_HEADERS" not in snippet.environment
     assert "service.namespace=shop" in snippet.environment["OTEL_RESOURCE_ATTRIBUTES"]
     assert "service.name=checkout" in snippet.environment["OTEL_RESOURCE_ATTRIBUTES"]
@@ -99,3 +103,50 @@ def test_docker_snippet_uses_runtime_environment_injection_instead_of_host_expor
     assert "OTEL_EXPORTER_OTLP_HEADERS" not in snippet.code
     assert "NODE_OPTIONS=" in snippet.code
     assert "export OTEL_EXPORTER_OTLP_ENDPOINT" not in snippet.code
+
+
+@pytest.mark.parametrize("runtime", ["host", "docker"])
+def test_snippet_quotes_untrusted_values_as_posix_shell_literals(runtime):
+    malicious = "checkout'\n$(printf injected) `printf injected` ; #"
+    snippet = DjangoIntegrationConfigurationService().render_snippet(
+        IngestSnippetRequest(
+            language="python",
+            runtime=runtime,
+            endpoint="https://apm.example.com",
+            service_namespace=malicious,
+            service_name=malicious,
+            service_version=malicious,
+            environment=malicious,
+        )
+    )
+
+    assert subprocess.run(["sh", "-n"], input=snippet.code, text=True, capture_output=True).returncode == 0
+    assert malicious in snippet.environment["OTEL_RESOURCE_ATTRIBUTES"]
+
+    if runtime == "host":
+        instance_export = next(line for line in snippet.code.splitlines() if line.startswith("export OTEL_SERVICE_INSTANCE_ID="))
+        resource_export = snippet.code.split("export OTEL_RESOURCE_ATTRIBUTES=", maxsplit=1)[1].split("\n\n# 3.", maxsplit=1)[0]
+        script = f"{instance_export}\nexport OTEL_RESOURCE_ATTRIBUTES={resource_export}"
+        script += '\nprintf %s "$OTEL_RESOURCE_ATTRIBUTES"'
+        environment = {**os.environ, "BK_INSTANCE_ID": "host-instance"}
+        expected_instance = "host-instance"
+    else:
+        tokens = shlex.split(snippet.code, comments=True)
+        command_index = next(index for index in range(len(tokens) - 2) if tokens[index : index + 2] == ["sh", "-c"])
+        script_token = next(token for token in tokens[command_index + 2 :] if token.strip())
+        script = script_token.split("; exec ", maxsplit=1)[0]
+        script += '; printf %s "$OTEL_RESOURCE_ATTRIBUTES"'
+        environment = {**os.environ, "HOSTNAME": "container-instance"}
+        expected_instance = "container-instance"
+
+    rendered = subprocess.run(
+        ["sh", "-c", script],
+        env=environment,
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+    assert rendered.stdout == (
+        f"service.namespace={malicious},service.name={malicious},service.version={malicious},"
+        f"deployment.environment={malicious},service.instance.id={expected_instance}"
+    )

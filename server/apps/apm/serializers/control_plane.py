@@ -42,17 +42,16 @@ class ApplicationMutationSerializer(OrganizationAssignmentSerializer):
 
 class IngestSnippetSerializer(serializers.Serializer):
     application_id = serializers.CharField(max_length=128)
+    cloud_region_id = serializers.IntegerField(min_value=1)
     language = serializers.ChoiceField(choices=("python", "nodejs", "java", "go"))
     runtime = serializers.ChoiceField(choices=("kubernetes", "docker", "host", "other"))
-    endpoint = serializers.URLField(max_length=512)
+    endpoint = serializers.CharField(max_length=512, required=False, write_only=True)
     service_name = serializers.CharField(max_length=256)
     service_version = serializers.CharField(max_length=256, required=False, allow_blank=True)
     environment = serializers.CharField(max_length=256, allow_blank=True)
 
-    def validate_endpoint(self, value):
-        if not value.lower().startswith(("http://", "https://")):
-            raise serializers.ValidationError("OTLP 端点只支持 HTTP 或 HTTPS。")
-        return value
+    def validate_endpoint(self, _value):
+        raise serializers.ValidationError("OTLP 端点必须由服务器根据云区域配置解析，客户端不得提交。")
 
 
 class ApmApplicationSerializer(serializers.ModelSerializer):
@@ -77,6 +76,7 @@ class ApmApplicationSerializer(serializers.ModelSerializer):
 
     def get_organization_ids(self, obj):
         return list(obj.organization_links.order_by("organization").values_list("organization", flat=True))
+
 
 class ApmServiceSerializer(serializers.ModelSerializer):
     application_id = serializers.CharField(source="application.application_id", read_only=True)
@@ -341,11 +341,7 @@ class ApmPolicySerializer(serializers.ModelSerializer):
             getattr(self.instance, "notice_type_ids", []),
         )
         notification_targets = attrs.get("notification_targets")
-        existing_targets = (
-            list(self.instance.notification_targets.values_list("channel_id", flat=True))
-            if self.instance is not None
-            else []
-        )
+        existing_targets = list(self.instance.notification_targets.values_list("channel_id", flat=True)) if self.instance is not None else []
         if notice and not notice_type_ids and not notification_targets and not existing_targets:
             raise serializers.ValidationError({"notification_targets": "启用通知时至少选择一个渠道。"})
         if notification_targets is not None:

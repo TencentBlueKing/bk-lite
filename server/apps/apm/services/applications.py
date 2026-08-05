@@ -6,6 +6,8 @@ from django.db import transaction
 from apps.apm.models import (
     ApmApplication,
     ApmApplicationOrganization,
+    ApmService,
+    ApmServiceOrganization,
     ApmServiceInstance,
     ApmServiceInstanceOrganization,
 )
@@ -86,9 +88,27 @@ class DjangoApmApplicationService:
             ]
         )
 
-        inherited_instances = ApmServiceInstance.objects.filter(
-            service__application=application,
-            permission_mode=ApmServiceInstance.PermissionMode.INHERITED,
+        services = list(ApmService.objects.select_for_update().filter(application=application))
+        ApmServiceOrganization.objects.filter(service__in=services).delete()
+        ApmServiceOrganization.objects.bulk_create(
+            [
+                ApmServiceOrganization(
+                    service=service,
+                    organization=organization,
+                    created_by=actor,
+                    updated_by=actor,
+                )
+                for service in services
+                for organization in organizations
+            ],
+            ignore_conflicts=True,
+        )
+
+        inherited_instances = list(
+            ApmServiceInstance.objects.select_for_update().filter(
+                service__application=application,
+                permission_mode=ApmServiceInstance.PermissionMode.INHERITED,
+            )
         )
         ApmServiceInstanceOrganization.objects.filter(instance__in=inherited_instances).delete()
         ApmServiceInstanceOrganization.objects.bulk_create(

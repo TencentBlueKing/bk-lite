@@ -121,6 +121,19 @@ class TopologyTarget:
 
 
 @dataclass(frozen=True)
+class TopologyDependencyQuery:
+    started_at: datetime
+    ended_at: datetime
+
+
+@dataclass(frozen=True)
+class ServiceDependency:
+    parent_service_name: str
+    child_service_name: str
+    call_count: int
+
+
+@dataclass(frozen=True)
 class TopologyNode:
     id: str
     service_namespace: str
@@ -148,6 +161,7 @@ class TopologyGraph:
     sampled_traces: int
     truncated: bool
     data_state: str
+    diagnostics: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -303,6 +317,17 @@ class MetricStore(Protocol):
     def slo_measurement(self, query: SloMetricQuery) -> SloMeasurement: ...
 
     def instance_activity(self, query: InstanceActivityQuery) -> list[InstanceActivity]: ...
+
+
+class TopologyStore(Protocol):
+    def service_dependencies(
+        self,
+        query: TopologyDependencyQuery,
+    ) -> tuple[ServiceDependency, ...]: ...
+
+
+class TelemetryStore(TraceStore, MetricStore, TopologyStore, Protocol):
+    """APM 对单一 VictoriaTraces 数据面的完整查询边界。"""
 
 
 class NotificationDispatcher(Protocol):
