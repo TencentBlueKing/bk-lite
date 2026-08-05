@@ -21,6 +21,11 @@ ADD ./startup.sh startup.sh
 ADD ./snmptrap-to-socket ./bin/snmptrap-to-socket
 ADD ./misc misc
 
+# sidecar 从工作目录读 VERSION 返回版本信息；与发布 zip 包一致，
+# 从 misc/VERSION（版本真源）派生纯版本号文件
+RUN . /opt/fusion-collectors/misc/VERSION && \
+    echo "${LINUX_SIDECAR_VERSION}" > /opt/fusion-collectors/VERSION
+
 RUN bash -c "mkdir -p /opt/fusion-collectors/{bin,cache,log,generated} /opt/release && \
     chmod +x /opt/fusion-collectors/startup.sh /opt/fusion-collectors/bin/snmptrap-to-socket"
 
