@@ -1,12 +1,14 @@
 """补丁源连通性真实探测测试。
 
 覆盖：
-  - probe_source()：yum/dnf 探 repomd.xml、apt 探基址、Windows 探基址；
+  - probe_source()：yum/dnf 探 repomd.xml、apt 探安全仓库架构索引、Windows 探 WSUS；
     200 可达 / 404 不可达 / 网络异常不可达 / 无 URL 返回 None；代理与认证透传。
   - check_patch_source_connectivity 任务：探测结果写回 CONNECTED/FAILED，无 URL 置 UNKNOWN。
 
 网络 I/O 通过 mock requests.get，不依赖外网，可进回归。
 """
+import gzip
+
 import pytest
 import requests
 
@@ -29,6 +31,7 @@ def _resp(mocker, status_code=200, content=b"<repomd></repomd>"):
     resp = mocker.Mock()
     resp.status_code = status_code
     resp.content = content
+    resp.iter_content.return_value = iter([content[:2]])
     resp.close = mocker.Mock()
     return resp
 
@@ -57,40 +60,44 @@ class TestProbeSource:
         assert result.reachable is False
         assert result.status_code == 404
 
-    def test_apt_probes_release_metadata_for_resolved_codename(self, mocker):
+    def test_apt_probes_security_packages_for_normalized_architecture(self, mocker):
         get = mocker.patch.object(
             connectivity_prober.requests,
             "get",
-            return_value=_resp(mocker, 200, b"Origin: Ubuntu\nSuite: jammy\n"),
+            return_value=_resp(mocker, 200, gzip.compress(b"Package: openssl\n")),
         )
         source = _source(
             source_type=PatchSourceType.APT_REPO,
             url="http://archive.ubuntu.com/ubuntu",
             os_version="22.04",
+            arch="x86_64",
         )
         result = probe_source(source)
         assert result.reachable is True
-        assert get.call_args[0][0] == "http://archive.ubuntu.com/ubuntu/dists/jammy/InRelease"
+        assert get.call_args[0][0] == (
+            "http://archive.ubuntu.com/ubuntu/dists/jammy-security/main/"
+            "binary-amd64/Packages.gz"
+        )
 
-    def test_apt_falls_back_to_release_when_inrelease_is_missing(self, mocker):
+    def test_apt_arm64_uses_repository_arm64_name(self, mocker):
         get = mocker.patch.object(
             connectivity_prober.requests,
             "get",
-            side_effect=[
-                _resp(mocker, 404, b""),
-                _resp(mocker, 200, b"Origin: Debian\nSuite: bookworm\n"),
-            ],
+            return_value=_resp(mocker, 200, gzip.compress(b"Package: openssl\n")),
         )
         source = _source(
             source_type=PatchSourceType.APT_REPO,
-            url="http://deb.debian.org/debian",
-            os_version="12",
+            url="http://archive.ubuntu.com/ubuntu",
+            os_version="24.04",
+            arch="arm64",
         )
 
         result = probe_source(source)
 
         assert result.reachable is True
-        assert get.call_args_list[1].args[0].endswith("/dists/bookworm/Release")
+        assert get.call_args.args[0].endswith(
+            "/dists/noble-security/main/binary-arm64/Packages.gz"
+        )
 
     def test_yum_rejects_html_page_even_when_status_is_200(self, mocker):
         mocker.patch.object(

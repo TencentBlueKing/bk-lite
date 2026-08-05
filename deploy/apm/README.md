@@ -3,7 +3,7 @@
 该目录是与 Django Server 启动解耦的 APM 运行期部署单元：
 
 - `apm-edge` 对外提供 OTLP/HTTP `POST /v1/traces` 与 OTLP/gRPC
-  `TraceService/Export`，两者都通过 Django 机器鉴权接口校验 Bearer Token；
+  `TraceService/Export`，负责请求体、速率限制及保留请求头清理；当前版本不校验 APM Token；
 - `apm-collector-queue-init` 以最小能力一次性初始化持久队列卷权限，完成后退出；
 - `apm-otel-collector` 在内部提供 OTLP/gRPC 4317 与 OTLP/HTTP 4318；
 - `apm-victoria-traces` 默认保存 7 天尾采样 Trace；
@@ -11,7 +11,7 @@
 
 ## 启动
 
-复制 `.env.example` 为部署环境变量来源，并保证 `APM_SERVER_UPSTREAM` 可从容器访问。
+复制 `.env.example` 为部署环境变量来源。
 默认复用已有 VictoriaMetrics：
 
 ```bash
@@ -25,22 +25,15 @@ APM_VICTORIAMETRICS_WRITE_ENDPOINT=http://apm-victoriametrics:8428/api/v1/write 
   docker compose -f deploy/apm/compose.yaml --profile standalone-metrics up -d
 ```
 
-应用使用创建/轮换时仅展示一次的 Token：
-
-```text
-Authorization: Bearer <token>
-```
-
 默认外部端点为 HTTP `:4318` 和 gRPC `:4317`，可分别用
 `APM_OTLP_HTTP_BIND`/`APM_OTLP_HTTP_PORT` 与
 `APM_OTLP_GRPC_BIND`/`APM_OTLP_GRPC_PORT` 覆盖。Collector 的内部 4317/4318
 只在 Compose 网络暴露，不能绕过 edge 直接从宿主机访问。Collector 的 13133 健康端口
 同样不映射到宿主机；edge 的 OTLP/HTTP 入口只读暴露 `/healthz/collector`，用于运行期探测。
 
-边缘代理会移除客户端传入的 `X-BK-Ingest-Source-Id`；Collector 再删除客户端在
-Resource、Scope、Span 和 Span Event 中提交的 `bk.*` 属性，并从鉴权结果注入
-受信任的 `bk.ingest_source.id`。
-正向鉴权结果只在 tmpfs 中缓存 8 秒，并保证撤销延迟不超过 10 秒；未缓存请求在鉴权服务不可用时返回 503。
+边缘代理会移除客户端传入的 `Authorization` 和 `X-BK-Ingest-Source-Id`；Collector
+再删除客户端在 Resource、Scope、Span 和 Span Event 中提交的 `bk.*` 平台保留属性。
+应用归属由标准属性 `service.namespace` 对应控制面的应用 ID，目录对账只接纳已存在且启用的应用。
 Trace exporter 使用持久化有界队列；Prometheus Remote Write 使用内存有界队列，
 避免后端长期不可用时 WAL 无上限占用磁盘。两条链路的重试最长均为 5 分钟。
 Collector 始终以 `10001:10001` 非 root 身份运行；只有无网络、只读根文件系统的
@@ -66,8 +59,8 @@ Trace/Metric 未显式设置健康地址时会从查询入口派生同源 `/heal
 
 ## 容器契约测试
 
-测试会启动独立 Compose project，验证无/错 Token、10 秒撤销上限、鉴权不可用、
-受信来源覆盖，以及采样前 Span Metrics 和尾采样 Trace 两条链路：
+测试会启动独立 Compose project，验证无 Token 上报、保留属性清理、
+采样前 Span Metrics 和尾采样 Trace 两条链路：
 
 ```bash
 RUN_APM_CONTAINER_CONTRACT=1 \

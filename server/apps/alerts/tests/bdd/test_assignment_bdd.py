@@ -3,7 +3,7 @@
 对照 specs/capabilities/legacy-prd-告警中心-配置.md：
 - AlertAssignmentOperator + execute_auto_assignment_for_alerts；
 - match_type = all / filter 双路径；
-- 无人员、无策略、空告警、未命中、不存在告警 ID 的拒绝路径。
+- 无人员、无策略、空告警、未命中、不存在告警 ID（终态跳过）路径。
 
 2 happy + 5 corner（合 7 场景）。
 """
@@ -16,7 +16,6 @@ from pytest_bdd import given, parsers, scenarios, then, when
 
 from apps.alerts.common.assignment import AlertAssignmentOperator, execute_auto_assignment_for_alerts
 from apps.alerts.constants.constants import AlertStatus
-from apps.alerts.error import AlertNotFoundError
 from apps.alerts.models.alert_operator import AlertAssignment
 from apps.alerts.models.models import Alert
 
@@ -86,14 +85,6 @@ def _when_execute(ctx, ids):
     ctx["result"] = operator.execute_auto_assignment()
 
 
-@when(parsers.parse("我尝试对告警 {ids} 构造分派操作员"))
-def _when_build_operator(ctx, ids):
-    try:
-        AlertAssignmentOperator(json.loads(ids))
-    except AlertNotFoundError as exc:
-        ctx["error"] = exc
-
-
 @then(parsers.parse('告警 "{aid}" 的状态应当为 "{status}"'))
 def _alert_status(aid, status):
     expected = {"pending": AlertStatus.PENDING, "unassigned": AlertStatus.UNASSIGNED,
@@ -110,8 +101,3 @@ def _assigned(ctx, n):
 @then(parsers.parse("总告警数应当为 {n:d}"))
 def _total(ctx, n):
     assert ctx["result"]["total_alerts"] == n, ctx["result"]
-
-
-@then("应当抛出告警不存在异常")
-def _alert_not_found(ctx):
-    assert isinstance(ctx["error"], AlertNotFoundError), ctx["error"]

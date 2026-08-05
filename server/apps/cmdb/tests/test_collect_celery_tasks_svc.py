@@ -402,6 +402,126 @@ def test_sync_collect_task_no_data_marks_error(monkeypatch):
 
 
 @pytest.mark.django_db
+def test_node_mgmt_collect_bounds_raw_rows_before_persistence_and_keeps_true_counts(monkeypatch):
+    task = CollectModels.objects.create(
+        name="node-mgmt-bounded-collect",
+        task_type=CollectPluginTypes.HOST,
+        model_id="host",
+        driver_type="job",
+        cycle_value_type="cycle",
+        team=[],
+        instances=[{"ip_addr": "10.10.24.11"}],
+        is_system=True,
+        system_code="node_mgmt_sync_host_collect_7",
+    )
+    monkeypatch.setattr(
+        "apps.cmdb.services.collect_dispatch_service.CollectDispatchService.should_dispatch",
+        staticmethod(lambda inst: False),
+    )
+    monkeypatch.setattr(ct, "_NODE_MGMT_RAW_DATA_MAX_ROWS", 2)
+
+    class FakeCollect:
+        def __init__(self, task):
+            self.task = task
+
+        def main(self):
+            return {}, {
+                "add": [],
+                "update": [],
+                "delete": [],
+                "association": [],
+                "__raw_data__": [
+                    {
+                        "__name__": "host_info_gauge",
+                        "ip": "10.10.24.11",
+                        "__time__": "2026-07-27T10:00:00+08:00",
+                    },
+                    {
+                        "__name__": "unknown_metric",
+                        "ip": "10.10.24.11",
+                        "__time__": "2026-07-27T15:00:00+08:00",
+                    },
+                    {
+                        "__name__": "host_proc_usage_info_gauge",
+                        "name": "p1",
+                        "pid": "1",
+                        "arg": "--password top-secret",
+                        "credential": {"token": "must-not-persist"},
+                        "__time__": "2026-07-27T09:00:00+08:00",
+                    },
+                    {
+                        "__name__": "host_proc_usage_info_gauge",
+                        "name": "p2",
+                        "pid": "2",
+                        "__time__": "2026-07-27T12:00:00+08:00",
+                    },
+                ],
+            }
+
+    monkeypatch.setattr(ct, "JobCollect", FakeCollect)
+
+    ct.sync_collect_task(task.id)
+
+    task.refresh_from_db()
+    assert [row["__name__"] for row in task.format_data["__raw_data__"]] == [
+        "host_info_gauge",
+        "host_proc_usage_info_gauge",
+    ]
+    assert task.format_data["__raw_data__"][1]["arg"] == "--password=[REDACTED]"
+    assert "credential" not in task.format_data["__raw_data__"][1]
+    assert task.collect_digest["raw_total"] == 4
+    assert task.collect_digest["raw_host"] == 1
+    assert task.collect_digest["raw_process"] == 2
+    assert task.collect_digest["raw_dropped"] == 1
+    assert task.collect_digest["raw_input_truncated"] is True
+    assert task.collect_digest["last_time"] == "2026-07-27T12:00:00+08:00"
+
+
+@pytest.mark.django_db
+def test_node_mgmt_collect_enforces_raw_byte_limit_before_persistence(monkeypatch):
+    task = CollectModels.objects.create(
+        name="node-mgmt-byte-bounded-collect",
+        task_type=CollectPluginTypes.HOST,
+        model_id="host",
+        driver_type="job",
+        cycle_value_type="cycle",
+        team=[],
+        instances=[{"ip_addr": "10.10.24.11"}],
+        is_system=True,
+        system_code="node_mgmt_sync_host_collect_7",
+    )
+    monkeypatch.setattr(
+        "apps.cmdb.services.collect_dispatch_service.CollectDispatchService.should_dispatch",
+        staticmethod(lambda inst: False),
+    )
+    monkeypatch.setattr(ct, "_NODE_MGMT_RAW_DATA_MAX_BYTES", 1)
+
+    class FakeCollect:
+        def __init__(self, task):
+            self.task = task
+
+        def main(self):
+            return {}, {
+                "add": [],
+                "update": [],
+                "delete": [],
+                "association": [],
+                "__raw_data__": [{"__name__": "host_info_gauge", "ip": "10.10.24.11"}],
+            }
+
+    monkeypatch.setattr(ct, "JobCollect", FakeCollect)
+
+    ct.sync_collect_task(task.id)
+
+    task.refresh_from_db()
+    assert task.format_data["__raw_data__"] == []
+    assert task.collect_digest["raw_total"] == 1
+    assert task.collect_digest["raw_host"] == 1
+    assert task.collect_digest["raw_input_truncated"] is True
+    assert task.exec_status == CollectRunStatusType.SUCCESS
+
+
+@pytest.mark.django_db
 def test_sync_collect_task_skips_when_task_is_already_running(monkeypatch):
     task = CollectModels.objects.create(
         name="running-collect",

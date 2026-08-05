@@ -15,7 +15,7 @@ export interface IntegrationSummaryItem {
   tone: IntegrationSummaryTone;
 }
 
-export const INTEGRATION_DETAIL_TAB_ORDER = ['base', 'user_sync', 'login_auth', 'im_notification'] as const;
+export const INTEGRATION_DETAIL_TAB_ORDER = ['base', 'user_sync', 'login_auth', 'im_notification', 'im_group'] as const;
 
 export type IntegrationDetailTab = typeof INTEGRATION_DETAIL_TAB_ORDER[number];
 
@@ -218,6 +218,7 @@ export function getIntegrationCapabilityLabel(
     user_sync: t ? t('system.integrationCenter.capability.userSync') : 'user_sync',
     login_auth: t ? t('system.integrationCenter.capability.loginAuth') : 'login_auth',
     im_notification: t ? t('system.integrationCenter.capability.imNotification') : 'im_notification',
+    im_group: t ? t('system.integrationCenter.capability.imGroup') : 'im_group',
   };
 
   return capabilityLabelMap[key] || key;
@@ -322,6 +323,8 @@ export function getIntegrationDiagnosticMessage(
     'provider.timeout': 'system.integrationCenter.diagnosticTimeout',
     'provider.invalid_response': 'system.integrationCenter.diagnosticInvalidResponse',
     'provider.request_failed': 'system.integrationCenter.diagnosticRequestFailed',
+    'provider.permission_unverified': 'system.integrationCenter.diagnosticPermissionUnverified',
+    'provider.bot_not_enabled': 'system.integrationCenter.diagnosticBotNotEnabled',
   };
   return t(diagnosticKeyMap[code || ''] || 'system.integrationCenter.diagnosticRequestFailed');
 }

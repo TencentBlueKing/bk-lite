@@ -78,6 +78,37 @@ def patch_provider_registry(monkeypatch, manifest):
 
 
 @pytest.mark.django_db
+def test_serializer_exposes_new_manifest_capability_for_legacy_instance(monkeypatch):
+    patch_provider_registry(
+        monkeypatch,
+        FakeManifest(
+            capabilities=[
+                FakeCapability("im_notification"),
+                FakeCapability("im_group"),
+            ]
+        ),
+    )
+    instance = IntegrationInstance.objects.create(
+        name="legacy-feishu",
+        provider_key="feishu",
+        status=IntegrationInstanceStatusChoices.READY,
+        capability_status={"im_notification": IntegrationInstanceStatusChoices.READY},
+        capability_enabled={"im_notification": True},
+    )
+
+    payload = IntegrationInstanceSerializer(instance).data
+
+    assert payload["capability_status"] == {
+        "im_notification": IntegrationInstanceStatusChoices.READY,
+        "im_group": IntegrationInstanceStatusChoices.PENDING_VERIFICATION,
+    }
+    assert payload["capability_enabled"] == {
+        "im_notification": True,
+        "im_group": True,
+    }
+
+
+@pytest.mark.django_db
 def test_integration_instance_serializer_allows_draft_create_without_required_config():
     serializer = IntegrationInstanceSerializer(
         data={
@@ -98,11 +129,13 @@ def test_integration_instance_serializer_allows_draft_create_without_required_co
         "login_auth": IntegrationInstanceStatusChoices.PENDING_VERIFICATION,
         "user_sync": IntegrationInstanceStatusChoices.PENDING_VERIFICATION,
         "im_notification": IntegrationInstanceStatusChoices.PENDING_VERIFICATION,
+        "im_group": IntegrationInstanceStatusChoices.PENDING_VERIFICATION,
     }
     assert instance.capability_enabled == {
         "login_auth": True,
         "user_sync": True,
         "im_notification": True,
+        "im_group": True,
     }
 
 

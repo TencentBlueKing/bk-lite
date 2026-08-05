@@ -11,6 +11,7 @@ from django.utils import timezone
 from apps.alerts.aggregation.recovery.timeout_checker import TimeoutChecker
 from apps.alerts.constants.constants import AlertStatus, SessionStatus
 from apps.alerts.models.models import Alert
+from apps.alerts.models.outbox import AlertOutbox
 
 
 def _session_alert(alert_id="A1", session_status=SessionStatus.OBSERVING, end_minutes=-5, rule_id="1"):
@@ -30,6 +31,31 @@ def test_check_session_timeouts_confirms_expired():
 
 
 @pytest.mark.django_db
+def test_session_confirmation_rolls_back_when_assignment_intent_cannot_persist(
+    mocker,
+):
+    """分派意图持久化失败时保持 OBSERVING，下一轮仍能重新确认并分派。"""
+    alert = _session_alert("A1", end_minutes=-5)
+    dispatch = mocker.patch(
+        "apps.alerts.service.alert_lifecycle.dispatch_alert_lifecycle",
+        side_effect=RuntimeError("outbox unavailable"),
+    )
+
+    with pytest.raises(RuntimeError, match="outbox unavailable"):
+        TimeoutChecker.check_session_timeouts()
+
+    alert.refresh_from_db()
+    assert alert.session_status == SessionStatus.OBSERVING
+    assert not AlertOutbox.objects.exists()
+
+    mocker.stop(dispatch)
+    assert TimeoutChecker.check_session_timeouts() == 1
+    alert.refresh_from_db()
+    assert alert.session_status == SessionStatus.CONFIRMED
+    assert AlertOutbox.objects.filter(kind="auto_assignment").count() == 1
+
+
+@pytest.mark.django_db
 def test_check_session_timeouts_skips_not_expired():
     _session_alert("A1", end_minutes=30)  # 未过期
     confirmed = TimeoutChecker.check_session_timeouts()
@@ -46,6 +72,30 @@ def test_confirm_observing_alerts_by_strategy():
     assert count == 2
     assert Alert.objects.get(alert_id="A1").session_status == SessionStatus.CONFIRMED
     assert Alert.objects.get(alert_id="A3").session_status == SessionStatus.OBSERVING
+
+
+@pytest.mark.django_db
+def test_strategy_confirmation_rolls_back_when_assignment_intent_cannot_persist(
+    mocker, django_capture_on_commit_callbacks,
+):
+    """批量确认与分派意图也必须原子提交，失败时不能遗留 CONFIRMED。"""
+    _session_alert("A1", rule_id="42")
+    _session_alert("A2", rule_id="42")
+    mocker.patch(
+        "apps.alerts.service.alert_lifecycle.dispatch_alert_lifecycle",
+        side_effect=RuntimeError("outbox unavailable"),
+    )
+
+    with pytest.raises(RuntimeError, match="outbox unavailable"):
+        with django_capture_on_commit_callbacks(execute=True):
+            TimeoutChecker.confirm_observing_alerts_by_strategy(42)
+
+    assert set(
+        Alert.objects.filter(rule_id="42").values_list(
+            "session_status", flat=True
+        )
+    ) == {SessionStatus.OBSERVING}
+    assert not AlertOutbox.objects.exists()
 
 
 @pytest.mark.django_db

@@ -4,6 +4,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import BaseTaskForm, { BaseTaskRef } from './baseTask';
 import { useCollectApi } from '@/app/cmdb/api';
 import { useTranslation } from '@/utils/i18n';
+import { useCollectionFormLayout } from '../hooks/useCollectionFormLayout';
 import { useTaskForm } from '../hooks/useTaskForm';
 import { getCleanupFormValues } from '../hooks/useTaskForm';
 import { TreeNode, ModelItem } from '@/app/cmdb/types/autoDiscovery';
@@ -15,6 +16,13 @@ import {
 import { formatTaskValues, normalizeCredentialPool, trimFormString } from '../hooks/formatTaskValues';
 import useAssetManageStore from '@/app/cmdb/store/useAssetManage';
 import CredentialPoolEditor from './credentialPoolEditor';
+import {
+  buildCloudCredential,
+  getCloudCredentialConfig,
+  restoreCloudCredential,
+  validateCloudCredential,
+} from './cloudCredentialConfig';
+import { buildCloudCredentialHelp } from './credentialHelp';
 
 interface RegionItem {
   cloud_type: string;
@@ -44,8 +52,10 @@ const CloudTask: React.FC<cloudTaskFormProps> = ({
   editId,
 }) => {
   const { t } = useTranslation();
+  const collectionFormLayout = useCollectionFormLayout();
   const baseRef = useRef<BaseTaskRef>(null as any);
   const { model_id: modelId } = modelItem;
+  const cloudCredentialConfig = getCloudCredentialConfig(modelId);
   const [regions, setRegions] = useState<RegionItem[]>([]);
   const [loadingRegions, setLoadingRegions] = useState(false);
   const collectApi = useCollectApi();
@@ -85,17 +95,15 @@ const CloudTask: React.FC<cloudTaskFormProps> = ({
         (item: any) => item.value === values.instId
       );
 
-      const credential: any = {
-        regions: regionItem,
-      };
-
-      if (accessKey && accessKey !== PASSWORD_PLACEHOLDER) {
-        credential.accessKey = accessKey;
-      }
-
-      if (accessSecret && accessSecret !== PASSWORD_PLACEHOLDER) {
-        credential.accessSecret = accessSecret;
-      }
+      const credential = buildCloudCredential(
+        modelId,
+        {
+          ...credentialValue,
+          accessKey,
+          accessSecret,
+        },
+        regionItem,
+      );
 
       return {
         ...baseData,
@@ -107,17 +115,13 @@ const CloudTask: React.FC<cloudTaskFormProps> = ({
 
   // 构建表单值，用于复制任务和编辑任务中回填表单数据（true:复制任务，false:编辑任务）
   const buildFormValues = (values: any, isCopy: boolean) => {
-    const regionItem = values.credential?.regions;
     return {
       ...getCleanupFormValues(values),
       ...values,
       taskName: isCopy ? '' : values.name,
-      credentialPool: [{
-        accessKey: isCopy ? values.credential?.accessKey : PASSWORD_PLACEHOLDER,
-        accessSecret: isCopy ? '' : PASSWORD_PLACEHOLDER,
-        regionId: regionItem?.resource_id,
-        regionName: regionItem?.resource_name,
-      }],
+      credentialPool: [
+        restoreCloudCredential(modelId, values.credential || {}, isCopy),
+      ],
       organization: values.team || [],
       timeout: values.timeout,
       instId: values.instances?.[0]?._id,
@@ -130,7 +134,8 @@ const CloudTask: React.FC<cloudTaskFormProps> = ({
     accessSecret: string,
     cloudRegionId: string,
     refreshFlag = true,
-    host?: string
+    host?: string,
+    projectId?: string,
   ) => {
     if (!accessKey || !accessSecret || !cloudRegionId) return;
     setLoadingRegions(true);
@@ -145,6 +150,9 @@ const CloudTask: React.FC<cloudTaskFormProps> = ({
 
       if (host) {
         params.host = host;
+      }
+      if (projectId) {
+        params.project_id = projectId;
       }
 
       if (editId && isCredentialUnchanged) {
@@ -173,6 +181,7 @@ const CloudTask: React.FC<cloudTaskFormProps> = ({
       ...rawValues,
       accessKey: trimFormString(credentialValue.accessKey),
       accessSecret: trimFormString(credentialValue.accessSecret),
+      projectId: trimFormString(credentialValue.projectId),
     };
 
     form.setFieldValue('credentialPool', [{
@@ -202,6 +211,15 @@ const CloudTask: React.FC<cloudTaskFormProps> = ({
       message.error(t('common.inputMsg') + msg);
       return;
     }
+    if (
+      cloudCredentialConfig.requiresProjectId
+      && !trimFormString(values.projectId)
+    ) {
+      message.error(
+        t('common.inputMsg') + t('Collection.cloudTask.projectId'),
+      );
+      return;
+    }
     if (!values.accessPointId) {
       message.error(t('common.selectTip') + t('Collection.accessPoint'));
       return;
@@ -222,6 +240,7 @@ const CloudTask: React.FC<cloudTaskFormProps> = ({
       cloudRegion,
       refreshFlag,
       host,
+      values.projectId,
     );
   };
 
@@ -240,7 +259,8 @@ const CloudTask: React.FC<cloudTaskFormProps> = ({
         setRegions(regionItem ? [regionItem] : []);
       } else if (editId) {
         const values = await fetchTaskDetail(editId);
-        const regionItem = values.credential?.regions;
+        const credentialItem = normalizeCredentialPool(values.credential)[0];
+        const regionItem = credentialItem?.regions;
 
         // 编辑任务中回填表单数据
         form.setFieldsValue(buildFormValues(values, false));
@@ -262,14 +282,19 @@ const CloudTask: React.FC<cloudTaskFormProps> = ({
 
   const validateCredentialPool = (_: any, value?: any[]) => {
     const credentialValue = normalizeCredentialPool(value)[0] || {};
-    if (!trimFormString(credentialValue.accessKey)) {
-      return Promise.reject(new Error(t('common.inputMsg') + t('Collection.cloudTask.accessKey')));
-    }
-    if (!trimFormString(credentialValue.accessSecret)) {
-      return Promise.reject(new Error(t('common.inputMsg') + t('Collection.cloudTask.accessSecret')));
-    }
-    if (!credentialValue.regionId) {
-      return Promise.reject(new Error(t('common.selectTip') + t('Collection.cloudTask.region')));
+    const invalidField = validateCloudCredential(modelId, credentialValue);
+    if (invalidField) {
+      const label = invalidField === 'accessKey'
+        ? t(cloudCredentialConfig.accessKeyLabelKey)
+        : invalidField === 'accessSecret'
+          ? t(cloudCredentialConfig.accessSecretLabelKey)
+          : invalidField === 'projectId'
+            ? t('Collection.cloudTask.projectId')
+            : t('Collection.cloudTask.region');
+      const prefix = invalidField === 'regionId'
+        ? t('common.selectTip')
+        : t('common.inputMsg');
+      return Promise.reject(new Error(prefix + label));
     }
     return Promise.resolve();
   };
@@ -277,8 +302,8 @@ const CloudTask: React.FC<cloudTaskFormProps> = ({
   return (
     <Spin spinning={loading}>
       <Form
+        {...collectionFormLayout}
         form={form}
-        layout="vertical"
         onFinish={onFinish}
         initialValues={CLOUD_FORM_INITIAL_VALUES}
       >
@@ -314,6 +339,14 @@ const CloudTask: React.FC<cloudTaskFormProps> = ({
               }))}
               onCloudRegionRefresh={() => handleRefreshRegions()}
               onCredentialFieldChange={handleCredentialChange}
+              cloudCredentialLabels={{
+                accessKey: t(cloudCredentialConfig.accessKeyLabelKey),
+                accessSecret: t(cloudCredentialConfig.accessSecretLabelKey),
+                ...(cloudCredentialConfig.requiresProjectId
+                  ? { projectId: t('Collection.cloudTask.projectId') }
+                  : {}),
+              }}
+              credentialHelp={buildCloudCredentialHelp(modelId, t)}
             />
           </Form.Item>
         </BaseTaskForm>

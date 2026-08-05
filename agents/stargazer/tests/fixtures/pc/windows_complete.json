@@ -1,0 +1,40 @@
+{
+  "snapshot_status": "complete",
+  "snapshot_id": "5ea76c94-3e87-4b37-a4e2-13099c3f8305",
+  "pc": [
+    {
+      "inst_name": "WIN-4C4C4544-0038-5910-8058-C4C04F433632",
+      "host_name": "FINANCE-PC-01",
+      "ip_addr": "192.168.1.56",
+      "os_type": "windows",
+      "os_name": "Microsoft Windows 11 Pro",
+      "os_version": "10.0.22631",
+      "os_build": "22631",
+      "architecture": "x64",
+      "hardware_uuid": "4C4C4544-0038-5910-8058-C4C04F433632",
+      "serial_number": "SN-ABC123",
+      "device_model": "OptiPlex 7010",
+      "logged_in_user": "ACME\\alice",
+      "snapshot_id": "5ea76c94-3e87-4b37-a4e2-13099c3f8305",
+      "software_snapshot_status": "complete"
+    }
+  ],
+  "software": [
+    {
+      "inst_name": "SW-8F6A1D93C2E741B76BB57AC50F25D182",
+      "pc_inst_name": "WIN-4C4C4544-0038-5910-8058-C4C04F433632",
+      "snapshot_id": "5ea76c94-3e87-4b37-a4e2-13099c3f8305",
+      "software_key": "google chrome|google llc",
+      "name": "Google Chrome",
+      "version": "127.0.6533.89",
+      "publisher": "Google LLC",
+      "product_id": "{9C5B2C4E-1A2B-4C3D-8E9F-0123456789AB}",
+      "install_location": "C:\\Program Files\\Google\\Chrome\\Application",
+      "install_date": "20260601",
+      "architecture": "x64",
+      "source": "windows_registry"
+    }
+  ],
+  "software_expected_count": 1,
+  "software_error_count": 0
+}

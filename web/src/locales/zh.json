@@ -175,6 +175,8 @@
     "builtin": "内置",
     "mcp": "MCP",
     "externalApp": "外部",
+    "custom": "自定义",
+    "imported": "已导入",
     "unreadNotifications": "未读通知",
     "allNotifications": "所有通知",
     "noMore": "没有更多了",

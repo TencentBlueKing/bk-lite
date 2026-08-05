@@ -30,13 +30,35 @@ validate_id() {
 # 获取 compose 路径
 get_compose_path() {
     local id="$1"
-    echo "$COMPOSE_DIR/$id"
+    local compose_root
+    local compose_path
+
+    if ! validate_id "$id"; then
+        return 1
+    fi
+    ensure_compose_dir || return 1
+    compose_root=$(cd -P -- "$COMPOSE_DIR" && pwd) || return 1
+    compose_path="$compose_root/$id"
+
+    # 服务目录必须由 webhookd 自己管理，禁止借助符号链接跳出根目录。
+    if [ -L "$compose_path" ] || { [ -e "$compose_path" ] && [ ! -d "$compose_path" ]; }; then
+        return 1
+    fi
+    printf '%s\n' "$compose_path"
 }
 
 # 获取 compose 文件路径
 get_compose_file() {
     local id="$1"
-    echo "$COMPOSE_DIR/$id/docker-compose.yml"
+    local compose_path
+    local compose_file
+
+    compose_path=$(get_compose_path "$id") || return 1
+    compose_file="$compose_path/docker-compose.yml"
+    if [ -L "$compose_file" ] || { [ -e "$compose_file" ] && [ ! -f "$compose_file" ]; }; then
+        return 1
+    fi
+    printf '%s\n' "$compose_file"
 }
 
 # 返回列表响应（compose 专用）

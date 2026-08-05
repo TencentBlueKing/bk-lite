@@ -140,6 +140,86 @@ def test_runtime_application_service_can_test_single_capability():
     assert result.payload["capability_status"] == {"user_sync": "ready"}
 
 
+def _test_connection_runtime_with_results(results):
+    capabilities = [
+        SimpleNamespace(key=capability_key, adapter_key=f"demo.{capability_key}")
+        for capability_key in results
+    ]
+    manifest = SimpleNamespace(
+        key="demo",
+        capabilities=capabilities,
+        get_capability=lambda capability_key: next(
+            capability for capability in capabilities if capability.key == capability_key
+        ),
+    )
+
+    adapters = {}
+    for capability_key, capability_result in results.items():
+        adapters[f"demo.{capability_key}"] = type(
+            f"{capability_key.title()}Adapter",
+            (),
+            {
+                "test_connection": classmethod(
+                    lambda cls, config, provider_key, capability_key, _result=capability_result, **kwargs: _result
+                )
+            },
+        )
+
+    service = RuntimeApplicationService()
+    service.provider_registry = FakeProviderRegistry(manifest)
+    service.adapter_registry = FakeAdapterRegistry(adapters)
+    instance = SimpleNamespace(provider_key="demo", get_runtime_config=lambda: {})
+    return service.test_connection(instance)
+
+
+def test_runtime_connection_keeps_permanent_capability_failure_non_retryable():
+    result = _test_connection_runtime_with_results(
+        {
+            "im_group": CapabilityExecutionResult.failed_result(
+                "permission missing",
+                code="provider.permission_unverified",
+            )
+        }
+    )
+
+    assert result.success is False
+    assert result.retryable is False
+
+
+def test_runtime_connection_keeps_temporary_capability_failure_retryable():
+    result = _test_connection_runtime_with_results(
+        {
+            "im_group": CapabilityExecutionResult.failed_result(
+                "rate limited",
+                code="provider.request_failed",
+                retryable=True,
+            )
+        }
+    )
+
+    assert result.success is False
+    assert result.retryable is True
+
+
+def test_runtime_connection_mixed_failures_are_not_retryable():
+    result = _test_connection_runtime_with_results(
+        {
+            "im_group": CapabilityExecutionResult.failed_result(
+                "bot disabled",
+                code="provider.bot_not_enabled",
+            ),
+            "im_notification": CapabilityExecutionResult.failed_result(
+                "request timed out",
+                code="provider.timeout",
+                retryable=True,
+            ),
+        }
+    )
+
+    assert result.success is False
+    assert result.retryable is False
+
+
 def test_runtime_application_service_uses_provider_base_adapter_for_base_connection_test():
     class BaseConnectionAdapter:
         calls = 0

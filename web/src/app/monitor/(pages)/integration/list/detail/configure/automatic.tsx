@@ -643,14 +643,31 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     }
   }, [configLoading, formConfig.initTableItems, groupId]);
 
+  // defaultForm 每次 buildPluginUI 都会新建对象引用；用序列化值做依赖，避免
+  // effect 每轮 setFormSnapshot → 重渲染 → 再触发 effect 的死循环卡死页面。
+  const defaultFormKey = JSON.stringify(formConfig?.defaultForm ?? {});
+
   useEffect(() => {
-    if (configLoading || !formConfig?.defaultForm) return;
-    setFormSnapshot((prev) => ({
-      ...formConfig.defaultForm,
-      ...prev,
-      ...form.getFieldsValue(true)
-    }));
-  }, [configLoading, formConfig?.defaultForm, form]);
+    if (configLoading) return;
+    const defaults = formConfig?.defaultForm;
+    if (!defaults) return;
+    setFormSnapshot((prev) => {
+      const next = {
+        ...defaults,
+        ...prev,
+        ...form.getFieldsValue(true)
+      };
+      let unchanged = false;
+      try {
+        unchanged = JSON.stringify(prev) === JSON.stringify(next);
+      } catch {
+        unchanged = false;
+      }
+      return unchanged ? prev : next;
+    });
+    // 刻意依赖 defaultFormKey 而非 defaultForm 对象引用。
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- stabilize defaultForm identity
+  }, [configLoading, defaultFormKey, form]);
 
   const handleAdd = (key: string) => {
     const index = dataSource.findIndex((item) => item.key === key);

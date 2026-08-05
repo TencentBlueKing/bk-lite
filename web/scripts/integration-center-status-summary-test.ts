@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 
 import {
+  getAvailableIntegrationTabs,
   getIntegrationBaseCapabilityStatusItems,
   getIntegrationDetailSummaryItems,
   getIntegrationDiagnosticMessage,
@@ -13,6 +14,18 @@ const readyInstance = {
   capability_status: { user_sync: 'pending_verification' as const },
   capability_enabled: { user_sync: true },
 };
+
+assert.deepEqual(
+  getAvailableIntegrationTabs({
+    capability_status: {
+      user_sync: 'ready',
+      im_notification: 'ready',
+      im_group: 'pending_verification',
+    },
+  }),
+  ['base', 'user_sync', 'im_notification', 'im_group'],
+  'newly introduced IM group capability must be testable from existing integration instances',
+);
 
 assert.deepEqual(
   getIntegrationDetailSummaryItems({ activeTab: 'base', instance: readyInstance, t }),
@@ -122,6 +135,14 @@ assert.deepEqual(
 assert.equal(
   getIntegrationDiagnosticMessage('provider.auth_failed', t),
   'system.integrationCenter.diagnosticAuthFailed',
+);
+assert.equal(
+  getIntegrationDiagnosticMessage('provider.permission_unverified', t),
+  'system.integrationCenter.diagnosticPermissionUnverified',
+);
+assert.equal(
+  getIntegrationDiagnosticMessage('provider.bot_not_enabled', t),
+  'system.integrationCenter.diagnosticBotNotEnabled',
 );
 assert.equal(
   getIntegrationDiagnosticMessage('unknown.code', t), 'system.integrationCenter.diagnosticRequestFailed');

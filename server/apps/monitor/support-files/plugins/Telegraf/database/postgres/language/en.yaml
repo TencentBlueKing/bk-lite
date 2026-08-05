@@ -39,6 +39,9 @@ monitor_object_metric:
     postgresql_blks_read_rate:
       name: Disk Block Read Rate
       desc: Evaluates disk I/O load and cache misses
+    postgresql_cache_hit_ratio:
+      name: Buffer Cache Hit Ratio
+      desc: Percentage of shared buffer hits among total block accesses; a low ratio usually means more physical I/O
     postgresql_deadlocks_rate:
       name: Deadlock Rate
       desc: Detects transaction deadlock frequency

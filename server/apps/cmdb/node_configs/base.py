@@ -107,6 +107,12 @@ class BaseNodeParams(metaclass=ABCMeta):
     def build_region_credential(cls, raw_credential):
         return raw_credential or {}
 
+    @staticmethod
+    def primary_credential(raw_credential):
+        if isinstance(raw_credential, list):
+            return raw_credential[0] if raw_credential and isinstance(raw_credential[0], dict) else {}
+        return raw_credential if isinstance(raw_credential, dict) else {}
+
     def env_config(self, *args, **kwargs):
         """
         生成环境变量配置

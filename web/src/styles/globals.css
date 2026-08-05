@@ -75,12 +75,26 @@ html:not(.dark) body {
 }
 
 .header-bg {
-  background: inherit;
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
+  background: transparent;
+  border-bottom: 1px solid transparent;
   position: sticky;
   top: 0;
   z-index: 1000;
+  transition: background-color 180ms ease, border-color 180ms ease;
+}
+
+.header-bg-scrolled {
+  background-color: var(--color-background-body);
+  border-bottom-color: var(--color-border-1);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+html:not(.dark) .header-bg-scrolled {
+  background-image: url('/system-bg.jpg');
+  background-position: left top;
+  background-size: cover;
+  background-attachment: fixed;
 }
 
 .main-content {

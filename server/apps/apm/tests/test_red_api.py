@@ -4,27 +4,23 @@ import pytest
 from django.utils import timezone
 
 from apps.apm.adapters import TelemetryStoreUnavailable
-from apps.apm.services import DjangoIngestSourceService, DjangoTelemetryCatalogService
+from apps.apm.services import DjangoTelemetryCatalogService
 from apps.apm.services.contracts import (
     CatalogDiscovery,
     ServiceEndpointRed,
     ServiceRed,
     ServiceRedPoint,
 )
+from apps.apm.tests.helpers import create_application
 
 
 pytestmark = pytest.mark.django_db
 
 
 def _service():
-    source = DjangoIngestSourceService().create(
-        name="source",
-        ingest_type="otlp_http",
-        organization_ids=[10],
-        actor="tester",
-    ).source
+    create_application("shop", (10,))
     return DjangoTelemetryCatalogService().discover(
-        CatalogDiscovery(source.id, "shop", "checkout", "pod-a", "production")
+        CatalogDiscovery("shop", "checkout", "pod-a", "production")
     ).service
 
 

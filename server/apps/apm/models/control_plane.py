@@ -12,50 +12,47 @@ class AuditedModel(TimeInfo, MaintainerInfo):
         abstract = True
 
 
-class ApmIngestSource(AuditedModel):
-    class IngestType(models.TextChoices):
-        OTLP_HTTP = "otlp_http", "OTLP/HTTP"
-        OTLP_GRPC = "otlp_grpc", "OTLP/gRPC"
-
+class ApmApplication(AuditedModel):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    application_id = models.CharField(max_length=128, unique=True)
     name = models.CharField(max_length=128)
-    ingest_type = models.CharField(max_length=32, choices=IngestType.choices)
-    cloud_region_id = models.BigIntegerField(null=True, blank=True, db_index=True)
-    environment_hint = models.CharField(max_length=128, blank=True, default="")
-    credential_digest = models.CharField(max_length=256)
-    credential_prefix = models.CharField(max_length=24, db_index=True)
+    description = models.CharField(max_length=512, blank=True, default="")
     is_enabled = models.BooleanField(default=True, db_index=True)
-    first_received_at = models.DateTimeField(null=True, blank=True)
-    last_received_at = models.DateTimeField(null=True, blank=True, db_index=True)
-    last_missing_instance_identity_at = models.DateTimeField(null=True, blank=True, db_index=True)
 
     class Meta:
-        verbose_name = "APM 接入源"
-        verbose_name_plural = "APM 接入源"
-        ordering = ("name", "id")
+        verbose_name = "APM 应用"
+        verbose_name_plural = "APM 应用"
+        ordering = ("application_id", "id")
 
 
-class ApmIngestSourceOrganization(AuditedModel):
-    ingest_source = models.ForeignKey(
-        ApmIngestSource,
+class ApmApplicationOrganization(AuditedModel):
+    application = models.ForeignKey(
+        ApmApplication,
         on_delete=models.CASCADE,
         related_name="organization_links",
     )
     organization = models.BigIntegerField(db_index=True)
 
     class Meta:
-        verbose_name = "APM 接入源组织"
-        verbose_name_plural = "APM 接入源组织"
+        verbose_name = "APM 应用组织"
+        verbose_name_plural = "APM 应用组织"
         constraints = [
             models.UniqueConstraint(
-                fields=("ingest_source", "organization"),
-                name="apm_ingest_source_org_unique",
+                fields=("application", "organization"),
+                name="apm_application_org_unique",
             )
         ]
 
 
 class ApmService(AuditedModel):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    application = models.ForeignKey(
+        ApmApplication,
+        on_delete=models.PROTECT,
+        related_name="services",
+        null=True,
+        blank=True,
+    )
     namespace = models.CharField(max_length=256, blank=True, default="")
     normalized_namespace = models.CharField(max_length=256, blank=True, default="")
     name = models.CharField(max_length=256)
@@ -102,7 +99,7 @@ class ApmServiceOrganization(AuditedModel):
 
 class ApmServiceInstance(AuditedModel):
     class PermissionMode(models.TextChoices):
-        INHERITED = "inherited", "继承接入源"
+        INHERITED = "inherited", "继承应用"
         CUSTOM = "custom", "自定义"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -115,11 +112,6 @@ class ApmServiceInstance(AuditedModel):
     normalized_instance_id = models.CharField(max_length=512)
     environment = models.CharField(max_length=256, blank=True, default="")
     version = models.CharField(max_length=256, blank=True, default="")
-    ingest_source = models.ForeignKey(
-        ApmIngestSource,
-        on_delete=models.PROTECT,
-        related_name="instances",
-    )
     permission_mode = models.CharField(
         max_length=16,
         choices=PermissionMode.choices,
@@ -162,6 +154,47 @@ class ApmServiceInstanceOrganization(AuditedModel):
                 fields=("instance", "organization"),
                 name="apm_instance_org_unique",
             )
+        ]
+
+
+class ApmSlo(AuditedModel):
+    class SliType(models.TextChoices):
+        AVAILABILITY = "availability", "可用性"
+        LATENCY_P95 = "latency_p95", "P95 时延"
+        LATENCY_P99 = "latency_p99", "P99 时延"
+
+    class EvaluationWindow(models.TextChoices):
+        ROLLING_7D = "rolling7d", "滚动 7 天"
+        ROLLING_30D = "rolling30d", "滚动 30 天"
+        CALENDAR_MONTH = "calendarMonth", "自然月"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    name = models.CharField(max_length=128)
+    service = models.ForeignKey(ApmService, on_delete=models.CASCADE, related_name="slos")
+    environment = models.CharField(max_length=256)
+    endpoint = models.CharField(max_length=512, blank=True, default="")
+    sli_type = models.CharField(max_length=32, choices=SliType.choices)
+    objective = models.DecimalField(max_digits=6, decimal_places=3)
+    latency_threshold_ms = models.PositiveIntegerField(null=True, blank=True)
+    evaluation_window = models.CharField(max_length=32, choices=EvaluationWindow.choices)
+    is_enabled = models.BooleanField(default=True, db_index=True)
+
+    class Meta:
+        verbose_name = "APM SLO"
+        verbose_name_plural = "APM SLO"
+        ordering = ("name", "id")
+        constraints = [
+            models.CheckConstraint(
+                check=Q(objective__gt=0) & Q(objective__lte=100),
+                name="apm_slo_objective_range",
+            ),
+            models.CheckConstraint(
+                check=(
+                    Q(sli_type="availability", latency_threshold_ms__isnull=True)
+                    | Q(sli_type__in=("latency_p95", "latency_p99"), latency_threshold_ms__gt=0)
+                ),
+                name="apm_slo_latency_threshold_shape",
+            ),
         ]
 
 

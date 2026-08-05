@@ -184,6 +184,8 @@ class BaseCollect(object):
 
         if "all" in extra:
             format_data["all"] = int(format_data.get("all", 0) or 0) + int(extra.get("all", 0) or 0)
+        if isinstance(extra.get("pc_summary"), dict):
+            format_data["pc_summary"] = extra["pc_summary"]
         return format_data
 
     def __call__(self, *args, **kwargs):

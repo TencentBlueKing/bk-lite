@@ -280,6 +280,7 @@ class TestSyncWsus:
         detail1 = WindowsPatchDetail.objects.get(patch=p1)
         assert detail1.kb_number == "KB5072653"
         assert detail1.product_list == ["Windows 10"]
+        assert detail1.architectures == ["x86_64"]
         assert detail1.ms_bulletin == "MS25-9999"
 
     def test_sync_updates_existing_patch(self, monkeypatch):
@@ -408,7 +409,9 @@ class TestSyncWsus:
         result = SourceSyncService.ingest_selected(source, ["uid-ready"])
 
         assert result["created"] == 1
-        assert Patch.objects.get(title="5072654").pkg_status == PackageStatus.READY
+        patch = Patch.objects.get(title="5072654")
+        assert patch.pkg_status == PackageStatus.READY
+        assert patch.windows_detail.architectures == ["x86_64"]
 
     def test_preview_normalizes_kb_name(self, monkeypatch):
         source = _make_source()
@@ -423,6 +426,7 @@ class TestSyncWsus:
         candidates = SourceSyncService.preview_sync_candidates(source)
 
         assert candidates[0]["name"] == "KB5072653"
+        assert candidates[0]["arch"] == "x86_64"
 
     def test_preview_and_ingest_skip_update_without_kb(self, monkeypatch):
         source = _make_source()

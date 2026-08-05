@@ -26,29 +26,23 @@ def test_span_metrics_uses_all_spans_before_tail_sampling():
     assert "tail_sampling" in pipelines["traces/sampled"]["processors"]
 
 
-def test_reserved_attributes_are_removed_before_trusted_source_is_injected():
+def test_reserved_attributes_are_removed_without_injecting_a_control_plane_source():
     config = _collector_config()
     expected_prefix = [
         "memory_limiter",
         "attributes/drop_reserved",
         "resource/drop_reserved",
         "transform/drop_nested_reserved",
-        "resource/trusted_ingest_source",
         "transform/limits_and_route",
     ]
 
     for pipeline_name in ("traces/spanmetrics", "traces/sampled"):
-        assert config["service"]["pipelines"][pipeline_name]["processors"][:6] == expected_prefix
+        assert config["service"]["pipelines"][pipeline_name]["processors"][:5] == expected_prefix
 
     receiver = config["receivers"]["otlp"]["protocols"]
     assert receiver["grpc"]["include_metadata"] is True
     assert receiver["http"]["include_metadata"] is True
-    trusted_action = config["processors"]["resource/trusted_ingest_source"]["attributes"][0]
-    assert trusted_action == {
-        "key": "bk.ingest_source.id",
-        "from_context": "metadata.x-bk-ingest-source-id",
-        "action": "upsert",
-    }
+    assert "resource/trusted_ingest_source" not in config["processors"]
 
 
 def test_span_metric_dimensions_and_queues_are_bounded():
@@ -61,7 +55,6 @@ def test_span_metric_dimensions_and_queues_are_bounded():
         "service.instance.id",
         "deployment.environment",
         "service.version",
-        "bk.ingest_source.id",
     }
     assert spanmetrics["aggregation_cardinality_limit"]
     assert "resource_to_telemetry_conversion" not in config["exporters"]["prometheusremotewrite/victoria_metrics"]
@@ -87,21 +80,20 @@ def test_trace_pipeline_drops_sensitive_attributes_and_request_response_bodies_b
     assert collector.index("delete_matching_keys(span.attributes") < collector.index("otlphttp/victoria_traces")
 
 
-def test_edge_replaces_internal_identity_and_does_not_overlap_telegraf():
+def test_edge_accepts_bounded_otlp_without_machine_token_auth():
     edge = EDGE_CONFIG.read_text()
     compose = COMPOSE_CONFIG.read_text()
 
     assert "location = /v1/traces" in edge
-    assert "auth_request /_apm_machine_auth" in edge
+    assert "auth_request" not in edge
+    assert "machine-auth" not in edge
     assert 'proxy_set_header Authorization ""' in edge
     assert 'proxy_set_header X-BK-Ingest-Source-Id ""' in edge
-    assert "proxy_set_header X-BK-Ingest-Source-Id $trusted_ingest_source_id" in edge
-    assert "proxy_cache_valid 204 8s" in edge
     assert "/telegraf/api" not in edge
     assert "/telegraf/api" not in compose
 
 
-def test_edge_authenticates_external_otlp_grpc_without_exposing_collector_ports():
+def test_edge_accepts_external_otlp_grpc_without_exposing_collector_ports():
     edge = EDGE_CONFIG.read_text()
     services = _compose_config()["services"]
     edge_service = services["apm-edge"]
@@ -110,9 +102,9 @@ def test_edge_authenticates_external_otlp_grpc_without_exposing_collector_ports(
     assert "listen 8081;" in edge
     assert "http2 on;" in edge
     assert "location = /opentelemetry.proto.collector.trace.v1.TraceService/Export" in edge
-    assert "auth_request /_apm_grpc_machine_auth" in edge
+    assert "auth_request" not in edge
     assert 'grpc_set_header Authorization ""' in edge
-    assert "grpc_set_header X-BK-Ingest-Source-Id $trusted_ingest_source_id" in edge
+    assert 'grpc_set_header X-BK-Ingest-Source-Id ""' in edge
     assert "grpc_pass grpc://apm-otel-collector:4317" in edge
     assert any("${APM_OTLP_GRPC_PORT:-4317}:8081" in port for port in edge_service["ports"])
     assert "ports" not in collector
