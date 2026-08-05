@@ -2,11 +2,41 @@ import os
 import ssl
 from pathlib import Path
 
+from loguru import logger
+
+
+def _read_number(name, default, cast, minimum):
+    raw_value = os.getenv(name)
+    if raw_value is None:
+        return default
+    try:
+        value = cast(raw_value)
+    except (TypeError, ValueError):
+        logger.warning("NATS 配置 {}={!r} 非法，使用默认值 {}", name, raw_value, default)
+        return default
+    if value < minimum:
+        logger.warning("NATS 配置 {}={!r} 小于下限 {}，使用下限", name, raw_value, minimum)
+        return minimum
+    return value
+
+
 NATS_SERVERS = os.getenv("NATS_SERVERS", "")
 NATS_NAMESPACE = os.getenv("NATS_NAMESPACE", "bklite")
 NATS_JETSTREAM_ENABLED = False
-NATS_HANDLER_CONCURRENCY = max(1, int(os.getenv("NATS_HANDLER_CONCURRENCY", "64")))
-NATS_HANDLER_QUEUE_SIZE = max(1, int(os.getenv("NATS_HANDLER_QUEUE_SIZE", "1024")))
+NATS_HANDLER_CONCURRENCY = _read_number("NATS_HANDLER_CONCURRENCY", 64, int, 1)
+NATS_HANDLER_QUEUE_SIZE = _read_number("NATS_HANDLER_QUEUE_SIZE", 1024, int, 1)
+NATS_HANDLER_ENQUEUE_TIMEOUT = _read_number("NATS_HANDLER_ENQUEUE_TIMEOUT", 5.0, float, 0.1)
+# 显式保留 nats-py 的既有 pending 上限，避免升级后缩小合法突发流量的缓冲契约。
+NATS_CORE_PENDING_MSGS_LIMIT = _read_number(
+    "NATS_CORE_PENDING_MSGS_LIMIT",
+    512 * 1024,
+    int,
+    1,
+)
+NATS_CORE_PENDING_BYTES_LIMIT = _read_number("NATS_CORE_PENDING_BYTES_LIMIT", 128 * 1024 * 1024, int, 1)
+NATS_JETSTREAM_IN_PROGRESS_INTERVAL = _read_number("NATS_JETSTREAM_IN_PROGRESS_INTERVAL", 10.0, float, 0.1)
+NATS_FETCH_RETRY_DELAY = _read_number("NATS_FETCH_RETRY_DELAY", 1.0, float, 0.0)
+NATS_HANDLER_SHUTDOWN_TIMEOUT = _read_number("NATS_HANDLER_SHUTDOWN_TIMEOUT", 30.0, float, 0.1)
 
 
 def _create_ssl_context():
@@ -33,11 +63,7 @@ def _create_ssl_context():
         ssl_context = ssl.create_default_context()
         # 如果指定了 CA 文件但文件不存在，记录警告
         if ca_file:
-            import logging
-
-            logging.warning(
-                f"指定的 CA 证书文件不存在: {ca_file}，将使用系统默认 CA 证书"
-            )
+            logger.warning("指定的 CA 证书文件不存在: {}，将使用系统默认 CA 证书", ca_file)
 
     # 是否跳过证书验证（用于测试环境）
     if os.getenv("NATS_TLS_INSECURE", "false").lower() == "true":
