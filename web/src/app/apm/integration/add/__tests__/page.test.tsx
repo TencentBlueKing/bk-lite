@@ -62,4 +62,55 @@ describe('APM 添加接入', () => {
     const panel = await screen.findByRole('dialog', { name: 'Node.js 接入' });
     expect(panel.closest('.ant-drawer-right')).not.toBeNull();
   });
+
+  it('生成成功后才展示真实上报端点', async () => {
+    api.getIngestSnippet.mockResolvedValue({
+      application_id: 'bklite',
+      application_name: 'BK-Lite',
+      cloud_region: { id: 1, name: '默认云区域' },
+      http_endpoint: 'https://apm.example.com/v1/traces',
+      grpc_endpoint: 'apm.example.com:4317',
+      environment: {},
+      code: 'export OTEL_SERVICE_NAME=checkout',
+    });
+    const user = userEvent.setup();
+    render(<ApmIntegrationAddPage />);
+
+    await user.click(await screen.findByRole('button', { name: 'Node.js 接入' }));
+    expect(screen.queryByDisplayValue('生成配置后显示')).toBeNull();
+
+    await user.type(screen.getByRole('textbox', { name: /服务名称/ }), 'checkout');
+    await user.click(screen.getByRole('button', { name: /生成临时配置/ }));
+
+    expect(await screen.findByDisplayValue('https://apm.example.com/v1/traces')).not.toBeNull();
+    expect(screen.getByDisplayValue('apm.example.com:4317')).not.toBeNull();
+  });
+
+  it('将运行方式呈现为有名称的表单选择组', async () => {
+    const user = userEvent.setup();
+    render(<ApmIntegrationAddPage />);
+
+    await user.click(await screen.findByRole('button', { name: 'Node.js 接入' }));
+
+    expect(screen.getByRole('radiogroup', { name: '运行方式' })).not.toBeNull();
+  });
+
+  it('将区域端点配置错误转换为可恢复的用户提示', async () => {
+    api.getIngestSnippet.mockRejectedValue({
+      response: {
+        data: {
+          detail: '云区域缺少 APM 接入端点配置：APM_OTLP_HTTP_ENDPOINT, APM_OTLP_GRPC_ENDPOINT。',
+        },
+      },
+    });
+    const user = userEvent.setup();
+    render(<ApmIntegrationAddPage />);
+
+    await user.click(await screen.findByRole('button', { name: 'Node.js 接入' }));
+    await user.type(screen.getByRole('textbox', { name: /服务名称/ }), 'checkout');
+    await user.click(screen.getByRole('button', { name: /生成临时配置/ }));
+
+    expect(await screen.findByText('所选云区域尚未配置 APM 接入端点，请联系运维完善区域配置后重试。')).not.toBeNull();
+    expect(screen.queryByText(/APM_OTLP_HTTP_ENDPOINT|APM_OTLP_GRPC_ENDPOINT/)).toBeNull();
+  });
 });
