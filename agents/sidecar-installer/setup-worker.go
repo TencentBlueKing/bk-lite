@@ -1296,6 +1296,12 @@ func (controller *scWindowsServiceController) Remove() error {
 
 var windowsRuntimeDirectories = []string{"cache", "logs", "generated"}
 
+// uninstall.exe 与 installer.ico 由 NSIS 安装器写入安装目录，控制器包本身不含这两个
+// 文件。GUI 安装时 NSIS 会在 worker 结束后重新写入，但服务端远程安装直接执行
+// bootstrap worker，不经过 NSIS；事务式激活把旧目录整体改名后，若不迁回这两个文件，
+// 卸载注册表项 UninstallString / DisplayIcon 指向的文件就不复存在，控制面板卸载入口失效。
+var windowsPreservedInstallerFiles = []string{"uninstall.exe", "installer.ico"}
+
 const (
 	windowsActivationPendingMarker   = ".bklite-activation-pending"
 	windowsActivationCommittedMarker = ".bklite-activation-committed"
@@ -1312,6 +1318,25 @@ func moveWindowsRuntimeData(backupDir, installDir string) ([]string, error) {
 		}
 		target := filepath.Join(installDir, name)
 		if err := os.RemoveAll(target); err != nil {
+			return moved, err
+		}
+		if err := os.Rename(source, target); err != nil {
+			return moved, err
+		}
+		moved = append(moved, name)
+	}
+	for _, name := range windowsPreservedInstallerFiles {
+		source := filepath.Join(backupDir, name)
+		if _, err := os.Stat(source); os.IsNotExist(err) {
+			continue
+		} else if err != nil {
+			return moved, err
+		}
+		target := filepath.Join(installDir, name)
+		if _, err := os.Stat(target); err == nil {
+			// 新包自带同名文件时以新包为准，不用旧文件覆盖。
+			continue
+		} else if !os.IsNotExist(err) {
 			return moved, err
 		}
 		if err := os.Rename(source, target); err != nil {
@@ -1422,7 +1447,8 @@ func recoverInterruptedWindowsInstallation(
 		}
 	}
 	movedRuntimeDirectories := []string{}
-	for _, name := range windowsRuntimeDirectories {
+	preservedEntries := append(append([]string{}, windowsRuntimeDirectories...), windowsPreservedInstallerFiles...)
+	for _, name := range preservedEntries {
 		source := filepath.Join(installDir, name)
 		target := filepath.Join(backupDir, name)
 		if _, sourceErr := os.Stat(source); sourceErr != nil {
