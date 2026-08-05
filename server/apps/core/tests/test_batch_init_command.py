@@ -154,12 +154,19 @@ class TestHandleDispatch:
 
     def test_system_mgmt_creates_admin_with_resolved_password(self, calls, monkeypatch):
         monkeypatch.delenv("BK_INIT_ADMIN_PASSWORD", raising=False)
+        entropy_sizes = []
+        monkeypatch.setattr(
+            bi.secrets,
+            "token_urlsafe",
+            lambda byte_count: entropy_sizes.append(byte_count) or "s" * 43,
+        )
         cmd = _make_command()
         cmd.handle(apps="system_mgmt", continue_on_error=False)
         create_user = [c for c in calls if c[0] == "create_user"]
         assert len(create_user) == 1
         _, args, kwargs = create_user[0]
-        assert args == ("admin", "password")
+        assert args == ("admin", "s" * 43)
+        assert entropy_sizes == [32]
         assert kwargs.get("is_superuser") is True
 
     def test_system_mgmt_runs_opspilot_legacy_menu_cleanup_before_realm_resource(self, calls):
@@ -301,15 +308,39 @@ class TestErrorHandlingPolicy:
 class TestGetAdminPassword:
     def test_env_password_used_when_set(self, monkeypatch):
         monkeypatch.setenv("BK_INIT_ADMIN_PASSWORD", "  s3cret  ")
+        monkeypatch.setattr(
+            bi.secrets,
+            "token_urlsafe",
+            lambda _byte_count: pytest.fail("显式密码不应调用随机源"),
+        )
         assert bi.Command._get_admin_password() == "s3cret"
 
-    def test_blank_env_falls_back_to_default(self, monkeypatch):
+    def test_blank_env_generates_secure_password(self, monkeypatch):
         monkeypatch.setenv("BK_INIT_ADMIN_PASSWORD", "   ")
-        assert bi.Command._get_admin_password() == "password"
+        entropy_sizes = []
+        monkeypatch.setattr(
+            bi.secrets,
+            "token_urlsafe",
+            lambda byte_count: entropy_sizes.append(byte_count) or "s" * 43,
+        )
+        generated_password = bi.Command._get_admin_password()
+        assert generated_password == "s" * 43
+        assert entropy_sizes == [32]
 
-    def test_missing_env_falls_back_to_default(self, monkeypatch):
+    def test_missing_env_generates_unique_secure_passwords(self, monkeypatch):
         monkeypatch.delenv("BK_INIT_ADMIN_PASSWORD", raising=False)
-        assert bi.Command._get_admin_password() == "password"
+        entropy_sizes = []
+        generated_passwords = iter(("a" * 43, "b" * 43))
+
+        def generate_password(byte_count):
+            entropy_sizes.append(byte_count)
+            return next(generated_passwords)
+
+        monkeypatch.setattr(bi.secrets, "token_urlsafe", generate_password)
+        first_password = bi.Command._get_admin_password()
+        second_password = bi.Command._get_admin_password()
+        assert (first_password, second_password) == ("a" * 43, "b" * 43)
+        assert entropy_sizes == [32, 32]
 
 
 class TestPreloadLanguageCache:
