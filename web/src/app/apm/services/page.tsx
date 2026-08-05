@@ -59,6 +59,7 @@ type TimeWindow = '15m' | '1h' | '4h' | '1d' | '7d';
 interface ApplicationSummary {
   key: string;
   label: string;
+  isBuiltin: boolean;
   status: CatalogStatus;
   services: string[];
   environmentCount: number;
@@ -230,9 +231,9 @@ export default function ApmServicesPage() {
   );
 
   const namespaceOptions = useMemo(
-    () => applications
-      .map((application) => ({ value: application.application_id, label: application.name }))
-      .sort((left, right) => left.label.localeCompare(right.label)),
+    () => [...applications]
+      .sort((left, right) => Number(left.is_builtin) - Number(right.is_builtin) || left.name.localeCompare(right.name))
+      .map((application) => ({ value: application.application_id, label: application.name })),
     [applications]
   );
 
@@ -321,6 +322,7 @@ export default function ApmServicesPage() {
       return {
         key,
         label: application?.name ?? (key || '未归类应用'),
+        isBuiltin: application?.is_builtin ?? false,
         status: statusValue,
         services: Array.from(summary.serviceNames).sort(),
         environmentCount: summary.environments.size,
@@ -329,7 +331,7 @@ export default function ApmServicesPage() {
         metricUnavailable: summary.metricUnavailable,
         lastSeenAt: summary.lastSeenAt,
       };
-    }).sort((left, right) => left.label.localeCompare(right.label));
+    }).sort((left, right) => Number(left.isBuiltin) - Number(right.isBuiltin) || left.label.localeCompare(right.label));
   }, [applications, environment, filteredRows, keyword, metricFailureKeys, namespace, redMetrics, status]);
 
   const columns: TableColumnsType<ServiceEnvironmentRow> = [
