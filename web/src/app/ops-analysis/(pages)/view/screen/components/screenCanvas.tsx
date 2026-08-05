@@ -28,6 +28,7 @@ interface ScreenCanvasProps {
   viewSets: ScreenViewSets;
   fullscreen?: boolean;
   editMode?: boolean;
+  shareMode?: boolean;
   selectedItemId?: string | null;
   refreshVersion?: number;
   screenId?: string | number;
@@ -45,6 +46,12 @@ interface ScreenCanvasProps {
   onResizeItem?: (itemId: string, size: { w: number; h: number }) => void;
   onEditItem?: (itemId: string) => void;
   onDeleteItem?: (itemId: string) => void;
+  onTopologyLayoutChange?: (
+    itemId: string,
+    next: NonNullable<
+      NonNullable<ScreenWidgetItem['valueConfig']>['networkStatusTopology']
+    >,
+  ) => void;
 }
 
 interface CanvasSize {
@@ -398,6 +405,7 @@ const ScreenCanvas: React.FC<ScreenCanvasProps> = ({
   viewSets,
   fullscreen = false,
   editMode = false,
+  shareMode = false,
   selectedItemId = null,
   refreshVersion = 0,
   screenId,
@@ -413,6 +421,7 @@ const ScreenCanvas: React.FC<ScreenCanvasProps> = ({
   onResizeItem,
   onEditItem,
   onDeleteItem,
+  onTopologyLayoutChange,
 }) => {
   const { t } = useTranslation();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -499,6 +508,12 @@ const ScreenCanvas: React.FC<ScreenCanvasProps> = ({
         onRenderStatus={onWidgetRenderStatus}
         onEditConfig={() => onEditItem?.(item.id)}
         onDelete={onDeleteItem}
+        layoutEditable={editMode && !shareMode}
+        onTopologyLayoutChange={
+          editMode && !shareMode && onTopologyLayoutChange
+            ? (next) => onTopologyLayoutChange(item.id, next)
+            : undefined
+        }
       />
     );
 

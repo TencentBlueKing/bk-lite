@@ -236,6 +236,10 @@ export interface WidgetWrapperProps {
   builtinNamespaceId?: number;
   screenRenderContext?: ScreenRenderContext;
   onRenderStatus?: (result: DashboardWidgetRenderResult) => void;
+  layoutEditable?: boolean;
+  onTopologyLayoutChange?: (
+    next: NonNullable<ValueConfig['networkStatusTopology']>,
+  ) => void;
 }
 
 const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
@@ -253,6 +257,8 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
   screenRenderContext,
   widgetId,
   onRenderStatus,
+  layoutEditable,
+  onTopologyLayoutChange,
 }) => {
   const { t } = useTranslation();
   const headerRuntimeSlot = useWidgetHeaderRuntimeSlot();
@@ -987,6 +993,8 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
             refreshKey={reloadVersion}
             screenRenderContext={screenRenderContext}
             onReady={handleRendererReady}
+            layoutEditable={layoutEditable}
+            onTopologyLayoutChange={onTopologyLayoutChange}
             fallback={renderError(
               `${t("dashboard.unknownComponentType")}: ${chartType}`,
             )}
