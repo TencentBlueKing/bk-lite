@@ -316,7 +316,6 @@ export default function ApmIntegrationAddPage() {
                   <div className="flex items-center gap-2"><span className="grid h-7 w-7 place-items-center rounded-full bg-[var(--color-primary)] text-sm font-semibold text-white">2</span><Typography.Text strong>生成结果</Typography.Text></div>
                   <Typography.Text type="secondary" className="mt-1 block text-xs">{snippet.cloud_region.name} · 仅在本窗口保留</Typography.Text>
                 </div>
-                <Button icon={<CopyOutlined />} onClick={() => void copyWithFeedback(snippet.code, '片段已复制')}>复制片段</Button>
               </div>
               <div>
                 <Typography.Text type="secondary" className="mb-1 block text-xs">OTLP/HTTP 上报端点</Typography.Text>
@@ -328,7 +327,10 @@ export default function ApmIntegrationAddPage() {
                 <Typography.Text type="secondary" className="mt-2 block text-xs">平台使用所选云区域的被动接收地址，固定通过 OTLP/HTTP（http/protobuf）上报。</Typography.Text>
               </div>
               <div className="mt-4 border-t border-[var(--color-border)] pt-4">
-                <Typography.Text strong className="mb-2 block">Shell 接入片段</Typography.Text>
+                <div role="group" aria-label="Shell 接入片段操作" className="mb-2 flex items-center justify-between gap-3">
+                  <Typography.Text strong>Shell 接入片段</Typography.Text>
+                  <Button aria-label="复制片段" icon={<CopyOutlined />} onClick={() => void copyWithFeedback(snippet.code, '片段已复制')}>复制片段</Button>
+                </div>
                 <pre className="max-h-[420px] overflow-auto rounded-lg bg-[#0f172a] p-4 text-xs leading-6 text-slate-100"><code>{snippet.code}</code></pre>
               </div>
             </ApmSurface>

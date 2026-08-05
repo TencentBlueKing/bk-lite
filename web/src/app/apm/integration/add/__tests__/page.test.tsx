@@ -1,5 +1,5 @@
 import React from 'react';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -83,6 +83,8 @@ describe('APM 添加接入', () => {
 
     expect(await screen.findByDisplayValue('http://proxy.example.com:4318/v1/traces')).not.toBeNull();
     expect(screen.queryByText('OTLP/gRPC 端点')).toBeNull();
+    const snippetToolbar = screen.getByRole('group', { name: 'Shell 接入片段操作' });
+    expect(within(snippetToolbar).getByRole('button', { name: '复制片段' })).not.toBeNull();
   });
 
   it('将运行方式呈现为有名称的表单选择组', async () => {

@@ -1,6 +1,7 @@
 import os
 import shlex
 import subprocess
+import uuid
 from unittest.mock import Mock
 
 import pytest
@@ -27,7 +28,7 @@ def test_region_resolution_fails_closed_without_organization_scope():
     [
         ("kubernetes", "${POD_UID:?POD_UID is required}"),
         ("docker", "${HOSTNAME:?container instance id is required}"),
-        ("host", "${BK_INSTANCE_ID:?stable platform instance id is required}"),
+        ("host", "${APM_INSTANCE_ID:-$(cat /proc/sys/kernel/random/uuid 2>/dev/null || uuidgen)}"),
         ("other", "${APM_INSTANCE_ID:-$(uuidgen)}"),
     ],
 )
@@ -46,6 +47,9 @@ def test_snippet_uses_a_runtime_instance_identity_instead_of_a_shared_constant(r
 
     assert expected_identity in snippet.code
     assert "service.instance.id=${OTEL_SERVICE_INSTANCE_ID}" in snippet.environment["OTEL_RESOURCE_ATTRIBUTES"]
+    assert "BK_INSTANCE_ID" not in snippet.code
+    if runtime == "host":
+        assert "实例 ID 默认随进程启动生成 UUID" in snippet.code
     assert "OTEL_EXPORTER_OTLP_HEADERS" not in snippet.environment
     assert "service.namespace=shop" in snippet.environment["OTEL_RESOURCE_ATTRIBUTES"]
     assert "service.name=checkout" in snippet.environment["OTEL_RESOURCE_ATTRIBUTES"]
@@ -68,6 +72,30 @@ def test_snippet_uses_http_protocol_and_language_specific_launch_command():
 
     assert snippet.environment["OTEL_EXPORTER_OTLP_PROTOCOL"] == "http/protobuf"
     assert "opentelemetry-javaagent.jar" in snippet.code
+
+
+def test_host_snippet_generates_a_valid_instance_id_without_platform_variables():
+    snippet = DjangoIntegrationConfigurationService().render_snippet(
+        IngestSnippetRequest(
+            language="nodejs",
+            runtime="host",
+            endpoint="https://apm.example.com",
+            service_namespace="shop",
+            service_name="checkout",
+            service_version="1.2.3",
+            environment="production",
+        )
+    )
+    instance_export = next(line for line in snippet.code.splitlines() if line.startswith("export OTEL_SERVICE_INSTANCE_ID="))
+    generated = subprocess.run(
+        ["sh", "-c", f'{instance_export}\nprintf %s "$OTEL_SERVICE_INSTANCE_ID"'],
+        env={key: value for key, value in os.environ.items() if key != "APM_INSTANCE_ID"},
+        text=True,
+        capture_output=True,
+        check=True,
+    ).stdout
+
+    assert uuid.UUID(generated).version == 4
 
 
 @pytest.mark.parametrize(
@@ -142,7 +170,7 @@ def test_snippet_quotes_untrusted_values_as_posix_shell_literals(runtime):
         resource_export = snippet.code.split("export OTEL_RESOURCE_ATTRIBUTES=", maxsplit=1)[1].split("\n\n# 3.", maxsplit=1)[0]
         script = f"{instance_export}\nexport OTEL_RESOURCE_ATTRIBUTES={resource_export}"
         script += '\nprintf %s "$OTEL_RESOURCE_ATTRIBUTES"'
-        environment = {**os.environ, "BK_INSTANCE_ID": "host-instance"}
+        environment = {**os.environ, "APM_INSTANCE_ID": "host-instance"}
         expected_instance = "host-instance"
     else:
         tokens = shlex.split(snippet.code, comments=True)

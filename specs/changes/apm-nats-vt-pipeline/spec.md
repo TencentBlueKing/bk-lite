@@ -42,6 +42,7 @@ APM、Monitor、Log 是同级产品域：Monitor 只使用 VictoriaMetrics，APM
 
 - 普通 APM 应用由用户创建；平台提供不可删改的内置“未归类应用”。非空 `service.namespace` 必须等于一个当前可见的普通应用 ID，空值归入未归类应用，非空未知值不得进入目录并产生有界诊断计数/日志。
 - APM 服务由 `service.namespace + service.name` 发现；实例由服务身份 + `service.instance.id` 发现；版本和环境是查询维度。
+- 接入片段必须为每个运行实例提供 `service.instance.id`：主机进程默认在启动时生成 UUID，并允许运维通过 `APM_INSTANCE_ID` 显式覆盖；Docker 使用容器 hostname，Kubernetes 使用 Pod UID。片段不得要求未由平台或 OpenTelemetry 提供的隐式环境变量。
 - 区域 Collector 删除客户端提交的全部 `bk.*` 保留属性后注入可信 `bk.cloud_region.id`。组织 ID、NATS 凭据和 endpoint 不进入 Span。
 - 应用组织更新必须在一个事务内同步继承态实例和该应用下服务的 `ApmServiceOrganization`；自定义实例组织仍不被覆盖。
 - 原始 Span 不写 PostgreSQL；目录、策略、SLO、告警和通知生命周期仍由既有 Django 领域模型持有。
