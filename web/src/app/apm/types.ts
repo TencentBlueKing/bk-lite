@@ -171,7 +171,6 @@ export interface ApmIngestSnippet {
   application_name: string;
   cloud_region: ApmCloudRegion;
   http_endpoint: string;
-  grpc_endpoint: string;
   environment: Record<string, string>;
   code: string;
 }

@@ -30,10 +30,10 @@ APM、Monitor、Log 是同级产品域：Monitor 只使用 VictoriaMetrics，APM
 
 | 域/链路 | 当前事实 | 本变更差异与复用 |
 | --- | --- | --- |
-| APM 接入 | `integration-config` 仍接受浏览器 endpoint；页面按浏览器 hostname 拼 4318；配置无状态、无 Token；Shell/Docker 混合单双引号存在注入风险 | 保留应用与无状态片段；新增受权限保护的云区域选择，Server 从 NodeMgmt 云区域 envconfig 解析两个 endpoint；所有 shell 值统一安全引用 |
+| APM 接入 | `integration-config` 仍接受浏览器 endpoint；页面按浏览器 hostname 拼 4318；配置无状态、无 Token；Shell/Docker 混合单双引号存在注入风险 | 保留应用与无状态片段；新增受权限保护的云区域选择，Server 从 NodeMgmt 解析该区域受信代理地址并固定生成 OTLP/HTTP 4318；所有 shell 值统一安全引用 |
 | APM 数据面 | `deploy/apm` 为 Edge Nginx → 单个 contrib Collector → VT/VM；Collector 先 spanmetrics、后 tail sampling；compose 含 standalone VM | 删除 Edge、spanmetrics、tail sampling、metrics pipeline 和 VM；拆成区域发布与中心消费两种角色 |
 | APM 查询 | `TraceStore` 查 VT，`MetricStore` 查 VM；目录、RED、SLO、策略依赖 VM；拓扑逐 Trace 详情扫描 | 用一个 `TelemetryStore` interface 隐藏 VT 的 Jaeger/LogsQL 查询；dependencies 接口替代 N+1 拓扑扫描 |
-| Monitor 区域解析 | `TemplateAccessGuideService` 通过 `apps.rpc.node_mgmt.NodeMgmt.get_cloud_region_envconfig` 读取受信 `SidecarEnv`，校验 `NODE_SERVER_URL` 后构造固定 `/telegraf/api` | 复用受信 envconfig 获取模式和显式错误语义，但 APM endpoint 必须读取完整的 `APM_OTLP_HTTP_ENDPOINT` / `APM_OTLP_GRPC_ENDPOINT`，不从 hostname 或 `NODE_SERVER_URL` 猜测 |
+| Monitor/Log 被动接收地址 | Log Syslog/SNMP 与 Monitor Flow 通过 NodeMgmt 读取有权限的云区域代理地址，再组合各协议固定端口；Monitor Telegraf 使用受信 `NODE_SERVER_URL` 与固定 `/telegraf/api` | APM 复用“受信云区域代理地址 + 固定监听端口”模式，服务端生成 OTLP/HTTP 4318；不从浏览器 hostname 或 `NODE_SERVER_URL` 猜测 |
 | Monitor NATS | NodeMgmt Telegraf 以环境注入 NATS TLS/用户名密码，向 `metrics.<node>` 发布 Influx；系统 Telegraf 使用 `nats_consumer` 消费 `metrics.*` | 复用现有 Broker、认证与区域 envconfig；APM 使用独立受限 `apm.traces.*` Subject 和 OTLP Protobuf，不复用 metrics payload |
 | Log NATS | Vector 使用相同区域 NATS 凭据体系，JSON 日志通过独立 Subject 传输；配置/测试验证环境变量完整性 | 复用凭据注入、TLS 和缺失配置失败模式；不复用 JSON 编码或 Log Subject |
 | 官方 Collector | `otelcol-contrib` 0.153.0 的官方 builder manifest 无 NATS trace receiver/exporter；仓库只引用官方镜像，没有 Collector Go 模块 | 使用 Go 1.25 容器可重复构建 BK-Lite 自定义发行版，新增 traces-only JetStream exporter/receiver；不伪造 YAML 组件 |
@@ -58,12 +58,19 @@ APM、Monitor、Log 是同级产品域：Monitor 只使用 VictoriaMetrics，APM
 - `service_name`、可选 `service_version`
 - `environment`
 
-客户端不得提交 endpoint。Server 通过 NodeMgmt 公开 interface 读取该区域受信 envconfig：
+客户端不得提交 endpoint。Server 通过 NodeMgmt 公开 interface，按当前组织权限读取该区域受信
+`CloudRegion.proxy_address`（为空时由 NodeMgmt 回退 `PROXY_ADDRESS`），并固定生成：
 
-- `APM_OTLP_HTTP_ENDPOINT`：绝对 `http`/`https` URL；仅允许空路径或 `/v1/traces`，响应和片段统一为可直接使用的 OTLP HTTP endpoint。
-- `APM_OTLP_GRPC_ENDPOINT`：绝对 `http`/`https` URL，必须包含主机和显式或默认端口，不允许 userinfo、query、fragment。
+- SDK/探针基础端点：`http://<proxy_address>:4318`；
+- 页面展示的 Trace 上报端点：`http://<proxy_address>:4318/v1/traces`；
+- 协议：`OTLP/HTTP`，`OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf`。
 
-区域不存在、无查看权限、变量缺失或格式非法分别返回稳定 404/403/400，不回退到浏览器 hostname、Server hostname 或 `/telegraf/api`。响应包含区域 ID/名称、HTTP/gRPC endpoint、标准 OTEL 环境变量与 Shell 片段，但不包含 NATS 配置或凭据。
+代理地址只允许 NodeMgmt 规范化后的 IP、IPv6 或域名，不允许 scheme、端口、路径、userinfo、
+query、fragment 或控制字符。区域不存在、无当前组织权限或没有代理地址返回稳定 404；代理地址
+格式非法返回 400；NodeMgmt 不可用返回 503。不得回退到浏览器 hostname、Server hostname 或
+`/telegraf/api`。响应只包含区域 ID/名称、实际使用的 HTTP endpoint、标准 OTEL 环境变量与 Shell
+片段，不包含 gRPC endpoint、NATS 配置或凭据。区域 Collector 可继续监听 4317 作为手工接入兼容
+能力，但普通接入页面不暴露协议选择。
 
 ### Shell 安全
 
@@ -168,7 +175,7 @@ APM 健康模型包含：区域 Collector 接收/清洗、本地发布队列、N
 
 1. 先发布兼容 Server/Web：接入请求改用 cloud region，VT Adapter 就绪但旧任务尚可回滚。
 2. 运维创建有界 Stream/Consumer、部署中心 Collector 和 35d VT，开启 service graph；重复执行与存量同名漂移必须由运维预检，不在 Server 启动期自动修正。
-3. 按区域部署新 Collector，验证 publish ACK、积压与中心写入后切换 4317/4318；移除 Edge 路由。
+3. 按区域部署新 Collector，把云区域受信代理地址的 4318 映射到区域 Collector，验证 publish ACK、积压与中心写入后切流；4317 只作为兼容入口；移除 Edge 路由。
 4. 停止 APM spanmetrics/VM 写入，再切目录/RED/SLO/策略读取到 VT；观察至少一个最大策略窗口后才清理 APM 专用 VM 配置。Monitor 的 VM 数据、配置和保留期绝不删除。
 5. 删除 compose 中 Edge、standalone VM、APM VM env/健康项和旧 tail-sampling 配置。旧镜像/配置至少保留一个发布窗口，可通过回滚镜像与恢复旧路由恢复；VT 全量数据不删除。
 
@@ -208,7 +215,7 @@ TDD 只在以下已确认 interface 上测试，不耦合内部实现：
 
 ### 完成门槛
 
-- HTTP 以及 Collector 支持的 gRPC OTLP 从区域入口经真实 JetStream 到 VT 成功，链路中无 Edge、VM、spanmetrics、tail sampling。
+- 页面生成的 OTLP/HTTP 配置从云区域代理地址 4318 经真实 JetStream 到 VT 成功；Collector 兼容的 gRPC 契约另行验证，链路中无 Edge、VM、spanmetrics、tail sampling。
 - NATS 断开时区域本地持久排队并恢复；中心停止时 Stream 有界积压并恢复；VT 不可用时消息不 ACK；达到上限/max-delivery 有指标和确定语义。
 - 同一消息重投不产生目录重复，RED/SLO/策略对唯一 Span 的统计不双计；空 namespace 进入内置未归类应用，非空未知应用不入目录且可诊断。
 - 全量请求数、错误率、P95/P99、服务/版本/实例发现、Trace、依赖图和 SLO 由 VT 数据对账正确。

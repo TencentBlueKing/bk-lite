@@ -1,11 +1,25 @@
 import os
 import shlex
 import subprocess
+from unittest.mock import Mock
 
 import pytest
 
 from apps.apm.services import DjangoIntegrationConfigurationService
 from apps.apm.services.contracts import IngestSnippetRequest
+from apps.apm.services.integration_configuration import CloudRegionConfigurationError
+
+
+def test_region_resolution_fails_closed_without_organization_scope():
+    node_mgmt = Mock()
+    node_mgmt.cloud_region_list.return_value = [{"id": 7, "name": "华东一区"}]
+
+    with pytest.raises(CloudRegionConfigurationError) as exc_info:
+        DjangoIntegrationConfigurationService().resolve_region(node_mgmt, 7, organization_ids=[])
+
+    assert exc_info.value.code == "cloud_region_receiver_unavailable"
+    node_mgmt.cloud_region_list.assert_not_called()
+    node_mgmt.get_cloud_region_proxy_address.assert_not_called()
 
 
 @pytest.mark.parametrize(

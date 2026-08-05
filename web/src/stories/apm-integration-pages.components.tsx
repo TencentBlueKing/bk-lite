@@ -384,21 +384,21 @@ function IntegrationCatalog() {
  * 上报端点 / 接入配置 双 tab
  * ============================================================ */
 
-/** 模拟服务端按云区域解析出的区域 Collector 端点。 */
+/** 模拟服务端按云区域受信代理地址生成的区域 Collector HTTP 端点。 */
 const REGION_ENDPOINTS: Record<string, string> = {
-  default: 'https://apm.bklite.cloud:4318',
-  cn_north: 'https://apm.cn-north.bklite.cloud:4318',
-  cn_east: 'https://apm.cn-east.bklite.cloud:4318',
-  hk: 'https://apm.hk.bklite.cloud:4318',
-  global: 'https://apm.global.bklite.cloud:4318',
+  default: 'http://proxy.bklite.cloud:4318',
+  cn_north: 'http://proxy.cn-north.bklite.cloud:4318',
+  cn_east: 'http://proxy.cn-east.bklite.cloud:4318',
+  hk: 'http://proxy.hk.bklite.cloud:4318',
+  global: 'http://proxy.global.bklite.cloud:4318',
 };
 
 const OTC_TRACES_ENDPOINTS: Record<string, string> = {
-  default: 'https://apm.bklite.cloud:4318/v1/traces',
-  cn_north: 'https://apm.cn-north.bklite.cloud:4318/v1/traces',
-  cn_east: 'https://apm.cn-east.bklite.cloud:4318/v1/traces',
-  hk: 'https://apm.hk.bklite.cloud:4318/v1/traces',
-  global: 'https://apm.global.bklite.cloud:4318/v1/traces',
+  default: 'http://proxy.bklite.cloud:4318/v1/traces',
+  cn_north: 'http://proxy.cn-north.bklite.cloud:4318/v1/traces',
+  cn_east: 'http://proxy.cn-east.bklite.cloud:4318/v1/traces',
+  hk: 'http://proxy.hk.bklite.cloud:4318/v1/traces',
+  global: 'http://proxy.global.bklite.cloud:4318/v1/traces',
 };
 
 function EndpointPanel({
