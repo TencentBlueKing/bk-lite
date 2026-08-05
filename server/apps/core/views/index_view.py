@@ -89,18 +89,8 @@ def _set_auth_cookie_on_response(response, token):
 
 
 def _get_client_ip(request):
-    """
-    Get client IP address from request.
-
-    Handles X-Forwarded-For header for proxied requests.
-    """
-    x_forwarded_for = request.META.get("HTTP_X_FORWARDED_FOR")
-    if x_forwarded_for:
-        # Take the first IP in the chain (original client)
-        ip = x_forwarded_for.split(",")[0].strip()
-    else:
-        ip = request.META.get("REMOTE_ADDR", "")
-    return ip
+    """Get the direct peer IP used by OTP login rate limiting."""
+    return request.META.get("REMOTE_ADDR", "")
 
 
 def _is_safe_relative_callback_url(callback_url: str) -> bool:
