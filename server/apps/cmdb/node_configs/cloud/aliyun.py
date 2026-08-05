@@ -45,9 +45,9 @@ class AliyunNodeParams(BaseNodeParams):
         "access_secret":"5762zpOSM5dz84vsla"}
 
         """
-        raw_credential = raw_credential or {}
-        access_key = raw_credential.pop("access_key", None)
-        access_secret = raw_credential.pop("access_secret", None)
+        raw_credential = cls.primary_credential(raw_credential)
+        access_key = raw_credential.get("access_key")
+        access_secret = raw_credential.get("access_secret")
         return {
             "secret_id": access_key or raw_credential.get("accessKey", ""),
             "secret_key": access_secret or raw_credential.get("accessSecret"),

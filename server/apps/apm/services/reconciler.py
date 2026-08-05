@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta
 
-from apps.apm.models import ApmIngestSource
+from apps.apm.models import ApmApplication
 from apps.apm.services.catalog import DjangoTelemetryCatalogService
 from apps.apm.services.contracts import (
     CatalogDiscovery,
@@ -24,12 +24,11 @@ class TelemetryCatalogReconciler:
         service_ids = set()
         instance_ids = set()
         missing_identities = 0
-        missing_ingest_sources = set()
+        unknown_applications = set()
         for activity in activities:
             try:
                 result = self.catalog.discover(
                     CatalogDiscovery(
-                        ingest_source_id=activity.ingest_source_id,
                         service_namespace=activity.service_namespace,
                         service_name=activity.service_name,
                         instance_id=activity.instance_id,
@@ -38,8 +37,8 @@ class TelemetryCatalogReconciler:
                         seen_at=activity.last_seen_at,
                     )
                 )
-            except ApmIngestSource.DoesNotExist:
-                missing_ingest_sources.add(activity.ingest_source_id)
+            except ApmApplication.DoesNotExist:
+                unknown_applications.add(activity.service_namespace)
                 continue
             if result.missing_instance_identity:
                 missing_identities += 1
@@ -54,5 +53,5 @@ class TelemetryCatalogReconciler:
             missing_instance_identities=missing_identities,
             archived_services=archived_services,
             archived_instances=archived_instances,
-            missing_ingest_sources=len(missing_ingest_sources),
+            unknown_applications=len(unknown_applications),
         )

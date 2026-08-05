@@ -7,13 +7,7 @@ from enum import StrEnum
 from typing import Mapping, Protocol, Sequence
 from uuid import UUID
 
-from apps.apm.models import ApmIngestSource, ApmPolicy, ApmService, ApmServiceInstance
-
-
-@dataclass(frozen=True)
-class CreatedIngestSource:
-    source: ApmIngestSource
-    credential: str
+from apps.apm.models import ApmPolicy, ApmService, ApmServiceInstance
 
 
 @dataclass(frozen=True)
@@ -23,9 +17,8 @@ class IngestSnippetRequest:
     endpoint: str
     service_namespace: str
     service_name: str
+    service_version: str
     environment: str
-    credential: str
-    ingest_type: str = "otlp_http"
 
 
 @dataclass(frozen=True)
@@ -36,7 +29,6 @@ class IngestSnippet:
 
 @dataclass(frozen=True)
 class CatalogDiscovery:
-    ingest_source_id: UUID
     service_namespace: str | None
     service_name: str
     instance_id: str | None
@@ -59,7 +51,7 @@ class CatalogReconcileResult:
     missing_instance_identities: int
     archived_services: int
     archived_instances: int
-    missing_ingest_sources: int = 0
+    unknown_applications: int = 0
 
 
 @dataclass(frozen=True)
@@ -86,7 +78,6 @@ class TraceSummary:
     status: str
     root_span_name: str = ""
     span_count: int = 0
-    ingest_source_id: UUID | None = None
 
 
 @dataclass(frozen=True)
@@ -103,7 +94,6 @@ class SpanDetail:
     environment: str = ""
     instance_id: str | None = None
     kind: str = "unspecified"
-    ingest_source_id: UUID | None = None
 
 
 @dataclass(frozen=True)
@@ -114,7 +104,6 @@ class TraceDetail:
     service_name: str
     environment: str
     instance_id: str | None
-    ingest_source_id: UUID | None = None
     truncated: bool = False
 
 
@@ -122,6 +111,43 @@ class TraceDetail:
 class TracePage:
     items: tuple[TraceSummary, ...]
     next_cursor: str | None
+
+
+@dataclass(frozen=True)
+class TopologyTarget:
+    service_namespace: str
+    service_name: str
+    environment: str
+
+
+@dataclass(frozen=True)
+class TopologyNode:
+    id: str
+    service_namespace: str
+    service_name: str
+    environment: str
+    health: str
+    sampled_spans: int
+    error_spans: int
+
+
+@dataclass(frozen=True)
+class TopologyEdge:
+    source: str
+    target: str
+    health: str
+    sampled_calls: int
+    error_calls: int
+    average_duration_ms: float
+
+
+@dataclass(frozen=True)
+class TopologyGraph:
+    nodes: tuple[TopologyNode, ...]
+    edges: tuple[TopologyEdge, ...]
+    sampled_traces: int
+    truncated: bool
+    data_state: str
 
 
 @dataclass(frozen=True)
@@ -163,10 +189,39 @@ class ServiceRed:
 
 
 @dataclass(frozen=True)
+class SloMetricQuery:
+    service_namespace: str
+    service_name: str
+    environment: str
+    started_at: datetime
+    ended_at: datetime
+    sli_type: str
+    endpoint: str = ""
+    latency_threshold_ms: int | None = None
+
+
+@dataclass(frozen=True)
+class SloMeasurement:
+    compliance_percent: float | None
+    good_rate: float | None
+    total_rate: float | None
+    data_state: MetricDataState
+
+
+@dataclass(frozen=True)
+class SloEvaluation:
+    current_rate: float | None
+    budget_remaining: float | None
+    data_state: str
+    started_at: datetime | None
+    ended_at: datetime
+    reason: str = ""
+
+
+@dataclass(frozen=True)
 class InstanceActivityQuery:
     started_at: datetime
     ended_at: datetime
-    ingest_source_id: UUID | None = None
 
 
 @dataclass(frozen=True)
@@ -176,7 +231,6 @@ class InstanceActivity:
     instance_id: str | None
     environment: str
     version: str
-    ingest_source_id: UUID
     last_seen_at: datetime
 
 
@@ -246,6 +300,8 @@ class TraceStore(Protocol):
 class MetricStore(Protocol):
     def service_red(self, query: ServiceMetricQuery) -> ServiceRed: ...
 
+    def slo_measurement(self, query: SloMetricQuery) -> SloMeasurement: ...
+
     def instance_activity(self, query: InstanceActivityQuery) -> list[InstanceActivity]: ...
 
 
@@ -253,32 +309,7 @@ class NotificationDispatcher(Protocol):
     def dispatch(self, delivery: NotificationDelivery) -> NotificationDeliveryResult: ...
 
 
-class IngestSourceService(Protocol):
-    def create(
-        self,
-        *,
-        name: str,
-        ingest_type: str,
-        organization_ids: Sequence[int],
-        actor: str,
-        cloud_region_id: int | None = None,
-        environment_hint: str = "",
-    ) -> CreatedIngestSource: ...
-
-    def rotate(self, source_id: UUID, *, actor: str) -> CreatedIngestSource: ...
-
-    def disable(self, source_id: UUID, *, actor: str) -> ApmIngestSource: ...
-
-    def set_organizations(
-        self,
-        source_id: UUID,
-        organization_ids: Sequence[int],
-        *,
-        actor: str,
-    ) -> ApmIngestSource: ...
-
-    def validate_credential(self, credential: str) -> ApmIngestSource | None: ...
-
+class IntegrationConfigurationService(Protocol):
     def render_snippet(self, request: IngestSnippetRequest) -> IngestSnippet: ...
 
 

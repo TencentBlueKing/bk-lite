@@ -1,0 +1,210 @@
+{
+  "schema_version": 1,
+  "catalog_version": "2026.07.22",
+  "allowed_device_types": ["switch", "router", "firewall", "loadbalance"],
+  "brand_aliases": {
+    "华为": "Huawei",
+    "HuaWei": "Huawei",
+    "Hewlett-Packard": "HPE",
+    "Netscreen": "Juniper",
+    "Force10": "Dell",
+    "NortelAlteon": "Alteon",
+    "Venus": "Venustech"
+  },
+  "sources": {
+    "legacy-catalog-v1": {
+      "vendor": "Multiple",
+      "url": "",
+      "document": "BK-Lite legacy systemoid.json",
+      "version": "pre-2026",
+      "verified_at": "2026-07-22",
+      "official": false,
+      "scope": "legacy-catalog"
+    },
+    "h3c-msr-router-rfc1213-r6749": {
+      "vendor": "H3C",
+      "url": "https://www.h3c.com/en/d_202407/2220868_294551_0.htm",
+      "document": "H3C MSR Router Series MIB Reference - 05-RFC1213-MIB",
+      "version": "R6749-6W100 (2024-07)",
+      "verified_at": "2026-07-22",
+      "official": true,
+      "scope": "product-identity"
+    },
+    "ruijie-rg-wall-vpn-snmp": {
+      "vendor": "Ruijie",
+      "url": "https://image.ruijie.com.cn/Upload/Article/fc9f828b-ac09-483b-90f9-1a8ad5e57c62/RG-WALL%E7%B3%BB%E5%88%97VPN%E5%AE%89%E5%85%A8%E7%BD%91%E5%85%B3%E4%BA%A7%E5%93%81%E4%B8%80%E6%9C%AC%E9%80%9A/RG-WALL%E7%B3%BB%E5%88%97VPN%E5%AE%89%E5%85%A8%E7%BD%91%E5%85%B3%E4%BA%A7%E5%93%81%E4%B8%80%E6%9C%AC%E9%80%9A/e500bfde-4e54-4b55-8f9f-344f8e20b0fe.htm",
+      "document": "RG-WALL系列VPN安全网关产品一本通 - 01 SNMP配置步骤",
+      "version": "公开页未标注版本",
+      "verified_at": "2026-07-22",
+      "official": true,
+      "scope": "product-identity"
+    },
+    "cisco-products-mib-20250613": {
+      "vendor": "Cisco",
+      "url": "https://github.com/cisco/cisco-mibs/blob/main/v2/CISCO-PRODUCTS-MIB.my",
+      "document": "CISCO-PRODUCTS-MIB",
+      "version": "2025-06-13 revision",
+      "verified_at": "2026-07-22",
+      "official": true,
+      "scope": "product-identity"
+    },
+    "arista-products-mib-20260303": {
+      "vendor": "Arista",
+      "url": "https://www.arista.com/assets/data/docs/MIBS/ARISTA-PRODUCTS-MIB.txt",
+      "document": "ARISTA-PRODUCTS-MIB",
+      "version": "2026-03-03 revision",
+      "verified_at": "2026-07-22",
+      "official": true,
+      "scope": "product-identity"
+    },
+    "fortinet-fortigate-model-mibs-7-4-0": {
+      "vendor": "Fortinet",
+      "url": "https://docs.fortinet.com/document/fortigate/7.4.0/fortigate-mib-information-overview/792229/fortigate-model-mibs",
+      "document": "FortiGate model MIBs",
+      "version": "FortiOS 7.4.0",
+      "verified_at": "2026-07-22",
+      "official": true,
+      "scope": "product-identity"
+    },
+    "paloalto-pan-products-mib-pan-os-12-1": {
+      "vendor": "Palo Alto Networks",
+      "url": "https://docs.paloaltonetworks.com/content/dam/techdocs/en_US/zip/snmp-mib/pan-12-1-snmp-mib-modules.zip",
+      "document": "PAN-PRODUCT-MIB.my",
+      "version": "PAN-OS 12.1 MIB package (2025-01-22)",
+      "verified_at": "2026-07-22",
+      "official": true,
+      "scope": "product-identity"
+    },
+    "f5os-rseries-system-settings-1-2-0": {
+      "vendor": "F5",
+      "url": "https://techdocs.f5.com/en-us/f5os-a-1-2-0/f5-rseries-systems-administration-configuration/title-system-settings.html",
+      "document": "F5 rSeries Systems Administration and Configuration - System Settings",
+      "version": "F5OS-A 1.2.0",
+      "verified_at": "2026-07-22",
+      "official": true,
+      "scope": "product-identity"
+    }
+  },
+  "coverage_gaps": {
+    "Huawei": ["switch", "router", "firewall"],
+    "H3C": ["switch", "firewall"],
+    "Ruijie": ["switch", "router"],
+    "ZTE": ["switch", "router"],
+    "Sangfor": ["firewall", "loadbalance"],
+    "Hillstone": ["firewall"],
+    "DPtech": ["firewall"],
+    "Topsec": ["firewall"],
+    "Venustech": ["firewall"],
+    "NSFOCUS": ["firewall"],
+    "Qi-Anxin": ["firewall"],
+    "Juniper": ["switch", "router", "firewall"],
+    "HPE": ["switch"],
+    "Aruba": ["switch"],
+    "Extreme": ["switch"],
+    "Nokia": ["router"]
+  },
+  "coverage_gap_details": {
+    "Huawei": {
+      "device_types": ["switch", "router", "firewall"],
+      "reason": "官方 MIB Query 可确认产品与软件版本，但匿名公开页面和查询接口未返回可复核的产品身份 OID；不以企业号前缀或历史目录推断型号。",
+      "url": "https://info.support.huawei.com/info-finder/tool/zh/enterprise/mib",
+      "verified_at": "2026-07-22"
+    },
+    "H3C": {
+      "device_types": ["switch", "firewall"],
+      "reason": "公开 MIB Companion 中交换机仅标注 sysObjectID 支持、防火墙标注实现因产品而异，未在可访问正文中给出精确产品身份 OID；路由器已有官方精确映射。",
+      "url": "https://www.h3c.com/en/home/qr/default.htm?id=213",
+      "verified_at": "2026-07-22"
+    },
+    "Ruijie": {
+      "device_types": ["switch", "router"],
+      "reason": "公开 RG-WALL 文档仅给出防火墙系列的精确 sysObjectID，未找到 RG-S 或 RG-RSR 的官方公开产品身份节点。",
+      "url": "https://image.ruijie.com.cn/Upload/Article/fc9f828b-ac09-483b-90f9-1a8ad5e57c62/RG-WALL%E7%B3%BB%E5%88%97VPN%E5%AE%89%E5%85%A8%E7%BD%91%E5%85%B3%E4%BA%A7%E5%93%81%E4%B8%80%E6%9C%AC%E9%80%9A/RG-WALL%E7%B3%BB%E5%88%97VPN%E5%AE%89%E5%85%A8%E7%BD%91%E5%85%B3%E4%BA%A7%E5%93%81%E4%B8%80%E6%9C%AC%E9%80%9A/e500bfde-4e54-4b55-8f9f-344f8e20b0fe.htm",
+      "verified_at": "2026-07-22"
+    },
+    "ZTE": {
+      "device_types": ["switch", "router"],
+      "reason": "官方支持门户未向匿名访问提供可复核的 ZXR10/ZXCTN 产品 MIB 正文，公开产品资料不含精确 sysObjectID。",
+      "url": "https://support.zte.com.cn/",
+      "verified_at": "2026-07-22"
+    },
+    "Sangfor": {
+      "device_types": ["firewall", "loadbalance"],
+      "reason": "AF 与 AD 官方文档入口可确认 SNMP OID 文档存在，但正文需认证或由前端动态加载，匿名页面未暴露产品身份 OID。",
+      "url": "https://support.sangfor.com.cn/productDocument/read?category_id=179538&product_id=13&type=1&version_id=677",
+      "related_urls": [
+        "https://support.sangfor.com.cn/productDocument/read?category_id=358575&product_id=31&version_id=1155"
+      ],
+      "verified_at": "2026-07-22"
+    },
+    "Hillstone": {
+      "device_types": ["firewall"],
+      "reason": "官方镜像与 MIB 下载入口要求登录，公开产品页和 SNMP 配置页未给出 SG/E/X/T 产品身份 OID。",
+      "url": "https://images.hillstonenet.com/index/user/login.html",
+      "verified_at": "2026-07-22"
+    },
+    "DPtech": {
+      "device_types": ["firewall"],
+      "reason": "官方产品白皮书仅说明支持 SNMP/MIB，未发布可匿名复核的 FW/IFW 产品身份 OID。",
+      "url": "https://www.dptech.com/",
+      "verified_at": "2026-07-22"
+    },
+    "Topsec": {
+      "device_types": ["firewall"],
+      "reason": "官方下一代防火墙白皮书仅说明支持 SNMPv3，正文不含产品身份 OID。",
+      "url": "https://www.topsec.com.cn/uploads/2022-01-18/0e5c988b-b02d-4a36-8460-04451ea9cdb61642487890475.pdf",
+      "verified_at": "2026-07-22"
+    },
+    "Venustech": {
+      "device_types": ["firewall"],
+      "reason": "官方产品入口可确认天清汉马 USG 产品，但未提供可匿名复核的产品身份 OID 或产品 MIB。",
+      "url": "https://www.venustech.com.cn/",
+      "verified_at": "2026-07-22"
+    },
+    "NSFOCUS": {
+      "device_types": ["firewall"],
+      "reason": "官方产品支持入口提供软件升级和售后支持，但匿名公开内容未提供可复核的防火墙产品级 sysObjectID 或产品 MIB；不依据企业号或第三方 OID 列表猜测型号。",
+      "url": "https://www.nsfocus.com.cn/html/6/62/",
+      "verified_at": "2026-07-22"
+    },
+    "Qi-Anxin": {
+      "device_types": ["firewall"],
+      "reason": "官方产品文档入口可按产品检索支持资料，但匿名公开内容未提供可复核的防火墙产品级 sysObjectID 或产品 MIB；不依据企业号或第三方 OID 列表猜测型号。",
+      "url": "https://www.qianxin.com/support/product",
+      "verified_at": "2026-07-22"
+    },
+    "Juniper": {
+      "device_types": ["switch", "router", "firewall"],
+      "reason": "官方 SNMP 文档确认 JUNIPER-CHASSIS-DEFINES-MIB 的 jnxProductName 是 sysObjectID 来源，但匿名公开正文未同时给出 EX/QFX、MX/PTX 与 SRX 具体型号的完整数字产品身份 OID；现有历史条目保持 legacy-compatible。",
+      "url": "https://www.juniper.net/documentation/us/en/software/junos/network-mgmt/topics/topic-map/junos-os-snmp-faqs.html",
+      "related_urls": [
+        "https://www.juniper.net/documentation/us/en/software/junos/network-mgmt/topics/topic-map/snmp-mibs-supported-by-junos-os-and-junos-os-evolved.html"
+      ],
+      "verified_at": "2026-07-22"
+    },
+    "HPE": {
+      "device_types": ["switch"],
+      "reason": "HPE Networking 支持门户的产品 MIB 下载需要产品选择或认证，匿名公开正文未提供可复核的完整交换机产品身份 OID。",
+      "url": "https://networkingsupport.hpe.com/",
+      "verified_at": "2026-07-22"
+    },
+    "Aruba": {
+      "device_types": ["switch"],
+      "reason": "Aruba Service Portal 可提供 AOS-CX/AOS-S MIB，但匿名公开入口未暴露具体交换机型号与完整 sysObjectID 的产品身份定义。",
+      "url": "https://networkingsupport.hpe.com/",
+      "verified_at": "2026-07-22"
+    },
+    "Extreme": {
+      "device_types": ["switch"],
+      "reason": "Extreme 官方支持入口需要登录或产品上下文才能取得产品 MIB，匿名公开正文未提供具体交换机型号的完整产品身份 OID。",
+      "url": "https://extreme-networks.my.site.com/ExtrSupportHome",
+      "verified_at": "2026-07-22"
+    },
+    "Nokia": {
+      "device_types": ["router"],
+      "reason": "Nokia 官方文档入口可确认 SR OS 产品与 SNMP 文档，但匿名公开正文未给出可逐条复核的 SR 系列具体型号完整 sysObjectID。",
+      "url": "https://documentation.nokia.com/",
+      "verified_at": "2026-07-22"
+    }
+  }
+}

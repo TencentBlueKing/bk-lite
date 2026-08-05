@@ -4,6 +4,8 @@
 import types
 import pytest
 
+from apps.cmdb.node_configs.cloud.aliyun import AliyunNodeParams
+from apps.cmdb.node_configs.cloud.qcloud import QCloudNodeParams
 from apps.cmdb.node_configs.config_factory import NodeParamsFactory
 
 # 仅社区版 node_configs 实际注册的私有云（openstack/manageone/smartx 属企业插件，
@@ -11,7 +13,6 @@ from apps.cmdb.node_configs.config_factory import NodeParamsFactory
 # test_unregistered_cloud_raises_valueerror）。
 CLOUDS = {
     "hwcloud": "huaweicloud_info",
-    "fusioninsight": "fusioninsight_info",
 }
 
 # 企业云：社区 worktree 未注册 node_configs，工厂应抛 ValueError。
@@ -92,6 +93,55 @@ def test_project_id_pushed_when_credential_has_it():
     inst.decrypt_credentials = {**inst.decrypt_credentials, "project_id": "p-abc"}
     node = NodeParamsFactory.get_node_params(inst)
     assert node.custom_headers()["cmdbproject_id"] == "p-abc"
+
+
+def test_hwcloud_region_query_keeps_project_id():
+    params_cls = NodeParamsFactory.get_params_class("hwcloud", "protocol")
+
+    assert params_cls.build_region_credential(
+        {
+            "access_key": "AK",
+            "access_secret": "SK",
+            "project_id": "project-123",
+        }
+    ) == {
+        "accessKey": "AK",
+        "accessSecret": "SK",
+        "project_id": "project-123",
+    }
+
+
+def test_region_query_accepts_persisted_single_credential_pool():
+    raw_pool = [
+        {
+            "credential_id": "cred-cloud",
+            "accessKey": "AK",
+            "accessSecret": "SK",
+            "project_id": "project-123",
+        }
+    ]
+
+    hwcloud_cls = NodeParamsFactory.get_params_class("hwcloud", "protocol")
+    assert hwcloud_cls.build_region_credential(raw_pool) == {
+        "accessKey": "AK",
+        "accessSecret": "SK",
+        "project_id": "project-123",
+    }
+    assert AliyunNodeParams.build_region_credential(raw_pool) == {
+        "secret_id": "AK",
+        "secret_key": "SK",
+    }
+    assert QCloudNodeParams.build_region_credential(raw_pool) == {
+        "secret_id": "AK",
+        "secret_key": "SK",
+    }
+
+
+def test_qcloud_node_params_push_selected_region():
+    inst = _fake_instance("qcloud")
+    node = NodeParamsFactory.get_node_params(inst)
+
+    assert node.custom_headers()["cmdbregion_id"] == "cn-north-4"
 
 
 def test_project_id_absent_not_pushed():

@@ -16,10 +16,10 @@
 
 ## 2. 流水线必须改造的内容
 
-发布流水线必须完成以下三项，缺少任意一项都不能开放 Windows 远程安装：
+发布流水线必须完成以下四项，缺少任意一项都不能开放 Windows 远程安装：
 
 1. 安装器构建任务新增 `bklite-controller-bootstrap.exe` 的归档和对象存储初始化。
-2. 重新构建并发布 Ansible Executor 镜像，使镜像包含固定版本的 WinRM 依赖。
+2. 重新构建并发布实际部署形态的 Ansible Executor（镜像或 PyInstaller onedir 产物），使其包含固定版本的 WinRM 依赖和 `ansible.windows` collection。
 3. Server 发布时执行 NodeMgmt 数据库迁移。
 4. 安装器专用 NATS 用户允许读取安装包对象，并允许发布 `installer.progress.>`；Server 用户保持对该 subject 的订阅权限。
 
@@ -91,7 +91,11 @@ python manage.py installer_init \
   --file_path /path/to/dist/windows/x86_64/bklite-controller-bootstrap.exe
 ```
 
-## 5. 构建并发布 Ansible Executor 镜像
+## 5. 构建并发布 Ansible Executor
+
+Ansible Executor 有 Docker 镜像和 PyInstaller onedir 两种交付形态。流水线必须按各云区域的实际部署形态重新构建，不能只更新其中一种后复用旧产物。
+
+### Docker 镜像
 
 在 `agents/ansible-executor` 目录构建镜像：
 
@@ -106,7 +110,38 @@ make build
 - `pywinrm==0.5.0`
 - `cryptography==46.0.5`
 
-不要继续复用旧 Ansible Executor 镜像。旧镜像可能缺少 WinRM collection、Windows 文件分发能力或执行载荷加密依赖。
+### PyInstaller onedir 产物
+
+Fusion Collector 等以冻结程序部署 Executor 的场景，在同一目录执行：
+
+```bash
+make package
+```
+
+归档完整的 `dist/ansible-executor/` 目录，不能只复制主可执行文件。构建会强制校验以下文件；文件缺失时 `make package` 必须失败：
+
+```text
+dist/ansible-executor/_internal/collections/ansible_collections/ansible/windows/plugins/modules/win_copy.ps1
+```
+
+注意路径中必须保留 `collections/ansible_collections/ansible/windows` 层级。以下旧的错误层级不可发布：
+
+```text
+dist/ansible-executor/_internal/collections/ansible/windows
+```
+
+可在非 Windows 构建机执行一次 collection 解析冒烟：
+
+```bash
+./dist/ansible-executor/ansible-executor \
+  --internal-ansible-cli adhoc -- \
+  localhost -i 'localhost,' -c local \
+  -m ansible.windows.win_ping -vvvv
+```
+
+由于构建机通常没有 PowerShell，该命令最终执行失败是预期结果；日志必须先出现 `Loading collection ansible.windows` 和 `Using module file .../win_ping.ps1`，且不得出现 `couldn't resolve module/action` 或 `was not found in configured module paths`。
+
+不要继续复用旧 Ansible Executor 镜像或 onedir 目录。旧产物可能缺少 WinRM collection、Windows 文件分发能力或执行载荷加密依赖。
 
 建议为所有需要 Windows 远程安装的云区域滚动更新 Ansible Executor。更新完成后，NodeMgmt 必须能找到至少一个状态正常、collector ID 为 `ansibleexecutor_linux` 的 Executor。
 
@@ -179,7 +214,8 @@ bootstrap 只接受 `installer.progress.<32 位小写十六进制 execution_id>`
 
 - [ ] 构建日志中同时存在 Windows GUI installer 和 Windows remote bootstrap。
 - [ ] 对象存储存在 `installer/windows/x86_64/bklite-controller-bootstrap.exe`，大小和 SHA-256 与本次构建一致。
-- [ ] Ansible Executor 镜像为本次构建版本，并包含固定版本的 `ansible.windows`、`pywinrm` 和 `cryptography`。
+- [ ] 实际部署的 Ansible Executor 镜像或 onedir 目录为本次构建版本，并包含固定版本的 `ansible.windows`、`pywinrm` 和 `cryptography`。
+- [ ] 若发布 onedir 产物，`win_copy.ps1` 位于 `_internal/collections/ansible_collections/ansible/windows/plugins/modules/`，且冻结程序 collection 解析冒烟通过。
 - [ ] 所需云区域至少有一个健康的 Ansible Executor。
 - [ ] 所需云区域已配置 `NATS_PROTOCOL=tls`、可信 NATS 证书和专用 `NATS_INSTALLER_USERNAME/PASSWORD`。
 - [ ] NodeMgmt 的 `0037`、`0038`、`0039` 迁移均已应用。
@@ -198,6 +234,7 @@ bootstrap 只接受 `installer.progress.<32 位小写十六进制 execution_id>`
 |---|---|
 | 文件分发阶段提示对象不存在 | bootstrap 是否执行了 `installer_init --variant bootstrap`，对象路径和架构是否正确 |
 | 找不到健康 Executor | 目标云区域是否部署并上报了新版 Ansible Executor |
+| `couldn't resolve module/action 'ansible.windows.win_copy'` 或模块不在搜索路径 | 检查冻结产物是否丢失 `ansible_collections` 层级；这是 Executor 打包问题，不是目标 Windows/WinRM 问题，重新执行 `make package` 并发布完整 onedir 目录 |
 | WinRM 连接失败 | TCP/5986、防火墙、HTTPS listener、NTLM、账号权限 |
 | 证书校验失败 | 服务端证书链、名称匹配和 Executor 容器 CA 信任 |
 | 提示 PowerShell 或 Windows 版本不支持 | 目标机是否满足 Windows 10/Server 2016、PowerShell 5.1+ |

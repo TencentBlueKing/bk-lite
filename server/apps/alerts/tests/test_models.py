@@ -73,6 +73,28 @@ def test_incident_str_and_format_created_at():
 
 
 @pytest.mark.django_db
+def test_incident_format_created_at_respects_activated_timezone():
+    """Incident.format_created_at 应与 Alert.format_created_at 口径一致，按激活时区 localtime。"""
+    from django.utils import timezone as dj_timezone
+
+    inc = Incident.objects.create(incident_id="I-tz", level="0", title="t", fingerprint="fp-tz")
+    utc_dt = dj_timezone.datetime(2026, 7, 24, 1, 44, 34, tzinfo=dj_timezone.utc)
+    Incident.objects.filter(pk=inc.pk).update(created_at=utc_dt)
+    inc.refresh_from_db()
+
+    shanghai = dj_timezone.zoneinfo.ZoneInfo("Asia/Shanghai")
+    dj_timezone.activate(shanghai)
+    try:
+        result = inc.format_created_at
+    finally:
+        dj_timezone.deactivate()
+
+    assert result == "2026-07-24 09:44:34", (
+        f"Incident.format_created_at 应输出用户时区钟面，实际: {result}"
+    )
+
+
+@pytest.mark.django_db
 def test_level_str():
     level = Level.objects.create(level_id=0, level_name="Critical", level_display_name="严重", level_type="alert")
     assert "Critical" in str(level)

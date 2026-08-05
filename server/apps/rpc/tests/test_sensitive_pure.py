@@ -119,6 +119,63 @@ def test_pem_private_key_block_masked():
     assert out.endswith("after")
 
 
+# ---- PC 发现：WinRM/SSH 凭据形态的脱敏合同 ----
+
+
+def test_pc_windows_host_credentials_masked():
+    payload = {
+        "host_credentials": [
+            {
+                "host": "10.0.0.8",
+                "user": "ACME\\alice",
+                "connection": "winrm",
+                "port": 5986,
+                "password": "S3cret!Passw0rd#PC",
+                "winrm_scheme": "https",
+                "winrm_transport": "ntlm",
+            }
+        ]
+    }
+    out = sanitize_sensitive_data(payload)
+    cred = out["host_credentials"][0]
+    assert cred["password"] == MASKED_VALUE
+    assert cred["user"] == "ACME\\alice"
+    assert cred["port"] == 5986
+    assert "S3cret!Passw0rd#PC" not in str(out)
+
+
+def test_pc_macos_host_credentials_private_key_and_passphrase_masked():
+    payload = {
+        "host_credentials": [
+            {
+                "host": "10.0.0.9",
+                "user": "admin",
+                "port": 22,
+                "private_key": "-----BEGIN OPENSSH PRIVATE KEY-----\nKEYDATA\n-----END OPENSSH PRIVATE KEY-----",
+                "passphrase": "pc-passphrase-001",
+            }
+        ]
+    }
+    out = sanitize_sensitive_data(payload)
+    cred = out["host_credentials"][0]
+    assert cred["private_key"] == MASKED_VALUE
+    assert cred["passphrase"] == MASKED_VALUE
+    assert "KEYDATA" not in str(out)
+    assert "pc-passphrase-001" not in str(out)
+
+
+def test_openssh_private_key_block_masked():
+    pem = (
+        "before\n-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNzaC1rZXktdjEAAAAA\n"
+        "-----END OPENSSH PRIVATE KEY-----\nafter"
+    )
+    out = sanitize_sensitive_data(pem)
+    assert "b3BlbnNzaC1rZXktdjEAAAAA" not in out
+    assert MASKED_VALUE in out
+    assert out.startswith("before")
+    assert out.endswith("after")
+
+
 def test_summarize_basic_fields():
     data = {
         "task_id": "t1",

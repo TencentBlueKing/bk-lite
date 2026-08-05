@@ -1,4 +1,6 @@
-from django.db.models import Prefetch, Q
+from django.db import transaction
+from django.db.models import Prefetch
+from django.db.models.deletion import ProtectedError
 from django.http import JsonResponse
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -10,6 +12,11 @@ from apps.system_mgmt.serializers.im_notification_channel_serializer import (
     IMNotificationChannelSerializer,
     IMNotificationSyncRunSerializer,
     IMNotificationUserMappingSerializer,
+)
+from apps.system_mgmt.services.im_channel_access import (
+    can_access_im_channel,
+    filter_accessible_im_channels,
+    get_user_group_ids,
 )
 from apps.system_mgmt.services.im_notification_service import (
     create_im_notification_sync_run,
@@ -39,31 +46,13 @@ class IMNotificationChannelViewSet(MaintainerViewSet):
     ordering = ("-id",)
 
     def _get_user_group_ids(self, user):
-        if getattr(user, "is_superuser", False):
-            return None
-        return {g["id"] for g in getattr(user, "group_list", [])}
+        return get_user_group_ids(user)
 
     def _filter_by_accessible_teams(self, queryset, user):
-        if getattr(user, "is_superuser", False):
-            return queryset
-
-        user_group_ids = self._get_user_group_ids(user)
-        if not user_group_ids:
-            return queryset.none()
-
-        query = Q()
-        for group_id in user_group_ids:
-            query |= Q(team__contains=group_id)
-        return queryset.filter(query)
+        return filter_accessible_im_channels(queryset, user)
 
     def _validate_channel_permission(self, request, channel):
-        if getattr(request.user, "is_superuser", False):
-            return True, None
-
-        user_group_ids = self._get_user_group_ids(request.user)
-        channel_team_ids = set(channel.team or [])
-
-        if not user_group_ids or not user_group_ids.intersection(channel_team_ids):
+        if not can_access_im_channel(request.user, channel):
             message = (
                 self.loader.get("error.no_permission_access_team", "无权访问该团队数据")
                 if self.loader
@@ -157,8 +146,20 @@ class IMNotificationChannelViewSet(MaintainerViewSet):
             return error_response
 
         channel_name = obj.name
-        obj.delete_sync_periodic_task()
-        response = super().destroy(request, *args, **kwargs)
+        try:
+            with transaction.atomic():
+                obj.delete_sync_periodic_task()
+                response = super().destroy(request, *args, **kwargs)
+        except ProtectedError:
+            return JsonResponse(
+                {
+                    "result": False,
+                    "code": "IM_CHANNEL_IN_USE",
+                    "message": "该 IM 通知渠道仍被其他业务使用，无法删除",
+                },
+                status=409,
+            )
+
         if response.status_code in (200, 204):
             log_operation(request, "delete", "channel", f"删除IM应用通知: {channel_name}")
         return response

@@ -45,6 +45,8 @@ class SSHPlugin:
         script_path = params.get("script_path")
         self.username = params.get("username")
         self.password = params.get("password")
+        self.private_key = params.get("private_key")
+        self.passphrase = params.get("passphrase")
         self.port = params.get("port", 22)
         self.execute_timeout = int(params.get("execute_timeout", 60))
         self.node_info = params.get("node_info", {})
@@ -131,6 +133,11 @@ class SSHPlugin:
                     "connection_test": True,
                 }
             )
+            # 私钥认证（可选）：与密码路径互斥由上层任务参数保证
+            if self.private_key:
+                exec_params["private_key"] = self.private_key
+            if self.passphrase:
+                exec_params["passphrase"] = self.passphrase
         else:
             # 本地执行时指定脚本类型
             shell_type = self._get_shell_type()

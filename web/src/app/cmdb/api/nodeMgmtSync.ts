@@ -1,6 +1,7 @@
 import useApiClient from '@/utils/request';
 import type {
   NodeMgmtSyncDisplayPayload,
+  NodeMgmtSyncRowsPage,
   NodeMgmtSyncRun,
   NodeMgmtSyncTask,
 } from '@/app/cmdb/types/autoDiscovery';
@@ -25,6 +26,14 @@ export const useNodeMgmtSyncApi = () => {
   const getNodeMgmtSyncDisplay = () =>
     get<NodeMgmtSyncDisplayPayload>('/cmdb/api/node_mgmt_sync/task/display/');
 
+  const getNodeMgmtSyncRows = (params: {
+    run_id: number;
+    bucket?: 'raw_data';
+    page?: number;
+    page_size?: number;
+    search?: string;
+  }) => get<NodeMgmtSyncRowsPage>('/cmdb/api/node_mgmt_sync/task/display/rows/', { params });
+
   const runNodeMgmtSync = () =>
     post<NodeMgmtSyncRun>('/cmdb/api/node_mgmt_sync/task/run_sync/');
 
@@ -36,6 +45,7 @@ export const useNodeMgmtSyncApi = () => {
     updateNodeMgmtSyncTask,
     getNodeMgmtSyncLatestRun,
     getNodeMgmtSyncDisplay,
+    getNodeMgmtSyncRows,
     runNodeMgmtSync,
     runNodeMgmtCollect,
   };

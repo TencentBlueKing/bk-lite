@@ -1,7 +1,7 @@
 """自动采集实例级操作日志。"""
 
 from apps.cmdb.constants.constants import INSTANCE, OPERATOR_INSTANCE
-from apps.cmdb.models.change_record import COLLECT_AUTOMATION_CHANGE, CREATE_INST, UPDATE_INST
+from apps.cmdb.models.change_record import COLLECT_AUTOMATION_CHANGE, CREATE_INST, DELETE_INST, UPDATE_INST
 from apps.cmdb.utils.change_record import batch_create_change_record
 
 SYSTEM_COLLECT_FIELDS = {"_id", "model_id", "collect_time", "collect_task", "auto_collect"}
@@ -10,6 +10,7 @@ SYSTEM_COLLECT_FIELDS = {"_id", "model_id", "collect_time", "collect_task", "aut
 def write_collect_instance_change_records(management, result: dict):
     add_records = _build_add_records(result.get("add", {}).get("success", []))
     update_records = _build_update_records(management, result.get("update", {}).get("success", []))
+    delete_records = _build_delete_records(result.get("delete", {}).get("success", []))
 
     if add_records:
         batch_create_change_record(
@@ -27,6 +28,32 @@ def write_collect_instance_change_records(management, result: dict):
             operator="system",
             scenario=COLLECT_AUTOMATION_CHANGE,
         )
+    if delete_records:
+        batch_create_change_record(
+            INSTANCE,
+            DELETE_INST,
+            delete_records,
+            operator="system",
+            scenario=COLLECT_AUTOMATION_CHANGE,
+        )
+
+
+def _build_delete_records(success_items: list[dict]) -> list[dict]:
+    records = []
+    for item in success_items:
+        instance = _success_instance(item)
+        if not instance:
+            continue
+        records.append(
+            {
+                "inst_id": instance["_id"],
+                "model_id": instance["model_id"],
+                "before_data": instance,
+                "model_object": OPERATOR_INSTANCE,
+                "message": _message("自动采集删除实例", instance),
+            }
+        )
+    return records
 
 
 def _build_add_records(success_items: list[dict]) -> list[dict]:

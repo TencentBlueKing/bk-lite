@@ -1,9 +1,9 @@
 from apps.apm.models.control_plane import (
     ApmAlert,
     ApmAlertOutbox,
+    ApmApplication,
+    ApmApplicationOrganization,
     ApmEvent,
-    ApmIngestSource,
-    ApmIngestSourceOrganization,
     ApmNotificationDeliveryRetry,
     ApmPolicy,
     ApmPolicyNotificationTarget,
@@ -12,14 +12,15 @@ from apps.apm.models.control_plane import (
     ApmServiceInstance,
     ApmServiceInstanceOrganization,
     ApmServiceOrganization,
+    ApmSlo,
 )
 
 __all__ = [
     "ApmAlert",
     "ApmAlertOutbox",
+    "ApmApplication",
+    "ApmApplicationOrganization",
     "ApmEvent",
-    "ApmIngestSource",
-    "ApmIngestSourceOrganization",
     "ApmNotificationDeliveryRetry",
     "ApmPolicy",
     "ApmPolicyNotificationTarget",
@@ -28,4 +29,5 @@ __all__ = [
     "ApmServiceInstance",
     "ApmServiceInstanceOrganization",
     "ApmServiceOrganization",
+    "ApmSlo",
 ]

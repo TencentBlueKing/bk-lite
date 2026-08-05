@@ -3,6 +3,7 @@
 import React, { useEffect, useRef } from 'react';
 import BaseTaskForm, { BaseTaskRef } from './baseTask';
 import { useTranslation } from '@/utils/i18n';
+import { useCollectionFormLayout } from '../hooks/useCollectionFormLayout';
 import { useTaskForm } from '../hooks/useTaskForm';
 import { getCleanupFormValues } from '../hooks/useTaskForm';
 import { TreeNode, ModelItem } from '@/app/cmdb/types/autoDiscovery';
@@ -19,6 +20,8 @@ import {
 import { Form, Spin } from 'antd';
 import useAssetManageStore from '@/app/cmdb/store/useAssetManage';
 import CredentialPoolEditor from './credentialPoolEditor';
+import { resolveCredentialHelp } from './credentialHelp';
+import { getCredentialDefaultPort } from './credentialDescriptors';
 
 interface SQLTaskFormProps {
   onClose: () => void;
@@ -36,13 +39,17 @@ const SQLTask: React.FC<SQLTaskFormProps> = ({
   editId,
 }) => {
   const { t } = useTranslation();
+  const collectionFormLayout = useCollectionFormLayout();
   const baseRef = useRef<BaseTaskRef>(null as any);
   const { copyTaskData, setCopyTaskData } = useAssetManageStore();
   const { model_id: modelId } = modelItem;
-  const isMssql = modelId === 'mssql';
+  const isMssql = modelItem.credential_protocol === 'sql_server'
+    || modelId === 'mssql';
+  const defaultPort = getCredentialDefaultPort(modelItem) ?? 3306;
   const initialFormValues = {
     ...SQL_FORM_INITIAL_VALUES,
-    ...(isMssql ? { port: '1433', database: 'master' } : {}),
+    port: String(defaultPort),
+    ...(isMssql ? { database: 'master' } : {}),
   };
 
   const {
@@ -170,8 +177,8 @@ const SQLTask: React.FC<SQLTaskFormProps> = ({
   return (
     <Spin spinning={loading}>
       <Form
+        {...collectionFormLayout}
         form={form}
-        layout="vertical"
         onFinish={onFinish}
         initialValues={initialFormValues}
       >
@@ -189,7 +196,13 @@ const SQLTask: React.FC<SQLTaskFormProps> = ({
           }}
         >
           <Form.Item name="credentialPool">
-            <CredentialPoolEditor credentialShape="sql" editMode={Boolean(editId)} showDatabase={isMssql} />
+            <CredentialPoolEditor
+              credentialShape="sql"
+              defaultPort={defaultPort}
+              editMode={Boolean(editId)}
+              showDatabase={isMssql}
+              credentialHelp={resolveCredentialHelp(modelItem, t)}
+            />
           </Form.Item>
         </BaseTaskForm>
       </Form>

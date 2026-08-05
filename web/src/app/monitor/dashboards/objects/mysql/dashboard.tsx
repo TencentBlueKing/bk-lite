@@ -24,6 +24,7 @@ import styles from './index.module.scss';
 import useMonitorApi from '@/app/monitor/api';
 import {
   DEFAULT_REFRESH_FREQUENCY_LIST,
+  fetchDashboardInstancePages,
   formatMetricValue,
   buildSearchParams,
   getLatestChartValue,
@@ -324,14 +325,14 @@ export default function MysqlDashboardPage() {
     const loadInstances = async () => {
       try {
         setInstanceLoading(true);
-        const data = await getInstanceList(monitorObjectId, { page_size: -1 });
+        const data = await fetchDashboardInstancePages(getInstanceList, monitorObjectId);
         if (!active) {
           return;
         }
 
         const uniqueOptions = new Map<string, MysqlInstanceOption>();
 
-        (data?.results || []).forEach((item: any) => {
+        (data.results || []).forEach((item: any) => {
           const value = String(item.instance_id || '');
           if (!value || uniqueOptions.has(value)) {
             return;

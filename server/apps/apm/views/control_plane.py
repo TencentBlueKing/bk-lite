@@ -1,7 +1,7 @@
 from dataclasses import asdict
 
 from django.db import transaction
-from django.db.models import Prefetch, QuerySet
+from django.db.models import Count, Prefetch, QuerySet
 from django.utils import timezone
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
@@ -11,21 +11,23 @@ from rest_framework.response import Response
 
 from apps.apm.models import (
     ApmAlertOutbox,
-    ApmIngestSource,
+    ApmApplication,
     ApmPolicy,
     ApmPolicyNotificationTarget,
     ApmPolicyState,
     ApmService,
     ApmServiceInstance,
+    ApmSlo,
 )
 from apps.apm.renderers import ApmRenderer
 from apps.apm.serializers import (
     ApmEventQuerySerializer,
-    ApmIngestSourceSerializer,
+    ApmApplicationSerializer,
     ApmPolicySerializer,
     ApmServiceInstanceSerializer,
     ApmServiceSerializer,
-    CreateIngestSourceSerializer,
+    ApmSloSerializer,
+    ApplicationMutationSerializer,
     IngestSnippetSerializer,
     NotificationDeliveryQuerySerializer,
     NotificationDeliveryRetrySerializer,
@@ -41,7 +43,9 @@ from apps.apm.adapters import (
 from apps.apm.services import (
     DjangoApmEventReader,
     DjangoApmPolicyService,
-    DjangoIngestSourceService,
+    DjangoApmReliabilityService,
+    DjangoApmApplicationService,
+    DjangoIntegrationConfigurationService,
     DeliveryStateConflict,
     DjangoNotificationDeliveryService,
     DjangoTelemetryCatalogService,
@@ -71,114 +75,101 @@ def _notification_actor_context(request, organization_id: int) -> dict:
     }
 
 
-class ApmIngestSourceViewSet(viewsets.GenericViewSet):
+class ApmApplicationViewSet(viewsets.GenericViewSet):
     renderer_classes = (ApmRenderer,)
-    serializer_class = ApmIngestSourceSerializer
-    service = DjangoIngestSourceService()
+    serializer_class = ApmApplicationSerializer
+    service = DjangoApmApplicationService()
 
-    def get_queryset(self) -> QuerySet[ApmIngestSource]:
-        queryset = ApmIngestSource.objects.prefetch_related("organization_links")
+    def get_queryset(self) -> QuerySet[ApmApplication]:
+        queryset = ApmApplication.objects.prefetch_related("organization_links").annotate(
+            service_count=Count("services", distinct=True)
+        )
         return filter_current_organization(queryset, self.request, "organization_links")
 
-    @HasPermission("integration_add-View,integration_instances-View")
+    @HasPermission("applications-View,integration_add-View")
     def list(self, request, *args, **kwargs):
         return Response(self.get_serializer(self.get_queryset(), many=True).data)
 
-    @HasPermission("integration_add-View,integration_instances-View")
+    @HasPermission("applications-View,integration_add-View")
     def retrieve(self, request, *args, **kwargs):
         return Response(self.get_serializer(self.get_object()).data)
 
-    @HasPermission("integration_add-Operate")
+    @HasPermission("applications-Operate")
     def create(self, request, *args, **kwargs):
-        serializer = CreateIngestSourceSerializer(data=request.data)
+        serializer = ApplicationMutationSerializer(data=request.data, context={"creating": True})
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
         try:
             validate_assignable_organizations(request, data["organization_ids"])
         except PermissionError as exc:
             return Response({"detail": str(exc)}, status=status.HTTP_403_FORBIDDEN)
-        created = self.service.create(
+        application = self.service.create(
+            application_id=data["application_id"],
             name=data["name"],
-            ingest_type=data["ingest_type"],
+            description=data.get("description", ""),
             organization_ids=data["organization_ids"],
             actor=request.user.username,
-            cloud_region_id=data.get("cloud_region_id"),
-            environment_hint=data.get("environment_hint", ""),
+            is_enabled=data.get("is_enabled", True),
         )
-        response_data = ApmIngestSourceSerializer(created.source).data
-        response_data["credential"] = created.credential
-        return Response(response_data, status=status.HTTP_201_CREATED)
+        return Response(self.get_serializer(application).data, status=status.HTTP_201_CREATED)
 
-    @action(methods=("post",), detail=True)
-    @HasPermission("integration_add-Operate")
-    def rotate(self, request, *args, **kwargs):
-        source = self.get_object()
-        created = self.service.rotate(source.id, actor=request.user.username)
-        response_data = self.get_serializer(created.source).data
-        response_data["credential"] = created.credential
-        return Response(response_data)
-
-    @action(methods=("post",), detail=True)
-    @HasPermission("integration_add-Operate")
-    def disable(self, request, *args, **kwargs):
-        source = self.get_object()
-        disabled = self.service.disable(source.id, actor=request.user.username)
-        return Response(self.get_serializer(disabled).data)
-
-    @action(methods=("post",), detail=True)
-    @HasPermission("integration_add-Operate")
-    def snippet(self, request, *args, **kwargs):
-        # 创建向导允许把接入源直接分配给用户可管理、但并非当前选中的组织。
-        # 这里不能复用按 current_team 过滤的 get_object()，否则刚返回的一次性
-        # 凭证会在同一个向导中立即变成不可验证。凭证本身仍需匹配目标 source，
-        # 同时用公开的可分配组织校验约束控制面访问范围。
-        source = get_object_or_404(
-            ApmIngestSource.objects.prefetch_related("organization_links"),
-            pk=kwargs["pk"],
-        )
-        organization_ids = list(source.organization_links.values_list("organization", flat=True))
+    @HasPermission("applications-Operate")
+    def update(self, request, *args, **kwargs):
+        application = self.get_object()
+        serializer = ApplicationMutationSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
         try:
-            validate_assignable_organizations(request, organization_ids)
-        except PermissionError:
-            # 与常规 detail 路由保持一致，不向越权调用方泄漏资源是否存在。
-            return Response(status=status.HTTP_404_NOT_FOUND)
+            validate_assignable_organizations(request, data["organization_ids"])
+        except PermissionError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_403_FORBIDDEN)
+        updated = self.service.update(
+            application.id,
+            name=data["name"],
+            description=data.get("description", ""),
+            organization_ids=data["organization_ids"],
+            actor=request.user.username,
+            is_enabled=data.get("is_enabled", application.is_enabled),
+        )
+        return Response(self.get_serializer(updated).data)
+
+    partial_update = update
+
+
+class ApmIntegrationConfigurationViewSet(viewsets.GenericViewSet):
+    renderer_classes = (ApmRenderer,)
+    service = DjangoIntegrationConfigurationService()
+
+    @HasPermission("integration_add-View")
+    def create(self, request, *args, **kwargs):
         serializer = IngestSnippetSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
-        credential_source = self.service.validate_credential(data["credential"])
-        if credential_source is None or credential_source.id != source.id:
-            raise ValidationError({"credential": ["接入凭证无效或已失效。"]})
+        applications = filter_current_organization(
+            ApmApplication.objects.filter(is_enabled=True),
+            request,
+            "organization_links",
+        )
+        application = get_object_or_404(applications, application_id=data["application_id"])
         snippet = self.service.render_snippet(
             IngestSnippetRequest(
                 language=data["language"],
                 runtime=data["runtime"],
                 endpoint=data["endpoint"],
-                service_namespace=data["service_namespace"],
+                service_namespace=application.application_id,
                 service_name=data["service_name"],
+                service_version=data.get("service_version", ""),
                 environment=data["environment"],
-                credential=data["credential"],
-                ingest_type=source.ingest_type,
             )
         )
-        return Response({"environment": snippet.environment, "code": snippet.code})
-
-    @action(methods=("put",), detail=True, url_path="organizations")
-    @HasPermission("integration_add-Operate")
-    def organizations(self, request, *args, **kwargs):
-        source = self.get_object()
-        serializer = OrganizationAssignmentSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        organization_ids = serializer.validated_data["organization_ids"]
-        try:
-            validate_assignable_organizations(request, organization_ids)
-        except PermissionError as exc:
-            return Response({"detail": str(exc)}, status=status.HTTP_403_FORBIDDEN)
-        updated = self.service.set_organizations(
-            source.id,
-            organization_ids,
-            actor=request.user.username,
+        return Response(
+            {
+                "application_id": application.application_id,
+                "application_name": application.name,
+                "environment": snippet.environment,
+                "code": snippet.code,
+            }
         )
-        return Response(self.get_serializer(updated).data)
 
 
 class ApmServiceViewSet(viewsets.ReadOnlyModelViewSet):
@@ -187,7 +178,7 @@ class ApmServiceViewSet(viewsets.ReadOnlyModelViewSet):
     catalog = DjangoTelemetryCatalogService()
 
     def get_queryset(self) -> QuerySet[ApmService]:
-        queryset = ApmService.objects.prefetch_related(
+        queryset = ApmService.objects.select_related("application").prefetch_related(
             "organization_links",
             Prefetch("instances", queryset=ApmServiceInstance.objects.order_by("environment", "id")),
         )
@@ -316,7 +307,7 @@ class ApmServiceInstanceViewSet(viewsets.ReadOnlyModelViewSet):
     catalog = DjangoTelemetryCatalogService()
 
     def get_queryset(self) -> QuerySet[ApmServiceInstance]:
-        queryset = ApmServiceInstance.objects.select_related("service", "ingest_source").prefetch_related(
+        queryset = ApmServiceInstance.objects.select_related("service", "service__application").prefetch_related(
             "organization_links"
         )
         requested_status = self.request.query_params.get("status")
@@ -385,6 +376,111 @@ class ApmServiceInstanceViewSet(viewsets.ReadOnlyModelViewSet):
         instance = self.get_object()
         restored = self.catalog.restore_instance(instance.id, actor=request.user.username)
         return Response(self.get_serializer(restored).data)
+
+
+class ApmSloViewSet(viewsets.GenericViewSet):
+    renderer_classes = (ApmRenderer,)
+    serializer_class = ApmSloSerializer
+
+    @staticmethod
+    def _service():
+        return DjangoApmReliabilityService(VictoriaMetricsMetricStore())
+
+    def get_queryset(self):
+        queryset = ApmSlo.objects.select_related("service").prefetch_related("service__organization_links")
+        return filter_current_organization(queryset, self.request, "service__organization_links")
+
+    def _visible_service(self, service_id):
+        queryset = filter_current_organization(
+            ApmService.objects.all(),
+            self.request,
+            "organization_links",
+        )
+        return get_object_or_404(queryset, id=service_id)
+
+    def _serialize(self, slo):
+        data = self.get_serializer(slo).data
+        try:
+            evaluation = self._service().evaluate(slo, evaluated_at=timezone.now())
+            data.update(asdict(evaluation))
+        except (TelemetryStoreUnavailable, ValueError) as exc:
+            data.update(
+                {
+                    "current_rate": None,
+                    "budget_remaining": None,
+                    "data_state": "unavailable",
+                    "started_at": None,
+                    "ended_at": timezone.now(),
+                    "reason": str(exc),
+                }
+            )
+        return data
+
+    @HasPermission("services-View")
+    def list(self, request, *args, **kwargs):
+        return Response([self._serialize(slo) for slo in self.get_queryset()[:200]])
+
+    @HasPermission("services-View")
+    def retrieve(self, request, *args, **kwargs):
+        return Response(self._serialize(self.get_object()))
+
+    @HasPermission("services-Operate")
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = dict(serializer.validated_data)
+        service = self._visible_service(data.pop("service_id"))
+        slo = ApmSlo.objects.create(
+            service=service,
+            created_by=request.user.username,
+            updated_by=request.user.username,
+            **data,
+        )
+        return Response(self._serialize(slo), status=status.HTTP_201_CREATED)
+
+    def _update(self, request, *, partial):
+        slo = self.get_object()
+        serializer = self.get_serializer(slo, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        data = dict(serializer.validated_data)
+        service_id = data.pop("service_id", None)
+        if service_id is not None:
+            slo.service = self._visible_service(service_id)
+        for field, value in data.items():
+            setattr(slo, field, value)
+        slo.updated_by = request.user.username
+        slo.save()
+        return Response(self._serialize(slo))
+
+    @HasPermission("services-Operate")
+    def update(self, request, *args, **kwargs):
+        return self._update(request, partial=False)
+
+    @HasPermission("services-Operate")
+    def partial_update(self, request, *args, **kwargs):
+        return self._update(request, partial=True)
+
+    @HasPermission("services-Operate")
+    def destroy(self, request, *args, **kwargs):
+        self.get_object().delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    def _set_enabled(self, request, *, enabled):
+        slo = self.get_object()
+        slo.is_enabled = enabled
+        slo.updated_by = request.user.username
+        slo.save(update_fields=("is_enabled", "updated_by", "updated_at"))
+        return Response(self._serialize(slo))
+
+    @action(methods=("post",), detail=True)
+    @HasPermission("services-Operate")
+    def enable(self, request, *args, **kwargs):
+        return self._set_enabled(request, enabled=True)
+
+    @action(methods=("post",), detail=True)
+    @HasPermission("services-Operate")
+    def disable(self, request, *args, **kwargs):
+        return self._set_enabled(request, enabled=False)
 
 
 class ApmPolicyViewSet(viewsets.GenericViewSet):

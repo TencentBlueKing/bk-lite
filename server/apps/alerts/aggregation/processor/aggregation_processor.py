@@ -1,3 +1,4 @@
+import hashlib
 import logging
 from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional, cast
@@ -35,6 +36,8 @@ from apps.alerts.serializers.strategy import ALLOWED_DIMENSIONS, DIMENSION_NAME_
 
 
 class AggregationProcessor:
+    # TODO(timezone): 心跳 cron 时区硬编码 Asia/Shanghai，对非 +8 部署（海外客户）或用户以其他时区
+    # 配置心跳 cron 时，deadline 会整体偏移。需要可配置化设计，需产品确认时区契约后单独立项。
     HEARTBEAT_CRON_SOURCE_TIMEZONE = ZoneInfo("Asia/Shanghai")
 
     def __init__(self):
@@ -453,8 +456,10 @@ class AggregationProcessor:
         active_alert.save(update_fields=["status", "last_event_time", "updated_at"])
 
         from apps.alerts.service.reminder_service import ReminderService
+        from apps.alerts.service.recovery_notify import notify_alert_recovered
 
         ReminderService.stop_reminder_task(active_alert)
+        transaction.on_commit(lambda a=active_alert: notify_alert_recovered(a))
         logger.info(
             "自动恢复成功: strategy_id=%s, alert_id=%s",
             strategy.id,
@@ -591,18 +596,26 @@ class AggregationProcessor:
                         group_by_field=",".join(dimensions),
                     )
 
-                    # 如果是新创建的告警，记录ID用于后续自动分配
-                    if is_new_alert:
+                    # 需要(重新)分派:新建告警,或仍处 UNASSIGNED 的存量告警。
+                    # 后者覆盖"首次分派 0 命中/失败"的死亡序列——告警停留 UNASSIGNED 时,
+                    # 新事件必须把它重新送入分派链路,否则永远不会再被分派。
+                    needs_assignment = is_new_alert or alert.status == AlertStatus.UNASSIGNED
+                    if needs_assignment:
                         should_delay_assignment = alert.is_session_alert and alert.session_status == SessionStatus.OBSERVING
 
                         if should_delay_assignment:
                             logger.info(
-                                "策略 %s: 新建会话窗口告警 %s 仍在观察期，等待超时确认后再自动分派",
+                                "策略 %s: 会话窗口告警 %s 仍在观察期，等待超时确认后再自动分派",
                                 strategy.name,
                                 alert.alert_id,
                             )
                         else:
                             new_alert_ids.append(alert.alert_id)
+                            if not is_new_alert:
+                                logger.info(
+                                    "[AlertAggregation] 已有 UNASSIGNED 告警收到新事件，触发重试分派: alert_id=%s",
+                                    alert.alert_id,
+                                )
 
                     # 检查是否应该自动恢复
                     if AlertRecoveryChecker.check_and_recover_alert(alert):
@@ -627,7 +640,18 @@ class AggregationProcessor:
         )
         # 异步执行新创建告警的自动分配（不阻塞聚合流程）
         if new_alert_ids:
-            self._schedule_auto_assignment(new_alert_ids)
+            try:
+                self._schedule_auto_assignment(new_alert_ids)
+            except Exception:
+                # 分派调度依赖 outbox/celery 等外部资源,其失败不得拖垮整轮聚合
+                # (否则告警虽建成但伪装成"聚合失败",且 last_execute_time 不推进
+                # 导致下轮重扫整个窗口)。重试由后续聚合轮次(UNASSIGNED 重试)
+                # 与 beat_retry_unassigned_assignment 兜底负责。
+                logger.exception(
+                    "[AlertAggregation] 策略 %s: 自动分派调度失败,告警数=%s",
+                    strategy.name,
+                    len(new_alert_ids),
+                )
 
         if fail_count:
             raise RuntimeError(
@@ -717,5 +741,18 @@ class AggregationProcessor:
         """
         from apps.alerts.service.alert_lifecycle import dispatch_alert_lifecycle
 
+        alert_versions = Alert.objects.filter(alert_id__in=alert_ids).values_list(
+            "alert_id", "last_event_time"
+        )
+        dedupe_key = "\0".join(
+            f"{alert_id}:{last_event_time.isoformat() if last_event_time else ''}"
+            for alert_id, last_event_time in sorted(alert_versions)
+        )
+        attempt_key = hashlib.sha256(dedupe_key.encode("utf-8")).hexdigest()
         logger.info("[AlertAggregation] 持久化自动分配意图，告警数量: %s", len(alert_ids))
-        dispatch_alert_lifecycle(alert_ids, "created", auto_assign=True)
+        dispatch_alert_lifecycle(
+            alert_ids,
+            "created",
+            auto_assign=True,
+            auto_assign_dedupe_key=f"aggregation:{attempt_key}",
+        )
