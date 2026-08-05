@@ -2,6 +2,8 @@
 from typing import List
 from collections import defaultdict
 
+from django.db import transaction
+
 from apps.alerts.models.models import Alert, Event
 from apps.alerts.constants.constants import AlertStatus, EventAction, SessionStatus
 from apps.alerts.aggregation.recovery.match_key import build_recovery_match_key
@@ -126,7 +128,9 @@ class AlertRecoveryChecker:
             )
 
         from apps.alerts.service.reminder_service import ReminderService
+        from apps.alerts.service.recovery_notify import notify_alert_recovered
 
         ReminderService.stop_reminder_task(alert)
-        
+        transaction.on_commit(lambda a=alert: notify_alert_recovered(a))
+
         return True

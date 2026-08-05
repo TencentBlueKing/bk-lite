@@ -362,7 +362,7 @@ class TestMonitorObjectUpdate:
         child = MonitorObject.objects.get(name="UpdChild")
         assert child.parent_id == parent.id
 
-    def test_builtin_object_can_only_update_cleanup_policy(self, api_client):
+    def test_builtin_object_update_protects_definition_but_allows_cleanup_policy(self, api_client):
         obj = MonitorObject.objects.create(
             name="BuiltinCleanup", level="base", is_builtin=True, display_name="内置对象"
         )
@@ -416,6 +416,51 @@ class TestMonitorObjectUpdate:
         assert obj.cleanup_timeout_days == 30
         assert obj.cleanup_timeout_unit == MonitorObject.CLEANUP_TIMEOUT_UNIT_MINUTE
 
+    def test_builtin_object_accepts_hour_cleanup_timeout(self, api_client):
+        obj = MonitorObject.objects.create(
+            name="BuiltinHourCleanup",
+            level="base",
+            is_builtin=True,
+        )
+
+        resp = api_client.patch(
+            f"{BASE}/api/monitor_object/{obj.id}/",
+            {
+                "cleanup_policy": "timeout",
+                "cleanup_timeout_value": 12,
+                "cleanup_timeout_unit": "hour",
+            },
+            format="json",
+        )
+
+        assert resp.status_code == 200, resp.content
+        assert resp.json()["data"]["cleanup_timeout_value"] == 12
+        assert resp.json()["data"]["cleanup_timeout_unit"] == "hour"
+        obj.refresh_from_db()
+        assert obj.cleanup_timeout_days == 12
+        assert obj.cleanup_timeout_unit == MonitorObject.CLEANUP_TIMEOUT_UNIT_HOUR
+
+    def test_hour_cleanup_timeout_rejects_value_above_limit(self, api_client):
+        obj = MonitorObject.objects.create(
+            name="HourCleanupLimit",
+            level="base",
+            is_builtin=True,
+        )
+
+        resp = api_client.patch(
+            f"{BASE}/api/monitor_object/{obj.id}/",
+            {
+                "cleanup_policy": "timeout",
+                "cleanup_timeout_value": 721,
+                "cleanup_timeout_unit": "hour",
+            },
+            format="json",
+        )
+
+        assert resp.status_code == 400
+        obj.refresh_from_db()
+        assert obj.cleanup_policy == MonitorObject.CLEANUP_POLICY_NO_CLEANUP
+
 
 class TestMonitorObjectActions:
     def test_order(self, api_client, mocker):
@@ -448,7 +493,7 @@ class TestMonitorObjectActions:
         body = resp.json()
         assert body.get("result") is False or resp.status_code != 200
 
-    def test_builtin_visibility_is_read_only(self, api_client):
+    def test_builtin_visibility_can_be_configured(self, api_client):
         obj = MonitorObject.objects.create(
             name="BuiltinVisibility", level="base", is_builtin=True, is_visible=True
         )
@@ -456,9 +501,19 @@ class TestMonitorObjectActions:
             f"{BASE}/api/monitor_object/{obj.id}/visibility/",
             {"is_visible": False}, format="json",
         )
-        assert resp.status_code != 200
+        assert resp.status_code == 200, resp.content
         obj.refresh_from_db()
-        assert obj.is_visible is True
+        assert obj.is_visible is False
+
+    def test_builtin_object_cannot_be_deleted(self, api_client):
+        obj = MonitorObject.objects.create(
+            name="BuiltinProtected", level="base", is_builtin=True
+        )
+
+        resp = api_client.delete(f"{BASE}/api/monitor_object/{obj.id}/")
+
+        assert resp.status_code == 400
+        assert MonitorObject.objects.filter(id=obj.id).exists()
 
 
 class TestMonitorObjectTypeList:

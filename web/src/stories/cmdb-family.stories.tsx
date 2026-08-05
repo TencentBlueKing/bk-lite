@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from '@storybook/nextjs';
 import AutoAssociationMatchPairGroup from '@/components/auto-association-match-pair-group';
 import ChartEmptyState from '@/components/chart-empty-state';
 import CmdbConfigFileCompareDrawer from '@/app/cmdb/components/cmdb-config-file-compare-drawer';
-import CmdbCredentialPoolEditor from '@/app/cmdb/components/cmdb-credential-pool-editor';
+import CmdbCredentialPoolEditor from '@/app/cmdb/(pages)/assetManage/autoDiscovery/collection/profess/components/credentialPoolEditor';
 import CompactEmptyState from '@/components/compact-empty-state';
 import DetailListPanel from '@/components/detail-list-panel';
 import SectionHeader from '@/components/section-header';
@@ -103,6 +103,12 @@ const FamilyOverview = () => {
               <CmdbCredentialPoolEditor
                 credentialShape="ssh"
                 editMode
+                credentialHelp={{
+                  protocol: 'SSH',
+                  credentialKind: 'Target host operating-system account',
+                  instruction: 'Use an account that can sign in over SSH and run read-only collection commands.',
+                  defaultPort: '22',
+                }}
                 value={[
                   { username: 'root', password: '******', port: '22' },
                   { username: 'ops-runner', password: '******', port: '2222' },
@@ -116,6 +122,18 @@ const FamilyOverview = () => {
               <CmdbCredentialPoolEditor
                 credentialShape="snmp"
                 editMode
+                credentialHelp={{
+                  protocol: 'SNMP V2/V2C/V3',
+                  credentialKind: 'SNMP authentication parameters',
+                  instruction: 'V3 authPriv requires separate authentication and privacy algorithms and secrets.',
+                  defaultPort: 'UDP 161',
+                  fields: [
+                    { name: 'Authentication algorithm', description: 'Must match the device user.', defaultValue: 'SHA' },
+                    { name: 'Authentication password', description: 'Secret used to authenticate the V3 user.' },
+                    { name: 'Privacy algorithm', description: 'Required for authPriv.', defaultValue: 'AES' },
+                    { name: 'Privacy key', description: 'Secret used to encrypt authPriv traffic.' },
+                  ],
+                }}
                 value={[
                   {
                     version: 'v3',
@@ -138,6 +156,16 @@ const FamilyOverview = () => {
                 credentialShape="cloud"
                 editMode
                 showCount={false}
+                credentialHelp={{
+                  protocol: 'Alibaba Cloud SDK / API',
+                  credentialKind: 'AccessKey credentials',
+                  instruction: 'Use a read-only or least-privilege RAM identity.',
+                  fields: [
+                    { name: 'AccessKey ID', description: 'Identifier from RAM access control.' },
+                    { name: 'AccessKey Secret', description: 'Sensitive secret paired with the ID.' },
+                    { name: 'Region', description: 'Loaded after the credentials are validated.' },
+                  ],
+                }}
                 value={[
                   {
                     accessKey: 'AKIDEXAMPLE001',
@@ -151,6 +179,76 @@ const FamilyOverview = () => {
                   { label: 'cn-shanghai', value: 'cn-shanghai' },
                   { label: 'cn-beijing', value: 'cn-beijing' },
                 ]}
+              />
+            </div>
+
+            <div className="grid gap-4 xl:grid-cols-2">
+              <div className="space-y-2">
+                <div className="text-sm font-medium text-[var(--color-text-1)]">InfluxDB optional Operator Token</div>
+                <CmdbCredentialPoolEditor
+                  credentialShape="influxdb"
+                  editMode
+                  allowAdd={false}
+                  allowRemove={false}
+                  showCount={false}
+                  credentialHelp={{
+                    protocol: 'HTTP / HTTPS',
+                    credentialKind: 'Optional Operator Token',
+                    instruction: 'Leave Token empty for basic identification. Providing it enables full configuration collection and carries instance-wide privilege risk.',
+                    defaultPort: '8086',
+                    fields: [
+                      { name: 'Protocol', description: 'HTTPS is recommended for production.', defaultValue: 'HTTP', recommendedValue: 'HTTPS' },
+                      { name: 'Port', description: 'InfluxDB HTTP API listening port.', defaultValue: '8086' },
+                      { name: 'Operator Token', description: 'Optional elevated-privilege token.' },
+                    ],
+                  }}
+                  value={[{ scheme: 'https', port: 8086, token: '', verify_tls: true }]}
+                  onChange={() => undefined}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <div className="text-sm font-medium text-[var(--color-text-1)]">Platform HTTPS API</div>
+                <CmdbCredentialPoolEditor
+                  credentialShape="platform_api"
+                  editMode
+                  allowAdd={false}
+                  allowRemove={false}
+                  showCount={false}
+                  credentialHelp={{
+                    protocol: 'HTTPS API',
+                    credentialKind: 'OceanStor DeviceManager account',
+                    instruction: 'Use a read-only or least-privilege DeviceManager account.',
+                    defaultPort: '8088',
+                    fields: [
+                      { name: 'User', description: 'DeviceManager API username.' },
+                      { name: 'Password', description: 'Password for the API account.' },
+                      { name: 'Port', description: 'DeviceManager HTTPS API port.', defaultValue: '8088' },
+                      { name: 'Verify certificate', description: 'Keep enabled outside trusted self-signed environments.', defaultValue: 'Enabled', recommendedValue: 'Enabled' },
+                    ],
+                  }}
+                  value={[{ username: 'readonly-api', password: '******', port: 8088, verify_tls: true }]}
+                  onChange={() => undefined}
+                />
+              </div>
+            </div>
+
+            <div className="max-w-[360px] space-y-2">
+              <div className="text-sm font-medium text-[var(--color-text-1)]">Narrow drawer boundary</div>
+              <CmdbCredentialPoolEditor
+                credentialShape="sql"
+                defaultPort={5432}
+                credentialHelp={{
+                  protocol: 'PostgreSQL',
+                  credentialKind: 'Database account',
+                  instruction: 'Use an account that can read configuration and metadata.',
+                  defaultPort: '5432',
+                  fields: [
+                    { name: 'Port', description: 'PostgreSQL service port.', defaultValue: '5432' },
+                  ],
+                }}
+                value={[{ user: 'collector', password: '******', port: 5432 }]}
+                onChange={() => undefined}
               />
             </div>
           </div>

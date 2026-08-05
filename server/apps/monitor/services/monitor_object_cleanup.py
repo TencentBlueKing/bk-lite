@@ -28,11 +28,11 @@ class MonitorObjectCleanupPolicyService:
             timeout_value = timeout_days if timeout_days is not None else 1
         if timeout_unit is None:
             timeout_unit = MonitorObject.CLEANUP_TIMEOUT_UNIT_DAY
-        if timeout_unit not in dict(MonitorObject.CLEANUP_TIMEOUT_UNIT_CHOICES):
+        max_value = MonitorObject.CLEANUP_TIMEOUT_MAX_BY_UNIT.get(timeout_unit)
+        if max_value is None:
             raise ValidationAppException("超时时间单位不合法")
-        max_value = 1440 if timeout_unit == MonitorObject.CLEANUP_TIMEOUT_UNIT_MINUTE else 365
         if type(timeout_value) is not int or not 1 <= timeout_value <= max_value:
-            unit_label = "分钟" if timeout_unit == MonitorObject.CLEANUP_TIMEOUT_UNIT_MINUTE else "天"
+            unit_label = MonitorObject.CLEANUP_TIMEOUT_UNIT_LABELS[timeout_unit]
             raise ValidationAppException(f"超时时间必须是 1～{max_value} {unit_label}的整数")
 
         target.cleanup_policy = policy

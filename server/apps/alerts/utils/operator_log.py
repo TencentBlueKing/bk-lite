@@ -11,6 +11,8 @@ operator_log helper — 写入 OperatorLog 并经 NATS 镜像进平台操作日�
                         overview="创建告警分派策略[x]")
 """
 
+from django.db import transaction
+
 from apps.alerts.constants.constants import LogAction
 from apps.alerts.models.operator_log import OperatorLog
 from apps.core.logger import alert_logger as logger
@@ -46,6 +48,13 @@ def record_operator_log(**log_data):
     """写一条 OperatorLog 并镜像进平台操作日志。替代散落的 OperatorLog.objects.create(**log_data)。"""
     obj = OperatorLog.objects.create(**log_data)
     _mirror([obj])
+    return obj
+
+
+def record_operator_log_deferred_mirror(**log_data):
+    """写本地日志，并仅在当前事务成功提交后镜像到平台操作日志。"""
+    obj = OperatorLog.objects.create(**log_data)
+    transaction.on_commit(lambda: _mirror([obj]))
     return obj
 
 

@@ -22,6 +22,7 @@ import {
   type TableColumnsType,
 } from 'antd';
 import useApmApi from '@/app/apm/api';
+import dayjs from 'dayjs';
 import ApmRouteShell, { ApmSurface } from '@/app/apm/components/apm-route-shell';
 import CatalogState, { catalogErrorKind, type CatalogStateKind } from '@/app/apm/components/catalog-state';
 import type {
@@ -97,6 +98,7 @@ export default function ApmPoliciesPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [testingId, setTestingId] = useState<string | null>(null);
+  const [keyword, setKeyword] = useState('');
 
   const load = useCallback(() => {
     if (authLoading) return;
@@ -176,56 +178,56 @@ export default function ApmPoliciesPage() {
     [notificationChannels]
   );
 
+  const filteredPolicies = useMemo(() => {
+    const normalized = keyword.trim().toLocaleLowerCase();
+    if (!normalized) return policies;
+    return policies.filter((policy) => (
+      policy.name.toLocaleLowerCase().includes(normalized)
+      || policy.service_name.toLocaleLowerCase().includes(normalized)
+      || policy.service_namespace.toLocaleLowerCase().includes(normalized)
+    ));
+  }, [keyword, policies]);
+
   const columns: TableColumnsType<ApmPolicy> = [
     {
-      title: '策略',
+      title: '策略名称',
       dataIndex: 'name',
-      render: (value, policy) => (
+      render: (value) => <Typography.Text strong>{value}</Typography.Text>,
+    },
+    {
+      title: '监控对象',
+      render: (_, policy) => (
         <Space direction="vertical" size={0}>
-          <Typography.Text strong>{value}</Typography.Text>
-          <Typography.Text type="secondary">
-            {policy.service_namespace || '未归类应用'} / {policy.service_name} · {policy.environment || '未设置环境'}
-          </Typography.Text>
+          <Typography.Text>{policy.service_namespace || '未归类应用'} / {policy.service_name}</Typography.Text>
+          <Typography.Text type="secondary" className="text-xs">{policy.environment || '未设置环境'}</Typography.Text>
         </Space>
       ),
     },
     {
-      title: '条件',
-      responsive: ['sm'],
-      render: (_, policy) => (
-        <span className="font-mono">
-          {METRIC_LABELS[policy.metric_type]} {COMPARATOR_LABELS[policy.comparator]} {policy.threshold}
-        </span>
-      ),
-    },
-    {
-      title: '窗口',
-      width: 150,
-      responsive: ['lg'],
-      render: (_, policy) => `${policy.duration_window} 次命中 / ${policy.recovery_window} 次恢复`,
-    },
-    {
-      title: '级别',
-      dataIndex: 'severity',
-      width: 90,
-      responsive: ['lg'],
-      render: (value: ApmPolicySeverity) => (
-        <Tag bordered={false} color={{ critical: 'red', error: 'orange', warning: 'gold' }[value]}>{SEVERITY_LABELS[value]}</Tag>
-      ),
-    },
-    {
-      title: '状态',
-      width: 100,
-      render: (_, policy) => (
-        <Tag bordered={false} color={policy.state?.status === 'firing' ? 'error' : 'success'}>
-          {policy.state?.status === 'firing' ? '告警中' : '正常'}
-        </Tag>
-      ),
-    },
-    {
-      title: '启用',
-      width: 90,
+      title: '创建人',
+      dataIndex: 'created_by',
+      width: 120,
       responsive: ['md'],
+      render: (value) => value || '—',
+    },
+    {
+      title: '创建时间',
+      dataIndex: 'created_at',
+      width: 170,
+      responsive: ['lg'],
+      render: (value) => <span className="tabular-nums">{dayjs(value).format('YYYY-MM-DD HH:mm')}</span>,
+    },
+    {
+      title: '执行时间',
+      width: 170,
+      responsive: ['lg'],
+      render: (_, policy) => policy.state?.last_succeeded_at
+        ? <span className="tabular-nums">{dayjs(policy.state.last_succeeded_at).format('YYYY-MM-DD HH:mm')}</span>
+        : <Typography.Text type="secondary">从未执行</Typography.Text>,
+    },
+    {
+      title: '启停',
+      width: 90,
       render: (_, policy) => (
         <Switch
           checked={policy.is_enabled}
@@ -287,8 +289,8 @@ export default function ApmPoliciesPage() {
 
   return (
     <ApmRouteShell
-      title="APM 策略"
-      description="按服务与环境管理阈值策略；告警事实保存在 APM，通知通过系统管理公开渠道投递。"
+      title="告警策略"
+      description="新建、编辑并启停服务告警策略；通知继续使用系统管理中的公开渠道。"
       dependency="control"
     >
       <div className="flex flex-col gap-3">
@@ -304,14 +306,24 @@ export default function ApmPoliciesPage() {
                 告警中策略 · 每分钟评估，查询失败时保持上次状态
               </Typography.Text>
             </div>
-            <Button
-              type="primary"
-              icon={<PlusOutlined aria-hidden="true" />}
-              onClick={openCreate}
-              disabled={!services.length}
-            >
-              新建策略
-            </Button>
+            <Space wrap>
+              <Input.Search
+                allowClear
+                aria-label="搜索策略"
+                className="w-64"
+                placeholder="搜索策略名称或监控对象"
+                value={keyword}
+                onChange={(event) => setKeyword(event.target.value)}
+              />
+              <Button
+                type="primary"
+                icon={<PlusOutlined aria-hidden="true" />}
+                onClick={openCreate}
+                disabled={!services.length}
+              >
+                新建策略
+              </Button>
+            </Space>
           </div>
         </ApmSurface>
         <ApmSurface padding="none" className="overflow-hidden">
@@ -319,7 +331,7 @@ export default function ApmPoliciesPage() {
             <Table
               rowKey="id"
               columns={columns}
-              dataSource={policies}
+              dataSource={filteredPolicies}
               pagination={{
                 defaultPageSize: 20,
                 pageSizeOptions: [10, 20, 50, 100],

@@ -16,6 +16,7 @@ except ValueError:
     _MAX_ALERT_SNAPSHOTS = 500
 
 from django.db import IntegrityError, transaction
+from django.db.models import F
 from django.utils import timezone as django_timezone
 from django.utils.dateparse import parse_datetime
 
@@ -25,6 +26,7 @@ from apps.log.constants.alert_policy import AlertConstants
 from apps.log.constants.database import DatabaseConstants
 from apps.log.constants.web import WebConstants
 from apps.log.models.policy import Alert, AlertSnapshot, Event, EventRawData
+from apps.log.services.aggregate_group_identity import build_aggregate_group_identity
 from apps.log.services.alert_lifecycle_notify import LogAlertLifecycleNotifier
 from apps.log.tasks.utils.policy import period_to_seconds
 from apps.log.utils.log_group import LogGroupQueryBuilder
@@ -65,7 +67,10 @@ class LogPolicyScan:
 
     def _find_existing_events(self, event_ids, source_ids):
         existing_by_id = {event.id: event for event in Event.objects.filter(id__in=event_ids).select_related("alert")}
-        missing_source_ids = {source_id for event_id, source_id in zip(event_ids, source_ids) if event_id not in existing_by_id}
+        source_id_candidates = [self._normalize_source_id_candidates(source_id) for source_id in source_ids]
+        missing_source_ids = {
+            candidate for event_id, candidates in zip(event_ids, source_id_candidates) if event_id not in existing_by_id for candidate in candidates
+        }
         if not missing_source_ids:
             return existing_by_id, {}
 
@@ -88,6 +93,37 @@ class LogPolicyScan:
         for event in legacy_events.order_by("event_time"):
             legacy_by_source[event.source_id] = event
         return existing_by_id, legacy_by_source
+
+    def _normalize_source_id_candidates(self, source_ids):
+        if isinstance(source_ids, str):
+            source_ids = [source_ids]
+        return tuple(dict.fromkeys(source_id for source_id in source_ids if isinstance(source_id, str) and source_id))
+
+    def _get_event_source_id_candidates(self, event):
+        aliases = event.get("source_id_aliases", [])
+        if isinstance(aliases, str):
+            aliases = [aliases]
+        return self._normalize_source_id_candidates([event["source_id"], *aliases])
+
+    def _load_persisted_alias_claims(self, active_alerts, current_source_ids):
+        alerts_by_id = {alert.id: alert for alert in active_alerts}
+        if not alerts_by_id:
+            return {}, {}
+
+        claims_by_alias = {}
+        current_alerts = {}
+        claim_rows = (
+            Event.objects.filter(alert_id__in=alerts_by_id)
+            .exclude(source_id=F("alert__source_id"))
+            .values_list("alert_id", "source_id")
+            .distinct()
+        )
+        for alert_id, source_id in claim_rows:
+            alias = alerts_by_id[alert_id].source_id
+            claims_by_alias.setdefault(alias, set()).add(source_id)
+            if source_id in current_source_ids:
+                current_alerts[source_id] = alerts_by_id[alert_id]
+        return claims_by_alias, current_alerts
 
     def _get_keyword_sample_limit(self, alert_condition):
         """获取关键字告警样本条数限制"""
@@ -338,23 +374,21 @@ class LogPolicyScan:
                 if self._check_rule_conditions(aggregate_data, rule):
                     # 渲染告警名称模板
                     rendered_alert_name = self._render_alert_name(result, group_by)
-                    # 构建分组标识和source_id
-                    group_key = self._build_group_key(result, group_by)
-                    source_id = f"policy_{self.policy.id}_{group_key}"
-
-                    events.append(
-                        {
-                            "source_id": source_id,
-                            "level": self.policy.alert_level,
-                            "content": rendered_alert_name,
-                            "value": aggregate_data.get("count", 0),
-                            "raw_data": {
-                                "aggregate_result": aggregate_data,
-                                "rule": rule,
-                                "query_result": result,
-                            },
-                        }
-                    )
+                    identity = build_aggregate_group_identity(self.policy.id, result, group_by)
+                    event = {
+                        "source_id": identity.source_id,
+                        "level": self.policy.alert_level,
+                        "content": rendered_alert_name,
+                        "value": aggregate_data.get("count", 0),
+                        "raw_data": {
+                            "aggregate_result": aggregate_data,
+                            "rule": rule,
+                            "query_result": result,
+                        },
+                    }
+                    if identity.legacy_source_ids:
+                        event["source_id_aliases"] = list(identity.legacy_source_ids)
+                    events.append(event)
 
             return events
 
@@ -551,32 +585,6 @@ class LogPolicyScan:
             logger.warning(f"Failed to render alert name template '{alert_name}': {e}")
             return alert_name
 
-    def _build_group_key(self, result, group_by):
-        """根据分组字段构建分组标识"""
-        if not group_by:
-            return ""
-
-        group_values = []
-        for field in group_by:
-            field_value = result.get(field, "unknown")
-
-            # 处理各种数据类型，确保转换为字符串
-            if isinstance(field_value, list):
-                # 如果是列表，转换为逗号分隔的字符串
-                formatted_value = ",".join(str(item) for item in field_value)
-            elif isinstance(field_value, dict):
-                # 如果是字典，转换为键值对字符串
-                formatted_value = str(field_value)
-            elif field_value is None:
-                formatted_value = "null"
-            else:
-                # 其他类型直接转换为字符串
-                formatted_value = str(field_value)
-
-            group_values.append(f"{field}={formatted_value}")
-
-        return ", ".join(group_values)
-
     def _check_rule_conditions(self, aggregate_data, rule):
         """检查规则条件"""
         conditions = rule.get("conditions", [])
@@ -697,6 +705,24 @@ class LogPolicyScan:
             return False
 
     def create_events(self, events):
+        """创建事件；带兼容别名的聚合事件按策略串行认领别名。"""
+        if not events:
+            return []
+
+        if not any(event.get("source_id_aliases") for event in events):
+            return self._create_events(events)
+
+        with transaction.atomic():
+            # 旧身份没有唯一约束。按策略串行化新版本 worker 的“查询并认领”，
+            # 使相同旧身份在并发扫描中最多归属一个 g2 主身份。
+            type(self.policy).objects.select_for_update().only("id").get(id=self.policy.id)
+            event_objs, new_alerts, event_id_to_raw_data = self._create_events(events, defer_snapshots=True)
+
+        # 快照包含对象存储 IO，不占用策略锁；告警和事件已经原子提交。
+        self._create_snapshots_for_alerts(event_objs, new_alerts, events, event_id_to_raw_data)
+        return event_objs
+
+    def _create_events(self, events, defer_snapshots=False):
         """创建事件 - 优化版本，使用批量操作"""
         if not events:
             return []
@@ -704,19 +730,44 @@ class LogPolicyScan:
         try:
             # 1. 批量查询所有可能存在的活跃告警
             source_ids = [event["source_id"] for event in events]
-            existing_alerts_qs = Alert.objects.filter(
-                policy_id=self.policy.id,
-                source_id__in=source_ids,
-                status=AlertConstants.STATUS_NEW,
+            source_id_candidates = [self._get_event_source_id_candidates(event) for event in events]
+            lookup_source_ids = {source_id for candidates in source_id_candidates for source_id in candidates}
+            active_alerts = list(
+                Alert.objects.filter(
+                    policy_id=self.policy.id,
+                    source_id__in=lookup_source_ids,
+                    status=AlertConstants.STATUS_NEW,
+                )
             )
+            if any(len(candidates) > 1 for candidates in source_id_candidates):
+                # Alert 可能仍保存旧别名，而策略编辑会改变旧别名的拼接顺序。
+                # g2 Event 才是稳定主索引；不受扫描 cursor 的时间窗限制地反查其活动 Alert。
+                identity_alert_ids = (
+                    Event.objects.filter(
+                        policy_id=self.policy.id,
+                        source_id__in=source_ids,
+                        alert__status=AlertConstants.STATUS_NEW,
+                    )
+                    .values_list("alert_id", flat=True)
+                    .distinct()
+                )
+                active_alert_ids = {alert.id for alert in active_alerts}
+                for identity_alert in Alert.objects.filter(id__in=identity_alert_ids):
+                    if identity_alert.id not in active_alert_ids:
+                        active_alerts.append(identity_alert)
+                        active_alert_ids.add(identity_alert.id)
 
             # 手动构建映射表，因为source_id不是唯一字段
             # 对于同一个source_id可能有多个告警，我们取最新的一个
             existing_alerts = {}
-            for alert in existing_alerts_qs:
+            for alert in active_alerts:
                 source_id = alert.source_id
                 if source_id not in existing_alerts or alert.created_at > existing_alerts[source_id].created_at:
                     existing_alerts[source_id] = alert
+            claimed_source_ids_by_alias, claimed_alerts_by_source = self._load_persisted_alias_claims(
+                active_alerts, set(source_ids)
+            )
+            existing_alerts.update(claimed_alerts_by_source)
 
             logger.debug(f"Found {len(existing_alerts)} existing alerts for policy {self.policy.id}")
 
@@ -729,12 +780,27 @@ class LogPolicyScan:
             # 建立 event_id 到原始数据的映射，用于后续快照创建
             event_id_to_raw_data = {}
             event_ids = [self._build_event_id(source_id) for source_id in source_ids]
-            existing_events, legacy_events = self._find_existing_events(event_ids, source_ids)
+            existing_events, legacy_events = self._find_existing_events(event_ids, source_id_candidates)
 
-            for event in events:
+            for event, candidates in zip(events, source_id_candidates):
                 event_id = self._build_event_id(event["source_id"])
                 source_id = event["source_id"]
-                existing_event = existing_events.get(event_id) or legacy_events.get(source_id)
+                existing_event = existing_events.get(event_id)
+                if existing_event is None:
+                    for candidate in candidates:
+                        candidate_event = legacy_events.get(candidate)
+                        if candidate_event is None:
+                            continue
+                        claimed_source_ids = claimed_source_ids_by_alias.get(candidate, set())
+                        if candidate != source_id and claimed_source_ids and source_id not in claimed_source_ids:
+                            continue
+                        if candidate != source_id:
+                            claimed_source_ids_by_alias.setdefault(candidate, set()).add(source_id)
+                            # 保留旧 Event 供旧版本按 legacy source_id 重试；本次继续创建
+                            # 确定性 g2 Event，作为不会破坏回滚的持久化认领记录。
+                            continue
+                        existing_event = candidate_event
+                        break
 
                 if existing_event:
                     # 同一执行的旧 worker 可能在较新结果提交后才返回；旧结果只能复用，
@@ -764,9 +830,22 @@ class LogPolicyScan:
                         event_id_to_raw_data[existing_event.id] = event["raw_data"]
                     continue
 
-                if source_id in existing_alerts:
+                alert_obj = existing_alerts.get(source_id)
+                if alert_obj is None:
+                    for alias in candidates[1:]:
+                        candidate_alert = existing_alerts.get(alias)
+                        if candidate_alert is None:
+                            continue
+                        claimed_source_ids = claimed_source_ids_by_alias.get(alias, set())
+                        if claimed_source_ids and source_id not in claimed_source_ids:
+                            continue
+                        claimed_source_ids_by_alias.setdefault(alias, set()).add(source_id)
+                        alert_obj = candidate_alert
+                        existing_alerts[source_id] = alert_obj
+                        break
+
+                if alert_obj is not None:
                     # 存在活跃告警，准备更新
-                    alert_obj = existing_alerts[source_id]
                     if alert_obj.level != event["level"]:
                         # 级别变化属于显著变化，重置已通知标记以重新通知
                         alert_obj.notice = False
@@ -777,10 +856,18 @@ class LogPolicyScan:
                     alerts_to_update.append(alert_obj)
                 else:
                     # 不存在活跃告警，准备创建
+                    alert_source_id = source_id
+                    for alias in candidates[1:]:
+                        claimed_source_ids = claimed_source_ids_by_alias.get(alias, set())
+                        if claimed_source_ids and source_id not in claimed_source_ids:
+                            continue
+                        alert_source_id = alias
+                        claimed_source_ids_by_alias.setdefault(alias, set()).add(source_id)
+                        break
                     alert_obj = Alert(
                         id=uuid.uuid4().hex,
                         policy=self.policy,
-                        source_id=source_id,
+                        source_id=alert_source_id,
                         collect_type=self.policy.collect_type,
                         level=event["level"],
                         value=event.get("value"),
@@ -969,6 +1056,10 @@ class LogPolicyScan:
             # 快照写入在事务外执行：每条快照各自有 atomic 保护，且 S3JSONField 写 MinIO
             # 不应阻塞主事务；快照失败不影响告警/事件已提交的数据。
             event_objs = existing_event_objs + event_objs
+            if defer_snapshots:
+                logger.info(f"Prepared {len(event_objs)} idempotent events for policy {self.policy.id}")
+                return event_objs, alerts_to_create, event_id_to_raw_data
+
             self._create_snapshots_for_alerts(event_objs, alerts_to_create, events, event_id_to_raw_data)
 
             logger.info(f"Prepared {len(event_objs)} idempotent events for policy {self.policy.id}")
@@ -1018,7 +1109,7 @@ class LogPolicyScan:
                 self._update_alert_snapshot(
                     alert_id=alert_id,
                     policy_id=self.policy.id,
-                    source_id=first_event.source_id,
+                    source_id=first_event.alert.source_id,
                     event_objs=related_events,
                     event_raw_data_map=event_raw_data_map,
                     snapshot_time=self.scan_time,

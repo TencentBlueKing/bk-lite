@@ -1,10 +1,10 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { useParams, useSearchParams } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeftOutlined, SearchOutlined } from '@ant-design/icons';
-import { Button, Col, Row, Segmented, Select, Space, Table, Tag, Typography } from 'antd';
+import { Button, Col, message, Row, Segmented, Select, Space, Table, Tabs, Tag, Typography } from 'antd';
 import type { TableColumnsType } from 'antd';
 import dayjs from 'dayjs';
 import useApmApi from '@/app/apm/api';
@@ -41,6 +41,7 @@ const RANGE_MS: Record<TimeRange, number> = {
 
 export default function ApmServiceDetailPage() {
   const params = useParams<{ serviceId: string }>();
+  const router = useRouter();
   const searchParams = useSearchParams();
   const { getService, getServiceRed, isLoading: authLoading } = useApmApi();
   const [service, setService] = useState<ApmService>();
@@ -207,6 +208,23 @@ export default function ApmServiceDetailPage() {
               </Space>
             </div>
           </ApmSurface>
+          <Tabs
+            activeKey="overview"
+            items={[
+              { key: 'overview', label: '概览' },
+              { key: 'traces', label: '调用链' },
+              { key: 'errors', label: '错误' },
+              { key: 'runtime', label: '运行时' },
+              { key: 'deployments', label: '部署' },
+              { key: 'slo', label: 'SLO' },
+            ]}
+            onTabClick={(key) => {
+              if (key === 'traces') router.push(traceHref);
+              else if (key === 'errors') router.push(`/apm/errors?service_name=${encodeURIComponent(service.name)}&environment=${encodeURIComponent(environment ?? '')}`);
+              else if (key === 'slo') router.push('/apm/slo');
+              else if (key !== 'overview') message.info('该视图尚未进入当前 APM MVP');
+            }}
+          />
           {metricState === 'ready' && red ? (
             <div className="flex flex-col gap-4">
               <Row gutter={[16, 16]}>
@@ -303,7 +321,6 @@ export default function ApmServiceDetailPage() {
                   dataSource={red.top_endpoints}
                   pagination={false}
                   locale={{ emptyText: '当前时间窗暂无端点指标' }}
-                  scroll={{ x: 760 }}
                 />
               </ApmSurface>
             </div>

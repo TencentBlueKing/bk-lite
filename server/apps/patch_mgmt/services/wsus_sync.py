@@ -23,6 +23,7 @@ import winrm
 from django.utils import timezone
 
 from apps.patch_mgmt.models import PatchSource
+from apps.patch_mgmt.utils.architecture import X86_64
 
 logger = logging.getLogger("app")
 
@@ -300,6 +301,7 @@ def sync_wsus(source: PatchSource) -> dict:
             defaults={
                 "kb_number": normalized_kb,
                 "product_list": upd.products or [],
+                "architectures": [X86_64],
                 "ms_bulletin": (upd.security_bulletins[0] if upd.security_bulletins else ""),
             },
         )

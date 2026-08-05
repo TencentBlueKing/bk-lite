@@ -398,6 +398,27 @@ def test_retrieve_rejects_channel_outside_user_team(api_client, authenticated_us
 
 
 @pytest.mark.django_db
+def test_viewset_delegates_channel_access_to_common_service(authenticated_user, channel):
+    request = MagicMock(user=authenticated_user)
+    viewset = IMNotificationChannelViewSet()
+
+    with patch(
+        "apps.system_mgmt.viewset.im_notification_channel_viewset.filter_accessible_im_channels",
+        return_value=IMNotificationChannel.objects.none(),
+    ) as filter_channels, patch(
+        "apps.system_mgmt.viewset.im_notification_channel_viewset.can_access_im_channel",
+        return_value=False,
+    ) as can_access:
+        assert list(viewset._filter_by_accessible_teams(IMNotificationChannel.objects.all(), authenticated_user)) == []
+        is_valid, error_response = viewset._validate_channel_permission(request, channel)
+
+    filter_channels.assert_called_once()
+    can_access.assert_called_once_with(authenticated_user, channel)
+    assert is_valid is False
+    assert error_response.status_code == 403
+
+
+@pytest.mark.django_db
 def test_create_rejects_team_outside_user_scope(api_client, authenticated_user, ready_im_instance):
     authenticated_user.group_list = [{"id": 1, "name": "Team A"}]
     authenticated_user.save(update_fields=["group_list"])

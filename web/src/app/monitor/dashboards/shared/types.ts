@@ -3,13 +3,17 @@ import { ChartData } from '@/app/monitor/types';
 
 export type ProfessionalDashboardComponent = ComponentType;
 
-export interface ProfessionalDashboardRegistryItem {
+/** 轻量元数据：供权限/URL/侧栏使用，不绑定组件，避免拖入仪表盘图。 */
+export interface ProfessionalDashboardMetaItem {
   key: string;
   aliases?: string[];
   groupKey: string;
   objectName: string;
   objectDisplayName?: string;
   inheritedPermissionPath?: string;
+}
+
+export interface ProfessionalDashboardRegistryItem extends ProfessionalDashboardMetaItem {
   component: ProfessionalDashboardComponent;
 }
 

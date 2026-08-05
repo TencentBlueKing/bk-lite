@@ -21,10 +21,14 @@ class QCloudNodeParams(BaseNodeParams):
         """
         _secret_id = f"PASSWORD_secret_id_{self._instance_id}"
         _secret_key = f"PASSWORD_secret_key_{self._instance_id}"
-        return {
+        credential = {
             "secret_id": "${" + _secret_id + "}",
             "secret_key": "${" + _secret_key + "}",
         }
+        regions = self.credential.get("regions") or {}
+        if isinstance(regions, dict) and regions.get("resource_id"):
+            credential["region_id"] = regions["resource_id"]
+        return credential
 
     def env_config(self, *args, **kwargs):
         secret_value = self.credential.get("accessSecret") or self.credential.get("access_secret", "")
@@ -43,9 +47,9 @@ class QCloudNodeParams(BaseNodeParams):
         "access_secret":"5762zpOSM5dz84vsla"}
 
         """
-        raw_credential = raw_credential or {}
-        access_key = raw_credential.pop("access_key", None)
-        access_secret = raw_credential.pop("access_secret", None)
+        raw_credential = cls.primary_credential(raw_credential)
+        access_key = raw_credential.get("access_key")
+        access_secret = raw_credential.get("access_secret")
         return {
             "secret_id": access_key or raw_credential.get("accessKey", ""),
             "secret_key": access_secret or raw_credential.get("accessSecret"),

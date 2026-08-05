@@ -2,6 +2,9 @@ from copy import deepcopy
 
 from apps.cmdb.collect.extensions import get_collect_enterprise_extension
 from apps.cmdb.constants.constants import COLLECT_OBJ_TREE
+from apps.cmdb.services.collect_credential_contract import (
+    get_collect_credential_contract,
+)
 
 HOST_COLLECT_OBJECTS_MERGED_TO_HOST = {"aix", "hpux", "domestic_linux"}
 
@@ -61,6 +64,13 @@ def get_collect_obj_tree():
                 continue
             existing_children.append(child)
 
+    for category in tree:
+        for child in category.get("children", []):
+            contract = get_collect_credential_contract(child.get("model_id"))
+            if not contract:
+                continue
+            child["encrypted_fields"] = contract["encrypted_fields"]
+            child["credential_schema"] = contract
     return tree
 
 

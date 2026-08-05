@@ -4,7 +4,6 @@ import os
 
 from core.config import load_config
 from dotenv import load_dotenv
-from service.embedded_ansible import run_embedded_ansible
 from service.nats_service import AnsibleNATSService
 from service.runtime import configure_ansible_environment, find_config_path, find_dotenv_path, repair_ansible_windows_collection_layout
 
@@ -36,6 +35,8 @@ def main() -> None:
     )
     args = parser.parse_args()
     if args.internal_ansible_cli:
+        from service.embedded_ansible import run_embedded_ansible
+
         raise SystemExit(run_embedded_ansible(args.internal_ansible_cli, args.ansible_args))
 
     config = load_config(find_config_path(args.config))

@@ -1,79 +1,52 @@
 # -- coding: utf-8 --
-import json
-import os
-
 from django.core.management import BaseCommand
-from apps.core.logger import cmdb_logger as logger
+from django.core.management.base import CommandError
 
-from apps.cmdb.models import OidMapping
+from apps.cmdb.services.oid_catalog import OidCatalogError, load_oid_catalog, sync_oid_catalog
+from apps.core.logger import cmdb_logger as logger
 
 
 class Command(BaseCommand):
-    help = "初始化网络设备 OID 映射数据"
+    help = "校验并同步网络设备 SOID 内置映射"
 
     def add_arguments(self, parser):
+        parser.add_argument("--dry-run", action="store_true", help="仅输出差异，不写数据库")
         parser.add_argument(
-            "--force",
-            action="store_true",
-            help="强制重新初始化,即使已存在内置数据",
+            "--force", action="store_true", help="兼容参数：重新比较完整目录，不删除数据",
         )
 
     def handle(self, *args, **options):
-        force = options.get("force", False)
+        dry_run = bool(options["dry_run"])
+        if options["force"]:
+            self.stdout.write(self.style.WARNING("--force 已改为安全全量比较，不会删除内置记录"))
+        try:
+            entries = load_oid_catalog()
+            result = sync_oid_catalog(entries, dry_run=dry_run)
+        except OidCatalogError as exc:
+            raise CommandError(str(exc)) from exc
+        except Exception as exc:
+            logger.error("OID_SYNC_FAILED")
+            raise CommandError("OID_SYNC_FAILED") from exc
 
-        # 检查是否已经初始化过
-        if OidMapping.objects.filter(built_in=True).exists() and not force:
-            logger.info("内置 OID 数据已存在,跳过初始化。使用 --force 参数可强制重新初始化。")
-            self.stdout.write(
-                self.style.WARNING("内置 OID 数据已存在,跳过初始化")
+        prefix = "DRY-RUN " if dry_run else ""
+        self.stdout.write(
+            self.style.SUCCESS(
+                f"{prefix}SOID同步完成: 新增={result.created}, 更新={result.updated}, "
+                f"未变化={result.unchanged}, 用户覆盖={len(result.custom_override_oids)}, "
+                f"目录外遗留={len(result.stale_builtin_oids)}"
             )
-            return
-
-        # 获取 OID 文件路径
-        oid_file_path = os.path.join(
-            os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
-            "support-files",
-            "systemoid.json",
         )
-
-        if not os.path.exists(oid_file_path):
-            error_msg = f"OID 文件不存在: {oid_file_path}"
-            logger.error(error_msg)
-            self.stdout.write(self.style.ERROR(error_msg))
-            raise FileNotFoundError(error_msg)
-
-        # 读取 OID 数据
-        logger.info(f"开始读取 OID 文件: {oid_file_path}")
-        with open(oid_file_path, encoding="utf-8") as r:
-            net_work_oid_mapping = json.loads(r.read())
-
-        # 如果是强制模式,先删除现有内置数据
-        if force:
-            delete_count = OidMapping.objects.filter(built_in=True).count()
-            OidMapping.objects.filter(built_in=True).delete()
-            logger.info(f"强制模式: 已删除 {delete_count} 条现有内置数据")
-            self.stdout.write(
-                self.style.WARNING(f"已删除 {delete_count} 条现有内置数据")
-            )
-
-        # 批量创建 OID 映射
-        bulk_data = []
-        for data in net_work_oid_mapping.values():
-            device_type = data["FirstTypeId"].lower()
-            params = {
-                "oid": data["OID"],
-                "model": data["model"],
-                "brand": data["brand"],
-                "device_type": device_type,
-                "built_in": True,
-            }
-            bulk_data.append(OidMapping(**params))
-
-        logger.info(f"准备批量创建 {len(bulk_data)} 条 OID 映射记录")
-        created_objects = OidMapping.objects.bulk_create(
-            bulk_data, batch_size=100, ignore_conflicts=True
-        )
-
-        success_msg = f"成功初始化 {len(created_objects)} 条 OID 映射记录"
-        logger.info(success_msg)
-        self.stdout.write(self.style.SUCCESS(success_msg))
+        if dry_run:
+            for entry in result.created_entries:
+                self.stdout.write(f"新增 OID {entry.oid}: brand={entry.brand}, model={entry.model}, " f"device_type={entry.device_type}")
+            for entry in result.updated_entries:
+                self.stdout.write(
+                    f"更新 OID {entry.oid}: brand={entry.old_brand} -> {entry.new_brand}, "
+                    f"model={entry.old_model} -> {entry.new_model}, "
+                    "device_type="
+                    f"{entry.old_device_type} -> {entry.new_device_type}"
+                )
+            for oid in result.custom_override_oids:
+                self.stdout.write(f"用户覆盖 OID {oid}")
+            for oid in result.stale_builtin_oids:
+                self.stdout.write(f"目录外遗留 OID {oid}")

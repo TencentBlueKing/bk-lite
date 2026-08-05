@@ -26,6 +26,11 @@ class NodeMgmtSyncViewSet(AuthViewSet):
         "delete_success",
         "association_error",
         "association_success",
+        "raw_total",
+        "raw_host",
+        "raw_process",
+        "raw_dropped",
+        "raw_retained",
     )
     RUN_STATUSES = {
         "running",
@@ -120,6 +125,7 @@ class NodeMgmtSyncViewSet(AuthViewSet):
         result = {field: cls._safe_count(source.get(field)) for field in cls.COUNT_FIELDS}
         result["message"] = ""
         result["last_time"] = cls._safe_time(source.get("last_time"))
+        result["raw_truncated"] = source.get("raw_truncated") is True
         return result
 
     @classmethod
@@ -210,7 +216,12 @@ class NodeMgmtSyncViewSet(AuthViewSet):
                 {"sync", "collect", "sync_fallback", "none"},
                 "none",
             ),
-            "display_schema": "host_collect",
+            "display_schema": cls._safe_choice(
+                source.get("display_schema"),
+                {"host_collect", "host_collect_v2"},
+                "host_collect",
+            ),
+            "can_view_raw_detail": False,
             "message": cls._safe_summary(source.get("message")),
             "summary": cls._safe_summary(source.get("summary")),
             "detail": cls._safe_detail(source.get("detail")),
@@ -266,7 +277,29 @@ class NodeMgmtSyncViewSet(AuthViewSet):
     @action(methods=["get"], detail=False, url_path="task/display")
     def display(self, request, *args, **kwargs):
         payload = NodeMgmtSyncService.get_display_payload()
-        return WebUtils.response_success(self._project_read_payload(request, payload, display=True))
+        projected = self._project_read_payload(request, payload, display=True)
+        projected["can_view_raw_detail"] = bool(request.user.is_superuser)
+        return WebUtils.response_success(projected)
+
+    @HasPermission("auto_collection-View")
+    @action(methods=["get"], detail=False, url_path="task/display/rows")
+    def display_rows(self, request, *args, **kwargs):
+        if not request.user.is_superuser:
+            return WebUtils.response_403("仅平台管理员可查看节点采集原始明细")
+        try:
+            payload = NodeMgmtSyncService.get_snapshot_rows(
+                run_id=request.GET.get("run_id"),
+                bucket=request.GET.get("bucket", "raw_data"),
+                page=request.GET.get("page", "1"),
+                page_size=request.GET.get("page_size", "20"),
+                search=request.GET.get("search", ""),
+            )
+        except ValueError as exc:
+            return WebUtils.response_error(
+                error_message=str(exc),
+                status_code=status.HTTP_400_BAD_REQUEST,
+            )
+        return WebUtils.response_success(payload)
 
     @HasPermission("auto_collection-Execute")
     @action(methods=["post"], detail=False, url_path="task/run_sync")

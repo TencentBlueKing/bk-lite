@@ -56,6 +56,21 @@ SNMP 凭据按版本区分，请先确定 `version` 再填写对应字段。
 ### 参数说明
 - `has_network_topo`：是否开启拓扑发现（布尔）。开启后在采集接口的基础上，额外发现设备接口之间的连接关系（基于 ARP 表 / 接口表）。
 
+### SOID 匹配与目录同步
+- 设备品牌、型号和类型只按完整 `sysObjectID` 精确匹配，不按厂商 OID 前缀或 `sysDescr` 猜测。
+- `verified` 记录来自可复核的厂商官方产品 MIB 或产品文档；`legacy-compatible` 记录用于保留历史识别能力，不代表已经取得同等级别的公开产品身份依据。
+- 升级前执行 `python manage.py init_oid --dry-run` 可查看稳定排序的完整差异，包括新增及其目标值、更新字段的前后值、用户覆盖、目录外遗留和汇总数量；该命令不会写数据库。
+- 正常执行 `batch_init` 或 `python manage.py init_oid` 会幂等同步内置目录：新增缺失项、原地纠正内置项、保留未变化项和目录外遗留项。重复同步不会删除后重建记录。
+- 用户在 SOID 管理中维护的自定义记录（`built_in=False`）始终优先；与内置目录 OID 相同的自定义记录会被报告为“用户覆盖”，不会被同步改写。
+- `--force` 仅为兼容旧自动化保留，仍执行安全的全量比较，不会删除或重建内置记录。
+- 未知 SOID 会保留原始 OID，品牌和型号标记为 `未知`，设备类型按 `switch` 兼容处理。
+
+#### 发布、验证与回滚
+1. 发布前在待升级版本和数据库副本上执行 `python manage.py init_oid --dry-run`，重点复核设备类型变化、用户覆盖和目录外遗留。
+2. 生产同步前备份数据库，并确认备份覆盖 `OidMapping` 数据及用户自定义 SOID；保留 dry-run 输出作为变更审计记录。
+3. 发布后执行正常 `batch_init`（或单独执行 `python manage.py init_oid`），再执行一次 `--dry-run`；此时应无新增和更新，除用户覆盖外的已同步内置项均计入未变化，自定义项仍计入用户覆盖。
+4. 应用版本回滚不会自动反向恢复已经纠正的内置映射。需要恢复旧映射时，从同步前数据库备份恢复 `OidMapping` 数据；用户自定义记录虽不会被同步覆盖，也应纳入同一备份和核对流程。
+
 ### 采集内容（字段字典）
 **网络设备（network）**
 
@@ -63,7 +78,7 @@ SNMP 凭据按版本区分，请先确定 `version` 再填写对应字段。
 | :--- | :--- |
 | inst_name | 实例展示名（形如 `{ip}-设备类型`） |
 | ip_addr | 设备管理 IP |
-| soid | sysObjectID（SNMP 标准设备对象标识），用于在 OID 库中匹配设备型号/品牌；未收录则 `model`/`brand` 为空 |
+| soid | sysObjectID（SNMP 标准设备对象标识），用于在 OID 库中匹配设备型号、品牌和类型；未知 SOID 会保留原始 OID，品牌和型号标记为 `未知`，设备类型按 `switch` 兼容处理 |
 | port | SNMP 端口 |
 | sysdescr | 设备系统描述（sysDescr） |
 | sysname | 设备系统名称（sysName） |
@@ -89,4 +104,4 @@ SNMP 凭据按版本区分，请先确定 `version` 再填写对应字段。
 - `interface belong network`：接口归属设备。
 - `interface connect interface`：接口间连接关系（仅在开启 `has_network_topo` 时发现，基于 ARP 表 / 接口表）。
 
-> 补充说明：`model`、`brand` 依赖 `soid`（sysObjectID）在 OID 库中的匹配结果，若设备型号未收录则可能为空；`syslocation`、`syscontact` 等字段在设备未配置时采集结果为空。
+> 补充说明：`model`、`brand` 依赖 `soid`（sysObjectID）在 OID 库中的匹配结果；`syslocation`、`syscontact` 等字段在设备未配置时采集结果为空。

@@ -17,7 +17,7 @@ import TopMenu from '@/app/(core)/components/top-menu';
 import { Watermark, message } from 'antd';
 import Spin from '@/components/spin';
 import { portalBrandingDefaults, usePortalBranding } from '@/hooks/usePortalBranding';
-import { getProfessionalDashboardPermissionPath } from '@/app/monitor/dashboards/registry';
+import { getProfessionalDashboardPermissionPath } from '@/app/monitor/dashboards/metadata';
 import { isProfessionalDashboardRoute } from '@/app/monitor/dashboards/shared/utils';
 import '@/styles/globals.css';
 import { MenuItem } from '@/types/index'
@@ -146,6 +146,18 @@ const LayoutWithProviders = ({ children }: { children: React.ReactNode }) => {
   const router = useRouter();
   const pathname = usePathname();
   const [isAllowed, setIsAllowed] = useState(false);
+  const [isHeaderScrolled, setIsHeaderScrolled] = useState(false);
+
+  useEffect(() => {
+    const updateHeaderBackground = () => {
+      setIsHeaderScrolled(window.scrollY > 0);
+    };
+
+    updateHeaderBackground();
+    window.addEventListener('scroll', updateHeaderBackground, { passive: true });
+
+    return () => window.removeEventListener('scroll', updateHeaderBackground);
+  }, []);
 
   const isAuthenticated = authContextAuthenticated
     && !(session?.user as any)?.temporary_pwd;
@@ -155,6 +167,7 @@ const LayoutWithProviders = ({ children }: { children: React.ReactNode }) => {
   const excludedPaths = ['/no-permission', '/no-found', '/', ...authPaths];
   const hasResolvedPathname = pathname !== null;
   const isAuthRoute = Boolean(pathname && authPaths.includes(pathname));
+  const isResponsiveAppRoute = pathname?.startsWith('/apm');
   const isDashboardRoute = isProfessionalDashboardRoute(pathname);
   const isDashboardShareRoute = pathname?.startsWith('/ops-analysis/share/');
   const isDashboardRenderRoute = pathname?.startsWith(
@@ -292,9 +305,11 @@ const LayoutWithProviders = ({ children }: { children: React.ReactNode }) => {
   }
 
   const layoutContent = (
-    <div className={`flex flex-col ${isDashboardShareRoute ? 'h-screen overflow-hidden' : 'min-h-screen'} ${!isAuthRoute ? 'min-w-[1280px]' : ''}`}>
+    <div className={`flex flex-col ${isDashboardShareRoute ? 'h-screen overflow-hidden' : 'min-h-screen'} ${!isAuthRoute && !isResponsiveAppRoute ? 'min-w-[1280px]' : ''}`}>
       {isAuthenticated && hasResolvedPathname && !isAuthRoute && (
-        <header className="sticky top-0 left-0 right-0 flex justify-between items-center header-bg">
+        <header
+          className={`sticky top-0 left-0 right-0 flex justify-between items-center header-bg ${isHeaderScrolled ? 'header-bg-scrolled' : ''}`}
+        >
           <TopMenu hideMainMenu={hideTopMenu} />
         </header>
       )}
@@ -323,6 +338,7 @@ const LayoutWithProviders = ({ children }: { children: React.ReactNode }) => {
       gap={[120, 120]}
       rotate={-24}
       zIndex={20}
+      style={{ overflow: 'visible' }}
       font={{
         color: 'rgba(93,103,121,0.14)',
         fontSize: 14,

@@ -1,9 +1,8 @@
 import { useCallback } from 'react';
 import useApiClient from '@/utils/request';
 import type {
-  ApmIngestSource,
-  ApmIngestSourceInput,
-  ApmIngestSourceWithCredential,
+  ApmApplication,
+  ApmApplicationInput,
   ApmIngestSnippet,
   ApmIngestSnippetInput,
   ApmEvent,
@@ -12,6 +11,8 @@ import type {
   ApmService,
   ApmServiceInstance,
   ApmServiceRed,
+  ApmSlo,
+  ApmSloInput,
   ApmPolicy,
   ApmPolicyInput,
   ApmPolicyQueryResult,
@@ -21,6 +22,7 @@ import type {
   ApmTraceDetail,
   ApmTracePage,
   ApmTraceSearchParams,
+  ApmTopologyGraph,
   CatalogStatus,
 } from '@/app/apm/types';
 
@@ -84,36 +86,21 @@ const useApmApi = () => {
     [post]
   );
 
-  const getIngestSources = useCallback(() => get<ApmIngestSource[]>('/apm/ingest-sources/'), [get]);
+  const getApplications = useCallback(() => get<ApmApplication[]>('/apm/applications/'), [get]);
 
-  const createIngestSource = useCallback(
-    (payload: ApmIngestSourceInput) =>
-      post<ApmIngestSourceWithCredential>('/apm/ingest-sources/', payload),
+  const createApplication = useCallback(
+    (payload: ApmApplicationInput) => post<ApmApplication>('/apm/applications/', payload),
     [post]
   );
 
-  const rotateIngestSource = useCallback(
-    (sourceId: string) =>
-      post<ApmIngestSourceWithCredential>(`/apm/ingest-sources/${sourceId}/rotate/`),
-    [post]
-  );
-
-  const disableIngestSource = useCallback(
-    (sourceId: string) => post<ApmIngestSource>(`/apm/ingest-sources/${sourceId}/disable/`),
-    [post]
-  );
-
-  const setIngestSourceOrganizations = useCallback(
-    (sourceId: string, organizationIds: number[]) =>
-      put<ApmIngestSource>(`/apm/ingest-sources/${sourceId}/organizations/`, {
-        organization_ids: organizationIds,
-      }),
+  const updateApplication = useCallback(
+    (applicationId: string, payload: ApmApplicationInput) =>
+      put<ApmApplication>(`/apm/applications/${applicationId}/`, payload),
     [put]
   );
 
   const getIngestSnippet = useCallback(
-    (sourceId: string, payload: ApmIngestSnippetInput) =>
-      post<ApmIngestSnippet>(`/apm/ingest-sources/${sourceId}/snippet/`, payload),
+    (payload: ApmIngestSnippetInput) => post<ApmIngestSnippet>('/apm/integration-config/', payload),
     [post]
   );
 
@@ -127,6 +114,25 @@ const useApmApi = () => {
     [get]
   );
 
+  const getSlos = useCallback(() => get<ApmSlo[]>('/apm/slos/'), [get]);
+
+  const createSlo = useCallback(
+    (payload: ApmSloInput) => post<ApmSlo>('/apm/slos/', payload),
+    [post]
+  );
+
+  const updateSlo = useCallback(
+    (sloId: string, payload: Partial<ApmSloInput>) => patch<ApmSlo>(`/apm/slos/${sloId}/`, payload),
+    [patch]
+  );
+
+  const deleteSlo = useCallback((sloId: string) => del(`/apm/slos/${sloId}/`), [del]);
+
+  const setSloEnabled = useCallback(
+    (sloId: string, enabled: boolean) => post<ApmSlo>(`/apm/slos/${sloId}/${enabled ? 'enable' : 'disable'}/`),
+    [post]
+  );
+
   const getTraces = useCallback(
     (params: ApmTraceSearchParams) => get<ApmTracePage>('/apm/traces/', { params }),
     [get]
@@ -134,6 +140,12 @@ const useApmApi = () => {
 
   const getTrace = useCallback(
     (traceId: string) => get<ApmTraceDetail>(`/apm/traces/${traceId}/`),
+    [get]
+  );
+
+  const getTopology = useCallback(
+    (params: { started_at: string; ended_at: string; environment?: string }) =>
+      get<ApmTopologyGraph>('/apm/topology/', { params }),
     [get]
   );
 
@@ -203,16 +215,20 @@ const useApmApi = () => {
     setInstanceArchived,
     setServiceOrganizations,
     setServiceArchived,
-    getIngestSources,
-    createIngestSource,
-    rotateIngestSource,
-    disableIngestSource,
-    setIngestSourceOrganizations,
+    getApplications,
+    createApplication,
+    updateApplication,
     getIngestSnippet,
     getHealth,
     getServiceRed,
+    getSlos,
+    createSlo,
+    updateSlo,
+    deleteSlo,
+    setSloEnabled,
     getTraces,
     getTrace,
+    getTopology,
     getPolicies,
     createPolicy,
     updatePolicy,

@@ -1,21 +1,17 @@
-"""H3C CAS 私有云采集 stub plugin — 框架占位,无真实 SDK 实现。
+"""华三 UIS (h3c_cas) 社区占位 — 真实采集在企业版 cmdb_enterprise.collect.h3c_cas。
 
-【v5 Task 3.5】2026-07-14
-- H3C CAS(H3C Cloud Automation System)是紫光华山私有云 IaaS 平台,本期无 SDK 实现
-- 框架占位 plugin,等用户对接真实 REST API
-- e2e 走 placeholder 模式:fixture 标 _placeholder_reason=plugin_stub
+社区保留注册位与 e2e placeholder；企业版 priority=20 覆盖本 stub。
 """
 from apps.cmdb.collection.plugins.base import AutoRegisterCollectionPluginMixin
 from apps.cmdb.constants.constants import CollectPluginTypes
 
 
 class H3CCASCollectionPlugin(AutoRegisterCollectionPluginMixin):
-    """H3C CAS 私有云 stub plugin — 无 metric_names / field_mappings 真实实现。"""
+    """社区 stub：无 metric_names / field_mappings；企业版实现 UIS REST 采集。"""
     supported_task_type = CollectPluginTypes.CLOUD
     supported_model_id = "h3c_cas"
     plugin_source = "community"
     priority = 1
 
-    # stub:无真实 SDK,只能 placeholder
     metric_names = []
     field_mappings = {}

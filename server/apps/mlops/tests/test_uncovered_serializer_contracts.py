@@ -294,6 +294,29 @@ def _model_classes(suffix, basename):
     )
 
 
+@pytest.mark.parametrize(("suffix", "basename"), ALGORITHMS[:4])
+def test_legacy_dataset_release_metadata_without_algorithm_is_readable(
+    serializer_context, suffix, basename
+):
+    model_module = _module("models", suffix)
+    dataset = getattr(model_module, f"{basename}Dataset")(id=1, name="dataset", team=[1])
+    release = getattr(model_module, f"{basename}DatasetRelease")(
+        id=2,
+        name="legacy",
+        dataset=dataset,
+        version="v1",
+        dataset_file="",
+        metadata={"train_samples": 1, "total_samples": 1},
+    )
+
+    data = getattr(_module("serializers", suffix), f"{basename}DatasetReleaseSerializer")(
+        release, context=serializer_context
+    ).data
+
+    assert data["metadata"] == {"train_samples": 1, "total_samples": 1}
+    assert "sample_count_algorithm" not in data["metadata"]
+
+
 @pytest.mark.parametrize(
     ("suffix", "basename"),
     [

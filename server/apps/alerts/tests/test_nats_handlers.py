@@ -400,6 +400,46 @@ def test_get_alert_status_distribution_returns_active_status_labels(user_info):
 
 
 @pytest.mark.django_db
+def test_get_alert_status_distribution_aggregates_multiple_alerts_per_status(user_info):
+    """同状态下多条告警必须正确聚合。
+
+    Alert.Meta.ordering 含 updated_at；若不在聚合前 order_by()，部分数据库会把排序列
+    加入 GROUP BY，导致每个状态被拆成多条 count=1，dict 覆盖后恒为 1（issue #4478）。
+    """
+    now = timezone.now()
+    for i, status in enumerate(
+        [
+            AlertStatus.UNASSIGNED,
+            AlertStatus.UNASSIGNED,
+            AlertStatus.UNASSIGNED,
+            AlertStatus.PENDING,
+            AlertStatus.PENDING,
+            AlertStatus.PROCESSING,
+        ]
+    ):
+        alert = Alert.objects.create(
+            alert_id=f"S{i}",
+            level="0",
+            title="t",
+            content="c",
+            fingerprint=f"fp-status-{i}",
+            team=[1],
+            status=status,
+        )
+        # 错开 updated_at，放大默认排序对 GROUP BY 的干扰
+        Alert.objects.filter(pk=alert.pk).update(updated_at=now - datetime.timedelta(minutes=i))
+
+    result = N.get_alert_status_distribution(user_info=user_info)
+
+    assert result["result"] is True
+    assert result["data"] == [
+        {"name": "未分派", "value": 3},
+        {"name": "待响应", "value": 2},
+        {"name": "处理中", "value": 1},
+    ]
+
+
+@pytest.mark.django_db
 def test_get_alert_level_trend_returns_multiseries_by_level(user_info):
     Level.objects.create(
         level_id=0,

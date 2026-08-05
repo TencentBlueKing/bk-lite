@@ -148,6 +148,20 @@ class IntegrationInstanceSerializer(UsernameSerializer):
     def to_representation(self, instance):
         data = super().to_representation(instance)
         data["config"] = instance.get_masked_config()
+        manifest = get_provider_registry().get(instance.provider_key)
+        if manifest is None:
+            return data
+
+        capability_status = dict(data.get("capability_status") or {})
+        capability_enabled = dict(data.get("capability_enabled") or {})
+        for capability in manifest.capabilities:
+            capability_status.setdefault(
+                capability.key,
+                IntegrationInstanceStatusChoices.PENDING_VERIFICATION,
+            )
+            capability_enabled.setdefault(capability.key, True)
+        data["capability_status"] = capability_status
+        data["capability_enabled"] = capability_enabled
         return data
 
     @staticmethod

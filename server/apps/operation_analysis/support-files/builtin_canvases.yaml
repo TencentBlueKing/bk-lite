@@ -13,10 +13,10 @@ meta:
   object_counts:
     dashboards: 3
     topologies: 1
-    screens: 1
+    screens: 2
     reports: 0
     architectures: 0
-    datasources: 19
+    datasources: 20
     namespaces: 1
 dashboards:
 - key: dashboard::CMDB仪表盘_内置
@@ -2116,9 +2116,74 @@ screens:
     - 告警状态分布::alert/get_alert_status_distribution
     - 告警源事件数 TOP N::alert/get_alert_source_event_top
     namespace_keys: []
+- key: screen::3D机房大屏_内置
+  name: 3D机房大屏_内置
+  desc: 基于 CMDB 机房、机柜和设备数据展示的 3D 机房大屏，支持在组件内切换机房
+  other: {}
+  view_sets:
+    items:
+    - h: 1080
+      w: 1920
+      x: 0
+      y: 0
+      id: builtin-room3d-main
+      type: widget
+      title: 3D机房
+      zIndex: 1
+      chartType: room3D
+      valueConfig:
+        chartType: room3D
+        dataSource: CMDB 3D机房布局::cmdb/get_room3d_layout
+        chartThemeMode: screen-dark
+        appearance:
+          frame: bare
+    viewport:
+      theme: screen-dark
+      width: 1920
+      height: 1080
+      background:
+        key: tech-grid
+        type: builtIn
+    decorations:
+      title: 3D机房大屏
+      showClock: false
+      showTitle: false
+  refs:
+    datasource_keys:
+    - CMDB 3D机房布局::cmdb/get_room3d_layout
+    namespace_keys:
+    - 默认命名空间
 reports: []
 architectures: []
 datasources:
+- key: CMDB 3D机房布局::cmdb/get_room3d_layout
+  name: CMDB 3D机房布局
+  rest_api: cmdb/get_room3d_layout
+  desc: 查询指定 CMDB 机房的 3D 机柜布局数据
+  is_active: true
+  params:
+  - name: server_room_id
+    type: string
+    value: ''
+    alias_name: 机房ID
+    filterType: params
+    inputConfig:
+      control: select
+      componentSwitch: true
+      optionsSource:
+        type: dynamic
+        sourceRef:
+          type: rest_api
+          value: cmdb/get_room_list
+        valueField: _id
+        labelField: inst_name
+  tags:
+  - CMDB
+  chart_type:
+  - room3D
+  field_schema: []
+  namespace_keys:
+  - 默认命名空间
 - key: CMDB 变更趋势::cmdb/get_change_trend
   name: CMDB 变更趋势
   rest_api: cmdb/get_change_trend

@@ -28,7 +28,7 @@ def test_nats_listener_and_dispatch_reject_wechat_user_register(monkeypatch, set
     subscribed = []
 
     class FakeNats:
-        async def subscribe(self, subject, queue, cb):
+        async def subscribe(self, subject, queue, cb, **kwargs):
             subscribed.append(subject)
 
     async def fake_get_nc_client(client):

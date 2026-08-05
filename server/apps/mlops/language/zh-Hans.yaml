@@ -83,6 +83,7 @@ error:
   system_configuration_error: "系统配置错误，请联系管理员"
   mlflow_tracker_url_not_configured: "环境变量 MLFLOW_TRACKER_URL 未配置"
   algorithm_config_not_found: "未找到算法配置：{algorithm}"
+  container_image_reference_invalid: "请输入合法的容器镜像引用"
   form_config_must_be_object: "form_config 必须是一个对象"
   hyperopt_config_must_be_array: "hyperopt_config 必须是一个数组"
   hyperopt_config_item_must_be_object: "hyperopt_config 中的每项必须是对象"

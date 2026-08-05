@@ -8,19 +8,14 @@ services:
       apm-otel-collector:
         condition: service_started
     environment:
-      APM_SERVER_UPSTREAM: ${APM_SERVER_UPSTREAM:-http://host.docker.internal:8000}
       APM_INGEST_RATE: ${APM_INGEST_RATE:-20r/s}
       APM_INGEST_BURST: ${APM_INGEST_BURST:-40}
       APM_MAX_REQUEST_BODY: ${APM_MAX_REQUEST_BODY:-8m}
     ports:
       - "${APM_OTLP_HTTP_BIND:-0.0.0.0}:${APM_OTLP_HTTP_PORT:-4318}:8080"
       - "${APM_OTLP_GRPC_BIND:-0.0.0.0}:${APM_OTLP_GRPC_PORT:-4317}:8081"
-    extra_hosts:
-      - host.docker.internal:host-gateway
     volumes:
       - ./nginx/apm.conf.template:/etc/nginx/templates/apm.conf.template:ro
-    tmpfs:
-      - /var/cache/nginx/apm-auth:size=16m,mode=0700
     healthcheck:
       test: [CMD, wget, -q, -O, /dev/null, http://127.0.0.1:8080/healthz]
       interval: 10s

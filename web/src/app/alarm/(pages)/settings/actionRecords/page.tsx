@@ -163,6 +163,9 @@ const ActionRecords: React.FC = () => {
         dataIndex: 'created_at',
         key: 'created_at',
         width: 180,
+        // TODO(timezone): 与全站 convertToLocalizedTime 约定不一致——当前原样显示后端 DRF 输出的用户时区串，
+        // 数值恰好正确，但属隐式依赖。后续统一为 convertToLocalizedTime 以消除约定分裂。
+        // 注意：告警详情 actionTimeline.tsx 对同一数据源已用 convertToLocalizedTime，两处显示路径不同。
       },
     ],
     [triggerEventLabelMap]

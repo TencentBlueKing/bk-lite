@@ -24,7 +24,8 @@ import {
   formatMetricValue,
   buildPreviousPeriodTimeValues,
   getPeriodCompare,
-  useLoadSequence
+  useLoadSequence,
+  fetchDashboardInstancePages
 } from '../../shared/utils';
 import {
   StatCard,
@@ -166,7 +167,10 @@ export default function K3sClusterDashboardPage() {
     (async () => {
       try {
         setInstanceLoading(true);
-        const data = await getInstanceListRef.current(monitorObjectId, { page_size: -1 });
+        const data = await fetchDashboardInstancePages(
+          getInstanceListRef.current,
+          monitorObjectId
+        );
         if (!active) return;
         const map = new Map<string, InstanceOption>();
         (data?.results || []).forEach((item: any) => {

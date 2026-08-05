@@ -73,5 +73,5 @@ class AlertSourceModelSerializer(serializers.ModelSerializer):
         last_event = obj.event_set.order_by("-received_at").first()
         if not last_event or not last_event.received_at:
             return ""
-        # 如果需要格式化时间，可以在这里进行
-        return last_event.received_at.strftime(format_time)
+        from django.utils import timezone
+        return timezone.localtime(last_event.received_at).strftime(format_time)

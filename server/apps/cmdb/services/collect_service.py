@@ -15,8 +15,10 @@ from apps.cmdb.models import CREATE_INST, DELETE_INST, EXECUTE, UPDATE_INST
 from apps.cmdb.models.change_record import COLLECT_AUTOMATION_CHANGE
 from apps.cmdb.models.collect_model import CollectModels
 from apps.cmdb.node_configs.config_factory import NodeParamsFactory
+from apps.cmdb.services.collect_credential_contract import API_SECRET_MASK
 from apps.cmdb.services.collect_credential_pool_service import CollectCredentialPoolService
 from apps.cmdb.services.collect_hit_state_service import CollectHitStateService
+from apps.cmdb.services.encrypt_collect_password import get_collect_model_passwords
 from apps.cmdb.tasks.celery_tasks import sync_collect_task
 from apps.cmdb.utils.base import get_current_team_from_request
 from apps.cmdb.utils.change_record import create_change_record
@@ -320,39 +322,60 @@ class CollectModelService(object):
         task_type = getattr(instance, "task_type", "")
         if not credential and not instance.is_k8s and task_type != CollectPluginTypes.IP:
             raise BaseAppException("采集凭据不能为空！")
-        if credential and "regions" in credential:
-            regions = credential.pop("regions")
-            if not credential:
-                # 说明之修改了regions
-                data["credential"] = instance.decrypt_credentials
-                data["credential"]["regions"] = regions
-            else:
-                data["credential"]["regions"] = regions
-        else:
-            old_credential = instance.decrypt_credentials
-            if credential is None:
-                data["credential"] = old_credential
-                return
-            if isinstance(credential, list):
-                old_pool = old_credential if isinstance(old_credential, list) else []
-                old_pool_map = {item.get("credential_id"): dict(item) for item in old_pool if isinstance(item, dict) and item.get("credential_id")}
-                merged_pool = []
-                for item in credential:
-                    if not isinstance(item, dict):
-                        raise BaseAppException("采集凭据格式错误！")
-                    credential_id = item.get("credential_id")
-                    merged = dict(old_pool_map.get(credential_id, {}))
-                    merged.update(item)
-                    merged_pool.append(merged)
-                data["credential"] = merged_pool
-                return
-
-            if not isinstance(old_credential, dict):
-                old_credential = {}
-            if not isinstance(credential, dict):
-                raise BaseAppException("采集凭据格式错误！")
-            old_credential.update(credential)
+        old_credential = instance.decrypt_credentials
+        if credential is None:
             data["credential"] = old_credential
+            return
+        encrypted_fields = set(
+            get_collect_model_passwords(
+                collect_model_id=getattr(instance, "model_id", ""),
+                driver_type=getattr(instance, "driver_type", None),
+            )
+        )
+
+        def without_masked_secrets(item):
+            return {
+                key: value
+                for key, value in item.items()
+                if not (
+                    key in encrypted_fields
+                    and value == API_SECRET_MASK
+                )
+            }
+
+        if isinstance(credential, list):
+            old_pool = old_credential if isinstance(old_credential, list) else []
+            legacy_single_credential = (
+                dict(old_credential)
+                if isinstance(old_credential, dict) and len(credential) == 1
+                else {}
+            )
+            legacy_single_credential.pop("credential_id", None)
+            old_pool_map = {
+                item.get("credential_id"): dict(item)
+                for item in old_pool
+                if isinstance(item, dict) and item.get("credential_id")
+            }
+            merged_pool = []
+            for item in credential:
+                if not isinstance(item, dict):
+                    raise BaseAppException("采集凭据格式错误！")
+                credential_id = item.get("credential_id")
+                merged = dict(
+                    old_pool_map.get(credential_id)
+                    or legacy_single_credential
+                )
+                merged.update(without_masked_secrets(item))
+                merged_pool.append(merged)
+            data["credential"] = merged_pool
+            return
+
+        if not isinstance(old_credential, dict):
+            old_credential = {}
+        if not isinstance(credential, dict):
+            raise BaseAppException("采集凭据格式错误！")
+        old_credential.update(without_masked_secrets(credential))
+        data["credential"] = old_credential
 
     @classmethod
     def schedule_first_collection_if_needed(

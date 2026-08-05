@@ -5,7 +5,6 @@ import json
 import os
 from datetime import UTC, datetime, timedelta
 from typing import Any
-from uuid import UUID
 
 import requests
 
@@ -38,13 +37,6 @@ def _status_from_tags(tags: dict[str, object]) -> str:
     if value in {"error", "status_code_error", "2"} or error_tag is True or str(error_tag).casefold() in {"1", "true"}:
         return "error"
     return "ok"
-
-
-def _source_id(attributes: dict[str, object]) -> UUID | None:
-    try:
-        return UUID(str(attributes.get("bk.ingest_source.id", "")))
-    except (TypeError, ValueError):
-        return None
 
 
 def _encode_cursor(started_at: datetime) -> str:
@@ -199,14 +191,12 @@ class VictoriaTracesTraceStore:
                     ),
                     instance_id=str(resource_attributes.get("service.instance.id") or "") or None,
                     kind=str(attributes.get("span.kind", "unspecified")).removeprefix("SPAN_KIND_").casefold(),
-                    ingest_source_id=_source_id(resource_attributes),
                 )
             )
         if not spans:
             return None
         spans.sort(key=lambda item: (item.started_at, item.span_id))
         root = next((item for item in spans if item.parent_span_id is None), spans[0])
-        root_attributes = dict(root.attributes)
         return TraceDetail(
             trace_id=trace_id,
             spans=tuple(spans),
@@ -214,7 +204,6 @@ class VictoriaTracesTraceStore:
             service_name=root.service_name,
             environment=root.environment,
             instance_id=root.instance_id,
-            ingest_source_id=_source_id(root_attributes),
             truncated=len(raw_spans) > _RAW_SPAN_PARSE_LIMIT,
         )
 
@@ -248,5 +237,4 @@ class VictoriaTracesTraceStore:
             status="error" if any(span.status == "error" for span in detail.spans) else "ok",
             root_span_name=root.name,
             span_count=len(detail.spans),
-            ingest_source_id=_source_id(dict(matching_span.attributes)),
         )

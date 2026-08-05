@@ -50,9 +50,10 @@ class TimeoutChecker:
         session_status: observing -> confirmed
         保持 Alert 处于活跃状态（不自动关闭）
         """
-        alert.session_status = SessionStatus.CONFIRMED
-        alert.save(update_fields=["session_status", "updated_at"])
-        TimeoutChecker._trigger_auto_assignment(alert)
+        with transaction.atomic():
+            alert.session_status = SessionStatus.CONFIRMED
+            alert.save(update_fields=["session_status", "updated_at"])
+            TimeoutChecker._trigger_auto_assignment(alert)
 
         logger.info(
             "[AlertRecovery] 会话窗口超时确认: alert_id=%s, fingerprint=%s, session_end_time=%s",
@@ -73,22 +74,18 @@ class TimeoutChecker:
 
     @staticmethod
     def _trigger_auto_assignment_for_alert_ids(alert_ids):
-        """在事务提交后批量触发自动分派"""
+        """批量持久化自动分派意图；调用方负责事务边界。"""
         if not alert_ids:
             return
 
         unique_alert_ids = list(dict.fromkeys(alert_ids))
+        from apps.alerts.service.alert_lifecycle import dispatch_alert_lifecycle
 
-        def _dispatch():
-            from apps.alerts.service.alert_lifecycle import dispatch_alert_lifecycle
-
-            dispatch_alert_lifecycle(unique_alert_ids, "created", auto_assign=True)
-            logger.info(
-                "[AlertRecovery] 策略变更确认后持久化自动分派意图: count=%s",
-                len(unique_alert_ids),
-            )
-
-        transaction.on_commit(_dispatch)
+        dispatch_alert_lifecycle(unique_alert_ids, "created", auto_assign=True)
+        logger.info(
+            "[AlertRecovery] 策略变更确认后持久化自动分派意图: count=%s",
+            len(unique_alert_ids),
+        )
 
     @staticmethod
     def confirm_observing_alerts_by_strategy(strategy_id: int):
@@ -114,19 +111,22 @@ class TimeoutChecker:
         confirmed_alert_ids = []
         from apps.alerts.utils.queryset import iter_queryset_in_pk_batches
 
-        for batch in iter_queryset_in_pk_batches(observing_alerts, batch_size=200):
-            for alert in batch:
-                alert.session_status = SessionStatus.CONFIRMED
-                alert.save(update_fields=["session_status", "updated_at"])
-                confirmed_count += 1
-                confirmed_alert_ids.append(alert.alert_id)
+        with transaction.atomic():
+            for batch in iter_queryset_in_pk_batches(observing_alerts, batch_size=200):
+                for alert in batch:
+                    alert.session_status = SessionStatus.CONFIRMED
+                    alert.save(update_fields=["session_status", "updated_at"])
+                    confirmed_count += 1
+                    confirmed_alert_ids.append(alert.alert_id)
 
-                logger.info(
-                    "[AlertRecovery] 策略变更确认告警: strategy_id=%s, alert_id=%s, fingerprint=%s",
-                    strategy_id, alert.alert_id, alert.fingerprint,
-                )
+                    logger.info(
+                        "[AlertRecovery] 策略变更确认告警: strategy_id=%s, alert_id=%s, fingerprint=%s",
+                        strategy_id, alert.alert_id, alert.fingerprint,
+                    )
 
-        TimeoutChecker._trigger_auto_assignment_for_alert_ids(confirmed_alert_ids)
+            TimeoutChecker._trigger_auto_assignment_for_alert_ids(
+                confirmed_alert_ids
+            )
 
         logger.info(
             "[AlertRecovery] 策略变更确认完成: strategy_id=%s, 确认告警数=%s",

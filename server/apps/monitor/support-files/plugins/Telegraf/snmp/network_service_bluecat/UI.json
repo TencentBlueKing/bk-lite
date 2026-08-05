@@ -49,14 +49,22 @@
       "type": "input",
       "required": true,
       "default_value": "public",
-      "label_en": "Community"
+      "label_en": "Community",
+      "dependency": {
+        "field": "version",
+        "value": 2
+      }
     },
     {
       "name": "sec_name",
       "label": "名称",
       "type": "input",
       "required": true,
-      "label_en": "Name"
+      "label_en": "Name",
+      "dependency": {
+        "field": "version",
+        "value": 3
+      }
     },
     {
       "name": "sec_level",
@@ -81,7 +89,11 @@
           "label_en": "authPriv"
         }
       ],
-      "label_en": "Level"
+      "label_en": "Level",
+      "dependency": {
+        "field": "version",
+        "value": 3
+      }
     },
     {
       "name": "auth_protocol",
@@ -89,14 +101,56 @@
       "type": "input",
       "required": false,
       "default_value": "SHA",
-      "label_en": "Auth Protocol"
+      "label_en": "Auth Protocol",
+      "dependency": {
+        "field": [
+          "version",
+          "sec_level"
+        ],
+        "conditions": [
+          [
+            {
+              "equals": 3
+            }
+          ],
+          [
+            {
+              "in": [
+                "authNoPriv",
+                "authPriv"
+              ]
+            }
+          ]
+        ]
+      }
     },
     {
       "name": "ENV_AUTH_PASSWORD",
       "label": "认证密码",
       "type": "password",
       "required": false,
-      "label_en": "Auth Password"
+      "label_en": "Auth Password",
+      "dependency": {
+        "field": [
+          "version",
+          "sec_level"
+        ],
+        "conditions": [
+          [
+            {
+              "equals": 3
+            }
+          ],
+          [
+            {
+              "in": [
+                "authNoPriv",
+                "authPriv"
+              ]
+            }
+          ]
+        ]
+      }
     },
     {
       "name": "priv_protocol",
@@ -104,14 +158,50 @@
       "type": "input",
       "required": false,
       "default_value": "AES",
-      "label_en": "Privacy Protocol"
+      "label_en": "Privacy Protocol",
+      "dependency": {
+        "field": [
+          "version",
+          "sec_level"
+        ],
+        "conditions": [
+          [
+            {
+              "equals": 3
+            }
+          ],
+          [
+            {
+              "equals": "authPriv"
+            }
+          ]
+        ]
+      }
     },
     {
       "name": "ENV_PRIV_PASSWORD",
       "label": "加密密码",
       "type": "password",
       "required": false,
-      "label_en": "Privacy Password"
+      "label_en": "Privacy Password",
+      "dependency": {
+        "field": [
+          "version",
+          "sec_level"
+        ],
+        "conditions": [
+          [
+            {
+              "equals": 3
+            }
+          ],
+          [
+            {
+              "equals": "authPriv"
+            }
+          ]
+        ]
+      }
     },
     {
       "name": "timeout",

@@ -28,6 +28,7 @@ import { useConditionList } from '@/app/monitor/hooks';
 import useMonitorApi from '@/app/monitor/api';
 import useViewApi from '@/app/monitor/api/view';
 import useApiClient from '@/utils/request';
+import { runWithConcurrency } from '@/app/monitor/dashboards/shared/utils/concurrency';
 import { useSearchParams } from 'next/navigation';
 import {
   ListItem,
@@ -40,6 +41,7 @@ import {
   buildGroupedMetricSelectOptions,
   METRIC_SELECT_POPUP_CLASSNAME,
 } from '@/app/monitor/components/metricSelectOptions';
+import { loadMonitorPluginsByObjectCached } from '@/app/monitor/utils/monitorPluginCache';
 import {
   InstanceItem,
   PluginItem,
@@ -308,11 +310,13 @@ const QueryPanel = forwardRef<QueryPanelRef, QueryPanelProps>(
       pluginAbortControllerRef.current[key] = abortController;
       try {
         setPluginLoading((prev) => ({ ...prev, [key]: true }));
-        const data = await getMonitorPlugin(
-          { monitor_object_id: objectId },
-          { signal: abortController.signal }
-        );
-        const plugins = (data || []) as PluginItem[];
+        const plugins = (await loadMonitorPluginsByObjectCached(
+          objectId,
+          () => getMonitorPlugin({ monitor_object_id: objectId })
+        )) as PluginItem[];
+        if (abortController.signal.aborted) {
+          return [];
+        }
         setPluginsMap((prev) => ({ ...prev, [key]: plugins }));
         const selectedPlugin =
           preferredPluginId ||
@@ -561,8 +565,10 @@ const QueryPanel = forwardRef<QueryPanelRef, QueryPanelProps>(
 
       setConditionValueLoadingMap((prev) => ({ ...prev, [cacheKey]: true }));
       try {
-        const responses = await Promise.all(
-          group.instanceIds.map((instanceId) =>
+        const responses = await runWithConcurrency(
+          group.instanceIds,
+          4,
+          (instanceId) =>
             getMetricsInstanceQuery({
               monitor_object_id: group.object,
               instance_id: instanceId,
@@ -571,7 +577,6 @@ const QueryPanel = forwardRef<QueryPanelRef, QueryPanelProps>(
               limit: 200,
               mode: 'limited'
             })
-          )
         );
         const series = responses.flatMap(
           (resp) => resp?.data?.result || []
