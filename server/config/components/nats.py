@@ -5,6 +5,8 @@ from pathlib import Path
 NATS_SERVERS = os.getenv("NATS_SERVERS", "")
 NATS_NAMESPACE = os.getenv("NATS_NAMESPACE", "bklite")
 NATS_JETSTREAM_ENABLED = False
+NATS_HANDLER_CONCURRENCY = max(1, int(os.getenv("NATS_HANDLER_CONCURRENCY", "64")))
+NATS_HANDLER_QUEUE_SIZE = max(1, int(os.getenv("NATS_HANDLER_QUEUE_SIZE", "1024")))
 
 
 def _create_ssl_context():
