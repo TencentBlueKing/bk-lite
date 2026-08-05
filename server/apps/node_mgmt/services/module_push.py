@@ -139,7 +139,6 @@ class ModulePushService:
         attempts_limit = max(1, int(attempts_limit))
 
         node = Node.objects.select_related("cloud_region").get(id=node_id)
-        envelope = cls._build_envelope(node)
         allowed_org_ids = list(actor_scope.get("allowed_org_ids") or [])
         operator = actor_scope.get("operator") or ""
 
@@ -147,11 +146,13 @@ class ModulePushService:
         results: dict[str, Any] = {}
 
         for target in targets:
+            # 每个 target 前重建信封，带上前面 target 已回填的对端 ID
+            envelope = cls._build_envelope(node)
             if target == "cmdb":
                 status = cls._push_with_retries(
                     target="cmdb",
-                    push_fn=lambda: CMDB().ingest_from_source(
-                        **envelope,
+                    push_fn=lambda env=envelope: CMDB().ingest_from_source(
+                        **env,
                         allowed_org_ids=allowed_org_ids,
                         operator=operator,
                     ),
@@ -161,8 +162,8 @@ class ModulePushService:
             elif target == "monitor":
                 status = cls._push_with_retries(
                     target="monitor",
-                    push_fn=lambda: MonitorLinkage().ingest_from_source(
-                        **envelope,
+                    push_fn=lambda env=envelope: MonitorLinkage().ingest_from_source(
+                        **env,
                         allowed_org_ids=allowed_org_ids,
                         operator=operator,
                     ),
@@ -183,6 +184,13 @@ class ModulePushService:
         node.push_status = push_status
         # 回填字段已在 on_success 写入 node 实例；统一落库
         node.save(update_fields=["cmdb_id", "monitor_id", "push_status", "updated_at"])
+
+        # 两侧均已关联时，把完整 link_ids 回写对端（补 monitor_id / cmdb_id，不新建、不级联未选模块）
+        cls._best_effort_sync_mutual_link_ids(
+            node,
+            actor_scope=actor_scope,
+            max_attempts=1,
+        )
         return results
 
     @classmethod
@@ -254,13 +262,20 @@ class ModulePushService:
             "cloud_region_name": cloud_region.name if cloud_region else "",
             "organization_ids": org_ids,
         }
+        link_ids: dict[str, Any] = {"node_id": str(node.id)}
+        cmdb_id = str(getattr(node, "cmdb_id", "") or "").strip()
+        monitor_id = str(getattr(node, "monitor_id", "") or "").strip()
+        if cmdb_id:
+            link_ids["cmdb_id"] = cmdb_id
+        if monitor_id:
+            link_ids["monitor_id"] = monitor_id
         envelope = IngestEnvelope(
             source_module="node_mgmt",
             source_id=str(node.id),
             event_type=EVENT_UPSERT,
             occurred_at=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
             raw=raw,
-            link_ids={"node_id": str(node.id)},
+            link_ids=link_ids,
         )
         return {
             "source_module": envelope.source_module,
@@ -270,6 +285,60 @@ class ModulePushService:
             "raw": envelope.raw,
             "link_ids": envelope.link_ids,
         }
+
+    @classmethod
+    def _best_effort_sync_mutual_link_ids(
+        cls,
+        node: Node,
+        *,
+        actor_scope: dict[str, Any],
+        max_attempts: int = 1,
+    ) -> None:
+        """节点已持有 cmdb_id + monitor_id 时，把完整 link_ids 回写两侧。
+
+        只补关联指针，不改变 push_status；失败仅打日志。
+        """
+        cmdb_id = str(getattr(node, "cmdb_id", "") or "").strip()
+        monitor_id = str(getattr(node, "monitor_id", "") or "").strip()
+        if not cmdb_id or not monitor_id:
+            return
+
+        envelope = cls._build_envelope(node)
+        allowed_org_ids = list(actor_scope.get("allowed_org_ids") or [])
+        operator = actor_scope.get("operator") or ""
+        attempts_limit = max(1, int(max_attempts))
+
+        for target, push_fn in (
+            (
+                "cmdb",
+                lambda: CMDB().ingest_from_source(
+                    **envelope,
+                    allowed_org_ids=allowed_org_ids,
+                    operator=operator,
+                ),
+            ),
+            (
+                "monitor",
+                lambda: MonitorLinkage().ingest_from_source(
+                    **envelope,
+                    allowed_org_ids=allowed_org_ids,
+                    operator=operator,
+                ),
+            ),
+        ):
+            status = cls._push_with_retries(
+                target=target,
+                push_fn=push_fn,
+                max_attempts=attempts_limit,
+                on_success=lambda _result: None,
+            )
+            if status.state != "ok":
+                logger.warning(
+                    "[ModulePush] mutual link sync %s failed node_id=%s error=%s",
+                    target,
+                    node.id,
+                    status.error,
+                )
 
     @classmethod
     def _build_lifecycle_envelope(cls, node: Node) -> dict[str, Any]:

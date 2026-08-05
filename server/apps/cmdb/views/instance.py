@@ -439,7 +439,9 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
         from apps.cmdb.services.operation_service import OperationConflict, OperationService
 
         model_id = request.data.get("model_id")
-        instance_info = request.data.get("instance_info")
+        from apps.cmdb.services.module_ingest import strip_system_link_fields
+
+        instance_info = strip_system_link_fields(request.data.get("instance_info"))
         if not model_id or not self._is_model_visible(model_id):
             return WebUtils.response_error("模型不存在", status_code=status.HTTP_404_NOT_FOUND)
         allowed_org_ids = self._get_allowed_org_ids(request)
@@ -585,7 +587,11 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
             user_groups = format_group_params(current_team)
         allowed_org_ids = self._get_allowed_org_ids(request)
 
-        update_attr = {k: v for k, v in request.data.items() if k != "_scenario"}
+        from apps.cmdb.services.module_ingest import strip_system_link_fields
+
+        update_attr = strip_system_link_fields(
+            {k: v for k, v in request.data.items() if k != "_scenario"}
+        )
         scenario = request.data.get("_scenario") or ORDINARY_ATTRIBUTE_CHANGE
         if scenario not in INSTANCE_EDIT_CORRECTABLE_SCENARIOS:
             scenario = ORDINARY_ATTRIBUTE_CHANGE

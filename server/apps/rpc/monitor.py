@@ -34,8 +34,11 @@ class Monitor(object):
         return return_data
 
     def ingest_from_source(self, **kwargs):
-        """跨模块推送写入监控（node_id / cmdb_id 归并）。"""
-        return self.ingest_client.run("monitor_ingest_from_source", **kwargs)
+        """跨模块推送写入监控（node_id / cmdb_id 归并）。
+
+        NATS handler 签名为 monitor_ingest_from_source(params)，须整包为 params。
+        """
+        return self.ingest_client.run("monitor_ingest_from_source", params=kwargs)
 
 
 class MonitorOperationAnaRpc(BaseOperationAnaRpc):

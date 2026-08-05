@@ -117,5 +117,9 @@ class CMDB(object):
         return return_data
 
     def ingest_from_source(self, **kwargs):
-        """跨模块推送写入 CMDB（host：node_id 优先 + 存量认领）。"""
-        return self.client.run("ingest_from_source", **kwargs)
+        """跨模块推送写入 CMDB（host：node_id 优先 + 存量认领）。
+
+        NATS handler 签名为 ingest_from_source(params)，须整包为 params，
+        不可把 envelope 字段摊成顶层 kwargs（否则 TypeError: unexpected keyword）。
+        """
+        return self.client.run("ingest_from_source", params=kwargs)

@@ -166,6 +166,8 @@
       "assetIp": "IP信息",
       "hostIp": "主机IP",
       "hostName": "主机名称",
+      "nodeId": "节点ID",
+      "cmdbId": "CMDB ID",
       "processNameRuleHint": "名称列展示接入配置中的进程别名（process_name），与主机名称分列展示。",
       "filterProcess": "过滤进程",
       "filterProcessPlaceholder": "选择进程名称（可多选）",

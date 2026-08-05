@@ -233,6 +233,11 @@
         "isExactSearch_abbreviation": "精确",
         "uploadDescription": "仅支持xls或xlsx类型的文件上传。",
         "baseInfo": "基本信息",
+        "systemLinkage": "系统联动",
+        "systemLinkageHint": "以下为系统内置关联 ID，不在模型设计与编辑表单中展示，仅只读查看。",
+        "systemLinkageNodeId": "节点 ID",
+        "systemLinkageMonitorId": "监控实例 ID",
+        "systemLinkageEmpty": "未关联",
         "changeRecords": "变更记录",
         "changeRecord": {
             "allChanges": "全部变更",

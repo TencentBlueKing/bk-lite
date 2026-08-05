@@ -46,7 +46,7 @@ IP_ONLY_CLAIM_MODELS = frozenset(
     }
 )
 
-# push 路径必须持久化 node_id；与 pull sync 的 HOST_SYNC_UPDATE_FIELDS 刻意相反
+# push 路径必须持久化 node_id / monitor_id；与 pull sync 的 HOST_SYNC_UPDATE_FIELDS 刻意相反
 HOST_INGEST_UPDATE_FIELDS = (
     "inst_name",
     "ip_addr",
@@ -54,6 +54,7 @@ HOST_INGEST_UPDATE_FIELDS = (
     "cloud",
     "os_type",
     "node_id",
+    "monitor_id",
 )
 
 # 网络设备 / physcial_server：无 cloud/os_type
@@ -62,30 +63,77 @@ IP_ONLY_INGEST_UPDATE_FIELDS = (
     "ip_addr",
     "organization",
     "node_id",
+    "monitor_id",
 )
+
+# 系统内置联动 ID：落在模型属性上供图存储/查询，但对用户隐藏（非模型设计字段、非 CRUD）
+SYSTEM_LINK_ATTR_IDS = frozenset({"node_id", "monitor_id"})
 
 # 与 attr-host 中 str 字段（如 ip_addr）对齐的最小可创建形态；各模型复用
 MODEL_NODE_ID_ATTR = {
     "attr_id": "node_id",
     "attr_name": "节点ID",
     "attr_type": "str",
-    "attr_group": "基本信息",
-    "editable": True,
+    "attr_group": "系统联动",
+    "editable": False,
     "is_only": True,
     "is_required": False,
+    "is_system_link": True,
     "option": {
         "validation_type": "unrestricted",
         "custom_regex": "",
         "widget_type": "single_line",
     },
-    "user_prompt": "",
+    "user_prompt": "系统内置联动字段，不对用户开放编辑",
+    "default_value": [],
+}
+
+MODEL_MONITOR_ID_ATTR = {
+    "attr_id": "monitor_id",
+    "attr_name": "监控实例ID",
+    "attr_type": "str",
+    "attr_group": "系统联动",
+    "editable": False,
+    "is_only": True,
+    "is_required": False,
+    "is_system_link": True,
+    "option": {
+        "validation_type": "unrestricted",
+        "custom_regex": "",
+        "widget_type": "single_line",
+    },
+    "user_prompt": "系统内置联动字段，不对用户开放编辑",
     "default_value": [],
 }
 
 # 向后兼容别名
 HOST_NODE_ID_ATTR = MODEL_NODE_ID_ATTR
+HOST_MONITOR_ID_ATTR = MODEL_MONITOR_ID_ATTR
 
 RECEIVING_MODULE = "cmdb"
+
+
+def is_system_link_attr(attr: dict[str, Any] | None) -> bool:
+    """系统内置联动属性：不对用户暴露于模型设计 / CRUD。"""
+    if not isinstance(attr, dict):
+        return False
+    attr_id = str(attr.get("attr_id") or "").strip()
+    if attr_id in SYSTEM_LINK_ATTR_IDS:
+        return True
+    return bool(attr.get("is_system_link"))
+
+
+def filter_user_facing_attrs(attrs: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
+    """过滤掉系统联动属性，供模型设计与实例 CRUD 表单使用。"""
+    return [attr for attr in (attrs or []) if not is_system_link_attr(attr)]
+
+
+def strip_system_link_fields(payload: dict[str, Any] | None) -> dict[str, Any]:
+    """从用户请求 payload 中剔除系统联动字段，防止手工写入。"""
+    data = dict(payload or {})
+    for key in SYSTEM_LINK_ATTR_IDS:
+        data.pop(key, None)
+    return data
 
 
 def resolve_ingest_model_id(raw: dict[str, Any]) -> str:
@@ -108,47 +156,95 @@ def resolve_ingest_model_id(raw: dict[str, Any]) -> str:
 
 
 def ensure_model_node_id_attr(model_id: str, *, username: str = "admin") -> bool:
-    """确保指定模型具备可写 node_id 属性。
-
-    Returns:
-        True 表示属性已就绪（已存在 / 本次新建 / 并发重复创建成功）；
-        False 表示仍不可用（如模型缺失）。
-    """
-    from apps.cmdb.services.model import ModelManage
-
-    model_info = ModelManage.search_model_info(model_id)
-    if not model_info:
-        logger.warning(
-            "[ModuleIngest] %s 模型不存在，无法 ensure node_id attr", model_id
-        )
-        return False
-
-    attrs = ModelManage.parse_attrs(model_info.get("attrs", "[]"))
-    if any(attr.get("attr_id") == "node_id" for attr in attrs):
-        return True
-
-    try:
-        ModelManage.create_model_attr(
-            model_id, dict(MODEL_NODE_ID_ATTR), username=username
-        )
-    except BaseAppException as exc:
-        # 并发场景下另一进程已创建：视为幂等就绪
-        message = str(getattr(exc, "message", "") or exc)
-        if "repetition" in message.lower() or "重复" in message:
-            logger.info(
-                "[ModuleIngest] %s.node_id 属性已存在（并发创建），视为就绪",
-                model_id,
-            )
-            return True
-        raise
-
-    logger.info("[ModuleIngest] 已为 %s 模型创建可写 node_id 属性", model_id)
-    return True
+    """确保指定模型具备系统内置 node_id 属性（可写给 ingest，对用户隐藏）。"""
+    return _ensure_system_link_attr(
+        model_id,
+        attr_id="node_id",
+        template=MODEL_NODE_ID_ATTR,
+        username=username,
+    )
 
 
 def ensure_host_node_id_attr(*, username: str = "admin") -> bool:
     """确保 host 模型具备可写 node_id 属性（向后兼容包装）。"""
     return ensure_model_node_id_attr("host", username=username)
+
+
+def ensure_model_monitor_id_attr(model_id: str, *, username: str = "admin") -> bool:
+    """确保指定模型具备系统内置 monitor_id 属性（可写给 ingest，对用户隐藏）。"""
+    return _ensure_system_link_attr(
+        model_id,
+        attr_id="monitor_id",
+        template=MODEL_MONITOR_ID_ATTR,
+        username=username,
+    )
+
+
+def ensure_host_monitor_id_attr(*, username: str = "admin") -> bool:
+    """确保 host 模型具备可写 monitor_id 属性（向后兼容包装）。"""
+    return ensure_model_monitor_id_attr("host", username=username)
+
+
+def _ensure_system_link_attr(
+    model_id: str,
+    *,
+    attr_id: str,
+    template: dict[str, Any],
+    username: str,
+) -> bool:
+    from apps.cmdb.services.model import ModelManage
+
+    model_info = ModelManage.search_model_info(model_id)
+    if not model_info:
+        logger.warning(
+            "[ModuleIngest] %s 模型不存在，无法 ensure %s attr", model_id, attr_id
+        )
+        return False
+
+    attrs = ModelManage.parse_attrs(model_info.get("attrs", "[]"))
+    existing = next((attr for attr in attrs if attr.get("attr_id") == attr_id), None)
+    if existing is not None:
+        # 存量属性升级为系统内置形态（editable=False / is_system_link）
+        needs_upgrade = (
+            existing.get("editable") is not False
+            or not existing.get("is_system_link")
+            or existing.get("attr_group") != template.get("attr_group")
+        )
+        if needs_upgrade:
+            try:
+                patched = dict(existing)
+                patched.update(
+                    {
+                        "editable": False,
+                        "is_system_link": True,
+                        "attr_group": template.get("attr_group"),
+                        "user_prompt": template.get("user_prompt") or patched.get("user_prompt") or "",
+                    }
+                )
+                ModelManage.update_model_attr(model_id, patched, username=username)
+            except Exception:
+                logger.exception(
+                    "[ModuleIngest] upgrade %s.%s to system link failed",
+                    model_id,
+                    attr_id,
+                )
+        return True
+
+    try:
+        ModelManage.create_model_attr(model_id, dict(template), username=username)
+    except BaseAppException as exc:
+        message = str(getattr(exc, "message", "") or exc)
+        if "repetition" in message.lower() or "重复" in message:
+            logger.info(
+                "[ModuleIngest] %s.%s 属性已存在（并发创建），视为就绪",
+                model_id,
+                attr_id,
+            )
+            return True
+        raise
+
+    logger.info("[ModuleIngest] 已为 %s 模型创建系统联动属性 %s", model_id, attr_id)
+    return True
 
 
 class CmdbModuleIngestService:
@@ -173,8 +269,12 @@ class CmdbModuleIngestService:
         if not node_id and source_module == "node_mgmt":
             node_id = params.get("source_id")
         cmdb_id = link_ids.get("cmdb_id")
+        monitor_id = link_ids.get("monitor_id")
         node_id = str(node_id).strip() if node_id not in (None, "") else None
         cmdb_id = str(cmdb_id).strip() if cmdb_id not in (None, "") else None
+        monitor_id = (
+            str(monitor_id).strip() if monitor_id not in (None, "") else None
+        )
 
         # 回声抑制：本模块自推，或 causation 标明由本模块出站引起的回写
         if cls._is_echo(params):
@@ -184,8 +284,10 @@ class CmdbModuleIngestService:
         if event_type == EVENT_LIFECYCLE:
             return cls._handle_lifecycle(
                 raw=raw,
+                source_module=source_module,
                 node_id=node_id,
                 cmdb_id=cmdb_id,
+                monitor_id=monitor_id,
                 operator=params.get("operator") or "",
                 allowed_org_ids=list(allowed_org_ids),
             )
@@ -199,16 +301,25 @@ class CmdbModuleIngestService:
         model_id = resolve_ingest_model_id(raw)
         update_fields = cls._update_fields_for(model_id)
 
-        # 仅在需要写入 node_id 时 ensure attr
+        # 仅在需要写入关联指针时 ensure attr
         if node_id and not ensure_model_node_id_attr(
             model_id, username=operator or "admin"
         ):
             raise ValueError(
                 f"{model_id}.node_id attribute is required but could not be ensured"
             )
+        if monitor_id and not ensure_model_monitor_id_attr(
+            model_id, username=operator or "admin"
+        ):
+            raise ValueError(
+                f"{model_id}.monitor_id attribute is required but could not be ensured"
+            )
 
         desired = cls._build_desired(
-            model_id=model_id, raw=raw, node_id=node_id
+            model_id=model_id,
+            raw=raw,
+            node_id=node_id,
+            monitor_id=monitor_id,
         )
 
         # 1) 有 node_id → 只按 node_id upsert（未命中则走认领/新建，不回落到 cmdb_id）
@@ -293,18 +404,21 @@ class CmdbModuleIngestService:
         cls,
         *,
         raw: dict[str, Any],
+        source_module: str,
         node_id: str | None,
         cmdb_id: str | None,
+        monitor_id: str | None,
         operator: str,
         allowed_org_ids: list[int],
     ) -> dict[str, Any]:
-        """处理 lifecycle 退役：不解绑外不硬删。
+        """跨模块删除通知：CMDB 永不因对端删除而硬删实例，只清关联 ID。
 
-        Concern：CMDB Neo4j 实例无统一 soft-delete/archive 字段；一期仅清除
-        node_id 关联指针，实例本体保留。若未来有归档语义，应在此扩展。
+        - node_mgmt 退役：清 node_id
+        - monitor 删除通知：清 monitor_id
+        - 其他：按携带的 link 字段清对应指针
         """
         action = str((raw or {}).get("action") or "retire").strip().lower()
-        if action not in ("retire", "archive", "stop", ""):
+        if action not in ("retire", "archive", "stop", "unlink", ""):
             logger.info(
                 "[ModuleIngest] lifecycle ignored unknown action=%s cmdb_id=%s node_id=%s",
                 action,
@@ -317,50 +431,83 @@ class CmdbModuleIngestService:
         if cmdb_id:
             existing = cls._find_by_cmdb_id(cmdb_id)
         if not existing and node_id:
-            # 无 model_id 时默认按 host 查找；与一期节点推送落模一致
             model_id = "host"
             try:
                 model_id = resolve_ingest_model_id(raw) if raw else "host"
             except ValueError:
                 model_id = "host"
             existing = cls._find_by_node_id(model_id, node_id)
+        if not existing and monitor_id:
+            existing = cls._find_by_monitor_id(monitor_id)
 
         if not existing:
             logger.info(
-                "[ModuleIngest] lifecycle no-op: instance not found cmdb_id=%s node_id=%s",
+                "[ModuleIngest] lifecycle no-op: instance not found cmdb_id=%s node_id=%s monitor_id=%s",
                 cmdb_id,
                 node_id,
+                monitor_id,
             )
             return IngestResult(id=cmdb_id, ignored=True).as_dict()
 
         inst_id = existing.get("_id")
-        existing_node_id = str(existing.get("node_id") or "").strip()
-        if not existing_node_id:
-            logger.info(
-                "[ModuleIngest] lifecycle already unlinked inst_id=%s (CMDB 无 archive 语义，仅解绑)",
-                inst_id,
-            )
+        clear_fields: dict[str, str] = {}
+        if source_module == "node_mgmt":
+            if str(existing.get("node_id") or "").strip():
+                clear_fields["node_id"] = ""
+        elif source_module == "monitor":
+            if str(existing.get("monitor_id") or "").strip():
+                clear_fields["monitor_id"] = ""
+        else:
+            # 兜底：按传入 link 清对应字段
+            if node_id and str(existing.get("node_id") or "").strip():
+                clear_fields["node_id"] = ""
+            if monitor_id and str(existing.get("monitor_id") or "").strip():
+                clear_fields["monitor_id"] = ""
+
+        if not clear_fields:
             return IngestResult(id=inst_id, ignored=True).as_dict()
 
-        # 仅清除 node_id；禁止 hard delete
+        model_id = str(existing.get("model_id") or "host")
+        if "node_id" in clear_fields:
+            ensure_model_node_id_attr(model_id, username=operator or "admin")
+        if "monitor_id" in clear_fields:
+            ensure_model_monitor_id_attr(model_id, username=operator or "admin")
+
         updated = InstanceManage.instance_update(
-            user_groups=[{"id": org_id} for org_id in allowed_org_ids],
+            user_groups=[],
             roles=[],
             inst_id=int(inst_id),
-            update_attr={"node_id": ""},
+            update_attr=clear_fields,
             operator=operator,
-            allowed_org_ids=allowed_org_ids,
-            skip_permission_check=False,
+            allowed_org_ids=list(allowed_org_ids or []),
+            skip_permission_check=True,
         )
-        logger.warning(
-            "[ModuleIngest] lifecycle retire: cleared node_id on inst_id=%s; "
-            "CMDB 无 soft-archive，未物理删除实例",
+        logger.info(
+            "[ModuleIngest] lifecycle unlink cleared %s on inst_id=%s source=%s",
+            sorted(clear_fields.keys()),
             inst_id,
+            source_module,
         )
         return IngestResult(
             id=(updated.get("_id") if isinstance(updated, dict) else inst_id),
             updated=True,
         ).as_dict()
+
+    @classmethod
+    def _find_by_monitor_id(cls, monitor_id: str) -> dict[str, Any] | None:
+        """按 monitor_id 查找（主机一期）。"""
+        if not monitor_id:
+            return None
+        try:
+            found = InstanceManage.query_entity_by_identity(
+                "host", {"monitor_id": monitor_id}
+            )
+        except Exception:
+            logger.exception(
+                "[ModuleIngest] 按 monitor_id 查找失败 monitor_id=%s", monitor_id
+            )
+            return None
+        return found or None
 
     @classmethod
     def _find_by_cmdb_id(cls, cmdb_id: str) -> dict[str, Any] | None:
@@ -390,15 +537,28 @@ class CmdbModuleIngestService:
 
     @classmethod
     def _build_desired(
-        cls, *, model_id: str, raw: dict[str, Any], node_id: str | None
+        cls,
+        *,
+        model_id: str,
+        raw: dict[str, Any],
+        node_id: str | None,
+        monitor_id: str | None = None,
     ) -> dict[str, Any]:
         if model_id == "host":
-            return cls._build_host_desired(raw=raw, node_id=node_id)
-        return cls._build_ip_only_desired(model_id=model_id, raw=raw, node_id=node_id)
+            return cls._build_host_desired(
+                raw=raw, node_id=node_id, monitor_id=monitor_id
+            )
+        return cls._build_ip_only_desired(
+            model_id=model_id, raw=raw, node_id=node_id, monitor_id=monitor_id
+        )
 
     @classmethod
     def _build_host_desired(
-        cls, *, raw: dict[str, Any], node_id: str | None
+        cls,
+        *,
+        raw: dict[str, Any],
+        node_id: str | None,
+        monitor_id: str | None = None,
     ) -> dict[str, Any]:
         ip = cls._extract_ip(raw)
         cloud_raw = raw.get("cloud_region_id") if "cloud_region_id" in raw else raw.get("cloud")
@@ -429,11 +589,18 @@ class CmdbModuleIngestService:
         }
         if node_id:
             desired["node_id"] = node_id
+        if monitor_id:
+            desired["monitor_id"] = monitor_id
         return desired
 
     @classmethod
     def _build_ip_only_desired(
-        cls, *, model_id: str, raw: dict[str, Any], node_id: str | None
+        cls,
+        *,
+        model_id: str,
+        raw: dict[str, Any],
+        node_id: str | None,
+        monitor_id: str | None = None,
     ) -> dict[str, Any]:
         ip = cls._extract_ip(raw)
         organization = NodeMgmtSyncService._normalize_org_ids(
@@ -451,6 +618,8 @@ class CmdbModuleIngestService:
         }
         if node_id:
             desired["node_id"] = node_id
+        if monitor_id:
+            desired["monitor_id"] = monitor_id
         return desired
 
     @classmethod

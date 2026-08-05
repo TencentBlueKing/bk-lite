@@ -302,6 +302,11 @@
         "isExactSearch": "Accurate search",
         "uploadDescription": "Only files of xls or xlsx type can be uploaded",
         "baseInfo": "Basic Information",
+        "systemLinkage": "System Linkage",
+        "systemLinkageHint": "Built-in linkage IDs are system-managed. They are hidden from model design and edit forms, and shown read-only here.",
+        "systemLinkageNodeId": "Node ID",
+        "systemLinkageMonitorId": "Monitor Instance ID",
+        "systemLinkageEmpty": "Not linked",
         "changeRecords": "Change Records",
         "changeRecord": {
             "allChanges": "All Changes",

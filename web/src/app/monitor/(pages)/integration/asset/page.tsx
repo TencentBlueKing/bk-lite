@@ -132,6 +132,22 @@ const Asset = () => {
   const columns = useMemo(() => {
     const columnItems: ColumnItem[] = [
       {
+        title: t('monitor.views.nodeId'),
+        dataIndex: 'node_id',
+        key: 'node_id',
+        width: 180,
+        ellipsis: true,
+        render: (_, record: any) => <>{record.node_id || '--'}</>,
+      },
+      {
+        title: t('monitor.views.cmdbId'),
+        dataIndex: 'cmdb_id',
+        key: 'cmdb_id',
+        width: 120,
+        ellipsis: true,
+        render: (_, record: any) => <>{record.cmdb_id || '--'}</>,
+      },
+      {
         title: t('monitor.integrations.collectionTemplate'),
         dataIndex: 'plugins',
         key: 'plugins',

@@ -56,7 +56,7 @@ def test_monitor_ingest_from_source(monitor):
     assert _last(monitor.client) == (
         "monitor_ingest_from_source",
         (),
-        {"source_module": "node_mgmt", "allowed_org_ids": [1]},
+        {"params": {"source_module": "node_mgmt", "allowed_org_ids": [1]}},
     )
 
 

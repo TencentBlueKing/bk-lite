@@ -48,28 +48,60 @@ def test_ensure_host_node_id_attr_creates_when_missing(mocker):
     create.assert_called_once()
     attr_info = create.call_args.args[1]
     assert attr_info["attr_id"] == "node_id"
-    assert attr_info["editable"] is True
+    assert attr_info["editable"] is False
+    assert attr_info["is_system_link"] is True
     assert attr_info["is_only"] is True
     assert attr_info["is_required"] is False
 
 
-def test_ensure_host_node_id_attr_ready_when_present(mocker):
+def test_ensure_host_node_id_attr_upgrades_legacy_editable(mocker):
     mocker.patch(
         "apps.cmdb.services.model.ModelManage.search_model_info",
         return_value={
             "_id": 1,
             "model_id": "host",
             "attrs": json.dumps(
-                [{"attr_id": "node_id", "attr_name": "节点ID", "editable": True}]
+                [
+                    {
+                        "attr_id": "node_id",
+                        "attr_name": "节点ID",
+                        "editable": True,
+                        "attr_group": "基本信息",
+                    }
+                ]
             ),
         },
     )
     create = mocker.patch("apps.cmdb.services.model.ModelManage.create_model_attr")
+    update = mocker.patch("apps.cmdb.services.model.ModelManage.update_model_attr")
 
     ready = ensure_host_node_id_attr(username="tester")
 
     assert ready is True
     create.assert_not_called()
+    update.assert_called_once()
+    patched = update.call_args.args[1]
+    assert patched["editable"] is False
+    assert patched["is_system_link"] is True
+
+
+def test_filter_and_strip_system_link_helpers():
+    from apps.cmdb.services.module_ingest import (
+        filter_user_facing_attrs,
+        strip_system_link_fields,
+    )
+
+    attrs = [
+        {"attr_id": "ip_addr", "attr_name": "IP"},
+        {"attr_id": "node_id", "attr_name": "节点ID", "is_system_link": True},
+        {"attr_id": "monitor_id", "attr_name": "监控"},
+    ]
+    filtered = filter_user_facing_attrs(attrs)
+    assert [a["attr_id"] for a in filtered] == ["ip_addr"]
+    stripped = strip_system_link_fields(
+        {"ip_addr": "1.1.1.1", "node_id": "n1", "monitor_id": "m1", "name": "x"}
+    )
+    assert stripped == {"ip_addr": "1.1.1.1", "name": "x"}
 
 
 def test_ensure_host_node_id_attr_treats_duplicate_as_ready(mocker):
@@ -375,7 +407,45 @@ def test_lifecycle_retire_clears_node_id_without_hard_delete(mocker):
     assert result.get("created") is False
     update.assert_called_once()
     assert update.call_args.kwargs["update_attr"] == {"node_id": ""}
+    assert update.call_args.kwargs["skip_permission_check"] is True
     delete.assert_not_called()
+
+
+def test_lifecycle_from_monitor_clears_monitor_id_only(mocker):
+    mocker.patch.object(
+        CmdbModuleIngestService,
+        "_find_by_cmdb_id",
+        return_value={
+            "_id": 42,
+            "model_id": "host",
+            "node_id": "n1",
+            "monitor_id": "m1",
+        },
+    )
+    mocker.patch(
+        "apps.cmdb.services.module_ingest.ensure_model_monitor_id_attr",
+        return_value=True,
+    )
+    update = mocker.patch(
+        "apps.cmdb.services.module_ingest.InstanceManage.instance_update",
+        return_value={"_id": 42, "monitor_id": ""},
+    )
+
+    result = CmdbModuleIngestService.ingest(
+        {
+            "source_module": "monitor",
+            "source_id": "m1",
+            "event_type": "lifecycle",
+            "occurred_at": "2026-08-05T00:00:00Z",
+            "raw": {"action": "unlink"},
+            "link_ids": {"cmdb_id": "42", "monitor_id": "m1"},
+            "allowed_org_ids": [1],
+            "operator": "alice",
+        }
+    )
+
+    assert result["updated"] is True
+    assert update.call_args.kwargs["update_attr"] == {"monitor_id": ""}
 
 
 def test_lifecycle_ignored_when_instance_missing(mocker):
@@ -398,3 +468,45 @@ def test_lifecycle_ignored_when_instance_missing(mocker):
 
     assert result["ignored"] is True
     update.assert_not_called()
+
+
+def test_ingest_host_persists_monitor_id(mocker):
+    mocker.patch(
+        "apps.cmdb.services.module_ingest.ensure_model_node_id_attr",
+        return_value=True,
+    )
+    ensure_mon = mocker.patch(
+        "apps.cmdb.services.module_ingest.ensure_model_monitor_id_attr",
+        return_value=True,
+    )
+    mocker.patch.object(
+        CmdbModuleIngestService,
+        "_find_by_node_id",
+        return_value={"_id": 10, "node_id": "n1", "ip_addr": "1.1.1.1", "cloud": 1},
+    )
+    update = mocker.patch.object(
+        CmdbModuleIngestService,
+        "_update_instance",
+        return_value={"_id": 10, "node_id": "n1", "monitor_id": "mon-1"},
+    )
+
+    result = CmdbModuleIngestService.ingest(
+        _ingest_params(
+            node_id="n1",
+            ip="1.1.1.1",
+            link_ids={"node_id": "n1", "monitor_id": "mon-1"},
+            raw={
+                "ip": "1.1.1.1",
+                "cloud_region_id": 1,
+                "organization_ids": [1],
+                "name": "h1",
+            },
+        )
+    )
+
+    assert result["id"] == 10
+    assert result["updated"] is True
+    ensure_mon.assert_called_once()
+    desired = update.call_args.args[1]
+    assert desired["monitor_id"] == "mon-1"
+    assert desired["node_id"] == "n1"

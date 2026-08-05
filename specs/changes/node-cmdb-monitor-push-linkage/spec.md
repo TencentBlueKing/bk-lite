@@ -27,10 +27,10 @@ Status: ready
 
 - 路线为推模型。允许边：节点→CMDB、节点→监控、CMDB↔监控。
 - **禁止** CMDB/监控向节点推送业务事实；**允许**推送响应或编排层向节点回填关联 ID 与同步状态（`cmdb_id` / `monitor_id` / pending|ok|skipped）。
+- **自动关联（主机）**：CMDB/监控侧主机资产**新增**时，通过对称 NATS ingest 通知节点；节点只关联、不创建。匹配不到或不唯一则跳过。
 - 创建节点：按已售模块默认勾选推送目标；用户取消则该目标不推送。未售模块不展示不调用。
-- **无级联暗推**：用户只勾选推 CMDB 时，不得因 CMDB 入库而自动再推监控；要进监控须用户勾选推监控，或之后在详情/对端页面显式推送。
-- CMDB↔监控的推送同样须由对端页面的显式推送/重新同步触发（或该侧等价的用户确认动作），不得因收到节点推送而无限互推。
-
+- **无级联暗建**：创建钩子会通知另外两边以补全 ID，但不得因「无凭据的 CMDB→监控通知」而新建监控资产/策略；带凭据创建路径默认关闭（`CMDB_CREDENTIAL_CREATE_ENABLED=False`）。
+- CMDB↔监控的显式推送/重新同步入口保留；创建钩子的无凭据通知只做关联。
 ### 失败与重试
 
 - 节点本地创建成功与是否推送成功解耦：推送失败不回滚节点。
@@ -71,7 +71,12 @@ Status: ready
 
 ### 删除与退役拉同步
 
-- 节点删除/卸载：确认是否对已关联 CMDB/监控发 lifecycle（默认归档/停采，不默认物理删）。
+- 任一模块删除实例时，best-effort 通知另外两边的统一 lifecycle ingest（钩子失败不阻断删除）。
+- **节点删除/卸载**：页面确认 `retire_linked` 后发 lifecycle：
+  - 监控：软删（停采归档）对应主机监控资产；
+  - CMDB：只清除 `node_id`，不删实例。
+- **CMDB / 监控删除**：对端一律只清关联 ID（`node_id` / `cmdb_id` / `monitor_id`），不做真删。
+- 节点侧 lifecycle 永不删节点，只清本侧关联指针。
 - 本能力就绪后关闭并退役 NodeMgmtSync 拉取同步；不得与推送长期并行双写。
 
 ### 协议、权限与一期模型范围
@@ -117,5 +122,12 @@ Status: ready
 - 已知遗留关注点（不阻断一期收口）：
   - Sidecar 延迟推送：节点创建后异步推送时序与失败跳过后的详情补推体验仍需实环境观察。
   - CMDB lifecycle 目前仅清除 `node_id`，未做更完整的对端归档/停采编排。
-  - 监控 ingest 只做身份 upsert，不自动打开采集管道（与「选节点开采集」入口并存，须后续对齐）。
-  - CMDB 侧 `monitor_id` 尚未持久化到实例（互存三 ID 在 CMDB 落库仍不完整）。
+  - **IoC 对称 ingest（2026-08-05 修订）**：
+    - 三方均暴露固定 NATS add：`ingest_from_source` / `monitor_ingest_from_source` / `node_ingest_from_source`。
+    - **节点 ingest**：只关联（`ip+云区域` 唯一匹配），永不新建节点。
+    - **CMDB ingest**：按 ID upsert / 认领 / 新建。
+    - **监控 ingest**：`node_mgmt` → 有则连、无则建 + Telegraf Agent；`cmdb` 无凭据 → 只关联；`cmdb` 带凭据创建路径由 `CMDB_CREDENTIAL_CREATE_ENABLED=False` 暂时关闭（扩展点保留）。
+    - 各模块**自己创建主机后** best-effort 通知另外两边（钩子）；NATS 失败可回退本地 node ingest；回声/causation 防环。
+    - 创建钩子通知 ≠ 暗建资产：监控侧无凭据不得新建。
+  - 遗留：CMDB 推送信封仍不携带凭据；凭据创建+默认对象列表后续按范围打开 `CMDB_CREDENTIAL_CREATE_ENABLED`。
+  - ~~CMDB/监控 → 节点自动关联~~：已收敛为节点对称 ingest + 创建钩子通知。
