@@ -38,13 +38,14 @@ import CatalogState, {
 import OrganizationAssignmentModal from '@/app/apm/components/organization-assignment-modal';
 import ServiceIdentity from '@/app/apm/components/service-identity';
 import ApmStatusTag from '@/app/apm/components/status-tag';
-import type { ApmEnvironmentView, ApmService, ApmServiceRed, CatalogStatus } from '@/app/apm/types';
+import type { ApmApplication, ApmEnvironmentView, ApmService, ApmServiceRed, CatalogStatus } from '@/app/apm/types';
 import Permission from '@/components/permission';
 import { useUserInfoContext } from '@/context/userInfo';
 
 interface ServiceEnvironmentRow extends ApmEnvironmentView {
   key: string;
   serviceId: string;
+  applicationName: string;
   namespace: string;
   serviceName: string;
   serviceOrganizationIds: number[];
@@ -64,7 +65,7 @@ interface ApplicationSummary {
   requestRate: number | null;
   errorRate: number | null;
   metricUnavailable: boolean;
-  lastSeenAt: string;
+  lastSeenAt: string | null;
 }
 
 const timeWindowUnits: Record<TimeWindow, [number, dayjs.ManipulateType]> = {
@@ -84,6 +85,7 @@ const formatRate = (value: number | null, unavailable = false) => {
 
 export default function ApmServicesPage() {
   const {
+    getApplications,
     getHealth,
     getServiceRed,
     getServices,
@@ -93,6 +95,7 @@ export default function ApmServicesPage() {
   } = useApmApi();
   const { flatGroups } = useUserInfoContext();
   const [services, setServices] = useState<ApmService[]>([]);
+  const [applications, setApplications] = useState<ApmApplication[]>([]);
   const [catalogDegraded, setCatalogDegraded] = useState(false);
   const [perspective, setPerspective] = useState<ServicePerspective>('application');
   const [keyword, setKeyword] = useState('');
@@ -119,14 +122,16 @@ export default function ApmServicesPage() {
     let active = true;
     setState('loading');
     Promise.all([
+      getApplications(),
       getServices({ include_archived: status === 'archived' }),
       getHealth().catch(() => ({ catalog_reconcile: { status: 'degraded' as const } })),
     ])
-      .then(([items, health]) => {
+      .then(([applicationItems, items, health]) => {
         if (!active) return;
+        setApplications(applicationItems);
         setServices(items);
         setCatalogDegraded(health.catalog_reconcile.status === 'degraded');
-        setState(items.length ? 'ready' : 'empty');
+        setState(applicationItems.length || items.length ? 'ready' : 'empty');
       })
       .catch((error) => {
         if (active) setState(catalogErrorKind(error));
@@ -134,7 +139,7 @@ export default function ApmServicesPage() {
     return () => {
       active = false;
     };
-  }, [authLoading, getHealth, getServices, refreshKey, status]);
+  }, [authLoading, getApplications, getHealth, getServices, refreshKey, status]);
 
   const submitOrganizations = async (organizationIds: number[]) => {
     if (!organizationService) return;
@@ -166,6 +171,7 @@ export default function ApmServicesPage() {
           status: service.archived_at ? 'archived' as const : environment.status,
           key: `${service.id}:${environment.environment}`,
           serviceId: service.id,
+          applicationName: service.application_name,
           namespace: service.namespace,
           serviceName: service.name,
           serviceOrganizationIds: service.organization_ids,
@@ -224,10 +230,10 @@ export default function ApmServicesPage() {
   );
 
   const namespaceOptions = useMemo(
-    () => Array.from(new Set(rows.map((item) => item.namespace)))
-      .sort()
-      .map((value) => ({ value, label: value || '未归类应用' })),
-    [rows]
+    () => applications
+      .map((application) => ({ value: application.application_id, label: application.name }))
+      .sort((left, right) => left.label.localeCompare(right.label)),
+    [applications]
   );
 
   const filteredRows = useMemo(() => {
@@ -235,7 +241,8 @@ export default function ApmServicesPage() {
     return rows.filter((item) => {
       const matchesKeyword = !normalizedKeyword
         || `${item.namespace} ${item.serviceName}`.toLowerCase().includes(normalizedKeyword);
-      return matchesKeyword
+      const matchesApplicationName = item.applicationName.toLowerCase().includes(normalizedKeyword);
+      return (matchesKeyword || matchesApplicationName)
         && (environment === undefined || item.environment === environment)
         && (namespace === undefined || item.namespace === namespace)
         && (status === undefined || item.status === status);
@@ -254,8 +261,27 @@ export default function ApmServicesPage() {
       statuses: CatalogStatus[];
       metrics: ApmServiceRed[];
       metricUnavailable: boolean;
-      lastSeenAt: string;
+      lastSeenAt: string | null;
     }>();
+    const normalizedKeyword = keyword.trim().toLowerCase();
+    const canShowWithoutServices = environment === undefined && status === undefined;
+    const canShowSilentWithoutServices = environment === undefined && status === 'silent';
+    applications.forEach((application) => {
+      const matchesApplication = !normalizedKeyword
+        || `${application.application_id} ${application.name}`.toLowerCase().includes(normalizedKeyword);
+      const matchesNamespace = namespace === undefined || namespace === application.application_id;
+      const visibleWithoutServices = canShowWithoutServices
+        || (canShowSilentWithoutServices && application.service_count === 0);
+      if (!matchesApplication || !matchesNamespace || !visibleWithoutServices) return;
+      summaries.set(application.application_id, {
+        serviceNames: new Set<string>(),
+        environments: new Set<string>(),
+        statuses: [],
+        metrics: [],
+        metricUnavailable: false,
+        lastSeenAt: null,
+      });
+    });
     filteredRows.forEach((row) => {
       const current = summaries.get(row.namespace) ?? {
         serviceNames: new Set<string>(),
@@ -263,12 +289,14 @@ export default function ApmServicesPage() {
         statuses: [],
         metrics: [],
         metricUnavailable: false,
-        lastSeenAt: row.last_seen_at,
+        lastSeenAt: null,
       };
       current.serviceNames.add(row.serviceName);
       current.environments.add(row.environment || '未设置');
       current.statuses.push(row.status);
-      current.lastSeenAt = dayjs(row.last_seen_at).isAfter(current.lastSeenAt) ? row.last_seen_at : current.lastSeenAt;
+      current.lastSeenAt = current.lastSeenAt && dayjs(current.lastSeenAt).isAfter(row.last_seen_at)
+        ? current.lastSeenAt
+        : row.last_seen_at;
       const metric = redMetrics[metricKey(row.serviceId, row.environment)];
       if (metric) current.metrics.push(metric);
       if (metricFailureKeys.includes(metricKey(row.serviceId, row.environment))) current.metricUnavailable = true;
@@ -284,12 +312,15 @@ export default function ApmServicesPage() {
       const errorRate = requestRate && weightedErrors.length
         ? weightedErrors.reduce((total, metric) => total + (metric.request_rate ?? 0) * (metric.error_rate ?? 0), 0) / requestRate
         : null;
-      const statusValue: CatalogStatus = summary.statuses.every((value) => value === 'archived')
-        ? 'archived'
-        : summary.statuses.some((value) => value === 'active') ? 'active' : 'silent';
+      const statusValue: CatalogStatus = summary.statuses.length === 0
+        ? 'silent'
+        : summary.statuses.every((value) => value === 'archived')
+          ? 'archived'
+          : summary.statuses.some((value) => value === 'active') ? 'active' : 'silent';
+      const application = applications.find((item) => item.application_id === key);
       return {
         key,
-        label: key || '未归类应用',
+        label: application?.name ?? (key || '未归类应用'),
         status: statusValue,
         services: Array.from(summary.serviceNames).sort(),
         environmentCount: summary.environments.size,
@@ -299,7 +330,7 @@ export default function ApmServicesPage() {
         lastSeenAt: summary.lastSeenAt,
       };
     }).sort((left, right) => left.label.localeCompare(right.label));
-  }, [filteredRows, metricFailureKeys, redMetrics]);
+  }, [applications, environment, filteredRows, keyword, metricFailureKeys, namespace, redMetrics, status]);
 
   const columns: TableColumnsType<ServiceEnvironmentRow> = [
     {
@@ -554,7 +585,9 @@ export default function ApmServicesPage() {
                           {application.services.length > 3 ? <Tag bordered={false}>+{application.services.length - 3}</Tag> : null}
                         </div>
                         <Typography.Text type="secondary" className="mt-auto !text-xs tabular-nums">
-                          最近上报 {dayjs(application.lastSeenAt).format('YYYY-MM-DD HH:mm:ss')}
+                          {application.lastSeenAt
+                            ? `最近上报 ${dayjs(application.lastSeenAt).format('YYYY-MM-DD HH:mm:ss')}`
+                            : '尚无服务上报'}
                         </Typography.Text>
                       </div>
                     </Card>

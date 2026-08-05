@@ -286,6 +286,18 @@ def test_permissions_separate_application_management_from_config_generation(apm_
     assert ApmApplication.objects.filter(is_builtin=False).count() == 0
 
 
+def test_service_catalog_permission_can_read_application_boundaries(apm_user):
+    client = APIClient()
+    client.force_authenticate(user=apm_user)
+    client.cookies["current_team"] = "10"
+    apm_user.permission["apm"] = {"services-View"}
+
+    response = client.get("/api/v1/apm/applications/")
+
+    assert response.status_code == 200
+    assert [(item["name"], item["is_builtin"]) for item in response.data] == [("未归类应用", True)]
+
+
 def test_service_and_instance_lists_keep_independent_organization_scopes(apm_api_client):
     create_application("shop", (10,))
     create_application("billing", (20,))

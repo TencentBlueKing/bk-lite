@@ -92,7 +92,7 @@ class ApmApplicationViewSet(viewsets.GenericViewSet):
             return queryset.none()
         return queryset.filter(Q(is_builtin=True) | Q(organization_links__organization=organization_id)).distinct()
 
-    @HasPermission("applications-View,integration_add-View")
+    @HasPermission("applications-View,integration_add-View,services-View")
     def list(self, request, *args, **kwargs):
         return Response(self.get_serializer(self.get_queryset(), many=True).data)
 
