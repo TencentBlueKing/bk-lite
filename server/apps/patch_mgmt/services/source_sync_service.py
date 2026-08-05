@@ -308,18 +308,33 @@ class SourceSyncService:
         raise SourceSyncError(f"源类型 {source.source_type!r} 不支持预览同步")
 
     @classmethod
-    def ingest_selected(cls, source: PatchSource, keys: list, severity_overrides: dict = None) -> dict:
+    def ingest_selected(
+        cls,
+        source: PatchSource,
+        keys: list,
+        severity_overrides: dict = None,
+        *,
+        team_id: int | None = None,
+    ) -> dict:
         """将选中的候选补丁入库（创建 Patch 记录）。
 
         Args:
             source: 补丁源实例。
             keys: 选中的候选 key 列表（advisory_id 或 update_id）。
             severity_overrides: 前端传入的严重级别覆盖，{advisory_id: severity_value}。
+            team_id: 发起入库的可信当前团队；传入时补丁只增加该团队归属。
 
         Returns:
             {"created": N, "updated": N, "skipped": N, "total": N}
         """
         severity_overrides = severity_overrides or {}
+        if team_id is not None:
+            try:
+                team_id = int(team_id)
+            except (TypeError, ValueError) as exc:
+                raise SourceSyncError("入库团队 ID 无效") from exc
+            if team_id <= 0:
+                raise SourceSyncError("入库团队 ID 无效")
         from apps.patch_mgmt.constants import (
             OSType,
             PackageStatus,
@@ -332,6 +347,21 @@ class SourceSyncService:
         key_set = set(keys)
         created = updated = skipped = 0
         now = timezone.now()
+
+        def initial_teams() -> list[int]:
+            if team_id is not None:
+                return [team_id]
+            return list(source.team or [])
+
+        def add_ingest_team(patch) -> bool:
+            if team_id is None:
+                return False
+            teams = list(patch.team or [])
+            if team_id in teams:
+                return False
+            teams.append(team_id)
+            patch.team = teams
+            return True
 
         if source.is_linux_source:
             advisories = fetch_advisories(source)
@@ -360,7 +390,7 @@ class SourceSyncService:
                         "patch_type": patch_type,
                         "severity": severity,
                         "cve_list": adv.cve_list,
-                        "team": list(source.team or []),
+                        "team": initial_teams(),
                         "pkg_status": PackageStatus.READY,
                     },
                 )
@@ -370,7 +400,17 @@ class SourceSyncService:
                 patch.cve_list = adv.cve_list
                 patch.pkg_status = PackageStatus.READY
                 patch.last_synced_at = now
-                patch.save(update_fields=["patch_type", "severity", "cve_list", "pkg_status", "last_synced_at", "updated_at"])
+                update_fields = [
+                    "patch_type",
+                    "severity",
+                    "cve_list",
+                    "pkg_status",
+                    "last_synced_at",
+                    "updated_at",
+                ]
+                if add_ingest_team(patch):
+                    update_fields.append("team")
+                patch.save(update_fields=update_fields)
 
                 first_pkg = adv.packages[0] if adv.packages else None
                 LinuxPatchDetail.objects.update_or_create(
@@ -430,7 +470,7 @@ class SourceSyncService:
                         "patch_type": PatchType.SECURITY,
                         "severity": severity,
                         "cve_list": [],
-                        "team": list(source.team or []),
+                        "team": initial_teams(),
                         "pkg_status": PackageStatus.READY,
                     },
                 )
@@ -442,7 +482,16 @@ class SourceSyncService:
                 patch.severity = severity
                 patch.pkg_status = PackageStatus.READY
                 patch.last_synced_at = now
-                patch.save(update_fields=["patch_type", "severity", "pkg_status", "last_synced_at", "updated_at"])
+                update_fields = [
+                    "patch_type",
+                    "severity",
+                    "pkg_status",
+                    "last_synced_at",
+                    "updated_at",
+                ]
+                if add_ingest_team(patch):
+                    update_fields.append("team")
+                patch.save(update_fields=update_fields)
 
                 WindowsPatchDetail.objects.update_or_create(
                     patch=patch,

@@ -19,6 +19,14 @@ class PatchSource(TimeInfo, MaintainerInfo):
     """
 
     name = models.CharField(max_length=128, verbose_name="名称")
+    is_builtin = models.BooleanField(default=False, db_index=True, verbose_name="是否内置")
+    builtin_key = models.CharField(
+        max_length=64,
+        null=True,
+        blank=True,
+        unique=True,
+        verbose_name="内置源稳定标识",
+    )
     source_type = models.CharField(
         max_length=32,
         choices=PatchSourceType.CHOICES,

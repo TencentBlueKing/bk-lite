@@ -175,6 +175,8 @@
     "builtin": "Built-in",
     "mcp": "MCP",
     "externalApp": "External",
+    "custom": "Custom",
+    "imported": "Imported",
     "unreadNotifications": "Unread Notifications",
     "allNotifications": "All Notifications",
     "noMore": "No more",
