@@ -1,14 +1,86 @@
-import pydantic.root_model  # noqa
+import importlib
+from types import SimpleNamespace
+from unittest.mock import Mock
 
 import pandas as pd
+import pydantic.root_model  # noqa
 import pytest
-from types import SimpleNamespace
 
 from apps.mlops.constants import MLflowRunStatus, TrainJobStatus
 from apps.mlops.models.anomaly_detection import AnomalyDetectionTrainJob
 from apps.mlops.views.anomaly_detection import AnomalyDetectionTrainJobViewSet
 
 pytestmark = pytest.mark.unit
+
+
+TRAIN_JOB_VIEWSETS = [
+    ("anomaly_detection", "AnomalyDetectionTrainJobViewSet"),
+    ("classification", "ClassificationTrainJobViewSet"),
+    ("image_classification", "ImageClassificationTrainJobViewSet"),
+    ("object_detection", "ObjectDetectionTrainJobViewSet"),
+    ("log_clustering", "LogClusteringTrainJobViewSet"),
+    ("timeseries_predict", "TimeSeriesPredictTrainJobViewSet"),
+]
+
+COMMON_RUN_ACTIONS = [
+    ("delete_run", {"pk": 1, "run_id": "run-1"}, "Delete", "delete"),
+    (
+        "get_metric_data",
+        {"pk": 1, "run_id": "run-1", "metric_name": "accuracy"},
+        "View",
+        "get",
+    ),
+    ("get_run_params", {"pk": 1, "run_id": "run-1"}, "View", "get"),
+]
+
+
+@pytest.mark.parametrize("module_name,class_name", TRAIN_JOB_VIEWSETS)
+@pytest.mark.parametrize(
+    "action_name,action_kwargs,permission_suffix,http_method",
+    COMMON_RUN_ACTIONS,
+)
+def test_train_job_common_run_actions_delegate_to_base(
+    monkeypatch,
+    module_name,
+    class_name,
+    action_name,
+    action_kwargs,
+    permission_suffix,
+    http_method,
+):
+    base_module = importlib.import_module("apps.mlops.views.base")
+    assert hasattr(base_module, "BaseTrainJobViewSet"), "六算法 TrainJob 应共享统一基类"
+
+    base_viewset = base_module.BaseTrainJobViewSet
+    viewset = getattr(importlib.import_module(f"apps.mlops.views.{module_name}"), class_name)
+    assert issubclass(viewset, base_viewset)
+    assert http_method in viewset.__dict__[action_name].mapping
+
+    shared_action = Mock(return_value=object())
+    monkeypatch.setattr(base_viewset, action_name, shared_action)
+    denied_request = SimpleNamespace(
+        user=SimpleNamespace(
+            is_superuser=False,
+            locale="en",
+            permission={"mlops": set()},
+        )
+    )
+    denied_response = getattr(viewset(), action_name)(denied_request, **action_kwargs)
+    assert denied_response.status_code == 403
+    shared_action.assert_not_called()
+
+    request = SimpleNamespace(
+        user=SimpleNamespace(
+            is_superuser=False,
+            locale="en",
+            permission={"mlops": {f"{module_name}-{permission_suffix}"}},
+        )
+    )
+
+    response = getattr(viewset(), action_name)(request, **action_kwargs)
+
+    assert response is shared_action.return_value
+    shared_action.assert_called_once_with(request, **action_kwargs)
 
 
 # ----------------- has_run_in_runs_frame -----------------
@@ -170,8 +242,13 @@ def test_check_run_delete_eligibility_blocked(monkeypatch):
 @pytest.mark.django_db
 def test_claim_train_job_running_success():
     tj = AnomalyDetectionTrainJob.objects.create(
-        name="j1", description="", team=[1], status=TrainJobStatus.PENDING,
-        algorithm="algo", dataset_version=None, hyperopt_config={},
+        name="j1",
+        description="",
+        team=[1],
+        status=TrainJobStatus.PENDING,
+        algorithm="algo",
+        dataset_version=None,
+        hyperopt_config={},
     )
     vs = AnomalyDetectionTrainJobViewSet()
     prev = vs.claim_train_job_running(tj)
@@ -184,8 +261,13 @@ def test_claim_train_job_running_success():
 @pytest.mark.django_db
 def test_claim_train_job_running_already_running_returns_none():
     tj = AnomalyDetectionTrainJob.objects.create(
-        name="j2", description="", team=[1], status=TrainJobStatus.RUNNING,
-        algorithm="algo", dataset_version=None, hyperopt_config={},
+        name="j2",
+        description="",
+        team=[1],
+        status=TrainJobStatus.RUNNING,
+        algorithm="algo",
+        dataset_version=None,
+        hyperopt_config={},
     )
     vs = AnomalyDetectionTrainJobViewSet()
     assert vs.claim_train_job_running(tj) is None
@@ -194,8 +276,13 @@ def test_claim_train_job_running_already_running_returns_none():
 @pytest.mark.django_db
 def test_restore_train_job_status_restores_when_running():
     tj = AnomalyDetectionTrainJob.objects.create(
-        name="j3", description="", team=[1], status=TrainJobStatus.RUNNING,
-        algorithm="algo", dataset_version=None, hyperopt_config={},
+        name="j3",
+        description="",
+        team=[1],
+        status=TrainJobStatus.RUNNING,
+        algorithm="algo",
+        dataset_version=None,
+        hyperopt_config={},
     )
     AnomalyDetectionTrainJobViewSet.restore_train_job_status(tj, TrainJobStatus.PENDING)
     tj.refresh_from_db()
@@ -206,8 +293,13 @@ def test_restore_train_job_status_restores_when_running():
 @pytest.mark.django_db
 def test_restore_train_job_status_noop_when_not_running():
     tj = AnomalyDetectionTrainJob.objects.create(
-        name="j4", description="", team=[1], status=TrainJobStatus.COMPLETED,
-        algorithm="algo", dataset_version=None, hyperopt_config={},
+        name="j4",
+        description="",
+        team=[1],
+        status=TrainJobStatus.COMPLETED,
+        algorithm="algo",
+        dataset_version=None,
+        hyperopt_config={},
     )
     AnomalyDetectionTrainJobViewSet.restore_train_job_status(tj, TrainJobStatus.PENDING)
     tj.refresh_from_db()
