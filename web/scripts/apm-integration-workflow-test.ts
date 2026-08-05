@@ -7,6 +7,8 @@ const webRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (path: string) => readFileSync(join(webRoot, path), 'utf8');
 
 const catalog = read('src/app/apm/integration/add/page.tsx');
+const apmApi = read('src/app/apm/api/index.ts');
+const request = read('src/utils/request.ts');
 const applications = read('src/app/apm/integration/applications/page.tsx');
 const instances = read('src/app/apm/integration/instances/page.tsx');
 
@@ -22,8 +24,17 @@ assert.match(catalog, /name="application_id"/, '应用 ID 必须映射到 servic
 assert.match(catalog, /name="cloud_region_id"/, '接入配置必须选择云区域');
 assert.match(catalog, /name="service_name"/, '接入配置必须收集 service.name');
 assert.match(catalog, /name="service_version"/, '接入配置必须收集 service.version');
-assert.match(catalog, /接入配置不会保存/, '接入页面必须说明配置是临时结果');
+assert.doesNotMatch(catalog, /接入配置不会保存|APM Token/, '页面不应使用全局警示解释内部存储或鉴权实现');
+assert.match(catalog, /生成临时配置/, '临时性应在生成动作附近以用户语言表达');
+assert.match(catalog, /仅在本窗口保留/, '生成结果附近必须说明临时性');
 assert.doesNotMatch(catalog, /Token 仅在本窗口显示一次|credential|createIngestSource/, '接入配置不得创建接入源或签发 Token');
+assert.match(catalog, /suppressErrorNotification: true/, '页面内错误态存在时，目录请求必须禁止重复全局 toast');
+assert.match(apmApi, /RequestConfig/, 'APM API 必须允许调用方声明页面内错误呈现策略');
+assert.match(apmApi, /getIngestSnippet[\s\S]*?suppressErrorNotification: true/, '生成配置失败由表单内错误态呈现，不应重复显示全局 toast');
+assert.match(request, /error\.config\?\.suppressErrorNotification/, '请求拦截器必须尊重调用方的局部错误呈现策略');
+assert.match(catalog, /云区域暂不可用/, '云区域目录失败必须显示与失败来源一致的页面内标题');
+assert.match(catalog, /重新加载/, '目录失败必须提供明确的恢复操作');
+assert.match(catalog, /role="alert"/, '页面内目录错误必须可被辅助技术感知');
 assert.match(catalog, /上报端点/, 'SDK 接入向导应先展示平台分配的上报端点');
 assert.match(catalog, /接入配置/, 'SDK 接入向导应明确分组接入配置');
 assert.match(catalog, /Docker 运行/, 'SDK 接入向导应支持 Docker 环境变量注入模式');

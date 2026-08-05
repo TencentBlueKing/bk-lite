@@ -1,5 +1,6 @@
 import { useCallback } from 'react';
 import useApiClient from '@/utils/request';
+import type { RequestConfig } from '@/utils/request';
 import type {
   ApmApplication,
   ApmApplicationInput,
@@ -87,10 +88,13 @@ const useApmApi = () => {
     [post]
   );
 
-  const getApplications = useCallback(() => get<ApmApplication[]>('/apm/applications/'), [get]);
+  const getApplications = useCallback(
+    (config: RequestConfig = {}) => get<ApmApplication[]>('/apm/applications/', config),
+    [get]
+  );
 
   const getCloudRegions = useCallback(
-    () => get<ApmCloudRegion[]>('/apm/integration-config/regions/'),
+    (config: RequestConfig = {}) => get<ApmCloudRegion[]>('/apm/integration-config/regions/', config),
     [get]
   );
 
@@ -106,7 +110,11 @@ const useApmApi = () => {
   );
 
   const getIngestSnippet = useCallback(
-    (payload: ApmIngestSnippetInput) => post<ApmIngestSnippet>('/apm/integration-config/', payload),
+    (payload: ApmIngestSnippetInput) => post<ApmIngestSnippet>(
+      '/apm/integration-config/',
+      payload,
+      { suppressErrorNotification: true }
+    ),
     [post]
   );
 
