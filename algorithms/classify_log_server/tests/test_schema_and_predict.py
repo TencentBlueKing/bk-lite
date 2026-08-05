@@ -229,6 +229,44 @@ class TestSpellModel:
         result = model.predict([""])
         assert result[0] == -1
 
+    def test_weighted_lcs_counts_each_matched_occurrence_once(self):
+        """重复 token 只能按 LCS 实际匹配的出现次数计权。"""
+        model = SpellModel()
+
+        assert model._lcs_similarity(["A", "A", "B"], ["A", "B"]) == pytest.approx(2 / 3)
+        assert model._lcs_similarity(["A", "A", "A"], ["A"]) == pytest.approx(1 / 3)
+
+        position_model = SpellModel(
+            position_weight_config={
+                "head_count": 1,
+                "head_weight": 4.0,
+                "tail_count": 1,
+                "tail_weight": 2.0,
+                "middle_weight": 1.0,
+            }
+        )
+        assert position_model._lcs_similarity(["A", "B", "A"], ["B", "A"]) == pytest.approx(3 / 7)
+
+    def test_lcs_match_indices_handle_empty_and_unmatched_sequences(self):
+        """空 LCS 或完全不匹配时不应产生匹配位置。"""
+        model = SpellModel()
+
+        assert model._get_lcs_match_indices([], []) == set()
+        assert model._get_lcs_match_indices(["A", "B"], []) == set()
+        assert model._get_lcs_match_indices(["A", "B"], ["C"]) == set()
+
+    def test_explanation_uses_the_same_lcs_occurrence_matches(self):
+        """解释输出应与相似度使用同一组 LCS 匹配位置。"""
+        model = SpellModel()
+        model.clusters = [{"template": ["A", "B"]}]
+        model.is_trained = True
+
+        explanation = model.explain_prediction("A A B", cluster_id=0)
+
+        assert explanation["matched_tokens"] == ["A", "B"]
+        assert explanation["unmatched_tokens"] == ["A"]
+        assert "匹配:   ✓ ✗ ✓" in explanation["match_details"]
+
 
 # ---------------------------------------------------------------------------
 # MLService.predict() 集成路径测试

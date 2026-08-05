@@ -1172,6 +1172,20 @@ class SpellModel(BaseLogClusterModel):
             self.lcs_cache[key] = lcs
         
         return lcs
+
+    def _get_lcs_match_indices(self, sequence: List[str], lcs: List[str]) -> Set[int]:
+        """返回 LCS 在原序列中按顺序匹配到的位置。"""
+        matched_indices: Set[int] = set()
+        lcs_position = 0
+
+        for sequence_position, token in enumerate(sequence):
+            if lcs_position >= len(lcs):
+                break
+            if token == lcs[lcs_position]:
+                matched_indices.add(sequence_position)
+                lcs_position += 1
+
+        return matched_indices
     
     def _get_position_weight(self, position: int, length: int) -> float:
         """获取位置权重
@@ -1219,14 +1233,14 @@ class SpellModel(BaseLogClusterModel):
             return len(lcs) / len(seq1)
         
         # 位置加权相似度
-        lcs_set = set(lcs)
+        matched_indices = self._get_lcs_match_indices(seq1, lcs)
         total_weight = 0.0
         max_weight = 0.0
-        
-        for i, token in enumerate(seq1):
+
+        for i in range(len(seq1)):
             weight = self._get_position_weight(i, len(seq1))
             max_weight += weight
-            if token in lcs_set:
+            if i in matched_indices:
                 total_weight += weight
         
         return total_weight / max_weight if max_weight > 0 else 0.0
@@ -1434,20 +1448,20 @@ class SpellModel(BaseLogClusterModel):
         # 计算相似度和匹配详情
         similarity = self._lcs_similarity(tokens, template)
         lcs = self._compute_lcs(tokens, template)
-        lcs_set = set(lcs)
+        matched_indices = self._get_lcs_match_indices(tokens, lcs)
         
         # 分析匹配和不匹配的 token
         matched_tokens = []
         unmatched_tokens = []
         
-        for token in tokens:
-            if token in lcs_set:
+        for index, token in enumerate(tokens):
+            if index in matched_indices:
                 matched_tokens.append(token)
             else:
                 unmatched_tokens.append(token)
-        
+
         # 构建字段格式输出
-        match_details = self._format_match_details(tokens, template, lcs_set)
+        match_details = self._format_match_details(tokens, template, matched_indices)
         
         # 位置权重信息（如果启用）
         position_weights = None
@@ -1480,14 +1494,14 @@ class SpellModel(BaseLogClusterModel):
         self, 
         tokens: List[str], 
         template: List[str], 
-        lcs_set: Set[str]
+        matched_indices: Set[int]
     ) -> str:
         """格式化匹配详情为字段格式输出
         
         Args:
             tokens: 日志 token 列表
             template: 模板 token 列表
-            lcs_set: LCS token 集合
+            matched_indices: LCS 在日志序列中匹配到的位置
         
         Returns:
             格式化的匹配详情字符串
@@ -1499,8 +1513,8 @@ class SpellModel(BaseLogClusterModel):
         
         # 标记匹配状态
         match_markers = []
-        for token in tokens:
-            if token in lcs_set:
+        for index in range(len(tokens)):
+            if index in matched_indices:
                 match_markers.append('✓')
             else:
                 match_markers.append('✗')
@@ -1511,7 +1525,7 @@ class SpellModel(BaseLogClusterModel):
         if len(tokens) == len(template):
             lines.append("\nToken 对齐:")
             for i, (log_token, tpl_token) in enumerate(zip(tokens, template)):
-                marker = '✓' if log_token in lcs_set else '✗'
+                marker = '✓' if i in matched_indices else '✗'
                 if log_token == tpl_token:
                     lines.append(f"  [{i}] {marker} {log_token} == {tpl_token}")
                 elif tpl_token == '<*>':
