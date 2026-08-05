@@ -90,7 +90,10 @@ const MoreActionsDropdown: React.FC<MoreActionsDropdownProps> = ({
             ),
             disabled: item.disabled,
             danger: item.danger,
-            onClick: () => runItem(item),
+            onClick: ({ domEvent }) => {
+              if (stopPropagation) domEvent.stopPropagation();
+              runItem(item);
+            },
           };
         }),
       }}
