@@ -608,7 +608,10 @@ const ObjectDetection = ({
       const imageExtensions = /\.(jpg|jpeg|png|gif|bmp|webp)$/i;
 
       let batchIndex = 0;
-      const entries = Object.entries(zip.files);
+      type ZipFile = (typeof zip.files)[string];
+      const entries = Object.entries(zip.files) as Array<
+        [string, ZipFile]
+      >;
       const totalImages = entries.filter(([name, file]) => !file.dir && imageExtensions.test(name)).length;
 
       for (const [fileName, file] of entries) {

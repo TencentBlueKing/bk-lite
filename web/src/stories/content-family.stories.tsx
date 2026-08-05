@@ -1,4 +1,4 @@
-import type { Meta, StoryObj } from '@storybook/react';
+import type { Meta, StoryObj } from '@storybook/nextjs';
 import React from 'react';
 import { Button, Input } from 'antd';
 import { ClearOutlined, EditOutlined } from '@ant-design/icons';

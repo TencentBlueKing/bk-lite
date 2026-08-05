@@ -17,7 +17,7 @@ const useSearchApi = () => {
   };
 
   const deleteMonitorCondition = async (id: React.Key) => {
-    return await del(`/monitor/api/monitor_condition/${id}/`);
+    return await del(`/monitor/api/monitor_condition/${String(id)}/`);
   };
 
   return {

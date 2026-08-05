@@ -319,7 +319,7 @@ export interface AttrItem {
 
 export type UniqueDisplayType = 'none' | 'single' | 'joint'
 
-export type AttrGovernanceFreshness = '' | 'occasional' | 'stable';
+export type AttrGovernanceFreshness = '' | 'timely' | 'occasional' | 'stable';
 
 export interface AttrGovernance {
   key_attribute: boolean;

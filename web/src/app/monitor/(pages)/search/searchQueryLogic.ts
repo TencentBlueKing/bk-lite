@@ -47,7 +47,7 @@ export const getMetricsMapKey = (
   pluginId?: React.Key | null
 ) =>
   pluginId !== null && pluginId !== undefined && pluginId !== ''
-    ? `${objectId}_${pluginId}`
+    ? `${String(objectId)}_${String(pluginId)}`
     : String(objectId);
 
 export const resolveInitialPlugin = (plugins: PluginItem[]): React.Key | null =>

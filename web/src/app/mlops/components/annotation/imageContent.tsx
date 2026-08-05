@@ -143,8 +143,11 @@ const ImageContent = () => {
       const zip = await JSZip.loadAsync(zipBlob);
       const imageFiles: TrainDataItem[] = [];
       const imageExtensions = /\.(jpg|jpeg|png|gif|bmp|webp)$/i;
-      
-      for (const [fileName, file] of Object.entries(zip.files)) {
+      type ZipFile = (typeof zip.files)[string];
+
+      for (const [fileName, file] of Object.entries(zip.files) as Array<
+        [string, ZipFile]
+      >) {
         if (file.dir) continue;
         if (!imageExtensions.test(fileName)) continue;
         

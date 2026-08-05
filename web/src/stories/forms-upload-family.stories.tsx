@@ -1,4 +1,4 @@
-import type { Meta, StoryObj } from '@storybook/react';
+import type { Meta, StoryObj } from '@storybook/nextjs';
 import React from 'react';
 import { Button } from 'antd';
 import { CloudUploadOutlined, UploadOutlined } from '@ant-design/icons';

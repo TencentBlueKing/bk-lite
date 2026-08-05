@@ -39,7 +39,7 @@ const useNodeApi = () => {
 
   // 删除节点
   const delNode = async (id: React.Key) => {
-    return await del(`/node_mgmt/api/node/${id}/`);
+    return await del(`/node_mgmt/api/node/${String(id)}/`);
   };
 
   // 获取节点管理的状态枚举值
@@ -128,7 +128,7 @@ const useNodeApi = () => {
   // 更新节点名称和组织
   const updateNode = async (data: NodeParams) => {
     const { id, ...remain } = data;
-    return await patch(`/node_mgmt/api/node/${id}/update/`, remain);
+    return await patch(`/node_mgmt/api/node/${String(id)}/update/`, remain);
   };
 
   // 批量操作节点的采集器（启动、停止、重启）

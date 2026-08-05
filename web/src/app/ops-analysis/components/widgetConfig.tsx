@@ -77,7 +77,7 @@ import {
   canConfigureScreenWidgetFrame,
   getDefaultScreenWidgetAppearance,
   resolveScreenWidgetAppearance,
-} from '@/app/ops-analysis/(pages)/view/screen/utils/layout';
+} from '@/app/ops-analysis/(pages)/view/screen/utils/layoutUtils';
 
 interface ViewConfigPropsWithManager extends ViewConfigProps {
   dataSourceManager: ReturnType<typeof useDataSourceManager>;

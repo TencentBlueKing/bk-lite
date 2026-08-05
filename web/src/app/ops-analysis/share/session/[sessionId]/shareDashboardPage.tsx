@@ -40,13 +40,13 @@ export default function ShareDashboardPage() {
     () =>
       canvas
         ? {
-            id: `shared-${canvas.resource_type}-${canvas.id}`,
-            data_id: String(canvas.id),
-            name: canvas.name,
-            desc: canvas.desc ?? '',
-            type: canvas.resource_type,
-            is_build_in: canvas.is_build_in,
-          }
+          id: `shared-${canvas.resource_type}-${canvas.id}`,
+          data_id: String(canvas.id),
+          name: canvas.name,
+          desc: canvas.desc ?? '',
+          type: canvas.resource_type,
+          is_build_in: canvas.is_build_in,
+        }
         : null,
     [canvas],
   );

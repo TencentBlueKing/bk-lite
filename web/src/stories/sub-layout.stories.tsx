@@ -1,4 +1,4 @@
-import type { Meta, StoryObj } from '@storybook/react';
+import type { Meta, StoryObj } from '@storybook/nextjs';
 import WithSideMenuLayout from '@/components/sub-layout/index';
 import { MenuItem } from '@/types/index';
 import { Segmented } from 'antd';

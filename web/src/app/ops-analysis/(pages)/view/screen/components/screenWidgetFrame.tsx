@@ -9,7 +9,7 @@ import { useTranslation } from '@/utils/i18n';
 import MoreActionsDropdown from '@/components/more-actions-dropdown';
 import type { MoreActionsDropdownItem } from '@/components/more-actions-dropdown';
 import type { ScreenWidgetItem } from '@/app/ops-analysis/types/screen';
-import { normalizeScreenWidgetAppearance } from '../utils/layout';
+import { normalizeScreenWidgetAppearance } from '../utils/layoutUtils';
 
 interface ScreenWidgetFrameOptions {
   selected?: boolean;

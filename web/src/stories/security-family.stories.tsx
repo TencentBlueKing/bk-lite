@@ -1,5 +1,5 @@
 import React from 'react';
-import type { Meta, StoryObj } from '@storybook/react';
+import type { Meta, StoryObj } from '@storybook/nextjs';
 import { Form } from 'antd';
 import AuthSecretField from '@/components/auth-secret-field';
 import EditablePasswordField from '@/components/dynamic-form/editPasswordField';

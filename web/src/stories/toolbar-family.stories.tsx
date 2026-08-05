@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react';
-import type { Meta, StoryObj } from '@storybook/react';
+import type { Meta, StoryObj } from '@storybook/nextjs';
 import { Button, Dropdown, Input, Radio, Select, Segmented, Space, Typography } from 'antd';
 import {
   DownOutlined,
