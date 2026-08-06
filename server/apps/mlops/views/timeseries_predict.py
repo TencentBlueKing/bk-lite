@@ -43,7 +43,7 @@ from apps.mlops.serializers.algorithm_config import (
     AlgorithmConfigListSerializer,
 )
 from apps.mlops.filters.algorithm_config import AlgorithmConfigFilter
-from apps.mlops.views.base import TeamModelViewSet
+from apps.mlops.views.base import BaseTrainJobViewSet, TeamModelViewSet
 from apps.mlops.utils.group_scope import filter_queryset_by_parent_team
 
 
@@ -95,7 +95,7 @@ class TimeSeriesPredictDatasetViewSet(TeamModelViewSet):
         return super().update(request, *args, **kwargs)
 
 
-class TimeSeriesPredictTrainJobViewSet(TeamModelViewSet):
+class TimeSeriesPredictTrainJobViewSet(BaseTrainJobViewSet):
     queryset = TimeSeriesPredictTrainJob.objects.select_related("dataset_version", "dataset_version__dataset").all()
     serializer_class = TimeSeriesPredictTrainJobSerializer
     pagination_class = CustomPageNumberPagination
@@ -426,38 +426,7 @@ class TimeSeriesPredictTrainJobViewSet(TeamModelViewSet):
     @action(detail=True, methods=["delete"], url_path="runs/(?P<run_id>[^/]+)")
     @HasPermission("timeseries_predict-Delete")
     def delete_run(self, request, pk=None, run_id=None):
-        """软删除指定 MLflow run"""
-        try:
-            train_job = self.get_object()
-
-            allowed, reason = self.check_run_delete_eligibility(run_id, train_job)
-            if not allowed:
-                return Response(
-                    {
-                        "error": mlops_message(request, "error.training_run_not_found" if reason == "run_not_found" else "error.training_run_cannot_delete"),
-                        "code": reason,
-                        "run_id": run_id,
-                    },
-                    status=status.HTTP_404_NOT_FOUND if reason == "run_not_found" else status.HTTP_400_BAD_REQUEST,
-                )
-
-            mlflow_service.delete_run(run_id)
-
-            return Response(
-                {
-                    "result": True,
-                    "run_id": run_id,
-                    "train_job_id": train_job.id,
-                    "deleted": True,
-                    "deletion_type": "mlflow_soft_delete",
-                }
-            )
-        except Exception as e:
-            logger.error(f"删除 run 失败: {str(e)}", exc_info=True)
-            return Response(
-                {"result": False, "message": mlops_message(request, "error.run_delete_failed", detail=str(e))},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
+        return super().delete_run(request, pk=pk, run_id=run_id)
 
     @action(detail=True, methods=["get"], url_path="runs/(?P<run_id>[^/]+)/metrics_list")
     @HasPermission("timeseries_predict-View")
@@ -491,85 +460,12 @@ class TimeSeriesPredictTrainJobViewSet(TeamModelViewSet):
     )
     @HasPermission("timeseries_predict-View")
     def get_metric_data(self, request, pk=None, run_id: str = "", metric_name: str = ""):
-        """
-        获取指定 run 的指定指标的历史数据
-        """
-        try:
-            train_job = self.get_authorized_object_or_none()
-            if train_job is None:
-                return self.run_not_found_response(run_id)
-            if not self.train_job_has_run(train_job, run_id):
-                return self.run_not_found_response(run_id)
-
-            # 获取指标历史数据（自动处理排序）
-            metric_data = mlflow_service.get_metric_history(run_id, metric_name)
-
-            if not metric_data:
-                return Response(
-                    {
-                        "run_id": run_id,
-                        "metric_name": metric_name,
-                        "total_points": 0,
-                        "metric_history": [],
-                    }
-                )
-
-            return Response(
-                {
-                    "run_id": run_id,
-                    "metric_name": metric_name,
-                    "total_points": len(metric_data),
-                    "metric_history": metric_data,
-                }
-            )
-
-        except Exception as e:
-            logger.error(f"获取指标历史数据失败: {str(e)}", exc_info=True)
-            return Response(
-                {"error": mlops_message(request, "error.metric_history_fetch_failed", detail=str(e))},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
+        return super().get_metric_data(request, pk=pk, run_id=run_id, metric_name=metric_name)
 
     @action(detail=True, methods=["get"], url_path="runs/(?P<run_id>[^/]+)/run_params")
     @HasPermission("timeseries_predict-View")
     def get_run_params(self, request, pk=None, run_id: str = ""):
-        """
-        获取指定 run 的配置参数（用于查看历史训练的配置）
-        """
-        try:
-            train_job = self.get_authorized_object_or_none()
-            if train_job is None:
-                return self.run_not_found_response(run_id)
-            if not self.train_job_has_run(train_job, run_id):
-                return self.run_not_found_response(run_id)
-
-            # 获取运行信息和参数
-            run = mlflow_service.get_run_info(run_id)
-            params = mlflow_service.get_run_params(run_id)
-
-            # 提取运行元信息
-            run_name = run.data.tags.get("mlflow.runName", run_id)
-            run_status = run.info.status
-            start_time = run.info.start_time
-            end_time = run.info.end_time
-
-            return Response(
-                {
-                    "run_id": run_id,
-                    "run_name": run_name,
-                    "status": run_status,
-                    "start_time": pd.Timestamp(start_time, unit="ms").isoformat() if start_time else None,
-                    "end_time": pd.Timestamp(end_time, unit="ms").isoformat() if end_time else None,
-                    "params": params,
-                }
-            )
-
-        except Exception as e:
-            logger.error(f"获取运行参数失败: {str(e)}", exc_info=True)
-            return Response(
-                {"error": mlops_message(request, "error.run_params_fetch_failed", detail=str(e))},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
+        return super().get_run_params(request, pk=pk, run_id=run_id)
 
     @action(detail=True, methods=["get"], url_path="model_versions")
     @HasPermission("timeseries_predict-View")
