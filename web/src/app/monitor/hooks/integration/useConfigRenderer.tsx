@@ -7,7 +7,8 @@ import {
   Checkbox,
   Button,
   Tooltip,
-  Switch
+  Switch,
+  Segmented
 } from 'antd';
 import { ExclamationCircleFilled, MinusCircleOutlined, PlusOutlined } from '@ant-design/icons';
 import Password from '@/components/password';
@@ -375,6 +376,19 @@ export const useConfigRenderer = () => {
 
         case 'switch':
           return <Switch {...widget_props} className="mr-[10px]" />;
+
+        case 'segmented':
+          return (
+            <Segmented
+              {...widget_props}
+              disabled={Boolean(locked || widget_props.disabled)}
+              options={options.map((option: { label: string; value: string | number }) => ({
+                label: option.label,
+                value: option.value
+              }))}
+              className="mr-[10px]"
+            />
+          );
 
         case 'checkbox_group':
           return (

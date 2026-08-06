@@ -26,6 +26,11 @@ _MONITOR_TEMPLATE_ALLOWED_FILTERS = (
     "to_toml_str_array",
 )
 _MONITOR_TEMPLATE_ALLOWED_VARIABLES = {
+    # SNMP 接口过滤运行时注入片段的固定 Jinja 局部变量。
+    "_ifdescr_exclude",
+    "_ifdescr_include",
+    "_iftype_exclude",
+    "_iftype_include",
     "ENV_BEARER_TOKEN",
     "ENV_PASSWORD",
     "agents",
@@ -42,11 +47,13 @@ _MONITOR_TEMPLATE_ALLOWED_VARIABLES = {
     "dbname",
     "disk_exclude_fstypes",
     "disk_include_fstypes",
+    "enable_ifmib",
     "endpoint",
     "expect",
     "host",
     "ifdescr_exclude",
     "ifdescr_include",
+    "ifmib_capable",
     "iftype_exclude",
     "iftype_include",
     "insecure_skip_verify",
@@ -255,10 +262,13 @@ class Controller:
                     raise ValueError(f"无效的 instance_id 格式: {instance_id}") from e
 
         from apps.monitor.utils.snmp_interface_template import (
+            ensure_core_network_ifmib_jinja,
             ensure_snmp_interface_filter_jinja,
             needs_snmp_interface_filter_jinja,
+            validate_rendered_core_network_ifmib,
         )
 
+        template_content = ensure_core_network_ifmib_jinja(template_content, _context)
         # SNMP 接口过滤 Jinja 单一真相源：渲染前幂等注入，插件 child 模板无需复制
         if needs_snmp_interface_filter_jinja(template_content):
             template_content = ensure_snmp_interface_filter_jinja(template_content)
@@ -274,7 +284,9 @@ class Controller:
             raise BaseAppException(f"采集模板包含未授权变量: {e}") from e
 
         template = self.jinja_env.from_string(template_content)
-        return template.render(safe_context)
+        rendered_template = template.render(safe_context)
+        validate_rendered_core_network_ifmib(rendered_template, _context)
+        return rendered_template
 
     def format_configs(self):
         """
@@ -348,8 +360,9 @@ class Controller:
 
         plugin_id = self.data.get("monitor_plugin_id")
         plugin_template_id = None
+        plugin_obj = None
         if plugin_id:
-            plugin_obj = MonitorPlugin.objects.filter(id=plugin_id).only("template_id").first()
+            plugin_obj = MonitorPlugin.objects.filter(id=plugin_id).prefetch_related("monitor_object").first()
             if plugin_obj:
                 plugin_template_id = plugin_obj.template_id
         configs = self.format_configs()
@@ -391,6 +404,13 @@ class Controller:
                         "plugin_id": plugin_template_id or plugin_id,
                         "monitor_plugin_id": plugin_id,
                     }
+                    from apps.monitor.utils.snmp_ifmib_capability import is_ifmib_capable_plugin
+
+                    render_context["ifmib_capable"] = is_ifmib_capable_plugin(plugin_obj)
+                    if render_context["ifmib_capable"]:
+                        # IF-MIB 是本次下发选项。接入页默认启用；用户可以只对当前
+                        # 新实例关闭，已下发实例的 TOML 快照不会受影响。
+                        render_context.setdefault("enable_ifmib", True)
                     if collect_type == "snmp" and "iftype_exclude" not in render_context:
                         from apps.monitor.constants.snmp_interface import DEFAULT_IFTYPE_EXCLUDE
 

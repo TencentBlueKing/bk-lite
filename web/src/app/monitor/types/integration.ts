@@ -47,6 +47,7 @@ export interface MetricInfo {
   unit?: string;
   description?: string;
   dimensions?: string[];
+  is_ifmib?: boolean;
 }
 
 export interface FilterItem {
@@ -91,10 +92,13 @@ export interface ObjectInstItem {
 export interface MetricListItem {
   id: string;
   name: string;
+  monitor_plugin?: React.Key;
   child: MetricItem[];
   display_name?: string;
   isOpen?: boolean;
   is_pre: boolean;
+  /** 当前分组内的指标是否全部由公共 IF-MIB 表提供。 */
+  is_ifmib_group?: boolean;
 }
 
 export interface DimensionItem {
