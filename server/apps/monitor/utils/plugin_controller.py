@@ -411,11 +411,13 @@ class Controller:
                         # IF-MIB 是本次下发选项。接入页默认启用；用户可以只对当前
                         # 新实例关闭，已下发实例的 TOML 快照不会受影响。
                         render_context.setdefault("enable_ifmib", True)
-                    if collect_type == "snmp" and "iftype_exclude" not in render_context:
+                    # 与 IF-MIB 能力判定一致：覆盖 snmp / snmp_h3c 等厂商 collect_type。
+                    snmp_collect = str(collect_type or "").startswith("snmp")
+                    if snmp_collect and "iftype_exclude" not in render_context:
                         from apps.monitor.constants.snmp_interface import DEFAULT_IFTYPE_EXCLUDE
 
                         render_context["iftype_exclude"] = list(DEFAULT_IFTYPE_EXCLUDE)
-                    if collect_type == "snmp" and is_child:
+                    if snmp_collect and is_child:
                         from apps.monitor.utils.snmp_interface_filters import (
                             assert_snmp_interface_filter_mutex_from_values,
                         )
