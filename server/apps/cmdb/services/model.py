@@ -2219,6 +2219,16 @@ class ModelManage(object):
                     raise
 
         ModelManage._import_auto_relation_rule_sets_from_asso_sheets(model_config)
+        # push/ingest 依赖可写 node_id / monitor_id；模型导入后对一期支持模型幂等补齐
+        from apps.cmdb.services.module_ingest import (
+            SUPPORTED_INGEST_MODELS,
+            ensure_model_monitor_id_attr,
+            ensure_model_node_id_attr,
+        )
+
+        for mid in sorted(SUPPORTED_INGEST_MODELS):
+            ensure_model_node_id_attr(mid, username="admin")
+            ensure_model_monitor_id_attr(mid, username="admin")
 
     @staticmethod
     def import_model_config(file):

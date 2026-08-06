@@ -371,12 +371,17 @@ const NodeMgmtSyncDetail: React.FC<NodeMgmtSyncDetailProps> = ({ open }) => {
 
   return (
     <div className="flex flex-col gap-4">
-      {loading ? (
+          {loading ? (
         <div className="py-8 flex justify-center">
           <Spin />
         </div>
-      ) : (
+          ) : (
         <>
+          <Alert
+            type="info"
+            showIcon
+            message={t('Collection.nodeMgmtSync.pullReplacedNotice')}
+          />
           <div className="flex flex-wrap items-center justify-between gap-3 rounded border border-[var(--color-border-1)] bg-[var(--color-bg-1)] p-4">
             <div className="text-sm text-[var(--color-text-2)]">
               <div>
@@ -390,10 +395,9 @@ const NodeMgmtSyncDetail: React.FC<NodeMgmtSyncDetailProps> = ({ open }) => {
               <Space>
                 <span>{t('Collection.nodeMgmtSync.autoSync')}</span>
                 <Switch
-                  checked={task?.auto_sync_enabled}
-                  disabled={saving}
-                  loading={saving}
-                  onChange={(checked) => void handleConfigChange({ auto_sync_enabled: checked })}
+                  checked={false}
+                  disabled
+                  title={t('Collection.nodeMgmtSync.autoSyncDisabledHint')}
                 />
               </Space>
               <Space>
@@ -547,7 +551,7 @@ const NodeMgmtSyncDetail: React.FC<NodeMgmtSyncDetailProps> = ({ open }) => {
             />
           )}
         </>
-      )}
+          )}
     </div>
   );
 };

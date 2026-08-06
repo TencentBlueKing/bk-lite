@@ -138,9 +138,9 @@ def test_metric_failure_keeps_last_state_and_produces_no_event(policy):
     evaluated_at = timezone.now().replace(second=0, microsecond=0)
     service.evaluate(policy.id, evaluated_at=evaluated_at)
     before = ApmPolicyState.objects.get(policy=policy)
-    metric_store.error = RuntimeError("victoriametrics unavailable")
+    metric_store.error = RuntimeError("victoriatraces unavailable")
 
-    with pytest.raises(RuntimeError, match="victoriametrics unavailable"):
+    with pytest.raises(RuntimeError, match="victoriatraces unavailable"):
         service.evaluate(policy.id, evaluated_at=evaluated_at + timedelta(minutes=1))
 
     after = ApmPolicyState.objects.get(policy=policy)

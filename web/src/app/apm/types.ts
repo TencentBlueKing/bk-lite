@@ -1,5 +1,10 @@
 export type CatalogStatus = 'active' | 'silent' | 'archived';
 
+export interface ApmPage<T> {
+  count: number;
+  items: T[];
+}
+
 export interface ApmEnvironmentView {
   environment: string;
   last_seen_at: string;
@@ -135,7 +140,7 @@ export interface ApmApplication {
   application_id: string;
   name: string;
   description: string;
-  is_enabled: boolean;
+  is_builtin: boolean;
   service_count: number;
   organization_ids: number[];
   created_at: string;
@@ -148,32 +153,41 @@ export interface ApmApplicationInput {
   application_id?: string;
   name: string;
   description?: string;
-  is_enabled?: boolean;
   organization_ids: number[];
 }
 
 export interface ApmIngestSnippetInput {
   application_id: string;
+  cloud_region_id: number;
   language: 'python' | 'nodejs' | 'java' | 'go';
   runtime: 'kubernetes' | 'docker' | 'host' | 'other';
-  endpoint: string;
   service_name: string;
   service_version?: string;
   environment: string;
 }
 
+export interface ApmCloudRegion {
+  id: number;
+  name: string;
+}
+
 export interface ApmIngestSnippet {
   application_id: string;
   application_name: string;
+  cloud_region: ApmCloudRegion;
+  http_endpoint: string;
   environment: Record<string, string>;
   code: string;
 }
 
 export interface ApmHealth {
   catalog_reconcile: ApmHealthComponent;
-  collector: ApmHealthComponent;
-  trace_store: ApmHealthComponent;
-  metric_store: ApmHealthComponent;
+  regional_collector: ApmHealthComponent;
+  nats_publish: ApmHealthComponent;
+  jetstream: ApmHealthComponent;
+  system_collector: ApmHealthComponent;
+  victoria_traces: ApmHealthComponent;
+  victoria_traces_retention: ApmHealthComponent;
   notification_responder: ApmHealthComponent;
   policy_evaluation: ApmHealthComponent;
   notification_delivery: ApmHealthComponent & { failed_deliveries?: number };
@@ -185,6 +199,19 @@ export interface ApmHealthComponent {
   last_failed_at?: string;
   last_checked_at?: string;
   error_code?: string;
+  publish_acks?: number;
+  last_publish_ack_at?: string;
+  stream_bytes?: number;
+  stream_messages?: number;
+  capacity_percent?: number;
+  queue_size?: number;
+  queue_capacity?: number;
+  queue_capacity_percent?: number;
+  consumer_pending?: number;
+  consumer_ack_pending?: number;
+  consumer_redelivered?: number;
+  configured_days?: number;
+  required_days?: number;
 }
 
 export interface ApmTraceSummary {

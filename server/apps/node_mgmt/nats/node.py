@@ -714,3 +714,15 @@ def install_collector(data: dict):
 def install_managed_component(data: dict):
     """安装托管组件（当前复用采集器安装流程）"""
     return _install_collector_by_nats(data)
+
+
+@nats_client.register
+def node_ingest_from_source(params):
+    """跨模块推送写入节点：只关联，永不新建。
+
+    params 为 IngestEnvelope 扩展字段。NATS 方法名带 node_ 前缀，
+    避免与 CMDB/Monitor ingest_from_source 冲突。
+    """
+    from apps.node_mgmt.services.module_ingest import NodeModuleIngestService
+
+    return NodeModuleIngestService.ingest(dict(params or {}))

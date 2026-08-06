@@ -1,6 +1,6 @@
 """补丁管理 Dashboard 视图"""
 
-from django.db.models import Count, Exists, OuterRef
+from django.db.models import Count
 from rest_framework.decorators import action
 from rest_framework.exceptions import MethodNotAllowed
 from rest_framework.response import Response
@@ -28,7 +28,7 @@ from apps.patch_mgmt.serializers.governance import GovernanceTaskListSerializer
 from apps.patch_mgmt.services.execution_record_service import (
     filter_execution_record_roots,
 )
-from apps.patch_mgmt.services.risk_service import compute_risk_items
+from apps.patch_mgmt.services.risk_service import compute_host_compliance_status, compute_risk_items
 
 
 class PatchDashboardViewSet(AuthViewSet):
@@ -86,24 +86,18 @@ class PatchDashboardViewSet(AuthViewSet):
         affected_targets = HostBaselineBinding.objects.filter(**host_binding_filter).count()
         # 真实合规分布（按 binding.compliance_status 聚合，evaluating 按运行中任务计算）
         binding_status_qs = HostBaselineBinding.objects.filter(**host_binding_filter)
-        compliant_hosts = binding_status_qs.filter(compliance_status=ComplianceStatus.COMPLIANT).count()
-        non_compliant_hosts = binding_status_qs.filter(compliance_status=ComplianceStatus.NON_COMPLIANT).count()
-        pending_hosts = binding_status_qs.filter(compliance_status=ComplianceStatus.PENDING).count()
-        failed_hosts = binding_status_qs.filter(compliance_status=ComplianceStatus.FAILED).count()
+        status_counts = defaultdict(int)
+        for binding in binding_status_qs.select_related("target"):
+            status_counts[compute_host_compliance_status(binding.target)] += 1
+        compliant_hosts = status_counts[ComplianceStatus.COMPLIANT]
+        non_compliant_hosts = status_counts[ComplianceStatus.NON_COMPLIANT]
+        pending_hosts = status_counts[ComplianceStatus.PENDING]
+        failed_hosts = status_counts[ComplianceStatus.FAILED]
+        unknown_hosts = status_counts[ComplianceStatus.UNKNOWN]
+        not_applicable_hosts = status_counts[ComplianceStatus.NOT_APPLICABLE]
         unconfigured_hosts = target_qs.filter(baseline_binding__isnull=True).count()
 
-        active_assessment = Exists(
-            task_qs.filter(
-                host_results__target_id=OuterRef("target_id"),
-                task_type__in=(GovernanceTaskType.ASSESS, GovernanceTaskType.VERIFY),
-                status__in=GovernanceTaskStatus.ACTIVE_STATES,
-            )
-        )
-        evaluating_hosts = (
-            binding_status_qs.annotate(_active_assessment=active_assessment)
-            .filter(_active_assessment=True)
-            .count()
-        )
+        evaluating_hosts = status_counts[ComplianceStatus.EVALUATING]
 
         # 评估覆盖率 = 已评估主机 / 纳管主机（已绑定 binding 即可视为"已纳入评估"）
         coverage_rate = round((affected_targets / target_total) * 100) if target_total > 0 else 0
@@ -154,6 +148,8 @@ class PatchDashboardViewSet(AuthViewSet):
             {"label": "待评估", "count": pending_hosts, "color": "default", "filter": "pending"},
             {"label": "评估中", "count": evaluating_hosts, "color": "processing", "filter": "evaluating"},
             {"label": "评估失败", "count": failed_hosts, "color": "default", "filter": "failed"},
+            {"label": "评估异常/未知", "count": unknown_hosts, "color": "warning", "filter": "unknown"},
+            {"label": "不适用", "count": not_applicable_hosts, "color": "default", "filter": "not_applicable"},
             {"label": "未配置", "count": unconfigured_hosts, "color": "warning", "filter": "unconfigured"},
         ]
 
@@ -237,6 +233,8 @@ class PatchDashboardViewSet(AuthViewSet):
             "pending_hosts": pending_hosts,
             "evaluating_hosts": evaluating_hosts,
             "failed_hosts": failed_hosts,
+            "unknown_hosts": unknown_hosts,
+            "not_applicable_hosts": not_applicable_hosts,
             "compliance_distribution": compliance_distribution,
             "scan_tasks": {"total": 0, "running": 0, "pending": 0, "completed": 0, "failed": 0},
             "install_tasks": {"total": 0, "running": 0, "pending": 0, "success": 0, "failed": 0},

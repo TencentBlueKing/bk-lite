@@ -8,6 +8,7 @@ from apps.apm.services.contracts import (
     NotificationDelivery,
     NotificationDeliveryResult,
     ServiceMetricQuery,
+    ServiceDependency,
     ServiceRed,
     SloMeasurement,
     SloMetricQuery,
@@ -15,6 +16,7 @@ from apps.apm.services.contracts import (
     TracePage,
     TraceSearchQuery,
     TraceSummary,
+    TopologyDependencyQuery,
 )
 from apps.apm.services.identity import normalize_identity
 
@@ -25,9 +27,11 @@ class InMemoryTraceStore:
         *,
         summaries: Iterable[TraceSummary] = (),
         details: Iterable[TraceDetail] = (),
+        dependencies: Iterable[ServiceDependency] = (),
     ):
         self._summaries = {item.trace_id: item for item in summaries}
         self._details = {item.trace_id: item for item in details}
+        self._dependencies = tuple(dependencies)
 
     def add(self, summary: TraceSummary, detail: TraceDetail) -> None:
         if summary.trace_id != detail.trace_id:
@@ -62,6 +66,9 @@ class InMemoryTraceStore:
 
     def get_trace(self, trace_id: str) -> TraceDetail | None:
         return self._details.get(trace_id)
+
+    def service_dependencies(self, query: TopologyDependencyQuery) -> tuple[ServiceDependency, ...]:
+        return self._dependencies
 
 
 class InMemoryMetricStore:

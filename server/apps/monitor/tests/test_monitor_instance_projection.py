@@ -375,6 +375,8 @@ def test_monitor_instance_list_item_serializer_includes_flow_asset_fields():
         ip="10.0.0.12",
         summary_facts={"asset.ip": "10.0.0.12"},
         fallback_sampling_rate=2000,
+        node_id="node-abc",
+        cmdb_id="1704",
     )
 
     assert MonitorObjectService._serialize_instance_list_item(
@@ -392,8 +394,58 @@ def test_monitor_instance_list_item_serializer_includes_flow_asset_fields():
         "ip": "10.0.0.12",
         "summary_facts": {"asset.ip": "10.0.0.12"},
         "fallback_sampling_rate": 2000,
+        "node_id": "node-abc",
+        "cmdb_id": "1704",
         "organizations": [7],
     }
+
+
+def test_monitor_instance_list_item_serializer_empty_link_ids():
+    obj = types.SimpleNamespace(
+        id="('x',)",
+        name="x",
+        interval=60,
+        cloud_region_id=1,
+        ip="1.1.1.1",
+        summary_facts={},
+        fallback_sampling_rate=None,
+        node_id=None,
+        cmdb_id=None,
+    )
+    item = MonitorObjectService._serialize_instance_list_item(obj, {}, {})
+    assert item["node_id"] == ""
+    assert item["cmdb_id"] == ""
+
+
+def test_get_objs_v2_includes_node_and_cmdb_ids(db):
+    monitor_object = MonitorObject.objects.create(
+        name="HostLinkIds",
+        display_name="HostLinkIds",
+        default_metric="up",
+        instance_id_keys=["instance_id"],
+    )
+    instance = MonitorInstance.objects.create(
+        id="('link-host',)",
+        name="link-host",
+        monitor_object=monitor_object,
+        ip="10.11.27.147",
+        node_id="a9ab71a9da914e07a54f441a6a13000e",
+        cmdb_id="1704",
+        is_active=True,
+        is_deleted=False,
+    )
+    MonitorInstanceOrganization.objects.create(monitor_instance=instance, organization=1)
+
+    data = InstanceSearch(
+        monitor_object,
+        {"page": 1, "page_size": -1},
+        qs=MonitorInstance.objects.all(),
+        visible_organization_ids=frozenset({1}),
+    ).get_objs_v2()
+
+    assert data["count"] == 1
+    assert data["results"][0]["node_id"] == "a9ab71a9da914e07a54f441a6a13000e"
+    assert data["results"][0]["cmdb_id"] == "1704"
 
 
 def test_instance_search_results_include_collection_interval_for_gap_detection(db, monkeypatch):

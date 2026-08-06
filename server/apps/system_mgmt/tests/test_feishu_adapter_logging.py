@@ -131,3 +131,54 @@ def test_feishu_contact_auth_retry_is_debug_only():
     log_text = str(logger.debug.call_args_list)
     assert "refreshing token and retrying once" in log_text
     assert "credential=hidden" not in log_text
+
+
+def test_feishu_contact_response_log_includes_request_duration():
+    response = _SuccessfulTokenResponse()
+    response.json = lambda: {
+        "code": 0,
+        "data": {"items": [], "has_more": False},
+    }
+
+    with patch(
+        "apps.system_mgmt.providers.adapters.feishu.requests.get",
+        return_value=response,
+    ), patch(
+        "apps.system_mgmt.providers.adapters.feishu.time.perf_counter",
+        side_effect=[100.0, 101.25],
+    ), patch("apps.system_mgmt.providers.adapters.feishu.logger") as logger:
+        result, error = feishu._feishu_get_paginated("https://private.example/contact", "token")
+
+    assert error is None
+    assert result == {"items": [], "request_id": "req-1"}
+    assert "duration_ms=1250" in str(logger.debug.call_args_list)
+
+
+def test_feishu_contact_permission_denied_does_not_refresh_token():
+    permission_denied_response = _SuccessfulTokenResponse()
+    permission_denied_response.status_code = 403
+    permission_denied_response.json = lambda: {
+        "code": 40004,
+        "msg": "no permission",
+    }
+
+    with patch(
+        "apps.system_mgmt.providers.adapters.feishu.requests.get",
+        return_value=permission_denied_response,
+    ), patch(
+        "apps.system_mgmt.providers.adapters.feishu._fetch_tenant_access_token",
+    ) as refresh:
+        result, error = feishu._feishu_get_paginated(
+            "https://private.example/contact",
+            "old-token",
+            config={"app_id": "cli_test", "app_secret": "secret"},
+        )
+
+    assert result is None
+    assert error.success is False
+    assert error.errors[0].code == "provider.permission_denied"
+    assert error.errors[0].message == "飞书通讯录授权范围不足，请检查应用的通讯录权限范围及应用发布状态"
+    assert error.errors[0].retryable is False
+    assert error.errors[0].external_code == "40004"
+    assert error.errors[0].external_request_id == "req-1"
+    refresh.assert_not_called()

@@ -2,9 +2,8 @@ import pytest
 
 from apps.apm.config import CELERY_BEAT_SCHEDULE
 from apps.apm.services.contracts import CatalogReconcileResult
-from apps.apm.tasks import probe_apm_runtime_dependencies, reconcile_telemetry_catalog
 from apps.apm.services.health import CATALOG_RECONCILE_HEALTH_KEY, RuntimeDependencyHealthProbe
-
+from apps.apm.tasks import probe_apm_runtime_dependencies, reconcile_telemetry_catalog
 
 pytestmark = pytest.mark.django_db
 
@@ -34,9 +33,7 @@ def test_catalog_reconcile_is_a_runtime_beat_task_and_not_batch_init():
         batch_init = file.read()
         assert "reconcile_telemetry_catalog" not in batch_init
         assert "probe_apm_runtime_dependencies" not in batch_init
-    assert CELERY_BEAT_SCHEDULE["apm_probe_runtime_dependencies"]["task"] == (
-        "apps.apm.tasks.probe_apm_runtime_dependencies"
-    )
+    assert CELERY_BEAT_SCHEDULE["apm_probe_runtime_dependencies"]["task"] == ("apps.apm.tasks.probe_apm_runtime_dependencies")
 
 
 def test_runtime_task_returns_reconcile_health_without_startup_side_effects(mocker):
@@ -57,6 +54,7 @@ def test_runtime_task_returns_reconcile_health_without_startup_side_effects(mock
         "archived_services": 4,
         "archived_instances": 5,
         "unknown_applications": 0,
+        "invalid_activities": 0,
     }
     reconcile.assert_called_once()
     delete.assert_called_once()
@@ -78,17 +76,22 @@ def test_health_endpoint_exposes_reconcile_degradation_without_storage_details(a
         "status": "degraded",
         "last_failed_at": "2026-07-30T10:00:00+00:00",
     }
-    assert response.data["collector"]["status"] == "pending"
-    assert response.data["trace_store"]["status"] == "pending"
-    assert response.data["metric_store"]["status"] == "pending"
+    assert response.data["regional_collector"]["status"] == "pending"
+    assert response.data["nats_publish"]["status"] == "pending"
+    assert response.data["jetstream"]["status"] == "pending"
+    assert response.data["system_collector"]["status"] == "pending"
+    assert response.data["victoria_traces"]["status"] == "pending"
+    assert response.data["victoria_traces_retention"]["status"] == "pending"
     assert response.data["notification_responder"]["status"] == "pending"
     assert response.data["policy_evaluation"]["status"] == "pending"
     assert response.data["notification_delivery"]["status"] == "pending"
 
 
 class FakeResponse:
-    def __init__(self, healthy=True):
+    def __init__(self, healthy=True, *, text="", payload=None):
         self.healthy = healthy
+        self.text = text
+        self.payload = payload or {}
 
     def raise_for_status(self):
         if not self.healthy:
@@ -96,30 +99,85 @@ class FakeResponse:
 
             raise requests.HTTPError("unavailable")
 
+    def json(self):
+        return self.payload
+
 
 class FakeSession:
     def __init__(self):
         self.calls = []
 
-    def get(self, endpoint, auth, timeout):
-        self.calls.append((endpoint, auth, timeout))
+    def get(self, endpoint, auth, timeout, params=None):
+        self.calls.append((endpoint, auth, timeout, params))
+        if endpoint.endswith("/metrics"):
+            return FakeResponse(
+                text=(
+                    "bklite_apm_nats_publish_acks_total 12\n"
+                    'otelcol_exporter_queue_size{exporter="nats_jetstream"} 10\n'
+                    'otelcol_exporter_queue_capacity{exporter="nats_jetstream"} 100\n'
+                )
+            )
+        if endpoint.endswith("/jsz"):
+            return FakeResponse(
+                payload={
+                    "account_details": [
+                        {
+                            "stream_detail": [
+                                {
+                                    "name": "APM_TRACES",
+                                    "state": {"bytes": 100, "messages": 2},
+                                    "consumer_detail": [
+                                        {
+                                            "name": "BKLITE_APM_SYSTEM",
+                                            "num_pending": 2,
+                                            "num_ack_pending": 1,
+                                            "num_redelivered": 3,
+                                        }
+                                    ],
+                                }
+                            ]
+                        }
+                    ]
+                }
+            )
         return FakeResponse(healthy="traces" not in endpoint)
 
 
 def test_runtime_dependency_probe_is_bounded_and_hides_endpoints(monkeypatch):
-    monkeypatch.setenv("APM_COLLECTOR_HEALTH_ENDPOINT", "http://collector:13133/")
+    monkeypatch.setenv("APM_REGIONAL_COLLECTOR_HEALTH_ENDPOINT", "http://regional:13133/")
+    monkeypatch.setenv("APM_REGIONAL_COLLECTOR_METRICS_ENDPOINT", "http://regional:8888/metrics")
+    monkeypatch.setenv("APM_NATS_MONITOR_ENDPOINT", "http://nats:8222")
+    monkeypatch.setenv("APM_SYSTEM_COLLECTOR_HEALTH_ENDPOINT", "http://system:13133/")
     monkeypatch.setenv("APM_VICTORIATRACES_HEALTH_ENDPOINT", "http://traces:10428/health")
-    monkeypatch.setenv("APM_VICTORIAMETRICS_HEALTH_ENDPOINT", "http://metrics:8428/health")
     session = FakeSession()
 
     result = RuntimeDependencyHealthProbe(session=session).probe()
 
-    assert result["collector"]["status"] == "ok"
-    assert result["trace_store"]["status"] == "degraded"
-    assert result["trace_store"]["error_code"] == "trace_store_unavailable"
-    assert result["metric_store"]["status"] == "ok"
+    assert result["regional_collector"]["status"] == "ok"
+    assert result["nats_publish"]["publish_acks"] == 12
+    assert result["nats_publish"]["queue_capacity_percent"] == 10
+    assert result["jetstream"]["stream_messages"] == 2
+    assert result["jetstream"]["consumer_pending"] == 2
+    assert result["system_collector"]["status"] == "ok"
+    assert result["victoria_traces"]["status"] == "degraded"
+    assert result["victoria_traces"]["error_code"] == "victoria_traces_unavailable"
+    assert result["victoria_traces_retention"]["status"] == "ok"
     assert all(call[2] == (1, 2) for call in session.calls)
     assert "endpoint" not in str(result)
+
+
+def test_runtime_dependency_probe_degrades_short_retention_and_critical_stream(monkeypatch):
+    monkeypatch.setenv("APM_TRACE_RETENTION", "30d")
+    monkeypatch.setenv("APM_NATS_MONITOR_ENDPOINT", "http://nats:8222")
+    monkeypatch.setenv("APM_NATS_STREAM_MAX_BYTES", "100")
+    session = FakeSession()
+
+    result = RuntimeDependencyHealthProbe(session=session).probe()
+
+    assert result["victoria_traces_retention"]["status"] == "degraded"
+    assert result["victoria_traces_retention"]["error_code"] == "victoria_traces_retention_too_short"
+    assert result["jetstream"]["status"] == "degraded"
+    assert result["jetstream"]["error_code"] == "jetstream_capacity_critical"
 
 
 def test_runtime_dependency_probe_marks_missing_alert_responder_degraded(monkeypatch):

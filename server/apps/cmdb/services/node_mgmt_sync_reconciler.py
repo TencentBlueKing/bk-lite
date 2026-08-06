@@ -9,6 +9,7 @@ from django.utils import timezone
 from django_celery_beat.models import IntervalSchedule, PeriodicTask
 
 from apps.cmdb.models.node_mgmt_sync import NodeMgmtSyncRegionState
+from apps.cmdb.services import node_mgmt_sync_service as node_mgmt_sync_service_mod
 from apps.core.logger import cmdb_logger as logger
 from apps.core.utils.celery_utils import CeleryUtils
 
@@ -217,8 +218,10 @@ class NodeMgmtSyncReconciler:
             current = config.__class__.objects.select_for_update().filter(pk=config.pk, version=config.version).first()
             if current is None:
                 return False
+            # 推送联动接管后硬关闭拉取周期任务；DB 中旧的 auto_sync_enabled=True 也被门闩覆盖。
+            sync_enabled = bool(current.auto_sync_enabled) and not node_mgmt_sync_service_mod.PUSH_LINKAGE_REPLACES_PULL_SYNC
             cls._reconcile_periodic_task(
-                enabled=current.auto_sync_enabled,
+                enabled=sync_enabled,
                 name=service.SYNC_PERIODIC_TASK_NAME,
                 task=service.SYNC_TASK,
                 interval=current.sync_interval_minutes,

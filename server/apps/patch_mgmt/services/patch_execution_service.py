@@ -32,6 +32,7 @@ from apps.patch_mgmt.constants import (
     GovernanceTaskType,
     OSType,
     PatchTargetSource,
+    RequirementAssessmentStatus,
 )
 from apps.patch_mgmt.models import GovernanceTask, GovernanceTaskHost, HostBaselineBinding, HostComplianceSnapshot, Patch, PatchTarget
 from apps.patch_mgmt.services.assess_parsers import assess_requirements
@@ -481,7 +482,7 @@ def _install_commands(
     ]
 
 
-def _assess_command(os_type: str) -> str:
+def _assess_command(os_type: str, requirements: list | None = None) -> str:
     if os_type == OSType.WINDOWS:
         return (
             '$ProgressPreference="SilentlyContinue";'
@@ -494,15 +495,65 @@ def _assess_command(os_type: str) -> str:
             'if(-not $kb -and $u.Title -match "KB(\\d+)"){$kb="KB"+$matches[1]};'
             '"{0}|{1}|{2}" -f $kb,$u.MsrcSeverity,$u.Title'
             '}'
+            '"===WUA_INSTALLED===";'
+            '$ir=$sr.Search("IsInstalled=1");'
+            'foreach($u in $ir.Updates){'
+            '$kb=($u.KBArticleNumbers | Select-Object -First 1);'
+            'if(-not $kb -and $u.Title -match "KB(\\d+)"){$kb="KB"+$matches[1]};'
+            '"{0}|{1}|{2}" -f $kb,$u.MsrcSeverity,$u.Title'
+            '}'
             '"===HOTFIX===";'
             'Get-HotFix | ForEach-Object { $_.HotFixID }'
         )
-    return (
-        'if command -v dnf &>/dev/null; then dnf --security check-update; '
-        'elif command -v yum &>/dev/null; then yum --security check-update; '
-        'elif command -v apt-get &>/dev/null; then apt-get -s upgrade; '
-        'else echo "unsupported package manager"; fi || true'
-    )
+    commands: list[str] = []
+    for requirement in requirements or []:
+        try:
+            detail = requirement.patch.linux_detail
+            package_name = (detail.pkg_name or '').strip()
+            required_version = (detail.pkg_version or '').strip()
+        except Exception:  # noqa: BLE001
+            package_name = ''
+            required_version = ''
+        if not package_name or not _PKG_NAME_RE.match(package_name):
+            commands.append(
+                f"printf 'BKPATCH_LINUX|{int(requirement.id)}||unknown|||invalid_package_name\\n'"
+            )
+            continue
+        package_q = shlex.quote(package_name)
+        version_q = shlex.quote(required_version)
+        commands.append(
+            f"pkg={package_q}; required={version_q}; "
+            "if [ -z \"$required\" ]; then "
+            f"printf 'BKPATCH_LINUX|{int(requirement.id)}|{package_name}|unknown|||missing_required_version\\n'; "
+            "elif command -v dpkg-query >/dev/null 2>&1; then "
+            "value=$(dpkg-query -W -f='${db:Status-Abbrev}|${Version}' -- \"$pkg\" 2>/dev/null); rc=$?; "
+            "if [ $rc -ne 0 ]; then "
+            f"printf 'BKPATCH_LINUX|{int(requirement.id)}|{package_name}|absent|||\\n'; "
+            "else state=${value%%|*}; installed=${value#*|}; "
+            "if [ \"$state\" != 'ii ' ]; then "
+            f"printf 'BKPATCH_LINUX|{int(requirement.id)}|{package_name}|absent|%s||\\n' \"$installed\"; "
+            "elif dpkg --compare-versions \"$installed\" ge \"$required\"; then "
+            f"printf 'BKPATCH_LINUX|{int(requirement.id)}|{package_name}|installed|%s|0|\\n' \"$installed\"; "
+            "else "
+            f"printf 'BKPATCH_LINUX|{int(requirement.id)}|{package_name}|installed|%s|-1|\\n' \"$installed\"; fi; fi; "
+            "elif command -v rpm >/dev/null 2>&1; then "
+            "installed=$(rpm -q --qf '%{EVR}' \"$pkg\" 2>/dev/null); rc=$?; "
+            "if [ $rc -ne 0 ]; then "
+            f"printf 'BKPATCH_LINUX|{int(requirement.id)}|{package_name}|absent|||\\n'; "
+            "else comparison=$(env BKPATCH_INSTALLED=\"$installed\" BKPATCH_REQUIRED=\"$required\" "
+            "rpm --eval '%{lua: print(rpm.vercmp(os.getenv(\"BKPATCH_INSTALLED\"), os.getenv(\"BKPATCH_REQUIRED\")))}' 2>/dev/null); compare_rc=$?; "
+            "if [ $compare_rc -ne 0 ] || ! printf '%s' \"$comparison\" | grep -Eq '^-?[0-9]+$'; then "
+            f"printf 'BKPATCH_LINUX|{int(requirement.id)}|{package_name}|unknown|%s||rpm_version_compare_failed\\n' \"$installed\"; "
+            "elif [ \"$comparison\" -ge 0 ]; then "
+            f"printf 'BKPATCH_LINUX|{int(requirement.id)}|{package_name}|installed|%s|0|\\n' \"$installed\"; "
+            "else "
+            f"printf 'BKPATCH_LINUX|{int(requirement.id)}|{package_name}|installed|%s|-1|\\n' \"$installed\"; fi; fi; "
+            "else "
+            f"printf 'BKPATCH_LINUX|{int(requirement.id)}|{package_name}|unknown|||unsupported_package_manager\\n'; fi"
+        )
+    if not commands:
+        return "printf 'BKPATCH_COLLECTION_ERROR|no_linux_requirements\\n'"
+    return '; '.join(commands)
 
 
 def _dry_run_command(os_type: str, pkg_names: list[str]) -> str:
@@ -663,20 +714,24 @@ def _collect_install_impact(
     return {req.id: impact for req in missing_requirements}
 
 
-def _record_host_start(host: GovernanceTaskHost, stage: str) -> None:
+def _record_host_start(host: GovernanceTaskHost, stage: str) -> bool:
     from apps.patch_mgmt.config import get_stage_timeout
 
     now = timezone.now()
-    host.stage = stage
-    host.stage_color = 'processing'
-    host.started_at = host.started_at or now
-    host.stage_started_at = now
-    host.stage_deadline_at = now + timedelta(seconds=get_stage_timeout(host.task.task_type))
-    host.last_heartbeat_at = now
-    host.save(update_fields=[
-        'stage', 'stage_color', 'started_at', 'stage_started_at',
-        'stage_deadline_at', 'last_heartbeat_at', 'updated_at',
-    ])
+    filters = {"pk": host.pk, "stage": host.stage}
+    if host.execution_token:
+        filters["execution_token"] = host.execution_token
+    updated = GovernanceTaskHost.objects.filter(**filters).update(
+        stage=stage,
+        stage_color='processing',
+        started_at=host.started_at or now,
+        stage_started_at=now,
+        stage_deadline_at=now + timedelta(seconds=get_stage_timeout(host.task.task_type)),
+        last_heartbeat_at=now,
+        updated_at=now,
+    )
+    host.refresh_from_db()
+    return bool(updated)
 
 
 def _claim_waiting_host(host: GovernanceTaskHost, stage: str) -> bool:
@@ -684,6 +739,7 @@ def _claim_waiting_host(host: GovernanceTaskHost, stage: str) -> bool:
     from apps.patch_mgmt.config import get_stage_timeout
 
     now = timezone.now()
+    execution_token = uuid.uuid4().hex
     claimed = GovernanceTaskHost.objects.filter(pk=host.pk, stage='waiting').update(
         stage=stage,
         stage_color='processing',
@@ -691,6 +747,7 @@ def _claim_waiting_host(host: GovernanceTaskHost, stage: str) -> bool:
         stage_started_at=now,
         stage_deadline_at=now + timedelta(seconds=get_stage_timeout(host.task.task_type)),
         last_heartbeat_at=now,
+        execution_token=execution_token,
         updated_at=now,
     )
     if claimed:
@@ -708,18 +765,30 @@ def _record_host_result(
     failed_stage: str = '',
     error_code: str = '',
     can_retry: bool = False,
-) -> None:
-    host.stage = stage
-    host.stage_color = stage_color
-    host.exit_code = exit_code
-    host.reason = reason
-    host.failed_stage = failed_stage
-    host.error_code = error_code
-    host.can_retry = can_retry
-    host.save(update_fields=[
-        'stage', 'stage_color', 'exit_code', 'reason',
-        'failed_stage', 'error_code', 'can_retry', 'updated_at',
-    ])
+) -> bool:
+    filters = {"pk": host.pk, "stage": host.stage}
+    if host.execution_token:
+        filters["execution_token"] = host.execution_token
+    updated = GovernanceTaskHost.objects.filter(**filters).update(
+        stage=stage,
+        stage_color=stage_color,
+        exit_code=exit_code,
+        reason=reason,
+        failed_stage=failed_stage,
+        error_code=error_code,
+        can_retry=can_retry,
+        updated_at=timezone.now(),
+    )
+    host.refresh_from_db()
+    if not updated:
+        logger.warning(
+            "忽略过期执行结果 task=%s target=%s token=%s current_stage=%s",
+            host.task_id,
+            host.target_id,
+            host.execution_token,
+            host.stage,
+        )
+    return bool(updated)
 
 
 def _format_log_entry(command: str, result: Any) -> str:
@@ -814,6 +883,7 @@ def _persist_verification_snapshot(
                 "patch_id": patch_id,
                 "status": "completed",
                 "satisfied": bool(assessment.satisfied),
+                "assessment_status": assessment.status,
                 "reason": assessment.reason or "",
                 "evidence": dict(assessment.evidence or {}),
                 "evaluated_at": evaluated_at.isoformat(),
@@ -936,14 +1006,23 @@ def _update_binding_after_assess(
     HostComplianceSnapshot.objects.filter(binding=binding).delete()
     snapshots = []
     missing_count = 0
+    unknown_count = 0
+    not_applicable_count = 0
+    satisfied_count = 0
     missing_reqs = []
     for req in requirements:
         assessment = assessments.get(req.id)
         if assessment is None:
             continue
-        if not assessment.satisfied:
+        if assessment.status == RequirementAssessmentStatus.MISSING:
             missing_count += 1
             missing_reqs.append(req)
+        elif assessment.status == RequirementAssessmentStatus.UNKNOWN:
+            unknown_count += 1
+        elif assessment.status == RequirementAssessmentStatus.NOT_APPLICABLE:
+            not_applicable_count += 1
+        elif assessment.status == RequirementAssessmentStatus.SATISFIED:
+            satisfied_count += 1
 
     # 对缺失补丁跑 dry-run，收集安装影响
     install_impacts = {}
@@ -965,6 +1044,7 @@ def _update_binding_after_assess(
                 binding=binding,
                 requirement=req,
                 satisfied=assessment.satisfied,
+                status=assessment.status,
                 evidence=evidence,
                 reason=assessment.reason,
                 evaluated_at=now,
@@ -980,9 +1060,16 @@ def _update_binding_after_assess(
     )
 
     binding.missing_count = missing_count
-    binding.compliance_status = (
-        ComplianceStatus.COMPLIANT if missing_count == 0 else ComplianceStatus.NON_COMPLIANT
-    )
+    if unknown_count:
+        binding.compliance_status = ComplianceStatus.UNKNOWN
+    elif missing_count:
+        binding.compliance_status = ComplianceStatus.NON_COMPLIANT
+    elif satisfied_count:
+        binding.compliance_status = ComplianceStatus.COMPLIANT
+    elif not_applicable_count:
+        binding.compliance_status = ComplianceStatus.NOT_APPLICABLE
+    else:
+        binding.compliance_status = ComplianceStatus.UNKNOWN
     binding.save(update_fields=['compliance_status', 'missing_count', 'last_evaluated_at', 'updated_at'])
 
 
@@ -1207,7 +1294,8 @@ def _parse_linux_reboot_check_result(result: dict[str, Any]) -> tuple[Optional[b
 
 
 def _execute_reboot(target: PatchTarget, host: GovernanceTaskHost, execution_id: str, timeout: int) -> None:
-    _record_host_start(host, 'rebooting')
+    if not _record_host_start(host, 'rebooting'):
+        return
     host.boot_marker_before = _read_boot_marker(target, execution_id)
     host.save(update_fields=['boot_marker_before', 'updated_at'])
     command = _reboot_command(target.os_type)
@@ -1270,7 +1358,8 @@ def _execute_install(
     execution_id: str,
     timeout: int,
 ) -> None:
-    _record_host_start(host, 'installing')
+    if not _record_host_start(host, 'installing'):
+        return
     patches = list(
         Patch.objects.filter(pk__in=patch_ids).select_related('windows_detail', 'linux_detail')
     )
@@ -1452,8 +1541,15 @@ def _record_install_reboot_result(
 
 
 def _execute_assess(target: PatchTarget, host: GovernanceTaskHost, execution_id: str, timeout: int) -> None:
-    _record_host_start(host, 'scanning')
-    command = _assess_command(target.os_type)
+    if not _record_host_start(host, 'scanning'):
+        return
+    binding = getattr(target, 'baseline_binding', None)
+    requirements = list(
+        binding.baseline.requirements.select_related(
+            'patch__linux_detail', 'patch__windows_detail'
+        )
+    ) if binding else []
+    command = _assess_command(target.os_type, requirements)
     try:
         result = _execute_command(
             target,
@@ -1465,7 +1561,7 @@ def _execute_assess(target: PatchTarget, host: GovernanceTaskHost, execution_id:
         if isinstance(exc, SoftTimeLimitExceeded):
             raise
         logger.exception('任务 %s 目标 %s 评估执行异常', host.task_id, target.id)
-        _record_host_result(
+        written = _record_host_result(
             host,
             stage='failed',
             stage_color='error',
@@ -1474,22 +1570,24 @@ def _execute_assess(target: PatchTarget, host: GovernanceTaskHost, execution_id:
             can_retry=True,
         )
         _append_host_log(host, command, {'error': str(exc), 'exit_code': None})
-        _update_binding_after_assess(target, success=False, result={}, execution_id=execution_id)
+        if written:
+            _update_binding_after_assess(target, success=False, result={}, execution_id=execution_id)
         return
 
     _append_host_log(host, command, result)
 
     if _is_assess_success(result):
-        _record_host_result(
+        written = _record_host_result(
             host,
             stage='completed',
             stage_color='success',
             exit_code=result.get('exit_code') or 0,
             reason=_result_reason(result),
         )
-        _update_binding_after_assess(target, success=True, result=result, execution_id=execution_id)
+        if written:
+            _update_binding_after_assess(target, success=True, result=result, execution_id=execution_id)
     else:
-        _record_host_result(
+        written = _record_host_result(
             host,
             stage='failed',
             stage_color='error',
@@ -1498,7 +1596,8 @@ def _execute_assess(target: PatchTarget, host: GovernanceTaskHost, execution_id:
             failed_stage='assess',
             can_retry=True,
         )
-        _update_binding_after_assess(target, success=False, result=result, execution_id=execution_id)
+        if written:
+            _update_binding_after_assess(target, success=False, result=result, execution_id=execution_id)
 
 
 def reconcile_install_host(
@@ -1508,7 +1607,16 @@ def reconcile_install_host(
 ) -> str:
     '''只读核验安装结果，返回 installed/running/not_installed/unknown。'''
     execution_id = f'reconcile:{task.id}:{target.id}'
-    assess_command = _assess_command(target.os_type)
+    binding = getattr(target, 'baseline_binding', None)
+    if binding is None:
+        return 'unknown'
+    requirements = list(
+        binding.baseline.requirements.filter(patch_id__in=task.patch_list or [])
+        .select_related('patch__linux_detail', 'patch__windows_detail')
+    )
+    if not requirements:
+        return 'unknown'
+    assess_command = _assess_command(target.os_type, requirements)
     try:
         assess_result = _execute_command(
             target,
@@ -1522,16 +1630,6 @@ def reconcile_install_host(
         return 'unknown'
 
     if not _is_assess_success(assess_result):
-        return 'unknown'
-
-    binding = getattr(target, 'baseline_binding', None)
-    if binding is None:
-        return 'unknown'
-    requirements = list(
-        binding.baseline.requirements.filter(patch_id__in=task.patch_list or [])
-        .select_related('patch__linux_detail', 'patch__windows_detail')
-    )
-    if not requirements:
         return 'unknown'
 
     try:

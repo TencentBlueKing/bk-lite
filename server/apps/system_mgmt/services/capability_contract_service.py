@@ -10,6 +10,21 @@ USER_SYNC_SCHEDULE_MODES = {"disabled", "daily", "weekly", "interval_hours"}
 USER_SYNC_INTERVAL_HOURS = {1, 2, 3, 4, 6, 8, 12}
 
 
+def get_integration_capability_availability(instance, capability_key: str) -> dict[str, object]:
+    if not instance.enabled:
+        return {"available": False, "reason": "instance_disabled"}
+    if instance.status != IntegrationInstanceStatusChoices.READY:
+        return {"available": False, "reason": "instance_not_ready"}
+
+    capability_enabled = instance.capability_enabled or {}
+    # 兼容 capability_enabled 字段引入前已存在的实例；显式关闭才视为不可用。
+    if capability_enabled.get(capability_key) is False:
+        return {"available": False, "reason": "capability_disabled"}
+    if (instance.capability_status or {}).get(capability_key) != IntegrationInstanceStatusChoices.READY:
+        return {"available": False, "reason": "capability_not_ready"}
+    return {"available": True, "reason": ""}
+
+
 def _validate_hhmm(value, *, field: str, message: str):
     if not isinstance(value, str):
         raise CapabilityContractError(field, message)

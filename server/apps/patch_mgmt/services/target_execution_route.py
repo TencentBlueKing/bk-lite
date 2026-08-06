@@ -18,6 +18,7 @@ class TargetTransport:
     NODE_EXECUTOR = "node_executor"
     NATS_SSH = "nats_ssh"
     ANSIBLE_WINRM = "ansible_winrm"
+    DIRECT_WINRM = "direct_winrm"
 
 
 class TargetExecutorUnavailable(RuntimeError):

@@ -74,7 +74,16 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
   }, []);
 
   useEffect(() => {
-    const list = deepClone(propertyList);
+    const list = deepClone(propertyList)
+      .map((group: any) => ({
+        ...group,
+        attrs: (group.attrs || []).filter(
+          (item: any) =>
+            !item?.is_system_link &&
+            !['node_id', 'monitor_id'].includes(item?.attr_id)
+        ),
+      }))
+      .filter((group: any) => (group.attrs || []).length > 0);
     setAttrList(list);
   }, [propertyList]);
 
@@ -504,8 +513,46 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
     )
   );
 
+  const showSystemLinkage =
+    modelId === 'host' ||
+    instDetail?.node_id ||
+    instDetail?.monitor_id;
+  const systemLinkageItems = showSystemLinkage
+    ? [
+      {
+        key: 'node_id',
+        label: t('Model.systemLinkageNodeId'),
+        children: (
+            <span className="font-mono text-[13px] break-all">
+              {instDetail?.node_id || t('Model.systemLinkageEmpty')}
+            </span>
+        ),
+      },
+      {
+        key: 'monitor_id',
+        label: t('Model.systemLinkageMonitorId'),
+        children: (
+            <span className="font-mono text-[13px] break-all">
+              {instDetail?.monitor_id || t('Model.systemLinkageEmpty')}
+            </span>
+        ),
+      },
+    ]
+    : [];
+
   return (
     <div>
+      {showSystemLinkage && (
+        <div className="mb-4 rounded border border-[var(--color-border-2)] bg-[var(--color-bg-2)] px-4 py-3">
+          <div className="mb-1 text-sm font-medium text-[var(--color-text-1)]">
+            {t('Model.systemLinkage')}
+          </div>
+          <div className="mb-3 text-xs text-[var(--color-text-3)]">
+            {t('Model.systemLinkageHint')}
+          </div>
+          <Descriptions bordered size="small" column={1} items={systemLinkageItems} />
+        </div>
+      )}
       {hasEditableField && (
         <div className="flex items-center justify-end mb-2">
           {isBatchEdit ? (

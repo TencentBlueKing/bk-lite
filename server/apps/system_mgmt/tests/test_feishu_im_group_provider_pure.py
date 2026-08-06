@@ -1,13 +1,33 @@
+import ast
 import logging
+from pathlib import Path
 from unittest import mock
 
 import pytest
 import requests
 
+from apps.system_mgmt.providers.adapters import feishu
 from apps.system_mgmt.providers.adapters.feishu import FeishuIMGroupAdapter
 from apps.system_mgmt.providers.manifests.feishu import PROVIDER_MANIFEST
 
 pytestmark = pytest.mark.unit
+
+
+def test_feishu_im_group_helpers_have_single_definitions():
+    module = ast.parse(Path(feishu.__file__).read_text())
+    function_names = [node.name for node in module.body if isinstance(node, ast.FunctionDef)]
+    helper_names = {
+        "_validate_group_members",
+        "_extract_feishu_scope_names",
+        "_fetch_feishu_application_info",
+        "_missing_feishu_im_group_scope_requirements",
+        "_fetch_feishu_bot_info",
+        "_log_feishu_group_request",
+        "_sanitize_external_log_value",
+        "_execute_feishu_group_request",
+    }
+
+    assert {name for name in helper_names if function_names.count(name) > 1} == set()
 
 
 class FakeResponse:

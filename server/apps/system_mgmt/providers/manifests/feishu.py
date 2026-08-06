@@ -188,6 +188,20 @@ PROVIDER_MANIFEST = ProviderManifest.model_validate(
                 "adapter_path": "apps.system_mgmt.providers.adapters.feishu.FeishuUserSyncAdapter",
                 "connection_template": [
                     {
+                        "key": "user_sync_scopes_url",
+                        "label": "授权范围接口地址",
+                        "field_type": "string",
+                        "required": False,
+                        "default": "https://open.feishu.cn/open-apis/contact/v3/scopes",
+                    },
+                    {
+                        "key": "user_sync_departments_batch_url",
+                        "label": "部门批量查询接口地址",
+                        "field_type": "string",
+                        "required": False,
+                        "default": "https://open.feishu.cn/open-apis/contact/v3/departments/batch",
+                    },
+                    {
                         "key": "user_sync_departments_url",
                         "label": "部门接口地址",
                         "field_type": "string",

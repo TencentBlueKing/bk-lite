@@ -14,6 +14,8 @@ export interface IMNotificationChannel {
   name: string;
   integration_instance: number;
   integration_instance_name: string;
+  provider_key?: string;
+  dependency_status: DependencyStatus;
   enabled: boolean;
   description: string;
   status: ChannelStatus;
@@ -37,6 +39,11 @@ export interface IMNotificationChannel {
   updated_by?: string;
   created_at?: string;
   updated_at?: string;
+}
+
+export interface DependencyStatus {
+  available: boolean;
+  reason: '' | 'instance_disabled' | 'instance_not_ready' | 'capability_disabled' | 'capability_not_ready';
 }
 
 export interface IMNotificationUserMapping {
@@ -86,6 +93,8 @@ export type IMNotificationChannelPayload = Omit<
   IMNotificationChannel,
   | 'id'
   | 'integration_instance_name'
+  | 'provider_key'
+  | 'dependency_status'
   | 'display_status'
   | 'display_sync_status'
   | 'display_sync_summary'

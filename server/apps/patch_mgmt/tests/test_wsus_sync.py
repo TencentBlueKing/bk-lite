@@ -134,6 +134,7 @@ class TestWsusClientGetApprovedUpdates:
                 "SecurityBulletins": ["MS25-001"],
                 "Description": "A security update",
                 "ArrivalDate": "2025-11-10T00:00:00",
+                "SupersedingUpdateIds": ["def-456"],
             },
         ])
 
@@ -154,6 +155,7 @@ class TestWsusClientGetApprovedUpdates:
         assert u.severity == "Critical"
         assert u.products == ["Windows 10", "Windows 11"]
         assert u.security_bulletins == ["MS25-001"]
+        assert u.replacement_update_ids == ["def-456"]
 
     def test_get_updates_empty(self, monkeypatch):
         source = _make_source()
@@ -242,6 +244,7 @@ class TestSyncWsus:
                 "SecurityBulletins": ["MS25-9999"],
                 "Description": "desc",
                 "ArrivalDate": "2025-11-10T00:00:00",
+                "SupersedingUpdateIds": ["uid-2"],
             },
             {
                 "UpdateId": "uid-2",
@@ -282,6 +285,10 @@ class TestSyncWsus:
         assert detail1.product_list == ["Windows 10"]
         assert detail1.architectures == ["x86_64"]
         assert detail1.ms_bulletin == "MS25-9999"
+        p2 = patches.get(title="5034441")
+        p1.refresh_from_db()
+        assert p1.applicable_rules["wsus_update_id"] == "uid-1"
+        assert p1.replacement_ids == [p2.id]
 
     def test_sync_updates_existing_patch(self, monkeypatch):
         source = _make_source()

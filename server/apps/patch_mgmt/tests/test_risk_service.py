@@ -1,6 +1,9 @@
 """风险计算服务单元测试"""
 
+from datetime import timedelta
+
 import pytest
+from django.utils import timezone
 
 from apps.patch_mgmt.constants import (
     ComplianceStatus,
@@ -32,6 +35,27 @@ def _binding(target, baseline, status=ComplianceStatus.NON_COMPLIANT):
         binding.compliance_status = status
         binding.save(update_fields=["compliance_status", "updated_at"])
     return binding
+
+
+@pytest.mark.django_db
+def test_expired_active_assessment_projects_target_status_as_failed():
+    baseline = PatchBaseline.objects.create(name="expired", os_type=OSType.LINUX, team=[1])
+    target = PatchTarget.objects.create(name="host", ip="10.0.0.9", os_type=OSType.LINUX)
+    _binding(target, baseline, status=ComplianceStatus.COMPLIANT)
+    task = GovernanceTask.objects.create(
+        name="expired assess",
+        task_type=GovernanceTaskType.ASSESS,
+        status=GovernanceTaskStatus.RUNNING,
+        target_list=[target.id],
+    )
+    GovernanceTaskHost.objects.create(
+        task=task,
+        target_id=target.id,
+        stage="scanning",
+        stage_deadline_at=timezone.now() - timedelta(seconds=1),
+    )
+
+    assert risk_service.compute_host_compliance_status(target) == ComplianceStatus.FAILED
 
 
 @pytest.mark.django_db

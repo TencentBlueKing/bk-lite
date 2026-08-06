@@ -74,6 +74,24 @@ def test_list_returns_bindings(api_client, authenticated_user, login_binding):
 
 
 @pytest.mark.django_db
+def test_list_returns_provider_key_for_binding_with_unavailable_instance(
+    api_client, authenticated_user, login_binding
+):
+    authenticated_user.is_superuser = True
+    authenticated_user.permission = {"system-manager": {"login_auth-View"}}
+    authenticated_user.save(update_fields=["is_superuser"])
+
+    instance = login_binding.integration_instance
+    instance.enabled = False
+    instance.save(update_fields=["enabled"])
+
+    response = api_client.get("/api/v1/system_mgmt/login_auth_binding/")
+
+    payload = response.data if isinstance(response.data, list) else response.data.get("results", response.data["items"])
+    assert payload[0]["provider_key"] == "feishu"
+
+
+@pytest.mark.django_db
 def test_create_logs_operation(api_client, authenticated_user, ready_login_instance):
     authenticated_user.is_superuser = True
     authenticated_user.permission = {"system-manager": {"login_auth-Add"}}

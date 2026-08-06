@@ -1,12 +1,14 @@
 from datetime import timedelta
+from io import StringIO
 from types import SimpleNamespace
 
 import pytest
+from django.core.management import call_command
 from django.utils import timezone
 
 from apps.patch_mgmt import config as patch_config
 from apps.patch_mgmt import tasks as patch_tasks
-from apps.patch_mgmt.constants import GovernanceTaskStatus, GovernanceTaskType, OSType
+from apps.patch_mgmt.constants import ComplianceStatus, GovernanceTaskStatus, GovernanceTaskType, OSType
 from apps.patch_mgmt.models import (
     BaselineRequirement,
     GovernanceTask,
@@ -54,7 +56,12 @@ def test_governance_timeout_fields_are_serialized():
         boot_marker_before='boot-a',
     )
 
-    request = SimpleNamespace(user=SimpleNamespace(group_list=[]))
+    request = SimpleNamespace(
+        user=SimpleNamespace(
+            username="admin", domain="local", group_list=[], is_superuser=True
+        ),
+        COOKIES={},
+    )
     data = GovernanceTaskDetailSerializer(task, context={"request": request}).data
 
     assert data['chain_started_at'] is not None
@@ -65,6 +72,133 @@ def test_governance_timeout_fields_are_serialized():
     assert host['last_heartbeat_at'] is not None
     assert host['timeout_reason'] == '安装超时测试'
     assert host['boot_marker_before'] == 'boot-a'
+
+
+@pytest.mark.django_db
+def test_expired_assessment_is_projected_failed_without_get_side_effects():
+    now = timezone.now()
+    task = GovernanceTask.objects.create(
+        name='expired-assess-projection',
+        task_type=GovernanceTaskType.ASSESS,
+        status=GovernanceTaskStatus.RUNNING,
+        target_list=[1],
+    )
+    host = GovernanceTaskHost.objects.create(
+        task=task,
+        target_id=1,
+        stage='scanning',
+        stage_deadline_at=now - timedelta(seconds=1),
+    )
+
+    request = SimpleNamespace(
+        user=SimpleNamespace(
+            username="admin", domain="local", group_list=[], is_superuser=True
+        ),
+        COOKIES={},
+    )
+    data = GovernanceTaskDetailSerializer(task, context={"request": request}).data
+
+    assert data['status'] == GovernanceTaskStatus.FAILED
+    assert data['host_results'][0]['stage'] == 'failed'
+    assert data['host_results'][0]['error_code'] == 'assess_timeout'
+    host.refresh_from_db()
+    task.refresh_from_db()
+    assert host.stage == 'scanning'
+    assert task.status == GovernanceTaskStatus.RUNNING
+
+
+@pytest.mark.django_db
+def test_watchdog_finalizes_active_parent_when_all_children_are_terminal():
+    task = GovernanceTask.objects.create(
+        name='inconsistent-parent',
+        task_type=GovernanceTaskType.ASSESS,
+        status=GovernanceTaskStatus.RUNNING,
+        target_list=[1],
+    )
+    GovernanceTaskHost.objects.create(
+        task=task,
+        target_id=1,
+        stage='failed',
+        reason='worker 已写入终态但父任务未收口',
+    )
+
+    patch_tasks.watch_governance_timeouts()
+
+    task.refresh_from_db()
+    assert task.status == GovernanceTaskStatus.FAILED
+    assert task.finished_at is not None
+
+
+@pytest.mark.django_db
+def test_late_worker_cannot_overwrite_watchdog_terminal_state():
+    task = GovernanceTask.objects.create(
+        name='late-worker',
+        task_type=GovernanceTaskType.ASSESS,
+        status=GovernanceTaskStatus.RUNNING,
+        target_list=[1],
+    )
+    host = GovernanceTaskHost.objects.create(task=task, target_id=1, stage='waiting')
+    assert execution_service._claim_waiting_host(host, 'scanning')
+    GovernanceTaskHost.objects.filter(pk=host.pk).update(
+        stage='failed',
+        stage_color='error',
+        error_code='assess_timeout',
+    )
+
+    written = execution_service._record_host_result(
+        host,
+        stage='completed',
+        stage_color='success',
+    )
+
+    assert written is False
+    host.refresh_from_db()
+    assert host.stage == 'failed'
+    assert host.error_code == 'assess_timeout'
+
+
+@pytest.mark.django_db
+def test_history_reconciliation_command_is_dry_run_bounded_and_idempotent():
+    now = timezone.now()
+    task_ids = []
+    host_ids = []
+    for index in range(2):
+        task = GovernanceTask.objects.create(
+            name=f'history-{index}',
+            task_type=GovernanceTaskType.ASSESS,
+            status=GovernanceTaskStatus.RUNNING,
+            target_list=[index + 1],
+        )
+        host = GovernanceTaskHost.objects.create(
+            task=task,
+            target_id=index + 1,
+            stage='scanning',
+            stage_deadline_at=now - timedelta(hours=1),
+        )
+        task_ids.append(task.id)
+        host_ids.append(host.id)
+
+    dry_output = StringIO()
+    call_command('reconcile_patch_governance_history', dry_run=True, limit=1, stdout=dry_output)
+    assert '"candidates": 1' in dry_output.getvalue()
+    assert GovernanceTaskHost.objects.filter(id__in=host_ids, stage='scanning').count() == 2
+
+    before_tasks = GovernanceTask.objects.count()
+    execute_output = StringIO()
+    call_command('reconcile_patch_governance_history', limit=1, stdout=execute_output)
+    assert '"changed": 1' in execute_output.getvalue()
+    assert GovernanceTaskHost.objects.filter(id__in=host_ids, stage='failed').count() == 1
+    assert GovernanceTask.objects.count() == before_tasks
+
+    first_host_id = min(host_ids)
+    repeat_output = StringIO()
+    call_command(
+        'reconcile_patch_governance_history',
+        limit=1,
+        before_id=first_host_id + 1,
+        stdout=repeat_output,
+    )
+    assert '"changed": 0' in repeat_output.getvalue()
 
 
 @pytest.mark.django_db
@@ -276,10 +410,10 @@ def test_window_task_does_not_start_after_window_ends(monkeypatch):
 def test_install_reconciliation_detects_installed_without_reinstall(monkeypatch):
     target = PatchTarget.objects.create(name='apt-host', ip='10.0.3.1', os_type=OSType.LINUX)
     patch = Patch.objects.create(title='openssl update', os_type=OSType.LINUX)
-    LinuxPatchDetail.objects.create(patch=patch, pkg_name='openssl')
+    LinuxPatchDetail.objects.create(patch=patch, pkg_name='openssl', pkg_version='1.0')
     baseline = PatchBaseline.objects.create(name='apt-baseline')
     HostBaselineBinding.objects.create(target=target, baseline=baseline)
-    BaselineRequirement.objects.create(baseline=baseline, patch=patch)
+    requirement = BaselineRequirement.objects.create(baseline=baseline, patch=patch)
     task = GovernanceTask.objects.create(
         name='reconcile-installed',
         task_type=GovernanceTaskType.INSTALL,
@@ -299,7 +433,10 @@ def test_install_reconciliation_detects_installed_without_reinstall(monkeypatch)
         commands.append(command)
         if 'RebootRequired=' in command:
             return {'exit_code': 0, 'stdout': 'RebootRequired=False\nRebootMethod=apt'}
-        return {'exit_code': 0, 'stdout': '0 upgraded, 0 newly installed, 0 to remove'}
+        return {
+            'exit_code': 0,
+            'stdout': f'BKPATCH_LINUX|{requirement.id}|openssl|installed|1.1|0|',
+        }
 
     monkeypatch.setattr(execution_service, '_execute_command', fake_execute)
 

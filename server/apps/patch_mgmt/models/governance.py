@@ -125,6 +125,13 @@ class GovernanceTaskHost(TimeInfo):
     reconcile_attempts = models.PositiveIntegerField(default=0, verbose_name="结果核验次数")
     boot_marker_before = models.CharField(max_length=128, blank=True, default="", verbose_name="重启前启动标识")
     timeout_reason = models.TextField(blank=True, default="", verbose_name="超时原因")
+    execution_token = models.CharField(
+        max_length=32,
+        blank=True,
+        default="",
+        db_index=True,
+        verbose_name="执行栅栏令牌",
+    )
 
     class Meta:
         db_table = "patch_governance_task_host"

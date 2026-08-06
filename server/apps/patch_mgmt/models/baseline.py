@@ -4,7 +4,7 @@ from django.db import models
 
 from apps.core.models.maintainer_info import MaintainerInfo
 from apps.core.models.time_info import TimeInfo
-from apps.patch_mgmt.constants import ComplianceStatus, OSType
+from apps.patch_mgmt.constants import ComplianceStatus, OSType, RequirementAssessmentStatus
 
 
 class PatchBaseline(TimeInfo, MaintainerInfo):
@@ -130,6 +130,12 @@ class HostComplianceSnapshot(TimeInfo):
         verbose_name="基线要求",
     )
     satisfied = models.BooleanField(default=False, verbose_name="是否满足")
+    status = models.CharField(
+        max_length=32,
+        choices=RequirementAssessmentStatus.CHOICES,
+        default=RequirementAssessmentStatus.MISSING,
+        verbose_name="评估结果",
+    )
     evidence = models.JSONField(default=dict, verbose_name="满足证据")
     reason = models.TextField(blank=True, default="", verbose_name="原因说明")
     evaluated_at = models.DateTimeField(verbose_name="评估时间")
@@ -141,4 +147,4 @@ class HostComplianceSnapshot(TimeInfo):
         unique_together = (("binding", "requirement"),)
 
     def __str__(self):
-        return f"{self.binding_id} -> {self.requirement_id}: {'满足' if self.satisfied else '不满足'}"
+        return f"{self.binding_id} -> {self.requirement_id}: {self.status}"

@@ -769,7 +769,7 @@ function ApplicationCard({
             <HealthDot level={app.health} />
             <span style={{ fontSize: 15, fontWeight: 600, color: TOKENS.text }}>{app.name}</span>
             {app.isUncategorized && (
-              <Tooltip title="这些服务未设置 service.namespace,平台归入虚拟应用。请补全 namespace 以便正确分组。">
+              <Tooltip title="这些服务未设置 service.namespace，平台归入内置未归类应用。请补全 namespace 以便正确分组。">
                 <Tag color="warning" style={{ margin: 0, fontSize: 11 }}>未归类</Tag>
               </Tooltip>
             )}
