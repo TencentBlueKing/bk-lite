@@ -3,6 +3,12 @@ import uuid
 from django.db import models
 from django.utils import timezone
 
+from apps.core.utils.conditional_unique import ConditionalUniqueGuardQuerySet
+
+
+class DashboardShareLinkQuerySet(ConditionalUniqueGuardQuerySet):
+    guard_rules = {"status": ("active_guard", lambda status: True if status == "active" else None)}
+
 
 class DashboardShareLink(models.Model):
     class ResourceType(models.TextChoices):
@@ -43,6 +49,9 @@ class DashboardShareLink(models.Model):
     invalidation_reason = models.CharField(max_length=64, blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    active_guard = models.BooleanField(null=True, default=None, editable=False)
+
+    objects = DashboardShareLinkQuerySet.as_manager()
 
     class Meta:
         db_table = "operation_analysis_dashboard_share_link"
@@ -51,7 +60,17 @@ class DashboardShareLink(models.Model):
                 fields=["resource_type", "dashboard_instance_id", "sharer_username", "sharer_domain"],
                 condition=models.Q(status="active"),
                 name="uniq_active_canvas_share_by_sharer",
-            )
+            ),
+            models.UniqueConstraint(
+                fields=[
+                    "resource_type",
+                    "dashboard_instance_id",
+                    "sharer_username",
+                    "sharer_domain",
+                    "active_guard",
+                ],
+                name="uniq_active_canvas_share_guard",
+            ),
         ]
         indexes = [
             models.Index(fields=["status"], name="op_share_status_idx"),
@@ -59,6 +78,13 @@ class DashboardShareLink(models.Model):
 
     def is_usable(self):
         return self.status == self.Status.ACTIVE
+
+    def save(self, *args, **kwargs):
+        self.active_guard = True if self.status == self.Status.ACTIVE else None
+        update_fields = kwargs.get("update_fields")
+        if update_fields is not None and "status" in update_fields:
+            kwargs["update_fields"] = set(update_fields) | {"active_guard"}
+        return super().save(*args, **kwargs)
 
     def mark_invalid(self, reason, actor=""):
         if self.status != self.Status.ACTIVE:

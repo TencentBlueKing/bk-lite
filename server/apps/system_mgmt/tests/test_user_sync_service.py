@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 import pytest
 from django.contrib.auth.hashers import make_password
-from django.db import IntegrityError
+from django.db import IntegrityError, transaction
 from django.utils import timezone
 
 from apps.system_mgmt.models import (
@@ -1672,6 +1672,47 @@ def test_user_sync_run_allows_only_one_running_run_per_source(ready_integration_
 
     with pytest.raises(IntegrityError):
         UserSyncRun.objects.create(source=source, status=UserSyncRunStatusChoices.RUNNING)
+
+
+@pytest.mark.django_db
+def test_mysql_guard_migration_rejects_duplicate_running_run_without_changing_status(ready_integration_instance):
+    from importlib import import_module
+
+    from django.apps import apps
+    from django.db import connection, models
+
+    if connection.vendor != "mysql":
+        pytest.skip("MySQL 5.7 legacy data migration contract")
+
+    source = UserSyncSource.objects.create(
+        name="source-duplicate-running-guard",
+        integration_instance=ready_integration_instance,
+        enabled=True,
+        root_group_name="Duplicate Running Guard Root",
+        business_config={"root_department_id": "0"},
+        field_mapping={},
+        schedule_config={},
+    )
+    older = UserSyncRun.objects.create(source=source, status=UserSyncRunStatusChoices.RUNNING)
+    with pytest.raises(IntegrityError), transaction.atomic():
+        UserSyncRun.objects.bulk_create([UserSyncRun(source=source, status=UserSyncRunStatusChoices.RUNNING)])
+    newer = UserSyncRun.objects.create(source=source, status=UserSyncRunStatusChoices.FAILED)
+    models.QuerySet(model=UserSyncRun, using="default").filter(pk=newer.pk).update(
+        status=UserSyncRunStatusChoices.RUNNING,
+        running_guard=None,
+    )
+
+    migration = import_module("apps.system_mgmt.migrations.0045_cross_database_running_guards")
+    schema_editor = SimpleNamespace(connection=connection)
+    with pytest.raises(RuntimeError, match="重复运行记录"):
+        migration.ensure_running_runs_unique(apps, schema_editor)
+
+    older.refresh_from_db()
+    newer.refresh_from_db()
+    assert older.status == UserSyncRunStatusChoices.RUNNING
+    assert older.running_guard is True
+    assert newer.status == UserSyncRunStatusChoices.RUNNING
+    assert newer.running_guard is None
 
 
 @pytest.mark.django_db

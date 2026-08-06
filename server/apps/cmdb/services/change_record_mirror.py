@@ -9,6 +9,7 @@ from apps.cmdb.models.operation import (
     CmdbOperationOutboxStatus,
 )
 from apps.core.logger import cmdb_logger as logger
+from apps.core.utils.database import bulk_create_with_primary_keys
 from apps.rpc.system_mgmt import SystemMgmt
 
 
@@ -35,10 +36,10 @@ class ChangeRecordMirrorService:
     @classmethod
     def enqueue_payloads(cls, payloads: list[dict]) -> list[ChangeRecordMirrorOutbox]:
         rows = [
-            ChangeRecordMirrorOutbox(payloads=payloads[offset: offset + cls.BATCH_SIZE])
+            ChangeRecordMirrorOutbox(payloads=payloads[offset : offset + cls.BATCH_SIZE])
             for offset in range(0, len(payloads), cls.BATCH_SIZE)
         ]
-        return ChangeRecordMirrorOutbox.objects.bulk_create(rows)
+        return bulk_create_with_primary_keys(ChangeRecordMirrorOutbox.objects, rows)
 
     @classmethod
     def claim(cls, event_id, *, owner_token: str) -> bool:

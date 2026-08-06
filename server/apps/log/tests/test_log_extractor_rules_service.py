@@ -89,6 +89,20 @@ def test_instance_rule_limit_is_enforced_without_dirty_generation(rule_instance)
 
 @pytest.mark.integration
 @pytest.mark.django_db(transaction=True)
+def test_mysql_extractor_portable_constraints_reject_raw_queryset_duplicate(rule_instance):
+    from django.db import IntegrityError, connection, models, transaction
+
+    if connection.vendor != "mysql":
+        pytest.skip("MySQL 5.7 legacy data migration contract")
+
+    LogExtractor.objects.create(collect_instance=rule_instance, sort_order=0, **_draft("same"))
+    duplicate = LogExtractor(collect_instance=rule_instance, sort_order=0, **_draft("same"))
+    with pytest.raises(IntegrityError), transaction.atomic():
+        models.QuerySet(model=LogExtractor, using="default").bulk_create([duplicate])
+
+
+@pytest.mark.integration
+@pytest.mark.django_db(transaction=True)
 def test_deleting_instance_with_multiple_rules_marks_one_generation(rule_instance, mocker):
     LogExtractor.objects.create(collect_instance=rule_instance, sort_order=0, **_draft("first"))
     LogExtractor.objects.create(collect_instance=rule_instance, sort_order=1, **_draft("second"))

@@ -1,6 +1,5 @@
 import importlib
 import json
-import os
 import types
 import uuid
 from datetime import timedelta
@@ -8,17 +7,15 @@ from unittest.mock import patch
 
 import pytest
 from django.contrib.auth.hashers import make_password
-from django.db import connection
-from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 from rest_framework.test import APIRequestFactory, force_authenticate
 
 from apps.system_mgmt.models import (
     Channel,
     Group,
+    GroupDataRule,
     IntegrationInstance,
     IntegrationInstanceStatusChoices,
-    OperationLog,
     SensitiveInfoAuthorization,
     SystemSettings,
     User,
@@ -26,7 +23,7 @@ from apps.system_mgmt.models import (
     UserSyncSource,
 )
 from apps.system_mgmt.models.channel import ChannelChoices
-from apps.system_mgmt.nats_api import get_all_users, login
+from apps.system_mgmt.nats_api import get_all_users
 from apps.system_mgmt.serializers.user_serializer import UserSerializer
 from apps.system_mgmt.tasks import check_password_expiry_and_notify
 
@@ -314,7 +311,14 @@ def test_user_viewset_delete_user_allows_manual_user():
         password=make_password("password123"),
         group_list=[group.id],
     )
-    UserRule.objects.create(username=user.username, domain=user.domain, group_rule_id=1)
+    group_rule = GroupDataRule.objects.create(
+        name="delete-manual-rule",
+        group_id=group.id,
+        group_name=group.name,
+        rules={},
+        app="system_mgmt",
+    )
+    UserRule.objects.create(username=user.username, domain=user.domain, group_rule=group_rule)
     initial_version = get_user_permission_version(user.username, user.domain)
 
     factory = APIRequestFactory()

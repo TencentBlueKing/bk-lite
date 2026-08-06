@@ -2,13 +2,13 @@ from datetime import UTC, datetime
 from decimal import Decimal
 
 import pytest
+from django.db import IntegrityError
 from django.utils import timezone
 
 from apps.apm.adapters import InMemoryMetricStore
-from apps.apm.models import ApmService, ApmSlo
+from apps.apm.models import ApmService, ApmServiceInstance, ApmSlo
 from apps.apm.services import DjangoApmReliabilityService
 from apps.apm.services.contracts import MetricDataState, SloMeasurement, SloMetricQuery
-
 
 pytestmark = pytest.mark.django_db
 
@@ -32,6 +32,70 @@ def _slo(*, objective="99.000", enabled=True):
         evaluation_window="rolling7d",
         is_enabled=enabled,
     )
+
+
+def test_database_check_contracts_are_enforced_by_the_model_layer():
+    now = timezone.now()
+    with pytest.raises(IntegrityError, match="apm_service_name_not_empty"):
+        ApmService.objects.create(
+            namespace="shop",
+            normalized_namespace="shop",
+            name="",
+            normalized_name="",
+            first_seen_at=now,
+            last_seen_at=now,
+        )
+
+    service = ApmService.objects.create(
+        namespace="shop",
+        normalized_namespace="shop",
+        name="checkout",
+        normalized_name="checkout",
+        first_seen_at=now,
+        last_seen_at=now,
+    )
+    with pytest.raises(IntegrityError, match="apm_instance_id_not_empty"):
+        ApmServiceInstance.objects.create(
+            service=service,
+            instance_id="",
+            normalized_instance_id="",
+            first_seen_at=now,
+            last_seen_at=now,
+        )
+    with pytest.raises(IntegrityError, match="apm_slo_objective_range"):
+        ApmSlo.objects.create(
+            name="invalid objective",
+            service=service,
+            environment="production",
+            sli_type="availability",
+            objective=Decimal("0"),
+            evaluation_window="rolling7d",
+        )
+    with pytest.raises(IntegrityError, match="apm_slo_latency_threshold_shape"):
+        ApmSlo.objects.create(
+            name="invalid latency shape",
+            service=service,
+            environment="production",
+            sli_type="latency_p95",
+            objective=Decimal("99"),
+            latency_threshold_ms=None,
+            evaluation_window="rolling7d",
+        )
+    with pytest.raises(IntegrityError, match="apm_slo_objective_range"):
+        ApmSlo.objects.bulk_create(
+            [
+                ApmSlo(
+                    name="invalid bulk objective",
+                    service=service,
+                    environment="production",
+                    sli_type="availability",
+                    objective=Decimal("0"),
+                    evaluation_window="rolling7d",
+                )
+            ]
+        )
+    with pytest.raises(ValueError, match="逐条 save"):
+        ApmSlo.objects.update(objective=Decimal("0"))
 
 
 def test_slo_evaluation_hides_window_and_budget_math():

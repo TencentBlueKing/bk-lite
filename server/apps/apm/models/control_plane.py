@@ -1,15 +1,23 @@
 import uuid
+from decimal import Decimal, InvalidOperation
 
-from django.db import models
+from django.db import IntegrityError, models
 from django.db.models import Q
 
 from apps.core.models.maintainer_info import MaintainerInfo
 from apps.core.models.time_info import TimeInfo
+from apps.core.utils.database_constraints import ConstraintValidatedQuerySet
 
 
 class AuditedModel(TimeInfo, MaintainerInfo):
     class Meta:
         abstract = True
+
+
+class ApmConstraintQuerySet(ConstraintValidatedQuerySet):
+    protected_fields = frozenset(
+        {"normalized_name", "normalized_instance_id", "objective", "sli_type", "latency_threshold_ms"}
+    )
 
 
 class ApmApplication(AuditedModel):
@@ -62,6 +70,8 @@ class ApmService(AuditedModel):
     archived_at = models.DateTimeField(null=True, blank=True, db_index=True)
     archive_reason = models.CharField(max_length=256, blank=True, default="")
 
+    objects = ApmConstraintQuerySet.as_manager()
+
     class Meta:
         verbose_name = "APM 服务"
         verbose_name_plural = "APM 服务"
@@ -76,6 +86,14 @@ class ApmService(AuditedModel):
                 name="apm_service_name_not_empty",
             ),
         ]
+
+    def _validate_database_constraints(self):
+        if self.normalized_name == "":
+            raise IntegrityError("apm_service_name_not_empty")
+
+    def save(self, *args, **kwargs):
+        self._validate_database_constraints()
+        return super().save(*args, **kwargs)
 
 
 class ApmServiceOrganization(AuditedModel):
@@ -122,6 +140,8 @@ class ApmServiceInstance(AuditedModel):
     archived_at = models.DateTimeField(null=True, blank=True, db_index=True)
     archive_reason = models.CharField(max_length=256, blank=True, default="")
 
+    objects = ApmConstraintQuerySet.as_manager()
+
     class Meta:
         verbose_name = "APM 服务实例"
         verbose_name_plural = "APM 服务实例"
@@ -136,6 +156,14 @@ class ApmServiceInstance(AuditedModel):
                 name="apm_instance_id_not_empty",
             ),
         ]
+
+    def _validate_database_constraints(self):
+        if self.normalized_instance_id == "":
+            raise IntegrityError("apm_instance_id_not_empty")
+
+    def save(self, *args, **kwargs):
+        self._validate_database_constraints()
+        return super().save(*args, **kwargs)
 
 
 class ApmServiceInstanceOrganization(AuditedModel):
@@ -179,6 +207,8 @@ class ApmSlo(AuditedModel):
     evaluation_window = models.CharField(max_length=32, choices=EvaluationWindow.choices)
     is_enabled = models.BooleanField(default=True, db_index=True)
 
+    objects = ApmConstraintQuerySet.as_manager()
+
     class Meta:
         verbose_name = "APM SLO"
         verbose_name_plural = "APM SLO"
@@ -196,6 +226,26 @@ class ApmSlo(AuditedModel):
                 name="apm_slo_latency_threshold_shape",
             ),
         ]
+
+    def _validate_database_constraints(self):
+        try:
+            objective = Decimal(str(self.objective))
+            valid_objective = objective.is_finite() and 0 < objective <= 100
+        except (InvalidOperation, TypeError, ValueError):
+            raise IntegrityError("apm_slo_objective_range") from None
+        if not valid_objective:
+            raise IntegrityError("apm_slo_objective_range")
+        valid_latency_shape = (self.sli_type == self.SliType.AVAILABILITY and self.latency_threshold_ms is None) or (
+            self.sli_type in {self.SliType.LATENCY_P95, self.SliType.LATENCY_P99}
+            and self.latency_threshold_ms is not None
+            and self.latency_threshold_ms > 0
+        )
+        if not valid_latency_shape:
+            raise IntegrityError("apm_slo_latency_threshold_shape")
+
+    def save(self, *args, **kwargs):
+        self._validate_database_constraints()
+        return super().save(*args, **kwargs)
 
 
 class ApmPolicy(AuditedModel):
@@ -408,7 +458,11 @@ class ApmAlertOutbox(AuditedModel):
                 fields=("event", "channel_id"),
                 condition=Q(event__isnull=False, channel_id__isnull=False),
                 name="apm_outbox_event_channel_unique",
-            )
+            ),
+            models.UniqueConstraint(
+                fields=("event", "channel_id"),
+                name="apm_outbox_event_channel_portable_unique",
+            ),
         ]
 
 

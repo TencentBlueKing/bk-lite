@@ -8,6 +8,7 @@ from django.utils.translation import gettext_lazy as _
 from apps.core.mixinx import PeriodicTaskUtils
 from apps.core.models.maintainer_info import MaintainerInfo
 from apps.core.models.time_info import TimeInfo
+from apps.core.utils.conditional_unique import ConditionalUniqueGuardQuerySet
 
 class UserSyncTriggerModeChoices(models.TextChoices):
     MANUAL = "manual", _("Manual")
@@ -104,6 +105,15 @@ class UserSyncSource(MaintainerInfo, TimeInfo, PeriodicTaskUtils):
         self.delete_periodic_task(self.periodic_task_name())
 
 
+class UserSyncRunQuerySet(ConditionalUniqueGuardQuerySet):
+    guard_rules = {
+        "status": (
+            "running_guard",
+            lambda status: True if status == UserSyncRunStatusChoices.RUNNING else None,
+        )
+    }
+
+
 class UserSyncRun(TimeInfo):
     source = models.ForeignKey("system_mgmt.UserSyncSource", on_delete=models.CASCADE, related_name="runs")
     trigger_mode = models.CharField(max_length=16, choices=UserSyncTriggerModeChoices.choices, default=UserSyncTriggerModeChoices.MANUAL)
@@ -116,6 +126,9 @@ class UserSyncRun(TimeInfo):
     payload = models.JSONField(default=dict, blank=True)
     started_at = models.DateTimeField(default=timezone.now, db_index=True)
     finished_at = models.DateTimeField(null=True, blank=True)
+    running_guard = models.BooleanField(null=True, default=None, editable=False)
+
+    objects = UserSyncRunQuerySet.as_manager()
 
     class Meta:
         ordering = ("-started_at", "-id")
@@ -124,8 +137,19 @@ class UserSyncRun(TimeInfo):
                 fields=["source"],
                 condition=Q(status=UserSyncRunStatusChoices.RUNNING),
                 name="unique_running_user_sync_run_per_source",
-            )
+            ),
+            models.UniqueConstraint(
+                fields=["source", "running_guard"],
+                name="uniq_user_sync_run_guard_per_source",
+            ),
         ]
+
+    def save(self, *args, **kwargs):
+        self.running_guard = True if self.status == UserSyncRunStatusChoices.RUNNING else None
+        update_fields = kwargs.get("update_fields")
+        if update_fields is not None and "status" in update_fields:
+            kwargs["update_fields"] = set(update_fields) | {"running_guard"}
+        return super().save(*args, **kwargs)
 
 
 def instance_id_or_none(instance):

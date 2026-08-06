@@ -1,5 +1,5 @@
 from django.db import transaction
-from django.db.models import Prefetch
+from django.db.models import OuterRef, Prefetch, Subquery
 from django.db.models.deletion import ProtectedError
 from django.http import JsonResponse
 from rest_framework.decorators import action
@@ -29,12 +29,13 @@ from config.drf.pagination import CustomPageNumberPagination
 
 
 class IMNotificationChannelViewSet(MaintainerViewSet):
+    latest_sync_run_id = IMNotificationSyncRun.objects.filter(channel_id=OuterRef("channel_id")).order_by("-started_at", "-id").values("id")[:1]
     queryset = (
         IMNotificationChannel.objects.select_related("integration_instance")
         .prefetch_related(
             Prefetch(
                 "sync_runs",
-                queryset=IMNotificationSyncRun.objects.order_by("-started_at", "-id")[:1],
+                queryset=IMNotificationSyncRun.objects.filter(id=Subquery(latest_sync_run_id)),
                 to_attr="_prefetched_latest_run",
             )
         )

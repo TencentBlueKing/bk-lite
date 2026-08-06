@@ -6,6 +6,7 @@ from django.utils.translation import gettext_lazy as _
 from apps.core.mixinx import PeriodicTaskUtils
 from apps.core.models.maintainer_info import MaintainerInfo
 from apps.core.models.time_info import TimeInfo
+from apps.core.utils.conditional_unique import ConditionalUniqueGuardQuerySet
 
 
 class IMNotificationMappingStrategyChoices(models.TextChoices):
@@ -94,6 +95,15 @@ class IMNotificationUserMapping(TimeInfo):
         )
 
 
+class IMNotificationSyncRunQuerySet(ConditionalUniqueGuardQuerySet):
+    guard_rules = {
+        "status": (
+            "running_guard",
+            lambda status: True if status == IMNotificationSyncRunStatusChoices.RUNNING else None,
+        )
+    }
+
+
 class IMNotificationSyncRun(TimeInfo):
     channel = models.ForeignKey("system_mgmt.IMNotificationChannel", on_delete=models.CASCADE, related_name="sync_runs")
     trigger_mode = models.CharField(
@@ -111,6 +121,9 @@ class IMNotificationSyncRun(TimeInfo):
     payload = models.JSONField(default=dict, blank=True)
     started_at = models.DateTimeField(default=timezone.now, db_index=True)
     finished_at = models.DateTimeField(null=True, blank=True)
+    running_guard = models.BooleanField(null=True, default=None, editable=False)
+
+    objects = IMNotificationSyncRunQuerySet.as_manager()
 
     class Meta:
         ordering = ("-started_at", "-id")
@@ -119,5 +132,16 @@ class IMNotificationSyncRun(TimeInfo):
                 fields=["channel"],
                 condition=Q(status=IMNotificationSyncRunStatusChoices.RUNNING),
                 name="unique_running_im_notification_sync_run_per_channel",
-            )
+            ),
+            models.UniqueConstraint(
+                fields=["channel", "running_guard"],
+                name="uniq_im_sync_run_guard_per_channel",
+            ),
         ]
+
+    def save(self, *args, **kwargs):
+        self.running_guard = True if self.status == IMNotificationSyncRunStatusChoices.RUNNING else None
+        update_fields = kwargs.get("update_fields")
+        if update_fields is not None and "status" in update_fields:
+            kwargs["update_fields"] = set(update_fields) | {"running_guard"}
+        return super().save(*args, **kwargs)
