@@ -11,8 +11,8 @@ NATS 通用工具方法
     都复用它，而不是每次调用都新建一条 TLS 连接再关闭。
 
     为什么必须共享长连接：
-        stargazer 是单线程单事件循环（arq + sanic）。采集插件中存在阻塞型
-        调用（SNMP/SSH/子进程），会短时间占满事件循环。如果此时去新建 NATS
+        stargazer 的每个服务进程使用一个 Sanic 事件循环。遗留同步 SDK 已在
+        插件内部包装到 asyncio 默认线程池，但事件循环抖动期间若新建 NATS
         连接，异步 TLS 握手无法被事件循环及时驱动，NATS 服务端在握手超时
         （默认 2s）后会直接 reset，表现为大量 ConnectionResetError，导致
         ansible adhoc 请求发不出去、回调收不到。

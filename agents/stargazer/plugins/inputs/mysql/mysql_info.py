@@ -12,6 +12,7 @@ import pymysql
 from pymysql.constants import CLIENT
 
 from core.decorator import timer
+from plugins.async_contract import threaded_collect
 from sanic.log import logger
 
 
@@ -285,6 +286,7 @@ class MysqlInfo:
         }
 
     @timer(logger=logger)
+    @threaded_collect
     def list_all_resources(self):
         """
         Convert collected data to a standard format.

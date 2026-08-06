@@ -3,7 +3,7 @@
 统一的 Redis 配置
 
 作用：
-确保 Sanic Server 和 ARQ Worker 使用完全相同的 Redis 配置，
+确保 Sanic Server 内各异步运行组件使用完全相同的 Redis 配置，
 避免因配置不一致导致任务无法正常分发和消费。
 
 使用方式：

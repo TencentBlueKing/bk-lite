@@ -6,6 +6,7 @@
 """
 import requests
 from sanic.log import logger
+from plugins.async_contract import threaded_collect
 
 try:  # 关闭自签证书告警
     requests.packages.urllib3.disable_warnings()
@@ -83,6 +84,7 @@ class InfluxdbInfo:
         resp = self._get("/ping")
         return {"version": resp.headers.get("X-Influxdb-Version", "")}
 
+    @threaded_collect
     def list_all_resources(self):
         """返回标准格式：{"result": {"influxdb": [model_data]}, "success": True}。"""
         try:

@@ -14,6 +14,7 @@ from pysnmp.hlapi import (
 from sanic.log import logger
 
 from plugins.inputs.network_topo.snmp_topo import SnmpTopo
+from plugins.async_contract import threaded_collect
 
 
 class DefineOid:
@@ -265,6 +266,7 @@ class SnmpFacts:
 
         return results
 
+    @threaded_collect
     def list_all_resources(self):
         """
         将采集到的 SNMP 数据转换为标准格式。

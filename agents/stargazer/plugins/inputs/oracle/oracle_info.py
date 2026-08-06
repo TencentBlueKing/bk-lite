@@ -7,6 +7,7 @@ A standalone script to gather information about Oracle servers.
 import oracledb
 from sanic.log import logger
 from typing import Dict, Any
+from plugins.async_contract import threaded_collect
 
 
 class OracleInfo:
@@ -64,6 +65,7 @@ class OracleInfo:
             logger.error(f"Error during data collection: {str(e)}")
             raise
 
+    @threaded_collect
     def list_all_resources(self) -> dict[str, Any]:
         """Public method to collect all info and format it for Prometheus."""
         try:

@@ -4,15 +4,97 @@ import os
 from sanic.log import logger
 
 import core.host_remote_callback as host_remote_callback
-from core.task_queue import get_task_queue
+
+_processing_tasks: dict[str, asyncio.Task] = {}
+
+
+async def schedule_host_remote_processing(
+    task_id: str, *, claim_token: str = ""
+) -> dict:
+    existing = _processing_tasks.get(task_id)
+    if existing is not None and not existing.done():
+        return {
+            "task_id": task_id,
+            "status": "duplicate_active",
+            "processing_id": existing.get_name(),
+        }
+    claim_token = claim_token or (
+        await host_remote_callback.claim_host_remote_processing(task_id)
+    )
+    if not claim_token:
+        return {
+            "task_id": task_id,
+            "status": "duplicate_active",
+            "processing_id": "",
+        }
+
+    async def process() -> None:
+        from tasks.handlers.host_remote_handler import (
+            process_host_remote_callback_task,
+        )
+
+        async def renew_claim() -> None:
+            interval = max(
+                1, host_remote_callback.HOST_REMOTE_PROCESSING_STALE_SECONDS // 3
+            )
+            while True:
+                await asyncio.sleep(interval)
+                if not await host_remote_callback.renew_host_remote_processing_claim(
+                    task_id, claim_token
+                ):
+                    raise RuntimeError("lost Host Remote processing claim")
+
+        renewal_task = asyncio.create_task(renew_claim())
+        handler_task = asyncio.create_task(
+            process_host_remote_callback_task({}, {}, task_id)
+        )
+        try:
+            done, _pending = await asyncio.wait(
+                (handler_task, renewal_task),
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+            if renewal_task in done:
+                await renewal_task
+            await handler_task
+        finally:
+            if not handler_task.done():
+                handler_task.cancel()
+            renewal_task.cancel()
+            await asyncio.gather(
+                handler_task, renewal_task, return_exceptions=True
+            )
+            await host_remote_callback.release_host_remote_processing_claim(
+                task_id, claim_token
+            )
+
+    task = asyncio.create_task(
+        process(), name=f"host-remote-callback:{task_id}"
+    )
+    _processing_tasks[task_id] = task
+
+    def consume(completed: asyncio.Task) -> None:
+        _processing_tasks.pop(task_id, None)
+        try:
+            completed.result()
+        except asyncio.CancelledError:
+            pass
+        except Exception:
+            logger.exception(
+                "[Host Remote Runtime] callback processing failed task_id=%s",
+                task_id,
+            )
+
+    task.add_done_callback(consume)
+    return {
+        "task_id": task_id,
+        "status": "accepted",
+        "processing_id": task.get_name(),
+    }
 
 
 def validate_host_remote_runtime_config() -> None:
     nats_urls = os.getenv("NATS_URLS", "").strip()
     nats_servers = os.getenv("NATS_SERVERS", "").strip()
-    task_job_timeout = int(os.getenv("TASK_JOB_TIMEOUT", "600"))
-    callback_deadline = host_remote_callback.HOST_REMOTE_CALLBACK_DEADLINE_SECONDS
-    submit_accept_timeout = host_remote_callback.HOST_REMOTE_SUBMIT_ACCEPT_TIMEOUT_SECONDS
 
     if not nats_urls and nats_servers:
         logger.warning(
@@ -24,15 +106,6 @@ def validate_host_remote_runtime_config() -> None:
             "[Host Remote Runtime] NATS_URLS and NATS_SERVERS differ; worker/server may use inconsistent NATS endpoints"
         )
 
-    if callback_deadline >= task_job_timeout:
-        logger.warning(
-            "[Host Remote Runtime] HOST_REMOTE_CALLBACK_DEADLINE_SECONDS >= TASK_JOB_TIMEOUT; waiting callbacks may overlap worker job timeout assumptions"
-        )
-
-    if submit_accept_timeout >= task_job_timeout:
-        logger.warning(
-            "[Host Remote Runtime] HOST_REMOTE_SUBMIT_ACCEPT_TIMEOUT_SECONDS >= TASK_JOB_TIMEOUT; pre-accept waiting may overlap worker job timeout assumptions"
-        )
 
 
 async def sweep_host_remote_callback_contexts() -> None:
@@ -70,11 +143,10 @@ async def sweep_host_remote_callback_contexts() -> None:
         if delivery == "publish_pending":
             next_retry_at = int(callback_context.get("next_retry_at") or 0)
             if next_retry_at and next_retry_at <= now_ms:
-                task_queue = get_task_queue()
-                task_info = await task_queue.enqueue_host_remote_processing_task(task_id)
+                task_info = await schedule_host_remote_processing(task_id)
                 await host_remote_callback.mark_host_remote_processing_enqueued(
                     task_id,
-                    processing_job_id=task_info.get("job_id"),
+                    processing_job_id=task_info.get("processing_id"),
                 )
                 continue
 
@@ -86,11 +158,10 @@ async def sweep_host_remote_callback_contexts() -> None:
                 host_remote_callback.HOST_REMOTE_PROCESSING_STALE_SECONDS * 1000
             )
             if stale_deadline <= now_ms:
-                task_queue = get_task_queue()
-                task_info = await task_queue.enqueue_host_remote_processing_task(task_id)
+                task_info = await schedule_host_remote_processing(task_id)
                 await host_remote_callback.mark_host_remote_processing_enqueued(
                     task_id,
-                    processing_job_id=task_info.get("job_id"),
+                    processing_job_id=task_info.get("processing_id"),
                 )
 
 
@@ -129,3 +200,8 @@ def register_host_remote_runtime(app) -> None:
                 await sweeper_task
             except asyncio.CancelledError:
                 pass
+        tasks = tuple(task for task in _processing_tasks.values() if not task.done())
+        for task in tasks:
+            task.cancel()
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)

@@ -15,6 +15,7 @@ from tencentcloud.common.profile.client_profile import ClientProfile
 from tencentcloud.common.profile.http_profile import HttpProfile
 from sanic.log import logger
 from plugins.inputs.qcloud.region_scope import resolve_collection_regions
+from plugins.async_contract import threaded_collect
 from plugins.constants import client_version_map, mysql_pay_type_map, redis_region_map, mongodb_status_map, \
     pgsql_status_map, pulsar_status_map, pgsql_pay_type_map, mysql_status_map, redis_status_map, redis_sub_status_map, \
     redis_type_map, mongodb_inst_type_map, mongodb_pay_type_map, pulsar_pay_type_map, cmq_status_map, \
@@ -546,6 +547,7 @@ class TencentCloudManager:
             result.update(handle_resource(resource_func, resource_name))
         return result
 
+    @threaded_collect
     def list_all_resources(self):
         try:
             result = self.exec_script()

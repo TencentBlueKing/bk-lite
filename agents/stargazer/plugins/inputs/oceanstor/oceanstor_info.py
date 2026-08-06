@@ -14,6 +14,7 @@ ALLOCTYPE/PARENTNAME/USAGETYPE/RUNNINGSTATUS），由 CMDB 侧 runner 归一化�
 """
 import requests
 from sanic.log import logger
+from plugins.async_contract import threaded_collect
 
 try:
     requests.packages.urllib3.disable_warnings()
@@ -101,6 +102,7 @@ class OceanStorManager:
     # ------------------------------------------------------------------
     # 采集入口
     # ------------------------------------------------------------------
+    @threaded_collect
     def list_all_resources(self):
         try:
             self.login()

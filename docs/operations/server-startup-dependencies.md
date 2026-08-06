@@ -45,6 +45,18 @@ Supervisor 启动；启动期不得投递任务并等待它消费。
 短期 PDF，并按 Execution 子目录隔离；未配置时 Render 明确失败，不回退到容器
 本地 `/tmp`。临时文件清理属于运行期能力，不得加入 `batch_init`。
 
+## Stargazer 独立服务启动边界
+
+Stargazer 已移除 ARQ Worker。其容器只启动 Sanic 进程；Sanic 在
+`before_server_start` 中建立普通异步 Redis Client、初始化统一采集运行时，并在
+`after_server_start` 启动事件循环延迟采样和 Host Remote callback sweeper。
+
+- 不再要求“先启动 Stargazer Worker”，仓库也不再包含 Worker Supervisor 配置；
+- Redis 可连接是新采集任务安全接纳的硬条件，因为运行租约和 fencing 采用 fail-closed；
+- NATS responder 和 Host Remote 下游仍属于运行期依赖，不能在 Server `batch_init` 中调用并等待；
+- callback sweep、重试和可重建状态对账只能在 Sanic 启动后执行，失败不得形成 Server 启动循环；
+- 停服时先停止接纳，宽限等待/取消运行，再停止 callback/观测任务并关闭 NATS、Redis。
+
 ## 启动期允许与禁止事项
 
 `batch_init` 只能执行确定性的本地初始化、必要的数据库初始化，以及明确属于
@@ -105,3 +117,6 @@ startup.sh
 - [项目服务与依赖拓扑](../project-service-dependency.png)
 - [Server 启动顺序、初始化边界与禁止依赖](../server-startup-dependency.png)
 - [两页可编辑 Draw.io 源文件](../project-service-dependency.drawio)
+### Stargazer 采集运行时的 Redis 例外
+
+Stargazer 的 Redis 运行状态不是可延后声明的外部资源：任务重入、租约心跳、fencing 和跨 Pod 回调抢占都依赖它保证同一任务不会并发产生副作用。因此启动时的 `PING` 失败会主动阻止 Stargazer 就绪；这属于采集安全的关键依赖，而不是用同步等待掩盖 Supervisor 内部启动顺序。ARQ 队列及其 worker 依赖已移除。

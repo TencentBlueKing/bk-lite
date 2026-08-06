@@ -9,6 +9,8 @@ import sys
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
+
 STARGAZER_ROOT = Path(__file__).resolve().parents[1]
 if str(STARGAZER_ROOT) not in sys.path:
     sys.path.insert(0, str(STARGAZER_ROOT))
@@ -130,11 +132,12 @@ def test_no_get_platform():
 # ----------------------------------------------------------------------------
 # list_all_resources 聚合 + 错误兜底
 # ----------------------------------------------------------------------------
-def test_list_all_resources_success():
+@pytest.mark.asyncio
+async def test_list_all_resources_success():
     mgr = _make_manager()
     with patch.object(mgr, "get_clusters", return_value=[mgr._map_cluster(RAW_CLUSTER)]), \
             patch.object(mgr, "get_hosts", return_value=[mgr._map_host(RAW_HOST)]):
-        out = mgr.list_all_resources()
+        out = await mgr.list_all_resources()
 
     assert out["success"] is True
     result = out["result"]
@@ -145,15 +148,17 @@ def test_list_all_resources_success():
     assert result["fusioninsight_host"][0]["cluster_id"] == "1"
 
 
-def test_list_all_resources_error_branch():
+@pytest.mark.asyncio
+async def test_list_all_resources_error_branch():
     mgr = _make_manager()
     with patch.object(mgr, "get_clusters", side_effect=RuntimeError("boom")):
-        out = mgr.list_all_resources()
+        out = await mgr.list_all_resources()
     assert out["success"] is False
     assert "cmdb_collect_error" in out["result"]
 
 
-def test_missing_requests_reports_clear_error(monkeypatch):
+@pytest.mark.asyncio
+async def test_missing_requests_reports_clear_error(monkeypatch):
     """requests 未安装时应返回清晰错误而非崩溃。"""
     from plugins.inputs.fusioninsight import fusioninsight_info
     monkeypatch.setattr(fusioninsight_info, "requests", None)
@@ -161,7 +166,7 @@ def test_missing_requests_reports_clear_error(monkeypatch):
         "username": "u", "password": "p", "region": "r",
         "host": "fi.example.com",
     })
-    out = mgr.list_all_resources()
+    out = await mgr.list_all_resources()
     assert out["success"] is False
     assert "requests" in out["result"]["cmdb_collect_error"]
 

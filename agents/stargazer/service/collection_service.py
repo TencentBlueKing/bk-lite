@@ -20,9 +20,9 @@ class CollectionService:
     采集服务 - 基于 YAML 配置的新架构
 
     设计说明：
-    - API层已完成IP拆分，每个CollectionService实例只处理单个host（或无host）
+    - 统一运行时按 IP 调度，每个 CollectionService 实例只处理单个 host（或无 host）
     - host字段可能为None（云采集使用默认endpoint）
-    - 不再需要内部并发，并发在Worker Pool层实现
+    - 不在服务内部并发；跨 IP 并发由统一异步运行时控制
 
     工作流程：
     1. 根据 plugin_name 推断 model（或直接传入 model）

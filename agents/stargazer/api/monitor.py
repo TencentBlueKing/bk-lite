@@ -3,10 +3,44 @@ import time
 from sanic import Blueprint
 from sanic.log import logger
 from sanic import response
+from sanic.exceptions import SanicException
 
-from core.task_queue import get_task_queue
+from core.collection_application import get_collection_application
+from core.collection_request_builder import build_collection_request
+from core.collection_runtime import SubmissionStatus
 
 monitor_router = Blueprint("monitor", url_prefix="/monitor")
+
+
+async def _submit_monitor_request(request, task_params: dict) -> dict:
+    task_id = str(
+        request.headers.get("x-task-id")
+        or request.headers.get("task_id")
+        or task_params.get("task_id")
+        or ""
+    ).strip()
+    try:
+        collection_request = build_collection_request(
+            task_id=task_id,
+            params=task_params,
+        )
+    except ValueError as error:
+        raise SanicException(str(error), status_code=400) from error
+    submission = await get_collection_application().submit(collection_request)
+    if submission.status.value == "conflict":
+        raise SanicException("task-id-conflict", status_code=409)
+    if submission.status.value == "busy":
+        raise SanicException("collection-runtime-busy", status_code=429)
+    return {
+        "task_id": submission.task_id,
+        "status": submission.status.value,
+        "fence": submission.fence,
+        "http_status": (
+            200
+            if submission.status == SubmissionStatus.COMPLETED
+            else 202
+        ),
+    }
 
 
 def _mask_credential(secret_id: str) -> str:
@@ -34,7 +68,7 @@ def _monitor_error_response(monitor_type: str, error: str, status: int = 400):
 async def vmware_metrics(request):
     """
     VMware 指标采集 - 异步模式
-    立即返回请求已接收的指标，实际采集任务放入队列异步执行
+    立即返回请求接纳状态，实际采集由本 Pod 的统一异步运行时执行
 
     必需参数（Headers）：
         username: VMware vCenter 用户名
@@ -89,7 +123,7 @@ async def vmware_metrics(request):
     collect_type = request.headers.get("collect_type")
     config_type = request.headers.get("config_type")
 
-    logger.info(f"Request: Host={host}, Minutes={minutes}, User={username}")
+    logger.info(f"Request: Host={host}, Minutes={minutes}")
     logger.info(
         f"Tags: agent_id={agent_id}, instance_id={instance_id}, instance_type={instance_type}"
     )
@@ -112,19 +146,16 @@ async def vmware_metrics(request):
             },
         }
 
-        # 获取任务队列并加入任务
-        task_queue = get_task_queue()
-        task_info = await task_queue.enqueue_collect_task(task_params)
-        # 注意：不传 task_id 参数，让系统根据参数自动生成（用于去重）
+        task_info = await _submit_monitor_request(request, task_params)
 
-        logger.info(f"VMware metrics task queued: {task_info['task_id']}")
+        logger.info("VMware metrics run accepted: %s", task_info["task_id"])
 
         # 构建 Prometheus 格式的响应（表示请求已接收）
         current_timestamp = int(time.time() * 1000)
         prometheus_lines = [
             "# HELP monitor_request_accepted Indicates that monitor request was accepted",
             "# TYPE monitor_request_accepted gauge",
-            f'monitor_request_accepted{{monitor_type="vmware",host="{host}",task_id="{task_info["task_id"]}",status="queued"}} 1 {current_timestamp}',
+            f'monitor_request_accepted{{monitor_type="vmware",host="{host}",task_id="{task_info["task_id"]}",status="{task_info["status"]}"}} 1 {current_timestamp}',
         ]
 
         metrics_response = "\n".join(prometheus_lines) + "\n"
@@ -135,10 +166,14 @@ async def vmware_metrics(request):
             content_type="text/plain; version=0.0.4; charset=utf-8",
             headers={
                 "X-Task-ID": task_info["task_id"],
-                "X-Job-ID": task_info.get("job_id", ""),
+                "X-Task-Status": task_info["status"],
+                "X-Fencing-Token": str(task_info["fence"]),
             },
+            status=task_info["http_status"],
         )
 
+    except SanicException:
+        raise
     except Exception as e:
         logger.error(f"Error queuing VMware metrics task: {e}", exc_info=True)
 
@@ -161,7 +196,7 @@ async def vmware_metrics(request):
 async def qcloud_metrics(request):
     """
     QCloud 指标采集 - 异步模式
-    立即返回请求已接收的指标，实际采集任务放入队列异步执行
+    立即返回请求接纳状态，实际采集由本 Pod 的统一异步运行时执行
 
     必需参数（Headers）：
         username: QCloud SecretId
@@ -213,7 +248,7 @@ async def qcloud_metrics(request):
     collect_type = request.headers.get("collect_type")
     config_type = request.headers.get("config_type")
 
-    logger.info(f"Request: Minutes={minutes}, User={username}")
+    logger.info(f"Request: Minutes={minutes}")
     logger.info(
         f"Tags: agent_id={agent_id}, instance_id={instance_id}, instance_type={instance_type}"
     )
@@ -235,19 +270,17 @@ async def qcloud_metrics(request):
             },
         }
 
-        # 获取任务队列并加入任务
-        task_queue = get_task_queue()
-        task_info = await task_queue.enqueue_collect_task(task_params)
+        task_info = await _submit_monitor_request(request, task_params)
         # 注意：不传 task_id 参数，让系统根据参数自动生成（用于去重）
 
-        logger.info(f"QCloud metrics task queued: {task_info['task_id']}")
+        logger.info("QCloud metrics run accepted: %s", task_info["task_id"])
 
         # 构建 Prometheus 格式的响应（表示请求已接收）
         current_timestamp = int(time.time() * 1000)
         prometheus_lines = [
             "# HELP monitor_request_accepted Indicates that monitor request was accepted",
             "# TYPE monitor_request_accepted gauge",
-            f'monitor_request_accepted{{monitor_type="qcloud",username="{_mask_credential(username)}",task_id="{task_info["task_id"]}",status="queued"}} 1 {current_timestamp}',
+            f'monitor_request_accepted{{monitor_type="qcloud",username="{_mask_credential(username)}",task_id="{task_info["task_id"]}",status="{task_info["status"]}"}} 1 {current_timestamp}',
         ]
 
         metrics_response = "\n".join(prometheus_lines) + "\n"
@@ -258,10 +291,14 @@ async def qcloud_metrics(request):
             content_type="text/plain; version=0.0.4; charset=utf-8",
             headers={
                 "X-Task-ID": task_info["task_id"],
-                "X-Job-ID": task_info.get("job_id", ""),
+                "X-Task-Status": task_info["status"],
+                "X-Fencing-Token": str(task_info["fence"]),
             },
+            status=task_info["http_status"],
         )
 
+    except SanicException:
+        raise
     except Exception as e:
         logger.error(f"Error queuing QCloud metrics task: {e}", exc_info=True)
 
@@ -298,7 +335,7 @@ async def oceanstor_metrics(request):
     collect_type = request.headers.get("collect_type", "oceanstor")
     config_type = request.headers.get("config_type", "oceanstor")
 
-    logger.info(f"Request: Host={host}, User={username}, instance_id={instance_id}")
+    logger.info(f"Request: Host={host}, instance_id={instance_id}")
 
     try:
         task_params = {
@@ -317,16 +354,15 @@ async def oceanstor_metrics(request):
             },
         }
 
-        task_queue = get_task_queue()
-        task_info = await task_queue.enqueue_collect_task(task_params)
+        task_info = await _submit_monitor_request(request, task_params)
 
-        logger.info(f"OceanStor metrics task queued: {task_info['task_id']}")
+        logger.info("OceanStor metrics run accepted: %s", task_info["task_id"])
 
         current_timestamp = int(time.time() * 1000)
         prometheus_lines = [
             "# HELP monitor_request_accepted Indicates that monitor request was accepted",
             "# TYPE monitor_request_accepted gauge",
-            f'monitor_request_accepted{{monitor_type="oceanstor",host="{host}",task_id="{task_info["task_id"]}",status="queued"}} 1 {current_timestamp}',
+            f'monitor_request_accepted{{monitor_type="oceanstor",host="{host}",task_id="{task_info["task_id"]}",status="{task_info["status"]}"}} 1 {current_timestamp}',
         ]
 
         metrics_response = "\n".join(prometheus_lines) + "\n"
@@ -336,10 +372,14 @@ async def oceanstor_metrics(request):
             content_type="text/plain; version=0.0.4; charset=utf-8",
             headers={
                 "X-Task-ID": task_info["task_id"],
-                "X-Job-ID": task_info.get("job_id", ""),
+                "X-Task-Status": task_info["status"],
+                "X-Fencing-Token": str(task_info["fence"]),
             },
+            status=task_info["http_status"],
         )
 
+    except SanicException:
+        raise
     except Exception as e:
         logger.error(f"Error queuing OceanStor metrics task: {e}", exc_info=True)
 
@@ -407,11 +447,10 @@ async def windows_wmi_metrics(request):
         },
     }
 
-    task_queue = get_task_queue()
-    task_info = await task_queue.enqueue_collect_task(task_params)
+    task_info = await _submit_monitor_request(request, task_params)
 
     logger.info(
-        "event=wmi_task_queued monitor_type=windows_wmi host=%s task_id=%s",
+        "event=wmi_run_accepted monitor_type=windows_wmi host=%s task_id=%s",
         host,
         task_info["task_id"],
     )
@@ -420,7 +459,7 @@ async def windows_wmi_metrics(request):
     prometheus_lines = [
         "# HELP monitor_request_accepted Indicates that monitor request was accepted",
         "# TYPE monitor_request_accepted gauge",
-        f'monitor_request_accepted{{monitor_type="windows_wmi",host="{host}",task_id="{task_info["task_id"]}",status="queued"}} 1 {current_timestamp}',
+        f'monitor_request_accepted{{monitor_type="windows_wmi",host="{host}",task_id="{task_info["task_id"]}",status="{task_info["status"]}"}} 1 {current_timestamp}',
     ]
 
     return response.raw(
@@ -428,9 +467,11 @@ async def windows_wmi_metrics(request):
         content_type="text/plain; version=0.0.4; charset=utf-8",
         headers={
             "X-Task-ID": task_info["task_id"],
-            "X-Job-ID": task_info.get("job_id", ""),
+            "X-Task-Status": task_info["status"],
+            "X-Fencing-Token": str(task_info["fence"]),
             "X-Monitor-Type": "windows_wmi",
         },
+        status=task_info["http_status"],
     )
 
 
@@ -506,16 +547,15 @@ async def host_metrics(request):
             },
         }
 
-        task_queue = get_task_queue()
-        task_info = await task_queue.enqueue_collect_task(task_params)
+        task_info = await _submit_monitor_request(request, task_params)
 
-        logger.info(f"Host metrics task queued: {task_info['task_id']}")
+        logger.info("Host metrics run accepted: %s", task_info["task_id"])
 
         current_timestamp = int(time.time() * 1000)
         prometheus_lines = [
             "# HELP monitor_request_accepted Indicates that monitor request was accepted",
             "# TYPE monitor_request_accepted gauge",
-            f'monitor_request_accepted{{monitor_type="host",host="{host}",task_id="{task_info["task_id"]}",status="queued"}} 1 {current_timestamp}',
+            f'monitor_request_accepted{{monitor_type="host",host="{host}",task_id="{task_info["task_id"]}",status="{task_info["status"]}"}} 1 {current_timestamp}',
         ]
 
         metrics_response = "\n".join(prometheus_lines) + "\n"
@@ -525,10 +565,14 @@ async def host_metrics(request):
             content_type="text/plain; version=0.0.4; charset=utf-8",
             headers={
                 "X-Task-ID": task_info["task_id"],
-                "X-Job-ID": task_info.get("job_id", ""),
+                "X-Task-Status": task_info["status"],
+                "X-Fencing-Token": str(task_info["fence"]),
             },
+            status=task_info["http_status"],
         )
 
+    except SanicException:
+        raise
     except Exception as e:
         logger.error(f"Error queuing host metrics task: {e}", exc_info=True)
 

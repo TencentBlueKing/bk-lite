@@ -14,6 +14,7 @@ import psycopg2
 from psycopg2.extras import RealDictCursor
 
 from core.decorator import timer
+from plugins.async_contract import threaded_collect
 from sanic.log import logger
 
 
@@ -106,6 +107,7 @@ class PostgresqlInfo:
         return f"{data_directory.rstrip('/')}/{log_directory}" if data_directory else log_directory
 
     @timer(logger=logger)
+    @threaded_collect
     def list_all_resources(self):
         try:
             self._connect()

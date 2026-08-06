@@ -8,12 +8,14 @@ VMware 监控数据采集器
 import datetime
 from sanic.log import logger
 from .base_collector import BaseCollector
+from plugins.async_contract import threaded_collect
 
 
 class VmwareCollector(BaseCollector):
     """VMware vCenter 监控数据采集器"""
 
-    async def collect(self) -> str:
+    @threaded_collect
+    def collect(self) -> str:
         """
         采集 VMware 监控指标
 
@@ -31,7 +33,7 @@ class VmwareCollector(BaseCollector):
 
         logger.info(f"[VMware Collector] ===== START COLLECTION =====")
         logger.info(f"[VMware Collector] Params: {list(self.params.keys())}")
-        logger.info(f"[VMware Collector] Target Host={host}, Minutes={minutes}, Username={username}")
+        logger.info(f"[VMware Collector] Target Host={host}, Minutes={minutes}")
         logger.info(f"[VMware Collector] ===================================")
 
         # 获取时间范围

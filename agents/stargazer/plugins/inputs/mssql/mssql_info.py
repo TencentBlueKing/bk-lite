@@ -9,6 +9,7 @@ from sanic.log import logger
 from typing import Dict, Any
 
 from core.decorator import timer
+from plugins.async_contract import threaded_collect
 
 
 class MSSQLInfo:
@@ -94,6 +95,7 @@ class MSSQLInfo:
             raise
 
     @timer(logger=logger)
+    @threaded_collect
     def list_all_resources(self):
         """Public method to collect all info and format it for Prometheus."""
         try:

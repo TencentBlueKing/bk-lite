@@ -1,5 +1,4 @@
 import importlib
-import inspect
 from typing import Any, Dict, Optional
 
 from sanic.log import logger
@@ -67,11 +66,8 @@ class PluginExecutor:
         # 5. 执行采集
         logger.info(f"⏳ Executing collection...")
 
-        # 检查 list_all_resources 是否是协程函数
-        if inspect.iscoroutinefunction(collector_instance.list_all_resources):
-            result = await collector_instance.list_all_resources()
-        else:
-            result = collector_instance.list_all_resources()
+        # 所有注册插件必须暴露异步契约；同步 SDK 由插件自身用 to_thread 包装。
+        result = await collector_instance.list_all_resources()
 
         logger.info(f"✅ Collection completed")
         return result

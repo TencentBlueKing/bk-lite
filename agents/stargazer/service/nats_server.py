@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 
 import core.host_remote_callback as host_remote_callback
 from core.nats import get_nats, register_handler
-from core.task_queue import get_task_queue
+from core.host_remote_runtime import schedule_host_remote_processing
 from sanic.log import logger
 from service.collection_service import CollectionService
 from service.debug.protocol_debug_service import ProtocolDebugService
@@ -104,29 +104,53 @@ async def handle_host_remote_callback(data: dict) -> dict:
     if not callback_context:
         raise RuntimeError(f"Missing Host Remote callback context for task_id={task_id}")
 
-    if callback_context.get("raw_callback") is None:
+    host_remote_callback.validate_host_remote_callback_identity(
+        payload, callback_context
+    )
+    await host_remote_callback.ensure_host_remote_callback_fence_is_current(
+        callback_context
+    )
+
+    claim_token = await host_remote_callback.claim_host_remote_processing(
+        task_id
+    )
+    if not claim_token:
+        return {
+            "task_id": task_id,
+            "status": "duplicate_active",
+            "monitor_type": (callback_context.get("params") or {}).get(
+                "monitor_type", "host"
+            ),
+            "processing_job_id": "",
+        }
+
+    try:
         callback_context = await host_remote_callback.record_host_remote_callback_payload(
             task_id,
             payload,
         )
-
-    await _clear_host_remote_running_flag_best_effort(task_id)
-
-    task_queue = get_task_queue()
-    task_info = await task_queue.enqueue_host_remote_processing_task(task_id)
+        await _clear_host_remote_running_flag_best_effort(task_id)
+        task_info = await schedule_host_remote_processing(
+            task_id, claim_token=claim_token
+        )
+    except Exception:
+        await host_remote_callback.release_host_remote_processing_claim(
+            task_id, claim_token
+        )
+        raise
     await host_remote_callback.mark_host_remote_processing_enqueued(
         task_id,
-        processing_job_id=task_info.get("job_id"),
+        processing_job_id=task_info.get("processing_id"),
     )
     host_remote_callback.log_host_remote_event(
         "callback_processing_queued",
         task_id,
-        processing_job_id=task_info.get("job_id"),
+        processing_job_id=task_info.get("processing_id"),
     )
 
     return {
         "task_id": task_id,
         "status": "accepted",
         "monitor_type": (callback_context.get("params") or {}).get("monitor_type", "host"),
-        "processing_job_id": task_info.get("job_id", ""),
+        "processing_job_id": task_info.get("processing_id", ""),
     }

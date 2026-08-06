@@ -1,37 +1,21 @@
 import json
 import os
 import time
+import uuid
 from typing import Any, Dict, List
 
 from sanic.log import logger
+from core.redis_client import get_redis_client
 
 HOST_REMOTE_CALLBACK_HANDLER = "host_remote.callback"
 HOST_REMOTE_CALLBACK_CONTEXT_TTL_SECONDS = int(
     os.getenv("HOST_REMOTE_CALLBACK_CONTEXT_TTL_SECONDS", "3600")
 )
-_TASK_JOB_TIMEOUT_SECONDS = int(os.getenv("TASK_JOB_TIMEOUT", "600"))
-
-
-def _resolve_host_remote_timeout(env_name: str, ratio: float, floor: int) -> int:
-    """解析 host-remote 等待时限。
-
-    显式设置环境变量时以其为准；否则按 TASK_JOB_TIMEOUT 的比例派生，
-    保证默认配置下 submit-accept 等待与 callback 时限始终小于 worker job 超时，
-    避免等待与 arq job 超时重叠（否则会触发启动告警且行为不一致）。
-    """
-    explicit = os.getenv(env_name)
-    if explicit:
-        return int(explicit)
-    return max(floor, int(_TASK_JOB_TIMEOUT_SECONDS * ratio))
-
-
-# submit-accept 等待发生在 worker job 内部，须明显小于 job 超时
-HOST_REMOTE_SUBMIT_ACCEPT_TIMEOUT_SECONDS = _resolve_host_remote_timeout(
-    "HOST_REMOTE_SUBMIT_ACCEPT_TIMEOUT_SECONDS", 0.5, 60
+HOST_REMOTE_SUBMIT_ACCEPT_TIMEOUT_SECONDS = int(
+    os.getenv("HOST_REMOTE_SUBMIT_ACCEPT_TIMEOUT_SECONDS", "300")
 )
-# callback 时限由 sweeper 兜底，保持小于 job 超时以避免重叠
-HOST_REMOTE_CALLBACK_DEADLINE_SECONDS = _resolve_host_remote_timeout(
-    "HOST_REMOTE_CALLBACK_DEADLINE_SECONDS", 0.8, 120
+HOST_REMOTE_CALLBACK_DEADLINE_SECONDS = int(
+    os.getenv("HOST_REMOTE_CALLBACK_DEADLINE_SECONDS", "1200")
 )
 HOST_REMOTE_PROCESSING_STALE_SECONDS = int(
     os.getenv("HOST_REMOTE_PROCESSING_STALE_SECONDS", "300")
@@ -41,6 +25,20 @@ HOST_REMOTE_SWEEP_INTERVAL_SECONDS = int(
 )
 _HOST_REMOTE_CALLBACK_CONTEXT_KEY_PREFIX = "host_remote:callback_context"
 _host_remote_callback_pool = None
+_HOST_REMOTE_PROCESSING_CLAIM_PREFIX = "host_remote:processing_claim"
+
+_RELEASE_PROCESSING_CLAIM_LUA = """
+if redis.call('GET', KEYS[1]) == ARGV[1] then
+    return redis.call('DEL', KEYS[1])
+end
+return 0
+"""
+_RENEW_PROCESSING_CLAIM_LUA = """
+if redis.call('GET', KEYS[1]) == ARGV[1] then
+    return redis.call('EXPIRE', KEYS[1], ARGV[2])
+end
+return 0
+"""
 
 
 def get_stargazer_service_name(instance_id: str | None = None) -> str:
@@ -62,12 +60,111 @@ def _normalize_task_id(task_id) -> str:
     return normalized_task_id
 
 
+def validate_host_remote_callback_identity(payload: dict, callback_context: dict) -> None:
+    trusted = (callback_context or {}).get("ctx") or {}
+    expected_fence = int(trusted.get("fence") or 0)
+    actual_fence = int((payload or {}).get("collection_fence") or 0)
+    if not expected_fence or actual_fence != expected_fence:
+        raise RuntimeError("Host Remote callback fencing token mismatch")
+    if str((payload or {}).get("collection_target") or "") != str(
+        trusted.get("target") or ""
+    ):
+        raise RuntimeError("Host Remote callback target mismatch")
+    if str((payload or {}).get("collection_task_id") or "") != str(
+        trusted.get("collection_task_id") or ""
+    ):
+        raise RuntimeError("Host Remote callback collection task mismatch")
+    if str((payload or {}).get("collection_plugin_ref") or "") != str(
+        trusted.get("plugin_ref") or ""
+    ):
+        raise RuntimeError("Host Remote callback plugin mismatch")
+    if str((payload or {}).get("collection_owner") or "") != str(
+        trusted.get("owner_id") or ""
+    ):
+        raise RuntimeError("Host Remote callback owner mismatch")
+    if int((payload or {}).get("collection_attempt") or 0) != int(
+        trusted.get("attempt") or 0
+    ):
+        raise RuntimeError("Host Remote callback attempt mismatch")
+    if str((payload or {}).get("collection_caller") or "") != str(
+        trusted.get("caller") or ""
+    ):
+        raise RuntimeError("Host Remote callback caller mismatch")
+    status = (callback_context or {}).get("status") or {}
+    if status.get("execution") != "waiting_callback":
+        raise RuntimeError("Host Remote callback is duplicate or out of order")
+    if (callback_context or {}).get("raw_callback") is not None:
+        raise RuntimeError("Host Remote callback is duplicate or out of order")
+    deadline = int((callback_context or {}).get("callback_deadline_at") or 0)
+    if deadline and deadline <= _now_ms():
+        raise RuntimeError("Host Remote callback is expired")
+
+
+async def ensure_host_remote_callback_fence_is_current(
+    callback_context: dict,
+) -> None:
+    """拒绝 Pod 接管后由旧 fencing token 返回的迟到回调。"""
+    trusted = (callback_context or {}).get("ctx") or {}
+    task_id = str(trusted.get("collection_task_id") or "").strip()
+    expected_fence = int(trusted.get("fence") or 0)
+    if not task_id or not expected_fence:
+        raise RuntimeError("Host Remote callback context identity is incomplete")
+    redis_pool = await _get_host_remote_callback_pool()
+    prefix = os.getenv("COLLECTION_REDIS_PREFIX", "stargazer:collection:v1")
+    current_fence = await redis_pool.hget(
+        f"{prefix.rstrip(':')}:run:{task_id}", "fence"
+    )
+    if isinstance(current_fence, (bytes, bytearray)):
+        current_fence = current_fence.decode()
+    if str(current_fence or "") != str(expected_fence):
+        raise RuntimeError("Host Remote callback fencing token is stale")
+
+
 def _build_callback_context_key(task_id) -> str:
     return f"{_HOST_REMOTE_CALLBACK_CONTEXT_KEY_PREFIX}:{_normalize_task_id(task_id)}"
 
 
 def get_task_running_key(task_id) -> str:
     return f"task:running:{_normalize_task_id(task_id)}"
+
+
+async def claim_host_remote_processing(task_id: str) -> str:
+    redis_pool = await _get_host_remote_callback_pool()
+    token = uuid.uuid4().hex
+    claimed = await redis_pool.set(
+        f"{_HOST_REMOTE_PROCESSING_CLAIM_PREFIX}:{_normalize_task_id(task_id)}",
+        token,
+        nx=True,
+        ex=max(1, HOST_REMOTE_PROCESSING_STALE_SECONDS),
+    )
+    return token if claimed else ""
+
+
+async def release_host_remote_processing_claim(
+    task_id: str, token: str
+) -> bool:
+    if not token:
+        return False
+    redis_pool = await _get_host_remote_callback_pool()
+    released = await redis_pool.eval(
+        _RELEASE_PROCESSING_CLAIM_LUA,
+        1,
+        f"{_HOST_REMOTE_PROCESSING_CLAIM_PREFIX}:{_normalize_task_id(task_id)}",
+        token,
+    )
+    return bool(released)
+
+
+async def renew_host_remote_processing_claim(task_id: str, token: str) -> bool:
+    redis_pool = await _get_host_remote_callback_pool()
+    renewed = await redis_pool.eval(
+        _RENEW_PROCESSING_CLAIM_LUA,
+        1,
+        f"{_HOST_REMOTE_PROCESSING_CLAIM_PREFIX}:{_normalize_task_id(task_id)}",
+        token,
+        max(1, HOST_REMOTE_PROCESSING_STALE_SECONDS),
+    )
+    return bool(renewed)
 
 
 def _make_json_safe_dict(value) -> dict:
@@ -196,17 +293,7 @@ async def _get_host_remote_callback_pool():
     global _host_remote_callback_pool
 
     if _host_remote_callback_pool is None:
-        from arq import create_pool
-        from arq.connections import RedisSettings
-        from core.redis_config import REDIS_CONFIG
-
-        redis_settings = RedisSettings(
-            host=REDIS_CONFIG["host"],
-            port=REDIS_CONFIG["port"],
-            password=REDIS_CONFIG["password"],
-            database=REDIS_CONFIG["database"],
-        )
-        _host_remote_callback_pool = await create_pool(redis_settings)
+        _host_remote_callback_pool = await get_redis_client()
 
     return _host_remote_callback_pool
 

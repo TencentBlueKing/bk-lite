@@ -11,6 +11,7 @@ from pyVmomi import vim
 from sanic.log import logger
 
 from core.decorator import timer
+from plugins.async_contract import threaded_collect
 
 
 class VmwareManage(object):
@@ -576,6 +577,7 @@ class VmwareManage(object):
             pass
 
     @timer(logger=logger)
+    @threaded_collect
     def list_all_resources(self):
         try:
             self.connect_vc()

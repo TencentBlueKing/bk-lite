@@ -8,6 +8,7 @@ from typing import Dict, Any
 from sanic.log import logger
 
 from plugins.script_executor import SSHPlugin
+from plugins.async_contract import threaded_collect
 
 
 class PhyscialServerInfo(SSHPlugin):
@@ -52,6 +53,7 @@ class PhyscialServerIPMIInfo:
         self.privilege = kwargs.get('privilege')
         self.model_id = kwargs.get('model_id', 'physcial_server')
 
+    @threaded_collect
     def list_all_resources(self):
         try:
             try:

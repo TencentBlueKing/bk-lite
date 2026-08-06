@@ -9,6 +9,7 @@ import traceback
 from sanic.log import logger
 
 from common.cmp.driver import CMPDriver
+from plugins.async_contract import threaded_collect
 
 
 class HuaweiCloudManager:
@@ -279,6 +280,7 @@ class HuaweiCloudManager:
             "hwcloud_dcs": self.get_dcs(),
         }
 
+    @threaded_collect
     def list_all_resources(self):
         try:
             result = self.exec_script()

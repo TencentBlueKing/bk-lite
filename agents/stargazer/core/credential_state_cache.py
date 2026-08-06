@@ -1,21 +1,13 @@
-import asyncio
 import json
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Optional
-from weakref import WeakKeyDictionary
 
-from arq import create_pool
-from arq.connections import RedisSettings
-
-from core.redis_config import REDIS_CONFIG
+from core.redis_client import get_redis_client
 
 
 class CredentialStateCache:
     """基于 Redis 的 host-credential 运行态缓存。"""
-
-    _pools = WeakKeyDictionary()
-    _pool_locks = WeakKeyDictionary()
 
     SUCCESS_TTL_SECONDS = 7 * 24 * 3600
     FAILURE_TTL_SECONDS = 24 * 3600
@@ -103,47 +95,12 @@ class CredentialStateCache:
 
     @classmethod
     async def _get_or_create_pool(cls):
-        loop = asyncio.get_running_loop()
-        pool = cls._pools.get(loop)
-        if pool is not None:
-            return pool
-
-        lock = cls._pool_locks.get(loop)
-        if lock is None:
-            lock = asyncio.Lock()
-            cls._pool_locks[loop] = lock
-
-        async with lock:
-            pool = cls._pools.get(loop)
-            if pool is not None:
-                return pool
-
-            pool = await create_pool(cls._redis_settings())
-            cls._pools[loop] = pool
-            return pool
+        return await get_redis_client()
 
     @classmethod
     async def close_pool(cls) -> None:
-        loop = asyncio.get_running_loop()
-        lock = cls._pool_locks.get(loop)
-        if lock is None:
-            lock = asyncio.Lock()
-            cls._pool_locks[loop] = lock
-
-        async with lock:
-            pool = cls._pools.pop(loop, None)
-            if pool is not None:
-                await pool.close()
-
-    @staticmethod
-    def _redis_settings() -> RedisSettings:
-        redis_settings = RedisSettings(
-            host=REDIS_CONFIG["host"],
-            port=REDIS_CONFIG["port"],
-            password=REDIS_CONFIG["password"],
-            database=REDIS_CONFIG["database"],
-        )
-        return redis_settings
+        # 共享 Client 只由 core.redis_client 的 Sanic 生命周期统一关闭。
+        return None
 
     @staticmethod
     async def _scan_keys(pool, pattern: str):

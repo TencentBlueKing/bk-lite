@@ -12,6 +12,7 @@ except ModuleNotFoundError:  # pragma: no cover - exercised in environments with
     class EndOfMibView:  # type: ignore[no-redef]
         pass
 from sanic.log import logger
+from plugins.async_contract import threaded_collect
 
 from plugins.inputs.network_topo.protocol_oids import (
     PROTOCOL_OID_GROUPS,
@@ -585,6 +586,7 @@ class SnmpTopo:
             facts.extend(cls._build_arp_topology_facts(snmp_rows))
         return merge_topology_facts(facts)
 
+    @threaded_collect
     def list_all_resources(self):
         """
         将采集到的 SNMP 数据转换为标准格式。

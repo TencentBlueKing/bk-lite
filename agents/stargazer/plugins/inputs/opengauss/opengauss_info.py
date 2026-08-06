@@ -9,8 +9,8 @@ from plugins.inputs.postgresql.postgresql_info import PostgresqlInfo
 
 
 class OpenGaussInfo(PostgresqlInfo):
-    def list_all_resources(self):
-        data = super().list_all_resources()
+    async def list_all_resources(self):
+        data = await super().list_all_resources()
         result = data.get("result", {}) or {}
         if "postgresql" in result:
             recs = result.pop("postgresql")

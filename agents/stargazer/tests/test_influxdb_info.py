@@ -1,3 +1,5 @@
+import pytest
+
 from plugins.inputs.influxdb.influxdb_info import InfluxdbInfo
 from service.collection_service import CollectionService
 
@@ -12,7 +14,8 @@ class FakeResponse:
         return self._body
 
 
-def test_v2_without_token_collects_health_only(monkeypatch):
+@pytest.mark.asyncio
+async def test_v2_without_token_collects_health_only(monkeypatch):
     calls = []
 
     def fake_get(url, **kwargs):
@@ -21,7 +24,7 @@ def test_v2_without_token_collects_health_only(monkeypatch):
 
     monkeypatch.setattr("plugins.inputs.influxdb.influxdb_info.requests.get", fake_get)
 
-    result = InfluxdbInfo(
+    result = await InfluxdbInfo(
         {"host": "influx.local", "port": 8086, "ssl": False, "verify_tls": True}
     ).list_all_resources()
 
@@ -39,7 +42,8 @@ def test_v2_without_token_collects_health_only(monkeypatch):
     assert calls[0][1]["verify"] is True
 
 
-def test_v2_with_operator_token_collects_full_config(monkeypatch):
+@pytest.mark.asyncio
+async def test_v2_with_operator_token_collects_full_config(monkeypatch):
     calls = []
 
     def fake_get(url, **kwargs):
@@ -60,7 +64,7 @@ def test_v2_with_operator_token_collects_full_config(monkeypatch):
 
     monkeypatch.setattr("plugins.inputs.influxdb.influxdb_info.requests.get", fake_get)
 
-    result = InfluxdbInfo(
+    result = await InfluxdbInfo(
         {
             "host": "influx.local",
             "port": 8443,
@@ -79,7 +83,8 @@ def test_v2_with_operator_token_collects_full_config(monkeypatch):
     assert calls[1][1]["verify"] is False
 
 
-def test_invalid_operator_token_keeps_basics_and_emits_failed_marker(monkeypatch):
+@pytest.mark.asyncio
+async def test_invalid_operator_token_keeps_basics_and_emits_failed_marker(monkeypatch):
     def fake_get(url, **kwargs):
         if url.endswith("/health"):
             return FakeResponse(body={"status": "pass", "version": "2.7.5"})
@@ -87,7 +92,7 @@ def test_invalid_operator_token_keeps_basics_and_emits_failed_marker(monkeypatch
 
     monkeypatch.setattr("plugins.inputs.influxdb.influxdb_info.requests.get", fake_get)
 
-    result = InfluxdbInfo(
+    result = await InfluxdbInfo(
         {"host": "influx.local", "token": "must-not-leak"}
     ).list_all_resources()
 
@@ -102,7 +107,8 @@ def test_invalid_operator_token_keeps_basics_and_emits_failed_marker(monkeypatch
     assert "must-not-leak" not in str(result)
 
 
-def test_v1_uses_ping_for_basic_identification(monkeypatch):
+@pytest.mark.asyncio
+async def test_v1_uses_ping_for_basic_identification(monkeypatch):
     calls = []
 
     def fake_get(url, **kwargs):
@@ -113,7 +119,7 @@ def test_v1_uses_ping_for_basic_identification(monkeypatch):
 
     monkeypatch.setattr("plugins.inputs.influxdb.influxdb_info.requests.get", fake_get)
 
-    result = InfluxdbInfo({"host": "influx-v1.local"}).list_all_resources()
+    result = await InfluxdbInfo({"host": "influx-v1.local"}).list_all_resources()
 
     assert result["result"]["influxdb"][0]["version"] == "1.8.10"
     assert calls == [
@@ -122,13 +128,14 @@ def test_v1_uses_ping_for_basic_identification(monkeypatch):
     ]
 
 
-def test_unreachable_instance_is_reported_as_collection_failure(monkeypatch):
+@pytest.mark.asyncio
+async def test_unreachable_instance_is_reported_as_collection_failure(monkeypatch):
     def fake_get(url, **kwargs):
         raise OSError("connection refused")
 
     monkeypatch.setattr("plugins.inputs.influxdb.influxdb_info.requests.get", fake_get)
 
-    result = InfluxdbInfo(
+    result = await InfluxdbInfo(
         {"host": "influx.local", "token": "must-not-leak"}
     ).list_all_resources()
 

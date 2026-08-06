@@ -1,106 +1,66 @@
-import importlib.util
-import asyncio
+import pytest
 import sys
 import types
-from pathlib import Path
+
+from core.collection_plugins import MonitorCollectionPlugin, UnifiedPluginFactory
+from core.collection_runtime import CollectionRequest
+from core.target_collection_executor import (
+    CollectOutcomeStatus,
+    TargetCollectionContext,
+)
 
 
-def _load_worker_module():
-    spec = importlib.util.spec_from_file_location(
-        "stargazer_worker_enterprise_dispatch_test_module",
-        Path(__file__).resolve().parents[1] / "core" / "worker.py",
-    )
-    module = importlib.util.module_from_spec(spec)
-    assert spec is not None and spec.loader is not None
-    spec.loader.exec_module(module)
-    return module
-
-
-def _install_module(monkeypatch, name, **attrs):
-    module = types.ModuleType(name)
-    for key, value in attrs.items():
-        setattr(module, key, value)
-    monkeypatch.setitem(sys.modules, name, module)
-    return module
-
-
-def _run(coro):
-    return asyncio.run(coro)
-
-
-def test_collect_task_dispatches_optional_enterprise_monitor(monkeypatch):
+@pytest.mark.asyncio
+async def test_optional_enterprise_monitor_runs_inside_unified_runtime(
+    monkeypatch,
+):
     captured = {}
 
-    async def fake_enterprise_handler(ctx, params, task_id):
-        captured["ctx"] = ctx
-        captured["params"] = params
-        captured["task_id"] = task_id
-        return {"task_id": task_id, "status": "success", "monitor_type": "pure"}
+    class Collector:
+        def __init__(self, params):
+            captured["params"] = params
 
-    storage_handler = _install_module(
-        monkeypatch,
-        "enterprise.tasks.handlers.storage_handler",
-        collect_pure_metrics_task=fake_enterprise_handler,
-    )
-    handlers = _install_module(
-        monkeypatch,
-        "enterprise.tasks.handlers",
-        storage_handler=storage_handler,
-    )
-    tasks = _install_module(monkeypatch, "enterprise.tasks", handlers=handlers)
-    _install_module(monkeypatch, "enterprise", tasks=tasks)
-    _install_module(monkeypatch, "arq", create_pool=lambda *args, **kwargs: None)
-    _install_module(monkeypatch, "arq.connections", RedisSettings=lambda **kwargs: kwargs)
-    _install_module(monkeypatch, "core")
-    _install_module(
-        monkeypatch,
-        "core.redis_config",
-        REDIS_CONFIG={"host": "localhost", "port": 6379, "password": "", "database": 0},
+        async def collect(self):
+            return "metric 1"
+    context = TargetCollectionContext(
+        task_id="monitor-enterprise-1",
+        plugin_ref="pure.monitor",
+        fence=3,
+        params={"monitor_type": "pure", "plugin_family": "monitor"},
     )
 
-    worker = _load_worker_module()
-
-    async def noop(*args, **kwargs):
-        return None
-
-    monkeypatch.setattr(worker, "_clear_dedupe_key", noop)
-    monkeypatch.setattr(worker, "_clear_running_flag", noop)
-
-    result = _run(
-        worker.collect_task(
-            {"job_id": "job-1"},
-            {"monitor_type": "pure", "host": "10.0.0.2"},
-            "task-1",
-        )
+    outcome = await MonitorCollectionPlugin(
+        {"pure": Collector}
+    ).collect(
+        "10.10.24.9", {"credential_id": "credential-1"}, context
     )
 
-    assert result["status"] == "success"
-    assert captured["params"]["monitor_type"] == "pure"
-    assert captured["task_id"] == "task-1"
+    assert outcome.status == CollectOutcomeStatus.SUCCESS
+    assert captured["params"]["host"] == "10.10.24.9"
 
 
-def test_collect_task_keeps_unknown_monitor_type_unknown(monkeypatch):
-    _install_module(monkeypatch, "arq", create_pool=lambda *args, **kwargs: None)
-    _install_module(monkeypatch, "arq.connections", RedisSettings=lambda **kwargs: kwargs)
-    _install_module(monkeypatch, "core")
-    _install_module(
-        monkeypatch,
-        "core.redis_config",
-        REDIS_CONFIG={"host": "localhost", "port": 6379, "password": "", "database": 0},
-    )
-    worker = _load_worker_module()
-
-    async def noop(*args, **kwargs):
-        return None
-
-    monkeypatch.setattr(worker, "_clear_dedupe_key", noop)
-    monkeypatch.setattr(worker, "_clear_running_flag", noop)
-
-    result = _run(
-        worker.collect_task(
-            {}, {"monitor_type": "not_existing_monitor"}, "task-unknown"
-        )
+@pytest.mark.asyncio
+async def test_unknown_monitor_stays_failed_when_no_extension_exists():
+    context = TargetCollectionContext(
+        task_id="monitor-unknown-1",
+        plugin_ref="not_existing.monitor",
+        fence=1,
+        params={"monitor_type": "not_existing", "plugin_family": "monitor"},
     )
 
-    assert result["status"] == "failed"
-    assert result["error"] == "Unknown task type"
+    with pytest.raises(ValueError, match="unsupported monitor_type"):
+        await MonitorCollectionPlugin().collect("logical", {}, context)
+
+
+def test_unified_factory_loads_optional_enterprise_collector_registry(monkeypatch):
+    class Collector:
+        pass
+
+    module = types.ModuleType("enterprise.stargazer_collectors")
+    module.get_monitor_collector_factories = lambda: {"pure": Collector}
+    monkeypatch.setitem(sys.modules, "enterprise.stargazer_collectors", module)
+    plugin = UnifiedPluginFactory().resolve(CollectionRequest(
+        task_id="enterprise", plugin_ref="pure.monitor", targets=("10.0.0.1",),
+        params={"plugin_family": "monitor", "monitor_type": "pure"},
+    ))
+    assert plugin._collector_factories["pure"] is Collector
