@@ -1315,6 +1315,19 @@
   font-size: 14px;
 }
 
+// guide Tooltip 挂载在 body：需全局覆盖 ant-tooltip 默认深色底，避免浅色字色/深色底或深色字/深色底对比失效。
+:global(.ant-tooltip.lightMetricTooltip) :global(.ant-tooltip-inner) {
+  background: #ffffff;
+  color: #44566f;
+  border: 1px solid #dbe6f3;
+  box-shadow: 0 14px 34px rgba(23, 42, 79, 0.12);
+}
+
+:global(.ant-tooltip.lightMetricTooltip) :global(.ant-tooltip-arrow::before) {
+  background: #ffffff;
+  border: 1px solid #dbe6f3;
+}
+
 .metricsMode {
   display: flex;
   flex-direction: column;
@@ -1665,4 +1678,16 @@
 :global(html.dark) .metricGuideTooltip,
 :global(html.dark) .uptimeStatusTooltip {
   color: #b8c6d9;
+}
+
+:global(html.dark) :global(.ant-tooltip.lightMetricTooltip) :global(.ant-tooltip-inner) {
+  background: #101926;
+  color: rgba(255, 255, 255, 0.74);
+  border-color: rgba(255, 255, 255, 0.08);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.28);
+}
+
+:global(html.dark) :global(.ant-tooltip.lightMetricTooltip) :global(.ant-tooltip-arrow::before) {
+  background: #101926;
+  border-color: rgba(255, 255, 255, 0.08);
 }
