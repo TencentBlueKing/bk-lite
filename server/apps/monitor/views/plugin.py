@@ -1,6 +1,6 @@
 from django.db import ProgrammingError
 from django.db.models import Prefetch, Q
-from rest_framework import viewsets
+from rest_framework import status, viewsets
 from rest_framework.decorators import action
 
 from apps.core.decorators.api_permission import HasPermission
@@ -352,19 +352,35 @@ class MonitorPluginViewSet(viewsets.ModelViewSet):
         )
         return WebUtils.response_success(ui_template)
 
-    @action(methods=["get", "put"], detail=True, url_path="collect_template")
     @HasPermission("integration_collect-View,integration_configure-Add")
-    def collect_template(self, request, pk=None):
+    def _get_collect_template(self, request, pk=None):
         plugin = self.get_object()
         if plugin.template_type != "snmp":
             return WebUtils.response_error(error_message="当前模板不是自建 SNMP 模板")
 
-        if request.method.lower() == "get":
-            data = CustomSnmpPluginService.get_collect_template(plugin)
-            return WebUtils.response_success(data)
+        data = CustomSnmpPluginService.get_collect_template(plugin)
+        return WebUtils.response_success(data)
+
+    @HasPermission("integration_configure-Add")
+    def _update_collect_template(self, request, pk=None):
+        plugin = self.get_object()
+        if plugin.template_type != "snmp":
+            return WebUtils.response_error(error_message="当前模板不是自建 SNMP 模板")
 
         data = CustomSnmpPluginService.update_collect_template(
             plugin,
             request.data.get("content", ""),
         )
         return WebUtils.response_success(data)
+
+    @action(methods=["get", "put"], detail=True, url_path="collect_template")
+    def collect_template(self, request, pk=None):
+        method = request.method.lower()
+        if method in {"get", "head"}:
+            return self._get_collect_template(request, pk)
+        if method == "put":
+            return self._update_collect_template(request, pk)
+        return WebUtils.response_error(
+            error_message="不支持的请求方法",
+            status_code=status.HTTP_405_METHOD_NOT_ALLOWED,
+        )
