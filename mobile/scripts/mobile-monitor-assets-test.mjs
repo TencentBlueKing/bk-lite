@@ -172,6 +172,10 @@ test('实例列表面板把摘要指标放进表格列并支持横向滚动', as
   assert.match(styles, /\.colSticky\s*\{[^}]*position:\s*sticky/s);
   assert.match(adapter, /add_metrics:\s*true/);
   assert.match(adapter, /metrics:\s*\(Array\.isArray\(meta\.metrics\)/);
+  // 无数据时仍保留表头（含上报状态筛选），空态落在表体内。
+  assert.match(panel, /instanceTableEmpty/);
+  assert.match(panel, /instances\.length === 0[\s\S]*instanceTableEmpty[\s\S]*MobileResult/);
+  assert.match(styles, /\.instanceTableEmpty\s*\{/);
 });
 
 test('最近查看默认 Tab 在前且详情成功后会记录浏览', async () => {
@@ -319,6 +323,35 @@ test('监控实例名称搜索走 list 接口而非特殊 search', async () => {
   assert.match(adapter, /name: keyword\.trim\(\)/);
 });
 
+test('监控全部实例支持上报状态表头筛选并写入 vm_params[status]', async () => {
+  const [adapter, panel, zh, en] = await Promise.all([
+    readProjectFile('src/features/monitor/adapter.ts'),
+    readProjectFile('src/features/monitor/instances-panel.tsx'),
+    readProjectFile('src/locales/zh.json'),
+    readProjectFile('src/locales/en.json'),
+  ]);
+  const { normalizeReportingStatusFilters } = await loadModel('src/features/monitor/model.ts');
+
+  assert.deepEqual(normalizeReportingStatusFilters(['normal']), ['normal']);
+  assert.deepEqual(normalizeReportingStatusFilters(['unavailable']), ['unavailable']);
+  assert.deepEqual(normalizeReportingStatusFilters(['normal', 'unavailable']), []);
+  assert.deepEqual(normalizeReportingStatusFilters([]), []);
+  assert.deepEqual(normalizeReportingStatusFilters(['bogus', 'normal']), ['normal']);
+
+  assert.match(adapter, /vm_params\[status\]/);
+  assert.match(adapter, /normalizeReportingStatusFilters/);
+  assert.match(panel, /FilterOutline/);
+  assert.match(panel, /filterReportingStatus/);
+  assert.match(panel, /statusFilters/);
+  assert.match(panel, /openStatusFilter|applyStatusFilter/);
+  assert.match(panel, /status:\s*statusFilters/);
+  assert.match(panel, /setStatusFilters\(\[\]\)/);
+  assert.match(zh, /"filterReportingStatus"/);
+  assert.match(en, /"filterReportingStatus"/);
+  assert.match(zh, /"resetFilter"/);
+  assert.match(en, /"resetFilter"/);
+});
+
 test('监控根页「全部实例」直接展示实例面板，旧 instances 路由回跳根页', async () => {
   const [page, panel, instancesPage, detailPage] = await Promise.all([
     readProjectFile('src/app/monitor/page.tsx'),
@@ -414,8 +447,8 @@ test('Mobile 搜索框高度走统一变量，业务页不再各自覆盖盒型'
     readProjectFile('src/app/todo/search/page.tsx'),
   ]);
 
-  assert.match(variables, /--mobile-search-bar-height:\s*30px/);
-  assert.match(variables, /--mobile-search-bar-height-page:\s*36px/);
+  assert.match(variables, /--mobile-search-bar-height:\s*34px/);
+  assert.match(variables, /--mobile-search-bar-height-page:\s*40px/);
   assert.match(variables, /--mobile-search-bar-radius:\s*8px/);
   assert.match(searchBar, /size\s*=\s*'compact'/);
   assert.match(searchBar, /size === 'page'/);
@@ -522,8 +555,8 @@ test('资产全部采用分类落地再进入分类内模型工作台，不用�
   assert.match(styles, /\.modelRail\s*\{/);
   assert.match(styles, /\.neighborChip\s*\{[^}]*border-radius:\s*999px/s);
   assert.match(styles, /\.neighborChipCount\s*\{/);
-  assert.match(styles, /\.assetRow\s*\{[^}]*min-height:\s*56px/s);
-  assert.match(styles, /\.assetName\s*\{[^}]*font-size:\s*13px/s);
+  assert.match(styles, /\.assetRow\s*\{[^}]*min-height:\s*var\(--mobile-table-row-min-height\)/s);
+  assert.match(styles, /\.assetName\s*\{[^}]*font-size:\s*var\(--font-size-body\)/s);
   assert.match(styles, /\.assetLead\s*\{[^}]*width:\s*28px/s);
   assert.match(styles, /\.assetMetaSwatch\s*\{/);
   assert.match(styles, /\.assetLead\s*\{[^}]*border:\s*1px solid var\(--color-primary-border\)/s);

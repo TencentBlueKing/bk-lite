@@ -417,7 +417,7 @@ test('一级页面标题统一使用稍小的排版 token', async () => {
   const variables = await readProjectFile('src/styles/variables.css');
 
   assert.match(pageHeaderStyles, /font-size:\s*var\(--mobile-page-title-font-size\)/);
-  assert.equal((variables.match(/--mobile-page-title-font-size:\s*17px/g) || []).length, 2);
+  assert.equal((variables.match(/--mobile-page-title-font-size:\s*var\(--font-size-title\)/g) || []).length, 2);
 });
 
 test('外层历史对话列表保留真实最近活跃时间', async () => {

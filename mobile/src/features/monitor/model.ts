@@ -195,6 +195,20 @@ export function resolveMonitorReportingStatus(status: string): 'normal' | 'unava
   return status === 'normal' ? 'normal' : 'unavailable';
 }
 
+export type MonitorReportingStatusFilter = 'normal' | 'unavailable';
+
+/** 与 Web 表头筛选一致：仅单选 status 时生效；双选/空选等同不过滤。 */
+export function normalizeReportingStatusFilters(
+  statuses: readonly string[] | undefined,
+): MonitorReportingStatusFilter[] {
+  const unique = Array.from(new Set(
+    (statuses || []).filter((item): item is MonitorReportingStatusFilter => (
+      item === 'normal' || item === 'unavailable'
+    )),
+  ));
+  return unique.length === 1 ? unique : [];
+}
+
 /** 从 storage_instance_key / instance_id 提取 list 查询用的名称 hint。 */
 export function parseMonitorInstanceLookupHints(instanceId: string) {
   const trimmed = instanceId.trim();

@@ -123,6 +123,7 @@
         "objects": "Monitor objects", "instances": "Instances", "searchWithin": "Search in {name}", "resultCount": "{count} instances", "objectCountLabel": "{name} ({count})",
         "allObjects": "Select", "selectObjectAction": "Select", "selectObjectTitle": "Select monitor object", "searchObjects": "Search objects", "searchInstances": "Search by instance name", "currentObject": "Current",
         "columnName": "Name", "columnReportTime": "Report time", "columnReportingStatus": "Reporting status", "summaryField": "Summary",
+        "filterReportingStatus": "Filter reporting status", "resetFilter": "Reset",
         "objectLoadFailed": "Unable to load monitor objects", "instanceLoadFailed": "Unable to load instances", "detailLoadFailed": "Unable to load instance metrics", "detailForbidden": "You do not have permission to view this instance", "detailMissing": "This instance does not exist or was deleted", "backToMonitor": "Back to Monitor", "retryHint": "Check the network or your permissions and retry",
         "noObjects": "No visible monitor objects", "noInstances": "No instances for this object", "noSearchResults": "No matching instances", "endOfList": "End of list",
         "noReportTime": "No report time", "detailTitle": "Instance details", "instanceId": "Instance ID", "dataSource": "Data source", "selectPluginTitle": "Select data source", "selectPluginAction": "Select", "currentPlugin": "Current", "timeRange": "Time range",

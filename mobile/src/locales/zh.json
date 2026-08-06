@@ -123,6 +123,7 @@
         "objects": "监控对象", "instances": "监控实例", "searchWithin": "在{name}中搜索", "resultCount": "共 {count} 个实例", "objectCountLabel": "{name}（{count}）",
         "allObjects": "选择", "selectObjectAction": "选择", "selectObjectTitle": "选择监控对象", "searchObjects": "搜索对象名称", "searchInstances": "按实例名称搜索", "currentObject": "当前",
         "columnName": "名称", "columnReportTime": "上报时间", "columnReportingStatus": "上报状态", "summaryField": "摘要",
+        "filterReportingStatus": "筛选上报状态", "resetFilter": "重置",
         "objectLoadFailed": "监控对象加载失败", "instanceLoadFailed": "实例加载失败", "detailLoadFailed": "实例指标加载失败", "detailForbidden": "没有查看此实例的权限", "detailMissing": "实例不存在或已删除", "backToMonitor": "返回监控", "retryHint": "请检查网络或权限后重试",
         "noObjects": "暂无可见监控对象", "noInstances": "当前对象暂无实例", "noSearchResults": "没有匹配的实例", "endOfList": "已经到底了",
         "noReportTime": "暂无上报时间", "detailTitle": "实例详情", "instanceId": "实例 ID", "dataSource": "数据源", "selectPluginTitle": "选择数据源", "selectPluginAction": "选择", "currentPlugin": "当前", "timeRange": "时间范围",
