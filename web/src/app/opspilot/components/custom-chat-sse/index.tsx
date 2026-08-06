@@ -14,6 +14,7 @@ import MessageActions from '../custom-chat/actions';
 import PermissionWrapper from '@/components/permission';
 import BrowserStepProgress from './BrowserStepProgress';
 import AgentStepProgress from './AgentStepProgress';
+import PlannedExecutionSteps from './PlannedExecutionSteps';
 import WikiCitations from './WikiCitations';
 import ApprovalCard from './ApprovalCard';
 import UserChoiceCard from './UserChoiceCard';
@@ -567,7 +568,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
   }, [updateMessages]);
 
   const renderContent = (msg: CustomChatMessage) => {
-    const { content, images, browserStepsHistory, thinking, isThinking, approvalRequests, userChoiceRequests, configDiffReports, configAnalysisReports, reportFileDownloads, repairCommands, agentStepProgress, skillViews } = msg;
+    const { content, images, browserStepsHistory, thinking, isThinking, approvalRequests, userChoiceRequests, configDiffReports, configAnalysisReports, reportFileDownloads, repairCommands, agentStepProgress, skillViews, plannedExecutionSteps, toolCalls, isStreamingTools } = msg;
     const visibleReportFileDownloads = Array.isArray(reportFileDownloads)
       ? reportFileDownloads.filter(download => Boolean(download.content_base64))
       : [];
@@ -901,6 +902,13 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
         <SkillView items={skillViews} />
         {Array.isArray(agentStepProgress) && agentStepProgress.length > 0 && (
           <AgentStepProgress steps={agentStepProgress} />
+        )}
+        {Array.isArray(plannedExecutionSteps) && plannedExecutionSteps.length > 0 && (
+          <PlannedExecutionSteps
+            steps={plannedExecutionSteps}
+            toolCalls={Array.isArray(toolCalls) ? toolCalls : []}
+            isStreaming={Boolean(isStreamingTools)}
+          />
         )}
         {browserStepsHistory && browserStepsHistory.steps.length > 0 && (
           <BrowserStepProgress history={browserStepsHistory} />
