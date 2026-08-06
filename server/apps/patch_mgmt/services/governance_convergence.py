@@ -89,7 +89,12 @@ def project_task_status(task, *, now=None) -> str:
     """按投影后的全部子任务计算父任务展示状态。"""
     if task.status in GovernanceTaskStatus.TERMINAL_STATES:
         return task.status
-    hosts = list(task.host_results.select_related("task").all())
+    projected_hosts = getattr(task, "_visible_host_results", None)
+    hosts = (
+        list(projected_hosts)
+        if projected_hosts is not None
+        else list(task.host_results.select_related("task").all())
+    )
     if not hosts:
         return task.status
     states = [project_host_state(host, now=now).stage for host in hosts]

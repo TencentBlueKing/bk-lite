@@ -61,6 +61,11 @@ class PatchSource(TimeInfo, MaintainerInfo):
         verbose_name="连通性状态",
     )
     last_checked_at = models.DateTimeField(null=True, blank=True, verbose_name="上次连通性检测时间")
+    sync_in_progress = models.BooleanField(
+        default=False,
+        db_index=True,
+        verbose_name="是否正在同步",
+    )
 
     # 组织归属
     team = models.JSONField(default=list, verbose_name="团队ID列表")

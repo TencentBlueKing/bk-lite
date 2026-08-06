@@ -17,7 +17,6 @@ import styles from './page.module.scss';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import { useTranslation } from '@/utils/i18n';
 import { createListRequestCoordinator } from '@/app/patch-manager/utils/list-request-coordinator';
-import { useUserInfoContext } from '@/context/userInfo';
 import {
   formatSourceApplicableScope,
   LINUX_ARCHITECTURE_OPTIONS,
@@ -82,7 +81,6 @@ function inferDistro(type: PatchSourceType, url: string) {
 
 function SourcesTab({ activeKey }: { activeKey: string }) {
   const { t } = useTranslation();
-  const { isSuperUser } = useUserInfoContext();
   const api = usePatchManagerApi();
   const { isLoading: authLoading } = useApiClient();
   const [selectedSources, setSelectedSources] = useState<React.Key[]>([]);
@@ -301,12 +299,13 @@ function SourcesTab({ activeKey }: { activeKey: string }) {
       title: t('patchManager.enable'),
       width: 90,
       render: (_: unknown, r: PatchSource) => (
-        <Switch
-          size="small"
-          checked={r.is_enabled}
-          disabled={!r.permission?.includes('Operate')}
-          onChange={(checked) => handleToggleEnabled(r, checked)}
-        />
+        <PermissionWrapper requiredPermissions={['Edit']}>
+          <Switch
+            size="small"
+            checked={r.is_enabled}
+            onChange={(checked) => handleToggleEnabled(r, checked)}
+          />
+        </PermissionWrapper>
       ),
     },
     {
@@ -331,12 +330,8 @@ function SourcesTab({ activeKey }: { activeKey: string }) {
       fixed: 'right',
       render: (_: unknown, r: PatchSource) => (
         <Space size={10}>
-          {(!r.is_builtin || isSuperUser) && (
-            <>
-              <PermissionWrapper requiredPermissions={['Edit']} instPermissions={r.permission}><a style={{ color: 'var(--color-primary, #1677ff)' }} onClick={() => openSourceModal(r)}>{t('patchManager.edit')}</a></PermissionWrapper>
-              <PermissionWrapper requiredPermissions={['Edit']} instPermissions={r.permission}><a style={{ color: 'var(--color-primary, #1677ff)' }} onClick={() => runConnectionTest([r.id])}>{t('patchManager.testConnection')}</a></PermissionWrapper>
-            </>
-          )}
+          <PermissionWrapper requiredPermissions={['Edit']}><a style={{ color: 'var(--color-primary, #1677ff)' }} onClick={() => openSourceModal(r)}>{t('patchManager.edit')}</a></PermissionWrapper>
+          <PermissionWrapper requiredPermissions={['Edit']}><a style={{ color: 'var(--color-primary, #1677ff)' }} onClick={() => runConnectionTest([r.id])}>{t('patchManager.testConnection')}</a></PermissionWrapper>
           {r.is_builtin ? (
             <Tooltip title={t('patchManager.settingsPage.builtinDeleteDisabled')}>
               <span>
@@ -346,7 +341,7 @@ function SourcesTab({ activeKey }: { activeKey: string }) {
               </span>
             </Tooltip>
           ) : (
-            <PermissionWrapper requiredPermissions={['Delete']} instPermissions={r.permission}><Popconfirm title={t('patchManager.settingsPage.confirmDeleteSource')} onConfirm={() => handleDeleteSource(r)} okText={t('patchManager.delete')} cancelText={t('patchManager.cancel')}>
+            <PermissionWrapper requiredPermissions={['Delete']}><Popconfirm title={t('patchManager.settingsPage.confirmDeleteSource')} onConfirm={() => handleDeleteSource(r)} okText={t('patchManager.delete')} cancelText={t('patchManager.cancel')}>
               <a style={{ color: '#ff4d4f' }}>{t('patchManager.delete')}</a>
             </Popconfirm></PermissionWrapper>
           )}
@@ -380,7 +375,6 @@ function SourcesTab({ activeKey }: { activeKey: string }) {
               type: 'checkbox',
               selectedRowKeys: selectedSources,
               onChange: setSelectedSources,
-              getCheckboxProps: (record: PatchSource) => ({ disabled: !record.permission?.includes('Operate') }),
             }}
             columns={cols}
             dataSource={sources}
@@ -404,10 +398,10 @@ function SourcesTab({ activeKey }: { activeKey: string }) {
         footer={
           <Space style={{ width: '100%', justifyContent: 'flex-end' }}>
             <Button onClick={() => setSourceModalOpen(false)}>{t('patchManager.cancel')}</Button>
-            <PermissionWrapper requiredPermissions={[editingSource ? 'Edit' : 'Add']} instPermissions={editingSource?.permission}>
+            <PermissionWrapper requiredPermissions={[editingSource ? 'Edit' : 'Add']}>
               <Button loading={testingConnectivity} onClick={handleSourceFormTest}>{t('patchManager.testConnection')}</Button>
             </PermissionWrapper>
-            <PermissionWrapper requiredPermissions={[editingSource ? 'Edit' : 'Add']} instPermissions={editingSource?.permission}>
+            <PermissionWrapper requiredPermissions={[editingSource ? 'Edit' : 'Add']}>
               <Button type="primary" loading={actionLoading} onClick={handleSaveSource}>{t('patchManager.save')}</Button>
             </PermissionWrapper>
           </Space>

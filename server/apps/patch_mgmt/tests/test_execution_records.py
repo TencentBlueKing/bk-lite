@@ -3,6 +3,7 @@
 import pytest
 from django.db import connection
 from django.test.utils import CaptureQueriesContext
+from django.utils import timezone
 from rest_framework import status
 
 from apps.patch_mgmt.constants import GovernanceTaskStatus, GovernanceTaskType, OSType
@@ -37,6 +38,9 @@ class TestExecutionRecordListApi:
             "apps.core.utils.viewset_utils.get_permission_rules",
             return_value={"team": [1], "instance": []},
         )
+        target = PatchTarget.objects.create(
+            name="主机A", ip="10.0.0.10", os_type=OSType.LINUX, team=[1]
+        )
         remediation = GovernanceTask.objects.create(
             name="治理 · 1台 · 1项",
             task_type=GovernanceTaskType.INSTALL,
@@ -64,7 +68,13 @@ class TestExecutionRecordListApi:
         )
         GovernanceTaskHost.objects.create(
             task=remediation,
-            target_id=1,
+            target_id=target.id,
+            target_name="主机A",
+            stage="waiting",
+        )
+        GovernanceTaskHost.objects.create(
+            task=reboot,
+            target_id=target.id,
             target_name="主机A",
             stage="waiting",
         )
@@ -91,6 +101,9 @@ class TestExecutionRecordListApi:
             return_value={"team": [1], "instance": []},
         )
         risk_id = "10:20:30"
+        PatchTarget.objects.create(
+            id=10, name="host-a", ip="10.0.0.1", os_type=OSType.LINUX, team=[1]
+        )
         remediation = GovernanceTask.objects.create(
             name="治理 · host-a · 1项",
             task_type=GovernanceTaskType.INSTALL,
@@ -443,10 +456,24 @@ def test_remediation_snapshot_preserves_exact_selected_host_patch_pairs(
     host_b = PatchTarget.objects.create(name="host-b", ip="10.0.0.2", os_type=OSType.LINUX, team=[1])
     patch_a = Patch.objects.create(title="openssl", os_type=OSType.LINUX, team=[1])
     patch_b = Patch.objects.create(title="curl", os_type=OSType.LINUX, team=[1])
-    BaselineRequirement.objects.create(baseline=baseline, patch=patch_a)
-    BaselineRequirement.objects.create(baseline=baseline, patch=patch_b)
-    HostBaselineBinding.objects.create(target=host_a, baseline=baseline)
-    HostBaselineBinding.objects.create(target=host_b, baseline=baseline)
+    requirement_a = BaselineRequirement.objects.create(baseline=baseline, patch=patch_a)
+    requirement_b = BaselineRequirement.objects.create(baseline=baseline, patch=patch_b)
+    binding_a = HostBaselineBinding.objects.create(target=host_a, baseline=baseline)
+    binding_b = HostBaselineBinding.objects.create(target=host_b, baseline=baseline)
+    HostComplianceSnapshot.objects.create(
+        binding=binding_a,
+        requirement=requirement_a,
+        satisfied=False,
+        status="missing",
+        evaluated_at=timezone.now(),
+    )
+    HostComplianceSnapshot.objects.create(
+        binding=binding_b,
+        requirement=requirement_b,
+        satisfied=False,
+        status="missing",
+        evaluated_at=timezone.now(),
+    )
     request = request_factory.post("/")
     request.user = authenticated_user
     request.COOKIES["current_team"] = "1"
@@ -458,10 +485,10 @@ def test_remediation_snapshot_preserves_exact_selected_host_patch_pairs(
             {"host_id": host_a.id, "patch_id": patch_a.id},
             {"host_id": host_b.id, "patch_id": patch_b.id},
         ],
-        {"execution_mode": "now"},
+        {"execution_mode": "now", "name": "双主机治理"},
     )
 
-    assert task.name == "一键治理 · 2台 · 2项"
+    assert task.name == "双主机治理"
     assert task.risk_snapshot == [
         {
             "id": f"{host_a.id}:{patch_a.id}:{baseline.id}",
@@ -489,15 +516,35 @@ def test_remediation_snapshot_preserves_exact_selected_host_patch_pairs(
 @pytest.mark.django_db
 def test_install_dispatches_only_patches_selected_for_current_host(mocker):
     host = PatchTarget.objects.create(name="host-a", ip="10.0.0.1", os_type=OSType.LINUX, team=[1])
+    baseline = PatchBaseline.objects.create(
+        name="baseline", os_type=OSType.LINUX, team=[1]
+    )
+    selected_patch = Patch.objects.create(
+        title="selected", os_type=OSType.LINUX, team=[1]
+    )
+    other_patch = Patch.objects.create(
+        title="other", os_type=OSType.LINUX, team=[1]
+    )
+    requirement = BaselineRequirement.objects.create(
+        baseline=baseline, patch=selected_patch
+    )
+    binding = HostBaselineBinding.objects.create(target=host, baseline=baseline)
+    HostComplianceSnapshot.objects.create(
+        binding=binding,
+        requirement=requirement,
+        satisfied=False,
+        status="missing",
+        evaluated_at=timezone.now(),
+    )
     task = GovernanceTask.objects.create(
         name="一键治理 · 2台 · 2项",
         task_type=GovernanceTaskType.INSTALL,
         status=GovernanceTaskStatus.RUNNING,
         target_list=[host.id],
-        patch_list=[101, 202],
+        patch_list=[selected_patch.id, other_patch.id],
         risk_snapshot=[
-            {"id": f"{host.id}:101:1", "host_id": host.id, "patch_id": 101},
-            {"id": "999:202:1", "host_id": 999, "patch_id": 202},
+            {"id": f"{host.id}:{selected_patch.id}:{baseline.id}", "host_id": host.id, "patch_id": selected_patch.id, "baseline_id": baseline.id},
+            {"id": f"999:{other_patch.id}:{baseline.id}", "host_id": 999, "patch_id": other_patch.id, "baseline_id": baseline.id},
         ],
         team=[1],
     )
@@ -506,7 +553,7 @@ def test_install_dispatches_only_patches_selected_for_current_host(mocker):
 
     run_governance_host(task, host.id)
 
-    assert execute_install.call_args.args[2] == [101]
+    assert execute_install.call_args.args[2] == [selected_patch.id]
 
 
 @pytest.mark.django_db
@@ -626,6 +673,7 @@ def test_baseline_assess_returns_structured_conflict_on_atomic_host_race(su_clie
 
 @pytest.mark.django_db
 def test_retry_creates_independent_root_record(request_factory, authenticated_user, mocker):
+    Patch.objects.create(id=20, title="retry patch", os_type=OSType.LINUX, team=[1])
     root = GovernanceTask.objects.create(
         name="治理 · host-a · 1项",
         task_type=GovernanceTaskType.INSTALL,

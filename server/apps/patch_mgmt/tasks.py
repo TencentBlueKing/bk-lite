@@ -425,13 +425,16 @@ def ingest_patch_source(source_id: int, keys: list) -> dict:
         return {"error": "补丁源不存在"}
 
     try:
-        result = SourceSyncService.ingest_selected(source, [str(k) for k in keys])
-    except (SourceSyncError,) as exc:
-        logger.warning("[ingest_patch_source] 同步入库失败: source_id=%s %s", source_id, exc)
-        return {"error": str(exc)}
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("[ingest_patch_source] 同步入库异常: source_id=%s", source_id, exc_info=True)
-        return {"error": f"同步入库异常: {exc}"}
+        try:
+            result = SourceSyncService.ingest_selected(source, [str(k) for k in keys])
+        except (SourceSyncError,) as exc:
+            logger.warning("[ingest_patch_source] 同步入库失败: source_id=%s %s", source_id, exc)
+            return {"error": str(exc)}
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("[ingest_patch_source] 同步入库异常: source_id=%s", source_id, exc_info=True)
+            return {"error": f"同步入库异常: {exc}"}
+    finally:
+        PatchSource.objects.filter(pk=source_id).update(sync_in_progress=False)
 
     logger.info("[ingest_patch_source] 完成: source_id=%s result=%s", source_id, result)
     return result

@@ -96,6 +96,7 @@ class PatchListSerializer(PatchPermissionSerializer):
     baseline_requirement_count = serializers.SerializerMethodField()
     package_info = serializers.SerializerMethodField()
     permission_key = "patch"
+    global_shared = True
 
     class Meta:
         model = Patch

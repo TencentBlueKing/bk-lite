@@ -39,7 +39,7 @@ def _team_client(api_client, authenticated_user, mocker, permissions):
     return api_client
 
 
-def test_builtin_sources_are_globally_visible_but_other_team_custom_sources_are_not(
+def test_builtin_and_custom_sources_are_globally_visible(
     api_client, authenticated_user, mocker
 ):
     builtin = PatchSource.objects.create(
@@ -53,7 +53,7 @@ def test_builtin_sources_are_globally_visible_but_other_team_custom_sources_are_
         builtin_key="ubuntu-global",
         team=[],
     )
-    PatchSource.objects.create(
+    custom = PatchSource.objects.create(
         name="Other team",
         source_type=PatchSourceType.APT_REPO,
         url="https://example.com/ubuntu",
@@ -69,12 +69,11 @@ def test_builtin_sources_are_globally_visible_but_other_team_custom_sources_are_
     response = client.get(PATCH_SOURCE_URL)
 
     assert response.status_code == status.HTTP_200_OK
-    assert [item["id"] for item in response.json()["data"]] == [builtin.id]
-    assert response.json()["data"][0]["is_builtin"] is True
-    assert response.json()["data"][0]["permission"] == ["View"]
+    assert [item["id"] for item in response.json()["data"]] == [custom.id, builtin.id]
+    assert all(item["permission"] == ["View", "Operate"] for item in response.json()["data"])
 
 
-def test_team_patch_source_admin_cannot_modify_builtin_source(
+def test_patch_source_editor_can_modify_builtin_source(
     api_client, authenticated_user, mocker
 ):
     source = _create_builtin()
@@ -91,9 +90,9 @@ def test_team_patch_source_admin_cannot_modify_builtin_source(
         format="json",
     )
 
-    assert response.status_code == status.HTTP_403_FORBIDDEN
+    assert response.status_code == status.HTTP_200_OK
     source.refresh_from_db()
-    assert source.name == "Oracle Linux 9 BaseOS (YUM)"
+    assert source.name == "team changed"
 
 
 def test_builtin_source_cannot_be_deleted_even_by_superuser(
@@ -101,6 +100,7 @@ def test_builtin_source_cannot_be_deleted_even_by_superuser(
 ):
     source = _create_builtin()
     authenticated_user.is_superuser = True
+    api_client.cookies["current_team"] = "1"
 
     response = api_client.delete(f"{PATCH_SOURCE_URL}{source.id}/")
 
@@ -118,6 +118,7 @@ def test_superuser_can_modify_builtin_source(api_client, authenticated_user):
         connectivity_status="connected",
     )
     authenticated_user.is_superuser = True
+    api_client.cookies["current_team"] = "1"
 
     update_response = api_client.patch(
         f"{PATCH_SOURCE_URL}{source.id}/",
@@ -148,6 +149,7 @@ def test_superuser_can_enable_and_disable_builtin_source(
 ):
     source = _create_builtin(is_enabled=True)
     authenticated_user.is_superuser = True
+    api_client.cookies["current_team"] = "1"
 
     response = api_client.post(
         f"{PATCH_SOURCE_URL}{source.id}/set_enabled/",
@@ -165,6 +167,7 @@ def test_builtin_source_cannot_use_full_sync_that_would_create_global_patches(
 ):
     source = _create_builtin()
     authenticated_user.is_superuser = True
+    api_client.cookies["current_team"] = "1"
     sync = mocker.patch(
         "apps.patch_mgmt.services.source_sync_service.SourceSyncService.sync_linux_repo"
     )

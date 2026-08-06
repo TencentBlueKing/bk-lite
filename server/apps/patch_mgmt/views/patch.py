@@ -3,9 +3,10 @@
 import json
 
 from django.db import transaction
+from django.db.models import Q
 
 from apps.core.decorators.api_permission import HasPermission
-from apps.core.utils.viewset_utils import AuthViewSet
+from apps.core.utils.viewset_utils import AuthViewSet, build_json_membership_query
 from apps.patch_mgmt.constants import GovernanceTaskStatus, OSType, PackageStatus
 from apps.patch_mgmt.exceptions import PatchBusinessError
 from apps.patch_mgmt.filters.patch import PatchFilter
@@ -20,12 +21,12 @@ from apps.patch_mgmt.services.manual_windows_patch_write import (
     create_manual_windows_patch,
     update_manual_windows_patch,
 )
+from apps.patch_mgmt.services.target_access import GlobalSharedResourceMixin
 from apps.patch_mgmt.services.windows_package import (
     WindowsPackageError,
     replace_failed_windows_package,
     store_windows_package,
 )
-from apps.patch_mgmt.utils.data_permissions import require_authorized_ids
 from apps.patch_mgmt.utils.operation_log import log_patch_created, log_patch_deleted, log_patch_updated
 from apps.patch_mgmt.utils.i18n import patch_message, render_business_error
 from rest_framework import status
@@ -35,7 +36,7 @@ from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
 
 
-class PatchViewSet(AuthViewSet):
+class PatchViewSet(GlobalSharedResourceMixin, AuthViewSet):
     """补丁主记录视图集"""
 
     # select_related 拉取 OneToOne 详情，prefetch_related 拉取 M2M 源
@@ -177,19 +178,35 @@ class PatchViewSet(AuthViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        patch_id_strings = {str(patch_id) for patch_id in patch_ids}
+        external_references = Q(pk__in=[])
+        candidate_references = Patch.objects.exclude(pk__in=patch_ids)
+        for patch_id in patch_ids:
+            external_references |= build_json_membership_query(
+                candidate_references, "dependency_ids", [patch_id]
+            )
+            external_references |= build_json_membership_query(
+                candidate_references, "replacement_ids", [patch_id]
+            )
+        if candidate_references.filter(external_references).exists():
+            return Response(
+                {
+                    "detail": patch_message(
+                        request,
+                        "error.patch_dependency_referenced",
+                        "This patch is referenced by another patch dependency or replacement relationship",
+                    )
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        active_reference = Q(pk__in=[])
         active_tasks = GovernanceTask.objects.filter(
             status__in=GovernanceTaskStatus.ACTIVE_STATES,
-        ).only("patch_list", "risk_snapshot")
-        if any(
-            patch_id_strings & {str(value) for value in (task.patch_list or [])}
-            or any(
-                str(item.get("patch_id") or "") in patch_id_strings
-                for item in (task.risk_snapshot or [])
-                if isinstance(item, dict)
-            )
-            for task in active_tasks
-        ):
+        )
+        for patch_id in patch_ids:
+            active_reference |= Q(patch_list__contains=[patch_id])
+            active_reference |= Q(risk_snapshot__contains=[{"patch_id": patch_id}])
+        if active_tasks.filter(active_reference).exists():
             return Response(
                 {"detail": patch_message(request, "error.patch_in_active_task", "This patch is in an active task and cannot be deleted")},
                 status=status.HTTP_400_BAD_REQUEST,
@@ -223,6 +240,7 @@ class PatchViewSet(AuthViewSet):
     @action(detail=False, methods=["post"], url_path="batch_delete")
     @HasPermission("patch-Delete")
     def batch_delete(self, request):
+        self._validate_current_team_permission(request)
         serializer = PatchBatchDeleteSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         ids = serializer.validated_data["ids"]
@@ -246,9 +264,6 @@ class PatchViewSet(AuthViewSet):
     @HasPermission("patch-Edit")
     def upload_package(self, request, pk=None):
         patch = self.get_object()
-        require_authorized_ids(
-            self, request, Patch.objects.all(), [patch.id], "patch"
-        )
         uploaded_file = request.FILES.get("file")
         if uploaded_file is None:
             return Response({"detail": patch_message(request, "error.patch_package_required", "Select a patch package")}, status=status.HTTP_400_BAD_REQUEST)
@@ -263,9 +278,6 @@ class PatchViewSet(AuthViewSet):
     @HasPermission("patch-Edit")
     def replace_package(self, request, pk=None):
         patch = self.get_object()
-        require_authorized_ids(
-            self, request, Patch.objects.all(), [patch.id], "patch"
-        )
         uploaded_file = request.FILES.get("file")
         if uploaded_file is None:
             return Response({"detail": patch_message(request, "error.patch_package_required", "Select a patch package")}, status=status.HTTP_400_BAD_REQUEST)

@@ -779,6 +779,7 @@ def test_retry_deleted_target_is_rejected_without_consuming_retry(monkeypatch):
     from apps.patch_mgmt.exceptions import PatchBusinessError
     from apps.patch_mgmt.services import governance_service
 
+    Patch.objects.create(id=20, title="retry patch", os_type=OSType.LINUX)
     target = _make_node_mgmt_target()
     original_task = _make_task(GovernanceTaskType.INSTALL, [target.id], [20])
     risk_item_id = f"{target.id}:20:30"

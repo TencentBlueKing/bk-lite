@@ -133,7 +133,9 @@ class GovernanceTaskListSerializer(PatchPermissionSerializer):
     record_status_display = serializers.SerializerMethodField()
     record_status_color = serializers.SerializerMethodField()
     source_record_name = serializers.SerializerMethodField()
-    permission_key = "patch_governance"
+    target_list = serializers.SerializerMethodField()
+    patch_list = serializers.SerializerMethodField()
+    permission_key = ""
 
     class Meta:
         model = GovernanceTask
@@ -187,6 +189,17 @@ class GovernanceTaskListSerializer(PatchPermissionSerializer):
             "cancel_reason",
         ]
 
+    def to_representation(self, instance):
+        visible_target_ids = self.context.get("visible_target_ids")
+        if visible_target_ids is not None:
+            instance._visible_target_ids = visible_target_ids
+            for cache_name in (
+                "_execution_record_hosts",
+                "_execution_record_risk_summaries",
+            ):
+                instance.__dict__.pop(cache_name, None)
+        return super().to_representation(instance)
+
     def validate(self, attrs):
         attrs = super().validate(attrs)
         if not attrs.get("name"):
@@ -196,7 +209,35 @@ class GovernanceTaskListSerializer(PatchPermissionSerializer):
         return attrs
 
     def get_host_count(self, obj):
-        return obj.host_results.count()
+        return len(self._visible_hosts(obj))
+
+    @staticmethod
+    def _visible_hosts(obj):
+        hosts = getattr(obj, "_visible_host_results", None)
+        if hosts is not None:
+            return list(hosts)
+        return list(obj.host_results.select_related("task").all())
+
+    @staticmethod
+    def _visible_target_ids(obj) -> set[int]:
+        configured = getattr(obj, "_visible_target_ids", None)
+        if configured is not None:
+            return {int(value) for value in configured}
+        return {host.target_id for host in GovernanceTaskListSerializer._visible_hosts(obj)}
+
+    def get_target_list(self, obj):
+        visible = self._visible_target_ids(obj)
+        return [int(value) for value in (obj.target_list or []) if int(value) in visible]
+
+    def get_patch_list(self, obj):
+        visible = self._visible_target_ids(obj)
+        return list(
+            dict.fromkeys(
+                int(item.get("patch_id"))
+                for item in (obj.risk_snapshot or [])
+                if int(item.get("host_id") or 0) in visible and item.get("patch_id")
+            )
+        )
 
     def get_task_type_display(self, obj):
         return serializer_message(
@@ -215,19 +256,20 @@ class GovernanceTaskListSerializer(PatchPermissionSerializer):
         return dict(GovernanceTaskStatus.CHOICES).get(status, status)
 
     def get_progress(self, obj):
-        total = obj.host_results.count()
+        hosts = self._visible_hosts(obj)
+        total = len(hosts)
         if total == 0:
             return "0 / 0"
         completed_stages = ["completed", "failed", "cancelled", "reboot_scheduled", "reboot_failed"]
         if obj.task_type != GovernanceTaskType.REBOOT:
             completed_stages.append("pending_reboot")
-        done = obj.host_results.filter(stage__in=completed_stages).count()
+        done = sum(host.stage in completed_stages for host in hosts)
         return f"{done} / {total}"
 
     def get_can_cancel(self, obj):
         return (
             obj.status in GovernanceTaskStatus.ACTIVE_STATES
-            and obj.host_results.filter(stage="waiting").exists()
+            and any(host.stage == "waiting" for host in self._visible_hosts(obj))
         )
 
     def get_can_retry(self, obj):
@@ -239,6 +281,32 @@ class GovernanceTaskListSerializer(PatchPermissionSerializer):
 
     def get_source_record_name(self, obj):
         return obj.source_record.name if obj.source_record_id else ""
+
+    def get_permission(self, obj):
+        visible = self._visible_target_ids(obj)
+        permissions = ["View"] if visible else []
+        configured_operable = self.context.get("operable_target_ids")
+        if configured_operable is not None:
+            if visible.intersection({int(value) for value in configured_operable}):
+                permissions.append("Operate")
+            return permissions
+        request = self.context.get("request")
+        if request is None:
+            return permissions
+        from apps.patch_mgmt.services.target_access import target_access_scope
+
+        try:
+            operable = set(
+                target_access_scope(request)
+                .queryset("Operate")
+                .filter(pk__in=visible)
+                .values_list("pk", flat=True)
+            )
+        except Exception:  # noqa: BLE001 - 权限依赖故障时 fail closed
+            operable = set()
+        if operable:
+            permissions.append("Operate")
+        return permissions
 
     @staticmethod
     def _record_status(obj):
@@ -259,13 +327,18 @@ class GovernanceTaskListSerializer(PatchPermissionSerializer):
 class GovernanceTaskDetailSerializer(GovernanceTaskListSerializer):
     """治理任务详情序列化器（含主机结果）"""
 
-    host_results = GovernanceTaskHostSerializer(many=True, read_only=True)
+    host_results = serializers.SerializerMethodField()
     risk_items = serializers.SerializerMethodField()
 
     def get_risk_items(self, obj):
         from apps.patch_mgmt.services.execution_record_service import build_risk_item_summaries
 
         return build_risk_item_summaries(obj)
+
+    def get_host_results(self, obj):
+        return GovernanceTaskHostSerializer(
+            self._visible_hosts(obj), many=True, context=self.context
+        ).data
 
     class Meta(GovernanceTaskListSerializer.Meta):
         fields = GovernanceTaskListSerializer.Meta.fields + [
