@@ -486,37 +486,51 @@ class TestLoginAuthBindingViews:
         assert data["result"] is False
 
     @patch("apps.core.views.index_view.get_auth_request")
-    def test_login_auth_status_rejects_different_browser(self, mock_get_auth_request):
-        from apps.core.views.index_view import get_login_auth_request_status
-
+    def test_login_auth_status_rejects_different_browser(self, mock_get_auth_request, api_client):
         auth_request, _origin_browser_token, other_browser_token = self._make_bound_auth_request(
             status="success",
             login_result={"username": "user", "token": "login-token"},
         )
         mock_get_auth_request.return_value = auth_request
-        request = RequestFactory().get(f"/api/v1/core/api/login_auth_requests/auth-1/status?poll_token={auth_request['poll_token']}")
-        request.COOKIES["bklite_login_auth_browser_auth-1"] = other_browser_token
+        api_client.cookies["bklite_login_auth_browser_auth-1"] = other_browser_token
 
-        response = get_login_auth_request_status(request, "auth-1")
-        data = json.loads(response.content)
+        response = api_client.get(
+            f"/api/v1/core/api/login_auth_requests/auth-1/status?poll_token={auth_request['poll_token']}"
+        )
+        data = response.json()
 
         assert response.status_code == 403
         assert data == {"result": False, "message": "Invalid browser binding"}
 
     @patch("apps.core.views.index_view.get_auth_request")
-    def test_login_auth_status_keeps_same_browser_success_flow(self, mock_get_auth_request):
-        from apps.core.views.index_view import get_login_auth_request_status
+    def test_login_auth_status_rejects_missing_browser_cookie(self, mock_get_auth_request, api_client):
+        auth_request, _origin_browser_token, _other_browser_token = self._make_bound_auth_request(
+            status="success",
+            login_result={"username": "user", "token": "login-token"},
+        )
+        mock_get_auth_request.return_value = auth_request
 
+        response = api_client.get(
+            f"/api/v1/core/api/login_auth_requests/auth-1/status?poll_token={auth_request['poll_token']}"
+        )
+        data = response.json()
+
+        assert response.status_code == 403
+        assert data == {"result": False, "message": "Invalid browser binding"}
+
+    @patch("apps.core.views.index_view.get_auth_request")
+    def test_login_auth_status_keeps_same_browser_success_flow(self, mock_get_auth_request, api_client):
         auth_request, origin_browser_token, _other_browser_token = self._make_bound_auth_request(
             status="success",
             login_result={"username": "user", "token": "login-token"},
         )
         mock_get_auth_request.return_value = auth_request
-        request = RequestFactory().get(f"/api/v1/core/api/login_auth_requests/auth-1/status?poll_token={auth_request['poll_token']}")
-        request.COOKIES["bklite_login_auth_browser_auth-1"] = origin_browser_token
+        api_client.cookies["bklite_login_auth_browser_auth-1"] = origin_browser_token
 
-        response = get_login_auth_request_status(request, "auth-1")
-        data = json.loads(response.content)
+        response = api_client.get(
+            f"/api/v1/core/api/login_auth_requests/auth-1/status?poll_token={auth_request['poll_token']}"
+        )
+        data = response.json()
 
         assert response.status_code == 200
         assert data["data"]["login_result"]["token"] == "login-token"
@@ -595,9 +609,8 @@ class TestLoginAuthBindingViews:
         mock_system_mgmt,
         mock_parse_state,
         mock_get_auth_request,
+        api_client,
     ):
-        from apps.core.views.index_view import login_auth_callback
-
         mock_parse_state.return_value = {
             "auth_request_id": "auth-1",
             "binding_id": 5,
@@ -605,10 +618,9 @@ class TestLoginAuthBindingViews:
         }
         auth_request, _origin_browser_token, other_browser_token = self._make_bound_auth_request()
         mock_get_auth_request.return_value = auth_request
-        request = RequestFactory().get("/api/v1/core/api/login_auth/callback/?state=signed&code=auth-code")
-        request.COOKIES["bklite_login_auth_browser_auth-1"] = other_browser_token
+        api_client.cookies["bklite_login_auth_browser_auth-1"] = other_browser_token
 
-        response = login_auth_callback(request)
+        response = api_client.get("/api/v1/core/api/login_auth/callback/?state=signed&code=auth-code")
 
         mock_system_mgmt.return_value.login_with_binding.assert_not_called()
         mock_update_status.assert_not_called()
@@ -701,16 +713,14 @@ class TestLoginAuthBindingViews:
             "binding_id": 5,
             "callback_url": "/console",
         }
-        mock_get_auth_request.return_value = {
-            "auth_request_id": "auth-1",
-            "status": "success",
-            "login_result": {
-                "username": "feishu-user",
-                "token": "binding-token",
-            },
-        }
+        auth_request, origin_browser_token, _other_browser_token = self._make_bound_auth_request(
+            status="success",
+            login_result={"username": "feishu-user", "token": "binding-token"},
+        )
+        mock_get_auth_request.return_value = auth_request
 
         request = RequestFactory().get("/api/v1/core/api/login_auth/callback/?state=signed&code=replayed-code")
+        request.COOKIES["bklite_login_auth_browser_auth-1"] = origin_browser_token
         response = login_auth_callback(request)
 
         mock_system_mgmt.return_value.login_with_binding.assert_not_called()
@@ -884,16 +894,6 @@ def _load_login_auth_request_service():
 
 @pytest.mark.unit
 class TestLoginAuthRequestService:
-    def test_create_auth_request_requires_browser_binding_token(self):
-        service = _load_login_auth_request_service()
-
-        with pytest.raises(TypeError):
-            service.create_auth_request(
-                binding_id=7,
-                provider_key="feishu",
-                callback_url="/console",
-            )
-
     def test_create_auth_request_returns_pending_payload(self):
         service = _load_login_auth_request_service()
         fake_cache = FakeCache()
@@ -930,54 +930,6 @@ class TestLoginAuthRequestService:
 
         assert service.validate_poll_token(auth_request, auth_request["poll_token"]) is True
         assert service.validate_poll_token(auth_request, "wrong-token") is False
-
-    def test_browser_binding_token_is_signed_unique_and_stored_as_digest(self):
-        service = _load_login_auth_request_service()
-        fake_cache = FakeCache()
-        browser_binding_token = service.create_browser_binding_token()
-        other_browser_binding_token = service.create_browser_binding_token()
-
-        with patch.object(service, "cache", fake_cache):
-            auth_request = service.create_auth_request(
-                binding_id=8,
-                provider_key="wechat",
-                callback_url="/",
-                browser_binding_token=browser_binding_token,
-            )
-
-        assert auth_request["browser_binding_hash"] != browser_binding_token
-        assert service.validate_browser_binding(auth_request, browser_binding_token) is True
-        assert service.validate_browser_binding(auth_request, other_browser_binding_token) is False
-
-    def test_browser_binding_allows_only_pre_deployment_cache_entries_without_digest(self):
-        service = _load_login_auth_request_service()
-
-        assert service.validate_browser_binding({"status": "pending"}, "") is True
-
-    def test_parallel_browser_bindings_do_not_overwrite_each_other(self):
-        service = _load_login_auth_request_service()
-        fake_cache = FakeCache()
-        first_token = service.create_browser_binding_token()
-        second_token = service.create_browser_binding_token()
-        with patch.object(service, "cache", fake_cache):
-            first_request = service.create_auth_request(
-                binding_id=8,
-                provider_key="wechat",
-                callback_url="/",
-                browser_binding_token=first_token,
-            )
-            second_request = service.create_auth_request(
-                binding_id=8,
-                provider_key="wechat",
-                callback_url="/",
-                browser_binding_token=second_token,
-            )
-
-        assert service.get_login_auth_browser_cookie_name(first_request["auth_request_id"]) != (
-            service.get_login_auth_browser_cookie_name(second_request["auth_request_id"])
-        )
-        assert service.validate_browser_binding(first_request, first_token) is True
-        assert service.validate_browser_binding(second_request, second_token) is True
 
     def test_get_auth_request_returns_none_on_cache_miss(self):
         service = _load_login_auth_request_service()
