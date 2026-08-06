@@ -7,6 +7,8 @@ import pytest
 from nats_client import clients
 from nats_client.exceptions import NatsClientException
 
+pytestmark = pytest.mark.unit
+
 
 class _FakeResponse:
     def __init__(self, payload):
@@ -101,6 +103,10 @@ def test_nats_request_ignores_unrecognized_legacy_exception_shape(request_func):
             {"success": False, "error": "RemoteError", "message": "request rejected"},
             "RemoteError: request rejected",
         ),
+        (
+            {"success": False, "error": "RemoteError", "message": "request rejected", "result": "trace"},
+            "RemoteError: request rejected | Output: trace",
+        ),
         ({"success": False, "result": "service unavailable"}, "service unavailable"),
     ],
 )
@@ -110,3 +116,11 @@ def test_nats_request_preserves_structured_error_contract(request_func, payload,
     with mock.patch.object(clients, "get_nc_client", return_value=nats_client):
         with pytest.raises(NatsClientException, match=f"^{expected_message}$"):
             asyncio.run(request_func("namespace", "method"))
+
+
+@pytest.mark.parametrize("request_func", [clients.request, clients.request_v2])
+def test_nats_request_preserves_success_response(request_func):
+    nats_client = _FakeNatsClient({"success": True, "result": {"value": 1}})
+
+    with mock.patch.object(clients, "get_nc_client", return_value=nats_client):
+        assert asyncio.run(request_func("namespace", "method")) == {"value": 1}
