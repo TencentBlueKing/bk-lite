@@ -22,17 +22,29 @@ from apps.patch_mgmt.utils.architecture import X86_64, normalize_architecture, n
 
 logger = logging.getLogger("app")
 
+MAX_LINUX_PACKAGES_PER_ADVISORY = 128
+MAX_LINUX_PACKAGE_NAME_LENGTH = 256
+MAX_LINUX_PACKAGE_VERSION_LENGTH = 128
+
+
+class SourceSyncError(Exception):
+    """补丁源同步异常基类"""
+
 
 def _normalize_linux_packages(packages, *, fallback_arch: str) -> list[dict[str, str]]:
     """把公告软件包规范化为稳定、去重、可持久化的列表。"""
     canonical_fallback = normalize_architecture(fallback_arch, default=X86_64)
     normalized: list[dict[str, str]] = []
     seen: set[tuple[str, str, str]] = set()
-    for package in packages or []:
+    for index, package in enumerate(packages or []):
+        if index >= MAX_LINUX_PACKAGES_PER_ADVISORY:
+            raise SourceSyncError(f"单条 Linux 公告的软件包数量不能超过 {MAX_LINUX_PACKAGES_PER_ADVISORY}")
         name = str(getattr(package, "name", "") or "").strip()
         if not name:
             continue
         version = str(getattr(package, "version", "") or "").strip()
+        if len(name) > MAX_LINUX_PACKAGE_NAME_LENGTH or len(version) > MAX_LINUX_PACKAGE_VERSION_LENGTH:
+            raise SourceSyncError("Linux 公告的软件包名称或版本过长")
         arch = normalize_architecture(
             getattr(package, "arch", ""),
             default=canonical_fallback,
@@ -65,10 +77,6 @@ def _linux_detail_defaults(advisory, source) -> dict:
         "repo_type": PackageManagerType.normalize(source.source_type),
         "install_deps": advisory.install_deps or {},
     }
-
-
-class SourceSyncError(Exception):
-    """补丁源同步异常基类"""
 
 
 class SourceSyncService:

@@ -578,7 +578,9 @@ def _dry_run_command(os_type: str, pkg_names: list[str]) -> str:
         return ''
     if os_type == OSType.WINDOWS:
         return ''  # Windows WUA 原子安装，不需要 dry-run
-    pkgs = ' '.join(pkg_names)
+    pkgs = ' '.join(shlex.quote(name) for name in pkg_names if _PKG_NAME_RE.match(name))
+    if not pkgs:
+        return ''
     # 用 if/elif 检测包管理器，避免 || 链导致 dnf --assumeno (exit 1) 触发 fallback
     # dnf/yum --assumeno 退出码 1 表示用户取消，属于正常行为；追加 || true 确保退出码 0
     return (

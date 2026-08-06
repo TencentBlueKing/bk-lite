@@ -378,6 +378,7 @@ class TestPatchSourceViewApi:
         assert resp.data == {"items": [], "total": 0, "page": 1, "page_size": 20}
         preview.assert_called_once_with(source)
 
+    @pytest.mark.integration
     def test_linux_preview_search_matches_any_advisory_package(self, su_client, mocker):
         source = PatchSource.objects.create(
             name="YUM-Test",
@@ -546,6 +547,7 @@ class TestPatchViewApi:
         assert data["linux_detail"]["repo_type"] == "yum"
         assert data["linux_detail"]["os_version_range"] == ">=7"
 
+    @pytest.mark.integration
     def test_update_linux_legacy_fields_keeps_package_snapshot_in_sync(self, su_client):
         from apps.patch_mgmt.models import LinuxPatchDetail
 

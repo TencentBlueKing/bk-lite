@@ -103,6 +103,7 @@ def test_install_commands_multiple_pkgs_one_command():
 
 
 @pytest.mark.django_db
+@pytest.mark.integration
 def test_install_commands_include_every_package_from_one_advisory():
     patch = Patch.objects.create(title='multi-package', os_type=OSType.LINUX)
     detail = LinuxPatchDetail.objects.create(patch=patch, pkg_name='pkg-a')
@@ -124,6 +125,7 @@ def test_install_commands_include_every_package_from_one_advisory():
 
 
 @pytest.mark.django_db
+@pytest.mark.integration
 def test_assess_command_collects_every_package_from_one_advisory():
     baseline = PatchBaseline.objects.create(name='multi-package', os_type=OSType.LINUX)
     patch = Patch.objects.create(title='multi-package', os_type=OSType.LINUX)
@@ -141,6 +143,27 @@ def test_assess_command_collects_every_package_from_one_advisory():
     assert f'BKPATCH_LINUX|{requirement.id}|1|pkg-b|' in command
     assert 'required=1.0' in command
     assert 'required=2.0' in command
+
+
+@pytest.mark.unit
+def test_collect_install_impact_dry_run_includes_every_valid_package(monkeypatch):
+    detail = SimpleNamespace(package_names=lambda: ['pkg-a', 'pkg-b', 'pkg;rm'])
+    requirement = SimpleNamespace(id=17, patch=SimpleNamespace(linux_detail=detail))
+    target = SimpleNamespace(id=23, os_type=OSType.LINUX)
+    executed = []
+
+    def execute_command(_target, command, **_kwargs):
+        executed.append(command)
+        return {'stdout': '2 upgraded, 0 newly installed, 0 to remove'}
+
+    monkeypatch.setattr(pes, '_execute_command', execute_command)
+
+    impact = pes._collect_install_impact(target, [requirement], 'dry-run-1')
+
+    assert len(executed) == 1
+    assert 'pkg-a' in executed[0] and 'pkg-b' in executed[0]
+    assert 'pkg;rm' not in executed[0]
+    assert impact[requirement.id]['summary'] == '2 upgraded, 0 newly installed, 0 to remove'
 
 
 @pytest.mark.django_db

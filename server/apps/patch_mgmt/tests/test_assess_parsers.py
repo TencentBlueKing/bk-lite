@@ -106,6 +106,7 @@ def test_assess_linux_requirements():
 
 
 @pytest.mark.django_db
+@pytest.mark.integration
 def test_assess_linux_requirements_checks_every_advisory_package():
     baseline = PatchBaseline.objects.create(name="multi-package", os_type=OSType.LINUX, team=[1])
     patch = Patch.objects.create(title="multi package advisory", os_type=OSType.LINUX, team=[1])
@@ -138,6 +139,7 @@ def test_assess_linux_requirements_checks_every_advisory_package():
 
 
 @pytest.mark.django_db
+@pytest.mark.integration
 def test_assess_linux_requirements_keeps_same_package_version_facts_distinct():
     baseline = PatchBaseline.objects.create(name="same-package-versions", os_type=OSType.LINUX, team=[1])
     patch = Patch.objects.create(title="openssl advisory", os_type=OSType.LINUX, team=[1])
@@ -159,6 +161,29 @@ def test_assess_linux_requirements_keeps_same_package_version_facts_distinct():
 
     assert result[req.id].status == RequirementAssessmentStatus.MISSING
     assert result[req.id].evidence["missing_pkg_names"] == ["openssl"]
+
+
+@pytest.mark.django_db
+@pytest.mark.integration
+def test_assess_linux_requirements_does_not_reuse_another_structured_spec_fact():
+    baseline = PatchBaseline.objects.create(name="partial-output", os_type=OSType.LINUX, team=[1])
+    patch = Patch.objects.create(title="openssl advisory", os_type=OSType.LINUX, team=[1])
+    detail = LinuxPatchDetail.objects.create(patch=patch, pkg_name="openssl", pkg_version="3.0")
+    detail.packages = [
+        {"name": "openssl", "version": "3.0", "arch": "x86_64"},
+        {"name": "openssl", "version": "2.0", "arch": "x86_64"},
+    ]
+    detail.save(update_fields=["packages"])
+    req = BaselineRequirement.objects.create(baseline=baseline, patch=patch)
+
+    result = parsers.assess_requirements(
+        OSType.LINUX,
+        f"BKPATCH_LINUX|{req.id}|1|openssl|installed|2.5|0|",
+        [req],
+    )
+
+    assert result[req.id].status == RequirementAssessmentStatus.UNKNOWN
+    assert result[req.id].evidence["unknown_pkg_names"] == ["openssl"]
 
 
 @pytest.mark.django_db

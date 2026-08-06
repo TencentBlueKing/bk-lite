@@ -297,19 +297,18 @@ def assess_linux_requirements(stdout: str, requirements: Iterable) -> dict[int, 
     requirement_facts = _parse_linux_requirement_facts(stdout)
     result: dict[int, RequirementAssessment] = {}
     for requirement_id, specs in _linux_specs(requirements).items():
-        assessments = [
-            evaluate_requirements(
-                [spec],
-                HostAssessmentFacts(
-                    linux_packages={
-                        spec.identifier: requirement_facts[(requirement_id, spec_index, spec.identifier)]
-                    }
-                )
-                if (requirement_id, spec_index, spec.identifier) in requirement_facts
-                else facts,
-            )[requirement_id]
-            for spec_index, spec in enumerate(specs)
-        ]
+        assessments = []
+        for spec_index, spec in enumerate(specs):
+            fact_key = (requirement_id, spec_index, spec.identifier)
+            if fact_key in requirement_facts:
+                spec_facts = HostAssessmentFacts(linux_packages={spec.identifier: requirement_facts[fact_key]})
+            elif requirement_facts:
+                # 新格式按要求与规格序号隔离；已有结构化事实时，缺失规格不得回退复用同名包的其他规格结果。
+                spec_facts = HostAssessmentFacts(linux_packages={})
+            else:
+                # 兼容升级前已下发、尚未完成的旧格式评估输出。
+                spec_facts = facts
+            assessments.append(evaluate_requirements([spec], spec_facts)[requirement_id])
         if len(assessments) == 1:
             result[requirement_id] = assessments[0]
             continue
