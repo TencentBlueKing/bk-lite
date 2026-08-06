@@ -26,11 +26,16 @@ import {
     MOBILE_SESSION_PAGE_SIZE,
     shouldShowSessionPagination,
 } from '@/utils/sessionPagination';
+import { useLocale } from '@/context/locale';
+import { useAuth } from '@/context/auth';
+import { formatAccountSearchTime } from '@/platform/preferences/dateTime';
 
 type SearchType = 'ConversationList' | 'WorkbenchPage' | 'ChatHistory';
 
 export default function SearchPage() {
     const { t } = useTranslation();
+    const { locale } = useLocale();
+    const { userInfo } = useAuth();
     const router = useRouter();
     const searchParams = useSearchParams();
     const searchType = (searchParams?.get('type') || 'ConversationList') as SearchType;
@@ -281,16 +286,6 @@ export default function SearchPage() {
                 router.push(buildConversationHref({ botId: item.bot, nodeId: item.node_id }));
             }}
         >
-            {/* 右上角状态 - 默认在线 */}
-            <span
-                aria-hidden="true"
-                className="absolute top-0 right-0 w-6 h-6"
-                style={{
-                    clipPath: 'polygon(100% 0, 100% 100%, 0 0)',
-                    backgroundColor: 'var(--color-success)',
-                }}
-            />
-
             <div className="flex items-start space-x-3">
                 {/* 缩略图 */}
                 <div className="flex-shrink-0 relative">
@@ -346,35 +341,11 @@ export default function SearchPage() {
 
     // 格式化时间戳
     const formatMessageTime = (timestamp: number) => {
-        const date = new Date(timestamp);
-        const now = new Date();
-        const diff = now.getTime() - timestamp;
-
-        // 今天
-        if (date.toDateString() === now.toDateString()) {
-            return date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
-        }
-
-        // 昨天
-        const yesterday = new Date(now);
-        yesterday.setDate(yesterday.getDate() - 1);
-        if (date.toDateString() === yesterday.toDateString()) {
-            return t('search.yesterday');
-        }
-
-        // 一周内
-        if (diff < 7 * 24 * 60 * 60 * 1000) {
-            const days = ['日', '一', '二', '三', '四', '五', '六'];
-            return `周${days[date.getDay()]}`;
-        }
-
-        // 今年
-        if (date.getFullYear() === now.getFullYear()) {
-            return `${date.getMonth() + 1}月${date.getDate()}日`;
-        }
-
-        // 更早
-        return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日`;
+        return formatAccountSearchTime(
+            timestamp,
+            { locale, timezone: userInfo?.timezone || 'Asia/Shanghai' },
+            t('search.yesterday'),
+        );
     };
 
     // 获取占位符文本

@@ -4,7 +4,9 @@
 :root {
   /* 主色 */
   --color-primary: #155AEF;
+  --color-primary-bg: #EDF4FF;
   --color-primary-bg-active: #e1edfc;
+  --color-primary-border: #B8D3FF;
   --color-secondary: #F2F4F7;
   
   /* 文本颜色 */
@@ -30,9 +32,14 @@
   --color-bg-7: rgba(255,255,255, 0.12);
   --color-app-chrome-bg: var(--color-background-body);
   --color-page-header-bg: var(--color-app-chrome-bg);
-  --color-bottom-nav-bg: var(--color-app-chrome-bg);
+  --color-bottom-nav-bg: var(--color-bg);
   --mobile-header-height: 56px;
   --mobile-page-title-font-size: 17px;
+  /* SearchBar：列表工具条用 compact(30)；独立搜索页 / Popup 用 page(36)。业务页禁止再写死高度。 */
+  --mobile-search-bar-height: 30px;
+  --mobile-search-bar-height-page: 36px;
+  --mobile-search-bar-radius: 8px;
+  --mobile-search-bar-font-size: 13px;
   
   /* 边框颜色 */
   --color-border: #eaecf0;
@@ -82,7 +89,9 @@
 .dark {
   /* 主色 */
   --color-primary: #155AEF;
+  --color-primary-bg: #172637;
   --color-primary-bg-active: #172637;
+  --color-primary-border: #294A6F;
   --color-secondary: #1d1d20;
   
   /* 文本颜色 */
@@ -108,7 +117,7 @@
   --color-bg-7: rgba(255,255,255, 0.12);
   --color-app-chrome-bg: var(--color-background-body);
   --color-page-header-bg: var(--color-app-chrome-bg);
-  --color-bottom-nav-bg: var(--color-app-chrome-bg);
+  --color-bottom-nav-bg: var(--color-bg);
   --mobile-header-height: 56px;
   --mobile-page-title-font-size: 17px;
   

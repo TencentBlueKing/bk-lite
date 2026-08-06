@@ -1,0 +1,39 @@
+/* 统一 SearchBar 盒型：高度只走 CSS 变量，禁止业务页各自覆盖 */
+.root {
+  width: 100%;
+}
+
+.root :global(.adm-search-bar) {
+  --height: var(--mobile-search-bar-height);
+}
+
+.root :global(.adm-search-bar-input-box) {
+  height: var(--mobile-search-bar-height);
+  min-height: var(--mobile-search-bar-height);
+  padding: 0 10px;
+  background: var(--color-fill-1);
+  border: 1px solid transparent;
+  border-radius: var(--mobile-search-bar-radius);
+}
+
+.root :global(.adm-search-bar-input),
+.root :global(.adm-search-bar-input-box input) {
+  height: var(--mobile-search-bar-height);
+  font-size: var(--mobile-search-bar-font-size);
+  line-height: var(--mobile-search-bar-height);
+}
+
+.rootPage :global(.adm-search-bar) {
+  --height: var(--mobile-search-bar-height-page);
+}
+
+.rootPage :global(.adm-search-bar-input-box) {
+  height: var(--mobile-search-bar-height-page);
+  min-height: var(--mobile-search-bar-height-page);
+}
+
+.rootPage :global(.adm-search-bar-input),
+.rootPage :global(.adm-search-bar-input-box input) {
+  height: var(--mobile-search-bar-height-page);
+  line-height: var(--mobile-search-bar-height-page);
+}
