@@ -48,8 +48,8 @@ const apmMenus: MenuItem[] = [
     icon: 'zichan-quanbushebei',
     children: [
       { title: '添加接入', url: '/apm/integration/add', name: 'integration_add', icon: 'settings-fill' },
-      { title: '应用管理', url: '/apm/integration/applications', name: 'applications', icon: 'mulu' },
       { title: '接入实例', url: '/apm/integration/instances', name: 'integration_instances', icon: 'caijiqi' },
+      { title: '应用管理', url: '/apm/integration/applications', name: 'applications', icon: 'mulu' },
       { url: '/apm/integration', name: 'integration_add', isNotMenuItem: true },
     ],
   },
@@ -105,7 +105,7 @@ describe('getFirstLayerSiblingMenuItems', () => {
     const siblings = getFirstLayerSiblingMenuItems(apmMenus, '/apm/integration/add')
       .filter((item) => !item.isNotMenuItem)
       .map((item) => item.title);
-    expect(siblings).toEqual(['添加接入', '应用管理', '接入实例']);
+    expect(siblings).toEqual(['添加接入', '接入实例', '应用管理']);
   });
 
   it('returns services secondary items for topology paths', () => {

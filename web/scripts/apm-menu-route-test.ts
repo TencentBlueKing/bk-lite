@@ -35,8 +35,8 @@ assert.deepEqual(menu.zh[3].children?.flatMap((item) => item.title ? [item.title
 assert.deepEqual(menu.en[3].children?.flatMap((item) => item.title ? [item.title] : []), ['Alerts', 'Policies']);
 assert.deepEqual(menu.zh[1].children?.flatMap((item) => item.title ? [item.title] : []), ['服务', '服务拓扑', 'SLO']);
 assert.deepEqual(menu.en[1].children?.flatMap((item) => item.title ? [item.title] : []), ['Services', 'Service topology', 'SLO']);
-assert.deepEqual(menu.zh[4].children?.flatMap((item) => item.title ? [item.title] : []), ['添加接入', '应用管理', '接入实例']);
-assert.deepEqual(menu.en[4].children?.flatMap((item) => item.title ? [item.title] : []), ['Add integration', 'Applications', 'Reporting instances']);
+assert.deepEqual(menu.zh[4].children?.flatMap((item) => item.title ? [item.title] : []), ['添加接入', '接入实例', '应用管理']);
+assert.deepEqual(menu.en[4].children?.flatMap((item) => item.title ? [item.title] : []), ['Add integration', 'Reporting instances', 'Applications']);
 assert.deepEqual(
   menu.zh[1].children?.flatMap((item) => item.title ? [item.url] : []),
   ['/apm/services', '/apm/topology', '/apm/slo'],
