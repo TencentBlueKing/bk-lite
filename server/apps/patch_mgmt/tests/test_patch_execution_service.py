@@ -8,6 +8,7 @@
 
 import base64
 from datetime import timedelta
+from types import SimpleNamespace
 
 import pytest
 from django.test import RequestFactory
@@ -70,6 +71,24 @@ def test_install_commands_linux():
     assert 'apt-get install -y' in cmd and 'apt-pkg' in cmd
 
 
+def test_linux_assess_uses_rpm_native_version_comparison_not_provides_lookup():
+    requirement = SimpleNamespace(
+        id=17,
+        patch=SimpleNamespace(
+            linux_detail=SimpleNamespace(
+                pkg_name='ledmon',
+                pkg_version='0.95-6.el9',
+            )
+        ),
+    )
+
+    command = pes._assess_command(OSType.LINUX, [requirement])
+
+    assert 'rpm.vercmp' in command
+    assert 'BKPATCH_INSTALLED' in command
+    assert '--whatprovides' not in command
+
+
 @pytest.mark.django_db
 def test_install_commands_multiple_pkgs_one_command():
     """多个补丁的包名合并到同一条安装命令。"""
@@ -81,6 +100,70 @@ def test_install_commands_multiple_pkgs_one_command():
     assert len(cmds) == 1
     assert 'pkg-a' in cmds[0]
     assert 'pkg-b' in cmds[0]
+
+
+@pytest.mark.django_db
+@pytest.mark.integration
+def test_install_commands_include_every_package_from_one_advisory():
+    patch = Patch.objects.create(title='multi-package', os_type=OSType.LINUX)
+    detail = LinuxPatchDetail.objects.create(patch=patch, pkg_name='pkg-a')
+    detail.packages = [
+        {'name': 'pkg-a', 'version': '1.0', 'arch': 'x86_64'},
+        {'name': 'pkg-b', 'version': '1.0', 'arch': 'x86_64'},
+        {'name': 'pkg-b', 'version': '1.0', 'arch': 'x86_64'},
+        {'name': 'pkg with space', 'version': '1.0', 'arch': 'x86_64'},
+        {'name': '', 'version': '1.0', 'arch': 'x86_64'},
+    ]
+    detail.save(update_fields=['packages'])
+
+    commands = pes._install_commands([patch], OSType.LINUX)
+
+    assert len(commands) == 1
+    assert commands[0].count('pkg-a') == 3
+    assert commands[0].count('pkg-b') == 3
+    assert 'pkg with space' not in commands[0]
+
+
+@pytest.mark.django_db
+@pytest.mark.integration
+def test_assess_command_collects_every_package_from_one_advisory():
+    baseline = PatchBaseline.objects.create(name='multi-package', os_type=OSType.LINUX)
+    patch = Patch.objects.create(title='multi-package', os_type=OSType.LINUX)
+    detail = LinuxPatchDetail.objects.create(patch=patch, pkg_name='pkg-a', pkg_version='1.0')
+    detail.packages = [
+        {'name': 'pkg-a', 'version': '1.0', 'arch': 'x86_64'},
+        {'name': 'pkg-b', 'version': '2.0', 'arch': 'x86_64'},
+    ]
+    detail.save(update_fields=['packages'])
+    requirement = BaselineRequirement.objects.create(baseline=baseline, patch=patch)
+
+    command = pes._assess_command(OSType.LINUX, [requirement])
+
+    assert f'BKPATCH_LINUX|{requirement.id}|0|pkg-a|' in command
+    assert f'BKPATCH_LINUX|{requirement.id}|1|pkg-b|' in command
+    assert 'required=1.0' in command
+    assert 'required=2.0' in command
+
+
+@pytest.mark.unit
+def test_collect_install_impact_dry_run_includes_every_valid_package(monkeypatch):
+    detail = SimpleNamespace(package_names=lambda: ['pkg-a', 'pkg-b', 'pkg;rm'])
+    requirement = SimpleNamespace(id=17, patch=SimpleNamespace(linux_detail=detail))
+    target = SimpleNamespace(id=23, os_type=OSType.LINUX)
+    executed = []
+
+    def execute_command(_target, command, **_kwargs):
+        executed.append(command)
+        return {'stdout': '2 upgraded, 0 newly installed, 0 to remove'}
+
+    monkeypatch.setattr(pes, '_execute_command', execute_command)
+
+    impact = pes._collect_install_impact(target, [requirement], 'dry-run-1')
+
+    assert len(executed) == 1
+    assert 'pkg-a' in executed[0] and 'pkg-b' in executed[0]
+    assert 'pkg;rm' not in executed[0]
+    assert impact[requirement.id]['summary'] == '2 upgraded, 0 newly installed, 0 to remove'
 
 
 @pytest.mark.django_db
@@ -116,6 +199,17 @@ def test_install_commands_windows_uses_scheduled_task():
     assert 'InstallResult' in cmd
     # 不应使用 base64 编码（避免命令行过长）
     assert 'FromBase64String' not in cmd
+
+
+def test_windows_assess_command_collects_offered_and_installed_wua_updates():
+    command = pes._assess_command(OSType.WINDOWS)
+
+    assert 'Get-CimInstance Win32_OperatingSystem' in command
+    assert 'BKPATCH_HOST|WINDOWS|' in command
+    assert '$sr.Search("IsInstalled=0")' in command
+    assert '$sr.Search("IsInstalled=1")' in command
+    assert '===WUA_INSTALLED===' in command
+    assert '===HOTFIX===' in command
 
 
 @pytest.mark.django_db
@@ -685,6 +779,7 @@ def test_retry_deleted_target_is_rejected_without_consuming_retry(monkeypatch):
     from apps.patch_mgmt.exceptions import PatchBusinessError
     from apps.patch_mgmt.services import governance_service
 
+    Patch.objects.create(id=20, title="retry patch", os_type=OSType.LINUX)
     target = _make_node_mgmt_target()
     original_task = _make_task(GovernanceTaskType.INSTALL, [target.id], [20])
     risk_item_id = f"{target.id}:20:30"
@@ -793,13 +888,16 @@ def test_run_assess_success_parses_output_and_writes_snapshot(monkeypatch):
     target = _make_node_mgmt_target()
     HostBaselineBinding.objects.create(target=target, baseline=baseline)
     patch = Patch.objects.create(title='gzip update', os_type=OSType.LINUX, team=[1])
-    LinuxPatchDetail.objects.create(patch=patch, pkg_name='gzip')
-    BaselineRequirement.objects.create(baseline=baseline, patch=patch)
+    LinuxPatchDetail.objects.create(patch=patch, pkg_name='gzip', pkg_version='1.10')
+    requirement = BaselineRequirement.objects.create(baseline=baseline, patch=patch)
     task = _make_task(GovernanceTaskType.ASSESS, [target.id])
 
     class FakeExecutor:
         def execute_local_stream(self, command, **kwargs):
-            return {'exit_code': 0, 'stdout': APT_SAMPLE}
+            return {
+                'exit_code': 0,
+                'stdout': f'BKPATCH_LINUX|{requirement.id}|gzip|installed|1.10|0|',
+            }
 
     monkeypatch.setattr(pes, 'Executor', lambda instance_id: FakeExecutor())
     pes.run_governance_task(task)
@@ -815,13 +913,58 @@ def test_run_assess_success_parses_output_and_writes_snapshot(monkeypatch):
 
 
 @pytest.mark.django_db
+def test_run_windows_assess_keeps_missing_risk_when_another_requirement_is_unknown(monkeypatch):
+    cloud_region = CloudRegion.objects.create(name='region-win-mixed-assessment')
+    target = _make_manual_windows_target(cloud_region)
+    baseline = PatchBaseline.objects.create(name='windows-mixed-baseline', os_type=OSType.WINDOWS, team=[1])
+    binding = HostBaselineBinding.objects.create(target=target, baseline=baseline)
+    missing_patch = Patch.objects.create(title='applicable update', os_type=OSType.WINDOWS, team=[1])
+    unknown_patch = Patch.objects.create(title='catalog invisible update', os_type=OSType.WINDOWS, team=[1])
+    WindowsPatchDetail.objects.create(patch=missing_patch, kb_number='KB5000003')
+    WindowsPatchDetail.objects.create(patch=unknown_patch, kb_number='KB9999999')
+    missing_requirement = BaselineRequirement.objects.create(baseline=baseline, patch=missing_patch)
+    unknown_requirement = BaselineRequirement.objects.create(baseline=baseline, patch=unknown_patch)
+    task = _make_task(GovernanceTaskType.ASSESS, [target.id])
+    stdout = '\n'.join(
+        [
+            'BKPATCH_HOST|WINDOWS|Microsoft Windows Server 2022 Standard|10.0|20348|AMD64',
+            '===WUA===',
+            'KB5000003|Important|Applicable update',
+            '===WUA_INSTALLED===',
+            '===HOTFIX===',
+        ]
+    )
+
+    class FakeAnsibleExecutor:
+        def adhoc(self, **kwargs):  # noqa: ARG002
+            return {'exit_code': 0, 'stdout': stdout}
+
+    monkeypatch.setattr(ter.AnsibleExecutorResolver, 'resolve', lambda cloud_region_id: 'ansible-node-1')
+    monkeypatch.setattr(pes, 'AnsibleExecutor', lambda instance_id: FakeAnsibleExecutor())
+
+    pes.run_governance_task(task)
+
+    binding.refresh_from_db()
+    assert binding.compliance_status == ComplianceStatus.NON_COMPLIANT
+    assert binding.missing_count == 1
+    assert HostComplianceSnapshot.objects.get(
+        binding=binding,
+        requirement=missing_requirement,
+    ).status == 'missing'
+    assert HostComplianceSnapshot.objects.get(
+        binding=binding,
+        requirement=unknown_requirement,
+    ).status == 'unknown'
+
+
+@pytest.mark.django_db
 def test_run_verify_freezes_pair_result_snapshot(monkeypatch):
     baseline = PatchBaseline.objects.create(name='verify-baseline', os_type=OSType.LINUX, team=[1])
     target = _make_node_mgmt_target()
     HostBaselineBinding.objects.create(target=target, baseline=baseline)
     patch = Patch.objects.create(title='gzip update', os_type=OSType.LINUX, team=[1])
-    LinuxPatchDetail.objects.create(patch=patch, pkg_name='gzip')
-    BaselineRequirement.objects.create(baseline=baseline, patch=patch)
+    LinuxPatchDetail.objects.create(patch=patch, pkg_name='gzip', pkg_version='1.10')
+    requirement = BaselineRequirement.objects.create(baseline=baseline, patch=patch)
     risk_item_id = f'{target.id}:{patch.id}:{baseline.id}'
     task = _make_task(GovernanceTaskType.VERIFY, [target.id], [patch.id])
     task.risk_snapshot = [{
@@ -834,7 +977,10 @@ def test_run_verify_freezes_pair_result_snapshot(monkeypatch):
 
     class FakeExecutor:
         def execute_local_stream(self, command, **kwargs):
-            return {'exit_code': 0, 'stdout': APT_SAMPLE}
+            return {
+                'exit_code': 0,
+                'stdout': f'BKPATCH_LINUX|{requirement.id}|gzip|installed|1.10|0|',
+            }
 
     monkeypatch.setattr(pes, 'Executor', lambda instance_id: FakeExecutor())
     pes.run_governance_task(task)
@@ -858,11 +1004,11 @@ def test_run_assess_yum_exit_100_treated_as_success(monkeypatch):
     target = _make_node_mgmt_target()
     HostBaselineBinding.objects.create(target=target, baseline=baseline)
     patch = Patch.objects.create(title='gzip update', os_type=OSType.LINUX, team=[1])
-    LinuxPatchDetail.objects.create(patch=patch, pkg_name='gzip')
-    BaselineRequirement.objects.create(baseline=baseline, patch=patch)
+    LinuxPatchDetail.objects.create(patch=patch, pkg_name='gzip', pkg_version='1.10')
+    requirement = BaselineRequirement.objects.create(baseline=baseline, patch=patch)
     task = _make_task(GovernanceTaskType.ASSESS, [target.id])
 
-    stdout = 'Available Upgrades\ngzip.x86_64     1.10-10ubuntu4.1     noble-updates\n'
+    stdout = f'BKPATCH_LINUX|{requirement.id}|gzip|installed|1.9|-1|'
 
     class FakeExecutor:
         def execute_local_stream(self, command, **kwargs):
@@ -877,6 +1023,53 @@ def test_run_assess_yum_exit_100_treated_as_success(monkeypatch):
     binding = HostBaselineBinding.objects.get(target=target)
     assert binding.compliance_status == ComplianceStatus.NON_COMPLIANT
     assert binding.missing_count == 1
+
+
+@pytest.mark.django_db
+def test_run_install_rejects_patch_that_is_no_longer_missing(monkeypatch):
+    target = _make_node_mgmt_target()
+    baseline = PatchBaseline.objects.create(name='stale-install-baseline', os_type=OSType.LINUX, team=[1])
+    binding = HostBaselineBinding.objects.create(
+        target=target,
+        baseline=baseline,
+        compliance_status=ComplianceStatus.NOT_APPLICABLE,
+    )
+    patch = Patch.objects.create(title='foreign package', os_type=OSType.LINUX, team=[1])
+    LinuxPatchDetail.objects.create(patch=patch, pkg_name='foreign-package', pkg_version='1.0')
+    requirement = BaselineRequirement.objects.create(baseline=baseline, patch=patch)
+    HostComplianceSnapshot.objects.create(
+        binding=binding,
+        requirement=requirement,
+        satisfied=False,
+        status='not_applicable',
+        reason='不适用于当前主机',
+        evaluated_at=timezone.now(),
+    )
+    task = _make_task(GovernanceTaskType.INSTALL, [target.id], [patch.id])
+    task.risk_snapshot = [
+        {
+            'host_id': target.id,
+            'patch_id': patch.id,
+            'baseline_id': baseline.id,
+        }
+    ]
+    task.save(update_fields=['risk_snapshot', 'updated_at'])
+    calls = []
+
+    class FakeExecutor:
+        def execute_local_stream(self, command, **kwargs):  # noqa: ARG002
+            calls.append(command)
+            return {'exit_code': 0}
+
+    monkeypatch.setattr(pes, 'Executor', lambda instance_id: FakeExecutor())
+
+    pes.run_governance_task(task)
+
+    host = GovernanceTaskHost.objects.get(task=task, target_id=target.id)
+    assert calls == []
+    assert host.stage == 'failed'
+    assert host.error_code == 'assessment_stale'
+    assert '最新评估' in host.reason
 
 
 @pytest.mark.django_db

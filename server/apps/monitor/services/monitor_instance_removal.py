@@ -12,6 +12,7 @@ from apps.monitor.models import (
     CollectConfig,
     MonitorAlert,
     MonitorInstance,
+    MonitorInstanceOrganization,
     MonitorObjectOrganizationRule,
     MonitorPolicy,
     PolicyInstanceBaseline,
@@ -54,10 +55,37 @@ class MonitorInstanceRemovalService:
                 instances = list(
                     MonitorInstance.objects.select_for_update()
                     .filter(id__in=normalized_ids)
-                    .only("id", "cloud_region_id", "enabled_protocols", "monitor_object__name")
+                    .only(
+                        "id",
+                        "name",
+                        "ip",
+                        "cloud_region_id",
+                        "node_id",
+                        "cmdb_id",
+                        "enabled_protocols",
+                        "monitor_object__name",
+                    )
                     .select_related("monitor_object")
                     .order_by("id")
                 )
+                # 删除前快照（纯数据），供 IoC 通知清关联 ID
+                notify_snapshot = [
+                    {
+                        "id": str(inst.id),
+                        "name": inst.name,
+                        "ip": str(inst.ip) if inst.ip else None,
+                        "cloud_region_id": inst.cloud_region_id,
+                        "node_id": str(inst.node_id or "").strip() or None,
+                        "cmdb_id": str(inst.cmdb_id or "").strip() or None,
+                        "monitor_object_name": getattr(inst.monitor_object, "name", None),
+                        "organization_ids": list(
+                            MonitorInstanceOrganization.objects.filter(
+                                monitor_instance=inst
+                            ).values_list("organization", flat=True)
+                        ),
+                    }
+                    for inst in instances
+                ]
                 existing_ids = {str(instance.id) for instance in instances}
                 removed_ids = tuple(instance_id for instance_id in normalized_ids if instance_id in existing_ids)
                 missing_ids = tuple(instance_id for instance_id in normalized_ids if instance_id not in existing_ids)
@@ -106,6 +134,20 @@ class MonitorInstanceRemovalService:
                 )
                 MonitorInstance.objects.filter(id__in=removed_ids).delete()
                 FlowOnboardingService._schedule_region_refresh(*refresh_region_ids)
+
+            # IoC：删除后通知节点/CMDB 只清关联 ID（best-effort）
+            try:
+                from apps.monitor.services.module_push import MonitorToCmdbPushService
+
+                MonitorToCmdbPushService.best_effort_notify_on_delete(
+                    notify_snapshot,
+                    operator=operator or "",
+                )
+            except Exception:
+                logger.exception(
+                    "[MonitorInstanceRemoval] delete IoC notify failed ids=%s",
+                    list(removed_ids),
+                )
 
             logger.info(f"物理删除监控实例成功: {list(removed_ids)}")
             return RemovalResult(

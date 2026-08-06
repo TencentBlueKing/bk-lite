@@ -23,6 +23,9 @@ class NodeSerializer(serializers.ModelSerializer):
             "install_method",
             "node_type",
             "versions",
+            "cmdb_id",
+            "monitor_id",
+            "push_status",
         ]
 
     @classmethod
@@ -85,5 +88,13 @@ class TaskNodesQuerySerializer(serializers.Serializer):
     status = serializers.ListField(
         child=serializers.ChoiceField(choices=["waiting", "running", "success", "error"]),
         required=False,
+        allow_empty=False,
+    )
+
+
+class ModulePushSerializer(serializers.Serializer):
+    targets = serializers.ListField(
+        child=serializers.CharField(allow_blank=False),
+        required=True,
         allow_empty=False,
     )

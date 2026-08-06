@@ -819,11 +819,68 @@ class InstanceManage(object):
             )
 
         if schedule_post_actions:
-            from apps.cmdb.services.auto_relation_reconcile import schedule_instance_auto_relation_reconcile
+            try:
+                from apps.cmdb.services.auto_relation_reconcile import schedule_instance_auto_relation_reconcile
 
-            schedule_instance_auto_relation_reconcile([result["_id"]])
+                schedule_instance_auto_relation_reconcile([result["_id"]])
+            except Exception:
+                logger.exception(
+                    "[InstanceManage] post-create auto_relation hook failed cmdb_id=%s",
+                    result.get("_id"),
+                )
+            if model_id == "host":
+                try:
+                    result = InstanceManage._best_effort_notify_peers_on_host_create(
+                        result, operator=operator, allowed_org_ids=allowed_org_ids
+                    )
+                except Exception:
+                    logger.exception(
+                        "[InstanceManage] post-create IoC hook failed cmdb_id=%s",
+                        result.get("_id"),
+                    )
         return result
 
+    @staticmethod
+    def _best_effort_notify_peers_on_host_create(
+        result: dict,
+        *,
+        operator: str,
+        allowed_org_ids: list | None,
+    ) -> dict:
+        """主机新建 IoC 钩子：通知节点 + 监控（best-effort，不阻断创建）。"""
+        try:
+            from apps.cmdb.services.module_push import CmdbToMonitorPushService
+
+            return CmdbToMonitorPushService.best_effort_notify_on_host_create(
+                result,
+                operator=operator or "",
+                allowed_org_ids=list(allowed_org_ids or []),
+            )
+        except Exception:
+            logger.exception(
+                "[InstanceManage] IoC notify peers failed cmdb_id=%s",
+                result.get("_id"),
+            )
+            return result
+
+    @staticmethod
+    def _best_effort_auto_link_host_to_node(
+        result: dict,
+        *,
+        operator: str,
+        allowed_org_ids: list | None,
+    ) -> dict:
+        """兼容旧名：转发到 IoC 通知钩子。"""
+        try:
+            return InstanceManage._best_effort_notify_peers_on_host_create(
+                result, operator=operator, allowed_org_ids=allowed_org_ids
+            )
+        except Exception:
+            logger.exception(
+                "[InstanceManage] auto-link host hook failed cmdb_id=%s",
+                result.get("_id"),
+            )
+            return result
     @staticmethod
     def instance_batch_create(
             model_id: str,
@@ -994,7 +1051,12 @@ class InstanceManage(object):
             schedule_post_actions: bool = True,
     ):
         """修改实例属性"""
+        from apps.cmdb.services.module_ingest import strip_system_link_fields
+
         update_attr = dict(update_attr)
+        # 用户写路径剔除系统联动字段；IoC 回填走 skip_permission_check=True 时保留
+        if not skip_permission_check:
+            update_attr = strip_system_link_fields(update_attr)
         inst_info = InstanceManage.query_entity_by_id(inst_id)
 
         if not inst_info:
@@ -1249,6 +1311,21 @@ class InstanceManage(object):
         from apps.cmdb.services.auto_relation_reconcile import schedule_incoming_rule_full_sync_by_model_ids
 
         schedule_incoming_rule_full_sync_by_model_ids([item["model_id"] for item in inst_list])
+
+        # IoC：删除后通知节点/监控只清关联 ID（best-effort，不阻断删除）
+        try:
+            from apps.cmdb.services.module_push import CmdbToMonitorPushService
+
+            CmdbToMonitorPushService.best_effort_notify_on_delete(
+                inst_list,
+                operator=operator or "",
+                allowed_org_ids=None,
+            )
+        except Exception:
+            logger.exception(
+                "[InstanceManage] delete IoC notify failed inst_ids=%s",
+                inst_ids,
+            )
 
 
     @staticmethod

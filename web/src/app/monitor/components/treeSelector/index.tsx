@@ -16,6 +16,8 @@ interface TreeComponentProps {
   loading?: boolean;
   draggable?: boolean;
   showAllMenu?: boolean;
+  /** 允许选中带 children 的一级分类（如「数据库」），用于按分类展示全部能力 */
+  allowParentSelect?: boolean;
   onNodeSelect?: (key: string) => void;
   onNodeDrag?: (sortNodes: TreeSortData[], nodes: TreeDataNode[]) => void;
 }
@@ -26,6 +28,7 @@ const TreeComponent: React.FC<TreeComponentProps> = ({
   loading = false,
   draggable = false,
   showAllMenu = false,
+  allowParentSelect = false,
   onNodeSelect,
   onNodeDrag
 }) => {
@@ -61,8 +64,9 @@ const TreeComponent: React.FC<TreeComponentProps> = ({
   };
 
   const handleSelect = (selectedKeys: React.Key[], info: any) => {
-    const isFirstLevel = !!info.node?.children?.length;
-    if (!isFirstLevel && selectedKeys?.length) {
+    const hasChildren = !!info.node?.children?.length;
+    // 默认仅叶子可选；allowParentSelect 时一级分类也可选（如点「数据库」看该类全部能力）
+    if ((!hasChildren || allowParentSelect) && selectedKeys?.length) {
       setSelectedKeys(selectedKeys);
       onNodeSelect?.(selectedKeys[0] as string);
     }

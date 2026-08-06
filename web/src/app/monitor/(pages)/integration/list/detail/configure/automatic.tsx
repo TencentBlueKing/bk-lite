@@ -47,6 +47,11 @@ import {
   FormFieldDependency,
   isDependencySatisfied
 } from '@/app/monitor/hooks/integration/formFieldDependency';
+import {
+  applyIfmibDeploymentState,
+  getIfmibDeploymentPatch
+} from './ifmibDeploymentState';
+import { getSnmpInterfaceFilterModePatch } from '@/app/monitor/hooks/integration/snmpInterfaceFilterMode';
 const { confirm } = Modal;
 
 interface CollectDetectState {
@@ -83,6 +88,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
   const groupId = [currentGroup?.current?.id || ''];
   const pluginId = searchParams.get('plugin_id') || '';
   const objectId = searchParams.get('id') || '';
+  const enableIfmibFromUrl = searchParams.get('enable_ifmib') !== 'false';
   // URL 常见参数：name / plugin_name；兼容历史 plugin_display_name。
   const pluginDisplayName =
     searchParams.get('plugin_display_name') ||
@@ -98,6 +104,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
   const [initTableItems, setInitTableItems] =
     useState<IntegrationMonitoredObject>({});
   const [isTableInitialized, setIsTableInitialized] = useState<boolean>(false);
+  const hasInitializedFormRef = useRef(false);
   const [currentConfig, setCurrentConfig] = useState<any>(null);
   const [configLoading, setConfigLoading] = useState<boolean>(false);
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
@@ -632,8 +639,11 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
   useEffect(() => {
     if (isLoading) return;
     getNodeList();
-    initData();
   }, [isLoading]);
+
+  useEffect(() => {
+    hasInitializedFormRef.current = false;
+  }, [pluginId]);
 
   useEffect(() => {
     if (
@@ -660,6 +670,18 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     if (configLoading) return;
     const defaults = formConfig?.defaultForm;
     if (!defaults) return;
+    if (!hasInitializedFormRef.current) {
+      const initialValues = applyIfmibDeploymentState(defaults, enableIfmibFromUrl);
+      form.setFieldsValue(initialValues);
+      trackSnmpFilterMutexLastChanged({}, form.getFieldsValue(true), form);
+      hasInitializedFormRef.current = true;
+    }
+    // UI 字段可能在首次初始化后才挂载；其自身 default_value=true 会覆盖前一次
+    // 空表单初始化。因此只在 IF-MIB 字段真实可用时，以 URL 中当前下发流程状态回填。
+    const ifmibPatch = getIfmibDeploymentPatch(defaults, enableIfmibFromUrl);
+    if (Object.keys(ifmibPatch).length) {
+      form.setFieldsValue(ifmibPatch);
+    }
     setFormSnapshot((prev) => {
       const next = {
         ...defaults,
@@ -676,7 +698,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     });
     // 刻意依赖 defaultFormKey 而非 defaultForm 对象引用。
     // eslint-disable-next-line react-hooks/exhaustive-deps -- stabilize defaultForm identity
-  }, [configLoading, defaultFormKey, form]);
+  }, [configLoading, defaultFormKey, enableIfmibFromUrl, form]);
 
   const handleAdd = (key: string) => {
     const index = dataSource.findIndex((item) => item.key === key);
@@ -805,15 +827,6 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     onChange: (newSelectedRowKeys: React.Key[]) => {
       setSelectedRowKeys(newSelectedRowKeys);
     }
-  };
-
-  const initData = () => {
-    form.setFieldsValue({
-      ...(formConfig?.defaultForm || {})
-    });
-    const values = form.getFieldsValue(true);
-    setFormSnapshot(values);
-    trackSnmpFilterMutexLastChanged({}, values, form);
   };
 
   const getNodeList = async () => {
@@ -970,14 +983,26 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
       layout="vertical"
       onValuesChange={(changed, all) => {
         clearCollectDetectState();
-        trackSnmpFilterMutexLastChanged(changed, all, form);
+        const interfaceFilterModePatch = getSnmpInterfaceFilterModePatch(changed);
+        const nextValues = Object.keys(interfaceFilterModePatch).length
+          ? { ...all, ...interfaceFilterModePatch }
+          : all;
+        if (Object.keys(interfaceFilterModePatch).length) {
+          form.setFieldsValue(interfaceFilterModePatch);
+        }
+        trackSnmpFilterMutexLastChanged(changed, nextValues, form);
+        if (Object.prototype.hasOwnProperty.call(changed, 'enable_ifmib')) {
+          const params = new URLSearchParams(searchParams);
+          params.set('enable_ifmib', String(changed.enable_ifmib !== false));
+          router.replace(`/monitor/integration/list/detail/configure?${params.toString()}`);
+        }
         if (
           !tableDependencyFields.length ||
           tableDependencyFields.some((field) =>
             Object.prototype.hasOwnProperty.call(changed, field)
           )
         ) {
-          setFormSnapshot(all);
+          setFormSnapshot(nextValues);
         }
       }}
     >

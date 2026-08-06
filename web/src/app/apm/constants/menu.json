@@ -1,6 +1,12 @@
 {
   "zh": [
     {
+      "title": "首页",
+      "icon": "shouye",
+      "url": "/apm",
+      "name": "home"
+    },
+    {
       "title": "服务",
       "icon": "daohang-yunyingfenxishi",
       "url": "/apm/services",
@@ -117,6 +123,12 @@
     }
   ],
   "en": [
+    {
+      "title": "Home",
+      "icon": "shouye",
+      "url": "/apm",
+      "name": "home"
+    },
     {
       "title": "Services",
       "icon": "daohang-yunyingfenxishi",

@@ -93,10 +93,16 @@ def test_validate_domain_name_rejects_leading_dot():
         s.validate_domain_name(".evil.com")
 
 
-def test_validate_domain_name_rejects_wildcard():
+def test_validate_domain_name_accepts_prefix_wildcard():
     s = NetworkWhiteListSerializer()
-    with pytest.raises(serializers.ValidationError):
-        s.validate_domain_name("*.example.com")
+    assert s.validate_domain_name("*.Example.COM") == "*.example.com"
+
+
+def test_validate_domain_name_rejects_invalid_wildcard_forms():
+    s = NetworkWhiteListSerializer()
+    for bad in ("*", "*.com", "*example.com", "foo.*.com", "**.example.com", "*.*"):
+        with pytest.raises(serializers.ValidationError):
+            s.validate_domain_name(bad)
 
 
 def test_is_build_in_is_read_only():
@@ -113,7 +119,7 @@ def test_validate_rejects_changing_network_entry_to_domain():
 
     with patch.object(NetworkWhiteList.objects, "all") as all_entries:
         all_entries.return_value.filter.return_value.exclude.return_value.exists.return_value = False
-        with pytest.raises(serializers.ValidationError, match="条目类型不可变更"):
+        with pytest.raises(serializers.ValidationError, match="不可变更|cannot be changed"):
             serializer.validate({"domain_name": "corp-wecom.example.com"})
 
 
@@ -124,7 +130,7 @@ def test_validate_rejects_changing_domain_entry_to_network():
 
     with patch.object(NetworkWhiteList.objects, "all") as all_entries:
         all_entries.return_value.filter.return_value.exclude.return_value.exists.return_value = False
-        with pytest.raises(serializers.ValidationError, match="条目类型不可变更"):
+        with pytest.raises(serializers.ValidationError, match="不可变更|cannot be changed"):
             serializer.validate({"network": "10.0.0.0/24"})
 
 

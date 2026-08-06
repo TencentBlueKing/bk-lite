@@ -1,0 +1,15 @@
+{
+  "apm": {
+    "instances": {
+      "defaultActiveHelp": "Active instances are shown by default. Change the status or time range to view silent, archived, and historical instances."
+    },
+    "integration": {
+      "copyEndpoint": "Copy HTTP ingest endpoint",
+      "copyEndpointSuccess": "HTTP ingest endpoint copied",
+      "copyFailure": "Copy failed. Select and copy the text manually.",
+      "copyShellSnippet": "Copy Shell integration snippet",
+      "copyShellSnippetSuccess": "Shell integration snippet copied",
+      "instanceIdentityHelp": "The instance ID is generated when the application process starts and is unique to each replica."
+    }
+  }
+}

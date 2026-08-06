@@ -3,15 +3,17 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
-import { ErrorBlock, InfiniteScroll, SpinLoading, SwipeAction } from 'antd-mobile';
+import { InfiniteScroll, SpinLoading, SwipeAction } from 'antd-mobile';
 import { MessageOutline, MoreOutline } from 'antd-mobile-icons';
 import MobileTabShell from '@/components/mobile-tab-shell';
 import MobilePageHeader from '@/components/mobile-page-header';
 import MobilePullToRefresh from '@/components/mobile-pull-to-refresh';
+import { MobileResult, MobileSkeleton } from '@/components/mobile-feedback';
 import { getMobileSessions } from '@/api/bot';
 import { useSessionDeletion } from '@/app/conversation/hooks';
 import { getAppTagLabel } from '@/constants/workbenchTags';
 import { useLocale } from '@/context/locale';
+import { useAuth } from '@/context/auth';
 import { SessionItem } from '@/types/conversation';
 import { getAvatar } from '@/utils/avatar';
 import { useTranslation } from '@/utils/i18n';
@@ -29,6 +31,7 @@ export default function ConversationsPage() {
   const router = useRouter();
   const { t } = useTranslation();
   const { locale } = useLocale();
+  const { userInfo } = useAuth();
   const [sessions, setSessions] = useState<SessionItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadFailed, setLoadFailed] = useState(false);
@@ -107,41 +110,15 @@ export default function ConversationsPage() {
           <MobilePullToRefresh onRefresh={() => loadSessions({ preserveContent: true })}>
             <div className={styles.refreshContent}>
               {loading && (
-                <div className={`${styles.state} ${styles.loadingState}`}>
-                  <SpinLoading color="primary" />
-                </div>
+                <MobileSkeleton label={t('common.loading')} variant="list" rows={5} />
               )}
 
               {!loading && loadFailed && (
-                <div className={styles.state}>
-                  <ErrorBlock
-                    status="disconnected"
-                    title={t('conversations.loadFailed')}
-                    description={t('conversations.loadFailedDescription')}
-                  >
-                    <button type="button" className={styles.stateAction} onClick={() => void loadSessions()}>
-                      {t('common.retry')}
-                    </button>
-                  </ErrorBlock>
-                </div>
+                <MobileResult kind="error" title={t('conversations.loadFailed')} description={t('conversations.loadFailedDescription')} actionLabel={t('common.retry')} onAction={() => void loadSessions()} />
               )}
 
               {!loading && !loadFailed && sessions.length === 0 && (
-                <div className={styles.state}>
-                  <ErrorBlock
-                    status="empty"
-                    title={t('conversations.emptyTitle')}
-                    description={t('conversations.emptyDescription')}
-                  >
-                    <button
-                      type="button"
-                      className={styles.stateAction}
-                      onClick={() => router.replace('/workbench')}
-                    >
-                      {t('conversations.exploreApps')}
-                    </button>
-                  </ErrorBlock>
-                </div>
+                <MobileResult kind="empty" title={t('conversations.emptyTitle')} description={t('conversations.emptyDescription')} actionLabel={t('conversations.exploreApps')} onAction={() => router.replace('/workbench')} />
               )}
 
               {!loading && !loadFailed && sessions.length > 0 && (
@@ -192,7 +169,12 @@ export default function ConversationsPage() {
                                 </span>
                                 {activityTime && (
                                   <time className={styles.sessionTime} dateTime={activityTime}>
-                                    {formatSessionActivity(activityTime, locale, t('common.yesterday'))}
+                                    {formatSessionActivity(
+                                      activityTime,
+                                      locale,
+                                      t('common.yesterday'),
+                                      userInfo?.timezone,
+                                    )}
                                   </time>
                                 )}
                               </span>

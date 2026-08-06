@@ -15,6 +15,7 @@ from apps.patch_mgmt.constants import (
     GovernanceTaskStatus,
     GovernanceTaskType,
     RemediationStatus,
+    RequirementAssessmentStatus,
     RiskCompliance,
 )
 from apps.patch_mgmt.models import (
@@ -161,6 +162,13 @@ def _latest_task_for_pair(queryset, target_id: int, patch_id: int):
     )
 
 
+def _task_finished_after_evaluation(task: GovernanceTask, evaluated_at) -> bool:
+    """终态治理结果只能影响它之前的合规快照。"""
+    if evaluated_at is None:
+        return True
+    return (task.finished_at or task.created_at) > evaluated_at
+
+
 def _is_reboot_completed(target_id: int) -> bool:
     """检查该主机是否已有完成的 reboot 任务。"""
     return GovernanceTask.objects.filter(
@@ -213,7 +221,7 @@ def _compute_remediation(target_id: int, patch_id: int, compliance: str, evaluat
         target_list__contains=[target_id],
         patch_list__contains=[patch_id],
     ), target_id, patch_id)
-    if failed_verify:
+    if failed_verify and _task_finished_after_evaluation(failed_verify, evaluated_at):
         return RemediationStatus.FAILED
 
     # 已完成的安装任务按 host stage 推断下一步
@@ -223,19 +231,15 @@ def _compute_remediation(target_id: int, patch_id: int, compliance: str, evaluat
         target_list__contains=[target_id],
         patch_list__contains=[patch_id],
     ), target_id, patch_id)
+    if install_task and not _task_finished_after_evaluation(install_task, evaluated_at):
+        install_task = None
     if install_task:
         install_host = GovernanceTaskHost.objects.filter(
             task=install_task, target_id=target_id,
         ).first()
         if install_host:
             if install_host.stage == 'pending_reboot':
-                # 只有安装晚于最新评估时才等待重启；后续验证/评估
-                # 已经更新快照时，应以较新快照为准。
-                if evaluated_at is None or install_task.created_at > evaluated_at:
-                    return RemediationStatus.PENDING_REBOOT
-                if compliance == RiskCompliance.SATISFIED:
-                    return RemediationStatus.FIXED
-                return RemediationStatus.FAILED
+                return RemediationStatus.PENDING_REBOOT
             elif install_host.stage == 'failed':
                 # 安装失败
                 return RemediationStatus.FAILED
@@ -301,6 +305,8 @@ def compute_risk_items() -> list[RiskItem]:
             ComplianceStatus.EVALUATING,
             ComplianceStatus.UNCONFIGURED,
             ComplianceStatus.FAILED,
+            ComplianceStatus.UNKNOWN,
+            ComplianceStatus.NOT_APPLICABLE,
         ):
             continue
 
@@ -310,6 +316,11 @@ def compute_risk_items() -> list[RiskItem]:
 
             if snapshot:
                 # 有评估快照时优先按快照判断
+                if snapshot.status in (
+                    RequirementAssessmentStatus.UNKNOWN,
+                    RequirementAssessmentStatus.NOT_APPLICABLE,
+                ):
+                    continue
                 compliance = RiskCompliance.SATISFIED if snapshot.satisfied else RiskCompliance.MISSING
             else:
                 compliance = _compute_compliance(has_binding=True)
@@ -502,8 +513,14 @@ def compute_host_compliance_status(target: PatchTarget) -> str:
     if not binding:
         return ComplianceStatus.UNCONFIGURED
 
-    # 有正在进行的评估/验证任务时，显示评估中
-    if _has_active_assessment(target.id):
+    from apps.patch_mgmt.services.governance_convergence import (
+        project_target_assessment_status,
+    )
+
+    projected = project_target_assessment_status(target.id)
+    if projected == "failed":
+        return ComplianceStatus.FAILED
+    if projected == "evaluating":
         return ComplianceStatus.EVALUATING
 
     # 已绑定但还未执行过评估：显示待评估

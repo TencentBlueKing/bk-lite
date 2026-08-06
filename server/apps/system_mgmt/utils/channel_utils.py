@@ -1,11 +1,8 @@
 import base64
 import hashlib
 import hmac
-import ipaddress
 import json
-import re
 import smtplib
-import socket
 import time
 import urllib.parse
 from email import encoders
@@ -13,7 +10,7 @@ from email.header import Header
 from email.mime.base import MIMEBase
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-from urllib.parse import unquote, urlparse
+from urllib.parse import urlparse
 
 import requests
 from wechatpy import WeChatClientException
@@ -21,91 +18,24 @@ from wechatpy.enterprise import WeChatClient
 
 import nats_client
 from apps.core.logger import system_mgmt_logger as logger
+from apps.core.utils.ssrf_validator import SSRFError, SSRFValidator
 from apps.system_mgmt.models import Channel
-from apps.system_mgmt.utils.network_whitelist_cache import get_network_whitelist_cidrs, get_network_whitelist_domains
 from apps.system_mgmt.utils.network_whitelist_error import build_network_whitelist_error_payload
 
 
 def is_valid_webhook_url(url: str) -> bool:
-    """验证 Webhook URL 是否命中出站白名单,防止 SSRF 攻击。
+    """验证 Webhook URL 是否允许出站。
 
-    判定流程(短路求值):
-    1. URL 基础校验:scheme ∈ {http, https},无反斜杠/userinfo/编码绕过。
-    2. hostname 小写后命中 `NetworkWhiteList.domain`(字符串等值)。
-    3. 否则解析 hostname → IP,所有 IP 均落在 `NetworkWhiteList.network` CIDR 内才放行。
-    4. 全部不命中 → 拒绝,日志记录 hostname + 解析 IP 列表(fail-closed)。
-
-    Args:
-        url: Webhook URL
-
-    Returns:
-        bool: URL 是否有效且命中白名单
+    统一委托 ``SSRFValidator.validate``：公网域名默认通；内网/危险网段需
+    CIDR 或域名白名单例外；纯 IP 必须命中 CIDR；云 metadata 硬挡。
     """
     if not url:
         return False
     try:
-        # 拒绝含反斜杠的 URL(urlparse 与 requests 解析不一致,可绕过域名校验)
-        if "\\" in url:
-            return False
-        parsed = urlparse(url)
-        if parsed.scheme not in ("https", "http"):
-            return False
-        # 拒绝含 userinfo(@)的 URL,防止 user@host 形式的绕过
-        if "@" in (parsed.netloc or ""):
-            return False
-        hostname = parsed.hostname
-        if not hostname:
-            return False
-        # 对 hostname 解码后校验,防止 %23 %00 等编码绕过
-        decoded_hostname = unquote(hostname).lower()
-        if decoded_hostname != hostname.lower():
-            return False
-        # hostname 只允许字母、数字、连字符、点号
-        if not re.match(r"^[a-z0-9\-\.]+$", hostname.lower()):
-            return False
-        hostname_lower = hostname.lower()
-
-        # 路径 1:domain 集等值匹配(不做 DNS 解析,避免 rebinding)
-        allowed_domains = {d.lower() for d in get_network_whitelist_domains()}
-        if hostname_lower in allowed_domains:
-            return True
-
-        # 路径 2:解析 hostname 到 IP,所有 IP 均落入白名单 CIDR → 通过
-        allowed_cidrs = get_network_whitelist_cidrs()
-        if allowed_cidrs:
-            allowed_networks = []
-            for cidr in allowed_cidrs:
-                try:
-                    allowed_networks.append(ipaddress.ip_network(cidr, strict=False))
-                except ValueError:
-                    continue
-            if not allowed_networks:
-                return False
-
-            resolved_ips: list[str] = []
-            resolved_ip_objects: list[ipaddress.IPv4Address | ipaddress.IPv6Address] = []
-            try:
-                infos = socket.getaddrinfo(hostname, None)
-            except (socket.gaierror, UnicodeError, OSError) as exc:
-                logger.warning(f"[SSRF] DNS 解析失败: hostname={hostname_lower}, error={exc}")
-                return False
-            for info in infos:
-                sockaddr = info[4]
-                if not sockaddr:
-                    continue
-                ip_str = sockaddr[0]
-                # 去除 IPv6 方括号
-                ip_str = ip_str.strip("[]")
-                resolved_ips.append(ip_str)
-                try:
-                    ip_obj = ipaddress.ip_address(ip_str)
-                except ValueError:
-                    logger.warning(f"[SSRF] DNS 返回非法 IP: hostname={hostname_lower}, ip={ip_str}")
-                    return False
-                resolved_ip_objects.append(ip_obj)
-            if resolved_ip_objects and all(any(ip_obj in allowed_network for allowed_network in allowed_networks) for ip_obj in resolved_ip_objects):
-                return True
-            logger.warning(f"[SSRF] 阻断 webhook URL: hostname={hostname_lower}, resolved_ips={resolved_ips}")
+        SSRFValidator.validate(url)
+        return True
+    except SSRFError as exc:
+        logger.warning(f"[SSRF] 阻断 webhook URL: url_host={_webhook_hostname(url)}, reason={exc}")
         return False
     except Exception as exc:
         logger.exception(f"[SSRF] webhook 校验异常: {exc}")

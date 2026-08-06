@@ -18,6 +18,7 @@ export function hasMoreSessions(items: SessionItem[], count: number): boolean {
   return items.length < count;
 }
 
+/** 与 `@/utils/listPagination.shouldShowListPagination` 同规则。 */
 export function shouldShowSessionPagination(
   count: number | null,
   loadedCount: number,

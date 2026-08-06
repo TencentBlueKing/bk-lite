@@ -149,9 +149,27 @@ test('nginx.h5.conf serves exported routes and proxies API requests', async () =
     /proxy_pass http:\/\/bklite-web:3000\/api\/auth\//,
   );
   assert.match(nginxConfig, /proxy_set_header Cookie \$http_cookie/);
+  assert.match(nginxConfig, /location = \/api\/menu/);
+  assert.match(
+    nginxConfig,
+    /proxy_pass http:\/\/bklite-web:3000\/api\/menu/,
+  );
+  assert.match(nginxConfig, /location \^~ \/assets\//);
+  assert.match(
+    nginxConfig,
+    /proxy_pass http:\/\/bklite-web:3000\/assets\//,
+  );
   assert.match(
     nextConfig,
     /source: '\/api\/auth\/:path\*'[\s\S]*destination: `\$\{devAuthProxyTarget\}\/api\/auth\/:path\*`/,
+  );
+  assert.match(
+    nextConfig,
+    /source: '\/api\/menu'[\s\S]*destination: `\$\{devAuthProxyTarget\}\/api\/menu`/,
+  );
+  assert.match(
+    nextConfig,
+    /source: '\/assets\/:path\*'[\s\S]*destination: `\$\{devAuthProxyTarget\}\/assets\/:path\*`/,
   );
   assert.match(
     nextConfig,

@@ -11,12 +11,16 @@ from rest_framework.decorators import api_view
 
 from apps.core.logger import logger
 from apps.core.services.login_auth_request_service import (
+    AUTH_REQUEST_TTL,
     build_auth_request_state,
     create_auth_request,
+    create_browser_binding_token,
     get_auth_request,
+    get_login_auth_browser_cookie_name,
     get_login_auth_callback_uri,
     parse_auth_request_state,
     update_auth_request_status,
+    validate_browser_binding,
     validate_poll_token,
     validate_redirect_origin,
 )
@@ -81,6 +85,18 @@ def _set_auth_cookie_on_response(response, token):
         "bklite_token",
         token,
         max_age=login_expired_time,
+        path="/",
+        secure=not django_settings.DEBUG,
+        httponly=True,
+        samesite="Lax",
+    )
+
+
+def _set_login_auth_browser_cookie_on_response(response, auth_request_id, browser_binding_token):
+    response.set_cookie(
+        get_login_auth_browser_cookie_name(auth_request_id),
+        browser_binding_token,
+        max_age=AUTH_REQUEST_TTL,
         path="/",
         secure=not django_settings.DEBUG,
         httponly=True,
@@ -945,6 +961,7 @@ def start_login_auth(request):
         if not binding:
             return JsonResponse({"result": False, "message": "Login auth binding not found"}, status=404)
 
+        browser_binding_token = create_browser_binding_token()
         auth_request = create_auth_request(
             binding_id=binding.id,
             provider_key=binding.integration_instance.provider_key,
@@ -952,6 +969,7 @@ def start_login_auth(request):
             redirect_origin=redirect_origin,
             legacy_external_callback_url=legacy_external_callback_url,
             legacy_third_login_code=legacy_third_login_code,
+            browser_binding_token=browser_binding_token,
         )
         state = build_auth_request_state(
             auth_request_id=auth_request["auth_request_id"],
@@ -980,7 +998,7 @@ def start_login_auth(request):
                 status=400,
             )
 
-        return JsonResponse(
+        response = JsonResponse(
             {
                 "result": True,
                 "data": {
@@ -992,6 +1010,8 @@ def start_login_auth(request):
                 "message": "",
             }
         )
+        _set_login_auth_browser_cookie_on_response(response, auth_request["auth_request_id"], browser_binding_token)
+        return response
     except Exception as e:
         logger.error(f"Start login auth error: {e}")
         return JsonResponse(
@@ -1025,6 +1045,12 @@ def get_login_auth_request_status(request, auth_request_id):
     if not validate_poll_token(auth_request, poll_token):
         return JsonResponse({"result": False, "message": "Invalid poll token"}, status=403)
 
+    if not validate_browser_binding(
+        auth_request,
+        request.COOKIES.get(get_login_auth_browser_cookie_name(auth_request_id), ""),
+    ):
+        return JsonResponse({"result": False, "message": "Invalid browser binding"}, status=403)
+
     payload = {
         "status": auth_request.get("status", "pending"),
         "error_message": auth_request.get("error_message", ""),
@@ -1056,6 +1082,17 @@ def login_auth_callback(request):
     # 集中读一次(后续 6 处 status 分支共用);state 解析失败/auth_request 缺失分支
     # 走相对路径,这里 redirect_origin 自然为 None
     redirect_origin = (auth_request or {}).get("redirect_origin") or None
+
+    if not validate_browser_binding(
+        auth_request,
+        request.COOKIES.get(get_login_auth_browser_cookie_name(auth_request_id), ""),
+    ):
+        return _build_login_auth_result_redirect(
+            request,
+            "failed",
+            "认证请求与发起浏览器不匹配，请返回原页面重新发起认证。",
+            redirect_origin=redirect_origin,
+        )
 
     current_status = auth_request.get("status", "pending")
     if current_status != "pending":

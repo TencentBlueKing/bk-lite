@@ -12,6 +12,7 @@
 """
 
 import importlib
+from pathlib import Path
 
 import pytest
 from django.apps import apps as django_apps
@@ -123,6 +124,21 @@ class TestCeleryBeatScheduleDiscovery:
         for name, entry in mod.CELERY_BEAT_SCHEDULE.items():
             assert "task" in entry, f"Entry '{name}' missing 'task' key"
             assert "schedule" in entry, f"Entry '{name}' missing 'schedule' key"
+
+    def test_watchdog_declares_its_maintenance_queue_locally(self):
+        from apps.patch_mgmt.tasks import watch_governance_timeouts
+
+        assert watch_governance_timeouts.queue == "patch_maintenance"
+        entry = importlib.import_module("apps.patch_mgmt.config").CELERY_BEAT_SCHEDULE[
+            "patch_mgmt_watch_governance_timeouts"
+        ]
+        assert "options" not in entry
+
+    def test_release_image_installs_patch_maintenance_worker(self):
+        server_root = Path(__file__).resolve().parents[3]
+        dockerfile = (server_root / "support-files/release/Dockerfile").read_text()
+
+        assert "supervisor/patch_maintenance.conf" in dockerfile
 
 # ── 4. Schema 表存在性（依赖 Todo 2 迁移） ───────────────────────────────────
 

@@ -13,7 +13,6 @@
     "k8s_container_name",
     "k8s_node_name",
     "message",
-    "log_message",
     "timestamp"
   ],
   "display_category": "k8s"

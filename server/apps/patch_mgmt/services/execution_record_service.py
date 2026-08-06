@@ -70,10 +70,14 @@ def _chain_hosts(root: GovernanceTask) -> list[GovernanceTaskHost]:
     cached = getattr(root, "_execution_record_hosts", None)
     if cached is not None:
         return cached
+    queryset = GovernanceTaskHost.objects.filter(
+        task_id__in=[task.id for task in _task_chain(root)]
+    )
+    visible_target_ids = getattr(root, "_visible_target_ids", None)
+    if visible_target_ids is not None:
+        queryset = queryset.filter(target_id__in=visible_target_ids)
     hosts = list(
-        GovernanceTaskHost.objects.filter(
-            task_id__in=[task.id for task in _task_chain(root)]
-        )
+        queryset
         .select_related("task")
         .order_by("created_at", "id")
     )
@@ -97,8 +101,14 @@ def _step_status(task_type: str, stage: str) -> str:
     return "unknown"
 
 
+def _host_stage(host: GovernanceTaskHost) -> str:
+    from apps.patch_mgmt.services.governance_convergence import project_host_state
+
+    return project_host_state(host).stage
+
+
 def _attempt(task: GovernanceTask, host: GovernanceTaskHost, include_log: bool) -> dict:
-    status = _step_status(task.task_type, host.stage)
+    status = _step_status(task.task_type, _host_stage(host))
     display, color = STATUS_META[status]
     data = {
         "id": host.id,
@@ -120,8 +130,16 @@ def _attempt(task: GovernanceTask, host: GovernanceTaskHost, include_log: bool) 
 
 
 def _risk_snapshot(root: GovernanceTask) -> list[dict]:
+    visible_target_ids = getattr(root, "_visible_target_ids", None)
     if root.risk_snapshot:
-        return list(root.risk_snapshot)
+        snapshot = list(root.risk_snapshot)
+        if visible_target_ids is not None:
+            snapshot = [
+                item
+                for item in snapshot
+                if int(item.get("host_id") or 0) in visible_target_ids
+            ]
+        return snapshot
     return [
         {
             "id": f"{target_id}:0:0",
@@ -134,6 +152,7 @@ def _risk_snapshot(root: GovernanceTask) -> list[dict]:
             "baseline_name": "",
         }
         for target_id in (root.target_list or [])
+        if visible_target_ids is None or int(target_id) in visible_target_ids
         for host in [root.host_results.filter(target_id=target_id).first()]
     ]
 
@@ -201,7 +220,7 @@ def _item_status(root: GovernanceTask, item: dict) -> str:
 
     root_host = _root_host(root, target_id)
     if root_host:
-        root_status = _step_status(root.task_type, root_host.stage)
+        root_status = _step_status(root.task_type, _host_stage(root_host))
         if root_status in {"failed", "cancelled", "unknown"}:
             return root_status
         if root.auto_reboot and root_host.error_code == "reboot_requirement_unknown":
@@ -257,6 +276,12 @@ def _item_status(root: GovernanceTask, item: dict) -> str:
 def _item_can_retry(root: GovernanceTask, item: dict, status: str) -> bool:
     if status not in {"failed", "unknown", "unmet"}:
         return False
+    patch_id = int(item.get("patch_id") or 0)
+    if patch_id:
+        from apps.patch_mgmt.models import Patch
+
+        if not Patch.objects.filter(pk=patch_id).exists():
+            return False
     risk_item_id = str(item.get("id") or "")
     if GovernanceTask.objects.filter(
         parent_task__isnull=True,
@@ -355,9 +380,9 @@ def _skipped_step_reason(
             return "skipped", "安装已取消，未执行重启"
         if root_host and root_host.error_code == "reboot_requirement_unknown":
             return "skipped", "无法判断是否需要重启，未执行自动重启"
-        if root_host and root_host.stage == "pending_reboot" and not root.auto_reboot:
+        if root_host and _host_stage(root_host) == "pending_reboot" and not root.auto_reboot:
             return "skipped", "未设置安装后自动重启"
-        if root_host and root_host.stage == "completed":
+        if root_host and _host_stage(root_host) == "completed":
             return "skipped", "安装后确认无需重启"
         if install_status in {"completed", "failed", "cancelled"}:
             return "skipped", "本次动作未执行重启"
@@ -370,7 +395,7 @@ def _skipped_step_reason(
         if root_host and root.task_type == GovernanceTaskType.INSTALL:
             if root_host.error_code == "reboot_requirement_unknown":
                 return "skipped", "重启需求无法判定，未执行验证"
-            if root_host.stage == "pending_reboot" and not root.auto_reboot:
+            if _host_stage(root_host) == "pending_reboot" and not root.auto_reboot:
                 return "skipped", "未执行重启，本次记录不执行验证"
         if reboot and reboot[-1]["status"] == "failed":
             return "skipped", "重启失败，未执行验证"

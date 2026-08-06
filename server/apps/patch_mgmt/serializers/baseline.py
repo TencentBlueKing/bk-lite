@@ -108,6 +108,7 @@ class PatchBaselineListSerializer(PatchPermissionSerializer):
     can_assess = serializers.SerializerMethodField()
     assess_disabled_reason = serializers.SerializerMethodField()
     permission_key = "patch_baseline"
+    global_shared = True
 
     class Meta:
         model = PatchBaseline
@@ -137,7 +138,7 @@ class PatchBaselineListSerializer(PatchPermissionSerializer):
         """同 team 下名称唯一。"""
         if not value:
             return value
-        request = self.context.get("request")
+        request = getattr(self, "_context", {}).get("request")
         team_id = None
         if request:
             from apps.core.utils.team_utils import get_current_team
@@ -166,24 +167,28 @@ class PatchBaselineListSerializer(PatchPermissionSerializer):
         return obj.requirements.count()
 
     def get_bound_host_count(self, obj):
-        return obj.host_bindings.count()
+        return self._visible_bindings(obj).count()
+
+    def _visible_bindings(self, obj):
+        queryset = (
+            obj.host_bindings.all()
+            if hasattr(obj.host_bindings, "all")
+            else obj.host_bindings
+        )
+        request = getattr(self, "_context", {}).get("request")
+        if request is None:
+            return queryset
+        from apps.patch_mgmt.services.target_access import target_access_scope
+
+        return queryset.filter(
+            target_id__in=target_access_scope(request).queryset("View").values("id")
+        )
 
     def get_compliance_distribution(self, obj):
         """按已绑定主机的合规状态聚合分布（含评估中）。"""
-        bindings = list(obj.host_bindings.all())
+        bindings = list(self._visible_bindings(obj).select_related("target"))
         if not bindings:
             return []
-
-        target_ids = [b.target_id for b in bindings]
-        active_target_ids = set(
-            GovernanceTask.objects.filter(
-                host_results__target_id__in=target_ids,
-                task_type__in=(GovernanceTaskType.ASSESS, GovernanceTaskType.VERIFY),
-                status__in=GovernanceTaskStatus.ACTIVE_STATES,
-            )
-            .values_list("host_results__target_id", flat=True)
-            .distinct()
-        )
 
         status_meta = {
             ComplianceStatus.COMPLIANT: (serializer_message(self, "status.compliance.compliant", "Compliant"), "success", "compliant"),
@@ -191,14 +196,14 @@ class PatchBaselineListSerializer(PatchPermissionSerializer):
             ComplianceStatus.PENDING: (serializer_message(self, "status.compliance.pending", "Pending assessment"), "default", "pending"),
             ComplianceStatus.EVALUATING: (serializer_message(self, "status.compliance.evaluating", "Assessing"), "processing", "evaluating"),
             ComplianceStatus.FAILED: (serializer_message(self, "status.compliance.failed", "Assessment failed"), "default", "failed"),
+            ComplianceStatus.UNKNOWN: (serializer_message(self, "status.compliance.unknown", "Assessment unknown"), "warning", "unknown"),
+            ComplianceStatus.NOT_APPLICABLE: (serializer_message(self, "status.compliance.not_applicable", "Not applicable"), "default", "not_applicable"),
         }
         counts = {key: 0 for key in status_meta}
+        from apps.patch_mgmt.services.risk_service import compute_host_compliance_status
+
         for binding in bindings:
-            key = (
-                ComplianceStatus.EVALUATING
-                if binding.target_id in active_target_ids
-                else binding.compliance_status
-            )
+            key = compute_host_compliance_status(binding.target)
             if key in counts:
                 counts[key] += 1
 
@@ -238,14 +243,31 @@ class PatchBaselineListSerializer(PatchPermissionSerializer):
     def get_can_assess(self, obj):
         return (
             obj.requirements.exists()
-            and obj.host_bindings.exists()
+            and self._operable_bindings(obj).exists()
             and not self.get_is_assessing(obj)
+        )
+
+    def _operable_bindings(self, obj):
+        queryset = (
+            obj.host_bindings.all()
+            if hasattr(obj.host_bindings, "all")
+            else obj.host_bindings
+        )
+        request = getattr(self, "_context", {}).get("request")
+        if request is None:
+            return queryset
+        from apps.patch_mgmt.services.target_access import target_access_scope
+
+        return queryset.filter(
+            target_id__in=target_access_scope(request)
+            .queryset("Operate")
+            .values("id")
         )
 
     def get_assess_disabled_reason(self, obj):
         if not obj.requirements.exists():
             return serializer_message(self, "error.baseline_no_requirements", "The baseline has no patch requirements")
-        if not obj.host_bindings.exists():
+        if not self._operable_bindings(obj).exists():
             return serializer_message(self, "error.baseline_no_targets", "The baseline has no bound targets")
         if self.get_is_assessing(obj):
             return serializer_message(self, "error.baseline_assessing", "The baseline is being assessed")

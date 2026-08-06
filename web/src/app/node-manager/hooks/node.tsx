@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { useTranslation } from '@/utils/i18n';
-import { Button, Popconfirm } from 'antd';
+import { Button } from 'antd';
 import {
   CheckCircleOutlined,
   ExclamationCircleOutlined,
@@ -89,20 +89,14 @@ const useColumns = ({
               </Button>
             </Permission>
             <Permission requiredPermissions={['Delete']}>
-              <Popconfirm
+              <Button
                 className="ml-[10px]"
-                title={t(`common.prompt`)}
-                description={t(`node-manager.cloudregion.node.deleteNodeTips`)}
-                okText={t('common.confirm')}
-                cancelText={t('common.cancel')}
-                onConfirm={() => {
-                  deleteNode(item);
-                }}
+                type="link"
+                disabled={item.active}
+                onClick={() => deleteNode(item)}
               >
-                <Button type="link" disabled={item.active}>
-                  {t('common.delete')}
-                </Button>
-              </Popconfirm>
+                {t('common.delete')}
+              </Button>
             </Permission>
           </>
         )

@@ -101,3 +101,72 @@ def test_vector_048_runs_shared_contract_cases():
     actual = [json.loads(line) for line in completed.stdout.splitlines() if line.startswith("{")]
 
     assert actual == expected
+
+
+@pytest.mark.integration
+@pytest.mark.slow
+def test_vector_048_moves_legacy_messages_without_retaining_full_copies():
+    if not shutil.which("docker"):
+        pytest.skip("Docker 不可用")
+    config = yaml.safe_load(compile_system_vector_config([]))
+    source = config["transforms"]["normalize_event"]["source"].replace("$$", "$")
+    events = [
+        {"collect_type": "kubernetes", "message": "k8s", "log_message": "k8s"},
+        {"collect_type": "winlogbeat", "message": "windows", "_msg": "windows"},
+        {"collect_type": "snmp_trap", "message": "raw header", "trap_message": "parsed trap"},
+        {"collect_type": "http", "http": {"response": {"code": 200}}},
+    ]
+    completed = subprocess.run(
+        [
+            "docker",
+            "run",
+            "--rm",
+            "-i",
+            "--entrypoint",
+            "vector",
+            "bk-lite.tencentcloudcr.com/bklite/timberio/vector:0.48.0-debian",
+            "vrl",
+            source,
+            "--input",
+            "/dev/stdin",
+            "--print-object",
+        ],
+        check=True,
+        capture_output=True,
+        input="".join(json.dumps(event) + "\n" for event in events),
+        text=True,
+        timeout=120,
+    )
+    actual = [json.loads(line) for line in completed.stdout.splitlines() if line.startswith("{")]
+
+    assert actual == [
+        {"collect_type": "kubernetes", "message": "k8s"},
+        {"collect_type": "winlogbeat", "message": "windows"},
+        {"collect_type": "snmp_trap", "message": "parsed trap"},
+        {"collect_type": "http", "http": {"response": {"code": 200}}, "message": "Packetbeat HTTP event"},
+    ]
+
+    storage_source = config["transforms"]["prepare_victoria_logs"]["source"]
+    stored = subprocess.run(
+        [
+            "docker",
+            "run",
+            "--rm",
+            "-i",
+            "--entrypoint",
+            "vector",
+            "bk-lite.tencentcloudcr.com/bklite/timberio/vector:0.48.0-debian",
+            "vrl",
+            storage_source,
+            "--input",
+            "/dev/stdin",
+            "--print-object",
+        ],
+        check=True,
+        capture_output=True,
+        input=json.dumps({"message": "only once", "host": "node-1"}) + "\n",
+        text=True,
+        timeout=120,
+    )
+    stored_events = [json.loads(line) for line in stored.stdout.splitlines() if line.startswith("{")]
+    assert stored_events == [{"_msg": "only once", "host": "node-1"}]

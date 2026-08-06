@@ -18,6 +18,15 @@ from apps.cmdb.views.node_mgmt_sync import NodeMgmtSyncViewSet
 pytestmark = pytest.mark.django_db
 
 
+@pytest.fixture(autouse=True)
+def _enable_pull_sync_for_legacy_reconciler_tests(monkeypatch):
+    """本文件测 Beat 对账机制本身，需临时关闭推送联动门闩才能创建同步周期任务。"""
+    monkeypatch.setattr(
+        "apps.cmdb.services.node_mgmt_sync_service.PUSH_LINKAGE_REPLACES_PULL_SYNC",
+        False,
+    )
+
+
 def _task_names():
     return set(PeriodicTask.objects.values_list("name", flat=True))
 
@@ -37,6 +46,8 @@ def _get_task_from_view():
 
 
 def test_product_get_reconciles_first_open_disabled_refresh_and_deleted_drift():
+    # 新配置默认关闭拉取同步；先显式开启以覆盖「对账/删除漂移」路径。
+    NodeMgmtSyncService.update_task({"auto_sync_enabled": True, "auto_collect_enabled": True})
     payload = _get_task_from_view()
     assert payload["schedule_status"] == "healthy"
     assert _task_names() == {
@@ -59,9 +70,9 @@ def test_product_get_reconciles_first_open_disabled_refresh_and_deleted_drift():
 def test_first_open_reconciles_default_enabled_switches_to_beat():
     payload = NodeMgmtSyncService.get_task_payload(reconcile=True)
 
-    assert payload["auto_sync_enabled"] is True
+    assert payload["auto_sync_enabled"] is False
     assert payload["auto_collect_enabled"] is True
-    assert NodeMgmtSyncService.SYNC_PERIODIC_TASK_NAME in _task_names()
+    assert NodeMgmtSyncService.SYNC_PERIODIC_TASK_NAME not in _task_names()
     assert NodeMgmtSyncService.COLLECT_PERIODIC_TASK_NAME in _task_names()
     assert payload["schedule_status"] == "healthy"
 
@@ -89,6 +100,7 @@ def test_disable_then_enable_recreates_both_schedules():
 
 
 def test_reconcile_repairs_deleted_or_wrong_schedule():
+    NodeMgmtSyncService.update_task({"auto_sync_enabled": True, "auto_collect_enabled": True})
     NodeMgmtSyncService.get_task_payload(reconcile=True)
     PeriodicTask.objects.filter(name=NodeMgmtSyncService.SYNC_PERIODIC_TASK_NAME).delete()
 
@@ -122,6 +134,7 @@ def test_reconcile_repairs_deleted_or_wrong_schedule():
 
 
 def test_reconcile_migrates_legacy_crontab_to_real_interval():
+    NodeMgmtSyncService.update_task({"auto_sync_enabled": True, "auto_collect_enabled": True})
     NodeMgmtSyncService.get_task_payload(reconcile=True)
     sync_task = PeriodicTask.objects.get(name=NodeMgmtSyncService.SYNC_PERIODIC_TASK_NAME)
     expected_timezone = timezone.get_default_timezone()
@@ -148,7 +161,14 @@ def test_reconcile_migrates_legacy_crontab_to_real_interval():
 
 @pytest.mark.parametrize("minutes", [1, 60, 90, 1440])
 def test_reconcile_uses_exact_minute_interval_for_long_cycles(minutes):
-    NodeMgmtSyncService.update_task({"sync_interval_minutes": minutes, "collect_interval_minutes": minutes})
+    NodeMgmtSyncService.update_task(
+        {
+            "auto_sync_enabled": True,
+            "auto_collect_enabled": True,
+            "sync_interval_minutes": minutes,
+            "collect_interval_minutes": minutes,
+        }
+    )
 
     for name in (
         NodeMgmtSyncService.SYNC_PERIODIC_TASK_NAME,
@@ -161,6 +181,7 @@ def test_reconcile_uses_exact_minute_interval_for_long_cycles(minutes):
 
 
 def test_reconcile_deterministically_repairs_duplicate_interval_and_all_schedule_fks():
+    NodeMgmtSyncService.update_task({"auto_sync_enabled": True, "auto_collect_enabled": True})
     NodeMgmtSyncService.get_task_payload(reconcile=True)
     periodic_task = PeriodicTask.objects.get(name=NodeMgmtSyncService.SYNC_PERIODIC_TASK_NAME)
     duplicate = IntervalSchedule.objects.create(every=5 * 60, period=IntervalSchedule.SECONDS)
@@ -358,6 +379,8 @@ def test_update_increments_version_and_persists_degraded_health_on_beat_failure(
 
 
 def test_disabled_schedule_delete_failure_does_not_log_raw_exception(caplog):
+    # 先显式打开拉取同步，确保存在待删除的 sync Beat 任务。
+    NodeMgmtSyncService.update_task({"auto_sync_enabled": True, "auto_collect_enabled": True})
     NodeMgmtSyncService.get_task_payload(reconcile=True)
     config = NodeMgmtSyncService.get_task()
     config.auto_sync_enabled = False
@@ -376,6 +399,6 @@ def test_disabled_schedule_delete_failure_does_not_log_raw_exception(caplog):
 def test_get_task_is_pure_and_does_not_reconcile_schedules():
     config = NodeMgmtSyncService.get_task()
 
-    assert config.auto_sync_enabled is True
+    assert config.auto_sync_enabled is False
     assert config.auto_collect_enabled is True
     assert _task_names() == set()

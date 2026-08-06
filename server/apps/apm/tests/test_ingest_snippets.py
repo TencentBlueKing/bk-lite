@@ -1,19 +1,36 @@
+import os
+import shlex
+import subprocess
+import uuid
+from unittest.mock import Mock
+from urllib.parse import unquote
+
 import pytest
 
 from apps.apm.services import DjangoIntegrationConfigurationService
 from apps.apm.services.contracts import IngestSnippetRequest
+from apps.apm.services.integration_configuration import CloudRegionConfigurationError
 
 
-@pytest.mark.parametrize(
-    ("runtime", "expected_identity"),
-    [
-        ("kubernetes", "${POD_UID:?POD_UID is required}"),
-        ("docker", "${HOSTNAME:?container instance id is required}"),
-        ("host", "${BK_INSTANCE_ID:?stable platform instance id is required}"),
-        ("other", "${APM_INSTANCE_ID:-$(uuidgen)}"),
-    ],
-)
-def test_snippet_uses_a_runtime_instance_identity_instead_of_a_shared_constant(runtime, expected_identity):
+def _configuration_script(code: str) -> str:
+    section = code.split("# 2. 配置上报", maxsplit=1)[1].split("# 3. 启动应用", maxsplit=1)[0]
+    return section.split("\n", maxsplit=1)[1]
+
+
+def test_region_resolution_fails_closed_without_organization_scope():
+    node_mgmt = Mock()
+    node_mgmt.cloud_region_list.return_value = [{"id": 7, "name": "华东一区"}]
+
+    with pytest.raises(CloudRegionConfigurationError) as exc_info:
+        DjangoIntegrationConfigurationService().resolve_region(node_mgmt, 7, organization_ids=[])
+
+    assert exc_info.value.code == "cloud_region_receiver_unavailable"
+    node_mgmt.cloud_region_list.assert_not_called()
+    node_mgmt.get_cloud_region_proxy_address.assert_not_called()
+
+
+@pytest.mark.parametrize("runtime", ["kubernetes", "docker", "host", "other"])
+def test_snippet_uses_a_runtime_instance_identity_instead_of_a_shared_constant(runtime):
     snippet = DjangoIntegrationConfigurationService().render_snippet(
         IngestSnippetRequest(
             language="python",
@@ -26,8 +43,9 @@ def test_snippet_uses_a_runtime_instance_identity_instead_of_a_shared_constant(r
         )
     )
 
-    assert expected_identity in snippet.code
-    assert "service.instance.id=${OTEL_SERVICE_INSTANCE_ID}" in snippet.code
+    assert "service.instance.id=${OTEL_SERVICE_INSTANCE_ID}" in snippet.environment["OTEL_RESOURCE_ATTRIBUTES"]
+    assert "BK_INSTANCE_ID" not in snippet.code
+    assert "APM_INSTANCE_ID" in snippet.code
     assert "OTEL_EXPORTER_OTLP_HEADERS" not in snippet.environment
     assert "service.namespace=shop" in snippet.environment["OTEL_RESOURCE_ATTRIBUTES"]
     assert "service.name=checkout" in snippet.environment["OTEL_RESOURCE_ATTRIBUTES"]
@@ -50,6 +68,114 @@ def test_snippet_uses_http_protocol_and_language_specific_launch_command():
 
     assert snippet.environment["OTEL_EXPORTER_OTLP_PROTOCOL"] == "http/protobuf"
     assert "opentelemetry-javaagent.jar" in snippet.code
+
+
+def test_host_snippet_generates_a_valid_instance_id_without_platform_variables():
+    snippet = DjangoIntegrationConfigurationService().render_snippet(
+        IngestSnippetRequest(
+            language="nodejs",
+            runtime="host",
+            endpoint="https://apm.example.com",
+            service_namespace="shop",
+            service_name="checkout",
+            service_version="1.2.3",
+            environment="production",
+        )
+    )
+    configuration = _configuration_script(snippet.code)
+    generated = subprocess.run(
+        ["sh", "-c", f'{configuration}\nprintf %s "$OTEL_SERVICE_INSTANCE_ID"'],
+        env={key: value for key, value in os.environ.items() if key != "APM_INSTANCE_ID"},
+        text=True,
+        capture_output=True,
+        check=True,
+    ).stdout
+
+    assert uuid.UUID(generated).version == 4
+
+
+def test_host_snippet_fails_closed_when_uuid_sources_are_unavailable(tmp_path):
+    snippet = DjangoIntegrationConfigurationService().render_snippet(
+        IngestSnippetRequest(
+            language="nodejs",
+            runtime="host",
+            endpoint="https://apm.example.com",
+            service_namespace="shop",
+            service_name="checkout",
+            service_version="1.2.3",
+            environment="production",
+        )
+    )
+    configuration = _configuration_script(snippet.code)
+
+    failed = subprocess.run(
+        ["/bin/sh", "-c", configuration],
+        env={"PATH": str(tmp_path)},
+        text=True,
+        capture_output=True,
+    )
+
+    assert failed.returncode != 0
+    assert "service.instance.id" in failed.stderr
+
+
+@pytest.mark.parametrize(
+    ("runtime", "runtime_environment", "expected"),
+    [
+        ("host", {"APM_INSTANCE_ID": "host-replica-a"}, "host-replica-a"),
+        ("kubernetes", {"POD_UID": "2f8a5cc2-2e44-4df5-a8c6-7182942541ce"}, "2f8a5cc2-2e44-4df5-a8c6-7182942541ce"),
+        ("other", {"APM_INSTANCE_ID": "custom-runtime-a"}, "custom-runtime-a"),
+    ],
+)
+def test_non_docker_runtime_profile_selects_and_validates_one_process_identity(runtime, runtime_environment, expected):
+    snippet = DjangoIntegrationConfigurationService().render_snippet(
+        IngestSnippetRequest(
+            language="python",
+            runtime=runtime,
+            endpoint="https://apm.example.com",
+            service_namespace="shop",
+            service_name="checkout",
+            service_version="1.0",
+            environment="production",
+        )
+    )
+    configuration = _configuration_script(snippet.code)
+
+    rendered = subprocess.run(
+        ["sh", "-c", f'{configuration}\nprintf %s "$OTEL_SERVICE_INSTANCE_ID"'],
+        env={**os.environ, **runtime_environment},
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+
+    assert rendered.stdout == expected
+
+
+@pytest.mark.parametrize("invalid", ["", "shared,replica", "line\nbreak", "x" * 513])
+def test_explicit_instance_identity_fails_closed_outside_the_safe_boundary(invalid):
+    snippet = DjangoIntegrationConfigurationService().render_snippet(
+        IngestSnippetRequest(
+            language="python",
+            runtime="other",
+            endpoint="https://apm.example.com",
+            service_namespace="shop",
+            service_name="checkout",
+            service_version="1.0",
+            environment="production",
+        )
+    )
+    configuration = _configuration_script(snippet.code)
+
+    failed = subprocess.run(
+        ["sh", "-c", configuration],
+        env={**os.environ, "APM_INSTANCE_ID": invalid},
+        text=True,
+        capture_output=True,
+    )
+
+    assert failed.returncode != 0
+    assert "service.instance.id" in failed.stderr
 
 
 @pytest.mark.parametrize(
@@ -99,3 +225,57 @@ def test_docker_snippet_uses_runtime_environment_injection_instead_of_host_expor
     assert "OTEL_EXPORTER_OTLP_HEADERS" not in snippet.code
     assert "NODE_OPTIONS=" in snippet.code
     assert "export OTEL_EXPORTER_OTLP_ENDPOINT" not in snippet.code
+
+
+@pytest.mark.parametrize("runtime", ["host", "docker"])
+def test_snippet_separately_quotes_shell_literals_and_encodes_otel_resource_values(runtime):
+    malicious = "checkout%'\n,forged.key=forged $(printf injected) `printf injected` ; # 界"
+    snippet = DjangoIntegrationConfigurationService().render_snippet(
+        IngestSnippetRequest(
+            language="python",
+            runtime=runtime,
+            endpoint="https://apm.example.com",
+            service_namespace=malicious,
+            service_name=malicious,
+            service_version=malicious,
+            environment=malicious,
+        )
+    )
+
+    assert subprocess.run(["sh", "-n"], input=snippet.code, text=True, capture_output=True).returncode == 0
+    resource_dto = snippet.environment["OTEL_RESOURCE_ATTRIBUTES"]
+    assert "forged.key=forged" not in resource_dto.split(",")
+    assert "%25" in resource_dto
+    assert "%2Cforged.key%3Dforged" in resource_dto
+    assert "%0A" in resource_dto
+    assert "%E7%95%8C" in resource_dto
+
+    if runtime == "host":
+        configuration = _configuration_script(snippet.code)
+        script = f'{configuration}\nprintf %s "$OTEL_RESOURCE_ATTRIBUTES"'
+        environment = {**os.environ, "APM_INSTANCE_ID": "host-instance"}
+        expected_instance = "host-instance"
+    else:
+        tokens = shlex.split(snippet.code, comments=True)
+        command_index = next(index for index in range(len(tokens) - 2) if tokens[index : index + 2] == ["sh", "-c"])
+        script_token = next(token for token in tokens[command_index + 2 :] if token.strip())
+        script = script_token.split("; exec ", maxsplit=1)[0]
+        script += '; printf %s "$OTEL_RESOURCE_ATTRIBUTES"'
+        environment = {**os.environ, "HOSTNAME": "container-instance"}
+        expected_instance = "container-instance"
+
+    rendered = subprocess.run(
+        ["sh", "-c", script],
+        env=environment,
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+    pairs = dict(item.split("=", maxsplit=1) for item in rendered.stdout.split(","))
+    assert {key: unquote(value) for key, value in pairs.items()} == {
+        "service.namespace": malicious,
+        "service.name": malicious,
+        "service.version": malicious,
+        "deployment.environment": malicious,
+        "service.instance.id": expected_instance,
+    }

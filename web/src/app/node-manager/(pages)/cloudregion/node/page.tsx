@@ -8,6 +8,7 @@ import React, {
 } from 'react';
 import {
   Button,
+  Checkbox,
   message,
   Space,
   Modal,
@@ -109,15 +110,41 @@ const Node = () => {
         form: row
       });
     },
-    deleteNode: async (row: TableDataItem) => {
-      try {
-        setLoading(true);
-        await delNode(row.id as string);
-        message.success(t('common.successfullyDeleted'));
-        getNodes(searchFilters);
-      } catch {
-        setLoading(false);
-      }
+    deleteNode: (row: TableDataItem) => {
+      let retireLinked = false;
+      confirm({
+        title: t('common.prompt'),
+        content: (
+          <div>
+            <div className="mb-3">
+              {t('node-manager.cloudregion.node.deleteNodeTips')}
+            </div>
+            <Checkbox
+              onChange={(e) => {
+                retireLinked = e.target.checked;
+              }}
+            >
+              {t('node-manager.cloudregion.node.retireLinkedConfirm')}
+            </Checkbox>
+          </div>
+        ),
+        okText: t('common.confirm'),
+        cancelText: t('common.cancel'),
+        centered: true,
+        onOk: async () => {
+          setLoading(true);
+          try {
+            await delNode(row.id as string, {
+              retire_linked: retireLinked
+            });
+            message.success(t('common.successfullyDeleted'));
+            getNodes(searchFilters);
+          } catch {
+            setLoading(false);
+            throw new Error('delete failed');
+          }
+        }
+      });
     }
   });
 

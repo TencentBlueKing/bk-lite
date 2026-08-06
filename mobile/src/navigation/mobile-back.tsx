@@ -22,12 +22,26 @@ interface MobileBackOptions {
 }
 
 const MobileNavigationContext = createContext<MobileNavigationContextValue | null>(null);
-const NATIVE_BACK_GESTURE_ENABLED_ROUTES = new Set([
-  '/conversations',
-  '/search',
-  '/workbench/detail',
-  '/profile/accountDetails',
+const ROOT_ROUTES = new Set([
+  '/',
+  '/login',
+  '/todo',
+  '/monitor',
+  '/assets',
+  '/workbench',
+  '/profile',
 ]);
+
+export function shouldEnableNativeBackGesture(pathname: string) {
+  if (pathname === '/conversation' || ROOT_ROUTES.has(pathname)) return false;
+  return pathname === '/conversations'
+    || pathname === '/search'
+    || pathname.startsWith('/todo/')
+    || pathname.startsWith('/monitor/')
+    || pathname.startsWith('/assets/')
+    || pathname.startsWith('/workbench/')
+    || pathname.startsWith('/profile/');
+}
 
 function getPathname(href: string) {
   return href.split(/[?#]/, 1)[0] || '/';
@@ -44,7 +58,7 @@ export function MobileNavigationProvider({ children }: { children: ReactNode }) 
 
     let active = true;
     const normalizedPathname = pathname.replace(/\/+$/, '') || '/';
-    const enabled = NATIVE_BACK_GESTURE_ENABLED_ROUTES.has(normalizedPathname);
+    const enabled = shouldEnableNativeBackGesture(normalizedPathname);
     void import('@tauri-apps/api/core')
       .then(({ invoke }) => {
         if (!active) return;
@@ -70,6 +84,13 @@ export function MobileNavigationProvider({ children }: { children: ReactNode }) 
 
   useEffect(() => {
     const stack = routeStackRef.current;
+    const normalizedPathname = pathname.replace(/\/+$/, '') || '/';
+
+    if (ROOT_ROUTES.has(normalizedPathname)) {
+      routeStackRef.current = [normalizedPathname];
+      popStatePendingRef.current = false;
+      return;
+    }
     const previousRoute = stack.at(-2);
 
     if (popStatePendingRef.current || previousRoute === pathname) {

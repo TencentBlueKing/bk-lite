@@ -629,10 +629,19 @@ export class AGUIMessageHandler {
       ...value,
       received_at: Date.now(),
     };
-    this.configDiffReports.push(report);
-    // Insert a placeholder block so the card renders in-order
+    const existingIndex = this.configDiffReports.findIndex(item => item.report_id === report.report_id);
+    if (existingIndex >= 0) {
+      this.configDiffReports[existingIndex] = report;
+    } else {
+      this.configDiffReports.push(report);
+    }
     this.flushCurrentTextBlock();
-    this.contentBlocks.push({ type: 'configDiff', reportId: report.report_id });
+    const hasMarker = this.contentBlocks.some(
+      block => block.type === 'configDiff' && block.reportId === report.report_id
+    );
+    if (!hasMarker) {
+      this.contentBlocks.push({ type: 'configDiff', reportId: report.report_id });
+    }
     this.updateMessageContent(this.getFullContent(), undefined, undefined, this.thinkingContent, this.isThinking);
   }
 

@@ -34,9 +34,9 @@
   ```
 
 #### 3 指定返回字段
-- 仅返回指定的字段（如 `_time`、`_stream` 和 `_msg`）：
+- 仅返回指定的字段（如 `_time`、`_stream` 和 `message`）：
   ```logs
-  error _time:5m | fields _time, _stream, _msg
+  error _time:5m | fields _time, _stream, message
   ```
 
 #### 4 排除特定日志

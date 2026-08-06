@@ -54,6 +54,12 @@ const DisplayFieldsModal = forwardRef<ModalRef, DisplayFieldsModalProps>(
     const dirtyRef = useRef<Set<number>>(new Set());
     const [pluginsMap, setPluginsMap] = useState<Record<number, PluginOption[]>>({});
     const [metricsMap, setMetricsMap] = useState<Record<string, MetricOption[]>>({});
+    const [metricSearchOptionsMap, setMetricSearchOptionsMap] = useState<
+      Record<string, MetricOption[]>
+    >({});
+    const [selectedMetricOptionsMap, setSelectedMetricOptionsMap] = useState<
+      Record<string, MetricOption>
+    >({});
     const [fieldPicker, setFieldPicker] = useState<{
       visible: boolean;
       loading: boolean;
@@ -72,6 +78,14 @@ const DisplayFieldsModal = forwardRef<ModalRef, DisplayFieldsModalProps>(
     const pluginsMapRef = useRef<Record<number, PluginOption[]>>({});
     // 正在请求中的指标 key，避免预热与下拉懒加载并发重复请求同一插件
     const inflightMetricsRef = useRef<Set<string>>(new Set());
+    const metricSearchTimerRef = useRef<Record<string, ReturnType<typeof setTimeout>>>(
+      {}
+    );
+    const metricSearchGenerationRef = useRef<Record<string, number>>({});
+
+    useEffect(() => () => {
+      Object.values(metricSearchTimerRef.current).forEach((timer) => clearTimeout(timer));
+    }, []);
 
     useEffect(() => {
       pluginsMapRef.current = pluginsMap;
@@ -101,6 +115,8 @@ const DisplayFieldsModal = forwardRef<ModalRef, DisplayFieldsModalProps>(
         setColumnsMap({});
         setPluginsMap({});
         setMetricsMap({});
+        setMetricSearchOptionsMap({});
+        setSelectedMetricOptionsMap({});
         setFieldPicker({
           visible: false,
           loading: false,
@@ -233,9 +249,31 @@ const DisplayFieldsModal = forwardRef<ModalRef, DisplayFieldsModalProps>(
       if (!pluginOpt) return [];
       inflightMetricsRef.current.add(key);
       try {
-        const metrics = await getObjectMetrics(activeId, pluginOpt.id);
-        setMetricsMap((prev) => ({ ...prev, [key]: metrics || [] }));
-        return metrics || [];
+        const boundMetricNames = currentColumns
+          .flatMap((column) => column.metrics)
+          .filter((binding) => binding.plugin === plugin && binding.metric)
+          .map((binding) => binding.metric);
+        const uniqueBoundMetricNames = [...new Set(boundMetricNames)];
+        const boundMetricNameChunks = Array.from(
+          { length: Math.ceil(uniqueBoundMetricNames.length / 100) },
+          (_, index) => uniqueBoundMetricNames.slice(index * 100, (index + 1) * 100)
+        );
+        const [firstPage, selectedPages] = await Promise.all([
+          getObjectMetrics(activeId, pluginOpt.id),
+          Promise.all(
+            boundMetricNameChunks.map((names) =>
+              getObjectMetrics(activeId, pluginOpt.id, { name_in: names.join(',') })
+            )
+          )
+        ]);
+        const metrics = [...firstPage.items];
+        selectedPages.flatMap((page) => page.items).forEach((metric) => {
+          if (!metrics.some((item) => item.id === metric.id)) {
+            metrics.push(metric);
+          }
+        });
+        setMetricsMap((prev) => ({ ...prev, [key]: metrics }));
+        return metrics;
       } catch {
         message.error(t('common.operationFailed'));
         return [];
@@ -288,6 +326,20 @@ const DisplayFieldsModal = forwardRef<ModalRef, DisplayFieldsModalProps>(
       bindIdx: number,
       metric: string
     ) => {
+      const binding = currentColumns[colIdx]?.metrics[bindIdx];
+      if (activeId != null && binding?.plugin) {
+        const key = metricsKey(activeId, binding.plugin);
+        const searchKey = `${key}|${colIdx}|${bindIdx}`;
+        const selected = (metricSearchOptionsMap[searchKey] || []).find(
+          (item) => item.name === metric
+        );
+        if (selected) {
+          setSelectedMetricOptionsMap((prev) => ({
+            ...prev,
+            [searchKey]: selected
+          }));
+        }
+      }
       setCurrentColumns(
         currentColumns.map((c, i) =>
           i === colIdx
@@ -302,6 +354,42 @@ const DisplayFieldsModal = forwardRef<ModalRef, DisplayFieldsModalProps>(
             : c
         )
       );
+    };
+
+    const searchMetricOptions = (
+      plugin: string,
+      colIdx: number,
+      bindIdx: number,
+      keyword: string
+    ) => {
+      if (activeId == null || !plugin) return;
+      const pluginOpt = currentPlugins.find((item) => item.name === plugin);
+      if (!pluginOpt) return;
+      const searchKey = `${metricsKey(activeId, plugin)}|${colIdx}|${bindIdx}`;
+      const generation = (metricSearchGenerationRef.current[searchKey] || 0) + 1;
+      metricSearchGenerationRef.current[searchKey] = generation;
+      const previousTimer = metricSearchTimerRef.current[searchKey];
+      if (previousTimer) clearTimeout(previousTimer);
+      if (!keyword.trim()) {
+        setMetricSearchOptionsMap((prev) => {
+          const next = { ...prev };
+          delete next[searchKey];
+          return next;
+        });
+        return;
+      }
+      metricSearchTimerRef.current[searchKey] = setTimeout(async () => {
+        try {
+          const { items } = await getObjectMetrics(activeId, pluginOpt.id, {
+            keyword: keyword.trim()
+          });
+          if (metricSearchGenerationRef.current[searchKey] !== generation) return;
+          setMetricSearchOptionsMap((prev) => ({ ...prev, [searchKey]: items }));
+        } catch {
+          if (metricSearchGenerationRef.current[searchKey] !== generation) return;
+          setMetricSearchOptionsMap((prev) => ({ ...prev, [searchKey]: [] }));
+        }
+      }, 300);
     };
 
     const updateBindingField = (
@@ -323,8 +411,12 @@ const DisplayFieldsModal = forwardRef<ModalRef, DisplayFieldsModalProps>(
       );
     };
 
-    const findMetricOption = (plugin: string, metric: string) =>
-      metricsOptions(plugin).find((m) => m.name === metric);
+    const findMetricOption = (
+      plugin: string,
+      metric: string,
+      colIdx?: number,
+      bindIdx?: number
+    ) => metricsOptions(plugin, colIdx, bindIdx).find((m) => m.name === metric);
 
     const openFieldPicker = async (colIdx: number, bindIdx: number) => {
       const binding = currentColumns[colIdx]?.metrics[bindIdx];
@@ -335,7 +427,7 @@ const DisplayFieldsModal = forwardRef<ModalRef, DisplayFieldsModalProps>(
       const metrics = await ensureMetrics(binding.plugin);
       const metricOpt =
         metrics.find((m) => m.name === binding.metric) ||
-        findMetricOption(binding.plugin, binding.metric);
+        findMetricOption(binding.plugin, binding.metric, colIdx, bindIdx);
       if (!metricOpt) {
         message.warning(t('monitor.object.selectMetricFirst'));
         return;
@@ -432,8 +524,19 @@ const DisplayFieldsModal = forwardRef<ModalRef, DisplayFieldsModalProps>(
 
     const showTree = nodes.length > 1;
 
-    const metricsOptions = (plugin: string) =>
-      activeId != null ? metricsMap[metricsKey(activeId, plugin)] || [] : [];
+    const metricsOptions = (plugin: string, colIdx?: number, bindIdx?: number) => {
+      if (activeId == null) return [];
+      const key = metricsKey(activeId, plugin);
+      if (colIdx != null && bindIdx != null) {
+        const bindingKey = `${key}|${colIdx}|${bindIdx}`;
+        const options = metricSearchOptionsMap[bindingKey] || metricsMap[key] || [];
+        const selected = selectedMetricOptionsMap[bindingKey];
+        return selected && !options.some((item) => item.id === selected.id)
+          ? [...options, selected]
+          : options;
+      }
+      return metricsMap[key] || [];
+    };
 
     return (
       <OperateModal
@@ -540,17 +643,24 @@ const DisplayFieldsModal = forwardRef<ModalRef, DisplayFieldsModalProps>(
                       <Select
                         className="flex-1"
                         showSearch
-                        optionFilterProp="label"
+                        filterOption={false}
                         value={binding.metric || undefined}
                         placeholder={t('monitor.object.selectMetric')}
                         disabled={!binding.plugin}
-                        onDropdownVisibleChange={(open) =>
-                          open && ensureMetrics(binding.plugin)
-                        }
-                        options={metricsOptions(binding.plugin).map((m) => ({
+                        options={metricsOptions(binding.plugin, colIdx, bindIdx).map((m) => ({
                           label: m.display_name || m.name,
                           value: m.name
                         }))}
+                        onSearch={(value) =>
+                          searchMetricOptions(binding.plugin, colIdx, bindIdx, value)
+                        }
+                        onDropdownVisibleChange={(open) => {
+                          if (open) {
+                            ensureMetrics(binding.plugin);
+                          } else {
+                            searchMetricOptions(binding.plugin, colIdx, bindIdx, '');
+                          }
+                        }}
                         onChange={(v) =>
                           updateBindingMetric(colIdx, bindIdx, v)
                         }

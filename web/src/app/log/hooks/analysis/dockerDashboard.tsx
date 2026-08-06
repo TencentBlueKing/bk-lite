@@ -68,7 +68,7 @@ export const useDockerDashboard = () => {
           dataSourceParams: {
             searchQuery: 'collect_type:"docker" stream:"stderr"',
             query:
-              'collect_type:"docker" | extract "(?P<level>ERROR|FATAL)" from _msg | stats by (_time:${_time}) count() as errcount'
+              'collect_type:"docker" | extract "(?P<level>ERROR|FATAL)" from message | stats by (_time:${_time}) count() as errcount'
           }
         }
       },
@@ -211,7 +211,7 @@ export const useDockerDashboard = () => {
           dataSourceParams: {
             searchQuery: 'collect_type:"docker"',
             query:
-              'collect_type:"docker" | stats count() as total_count, count() if (_msg:"ERROR" OR _msg:"FATAL" OR _msg:"Error") as error_count, count() if (_msg:"WARN" OR _msg:"WARNING" OR _msg:"DEPRECATION") as warn_count, count() if (_msg:"INFO" OR _msg:"LOG:" OR _msg:" I  ") as info_count, count() if (_msg:"DEBUG") as debug_count'
+              'collect_type:"docker" | stats count() as total_count, count() if (message:"ERROR" OR message:"FATAL" OR message:"Error") as error_count, count() if (message:"WARN" OR message:"WARNING" OR message:"DEPRECATION") as warn_count, count() if (message:"INFO" OR message:"LOG:" OR message:" I  ") as info_count, count() if (message:"DEBUG") as debug_count'
           }
         }
       },
@@ -309,7 +309,7 @@ export const useDockerDashboard = () => {
           dataSourceParams: {
             searchQuery: 'collect_type:"docker" stream:"stderr"',
             query:
-              'collect_type:"docker" stream:"stderr" | extract "(?P<level>ERROR|FATAL|WARN|INFO)" from _msg | sort by (_time desc) | limit 50'
+              'collect_type:"docker" stream:"stderr" | extract "(?P<level>ERROR|FATAL|WARN|INFO)" from message | sort by (_time desc) | limit 50'
           }
         }
       }

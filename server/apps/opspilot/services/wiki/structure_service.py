@@ -1112,10 +1112,12 @@ def bootstrap_knowledge_base(knowledge_base, *, operator=""):
 
     locked.active_generation = generation
     locked.directory_enabled = False
+    locked.directory_migration_state = "ready"
     locked.save(
         update_fields=[
             "active_generation",
             "directory_enabled",
+            "directory_migration_state",
             "updated_by",
             "updated_at",
         ]

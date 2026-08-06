@@ -1,4 +1,9 @@
 error:
+  source_sync_in_progress: "The patch source is being synchronized and cannot be deleted or synchronized again"
+  patch_dependency_referenced: "This patch is still referenced by another patch dependency or replacement relationship"
+  patch_deleted: "The patch no longer exists and this risk item cannot be retried"
+  task_name_required: "Enter a task name"
+  task_name_too_long: "Task name must not exceed 128 characters"
   hosts_busy: "The following targets are running patch tasks: {ids}"
   execution_window_required: "Start and end times are required in execution-window mode"
   invalid_execution_window: "Invalid execution-window time"
@@ -8,6 +13,7 @@ error:
   targets_without_baseline: "The following targets have no baseline: {ids}"
   patches_not_found: "Patches not found: {ids}"
   patches_not_in_baseline: "Selected patches are not in the targets' current baselines: {pairs}"
+  patches_not_remediable: "Selected patches are not missing in the latest assessment: {pairs}"
   targets_not_pending_reboot: "The following targets are not pending reboot: {ids}"
   reboot_scope_changed: "The pending-reboot scope changed; refresh and confirm it again"
   risk_item_not_retryable: "The risk item does not exist or cannot be retried"
@@ -96,3 +102,5 @@ status:
     pending: "Pending assessment"
     evaluating: "Assessing"
     failed: "Assessment failed"
+    unknown: "Assessment unknown"
+    not_applicable: "Not applicable"

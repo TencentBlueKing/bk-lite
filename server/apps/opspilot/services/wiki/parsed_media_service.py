@@ -8,13 +8,12 @@ from __future__ import annotations
 
 import base64
 import hashlib
-import logging
 import re
 
 from django.core.files.base import ContentFile
 from django_minio_backend.models import MinioBackend
 
-logger = logging.getLogger("opspilot")
+from apps.core.logger import opspilot_logger as logger
 
 _MEDIA_STORAGE = MinioBackend(bucket_name="munchkin-private")
 

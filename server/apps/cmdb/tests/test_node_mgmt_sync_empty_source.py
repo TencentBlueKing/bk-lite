@@ -11,6 +11,15 @@ from apps.cmdb.services.node_mgmt_sync_reconciler import NodeMgmtSyncReconciler
 from apps.cmdb.services.node_mgmt_sync_service import NodeMgmtSyncService
 
 
+@pytest.fixture(autouse=True)
+def _enable_pull_sync_for_legacy_empty_source_tests(monkeypatch):
+    """本文件测空源/快照内部路径，需临时关闭推送联动门闩。"""
+    monkeypatch.setattr(
+        "apps.cmdb.services.node_mgmt_sync_service.PUSH_LINKAGE_REPLACES_PULL_SYNC",
+        False,
+    )
+
+
 @pytest.fixture
 def config(db):
     return NodeMgmtSyncConfig.objects.create(

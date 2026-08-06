@@ -9,6 +9,7 @@
     "collect_type",
     "collector",
     "instance_id",
+    "message",
     "kafka.log.timestamp",
     "kafka.log.level",
     "kafka.log.component",

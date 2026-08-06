@@ -1,7 +1,8 @@
+import logging
 from dataclasses import asdict
 
 from django.db import transaction
-from django.db.models import Count, Prefetch, QuerySet
+from django.db.models import Count, Prefetch, Q, QuerySet
 from django.utils import timezone
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
@@ -9,6 +10,7 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.generics import get_object_or_404
 from rest_framework.response import Response
 
+from apps.apm.adapters import SystemMgmtNotificationDispatcher, TelemetryStoreUnavailable, VictoriaTracesTelemetryStore
 from apps.apm.models import (
     ApmAlertOutbox,
     ApmApplication,
@@ -19,15 +21,17 @@ from apps.apm.models import (
     ApmServiceInstance,
     ApmSlo,
 )
+from apps.apm.pagination import ApmCatalogPagination
 from apps.apm.renderers import ApmRenderer
 from apps.apm.serializers import (
-    ApmEventQuerySerializer,
     ApmApplicationSerializer,
+    ApmEventQuerySerializer,
     ApmPolicySerializer,
     ApmServiceInstanceSerializer,
     ApmServiceSerializer,
     ApmSloSerializer,
     ApplicationMutationSerializer,
+    CatalogListQuerySerializer,
     IngestSnippetSerializer,
     NotificationDeliveryQuerySerializer,
     NotificationDeliveryRetrySerializer,
@@ -35,32 +39,62 @@ from apps.apm.serializers import (
     OrganizationAssignmentSerializer,
     ServiceMetricQuerySerializer,
 )
-from apps.apm.adapters import (
-    SystemMgmtNotificationDispatcher,
-    TelemetryStoreUnavailable,
-    VictoriaMetricsMetricStore,
-)
 from apps.apm.services import (
+    DeliveryStateConflict,
+    DjangoApmApplicationService,
     DjangoApmEventReader,
     DjangoApmPolicyService,
     DjangoApmReliabilityService,
-    DjangoApmApplicationService,
     DjangoIntegrationConfigurationService,
-    DeliveryStateConflict,
     DjangoNotificationDeliveryService,
     DjangoTelemetryCatalogService,
     DjangoTelemetryQueryService,
     NotificationChannelDirectory,
 )
-from apps.apm.services.access import (
-    current_organization_id,
-    filter_current_organization,
-    validate_assignable_organizations,
-)
+from apps.apm.services.access import current_organization_id, filter_current_organization, validate_assignable_organizations
 from apps.apm.services.contracts import IngestSnippetRequest, MetricDataState, ServiceMetricQuery
+from apps.apm.services.integration_configuration import CloudRegionConfigurationError
 from apps.apm.services.status import ACTIVE_WINDOW, ARCHIVE_WINDOW
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.utils.user_group import normalize_user_group_ids
+from apps.rpc.node_mgmt import NodeMgmt
+
+logger = logging.getLogger(__name__)
+MAX_CATALOG_KEYWORD_TOKENS = 8
+
+
+def _catalog_list_params(view) -> dict:
+    if view.action != "list":
+        return {}
+    serializer = CatalogListQuerySerializer(data=view.request.query_params)
+    serializer.is_valid(raise_exception=True)
+    return serializer.validated_data
+
+
+def _filter_catalog_keyword(queryset, keyword: str, fields: tuple[str, ...]):
+    for token in keyword.split()[:MAX_CATALOG_KEYWORD_TOKENS]:
+        token_query = Q()
+        for field in fields:
+            token_query |= Q(**{f"{field}__icontains": token})
+        queryset = queryset.filter(token_query)
+    return queryset
+
+
+def _filter_catalog_status(queryset, requested_status: str | None, include_archived: bool):
+    now = timezone.now()
+    if requested_status == "active":
+        return queryset.filter(archived_at__isnull=True, last_seen_at__gte=now - ACTIVE_WINDOW)
+    if requested_status == "silent":
+        return queryset.filter(
+            archived_at__isnull=True,
+            last_seen_at__lt=now - ACTIVE_WINDOW,
+            last_seen_at__gt=now - ARCHIVE_WINDOW,
+        )
+    if requested_status == "archived":
+        return queryset.filter(archived_at__isnull=False)
+    if not include_archived:
+        return queryset.filter(archived_at__isnull=True)
+    return queryset
 
 
 def _notification_actor_context(request, organization_id: int) -> dict:
@@ -81,12 +115,13 @@ class ApmApplicationViewSet(viewsets.GenericViewSet):
     service = DjangoApmApplicationService()
 
     def get_queryset(self) -> QuerySet[ApmApplication]:
-        queryset = ApmApplication.objects.prefetch_related("organization_links").annotate(
-            service_count=Count("services", distinct=True)
-        )
-        return filter_current_organization(queryset, self.request, "organization_links")
+        queryset = ApmApplication.objects.prefetch_related("organization_links").annotate(service_count=Count("services", distinct=True))
+        organization_id = current_organization_id(self.request)
+        if organization_id is None:
+            return queryset.none()
+        return queryset.filter(Q(is_builtin=True) | Q(organization_links__organization=organization_id)).distinct()
 
-    @HasPermission("applications-View,integration_add-View")
+    @HasPermission("applications-View,integration_add-View,services-View,integration_instances-View")
     def list(self, request, *args, **kwargs):
         return Response(self.get_serializer(self.get_queryset(), many=True).data)
 
@@ -109,13 +144,14 @@ class ApmApplicationViewSet(viewsets.GenericViewSet):
             description=data.get("description", ""),
             organization_ids=data["organization_ids"],
             actor=request.user.username,
-            is_enabled=data.get("is_enabled", True),
         )
         return Response(self.get_serializer(application).data, status=status.HTTP_201_CREATED)
 
     @HasPermission("applications-Operate")
     def update(self, request, *args, **kwargs):
         application = self.get_object()
+        if application.is_builtin:
+            return Response({"detail": "内置应用不可修改。"}, status=status.HTTP_409_CONFLICT)
         serializer = ApplicationMutationSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
@@ -129,7 +165,6 @@ class ApmApplicationViewSet(viewsets.GenericViewSet):
             description=data.get("description", ""),
             organization_ids=data["organization_ids"],
             actor=request.user.username,
-            is_enabled=data.get("is_enabled", application.is_enabled),
         )
         return Response(self.get_serializer(updated).data)
 
@@ -140,22 +175,58 @@ class ApmIntegrationConfigurationViewSet(viewsets.GenericViewSet):
     renderer_classes = (ApmRenderer,)
     service = DjangoIntegrationConfigurationService()
 
+    @action(methods=("get",), detail=False)
+    @HasPermission("integration_add-View")
+    def regions(self, request, *args, **kwargs):
+        try:
+            return Response(self.service.list_regions(NodeMgmt()))
+        except CloudRegionConfigurationError as exc:
+            return Response({"code": exc.code, "detail": exc.detail}, status=status.HTTP_502_BAD_GATEWAY)
+        except Exception as exc:
+            logger.warning("APM cloud region listing failed: %s", type(exc).__name__)
+            return Response(
+                {"code": "cloud_region_unavailable", "detail": "云区域目录暂时不可用，请稍后重试。"},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+
     @HasPermission("integration_add-View")
     def create(self, request, *args, **kwargs):
         serializer = IngestSnippetSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
+        organization_id = current_organization_id(request)
+        if organization_id is None:
+            return Response({"detail": "当前组织不在用户授权范围内。"}, status=status.HTTP_403_FORBIDDEN)
         applications = filter_current_organization(
-            ApmApplication.objects.filter(is_enabled=True),
+            ApmApplication.objects.filter(is_builtin=False),
             request,
             "organization_links",
         )
         application = get_object_or_404(applications, application_id=data["application_id"])
+        try:
+            endpoints = self.service.resolve_region(
+                NodeMgmt(),
+                data["cloud_region_id"],
+                organization_ids=[organization_id],
+            )
+        except CloudRegionConfigurationError as exc:
+            response_status = (
+                status.HTTP_404_NOT_FOUND
+                if exc.code in {"cloud_region_not_found", "cloud_region_receiver_unavailable"}
+                else status.HTTP_400_BAD_REQUEST
+            )
+            return Response({"code": exc.code, "detail": exc.detail}, status=response_status)
+        except Exception as exc:
+            logger.warning("APM cloud region endpoint resolution failed: %s", type(exc).__name__)
+            return Response(
+                {"code": "cloud_region_unavailable", "detail": "云区域配置暂时不可用，请稍后重试。"},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
         snippet = self.service.render_snippet(
             IngestSnippetRequest(
                 language=data["language"],
                 runtime=data["runtime"],
-                endpoint=data["endpoint"],
+                endpoint=endpoints.http_endpoint,
                 service_namespace=application.application_id,
                 service_name=data["service_name"],
                 service_version=data.get("service_version", ""),
@@ -166,6 +237,8 @@ class ApmIntegrationConfigurationViewSet(viewsets.GenericViewSet):
             {
                 "application_id": application.application_id,
                 "application_name": application.name,
+                "cloud_region": {"id": endpoints.region_id, "name": endpoints.region_name},
+                "http_endpoint": f"{endpoints.http_endpoint}/v1/traces",
                 "environment": snippet.environment,
                 "code": snippet.code,
             }
@@ -176,18 +249,33 @@ class ApmServiceViewSet(viewsets.ReadOnlyModelViewSet):
     renderer_classes = (ApmRenderer,)
     serializer_class = ApmServiceSerializer
     catalog = DjangoTelemetryCatalogService()
+    pagination_class = ApmCatalogPagination
 
     def get_queryset(self) -> QuerySet[ApmService]:
+        params = _catalog_list_params(self)
         queryset = ApmService.objects.select_related("application").prefetch_related(
             "organization_links",
             Prefetch("instances", queryset=ApmServiceInstance.objects.order_by("environment", "id")),
         )
-        if self.action != "restore" and self.request.query_params.get("include_archived") != "true":
+        if self.action == "list":
+            queryset = _filter_catalog_status(queryset, params.get("status"), params["include_archived"])
+            if params.get("application"):
+                queryset = queryset.filter(application__application_id=params["application"])
+            if params.get("environment"):
+                queryset = queryset.filter(instances__environment=params["environment"])
+            if params.get("started_at"):
+                queryset = queryset.filter(last_seen_at__gte=params["started_at"])
+            if params.get("ended_at"):
+                queryset = queryset.filter(last_seen_at__lte=params["ended_at"])
+            if params.get("keyword"):
+                queryset = _filter_catalog_keyword(
+                    queryset,
+                    params["keyword"],
+                    ("namespace", "name", "application__application_id", "application__name"),
+                )
+        elif self.action != "restore" and self.request.query_params.get("include_archived") != "true":
             queryset = queryset.filter(archived_at__isnull=True)
-        environment = self.request.query_params.get("environment")
-        if self.action == "list" and environment is not None:
-            queryset = queryset.filter(instances__environment=environment)
-        return filter_current_organization(queryset, self.request, "organization_links")
+        return filter_current_organization(queryset, self.request, "organization_links").distinct().order_by("-last_seen_at", "id")
 
     @HasPermission("services-View")
     def list(self, request, *args, **kwargs):
@@ -253,7 +341,7 @@ class ApmServiceViewSet(viewsets.ReadOnlyModelViewSet):
             include_breakdown=True,
         )
         try:
-            red = DjangoTelemetryQueryService(VictoriaMetricsMetricStore()).service_red(query)
+            red = DjangoTelemetryQueryService(VictoriaTracesTelemetryStore()).service_red(query)
         except ValueError as exc:
             return Response(
                 {"code": "invalid_query", "detail": str(exc)},
@@ -270,9 +358,7 @@ class ApmServiceViewSet(viewsets.ReadOnlyModelViewSet):
                 "environment": data["environment"],
                 "started_at": data["started_at"],
                 "ended_at": data["ended_at"],
-                "data_state": str(
-                    MetricDataState.NO_DATA if red.request_rate is None else MetricDataState.AVAILABLE
-                ),
+                "data_state": str(MetricDataState.NO_DATA if red.request_rate is None else MetricDataState.AVAILABLE),
                 "request_rate": red.request_rate,
                 "error_rate": red.error_rate,
                 "p95_ms": red.p95_ms,
@@ -305,33 +391,38 @@ class ApmServiceInstanceViewSet(viewsets.ReadOnlyModelViewSet):
     renderer_classes = (ApmRenderer,)
     serializer_class = ApmServiceInstanceSerializer
     catalog = DjangoTelemetryCatalogService()
+    pagination_class = ApmCatalogPagination
 
     def get_queryset(self) -> QuerySet[ApmServiceInstance]:
-        queryset = ApmServiceInstance.objects.select_related("service", "service__application").prefetch_related(
-            "organization_links"
-        )
-        requested_status = self.request.query_params.get("status")
-        if (
-            self.action != "restore"
-            and requested_status != "archived"
-            and self.request.query_params.get("include_archived") != "true"
-        ):
+        params = _catalog_list_params(self)
+        queryset = ApmServiceInstance.objects.select_related("service", "service__application").prefetch_related("organization_links")
+        if self.action == "list":
+            queryset = _filter_catalog_status(queryset, params.get("status"), params["include_archived"])
+            if params.get("application"):
+                queryset = queryset.filter(service__application__application_id=params["application"])
+            if params.get("environment"):
+                queryset = queryset.filter(environment=params["environment"])
+            if params.get("started_at"):
+                queryset = queryset.filter(last_seen_at__gte=params["started_at"])
+            if params.get("ended_at"):
+                queryset = queryset.filter(last_seen_at__lte=params["ended_at"])
+            if params.get("keyword"):
+                queryset = _filter_catalog_keyword(
+                    queryset,
+                    params["keyword"],
+                    (
+                        "service__namespace",
+                        "service__name",
+                        "service__application__application_id",
+                        "service__application__name",
+                        "instance_id",
+                        "environment",
+                        "version",
+                    ),
+                )
+        elif self.action != "restore" and self.request.query_params.get("include_archived") != "true":
             queryset = queryset.filter(archived_at__isnull=True)
-        environment = self.request.query_params.get("environment")
-        if environment is not None:
-            queryset = queryset.filter(environment=environment)
-        now = timezone.now()
-        if requested_status == "active":
-            queryset = queryset.filter(archived_at__isnull=True, last_seen_at__gte=now - ACTIVE_WINDOW)
-        elif requested_status == "silent":
-            queryset = queryset.filter(
-                archived_at__isnull=True,
-                last_seen_at__lt=now - ACTIVE_WINDOW,
-                last_seen_at__gt=now - ARCHIVE_WINDOW,
-            )
-        elif requested_status == "archived":
-            queryset = queryset.filter(archived_at__isnull=False)
-        return filter_current_organization(queryset, self.request, "organization_links")
+        return filter_current_organization(queryset, self.request, "organization_links").order_by("-last_seen_at", "id")
 
     @HasPermission("integration_instances-View")
     def list(self, request, *args, **kwargs):
@@ -384,7 +475,7 @@ class ApmSloViewSet(viewsets.GenericViewSet):
 
     @staticmethod
     def _service():
-        return DjangoApmReliabilityService(VictoriaMetricsMetricStore())
+        return DjangoApmReliabilityService(VictoriaTracesTelemetryStore())
 
     def get_queryset(self):
         queryset = ApmSlo.objects.select_related("service").prefetch_related("service__organization_links")
@@ -490,7 +581,7 @@ class ApmPolicyViewSet(viewsets.GenericViewSet):
 
     @staticmethod
     def _service():
-        return DjangoApmPolicyService(VictoriaMetricsMetricStore(), SystemMgmtNotificationDispatcher())
+        return DjangoApmPolicyService(VictoriaTracesTelemetryStore(), SystemMgmtNotificationDispatcher())
 
     def get_queryset(self):
         queryset = ApmPolicy.objects.select_related("service", "state").prefetch_related(
@@ -526,25 +617,19 @@ class ApmPolicyViewSet(viewsets.GenericViewSet):
         if policy is not None and not notification_fields.intersection(data):
             return None
         requested_targets = data.get("notification_targets")
-        notice = (
-            bool(requested_targets)
-            if requested_targets is not None
-            else data.get("notice", getattr(policy, "notice", False))
-        )
+        notice = bool(requested_targets) if requested_targets is not None else data.get("notice", getattr(policy, "notice", False))
         if not notice:
             return []
         if requested_targets is None:
             legacy_channel_ids = data.get("notice_type_ids")
             if legacy_channel_ids is None and policy is not None:
                 requested_targets = [
-                    {"channel_id": target.channel_id, "recipients": list(target.recipients)}
-                    for target in policy.notification_targets.all()
+                    {"channel_id": target.channel_id, "recipients": list(target.recipients)} for target in policy.notification_targets.all()
                 ]
             else:
                 legacy_recipients = data.get("notice_users", getattr(policy, "notice_users", []))
                 requested_targets = [
-                    {"channel_id": channel_id, "recipients": list(legacy_recipients or [])}
-                    for channel_id in legacy_channel_ids or []
+                    {"channel_id": channel_id, "recipients": list(legacy_recipients or [])} for channel_id in legacy_channel_ids or []
                 ]
         if not requested_targets:
             raise ValidationError({"notification_targets": "启用通知时至少选择一个渠道。"})

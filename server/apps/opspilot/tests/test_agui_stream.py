@@ -177,6 +177,283 @@ def test_agui_stream_suppresses_narration_when_turn_has_tool_calls(monkeypatch):
     assert all("parameters were passed incorrectly" not in (d or "") for d in text_deltas)
 
 
+@pytest.mark.parametrize(
+    ("capabilities", "expected_started_count"),
+    [
+        ([], 0),
+        (["repair_diff_report"], 0),
+        (["config_analysis_report"], 0),
+    ],
+)
+def test_agui_stream_starts_report_only_for_matching_capability(
+    monkeypatch,
+    capabilities,
+    expected_started_count,
+):
+    """AG-UI 通用流不根据 capability 或工具名推断报告生命周期。"""
+
+    async def _never_interrupted(_execution_id):
+        return False
+
+    monkeypatch.setattr(
+        "apps.opspilot.metis.llm.chain.graph.is_interrupt_requested_async",
+        _never_interrupted,
+    )
+
+    graph = _FakeBasicGraph(
+        [
+            {
+                "event": "on_chat_model_stream",
+                "data": {
+                    "chunk": SimpleNamespace(
+                        content="",
+                        tool_call_chunks=[
+                            {"id": "tool-report-1", "name": "analyze_deployment_configurations"},
+                        ],
+                        additional_kwargs={},
+                    )
+                },
+            },
+            {
+                "event": "on_chat_model_end",
+                "data": {
+                    "output": SimpleNamespace(
+                        content="",
+                        tool_calls=[
+                            {
+                                "id": "tool-report-1",
+                                "name": "analyze_deployment_configurations",
+                                "args": {"namespace": "production"},
+                            }
+                        ],
+                    )
+                },
+            },
+        ]
+    )
+    request = BasicLLMRequest(
+        thread_id="thread-report-start",
+        extra_config={
+            "execution_id": "exec-report-start",
+            "skill_package_capabilities": capabilities,
+        },
+    )
+
+    async def _collect_payloads():
+        return _parse_sse_payloads([line async for line in graph.agui_stream(request)])
+
+    payloads = asyncio.run(_collect_payloads())
+    report_starts = [
+        payload
+        for payload in payloads
+        if payload.get("type") == "CUSTOM" and payload.get("name") == "report_started"
+    ]
+
+    assert len(report_starts) == expected_started_count
+
+
+def test_agui_stream_preserves_text_and_forwards_completed_reports_in_event_order(monkeypatch):
+    """正文照常输出，完成的结构化报告按来源事件顺序转发。"""
+
+    async def _never_interrupted(_execution_id):
+        return False
+
+    monkeypatch.setattr(
+        "apps.opspilot.metis.llm.chain.graph.is_interrupt_requested_async",
+        _never_interrupted,
+    )
+
+    analyze_tool_call = {
+        "id": "tool-analysis-1",
+        "name": "analyze_deployment_configurations",
+        "args": {"namespace": "production"},
+    }
+    graph = _FakeBasicGraph(
+        [
+            {
+                "event": "on_chat_model_stream",
+                "data": {
+                    "chunk": SimpleNamespace(
+                        content="",
+                        tool_call_chunks=[analyze_tool_call],
+                        additional_kwargs={},
+                    )
+                },
+            },
+            {
+                "event": "on_chat_model_end",
+                "data": {"output": SimpleNamespace(content="", tool_calls=[analyze_tool_call])},
+            },
+            {
+                "event": "on_custom_event",
+                "name": "config_analysis_report",
+                "data": {
+                    "report_id": "config_analysis_report_exec-report-sequence",
+                    "summary": {"total": 3},
+                },
+            },
+            {
+                "event": "on_chat_model_stream",
+                "data": {
+                    "chunk": SimpleNamespace(
+                        content="Kubernetes 集群工作负载配置巡检最终报告",
+                        tool_call_chunks=[],
+                        additional_kwargs={},
+                    )
+                },
+            },
+            {
+                "event": "on_chat_model_end",
+                "data": {
+                    "output": SimpleNamespace(
+                        content="Kubernetes 集群工作负载配置巡检最终报告",
+                        tool_calls=[],
+                    )
+                },
+            },
+            {
+                "event": "on_custom_event",
+                "name": "user_choice_request",
+                "data": {
+                    "choice_id": "repair-choice-1",
+                    "question": "请选择修复展示方式",
+                    "options": [{"label": "全部一次性展示", "value": "all"}],
+                },
+            },
+            {
+                "event": "on_tool_start",
+                "name": "generate_repair_report",
+                "run_id": "repair-tool-run-1",
+                "data": {"input": {"group_by": "all"}},
+            },
+            {
+                "event": "on_custom_event",
+                "name": "repair_diff_report",
+                "data": {
+                    "report_id": "repair_diff_report_exec-report-sequence",
+                    "items": [{"resource": "Deployment/api"}],
+                },
+            },
+        ]
+    )
+    request = BasicLLMRequest(
+        thread_id="thread-report-sequence",
+        extra_config={
+            "execution_id": "exec-report-sequence",
+            "skill_package_capabilities": [
+                "config_analysis_report",
+                "repair_diff_report",
+            ],
+        },
+    )
+
+    async def _collect_payloads():
+        return _parse_sse_payloads([line async for line in graph.agui_stream(request)])
+
+    payloads = asyncio.run(_collect_payloads())
+    lifecycle_events = [
+        payload
+        for payload in payloads
+        if payload.get("type") == "CUSTOM"
+        and payload.get("name") in {"report_queued", "report_started"}
+    ]
+    analysis_report_index = next(
+        index
+        for index, payload in enumerate(payloads)
+        if payload.get("type") == "CUSTOM" and payload.get("name") == "config_analysis_report"
+    )
+    summary_text_index = next(
+        index
+        for index, payload in enumerate(payloads)
+        if payload.get("type") == "TEXT_MESSAGE_CONTENT"
+        and "巡检最终报告" in str(payload.get("delta") or "")
+    )
+    repair_report_index = next(
+        index
+        for index, payload in enumerate(payloads)
+        if payload.get("type") == "CUSTOM" and payload.get("name") == "repair_diff_report"
+    )
+
+    assert lifecycle_events == []
+    assert analysis_report_index < summary_text_index < repair_report_index
+
+
+@pytest.mark.parametrize(
+    "terminal_source",
+    ["completed", "missing_report", "interrupted"],
+)
+def test_agui_stream_does_not_synthesize_report_terminal_events(monkeypatch, terminal_source):
+    """通用流不为报告补造完成、失败或取消事件。"""
+    interrupt_checks = 0
+
+    async def _interrupt_after_report_started(_execution_id):
+        nonlocal interrupt_checks
+        interrupt_checks += 1
+        return terminal_source == "interrupted" and interrupt_checks > 1
+
+    monkeypatch.setattr(
+        "apps.opspilot.metis.llm.chain.graph.is_interrupt_requested_async",
+        _interrupt_after_report_started,
+    )
+
+    events = [
+        {
+            "event": "on_chat_model_stream",
+            "data": {
+                "chunk": SimpleNamespace(
+                    content="",
+                    tool_call_chunks=[
+                        {"id": "tool-report-close", "name": "analyze_deployment_configurations"},
+                    ],
+                    additional_kwargs={},
+                )
+            },
+        },
+    ]
+    if terminal_source == "completed":
+        events.append(
+            {
+                "event": "on_custom_event",
+                "name": "config_analysis_report",
+                "data": {"report_id": "config_analysis_report_exec-report-close"},
+                }
+            )
+    elif terminal_source == "interrupted":
+        events.append(
+            {
+                "event": "on_chat_model_stream",
+                "data": {
+                    "chunk": SimpleNamespace(
+                        content="不会继续处理",
+                        tool_call_chunks=[],
+                        additional_kwargs={},
+                    )
+                },
+            }
+        )
+
+    graph = _FakeBasicGraph(events)
+    request = BasicLLMRequest(
+        thread_id="thread-report-close",
+        extra_config={
+            "execution_id": "exec-report-close",
+            "skill_package_capabilities": ["config_analysis_report"],
+        },
+    )
+
+    async def _collect_payloads():
+        return _parse_sse_payloads([line async for line in graph.agui_stream(request)])
+
+    payloads = asyncio.run(_collect_payloads())
+    terminal_events = [
+        payload
+        for payload in payloads
+        if payload.get("type") == "CUSTOM" and payload.get("name") in {"report_failed", "report_cancelled"}
+    ]
+
+    assert terminal_events == []
+
+
 def test_agui_stream_stops_forwarding_text_after_tool_call_chunks(monkeypatch):
     """兼容旧用例名：有 tool_calls 的轮次不再把旁白发成 TEXT_MESSAGE。"""
 

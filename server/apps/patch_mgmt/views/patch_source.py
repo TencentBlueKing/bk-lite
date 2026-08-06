@@ -2,7 +2,7 @@
 
 import logging
 
-from django.db.models import Q
+from django.db import transaction
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
@@ -18,12 +18,12 @@ from apps.patch_mgmt.serializers.patch_source import (
     PatchSourceSerializer,
 )
 from apps.patch_mgmt.services.connectivity_prober import probe_source
+from apps.patch_mgmt.services.target_access import GlobalSharedResourceMixin
 from apps.patch_mgmt.utils.operation_log import log_source_changed
-from apps.patch_mgmt.utils.data_permissions import require_authorized_ids
 from apps.patch_mgmt.utils.i18n import patch_message
 
 
-class PatchSourceViewSet(AuthViewSet):
+class PatchSourceViewSet(GlobalSharedResourceMixin, AuthViewSet):
     """补丁源配置视图集"""
 
     queryset = PatchSource.objects.all()
@@ -45,43 +45,23 @@ class PatchSourceViewSet(AuthViewSet):
     }
 
     @staticmethod
-    def _require_builtin_manager(request, source):
-        if source.is_builtin and not getattr(request.user, "is_superuser", False):
-            raise PermissionDenied(
-                patch_message(
-                    request,
-                    "error.builtin_source_superuser_required",
-                    "Only platform superusers can manage built-in patch sources",
-                )
-            )
-
-    def get_queryset_by_permission(self, request, queryset, permission_key=None):
-        """内置源全局可见，自定义源仍使用原有团队/实例权限。"""
-        custom_queryset = super().get_queryset_by_permission(
-            request,
-            queryset.filter(is_builtin=False),
-            permission_key=permission_key,
+    def _begin_sync(source_id: int) -> bool:
+        return bool(
+            PatchSource.objects.filter(
+                pk=source_id, sync_in_progress=False
+            ).update(sync_in_progress=True)
         )
-        custom_ids = custom_queryset.values_list("id", flat=True)
-        return queryset.filter(Q(is_builtin=True) | Q(id__in=custom_ids))
+
+    @staticmethod
+    def _finish_sync(source_id: int) -> None:
+        PatchSource.objects.filter(pk=source_id).update(sync_in_progress=False)
 
     @HasPermission("patch_source-View")
     def list(self, request, *args, **kwargs):
-        queryset = self.filter_queryset(self.get_queryset())
-        custom_queryset = self.get_queryset_by_permission(
-            request, queryset.filter(is_builtin=False)
-        )
-        custom_ids = custom_queryset.values_list("id", flat=True)
-        visible_queryset = queryset.filter(
-            Q(is_builtin=True) | Q(id__in=custom_ids)
-        ).order_by(self.ORDERING_FIELD)
-        return self._list(visible_queryset)
+        return super().list(request, *args, **kwargs)
 
     @HasPermission("patch_source-View")
     def retrieve(self, request, *args, **kwargs):
-        instance = self.get_object()
-        if instance.is_builtin:
-            return Response(self.get_serializer(instance).data)
         return super().retrieve(request, *args, **kwargs)
 
     @HasPermission("patch_source-Add")
@@ -99,7 +79,6 @@ class PatchSourceViewSet(AuthViewSet):
     @HasPermission("patch_source-Edit")
     def update(self, request, *args, **kwargs):
         instance = self.get_object()
-        self._require_builtin_manager(request, instance)
         changed_connection = any(
             field in request.data
             and request.data.get(field) not in (None, "")
@@ -164,6 +143,7 @@ class PatchSourceViewSet(AuthViewSet):
     @HasPermission("patch_source-Add")
     def test_connectivity(self, request):
         """使用新增表单中的未保存参数执行协议级连通性测试。"""
+        self._validate_current_team_permission(request)
         serializer = PatchSourceConnectivitySerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         source = PatchSource(**serializer.validated_data)
@@ -177,8 +157,9 @@ class PatchSourceViewSet(AuthViewSet):
         })
 
     @HasPermission("patch_source-Delete")
+    @transaction.atomic
     def destroy(self, request, *args, **kwargs):
-        source = self.get_object()
+        source = PatchSource.objects.select_for_update().get(pk=self.get_object().pk)
         if source.is_builtin:
             raise PermissionDenied(
                 patch_message(
@@ -187,8 +168,20 @@ class PatchSourceViewSet(AuthViewSet):
                     "Built-in patch sources cannot be deleted",
                 )
             )
+        if source.sync_in_progress:
+            return Response(
+                {
+                    "detail": patch_message(
+                        request,
+                        "error.source_sync_in_progress",
+                        "The patch source is being synchronized and cannot be deleted",
+                    )
+                },
+                status=409,
+            )
         log_source_changed(request, "delete", source.name)
-        return super().destroy(request, *args, **kwargs)
+        source.delete()
+        return Response(status=204)
 
     @action(detail=True, methods=["post"])
     @HasPermission("patch_source-Edit")
@@ -198,10 +191,6 @@ class PatchSourceViewSet(AuthViewSet):
         from rest_framework.exceptions import ValidationError as DRFValidationError
 
         instance = self.get_object()
-        self._require_builtin_manager(request, instance)
-        require_authorized_ids(
-            self, request, PatchSource.objects.all(), [instance.id], "patch_source"
-        )
         is_enabled = request.data.get("is_enabled")
         if not isinstance(is_enabled, bool):
             raise DRFValidationError({"is_enabled": [patch_message(request, "error.boolean_required", "This field is required and must be a boolean")]})
@@ -232,7 +221,6 @@ class PatchSourceViewSet(AuthViewSet):
         )
 
         source = self.get_object()
-        self._require_builtin_manager(request, source)
         if source.is_builtin:
             return Response(
                 {
@@ -244,9 +232,11 @@ class PatchSourceViewSet(AuthViewSet):
                 },
                 status=drf_status.HTTP_400_BAD_REQUEST,
             )
-        require_authorized_ids(
-            self, request, PatchSource.objects.all(), [source.id], "patch_source"
-        )
+        if not self._begin_sync(source.id):
+            return Response(
+                {"error": patch_message(request, "error.source_sync_in_progress", "The patch source is already being synchronized")},
+                status=drf_status.HTTP_409_CONFLICT,
+            )
         try:
             if source.is_linux_source:
                 result = SourceSyncService.sync_linux_repo(source)
@@ -262,6 +252,8 @@ class PatchSourceViewSet(AuthViewSet):
         except Exception as exc:  # noqa: BLE001 兜底,避免 500
             logger.warning("sync 失败 source_id=%s: %s", source.id, exc, exc_info=True)
             return Response({"error": patch_message(request, "error.sync_failed", "Sync failed: {detail}", detail=str(exc))}, status=drf_status.HTTP_400_BAD_REQUEST)
+        finally:
+            self._finish_sync(source.id)
         log_source_changed(request, "sync", source.name)
         return Response(result)
 
@@ -279,15 +271,6 @@ class PatchSourceViewSet(AuthViewSet):
         from apps.patch_mgmt.services.source_sync_service import SourceSyncError, SourceSyncService
 
         source = self.get_object()
-        if not source.is_builtin:
-            require_authorized_ids(
-                self,
-                request,
-                PatchSource.objects.all(),
-                [source.id],
-                "patch_source",
-                operation="View",
-            )
         search = (request.data.get("search") or "").strip().lower()
         page = int(request.data.get("page") or 1)
         page_size = int(request.data.get("page_size") or 20)
@@ -304,6 +287,11 @@ class PatchSourceViewSet(AuthViewSet):
             candidates = [
                 c for c in candidates
                 if search in c.get("name", "").lower()
+                or any(
+                    search in str(package.get("name") or "").lower()
+                    for package in c.get("packages", [])
+                    if isinstance(package, dict)
+                )
             ]
 
         total = len(candidates)
@@ -337,15 +325,6 @@ class PatchSourceViewSet(AuthViewSet):
 
         source = self.get_object()
         current_team = self._validate_current_team_permission(request)
-        if not source.is_builtin:
-            require_authorized_ids(
-                self,
-                request,
-                PatchSource.objects.all(),
-                [source.id],
-                "patch_source",
-                operation="View",
-            )
         keys = request.data.get("keys") or []
         severity_overrides = request.data.get("severity_overrides") or {}
         if not isinstance(keys, list) or not keys:
@@ -353,10 +332,24 @@ class PatchSourceViewSet(AuthViewSet):
 
         # WSUS 需远程获取并批量写入元数据，继续走异步任务。
         if source.source_type == "wsus":
-            task = ingest_patch_source.delay(source.id, [str(k) for k in keys])
+            if not self._begin_sync(source.id):
+                return Response(
+                    {"error": patch_message(request, "error.source_sync_in_progress", "The patch source is already being synchronized")},
+                    status=drf_status.HTTP_409_CONFLICT,
+                )
+            try:
+                task = ingest_patch_source.delay(source.id, [str(k) for k in keys])
+            except Exception:
+                self._finish_sync(source.id)
+                raise
             log_source_changed(request, "sync", source.name)
             return Response({"accepted": True, "task_id": task.id})
 
+        if not self._begin_sync(source.id):
+            return Response(
+                {"error": patch_message(request, "error.source_sync_in_progress", "The patch source is already being synchronized")},
+                status=drf_status.HTTP_409_CONFLICT,
+            )
         try:
             result = SourceSyncService.ingest_selected(
                 source,
@@ -369,6 +362,8 @@ class PatchSourceViewSet(AuthViewSet):
         except Exception as exc:  # noqa: BLE001
             logger.warning("ingest 失败 source_id=%s: %s", source.id, exc, exc_info=True)
             return Response({"error": patch_message(request, "error.ingest_failed", "Ingestion failed: {detail}", detail=str(exc))}, status=drf_status.HTTP_400_BAD_REQUEST)
+        finally:
+            self._finish_sync(source.id)
         log_source_changed(request, "sync", source.name)
         return Response(result)
 
@@ -377,10 +372,6 @@ class PatchSourceViewSet(AuthViewSet):
     def check_connectivity(self, request, pk=None):
         """用编辑表单参数测试连接；缺省字段复用库中配置且不写回。"""
         source = self.get_object()
-        self._require_builtin_manager(request, source)
-        require_authorized_ids(
-            self, request, PatchSource.objects.all(), [source.id], "patch_source"
-        )
         submitted = dict(request.data)
         if hasattr(request.data, "dict"):
             submitted = request.data.dict()
@@ -425,28 +416,21 @@ class PatchSourceViewSet(AuthViewSet):
 
         from apps.patch_mgmt.tasks import check_patch_source_connectivity
 
+        self._validate_current_team_permission(request)
+
         source_ids = request.data.get("source_ids") or []
         if not isinstance(source_ids, list) or not source_ids:
             raise DRFValidationError({"source_ids": [patch_message(request, "error.source_ids_required", "Select at least one patch source")]})
 
-        builtin_sources = PatchSource.objects.filter(
-            id__in=source_ids, is_builtin=True
-        )
-        if builtin_sources.exists() and not getattr(request.user, "is_superuser", False):
-            raise PermissionDenied(
-                patch_message(
-                    request,
-                    "error.builtin_source_superuser_required",
-                    "Only platform superusers can manage built-in patch sources",
-                )
-            )
+        try:
+            requested_source_ids = {int(source_id) for source_id in source_ids}
+        except (TypeError, ValueError) as exc:
+            raise DRFValidationError(
+                {"source_ids": [patch_message(request, "error.data_id_integer", "Data ID must be an integer")]}
+            ) from exc
 
         results = []
-        allowed_source_ids = require_authorized_ids(
-            self,
-            request, PatchSource.objects.all(), source_ids, "patch_source"
-        )
-        for source_id in allowed_source_ids:
+        for source_id in requested_source_ids:
             try:
                 source = self.get_queryset().get(pk=source_id)
                 check_patch_source_connectivity(source.id)
