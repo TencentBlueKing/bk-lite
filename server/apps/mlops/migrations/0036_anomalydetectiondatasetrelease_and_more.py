@@ -66,38 +66,6 @@ class Migration(migrations.Migration):
             },
         ),
         migrations.RemoveField(
-            model_name='logclusteringtrainhistory',
-            name='datapointfeaturesinfo_ptr',
-        ),
-        migrations.RemoveField(
-            model_name='logclusteringtrainhistory',
-            name='test_data_id',
-        ),
-        migrations.RemoveField(
-            model_name='logclusteringtrainhistory',
-            name='train_data_id',
-        ),
-        migrations.RemoveField(
-            model_name='logclusteringtrainhistory',
-            name='val_data_id',
-        ),
-        migrations.RemoveField(
-            model_name='timeseriespredicttrainhistory',
-            name='datapointfeaturesinfo_ptr',
-        ),
-        migrations.RemoveField(
-            model_name='timeseriespredicttrainhistory',
-            name='test_data_id',
-        ),
-        migrations.RemoveField(
-            model_name='timeseriespredicttrainhistory',
-            name='train_data_id',
-        ),
-        migrations.RemoveField(
-            model_name='timeseriespredicttrainhistory',
-            name='val_data_id',
-        ),
-        migrations.RemoveField(
             model_name='anomalydetectionserving',
             name='anomaly_threshold',
         ),

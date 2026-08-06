@@ -53,6 +53,14 @@ const devRewrites = !isProduction ? {
         source: '/api/auth/:path*',
         destination: `${devAuthProxyTarget}/api/auth/:path*`,
       },
+      {
+        source: '/api/menu',
+        destination: `${devAuthProxyTarget}/api/menu`,
+      },
+      {
+        source: '/assets/:path*',
+        destination: `${devAuthProxyTarget}/assets/:path*`,
+      },
     ];
   },
 } : {};

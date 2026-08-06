@@ -378,7 +378,8 @@ class TestPatchSourceViewApi:
         assert resp.data == {"items": [], "total": 0, "page": 1, "page_size": 20}
         preview.assert_called_once_with(source)
 
-    def test_linux_preview_search_matches_package_name_only(self, su_client, mocker):
+    @pytest.mark.integration
+    def test_linux_preview_search_matches_any_advisory_package(self, su_client, mocker):
         source = PatchSource.objects.create(
             name="YUM-Test",
             source_type=PatchSourceType.YUM_REPO,
@@ -393,6 +394,10 @@ class TestPatchSourceViewApi:
                     "name": "kernel",
                     "title": "Important: kernel security update",
                     "version": "1.0-1",
+                    "packages": [
+                        {"name": "kernel", "version": "1.0-1", "arch": "x86_64"},
+                        {"name": "kernel-tools", "version": "1.0-1", "arch": "x86_64"},
+                    ],
                 },
                 {
                     "key": "RLSA-BPFTOOL",
@@ -405,7 +410,7 @@ class TestPatchSourceViewApi:
 
         resp = su_client.post(
             f"{PATCH_SOURCE_URL}{source.id}/preview_sync/",
-            {"search": "kernel", "page": 1, "page_size": 20},
+            {"search": "kernel-tools", "page": 1, "page_size": 20},
             format="json",
         )
 
@@ -541,6 +546,48 @@ class TestPatchViewApi:
         assert data["linux_detail"]["pkg_version"] == "1.1.1k-7"
         assert data["linux_detail"]["repo_type"] == "yum"
         assert data["linux_detail"]["os_version_range"] == ">=7"
+
+    @pytest.mark.integration
+    def test_update_linux_legacy_fields_keeps_package_snapshot_in_sync(self, su_client):
+        from apps.patch_mgmt.models import LinuxPatchDetail
+
+        patch = Patch.objects.create(title="openssl", os_type=OSType.LINUX, team=[1])
+        LinuxPatchDetail.objects.create(
+            patch=patch,
+            pkg_name="openssl",
+            pkg_version="1.0",
+            packages=[
+                {"name": "openssl", "version": "1.0", "arch": "x86_64"},
+                {"name": "openssl-libs", "version": "1.0", "arch": "x86_64"},
+            ],
+        )
+
+        response = su_client.put(
+            f"{PATCH_URL}{patch.id}/",
+            {
+                "title": "openssl",
+                "os_type": OSType.LINUX,
+                "team": [1],
+                "linux_detail": {
+                    "pkg_name": "openssl3",
+                    "pkg_version": "3.0",
+                    "distro_name": "",
+                    "os_version_range": "",
+                    "architectures": ["x86_64"],
+                    "repo_type": "yum",
+                },
+            },
+            format="json",
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+        patch.linux_detail.refresh_from_db()
+        assert patch.linux_detail.pkg_name == "openssl3"
+        assert patch.linux_detail.pkg_version == "3.0"
+        assert patch.linux_detail.packages == [
+            {"name": "openssl3", "version": "3.0", "arch": "x86_64"},
+            {"name": "openssl-libs", "version": "1.0", "arch": "x86_64"},
+        ]
 
 
 # ── PatchTarget ViewSet ────────────────────────────────────────────────────────

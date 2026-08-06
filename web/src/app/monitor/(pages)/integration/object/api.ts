@@ -10,6 +10,26 @@ import {
   MetricOption
 } from './types';
 
+export interface MetricCatalogPage<T> {
+  count: number;
+  items: T[];
+}
+
+interface ObjectMetricQuery {
+  signal?: AbortSignal;
+  page?: number;
+  keyword?: string;
+  name_in?: string;
+}
+
+const isMetricCatalogPage = <T,>(value: unknown): value is MetricCatalogPage<T> => (
+  typeof value === 'object'
+  && value !== null
+  && 'count' in value
+  && 'items' in value
+  && Array.isArray(value.items)
+);
+
 const useObjectApi = () => {
   const { get, post, patch, del } = useApiClient();
 
@@ -247,12 +267,23 @@ const useObjectApi = () => {
   const getObjectMetrics = async (
     objectId: number,
     pluginId: number | string,
-    signal?: AbortSignal
-  ): Promise<MetricOption[]> => {
-    return await get('/monitor/api/metrics/', {
-      params: { monitor_object_id: objectId, monitor_plugin_id: pluginId },
-      signal
+    query: ObjectMetricQuery = {}
+  ): Promise<MetricCatalogPage<MetricOption>> => {
+    const response: unknown = await get('/monitor/api/metrics/', {
+      params: {
+        monitor_object_id: objectId,
+        monitor_plugin_id: pluginId,
+        page: query.page || 1,
+        ...(query.keyword ? { keyword: query.keyword } : {}),
+        ...(query.name_in ? { name_in: query.name_in } : {}),
+        page_size: 100
+      },
+      signal: query.signal
     });
+    if (!isMetricCatalogPage<MetricOption>(response)) {
+      return { count: 0, items: [] };
+    }
+    return response;
   };
 
   const getMetricVmFields = async (

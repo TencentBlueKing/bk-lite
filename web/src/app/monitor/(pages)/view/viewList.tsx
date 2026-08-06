@@ -494,7 +494,19 @@ const ViewList: React.FC<ViewListProps> = ({
     const targetObject = objects.find((item) => item.id === objectId);
     const objName = targetObject?.name;
     const config = { signal: abortController.signal };
-    const getMetrics = getMonitorMetrics(objParams, config);
+    const displayMetricNames = (targetObject?.display_fields || [])
+      .flatMap((column) => column.metrics || [])
+      .map((binding) => binding.metric)
+      .filter(Boolean);
+    const getMetrics = getMonitorMetrics(
+      {
+        ...objParams,
+        ...(displayMetricNames.length
+          ? { name_in: [...new Set(displayMetricNames)].join(',') }
+          : {})
+      },
+      config
+    );
     const shouldFetchQueryParams =
       showMultipleConditions || needsAssetIpFilter;
     setTableLoading(true);
@@ -553,9 +565,9 @@ const ViewList: React.FC<ViewListProps> = ({
           setColony(resolved);
         }
       }
-      setMetrics(res[0] || []);
+      setMetrics(res[0].items);
       if (objName) {
-        const allMetrics: MetricItem[] = res[0] || [];
+        const allMetrics: MetricItem[] = res[0].items;
         // 解析某行在某列应展示的绑定指标值（按绑定顺序取首个有值），保留插件信息以精确定位指标元数据。
         const resolveCell = (record: TableDataItem, col: DisplayCol) => {
           for (const binding of col.metrics || []) {

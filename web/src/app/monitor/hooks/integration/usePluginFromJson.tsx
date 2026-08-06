@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo } from 'react';
-import { Collapse } from 'antd';
+import { Collapse, Form } from 'antd';
 import { useConfigRenderer } from './useConfigRenderer';
 import { DataMapper } from './useDataMapper';
 import {
@@ -34,6 +34,55 @@ export const fillOptionalFormFields = (
   });
   return result;
 };
+
+const INTERFACE_FILTER_FIELD_NAMES = new Set([
+  'interface_filter_mode',
+  'iftype_exclude',
+  'iftype_include',
+  'ifdescr_exclude',
+  'ifdescr_include'
+]);
+
+interface FieldDependency {
+  field?: string | string[];
+  value?: unknown;
+  conditions?: Array<Array<{ equals?: unknown }>>;
+}
+
+interface AdvancedFormField {
+  name: string;
+  section?: string;
+  dependency?: FieldDependency;
+}
+
+/**
+ * IF-MIB 的接口过滤只在接口表启用时才有意义。此处识别这一类独占高级面板，
+ * 供外层直接随 enable_ifmib 隐藏整个折叠区，避免留下没有字段的空面板。
+ */
+export const isIfmibFilterAdvancedPanel = (advancedFields: AdvancedFormField[]) =>
+  advancedFields.length > 0 &&
+  advancedFields.every(
+    (field) => {
+      const dependency = field.dependency;
+      const enableIfmibIndex = Array.isArray(dependency?.field)
+        ? dependency.field.indexOf('enable_ifmib')
+        : -1;
+      const dependsOnEnabledIfmib =
+        (dependency?.field === 'enable_ifmib' && dependency?.value === true) ||
+        (enableIfmibIndex >= 0 && dependency?.conditions?.[enableIfmibIndex]?.some(
+          (condition) => condition?.equals === true
+        ));
+      return (
+        (field.section === 'interface_filter' || INTERFACE_FILTER_FIELD_NAMES.has(field.name)) &&
+        dependsOnEnabledIfmib
+      );
+    }
+  );
+
+export const shouldRenderAdvancedFieldsPanel = (
+  isIfmibFilterPanel: boolean,
+  enableIfmib: unknown
+) => !isIfmibFilterPanel || enableIfmib !== false;
 
 export const usePluginFromJson = () => {
   const { isLoading } = useApiClient();
@@ -148,7 +197,10 @@ export const usePluginFromJson = () => {
               if (field.visible_in === 'auto' && mode === 'edit') return null;
               if (field.visible_in === 'edit' && mode === 'auto') return null;
             }
-            if (mode === 'edit' && field.editable === false) {
+            if (
+              mode === 'edit'
+              && (field.editable === false || field.name === 'enable_ifmib')
+            ) {
               fieldCopy.widget_props = {
                 ...field.widget_props,
                 disabled: true
@@ -164,16 +216,7 @@ export const usePluginFromJson = () => {
       const basicFields = formFields?.filter((field: any) => !field.advanced) || [];
       const ADVANCED_SECTION_ORDER = ['request', 'auth', 'response', 'tls', 'interface_filter'];
       const advancedPanel = config.advanced_panel || {};
-      const isInterfaceFilterAdvanced =
-        Boolean(advancedPanel.title) ||
-        (advancedFields.length > 0 &&
-          advancedFields.every(
-            (field: any) =>
-              field.section === 'interface_filter' ||
-              ['iftype_exclude', 'iftype_include', 'ifdescr_exclude', 'ifdescr_include'].includes(
-                field.name
-              )
-          ));
+      const isInterfaceFilterAdvanced = isIfmibFilterAdvancedPanel(advancedFields);
       const advancedTitle =
         advancedPanel.title ||
         (isInterfaceFilterAdvanced
@@ -233,6 +276,21 @@ export const usePluginFromJson = () => {
             renderFormField(fieldConfig, extra.mode)
           )}
           {advancedFields.length > 0 && (
+            <Form.Item
+              noStyle
+              shouldUpdate={
+                isInterfaceFilterAdvanced
+                  ? (previousValues, currentValues) =>
+                    previousValues.enable_ifmib !== currentValues.enable_ifmib
+                  : false
+              }
+            >
+              {({ getFieldValue }) =>
+                // 未初始化时沿用 enable_ifmib 默认 true；只有明确关闭才隐藏整个区域。
+                !shouldRenderAdvancedFieldsPanel(
+                  isInterfaceFilterAdvanced,
+                  getFieldValue('enable_ifmib')
+                ) ? null : (
             <Collapse
               bordered={false}
               ghost
@@ -256,6 +314,9 @@ export const usePluginFromJson = () => {
                 children: renderAdvancedFieldGroups(advancedFields),
               }]}
             />
+                )
+              }
+            </Form.Item>
           )}
         </>
       );

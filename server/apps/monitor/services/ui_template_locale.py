@@ -348,7 +348,11 @@ def enrich_ui_template_from_plugin_files(content: dict | None, plugin: MonitorPl
                             column[key] = deepcopy(value)
 
     if should_inject_snmp_interface_filters(plugin, enriched):
-        enriched = merge_snmp_interface_filter_ui(enriched)
+        enriched = merge_snmp_interface_filter_ui(enriched, plugin=plugin)
+    elif plugin is not None and str(getattr(plugin, "collect_type", "")).startswith("snmp"):
+        # 清除早期「所有 SNMP 都注入」遗留的 IF-MIB/过滤字段；没有公共接口表的
+        # 模板不能继续展示这些无效配置。
+        enriched = merge_snmp_interface_filter_ui(enriched, plugin=plugin)
 
     return enriched
 

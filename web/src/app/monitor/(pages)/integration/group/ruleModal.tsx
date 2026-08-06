@@ -127,9 +127,9 @@ const RuleModal = forwardRef<ModalRef, ModalProps>(
         const getMetrics = getMonitorMetrics(params);
         Promise.all([getGroupList, getMetrics])
           .then((res) => {
-            const metricData = cloneDeep(res[1] || []);
-            setMetrics(res[1] || []);
-            const groupData = res[0].map((item: GroupInfo) => ({
+            const metricData = cloneDeep(res[1].items);
+            setMetrics(res[1].items);
+            const groupData = res[0].items.map((item: GroupInfo) => ({
               ...item,
               child: []
             }));

@@ -458,14 +458,14 @@ def _install_commands(
 
     pkg_names: list[str] = []
     for p in patches:
-        pkg_name = ''
         try:
-            pkg_name = (p.linux_detail.pkg_name or '').strip()
+            patch_pkg_names = p.linux_detail.package_names()
         except Exception:
-            pass
-        if not pkg_name or not _PKG_NAME_RE.match(pkg_name):
-            continue
-        pkg_names.append(pkg_name)
+            patch_pkg_names = []
+        for pkg_name in patch_pkg_names:
+            if not _PKG_NAME_RE.match(pkg_name) or pkg_name in pkg_names:
+                continue
+            pkg_names.append(pkg_name)
 
     if not pkg_names:
         return ['echo no installable package mapped']
@@ -507,18 +507,34 @@ def _assess_command(os_type: str, requirements: list | None = None) -> str:
             '"===HOTFIX===";'
             'Get-HotFix | ForEach-Object { $_.HotFixID }'
         )
-    commands: list[str] = []
+    package_requirements: list[tuple[int, int, str, str]] = []
     for requirement in requirements or []:
         try:
             detail = requirement.patch.linux_detail
-            package_name = (detail.pkg_name or '').strip()
-            required_version = (detail.pkg_version or '').strip()
+            package_items = getattr(detail, 'package_items', None)
+            if callable(package_items):
+                items = package_items()
+            else:
+                package_name = (getattr(detail, 'pkg_name', '') or '').strip()
+                items = [{
+                    'name': package_name,
+                    'version': (getattr(detail, 'pkg_version', '') or '').strip(),
+                }] if package_name else []
         except Exception:  # noqa: BLE001
-            package_name = ''
-            required_version = ''
+            items = []
+        if not items:
+            package_requirements.append((int(requirement.id), 0, '', ''))
+            continue
+        package_requirements.extend(
+            (int(requirement.id), spec_index, item['name'], item['version'])
+            for spec_index, item in enumerate(items)
+        )
+
+    commands: list[str] = []
+    for requirement_id, spec_index, package_name, required_version in package_requirements:
         if not package_name or not _PKG_NAME_RE.match(package_name):
             commands.append(
-                f"printf 'BKPATCH_LINUX|{int(requirement.id)}||unknown|||invalid_package_name\\n'"
+                f"printf 'BKPATCH_LINUX|{requirement_id}|{spec_index}||unknown|||invalid_package_name\\n'"
             )
             continue
         package_q = shlex.quote(package_name)
@@ -526,32 +542,32 @@ def _assess_command(os_type: str, requirements: list | None = None) -> str:
         commands.append(
             f"pkg={package_q}; required={version_q}; "
             "if [ -z \"$required\" ]; then "
-            f"printf 'BKPATCH_LINUX|{int(requirement.id)}|{package_name}|unknown|||missing_required_version\\n'; "
+            f"printf 'BKPATCH_LINUX|{requirement_id}|{spec_index}|{package_name}|unknown|||missing_required_version\\n'; "
             "elif command -v dpkg-query >/dev/null 2>&1; then "
             "value=$(dpkg-query -W -f='${db:Status-Abbrev}|${Version}' -- \"$pkg\" 2>/dev/null); rc=$?; "
             "if [ $rc -ne 0 ]; then "
-            f"printf 'BKPATCH_LINUX|{int(requirement.id)}|{package_name}|absent|||\\n'; "
+            f"printf 'BKPATCH_LINUX|{requirement_id}|{spec_index}|{package_name}|absent|||\\n'; "
             "else state=${value%%|*}; installed=${value#*|}; "
             "if [ \"$state\" != 'ii ' ]; then "
-            f"printf 'BKPATCH_LINUX|{int(requirement.id)}|{package_name}|absent|%s||\\n' \"$installed\"; "
+            f"printf 'BKPATCH_LINUX|{requirement_id}|{spec_index}|{package_name}|absent|%s||\\n' \"$installed\"; "
             "elif dpkg --compare-versions \"$installed\" ge \"$required\"; then "
-            f"printf 'BKPATCH_LINUX|{int(requirement.id)}|{package_name}|installed|%s|0|\\n' \"$installed\"; "
+            f"printf 'BKPATCH_LINUX|{requirement_id}|{spec_index}|{package_name}|installed|%s|0|\\n' \"$installed\"; "
             "else "
-            f"printf 'BKPATCH_LINUX|{int(requirement.id)}|{package_name}|installed|%s|-1|\\n' \"$installed\"; fi; fi; "
+            f"printf 'BKPATCH_LINUX|{requirement_id}|{spec_index}|{package_name}|installed|%s|-1|\\n' \"$installed\"; fi; fi; "
             "elif command -v rpm >/dev/null 2>&1; then "
             "installed=$(rpm -q --qf '%{EVR}' \"$pkg\" 2>/dev/null); rc=$?; "
             "if [ $rc -ne 0 ]; then "
-            f"printf 'BKPATCH_LINUX|{int(requirement.id)}|{package_name}|absent|||\\n'; "
+            f"printf 'BKPATCH_LINUX|{requirement_id}|{spec_index}|{package_name}|absent|||\\n'; "
             "else comparison=$(env BKPATCH_INSTALLED=\"$installed\" BKPATCH_REQUIRED=\"$required\" "
             "rpm --eval '%{lua: print(rpm.vercmp(os.getenv(\"BKPATCH_INSTALLED\"), os.getenv(\"BKPATCH_REQUIRED\")))}' 2>/dev/null); compare_rc=$?; "
             "if [ $compare_rc -ne 0 ] || ! printf '%s' \"$comparison\" | grep -Eq '^-?[0-9]+$'; then "
-            f"printf 'BKPATCH_LINUX|{int(requirement.id)}|{package_name}|unknown|%s||rpm_version_compare_failed\\n' \"$installed\"; "
+            f"printf 'BKPATCH_LINUX|{requirement_id}|{spec_index}|{package_name}|unknown|%s||rpm_version_compare_failed\\n' \"$installed\"; "
             "elif [ \"$comparison\" -ge 0 ]; then "
-            f"printf 'BKPATCH_LINUX|{int(requirement.id)}|{package_name}|installed|%s|0|\\n' \"$installed\"; "
+            f"printf 'BKPATCH_LINUX|{requirement_id}|{spec_index}|{package_name}|installed|%s|0|\\n' \"$installed\"; "
             "else "
-            f"printf 'BKPATCH_LINUX|{int(requirement.id)}|{package_name}|installed|%s|-1|\\n' \"$installed\"; fi; fi; "
+            f"printf 'BKPATCH_LINUX|{requirement_id}|{spec_index}|{package_name}|installed|%s|-1|\\n' \"$installed\"; fi; fi; "
             "else "
-            f"printf 'BKPATCH_LINUX|{int(requirement.id)}|{package_name}|unknown|||unsupported_package_manager\\n'; fi"
+            f"printf 'BKPATCH_LINUX|{requirement_id}|{spec_index}|{package_name}|unknown|||unsupported_package_manager\\n'; fi"
         )
     if not commands:
         return "printf 'BKPATCH_COLLECTION_ERROR|no_linux_requirements\\n'"
@@ -575,7 +591,9 @@ def _dry_run_command(os_type: str, pkg_names: list[str]) -> str:
         return ''
     if os_type == OSType.WINDOWS:
         return ''  # Windows WUA 原子安装，不需要 dry-run
-    pkgs = ' '.join(pkg_names)
+    pkgs = ' '.join(shlex.quote(name) for name in pkg_names if _PKG_NAME_RE.match(name))
+    if not pkgs:
+        return ''
     # 用 if/elif 检测包管理器，避免 || 链导致 dnf --assumeno (exit 1) 触发 fallback
     # dnf/yum --assumeno 退出码 1 表示用户取消，属于正常行为；追加 || true 确保退出码 0
     return (
@@ -701,9 +719,9 @@ def _collect_install_impact(
     pkg_names = []
     for req in missing_requirements:
         try:
-            pkg_name = req.patch.linux_detail.pkg_name
-            if pkg_name:
-                pkg_names.append(pkg_name)
+            for pkg_name in req.patch.linux_detail.package_names():
+                if pkg_name not in pkg_names:
+                    pkg_names.append(pkg_name)
         except Exception:
             pass
 

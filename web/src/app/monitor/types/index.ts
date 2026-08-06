@@ -293,6 +293,7 @@ export interface MetricItem {
   unit?: string;
   displayType?: string;
   description?: string;
+  is_ifmib?: boolean;
   viewData?: ChartData[] | InterfaceTableItem[];
   displayUnit?: string;
   seriesBudget?: {

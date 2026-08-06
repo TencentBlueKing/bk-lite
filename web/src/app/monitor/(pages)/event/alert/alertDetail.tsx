@@ -124,7 +124,7 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig>(
     const getMetrics = async (row: TableDataItem, id: React.Key) => {
       setPageLoading(true);
       try {
-        const data = await getMonitorMetrics({ monitor_object_id: id });
+        const { items: data } = await getMonitorMetrics({ monitor_object_id: id });
         const metricInfo =
           data.find(
             (item: MetricItem) =>

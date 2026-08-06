@@ -1,10 +1,41 @@
 .root {
+  --desktop-pull-offset: 0px;
+  --desktop-pull-opacity: 0;
+
+  position: relative;
   display: flex;
   flex-direction: column;
   min-height: 100%;
 }
 
-.root > :global(.adm-pull-to-refresh) {
+.desktopPullHead {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 1;
+  display: flex;
+  width: 100%;
+  height: 40px;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  line-height: 1;
+  color: var(--color-text-3);
+  pointer-events: none;
+  opacity: var(--desktop-pull-opacity);
+  transform: translateY(calc(var(--desktop-pull-offset) - 40px));
+  transition: transform 180ms ease-out, opacity 120ms ease-out;
+}
+
+.pullSurface {
+  display: flex;
+  flex: 1 0 auto;
+  flex-direction: column;
+  transform: translateY(var(--desktop-pull-offset));
+  transition: transform 180ms ease-out;
+}
+
+.pullSurface > :global(.adm-pull-to-refresh) {
   display: flex;
   flex: 1 0 auto;
   flex-direction: column;
@@ -12,4 +43,21 @@
 
 .root :global(.adm-pull-to-refresh-content) {
   flex: 1 0 auto;
+}
+
+.root[data-mouse-dragging='true'] {
+  cursor: grabbing;
+  user-select: none;
+}
+
+.root[data-mouse-dragging='true'] .desktopPullHead,
+.root[data-mouse-dragging='true'] .pullSurface {
+  transition: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .desktopPullHead,
+  .pullSurface {
+    transition: none;
+  }
 }

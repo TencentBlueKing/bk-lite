@@ -93,13 +93,18 @@ const Overview: React.FC<ViewDetailProps> = ({
   const getInitData = async () => {
     setLoading(true);
     const indexList = getDashboardDisplay(monitorObjectName);
+    const interfaceConfig = indexList.find(
+      (item: TableDataItem) => item.indexId === 'interfaces'
+    );
+    const metricNames = [
+      ...indexList.map((item: TableDataItem) => item.indexId),
+      ...(interfaceConfig?.displayDimension || [])
+    ].filter((name): name is string => Boolean(name));
     try {
       getMonitorMetrics({
-        monitor_object_id: monitorObjectId
-      }).then((res) => {
-        const interfaceConfig = indexList.find(
-          (item: TableDataItem) => item.indexId === 'interfaces'
-        );
+        monitor_object_id: monitorObjectId,
+        name_in: [...new Set(metricNames)].join(',')
+      }).then(({ items: res }) => {
         const _metricData = res
           .filter((item: MetricItem) =>
             indexList.find(

@@ -213,13 +213,14 @@ const ViewHive: React.FC<ViewListProps> = ({ objects, objectId }) => {
   const getInitData = async (name: string) => {
     const params = getParams();
     const objParams = {
-      monitor_object_id: String(objectId)
+      monitor_object_id: String(objectId),
+      name: isPod ? 'pod_status_phase' : 'node_status_condition'
     };
     const getInstList = await getInstanceSearch(objectId, params);
     const getQueryParams = await getInstanceQueryParams(name, objParams);
     setTableLoading(true);
     try {
-      const metricsData = await getMonitorMetrics(objParams);
+      const { items: metricsData } = await getMonitorMetrics(objParams);
       setMertics(metricsData || []);
       const tagetMerticItem = metricsData.find(
         (item: MetricItem) =>
