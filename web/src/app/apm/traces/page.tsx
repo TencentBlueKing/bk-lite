@@ -82,7 +82,7 @@ function parseFilters(text: string, fallback: TraceFilters): TraceFilters {
     minDurationMs: null,
     maxDurationMs: null,
   };
-  const tokens = text.match(/(?:[^\s"]+|"[^"]*")+/g) ?? [];
+  const tokens: string[] = text.match(/(?:[^\s"]+|"[^"]*")+/g) ?? [];
   tokens.forEach((token) => {
     const cleaned = token.replace(/^"|"$/g, '');
     const sep = cleaned.indexOf(':');
@@ -589,7 +589,7 @@ export default function ApmTracesPage() {
       <div className="flex flex-col gap-3">
         <ApmSurface padding="compact">
           <div className="flex flex-wrap items-center gap-3">
-            <Segmented
+            <Segmented<EntityMode>
               size="small"
               aria-label="调用链查询粒度"
               options={[

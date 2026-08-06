@@ -48,6 +48,9 @@ COPY --from=builder /app/.next ./.next
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/package.json ./
+# pnpm 11 在 run script 前校验依赖状态；必须带上声明 verifyDepsBeforeRun: false
+# 的 pnpm-workspace.yaml 与 lockfile，否则运行期触发交互式重装直接崩溃
+COPY --from=builder /app/pnpm-workspace.yaml /app/pnpm-lock.yaml ./
 
 CMD ["pnpm", "run", "start"]
 # 或者直接写明端口（如需更显式可改为：CMD ["pnpm", "exec", "next", "start", "-p", "3001"]）
