@@ -14,7 +14,6 @@ import {
   UserItem,
   SegmentedItem,
   TableDataItem,
-  GroupInfo,
   ObjectItem,
   MetricItem,
   IndexViewItem,
@@ -646,21 +645,20 @@ const StrategyOperation = () => {
         .then((res) => {
           const metricData = cloneDeep(res[1].items);
           setMetrics(res[1].items);
-          const groupData = res[0].items.map((item: GroupInfo) => ({
+          const groupData: IndexViewItem[] = res[0].items.map((item) => ({
             ...item,
+            id: Number(item.id),
             child: []
           }));
           metricData.forEach((metric: MetricItem) => {
             const target = groupData.find(
-              (item: GroupInfo) => item.id === metric.metric_group
+              (item) => item.id === metric.metric_group
             );
             if (target) {
-              target.child.push(metric);
+              target.child?.push(metric);
             }
           });
-          const _groupData = groupData.filter(
-            (item: any) => !!item.child?.length
-          );
+          const _groupData = groupData.filter((item) => !!item.child?.length);
           setOriginMetricData(_groupData);
           if (type === 'init') {
             setInitMetricData(res[1].items);
