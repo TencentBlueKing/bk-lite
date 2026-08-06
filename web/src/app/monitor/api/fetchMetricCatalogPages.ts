@@ -1,5 +1,9 @@
-import type { GroupInfo, MetricItem } from '@/app/monitor/types';
-import type { MetricCatalogPage, MetricsParam } from './index';
+import type { MetricItem } from '@/app/monitor/types';
+import type {
+  MetricCatalogGroup,
+  MetricCatalogPage,
+  MetricsParam
+} from './index';
 
 export const METRIC_CATALOG_PAGE_SIZE = 100;
 /** 选择器累计上限：避免异常大目录拖垮页面。 */
@@ -59,7 +63,7 @@ export async function fetchAllMonitorMetrics(
 
 /** 分页累加拉取指标分组，保证选择器能挂上全部指标。 */
 export async function fetchAllMetricsGroups(
-  getMetricsGroup: GetCatalogPage<GroupInfo>,
+  getMetricsGroup: GetCatalogPage<MetricCatalogGroup>,
   params: MetricsParam = {},
   config?: unknown
 ) {
