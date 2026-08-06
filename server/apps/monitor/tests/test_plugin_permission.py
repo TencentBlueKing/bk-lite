@@ -49,11 +49,12 @@ def test_其他无关权限不放行():
     assert _call(user) == _DENIED
 
 
-def _call_collect_template(method, permissions, *, is_superuser=False):
+def _call_collect_template(method, permissions, *, is_superuser=False, legacy_permissions=False):
+    user_permissions = set(permissions) if legacy_permissions else {"monitor": set(permissions)}
     request = SimpleNamespace(
         method=method,
         data={"content": "[[inputs.snmp.field]]"},
-        user=SimpleNamespace(is_superuser=is_superuser, permission=set(permissions), locale="en"),
+        user=SimpleNamespace(is_superuser=is_superuser, permission=user_permissions, locale="en"),
     )
     view = MonitorPluginViewSet()
     view.get_object = Mock(return_value=SimpleNamespace(template_type="snmp"))
@@ -115,6 +116,7 @@ def test_既有写权限_get_继续兼容读取采集模板():
     result, get_object, get_template, update_template = _call_collect_template(
         "GET",
         {"integration_configure-Add"},
+        legacy_permissions=True,
     )
 
     assert result == {"content": "old"}
@@ -147,7 +149,7 @@ def test_只读权限_http_put_在读取插件前返回_403():
         user=SimpleNamespace(
             is_authenticated=True,
             is_superuser=False,
-            permission={"integration_collect-View"},
+            permission={"monitor": {"integration_collect-View"}},
             locale="en",
         ),
     )
@@ -175,7 +177,7 @@ def test_写权限_http_head_沿用读取路径且不更新模板():
         user=SimpleNamespace(
             is_authenticated=True,
             is_superuser=False,
-            permission={"integration_configure-Add"},
+            permission={"monitor": {"integration_configure-Add"}},
             locale="en",
         ),
     )
