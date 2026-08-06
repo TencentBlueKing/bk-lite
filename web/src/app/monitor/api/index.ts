@@ -154,6 +154,8 @@ const useMonitorApi = () => {
   const getMonitorPlugin = async (
     params: {
       monitor_object_id?: React.Key | null;
+      /** 按监控对象分类 ID 过滤（如 database），与 monitor_object_id 互斥由调用方保证 */
+      monitor_object_type?: string | null;
       // 搜索关键字(后端在 i18n 翻译完成后,对 name / display_name /
       // display_description / parent_object_display_name 做 icontains 内存匹配)
       keyword?: string;
