@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass
 from typing import Any, Sequence
@@ -41,6 +42,39 @@ _MONITOR_CATALOG_HINT = (
     "禁止返回空 steps，不要改去规划 SSH/top/htop。"
 )
 
+# 告警 RCA：缺 namespace 时必须先反查，避免直接规划必填 namespace 的诊断/日志工具。
+_K8S_NAMESPACE_LOOKUP_HINT = (
+    "能力导读：若告警/问题含 Pod 或工作负载名称但未给出 namespace，"
+    "第一步必须规划 resolve_k8s_target_from_alert（其会反查命名空间）"
+    "或 list_kubernetes_pods / list_kubernetes_events（namespace 留空）完成反查；"
+    "在拿到 namespace 之前，禁止规划 diagnose_kubernetes_pod_issues、"
+    "get_kubernetes_pod_logs、get_resource_events_timeline 等必填 namespace 的工具。"
+)
+
+_K8S_NAMESPACE_LOOKUP_TOOLS = frozenset(
+    {
+        "resolve_k8s_target_from_alert",
+        "list_kubernetes_pods",
+        "list_kubernetes_events",
+    }
+)
+
+# 调用前通常已需要明确 namespace；若计划包含它们且未先反查，则服务端改写计划。
+_K8S_NAMESPACE_REQUIRED_TOOLS = frozenset(
+    {
+        "diagnose_kubernetes_pod_issues",
+        "get_kubernetes_pod_logs",
+        "get_resource_events_timeline",
+        "describe_kubernetes_resource",
+        "get_kubernetes_resource_yaml",
+    }
+)
+
+# 8K 分步执行：工具结果与中间 AI 文本必须远小于窗口，否则步内多轮会二次溢出。
+_DEFAULT_PLANNED_TOOL_RESULT_CHARS = 1500
+_DEFAULT_PLANNED_AI_TEXT_CHARS = 1000
+_TRUNCATION_SUFFIX = "\n...(truncated)"
+
 _FENCE_RE = re.compile(r"```(?:json|JSON)?\s*([\s\S]*?)```", re.MULTILINE)
 _EMPTY_MESSAGE_REPLY_RE = re.compile(
     r"(message came through empty|message co?mes? through empty|your message.*(empty|blank)|消息.*空|空消息)",
@@ -65,6 +99,136 @@ def is_context_size_error(exc: BaseException | str) -> bool:
         "too many tokens",
     )
     return any(needle in text for needle in needles)
+
+
+def is_tool_result_failure(content: Any, status: str = "") -> bool:
+    """识别工具硬失败与 JSON 软失败（如 {"error": "..."}）。"""
+    if str(status or "").lower() == "error":
+        return True
+
+    if content is None:
+        return False
+
+    if isinstance(content, dict):
+        err = content.get("error")
+        return bool(err not in (None, "", [], {}))
+
+    text = str(content).strip()
+    if not text:
+        return False
+
+    lowered = text.casefold()
+    if lowered.startswith(("error", "exception")):
+        return True
+
+    if text[0] not in "{[":
+        return False
+
+    try:
+        payload = json.loads(text)
+    except Exception:
+        return False
+
+    if isinstance(payload, dict):
+        err = payload.get("error")
+        return bool(err not in (None, "", [], {}))
+    return False
+
+
+def _truncate_text(text: str, max_chars: int) -> str:
+    if max_chars <= 0 or len(text) <= max_chars:
+        return text
+    keep = max(0, max_chars - len(_TRUNCATION_SUFFIX))
+    return text[:keep] + _TRUNCATION_SUFFIX
+
+
+def compact_planned_execution_messages(
+    messages: Sequence[Any],
+    *,
+    max_tool_chars: int = _DEFAULT_PLANNED_TOOL_RESULT_CHARS,
+    max_ai_chars: int = _DEFAULT_PLANNED_AI_TEXT_CHARS,
+) -> list[Any]:
+    """截断分步执行历史中的过长工具结果与 AI 文本，保留 tool_call 结构。"""
+    from langchain_core.messages import AIMessage, ToolMessage
+
+    compacted: list[Any] = []
+    for message in messages or []:
+        if isinstance(message, ToolMessage):
+            content = message.content
+            if isinstance(content, str):
+                new_content = _truncate_text(content, max_tool_chars)
+            elif content is None:
+                new_content = content
+            else:
+                serialized = json.dumps(content, ensure_ascii=False) if isinstance(content, (dict, list)) else str(content)
+                new_content = _truncate_text(serialized, max_tool_chars)
+            if new_content is content or new_content == content:
+                compacted.append(message)
+                continue
+            compacted.append(
+                ToolMessage(
+                    content=new_content,
+                    tool_call_id=getattr(message, "tool_call_id", "") or "",
+                    name=getattr(message, "name", None),
+                    status=getattr(message, "status", None),
+                )
+            )
+            continue
+
+        if isinstance(message, AIMessage):
+            content = message.content
+            tool_calls = getattr(message, "tool_calls", None) or []
+            # 仅截断纯文本中间回复；带 tool_calls 的短指令通常不大，避免破坏结构。
+            if isinstance(content, str) and not tool_calls and len(content) > max_ai_chars:
+                compacted.append(
+                    AIMessage(
+                        content=_truncate_text(content, max_ai_chars),
+                        tool_calls=[],
+                        additional_kwargs=getattr(message, "additional_kwargs", {}) or {},
+                    )
+                )
+                continue
+
+        compacted.append(message)
+    return compacted
+
+
+def enforce_k8s_namespace_lookup_first(
+    plan: ToolExecutionPlan,
+    available_names: set[str],
+    *,
+    max_steps: int,
+) -> ToolExecutionPlan:
+    """若计划使用需 namespace 的工具，且此前未安排反查，则在该步前插入反查。"""
+    lookup = [name for name in ("resolve_k8s_target_from_alert", "list_kubernetes_pods", "list_kubernetes_events") if name in available_names]
+    if not lookup:
+        return plan
+
+    first_required_idx: int | None = None
+    for index, step in enumerate(plan.steps):
+        if any(tool in _K8S_NAMESPACE_LOOKUP_TOOLS for tool in step.tools):
+            # 反查已出现在需 namespace 工具之前（或同批更早步骤）。
+            return plan
+        if any(tool in _K8S_NAMESPACE_REQUIRED_TOOLS for tool in step.tools):
+            first_required_idx = index
+            break
+    if first_required_idx is None:
+        return plan
+
+    preferred = lookup[0]
+    lookup_step = ToolExecutionStep(
+        objective="反查目标命名空间与定位信息",
+        tools=[preferred],
+    )
+    steps = [*plan.steps[:first_required_idx], lookup_step, *plan.steps[first_required_idx:]]
+    if len(steps) > max_steps:
+        steps = steps[:max_steps]
+    logger.info(
+        "DeepAgent 规划硬校验：已在需 namespace 步骤前插入反查 tool=%s index=%s",
+        preferred,
+        first_required_idx,
+    )
+    return ToolExecutionPlan(goal=plan.goal, steps=steps)
 
 
 def _looks_like_empty_message_reply(raw_text: str) -> bool:
@@ -192,6 +356,7 @@ class ToolExecutionPlanner:
     def _catalog(self, tools: Sequence[BaseTool]) -> str:
         lines = []
         has_monitor = False
+        has_k8s_lookup = False
         used = 0
         for tool in tools:
             name = _tool_name(tool)
@@ -199,6 +364,8 @@ class ToolExecutionPlanner:
                 continue
             if name.startswith("monitor_"):
                 has_monitor = True
+            if name in _K8S_NAMESPACE_LOOKUP_TOOLS:
+                has_k8s_lookup = True
             # 预算耗尽后只保留工具名，避免 60+ 长描述撑爆 8K 窗口。
             remaining = self._catalog_char_budget - used
             if remaining <= len(name) + 4:
@@ -211,8 +378,13 @@ class ToolExecutionPlanner:
             lines.append(line)
             used += len(line) + 1
         catalog = "\n".join(lines)
+        hints = []
         if has_monitor:
-            return f"{_MONITOR_CATALOG_HINT}\n{catalog}"
+            hints.append(_MONITOR_CATALOG_HINT)
+        if has_k8s_lookup:
+            hints.append(_K8S_NAMESPACE_LOOKUP_HINT)
+        if hints:
+            return "\n".join(hints) + "\n" + catalog
         return catalog
 
     def _normalize(
@@ -251,10 +423,11 @@ class ToolExecutionPlanner:
                 continue
             steps.append(ToolExecutionStep(objective=objective, tools=selected_tools))
 
-        return ToolExecutionPlan(
+        plan = ToolExecutionPlan(
             goal=str(payload.get("goal") or "").strip(),
             steps=steps,
         )
+        return enforce_k8s_namespace_lookup_first(plan, available_names, max_steps=self._max_steps)
 
     def _system_prompt(self) -> str:
         return (
