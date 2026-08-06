@@ -24,7 +24,6 @@
     collector: "Packetbeat"
     collect_type: "http"
     instance_id: "{{ instance_id }}"
-    _msg: ""
   fields_under_root: true
 {% endif %}
 {% if _enable_tcp_udp %}
@@ -36,6 +35,5 @@ packetbeat.flows:
     collector: "Packetbeat"
     collect_type: "flows"
     instance_id: "{{ instance_id }}"
-    _msg: ""
   fields_under_root: true
 {% endif %}

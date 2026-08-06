@@ -172,10 +172,10 @@ const LogTerminal = forwardRef<LogTerminalRef, LogTerminalProps>(
                 if (isJSON(trimmed)) {
                   // 尝试解析JSON
                   const logData = JSON.parse(trimmed);
-                  const msg = logData._msg || trimmed;
+                  const msg = logData.message || logData._msg || trimmed;
                   updateLogs(msg);
                 } else {
-                  const msgMatch = trimmed.match(/"_msg"\s*:\s*"(.*?)",/);
+                  const msgMatch = trimmed.match(/"(?:message|_msg)"\s*:\s*"(.*?)",/);
                   if (msgMatch?.[1]) {
                     updateLogs(msgMatch[1]);
                   }

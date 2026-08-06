@@ -15,7 +15,6 @@
     collector: "Winlogbeat"
     collect_type: "winlogbeat"
     instance_id: "{{ instance_id | default('default') }}"
-    _msg: ""
   fields_under_root: true
 {%- endif %}
 {#- System - 系统日志（硬件、驱动程序、系统服务） -#}
@@ -31,7 +30,6 @@
     collector: "Winlogbeat"
     collect_type: "winlogbeat"
     instance_id: "{{ instance_id | default('default') }}"
-    _msg: ""
   fields_under_root: true
 {%- endif %}
 {#- Application - 应用程序日志 -#}
@@ -47,7 +45,6 @@
     collector: "Winlogbeat"
     collect_type: "winlogbeat"
     instance_id: "{{ instance_id | default('default') }}"
-    _msg: ""
   fields_under_root: true
 {%- endif %}
 {#- Sysmon - 系统监控（进程、网络、文件活动） -#}
@@ -63,7 +60,6 @@
     collector: "Winlogbeat"
     collect_type: "winlogbeat"
     instance_id: "{{ instance_id | default('default') }}"
-    _msg: ""
   fields_under_root: true
 {%- endif %}
 {#- PowerShell Operational - PowerShell 操作日志 -#}
@@ -79,7 +75,6 @@
     collector: "Winlogbeat"
     collect_type: "winlogbeat"
     instance_id: "{{ instance_id | default('default') }}"
-    _msg: ""
   fields_under_root: true
 - name: Windows PowerShell
   {%- if ignore_older %}
@@ -92,7 +87,6 @@
     collector: "Winlogbeat"
     collect_type: "winlogbeat"
     instance_id: "{{ instance_id | default('default') }}"
-    _msg: ""
   fields_under_root: true
 {%- endif %}
 {#- Windows Defender - 防病毒日志 -#}
@@ -108,7 +102,6 @@
     collector: "Winlogbeat"
     collect_type: "winlogbeat"
     instance_id: "{{ instance_id | default('default') }}"
-    _msg: ""
   fields_under_root: true
 {%- endif %}
 {#- Task Scheduler - 计划任务日志 -#}
@@ -124,6 +117,5 @@
     collector: "Winlogbeat"
     collect_type: "winlogbeat"
     instance_id: "{{ instance_id | default('default') }}"
-    _msg: ""
   fields_under_root: true
 {%- endif %}
