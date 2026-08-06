@@ -125,7 +125,7 @@ class SSRFValidator:
 
     @classmethod
     def _get_allowed_domains(cls) -> set[str]:
-        """读取域名白名单（小写全等例外集）。fail-closed。"""
+        """读取域名白名单（小写全等或 ``*.suffix`` 通配例外集）。fail-closed。"""
         try:
             from apps.system_mgmt.utils.network_whitelist_cache import get_network_whitelist_domains
 

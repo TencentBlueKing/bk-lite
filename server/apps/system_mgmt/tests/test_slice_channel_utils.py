@@ -99,8 +99,9 @@ def test_send_by_wecom_bot_bot_key拼出url(mocker):
     assert "key=thekey" in post.call_args[0][0]
 
 
-def test_send_by_wecom_bot_非法域名被ssrf拦截(mocker):
-    ch = _make_channel(ChannelChoices.ENTERPRISE_WECHAT_BOT, {"webhook_url": "https://evil.com/x"})
+def test_send_by_wecom_bot_内网纯ip被ssrf拦截(mocker):
+    # 公网域名默认通；拦截场景改为未白名单的内网纯 IP（与飞书单测一致）
+    ch = _make_channel(ChannelChoices.ENTERPRISE_WECHAT_BOT, {"webhook_url": "http://127.0.0.1/x"})
     post = mocker.patch("apps.system_mgmt.utils.channel_utils.requests.post")
 
     result = channel_utils.send_by_wecom_bot(ch, "hi", [])
