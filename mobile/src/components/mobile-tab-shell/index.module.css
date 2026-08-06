@@ -41,7 +41,7 @@
   min-width: 0;
   min-height: 52px;
   padding: 2px;
-  font-size: 11px;
+  font-size: var(--font-size-tab-nav);
   line-height: 1.2;
   color: var(--color-text-3);
   cursor: pointer;

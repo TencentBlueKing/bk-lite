@@ -123,7 +123,7 @@ function TodoAlertDetailContent() {
     setSubmitting(true);
     try {
       const message = await performAlertAction(action, alert.alertId, selected);
-      invalidateMobileViewSnapshots(cacheScope, ['todo-root', 'todo-search']);
+      invalidateMobileViewSnapshots(cacheScope, ['todo-root']);
       Toast.show({ icon: 'success', content: message || t('todo.actionSuccess') });
       closePicker();
       await loadDetail();
@@ -219,11 +219,11 @@ function TodoAlertDetailContent() {
           data-status={alert.status}
         >
           <div className={styles.detailHeroTop}>
-            <span className={styles.levelBadge}>
-              <span
-                className={styles.levelDot}
-                style={level?.color ? { backgroundColor: level.color } : undefined}
-              />
+            <span
+              className={styles.levelBadge}
+              style={level?.color ? { color: level.color } : undefined}
+            >
+              <span className={styles.levelDot} />
               {level?.displayName || `L${alert.levelId}`}
             </span>
             <span className={styles.statusText}>{t(`todo.status.${alert.status}`, alert.status)}</span>

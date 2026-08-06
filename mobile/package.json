@@ -45,6 +45,7 @@
     "antd-mobile": "^5.41.1",
     "antd-mobile-icons": "^0.3.0",
     "dompurify": "^3.3.1",
+    "echarts": "^6.1.0",
     "intl-messageformat": "^10.7.18",
     "markdown-it": "^14.1.0",
     "next": "15.5.9",

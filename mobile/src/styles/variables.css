@@ -34,12 +34,30 @@
   --color-page-header-bg: var(--color-app-chrome-bg);
   --color-bottom-nav-bg: var(--color-bg);
   --mobile-header-height: 56px;
-  --mobile-page-title-font-size: 17px;
-  /* SearchBar：列表工具条用 compact(30)；独立搜索页 / Popup 用 page(36)。业务页禁止再写死高度。 */
-  --mobile-search-bar-height: 30px;
-  --mobile-search-bar-height-page: 36px;
+  /*
+   * Mobile 字号阶梯：业务 CSS 只引用这些语义变量，不要写死 px。
+   * 以后整体放大/缩小，只改这里即可；底部一级导航用 tab-nav，与内容阶梯解耦。
+   * title 18 / subtitle 16 / body 15 / secondary 13 / caption 12 / tab-nav 11
+   */
+  --font-size-title: 18px;
+  --font-size-subtitle: 16px;
+  --font-size-body: 15px;
+  --font-size-secondary: 13px;
+  --font-size-caption: 12px;
+  --font-size-tab-nav: 11px;
+  --mobile-page-title-font-size: var(--font-size-title);
+  /* SearchBar：列表工具条用 compact；独立搜索页 / Popup 用 page。业务页禁止再写死高度。 */
+  --mobile-search-bar-height: 34px;
+  --mobile-search-bar-height-page: 40px;
   --mobile-search-bar-radius: 8px;
-  --mobile-search-bar-font-size: 13px;
+  --mobile-search-bar-font-size: var(--font-size-secondary);
+  /* 密集列表行（监控实例 / 资产等多行信息列表） */
+  --mobile-dense-list-row-min-height: 80px;
+  --mobile-dense-list-row-padding-block: 13px;
+  --mobile-dense-list-row-padding-inline: 14px;
+  --mobile-dense-list-row-inner-gap: 6px;
+  --mobile-table-row-min-height: 68px;
+  --mobile-table-row-padding-block: 12px;
   
   /* 边框颜色 */
   --color-border: #eaecf0;
@@ -119,7 +137,24 @@
   --color-page-header-bg: var(--color-app-chrome-bg);
   --color-bottom-nav-bg: var(--color-bg);
   --mobile-header-height: 56px;
-  --mobile-page-title-font-size: 17px;
+  --font-size-title: 18px;
+  --font-size-subtitle: 16px;
+  --font-size-body: 15px;
+  --font-size-secondary: 13px;
+  --font-size-caption: 12px;
+  --font-size-tab-nav: 11px;
+  --mobile-page-title-font-size: var(--font-size-title);
+  --mobile-search-bar-height: 34px;
+  --mobile-search-bar-height-page: 40px;
+  --mobile-search-bar-radius: 8px;
+  --mobile-search-bar-font-size: var(--font-size-secondary);
+  /* 密集列表行（监控实例 / 资产等多行信息列表） */
+  --mobile-dense-list-row-min-height: 80px;
+  --mobile-dense-list-row-padding-block: 13px;
+  --mobile-dense-list-row-padding-inline: 14px;
+  --mobile-dense-list-row-inner-gap: 6px;
+  --mobile-table-row-min-height: 68px;
+  --mobile-table-row-padding-block: 12px;
   
   /* 边框颜色 */
   --color-border: #333333;

@@ -2,10 +2,12 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { AppstoreOutline } from 'antd-mobile-icons';
+import { SpinLoading } from 'antd-mobile';
+import { AppstoreOutline, StarFill, StarOutline } from 'antd-mobile-icons';
 import type { AssetInstance } from '@/features/assets/model';
 import { resolveAssetModelIconUrl } from '@/features/assets/model-icon';
 import { getStableTypeStyle } from '@/features/assets/type-style';
+import { useTranslation } from '@/utils/i18n';
 import styles from '@/features/assets/assets.module.css';
 
 interface AssetListCardProps {
@@ -15,6 +17,10 @@ interface AssetListCardProps {
   classificationId?: string;
   classificationName?: string;
   showModel?: boolean;
+  followed?: boolean;
+  followPending?: boolean;
+  followStatus?: 'loading' | 'ready' | 'error';
+  onToggleFollow?: (asset: AssetInstance) => void;
 }
 
 function AssetLead({
@@ -56,7 +62,12 @@ export default function AssetListCard({
   classificationId,
   classificationName,
   showModel = true,
+  followed = false,
+  followPending = false,
+  followStatus = 'ready',
+  onToggleFollow,
 }: AssetListCardProps) {
+  const { t } = useTranslation();
   const params = new URLSearchParams({
     modelId: asset.modelId,
     modelName,
@@ -67,13 +78,16 @@ export default function AssetListCard({
   const ipAddress = typeof asset.values.ip_addr === 'string' ? asset.values.ip_addr.trim() : '';
   const organization = asset.organizationName.trim();
   const typeStyle = getStableTypeStyle(modelName);
+  const followLabel = followStatus === 'error'
+    ? t('assets.followUnavailable')
+    : followed ? t('assets.unfollow') : t('assets.follow');
 
   return (
     <Link className={styles.assetRow} href={`/assets/detail?${params.toString()}`}>
       <AssetLead modelIcon={modelIcon} modelId={asset.modelId} modelName={modelName} />
       <span className={styles.assetIdentity}>
         <span className={styles.assetName}>{asset.name}</span>
-        {(showModel || organization) ? (
+        {(showModel || organization || ipAddress) ? (
           <span className={styles.assetMetaRow}>
             {showModel ? (
               <>
@@ -85,13 +99,33 @@ export default function AssetListCard({
                 <span className={styles.assetMetaModel}>{modelName}</span>
               </>
             ) : null}
-            {showModel && organization ? <span className={styles.assetMetaDot} aria-hidden="true">·</span> : null}
+            {showModel && (organization || ipAddress) ? <span className={styles.assetMetaDot} aria-hidden="true">·</span> : null}
             {organization ? <span className={styles.assetMetaOrg}>{organization}</span> : null}
+            {organization && ipAddress ? <span className={styles.assetMetaDot} aria-hidden="true">·</span> : null}
+            {ipAddress ? <span className={styles.assetMetaIp}>{ipAddress}</span> : null}
           </span>
         ) : null}
       </span>
       <span className={styles.assetTrailing}>
-        {ipAddress ? <span className={styles.assetIp}>{ipAddress}</span> : <span className={styles.assetIpEmpty}>—</span>}
+        {onToggleFollow ? (
+          <button
+            type="button"
+            className={`${styles.followButton} ${styles.cardFollow}${followed ? ` ${styles.followButtonActive}` : ''}`}
+            aria-label={followLabel}
+            title={followLabel}
+            disabled={followPending || followStatus !== 'ready'}
+            onClick={(event) => {
+              // 星标在整卡 Link 内部，必须阻断冒泡与默认跳转
+              event.preventDefault();
+              event.stopPropagation();
+              onToggleFollow(asset);
+            }}
+          >
+            {followPending
+              ? <SpinLoading color="currentColor" style={{ '--size': '16px' }} />
+              : followed ? <StarFill aria-hidden="true" /> : <StarOutline aria-hidden="true" />}
+          </button>
+        ) : null}
       </span>
     </Link>
   );
