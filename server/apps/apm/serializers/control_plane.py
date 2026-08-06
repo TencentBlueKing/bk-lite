@@ -386,6 +386,14 @@ class ApmPolicySerializer(serializers.ModelSerializer):
         return data
 
 
+class ApmDashboardQuerySerializer(serializers.Serializer):
+    window = serializers.ChoiceField(
+        choices=("15m", "1h", "4h", "1d", "7d"),
+        default="1h",
+        required=False,
+    )
+
+
 class ApmEventQuerySerializer(serializers.Serializer):
     started_at = serializers.DateTimeField(required=False)
     ended_at = serializers.DateTimeField(required=False)

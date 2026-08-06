@@ -108,6 +108,84 @@ export interface ApmSlo extends Omit<ApmSloInput, 'objective'> {
 
 export type ApmTopologyHealth = 'healthy' | 'warning' | 'critical' | 'unknown';
 
+export type ApmTimeWindow = '15m' | '1h' | '4h' | '1d' | '7d';
+
+export type ApmDashboardSectionStatus = 'ok' | 'failed' | 'empty';
+
+export interface ApmDashboardSection<T> {
+  status: ApmDashboardSectionStatus;
+  data?: T;
+  error?: string;
+}
+
+export interface ApmDashboardKpiData {
+  application_count: number;
+  service_count: number;
+  active_alert_count: number;
+  request_rate: number | null;
+  error_request_rate: number | null;
+  p95_ms: number | null;
+  sparklines: {
+    application_count: (number | null)[];
+    service_count: (number | null)[];
+    active_alert_count: (number | null)[];
+    request_rate: (number | null)[];
+    error_request_rate: (number | null)[];
+    p95_ms: (number | null)[];
+  };
+}
+
+export interface ApmDashboardHealthBucket {
+  key: ApmTopologyHealth;
+  label: string;
+  count: number;
+}
+
+export interface ApmDashboardHealthData {
+  total: number;
+  buckets: ApmDashboardHealthBucket[];
+}
+
+export interface ApmDashboardAlertRow {
+  id: string;
+  service: string;
+  service_id: string | null;
+  name: string;
+  severity: 'critical' | 'warning';
+  environment: string;
+  started_at: string;
+}
+
+export interface ApmDashboardSloRow {
+  id: string;
+  service_id: string;
+  service_name: string;
+  environment: string;
+  objective: number;
+  current_rate: number;
+  met: boolean;
+}
+
+export interface ApmDashboardTopRow {
+  service_id: string;
+  service_name: string;
+  environment: string;
+  value: number;
+  sub_value: number | null;
+}
+
+export interface ApmDashboard {
+  empty: boolean;
+  window: ApmTimeWindow;
+  kpis: ApmDashboardSection<ApmDashboardKpiData>;
+  health: ApmDashboardSection<ApmDashboardHealthData>;
+  slos: ApmDashboardSection<{ items: ApmDashboardSloRow[] }>;
+  alerts: ApmDashboardSection<{ items: ApmDashboardAlertRow[] }>;
+  top_error_rate: ApmDashboardSection<{ items: ApmDashboardTopRow[] }>;
+  top_p95: ApmDashboardSection<{ items: ApmDashboardTopRow[] }>;
+  releases: ApmDashboardSection<{ items: [] }>;
+}
+
 export interface ApmTopologyNode {
   id: string;
   service_namespace: string;
