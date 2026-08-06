@@ -1,13 +1,35 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import { ReloadOutlined, SearchOutlined } from '@ant-design/icons';
-import { Alert, Button, Input, Radio, Select, Space, Table, Tag, Typography, type TableColumnsType } from 'antd';
+import {
+  Alert,
+  Button,
+  Drawer,
+  Empty,
+  Input,
+  Radio,
+  Select,
+  Space,
+  Table,
+  Tag,
+  Typography,
+  type TableColumnsType,
+} from 'antd';
 import dayjs from 'dayjs';
 import useApmApi from '@/app/apm/api';
 import ApmRouteShell, { ApmSurface } from '@/app/apm/components/apm-route-shell';
 import CatalogState, { catalogErrorKind, type CatalogStateKind } from '@/app/apm/components/catalog-state';
-import type { ApmService } from '@/app/apm/types';
+import HealthDot from '@/app/apm/components/health-dot';
+import {
+  formatErrorRate,
+  formatLatency,
+  formatRelativeTime,
+  formatThroughput,
+  isErrorRateDanger,
+} from '@/app/apm/components/metric-format';
+import type { ApmService, ApmTraceSummary } from '@/app/apm/types';
 
 type PageState = CatalogStateKind | 'ready';
 type MetricRange = '15m' | '1h' | '4h' | '1d' | '7d';
@@ -17,6 +39,7 @@ interface EndpointRow {
   key: string;
   method: string;
   route: string;
+  endpoint: string;
   serviceId: string;
   serviceName: string;
   namespace: string;
@@ -24,6 +47,7 @@ interface EndpointRow {
   requestRate: number;
   errorRate: number | null;
   p95Ms: number | null;
+  p99Ms: number | null;
   lastSeenAt: string;
 }
 
@@ -40,15 +64,6 @@ const splitEndpoint = (value: string) => {
   return match ? { method: match[1], route: match[2] } : { method: 'SPAN', route: value };
 };
 
-const recentLabel = (value: string) => {
-  const minutes = Math.max(0, dayjs().diff(dayjs(value), 'minute'));
-  if (minutes < 1) return '刚刚';
-  if (minutes < 60) return `${minutes} 分钟前`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours} 小时前`;
-  return `${Math.floor(hours / 24)} 天前`;
-};
-
 const errorRateColor = (value: number | null) => {
   if (value === null) return undefined;
   if (value >= 0.05) return 'error';
@@ -57,7 +72,7 @@ const errorRateColor = (value: number | null) => {
 };
 
 export default function ApmEndpointsPage() {
-  const { getServiceRed, getServices, isLoading: authLoading } = useApmApi();
+  const { getServiceRed, getServices, getTraces, isLoading: authLoading } = useApmApi();
   const [services, setServices] = useState<ApmService[]>([]);
   const [rows, setRows] = useState<EndpointRow[]>([]);
   const [state, setState] = useState<PageState>('loading');
@@ -67,6 +82,9 @@ export default function ApmEndpointsPage() {
   const [sortKey, setSortKey] = useState<SortKey>('request_rate');
   const [keyword, setKeyword] = useState('');
   const [metricFailureCount, setMetricFailureCount] = useState(0);
+  const [selected, setSelected] = useState<EndpointRow | null>(null);
+  const [sampleTraces, setSampleTraces] = useState<ApmTraceSummary[]>([]);
+  const [samplesLoading, setSamplesLoading] = useState(false);
 
   const load = useCallback(async () => {
     if (authLoading) return;
@@ -105,6 +123,7 @@ export default function ApmEndpointsPage() {
             key: `${service.id}:${selectedEnvironment}:${endpoint.endpoint}`,
             method: identity.method,
             route: identity.route,
+            endpoint: endpoint.endpoint,
             serviceId: service.id,
             serviceName: service.name,
             namespace: service.namespace,
@@ -112,6 +131,7 @@ export default function ApmEndpointsPage() {
             requestRate: endpoint.request_rate,
             errorRate: endpoint.error_rate,
             p95Ms: endpoint.p95_ms,
+            p99Ms: endpoint.p99_ms,
             lastSeenAt: service.last_seen_at,
           };
         });
@@ -128,6 +148,42 @@ export default function ApmEndpointsPage() {
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    if (!selected) {
+      setSampleTraces([]);
+      return;
+    }
+    let active = true;
+    setSamplesLoading(true);
+    const endedAt = new Date();
+    const startedAt = new Date(endedAt.getTime() - RANGE_MS[timeRange]);
+    getTraces({
+      service_namespace: selected.namespace,
+      service_name: selected.serviceName,
+      environment: selected.environment,
+      started_at: startedAt.toISOString(),
+      ended_at: endedAt.toISOString(),
+      limit: 20,
+    })
+      .then((page) => {
+        if (!active) return;
+        const matched = page.items.filter((item) => (
+          item.root_span_name === selected.endpoint
+          || item.root_span_name.includes(selected.route)
+        ));
+        setSampleTraces(matched.length ? matched : page.items.slice(0, 8));
+      })
+      .catch(() => {
+        if (active) setSampleTraces([]);
+      })
+      .finally(() => {
+        if (active) setSamplesLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [getTraces, selected, timeRange]);
 
   const environmentOptions = useMemo(() => Array.from(new Set(
     services.flatMap((service) => service.environment_views.map((view) => view.environment)),
@@ -156,15 +212,24 @@ export default function ApmEndpointsPage() {
       title: '方法',
       dataIndex: 'method',
       width: 80,
-      render: (value) => <Tag bordered={false} color={value === 'POST' ? 'blue' : undefined}>{value}</Tag>,
+      render: (value) => (
+        <span className={`rounded px-2 py-0.5 font-mono text-[11px] font-medium ${
+          value === 'POST'
+            ? 'bg-[var(--color-primary-bg-active)] text-[var(--color-primary)]'
+            : 'bg-[var(--color-fill-1)] text-[var(--color-text-3)]'
+        }`}
+        >
+          {value}
+        </span>
+      ),
     },
     {
       title: '端点',
       render: (_, row) => (
-        <Space size={7}>
+        <span className="inline-flex items-center gap-2">
           <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--color-primary)]" aria-hidden="true" />
           <Typography.Text className="font-mono text-xs">{row.method} {row.route}</Typography.Text>
-        </Space>
+        </span>
       ),
     },
     {
@@ -182,7 +247,13 @@ export default function ApmEndpointsPage() {
       dataIndex: 'requestRate',
       align: 'right',
       width: 130,
-      render: (value) => <span className="tabular-nums"><strong>{value.toFixed(2)}</strong> <Typography.Text type="secondary" className="text-xs">次/秒</Typography.Text></span>,
+      render: (value) => (
+        <span className="tabular-nums">
+          <strong>{formatThroughput(value)}</strong>
+          {' '}
+          <Typography.Text type="secondary" className="text-xs">/s</Typography.Text>
+        </span>
+      ),
     },
     {
       title: '错误率',
@@ -191,28 +262,28 @@ export default function ApmEndpointsPage() {
       width: 100,
       render: (value: number | null) => value === null
         ? '—'
-        : <Tag bordered={false} color={errorRateColor(value)}>{(value * 100).toFixed(2)}%</Tag>,
+        : <Tag bordered={false} color={errorRateColor(value)}>{formatErrorRate(value)}</Tag>,
     },
     {
       title: 'P95',
       dataIndex: 'p95Ms',
       align: 'right',
       width: 100,
-      render: (value: number | null) => <span className="tabular-nums">{value === null ? '—' : `${value.toFixed(2)} ms`}</span>,
+      render: (value: number | null) => <span className="tabular-nums">{formatLatency(value)}</span>,
     },
     {
       title: '最近活跃',
       dataIndex: 'lastSeenAt',
       align: 'right',
       width: 110,
-      render: (value) => <Typography.Text type="secondary" className="text-xs">{recentLabel(value)}</Typography.Text>,
+      render: (value) => <Typography.Text type="secondary" className="text-xs">{formatRelativeTime(value)}</Typography.Text>,
     },
   ];
 
   return (
     <ApmRouteShell
       title="端点"
-      description="按服务端点查看真实吞吐量、错误率与 P95 时延，定位高影响接口。"
+      description="按服务端点查看吞吐量、错误率与时延，点击行打开详情与样本调用链。"
       dependency="telemetry"
     >
       <div className="flex flex-col gap-3">
@@ -282,12 +353,130 @@ export default function ApmEndpointsPage() {
         </ApmSurface>
         <ApmSurface padding="none" className="overflow-hidden">
           {state === 'ready' ? (
-            <Table rowKey="key" columns={columns} dataSource={visibleRows} pagination={false} />
+            <Table
+              rowKey="key"
+              size="middle"
+              columns={columns}
+              dataSource={visibleRows}
+              pagination={false}
+              onRow={(row) => ({
+                onClick: () => setSelected(row),
+                className: 'cursor-pointer',
+              })}
+            />
           ) : (
             <CatalogState kind={state} description={state === 'empty' ? '当前环境和时间范围内没有端点指标。' : undefined} />
           )}
         </ApmSurface>
       </div>
+      <Drawer
+        width={720}
+        open={Boolean(selected)}
+        onClose={() => setSelected(null)}
+        title={selected ? (
+          <div>
+            <div className="flex items-center gap-2">
+              <span className={`rounded px-2 py-0.5 font-mono text-[11px] font-medium ${
+                selected.method === 'POST'
+                  ? 'bg-[var(--color-primary-bg-active)] text-[var(--color-primary)]'
+                  : 'bg-[var(--color-fill-1)] text-[var(--color-text-3)]'
+              }`}
+              >
+                {selected.method}
+              </span>
+              <span className="font-mono text-sm">{selected.route}</span>
+            </div>
+            <Typography.Text type="secondary" className="!text-xs">
+              {selected.serviceName} · {selected.environment} · {timeRange}
+            </Typography.Text>
+          </div>
+        ) : null}
+      >
+        {selected ? (
+          <div className="flex flex-col gap-4">
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+              {[
+                { label: '吞吐', value: `${formatThroughput(selected.requestRate)}/s` },
+                {
+                  label: '错误率',
+                  value: formatErrorRate(selected.errorRate),
+                  danger: isErrorRateDanger(selected.errorRate),
+                },
+                { label: 'P95', value: formatLatency(selected.p95Ms) },
+                { label: 'P99', value: formatLatency(selected.p99Ms) },
+              ].map((metric) => (
+                <div key={metric.label} className="rounded-md border border-[var(--color-border)] px-3 py-2.5">
+                  <Typography.Text type="secondary" className="!text-[11px]">{metric.label}</Typography.Text>
+                  <div className={`mt-1 text-xl font-bold tabular-nums ${metric.danger ? 'text-[var(--color-fail)]' : ''}`}>
+                    {metric.value}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div>
+              <div className="mb-2 flex items-center justify-between">
+                <Typography.Text strong>样本调用链</Typography.Text>
+                <Link
+                  href={`/apm/traces?${new URLSearchParams({
+                    service_namespace: selected.namespace,
+                    service_name: selected.serviceName,
+                    environment: selected.environment,
+                  }).toString()}`}
+                >
+                  <Button type="link" size="small">在探索中打开</Button>
+                </Link>
+              </div>
+              {samplesLoading ? (
+                <CatalogState kind="loading" />
+              ) : sampleTraces.length ? (
+                <Table
+                  size="small"
+                  rowKey="trace_id"
+                  pagination={false}
+                  dataSource={sampleTraces}
+                  columns={[
+                    {
+                      title: 'Trace',
+                      render: (_, item) => (
+                        <Space size={6}>
+                          <HealthDot level={item.status === 'error' ? 1 : 5} />
+                          <Link href={`/apm/traces/${item.trace_id}`} className="font-mono text-xs text-[var(--color-primary)]">
+                            {item.trace_id.slice(0, 16)}…
+                          </Link>
+                        </Space>
+                      ),
+                    },
+                    {
+                      title: '资源',
+                      dataIndex: 'root_span_name',
+                      render: (value) => <span className="font-mono text-xs">{value}</span>,
+                    },
+                    {
+                      title: '耗时',
+                      dataIndex: 'duration_ms',
+                      width: 90,
+                      render: (value: number) => <span className="tabular-nums">{formatLatency(value)}</span>,
+                    },
+                    {
+                      title: '时间',
+                      dataIndex: 'started_at',
+                      width: 100,
+                      render: (value: string) => (
+                        <span className="text-xs text-[var(--color-text-3)]">{formatRelativeTime(value)}</span>
+                      ),
+                    },
+                  ]}
+                />
+              ) : (
+                <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无匹配样本 Trace" />
+              )}
+            </div>
+            <Typography.Text type="secondary" className="!text-xs">
+              端点指标来自服务 RED Top endpoint 聚合；最近活跃参考服务发现时间 {dayjs(selected.lastSeenAt).format('YYYY-MM-DD HH:mm:ss')}。
+            </Typography.Text>
+          </div>
+        ) : null}
+      </Drawer>
     </ApmRouteShell>
   );
 }
