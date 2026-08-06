@@ -20,7 +20,7 @@
 https://bklite.canway.net/api/v1/opspilot/bot_mgmt/execute_chat_flow/80/embedded_chat-1786007476479/
 ```
 
-前端不硬编码生产域名。全局适配器把当前登录 Token 作为 WebChat 的 `apiKey` 传入，由浏览器包发送 `Authorization: Bearer <token>`。用户身份由后端根据 Token 解析，不信任 `customData.userId` 作为鉴权依据。
+前端不硬编码生产域名。`NEXT_PUBLIC_WEBCHAT_ENDPOINT` 为必填环境变量，本地和默认部署配置为上述同源代理路径，需要直连时可改为完整 URL。全局适配器把当前登录 Token 作为 WebChat 的 `apiKey` 传入，由浏览器包发送 `Authorization: Bearer <token>`。用户身份由后端根据 Token 解析，不信任 `customData.userId` 作为鉴权依据。
 
 ## 接入方式
 
@@ -58,9 +58,9 @@ https://bklite.canway.net/api/v1/opspilot/bot_mgmt/execute_chat_flow/80/embedded
 ## 生命周期与失败处理
 
 - 同一页面生命周期内只初始化一次，避免路由切换产生多个 `#webchat-root`。
-- 资源加载失败时不影响控制台主体；适配器保持隐藏并记录不含 Token 的错误。
+- JavaScript 和样式资源都加载成功后才初始化；任一资源失败时保持隐藏，并显示不含 Token 的通用加载失败提示。
 - 接口错误交由 WebChat 现有错误状态展示，控制台页面不被阻断。
-- 用户退出登录或适配器卸载时移除 WebChat 根容器，避免悬浮入口残留。
+- 用户退出登录或适配器卸载时调用 UMD 包的 `destroy()` 卸载 React 根并移除容器，同时终止活跃流和事件监听。
 
 ## 验证
 
