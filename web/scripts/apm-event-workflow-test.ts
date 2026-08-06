@@ -19,6 +19,8 @@ assert.match(events, /Drawer/, '告警页必须提供详情抽屉');
 assert.match(events, /openDrawer|setSelected/, '告警行必须可打开详情');
 assert.match(events, /Timeline/, '告警详情必须提供事件时间线');
 assert.match(events, /retryNotificationDelivery/, '告警详情必须保留投递失败重投');
+assert.match(events, /searchParams\.get\('service'\)/, '告警页必须接受服务深链筛选');
+assert.match(events, /environmentFilter/, '告警页必须支持环境筛选以便服务目录下钻');
 for (const range of ["'1h'", "'24h'", "'7d'"]) {
   assert.ok(events.includes(range), `告警页应支持原型中的时间范围 ${range}`);
 }

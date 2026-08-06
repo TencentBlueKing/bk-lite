@@ -3,9 +3,11 @@ import {
   deriveHealth,
   formatErrorRate,
   formatLatency,
+  formatMetricEmpty,
   formatRelativeTime,
   formatThroughput,
   isErrorRateDanger,
+  metricEmptyHint,
 } from '../metric-format';
 
 describe('APM metric-format', () => {
@@ -17,9 +19,18 @@ describe('APM metric-format', () => {
     expect(deriveHealth('archived', null)).toBe(4);
   });
 
-  it('格式化吞吐、错误率与时延', () => {
-    expect(formatThroughput(null)).toBe('—');
+  it('区分无数据与查询失败空态', () => {
+    expect(formatMetricEmpty()).toBe('无数据');
+    expect(formatMetricEmpty(true)).toBe('查询失败');
+    expect(metricEmptyHint()).toContain('暂无遥测样本');
+    expect(metricEmptyHint(true)).toContain('可点击重试');
+    expect(formatThroughput(null)).toBe('无数据');
     expect(formatThroughput(null, true)).toBe('查询失败');
+    expect(formatErrorRate(null, true)).toBe('查询失败');
+    expect(formatLatency(null)).toBe('无数据');
+  });
+
+  it('格式化吞吐、错误率与时延', () => {
     expect(formatThroughput(12.4)).toBe('12.4');
     expect(formatThroughput(1500)).toBe('1.5k');
     expect(formatErrorRate(0.0123)).toBe('1.23%');

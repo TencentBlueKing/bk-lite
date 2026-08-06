@@ -28,20 +28,31 @@ export function deriveHealth(status: CatalogStatus, errorRate: number | null): H
   return 5;
 }
 
+/** 无样本：当前时间窗没有可用 RED 点；查询失败：接口失败，可重试 */
+export function formatMetricEmpty(unavailable = false): string {
+  return unavailable ? '查询失败' : '无数据';
+}
+
+export function metricEmptyHint(unavailable = false): string {
+  return unavailable
+    ? 'RED 指标查询失败，可点击重试'
+    : '当前时间窗暂无遥测样本（无流量或尚未上报）';
+}
+
 export function formatThroughput(value: number | null, unavailable = false): string {
-  if (value === null) return unavailable ? '查询失败' : '—';
+  if (value === null) return formatMetricEmpty(unavailable);
   if (value >= 1000) return `${(value / 1000).toFixed(1)}k`;
   return value >= 100 ? value.toFixed(0) : value.toFixed(1);
 }
 
 export function formatErrorRate(value: number | null, unavailable = false): string {
-  if (value === null) return unavailable ? '查询失败' : '—';
+  if (value === null) return formatMetricEmpty(unavailable);
   const pct = value * 100;
   return `${pct.toFixed(pct >= 10 ? 1 : 2)}%`;
 }
 
 export function formatLatency(ms: number | null, unavailable = false): string {
-  if (ms === null) return unavailable ? '查询失败' : '—';
+  if (ms === null) return formatMetricEmpty(unavailable);
   return ms >= 1000 ? `${(ms / 1000).toFixed(2)}s` : `${Math.round(ms)}ms`;
 }
 

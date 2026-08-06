@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { ReloadOutlined } from '@ant-design/icons';
 import {
   Badge,
@@ -74,13 +75,19 @@ const DELIVERY_STATUS: Record<ApmNotificationDelivery['status'], { label: string
 };
 
 export default function ApmEventsPage() {
+  const searchParams = useSearchParams();
   const { getEvents, isLoading: authLoading, retryNotificationDelivery } = useApmApi();
   const [events, setEvents] = useState<ApmEvent[]>([]);
   const [state, setState] = useState<PageState>('loading');
   const [query, setQuery] = useState<ApmEventQuery>({ limit: 50 });
   const [activeTab, setActiveTab] = useState<AlertTab>('active');
   const [timeRange, setTimeRange] = useState<TimeRange>('24h');
-  const [keyword, setKeyword] = useState('');
+  const [keyword, setKeyword] = useState(
+    () => searchParams.get('service') ?? searchParams.get('q') ?? ''
+  );
+  const [environmentFilter, setEnvironmentFilter] = useState(
+    () => searchParams.get('environment') ?? ''
+  );
   const [retryingId, setRetryingId] = useState<string | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [drawerTab, setDrawerTab] = useState<DrawerTab>('alert');
@@ -132,14 +139,18 @@ export default function ApmEventsPage() {
   const visibleAlerts = useMemo(() => {
     const source = activeTab === 'active' ? activeAlerts : historicalAlerts;
     const normalized = keyword.trim().toLocaleLowerCase();
-    if (!normalized) return source;
-    return source.filter((event) => (
-      event.title.toLocaleLowerCase().includes(normalized)
-      || event.service.toLocaleLowerCase().includes(normalized)
-      || event.resource_name.toLocaleLowerCase().includes(normalized)
-      || event.item.toLocaleLowerCase().includes(normalized)
-    ));
-  }, [activeAlerts, activeTab, historicalAlerts, keyword]);
+    const env = environmentFilter.trim().toLocaleLowerCase();
+    return source.filter((event) => {
+      if (env && (event.environment || '').toLocaleLowerCase() !== env) return false;
+      if (!normalized) return true;
+      return (
+        event.title.toLocaleLowerCase().includes(normalized)
+        || event.service.toLocaleLowerCase().includes(normalized)
+        || event.resource_name.toLocaleLowerCase().includes(normalized)
+        || event.item.toLocaleLowerCase().includes(normalized)
+      );
+    });
+  }, [activeAlerts, activeTab, environmentFilter, historicalAlerts, keyword]);
   const visibleState: PageState = state === 'ready' && !visibleAlerts.length ? 'empty' : state;
 
   const distribution = useMemo(() => {
@@ -349,6 +360,17 @@ export default function ApmEventsPage() {
               placeholder="搜索告警标题 / 服务 / 规则"
               value={keyword}
               onChange={(event) => setKeyword(event.target.value)}
+            />
+            <Select
+              allowClear
+              aria-label="按环境筛选告警"
+              className="w-40"
+              placeholder="全部环境"
+              value={environmentFilter || undefined}
+              options={Array.from(new Set(events.map((event) => event.environment).filter(Boolean)))
+                .sort()
+                .map((value) => ({ value, label: value }))}
+              onChange={(value) => setEnvironmentFilter(value ?? '')}
             />
             <div className="flex-1" />
             <Typography.Text type="secondary" className="text-xs">时间范围</Typography.Text>

@@ -19,9 +19,19 @@ const api = {
 
 vi.mock('next/navigation', () => ({
   useSearchParams: () => new URLSearchParams(),
+  usePathname: () => '/apm/services',
+  useRouter: () => ({ replace: vi.fn(), push: vi.fn() }),
 }));
 vi.mock('next/link', () => ({
-  default: ({ children, href }: { children: React.ReactNode; href: string }) => <a href={href}>{children}</a>,
+  default: ({
+    children,
+    href,
+    ...rest
+  }: {
+    children: React.ReactNode;
+    href: string;
+    [key: string]: unknown;
+  }) => <a href={href} {...rest}>{children}</a>,
 }));
 vi.mock('@/app/apm/api', () => ({ default: () => api }));
 vi.mock('@/context/userInfo', () => ({
@@ -191,18 +201,20 @@ describe('APM 服务目录应用视角', () => {
     ]);
   });
 
-  it('应用卡展示吞吐与告警徽标', async () => {
+  it('应用卡展示吞吐、健康文案与告警下钻', async () => {
     render(<ApmServicesPage />);
 
     const card = await screen.findByRole('button', { name: '查看应用 未归类应用测试 下的服务' });
     await waitFor(() => expect(within(card).getByText('12.5')).not.toBeNull());
     expect(within(card).getByText('2.00%')).not.toBeNull();
-    expect(within(card).getByTitle('应用内 1 个活跃告警')).not.toBeNull();
+    expect(within(card).getByLabelText('警告')).not.toBeNull();
+    const alertLink = within(card).getByRole('link', { name: /应用内 1 个活跃告警/ });
+    expect(alertLink.getAttribute('href')).toBe('/apm/events?service=bklite-server');
   });
 });
 
 describe('APM 服务目录服务视角与归档', () => {
-  it('切换到服务视角后展示 RED 列与服务链接', async () => {
+  it('切换到服务视角后展示 RED 列、健康文案与服务链接', async () => {
     const user = userEvent.setup();
     render(<ApmServicesPage />);
 
@@ -210,9 +222,13 @@ describe('APM 服务目录服务视角与归档', () => {
 
     expect((await screen.findAllByText('吞吐量(/s)')).length).toBeGreaterThan(0);
     expect(screen.getAllByText('错误率').length).toBeGreaterThan(0);
+    expect(screen.getByLabelText('警告')).not.toBeNull();
     expect(screen.getByRole('link', { name: 'bklite-server' }).getAttribute('href')).toBe(
-      '/apm/services/service-bklite?environment=production'
+      '/apm/services/service-bklite?environment=production&window=1h'
     );
+    expect(
+      screen.getByRole('link', { name: /bklite-server 有 1 个活跃告警/ }).getAttribute('href')
+    ).toBe('/apm/events?service=bklite-server&environment=production');
     await waitFor(() => expect(screen.getAllByText('12.5').length).toBeGreaterThan(0));
     expect(screen.getAllByText('2.00%').length).toBeGreaterThan(0);
   });

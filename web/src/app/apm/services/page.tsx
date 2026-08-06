@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import {
   AppstoreOutlined,
   BarsOutlined,
@@ -49,6 +49,7 @@ import {
   formatThroughput,
   isErrorRateDanger,
 } from '@/app/apm/components/metric-format';
+import MetricValue from '@/app/apm/components/metric-value';
 import MiniTrend from '@/app/apm/components/mini-trend';
 import OrganizationAssignmentModal from '@/app/apm/components/organization-assignment-modal';
 import type {
@@ -103,6 +104,13 @@ const timeWindowUnits: Record<TimeWindow, [number, dayjs.ManipulateType]> = {
 
 const metricKey = (serviceId: string, environment: string) => `${serviceId}:${environment}`;
 const alertKey = (serviceName: string, environment: string) => `${serviceName}::${environment}`;
+const TIME_WINDOWS: TimeWindow[] = ['15m', '1h', '4h', '1d', '7d'];
+const isTimeWindow = (value: string | null): value is TimeWindow => (
+  value !== null && (TIME_WINDOWS as string[]).includes(value)
+);
+const isHealthFilter = (value: string | null): value is HealthFilter => (
+  value === 'critical' || value === 'warning' || value === 'active' || value === 'silent'
+);
 
 const severityRank: Record<string, number> = {
   critical: 1,
@@ -112,6 +120,8 @@ const severityRank: Record<string, number> = {
 };
 
 export default function ApmServicesPage() {
+  const router = useRouter();
+  const pathname = usePathname();
   const searchParams = useSearchParams();
   const {
     getApplications,
@@ -130,16 +140,26 @@ export default function ApmServicesPage() {
   const [slos, setSlos] = useState<ApmSlo[]>([]);
   const [firingEvents, setFiringEvents] = useState<ApmEvent[]>([]);
   const [catalogDegraded, setCatalogDegraded] = useState(false);
-  const [perspective, setPerspective] = useState<ServicePerspective>(
-    searchParams.get('namespace') !== null ? 'service' : 'application'
+  const [perspective, setPerspective] = useState<ServicePerspective>(() => {
+    const fromQuery = searchParams.get('perspective');
+    if (fromQuery === 'service' || fromQuery === 'application') return fromQuery;
+    return searchParams.get('namespace') !== null ? 'service' : 'application';
+  });
+  const [keyword, setKeyword] = useState(searchParams.get('q') ?? '');
+  const [environment, setEnvironment] = useState<string | undefined>(
+    searchParams.get('environment') ?? undefined
   );
-  const [keyword, setKeyword] = useState('');
-  const [environment, setEnvironment] = useState<string>();
   const [namespace, setNamespace] = useState<string | undefined>(
     searchParams.get('namespace') ?? undefined
   );
-  const [healthFilter, setHealthFilter] = useState<HealthFilter>();
-  const [timeWindow, setTimeWindow] = useState<TimeWindow>('1h');
+  const [healthFilter, setHealthFilter] = useState<HealthFilter | undefined>(() => {
+    const value = searchParams.get('health');
+    return isHealthFilter(value) ? value : undefined;
+  });
+  const [timeWindow, setTimeWindow] = useState<TimeWindow>(() => {
+    const value = searchParams.get('window');
+    return isTimeWindow(value) ? value : '1h';
+  });
   const [redMetrics, setRedMetrics] = useState<Record<string, ApmServiceRed>>({});
   const [metricFailureKeys, setMetricFailureKeys] = useState<string[]>([]);
   const [metricsLoading, setMetricsLoading] = useState(false);
@@ -156,6 +176,33 @@ export default function ApmServicesPage() {
     () => new Map(flatGroups.map((group) => [Number(group.id), group.name])),
     [flatGroups]
   );
+
+  const retryMetrics = () => setMetricRefreshKey((value) => value + 1);
+
+  useEffect(() => {
+    const params = new URLSearchParams();
+    if (perspective !== 'application') params.set('perspective', perspective);
+    if (namespace !== undefined) params.set('namespace', namespace);
+    if (environment) params.set('environment', environment);
+    if (healthFilter) params.set('health', healthFilter);
+    if (timeWindow !== '1h') params.set('window', timeWindow);
+    const trimmed = keyword.trim();
+    if (trimmed) params.set('q', trimmed);
+    const next = params.toString();
+    const current = searchParams.toString();
+    if (next === current) return;
+    router.replace(next ? `${pathname}?${next}` : pathname, { scroll: false });
+  }, [
+    environment,
+    healthFilter,
+    keyword,
+    namespace,
+    pathname,
+    perspective,
+    router,
+    searchParams,
+    timeWindow,
+  ]);
 
   useEffect(() => {
     if (authLoading) return;
@@ -481,16 +528,17 @@ export default function ApmServicesPage() {
         const metric = redMetrics[metricKey(item.serviceId, item.environment)];
         const silent = item.status === 'silent';
         const href = item.environment
-          ? `/apm/services/${item.serviceId}?environment=${encodeURIComponent(item.environment)}`
+          ? `/apm/services/${item.serviceId}?environment=${encodeURIComponent(item.environment)}&window=${timeWindow}`
           : undefined;
+        const health = deriveHealth(item.status, metric?.error_rate ?? null);
         return (
           <Space size={8} align="center" className={silent ? 'opacity-60' : undefined}>
-            <HealthDot status={item.status} errorRate={metric?.error_rate ?? null} />
+            <HealthDot status={item.status} errorRate={metric?.error_rate ?? null} showLabel />
             {href ? (
               <Link
                 href={href}
                 className={`font-medium text-[var(--color-primary)] hover:underline ${
-                  deriveHealth(item.status, metric?.error_rate ?? null) <= 2 ? 'font-semibold' : ''
+                  health <= 2 ? 'font-semibold' : ''
                 }`}
               >
                 {item.serviceName}
@@ -511,24 +559,49 @@ export default function ApmServicesPage() {
         const alert = alertCounts.get(alertKey(item.serviceName, item.environment));
         const count = alert?.count ?? 0;
         const dangerous = count > 0 && (alert?.level ?? 5) <= 2;
+        const eventsHref = `/apm/events?service=${encodeURIComponent(item.serviceName)}${
+          item.environment ? `&environment=${encodeURIComponent(item.environment)}` : ''
+        }`;
         return (
-          <Tag
-            bordered={false}
-            className={`!m-0 !rounded-full !px-2 !text-[11px] ${
+          <Link
+            href={eventsHref}
+            aria-label={`${item.serviceName} 有 ${count} 个活跃告警，查看告警`}
+            className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] no-underline transition-colors duration-150 ${
               dangerous
-                ? '!border-[var(--color-fail)] !bg-[color-mix(in_srgb,var(--color-fail)_10%,var(--color-bg))] !text-[var(--color-fail)] !font-semibold'
-                : '!border-[var(--color-border)] !bg-[var(--color-fill-1)] !text-[var(--color-text-3)]'
+                ? 'border-[var(--color-fail)] bg-[color-mix(in_srgb,var(--color-fail)_10%,var(--color-bg))] font-semibold text-[var(--color-fail)]'
+                : 'border-[var(--color-border)] bg-[var(--color-fill-1)] text-[var(--color-text-3)] hover:border-[var(--color-primary)]'
             }`}
+            onClick={(event) => event.stopPropagation()}
           >
-            <BellOutlined className="mr-1 text-[10px]" aria-hidden="true" />
-            {count}
-          </Tag>
+            <BellOutlined className="text-[10px]" aria-hidden="true" />
+            <span className="tabular-nums">{count}</span>
+            <span className="sr-only">个活跃告警</span>
+          </Link>
         );
       },
     },
     {
       title: '吞吐量(/s)',
       key: 'throughput',
+      width: 120,
+      align: 'right',
+      className: 'tabular-nums',
+      render: (_, item) => {
+        const metric = redMetrics[metricKey(item.serviceId, item.environment)];
+        const unavailable = metricFailureKeys.includes(metricKey(item.serviceId, item.environment));
+        return (
+          <MetricValue
+            text={formatThroughput(metric?.request_rate ?? null, unavailable)}
+            unavailable={unavailable}
+            muted={item.status === 'silent'}
+            onRetry={unavailable ? retryMetrics : undefined}
+          />
+        );
+      },
+    },
+    {
+      title: '错误率',
+      key: 'errorRate',
       width: 110,
       align: 'right',
       className: 'tabular-nums',
@@ -536,40 +609,32 @@ export default function ApmServicesPage() {
         const metric = redMetrics[metricKey(item.serviceId, item.environment)];
         const unavailable = metricFailureKeys.includes(metricKey(item.serviceId, item.environment));
         return (
-          <span className={item.status === 'silent' ? 'text-[var(--color-text-3)] opacity-60' : undefined}>
-            {formatThroughput(metric?.request_rate ?? null, unavailable)}
-          </span>
-        );
-      },
-    },
-    {
-      title: '错误率',
-      key: 'errorRate',
-      width: 90,
-      align: 'right',
-      className: 'tabular-nums',
-      render: (_, item) => {
-        const metric = redMetrics[metricKey(item.serviceId, item.environment)];
-        const unavailable = metricFailureKeys.includes(metricKey(item.serviceId, item.environment));
-        const danger = isErrorRateDanger(metric?.error_rate ?? null);
-        return (
-          <span className={danger ? 'font-semibold text-[var(--color-fail)]' : undefined}>
-            {formatErrorRate(metric?.error_rate ?? null, unavailable)}
-          </span>
+          <MetricValue
+            text={formatErrorRate(metric?.error_rate ?? null, unavailable)}
+            unavailable={unavailable}
+            danger={isErrorRateDanger(metric?.error_rate ?? null)}
+            onRetry={unavailable ? retryMetrics : undefined}
+          />
         );
       },
     },
     {
       title: 'P99',
       key: 'p99',
-      width: 90,
+      width: 100,
       align: 'right',
       className: 'tabular-nums',
       responsive: ['md'],
       render: (_, item) => {
         const metric = redMetrics[metricKey(item.serviceId, item.environment)];
         const unavailable = metricFailureKeys.includes(metricKey(item.serviceId, item.environment));
-        return formatLatency(metric?.p99_ms ?? null, unavailable);
+        return (
+          <MetricValue
+            text={formatLatency(metric?.p99_ms ?? null, unavailable)}
+            unavailable={unavailable}
+            onRetry={unavailable ? retryMetrics : undefined}
+          />
+        );
       },
     },
     {
@@ -680,17 +745,18 @@ export default function ApmServicesPage() {
               icon={<ReloadOutlined aria-hidden="true" />}
               loading={metricsLoading}
               size="small"
-              onClick={() => setMetricRefreshKey((value) => value + 1)}
+              onClick={() => retryMetrics()}
             >
               重试 RED 指标
             </Button>
           )}
           className="mb-4"
-          description="服务目录元数据仍然可用；失败项不会再显示为无遥测数据。"
+          description="服务目录元数据仍然可用；失败项显示为「查询失败」，不会再伪装成无遥测数据。"
           message={metricFailureKeys.length === rows.filter((row) => row.environment && !row.serviceArchivedAt).length
             ? 'RED 指标查询失败'
             : `部分 RED 指标查询失败（${metricFailureKeys.length} 项）`}
           showIcon
+          role="alert"
           type="warning"
         />
       ) : null}
@@ -778,6 +844,10 @@ export default function ApmServicesPage() {
                 {applicationSummaries.map((application) => {
                   const health = deriveHealth(application.status, application.errorRate);
                   const errDanger = isErrorRateDanger(application.errorRate);
+                  const alertServiceHint = application.services[0]?.name;
+                  const eventsHref = alertServiceHint
+                    ? `/apm/events?service=${encodeURIComponent(alertServiceHint)}`
+                    : '/apm/events';
                   return (
                     <button
                       aria-label={`查看应用 ${application.label} 下的服务`}
@@ -797,7 +867,7 @@ export default function ApmServicesPage() {
                         <div className="mb-3.5 flex items-start justify-between gap-3">
                           <div className="min-w-0">
                             <div className="flex items-center gap-2">
-                              <HealthDot level={health} />
+                              <HealthDot level={health} showLabel />
                               <Typography.Text strong ellipsis={{ tooltip: application.label }} className="!text-[15px]">
                                 {application.label}
                               </Typography.Text>
@@ -811,40 +881,46 @@ export default function ApmServicesPage() {
                               {application.services.length} 个服务
                             </Typography.Text>
                           </div>
-                          <span
-                            className={`inline-flex shrink-0 items-center gap-1 rounded px-2 py-0.5 text-xs ${
+                          <Link
+                            href={eventsHref}
+                            aria-label={`应用内 ${application.alertCount} 个活跃告警，查看告警`}
+                            title={`应用内 ${application.alertCount} 个活跃告警`}
+                            className={`inline-flex shrink-0 items-center gap-1 rounded px-2 py-0.5 text-xs no-underline transition-colors duration-150 ${
                               application.alertCount > 0
                                 ? 'border border-[var(--color-fail)] bg-[color-mix(in_srgb,var(--color-fail)_8%,var(--color-bg))] font-semibold text-[var(--color-fail)]'
-                                : 'border border-[var(--color-border)] bg-[var(--color-fill-1)] text-[var(--color-text-3)]'
+                                : 'border border-[var(--color-border)] bg-[var(--color-fill-1)] text-[var(--color-text-3)] hover:border-[var(--color-primary)]'
                             }`}
-                            title={`应用内 ${application.alertCount} 个活跃告警`}
+                            onClick={(event) => event.stopPropagation()}
                           >
                             <BellOutlined className="text-[11px]" aria-hidden="true" />
-                            {application.alertCount}
-                          </span>
+                            <span className="tabular-nums">{application.alertCount}</span>
+                          </Link>
                         </div>
                         <div className="mb-3.5 grid grid-cols-2 gap-4">
                           <div>
                             <Typography.Text type="secondary" className="block !text-[11px]">吞吐量</Typography.Text>
-                            <div className="mt-0.5">
-                              <span className="text-[22px] font-bold tabular-nums leading-none text-[var(--color-text-1)]">
-                                {formatThroughput(application.requestRate, application.metricUnavailable)}
-                              </span>
+                            <div className="mt-0.5 flex items-baseline gap-0.5">
+                              <MetricValue
+                                size="lg"
+                                text={formatThroughput(application.requestRate, application.metricUnavailable)}
+                                unavailable={application.metricUnavailable}
+                                onRetry={application.metricUnavailable ? retryMetrics : undefined}
+                              />
                               {application.requestRate !== null ? (
-                                <span className="ml-0.5 text-xs text-[var(--color-text-3)]">/s</span>
+                                <span className="text-xs text-[var(--color-text-3)]">/s</span>
                               ) : null}
                             </div>
                           </div>
                           <div>
                             <Typography.Text type="secondary" className="block !text-[11px]">错误率</Typography.Text>
                             <div className="mt-0.5">
-                              <span
-                                className={`text-[22px] font-bold tabular-nums leading-none ${
-                                  errDanger ? 'text-[var(--color-fail)]' : 'text-[var(--color-text-1)]'
-                                }`}
-                              >
-                                {formatErrorRate(application.errorRate, application.metricUnavailable)}
-                              </span>
+                              <MetricValue
+                                size="lg"
+                                text={formatErrorRate(application.errorRate, application.metricUnavailable)}
+                                unavailable={application.metricUnavailable}
+                                danger={errDanger}
+                                onRetry={application.metricUnavailable ? retryMetrics : undefined}
+                              />
                             </div>
                           </div>
                         </div>

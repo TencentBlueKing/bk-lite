@@ -26,6 +26,10 @@ assert.match(servicesPage, /getSlos/, '服务目录 SLO 列必须来自真实 SL
 assert.match(servicesPage, /metricFailureKeys/, '服务目录必须单独记录 RED 查询失败，不能把故障伪装成无数据');
 assert.match(servicesPage, /RED 指标查询失败/, '服务目录必须明确提示 RED 指标降级');
 assert.match(servicesPage, /setMetricRefreshKey/, 'RED 指标降级状态必须提供可操作的重试入口');
+assert.match(servicesPage, /showLabel/, '健康状态必须同时展示色点与文案，不能仅靠颜色');
+assert.match(servicesPage, /MetricValue/, 'RED 空态必须区分无数据与查询失败');
+assert.match(servicesPage, /router\.replace/, '服务目录筛选与视角必须写入 URL 以便深链');
+assert.match(servicesPage, /\/apm\/events\?service=/, '活跃告警必须下钻到告警页并携带服务筛选');
 
 const serviceDetail = readFileSync(join(webRoot, 'src/app/apm/services/[serviceId]/page.tsx'), 'utf8');
 assert.match(serviceDetail, /activeKey=\{activeTab\}/, '服务详情 Tabs 必须真正切换内容而不是仅跳转');
