@@ -697,7 +697,7 @@ export default function TargetPage() {
                 <span style={{ color: 'var(--color-text-4, #bfbfbf)', cursor: 'not-allowed' }}>{t('patchManager.targetPage.bindBaseline')}</span>
               </Tooltip>
             ) : (
-              <PermissionWrapper requiredPermissions={['Edit']} permissionPath="/patch-manager/baseline" instPermissions={r.permission}><a style={{ color: 'var(--color-primary, #1677ff)' }} onClick={() => { setSelectedKeys([r.key]); setBindBaseline(r.baseline_id ?? undefined); setBindOpen(true); }}>
+              <PermissionWrapper requiredPermissions={['Edit']} instPermissions={r.permission}><a style={{ color: 'var(--color-primary, #1677ff)' }} onClick={() => { setSelectedKeys([r.key]); setBindBaseline(r.baseline_id ?? undefined); setBindOpen(true); }}>
                 {t('patchManager.targetPage.bindBaseline')}
               </a></PermissionWrapper>
             )}
@@ -789,7 +789,7 @@ export default function TargetPage() {
                   : ''
               }
             >
-              <PermissionWrapper requiredPermissions={['Edit']} permissionPath="/patch-manager/baseline"><Button icon={<LinkOutlined />} disabled={bulkBindDisabled} onClick={() => { setBindBaseline(undefined); setBindOpen(true); }}>
+              <PermissionWrapper requiredPermissions={['Edit']}><Button icon={<LinkOutlined />} disabled={bulkBindDisabled} onClick={() => { setBindBaseline(undefined); setBindOpen(true); }}>
                 {t('patchManager.targetPage.bulkBind')}{selectedKeys.length ? `(${selectedKeys.length})` : ''}
               </Button></PermissionWrapper>
             </Tooltip>
@@ -830,13 +830,13 @@ export default function TargetPage() {
         />
       </div>
 
-      <Modal title={t('patchManager.targetPage.bulkBind')} open={bindOpen} onCancel={() => setBindOpen(false)} onOk={handleBind} okText={t('patchManager.confirm')} cancelText={t('patchManager.cancel')} confirmLoading={actionLoading} okButtonProps={{ disabled: !bindBaseline || !baselines.find((item) => item.id === bindBaseline)?.permission?.includes('Operate') }}>
+      <Modal title={t('patchManager.targetPage.bulkBind')} open={bindOpen} onCancel={() => setBindOpen(false)} onOk={handleBind} okText={t('patchManager.confirm')} cancelText={t('patchManager.cancel')} confirmLoading={actionLoading} okButtonProps={{ disabled: !bindBaseline || bulkBindDisabled }}>
         <p style={{ color: 'var(--color-text-2, #595959)' }}>{t('patchManager.targetPage.bindSelection', undefined, { count: selectedKeys.length })}</p>
         <Select
           style={{ width: '100%' }}
           placeholder={t('patchManager.targetPage.selectBaseline')}
           virtual
-          options={baselines.map((b) => ({ label: b.name, value: b.id, disabled: !b.permission?.includes('Operate') }))}
+          options={baselines.map((b) => ({ label: b.name, value: b.id }))}
           value={bindBaseline}
           onChange={setBindBaseline}
         />

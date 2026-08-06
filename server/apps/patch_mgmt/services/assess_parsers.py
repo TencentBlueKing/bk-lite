@@ -460,8 +460,8 @@ def assess_windows_requirements(stdout: str, requirements: Iterable) -> dict[int
         try:
             detail = req.patch.windows_detail
             kb_number = (detail.kb_number or "").upper()
-            products = tuple(detail.product_list or ())
-            architectures = tuple(detail.architectures or ())
+            products = tuple(getattr(detail, "product_list", ()) or ())
+            architectures = tuple(getattr(detail, "architectures", ()) or ())
             configuration_error = "" if kb_number else "missing KB number"
         except Exception:  # noqa: BLE001
             logger.warning("要求 %s 缺少 Windows 补丁详情，无法评估", req.id)

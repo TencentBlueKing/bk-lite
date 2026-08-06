@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { Table, Tag, Button, Segmented, Space, Modal, DatePicker, Alert, message, Select, Row, Col, Dropdown, Drawer, Tooltip, Switch, Radio, Steps, Popconfirm, Input, Popover } from 'antd';
+import { Table, Tag, Button, Segmented, Space, Modal, DatePicker, Alert, message, Select, Row, Col, Dropdown, Drawer, Tooltip, Switch, Radio, Steps, Popconfirm, Input, Popover, Form } from 'antd';
 import PermissionWrapper from '@/components/permission';
 import { ToolOutlined, ExportOutlined, ReloadOutlined, DownOutlined, CloseOutlined } from '@ant-design/icons';
 import useApiClient from '@/utils/request';
@@ -125,6 +125,12 @@ export default function RiskPendingPage() {
   }>({ host_name: routeHostName });
   const [windowRange, setWindowRange] = useState<[any, any] | null>(null);
   const [rebootRange, setRebootRange] = useState<[any, any] | null>(null);
+  const [taskName, setTaskName] = useState('');
+  const [rebootTaskName, setRebootTaskName] = useState('');
+  const [remediationTaskPrefix, setRemediationTaskPrefix] = useState<'治理' | '一键治理'>('一键治理');
+  const [rebootTaskPrefix, setRebootTaskPrefix] = useState<'重启' | '一键重启'>('一键重启');
+  const [rebootConfirmOpen, setRebootConfirmOpen] = useState(false);
+  const [rebootValidation, setRebootValidation] = useState<{ taskName?: string; window?: string }>({});
 
   const api = usePatchManagerApi();
   const { isLoading } = useApiClient();
@@ -194,6 +200,25 @@ export default function RiskPendingPage() {
     return row.patch || row.host || row.baseline || '';
   };
 
+  const buildDefaultTaskName = (
+    prefix: '治理' | '一键治理' | '重启' | '一键重启',
+    hosts: Array<{ id: number; name: string }>,
+  ) => {
+    const uniqueHosts = Array.from(
+      new Map(hosts.filter((host) => host.id).map((host) => [host.id, host])).values(),
+    );
+    const firstHostName = uniqueHosts[0]?.name || t('patchManager.risk.unknownHost', '未知主机');
+    const hostSummary = uniqueHosts.length > 1
+      ? `${firstHostName}等${uniqueHosts.length}台`
+      : firstHostName;
+    const now = new Date();
+    const date = [now.getFullYear(), now.getMonth() + 1, now.getDate()]
+      .map((value, index) => index === 0 ? String(value) : String(value).padStart(2, '0'))
+      .join('');
+    const reservedLength = prefix.length + date.length + 2;
+    return `${prefix}-${hostSummary.slice(0, Math.max(1, 128 - reservedLength))}-${date}`;
+  };
+
   const hasRemediableState = (items: RiskItem[]) => items.some((i) => (i.remediation === 'unplanned' || i.remediation === 'failed') && !i.inOtherTask && i.compliance !== 'invalidated');
   const canRemediate = (items: RiskItem[]) => items.some((i) => i.can_remediate && (i.remediation === 'unplanned' || i.remediation === 'failed') && !i.inOtherTask && i.compliance !== 'invalidated');
   const canReboot = (items: RiskItem[]) => {
@@ -205,14 +230,19 @@ export default function RiskPendingPage() {
     return hostIds.size > 0 && Array.from(hostIds).every((hostId) => pendingRebootHostIds.has(hostId) && operableHostIds.has(hostId));
   };
 
-  const openScope = (rows?: SelectedRow[]) => {
+  const openScope = (rows?: SelectedRow[], prefix: '治理' | '一键治理' = '一键治理') => {
     setScopeRows(rows || selectedRows);
     setScopeSelected([]);
     setCurrentStep(0);
+    setTaskName('');
+    setRemediationTaskPrefix(prefix);
     setScopeOpen(true);
   };
 
-  const loadRebootScope = async (rows: SelectedRow[]) => {
+  const loadRebootScope = async (
+    rows: SelectedRow[],
+    prefix: '重启' | '一键重启',
+  ) => {
     const targetIds = Array.from(new Set(
       rows.flatMap((row) => (row.items || []))
         .filter((item) => item.remediation === 'pending_reboot')
@@ -221,17 +251,30 @@ export default function RiskPendingPage() {
     if (!targetIds.length) return;
     setRebootScopeLoading(true);
     try {
-      setRebootScope(await api.previewRebootRisk(targetIds));
+      const scope = await api.previewRebootRisk(targetIds);
+      setRebootScope(scope);
+      setRebootTaskName(buildDefaultTaskName(
+        prefix,
+        scope.items.map((item) => ({
+          id: Number(item.host_id),
+          name: String(item.host_name || item.host_ip || item.host_id),
+        })),
+      ));
     } finally {
       setRebootScopeLoading(false);
     }
   };
 
-  const openReboot = (rows: SelectedRow[]) => {
+  const openReboot = (rows: SelectedRow[], prefix: '重启' | '一键重启') => {
     setRebootRows(rows);
     setRebootScope(undefined);
+    setRebootTaskName('');
+    setRebootRange(null);
+    setRebootTaskPrefix(prefix);
+    setRebootConfirmOpen(false);
+    setRebootValidation({});
     setRebootOpen(true);
-    void loadRebootScope(rows);
+    void loadRebootScope(rows, prefix);
   };
 
   const opCell = (r: unknown) => {
@@ -243,12 +286,12 @@ export default function RiskPendingPage() {
     return (
       <Space size={4}>
         {hasRemediable ? (
-          <PermissionWrapper requiredPermissions={['Add']} instPermissions={remediable ? ['Operate'] : []}><Button type="link" size="small" onClick={() => openScope([row])}>{t('patchManager.risk.remediate')}</Button></PermissionWrapper>
+          <PermissionWrapper requiredPermissions={['Add']} instPermissions={remediable ? ['Operate'] : []}><Button type="link" size="small" onClick={() => openScope([row], '治理')}>{t('patchManager.risk.remediate')}</Button></PermissionWrapper>
         ) : (
           <Tooltip title={t('patchManager.risk.noRemediableItems')}><Button type="link" size="small" disabled>{t('patchManager.risk.remediate')}</Button></Tooltip>
         )}
         {rebootable && (
-          <PermissionWrapper requiredPermissions={['Add']} instPermissions={rebootable ? ['Operate'] : []}><Button type="link" size="small" onClick={() => openReboot([row])}>{t('patchManager.risk.reboot')}</Button></PermissionWrapper>
+          <PermissionWrapper requiredPermissions={['Add']} instPermissions={rebootable ? ['Operate'] : []}><Button type="link" size="small" onClick={() => openReboot([row], '重启')}>{t('patchManager.risk.reboot')}</Button></PermissionWrapper>
         )}
         <Button type="link" size="small" onClick={() => setDetailRecord({ name: getRowName(r), items })}>{t('patchManager.risk.details')}</Button>
       </Space>
@@ -414,6 +457,10 @@ export default function RiskPendingPage() {
 
   const handleScopeSubmit = async () => {
     if (scopeSelectedObjs.length === 0) return;
+    if (!taskName.trim()) {
+      message.error(t('patchManager.risk.taskNameRequired'));
+      return;
+    }
     if (execMode === 'window' && (!windowRange || !windowRange[0] || !windowRange[1])) {
       message.error(t('patchManager.risk.selectExecutionWindow'));
       return;
@@ -422,6 +469,7 @@ export default function RiskPendingPage() {
       const items = scopeSelectedObjs.map((s) => ({ host_id: s.host_id, patch_id: s.patch_id }));
       const payload: Parameters<typeof api.remediateRisk>[0] = {
         items,
+        name: taskName.trim(),
         execution_mode: execMode,
         auto_reboot: autoReboot,
       };
@@ -438,24 +486,44 @@ export default function RiskPendingPage() {
     }
   };
 
+  const validateRebootForm = () => {
+    const validation: { taskName?: string; window?: string } = {};
+    if (!rebootTaskName.trim()) {
+      validation.taskName = t('patchManager.risk.taskNameRequired');
+    }
+    if (!rebootRange || !rebootRange[0] || !rebootRange[1]) {
+      validation.window = t('patchManager.risk.selectRebootWindow');
+    }
+    setRebootValidation(validation);
+    return Object.keys(validation).length === 0;
+  };
+
+  const handleRebootConfirmRequest = () => {
+    if (validateRebootForm()) {
+      setRebootConfirmOpen(true);
+    }
+  };
+
   const handleRebootSubmit = async () => {
     const hosts = rebootScope?.target_ids || [];
     if (hosts.length === 0) {
       message.error(t('patchManager.risk.noRebootHosts'));
       return;
     }
-    if (!rebootRange || !rebootRange[0] || !rebootRange[1]) {
-      message.error(t('patchManager.risk.selectRebootWindow'));
+    if (!validateRebootForm()) {
+      setRebootConfirmOpen(false);
       return;
     }
     try {
       await api.rebootRisk({
         target_ids: hosts,
+        name: rebootTaskName.trim(),
         execution_window_start: rebootRange[0].toISOString(),
         execution_window_end: rebootRange[1].toISOString(),
         scope_token: rebootScope?.scope_token || '',
       });
       message.success(t('patchManager.risk.rebootCreated', undefined, { count: hosts.length }));
+      setRebootConfirmOpen(false);
       setRebootOpen(false);
       setSelected([]);
       loadRisk(pagination.current, pagination.pageSize);
@@ -464,7 +532,7 @@ export default function RiskPendingPage() {
       if (code === 'reboot_scope_changed') {
         message.warning(t('patchManager.risk.rebootScopeChanged'));
         setRebootScope(undefined);
-        await loadRebootScope(rebootRows);
+        await loadRebootScope(rebootRows, rebootTaskPrefix);
       }
     }
   };
@@ -617,7 +685,7 @@ export default function RiskPendingPage() {
                   label: <PermissionWrapper requiredPermissions={['Add']} instPermissions={batchCanRemediate ? ['Operate'] : []}>{t('patchManager.risk.oneClickRemediation')}</PermissionWrapper>,
                   icon: <ToolOutlined />,
                   disabled: !batchCanRemediate || !hasPermission(['Add']),
-                  onClick: () => openScope(),
+                  onClick: () => openScope(undefined, '一键治理'),
                 },
                 {
                   key: 'reboot',
@@ -631,7 +699,7 @@ export default function RiskPendingPage() {
                   ),
                   icon: <ReloadOutlined />,
                   disabled: !batchCanReboot || !hasPermission(['Add']),
-                  onClick: () => openReboot(selectedRows),
+                  onClick: () => openReboot(selectedRows, '一键重启'),
                 },
               ],
             }}
@@ -783,7 +851,19 @@ export default function RiskPendingPage() {
           <Space>
             <Button onClick={() => setScopeOpen(false)}>{t('patchManager.cancel')}</Button>
             {currentStep === 0 && (
-              <Button type="primary" disabled={scopeSelected.length === 0} onClick={() => setCurrentStep(1)}>{t('patchManager.risk.next')}</Button>
+              <Button
+                type="primary"
+                disabled={scopeSelected.length === 0}
+                onClick={() => {
+                  setTaskName(buildDefaultTaskName(
+                    remediationTaskPrefix,
+                    scopeSelectedObjs.map((item) => ({ id: item.host_id, name: item.host })),
+                  ));
+                  setCurrentStep(1);
+                }}
+              >
+                {t('patchManager.risk.next')}
+              </Button>
             )}
             {currentStep === 1 && (
               <>
@@ -795,7 +875,7 @@ export default function RiskPendingPage() {
                   okText={t('patchManager.confirm')}
                   cancelText={t('patchManager.cancel')}
                 >
-                  <Button type="primary">{t('patchManager.risk.confirmCreateRemediation')}</Button>
+                  <Button type="primary" disabled={!taskName.trim()}>{t('patchManager.risk.confirmCreateRemediation')}</Button>
                 </Popconfirm>
               </>
             )}
@@ -861,6 +941,23 @@ export default function RiskPendingPage() {
 
           {currentStep === 1 && (
           <div style={{ width: '100%', flex: 1, overflowY: 'auto' }}>
+            <Form layout="vertical" component={false}>
+              <Form.Item
+                label={t('patchManager.risk.taskName')}
+                required
+                colon={false}
+                style={{ marginBottom: 14 }}
+              >
+                <Input
+                  value={taskName}
+                  onChange={(event) => setTaskName(event.target.value)}
+                  maxLength={128}
+                  showCount
+                  placeholder={t('patchManager.risk.taskNamePlaceholder')}
+                  status={taskName.length > 0 && !taskName.trim() ? 'error' : undefined}
+                />
+              </Form.Item>
+            </Form>
             <div style={{ fontWeight: 500, marginBottom: 6 }}>{t('patchManager.risk.executionMode')}</div>
             <Radio.Group value={execMode} onChange={(e) => setExecMode(e.target.value)} style={{ marginBottom: 10 }}>
               <Radio value="now">{t('patchManager.risk.executeNow')}</Radio>
@@ -903,34 +1000,86 @@ export default function RiskPendingPage() {
           <Button key="cancel" onClick={() => setRebootOpen(false)}>{t('patchManager.cancel')}</Button>,
           <Popconfirm
             key="ok"
+            open={rebootConfirmOpen}
             title={t('patchManager.risk.confirmCreateReboot')}
             description={t('patchManager.risk.rebootConfirm', undefined, { count: rebootHosts.length })}
             onConfirm={handleRebootSubmit}
+            onOpenChange={(open) => {
+              if (!open) setRebootConfirmOpen(false);
+            }}
             okText={t('patchManager.confirm')}
             cancelText={t('patchManager.cancel')}
           >
-            <Button type="primary" disabled={rebootScopeLoading || !rebootScope}>{t('patchManager.risk.confirmCreateReboot')}</Button>
+            <Button
+              type="primary"
+              disabled={rebootScopeLoading || !rebootScope}
+              onClick={handleRebootConfirmRequest}
+            >
+              {t('patchManager.risk.confirmCreateReboot')}
+            </Button>
           </Popconfirm>,
         ]}
       >
-        <div style={{ fontWeight: 500, marginBottom: 6 }}>{t('patchManager.risk.pendingRebootHosts')}</div>
-        <Table
-          loading={rebootScopeLoading}
-          size="small"
-          rowKey="key"
-          pagination={false}
-          style={{ marginBottom: 14 }}
-          dataSource={rebootHosts}
-          columns={[
-            { title: t('patchManager.risk.host'), dataIndex: 'host', width: 120 },
-            { title: t('patchManager.risk.patchRequirement'), dataIndex: 'patches', ellipsis: true },
-            { title: t('patchManager.severity'), dataIndex: 'sev', width: 80, render: (v: string) => <SeverityTag severity={v} /> },
-          ]}
-        />
-        <Alert style={{ marginBottom: 12 }} type="info" showIcon message={t('patchManager.risk.rebootWindowHelp')} />
-        <div style={{ marginBottom: 12 }}>
-          <RangePicker showTime style={{ width: '100%' }} placeholder={[t('patchManager.risk.windowStart'), t('patchManager.risk.windowEnd')]} value={rebootRange} onChange={(v) => setRebootRange(v as any)} />
-        </div>
+        <Form layout="vertical" component={false}>
+          <Form.Item
+            label={t('patchManager.risk.taskName')}
+            required
+            colon={false}
+            validateStatus={rebootValidation.taskName ? 'error' : undefined}
+            help={rebootValidation.taskName}
+            style={{ marginBottom: 14 }}
+          >
+            <Input
+              value={rebootTaskName}
+              onChange={(event) => {
+                const value = event.target.value;
+                setRebootTaskName(value);
+                if (value.trim()) {
+                  setRebootValidation((current) => ({ ...current, taskName: undefined }));
+                }
+              }}
+              maxLength={128}
+              showCount
+              placeholder={t('patchManager.risk.taskNamePlaceholder')}
+            />
+          </Form.Item>
+          <div style={{ fontWeight: 500, marginBottom: 6 }}>{t('patchManager.risk.pendingRebootHosts')}</div>
+          <Table
+            loading={rebootScopeLoading}
+            size="small"
+            rowKey="key"
+            pagination={false}
+            style={{ marginBottom: 14 }}
+            dataSource={rebootHosts}
+            columns={[
+              { title: t('patchManager.risk.host'), dataIndex: 'host', width: 120 },
+              { title: t('patchManager.risk.patchRequirement'), dataIndex: 'patches', ellipsis: true },
+              { title: t('patchManager.severity'), dataIndex: 'sev', width: 80, render: (v: string) => <SeverityTag severity={v} /> },
+            ]}
+          />
+          <Alert style={{ marginBottom: 12 }} type="info" showIcon message={t('patchManager.risk.rebootWindowHelp')} />
+          <Form.Item
+            label={t('patchManager.risk.executionWindow')}
+            required
+            colon={false}
+            validateStatus={rebootValidation.window ? 'error' : undefined}
+            help={rebootValidation.window}
+            style={{ marginBottom: 12 }}
+          >
+            <RangePicker
+              showTime
+              style={{ width: '100%' }}
+              placeholder={[t('patchManager.risk.windowStart'), t('patchManager.risk.windowEnd')]}
+              value={rebootRange}
+              onChange={(value) => {
+                setRebootRange(value as any);
+                if (value?.[0] && value?.[1]) {
+                  setRebootValidation((current) => ({ ...current, window: undefined }));
+                }
+              }}
+            />
+          </Form.Item>
+        </Form>
       </Modal>
     </div>
   );

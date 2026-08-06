@@ -35,7 +35,7 @@ import {
 } from '@/app/patch-manager/constants/architecture';
 
 type TabKey = 'win' | 'linux';
-type SourceType = 'auto' | 'manual';
+type SourceType = 'auto' | 'manual' | 'orphan';
 
 const OS_TYPE_MAP: Record<TabKey, OSType> = {
   win: 'windows',
@@ -57,7 +57,8 @@ function mapPkgStatus(pkgStatus?: string): string {
 }
 
 function getSourceType(patch: Patch): SourceType {
-  return patch.sources.length > 0 ? 'auto' : 'manual';
+  if (patch.sources.length > 0) return 'auto';
+  return patch.last_synced_at ? 'orphan' : 'manual';
 }
 
 function getSourceLabel(patch: Patch): string {
@@ -72,7 +73,7 @@ function getSourceLabel(patch: Patch): string {
       return 'apt';
     case null:
     case undefined:
-      return 'manual';
+      return patch.last_synced_at ? 'orphan' : 'manual';
     default:
       return patch.source_type;
   }
@@ -287,12 +288,8 @@ export default function LibraryPage() {
     () => data.filter((patch) => selectedPatchIds.includes(patch.id)),
     [data, selectedPatchIds],
   );
-  const selectedSource = useMemo(
-    () => sources.find((source) => source.id === selectedSourceId),
-    [selectedSourceId, sources],
-  );
   const batchDeleteBlocked = selectedPatches.some(
-    (patch) => (patch.baseline_requirement_count ?? 0) > 0 || !patch.permission?.includes('Operate'),
+    (patch) => (patch.baseline_requirement_count ?? 0) > 0,
   );
 
   const handleDelete = async (patchIds: number[]) => {
@@ -333,10 +330,10 @@ export default function LibraryPage() {
       { title: t('patchManager.severity'), dataIndex: 'severity', width: 100, render: (v: PatchSeverity) => <SeverityTag severity={v} /> },
       { title: isWin ? t('patchManager.libraryPage.applicableVersion') : t('patchManager.distro'), dataIndex: 'version', width: 140, render: (_: unknown, r: Patch) => getPatchVersion(r) },
       { title: t('patchManager.arch'), dataIndex: 'arch', width: 100, render: (_: unknown, r: Patch) => getPatchArch(r) },
-      { title: t('patchManager.libraryPage.source'), dataIndex: 'sources', width: 120, render: (_: unknown, r: Patch) => <span style={{ color: '#8c8c8c' }}>{getSourceLabel(r) === 'manual' ? t('patchManager.manual') : getSourceLabel(r)}</span> },
+      { title: t('patchManager.libraryPage.source'), dataIndex: 'sources', width: 120, render: (_: unknown, r: Patch) => <span style={{ color: '#8c8c8c' }}>{getSourceLabel(r) === 'manual' ? t('patchManager.manual') : getSourceLabel(r) === 'orphan' ? t('patchManager.libraryPage.noSource') : getSourceLabel(r)}</span> },
       { title: t('patchManager.libraryPage.sourceType'), dataIndex: 'sourceType', width: 100, render: (_: unknown, r: Patch) => {
         const sourceType = getSourceType(r);
-        return <Tag color={sourceType === 'auto' ? 'default' : 'warning'}>{sourceType === 'auto' ? t('patchManager.libraryPage.automatic') : t('patchManager.manual')}</Tag>;
+        return <Tag color={sourceType === 'auto' ? 'default' : 'warning'}>{sourceType === 'auto' ? t('patchManager.libraryPage.automatic') : sourceType === 'orphan' ? t('patchManager.libraryPage.noSource') : t('patchManager.manual')}</Tag>;
       }},
       { title: t('patchManager.libraryPage.readyStatus'), dataIndex: 'pkg_status', width: 120, render: (_: unknown, r: Patch) => <ReadyTag status={mapPkgStatus(r.pkg_status)} /> },
       { title: t('patchManager.libraryPage.baselineReferences'), dataIndex: 'baseline_requirement_count', width: 110, render: (v: number) => <span style={{ color: '#bfbfbf' }}>{v ?? 0}</span> },
@@ -354,8 +351,8 @@ export default function LibraryPage() {
           {t('patchManager.delete')}
         </Button>;
         return <Space size={12}>
-          <PermissionWrapper requiredPermissions={['Edit']} instPermissions={r.permission}><a style={{ color: '#1677ff' }} onClick={() => setEditingPatch(r)}><EditOutlined /> {t('patchManager.edit')}</a></PermissionWrapper>
-          <PermissionWrapper requiredPermissions={['Delete']} instPermissions={r.permission}>
+          <PermissionWrapper requiredPermissions={['Edit']}><a style={{ color: '#1677ff' }} onClick={() => setEditingPatch(r)}><EditOutlined /> {t('patchManager.edit')}</a></PermissionWrapper>
+          <PermissionWrapper requiredPermissions={['Delete']}>
             {deleteBlocked ? <Tooltip title={t('patchManager.libraryPage.deleteReferenced')}><span>{deleteButton}</span></Tooltip> : <Popconfirm title={t('patchManager.libraryPage.deleteConfirm')} onConfirm={() => handleDelete([r.id])} okText={t('patchManager.delete')} cancelText={t('patchManager.cancel')}>
               {deleteButton}
             </Popconfirm>}
@@ -664,7 +661,6 @@ export default function LibraryPage() {
           rowSelection={{
             selectedRowKeys: selectedPatchIds,
             onChange: (keys) => setSelectedPatchIds(keys.map(Number)),
-            getCheckboxProps: (record) => ({ disabled: !record.permission?.includes('Operate') }),
           }}
           pagination={{
             current: pagination.current,
@@ -767,7 +763,7 @@ export default function LibraryPage() {
         footer={
           <Space>
             <Button onClick={closeImportDrawer}>{t('patchManager.cancel')}</Button>
-            <PermissionWrapper requiredPermissions={['Edit']} permissionPath="/patch-manager/settings" instPermissions={selectedSource?.permission}>
+            <PermissionWrapper requiredPermissions={['Edit']} permissionPath="/patch-manager/settings">
               <Button type="primary" loading={candidateActionLoading} disabled={candidateSelection.keys.length === 0} icon={<CloudDownloadOutlined />} onClick={handleImportSubmit}>{t('patchManager.libraryPage.batchIngest', undefined, { count: candidateSelection.keys.length })}</Button>
             </PermissionWrapper>
           </Space>
@@ -884,7 +880,6 @@ export default function LibraryPage() {
           if (!editSaving) setEditingPatch(null);
         }}
         confirmLoading={editSaving}
-        okButtonProps={{ disabled: !editingPatch?.permission?.includes('Operate') }}
         cancelButtonProps={{ disabled: editSaving }}
         closable={!editSaving}
         maskClosable={!editSaving}

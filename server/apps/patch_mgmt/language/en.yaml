@@ -1,4 +1,9 @@
 error:
+  source_sync_in_progress: "The patch source is being synchronized and cannot be deleted or synchronized again"
+  patch_dependency_referenced: "This patch is still referenced by another patch dependency or replacement relationship"
+  patch_deleted: "The patch no longer exists and this risk item cannot be retried"
+  task_name_required: "Enter a task name"
+  task_name_too_long: "Task name must not exceed 128 characters"
   hosts_busy: "The following targets are running patch tasks: {ids}"
   execution_window_required: "Start and end times are required in execution-window mode"
   invalid_execution_window: "Invalid execution-window time"

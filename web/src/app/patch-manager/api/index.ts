@@ -323,14 +323,14 @@ const usePatchManagerApi = () => {
     execution_window_start?: string;
     execution_window_end?: string;
     auto_reboot?: boolean;
-    name?: string;
+    name: string;
   }): Promise<any> => post(`${BASE}/risk/remediate/`, data);
 
   const rebootRisk = async (data: {
     target_ids: number[];
     execution_window_start?: string;
     execution_window_end?: string;
-    name?: string;
+    name: string;
     scope_token: string;
   }): Promise<any> => post(`${BASE}/risk/reboot/`, data);
 

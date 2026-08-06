@@ -19,6 +19,7 @@ from apps.patch_mgmt.constants import (
     PatchSourceType,
 )
 from apps.patch_mgmt.models import (
+    BaselineRequirement,
     GovernanceTask,
     GovernanceTaskHost,
     HostBaselineBinding,
@@ -739,9 +740,10 @@ class TestPatchTargetViewApi:
 
         assert resp.status_code == status.HTTP_200_OK
         assert not PatchTarget.objects.filter(pk=target.id).exists()
-        assert GovernanceTaskHost.objects.filter(task=task, target_id=target.id).exists()
+        assert not GovernanceTaskHost.objects.filter(task_id=task.id, target_id=target.id).exists()
+        assert not GovernanceTask.objects.filter(pk=task.id).exists()
 
-    def test_destroy_api_removes_binding_and_key_but_keeps_history(self, su_client, mocker):
+    def test_destroy_api_removes_binding_key_and_patch_history(self, su_client, mocker):
         target = PatchTarget.objects.create(
             name="retired-host",
             ip="10.0.0.34",
@@ -774,7 +776,8 @@ class TestPatchTargetViewApi:
         assert resp.status_code == status.HTTP_200_OK
         assert not PatchTarget.objects.filter(pk=target.id).exists()
         assert not HostBaselineBinding.objects.filter(target_id=target.id).exists()
-        assert GovernanceTaskHost.objects.filter(pk=history.id).exists()
+        assert not GovernanceTaskHost.objects.filter(pk=history.id).exists()
+        assert not GovernanceTask.objects.filter(pk=task.id).exists()
         storage_delete.assert_called_once_with("ssh_keys/2026/08/03/id_rsa")
 
     def test_destroy_api_keeps_target_when_key_cleanup_fails(self, su_client, mocker):
@@ -822,9 +825,12 @@ class TestPatchDashboardViewApi:
         assert "patch_severity_distribution" in resp.data
 
     def test_stats_api_counts_match_db(self, su_client):
-        PatchTarget.objects.create(name="t1", ip="1.1.1.1", team=[1])
+        target = PatchTarget.objects.create(name="t1", ip="1.1.1.1", team=[1])
         PatchTarget.objects.create(name="t2", ip="1.1.1.2", team=[1])
-        Patch.objects.create(title="p1", os_type=OSType.WINDOWS, team=[1])
+        patch = Patch.objects.create(title="p1", os_type=OSType.WINDOWS, team=[1])
+        baseline = PatchBaseline.objects.create(name="b1", os_type=OSType.WINDOWS, team=[1])
+        BaselineRequirement.objects.create(baseline=baseline, patch=patch)
+        HostBaselineBinding.objects.create(target=target, baseline=baseline)
 
         resp = su_client.get(DASHBOARD_STATS_URL)
         assert resp.status_code == status.HTTP_200_OK
@@ -832,19 +838,25 @@ class TestPatchDashboardViewApi:
         assert resp.data["target_total"] >= 2
         assert resp.data["patch_total"] >= 1
 
-    def test_stats_scoped_to_current_team(self, su_client):
-        """首页按当前团队收口:超管同样只统计当前团队(current_team=1)。"""
-        PatchTarget.objects.create(name="own", ip="1.1.1.1", team=[1])
-        PatchTarget.objects.create(name="other-team", ip="2.2.2.2", team=[2])
-        Patch.objects.create(title="own-patch", os_type=OSType.WINDOWS, team=[1])
-        Patch.objects.create(title="other-patch", os_type=OSType.WINDOWS, team=[2])
+    def test_superuser_dashboard_includes_all_target_roots(self, su_client):
+        own = PatchTarget.objects.create(name="own", ip="1.1.1.1", team=[1])
+        other = PatchTarget.objects.create(name="other-team", ip="2.2.2.2", team=[2])
+        own_patch = Patch.objects.create(title="own-patch", os_type=OSType.WINDOWS, team=[1])
+        other_patch = Patch.objects.create(title="other-patch", os_type=OSType.WINDOWS, team=[2])
+        own_baseline = PatchBaseline.objects.create(name="own-b", os_type=OSType.WINDOWS, team=[1])
+        other_baseline = PatchBaseline.objects.create(name="other-b", os_type=OSType.WINDOWS, team=[2])
+        BaselineRequirement.objects.create(baseline=own_baseline, patch=own_patch)
+        BaselineRequirement.objects.create(baseline=other_baseline, patch=other_patch)
+        HostBaselineBinding.objects.create(target=own, baseline=own_baseline)
+        HostBaselineBinding.objects.create(target=other, baseline=other_baseline)
 
         resp = su_client.get(DASHBOARD_STATS_URL)
         assert resp.status_code == status.HTTP_200_OK
-        assert resp.data["target_total"] == 1  # 仅团队 1
-        assert resp.data["patch_total"] == 1
+        assert resp.data["target_total"] == 2
+        assert resp.data["patch_total"] == 2
 
     def test_recent_tasks_mirror_visible_execution_record_roots(self, su_client):
+        target = PatchTarget.objects.create(name="record-host", ip="10.0.0.88", team=[1])
         install = GovernanceTask.objects.create(
             name="治理记录",
             task_type=GovernanceTaskType.INSTALL,
@@ -872,6 +884,8 @@ class TestPatchDashboardViewApi:
             execution_mode="window",
             team=[1],
         )
+        GovernanceTaskHost.objects.create(task=install, target_id=target.id, target_name=target.name, stage="completed")
+        GovernanceTaskHost.objects.create(task=reboot, target_id=target.id, target_name=target.name, stage="waiting")
 
         resp = su_client.get(DASHBOARD_STATS_URL)
 
@@ -957,12 +971,27 @@ class TestRiskViewApi:
         target, patch, _baseline = self._setup()
         resp = su_client.post(
             f"{RISK_URL}remediate/",
-            {"items": [{"host_id": target.id, "patch_id": patch.id}], "execution_mode": "now"},
+            {"name": "治理任务", "items": [{"host_id": target.id, "patch_id": patch.id}], "execution_mode": "now"},
             format="json",
         )
         assert resp.status_code == status.HTTP_201_CREATED
         task = GovernanceTask.objects.get(task_type="install")
         trigger.assert_called_once_with(task.id)
+
+    def test_risk_remediate_requires_task_name(self, su_client):
+        target, patch, _baseline = self._setup()
+
+        response = su_client.post(
+            f"{RISK_URL}remediate/",
+            {
+                "items": [{"host_id": target.id, "patch_id": patch.id}],
+                "execution_mode": "now",
+            },
+            format="json",
+        )
+
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert response.data["code"] == "task_name_required"
 
     def test_risk_remediate_rejects_requirement_that_is_not_missing(self, su_client, mocker):
         from apps.patch_mgmt.constants import RequirementAssessmentStatus
@@ -983,7 +1012,7 @@ class TestRiskViewApi:
 
         resp = su_client.post(
             f"{RISK_URL}remediate/",
-            {"items": [{"host_id": target.id, "patch_id": patch.id}], "execution_mode": "now"},
+            {"name": "治理任务", "items": [{"host_id": target.id, "patch_id": patch.id}], "execution_mode": "now"},
             format="json",
         )
 
@@ -1043,7 +1072,7 @@ class TestRiskViewApi:
 
         resp = su_client.post(
             f"{RISK_URL}reboot/",
-            {"target_ids": [target.id], **self._valid_reboot_window()},
+            {"name": "重启任务", "target_ids": [target.id], **self._valid_reboot_window()},
             format="json",
         )
 
@@ -1076,6 +1105,7 @@ class TestRiskViewApi:
             f"{RISK_URL}reboot/",
             {
                 "target_ids": [target.id],
+                "name": "重启任务",
                 "scope_token": preview.data["scope_token"],
                 **self._valid_reboot_window(),
             },
@@ -1094,6 +1124,7 @@ class TestRiskViewApi:
             f"{RISK_URL}reboot/",
             {
                 "target_ids": [target.id],
+                "name": "重启任务",
                 "scope_token": "stale-token",
                 **self._valid_reboot_window(),
             },
@@ -1161,6 +1192,7 @@ class TestRiskViewApi:
         resp = su_client.post(
             f"{RISK_URL}reboot/",
             {
+                "name": "重启任务",
                 "target_ids": [pending_target.id, normal_target.id],
                 **self._valid_reboot_window(),
             },
@@ -1262,21 +1294,27 @@ class TestGovernanceTaskViewApi:
         from apps.patch_mgmt.constants import GovernanceTaskStatus
         from apps.patch_mgmt.models import GovernanceTask, GovernanceTaskHost
 
+        targets = [
+            PatchTarget.objects.create(
+                name=f"host-{index}", ip=f"10.20.0.{index}", team=[1]
+            )
+            for index in range(1, len(stages) + 1)
+        ]
         task = GovernanceTask.objects.create(
             name="cancel-test",
             task_type="install",
-            target_list=list(range(1, len(stages) + 1)),
+            target_list=[target.id for target in targets],
             status=task_status,
             team=[1],
         )
         hosts = [
             GovernanceTaskHost.objects.create(
                 task=task,
-                target_id=index,
+                target_id=target.id,
                 target_name=f"host-{index}",
                 stage=stage,
             )
-            for index, stage in enumerate(stages, start=1)
+            for index, (target, stage) in enumerate(zip(targets, stages), start=1)
         ]
         return task, hosts
 

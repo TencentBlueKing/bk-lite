@@ -81,6 +81,20 @@ def _resolve_reboot_policy(data: dict) -> str:
     return RebootPolicy.NO_REBOOT
 
 
+def _require_manual_task_name(data: dict) -> str:
+    """人工治理/重启必须由用户命名；自动评估和子任务不受影响。"""
+    name = str(data.get("name") or "").strip()
+    if not name:
+        raise PatchBusinessError(
+            "task_name_required", "Task name is required"
+        )
+    if len(name) > 128:
+        raise PatchBusinessError(
+            "task_name_too_long", "Task name must not exceed 128 characters"
+        )
+    return name
+
+
 def _resolve_team(request) -> list[int]:
     """从请求上下文解析当前组织 ID，用于任务权限隔离。"""
     team_str = get_current_team(request)
@@ -289,6 +303,7 @@ def create_remediation_task(request, items: list[dict], data: dict) -> Governanc
     """
     if not items:
         raise PatchBusinessError("items_required", "items is required")
+    name = _require_manual_task_name(data)
 
     # 去重 + 类型转换；保留用户选择顺序，供详情左侧风险项稳定展示。
     pairs: list[tuple[int, int]] = []
@@ -390,12 +405,6 @@ def create_remediation_task(request, items: list[dict], data: dict) -> Governanc
         for host_id, patch_id in pairs
     ]
 
-    default_name = (
-        f"治理 · {bindings[target_ids[0]].target.name} · {len(pairs)}项"
-        if len(target_ids) == 1
-        else f"一键治理 · {len(target_ids)}台 · {len(pairs)}项"
-    )
-    name = (data.get("name") or "").strip() or default_name
     task = _build_task(
         request,
         name=name,
@@ -411,6 +420,7 @@ def create_remediation_task(request, items: list[dict], data: dict) -> Governanc
 @transaction.atomic
 def create_reboot_task(request, target_ids: list, data: dict) -> GovernanceTask:
     """一键重启：创建 reboot 任务。重启任务必须设置窗口。"""
+    name = _require_manual_task_name(data)
     target_ids = sorted({int(t) for t in target_ids if t})
     if not target_ids:
         raise PatchBusinessError("target_ids_required", "target_ids is required")
@@ -440,13 +450,6 @@ def create_reboot_task(request, target_ids: list, data: dict) -> GovernanceTask:
             "The pending-reboot scope has changed. Refresh and confirm it again",
         )
 
-    pending_items = reboot_snapshot
-    default_name = (
-        f"重启 · {pending_items[0]['host_name']}"
-        if len(target_ids) == 1 and pending_items
-        else f"一键重启 · {len(target_ids)}台"
-    )
-    name = (data.get("name") or "").strip() or default_name
     task = _build_task(
         request,
         name=name,
@@ -579,6 +582,15 @@ def create_retry_task(
             if snapshot.get("patch_id")
         )
     )
+    missing_patch_ids = sorted(
+        set(patch_ids)
+        - set(Patch.objects.filter(pk__in=patch_ids).values_list("pk", flat=True))
+    )
+    if missing_patch_ids:
+        raise PatchBusinessError(
+            "patch_deleted",
+            "The patch no longer exists and this risk item cannot be retried",
+        )
     host_name = item.get("host_name") or (host.target_name if host else str(target_id))
     name = f"重试 · {host_name} · {_now().strftime('%m-%d %H:%M')}"
 

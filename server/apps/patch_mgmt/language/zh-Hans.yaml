@@ -1,4 +1,9 @@
 error:
+  source_sync_in_progress: "补丁源正在同步，暂时不能删除或重复同步"
+  patch_dependency_referenced: "该补丁仍被其他补丁的依赖或替代关系引用，无法删除"
+  patch_deleted: "补丁已不存在，该风险项无法重试"
+  task_name_required: "请输入任务名称"
+  task_name_too_long: "任务名称不能超过 128 个字符"
   hosts_busy: "以下主机正在执行补丁任务: {ids}"
   execution_window_required: "执行窗口模式下必须提供开始/结束时间"
   invalid_execution_window: "执行窗口时间格式错误"
