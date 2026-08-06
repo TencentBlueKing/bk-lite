@@ -269,6 +269,7 @@ class MonitorPluginService:
                 existing_metric.description = metric["description"]
                 existing_metric.dimensions = metric["dimensions"]
                 existing_metric.instance_id_keys = metric_instance_id_keys
+                existing_metric.is_ifmib = bool(metric.get("is_ifmib", False))
                 metrics_to_update.append(existing_metric)
             else:
                 metrics_to_create.append(
@@ -286,13 +287,26 @@ class MonitorPluginService:
                         description=metric["description"],
                         dimensions=metric["dimensions"],
                         instance_id_keys=metric_instance_id_keys,
+                        is_ifmib=bool(metric.get("is_ifmib", False)),
                     )
                 )
 
         if metrics_to_update:
             Metric.objects.bulk_update(
                 metrics_to_update,
-                ["metric_group_id", "display_name", "query", "view_query", "view_config", "unit", "data_type", "description", "dimensions", "instance_id_keys"],
+                [
+                    "metric_group_id",
+                    "display_name",
+                    "query",
+                    "view_query",
+                    "view_config",
+                    "unit",
+                    "data_type",
+                    "description",
+                    "dimensions",
+                    "instance_id_keys",
+                    "is_ifmib",
+                ],
                 batch_size=DatabaseConstants.BULK_UPDATE_BATCH_SIZE,
             )
 
