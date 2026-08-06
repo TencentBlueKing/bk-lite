@@ -22,7 +22,7 @@ class NetworkWhiteList(MaintainerInfo, TimeInfo):
         blank=True,
         default="",
         db_index=True,
-        help_text="私有化域名(全等或 *.example.com)。仅当解析到内网/危险网段时作为例外。与 network 二选一。",
+        help_text="私有化部署域名(如 corp-wecom.example.com)。与 network 二选一。",
     )
     is_build_in = models.BooleanField(default=False, db_index=True)
     remark = models.CharField(max_length=255, blank=True, default="")
