@@ -321,14 +321,14 @@ export default function TargetPage() {
     loadData(1, pagination.pageSize);
     loadBaselines();
     loadCloudRegions();
-     
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoading]);
 
   useEffect(() => {
     if (manualOpen) {
       loadCloudRegions();
     }
-     
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [manualOpen]);
 
   useEffect(() => {
@@ -346,7 +346,7 @@ export default function TargetPage() {
       loadNodeList(1, 20, '');
       loadImportedNodes();
     }
-     
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nodeOpen]);
 
   const targetPollRef = useRef<() => void>(() => {});

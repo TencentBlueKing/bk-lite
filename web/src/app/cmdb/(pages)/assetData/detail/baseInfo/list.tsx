@@ -519,25 +519,25 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
     instDetail?.monitor_id;
   const systemLinkageItems = showSystemLinkage
     ? [
-      {
-        key: 'node_id',
-        label: t('Model.systemLinkageNodeId'),
-        children: (
+        {
+          key: 'node_id',
+          label: t('Model.systemLinkageNodeId'),
+          children: (
             <span className="font-mono text-[13px] break-all">
               {instDetail?.node_id || t('Model.systemLinkageEmpty')}
             </span>
-        ),
-      },
-      {
-        key: 'monitor_id',
-        label: t('Model.systemLinkageMonitorId'),
-        children: (
+          ),
+        },
+        {
+          key: 'monitor_id',
+          label: t('Model.systemLinkageMonitorId'),
+          children: (
             <span className="font-mono text-[13px] break-all">
               {instDetail?.monitor_id || t('Model.systemLinkageEmpty')}
             </span>
-        ),
-      },
-    ]
+          ),
+        },
+      ]
     : [];
 
   return (

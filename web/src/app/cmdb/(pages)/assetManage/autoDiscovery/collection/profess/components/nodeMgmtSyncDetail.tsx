@@ -375,7 +375,7 @@ const NodeMgmtSyncDetail: React.FC<NodeMgmtSyncDetailProps> = ({ open }) => {
         <div className="py-8 flex justify-center">
           <Spin />
         </div>
-          ) : (
+      ) : (
         <>
           <Alert
             type="info"
@@ -551,7 +551,7 @@ const NodeMgmtSyncDetail: React.FC<NodeMgmtSyncDetailProps> = ({ open }) => {
             />
           )}
         </>
-          )}
+      )}
     </div>
   );
 };

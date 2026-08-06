@@ -150,7 +150,7 @@ const UserSyncConfigFields: React.FC<UserSyncConfigFieldsProps> = ({
     })();
     // 空 cleanup:React 18 dev 双调用由 fetchedRef 锁住
     return undefined;
-     
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const externalFieldPlaceholder = t('system.user.userSyncPage.externalFieldPlaceholder');
   const watchedDepartmentIdType = Form.useWatch(['business_config', 'department_id_type'], form);
