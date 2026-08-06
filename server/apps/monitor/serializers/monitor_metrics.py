@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from apps.monitor.models.monitor_metrics import MetricGroup, Metric
+from apps.monitor.models.monitor_metrics import Metric, MetricGroup
 from apps.monitor.utils.instance_id_keys import resolve_metric_instance_id_keys
 
 
@@ -10,7 +10,21 @@ class MetricGroupSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = MetricGroup
-        fields = "__all__"
+        fields = [
+            "id",
+            "monitor_object",
+            "monitor_plugin",
+            "name",
+            "description",
+            "is_pre",
+            "sort_order",
+            "created_at",
+            "updated_at",
+            "created_by",
+            "updated_by",
+            "domain",
+            "updated_by_domain",
+        ]
 
     def validate(self, attrs):
         attrs = super().validate(attrs)
@@ -47,11 +61,37 @@ class MetricGroupSerializer(serializers.ModelSerializer):
 class MetricSerializer(serializers.ModelSerializer):
     # 这里定义 is_pre 但不给默认值，防止用户传递该字段
     is_pre = serializers.BooleanField(read_only=True)
+    is_ifmib = serializers.BooleanField(read_only=True)
     monitor_plugin_name = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = Metric
-        fields = "__all__"
+        fields = [
+            "id",
+            "monitor_object",
+            "monitor_plugin",
+            "monitor_plugin_name",
+            "metric_group",
+            "name",
+            "display_name",
+            "query",
+            "view_query",
+            "view_config",
+            "unit",
+            "data_type",
+            "description",
+            "dimensions",
+            "instance_id_keys",
+            "is_ifmib",
+            "is_pre",
+            "sort_order",
+            "created_at",
+            "updated_at",
+            "created_by",
+            "updated_by",
+            "domain",
+            "updated_by_domain",
+        ]
 
     def _resolve_instance_id_keys(self, attrs, default_metric_keys=None):
         monitor_object = attrs.get("monitor_object", getattr(self.instance, "monitor_object", None))
