@@ -81,6 +81,7 @@ error:
   forbidden_network_supernet: 禁止添加 0.0.0.0/0 或 ::/0（等于关闭全部防护）
   domain_name_required: 域名不能为空
   invalid_domain_name_characters: '域名包含非法字符: {domain}'
+  invalid_domain_name_wildcard: '通配域名仅支持 *.example.com 形式: {domain}'
   domain_name_leading_dot: 域名不能以前导点开头
   network_whitelist_type_immutable: 白名单条目类型不可变更
   network_or_domain_required: network 与 domain_name 必须且只能填写其中一个
