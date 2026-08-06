@@ -98,7 +98,7 @@ const DockerLogTail: React.FC<DockerLogTailProps> = ({
         formatted = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`;
       }
 
-      const level = normalizeDockerLevel(item._msg || item.message || '');
+      const level = normalizeDockerLevel(item.message || '');
 
       return {
         id: idx,
@@ -106,7 +106,7 @@ const DockerLogTail: React.FC<DockerLogTailProps> = ({
         container: item.container_name || '--',
         stream: item.stream || 'stdout',
         level,
-        message: item._msg || item.message || '--'
+        message: item.message || '--'
       };
     });
   }, [rawData]);

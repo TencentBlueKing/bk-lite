@@ -297,11 +297,11 @@ export default function ApmSloPage() {
   ) : <CatalogState kind={state} />;
 
   return (
-    <ApmRouteShell dependency="telemetry" description="定义服务可靠性目标，持续跟踪达标率和错误预算消耗。" title="SLO">
+    <ApmRouteShell dependency="telemetry" description="定义服务可靠性目标，跟踪达标率与错误预算。" title="SLO">
       <ApmSurface className="overflow-hidden" padding="none">
         <div className="flex items-center justify-between border-b border-[var(--color-border)] px-4 py-3">
           <div>
-            <Typography.Text strong>可靠性目标</Typography.Text>
+            <Typography.Text strong>SLO 列表</Typography.Text>
             <Typography.Text type="secondary" className="ml-2 !text-xs tabular-nums">共 {rows.length} 个</Typography.Text>
           </div>
           <Space>

@@ -5,8 +5,10 @@ import type {
   ApmApplication,
   ApmApplicationInput,
   ApmCloudRegion,
+  ApmDashboard,
   ApmIngestSnippet,
   ApmIngestSnippetInput,
+  ApmTimeWindow,
   ApmEvent,
   ApmEventQuery,
   ApmHealth,
@@ -132,6 +134,11 @@ const useApmApi = () => {
 
   const getHealth = useCallback(() => get<ApmHealth>('/apm/health/'), [get]);
 
+  const getDashboard = useCallback(
+    (window: ApmTimeWindow) => get<ApmDashboard>('/apm/dashboard/', { params: { window } }),
+    [get]
+  );
+
   const getServiceRed = useCallback(
     (serviceId: string, environment: string, startedAt?: string, endedAt?: string) =>
       get<ApmServiceRed>(`/apm/services/${serviceId}/metrics/`, {
@@ -248,6 +255,7 @@ const useApmApi = () => {
     updateApplication,
     getIngestSnippet,
     getHealth,
+    getDashboard,
     getServiceRed,
     getSlos,
     createSlo,

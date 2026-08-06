@@ -11,8 +11,8 @@ interface BuildLogAlertRawColumnsParams {
 const FIELD_ALIAS: Record<string, string> = {
   timestamp: '_time',
   _time: '_time',
-  message: '_msg',
-  _msg: '_msg'
+  message: 'message',
+  _msg: 'message'
 };
 
 const normalizeField = (field: string) => FIELD_ALIAS[field] || field;
@@ -48,10 +48,10 @@ export const buildLogAlertRawColumns = ({
     },
     {
       title: 'message',
-      dataIndex: '_msg',
-      key: '_msg',
+      dataIndex: 'message',
+      key: 'message',
       width: 350,
-      render: (val, record) => val || record.message || '--'
+      render: (val, record) => val || record._msg || '--'
     }
   ];
   const existingFields = new Set(columns.map((item) => item.dataIndex));

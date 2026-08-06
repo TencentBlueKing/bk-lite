@@ -9,6 +9,7 @@
     "collect_type",
     "collector",
     "instance_id",
+    "message",
     "mysql.error.message",
     "mysql.error.level",
     "mysql.error.thread_id",

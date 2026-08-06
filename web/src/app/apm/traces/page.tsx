@@ -3,22 +3,25 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { SearchOutlined } from '@ant-design/icons';
-import { Button, Checkbox, Input, Segmented, Select, Space, Table, Tag, Typography } from 'antd';
+import { Button, Checkbox, Input, Segmented, Space, Table, Tag, Typography } from 'antd';
 import type { TableProps } from 'antd';
 import useApmApi from '@/app/apm/api';
 import ApmRouteShell, { ApmSurface } from '@/app/apm/components/apm-route-shell';
 import CatalogState, { catalogErrorKind, type CatalogStateKind } from '@/app/apm/components/catalog-state';
-import ServiceIdentity from '@/app/apm/components/service-identity';
+import HealthDot from '@/app/apm/components/health-dot';
+import { formatLatency, formatRelativeTime } from '@/app/apm/components/metric-format';
 import type { ApmTraceSearchParams, ApmTraceSummary } from '@/app/apm/types';
 
 type PageState = CatalogStateKind | 'ready' | 'idle';
-type TimeRange = '15m' | '1h' | '4h' | '24h' | '7d';
+type TimeRange = '15m' | '1h' | '4h' | '1d' | '7d';
+type ResultMode = 'detail' | 'aggregate';
+type AggregateDimension = 'service' | 'endpoint' | 'status';
 
 const RANGE_MS: Record<TimeRange, number> = {
   '15m': 15 * 60 * 1000,
   '1h': 60 * 60 * 1000,
   '4h': 4 * 60 * 60 * 1000,
-  '24h': 24 * 60 * 60 * 1000,
+  '1d': 24 * 60 * 60 * 1000,
   '7d': 7 * 24 * 60 * 60 * 1000,
 };
 
@@ -56,6 +59,53 @@ function TraceDistribution({ items }: { items: ApmTraceSummary[] }) {
   );
 }
 
+interface AggregateRow {
+  key: string;
+  label: string;
+  count: number;
+  errorCount: number;
+  errorRate: number;
+  avgMs: number;
+  p95Ms: number;
+  maxMs: number;
+}
+
+function percentile(sorted: number[], ratio: number) {
+  if (!sorted.length) return 0;
+  const index = Math.min(sorted.length - 1, Math.max(0, Math.ceil(sorted.length * ratio) - 1));
+  return sorted[index];
+}
+
+function buildAggregate(items: ApmTraceSummary[], dimension: AggregateDimension): AggregateRow[] {
+  const groups = new Map<string, ApmTraceSummary[]>();
+  items.forEach((item) => {
+    const key = dimension === 'service'
+      ? item.service_name
+      : dimension === 'endpoint'
+        ? item.root_span_name || '(未命名)'
+        : item.status;
+    const list = groups.get(key) ?? [];
+    list.push(item);
+    groups.set(key, list);
+  });
+  return Array.from(groups.entries())
+    .map(([key, group]) => {
+      const durations = group.map((item) => item.duration_ms).sort((left, right) => left - right);
+      const errorCount = group.filter((item) => item.status === 'error').length;
+      return {
+        key,
+        label: dimension === 'status' ? (key === 'error' ? '错误' : '正常') : key,
+        count: group.length,
+        errorCount,
+        errorRate: group.length ? errorCount / group.length : 0,
+        avgMs: durations.reduce((total, value) => total + value, 0) / Math.max(group.length, 1),
+        p95Ms: percentile(durations, 0.95),
+        maxMs: durations[durations.length - 1] ?? 0,
+      };
+    })
+    .sort((left, right) => right.count - left.count);
+}
+
 export default function ApmTracesPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -68,7 +118,12 @@ export default function ApmTracesPage() {
   const [items, setItems] = useState<ApmTraceSummary[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<'all' | 'ok' | 'error'>('all');
+  const [serviceFilter, setServiceFilter] = useState<string>();
+  const [resultMode, setResultMode] = useState<ResultMode>('detail');
+  const [aggregateDimension, setAggregateDimension] = useState<AggregateDimension>('service');
   const [state, setState] = useState<PageState>(serviceName ? 'loading' : 'idle');
+  const [queryStartedAt, setQueryStartedAt] = useState<string>();
+  const [queryEndedAt, setQueryEndedAt] = useState<string>();
   const autoSearched = useRef(false);
 
   const buildQuery = useCallback((cursor?: string): ApmTraceSearchParams => {
@@ -84,7 +139,7 @@ export default function ApmTracesPage() {
       started_at: startedAt,
       ended_at: endedAt,
       cursor,
-      limit: 20,
+      limit: 50,
     };
   }, [environment, instanceId, namespace, searchParams, serviceName, timeRange]);
 
@@ -94,10 +149,13 @@ export default function ApmTracesPage() {
       return;
     }
     setState('loading');
+    const query = buildQuery(cursor);
     getTraces(buildQuery(cursor))
       .then((page) => {
         setItems((current) => (cursor ? [...current, ...page.items] : page.items));
         setNextCursor(page.next_cursor);
+        setQueryStartedAt(query.started_at);
+        setQueryEndedAt(query.ended_at);
         setState(page.items.length === 0 && !cursor && !page.next_cursor ? 'empty' : 'ready');
       })
       .catch((error) => setState(catalogErrorKind(error)));
@@ -112,63 +170,64 @@ export default function ApmTracesPage() {
 
   const columns = useMemo<TableProps<ApmTraceSummary>['columns']>(() => [
     {
-      title: '服务与入口操作',
+      title: '入口服务 / Trace ID',
       render: (_, item) => (
-        <ServiceIdentity
-          namespace={item.service_namespace}
-          name={item.root_span_name || item.service_name}
-          secondary={item.trace_id.slice(0, 16)}
-        />
+        <Space direction="vertical" size={2}>
+          <Space size={6}>
+            <HealthDot level={item.status === 'error' ? 1 : 5} />
+            <span className="text-[13px] font-medium">{item.service_name}</span>
+          </Space>
+          <span className="font-mono text-[11px] text-[var(--color-text-3)]">{item.trace_id}</span>
+        </Space>
       ),
     },
     {
-      title: '实例',
-      dataIndex: 'instance_id',
-      responsive: ['lg'],
-      render: (value) => (
-        <Typography.Text ellipsis className="block max-w-48 font-mono text-xs">
-          {value || '身份缺失'}
-        </Typography.Text>
-      ),
+      title: '资源',
+      dataIndex: 'root_span_name',
+      render: (value) => <span className="font-mono text-xs">{value}</span>,
     },
-    { title: 'Span', dataIndex: 'span_count', width: 80, responsive: ['md'], className: 'tabular-nums' },
     {
-      title: '耗时',
+      title: '总耗时',
       dataIndex: 'duration_ms',
-      width: 120,
-      render: (value) => <span className="font-medium tabular-nums">{value.toFixed(2)} ms</span>,
+      width: 100,
+      className: 'tabular-nums',
+      render: (value: number) => formatLatency(value),
+    },
+    {
+      title: '跨度数',
+      dataIndex: 'span_count',
+      width: 90,
+      align: 'right',
+      className: 'tabular-nums',
+      responsive: ['md'],
     },
     {
       title: '状态',
       dataIndex: 'status',
       width: 90,
       render: (value) => (
-        <span
-          className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium ${value === 'error'
-            ? 'bg-[color-mix(in_srgb,var(--color-fail)_10%,var(--color-bg))] text-[var(--color-fail)]'
-            : 'bg-[color-mix(in_srgb,var(--color-success)_10%,var(--color-bg))] text-[var(--color-success)]'
-          }`}
-        >
-          <span
-            className={`h-1.5 w-1.5 rounded-full ${value === 'error' ? 'bg-[var(--color-fail)]' : 'bg-[var(--color-success)]'}`}
-            aria-hidden="true"
-          />
-          {value === 'error' ? '错误' : '正常'}
-        </span>
+        value === 'error'
+          ? <Tag bordered={false} color="error">错误</Tag>
+          : <Tag bordered={false} color="success">正常</Tag>
       ),
     },
     {
-      title: '开始时间',
+      title: '时间',
       dataIndex: 'started_at',
-      width: 200,
+      width: 110,
       responsive: ['lg'],
-      render: (value) => <span className="tabular-nums">{new Date(value).toLocaleString()}</span>,
+      render: (value: string) => (
+        <span className="text-xs tabular-nums text-[var(--color-text-3)]">{formatRelativeTime(value)}</span>
+      ),
     },
   ], []);
 
   const visibleItems = useMemo(
-    () => items.filter((item) => statusFilter === 'all' || item.status === statusFilter),
-    [items, statusFilter],
+    () => items.filter((item) => (
+      (statusFilter === 'all' || item.status === statusFilter)
+      && (!serviceFilter || item.service_name === serviceFilter)
+    )),
+    [items, serviceFilter, statusFilter],
   );
   const statusCounts = useMemo(() => ({
     ok: items.filter((item) => item.status === 'ok').length,
@@ -179,23 +238,95 @@ export default function ApmTracesPage() {
     return counts;
   }, new Map<string, number>())).sort((left, right) => right[1] - left[1]), [items]);
 
+  const windowSeconds = useMemo(() => {
+    if (!queryStartedAt || !queryEndedAt) return RANGE_MS[timeRange] / 1000;
+    return Math.max(1, (new Date(queryEndedAt).getTime() - new Date(queryStartedAt).getTime()) / 1000);
+  }, [queryEndedAt, queryStartedAt, timeRange]);
+  const hitRate = visibleItems.length / windowSeconds;
+  const aggregateRows = useMemo(
+    () => buildAggregate(visibleItems, aggregateDimension),
+    [aggregateDimension, visibleItems]
+  );
+
+  const aggregateColumns: TableProps<AggregateRow>['columns'] = [
+    {
+      title: aggregateDimension === 'service' ? '服务' : aggregateDimension === 'endpoint' ? '端点 / 资源' : '状态',
+      dataIndex: 'label',
+      render: (value) => (
+        aggregateDimension === 'endpoint'
+          ? <span className="font-mono text-xs">{value}</span>
+          : <span className="font-medium">{value}</span>
+      ),
+    },
+    { title: '命中', dataIndex: 'count', width: 90, align: 'right', className: 'tabular-nums' },
+    {
+      title: '错误率',
+      dataIndex: 'errorRate',
+      width: 100,
+      align: 'right',
+      className: 'tabular-nums',
+      render: (value: number) => (
+        <span className={value >= 0.01 ? 'font-semibold text-[var(--color-fail)]' : undefined}>
+          {(value * 100).toFixed(1)}%
+        </span>
+      ),
+    },
+    {
+      title: '平均耗时',
+      dataIndex: 'avgMs',
+      width: 110,
+      align: 'right',
+      className: 'tabular-nums',
+      render: (value: number) => formatLatency(value),
+    },
+    {
+      title: 'P95',
+      dataIndex: 'p95Ms',
+      width: 100,
+      align: 'right',
+      className: 'tabular-nums',
+      render: (value: number) => formatLatency(value),
+    },
+    {
+      title: '最大耗时',
+      dataIndex: 'maxMs',
+      width: 100,
+      align: 'right',
+      className: 'tabular-nums',
+      responsive: ['lg'],
+      render: (value: number) => formatLatency(value),
+    },
+  ];
+
   return (
     <ApmRouteShell
       title="调用链"
-      description="使用受控的服务、环境、实例与时间窗搜索，不接受任意 TraceQL。"
+      description="按服务、环境与时间窗检索 Trace，支持明细列表与客户端聚合分析。"
       dependency="telemetry"
     >
       <div className="flex flex-col gap-3">
         <ApmSurface padding="compact">
-          <div className="mb-3 flex items-center gap-3">
+          <div className="mb-3 flex flex-wrap items-center gap-3">
             <Segmented
               aria-label="调用链查询粒度"
               options={[{ value: 'spans', label: 'Spans', disabled: true }, { value: 'traces', label: 'Traces' }]}
               value="traces"
             />
-            <Typography.Text type="secondary" className="!text-xs">当前 MVP 提供 Trace 级检索</Typography.Text>
+            <Typography.Text type="secondary" className="!text-xs">Spans 检索将在数据能力就绪后开放</Typography.Text>
+            <div className="ml-auto">
+              <Segmented<TimeRange>
+                aria-label="时间窗"
+                options={['15m', '1h', '4h', '1d', '7d']}
+                size="small"
+                value={timeRange}
+                onChange={(value) => {
+                  setTimeRange(value);
+                  router.replace('/apm/traces');
+                }}
+              />
+            </div>
           </div>
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-[1fr_1fr_1fr_1.3fr_auto_auto] xl:items-end">
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-[1fr_1fr_1fr_1.3fr_auto]">
             <label className="min-w-0">
               <span className="mb-1 block text-xs font-medium text-[var(--color-text-2)]">应用 namespace</span>
               <Input value={namespace} onChange={(event) => setNamespace(event.target.value)} placeholder="可留空" />
@@ -212,27 +343,17 @@ export default function ApmTracesPage() {
               <span className="mb-1 block text-xs font-medium text-[var(--color-text-2)]">实例 ID</span>
               <Input value={instanceId} onChange={(event) => setInstanceId(event.target.value)} placeholder="可选" />
             </label>
-            <label>
-              <span className="mb-1 block text-xs font-medium text-[var(--color-text-2)]">时间窗</span>
-              <Select<TimeRange>
-                aria-label="时间窗"
-                value={timeRange}
-                onChange={(value) => {
-                  setTimeRange(value);
-                  router.replace('/apm/traces');
-                }}
-                options={(Object.keys(RANGE_MS) as TimeRange[]).map((value) => ({ value, label: value }))}
-                className="w-full xl:w-24"
-              />
-            </label>
-            <Button
-              type="primary"
-              icon={<SearchOutlined aria-hidden="true" />}
-              onClick={() => search()}
-              disabled={!serviceName.trim()}
-            >
-              搜索
-            </Button>
+            <div className="flex items-end">
+              <Button
+                type="primary"
+                icon={<SearchOutlined aria-hidden="true" />}
+                onClick={() => search()}
+                disabled={!serviceName.trim()}
+                block
+              >
+                搜索
+              </Button>
+            </div>
           </div>
         </ApmSurface>
         {state === 'idle' ? (
@@ -270,10 +391,17 @@ export default function ApmTracesPage() {
                   <Typography.Text type="secondary" className="mb-2 block !text-xs">服务</Typography.Text>
                   <Space direction="vertical" size={6} className="w-full">
                     {serviceCounts.slice(0, 8).map(([name, count]) => (
-                      <div className="flex items-center justify-between gap-3" key={name}>
+                      <button
+                        key={name}
+                        type="button"
+                        className={`flex w-full items-center justify-between gap-3 rounded px-1 py-0.5 text-left hover:bg-[var(--color-fill-1)] ${
+                          serviceFilter === name ? 'bg-[var(--color-primary-bg-active)]' : ''
+                        }`}
+                        onClick={() => setServiceFilter((current) => (current === name ? undefined : name))}
+                      >
                         <Typography.Text ellipsis={{ tooltip: name }} className="max-w-36 !text-xs">{name}</Typography.Text>
                         <span className="tabular-nums text-xs text-[var(--color-text-3)]">{count}</span>
-                      </div>
+                      </button>
                     ))}
                   </Space>
                 </div>
@@ -284,49 +412,89 @@ export default function ApmTracesPage() {
               </div>
             </ApmSurface>
             <div className="flex min-w-0 flex-col gap-3">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-wrap items-end justify-between gap-3">
                 <div>
-                  <strong className="text-xl tabular-nums">{visibleItems.length}</strong>
-                  <Typography.Text type="secondary" className="ml-2 !text-xs">条 Trace</Typography.Text>
-                </div>
-                <Segmented options={['明细']} value="明细" />
-              </div>
-              <ApmSurface padding="compact">
-                <div className="mb-1 flex items-center justify-between">
-                  <Typography.Text strong>耗时分布</Typography.Text>
-                  <Space size={12}>
-                    <span className="inline-flex items-center gap-1 text-xs text-[var(--color-text-3)]"><span className="h-1.5 w-1.5 rounded-full bg-[var(--color-primary)]" />正常</span>
-                    <span className="inline-flex items-center gap-1 text-xs text-[var(--color-text-3)]"><span className="h-1.5 w-1.5 rounded-full bg-[var(--color-fail)]" />错误</span>
-                  </Space>
-                </div>
-                <TraceDistribution items={visibleItems} />
-              </ApmSurface>
-              <ApmSurface padding="none" className="overflow-hidden">
-                <Table
-                  rowKey="trace_id"
-                  columns={columns}
-                  dataSource={visibleItems}
-                  pagination={false}
-                  onRow={(item) => ({
-                    onClick: () => router.push(`/apm/traces/${item.trace_id}`),
-                    onKeyDown: (event) => {
-                      if (event.key === 'Enter' || event.key === ' ') {
-                        event.preventDefault();
-                        router.push(`/apm/traces/${item.trace_id}`);
-                      }
-                    },
-                    role: 'link',
-                    'aria-label': `查看 Trace ${item.trace_id}`,
-                    tabIndex: 0,
-                    className: 'cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--color-primary)] focus-visible:outline-offset-[-2px]',
-                  })}
-                />
-                {nextCursor ? (
-                  <div className="flex justify-center border-t border-[var(--color-border-1)] p-3">
-                    <Button onClick={() => search(nextCursor)}>加载更多</Button>
+                  <div className="flex items-baseline gap-2">
+                    <strong className="text-2xl tabular-nums">{hitRate >= 10 ? hitRate.toFixed(1) : hitRate.toFixed(2)}</strong>
+                    <Typography.Text type="secondary" className="!text-xs">traces/s</Typography.Text>
                   </div>
-                ) : null}
-              </ApmSurface>
+                  <Typography.Text type="secondary" className="!text-xs">
+                    命中 {visibleItems.length} 条 · 窗 {timeRange}
+                  </Typography.Text>
+                </div>
+                <Segmented<ResultMode>
+                  options={[
+                    { value: 'detail', label: '明细' },
+                    { value: 'aggregate', label: '聚合' },
+                  ]}
+                  value={resultMode}
+                  onChange={setResultMode}
+                />
+              </div>
+              {resultMode === 'detail' ? (
+                <>
+                  <ApmSurface padding="compact">
+                    <div className="mb-1 flex items-center justify-between">
+                      <Typography.Text strong>耗时分布</Typography.Text>
+                      <Space size={12}>
+                        <span className="inline-flex items-center gap-1 text-xs text-[var(--color-text-3)]"><span className="h-1.5 w-1.5 rounded-full bg-[var(--color-primary)]" />正常</span>
+                        <span className="inline-flex items-center gap-1 text-xs text-[var(--color-text-3)]"><span className="h-1.5 w-1.5 rounded-full bg-[var(--color-fail)]" />错误</span>
+                      </Space>
+                    </div>
+                    <TraceDistribution items={visibleItems} />
+                  </ApmSurface>
+                  <ApmSurface padding="none" className="overflow-hidden">
+                    <Table
+                      size="middle"
+                      rowKey="trace_id"
+                      columns={columns}
+                      dataSource={visibleItems}
+                      pagination={false}
+                      onRow={(item) => ({
+                        onClick: () => router.push(`/apm/traces/${item.trace_id}`),
+                        onKeyDown: (event) => {
+                          if (event.key === 'Enter' || event.key === ' ') {
+                            event.preventDefault();
+                            router.push(`/apm/traces/${item.trace_id}`);
+                          }
+                        },
+                        role: 'link',
+                        'aria-label': `查看 Trace ${item.trace_id}`,
+                        tabIndex: 0,
+                        className: 'cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--color-primary)] focus-visible:outline-offset-[-2px]',
+                      })}
+                    />
+                    {nextCursor ? (
+                      <div className="flex justify-center border-t border-[var(--color-border-1)] p-3">
+                        <Button onClick={() => search(nextCursor)}>加载更多</Button>
+                      </div>
+                    ) : null}
+                  </ApmSurface>
+                </>
+              ) : (
+                <ApmSurface padding="none" className="overflow-hidden">
+                  <div className="flex items-center justify-between border-b border-[var(--color-border)] px-4 py-3">
+                    <Typography.Text strong>聚合分析</Typography.Text>
+                    <Segmented<AggregateDimension>
+                      size="small"
+                      value={aggregateDimension}
+                      onChange={setAggregateDimension}
+                      options={[
+                        { value: 'service', label: '按服务' },
+                        { value: 'endpoint', label: '按端点' },
+                        { value: 'status', label: '按状态' },
+                      ]}
+                    />
+                  </div>
+                  <Table
+                    size="middle"
+                    rowKey="key"
+                    columns={aggregateColumns}
+                    dataSource={aggregateRows}
+                    pagination={false}
+                  />
+                </ApmSurface>
+              )}
             </div>
           </div>
         ) : (

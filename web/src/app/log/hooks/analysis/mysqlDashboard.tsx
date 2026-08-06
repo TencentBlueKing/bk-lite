@@ -2,10 +2,10 @@ import { useTranslation } from '@/utils/i18n';
 import { v4 as uuidv4 } from 'uuid';
 
 const MYSQL_EXTRACT_QUERY_TIME =
-  'extract "Query_time: <query_time>  Lock_time:" from _msg';
+  'extract "Query_time: <query_time>  Lock_time:" from message';
 const MYSQL_EXTRACT_LOCK_TIME =
-  'extract "Lock_time: <lock_time> Rows_sent:" from _msg';
-const MYSQL_EXTRACT_USER = 'extract "# User@Host: <mysql_user>[" from _msg';
+  'extract "Lock_time: <lock_time> Rows_sent:" from message';
+const MYSQL_EXTRACT_USER = 'extract "# User@Host: <mysql_user>[" from message';
 
 export const useMysqlDashboard = () => {
   const { t } = useTranslation();
@@ -72,7 +72,7 @@ export const useMysqlDashboard = () => {
           displayMaps: { type: 'single', key: '_time', value: 'lock_count' },
           dataSourceParams: {
             searchQuery:
-              'collect_type:"mysql" event.dataset:"mysql.slowlog" _msg:"Lock_time:"',
+              'collect_type:"mysql" event.dataset:"mysql.slowlog" message:"Lock_time:"',
             query: `collect_type:"mysql" event.dataset:"mysql.slowlog" | ${MYSQL_EXTRACT_LOCK_TIME} | stats by (_time:\${_time}) count() if (lock_time:>0) as lock_count`
           }
         }
@@ -152,7 +152,7 @@ export const useMysqlDashboard = () => {
           displayMaps: { key: 'mysql_user', value: 'lock_count' },
           dataSourceParams: {
             searchQuery:
-              'collect_type:"mysql" event.dataset:"mysql.slowlog" _msg:"Lock_time:"',
+              'collect_type:"mysql" event.dataset:"mysql.slowlog" message:"Lock_time:"',
             query: `collect_type:"mysql" event.dataset:"mysql.slowlog" | ${MYSQL_EXTRACT_LOCK_TIME} | ${MYSQL_EXTRACT_USER} | stats by (mysql_user) count() if (lock_time:>0) as lock_count | sort by (lock_count desc) | limit 10`
           }
         }
@@ -186,9 +186,9 @@ export const useMysqlDashboard = () => {
           dataSource: 1,
           displayMaps: { key: 'error_code', value: 'err_count' },
           dataSourceParams: {
-            searchQuery: 'collect_type:"mysql" event.dataset:"mysql.error" _msg:"[MY-"',
+            searchQuery: 'collect_type:"mysql" event.dataset:"mysql.error" message:"[MY-"',
             query:
-              'collect_type:"mysql" event.dataset:"mysql.error" _msg:"[MY-" | extract "[MY-<error_code>]" from _msg | stats by (error_code) count() as err_count | sort by (err_count desc) | limit 10'
+              'collect_type:"mysql" event.dataset:"mysql.error" message:"[MY-" | extract "[MY-<error_code>]" from message | stats by (error_code) count() as err_count | sort by (err_count desc) | limit 10'
           }
         }
       },

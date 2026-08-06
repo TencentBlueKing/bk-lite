@@ -1,5 +1,6 @@
 from apps.apm.services.catalog import DjangoTelemetryCatalogService
 from apps.apm.services.applications import DjangoApmApplicationService
+from apps.apm.services.dashboard import ApmDashboardService
 from apps.apm.services.deliveries import DeliveryStateConflict, DjangoNotificationDeliveryService
 from apps.apm.services.events import DjangoApmEventReader
 from apps.apm.services.integration_configuration import DjangoIntegrationConfigurationService
@@ -13,6 +14,7 @@ from apps.apm.services.reconciler import TelemetryCatalogReconciler
 __all__ = [
     "DjangoIntegrationConfigurationService",
     "DjangoApmApplicationService",
+    "ApmDashboardService",
     "DeliveryStateConflict",
     "DjangoNotificationDeliveryService",
     "NotificationChannelDirectory",

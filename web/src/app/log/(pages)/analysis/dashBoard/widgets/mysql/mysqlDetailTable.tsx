@@ -87,7 +87,7 @@ const SLOWLOG_COLUMNS = [
     align: 'right' as const,
     width: 80,
     render: (val: any, record: any) =>
-      formatSeconds(val ?? extractSlowlogMetric(record?._msg, 'query_time'))
+      formatSeconds(val ?? extractSlowlogMetric(record?.message, 'query_time'))
   },
   {
     key: 'mysql.slowlog.lock_time.sec',
@@ -97,7 +97,7 @@ const SLOWLOG_COLUMNS = [
     width: 80,
     render: (val: any, record: any) => {
       const n = parseFloat(
-        val ?? extractSlowlogMetric(record?._msg, 'lock_time') ?? ''
+        val ?? extractSlowlogMetric(record?.message, 'lock_time') ?? ''
       );
       if (isNaN(n)) return '--';
       return (
@@ -115,7 +115,7 @@ const SLOWLOG_COLUMNS = [
     width: 80,
     render: (val: any, record: any) => {
       const n = parseFloat(
-        val ?? extractSlowlogMetric(record?._msg, 'rows_examined') ?? ''
+        val ?? extractSlowlogMetric(record?.message, 'rows_examined') ?? ''
       );
       if (isNaN(n)) return '--';
       const rounded = Math.round(n);
@@ -135,7 +135,7 @@ const SLOWLOG_COLUMNS = [
     width: 90,
     render: (val: any, record: any) =>
       val ||
-      extractSlowlogUser(record?._msg) || (
+      extractSlowlogUser(record?.message) || (
         <span className="text-[var(--color-text-4)]">--</span>
       )
   },
@@ -145,7 +145,7 @@ const SLOWLOG_COLUMNS = [
     dataIndex: 'mysql.slowlog.host',
     width: 100,
     render: (val: any, record: any) => {
-      const host = val || extractSlowlogHost(record?._msg);
+      const host = val || extractSlowlogHost(record?.message);
       return host ? (
         <span className="text-xs">{host}</span>
       ) : (
@@ -154,9 +154,9 @@ const SLOWLOG_COLUMNS = [
     }
   },
   {
-    key: '_msg',
+    key: 'message',
     title: 'SQL',
-    dataIndex: '_msg',
+    dataIndex: 'message',
     render: (val: string) => {
       if (!val) return '--';
       const lines = val
@@ -197,15 +197,15 @@ const ERRORLOG_COLUMNS = [
     dataIndex: 'error.code',
     width: 80,
     render: (val: any, record: any) => {
-      const code = String(val || extractErrorCode(record?._msg) || '');
+      const code = String(val || extractErrorCode(record?.message) || '');
       if (!code) return <span className="text-[var(--color-text-4)]">--</span>;
       return <span className="font-mono text-xs">{code}</span>;
     }
   },
   {
-    key: '_msg',
+    key: 'message',
     title: '错误信息',
-    dataIndex: '_msg',
+    dataIndex: 'message',
     render: (val: string) => {
       if (!val) return '--';
       const preview = val.length > 120 ? `${val.slice(0, 120)}…` : val;

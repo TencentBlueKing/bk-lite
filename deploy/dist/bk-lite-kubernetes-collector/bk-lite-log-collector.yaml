@@ -202,9 +202,6 @@ data:
           .k8s_container_name = .kubernetes.container_name
           .k8s_node_name = .kubernetes.pod_node_name
           
-          # 保持原始消息
-          .log_message = .message
-
     sinks:
       nats_sink:
         type: nats

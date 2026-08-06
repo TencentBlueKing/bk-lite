@@ -25,7 +25,7 @@ import {
 const DEFAULT_FIELDS = ['timestamp', 'message'];
 const DEFAULT_FIELDS_MAP: Record<string, string> = {
   timestamp: '_time',
-  message: '_msg'
+  message: 'message'
 };
 
 // 虚拟滚动配置
@@ -59,7 +59,7 @@ const FieldList: React.FC<FieldListProps> = ({
 
   const hiddenFields = useMemo(() => {
     return fields.filter(
-      (item) => ![...displayFields, '_msg', '_time', '*'].includes(item)
+      (item) => ![...displayFields, 'message', '_msg', '_time', '*'].includes(item)
     );
   }, [fields, displayFields]);
 
