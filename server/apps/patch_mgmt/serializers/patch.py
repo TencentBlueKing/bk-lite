@@ -2,6 +2,7 @@
 
 import re
 
+from django.db import transaction
 from rest_framework import serializers
 
 from apps.patch_mgmt.constants import PackageManagerType
@@ -64,7 +65,16 @@ class LinuxPatchDetailSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = LinuxPatchDetail
-        fields = ["pkg_name", "pkg_version", "distro_name", "os_version_range", "architectures", "repo_type"]
+        fields = [
+            "pkg_name",
+            "pkg_version",
+            "packages",
+            "distro_name",
+            "os_version_range",
+            "architectures",
+            "repo_type",
+        ]
+        read_only_fields = ["packages"]
 
 
 class PatchListSerializer(PatchPermissionSerializer):
@@ -204,9 +214,16 @@ class PatchListSerializer(PatchPermissionSerializer):
                 patch=patch, defaults=windows_detail_data
             )
         if patch.os_type == "linux" and linux_detail_data:
-            LinuxPatchDetail.objects.update_or_create(
-                patch=patch, defaults=linux_detail_data
-            )
+            with transaction.atomic():
+                detail = LinuxPatchDetail.objects.select_for_update().filter(patch=patch).first()
+                defaults = dict(linux_detail_data)
+                if detail is not None and detail.packages:
+                    packages = [dict(item) if isinstance(item, dict) else item for item in detail.packages]
+                    if packages and isinstance(packages[0], dict):
+                        packages[0]["name"] = defaults.get("pkg_name", detail.pkg_name)
+                        packages[0]["version"] = defaults.get("pkg_version", detail.pkg_version)
+                        defaults["packages"] = packages
+                LinuxPatchDetail.objects.update_or_create(patch=patch, defaults=defaults)
 
 
 class PatchDetailSerializer(PatchListSerializer):

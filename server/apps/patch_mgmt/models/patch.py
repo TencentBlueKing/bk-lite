@@ -160,6 +160,7 @@ class LinuxPatchDetail(models.Model):
 
     pkg_name = models.CharField(max_length=256, blank=True, default="", verbose_name="包名")
     pkg_version = models.CharField(max_length=128, blank=True, default="", verbose_name="包版本")
+    packages = models.JSONField(default=list, verbose_name="关联软件包列表")
     distro_name = models.CharField(max_length=64, blank=True, default="", verbose_name="发行版名称")
     os_version_range = models.CharField(max_length=128, blank=True, default="", verbose_name="系统版本范围")
     architectures = models.JSONField(default=list, verbose_name="适用架构")
@@ -182,3 +183,36 @@ class LinuxPatchDetail(models.Model):
 
     def __str__(self) -> str:
         return f"[Linux] {self.patch.title}"
+
+    def package_items(self) -> list[dict[str, str]]:
+        """返回去重后的有效软件包，并兼容迁移前及手工创建的单包详情。"""
+        items: list[dict[str, str]] = []
+        seen: set[tuple[str, str, str]] = set()
+        for raw in self.packages or []:
+            if not isinstance(raw, dict):
+                continue
+            item = {
+                "name": str(raw.get("name") or "").strip(),
+                "version": str(raw.get("version") or "").strip(),
+                "arch": str(raw.get("arch") or "").strip(),
+            }
+            if not item["name"]:
+                continue
+            key = (item["name"], item["version"], item["arch"])
+            if key in seen:
+                continue
+            seen.add(key)
+            items.append(item)
+        if items or not self.pkg_name.strip():
+            return items
+        return [
+            {
+                "name": self.pkg_name.strip(),
+                "version": self.pkg_version.strip(),
+                "arch": str((self.architectures or [""])[0] or "").strip(),
+            }
+        ]
+
+    def package_names(self) -> list[str]:
+        """返回保持源顺序的唯一包名列表。"""
+        return list(dict.fromkeys(item["name"] for item in self.package_items()))

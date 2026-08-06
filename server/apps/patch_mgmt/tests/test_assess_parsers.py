@@ -106,6 +106,87 @@ def test_assess_linux_requirements():
 
 
 @pytest.mark.django_db
+@pytest.mark.integration
+def test_assess_linux_requirements_checks_every_advisory_package():
+    baseline = PatchBaseline.objects.create(name="multi-package", os_type=OSType.LINUX, team=[1])
+    patch = Patch.objects.create(title="multi package advisory", os_type=OSType.LINUX, team=[1])
+    detail = LinuxPatchDetail.objects.create(
+        patch=patch,
+        pkg_name="not-upgradable",
+        pkg_version="1.0",
+    )
+    detail.packages = [
+        {"name": "not-upgradable", "version": "1.0", "arch": "x86_64"},
+        {"name": "openssl", "version": "3.0", "arch": "x86_64"},
+        {"name": "openssl", "version": "3.0", "arch": "x86_64"},
+        {"name": "", "version": "ignored", "arch": "x86_64"},
+    ]
+    detail.save(update_fields=["packages"])
+    req = BaselineRequirement.objects.create(baseline=baseline, patch=patch)
+
+    stdout = "\n".join(
+        [
+            f"BKPATCH_LINUX|{req.id}|not-upgradable|installed|1.0|0|",
+            f"BKPATCH_LINUX|{req.id}|openssl|installed|2.9|-1|",
+        ]
+    )
+    result = parsers.assess_requirements(OSType.LINUX, stdout, [req])
+
+    assert result[req.id].satisfied is False
+    assert result[req.id].evidence["pkg_names"] == ["not-upgradable", "openssl"]
+    assert result[req.id].evidence["missing_pkg_names"] == ["openssl"]
+    assert result[req.id].reason == "openssl 未满足最低版本要求"
+
+
+@pytest.mark.django_db
+@pytest.mark.integration
+def test_assess_linux_requirements_keeps_same_package_version_facts_distinct():
+    baseline = PatchBaseline.objects.create(name="same-package-versions", os_type=OSType.LINUX, team=[1])
+    patch = Patch.objects.create(title="openssl advisory", os_type=OSType.LINUX, team=[1])
+    detail = LinuxPatchDetail.objects.create(patch=patch, pkg_name="openssl", pkg_version="3.0")
+    detail.packages = [
+        {"name": "openssl", "version": "3.0", "arch": "x86_64"},
+        {"name": "openssl", "version": "2.0", "arch": "x86_64"},
+    ]
+    detail.save(update_fields=["packages"])
+    req = BaselineRequirement.objects.create(baseline=baseline, patch=patch)
+    stdout = "\n".join(
+        [
+            f"BKPATCH_LINUX|{req.id}|0|openssl|installed|2.5|-1|",
+            f"BKPATCH_LINUX|{req.id}|1|openssl|installed|2.5|0|",
+        ]
+    )
+
+    result = parsers.assess_requirements(OSType.LINUX, stdout, [req])
+
+    assert result[req.id].status == RequirementAssessmentStatus.MISSING
+    assert result[req.id].evidence["missing_pkg_names"] == ["openssl"]
+
+
+@pytest.mark.django_db
+@pytest.mark.integration
+def test_assess_linux_requirements_does_not_reuse_another_structured_spec_fact():
+    baseline = PatchBaseline.objects.create(name="partial-output", os_type=OSType.LINUX, team=[1])
+    patch = Patch.objects.create(title="openssl advisory", os_type=OSType.LINUX, team=[1])
+    detail = LinuxPatchDetail.objects.create(patch=patch, pkg_name="openssl", pkg_version="3.0")
+    detail.packages = [
+        {"name": "openssl", "version": "3.0", "arch": "x86_64"},
+        {"name": "openssl", "version": "2.0", "arch": "x86_64"},
+    ]
+    detail.save(update_fields=["packages"])
+    req = BaselineRequirement.objects.create(baseline=baseline, patch=patch)
+
+    result = parsers.assess_requirements(
+        OSType.LINUX,
+        f"BKPATCH_LINUX|{req.id}|1|openssl|installed|2.5|0|",
+        [req],
+    )
+
+    assert result[req.id].status == RequirementAssessmentStatus.UNKNOWN
+    assert result[req.id].evidence["unknown_pkg_names"] == ["openssl"]
+
+
+@pytest.mark.django_db
 def test_assess_windows_requirements():
     baseline = PatchBaseline.objects.create(name="win-baseline", os_type=OSType.WINDOWS, team=[1])
     patch_present = Patch.objects.create(title="present kb", os_type=OSType.WINDOWS, team=[1])
