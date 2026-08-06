@@ -9,6 +9,7 @@ import MobileSearchBar from '@/components/mobile-search-bar';
 import { useAuth } from '@/context/auth';
 import { listAssetCatalog, listAssetInstances } from '@/features/assets/adapter';
 import AssetListCard from '@/features/assets/asset-list-card';
+import { useFollowedAssets } from '@/features/assets/use-followed-assets';
 import {
   classificationIdForModel,
   groupAssetModels,
@@ -70,6 +71,7 @@ export default function AllAssetsPanel({
   const { t } = useTranslation();
   const { userInfo } = useAuth();
   const router = useRouter();
+  const follow = useFollowedAssets();
   const cacheScope = `${userInfo?.id || 0}:${getCurrentTeamCookie() || 'none'}`;
   const cacheView = 'assets-all-panel';
   const initialSnapshot = useRef(readMobileViewSnapshot<AllAssetsPanelState>(cacheScope, cacheView));
@@ -91,9 +93,9 @@ export default function AllAssetsPanel({
   const [catalogStatus, setCatalogStatus] = useState<'loading' | 'ready' | 'missing' | 'error'>(
     initialSnapshot.current ? 'ready' : 'loading',
   );
-  const [keyword, setKeyword] = useState(
-    snapshotMatchesUrl ? (initialSnapshot.current?.data.keyword || '') : '',
-  );
+  const initialKeyword = snapshotMatchesUrl ? (initialSnapshot.current?.data.keyword || '') : '';
+  const [input, setInput] = useState(initialKeyword);
+  const [keyword, setKeyword] = useState(initialKeyword);
   const [instances, setInstances] = useState<AssetInstance[]>(
     snapshotMatchesUrl ? (initialSnapshot.current?.data.instances || []) : [],
   );
@@ -206,7 +208,9 @@ export default function AllAssetsPanel({
     const cached = caches[next.id];
     setSelectedClassificationId(next.classificationId);
     setSelectedModelId(next.id);
-    setKeyword(cached?.keyword || '');
+    const cachedKeyword = cached?.keyword || '';
+    setInput(cachedKeyword);
+    setKeyword(cachedKeyword);
     setInstances(cached?.instances || []);
     setCount(cached?.count || 0);
     setPage(cached?.page || 0);
@@ -239,6 +243,7 @@ export default function AllAssetsPanel({
       setInstances([]);
       setCount(0);
       setPage(0);
+      setInput('');
       setKeyword('');
       setListStatus('idle');
       syncUrl(nextClassificationId, null);
@@ -252,6 +257,7 @@ export default function AllAssetsPanel({
     setPickerOpen(false);
     setSelectedClassificationId('');
     setSelectedModelId('');
+    setInput('');
     setKeyword('');
     setInstances([]);
     setCount(0);
@@ -414,12 +420,20 @@ export default function AllAssetsPanel({
     if (lastRequestedKey.current === requestKey) return;
     const hasContent = instancesRef.current.length > 0
       && selectedModelIdRef.current === selectedModel.id;
-    const timer = window.setTimeout(() => {
-      lastRequestedKey.current = requestKey;
-      void loadInstances(selectedModel.id, 1, false, hasContent).catch(() => undefined);
-    }, 280);
-    return () => window.clearTimeout(timer);
+    lastRequestedKey.current = requestKey;
+    void loadInstances(selectedModel.id, 1, false, hasContent).catch(() => undefined);
   }, [inWorkbench, keyword, loadInstances, selectedModel]);
+
+  const submitSearch = (value: string) => {
+    const next = value.trim();
+    setInput(value);
+    setKeyword(next);
+  };
+
+  const clearSearch = () => {
+    setInput('');
+    setKeyword('');
+  };
 
   useEffect(() => () => {
     catalogRequestId.current += 1;
@@ -520,8 +534,10 @@ export default function AllAssetsPanel({
           {selectedModel ? (
             <div className={styles.instanceSearch}>
               <MobileSearchBar
-                value={keyword}
-                onChange={setKeyword}
+                value={input}
+                onChange={setInput}
+                onSearch={submitSearch}
+                onClear={clearSearch}
                 placeholder={t('assets.searchModel', undefined, { name: displayName })}
               />
             </div>
@@ -620,6 +636,10 @@ export default function AllAssetsPanel({
                       classificationId={selectedClassificationId}
                       classificationName={selectedClassification?.name || ''}
                       showModel={false}
+                      followed={follow.isFollowed(selectedModel.id, asset.id)}
+                      followPending={follow.isPending(selectedModel.id, asset.id)}
+                      followStatus={follow.status}
+                      onToggleFollow={(target) => { void follow.toggleFollow(target, selectedModel.id); }}
                       key={String(asset.id)}
                     />
                   ))}

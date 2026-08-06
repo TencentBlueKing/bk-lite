@@ -1,5 +1,7 @@
-import { apiGet, apiPost } from '@/api/request';
-import type { MetricGroup, MetricRangeResult, MonitorInstance, MonitorMetric, MonitorObject, MonitorPlugin, PageResult } from './model';
+import { apiGet } from '@/api/request';
+import type { MetricGroup, MetricRangeResult, MonitorInstance, MonitorMetric, MonitorObject, MonitorPlugin, MonitorRecentViewsConfig, PageResult, ResolvedMonitorRecentView } from './model';
+import type { MonitorUnitListItem } from './unit-label';
+import { parseMonitorInstanceLookupHints } from './model';
 
 function record(value: unknown): Record<string, unknown> {
   return typeof value === 'object' && value !== null ? value as Record<string, unknown> : {};
@@ -57,10 +59,8 @@ export async function listMonitorObjects(signal?: AbortSignal): Promise<MonitorO
 
 export async function listMonitorInstances(objectId: number, page: number, keyword = '', signal?: AbortSignal): Promise<PageResult<MonitorInstance>> {
   if (!objectId) throw new Error('objectId is required');
-  const params = { page, page_size: 20, name: keyword, add_metrics: true };
-  const response = keyword
-    ? await apiPost(`/monitor/api/monitor_instance/${objectId}/search/`, params, { signal })
-    : await apiGet(`/monitor/api/monitor_instance/${objectId}/list/`, params, { signal });
+  const params = { page, page_size: 20, name: keyword.trim(), add_metrics: true };
+  const response = await apiGet(`/monitor/api/monitor_instance/${objectId}/list/`, params, { signal });
   const raw = record(unwrap<unknown>(response));
   const results = Array.isArray(raw.results) ? raw.results : [];
   return {
@@ -81,22 +81,24 @@ export async function listMonitorInstances(objectId: number, page: number, keywo
 export async function getMonitorInstance(
   objectId: number,
   instanceId: string,
-  hints: { name?: string; idValues?: string[] } = {},
+  hints: { name?: string; idValues?: string[]; addMetrics?: boolean } = {},
   signal?: AbortSignal,
 ): Promise<MonitorInstance | null> {
   if (!objectId || !instanceId) return null;
-  const keywords = [hints.name, ...(hints.idValues || [])]
+  const lookup = parseMonitorInstanceLookupHints(instanceId);
+  const keywords = [lookup.name, ...(lookup.idValues || []), hints.name, ...(hints.idValues || [])]
     .map((value) => String(value || '').trim())
     .filter(Boolean);
   const tried = new Set<string>();
+  const pageSize = hints.addMetrics ? 100 : 50;
   for (const keyword of keywords.length ? keywords : ['']) {
     if (tried.has(keyword)) continue;
     tried.add(keyword);
     const response = await apiGet(`/monitor/api/monitor_instance/${objectId}/list/`, {
       page: 1,
-      page_size: 50,
+      page_size: pageSize,
       name: keyword,
-      add_metrics: false,
+      add_metrics: hints.addMetrics ?? false,
     }, { signal });
     const raw = record(unwrap<unknown>(response));
     const results = Array.isArray(raw.results) ? raw.results : [];
@@ -158,4 +160,46 @@ export async function queryMetricRange(query: string, unit: string, rangeMinutes
       values: (Array.isArray(item.values) ? item.values : []).filter(Array.isArray).map((point) => [Number(point[0]), text(point[1])] as [number, string]),
     }; }),
   };
+}
+
+let monitorUnitListCache: MonitorUnitListItem[] | null = null;
+let monitorUnitListPromise: Promise<MonitorUnitListItem[]> | null = null;
+
+export async function getMonitorUnitList(signal?: AbortSignal): Promise<MonitorUnitListItem[]> {
+  if (monitorUnitListCache) return monitorUnitListCache;
+  if (!monitorUnitListPromise) {
+    monitorUnitListPromise = apiGet('/monitor/api/unit/list/', {}, { signal })
+      .then((raw) => {
+        const list = Array.isArray(unwrap<unknown>(raw)) ? unwrap<unknown[]>(raw) : [];
+        monitorUnitListCache = list.map((value) => {
+          const item = record(value);
+          return {
+            unit_id: text(item.unit_id),
+            display_unit: text(item.display_unit),
+          };
+        }).filter((item) => item.unit_id);
+        return monitorUnitListCache;
+      })
+      .catch((error) => {
+        monitorUnitListPromise = null;
+        throw error;
+      });
+  }
+  return monitorUnitListPromise;
+}
+
+export async function resolveRecentViews(
+  config: MonitorRecentViewsConfig,
+  objects: readonly MonitorObject[],
+  signal?: AbortSignal,
+): Promise<ResolvedMonitorRecentView[]> {
+  const objectMap = new Map(objects.map((object) => [object.id, object]));
+  const settled = await Promise.allSettled(config.items.map(async (item) => {
+    const object = objectMap.get(item.objectId);
+    if (!object) return null;
+    const instance = await getMonitorInstance(item.objectId, item.instanceId, { addMetrics: true }, signal);
+    if (!instance) return null;
+    return { item, object, instance };
+  }));
+  return settled.flatMap((result) => (result.status === 'fulfilled' && result.value ? [result.value] : []));
 }

@@ -1,0 +1,16 @@
+.menuIcon {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  margin-right: 4px;
+  font-size: var(--font-size-title);
+  color: var(--color-primary);
+  background: var(--color-primary-bg);
+  border-radius: 9px;
+  place-items: center;
+}
+
+.currentLocale {
+  color: var(--color-text-3);
+  font-size: var(--font-size-body);
+}

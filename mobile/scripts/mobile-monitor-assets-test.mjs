@@ -11,6 +11,27 @@ async function loadModel(path) {
   return import(`data:text/javascript;base64,${Buffer.from(output).toString('base64')}#${Math.random()}`);
 }
 
+test('监控单位标签与 Web findUnitNameById 优先级一致', async () => {
+  const { resolveMonitorUnitLabel } = await loadModel('src/features/monitor/unit-label.ts');
+  const unitList = [
+    { unit_id: 'percent', display_unit: '%' },
+    { unit_id: 'bytes', display_unit: 'B' },
+    { unit_id: 'short', display_unit: 'short' },
+  ];
+  assert.equal(resolveMonitorUnitLabel('percent', undefined, unitList), '%');
+  assert.equal(resolveMonitorUnitLabel('percent', 'pct', unitList), 'pct');
+  assert.equal(resolveMonitorUnitLabel('unknown-unit', undefined, unitList), 'unknown-unit');
+  assert.equal(resolveMonitorUnitLabel('short', undefined, unitList), '');
+  assert.equal(resolveMonitorUnitLabel('bytes', 'none', unitList), '');
+  assert.equal(resolveMonitorUnitLabel('percent', undefined, []), 'percent');
+
+  const card = await readProjectFile('src/features/monitor/metric-card.tsx');
+  const sheet = await readProjectFile('src/features/monitor/metric-chart-sheet.tsx');
+  assert.match(card, /resolveMonitorUnitLabel\(metric\.unit,\s*undefined,\s*unitList\)/);
+  assert.match(sheet, /resolveMonitorUnitLabel\(metric\.unit,\s*undefined,\s*unitList\)/);
+  assert.doesNotMatch(card, /resolveMonitorUnitLabel\(metric\.unit,\s*unit,/);
+});
+
 test('列表未满一页时不展示「没有更多了」分页条', async () => {
   const { shouldShowListPagination } = await loadModel('src/utils/listPagination.ts');
   assert.equal(shouldShowListPagination(3, 3, 20), false);
@@ -62,8 +83,16 @@ test('实例列表按元数据顺序展示前三条摘要，空值保留为 null
     displayFieldKey,
     instanceListSummaryEntries,
     instanceSummaryEntries,
+    parseMonitorInstanceLookupHints,
+    resolveMonitorReportingStatus,
   } = await loadModel('src/features/monitor/model.ts');
+  assert.equal(parseMonitorInstanceLookupHints("('mobile-demo-host-01',)").name, 'mobile-demo-host-01');
+  assert.deepEqual(parseMonitorInstanceLookupHints("('mobile-demo-host-01',)").idValues, ['mobile-demo-host-01']);
   assert.equal(INSTANCE_LIST_SUMMARY_LIMIT, 3);
+  assert.equal(resolveMonitorReportingStatus('normal'), 'normal');
+  assert.equal(resolveMonitorReportingStatus('unavailable'), 'unavailable');
+  assert.equal(resolveMonitorReportingStatus('offline'), 'unavailable');
+  assert.equal(resolveMonitorReportingStatus(''), '');
   assert.equal(displayFieldKey('Host', 'cpu_usage'), 'Host::cpu_usage');
   assert.equal(displayFieldKey('Host', 'node_info', 'ip'), 'field::Host::node_info::ip');
   const object = {
@@ -125,6 +154,16 @@ test('实例列表面板把摘要指标放进表格列并支持横向滚动', as
   ]);
   assert.match(panel, /instanceListSummaryEntries\(monitorObject, instance\)/);
   assert.match(panel, /summaryFields\.map/);
+  assert.match(panel, /columnReportTime|columnReportingStatus/);
+  assert.match(panel, /resolveMonitorReportingStatus/);
+  assert.match(panel, /monitor\.reportingStatus\./);
+  assert.match(panel, /statusTag/);
+  assert.doesNotMatch(panel, /sortMonitorInstances/);
+  // Web 列序：名称 → 上报时间 → 上报状态 → 摘要指标
+  assert.match(
+    panel,
+    /columnName[\s\S]*columnReportTime[\s\S]*columnReportingStatus[\s\S]*summaryFields\.map/,
+  );
   assert.match(panel, /INSTANCE_LIST_SUMMARY_LIMIT/);
   assert.match(panel, /data-instance-table-scroll/);
   assert.doesNotMatch(panel, /styles\.instanceMetrics/);
@@ -135,20 +174,53 @@ test('实例列表面板把摘要指标放进表格列并支持横向滚动', as
   assert.match(adapter, /metrics:\s*\(Array\.isArray\(meta\.metrics\)/);
 });
 
-test('最近查看保持纯占位，监控请求始终带 objectId 且指标按视口懒加载', async () => {
-  const [page, panel, adapter, card] = await Promise.all([
+test('最近查看默认 Tab 在前且详情成功后会记录浏览', async () => {
+  const [page, detail, storage, model, panel] = await Promise.all([
     readProjectFile('src/app/monitor/page.tsx'),
+    readProjectFile('src/app/monitor/detail/page.tsx'),
+    readProjectFile('src/features/monitor/recent-views-storage.ts'),
+    readProjectFile('src/features/monitor/model.ts'),
+    readProjectFile('src/features/monitor/recent-views-panel.tsx'),
+  ]);
+  assert.match(page, /key="recent"[\s\S]*key="all"/);
+  assert.match(page, /activeTab.*'recent'/);
+  assert.match(page, /MonitorRecentViewsPanel/);
+  assert.doesNotMatch(page, /recentPlaceholder/);
+  assert.match(storage, /recordRecentView/);
+  assert.match(storage, /bk_lite_mobile_monitor_recent_views|localStorage/);
+  assert.match(detail, /recordRecentView/);
+  assert.match(detail, /status !== 'ready'/);
+  assert.match(detail, /!userInfo\?\.id/);
+  assert.doesNotMatch(detail, /userInfo\?\.id \|\| 0/);
+  assert.match(panel, /formatRecentViewTime/);
+  assert.match(panel, /returnTab: 'recent'/);
+  assert.match(panel, /instanceListSummaryEntries/);
+  assert.match(panel, /recentMetricsLine/);
+  assert.match(panel, /recentMetricLabel/);
+  assert.match(panel, /recentStatusInline/);
+  assert.match(panel, /recentMetaLine/);
+  const { normalizeRecentViews, MAX_RECENT_VIEWS } = await loadModel('src/features/monitor/model.ts');
+  assert.equal(MAX_RECENT_VIEWS, 20);
+  const config = normalizeRecentViews({ items: Array.from({ length: 25 }, (_, index) => ({
+    object_id: 1,
+    instance_id: `host-${index}`,
+    viewed_at: new Date(index * 1000).toISOString(),
+  })) });
+  assert.equal(config.items.length, 20);
+});
+
+test('监控请求始终带 objectId 且指标按视口懒加载', async () => {
+  const [panel, adapter, card] = await Promise.all([
     readProjectFile('src/features/monitor/instances-panel.tsx'),
     readProjectFile('src/features/monitor/adapter.ts'),
     readProjectFile('src/features/monitor/metric-card.tsx'),
   ]);
-  assert.match(page, /recentPlaceholder/);
-  assert.doesNotMatch(`${page}\n${panel}\n${adapter}`, /last_viewed_at|MonitorRecentInstanceView|recent[_-](view|instance)|localStorage/);
   assert.match(adapter, /monitor_instance\/\$\{objectId\}\/list/);
   assert.match(adapter, /add_metrics:\s*true/);
   assert.match(adapter, /effective_plugins/);
   assert.match(adapter, /metrics_instance\/query_range/);
   assert.match(card, /IntersectionObserver/);
+  assert.doesNotMatch(panel, /localStorage/);
 });
 
 test('监控与资产根页由限高滚动容器承载下拉刷新内容', async () => {
@@ -195,6 +267,9 @@ test('资产复用 Web CMDB 接口、两阶段搜索和元数据字段详情', a
   assert.match(adapter, /fulltext_search\/by_model/);
   assert.match(adapter, /field_groups\/full_info/);
   assert.match(adapter, /organizationName:\s*text\(item\.organization_display\)/);
+  // 模型内筛选须用 str*（contains）；裸 type "str" 会被 CMDB format_search_params 静默跳过
+  assert.match(adapter, /field:\s*'inst_name',\s*type:\s*'str\*',\s*value:\s*keyword/);
+  assert.doesNotMatch(adapter, /field:\s*'inst_name',\s*type:\s*'str',\s*value:\s*keyword/);
   assert.match(detail, /group\.fields\.map/);
   assert.match(detail, /getFollowedConfig\(\)[\s\S]*updateFollowedConfig/);
   assert.match(search, /canAccess\('assets', 'Search'\)/);
@@ -219,21 +294,29 @@ test('资产列表卡片复用真实数据，不以模型首字母伪装图标',
   assert.doesNotMatch(component, /charAt\(0\)|MobileListCard|raised|assetTag/);
 });
 
-test('资产根页使用头部轻量搜索入口并继续进入既有精确搜索页', async () => {
-  const [home, search, styles] = await Promise.all([
+test('资产根页使用头部搜索图标入口并继续进入既有精确搜索页', async () => {
+  const [home, search, styles, header] = await Promise.all([
     readProjectFile('src/app/assets/page.tsx'),
     readProjectFile('src/app/assets/search/page.tsx'),
     readProjectFile('src/features/assets/assets.module.css'),
+    readProjectFile('src/components/mobile-page-header/index.tsx'),
   ]);
 
-  assert.match(home, /MobilePageHeader[\s\S]*searchLauncher[\s\S]*(?:<Tabs|<MobileSegmentTabs)/);
-  assert.match(home, /href="\/assets\/search"/);
-  assert.match(home, /searchPlaceholder/);
+  assert.match(home, /MobilePageHeader[\s\S]*actions=\{searchAllowed[\s\S]*href:\s*'\/assets\/search'/);
+  assert.match(home, /SearchOutline/);
+  assert.doesNotMatch(home, /searchLauncher|searchField|searchPlaceholder/);
   assert.doesNotMatch(home, /searchLauncherHint/);
+  assert.match(header, /actions\.map/);
   assert.match(search, /<Switch[\s\S]*checked=\{exact\}/);
-  assert.match(styles, /\.searchLauncher\s*\{[^}]*min-height:\s*40px/s);
-  assert.match(styles, /\.searchField\s*\{[^}]*height:\s*34px/s);
-  assert.doesNotMatch(styles, /\.searchLauncher\s*\{[^}]*min-height:\s*76px/s);
+  assert.doesNotMatch(styles, /\.searchLauncher\s*\{/);
+  assert.doesNotMatch(styles, /\.searchField\s*\{/);
+});
+
+test('监控实例名称搜索走 list 接口而非特殊 search', async () => {
+  const adapter = await readProjectFile('src/features/monitor/adapter.ts');
+  assert.match(adapter, /listMonitorInstances\([\s\S]*monitor_instance\/\$\{objectId\}\/list\//);
+  assert.doesNotMatch(adapter, /monitor_instance\/\$\{objectId\}\/search\//);
+  assert.match(adapter, /name: keyword\.trim\(\)/);
 });
 
 test('监控根页「全部实例」直接展示实例面板，旧 instances 路由回跳根页', async () => {
@@ -245,12 +328,15 @@ test('监控根页「全部实例」直接展示实例面板，旧 instances 路
   ]);
 
   assert.match(page, /MonitorInstancesPanel/);
+  assert.match(page, /MonitorRecentViewsPanel/);
   assert.match(page, /monitor\.tabs\.all/);
+  assert.match(page, /monitor\.tabs\.recent/);
+  assert.match(page, /activeTab === 'recent'/);
   assert.doesNotMatch(page, /objectTree|setExpanded|href=\{`\/monitor\/instances/);
   assert.match(panel, /listMonitorObjects/);
   assert.match(panel, /listMonitorInstances/);
   assert.match(panel, /orderedMonitorObjects|shiftObject|objectChip/);
-  assert.match(panel, /modeLoadedIssue|loaded_issue/);
+  assert.match(panel, /objectChipCount/);
   assert.match(panel, /<Popup/);
   assert.match(panel, /instanceRow/);
   assert.match(panel, /MonitorObjectIcon|objectIcon/);
@@ -261,15 +347,35 @@ test('监控根页「全部实例」直接展示实例面板，旧 instances 路
   assert.match(panel, /<MobilePullToRefresh/);
   assert.match(instancesPage, /router\.replace/);
   assert.match(instancesPage, /\/monitor\?/);
-  assert.match(detailPage, /const backHref = objectId[\s\S]*`\/monitor\?\$\{backParams\.toString\(\)\}`[\s\S]*:\s*'\/monitor'/);
+  assert.match(detailPage, /returnTab === 'recent'/);
+  assert.match(detailPage, /recordRecentView/);
   assert.match(detailPage, /<MobilePageHeader[\s\S]*backHref=\{backHref\}/);
   assert.match(detailPage, /MonitorObjectIcon/);
   assert.match(detailPage, /objectIcon/);
-  assert.match(detailPage, /detailTabs\.about|activeTab === 'about'/);
+  assert.match(detailPage, /DetailMetricsSkeleton|detailMetricsLoading/);
+  assert.doesNotMatch(detailPage, /detailTabs|MobileSegmentTabs|activeTab === 'about'/);
+  assert.doesNotMatch(panel, /facts:/);
   assert.match(detailPage, /groupToggle|expandedGroups/);
   assert.match(detailPage, /pluginSwitch|selectPluginTitle/);
   assert.match(detailPage, /<Popup/);
-  assert.match(detailPage, /plugins\.length > 0/);
+  assert.match(detailPage, /heroCard|heroFactLabel/);
+  assert.match(detailPage, /toolCard|rangeSeg/);
+  assert.match(detailPage, /showPluginPicker/);
+  assert.match(detailPage, /initialExpandedGroupIds/);
+  assert.match(detailPage, /groupCard|metricStack/);
+  assert.match(detailPage, /MetricChartSheet|metricSheetIndex/);
+  assert.match(await readProjectFile('src/features/monitor/metric-card.tsx'), /onOpen/);
+  assert.match(await readProjectFile('src/features/monitor/metric-chart-sheet.tsx'), /MetricSheetEcharts|metricSheetChartWrap/);
+  assert.match(await readProjectFile('src/features/monitor/metric-chart-utils.ts'), /formatMetricDisplay|formatMetricValue\(value, unit\)/);
+  assert.match(await readProjectFile('src/features/monitor/metric-sheet-echarts.tsx'), /echarts-setup|tooltip|axisPointer/);
+  assert.match(await readProjectFile('src/features/monitor/echarts-setup.ts'), /LineChart|CanvasRenderer|AxisPointerComponent/);
+  assert.match(await readProjectFile('src/features/monitor/metric-chart-utils.ts'), /export function pickPointByRatio/);
+  assert.match(await readProjectFile('package.json'), /"echarts"/);
+  const monitorStyles = await readProjectFile('src/features/monitor/monitor.module.css');
+  assert.match(monitorStyles, /\.metricSheetChart\s*\{[^}]*min-height:\s*180px/s);
+  assert.match(monitorStyles, /\.heroCard\s*\{/);
+  assert.match(monitorStyles, /\.toolCard\s*\{/);
+  assert.match(monitorStyles, /\.metricGrid\s*\{[^}]*grid-template-columns:\s*repeat\(2/s);
   assert.match(detailPage, /getMonitorInstance\(/);
   assert.match(detailPage, /setInstanceStatus\(/);
   assert.match(detailPage, /setLastReportedAt\(/);
@@ -279,7 +385,7 @@ test('监控详情头部通过现有 list 接口回源状态与上报时间', as
   const adapter = await readProjectFile('src/features/monitor/adapter.ts');
   assert.match(adapter, /export async function getMonitorInstance/);
   assert.match(adapter, /monitor_instance\/\$\{objectId\}\/list\//);
-  assert.match(adapter, /add_metrics:\s*false/);
+  assert.match(adapter, /add_metrics:\s*hints\.addMetrics\s*\?\?\s*false/);
   assert.match(adapter, /item\.id === instanceId/);
 });
 
@@ -315,10 +421,30 @@ test('Mobile 搜索框高度走统一变量，业务页不再各自覆盖盒型'
   assert.match(searchBar, /size === 'page'/);
   assert.match(searchBarStyles, /--mobile-search-bar-height/);
   assert.match(searchBarStyles, /--mobile-search-bar-height-page/);
+  assert.match(searchBar, /mobile\/DESIGN\.md/);
   assert.match(monitorPanel, /MobileSearchBar/);
   assert.match(assetsPanel, /MobileSearchBar/);
   assert.match(assetsSearch, /size="page"/);
   assert.match(todoSearch, /size="page"/);
+  // 远程搜索：草稿 input + onSearch 提交，不得输入防抖请求
+  for (const [name, source] of [
+    ['assetsPanel', assetsPanel],
+    ['monitorPanel', monitorPanel],
+    ['assetsSearch', assetsSearch],
+    ['todoSearch', todoSearch],
+  ]) {
+    assert.match(source, /onSearch=\{/, `${name} 远程搜索应绑定 onSearch`);
+  }
+  assert.match(assetsPanel, /const \[input,\s*setInput\]/);
+  assert.match(assetsPanel, /onSearch=\{submitSearch\}/);
+  assert.match(assetsPanel, /onChange=\{setInput\}/);
+  assert.doesNotMatch(assetsPanel, /setTimeout\(\(\)\s*=>\s*\{[\s\S]*loadInstances/, '资产列表不得输入防抖请求');
+  assert.match(monitorPanel, /const \[input,\s*setInput\]/);
+  assert.match(monitorPanel, /onSearch=\{submitSearch\}/);
+  assert.match(monitorPanel, /onChange=\{setInput\}/);
+  assert.doesNotMatch(monitorPanel, /setTimeout\(\(\)\s*=>\s*\{[\s\S]*loadInstances/, '监控列表不得输入防抖请求');
+  assert.match(assetsSearch, /onSearch=\{submit\}/);
+  assert.match(todoSearch, /onSearch=\{submit\}/);
 
   for (const [name, css] of [
     ['monitor', monitorStyles],
@@ -347,14 +473,19 @@ test('资产全部采用分类落地再进入分类内模型工作台，不用�
   assert.match(page, /classificationId/);
   assert.match(page, /classificationName/);
   assert.match(page, /lastAllQuery/);
-  assert.match(page, /onTabChange|router\.replace\('\/assets'\)/);
+  assert.match(page, /stashedAll/);
+  assert.match(page, /onTabChange/);
+  assert.match(page, /不清理分类 URL|避免闪落地页/);
   assert.match(page, /MobileSegmentTabs/);
-  assert.match(page, /searchLauncher/);
+  assert.match(page, /href:\s*'\/assets\/search'/);
   assert.doesNotMatch(page, /inAllWorkbench &&/);
   assert.match(page, /inAllWorkbench|allTabTitle|categoryPickerOpen/);
   assert.match(page, /onWorkbenchMetaChange|onCategoryPickerOpenChange/);
   assert.match(page, /DownOutline/);
-  assert.match(page, /categorySwitchLabel|allTabLabel/);
+  assert.match(page, /categorySwitchLabel|allTabLabel|workbenchLabelMeta/);
+  assert.match(page, /workbenchLabelMeta/);
+  // 切到「我关注的」时不再清空分类 query，避免切回时先渲染落地页
+  assert.doesNotMatch(page, /if \(query\) router\.replace\('\/assets'\)/);
   assert.match(panel, /listAssetCatalog/);
   assert.match(panel, /listAssetInstances/);
   assert.match(panel, /browseByCategory|categoryRow/);
@@ -397,7 +528,10 @@ test('资产全部采用分类落地再进入分类内模型工作台，不用�
   assert.match(styles, /\.assetMetaSwatch\s*\{/);
   assert.match(styles, /\.assetLead\s*\{[^}]*border:\s*1px solid var\(--color-primary-border\)/s);
   assert.doesNotMatch(styles, /\.assetTag\s*\{/);
-  assert.match(styles, /\.assetIp\s*\{[^}]*color:\s*var\(--color-text-2\)/s);
+  assert.match(styles, /\.assetMetaIp\s*\{[^}]*font-family:\s*ui-monospace/s);
+  // 等宽 IP 与中文混排按基线对齐，色点保持居中
+  assert.match(styles, /\.assetMetaRow\s*\{[^}]*align-items:\s*baseline/s);
+  assert.match(styles, /\.assetMetaSwatch\s*\{[^}]*align-self:\s*center/s);
   assert.doesNotMatch(styles, /\.assetCard\s*\{[^}]*min-height:\s*78px/s);
 });
 
@@ -508,8 +642,63 @@ test('资产详情关注操作与 Web 一致使用可访问的空心和实心星
   assert.match(styles, /\.followButtonActive\s*\{[^}]*color:\s*var\(--color-warning\)/s);
 });
 
-test('详情返回时按账号与团队恢复列表数据、搜索条件和滚动位置', async () => {
-  const [cache, assets, assetPanel, assetSearch, monitor, monitorPanel, todo, todoSearch, auth, detail] = await Promise.all([
+test('资产列表卡片支持行内关注操作且不触发整卡跳转', async () => {
+  const [component, home, panel, search, hook, styles] = await Promise.all([
+    readProjectFile('src/features/assets/asset-list-card.tsx'),
+    readProjectFile('src/app/assets/page.tsx'),
+    readProjectFile('src/features/assets/all-assets-panel.tsx'),
+    readProjectFile('src/app/assets/search/page.tsx'),
+    readProjectFile('src/features/assets/use-followed-assets.ts'),
+    readProjectFile('src/features/assets/assets.module.css'),
+  ]);
+
+  for (const page of [home, panel, search]) {
+    assert.match(page, /useFollowedAssets/);
+    assert.match(page, /onToggleFollow/);
+    assert.match(page, /followStatus=\{follow\.status\}/);
+  }
+  // 与 Web 关注面板一致：取消关注只就地翻星，行保留到刷新后重新解析
+  assert.match(home, /followed=\{follow\.isFollowed\(asset\.modelId, asset\.id\)/);
+  assert.doesNotMatch(home, /nowFollowed === false|setFollowed\(\(current\) => current\.filter/);
+  // 进入「我关注的」时同步刷新星标配置，他在「全部」/详情页的关注变更不会显示成未关注
+  assert.match(home, /activeTab !== 'followed'\)[\s\S]*?follow\.reload\(\)/);
+  assert.match(home, /isMobileViewStale\(cacheScope, 'assets-root'\)/);
+  assert.match(hook, /invalidateMobileViewSnapshot\(cacheScope, 'assets-root'\)/);
+  assert.match(component, /StarFill/);
+  assert.match(component, /StarOutline/);
+  assert.match(component, /aria-label=\{followLabel\}/);
+  assert.match(component, /event\.preventDefault\(\)/);
+  assert.match(component, /event\.stopPropagation\(\)/);
+  assert.match(component, /disabled=\{followPending \|\| followStatus !== 'ready'\}/);
+  // IP 并入名称下方 meta 行（模型 · 组织 · IP），行尾只留星标
+  assert.match(component, /styles\.assetMetaIp/);
+  assert.doesNotMatch(component, /styles\.assetIp[}>\s]/);
+  assert.match(styles, /\.cardFollow\s*\{/);
+  assert.match(hook, /getFollowedConfig\(\)[\s\S]*updateFollowedConfig/);
+  assert.match(hook, /addFollowedAsset/);
+  assert.match(hook, /removeFollowedAsset/);
+  assert.match(hook, /assets-root/);
+  assert.match(hook, /assets\.followFailed/);
+});
+
+test('资产详情头部使用模型元数据真实图标并按需回退', async () => {
+  const [detail, adapter, styles] = await Promise.all([
+    readProjectFile('src/app/assets/detail/page.tsx'),
+    readProjectFile('src/features/assets/adapter.ts'),
+    readProjectFile('src/features/assets/assets.module.css'),
+  ]);
+
+  assert.match(adapter, /export async function getAssetModel/);
+  assert.match(adapter, /icon:\s*text\(found\.icn\)/);
+  assert.match(detail, /getAssetModel\(actualModelId/);
+  assert.match(detail, /resolveAssetModelIconUrl\(modelIcon, resolvedModelId\)/);
+  assert.match(detail, /heroIconImage/);
+  assert.match(detail, /onError=\{\(\) => setIconFailed\(true\)\}/);
+  assert.match(styles, /\.heroIconImage\s*\{[^}]*object-fit:\s*contain/s);
+});
+
+test('详情返回时按账号与团队恢复列表数据与滚动位置；独立搜索页不缓存结果', async () => {
+  const [cache, assets, assetPanel, assetSearch, monitor, monitorPanel, todo, todoSearch, auth, detail, followHook] = await Promise.all([
     loadModel('src/navigation/mobile-view-cache.ts'),
     readProjectFile('src/app/assets/page.tsx'),
     readProjectFile('src/features/assets/all-assets-panel.tsx'),
@@ -520,6 +709,7 @@ test('详情返回时按账号与团队恢复列表数据、搜索条件和滚�
     readProjectFile('src/app/todo/search/page.tsx'),
     readProjectFile('src/context/auth.tsx'),
     readProjectFile('src/app/assets/detail/page.tsx'),
+    readProjectFile('src/features/assets/use-followed-assets.ts'),
   ]);
 
   cache.writeMobileViewSnapshot('user-1:team-a', 'assets', { tab: 'all' }, 128);
@@ -537,12 +727,20 @@ test('详情返回时按账号与团队恢复列表数据、搜索条件和滚�
 
   assert.match(monitor, /readMobileViewSnapshot/);
   assert.match(monitor, /writeMobileViewSnapshot/);
-  for (const page of [assets, assetPanel, assetSearch, monitorPanel, todo, todoSearch]) {
+  for (const page of [assets, assetPanel, monitorPanel, todo]) {
     assert.match(page, /readMobileViewSnapshot/);
     assert.match(page, /writeMobileViewSnapshot/);
     assert.match(page, /restoreMobileViewScroll/);
     assert.match(page, /scrollRef/);
   }
+  // 独立搜索页不写视图快照
+  for (const page of [assetSearch, todoSearch]) {
+    assert.doesNotMatch(page, /readMobileViewSnapshot|writeMobileViewSnapshot|restoreMobileViewScroll/);
+  }
+  assert.match(assets, /isMobileViewStale\(cacheScope, 'assets-root'\)/);
+  assert.match(assets, /clearMobileViewStale\(cacheScope, 'assets-root'\)/);
+  assert.match(followHook, /invalidateMobileViewSnapshot\(cacheScope, 'assets-root'\)/);
+  assert.match(detail, /invalidateMobileViewSnapshot\(cacheScope, 'assets-root'\)/);
   assert.match(detail, /backHref = backParams\.toString\(\) \? `\/assets\?\$\{backParams\.toString\(\)\}` : '\/assets'/);
   assert.match(todo, /useAlertFeed\(initialSnapshot\.current\?\.data\.feed\)/);
   assert.match(auth, /clearMobileViewCache\(\)/);

@@ -47,6 +47,13 @@ export function writeMobileViewSnapshot<T>(scope: string, view: string, data: T,
   prune(Date.now());
 }
 
+/** 丢弃指定视图快照。 */
+export function clearMobileViewSnapshot(scope: string, view: string) {
+  const key = entryKey(scope, view);
+  snapshots.delete(key);
+  staleKeys.delete(key);
+}
+
 /** 标记视图缓存已脏；保留 snapshot 供先渲染，列表页再静默刷新。 */
 export function invalidateMobileViewSnapshot(scope: string, view: string) {
   staleKeys.add(entryKey(scope, view));

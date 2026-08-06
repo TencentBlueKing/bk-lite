@@ -50,11 +50,11 @@
 
 .resultCompact :global(.adm-error-block-description) {
   margin-top: 8px;
-  font-size: 12px;
+  font-size: var(--font-size-secondary);
 }
 
 .resultCompact :global(.adm-error-block-title) {
-  font-size: 13px;
+  font-size: var(--font-size-body);
   font-weight: 600;
   line-height: 1.4;
 }
@@ -64,7 +64,7 @@
   min-height: 44px;
   padding: 0 18px;
   margin-top: 12px;
-  font-size: 14px;
+  font-size: var(--font-size-subtitle);
   font-weight: 650;
   color: var(--color-text-on-primary);
   cursor: pointer;
@@ -155,7 +155,7 @@
   place-items: center;
 }
 
-.loadingText { font-size: 13px; line-height: 1.5; }
+.loadingText { font-size: var(--font-size-body); line-height: 1.5; }
 
 .srOnly {
   position: absolute;

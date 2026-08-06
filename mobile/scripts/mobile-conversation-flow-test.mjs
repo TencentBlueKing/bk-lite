@@ -153,6 +153,11 @@ test('会话、工作台和搜索加载失败时保留明确重试入口', async
   assert.match(conversation, /!messagesLoadFailed && \(/);
   assert.match(workbench, /loadFailed[\s\S]*fetchApplications\(activeTab\)/);
   assert.match(search, /loadFailed[\s\S]*setConversationReloadVersion/);
+  // OpsPilot 搜索页远程请求须确认后触发，不得输入防抖
+  assert.match(search, /onSearch=\{submitSearch\}/);
+  assert.match(search, /const \[keyword,\s*setKeyword\]/);
+  assert.doesNotMatch(search, /setTimeout\(\(\)\s*=>\s*\{[\s\S]*searchWorkbenchApps/, '工作台搜索不得输入防抖请求');
+  assert.match(search, /!keyword\.trim\(\)/);
 });
 
 test('翻译函数在重渲染之间保持稳定，避免会话详情重复请求', async () => {

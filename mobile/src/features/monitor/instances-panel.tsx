@@ -14,9 +14,8 @@ import {
   MONITOR_PAGE_SIZE,
   groupMonitorObjects,
   instanceListSummaryEntries,
-  instanceSummaryEntries,
   orderedMonitorObjects,
-  sortMonitorInstances,
+  resolveMonitorReportingStatus,
   type MonitorInstance,
   type MonitorObject,
 } from '@/features/monitor/model';
@@ -32,13 +31,10 @@ import { getCurrentTeamCookie } from '@/utils/teamCookie';
 import { useTranslation } from '@/utils/i18n';
 import styles from '@/features/monitor/monitor.module.css';
 
-type ListMode = 'all' | 'loaded_issue';
-
 interface MonitorInstancesViewState {
   monitorObject: MonitorObject | null;
   objects: MonitorObject[];
   keyword: string;
-  mode: ListMode;
   instances: MonitorInstance[];
   count: number;
   page: number;
@@ -59,8 +55,8 @@ export default function MonitorInstancesPanel({ objectId = 0 }: MonitorInstances
   const [objects, setObjects] = useState<MonitorObject[]>(initialSnapshot.current?.data.objects || []);
   const [monitorObject, setMonitorObject] = useState<MonitorObject | null>(initialSnapshot.current?.data.monitorObject || null);
   const [objectStatus, setObjectStatus] = useState<'loading' | 'ready' | 'missing' | 'error'>(initialSnapshot.current ? 'ready' : 'loading');
+  const [input, setInput] = useState(initialSnapshot.current?.data.keyword || '');
   const [keyword, setKeyword] = useState(initialSnapshot.current?.data.keyword || '');
-  const [mode, setMode] = useState<ListMode>(initialSnapshot.current?.data.mode || 'all');
   const [instances, setInstances] = useState<MonitorInstance[]>(initialSnapshot.current?.data.instances || []);
   const [count, setCount] = useState(initialSnapshot.current?.data.count || 0);
   const [page, setPage] = useState(initialSnapshot.current?.data.page || 0);
@@ -86,17 +82,6 @@ export default function MonitorInstancesPanel({ objectId = 0 }: MonitorInstances
   const currentIndex = useMemo(
     () => orderedObjects.findIndex((item) => item.id === monitorObject?.id),
     [monitorObject?.id, orderedObjects],
-  );
-  const sortedInstances = useMemo(() => sortMonitorInstances(instances), [instances]);
-  const visibleInstances = useMemo(
-    () => (mode === 'loaded_issue'
-      ? sortedInstances.filter((item) => item.status !== 'normal')
-      : sortedInstances),
-    [mode, sortedInstances],
-  );
-  const loadedIssueCount = useMemo(
-    () => sortedInstances.filter((item) => item.status !== 'normal').length,
-    [sortedInstances],
   );
   const pickerGroups = useMemo(() => {
     const needle = pickerKeyword.trim().toLowerCase();
@@ -124,9 +109,9 @@ export default function MonitorInstancesPanel({ objectId = 0 }: MonitorInstances
       return;
     }
     setMonitorObject(next);
+    setInput('');
     setKeyword('');
     lastRequestedKey.current = null;
-    setMode('all');
     setInstances([]);
     setCount(0);
     setPage(0);
@@ -207,9 +192,9 @@ export default function MonitorInstancesPanel({ objectId = 0 }: MonitorInstances
     setObjectStatus('ready');
     if (monitorObject?.id === nextObject.id) return;
     setMonitorObject(nextObject);
+    setInput('');
     setKeyword('');
     lastRequestedKey.current = null;
-    setMode('all');
     setInstances([]);
     setCount(0);
     setPage(0);
@@ -221,12 +206,20 @@ export default function MonitorInstancesPanel({ objectId = 0 }: MonitorInstances
     if (!monitorObject) return;
     const requestKey = `${monitorObject.id}:${keyword}`;
     if (lastRequestedKey.current === requestKey) return;
-    const timer = window.setTimeout(() => {
-      lastRequestedKey.current = requestKey;
-      void loadInstances(monitorObject).catch(() => undefined);
-    }, 280);
-    return () => window.clearTimeout(timer);
+    lastRequestedKey.current = requestKey;
+    void loadInstances(monitorObject).catch(() => undefined);
   }, [keyword, loadInstances, monitorObject]);
+
+  const submitSearch = (value: string) => {
+    const next = value.trim();
+    setInput(value);
+    setKeyword(next);
+  };
+
+  const clearSearch = () => {
+    setInput('');
+    setKeyword('');
+  };
 
   useEffect(() => () => {
     objectRequestId.current += 1;
@@ -246,12 +239,11 @@ export default function MonitorInstancesPanel({ objectId = 0 }: MonitorInstances
       monitorObject,
       objects,
       keyword,
-      mode,
       instances,
       count,
       page,
     }, scrollTop);
-  }, [cacheScope, count, instances, keyword, listStatus, mode, monitorObject, objectStatus, objects, page]);
+  }, [cacheScope, count, instances, keyword, listStatus, monitorObject, objectStatus, objects, page]);
 
   useEffect(() => {
     saveSnapshot();
@@ -287,13 +279,14 @@ export default function MonitorInstancesPanel({ objectId = 0 }: MonitorInstances
     else shiftObject(-1);
   };
 
-  const hasMore = mode === 'all' && listStatus === 'ready' && instances.length < count;
-  const resultCount = listStatus === 'ready' ? count : monitorObject?.instanceCount || 0;
+  const hasMore = listStatus === 'ready' && instances.length < count;
   const summaryFields = (monitorObject?.displayFields || []).slice(0, INSTANCE_LIST_SUMMARY_LIMIT);
+  // 与 Web viewList 列序一致：名称 → 上报时间 → 上报状态 → display_fields 摘要指标。
+  // 名称列必须封顶，不能用 1fr——行宽 min-width:100% 时 1fr 会吃掉剩余空间，看起来怎么改都一样大。
   const tableGridColumns = [
-    'minmax(160px, 1.4fr)',
-    '48px',
-    '78px',
+    '164px',
+    '96px',
+    '64px',
     ...summaryFields.map(() => 'minmax(68px, 84px)'),
   ].join(' ');
 
@@ -338,37 +331,13 @@ export default function MonitorInstancesPanel({ objectId = 0 }: MonitorInstances
           </div>
           <div className={styles.instanceSearch}>
             <MobileSearchBar
-              value={keyword}
-              onChange={setKeyword}
+              value={input}
+              onChange={setInput}
+              onSearch={submitSearch}
+              onClear={clearSearch}
               placeholder={t('monitor.searchInstances')}
+              aria-label={t('monitor.searchInstances')}
             />
-          </div>
-          <div className={styles.listToolbar}>
-            <div className={styles.listModeGroup} role="tablist" aria-label={t('monitor.listModes')}>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={mode === 'all'}
-                className={`${styles.listMode} ${mode === 'all' ? styles.listModeActive : ''}`}
-                onClick={() => setMode('all')}
-              >
-                {t('monitor.modeAll')}
-              </button>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={mode === 'loaded_issue'}
-                className={`${styles.listMode} ${mode === 'loaded_issue' ? styles.listModeActive : ''}`}
-                onClick={() => setMode('loaded_issue')}
-              >
-                {t('monitor.modeLoadedIssue')}
-              </button>
-            </div>
-            <span className={styles.listCount}>
-              {mode === 'loaded_issue'
-                ? t('monitor.loadedIssueCount', undefined, { issue: loadedIssueCount, loaded: instances.length })
-                : t('monitor.shortCount', undefined, { count: resultCount })}
-            </span>
           </div>
         </div>
       )}
@@ -399,25 +368,26 @@ export default function MonitorInstancesPanel({ objectId = 0 }: MonitorInstances
                 <MobileSkeleton label={t('common.loading')} variant="list" rows={5} />
               ) : listStatus === 'error' ? (
                 <MobileResult kind="error" title={t('monitor.instanceLoadFailed')} description={t('monitor.retryHint')} actionLabel={t('common.retry')} onAction={() => void loadInstances(monitorObject).catch(() => undefined)} />
-              ) : visibleInstances.length === 0 ? (
+              ) : instances.length === 0 ? (
                 <MobileResult
                   kind="empty"
                   compact
-                  title={keyword ? t('monitor.noSearchResults') : mode === 'loaded_issue' ? t('monitor.noLoadedIssues') : t('monitor.noInstances')}
+                  title={keyword ? t('monitor.noSearchResults') : t('monitor.noInstances')}
                 />
               ) : (
                 <div className={styles.instanceTableScroll} data-instance-table-scroll>
                   <div className={styles.instanceTable}>
                     <div className={styles.instanceTableHead} style={{ gridTemplateColumns: tableGridColumns }}>
                       <span className={styles.colSticky}>{t('monitor.columnName')}</span>
-                      <span className={styles.colRight}>{t('monitor.columnStatus')}</span>
-                      <span className={styles.colRight}>{t('monitor.columnReported')}</span>
+                      <span className={styles.colRight}>{t('monitor.columnReportTime')}</span>
+                      <span className={styles.colRight}>{t('monitor.columnReportingStatus')}</span>
                       {summaryFields.map((field) => (
                         <span className={styles.colRight} key={field.key || field.name}>{field.name}</span>
                       ))}
                     </div>
-                    {visibleInstances.map((instance) => {
+                    {instances.map((instance) => {
                       const summary = instanceListSummaryEntries(monitorObject, instance);
+                      const reportingStatus = resolveMonitorReportingStatus(instance.status);
                       const detailParams = new URLSearchParams({
                         objectId: String(monitorObject.id),
                         objectName: monitorObject.displayName,
@@ -428,7 +398,6 @@ export default function MonitorInstancesPanel({ objectId = 0 }: MonitorInstances
                         interval: String(instance.interval || ''),
                         status: instance.status,
                         lastReportedAt: String(instance.lastReportedAt || ''),
-                        facts: JSON.stringify(instanceSummaryEntries(monitorObject, instance, 4)),
                       });
                       return (
                         <Link
@@ -437,31 +406,55 @@ export default function MonitorInstancesPanel({ objectId = 0 }: MonitorInstances
                           key={instance.id}
                           style={{ gridTemplateColumns: tableGridColumns }}
                         >
-                          <span className={`${styles.instanceIdentity} ${styles.colSticky}`}>
+                          <span
+                            className={`${styles.instanceIdentity} ${styles.colSticky}`}
+                          >
                             <MonitorObjectIcon
                               className={styles.instanceIcon}
                               icon={monitorObject.icon}
-                              size={24}
+                              size={26}
                             />
                             <span className={styles.instanceCopy}>
-                              <span className={styles.instanceName}>{instance.name}</span>
-                              <span className={styles.instanceIdLine}>{instance.idValues.join(' · ') || instance.id}</span>
+                              <span className={styles.instanceName}>
+                                {instance.name}
+                              </span>
                             </span>
-                          </span>
-                          <span className={styles.status} data-status={instance.status}>
-                            {instance.status ? t(`monitor.status.${instance.status}`, instance.status) : '--'}
                           </span>
                           <span className={styles.colRight}>
                             {instance.lastReportedAt
                               ? formatAccountDateTime(
-                                new Date(instance.lastReportedAt * 1000).toISOString(),
-                                preferences,
-                                { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' },
-                              )
+                                  new Date(
+                                    instance.lastReportedAt * 1000,
+                                  ).toISOString(),
+                                  preferences,
+                                  {
+                                    month: '2-digit',
+                                    day: '2-digit',
+                                    hour: '2-digit',
+                                    minute: '2-digit',
+                                  },
+                                )
                               : '--'}
                           </span>
+                          <span className={styles.statusCell}>
+                            {reportingStatus ? (
+                              <span
+                                className={styles.statusTag}
+                                data-status={reportingStatus}
+                              >
+                                {t(
+                                  `monitor.reportingStatus.${reportingStatus}`,
+                                )}
+                              </span>
+                            ) : (
+                              <span className={styles.colRight}>--</span>
+                            )}
+                          </span>
                           {summaryFields.map((field, index) => (
-                            <span className={styles.colRight} key={field.key || field.name}>
+                            <span
+                              className={styles.colRight}
+                              key={field.key || field.name}
+                            >
                               {summary[index]?.value ?? '--'}
                             </span>
                           ))}
@@ -469,8 +462,7 @@ export default function MonitorInstancesPanel({ objectId = 0 }: MonitorInstances
                       );
                     })}
                   </div>
-                  {mode === 'all'
-                    && shouldShowListPagination(count, instances.length, MONITOR_PAGE_SIZE)
+                  {shouldShowListPagination(count, instances.length, MONITOR_PAGE_SIZE)
                     && (
                     <InfiniteScroll
                       hasMore={hasMore}
@@ -518,10 +510,16 @@ export default function MonitorInstancesPanel({ objectId = 0 }: MonitorInstances
                       onClick={() => applyObject(object)}
                     >
                       <span className={styles.pickerRowCopy}>
-                        <span className={styles.pickerRowName}>{object.displayName}</span>
-                        <span className={styles.pickerRowMeta}>{t('monitor.resultCount', undefined, { count: object.instanceCount })}</span>
+                        <span className={styles.pickerRowName}>
+                          {t('monitor.objectCountLabel', undefined, {
+                            name: object.displayName,
+                            count: object.instanceCount,
+                          })}
+                        </span>
                       </span>
-                      <span className={styles.pickerRowAction}>{active ? t('monitor.currentObject') : t('monitor.selectObjectAction')}</span>
+                      {active ? (
+                        <span className={styles.pickerRowAction}>{t('monitor.currentObject')}</span>
+                      ) : null}
                     </button>
                   );
                 })}
