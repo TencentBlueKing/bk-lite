@@ -11,12 +11,14 @@ import {
   getThresholdUnitOnCalculationUnitChange,
   getThresholdUnitOptions,
   getValidThresholdUnitOptions,
+  isVacantThresholdUnit,
   resolveFormulaResultUnit,
   resolveEffectiveCalculationUnit,
   resolveInitialMetricPluginId,
   resolveMetricDisplayUnit,
   resolvePreviewChartUnit,
   resolveThresholdUnit,
+  resolveUnitOnMetricSelect,
   restoreCalculationUnitState,
   shouldShowThresholdUnitSelector,
 } from '../src/app/monitor/(pages)/event/strategy/detail/strategyDetailUtils';
@@ -257,10 +259,20 @@ assert.deepEqual(
   { metricUnit: '', calculationUnit: '', thresholdUnit: '' }
 );
 
+assert.equal(isVacantThresholdUnit(null), true);
+assert.equal(isVacantThresholdUnit(undefined), true);
+assert.equal(isVacantThresholdUnit(''), true);
+assert.equal(isVacantThresholdUnit('none'), true);
+assert.equal(isVacantThresholdUnit('short'), true);
+assert.equal(isVacantThresholdUnit('bytes'), false);
+assert.equal(isVacantThresholdUnit('counts'), false);
+
 assert.equal(
   shouldShowThresholdUnitSelector({
     isFormulaMode: false,
     isEnumMetric: false,
+    calculationUnit: 'bytes',
+    unitList,
   }),
   true
 );
@@ -268,6 +280,8 @@ assert.equal(
   shouldShowThresholdUnitSelector({
     isFormulaMode: true,
     isEnumMetric: false,
+    calculationUnit: 'percent',
+    unitList,
   }),
   true
 );
@@ -275,6 +289,46 @@ assert.equal(
   shouldShowThresholdUnitSelector({
     isFormulaMode: false,
     isEnumMetric: true,
+    calculationUnit: 'bytes',
+    unitList,
+  }),
+  false
+);
+// none/short/空：不展示单位下拉
+assert.equal(
+  shouldShowThresholdUnitSelector({
+    isFormulaMode: false,
+    isEnumMetric: false,
+    calculationUnit: 'none',
+    unitList,
+  }),
+  false
+);
+assert.equal(
+  shouldShowThresholdUnitSelector({
+    isFormulaMode: false,
+    isEnumMetric: false,
+    calculationUnit: null,
+    unitList,
+  }),
+  false
+);
+assert.equal(
+  shouldShowThresholdUnitSelector({
+    isFormulaMode: false,
+    isEnumMetric: false,
+    calculationUnit: 'short',
+    unitList,
+  }),
+  false
+);
+// 有效 unit_id 但不在单位表可选集中：隐藏，避免空下拉+必填
+assert.equal(
+  shouldShowThresholdUnitSelector({
+    isFormulaMode: false,
+    isEnumMetric: false,
+    calculationUnit: 'unknown-unit',
+    unitList,
   }),
   false
 );
@@ -452,6 +506,14 @@ assert.equal(
   filterInvalidCalculationUnit('[{"id":1,"name":"up"}]'),
   null
 );
+
+// resolveUnitOnMetricSelect: none/short 不得回落到 cps 等独立单位
+assert.equal(resolveUnitOnMetricSelect('none'), null);
+assert.equal(resolveUnitOnMetricSelect('short'), null);
+assert.equal(resolveUnitOnMetricSelect(null), null);
+assert.equal(resolveUnitOnMetricSelect('cps'), 'cps');
+assert.equal(resolveUnitOnMetricSelect('bytes'), 'bytes');
+assert.equal(resolveUnitOnMetricSelect('[{"id":1,"name":"up"}]'), null);
 
 // getReverseModeCalculationUnit
 assert.equal(
