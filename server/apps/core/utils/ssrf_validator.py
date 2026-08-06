@@ -9,15 +9,16 @@ SSRF URL 安全校验器
 
 防护能力：
 1. 协议限制（仅 http/https）
-2. 私网/特殊地址阻断
-3. DNS rebinding 防护
-4. 云元数据地址阻断
+2. 私网/特殊地址阻断（CIDR 例外 + 域名白名单内网例外）
+3. DNS rebinding 防护（每次校验重新解析，任一 IP 不合格即拒）
+4. 云元数据地址硬挡（白名单不可覆盖）
+5. 纯 IP 字面量必须命中 CIDR 白名单
 """
 
 import ipaddress
 import socket
 from typing import Optional
-from urllib.parse import urlparse
+from urllib.parse import unquote, urlparse
 
 from apps.core.logger import logger
 
@@ -72,7 +73,7 @@ class SSRFValidator:
         ipaddress.ip_network("ff00::/8"),  # Multicast (RFC 4291)
     ]
 
-    # 云元数据地址（特别标注，高优先级阻断）
+    # 云元数据地址（特别标注，高优先级阻断；含部分主机名）
     CLOUD_METADATA_HOSTS = frozenset(
         {
             "169.254.169.254",  # AWS/GCP/Azure/DigitalOcean/Oracle
@@ -83,7 +84,15 @@ class SSRFValidator:
         }
     )
 
-    # 云元数据 IP 网段（用于 DNS 解析后校验）
+    # 固定危险主机名（不解析即拒；云 metadata 主机名见 CLOUD_METADATA_HOSTS）
+    DANGEROUS_HOSTNAMES = frozenset(
+        {
+            "localhost",
+            "localhost.",
+        }
+    )
+
+    # 云元数据 IP 网段（用于 DNS 解析后校验；白名单不可覆盖）
     CLOUD_METADATA_NETWORKS = [
         ipaddress.ip_network("169.254.169.254/32"),  # AWS/GCP/Azure 元数据
         ipaddress.ip_network("169.254.170.2/32"),  # AWS ECS Task Metadata
@@ -111,51 +120,146 @@ class SSRFValidator:
                     continue
             return networks
         except Exception as e:
-            logger.warning("[SSRF] 白名单读取失败，回退严格模式: %s", e)
+            logger.warning("[SSRF] 白名单 CIDR 读取失败，回退严格模式: %s", e)
             return []
 
     @classmethod
-    def _is_blocked_ip(
-        cls,
-        ip: ipaddress.IPv4Address | ipaddress.IPv6Address,
-    ) -> tuple[bool, str, str | None]:
-        """
-        检查 IP 是否在禁止范围内。
+    def _get_allowed_domains(cls) -> set[str]:
+        """读取域名白名单（小写全等例外集）。fail-closed。"""
+        try:
+            from apps.system_mgmt.utils.network_whitelist_cache import get_network_whitelist_domains
 
-        判定顺序：① 云元数据硬挡（白名单不可覆盖） → ② 白名单放行 → ③ 私网黑名单。
+            return {d.strip().lower() for d in get_network_whitelist_domains() if d and str(d).strip()}
+        except Exception as e:
+            logger.warning("[SSRF] 白名单域名读取失败，回退空集: %s", e)
+            return set()
 
-        Returns:
-            (是否禁止, 原因, 稳定错误码)
-        """
+    @classmethod
+    def _parse_ip_literal(cls, hostname: str) -> ipaddress.IPv4Address | ipaddress.IPv6Address | None:
+        """若 hostname 为 IP 字面量（含十进制整型变形）则返回 IP，否则 None。"""
+        raw = (hostname or "").strip().lower()
+        if not raw:
+            return None
+        if raw.startswith("[") and raw.endswith("]"):
+            raw = raw[1:-1]
+        try:
+            return ipaddress.ip_address(raw)
+        except ValueError:
+            pass
+        if raw.isdigit():
+            try:
+                return ipaddress.IPv4Address(int(raw))
+            except (ValueError, OverflowError):
+                return None
+        return None
+
+    @classmethod
+    def _is_hard_blocked_ip(cls, ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> tuple[bool, str]:
+        """云元数据硬挡（白名单不可覆盖）。"""
         ip_str = str(ip)
-
-        # ① 云元数据永远硬挡（白名单不可覆盖）
         if ip_str in cls.CLOUD_METADATA_HOSTS:
-            return True, f"云元数据地址 {ip_str}", "CONNECTION_TARGET_FORBIDDEN"
+            return True, f"云元数据地址 {ip_str}"
         for network in cls.CLOUD_METADATA_NETWORKS:
             try:
                 if ip in network:
-                    return True, f"云元数据地址 {ip_str}", "CONNECTION_TARGET_FORBIDDEN"
+                    return True, f"云元数据地址 {ip_str}"
             except TypeError:
                 continue
+        return False, ""
 
-        # ② 白名单放行（私网黑名单之前）
-        for network in cls._get_allowed_networks():
+    @classmethod
+    def _ip_in_networks(cls, ip: ipaddress.IPv4Address | ipaddress.IPv6Address, networks: list) -> bool:
+        for network in networks:
             try:
                 if ip in network:
-                    return False, "", None
+                    return True
             except TypeError:
                 continue
+        return False
 
-        # ③ 私网 / 特殊地址黑名单
+    @classmethod
+    def _is_in_blocked_networks(cls, ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> tuple[bool, str]:
         for network in cls.BLOCKED_NETWORKS:
             try:
                 if ip in network:
-                    return True, f"禁止的网段 {network}", "NETWORK_WHITELIST_REQUIRED"
+                    return True, f"禁止的网段 {network}"
             except TypeError:
                 continue
+        return False, ""
 
-        return False, "", None
+    @classmethod
+    def _assert_literal_ip_allowed(
+        cls,
+        ip: ipaddress.IPv4Address | ipaddress.IPv6Address,
+        allowed_networks: list,
+        url: str,
+    ) -> None:
+        """纯 IP：必须命中 CIDR；硬黑名单不可覆盖。"""
+        hard, reason = cls._is_hard_blocked_ip(ip)
+        if hard:
+            logger.warning("[SSRF] 阻断纯 IP 云元数据: url=%s, ip=%s", url, ip)
+            raise SSRFError(f"禁止访问云元数据地址: {reason}", code="CONNECTION_TARGET_FORBIDDEN")
+
+        if not cls._ip_in_networks(ip, allowed_networks):
+            logger.warning("[SSRF] 纯 IP 未命中白名单: url=%s, ip=%s", url, ip)
+            raise SSRFError(
+                f"目标 IP 不在白名单: {ip}",
+                code="NETWORK_WHITELIST_REQUIRED",
+            )
+
+    @classmethod
+    def hostname_matches_domain_patterns(cls, hostname: str, patterns: set[str] | list[str]) -> bool:
+        """域名白名单匹配：全等，或 ``*.example.com``（后缀匹配，含多级子域）。
+
+        ``*.example.com`` 命中 ``a.example.com`` / ``a.b.example.com``，不命中 apex ``example.com``。
+        """
+        host = (hostname or "").strip().lower()
+        if not host:
+            return False
+        for pattern in patterns:
+            p = (pattern or "").strip().lower()
+            if not p:
+                continue
+            if p.startswith("*."):
+                suffix = p[1:]  # ".example.com"
+                if host.endswith(suffix) and len(host) > len(suffix):
+                    return True
+            elif host == p:
+                return True
+        return False
+
+    @classmethod
+    def _assert_resolved_ip_allowed(
+        cls,
+        ip: ipaddress.IPv4Address | ipaddress.IPv6Address,
+        hostname: str,
+        allowed_networks: list,
+        allowed_domains: set[str],
+        url: str,
+    ) -> None:
+        """域名解析 IP：硬挡 → 黑名单网段需域名例外或 CIDR → 公网放行。"""
+        hard, reason = cls._is_hard_blocked_ip(ip)
+        if hard:
+            logger.warning("[SSRF] 阻断请求: url=%s, ip=%s, reason=%s", url, ip, reason)
+            raise SSRFError(f"目标地址被禁止: {reason}", code="CONNECTION_TARGET_FORBIDDEN")
+
+        blocked, reason = cls._is_in_blocked_networks(ip)
+        if not blocked:
+            return
+
+        if cls.hostname_matches_domain_patterns(hostname, allowed_domains):
+            return
+        if cls._ip_in_networks(ip, allowed_networks):
+            return
+
+        logger.warning(
+            "[SSRF] 阻断请求: url=%s, hostname=%s, ip=%s, reason=%s",
+            url,
+            hostname,
+            ip,
+            reason,
+        )
+        raise SSRFError(f"目标地址被禁止: {reason}", code="NETWORK_WHITELIST_REQUIRED")
 
     @classmethod
     def validate(
@@ -168,7 +272,8 @@ class SSRFValidator:
 
         Args:
             url: 待校验的 URL
-            allowlist: 可选的域名白名单（如果提供，仅允许白名单内域名）
+            allowlist: 可选的额外域名限制（若提供，主机名必须在此集合内）。
+                与系统 NetworkWhiteList 域名例外表无关。
 
         Returns:
             规范化后的 URL
@@ -180,6 +285,10 @@ class SSRFValidator:
             raise SSRFError("URL 不能为空")
 
         url = url.strip()
+        if "\\" in url:
+            logger.warning("[SSRF] 阻断含反斜杠 URL: url=%s", url)
+            raise SSRFError("URL 格式非法")
+
         parsed = urlparse(url)
 
         # 1. 协议校验
@@ -192,19 +301,38 @@ class SSRFValidator:
         if not parsed.netloc or not parsed.hostname:
             raise SSRFError("URL 必须包含有效主机名")
 
-        hostname = parsed.hostname.lower()
+        if "@" in (parsed.netloc or ""):
+            logger.warning("[SSRF] 阻断含 userinfo URL: url=%s", url)
+            raise SSRFError("URL 不允许包含用户信息")
 
-        # 3. 云元数据主机名直接阻断
+        hostname = parsed.hostname.lower()
+        decoded = unquote(hostname).lower()
+        if decoded != hostname:
+            raise SSRFError("主机名包含非法编码")
+
+        # 3. 固定危险 / 云元数据主机名
         if hostname in cls.CLOUD_METADATA_HOSTS:
             logger.warning(f"[SSRF] 阻断云元数据主机: url={url}")
-            raise SSRFError(f"禁止访问云元数据地址: {hostname}")
+            raise SSRFError(f"禁止访问云元数据地址: {hostname}", code="CONNECTION_TARGET_FORBIDDEN")
+        if hostname in cls.DANGEROUS_HOSTNAMES:
+            logger.warning(f"[SSRF] 阻断危险主机: url={url}")
+            raise SSRFError(f"禁止访问危险主机名: {hostname}", code="CONNECTION_TARGET_FORBIDDEN")
 
-        # 4. 白名单校验（如果提供）
-        if allowlist is not None and hostname not in allowlist:
-            logger.warning(f"[SSRF] 主机不在白名单: url={url}, allowlist={allowlist}")
+        # 4. 调用方额外域名限制（旧 allowlist 参数语义）
+        if allowlist is not None and hostname not in {h.lower() for h in allowlist}:
+            logger.warning(f"[SSRF] 主机不在允许列表: url={url}, allowlist={allowlist}")
             raise SSRFError(f"主机 {hostname} 不在允许列表中")
 
-        # 5. DNS 解析并校验所有 IP
+        allowed_networks = cls._get_allowed_networks()
+        allowed_domains = cls._get_allowed_domains()
+
+        # 5. 纯 IP 字面量：必须命中 CIDR（硬黑名单除外）
+        literal_ip = cls._parse_ip_literal(hostname)
+        if literal_ip is not None:
+            cls._assert_literal_ip_allowed(literal_ip, allowed_networks, url)
+            return url
+
+        # 6. 域名：DNS 解析后按 IP 判定
         try:
             addr_infos = socket.getaddrinfo(hostname, parsed.port or (443 if scheme == "https" else 80), proto=socket.IPPROTO_TCP)
         except socket.gaierror as e:
@@ -213,22 +341,23 @@ class SSRFValidator:
         if not addr_infos:
             raise SSRFError(f"主机名 {hostname} 无法解析")
 
-        # 校验所有解析到的 IP（防止 DNS rebinding）
+        resolved_ips: list[str] = []
+        checked = 0
         for info in addr_infos:
             ip_str = info[4][0]
+            resolved_ips.append(ip_str)
             try:
                 ip = ipaddress.ip_address(ip_str)
             except ValueError:
                 continue
 
-            blocked, reason, error_code = cls._is_blocked_ip(ip)
-            if blocked:
-                logger.warning(f"[SSRF] 阻断请求: url={url}, ip={ip_str}, reason={reason}")
-                raise SSRFError(
-                    f"目标地址被禁止: {reason}",
-                    code=error_code or "CONNECTION_TARGET_FORBIDDEN",
-                )
+            checked += 1
+            cls._assert_resolved_ip_allowed(ip, hostname, allowed_networks, allowed_domains, url)
 
+        if checked == 0:
+            raise SSRFError(f"主机名 {hostname} 未返回可解析 IP")
+
+        logger.debug("[SSRF] 放行: url=%s, hostname=%s, resolved_ips=%s", url, hostname, resolved_ips)
         return url
 
     # LLM 端点宽松模式阻断列表（仅云元数据）
