@@ -4,7 +4,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 
 from apps.apm.models import ApmService, ApmServiceInstance
-from apps.apm.services.contracts import TraceDetail, TraceSummary
+from apps.apm.services.contracts import SpanSummary, TraceDetail, TraceSummary
 from apps.apm.services.identity import normalize_identity
 
 
@@ -23,6 +23,37 @@ class TraceAccessResolver:
         summaries: Iterable[TraceSummary],
         organization_id: int,
     ) -> tuple[TraceSummary, ...]:
+        items = tuple(summaries)
+        allowed_instances, allowed_services = self._allowed_identities(
+            (
+                _TraceIdentity(
+                    item.service_namespace,
+                    item.service_name,
+                    item.instance_id,
+                )
+                for item in items
+            ),
+            organization_id,
+        )
+        return tuple(
+            item
+            for item in items
+            if self._is_allowed(
+                _TraceIdentity(
+                    item.service_namespace,
+                    item.service_name,
+                    item.instance_id,
+                ),
+                allowed_instances,
+                allowed_services,
+            )
+        )
+
+    def filter_span_summaries(
+        self,
+        summaries: Iterable[SpanSummary],
+        organization_id: int,
+    ) -> tuple[SpanSummary, ...]:
         items = tuple(summaries)
         allowed_instances, allowed_services = self._allowed_identities(
             (

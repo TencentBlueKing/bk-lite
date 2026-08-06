@@ -340,6 +340,47 @@ export interface ApmTraceSearchParams {
   service_name: string;
   environment: string;
   instance_id?: string;
+  span_name?: string;
+  status?: 'ok' | 'error';
+  min_duration_ms?: number;
+  max_duration_ms?: number;
+  started_at?: string;
+  ended_at?: string;
+  cursor?: string;
+  limit?: number;
+}
+
+export interface ApmSpanSummary {
+  trace_id: string;
+  span_id: string;
+  started_at: string;
+  duration_ms: number;
+  service_namespace: string;
+  service_name: string;
+  environment: string;
+  instance_id: string | null;
+  status: 'ok' | 'error';
+  name: string;
+  kind: string;
+  http_method: string | null;
+  http_status_code: string | null;
+}
+
+export interface ApmSpanPage {
+  items: ApmSpanSummary[];
+  next_cursor: string | null;
+}
+
+export interface ApmSpanSearchParams {
+  service_namespace?: string;
+  service_name: string;
+  environment: string;
+  instance_id?: string;
+  span_name?: string;
+  status?: 'ok' | 'error';
+  kind?: 'internal' | 'server' | 'client' | 'producer' | 'consumer';
+  min_duration_ms?: number;
+  max_duration_ms?: number;
   started_at?: string;
   ended_at?: string;
   cursor?: string;

@@ -63,6 +63,10 @@ class TraceSearchQuery:
     service_name: str | None = None
     environment: str | None = None
     instance_id: str | None = None
+    span_name: str | None = None
+    status: str | None = None
+    min_duration_ms: float | None = None
+    max_duration_ms: float | None = None
     cursor: str | None = None
     limit: int = 50
 
@@ -79,6 +83,46 @@ class TraceSummary:
     status: str
     root_span_name: str = ""
     span_count: int = 0
+
+
+@dataclass(frozen=True)
+class SpanSearchQuery:
+    started_at: datetime
+    ended_at: datetime
+    service_name: str
+    environment: str
+    service_namespace: str | None = None
+    instance_id: str | None = None
+    span_name: str | None = None
+    status: str | None = None
+    kind: str | None = None
+    min_duration_ms: float | None = None
+    max_duration_ms: float | None = None
+    cursor: str | None = None
+    limit: int = 50
+
+
+@dataclass(frozen=True)
+class SpanSummary:
+    trace_id: str
+    span_id: str
+    started_at: datetime
+    duration_ms: float
+    service_namespace: str
+    service_name: str
+    environment: str
+    instance_id: str | None
+    status: str
+    name: str
+    kind: str
+    http_method: str | None = None
+    http_status_code: str | None = None
+
+
+@dataclass(frozen=True)
+class SpanPage:
+    items: tuple[SpanSummary, ...]
+    next_cursor: str | None
 
 
 @dataclass(frozen=True)
@@ -308,6 +352,8 @@ class NotificationDeliveryResult:
 
 class TraceStore(Protocol):
     def search(self, query: TraceSearchQuery) -> TracePage: ...
+
+    def search_spans(self, query: SpanSearchQuery) -> SpanPage: ...
 
     def get_trace(self, trace_id: str) -> TraceDetail | None: ...
 
