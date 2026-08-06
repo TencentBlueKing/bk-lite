@@ -821,6 +821,14 @@ class ToolsNodes(BasicNode):
     def _enable_repair_diff_report(self) -> bool:
         return self._has_report_capability("repair_diff_report")
 
+    def _stable_report_id(self, capability: str, config: RunnableConfig = None) -> Optional[str]:
+        """同一执行内复用报告 ID，避免重复追加相同卡片。"""
+        configurable = config.get("configurable", {}) if isinstance(config, dict) else {}
+        execution_id = configurable.get("execution_id") if isinstance(configurable, dict) else None
+        if not execution_id:
+            execution_id = getattr(getattr(self, "_extra_config", None), "execution_id", None)
+        return f"{capability}_{execution_id}" if execution_id else None
+
     def _emit_report_event(
         self,
         capability: str,
@@ -857,6 +865,9 @@ class ToolsNodes(BasicNode):
         payload = renderer(parsed, package_ctx)
         if not payload:
             return None
+        stable_report_id = self._stable_report_id(capability, config)
+        if stable_report_id:
+            payload["report_id"] = stable_report_id
         if event_dispatcher is not None:
             # async 路径:deep_wrapper_node 传入的 adispatch_custom_event 回调
             try:
@@ -901,6 +912,9 @@ class ToolsNodes(BasicNode):
         payload = renderer(parsed, matched[0] if matched else {})
         if not payload:
             return None
+        stable_report_id = self._stable_report_id(capability, config)
+        if stable_report_id:
+            payload["report_id"] = stable_report_id
 
         from langchain_core.callbacks import adispatch_custom_event
 
@@ -927,8 +941,7 @@ class ToolsNodes(BasicNode):
 
         不在映射里的 tool 静默跳过。renderer 返 None(数据无效)也静默。
 
-        LLM text 的去重由前端 custom-chat-sse/index.tsx 负责
-        (hasStructuredReports 标记 + 简短说明替换),见那个文件的注释。
+        前端保留模型正文，并在收到本方法派发的完成事件后追加结构化卡片。
         """
         from langchain_core.messages import ToolMessage
 
@@ -3226,8 +3239,8 @@ class ToolsNodes(BasicNode):
 
             # 后处理:扫新消息里的 ToolMessage,按 TOOL_RESULT_TO_CAPABILITY 触发
             # report 渲染。这样普通工具(LLM 不需要显式调 Pydantic tool)也能
-            # 自动产出结构化报告事件。LLM text 重复由前端 hasStructuredReports
-            # 标记去重(已通过上方结构化卡片展示)。
+            # 自动产出结构化报告事件。前端保留模型正文，并按事件到达顺序
+            # 追加结构化卡片；同一执行内复用 report_id，避免重复卡片。
             # 深 agent 异步包装节点不在 langchain runnable 回调树里,直接调
             # `dispatch_custom_event` 会因缺 parent run id 静默失败,所以走
             # `adispatch_custom_event` 并把 `config` 传进去,让事件能正确 emit。
