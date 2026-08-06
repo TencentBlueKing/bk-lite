@@ -99,11 +99,6 @@ const Configure = () => {
       render: (_, record) => (
         <div className="flex items-center gap-1 overflow-hidden">
           <span className="truncate">{record.display_name || '--'}</span>
-          {record.show_ifmib_source_tag === true && (
-            <Tag className="m-0 shrink-0" color="blue">
-              IF-MIB
-            </Tag>
-          )}
         </div>
       )
     },
@@ -291,7 +286,8 @@ const Configure = () => {
       const metricView = buildIfmibMetricView(
         rawGroupList,
         metricsPage.items,
-        enableIfmib
+        enableIfmib,
+        (key) => t(key)
       );
       const defaultOpenState = getDefaultMetricGroupOpenState(metricView);
       const groupData = metricView.map((group) => ({
@@ -575,6 +571,11 @@ const Configure = () => {
                 title={
                   <div className="flex items-center gap-2">
                     <span>{metricItem.display_name || ''}</span>
+                    {metricItem.is_ifmib_group === true && (
+                      <Tag className="m-0" color="blue">
+                        IF-MIB
+                      </Tag>
+                    )}
                   </div>
                 }
                 isOpen={metricItem.isOpen}
