@@ -57,7 +57,7 @@ export default function Top5BarChart({
         return (
           <div
             key={`${row.service_id}-${row.environment}`}
-            className={`grid grid-cols-[120px_1fr_70px] items-center gap-3 py-2.5 ${
+            className={`grid grid-cols-[minmax(0,120px)_1fr_70px] items-center gap-3 py-2.5 ${
               index < rows.length - 1 ? 'border-b border-[var(--color-border)]' : ''
             }`}
           >
@@ -68,21 +68,18 @@ export default function Top5BarChart({
             >
               {row.name}
             </Link>
-            <div className="flex items-center gap-2">
-              <div className="h-1 flex-1 overflow-hidden rounded-sm bg-[var(--color-bg-1)]">
+            <div className="flex min-w-0 items-center gap-2">
+              <div className="h-1 flex-1 overflow-hidden rounded-sm bg-[var(--color-fill-1)]">
                 <div
                   className="h-full rounded-sm transition-[width] duration-200"
                   style={{ width: `${pct}%`, background: color }}
                 />
               </div>
-              <span className="min-w-[100px] text-right text-[11px] tabular-nums text-[var(--color-text-4)]">
+              <span className="min-w-[88px] shrink-0 text-right text-[11px] tabular-nums text-[var(--color-text-4)]">
                 {subField} {row.sub}
               </span>
             </div>
-            <span
-              className="text-right text-sm font-semibold tabular-nums"
-              style={{ color }}
-            >
+            <span className="text-right text-sm font-semibold tabular-nums" style={{ color }}>
               {valueFormatter(row.value)}
             </span>
           </div>

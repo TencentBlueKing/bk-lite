@@ -56,8 +56,7 @@ export default function DonutChart({ data, size = 180, innerRatio = 0.62 }: Donu
             <path
               key={i}
               d={p.d}
-              fill={p.color}
-              stroke="var(--color-bg)"
+              style={{ fill: p.color, stroke: 'var(--color-bg)' }}
               strokeWidth={1}
             />
           ),
@@ -66,6 +65,7 @@ export default function DonutChart({ data, size = 180, innerRatio = 0.62 }: Donu
   );
 }
 
+/** Semantic fills for health donut — applied via style so CSS vars resolve. */
 export const HEALTH_DONUT_COLORS: Record<string, string> = {
   healthy: 'var(--color-success)',
   warning: 'var(--theme-color-status-warning)',
