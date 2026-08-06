@@ -12,7 +12,6 @@
 所有执行结果回写到 GovernanceTaskHost（stage / exit_code / reason 等）。
 '''
 
-import logging
 import re
 import shlex
 import time
@@ -25,6 +24,7 @@ from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
 
+from apps.core.logger import logger
 from apps.core.mixinx import EncryptMixin
 from apps.patch_mgmt.constants import (
     ComplianceStatus,
@@ -42,8 +42,6 @@ from apps.patch_mgmt.services.target_execution_route import (
 )
 from apps.rpc.ansible import AnsibleExecutor
 from apps.rpc.executor import Executor
-
-logger = logging.getLogger('app')
 
 DEFAULT_TIMEOUT = 3600
 WINDOWS_PATCH_STAGE_DIR = 'C:/Windows/Temp/bk-lite-patches'
@@ -486,6 +484,10 @@ def _assess_command(os_type: str, requirements: list | None = None) -> str:
     if os_type == OSType.WINDOWS:
         return (
             '$ProgressPreference="SilentlyContinue";'
+            '$os=Get-CimInstance Win32_OperatingSystem;'
+            '$caption=([string]$os.Caption).Replace("|"," ");'
+            '$arch=([string]$env:PROCESSOR_ARCHITECTURE).Replace("|"," ");'
+            '"BKPATCH_HOST|WINDOWS|{0}|{1}|{2}|{3}" -f $caption,$os.Version,$os.BuildNumber,$arch;'
             '$s=New-Object -ComObject Microsoft.Update.Session;'
             '$sr=$s.CreateUpdateSearcher();'
             '$r=$sr.Search("IsInstalled=0");'
@@ -569,7 +571,18 @@ def _assess_command(os_type: str, requirements: list | None = None) -> str:
         )
     if not commands:
         return "printf 'BKPATCH_COLLECTION_ERROR|no_linux_requirements\\n'"
-    return '; '.join(commands)
+    host_facts = (
+        "os_id=''; os_like=''; os_version=''; "
+        "if [ -r /etc/os-release ]; then . /etc/os-release; "
+        "os_id=${ID:-}; os_like=${ID_LIKE:-}; os_version=${VERSION_ID:-}; fi; "
+        "if command -v dnf >/dev/null 2>&1; then manager=dnf; "
+        "elif command -v yum >/dev/null 2>&1; then manager=yum; "
+        "elif command -v apt-get >/dev/null 2>&1; then manager=apt; else manager=unknown; fi; "
+        "host_arch=$(uname -m 2>/dev/null); "
+        "printf 'BKPATCH_HOST|LINUX|%s|%s|%s|%s|%s\\n' "
+        '"$os_id" "$os_like" "$os_version" "$host_arch" "$manager"'
+    )
+    return f"{host_facts}; {'; '.join(commands)}"
 
 
 def _dry_run_command(os_type: str, pkg_names: list[str]) -> str:
@@ -1078,10 +1091,10 @@ def _update_binding_after_assess(
     )
 
     binding.missing_count = missing_count
-    if unknown_count:
-        binding.compliance_status = ComplianceStatus.UNKNOWN
-    elif missing_count:
+    if missing_count:
         binding.compliance_status = ComplianceStatus.NON_COMPLIANT
+    elif unknown_count:
+        binding.compliance_status = ComplianceStatus.UNKNOWN
     elif satisfied_count:
         binding.compliance_status = ComplianceStatus.COMPLIANT
     elif not_applicable_count:
@@ -2118,10 +2131,41 @@ def run_governance_host(task: GovernanceTask, target_id: int) -> None:
             for item in (task.risk_snapshot or [])
             if int(item.get("host_id") or 0) == target_id and item.get("patch_id")
         ]
+        selected_patch_ids = list(dict.fromkeys(selected_patch_ids))
+        if task.risk_snapshot:
+            binding = HostBaselineBinding.objects.filter(target_id=target_id).first()
+            expected_baseline_ids = {
+                int(item.get("baseline_id") or 0)
+                for item in task.risk_snapshot
+                if int(item.get("host_id") or 0) == target_id
+            }
+            remediable_patch_ids = set()
+            if binding and expected_baseline_ids == {binding.baseline_id}:
+                remediable_patch_ids = set(
+                    HostComplianceSnapshot.objects.filter(
+                        binding=binding,
+                        requirement__baseline_id=binding.baseline_id,
+                        requirement__patch_id__in=selected_patch_ids,
+                        status=RequirementAssessmentStatus.MISSING,
+                    ).values_list("requirement__patch_id", flat=True)
+                )
+            if not selected_patch_ids or remediable_patch_ids != set(selected_patch_ids):
+                _record_host_result(
+                    host,
+                    stage="failed",
+                    stage_color="error",
+                    reason="补丁已不在最新评估的待治理范围内，请重新评估后再治理",
+                    failed_stage="preflight",
+                    error_code="assessment_stale",
+                    can_retry=False,
+                )
+                if _finalize_task_status(task):
+                    _run_terminal_followups(task)
+                return
         _execute_install(
             target,
             host,
-            list(dict.fromkeys(selected_patch_ids)) if selected_patch_ids else task.patch_list or [],
+            selected_patch_ids if selected_patch_ids else task.patch_list or [],
             execution_id,
             timeout,
         )

@@ -8,6 +8,7 @@ error:
   targets_without_baseline: "以下主机未绑定基线: {ids}"
   patches_not_found: "补丁不存在: {ids}"
   patches_not_in_baseline: "所选补丁不属于对应主机的当前基线: {pairs}"
+  patches_not_remediable: "所选补丁不在最新评估的待治理范围内: {pairs}"
   targets_not_pending_reboot: "以下主机当前不是待重启状态: {ids}"
   reboot_scope_changed: "待重启范围已变化，请刷新后重新确认"
   risk_item_not_retryable: "该风险项不可重试或不存在"
