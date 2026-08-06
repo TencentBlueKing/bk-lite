@@ -2,9 +2,8 @@ import { useTranslation } from '@/utils/i18n';
 import { Progress } from 'antd';
 import { v4 as uuidv4 } from 'uuid';
 
-const SYSLOG_BASE =
-  'collect_type:"syslog" service.name:"bk-lite-analysis-sample" event.dataset:"syslog"';
-const SYSLOG_HOST = 'host.name';
+const SYSLOG_BASE = 'collect_type:"syslog"';
+const SYSLOG_HOST = 'hostname';
 const SYSLOG_APP = 'appname';
 const SYSLOG_FACILITY = 'facility';
 const SYSLOG_SEVERITY = 'severity';
@@ -79,7 +78,7 @@ export const useSyslogDashboard = () => {
     category: 'middleware',
     categoryName: t('log.analysis.category.middleware'),
     collectTypeName: 'syslog',
-    filters: { group: true, instance: true },
+    filters: { group: true, instance: false },
     other: {},
     view_sets: [
       {
@@ -206,7 +205,7 @@ export const useSyslogDashboard = () => {
           dataSource: 1,
           showIndex: true,
           columns: [
-            { title: '主机', dataIndex: 'host.name', key: 'host.name', width: 150 },
+            { title: '主机', dataIndex: 'hostname', key: 'hostname', width: 150 },
             { title: '总日志数 (条)', dataIndex: 'total_count', key: 'total_count', width: 110 },
             { title: '高危日志数 (条)', dataIndex: 'high_count', key: 'high_count', width: 120 },
             { title: '高危占比', dataIndex: 'ratio', key: 'ratio', width: 140, render: renderRatioProgress }
@@ -273,7 +272,7 @@ export const useSyslogDashboard = () => {
           showIndex: false,
           columns: [
             { title: '时间', dataIndex: '@timestamp', key: '@timestamp', width: 160 },
-            { title: '主机', dataIndex: 'host.name', key: 'host.name', width: 140 },
+            { title: '主机', dataIndex: 'hostname', key: 'hostname', width: 140 },
             { title: '应用', dataIndex: 'appname', key: 'appname', width: 120 },
             { title: 'Facility', dataIndex: 'facility', key: 'facility', width: 90 },
             { title: 'Severity', dataIndex: 'severity', key: 'severity', width: 96, render: renderSyslogSeverity },
@@ -300,7 +299,7 @@ export const useSyslogDashboard = () => {
           showIndex: false,
           columns: [
             { title: '时间', dataIndex: '@timestamp', key: '@timestamp', width: 160 },
-            { title: '主机', dataIndex: 'host.name', key: 'host.name', width: 140 },
+            { title: '主机', dataIndex: 'hostname', key: 'hostname', width: 140 },
             { title: '应用', dataIndex: 'appname', key: 'appname', width: 120 },
             { title: 'Facility', dataIndex: 'facility', key: 'facility', width: 90 },
             { title: 'Severity', dataIndex: 'severity', key: 'severity', width: 96, render: renderSyslogSeverity },

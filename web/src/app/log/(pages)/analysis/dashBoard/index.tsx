@@ -73,7 +73,8 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
     const [containerNames, setContainerNames] = useState<React.Key[]>([]);
     const [containerLoading, setContainerLoading] = useState(false);
     const collectTypeName = selectedDashboard?.collectTypeName || '';
-    const showInstanceFilter = !!collectTypeName;
+    const showInstanceFilter =
+      !!collectTypeName && selectedDashboard?.filters?.instance !== false;
     const showContainerFilter = collectTypeName === 'docker';
 
     // 初始化分组数据（仅首次加载）
