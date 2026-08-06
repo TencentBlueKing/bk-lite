@@ -1,5 +1,3 @@
-# syntax=docker/dockerfile:1.7
-
 FROM node:24-alpine AS builder
 
 ARG NEXUS_NODEJS_REPOSITY
@@ -36,10 +34,8 @@ ADD . .
 
 RUN echo 'NEXTAPI_URL="http://bklite-server:8000"' > .env.local
 
-RUN --mount=type=cache,id=bk-lite-web-pnpm,target=/pnpm/store,sharing=locked \
-  pnpm install --frozen-lockfile
-RUN --mount=type=cache,id=bk-lite-web-next,target=/app/.next/cache,sharing=locked \
-  pnpm run build
+RUN pnpm install --frozen-lockfile
+RUN pnpm run build
 
 FROM node:24-alpine
 RUN corepack enable && corepack prepare pnpm@11.20.0 --activate

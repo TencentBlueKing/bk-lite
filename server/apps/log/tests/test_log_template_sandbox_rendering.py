@@ -1,8 +1,9 @@
 from pathlib import Path
 
+import pytest
 import yaml
 
-from apps.log.utils.plugin_controller import Controller
+from apps.log.utils.plugin_controller import Controller, _build_log_template_env
 
 
 PLUGIN_ROOT = Path(__file__).resolve().parents[1] / "support-files" / "plugins"
@@ -10,6 +11,13 @@ PLUGIN_ROOT = Path(__file__).resolve().parents[1] / "support-files" / "plugins"
 
 def render_plugin_template(plugin_path: str, template_name: str, context: dict) -> str:
     return Controller({}).render_template(str(PLUGIN_ROOT / plugin_path), template_name, context)
+
+
+@pytest.mark.unit
+def test_log_template_environment_has_no_default_globals(tmp_path):
+    env = _build_log_template_env(str(tmp_path))
+
+    assert {"lipsum", "cycler", "joiner", "namespace"}.isdisjoint(env.globals)
 
 
 def test_vector_docker_template_renders_container_filter_lists():

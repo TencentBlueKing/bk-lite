@@ -6,7 +6,7 @@ from django.http import Http404
 from rest_framework import status, viewsets
 from rest_framework.response import Response
 
-from apps.apm.adapters import TelemetryStoreUnavailable, VictoriaTracesTraceStore
+from apps.apm.adapters import TelemetryStoreUnavailable, VictoriaTracesTelemetryStore
 from apps.apm.renderers import ApmRenderer
 from apps.apm.serializers import TraceSearchSerializer
 from apps.apm.services import DjangoTelemetryQueryService
@@ -69,7 +69,7 @@ class ApmTraceViewSet(viewsets.ViewSet):
 
     @staticmethod
     def _query_service() -> DjangoTelemetryQueryService:
-        return DjangoTelemetryQueryService(trace_store=VictoriaTracesTraceStore())
+        return DjangoTelemetryQueryService(trace_store=VictoriaTracesTelemetryStore())
 
     @HasPermission("traces-View")
     def list(self, request):

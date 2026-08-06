@@ -18,6 +18,13 @@ class GovernanceTaskHostSerializer(serializers.ModelSerializer):
     """治理任务主机结果序列化器"""
 
     requirements = serializers.SerializerMethodField()
+    stage = serializers.SerializerMethodField()
+    stage_color = serializers.SerializerMethodField()
+    error_code = serializers.SerializerMethodField()
+    failed_stage = serializers.SerializerMethodField()
+    reason = serializers.SerializerMethodField()
+    timeout_reason = serializers.SerializerMethodField()
+    can_retry = serializers.SerializerMethodField()
 
     class Meta:
         model = GovernanceTaskHost
@@ -48,6 +55,33 @@ class GovernanceTaskHostSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ["id", "created_at"]
 
+    @staticmethod
+    def _state(obj):
+        from apps.patch_mgmt.services.governance_convergence import project_host_state
+
+        return project_host_state(obj)
+
+    def get_stage(self, obj):
+        return self._state(obj).stage
+
+    def get_stage_color(self, obj):
+        return self._state(obj).stage_color
+
+    def get_error_code(self, obj):
+        return self._state(obj).error_code
+
+    def get_failed_stage(self, obj):
+        return self._state(obj).failed_stage
+
+    def get_reason(self, obj):
+        return self._state(obj).reason
+
+    def get_timeout_reason(self, obj):
+        return self._state(obj).timeout_reason
+
+    def get_can_retry(self, obj):
+        return self._state(obj).can_retry
+
     def get_requirements(self, obj: GovernanceTaskHost) -> list[dict]:
         """返回该主机对应的基线要求及最新合规快照。"""
         binding = HostBaselineBinding.objects.filter(
@@ -76,6 +110,7 @@ class GovernanceTaskHostSerializer(serializers.ModelSerializer):
                 "patch_title": req.patch.title,
                 "condition": req.condition,
                 "satisfied": latest_snapshots.get(req.id).satisfied if latest_snapshots.get(req.id) else None,
+                "status": latest_snapshots.get(req.id).status if latest_snapshots.get(req.id) else None,
                 "reason": latest_snapshots.get(req.id).reason if latest_snapshots.get(req.id) else "",
                 "evidence": latest_snapshots.get(req.id).evidence if latest_snapshots.get(req.id) else {},
             }
@@ -88,7 +123,8 @@ class GovernanceTaskListSerializer(PatchPermissionSerializer):
 
     name = serializers.CharField(required=False, allow_blank=True)
     task_type_display = serializers.SerializerMethodField()
-    status_display = serializers.CharField(source="get_status_display", read_only=True)
+    status = serializers.SerializerMethodField()
+    status_display = serializers.SerializerMethodField()
     host_count = serializers.SerializerMethodField()
     progress = serializers.SerializerMethodField()
     can_cancel = serializers.SerializerMethodField()
@@ -168,6 +204,15 @@ class GovernanceTaskListSerializer(PatchPermissionSerializer):
             f"status.task_type.{obj.task_type}",
             obj.get_task_type_display(),
         )
+
+    def get_status(self, obj):
+        from apps.patch_mgmt.services.governance_convergence import project_task_status
+
+        return project_task_status(obj)
+
+    def get_status_display(self, obj):
+        status = self.get_status(obj)
+        return dict(GovernanceTaskStatus.CHOICES).get(status, status)
 
     def get_progress(self, obj):
         total = obj.host_results.count()

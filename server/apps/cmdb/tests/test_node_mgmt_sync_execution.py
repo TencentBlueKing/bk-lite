@@ -16,6 +16,15 @@ from apps.cmdb.services.node_mgmt_sync_service import NodeMgmtSyncError, NodeMgm
 pytestmark = pytest.mark.django_db
 
 
+@pytest.fixture(autouse=True)
+def _enable_pull_sync_for_legacy_execution_tests(monkeypatch):
+    """本文件测同步执行内部路径，需临时关闭推送联动门闩。"""
+    monkeypatch.setattr(
+        "apps.cmdb.services.node_mgmt_sync_service.PUSH_LINKAGE_REPLACES_PULL_SYNC",
+        False,
+    )
+
+
 def test_second_run_is_blocked_while_global_scope_is_held():
     first = NodeMgmtSyncService.acquire_run("sync")
     second = NodeMgmtSyncService.acquire_run("collect")

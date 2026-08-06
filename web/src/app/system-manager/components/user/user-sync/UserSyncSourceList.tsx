@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useMemo, useState } from 'react';
-import { Button, Dropdown, Empty, Input, Menu, Space, Spin } from 'antd';
+import { Button, Dropdown, Empty, Input, Menu, Space, Spin, Tag, Tooltip } from 'antd';
 import type { MenuProps } from 'antd';
 import Icon from '@/components/icon';
 import { useTranslation } from '@/utils/i18n';
@@ -24,6 +24,7 @@ export interface UserSyncSourceCardItem {
   latestStatusText: string;
   latestStatusTone: UserSyncStatusTone;
   syncDisabled: boolean;
+  dependencyStatusText?: string;
 }
 
 interface UserSyncSourceListProps<T extends UserSyncSourceCardItem> {
@@ -130,12 +131,21 @@ const UserSyncSourceList = <T extends UserSyncSourceCardItem>({
                     <Icon type={item.providerIcon} className="text-[19px]" />
                   </div>
                   <div className="min-w-0">
-                    <h3
-                      className="truncate text-[12px] font-semibold text-[var(--color-text)]"
-                      title={item.name}
-                    >
-                      {item.name}
-                    </h3>
+                    <div className="flex min-w-0 items-center gap-1">
+                      <h3
+                        className="min-w-0 truncate text-[12px] font-semibold text-[var(--color-text)]"
+                        title={item.name}
+                      >
+                        {item.name}
+                      </h3>
+                      {item.dependencyStatusText ? (
+                        <Tooltip title={item.dependencyStatusText}>
+                          <Tag color="warning" className="m-0 shrink-0 text-[10px] leading-4">
+                            {t('system.user.userSyncPage.dependencyPaused')}
+                          </Tag>
+                        </Tooltip>
+                      ) : null}
+                    </div>
                     <div className="mt-0.5 flex flex-wrap items-center gap-1 text-[10px] text-[var(--color-text-3)]">
                       <span className="truncate">{item.integrationSystemName}</span>
                       <span>&middot;</span>
@@ -190,9 +200,11 @@ const UserSyncSourceList = <T extends UserSyncSourceCardItem>({
                   <Button size="small" className='font-mini' onClick={() => onStrategy(item)}>
                     {t('system.user.userSyncPage.syncStrategy')}
                   </Button>
-                  <Button type="primary" size="small" className='font-mini' disabled={item.syncDisabled} onClick={() => onSyncNow(item)}>
-                    {t('system.user.userSyncPage.syncNow')}
-                  </Button>
+                  <Tooltip title={item.dependencyStatusText}>
+                    <Button type="primary" size="small" className='font-mini' disabled={item.syncDisabled} onClick={() => onSyncNow(item)}>
+                      {t('system.user.userSyncPage.syncNow')}
+                    </Button>
+                  </Tooltip>
                 </Space>
               </div>
             </div>

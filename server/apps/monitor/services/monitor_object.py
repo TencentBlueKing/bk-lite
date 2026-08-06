@@ -40,7 +40,15 @@ class MonitorObjectService:
     @staticmethod
     def _project_instance_identity(qs):
         return qs.only(
-            "id", "name", "interval", "cloud_region_id", "ip", "summary_facts", "fallback_sampling_rate",
+            "id",
+            "name",
+            "interval",
+            "cloud_region_id",
+            "ip",
+            "summary_facts",
+            "fallback_sampling_rate",
+            "node_id",
+            "cmdb_id",
         )
 
     @staticmethod
@@ -522,6 +530,8 @@ class MonitorObjectService:
             "ip": obj.ip,
             "summary_facts": obj.summary_facts,
             "fallback_sampling_rate": obj.fallback_sampling_rate,
+            "node_id": obj.node_id or "",
+            "cmdb_id": obj.cmdb_id or "",
             "organizations": list(org_map.get(obj.id, [])),
         }
 

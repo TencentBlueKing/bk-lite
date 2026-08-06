@@ -17,7 +17,7 @@ class ApmApplication(AuditedModel):
     application_id = models.CharField(max_length=128, unique=True)
     name = models.CharField(max_length=128)
     description = models.CharField(max_length=512, blank=True, default="")
-    is_enabled = models.BooleanField(default=True, db_index=True)
+    is_builtin = models.BooleanField(default=False, db_index=True)
 
     class Meta:
         verbose_name = "APM 应用"

@@ -297,6 +297,24 @@ class TestSyncLinuxRepo:
         assert second["updated"] == 1
         assert patch.team == [1]
 
+    def test_builtin_source_ingest_rejects_missing_current_team(self, mocker):
+        mocker.patch(
+            "apps.patch_mgmt.services.linux_repo_sync.fetch_advisories",
+            return_value=[],
+        )
+        source = _source(
+            source_type=PatchSourceType.APT_REPO,
+            name="builtin-without-team",
+            team=[],
+            is_builtin=True,
+            builtin_key="test-builtin-without-team",
+        )
+
+        with pytest.raises(SourceSyncError, match="必须指定当前团队"):
+            SourceSyncService.ingest_selected(source, ["ADV-INVISIBLE"])
+
+        assert not Patch.objects.filter(title="ADV-INVISIBLE").exists()
+
     def test_creates_patches_and_details(self, mocker):
         _make_get(mocker)
         source = _source()

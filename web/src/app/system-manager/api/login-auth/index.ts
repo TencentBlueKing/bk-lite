@@ -6,6 +6,10 @@ export interface LoginAuthBinding {
   integration_instance: number;
   integration_instance_name: string;
   provider_key?: string;
+  dependency_status: {
+    available: boolean;
+    reason: '' | 'instance_disabled' | 'instance_not_ready' | 'capability_disabled' | 'capability_not_ready';
+  };
   icon: string;
   description: string;
   order: number;

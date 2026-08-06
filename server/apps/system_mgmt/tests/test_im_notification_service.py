@@ -184,6 +184,20 @@ def test_send_im_notification_is_blocked_when_channel_needs_resync(channel, user
 
 
 @pytest.mark.django_db
+def test_im_notification_sync_and_send_are_blocked_when_capability_is_disabled(channel, user):
+    channel.integration_instance.capability_enabled = {"im_notification": False}
+    channel.integration_instance.save(update_fields=["capability_enabled"])
+    channel.status = CHANNEL_STATUS_READY
+    channel.save(update_fields=["status"])
+
+    sync_result = create_im_notification_sync_run(channel.id)
+    send_result = send_im_notification(channel.id, "Title", "Body", [user.id])
+
+    assert sync_result == {"result": False, "message": "IM notification channel is not ready"}
+    assert send_result == {"result": False, "message": "IM notification channel is not ready"}
+
+
+@pytest.mark.django_db
 def test_send_im_notification_reads_receive_id_from_snapshot(channel, user):
     channel.status = CHANNEL_STATUS_READY
     channel.save(update_fields=["status"])

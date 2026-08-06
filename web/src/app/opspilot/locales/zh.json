@@ -1742,6 +1742,7 @@
     "memoryTitle": "标题",
     "content": "内容",
     "deleteConfirm": "确认删除？",
+    "deleteConfirmContent": "删除后将移除记忆空间“{name}”及其中的记忆，且无法恢复。",
     "config": "配置",
     "memories": "记忆",
     "writeRule": "写入规则",

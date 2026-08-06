@@ -13,6 +13,10 @@ from apps.monitor.services.metrics import Metrics as MetricsService
 from apps.monitor.services.monitor_instance import InstanceSearch
 from apps.monitor.services.monitor_instance_removal import MonitorInstanceRemovalService
 from apps.monitor.services.monitor_object import MonitorObjectService
+from apps.monitor.services.module_push import (
+    MonitorToCmdbPushService,
+    build_monitor_push_actor_scope,
+)
 from apps.monitor.services.node_mgmt import InstanceConfigService
 from apps.monitor.utils.dimension import normalize_instance_identity
 from apps.monitor.utils.pagination import parse_page_params
@@ -389,6 +393,21 @@ class MonitorInstanceViewSet(viewsets.ViewSet):
             organizations,
         )
         return WebUtils.response_success()
+
+    @action(methods=["post"], detail=False, url_path="push_to_cmdb")
+    def push_to_cmdb(self, request):
+        """显式推送到 CMDB：无级联，带 causation。"""
+        actor_context = _build_actor_context(request)
+        instance_id = request.data.get("instance_id")
+        _ensure_operate_instances(request, [instance_id], actor_context)
+        actor_scope = build_monitor_push_actor_scope(request)
+        try:
+            result = MonitorToCmdbPushService.push_instance(
+                str(instance_id), actor_scope=actor_scope
+            )
+        except ValueError as exc:
+            raise BaseAppException(str(exc)) from exc
+        return WebUtils.response_success(result)
 
     @action(methods=["post"], detail=False, url_path="instances_remove_organizations")
     def instances_remove_organizations(self, request):

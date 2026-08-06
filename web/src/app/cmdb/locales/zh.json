@@ -233,6 +233,11 @@
         "isExactSearch_abbreviation": "精确",
         "uploadDescription": "仅支持xls或xlsx类型的文件上传。",
         "baseInfo": "基本信息",
+        "systemLinkage": "系统联动",
+        "systemLinkageHint": "以下为系统内置关联 ID，不在模型设计与编辑表单中展示，仅只读查看。",
+        "systemLinkageNodeId": "节点 ID",
+        "systemLinkageMonitorId": "监控实例 ID",
+        "systemLinkageEmpty": "未关联",
         "changeRecords": "变更记录",
         "changeRecord": {
             "allChanges": "全部变更",
@@ -738,6 +743,8 @@
         "nodeMgmtSync": {
             "entry": "节点管理同步",
             "title": "节点管理同步",
+            "pullReplacedNotice": "节点管理拉取同步已由节点侧「推送到 CMDB」替代。请在节点管理安装或详情中勾选/补推；此处仅保留历史状态查看，自动同步开关已失效。",
+            "autoSyncDisabledHint": "拉取同步已关闭",
             "lastSyncTime": "最新同步时间",
             "lastCollectTime": "最新采集时间",
             "autoSync": "自动同步",
@@ -802,6 +809,7 @@
                 "nodeConfigFailed": "节点采集配置对账失败，系统将尝试恢复。",
                 "nodeConfigDeleteFailed": "旧节点采集配置删除失败，系统将重试。",
                 "nodeConfigPushFailed": "新节点采集配置下发失败，系统将重试。",
+                "pushLinkageReplacesPull": "拉取同步已由节点推送联动替代，本次拉取已跳过。",
                 "unknown": "节点管理同步暂时异常，请根据错误码排查或稍后重试。"
             },
             "table": {

@@ -3,9 +3,12 @@ from apps.apm.adapters.memory import (
     InMemoryNotificationDispatcher,
     InMemoryTraceStore,
 )
+from apps.apm.adapters.errors import TelemetryStoreUnavailable
 from apps.apm.adapters.notifications import SystemMgmtNotificationDispatcher
-from apps.apm.adapters.victoriametrics import TelemetryStoreUnavailable, VictoriaMetricsMetricStore
-from apps.apm.adapters.victoriatraces import VictoriaTracesTraceStore
+from apps.apm.adapters.victoriatraces import (
+    VictoriaTracesTelemetryStore,
+    VictoriaTracesTraceStore,
+)
 
 __all__ = [
     "InMemoryNotificationDispatcher",
@@ -13,6 +16,6 @@ __all__ = [
     "InMemoryMetricStore",
     "InMemoryTraceStore",
     "TelemetryStoreUnavailable",
-    "VictoriaMetricsMetricStore",
+    "VictoriaTracesTelemetryStore",
     "VictoriaTracesTraceStore",
 ]

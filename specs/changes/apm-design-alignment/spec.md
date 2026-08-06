@@ -1,6 +1,8 @@
 # APM 设计能力服务化
 
-Status: accepted
+Status: superseded by `specs/changes/apm-nats-vt-pipeline/spec.md`
+
+> 本文件保留 SLO、拓扑权限和无数据语义的历史来源；VictoriaMetrics 查询与逐 Trace 拓扑扫描已经废弃，当前实现契约改由 VictoriaTraces-only Adapter 和 dependencies 接口承担。
 
 ## 背景
 

@@ -11,6 +11,8 @@ import {
   Popconfirm,
   Space,
   Switch,
+  Tag,
+  Tooltip,
 } from 'antd';
 import type { ColumnItem } from '@/types';
 import {
@@ -454,7 +456,7 @@ const ImNotificationPage: React.FC = () => {
   const sendChannelOptions = useMemo(
     () =>
       channels
-        .filter((channel) => channel.status === 'ready')
+        .filter((channel) => channel.status === 'ready' && channel.dependency_status?.available !== false)
         .map((channel) => ({
           value: channel.id,
           label: `${channel.name}`,
@@ -490,8 +492,18 @@ const ImNotificationPage: React.FC = () => {
       title: t('system.channel.imNotificationPage.integrationInstance'),
       dataIndex: 'integration_instance_name',
       render: (_, record) => {
-        return (<>{record.integration_instance_name} / {t(`system.integrationCenter.provider.${record.provider_key}`)}</>)
-      }
+        const dependencyStatus = record.dependency_status;
+        return (
+          <div className="flex items-center gap-2">
+            <span>{record.integration_instance_name} / {t(`system.integrationCenter.provider.${record.provider_key}`)}</span>
+            {dependencyStatus?.available === false ? (
+              <Tooltip title={t(`system.channel.imNotificationPage.dependencyReason.${dependencyStatus.reason}`)}>
+                <Tag color="warning">{t('system.channel.imNotificationPage.dependencyPaused')}</Tag>
+              </Tooltip>
+            ) : null}
+          </div>
+        );
+      },
     },
     {
       key: 'latest_sync',
@@ -554,7 +566,20 @@ const ImNotificationPage: React.FC = () => {
       dataIndex: 'actions',
       fixed: 'right',
       width: 200,
-      render: (_, record: IMNotificationChannel) => (
+      render: (_, record: IMNotificationChannel) => {
+        const dependencyUnavailable = record.dependency_status?.available === false;
+        const syncDisabled = dependencyUnavailable || isChannelSyncRunning(record.latest_sync_status);
+        const syncButton = (
+          <Button
+            type="link"
+            size="small"
+            onClick={() => handleSyncMappings(record)}
+            disabled={syncDisabled}
+          >
+            {t('system.channel.imNotificationPage.syncMappings')}
+          </Button>
+        );
+        return (
         <Space wrap>
           <PermissionWrapper requiredPermissions={['Edit']}>
             <Button
@@ -566,14 +591,11 @@ const ImNotificationPage: React.FC = () => {
             </Button>
           </PermissionWrapper>
           <PermissionWrapper requiredPermissions={['Edit']}>
-            <Button
-              type="link"
-              size="small"
-              onClick={() => handleSyncMappings(record)}
-              disabled={isChannelSyncRunning(record.latest_sync_status)}
-            >
-              {t('system.channel.imNotificationPage.syncMappings')}
-            </Button>
+            {dependencyUnavailable ? (
+              <Tooltip title={t(`system.channel.imNotificationPage.dependencyReason.${record.dependency_status.reason}`)}>
+                <span>{syncButton}</span>
+              </Tooltip>
+            ) : syncButton}
           </PermissionWrapper>
           <Button
             type="link"
@@ -593,7 +615,8 @@ const ImNotificationPage: React.FC = () => {
             </Popconfirm>
           </PermissionWrapper>
         </Space>
-      ),
+        );
+      },
     },
   ];
 

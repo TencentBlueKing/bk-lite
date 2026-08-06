@@ -166,6 +166,8 @@
       "assetIp": "IP Address",
       "hostIp": "Host IP",
       "hostName": "Host Name",
+      "nodeId": "Node ID",
+      "cmdbId": "CMDB ID",
       "processNameRuleHint": "The name column shows the process alias (process_name) from integration config, separate from the host name column.",
       "filterProcess": "Filter processes",
       "filterProcessPlaceholder": "Select process names (multi-select)",

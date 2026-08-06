@@ -776,7 +776,7 @@ export default function TargetPage() {
             }}
             allowClear
             options={[
-              ...(['compliant', 'non_compliant', 'pending', 'evaluating', 'failed', 'unconfigured'] as const).map((value) => ({ label: t(`patchManager.complianceStatus.${value}`), value })),
+              ...(['compliant', 'non_compliant', 'pending', 'evaluating', 'failed', 'unknown', 'not_applicable', 'unconfigured'] as const).map((value) => ({ label: t(`patchManager.complianceStatus.${value}`), value })),
             ]}
           />
         </Space>

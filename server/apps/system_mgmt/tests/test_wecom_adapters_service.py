@@ -1,5 +1,7 @@
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from apps.system_mgmt.providers.adapters.wecom import (
     WeComIMNotificationAdapter,
     WeComLoginAuthAdapter,
@@ -66,9 +68,9 @@ def test_user_sync_deduplicates_users_and_keeps_all_departments():
     assert result.payload["user_list"] == expected
 
 
-def test_user_sync_translates_all_department_selection_to_enterprise_root_department():
+def test_user_sync_passes_saved_real_department_id_unchanged():
     source = MagicMock()
-    source.business_config = {"root_department_id": "0"}
+    source.business_config = {"root_department_id": "42"}
     source.name = "wecom"
     with patch("apps.system_mgmt.providers.adapters.wecom.requests.get", side_effect=[
         response({"errcode": 0, "access_token": "token"}),
@@ -78,27 +80,50 @@ def test_user_sync_translates_all_department_selection_to_enterprise_root_depart
         result = WeComUserSyncAdapter.sync_users(CONFIG, "wecom", "user_sync", source=source)
 
     assert result.success is True
-    assert get.call_args_list[2].kwargs["params"]["department_id"] == "1"
+    department_request = get.call_args_list[1]
+    user_request = get.call_args_list[2]
+    assert department_request.kwargs["params"]["id"] == "42"
+    assert user_request.kwargs["params"]["department_id"] == "42"
 
 
-def test_list_departments_maps_all_selection_to_virtual_tree_node():
+@pytest.mark.parametrize("root_department_id", ["", "0", "__all__", "**all**"])
+def test_user_sync_rejects_virtual_or_enterprise_root_department_id_before_requests(root_department_id):
+    source = MagicMock()
+    source.business_config = {"root_department_id": root_department_id}
+    source.name = "wecom"
+
+    with patch("apps.system_mgmt.providers.adapters.wecom.requests.get") as get:
+        result = WeComUserSyncAdapter.sync_users(CONFIG, "wecom", "user_sync", source=source)
+
+    assert result.success is False
+    assert result.errors[0].code == "provider.invalid_config"
+    assert result.errors[0].field == "root_department_id"
+    get.assert_not_called()
+
+
+def test_list_departments_returns_real_department_forest_without_virtual_root():
     with patch("apps.system_mgmt.providers.adapters.wecom.requests.get", side_effect=[
         response({"errcode": 0, "access_token": "token"}),
-        response({"errcode": 0, "department": [{"id": 1, "parentid": 0, "name": "Root"}]}),
+        response({"errcode": 0, "department": [
+            {"id": 1, "parentid": 0, "name": "Root"},
+            {"id": 2, "parentid": 1, "name": "Child"},
+        ]}),
     ]):
         result = WeComUserSyncAdapter.list_departments(
             CONFIG,
             "wecom",
             "user_sync",
-            business_config={"root_department_id": "0"},
+            business_config={"root_department_id": "1"},
         )
 
     assert result.success is True
-    assert result.payload["selected_id"] == "__all__"
-    assert result.payload["selection_missing"] is False
+    assert result.payload["items"][0]["id"] == "1"
+    assert result.payload["items"][0]["parent_id"] is None
+    assert result.payload["items"][0].get("is_all") is None
+    assert set(result.payload) == {"items"}
 
 
-def test_list_departments_marks_missing_saved_department():
+def test_list_departments_does_not_calculate_current_selection_state():
     with patch("apps.system_mgmt.providers.adapters.wecom.requests.get", side_effect=[
         response({"errcode": 0, "access_token": "token"}),
         response({"errcode": 0, "department": [{"id": 1, "parentid": 0, "name": "Root"}]}),
@@ -111,8 +136,7 @@ def test_list_departments_marks_missing_saved_department():
         )
 
     assert result.success is True
-    assert result.payload["selected_id"] == ""
-    assert result.payload["selection_missing"] is True
+    assert set(result.payload) == {"items"}
 
 
 def test_im_send_posts_text_message_to_each_userid():

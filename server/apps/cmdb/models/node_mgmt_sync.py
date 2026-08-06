@@ -11,7 +11,7 @@ class NodeMgmtSyncConfig(TimeInfo):
     version = models.PositiveBigIntegerField(default=1)
     name = models.CharField(max_length=128, default="节点管理同步", verbose_name="任务名称")
     is_builtin = models.BooleanField(default=True, verbose_name="是否为系统内置任务")
-    auto_sync_enabled = models.BooleanField(default=True, verbose_name="是否自动同步")
+    auto_sync_enabled = models.BooleanField(default=False, verbose_name="是否自动同步")
     auto_collect_enabled = models.BooleanField(default=True, verbose_name="是否自动采集")
     sync_interval_minutes = models.PositiveIntegerField(default=5, verbose_name="同步周期(分钟)")
     collect_interval_minutes = models.PositiveIntegerField(default=30, verbose_name="采集周期(分钟)")

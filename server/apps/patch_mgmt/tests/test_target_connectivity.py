@@ -88,6 +88,36 @@ class TestProbeTargetData:
         assert credential["password"] == "plain-secret"
         executor.task_query.assert_called_once_with("probe-task", timeout=5)
 
+    def test_manual_windows_uses_direct_winrm_only_in_explicit_debug_mode(
+        self, mocker, settings
+    ):
+        settings.DEBUG = True
+        settings.PATCH_MGMT_WINDOWS_EXECUTION_MODE = "direct_winrm"
+        session = mocker.patch(
+            "apps.patch_mgmt.services.target_connectivity.winrm.Session"
+        ).return_value
+        session.run_ps.return_value = type(
+            "Result",
+            (),
+            {"status_code": 0, "std_out": b"patch-connectivity-ok", "std_err": b""},
+        )()
+
+        probe = probe_target_data({
+            "ip": "10.0.0.9",
+            "os_type": OSType.WINDOWS,
+            "source_type": PatchTargetSource.MANUAL,
+            "winrm_port": 5985,
+            "winrm_scheme": "http",
+            "winrm_transport": "ntlm",
+            "winrm_user": "Administrator",
+            "winrm_password": "plain-secret",
+            "winrm_cert_validation": False,
+        })
+
+        assert probe.reachable is True
+        assert probe.transport == "direct_winrm"
+        assert probe.port == 5985
+
 
 @pytest.mark.django_db
 class TestProbeTarget:

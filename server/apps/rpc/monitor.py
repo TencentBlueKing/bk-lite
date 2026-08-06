@@ -6,7 +6,13 @@ from apps.rpc.base import RpcClient, AppClient, BaseOperationAnaRpc
 class Monitor(object):
     def __init__(self, is_local_client=False):
         is_local_client = os.getenv("IS_LOCAL_RPC", "0") == "1" or is_local_client
-        self.client = AppClient("apps.monitor.nats.permission") if is_local_client else RpcClient()
+        if is_local_client:
+            self.client = AppClient("apps.monitor.nats.permission")
+            # ingest_from_source 注册在 nats.monitor，与 permission 模块分离
+            self.ingest_client = AppClient("apps.monitor.nats.monitor")
+        else:
+            self.client = RpcClient()
+            self.ingest_client = self.client
 
     def get_module_data(self, **kwargs):
         """
@@ -26,6 +32,13 @@ class Monitor(object):
         """
         return_data = self.client.run("get_monitor_module_list", **kwargs)
         return return_data
+
+    def ingest_from_source(self, **kwargs):
+        """跨模块推送写入监控（node_id / cmdb_id 归并）。
+
+        NATS handler 签名为 monitor_ingest_from_source(params)，须整包为 params。
+        """
+        return self.ingest_client.run("monitor_ingest_from_source", params=kwargs)
 
 
 class MonitorOperationAnaRpc(BaseOperationAnaRpc):
