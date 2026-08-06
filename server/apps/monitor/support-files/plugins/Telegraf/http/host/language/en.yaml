@@ -5,7 +5,7 @@ Host Remote:
 monitor_object:
   Host: Host
 monitor_object_type:
-  OS: Host Resource
+  OS: Operating System
 monitor_object_metric:
   Host:
     cpu_usage_total:
