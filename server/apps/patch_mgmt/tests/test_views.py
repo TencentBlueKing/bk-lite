@@ -853,16 +853,33 @@ RISK_URL = f"{_BASE}/api/risk/"
 @pytest.mark.django_db
 class TestRiskViewApi:
     def _setup(self):
-        from apps.patch_mgmt.models import PatchBaseline, HostBaselineBinding, BaselineRequirement
-        from apps.patch_mgmt.constants import ComplianceStatus
+        from django.utils import timezone
+
+        from apps.patch_mgmt.constants import ComplianceStatus, RequirementAssessmentStatus
+        from apps.patch_mgmt.models import (
+            BaselineRequirement,
+            HostBaselineBinding,
+            HostComplianceSnapshot,
+            PatchBaseline,
+            WindowsPatchDetail,
+        )
 
         target = PatchTarget.objects.create(name="web-01", ip="10.0.0.1", os_type=OSType.WINDOWS, team=[1])
         patch = Patch.objects.create(title="Security Update", os_type=OSType.WINDOWS, severity="critical", team=[1])
+        WindowsPatchDetail.objects.create(patch=patch, kb_number="KB5000003")
         baseline = PatchBaseline.objects.create(name="Win2019", os_type=OSType.WINDOWS, team=[1])
         binding = HostBaselineBinding.objects.create(target=target, baseline=baseline)
         binding.compliance_status = ComplianceStatus.NON_COMPLIANT
         binding.save(update_fields=["compliance_status", "updated_at"])
-        BaselineRequirement.objects.create(baseline=baseline, patch=patch)
+        requirement = BaselineRequirement.objects.create(baseline=baseline, patch=patch)
+        HostComplianceSnapshot.objects.create(
+            binding=binding,
+            requirement=requirement,
+            satisfied=False,
+            status=RequirementAssessmentStatus.MISSING,
+            reason="KB5000003 适用但未安装",
+            evaluated_at=timezone.now(),
+        )
         return target, patch, baseline
 
     def test_risk_list_returns_results(self, su_client):
@@ -899,6 +916,33 @@ class TestRiskViewApi:
         assert resp.status_code == status.HTTP_201_CREATED
         task = GovernanceTask.objects.get(task_type="install")
         trigger.assert_called_once_with(task.id)
+
+    def test_risk_remediate_rejects_requirement_that_is_not_missing(self, su_client, mocker):
+        from apps.patch_mgmt.constants import RequirementAssessmentStatus
+        from apps.patch_mgmt.models import HostComplianceSnapshot
+
+        trigger = mocker.patch(
+            "apps.patch_mgmt.services.governance_service._trigger_async"
+        )
+        target, patch, _baseline = self._setup()
+        HostComplianceSnapshot.objects.filter(
+            binding__target=target,
+            requirement__patch=patch,
+        ).update(
+            status=RequirementAssessmentStatus.NOT_APPLICABLE,
+            satisfied=False,
+            reason="不适用于当前主机",
+        )
+
+        resp = su_client.post(
+            f"{RISK_URL}remediate/",
+            {"items": [{"host_id": target.id, "patch_id": patch.id}], "execution_mode": "now"},
+            format="json",
+        )
+
+        assert resp.status_code == status.HTTP_400_BAD_REQUEST
+        assert resp.data["code"] == "patches_not_remediable"
+        trigger.assert_not_called()
 
     def test_risk_reboot_requires_window(self, su_client):
         target, _patch, _baseline = self._setup()

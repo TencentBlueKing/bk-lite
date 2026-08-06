@@ -8,18 +8,20 @@
 
 import hashlib
 import json
-import logging
 from datetime import datetime
 
 from django.db import transaction
+from django.db.models import F
 from django.utils import timezone
 
+from apps.core.logger import logger
 from apps.core.utils.team_utils import get_current_team
 from apps.patch_mgmt.constants import (
     GovernanceTaskStatus,
     GovernanceTaskType,
     RemediationStatus,
     RebootPolicy,
+    RequirementAssessmentStatus,
 )
 from apps.patch_mgmt.exceptions import PatchBusinessError
 from apps.patch_mgmt.models import (
@@ -27,11 +29,10 @@ from apps.patch_mgmt.models import (
     GovernanceTask,
     GovernanceTaskHost,
     HostBaselineBinding,
+    HostComplianceSnapshot,
     Patch,
     PatchTarget,
 )
-
-logger = logging.getLogger("app")
 
 
 class HostBusyError(PatchBusinessError):
@@ -320,18 +321,19 @@ def create_remediation_task(request, items: list[dict], data: dict) -> Governanc
     if missing_targets:
         raise PatchBusinessError("targets_not_found", "Targets not found: {ids}", params={"ids": missing_targets})
 
-    # 校验所有目标必须已绑定基线
+    _lock_and_assert_hosts_available(target_ids, data.get("execution_mode", "now"))
+
+    # 锁内重新读取绑定，避免评估后切换基线与治理创建并发造成 TOCTOU。
     bindings = {
         binding.target_id: binding
-        for binding in HostBaselineBinding.objects.filter(target_id__in=target_ids).select_related(
-            "baseline", "target"
-        )
+        for binding in HostBaselineBinding.objects.select_for_update()
+        .filter(target_id__in=target_ids)
+        .select_related("baseline", "target")
     }
     bound = set(bindings)
     unbound = [h for h in target_ids if h not in bound]
     if unbound:
         raise PatchBusinessError("targets_without_baseline", "The following targets have no baseline: {ids}", params={"ids": unbound})
-    _lock_and_assert_hosts_available(target_ids, data.get("execution_mode", "now"))
 
     patches = Patch.objects.in_bulk(patch_ids)
     missing_patches = [patch_id for patch_id in patch_ids if patch_id not in patches]
@@ -350,7 +352,29 @@ def create_remediation_task(request, items: list[dict], data: dict) -> Governanc
         if (bindings[host_id].baseline_id, patch_id) not in valid_requirements
     ]
     if invalid_pairs:
-        raise PatchBusinessError("patches_not_in_baseline", "Selected patches are not in the targets' current baselines: {pairs}", params={"pairs": invalid_pairs})
+        raise PatchBusinessError(
+            "patches_not_in_baseline",
+            "Selected patches are not in the targets' current baselines: {pairs}",
+            params={"pairs": invalid_pairs},
+        )
+
+    remediable_pairs = set(
+        HostComplianceSnapshot.objects.filter(
+            binding_id__in=[binding.id for binding in bindings.values()],
+            requirement__baseline_id__in={binding.baseline_id for binding in bindings.values()},
+            requirement__patch_id__in=patch_ids,
+            status=RequirementAssessmentStatus.MISSING,
+        )
+        .filter(requirement__baseline_id=F("binding__baseline_id"))
+        .values_list("binding__target_id", "requirement__patch_id")
+    )
+    not_remediable_pairs = [pair for pair in pairs if pair not in remediable_pairs]
+    if not_remediable_pairs:
+        raise PatchBusinessError(
+            "patches_not_remediable",
+            "Selected patches are not missing in the latest assessment: {pairs}",
+            params={"pairs": not_remediable_pairs},
+        )
 
     risk_snapshot = [
         {
@@ -404,7 +428,11 @@ def create_reboot_task(request, target_ids: list, data: dict) -> GovernanceTask:
     covered = {int(item["host_id"]) for item in reboot_snapshot}
     not_pending_reboot = sorted(set(target_ids) - covered)
     if not_pending_reboot:
-        raise PatchBusinessError("targets_not_pending_reboot", "The following targets are not pending reboot: {ids}", params={"ids": not_pending_reboot})
+        raise PatchBusinessError(
+            "targets_not_pending_reboot",
+            "The following targets are not pending reboot: {ids}",
+            params={"ids": not_pending_reboot},
+        )
     expected_token = str(data.get("scope_token") or "")
     if not expected_token or expected_token != scope_token:
         raise PatchBusinessError(

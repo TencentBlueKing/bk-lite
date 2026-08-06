@@ -24,4 +24,11 @@ if (/message="预计连带变更来自 Linux 包管理器 dry-run"/.test(page)) 
   throw new Error('治理抽屉仍显示预计连带变更的大块 Alert');
 }
 
+const emptyImpactBranches = page.match(
+  /if \(osType === 'windows'\)([\s\S]*?)if \(v\.error\)/,
+)?.[1] || '';
+if ((emptyImpactBranches.match(/>--<\/span>/g) || []).length !== 2) {
+  throw new Error('预计连带变更的 Windows 与空数据状态必须统一显示 --');
+}
+
 console.log('预计连带变更长文本省略约束通过');

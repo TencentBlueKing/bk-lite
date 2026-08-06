@@ -140,6 +140,8 @@ def test_install_commands_windows_uses_scheduled_task():
 def test_windows_assess_command_collects_offered_and_installed_wua_updates():
     command = pes._assess_command(OSType.WINDOWS)
 
+    assert 'Get-CimInstance Win32_OperatingSystem' in command
+    assert 'BKPATCH_HOST|WINDOWS|' in command
     assert '$sr.Search("IsInstalled=0")' in command
     assert '$sr.Search("IsInstalled=1")' in command
     assert '===WUA_INSTALLED===' in command
@@ -846,6 +848,51 @@ def test_run_assess_success_parses_output_and_writes_snapshot(monkeypatch):
 
 
 @pytest.mark.django_db
+def test_run_windows_assess_keeps_missing_risk_when_another_requirement_is_unknown(monkeypatch):
+    cloud_region = CloudRegion.objects.create(name='region-win-mixed-assessment')
+    target = _make_manual_windows_target(cloud_region)
+    baseline = PatchBaseline.objects.create(name='windows-mixed-baseline', os_type=OSType.WINDOWS, team=[1])
+    binding = HostBaselineBinding.objects.create(target=target, baseline=baseline)
+    missing_patch = Patch.objects.create(title='applicable update', os_type=OSType.WINDOWS, team=[1])
+    unknown_patch = Patch.objects.create(title='catalog invisible update', os_type=OSType.WINDOWS, team=[1])
+    WindowsPatchDetail.objects.create(patch=missing_patch, kb_number='KB5000003')
+    WindowsPatchDetail.objects.create(patch=unknown_patch, kb_number='KB9999999')
+    missing_requirement = BaselineRequirement.objects.create(baseline=baseline, patch=missing_patch)
+    unknown_requirement = BaselineRequirement.objects.create(baseline=baseline, patch=unknown_patch)
+    task = _make_task(GovernanceTaskType.ASSESS, [target.id])
+    stdout = '\n'.join(
+        [
+            'BKPATCH_HOST|WINDOWS|Microsoft Windows Server 2022 Standard|10.0|20348|AMD64',
+            '===WUA===',
+            'KB5000003|Important|Applicable update',
+            '===WUA_INSTALLED===',
+            '===HOTFIX===',
+        ]
+    )
+
+    class FakeAnsibleExecutor:
+        def adhoc(self, **kwargs):  # noqa: ARG002
+            return {'exit_code': 0, 'stdout': stdout}
+
+    monkeypatch.setattr(ter.AnsibleExecutorResolver, 'resolve', lambda cloud_region_id: 'ansible-node-1')
+    monkeypatch.setattr(pes, 'AnsibleExecutor', lambda instance_id: FakeAnsibleExecutor())
+
+    pes.run_governance_task(task)
+
+    binding.refresh_from_db()
+    assert binding.compliance_status == ComplianceStatus.NON_COMPLIANT
+    assert binding.missing_count == 1
+    assert HostComplianceSnapshot.objects.get(
+        binding=binding,
+        requirement=missing_requirement,
+    ).status == 'missing'
+    assert HostComplianceSnapshot.objects.get(
+        binding=binding,
+        requirement=unknown_requirement,
+    ).status == 'unknown'
+
+
+@pytest.mark.django_db
 def test_run_verify_freezes_pair_result_snapshot(monkeypatch):
     baseline = PatchBaseline.objects.create(name='verify-baseline', os_type=OSType.LINUX, team=[1])
     target = _make_node_mgmt_target()
@@ -911,6 +958,53 @@ def test_run_assess_yum_exit_100_treated_as_success(monkeypatch):
     binding = HostBaselineBinding.objects.get(target=target)
     assert binding.compliance_status == ComplianceStatus.NON_COMPLIANT
     assert binding.missing_count == 1
+
+
+@pytest.mark.django_db
+def test_run_install_rejects_patch_that_is_no_longer_missing(monkeypatch):
+    target = _make_node_mgmt_target()
+    baseline = PatchBaseline.objects.create(name='stale-install-baseline', os_type=OSType.LINUX, team=[1])
+    binding = HostBaselineBinding.objects.create(
+        target=target,
+        baseline=baseline,
+        compliance_status=ComplianceStatus.NOT_APPLICABLE,
+    )
+    patch = Patch.objects.create(title='foreign package', os_type=OSType.LINUX, team=[1])
+    LinuxPatchDetail.objects.create(patch=patch, pkg_name='foreign-package', pkg_version='1.0')
+    requirement = BaselineRequirement.objects.create(baseline=baseline, patch=patch)
+    HostComplianceSnapshot.objects.create(
+        binding=binding,
+        requirement=requirement,
+        satisfied=False,
+        status='not_applicable',
+        reason='不适用于当前主机',
+        evaluated_at=timezone.now(),
+    )
+    task = _make_task(GovernanceTaskType.INSTALL, [target.id], [patch.id])
+    task.risk_snapshot = [
+        {
+            'host_id': target.id,
+            'patch_id': patch.id,
+            'baseline_id': baseline.id,
+        }
+    ]
+    task.save(update_fields=['risk_snapshot', 'updated_at'])
+    calls = []
+
+    class FakeExecutor:
+        def execute_local_stream(self, command, **kwargs):  # noqa: ARG002
+            calls.append(command)
+            return {'exit_code': 0}
+
+    monkeypatch.setattr(pes, 'Executor', lambda instance_id: FakeExecutor())
+
+    pes.run_governance_task(task)
+
+    host = GovernanceTaskHost.objects.get(task=task, target_id=target.id)
+    assert calls == []
+    assert host.stage == 'failed'
+    assert host.error_code == 'assessment_stale'
+    assert '最新评估' in host.reason
 
 
 @pytest.mark.django_db

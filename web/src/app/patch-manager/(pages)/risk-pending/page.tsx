@@ -308,8 +308,8 @@ export default function RiskPendingPage() {
     return <RemediationTag status={v} />;
   };
   const renderInstallImpact = (v: RiskItem['install_impact'], osType?: string) => {
-    if (osType === 'windows') return <span style={{ color: '#bfbfbf' }}>—</span>;
-    if (!v || (!v.summary && !v.error)) return <span style={{ color: '#bfbfbf' }}>-</span>;
+    if (osType === 'windows') return <span style={{ color: '#bfbfbf' }}>--</span>;
+    if (!v || (!v.summary && !v.error)) return <span style={{ color: '#bfbfbf' }}>--</span>;
     if (v.error) return <Tooltip title={v.error}><Tag color="warning">{t('patchManager.complianceStatus.failed')}</Tag></Tooltip>;
     const content = <div style={{ maxWidth: 440 }}>
       <div style={{ marginBottom: 6, color: 'var(--color-text-2, #595959)' }}>{t('patchManager.risk.installImpactBatch')}</div>
