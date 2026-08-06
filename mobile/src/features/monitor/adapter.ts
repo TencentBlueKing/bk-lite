@@ -1,7 +1,7 @@
 import { apiGet } from '@/api/request';
 import type { MetricGroup, MetricRangeResult, MonitorInstance, MonitorMetric, MonitorObject, MonitorPlugin, MonitorRecentViewsConfig, PageResult, ResolvedMonitorRecentView } from './model';
 import type { MonitorUnitListItem } from './unit-label';
-import { parseMonitorInstanceLookupHints } from './model';
+import { normalizeReportingStatusFilters, parseMonitorInstanceLookupHints } from './model';
 
 function record(value: unknown): Record<string, unknown> {
   return typeof value === 'object' && value !== null ? value as Record<string, unknown> : {};
@@ -57,10 +57,25 @@ export async function listMonitorObjects(signal?: AbortSignal): Promise<MonitorO
   }).filter((item) => item.id && item.type.id && item.visible);
 }
 
-export async function listMonitorInstances(objectId: number, page: number, keyword = '', signal?: AbortSignal): Promise<PageResult<MonitorInstance>> {
+export async function listMonitorInstances(
+  objectId: number,
+  page: number,
+  keyword = '',
+  options?: { status?: readonly string[]; signal?: AbortSignal },
+): Promise<PageResult<MonitorInstance>> {
   if (!objectId) throw new Error('objectId is required');
-  const params = { page, page_size: 20, name: keyword.trim(), add_metrics: true };
-  const response = await apiGet(`/monitor/api/monitor_instance/${objectId}/list/`, params, { signal });
+  // apiGet 不会展开嵌套对象；服务端认 vm_params[status] / vm_params.status。
+  const params: Record<string, string | number | boolean> = {
+    page,
+    page_size: 20,
+    name: keyword.trim(),
+    add_metrics: true,
+  };
+  const statusFilters = normalizeReportingStatusFilters(options?.status);
+  if (statusFilters.length === 1) {
+    params['vm_params[status]'] = statusFilters[0];
+  }
+  const response = await apiGet(`/monitor/api/monitor_instance/${objectId}/list/`, params, { signal: options?.signal });
   const raw = record(unwrap<unknown>(response));
   const results = Array.isArray(raw.results) ? raw.results : [];
   return {

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type TouchEvent } from 'react';
 import { InfiniteScroll, Popup } from 'antd-mobile';
+import { CheckOutline, FilterOutline } from 'antd-mobile-icons';
 import MobileSearchBar from '@/components/mobile-search-bar';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -14,10 +15,12 @@ import {
   MONITOR_PAGE_SIZE,
   groupMonitorObjects,
   instanceListSummaryEntries,
+  normalizeReportingStatusFilters,
   orderedMonitorObjects,
   resolveMonitorReportingStatus,
   type MonitorInstance,
   type MonitorObject,
+  type MonitorReportingStatusFilter,
 } from '@/features/monitor/model';
 import MonitorObjectIcon from '@/features/monitor/object-icon-image';
 import { formatAccountDateTime } from '@/platform/preferences/dateTime';
@@ -31,10 +34,13 @@ import { getCurrentTeamCookie } from '@/utils/teamCookie';
 import { useTranslation } from '@/utils/i18n';
 import styles from '@/features/monitor/monitor.module.css';
 
+const REPORTING_STATUS_OPTIONS: MonitorReportingStatusFilter[] = ['normal', 'unavailable'];
+
 interface MonitorInstancesViewState {
   monitorObject: MonitorObject | null;
   objects: MonitorObject[];
   keyword: string;
+  statusFilters: MonitorReportingStatusFilter[];
   instances: MonitorInstance[];
   count: number;
   page: number;
@@ -57,6 +63,11 @@ export default function MonitorInstancesPanel({ objectId = 0 }: MonitorInstances
   const [objectStatus, setObjectStatus] = useState<'loading' | 'ready' | 'missing' | 'error'>(initialSnapshot.current ? 'ready' : 'loading');
   const [input, setInput] = useState(initialSnapshot.current?.data.keyword || '');
   const [keyword, setKeyword] = useState(initialSnapshot.current?.data.keyword || '');
+  const [statusFilters, setStatusFilters] = useState<MonitorReportingStatusFilter[]>(
+    normalizeReportingStatusFilters(initialSnapshot.current?.data.statusFilters),
+  );
+  const [statusDraft, setStatusDraft] = useState<MonitorReportingStatusFilter[]>([]);
+  const [statusFilterOpen, setStatusFilterOpen] = useState(false);
   const [instances, setInstances] = useState<MonitorInstance[]>(initialSnapshot.current?.data.instances || []);
   const [count, setCount] = useState(initialSnapshot.current?.data.count || 0);
   const [page, setPage] = useState(initialSnapshot.current?.data.page || 0);
@@ -66,9 +77,10 @@ export default function MonitorInstancesPanel({ objectId = 0 }: MonitorInstances
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const railRef = useRef<HTMLDivElement | null>(null);
   const touchStart = useRef<{ x: number; y: number; edge: boolean; onTable: boolean } | null>(null);
+  const statusFilterKey = statusFilters.join(',');
   const lastRequestedKey = useRef<string | null>(
     initialSnapshot.current?.data.monitorObject
-      ? `${initialSnapshot.current.data.monitorObject.id}:${initialSnapshot.current.data.keyword}`
+      ? `${initialSnapshot.current.data.monitorObject.id}:${initialSnapshot.current.data.keyword}:${normalizeReportingStatusFilters(initialSnapshot.current.data.statusFilters).join(',')}`
       : null,
   );
   const objectRequestId = useRef(0);
@@ -111,6 +123,8 @@ export default function MonitorInstancesPanel({ objectId = 0 }: MonitorInstances
     setMonitorObject(next);
     setInput('');
     setKeyword('');
+    setStatusFilters([]);
+    setStatusFilterOpen(false);
     lastRequestedKey.current = null;
     setInstances([]);
     setCount(0);
@@ -155,7 +169,10 @@ export default function MonitorInstancesPanel({ objectId = 0 }: MonitorInstances
     listController.current = controller;
     if (!append && !preserveContent) setListStatus('loading');
     try {
-      const result = await listMonitorInstances(object.id, targetPage, keyword.trim(), controller.signal);
+      const result = await listMonitorInstances(object.id, targetPage, keyword.trim(), {
+        status: statusFilters,
+        signal: controller.signal,
+      });
       if (currentId !== listRequestId.current) return;
       setInstances((current) => append
         ? [...new Map([...current, ...result.items].map((item) => [item.id, item])).values()]
@@ -168,7 +185,7 @@ export default function MonitorInstancesPanel({ objectId = 0 }: MonitorInstances
       if (!append && !preserveContent) setListStatus('error');
       throw error;
     }
-  }, [keyword]);
+  }, [keyword, statusFilters]);
 
   useEffect(() => {
     if (initialSnapshot.current) return;
@@ -194,6 +211,8 @@ export default function MonitorInstancesPanel({ objectId = 0 }: MonitorInstances
     setMonitorObject(nextObject);
     setInput('');
     setKeyword('');
+    setStatusFilters([]);
+    setStatusFilterOpen(false);
     lastRequestedKey.current = null;
     setInstances([]);
     setCount(0);
@@ -204,11 +223,11 @@ export default function MonitorInstancesPanel({ objectId = 0 }: MonitorInstances
 
   useEffect(() => {
     if (!monitorObject) return;
-    const requestKey = `${monitorObject.id}:${keyword}`;
+    const requestKey = `${monitorObject.id}:${keyword}:${statusFilterKey}`;
     if (lastRequestedKey.current === requestKey) return;
     lastRequestedKey.current = requestKey;
     void loadInstances(monitorObject).catch(() => undefined);
-  }, [keyword, loadInstances, monitorObject]);
+  }, [keyword, loadInstances, monitorObject, statusFilterKey]);
 
   const submitSearch = (value: string) => {
     const next = value.trim();
@@ -219,6 +238,28 @@ export default function MonitorInstancesPanel({ objectId = 0 }: MonitorInstances
   const clearSearch = () => {
     setInput('');
     setKeyword('');
+  };
+
+  const openStatusFilter = () => {
+    setStatusDraft(statusFilters);
+    setStatusFilterOpen(true);
+  };
+
+  const toggleStatusDraft = (status: MonitorReportingStatusFilter) => {
+    setStatusDraft((current) => (
+      current.includes(status)
+        ? current.filter((item) => item !== status)
+        : [...current, status]
+    ));
+  };
+
+  const applyStatusFilter = () => {
+    setStatusFilters(normalizeReportingStatusFilters(statusDraft));
+    setStatusFilterOpen(false);
+  };
+
+  const resetStatusFilter = () => {
+    setStatusDraft([]);
   };
 
   useEffect(() => () => {
@@ -239,11 +280,12 @@ export default function MonitorInstancesPanel({ objectId = 0 }: MonitorInstances
       monitorObject,
       objects,
       keyword,
+      statusFilters,
       instances,
       count,
       page,
     }, scrollTop);
-  }, [cacheScope, count, instances, keyword, listStatus, monitorObject, objectStatus, objects, page]);
+  }, [cacheScope, count, instances, keyword, listStatus, monitorObject, objectStatus, objects, page, statusFilters]);
 
   useEffect(() => {
     saveSnapshot();
@@ -286,9 +328,13 @@ export default function MonitorInstancesPanel({ objectId = 0 }: MonitorInstances
   const tableGridColumns = [
     '164px',
     '96px',
-    '64px',
+    '88px',
     ...summaryFields.map(() => 'minmax(68px, 84px)'),
   ].join(' ');
+  const hasStatusFilter = statusFilters.length > 0;
+  const emptyTitle = keyword || hasStatusFilter
+    ? t('monitor.noSearchResults')
+    : t('monitor.noInstances');
 
   return (
     <div className={styles.instancesPanel}>
@@ -368,24 +414,32 @@ export default function MonitorInstancesPanel({ objectId = 0 }: MonitorInstances
                 <MobileSkeleton label={t('common.loading')} variant="list" rows={5} />
               ) : listStatus === 'error' ? (
                 <MobileResult kind="error" title={t('monitor.instanceLoadFailed')} description={t('monitor.retryHint')} actionLabel={t('common.retry')} onAction={() => void loadInstances(monitorObject).catch(() => undefined)} />
-              ) : instances.length === 0 ? (
-                <MobileResult
-                  kind="empty"
-                  compact
-                  title={keyword ? t('monitor.noSearchResults') : t('monitor.noInstances')}
-                />
               ) : (
                 <div className={styles.instanceTableScroll} data-instance-table-scroll>
                   <div className={styles.instanceTable}>
                     <div className={styles.instanceTableHead} style={{ gridTemplateColumns: tableGridColumns }}>
                       <span className={styles.colSticky}>{t('monitor.columnName')}</span>
                       <span className={styles.colRight}>{t('monitor.columnReportTime')}</span>
-                      <span className={styles.colRight}>{t('monitor.columnReportingStatus')}</span>
+                      <button
+                        type="button"
+                        className={`${styles.columnFilter} ${hasStatusFilter ? styles.columnFilterActive : ''}`}
+                        aria-label={t('monitor.filterReportingStatus')}
+                        aria-expanded={statusFilterOpen}
+                        onClick={openStatusFilter}
+                      >
+                        <span className={styles.columnFilterLabel}>{t('monitor.columnReportingStatus')}</span>
+                        <FilterOutline className={styles.columnFilterIcon} aria-hidden />
+                      </button>
                       {summaryFields.map((field) => (
                         <span className={styles.colRight} key={field.key || field.name}>{field.name}</span>
                       ))}
                     </div>
-                    {instances.map((instance) => {
+                    {instances.length === 0 ? (
+                      <div className={styles.instanceTableEmpty} role="status">
+                        <MobileResult kind="empty" compact title={emptyTitle} />
+                      </div>
+                    ) : (
+                      instances.map((instance) => {
                       const summary = instanceListSummaryEntries(monitorObject, instance);
                       const reportingStatus = resolveMonitorReportingStatus(instance.status);
                       const detailParams = new URLSearchParams({
@@ -460,7 +514,8 @@ export default function MonitorInstancesPanel({ objectId = 0 }: MonitorInstances
                           ))}
                         </Link>
                       );
-                    })}
+                    })
+                    )}
                   </div>
                   {shouldShowListPagination(count, instances.length, MONITOR_PAGE_SIZE)
                     && (
@@ -475,6 +530,54 @@ export default function MonitorInstancesPanel({ objectId = 0 }: MonitorInstances
           </MobilePullToRefresh>
         )}
       </div>
+
+      <Popup
+        visible={statusFilterOpen}
+        onMaskClick={() => setStatusFilterOpen(false)}
+        bodyStyle={{
+          borderTopLeftRadius: 16,
+          borderTopRightRadius: 16,
+          overflow: 'hidden',
+        }}
+      >
+        <div className={styles.statusFilterSheet}>
+          <div className={styles.pickerHeader}>
+            <strong className={styles.pickerTitle}>{t('monitor.filterReportingStatus')}</strong>
+            <button
+              type="button"
+              className={styles.pickerClose}
+              onClick={() => setStatusFilterOpen(false)}
+            >
+              {t('common.cancel')}
+            </button>
+          </div>
+          <div className={styles.statusFilterOptions} role="group" aria-label={t('monitor.filterReportingStatus')}>
+            {REPORTING_STATUS_OPTIONS.map((status) => {
+              const checked = statusDraft.includes(status);
+              return (
+                <button
+                  type="button"
+                  key={status}
+                  className={`${styles.statusFilterOption} ${checked ? styles.statusFilterOptionActive : ''}`}
+                  aria-pressed={checked}
+                  onClick={() => toggleStatusDraft(status)}
+                >
+                  <span>{t(`monitor.reportingStatus.${status}`)}</span>
+                  {checked ? <CheckOutline className={styles.statusFilterCheck} aria-hidden /> : null}
+                </button>
+              );
+            })}
+          </div>
+          <div className={styles.statusFilterActions}>
+            <button type="button" className={styles.statusFilterReset} onClick={resetStatusFilter}>
+              {t('monitor.resetFilter')}
+            </button>
+            <button type="button" className={styles.statusFilterConfirm} onClick={applyStatusFilter}>
+              {t('common.confirm')}
+            </button>
+          </div>
+        </div>
+      </Popup>
 
       <Popup
         visible={pickerOpen}
