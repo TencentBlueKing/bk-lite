@@ -117,7 +117,11 @@ def merge_common_ifmib_metrics(plugin_data):
         if metric_name in common_metrics_by_name:
             # 厂商可能为同一 IF-MIB 指标提供更准确的查询或分组。保留该定义，
             # 仅标记来源，确保目录/API 的厂商优先级不被公共目录覆盖。
-            metric = {**metric, "is_ifmib": True}
+            # device_total_* 强制使用公共 HC 聚合，避免厂商旧 32 位计数器在高速口 wrap。
+            if str(metric_name).startswith("device_total_"):
+                metric = {**common_metrics_by_name[metric_name]}
+            else:
+                metric = {**metric, "is_ifmib": True}
             existing_common_names.add(metric_name)
         merged_metrics.append(metric)
     merged_metrics.extend(

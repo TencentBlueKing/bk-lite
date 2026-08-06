@@ -3,6 +3,10 @@ import { useEffect, useMemo, useState, useRef } from 'react';
 import { Spin, Button, Form, message, Steps } from 'antd';
 import useApiClient from '@/utils/request';
 import useMonitorApi from '@/app/monitor/api';
+import {
+  fetchAllMetricsGroups,
+  fetchAllMonitorMetrics
+} from '@/app/monitor/api/fetchMetricCatalogPages';
 import useEventApi from '@/app/monitor/api/event';
 import { useTranslation } from '@/utils/i18n';
 import {
@@ -636,8 +640,8 @@ const StrategyOperation = () => {
   const getMetrics = async (params = {}, type = '') => {
     try {
       setMetricsLoading(true);
-      const getGroupList = getMetricsGroup(params);
-      const getMetrics = getMonitorMetrics(params);
+      const getGroupList = fetchAllMetricsGroups(getMetricsGroup, params);
+      const getMetrics = fetchAllMonitorMetrics(getMonitorMetrics, params);
       Promise.all([getGroupList, getMetrics])
         .then((res) => {
           const metricData = cloneDeep(res[1].items);

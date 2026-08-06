@@ -18,6 +18,7 @@ export interface MetricsParam {
   name_in?: string;
   keyword?: string;
   include_ifmib?: boolean;
+  is_ifmib?: boolean;
   page?: number;
   page_size?: number;
 }

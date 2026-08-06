@@ -135,6 +135,13 @@ def apply_inherited_metric_filters(queryset, query_params):
             | Q(display_name__icontains=keyword)
             | Q(description__icontains=keyword)
         )
+    is_ifmib = query_params.get("is_ifmib")
+    if is_ifmib is not None and str(is_ifmib).strip() != "":
+        normalized = str(is_ifmib).strip().lower()
+        if normalized in {"true", "1"}:
+            queryset = queryset.filter(is_ifmib=True)
+        elif normalized in {"false", "0"}:
+            queryset = queryset.filter(is_ifmib=False)
     return queryset
 
 

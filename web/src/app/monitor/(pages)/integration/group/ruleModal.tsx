@@ -27,6 +27,10 @@ import { PlusOutlined, CloseOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import GroupTreeSelector from '@/components/group-tree-select';
 import useMonitorApi from '@/app/monitor/api';
+import {
+  fetchAllMetricsGroups,
+  fetchAllMonitorMetrics
+} from '@/app/monitor/api/fetchMetricCatalogPages';
 import { useConditionList } from '@/app/monitor/hooks';
 import { cloneDeep } from 'lodash';
 const { Option } = Select;
@@ -123,8 +127,8 @@ const RuleModal = forwardRef<ModalRef, ModalProps>(
     const getMetrics = async (params = {}) => {
       try {
         setMetricsLoading(true);
-        const getGroupList = getMetricsGroup(params);
-        const getMetrics = getMonitorMetrics(params);
+        const getGroupList = fetchAllMetricsGroups(getMetricsGroup, params);
+        const getMetrics = fetchAllMonitorMetrics(getMonitorMetrics, params);
         Promise.all([getGroupList, getMetrics])
           .then((res) => {
             const metricData = cloneDeep(res[1].items);
