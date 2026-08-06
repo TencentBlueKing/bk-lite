@@ -33,6 +33,16 @@ class Sidecar:
     CONVERGE_DEBOUNCE_SECONDS = 5
     CPU_ARCHITECTURE_TAG = "cpu_architecture"
     INSTALL_TASK_NODE_TAG = "install_task_node"
+    BASE_CONFIG_HEADER = "# ---- BK-Lite collector base configuration (shared by all monitoring templates) ----\n"
+    INSTANCE_CONFIG_HEADER = "# ---- BK-Lite instance collection configurations (per monitoring template) ----\n"
+
+    @classmethod
+    def add_config_section_headers(cls, config_template: str, has_child_configs: bool) -> str:
+        """为最终下发文件标明采集器基础配置与实例采集配置的边界。"""
+        merged_template = f"{cls.BASE_CONFIG_HEADER}{(config_template or '').lstrip()}"
+        if has_child_configs:
+            merged_template += f"\n{cls.INSTANCE_CONFIG_HEADER}"
+        return merged_template
 
     @staticmethod
     def generate_etag(data):
@@ -650,15 +660,17 @@ class Sidecar:
         node = assignment.node
         configuration = assignment.collector_config
 
-        # 合并子配置内容到模板
-        merged_template = configuration.config_template
-
         collector = configuration.collector
         section_headers = {}
         if collector.default_config:
             section_headers = collector.default_config.get("config_section", {})
 
         child_configs = list(configuration.childconfig_set.all())
+        # 合并子配置内容到模板。显式分段避免将采集器的全局监听/处理逻辑误认为某个实例模板。
+        merged_template = Sidecar.add_config_section_headers(
+            configuration.config_template,
+            has_child_configs=bool(child_configs),
+        )
         child_render_variables = Sidecar.collect_child_render_variables(child_configs)
 
         if child_configs and section_headers:
