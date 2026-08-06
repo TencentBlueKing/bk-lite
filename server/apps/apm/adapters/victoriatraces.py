@@ -22,6 +22,9 @@ from apps.apm.services.contracts import (
     SloMeasurement,
     SloMetricQuery,
     SpanDetail,
+    SpanPage,
+    SpanSearchQuery,
+    SpanSummary,
     TopologyDependencyQuery,
     TraceDetail,
     TracePage,
@@ -46,6 +49,19 @@ _SERVICE_FIELD = "`resource_attr:service.name`"
 _INSTANCE_FIELD = "`resource_attr:service.instance.id`"
 _ENVIRONMENT_FIELD = "`resource_attr:deployment.environment`"
 _VERSION_FIELD = "`resource_attr:service.version`"
+_KIND_TO_CODE = {
+    "internal": "1",
+    "server": "2",
+    "client": "3",
+    "producer": "4",
+    "consumer": "5",
+}
+_CODE_TO_KIND = {code: name for name, code in _KIND_TO_CODE.items()}
+_STATUS_TO_CODE = {"ok": "1", "error": "2"}
+_MAX_SPAN_SEARCH_LIMIT = 200
+_HTTP_METHOD_FIELDS = ("span_attr:http.request.method", "span_attr:http.method")
+_HTTP_STATUS_FIELDS = ("span_attr:http.response.status_code", "span_attr:http.status_code")
+
 
 
 def _tag_map(tags: object) -> dict[str, object]:
@@ -132,17 +148,24 @@ class VictoriaTracesTelemetryStore:
             tags["resource_attr:service.namespace"] = query.service_namespace
         if query.instance_id is not None:
             tags["resource_attr:service.instance.id"] = query.instance_id
+        if query.status == "error":
+            tags["error"] = "true"
 
-        payload = self._request_json(
-            "/select/jaeger/api/traces",
-            params={
-                "service": query.service_name,
-                "tags": json.dumps(tags, ensure_ascii=False, separators=(",", ":")),
-                "start": int(query.started_at.timestamp() * 1_000_000),
-                "end": int(ended_at.timestamp() * 1_000_000),
-                "limit": query.limit + 1,
-            },
-        )
+        params: dict[str, object] = {
+            "service": query.service_name,
+            "tags": json.dumps(tags, ensure_ascii=False, separators=(",", ":")),
+            "start": int(query.started_at.timestamp() * 1_000_000),
+            "end": int(ended_at.timestamp() * 1_000_000),
+            "limit": query.limit + 1,
+        }
+        if query.span_name:
+            params["operation"] = query.span_name
+        if query.min_duration_ms is not None:
+            params["minDuration"] = f"{int(query.min_duration_ms * 1_000_000)}ns"
+        if query.max_duration_ms is not None:
+            params["maxDuration"] = f"{int(query.max_duration_ms * 1_000_000)}ns"
+
+        payload = self._request_json("/select/jaeger/api/traces", params=params)
         raw_traces = payload.get("data", [])
         if not isinstance(raw_traces, list):
             raise TelemetryStoreUnavailable("VictoriaTraces 返回了无效的搜索结果")
@@ -161,6 +184,62 @@ class VictoriaTracesTelemetryStore:
         page_items = tuple(summaries[: query.limit])
         next_cursor = _encode_cursor(page_items[-1].started_at) if len(summaries) > query.limit and page_items else None
         return TracePage(items=page_items, next_cursor=next_cursor)
+
+    def search_spans(self, query: SpanSearchQuery) -> SpanPage:
+        _validate_window(query.started_at, query.ended_at)
+        if not 1 <= query.limit <= _MAX_SPAN_SEARCH_LIMIT:
+            raise ValueError(f"Span 查询 limit 必须在 1 到 {_MAX_SPAN_SEARCH_LIMIT} 之间")
+        if query.status is not None and query.status not in _STATUS_TO_CODE:
+            raise ValueError("status 仅支持 ok 或 error")
+        if query.kind is not None and query.kind not in _KIND_TO_CODE:
+            raise ValueError("Span kind 无效")
+        if query.min_duration_ms is not None and query.min_duration_ms < 0:
+            raise ValueError("min_duration_ms 不能为负数")
+        if query.max_duration_ms is not None and query.max_duration_ms < 0:
+            raise ValueError("max_duration_ms 不能为负数")
+        if (
+            query.min_duration_ms is not None
+            and query.max_duration_ms is not None
+            and query.min_duration_ms > query.max_duration_ms
+        ):
+            raise ValueError("min_duration_ms 不能大于 max_duration_ms")
+
+        ended_at = min(query.ended_at, _decode_cursor(query.cursor)) if query.cursor else query.ended_at
+        filters = [
+            "*",
+            f"{_SERVICE_FIELD}:={_logsql_string(query.service_name)}",
+            f"{_ENVIRONMENT_FIELD}:={_logsql_string(query.environment or '')}",
+        ]
+        if query.service_namespace is not None:
+            filters.append(f"{_NAMESPACE_FIELD}:={_logsql_string(query.service_namespace)}")
+        if query.instance_id is not None:
+            filters.append(f"{_INSTANCE_FIELD}:={_logsql_string(query.instance_id)}")
+        if query.span_name:
+            filters.append(f"name:={_logsql_string(query.span_name)}")
+        if query.status is not None:
+            filters.append(f"status_code:={_logsql_string(_STATUS_TO_CODE[query.status])}")
+        if query.kind is not None:
+            filters.append(f"kind:={_logsql_string(_KIND_TO_CODE[query.kind])}")
+        if query.min_duration_ms is not None:
+            filters.append(f"duration:>={int(query.min_duration_ms * 1_000_000)}")
+        if query.max_duration_ms is not None:
+            filters.append(f"duration:<={int(query.max_duration_ms * 1_000_000)}")
+
+        logs_query = f"{' '.join(filters)} | sort by (_time) desc | limit {query.limit + 1}"
+        rows = self._query_rows(logs_query, query.started_at, ended_at, limit=query.limit + 1)
+        items: list[SpanSummary] = []
+        for row in rows:
+            summary = self._span_summary_from_row(row)
+            if summary is not None:
+                items.append(summary)
+        items.sort(key=lambda item: (item.started_at, item.span_id), reverse=True)
+        page_items = tuple(items[: query.limit])
+        next_cursor = (
+            _encode_cursor(page_items[-1].started_at)
+            if len(items) > query.limit and page_items
+            else None
+        )
+        return SpanPage(items=page_items, next_cursor=next_cursor)
 
     def get_trace(self, trace_id: str) -> TraceDetail | None:
         payload = self._request_json(f"/select/jaeger/api/traces/{trace_id}", allow_not_found=True)
@@ -389,14 +468,21 @@ class VictoriaTracesTelemetryStore:
             raise TelemetryStoreUnavailable("VictoriaTraces 返回了无效的 LogsQL 聚合结果")
         return [item for item in result if isinstance(item, dict)]
 
-    def _query_rows(self, query: str, started_at: datetime, ended_at: datetime) -> list[dict[str, Any]]:
+    def _query_rows(
+        self,
+        query: str,
+        started_at: datetime,
+        ended_at: datetime,
+        *,
+        limit: int | None = None,
+    ) -> list[dict[str, Any]]:
         raw = self._request_bytes(
             "/select/logsql/query",
             params={
                 "query": query,
                 "start": started_at.isoformat(),
                 "end": ended_at.isoformat(),
-                "limit": MAX_ACTIVITY_DIMENSIONS + 1,
+                "limit": limit if limit is not None else MAX_ACTIVITY_DIMENSIONS + 1,
             },
         )
         rows: list[dict[str, Any]] = []
@@ -604,6 +690,50 @@ class VictoriaTracesTelemetryStore:
         )
 
     @staticmethod
+    @staticmethod
+    @staticmethod
+    def _span_summary_from_row(row: dict[str, Any]) -> SpanSummary | None:
+        trace_id = str(row.get("trace_id", "")).strip()
+        span_id = str(row.get("span_id", "")).strip()
+        service_name = str(row.get("resource_attr:service.name", "")).strip()
+        if not trace_id or not span_id or not service_name:
+            return None
+        started_raw = _number(row.get("start_time_unix_nano"))
+        if started_raw is None:
+            return None
+        try:
+            started_at = datetime.fromtimestamp(started_raw / 1_000_000_000, tz=UTC)
+        except (OverflowError, OSError, ValueError):
+            return None
+        duration_ns = _number(row.get("duration")) or 0.0
+        status_code = str(row.get("status_code", "")).strip()
+        kind_code = str(row.get("kind", "")).strip()
+        http_method = next(
+            (str(row[field]).strip() for field in _HTTP_METHOD_FIELDS if str(row.get(field, "")).strip()),
+            None,
+        )
+        http_status = next(
+            (str(row[field]).strip() for field in _HTTP_STATUS_FIELDS if str(row.get(field, "")).strip()),
+            None,
+        )
+        instance_id = str(row.get("resource_attr:service.instance.id", "")).strip() or None
+        return SpanSummary(
+            trace_id=trace_id,
+            span_id=span_id,
+            started_at=started_at,
+            duration_ms=duration_ns / 1_000_000,
+            service_namespace=str(row.get("resource_attr:service.namespace", "")),
+            service_name=service_name,
+            environment=str(row.get("resource_attr:deployment.environment", "")),
+            instance_id=instance_id,
+            status="error" if status_code == "2" else "ok",
+            name=str(row.get("name", "")),
+            kind=_CODE_TO_KIND.get(kind_code, "unspecified"),
+            http_method=http_method,
+            http_status_code=http_status,
+        )
+
+    @staticmethod
     def _matching_span(detail: TraceDetail, query: TraceSearchQuery) -> SpanDetail | None:
         for span in detail.spans:
             if normalize_identity(span.service_name) != normalize_identity(query.service_name or ""):
@@ -614,8 +744,17 @@ class VictoriaTracesTelemetryStore:
                 continue
             if query.instance_id is not None and span.instance_id != query.instance_id:
                 continue
+            if query.span_name and span.name != query.span_name:
+                continue
+            if query.status and span.status != query.status:
+                continue
+            if query.min_duration_ms is not None and span.duration_ms < query.min_duration_ms:
+                continue
+            if query.max_duration_ms is not None and span.duration_ms > query.max_duration_ms:
+                continue
             return span
         return None
+
 
     @staticmethod
     def _summary(detail: TraceDetail, matching_span: SpanDetail) -> TraceSummary:

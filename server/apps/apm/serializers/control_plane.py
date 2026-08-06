@@ -255,6 +255,10 @@ class TraceSearchSerializer(serializers.Serializer):
     service_name = serializers.CharField(max_length=256)
     environment = serializers.CharField(max_length=256, allow_blank=True)
     instance_id = serializers.CharField(max_length=512, required=False)
+    span_name = serializers.CharField(max_length=512, required=False, allow_blank=True)
+    status = serializers.ChoiceField(choices=("ok", "error"), required=False)
+    min_duration_ms = serializers.FloatField(required=False, min_value=0)
+    max_duration_ms = serializers.FloatField(required=False, min_value=0)
     started_at = serializers.DateTimeField(required=False)
     ended_at = serializers.DateTimeField(required=False)
     cursor = serializers.CharField(max_length=512, required=False)
@@ -268,6 +272,47 @@ class TraceSearchSerializer(serializers.Serializer):
         started_at = attrs.get("started_at") or ended_at - timedelta(hours=1)
         attrs["started_at"] = started_at
         attrs["ended_at"] = ended_at
+        min_duration = attrs.get("min_duration_ms")
+        max_duration = attrs.get("max_duration_ms")
+        if min_duration is not None and max_duration is not None and min_duration > max_duration:
+            raise serializers.ValidationError("min_duration_ms 不能大于 max_duration_ms")
+        if attrs.get("span_name") == "":
+            attrs.pop("span_name", None)
+        return attrs
+
+
+class SpanSearchSerializer(serializers.Serializer):
+    service_namespace = serializers.CharField(max_length=256, required=False, allow_blank=True)
+    service_name = serializers.CharField(max_length=256)
+    environment = serializers.CharField(max_length=256, allow_blank=True)
+    instance_id = serializers.CharField(max_length=512, required=False)
+    span_name = serializers.CharField(max_length=512, required=False, allow_blank=True)
+    status = serializers.ChoiceField(choices=("ok", "error"), required=False)
+    kind = serializers.ChoiceField(
+        choices=("internal", "server", "client", "producer", "consumer"),
+        required=False,
+    )
+    min_duration_ms = serializers.FloatField(required=False, min_value=0)
+    max_duration_ms = serializers.FloatField(required=False, min_value=0)
+    started_at = serializers.DateTimeField(required=False)
+    ended_at = serializers.DateTimeField(required=False)
+    cursor = serializers.CharField(max_length=512, required=False)
+    limit = serializers.IntegerField(min_value=1, max_value=100, default=20)
+
+    def validate(self, attrs):
+        unsupported = sorted(set(self.initial_data) - set(self.fields))
+        if unsupported:
+            raise serializers.ValidationError(f"不支持的 Span 查询参数: {', '.join(unsupported)}")
+        ended_at = attrs.get("ended_at") or timezone.now()
+        started_at = attrs.get("started_at") or ended_at - timedelta(hours=1)
+        attrs["started_at"] = started_at
+        attrs["ended_at"] = ended_at
+        min_duration = attrs.get("min_duration_ms")
+        max_duration = attrs.get("max_duration_ms")
+        if min_duration is not None and max_duration is not None and min_duration > max_duration:
+            raise serializers.ValidationError("min_duration_ms 不能大于 max_duration_ms")
+        if attrs.get("span_name") == "":
+            attrs.pop("span_name", None)
         return attrs
 
 

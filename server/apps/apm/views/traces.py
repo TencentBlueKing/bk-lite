@@ -90,6 +90,10 @@ class ApmTraceViewSet(viewsets.ViewSet):
             service_name=data["service_name"],
             environment=data["environment"],
             instance_id=data.get("instance_id"),
+            span_name=data.get("span_name"),
+            status=data.get("status"),
+            min_duration_ms=data.get("min_duration_ms"),
+            max_duration_ms=data.get("max_duration_ms"),
             cursor=data.get("cursor"),
             limit=data["limit"],
         )

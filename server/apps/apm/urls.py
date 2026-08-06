@@ -14,6 +14,7 @@ from apps.apm.views.control_plane import (
 )
 from apps.apm.views.dashboard import ApmDashboardViewSet
 from apps.apm.views.health import ApmHealthViewSet
+from apps.apm.views.spans import ApmSpanViewSet
 from apps.apm.views.traces import ApmTraceViewSet
 from apps.apm.views.topology import ApmTopologyViewSet
 
@@ -26,6 +27,7 @@ router.register(r"slos", ApmSloViewSet, basename="apm-slo")
 router.register(r"dashboard", ApmDashboardViewSet, basename="apm-dashboard")
 router.register(r"health", ApmHealthViewSet, basename="apm-health")
 router.register(r"traces", ApmTraceViewSet, basename="apm-trace")
+router.register(r"spans", ApmSpanViewSet, basename="apm-span")
 router.register(r"topology", ApmTopologyViewSet, basename="apm-topology")
 router.register(r"policies", ApmPolicyViewSet, basename="apm-policy")
 router.register(r"events", ApmEventViewSet, basename="apm-event")

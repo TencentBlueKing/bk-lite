@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { useParams } from 'next/navigation';
+import { useParams, useSearchParams } from 'next/navigation';
 import {
   ArrowLeftOutlined,
   CloseCircleOutlined,
@@ -84,6 +84,8 @@ function KpiStat({
 
 export default function ApmTraceDetailPage() {
   const params = useParams<{ traceId: string }>();
+  const searchParams = useSearchParams();
+  const preferredSpanId = searchParams.get('span_id') ?? undefined;
   const { getTrace, isLoading: authLoading } = useApmApi();
   const [trace, setTrace] = useState<ApmTraceDetail>();
   const [selectedSpanId, setSelectedSpanId] = useState<string>();
@@ -96,14 +98,21 @@ export default function ApmTraceDetailPage() {
     getTrace(params.traceId)
       .then((value) => {
         setTrace(value);
-        setSelectedSpanId(value.spans.find((span) => span.status === 'error')?.span_id ?? value.spans[0]?.span_id);
+        const preferred = preferredSpanId
+          ? value.spans.find((span) => span.span_id === preferredSpanId)?.span_id
+          : undefined;
+        setSelectedSpanId(
+          preferred
+          ?? value.spans.find((span) => span.status === 'error')?.span_id
+          ?? value.spans[0]?.span_id,
+        );
         setState(value.spans.length ? 'ready' : 'empty');
       })
       .catch((error) => {
         if (error instanceof HandledRequestError && error.status === 404) setState('not-found');
         else setState(catalogErrorKind(error));
       });
-  }, [authLoading, getTrace, params.traceId]);
+  }, [authLoading, getTrace, params.traceId, preferredSpanId]);
 
   const services = useMemo(
     () => (trace ? Array.from(new Set(trace.spans.map((span) => span.service_name))) : []),

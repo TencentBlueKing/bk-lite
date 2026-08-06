@@ -27,6 +27,8 @@ import type {
   ApmTraceDetail,
   ApmTracePage,
   ApmTraceSearchParams,
+  ApmSpanPage,
+  ApmSpanSearchParams,
   ApmTopologyGraph,
   CatalogStatus,
 } from '@/app/apm/types';
@@ -171,6 +173,11 @@ const useApmApi = () => {
     [get]
   );
 
+  const getSpans = useCallback(
+    (params: ApmSpanSearchParams) => get<ApmSpanPage>('/apm/spans/', { params }),
+    [get]
+  );
+
   const getTrace = useCallback(
     (traceId: string) => get<ApmTraceDetail>(`/apm/traces/${traceId}/`),
     [get]
@@ -263,6 +270,7 @@ const useApmApi = () => {
     deleteSlo,
     setSloEnabled,
     getTraces,
+    getSpans,
     getTrace,
     getTopology,
     getPolicies,

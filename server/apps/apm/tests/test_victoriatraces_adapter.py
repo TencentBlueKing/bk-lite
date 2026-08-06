@@ -275,3 +275,63 @@ def test_unique_span_limit_rejects_instead_of_silently_undercounting(monkeypatch
 
     assert "| limit 2 | stats" in session.get.call_args_list[0].kwargs["params"]["query"]
     assert "| limit 3 | stats count() as unique_spans" in session.get.call_args_list[1].kwargs["params"]["query"]
+
+
+def test_search_spans_builds_controlled_logsql_and_maps_rows():
+    now = timezone.now()
+    start_ns = int(now.timestamp() * 1_000_000_000)
+    row = {
+        "trace_id": "a" * 32,
+        "span_id": "1" * 16,
+        "name": "GET /lab/health",
+        "kind": "2",
+        "status_code": "1",
+        "duration": "12000000",
+        "start_time_unix_nano": str(start_ns),
+        "resource_attr:service.namespace": "lab149",
+        "resource_attr:service.name": "weops-lite-probe",
+        "resource_attr:deployment.environment": "lab",
+        "resource_attr:service.instance.id": "10.10.41.149",
+        "span_attr:http.request.method": "GET",
+        "span_attr:http.response.status_code": "200",
+    }
+    session = Mock()
+    session.get.return_value = _response({}, raw=(json.dumps(row) + "\n").encode())
+    store = VictoriaTracesTelemetryStore(endpoint="http://traces.test", session=session)
+
+    from apps.apm.services.contracts import SpanSearchQuery
+
+    page = store.search_spans(
+        SpanSearchQuery(
+            started_at=now - timedelta(hours=1),
+            ended_at=now + timedelta(minutes=1),
+            service_namespace="lab149",
+            service_name="weops-lite-probe",
+            environment="lab",
+            instance_id="10.10.41.149",
+            span_name='GET /lab/health"evil',
+            status="ok",
+            kind="server",
+            min_duration_ms=1,
+            max_duration_ms=50,
+            limit=20,
+        )
+    )
+
+    assert len(page.items) == 1
+    item = page.items[0]
+    assert item.span_id == "1" * 16
+    assert item.name == "GET /lab/health"
+    assert item.kind == "server"
+    assert item.status == "ok"
+    assert item.http_method == "GET"
+    assert item.http_status_code == "200"
+    assert abs(item.duration_ms - 12.0) < 0.001
+    query = session.get.call_args.kwargs["params"]["query"]
+    assert "`resource_attr:service.name`:=\"weops-lite-probe\"" in query
+    assert 'name:="GET /lab/health\\"evil"' in query
+    assert 'status_code:="1"' in query
+    assert 'kind:="2"' in query
+    assert "duration:>=1000000" in query
+    assert "duration:<=50000000" in query
+    assert session.get.call_args.kwargs["params"]["limit"] == 21
