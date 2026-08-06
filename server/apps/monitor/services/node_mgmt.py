@@ -996,6 +996,10 @@ class InstanceConfigService:
             if config_obj:
                 content = ConfigFormat.json_to_yaml(base_info["content"])
                 env_config = base_info.get("env_config")
+                if (config_obj.config_type or "").lower() == "kafka":
+                    from apps.monitor.utils.kafka_sasl import ensure_kafka_sasl_mechanism_in_env
+
+                    ensure_kafka_sasl_mechanism_in_env(env_config)
                 NodeMgmt().update_config_content(base_info["id"], content, env_config)
 
         if child_info:
@@ -1024,7 +1028,9 @@ class InstanceConfigService:
                     assert_kafka_group_metrics_timeout_lt_interval,
                     extract_group_metrics_timeout_from_env,
                 )
+                from apps.monitor.utils.kafka_sasl import ensure_kafka_sasl_mechanism_in_env
 
+                ensure_kafka_sasl_mechanism_in_env(env_config)
                 child_content = child_info.get("content") or {}
                 child_interval = (
                     (child_content.get("config") or {}).get("interval")
