@@ -6,11 +6,11 @@ transaction; only validation, compatibility mirror refresh, and pointer switch
 run while the knowledge-base row is locked.
 """
 
-import logging
 from dataclasses import dataclass
 
 from django.db import transaction
 
+from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.models import (
     BuildRecord,
     KnowledgePage,
@@ -23,10 +23,10 @@ from apps.opspilot.models import (
     WikiStructureRevision,
 )
 from apps.opspilot.services.wiki.generation_consistency_contract import ActivationFacts, ActivationOutcome, decide_activation
+from apps.opspilot.services.wiki.generation_navigation_service import navigation_validation_issues, rebuild_generation_navigation
 from apps.opspilot.services.wiki.title_service import title_identity_key
 
 ACTIVE_GENERATION_PAGE_STATUS = "active"
-logger = logging.getLogger("opspilot")
 GENERATION_PAGE_ACTIONS_KEY = "generation_page_actions"
 GENERATION_PAGE_ACTION_STATUSES = {
     "archive": "archived",
@@ -463,8 +463,6 @@ def _candidate_validation_issues(candidate):  # noqa: C901
                     "missing_page_ids": missing,
                 }
             )
-    from apps.opspilot.services.wiki.generation_navigation_service import navigation_validation_issues
-
     issues.extend(navigation_validation_issues(candidate))
     return issues
 
@@ -803,8 +801,6 @@ def mark_generation_ready(candidate_id):
 
     _, candidate = _candidate_lock_order(candidate_id)
     _require_candidate_status(candidate, "preparing", "ready")
-    from apps.opspilot.services.wiki.generation_navigation_service import rebuild_generation_navigation
-
     rebuild_generation_navigation(candidate.pk)
     candidate.refresh_from_db()
     issues = _candidate_validation_issues(candidate)

@@ -1,6 +1,8 @@
 import * as assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import {
   getEffectiveRootDepartmentFieldKey,
+  excludeUserSyncRootScope,
   getUserSyncBusinessConfigDefaults,
   getRootDepartmentFieldKey,
   getRootDepartmentInputMode,
@@ -11,6 +13,11 @@ import {
   shouldFetchDepartmentOptions,
 } from '../src/app/system-manager/utils/userSyncUtils';
 import type { BusinessTemplate, ProviderManifest } from '../src/app/system-manager/types/integration-center';
+
+const userSyncTypes = readFileSync(
+  new URL('../src/app/system-manager/types/user-sync.ts', import.meta.url),
+  'utf8',
+);
 
 const departmentSelectTemplate: BusinessTemplate = {
   title: 'User Sync',
@@ -54,6 +61,32 @@ const manualInputTemplate: BusinessTemplate = {
         {
           ...departmentSelectTemplate.groups[0].fields[0],
           input_mode: 'manual_input',
+        },
+      ],
+    },
+  ],
+};
+
+const typedDepartmentSelectTemplate: BusinessTemplate = {
+  ...departmentSelectTemplate,
+  groups: [
+    {
+      ...departmentSelectTemplate.groups[0],
+      fields: [
+        ...departmentSelectTemplate.groups[0].fields,
+        {
+          key: 'department_id_type',
+          label: '部门 ID 类型',
+          field_type: 'select',
+          required: true,
+          secret: false,
+          write_only: false,
+          mask_strategy: 'full',
+          default: 'department_id',
+          placeholder: '',
+          help_text: '',
+          options: [{ value: 'department_id', label: 'department_id' }],
+          reset_capabilities: [],
         },
       ],
     },
@@ -138,6 +171,15 @@ assert.equal(getRootDepartmentInputMode(adManualInputTemplate), 'manual_input');
 assert.equal(isDepartmentSelectMode(departmentSelectTemplate), true);
 assert.equal(isManualInputMode(manualInputTemplate), true);
 assert.equal(shouldFetchDepartmentOptions({ selectedInstanceId: 1, template: departmentSelectTemplate }), true);
+assert.equal(
+  shouldFetchDepartmentOptions({ selectedInstanceId: 1, template: typedDepartmentSelectTemplate, departmentIdType: '' }),
+  false,
+  '飞书部门 ID 类型尚未写入表单时不能请求部门选项',
+);
+assert.equal(
+  shouldFetchDepartmentOptions({ selectedInstanceId: 1, template: typedDepartmentSelectTemplate, departmentIdType: 'department_id' }),
+  true,
+);
 assert.equal(shouldFetchDepartmentOptions({ selectedInstanceId: 1, template: adManualInputTemplate }), false);
 assert.equal(shouldFetchDepartmentOptions({ selectedInstanceId: undefined, template: adManualInputTemplate }), false);
 assert.equal(
@@ -162,6 +204,19 @@ assert.deepEqual(
     user_filter: '(mail=*)',
     root_dn: 'OU=Users,DC=example,DC=com',
   },
+);
+assert.deepEqual(
+  excludeUserSyncRootScope(
+    { root_department_id: '8eba59d61667gb86', department_id_type: 'department_id', user_id_type: 'user_id' },
+    'root_department_id',
+  ),
+  { department_id_type: 'department_id', user_id_type: 'user_id' },
+  '编辑态在部门选项解析前不能将原始根部门 ID 放进 TreeSelect 的表单值',
+);
+assert.doesNotMatch(
+  userSyncTypes,
+  /\bis_all\b/,
+  'department option nodes must only model real Provider departments',
 );
 
 console.log('user sync input mode tests passed');

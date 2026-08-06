@@ -1,9 +1,8 @@
-import logging
-
 from django.http import JsonResponse
 from rest_framework.decorators import action
 
 from apps.core.decorators.api_permission import HasPermission
+from apps.core.logger import opspilot_logger as logger
 from apps.core.utils.viewset_utils import AuthViewSet
 from apps.opspilot.models import WikiDirectory
 from apps.opspilot.services.wiki.active_generation_query_service import ActiveGenerationReadError, directory_page_counts
@@ -13,7 +12,6 @@ from apps.opspilot.services.wiki.structure_service import StructureServiceError,
 from apps.opspilot.viewsets.wiki_team_scope import WikiTeamScopeMixin
 
 UNCLASSIFIED_DIRECTORY_KEY = "__unclassified__"
-logger = logging.getLogger("opspilot")
 
 
 def _log_structure_conflict(knowledge_base, error):
@@ -239,6 +237,7 @@ class WikiDirectoryViewSet(WikiTeamScopeMixin, AuthViewSet):
                 "result": True,
                 "data": {
                     "enabled": knowledge_base.directory_enabled,
+                    "migration_state": knowledge_base.directory_migration_state,
                     "unclassified_directory_id": unclassified_directory_id,
                     "structure_revision_id": (knowledge_base.active_structure_revision_id),
                     "structure_version": (

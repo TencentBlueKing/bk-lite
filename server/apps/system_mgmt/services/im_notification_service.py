@@ -15,6 +15,7 @@ from apps.system_mgmt.models import (
     User,
 )
 from apps.system_mgmt.providers import RuntimeApplicationService
+from apps.system_mgmt.services.capability_contract_service import get_integration_capability_availability
 
 
 CHANNEL_STATUS_PENDING_SYNC = IMNotificationChannelStatusChoices.PENDING_SYNC
@@ -49,7 +50,7 @@ def create_im_notification_sync_run(channel_id: int, trigger_mode: str = IMNotif
                 return {"result": False, "message": "IM notification channel not found"}
 
             instance = channel.integration_instance
-            if not instance.enabled or instance.status != "ready" or instance.capability_status.get("im_notification") != "ready":
+            if not get_integration_capability_availability(instance, "im_notification")["available"]:
                 logger.warning(
                     f"create_im_notification_sync_run: channel instance not ready, "
                     f"channel_id={channel_id}, provider_key={instance.provider_key}, "
@@ -100,6 +101,8 @@ def execute_im_notification_sync_run(run_id: int):
             f"run_id={run_id}, channel_id={run.channel_id}, integration_instance_id={config_snapshot.get('integration_instance_id')}"
         )
         return _fail_sync_run(run, "Integration instance not found")
+    if not get_integration_capability_availability(instance, "im_notification")["available"]:
+        return _fail_sync_run(run, "IM notification channel is not ready")
 
     runtime_service = RuntimeApplicationService()
     result = runtime_service.execute(
@@ -194,6 +197,8 @@ def send_im_notification(channel_id: int, title: str, content: str, receivers):
             f"channel_id={channel_id}, channel_status={channel.status}"
         )
         return {"result": False, "message": "IM notification channel requires a successful sync before sending"}
+    if not get_integration_capability_availability(channel.integration_instance, "im_notification")["available"]:
+        return {"result": False, "message": "IM notification channel is not ready"}
 
     users = _resolve_users(receivers)
     if not users:
@@ -259,6 +264,8 @@ def send_im_notification_to_users(channel_id: int, user_ids: list[int], title: s
             f"channel_id={channel_id}, channel_status={channel.status}"
         )
         return {"result": False, "message": "IM notification channel requires a successful sync before sending"}
+    if not get_integration_capability_availability(channel.integration_instance, "im_notification")["available"]:
+        return {"result": False, "message": "IM notification channel is not ready"}
 
     if not user_ids:
         logger.warning(f"send_im_notification_to_users: no recipients selected, channel_id={channel_id}")

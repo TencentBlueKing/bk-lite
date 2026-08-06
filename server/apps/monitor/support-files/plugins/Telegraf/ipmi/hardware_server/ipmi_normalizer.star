@@ -1,12 +1,16 @@
 DIGITS = "0123456789"
 
 def _normalize_name(value):
+    # Canonicalize BMC sensor names so vendor variants share one match key:
+    # "PSU 1 Temp" / "PSU1-Temp" / "PSU  /  1" -> "psu_1_temp" / "psu1_temp" / "psu_1"
     result = value.strip().lower()
     for separator in [" ", "-", "/", "."]:
         result = result.replace(separator, "_")
-    while "__" in result:
-        result = result.replace("__", "_")
-    return result.strip("_")
+    parts = []
+    for part in result.split("_"):
+        if part:
+            parts.append(part)
+    return "_".join(parts)
 
 def _extract_index(value, prefixes):
     for prefix in prefixes:
@@ -14,7 +18,9 @@ def _extract_index(value, prefixes):
             continue
         remainder = value[len(prefix):].lstrip("_")
         number = ""
-        for character in remainder:
+        # Starlark strings are not iterable; walk by index.
+        for i in range(len(remainder)):
+            character = remainder[i]
             if character not in DIGITS:
                 break
             number += character
@@ -27,7 +33,8 @@ def _suffix_after_index(value, prefix):
         return ""
     remainder = value[len(prefix):].lstrip("_")
     offset = 0
-    for character in remainder:
+    for i in range(len(remainder)):
+        character = remainder[i]
         if character not in DIGITS:
             break
         offset += 1

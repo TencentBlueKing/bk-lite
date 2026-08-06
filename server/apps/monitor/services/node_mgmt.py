@@ -1009,9 +1009,16 @@ class InstanceConfigService:
                 except ValueError as exc:
                     raise BaseAppException(str(exc)) from exc
             if (config_obj.collect_type or "").startswith("snmp"):
+                from apps.monitor.utils.config_format import ConfigFormat
                 from apps.monitor.utils.snmp_interface_filters import normalize_snmp_interface_filter_config
+                from apps.monitor.utils.snmp_interface_template import has_interface_collection
 
-                child_info["content"] = normalize_snmp_interface_filter_config(child_info.get("content"))
+                # IF-MIB 是模板能力，而不是实例环境变量。child content 是首次下发时
+                # 已渲染的快照；编辑其他配置时不可按当前模板状态重建它，避免后续
+                # 关闭模板 IF-MIB 反向改变已开启实例的实际采集。
+                child_content = child_info.get("content")
+                if has_interface_collection(ConfigFormat.json_to_toml(child_content)):
+                    child_info["content"] = normalize_snmp_interface_filter_config(child_content)
             if (config_obj.config_type or "").lower() == "kafka":
                 from apps.monitor.utils.kafka_collect_timeouts import (
                     assert_kafka_group_metrics_timeout_lt_interval,

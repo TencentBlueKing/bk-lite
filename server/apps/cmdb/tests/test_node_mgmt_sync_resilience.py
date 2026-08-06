@@ -19,6 +19,15 @@ from apps.core.utils.web_utils import WebUtils
 SERVICE = "apps.cmdb.services.node_mgmt_sync_service"
 
 
+@pytest.fixture(autouse=True)
+def _enable_pull_sync_for_legacy_resilience_tests(monkeypatch):
+    """本文件测同步容错内部路径，需临时关闭推送联动门闩。"""
+    monkeypatch.setattr(
+        "apps.cmdb.services.node_mgmt_sync_service.PUSH_LINKAGE_REPLACES_PULL_SYNC",
+        False,
+    )
+
+
 @pytest.fixture
 def sync_config(db):
     config = NodeMgmtSyncConfig.objects.create(name="节点管理同步", is_builtin=True)

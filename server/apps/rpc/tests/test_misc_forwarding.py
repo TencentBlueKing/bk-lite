@@ -112,6 +112,31 @@ def test_cmdb_model_inst_count(cmdb):
     assert _last(cmdb.client) == ("run", "model_inst_count", (), {"model_id": "host"})
 
 
+def test_cmdb_ingest_from_source_wraps_flat_kwargs_as_params(cmdb):
+    """NATS handler 是 ingest_from_source(params)；RPC 必须整包，不能摊成顶层 kwargs。"""
+    cmdb.ingest_from_source(
+        source_module="node_mgmt",
+        source_id="n1",
+        event_type="upsert",
+        allowed_org_ids=[1],
+        operator="admin",
+    )
+    assert _last(cmdb.client) == (
+        "run",
+        "ingest_from_source",
+        (),
+        {
+            "params": {
+                "source_module": "node_mgmt",
+                "source_id": "n1",
+                "event_type": "upsert",
+                "allowed_org_ids": [1],
+                "operator": "admin",
+            }
+        },
+    )
+
+
 def test_cmdb_local_client_appclient_path(monkeypatch):
     monkeypatch.setenv("IS_LOCAL_RPC", "0")
     from apps.rpc.cmdb import CMDB

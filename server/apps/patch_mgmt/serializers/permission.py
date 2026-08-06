@@ -13,6 +13,7 @@ class PatchPermissionSerializer(TeamSerializer):
 
     permission = serializers.SerializerMethodField()
     permission_key = ""
+    global_shared = False
 
     def __init__(self, instance=None, data=empty, **kwargs):
         super().__init__(instance=instance, data=data, **kwargs)
@@ -22,7 +23,12 @@ class PatchPermissionSerializer(TeamSerializer):
         self._is_superuser = bool(
             request and getattr(request.user, "is_superuser", False)
         )
-        if not request or self._is_superuser or not self.permission_key:
+        if (
+            not request
+            or self._is_superuser
+            or self.global_shared
+            or not self.permission_key
+        ):
             return
 
         current_team = get_current_team(request, "0")
@@ -49,7 +55,7 @@ class PatchPermissionSerializer(TeamSerializer):
             )
 
     def get_permission(self, instance):
-        if self._is_superuser:
+        if self._is_superuser or self.global_shared:
             return ["View", "Operate"]
         instance_teams = {
             int(team_id)

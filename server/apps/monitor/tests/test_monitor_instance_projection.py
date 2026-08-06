@@ -1,16 +1,32 @@
 import types
 
-from apps.monitor.models import (
-    Metric,
-    MetricGroup,
-    MonitorInstance,
-    MonitorInstanceOrganization,
-    MonitorObject,
-)
+from apps.monitor.models import Metric, MetricGroup, MonitorInstance, MonitorInstanceOrganization, MonitorObject
 from apps.monitor.models.plugin import MonitorPlugin
 from apps.monitor.services.monitor_instance import InstanceSearch
 from apps.monitor.services.monitor_object import MonitorObjectService
 from apps.monitor.utils.dimension import build_safe_instance_id
+
+
+def test_monitor_instance_status_failure_degrades_to_empty_status_map(monkeypatch):
+    def raise_status_error(*args, **kwargs):
+        raise RuntimeError("VictoriaMetrics unavailable")
+
+    monkeypatch.setattr(MonitorObjectService, "get_instances_by_metric", raise_status_error)
+
+    assert MonitorObjectService._safe_get_instances_by_metric("up", ["instance_id"]) == {}
+
+
+def test_monitor_instance_display_metric_failure_keeps_base_rows(monkeypatch):
+    rows = [{"instance_id": "('demo-host-01',)", "instance_name": "demo-host-01"}]
+
+    def raise_metric_error(*args, **kwargs):
+        raise RuntimeError("VictoriaMetrics unavailable")
+
+    monkeypatch.setattr(MonitorObjectService, "_fill_display_metrics", raise_metric_error)
+
+    MonitorObjectService._safe_fill_display_metrics(19, {}, rows)
+
+    assert rows == [{"instance_id": "('demo-host-01',)", "instance_name": "demo-host-01"}]
 
 
 def test_monitor_object_service_projects_flow_asset_fields_for_existing_asset_prefill(db):
@@ -359,6 +375,8 @@ def test_monitor_instance_list_item_serializer_includes_flow_asset_fields():
         ip="10.0.0.12",
         summary_facts={"asset.ip": "10.0.0.12"},
         fallback_sampling_rate=2000,
+        node_id="node-abc",
+        cmdb_id="1704",
     )
 
     assert MonitorObjectService._serialize_instance_list_item(
@@ -376,8 +394,58 @@ def test_monitor_instance_list_item_serializer_includes_flow_asset_fields():
         "ip": "10.0.0.12",
         "summary_facts": {"asset.ip": "10.0.0.12"},
         "fallback_sampling_rate": 2000,
+        "node_id": "node-abc",
+        "cmdb_id": "1704",
         "organizations": [7],
     }
+
+
+def test_monitor_instance_list_item_serializer_empty_link_ids():
+    obj = types.SimpleNamespace(
+        id="('x',)",
+        name="x",
+        interval=60,
+        cloud_region_id=1,
+        ip="1.1.1.1",
+        summary_facts={},
+        fallback_sampling_rate=None,
+        node_id=None,
+        cmdb_id=None,
+    )
+    item = MonitorObjectService._serialize_instance_list_item(obj, {}, {})
+    assert item["node_id"] == ""
+    assert item["cmdb_id"] == ""
+
+
+def test_get_objs_v2_includes_node_and_cmdb_ids(db):
+    monitor_object = MonitorObject.objects.create(
+        name="HostLinkIds",
+        display_name="HostLinkIds",
+        default_metric="up",
+        instance_id_keys=["instance_id"],
+    )
+    instance = MonitorInstance.objects.create(
+        id="('link-host',)",
+        name="link-host",
+        monitor_object=monitor_object,
+        ip="10.11.27.147",
+        node_id="a9ab71a9da914e07a54f441a6a13000e",
+        cmdb_id="1704",
+        is_active=True,
+        is_deleted=False,
+    )
+    MonitorInstanceOrganization.objects.create(monitor_instance=instance, organization=1)
+
+    data = InstanceSearch(
+        monitor_object,
+        {"page": 1, "page_size": -1},
+        qs=MonitorInstance.objects.all(),
+        visible_organization_ids=frozenset({1}),
+    ).get_objs_v2()
+
+    assert data["count"] == 1
+    assert data["results"][0]["node_id"] == "a9ab71a9da914e07a54f441a6a13000e"
+    assert data["results"][0]["cmdb_id"] == "1704"
 
 
 def test_instance_search_results_include_collection_interval_for_gap_detection(db, monkeypatch):
@@ -460,10 +528,7 @@ def test_monitor_instance_list_add_metrics_escapes_flow_instance_regex_for_promq
         monitor_object=monitor_object,
         metric_group=metric_group,
         name="device_total_incoming_netflow_traffic",
-        query=(
-            "sum(netflow_in_bytes{instance_type='switch', collect_type='netflow', __$labels__}) "
-            "by (instance_id)"
-        ),
+        query=("sum(netflow_in_bytes{instance_type='switch', collect_type='netflow', __$labels__}) " "by (instance_id)"),
         instance_id_keys=["instance_id"],
     )
     instance = MonitorInstance.objects.create(
@@ -509,6 +574,5 @@ def test_monitor_instance_list_add_metrics_escapes_flow_instance_regex_for_promq
 
     assert data["count"] == 1
     assert captured_queries[1] == (
-        "sum(netflow_in_bytes{instance_type='switch', collect_type='netflow', "
-        f'instance_id=~"{logical_id}"}}) by (instance_id)'
+        "sum(netflow_in_bytes{instance_type='switch', collect_type='netflow', " f'instance_id=~"{logical_id}"}}) by (instance_id)'
     )

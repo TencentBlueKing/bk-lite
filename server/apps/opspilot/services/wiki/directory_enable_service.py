@@ -56,11 +56,15 @@ def enable_wiki_directory(
     changed = not locked_knowledge_base.directory_enabled
     if changed:
         locked_knowledge_base.directory_enabled = True
-        update_fields = ["directory_enabled", "updated_at"]
+        locked_knowledge_base.directory_migration_state = "enabled"
+        update_fields = ["directory_enabled", "directory_migration_state", "updated_at"]
         if normalized_operator:
             locked_knowledge_base.updated_by = normalized_operator
             update_fields.append("updated_by")
         locked_knowledge_base.save(update_fields=update_fields)
+    elif locked_knowledge_base.directory_migration_state != "enabled":
+        locked_knowledge_base.directory_migration_state = "enabled"
+        locked_knowledge_base.save(update_fields=["directory_migration_state", "updated_at"])
 
     return WikiDirectoryEnableResult(
         knowledge_base_id=locked_knowledge_base.pk,

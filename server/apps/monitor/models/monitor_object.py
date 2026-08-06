@@ -119,6 +119,22 @@ class MonitorInstance(TimeInfo, MaintainerInfo):
     is_active = models.BooleanField(default=True)
     cloud_region_id = models.IntegerField(null=True, blank=True, db_index=True, verbose_name='云区域ID')
     ip = models.GenericIPAddressField(null=True, blank=True, verbose_name='接入IP')
+    node_id = models.CharField(
+        max_length=100,
+        null=True,
+        blank=True,
+        unique=True,
+        db_index=True,
+        verbose_name='关联节点ID',
+    )
+    cmdb_id = models.CharField(
+        max_length=100,
+        null=True,
+        blank=True,
+        unique=True,
+        db_index=True,
+        verbose_name='关联CMDB实例ID',
+    )
     summary_facts = models.JSONField(default=dict, verbose_name='实例摘要事实')
     fallback_sampling_rate = models.IntegerField(default=1000, verbose_name='兜底采样率')
     enabled_protocols = models.JSONField(default=list, verbose_name='已启用的Flow协议')

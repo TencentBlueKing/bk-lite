@@ -207,11 +207,14 @@ const NetworkWhitelistPage: React.FC = () => {
         saving={saving}
         onEntryTypeChange={(next) => {
           setEntryType(next);
-          if (next === 'domain') {
-            form.setFieldValue('network', '');
-          } else {
-            form.setFieldValue('domain_name', '');
-          }
+          // Radio onChange 同步写 Form 会触发 antd「circular references」警告，推迟到当前事件之后
+          queueMicrotask(() => {
+            if (next === 'domain') {
+              form.setFieldsValue({ network: undefined });
+            } else {
+              form.setFieldsValue({ domain_name: undefined });
+            }
+          });
         }}
         onSubmit={handleSave}
         onCancel={() => setModalOpen(false)}

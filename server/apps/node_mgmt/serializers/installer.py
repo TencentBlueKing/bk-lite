@@ -49,6 +49,12 @@ class ControllerInstallRequestSerializer(serializers.Serializer):
     package_id = serializers.IntegerField()
     cpu_architecture = serializers.CharField(allow_blank=False)
     nodes = InstallNodeSerializer(many=True, allow_empty=False)
+    push_targets = serializers.ListField(
+        child=serializers.CharField(allow_blank=False),
+        required=False,
+        allow_empty=True,
+        default=list,
+    )
 
     def validate(self, attrs):
         node_operating_systems = {

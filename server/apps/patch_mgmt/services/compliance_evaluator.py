@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from typing import Iterable, Mapping
 
@@ -17,6 +18,11 @@ class RequirementSpec:
     identifier: str
     required_version: str = ""
     replacement_identifiers: tuple[str, ...] = ()
+    distro_name: str = ""
+    os_version_range: str = ""
+    architectures: tuple[str, ...] = ()
+    package_manager: str = ""
+    products: tuple[str, ...] = ()
     configuration_error: str = ""
 
 
@@ -28,6 +34,27 @@ class LinuxPackageFact:
     installed_version: str = ""
     comparison: int | None = None
     error: str = ""
+
+
+@dataclass(frozen=True)
+class LinuxHostFacts:
+    """Linux 目标机的适用性事实。"""
+
+    distro_id: str = ""
+    distro_like: tuple[str, ...] = ()
+    version_id: str = ""
+    architecture: str = ""
+    package_manager: str = ""
+
+
+@dataclass(frozen=True)
+class WindowsHostFacts:
+    """Windows 目标机的适用性事实。"""
+
+    product_name: str = ""
+    version: str = ""
+    build_number: str = ""
+    architecture: str = ""
 
 
 @dataclass(frozen=True)
@@ -45,7 +72,9 @@ class HostAssessmentFacts:
     """一次主机采集的结构化事实集合。"""
 
     linux_packages: Mapping[str, LinuxPackageFact] = field(default_factory=dict)
+    linux_host: LinuxHostFacts = field(default_factory=LinuxHostFacts)
     windows: WindowsUpdateFacts = field(default_factory=WindowsUpdateFacts)
+    windows_host: WindowsHostFacts = field(default_factory=WindowsHostFacts)
     collection_error: str = ""
 
 
@@ -78,11 +107,121 @@ def _result(
     )
 
 
+def _normalized_architecture(value: str) -> str:
+    raw = str(value or "").strip().lower().replace(" ", "")
+    aliases = {
+        "amd64": "x86_64",
+        "x64": "x86_64",
+        "x86-64": "x86_64",
+        "x86_64": "x86_64",
+        "64-bit": "x86_64",
+        "64bit": "x86_64",
+        "aarch64": "arm64",
+        "arm64": "arm64",
+    }
+    return aliases.get(raw, raw)
+
+
+def _normalized_distro(value: str) -> str:
+    raw = re.sub(r"[^a-z0-9]+", " ", str(value or "").strip().lower()).strip()
+    aliases = (
+        ("oracle linux", "ol"),
+        ("red hat enterprise linux", "rhel"),
+        ("rocky linux", "rocky"),
+        ("alma linux", "almalinux"),
+        ("almalinux", "almalinux"),
+        ("centos", "centos"),
+        ("ubuntu", "ubuntu"),
+        ("debian", "debian"),
+        ("rhel", "rhel"),
+        ("rocky", "rocky"),
+        ("ol", "ol"),
+    )
+    for prefix, canonical in aliases:
+        if raw == prefix or raw.startswith(f"{prefix} "):
+            return canonical
+    return raw.replace(" ", "")
+
+
+def _version_matches(actual: str, expected: str) -> bool | None:
+    actual = str(actual or "").strip()
+    expected = str(expected or "").strip()
+    if not actual or not expected:
+        return None
+    try:
+        from packaging.specifiers import SpecifierSet
+        from packaging.version import Version
+
+        if expected.startswith((">", "<", "=", "!", "~")):
+            return Version(actual) in SpecifierSet(expected)
+        range_match = re.fullmatch(r"\s*([0-9][0-9.]*)\s*-\s*([0-9][0-9.]*)\s*", expected)
+        if range_match:
+            return Version(range_match.group(1)) <= Version(actual) <= Version(range_match.group(2))
+    except (ImportError, ValueError):
+        return None
+    return actual == expected or actual.startswith(f"{expected}.")
+
+
+def _linux_not_applicable_reason(requirement: RequirementSpec, host: LinuxHostFacts) -> str:
+    expected_arches = {
+        _normalized_architecture(value) for value in requirement.architectures if str(value or "").strip()
+    }
+    host_arch = _normalized_architecture(host.architecture)
+    if expected_arches and host_arch and host_arch not in expected_arches:
+        return f"补丁架构不适用于当前主机（要求 {', '.join(sorted(expected_arches))}，主机 {host_arch}）"
+
+    expected_distro = _normalized_distro(requirement.distro_name)
+    host_distro = _normalized_distro(host.distro_id)
+    if expected_distro and host_distro and expected_distro != host_distro:
+        return f"补丁发行版 {requirement.distro_name} 不适用于当前主机 {host.distro_id}"
+
+    version_matches = _version_matches(host.version_id, requirement.os_version_range)
+    if version_matches is False:
+        return f"补丁系统版本 {requirement.os_version_range} 不适用于当前主机 {host.version_id}"
+
+    expected_manager = str(requirement.package_manager or "").strip().lower()
+    host_manager = str(host.package_manager or "").strip().lower()
+    expected_family = "apt" if expected_manager == "apt" else ("rpm" if expected_manager in {"dnf", "yum"} else "")
+    host_family = "apt" if host_manager == "apt" else ("rpm" if host_manager in {"dnf", "yum"} else "")
+    if expected_family and host_family and expected_family != host_family:
+        return f"补丁包管理器 {expected_manager} 不适用于当前主机 {host_manager}"
+    return ""
+
+
+def _windows_not_applicable_reason(requirement: RequirementSpec, host: WindowsHostFacts) -> str:
+    expected_arches = {
+        _normalized_architecture(value) for value in requirement.architectures if str(value or "").strip()
+    }
+    host_arch = _normalized_architecture(host.architecture)
+    if expected_arches and host_arch and host_arch not in expected_arches:
+        return f"补丁架构不适用于当前主机（要求 {', '.join(sorted(expected_arches))}，主机 {host_arch}）"
+
+    product_name = re.sub(r"\s+", " ", str(host.product_name or "").strip().lower())
+    products = [re.sub(r"\s+", " ", str(value or "").strip().lower()) for value in requirement.products]
+    products = [value for value in products if value]
+    if products and product_name and not any(value in product_name for value in products):
+        return f"补丁产品范围不适用于当前主机 {host.product_name}"
+    return ""
+
+
 def _evaluate_linux(
     requirement: RequirementSpec,
     facts: HostAssessmentFacts,
 ) -> RequirementAssessment:
     package_name = requirement.identifier.strip()
+    not_applicable_reason = _linux_not_applicable_reason(requirement, facts.linux_host)
+    if not_applicable_reason:
+        return _result(
+            requirement.requirement_id,
+            RequirementAssessmentStatus.NOT_APPLICABLE,
+            not_applicable_reason,
+            pkg_name=package_name,
+            required_version=requirement.required_version,
+            host_distro=facts.linux_host.distro_id,
+            host_version=facts.linux_host.version_id,
+            host_architecture=facts.linux_host.architecture,
+            host_package_manager=facts.linux_host.package_manager,
+        )
     fact = facts.linux_packages.get(package_name)
     if fact is None:
         return _result(
@@ -181,6 +320,18 @@ def _evaluate_windows(
             RequirementAssessmentStatus.SATISFIED,
             f"已安装 {installed_matches[0]}",
             satisfied_by=installed_matches[0],
+            **evidence,
+        )
+    not_applicable_reason = _windows_not_applicable_reason(requirement, facts.windows_host)
+    if not_applicable_reason:
+        return _result(
+            requirement.requirement_id,
+            RequirementAssessmentStatus.NOT_APPLICABLE,
+            not_applicable_reason,
+            host_product=facts.windows_host.product_name,
+            host_version=facts.windows_host.version,
+            host_build=facts.windows_host.build_number,
+            host_architecture=facts.windows_host.architecture,
             **evidence,
         )
     if required_kb in not_applicable:

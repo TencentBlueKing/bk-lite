@@ -239,37 +239,36 @@ def _fetch_all_users(config, token, url, params):
 
 
 def _department_tree(departments):
-    from apps.system_mgmt.services.user_sync_service import ALL_DEPARTMENT_SELECTION_ID
-
     nodes = {}
     children = {}
     for department in departments:
         department_id = str(department.get("id") or "")
         if not department_id:
             continue
-        parent_id = str(department.get("parentid") or "0")
         node = {
             "id": department_id,
             "name": department.get("name") or department_id,
-            "parent_id": ALL_DEPARTMENT_SELECTION_ID if parent_id == "0" else parent_id,
+            "parent_id": str(department.get("parentid") or ""),
             "children": [],
             "selectable": True,
-            "is_all": False,
         }
         nodes[department_id] = node
-        children.setdefault(node["parent_id"], []).append(node)
+
+    for node in nodes.values():
+        parent_id = node["parent_id"]
+        if parent_id not in nodes:
+            node["parent_id"] = None
+        else:
+            children.setdefault(parent_id, []).append(node)
 
     def build(parent_id):
         return [{**node, "children": build(node["id"])} for node in children.get(parent_id, [])]
 
-    return [{
-        "id": ALL_DEPARTMENT_SELECTION_ID,
-        "name": "全部部门",
-        "parent_id": None,
-        "children": build(ALL_DEPARTMENT_SELECTION_ID),
-        "selectable": True,
-        "is_all": True,
-    }]
+    return [
+        {**node, "children": build(node["id"])}
+        for node in nodes.values()
+        if node["parent_id"] is None
+    ]
 
 
 class WeComLoginAuthAdapter(BaseLoginAuthAdapter):
@@ -385,8 +384,6 @@ class WeComUserSyncAdapter(BaseUserSyncAdapter):
 
     @classmethod
     def list_departments(cls, config, provider_key, capability_key, **kwargs):
-        from apps.system_mgmt.services.user_sync_service import ALL_DEPARTMENT_SELECTION_ID
-
         error = _validate_credentials(config)
         if error:
             return error
@@ -412,34 +409,9 @@ class WeComUserSyncAdapter(BaseUserSyncAdapter):
                 code="provider.request_failed",
                 retryable=True,
             )
-        source = kwargs.get("source")
-        business_config = kwargs.get("business_config") or {}
-        source_business_config = getattr(source, "business_config", None) or {}
-        merged_business_config = {**source_business_config, **business_config}
-        root_department_id = str(
-            merged_business_config.get("root_department_id")
-            or kwargs.get("current_root_department_id")
-            or "0"
-        )
-        department_ids = {
-            str(item.get("id"))
-            for item in departments
-            if item.get("id") is not None
-        }
-        if root_department_id == "0":
-            selected_id = ALL_DEPARTMENT_SELECTION_ID
-            selection_missing = False
-        else:
-            selected_id = root_department_id if root_department_id in department_ids else ""
-            selection_missing = bool(root_department_id and not selected_id)
         return CapabilityExecutionResult.success_result(
             "WeCom department options loaded",
-            payload={
-                "items": _department_tree(departments),
-                "all_department_id": "0",
-                "selected_id": selected_id,
-                "selection_missing": selection_missing,
-            },
+            payload={"items": _department_tree(departments)},
         )
 
     @classmethod
@@ -449,9 +421,14 @@ class WeComUserSyncAdapter(BaseUserSyncAdapter):
             return error
         source = kwargs.get("source")
         business_config = getattr(source, "business_config", {}) or {}
-        root_department_id = str(business_config.get("root_department_id") or "1")
-        if root_department_id == "0":
-            root_department_id = "1"
+        root_department_id = business_config.get("root_department_id")
+        root_department_id = str(root_department_id) if root_department_id is not None else ""
+        if root_department_id in {"", "0", "__all__", "**all**"}:
+            return CapabilityExecutionResult.failed_result(
+                "WeCom root department ID must be a real department ID",
+                code="provider.invalid_config",
+                field="root_department_id",
+            )
         include_child = business_config.get("include_child_departments", True)
         token, error = _get_access_token(config)
         if error:

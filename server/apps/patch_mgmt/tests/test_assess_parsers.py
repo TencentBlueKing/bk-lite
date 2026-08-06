@@ -106,6 +106,87 @@ def test_assess_linux_requirements():
 
 
 @pytest.mark.django_db
+@pytest.mark.integration
+def test_assess_linux_requirements_checks_every_advisory_package():
+    baseline = PatchBaseline.objects.create(name="multi-package", os_type=OSType.LINUX, team=[1])
+    patch = Patch.objects.create(title="multi package advisory", os_type=OSType.LINUX, team=[1])
+    detail = LinuxPatchDetail.objects.create(
+        patch=patch,
+        pkg_name="not-upgradable",
+        pkg_version="1.0",
+    )
+    detail.packages = [
+        {"name": "not-upgradable", "version": "1.0", "arch": "x86_64"},
+        {"name": "openssl", "version": "3.0", "arch": "x86_64"},
+        {"name": "openssl", "version": "3.0", "arch": "x86_64"},
+        {"name": "", "version": "ignored", "arch": "x86_64"},
+    ]
+    detail.save(update_fields=["packages"])
+    req = BaselineRequirement.objects.create(baseline=baseline, patch=patch)
+
+    stdout = "\n".join(
+        [
+            f"BKPATCH_LINUX|{req.id}|not-upgradable|installed|1.0|0|",
+            f"BKPATCH_LINUX|{req.id}|openssl|installed|2.9|-1|",
+        ]
+    )
+    result = parsers.assess_requirements(OSType.LINUX, stdout, [req])
+
+    assert result[req.id].satisfied is False
+    assert result[req.id].evidence["pkg_names"] == ["not-upgradable", "openssl"]
+    assert result[req.id].evidence["missing_pkg_names"] == ["openssl"]
+    assert result[req.id].reason == "openssl 未满足最低版本要求"
+
+
+@pytest.mark.django_db
+@pytest.mark.integration
+def test_assess_linux_requirements_keeps_same_package_version_facts_distinct():
+    baseline = PatchBaseline.objects.create(name="same-package-versions", os_type=OSType.LINUX, team=[1])
+    patch = Patch.objects.create(title="openssl advisory", os_type=OSType.LINUX, team=[1])
+    detail = LinuxPatchDetail.objects.create(patch=patch, pkg_name="openssl", pkg_version="3.0")
+    detail.packages = [
+        {"name": "openssl", "version": "3.0", "arch": "x86_64"},
+        {"name": "openssl", "version": "2.0", "arch": "x86_64"},
+    ]
+    detail.save(update_fields=["packages"])
+    req = BaselineRequirement.objects.create(baseline=baseline, patch=patch)
+    stdout = "\n".join(
+        [
+            f"BKPATCH_LINUX|{req.id}|0|openssl|installed|2.5|-1|",
+            f"BKPATCH_LINUX|{req.id}|1|openssl|installed|2.5|0|",
+        ]
+    )
+
+    result = parsers.assess_requirements(OSType.LINUX, stdout, [req])
+
+    assert result[req.id].status == RequirementAssessmentStatus.MISSING
+    assert result[req.id].evidence["missing_pkg_names"] == ["openssl"]
+
+
+@pytest.mark.django_db
+@pytest.mark.integration
+def test_assess_linux_requirements_does_not_reuse_another_structured_spec_fact():
+    baseline = PatchBaseline.objects.create(name="partial-output", os_type=OSType.LINUX, team=[1])
+    patch = Patch.objects.create(title="openssl advisory", os_type=OSType.LINUX, team=[1])
+    detail = LinuxPatchDetail.objects.create(patch=patch, pkg_name="openssl", pkg_version="3.0")
+    detail.packages = [
+        {"name": "openssl", "version": "3.0", "arch": "x86_64"},
+        {"name": "openssl", "version": "2.0", "arch": "x86_64"},
+    ]
+    detail.save(update_fields=["packages"])
+    req = BaselineRequirement.objects.create(baseline=baseline, patch=patch)
+
+    result = parsers.assess_requirements(
+        OSType.LINUX,
+        f"BKPATCH_LINUX|{req.id}|1|openssl|installed|2.5|0|",
+        [req],
+    )
+
+    assert result[req.id].status == RequirementAssessmentStatus.UNKNOWN
+    assert result[req.id].evidence["unknown_pkg_names"] == ["openssl"]
+
+
+@pytest.mark.django_db
 def test_assess_windows_requirements():
     baseline = PatchBaseline.objects.create(name="win-baseline", os_type=OSType.WINDOWS, team=[1])
     patch_present = Patch.objects.create(title="present kb", os_type=OSType.WINDOWS, team=[1])
@@ -156,6 +237,147 @@ def test_assess_linux_structured_facts_use_native_version_result_and_explicit_ab
     assert result[req_ok.id].status == RequirementAssessmentStatus.SATISFIED
     assert result[req_absent.id].status == RequirementAssessmentStatus.MISSING
     assert result[req_absent.id].reason == "未安装 curl"
+
+
+@pytest.mark.django_db
+def test_assess_linux_marks_foreign_distribution_requirement_not_applicable():
+    baseline = PatchBaseline.objects.create(name="linux-applicability", os_type=OSType.LINUX, team=[1])
+    patch = Patch.objects.create(title="Ubuntu only", os_type=OSType.LINUX, team=[1])
+    LinuxPatchDetail.objects.create(
+        patch=patch,
+        pkg_name="ubuntu-only-package",
+        pkg_version="1.0",
+        distro_name="Ubuntu",
+        os_version_range="24.04",
+        architectures=["x86_64"],
+        repo_type="apt",
+    )
+    requirement = BaselineRequirement.objects.create(baseline=baseline, patch=patch)
+    stdout = "\n".join(
+        [
+            "BKPATCH_HOST|LINUX|rocky|rhel centos fedora|9.6|x86_64|dnf",
+            f"BKPATCH_LINUX|{requirement.id}|ubuntu-only-package|absent|||",
+        ]
+    )
+
+    result = parsers.assess_requirements(OSType.LINUX, stdout, [requirement])
+
+    assert result[requirement.id].status == RequirementAssessmentStatus.NOT_APPLICABLE
+    assert "发行版" in result[requirement.id].reason
+
+
+@pytest.mark.django_db
+def test_assess_linux_marks_foreign_multi_package_requirement_not_applicable():
+    baseline = PatchBaseline.objects.create(name="multi-package-applicability", os_type=OSType.LINUX, team=[1])
+    patch = Patch.objects.create(title="Ubuntu multi-package", os_type=OSType.LINUX, team=[1])
+    detail = LinuxPatchDetail.objects.create(
+        patch=patch,
+        pkg_name="ubuntu-package-a",
+        pkg_version="1.0",
+        distro_name="Ubuntu",
+        os_version_range="24.04",
+        architectures=["x86_64"],
+        repo_type="apt",
+    )
+    detail.packages = [
+        {"name": "ubuntu-package-a", "version": "1.0", "arch": "x86_64"},
+        {"name": "ubuntu-package-b", "version": "2.0", "arch": "x86_64"},
+    ]
+    detail.save(update_fields=["packages"])
+    requirement = BaselineRequirement.objects.create(baseline=baseline, patch=patch)
+    stdout = "\n".join(
+        [
+            "BKPATCH_HOST|LINUX|rocky|rhel centos fedora|9.6|x86_64|dnf",
+            f"BKPATCH_LINUX|{requirement.id}|0|ubuntu-package-a|absent|||",
+            f"BKPATCH_LINUX|{requirement.id}|1|ubuntu-package-b|absent|||",
+        ]
+    )
+
+    result = parsers.assess_requirements(OSType.LINUX, stdout, [requirement])
+
+    assert result[requirement.id].status == RequirementAssessmentStatus.NOT_APPLICABLE
+    assert result[requirement.id].evidence["not_applicable_pkg_names"] == [
+        "ubuntu-package-a",
+        "ubuntu-package-b",
+    ]
+
+
+@pytest.mark.django_db
+def test_assess_linux_treats_yum_requirement_as_applicable_on_dnf_host():
+    baseline = PatchBaseline.objects.create(name="rpm-family", os_type=OSType.LINUX, team=[1])
+    patch = Patch.objects.create(title="Rocky yum package", os_type=OSType.LINUX, team=[1])
+    LinuxPatchDetail.objects.create(
+        patch=patch,
+        pkg_name="cloud-init",
+        pkg_version="24.4-8.el9",
+        distro_name="Rocky Linux",
+        os_version_range="9",
+        architectures=["aarch64"],
+        repo_type="yum",
+    )
+    requirement = BaselineRequirement.objects.create(baseline=baseline, patch=patch)
+    stdout = "\n".join(
+        [
+            "BKPATCH_HOST|LINUX|rocky|rhel centos fedora|9.6|arm64|dnf",
+            f"BKPATCH_LINUX|{requirement.id}|cloud-init|absent|||",
+        ]
+    )
+
+    result = parsers.assess_requirements(OSType.LINUX, stdout, [requirement])
+
+    assert result[requirement.id].status == RequirementAssessmentStatus.MISSING
+
+
+@pytest.mark.django_db
+def test_assess_windows_marks_definite_product_mismatch_not_applicable():
+    baseline = PatchBaseline.objects.create(name="windows-applicability", os_type=OSType.WINDOWS, team=[1])
+    patch = Patch.objects.create(title="Windows Server 2019 only", os_type=OSType.WINDOWS, team=[1])
+    WindowsPatchDetail.objects.create(
+        patch=patch,
+        kb_number="KB9999999",
+        product_list=["Windows Server 2019"],
+        architectures=["x64"],
+    )
+    requirement = BaselineRequirement.objects.create(baseline=baseline, patch=patch)
+    stdout = "\n".join(
+        [
+            "BKPATCH_HOST|WINDOWS|Microsoft Windows Server 2022 Standard|10.0|20348|AMD64",
+            "===WUA===",
+            "===WUA_INSTALLED===",
+            "===HOTFIX===",
+        ]
+    )
+
+    result = parsers.assess_requirements(OSType.WINDOWS, stdout, [requirement])
+
+    assert result[requirement.id].status == RequirementAssessmentStatus.NOT_APPLICABLE
+    assert "产品" in result[requirement.id].reason
+
+
+@pytest.mark.django_db
+def test_assess_windows_wua_offer_is_authoritative_over_catalog_product_metadata():
+    baseline = PatchBaseline.objects.create(name="windows-wua-authority", os_type=OSType.WINDOWS, team=[1])
+    patch = Patch.objects.create(title="WUA offered update", os_type=OSType.WINDOWS, team=[1])
+    WindowsPatchDetail.objects.create(
+        patch=patch,
+        kb_number="KB5000003",
+        product_list=["Windows 11"],
+        architectures=["x64"],
+    )
+    requirement = BaselineRequirement.objects.create(baseline=baseline, patch=patch)
+    stdout = "\n".join(
+        [
+            "BKPATCH_HOST|WINDOWS|Microsoft Windows Server 2022 Standard|10.0|20348|AMD64",
+            "===WUA===",
+            "KB5000003|Important|Applicable update",
+            "===WUA_INSTALLED===",
+            "===HOTFIX===",
+        ]
+    )
+
+    result = parsers.assess_requirements(OSType.WINDOWS, stdout, [requirement])
+
+    assert result[requirement.id].status == RequirementAssessmentStatus.MISSING
 
 
 @pytest.mark.django_db

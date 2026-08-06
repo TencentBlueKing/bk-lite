@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import logging
 import unicodedata
 from copy import deepcopy
 
@@ -12,6 +11,7 @@ from django.db import transaction
 from django.db.models import Max
 from jsonschema import Draft202012Validator
 
+from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.models import BuildRecord, WikiDirectory, WikiGeneration, WikiKnowledgeBase, WikiStructureRevision
 from apps.opspilot.services.wiki.generation_consistency_contract import (
     RollbackCompatibility,
@@ -38,7 +38,6 @@ EXECUTE_REQUEST_SCHEMA = get_schema(SchemaName.GENERATION_ROLLBACK_EXECUTE_REQUE
 EXECUTE_RESPONSE_SCHEMA = get_schema(SchemaName.GENERATION_ROLLBACK_EXECUTE_RESPONSE)
 ROLLBACK_PIPELINE_VERSION = "wiki-generation-rollback-v1"
 SUCCESSFUL_GENERATION_STATUSES = {"active", "superseded"}
-logger = logging.getLogger("opspilot")
 
 
 class RollbackServiceError(Exception):

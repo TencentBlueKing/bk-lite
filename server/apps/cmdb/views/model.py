@@ -648,7 +648,13 @@ class ModelViewSet(CmdbPermissionMixin, viewsets.ViewSet):
             return permission_error
 
         result = ModelManage.search_model_attr(model_id, request.user.locale)
-        filtered_attrs = [attr for attr in result if not attr.get("is_display_field")]
+        from apps.cmdb.services.module_ingest import filter_user_facing_attrs
+
+        filtered_attrs = [
+            attr
+            for attr in filter_user_facing_attrs(result)
+            if not attr.get("is_display_field")
+        ]
         return WebUtils.response_success(filtered_attrs)
 
     @HasPermission("model_management-View")
