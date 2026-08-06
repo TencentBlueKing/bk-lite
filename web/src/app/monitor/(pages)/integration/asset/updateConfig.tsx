@@ -17,6 +17,7 @@ import {
   getSnmpFilterMutexConflicts,
   trackSnmpFilterMutexLastChanged
 } from '@/app/monitor/hooks/integration/snmpFilterMutex';
+import { getSnmpInterfaceFilterModePatch } from '@/app/monitor/hooks/integration/snmpInterfaceFilterMode';
 import { getIfmibSnapshotEnabled } from '../list/detail/configure/ifmibDeploymentState';
 
 interface PluginFormField {
@@ -200,7 +201,14 @@ const UpdateConfig = forwardRef<ModalRef, ModalProps>(({ onSuccess }, ref) => {
                 name="basic"
                 layout="vertical"
                 onValuesChange={(changed, all) => {
-                  trackSnmpFilterMutexLastChanged(changed, all, form);
+                  const interfaceFilterModePatch = getSnmpInterfaceFilterModePatch(changed);
+                  const nextValues = Object.keys(interfaceFilterModePatch).length
+                    ? { ...all, ...interfaceFilterModePatch }
+                    : all;
+                  if (Object.keys(interfaceFilterModePatch).length) {
+                    form.setFieldsValue(interfaceFilterModePatch);
+                  }
+                  trackSnmpFilterMutexLastChanged(changed, nextValues, form);
                 }}
               >
                 {formItems}

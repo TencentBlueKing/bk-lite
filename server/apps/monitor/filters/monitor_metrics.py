@@ -41,6 +41,7 @@ class MetricFilter(FilterSet):
     name_in = CharInFilter(field_name="name", lookup_expr="in", label="指标名称列表")
     keyword = CharFilter(method="filter_keyword", label="指标关键字")
     include_ifmib = BooleanFilter(method="filter_include_ifmib", label="是否包含IF-MIB指标")
+    is_ifmib = BooleanFilter(field_name="is_ifmib", label="是否为IF-MIB指标")
 
     @staticmethod
     def filter_keyword(queryset, _name, value):
@@ -71,4 +72,5 @@ class MetricFilter(FilterSet):
             "name_in",
             "keyword",
             "include_ifmib",
+            "is_ifmib",
         ]

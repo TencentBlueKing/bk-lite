@@ -267,9 +267,25 @@ const Configure = () => {
       manuallyClosedGroupIds.current.clear();
     }
     try {
-      const [groupPage, metricsPage] = await Promise.all([
+      // 厂商指标按页分页；IF-MIB 固定约十余条，单独拉全量后置底归并，避免拆页。
+      const [groupPage, metricsPage, ifmibPage] = await Promise.all([
         getMetricsGroup(params, config),
-        getMonitorMetrics({ ...params, include_ifmib: enableIfmib, page }, config)
+        getMonitorMetrics(
+          { ...params, include_ifmib: false, page },
+          config
+        ),
+        enableIfmib
+          ? getMonitorMetrics(
+            {
+              ...params,
+              include_ifmib: true,
+              is_ifmib: true,
+              page: 1,
+              page_size: 100
+            },
+            config
+          )
+          : Promise.resolve({ count: 0, items: [], metric_groups: [] })
       ]);
       if (abortController.signal.aborted) return;
       const rawGroupList: MetricListItem[] = (
@@ -283,9 +299,12 @@ const Configure = () => {
       }));
       setMetricCount(metricsPage.count);
       setApiGroupList(rawGroupList);
+      const catalogMetrics = enableIfmib
+        ? [...metricsPage.items, ...ifmibPage.items]
+        : metricsPage.items;
       const metricView = buildIfmibMetricView(
         rawGroupList,
-        metricsPage.items,
+        catalogMetrics,
         enableIfmib,
         (key) => t(key)
       );

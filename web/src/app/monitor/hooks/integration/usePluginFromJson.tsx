@@ -7,6 +7,7 @@ import {
   splitWebsiteRequestUrl,
   validateWebsiteRequestHeaders
 } from './http-request-config';
+import { resolveSnmpInterfaceFilterMode } from './snmpInterfaceFilterMode';
 import useIntegrationApi from '@/app/monitor/api/integration';
 import useApiClient from '@/utils/request';
 import { useTranslation } from '@/utils/i18n';
@@ -393,6 +394,10 @@ export const usePluginFromJson = () => {
                 );
               }
             });
+            // interface_filter_mode 不落库，需从 tagpass/tagdrop 反推，避免编辑回显恒为 exclude。
+            if (formFields?.some((field: any) => field?.name === 'interface_filter_mode')) {
+              formValues.interface_filter_mode = resolveSnmpInterfaceFilterMode(formValues);
+            }
             if (config.instance_type === 'web') {
               const requestUrl = apiData?.child?.content?.config?.urls?.[0];
               if (requestUrl) {
