@@ -11,6 +11,8 @@ import {
   Select,
   Space,
   Switch,
+  Tag,
+  Tooltip,
 } from 'antd';
 import CustomTable from '@/components/custom-table';
 import Icon from '@/components/icon';
@@ -33,10 +35,13 @@ import { formatIntegrationInstanceDisplayName } from '@/app/system-manager/utils
 import { ColumnItem } from '@/types';
 import {
   buildLoginAuthBindingPayload,
+  getLoginAuthUnavailableEditingInstance,
   resolveLoginAuthDefaultIcon,
   resolveLoginAuthDefaultExternalField,
+  getLoginAuthInstanceNotFoundContent,
   resolveLoginAuthProviderKey,
   resolveLoginAuthTemplate,
+  isBuiltinLoginAuthBinding,
   shouldShowLoginAuthUnmatchedUserAction,
 } from '@/app/system-manager/utils/loginAuthFormUtils';
 
@@ -61,6 +66,7 @@ const LoginAuthPage: React.FC = () => {
   const [editingBinding, setEditingBinding] = useState<LoginAuthBinding | null>(null);
   const [selectedIcon, setSelectedIcon] = useState<string>('');
   const [availableInstances, setAvailableInstances] = useState<AvailableInstance[]>([]);
+  const [availableInstancesLoading, setAvailableInstancesLoading] = useState(false);
   const [providers, setProviders] = useState<ProviderManifest[]>([]);
   const [unmatchedAction, setUnmatchedAction] = useState<string>('deny');
   const watchedIntegrationInstance = Form.useWatch('integration_instance', form);
@@ -69,17 +75,6 @@ const LoginAuthPage: React.FC = () => {
     total: 0,
     pageSize: 10,
   });
-  const builtinProviderKey = 'bk_lite_builtin';
-  const attachProviderKeys = (
-    items: LoginAuthBinding[],
-    instances: AvailableInstance[] = availableInstances
-  ) => items.map((item) => ({
-    ...item,
-    provider_key:
-      item.provider_key ||
-      instances.find((instance) => instance.id === item.integration_instance)?.provider_key,
-  }));
-
   const fetchBindings = async (page = pagination.current, pageSize = pagination.pageSize) => {
     try {
       setLoading(true);
@@ -93,7 +88,7 @@ const LoginAuthPage: React.FC = () => {
         pageSize,
         total: count,
       }));
-      setBindings(attachProviderKeys(items));
+      setBindings(items);
     } catch {
       message.error(t('common.fetchFailed'));
     } finally {
@@ -102,13 +97,15 @@ const LoginAuthPage: React.FC = () => {
   };
 
   const fetchAvailableInstances = async () => {
+    setAvailableInstancesLoading(true);
     try {
       const data = await getAvailableInstances();
       const nextInstances = data || [];
       setAvailableInstances(nextInstances);
-      setBindings((prev) => attachProviderKeys(prev, nextInstances));
     } catch {
       setAvailableInstances([]);
+    } finally {
+      setAvailableInstancesLoading(false);
     }
   };
 
@@ -118,22 +115,32 @@ const LoginAuthPage: React.FC = () => {
     void getProviders().then(setProviders).catch(() => setProviders([]));
   }, []);
 
-  const getBindingProviderKey = (binding: LoginAuthBinding) => {
-    if (binding.provider_key) return binding.provider_key;
-    return availableInstances.find((item) => item.id === binding.integration_instance)?.provider_key || '';
-  };
-
-  const isBuiltinBinding = (binding: LoginAuthBinding) => {
-    const key = getBindingProviderKey(binding);
-    if (!key) return true;
-    return getBindingProviderKey(binding) === builtinProviderKey;
-  }
+  const isBuiltinBinding = (binding: LoginAuthBinding) => isBuiltinLoginAuthBinding(binding.provider_key);
   const editingBuiltinBinding = editingBinding ? isBuiltinBinding(editingBinding) : false;
   const currentProviderKey = useMemo(
     () => resolveLoginAuthProviderKey(watchedIntegrationInstance, availableInstances, editingBinding),
     [availableInstances, editingBinding, watchedIntegrationInstance],
   );
   const showUnmatchedUserAction = shouldShowLoginAuthUnmatchedUserAction(currentProviderKey);
+  const unavailableEditingInstance = useMemo(
+    () => getLoginAuthUnavailableEditingInstance(availableInstances, editingBinding),
+    [availableInstances, editingBinding],
+  );
+  const integrationInstanceOptions = useMemo(() => {
+    const availableOptions = availableInstances.map((instance) => ({
+      value: instance.id,
+      label: formatIntegrationInstanceDisplayName(instance, t),
+    }));
+    if (!unavailableEditingInstance) {
+      return availableOptions;
+    }
+
+    return [{
+      value: unavailableEditingInstance.id,
+      label: `${formatIntegrationInstanceDisplayName(unavailableEditingInstance, t)} (${t('system.user.loginAuthPage.currentInstanceUnavailable')})`,
+      disabled: true,
+    }, ...availableOptions];
+  }, [availableInstances, t, unavailableEditingInstance]);
   const resolvedTemplate = useMemo(
     () => resolveLoginAuthTemplate(watchedIntegrationInstance, availableInstances, providers),
     [availableInstances, providers, watchedIntegrationInstance],
@@ -344,10 +351,22 @@ const LoginAuthPage: React.FC = () => {
       title: t('system.user.loginAuthPage.integratedSystems'),
       dataIndex: 'integration_instance_name',
       render: (_, record) => {
-        if(record.provider_key && record.provider_key !== "bk_lite_builtin")
-          return (<>{record.integration_instance_name} / {t(`system.integrationCenter.provider.${record.provider_key}`)}</>)
-        return (<>{record.integration_instance_name}</>)
-      }
+        const dependencyStatus = record.dependency_status;
+        return (
+          <div className="flex items-center gap-2">
+            <span>
+              {record.provider_key && record.provider_key !== 'bk_lite_builtin'
+                ? `${record.integration_instance_name} / ${t(`system.integrationCenter.provider.${record.provider_key}`)}`
+                : record.integration_instance_name}
+            </span>
+            {dependencyStatus?.available === false ? (
+              <Tooltip title={t(`system.user.loginAuthPage.dependencyReason.${dependencyStatus.reason}`)}>
+                <Tag color="warning">{t('system.user.loginAuthPage.dependencyPaused')}</Tag>
+              </Tooltip>
+            ) : null}
+          </div>
+        );
+      },
     },
     {
       key: 'description',
@@ -495,10 +514,14 @@ const LoginAuthPage: React.FC = () => {
               >
                 <Select
                   placeholder={t('system.user.loginAuthPage.integrationInstancePlaceholder')}
-                  options={availableInstances.map((i) => ({
-                    value: i.id,
-                    label: formatIntegrationInstanceDisplayName(i, t),
-                  }))}
+                  loading={availableInstancesLoading}
+                  notFoundContent={getLoginAuthInstanceNotFoundContent({
+                    loading: availableInstancesLoading,
+                    hasAvailableInstances: availableInstances.length > 0,
+                    loadingText: t('common.loading'),
+                    emptyText: t('system.user.loginAuthPage.noAvailableIntegrationInstances'),
+                  })}
+                  options={integrationInstanceOptions}
                   onChange={handleIntegrationInstanceChange}
                 />
               </Form.Item>

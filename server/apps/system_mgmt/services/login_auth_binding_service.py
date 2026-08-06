@@ -15,6 +15,8 @@ from apps.system_mgmt.models import (
     User,
 )
 from apps.system_mgmt.providers import RuntimeApplicationService
+from apps.system_mgmt.providers.runtime import CapabilityExecutionResult
+from apps.system_mgmt.services.capability_contract_service import get_integration_capability_availability
 
 # 微信等第三方登陆首次创建用户时,写入与旧 wechat_user_register
 # (server/apps/system_mgmt/nats/wechat.py:16-26) 对齐的默认 role 集合。
@@ -48,9 +50,7 @@ def get_active_login_auth_bindings():
     queryset = LoginAuthBinding.objects.select_related("integration_instance").filter(enabled=True).order_by("order", "id")
     for binding in queryset:
         instance = binding.integration_instance
-        if not instance.enabled:
-            continue
-        if instance.capability_status.get("login_auth") != "ready":
+        if not get_integration_capability_availability(instance, "login_auth")["available"]:
             continue
         bindings.append(binding)
     return bindings
@@ -59,6 +59,11 @@ def get_active_login_auth_bindings():
 def build_login_auth_redirect(binding: LoginAuthBinding, redirect_uri: str, state: str = ""):
     runtime_service = RuntimeApplicationService()
     instance = binding.integration_instance
+    if not get_integration_capability_availability(instance, "login_auth")["available"]:
+        return CapabilityExecutionResult.failed_result(
+            "Login auth binding is not ready",
+            code="integration.capability_unavailable",
+        )
     result = runtime_service.execute(
         provider_key=instance.provider_key,
         capability_key="login_auth",
@@ -84,7 +89,7 @@ def login_with_binding(binding_id: int, auth_code: str = "", *, username: str = 
         return {"result": False, "message": "Login auth binding not found"}
 
     instance = binding.integration_instance
-    if not instance.enabled or instance.capability_status.get("login_auth") != "ready":
+    if not get_integration_capability_availability(instance, "login_auth")["available"]:
         logger.warning(
             f"login_with_binding: binding not ready, "
             f"binding_id={binding_id}, provider_key={instance.provider_key}, "

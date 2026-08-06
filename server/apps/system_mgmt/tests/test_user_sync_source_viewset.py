@@ -432,10 +432,8 @@ def test_department_options_returns_provider_tree_payload(api_client, authentica
     result = CapabilityExecutionResult.success_result(
         "ok",
         payload={
-            "all_department_id": "dept-root",
             "items": [{"id": "dept-a", "name": "Dept A", "children": []}],
-            "selected_id": "dept-a",
-            "selection_missing": False,
+            "server_timing": "feishu-scopes;dur=1200, feishu-total;dur=5300",
         },
     )
 
@@ -457,7 +455,9 @@ def test_department_options_returns_provider_tree_payload(api_client, authentica
     assert response.status_code == 200
     assert response.data["selected_id"] == "dept-a"
     assert response.data["items"][0]["id"] == "dept-a"
+    assert response["Server-Timing"] == "feishu-scopes;dur=1200, feishu-total;dur=5300"
     assert mock_execute.called is True
+    assert mock_execute.call_args.kwargs["business_config"] == {"root_department_id": "dept-a"}
 
 
 @pytest.mark.django_db
@@ -709,7 +709,7 @@ def _password_init_preview_payload(integration_instance, **overrides):
         "name": overrides.pop("name", f"test-source-{uuid.uuid4().hex[:6]}"),
         "integration_instance": integration_instance.id,
         "root_group_name": overrides.pop("root_group_name", f"Feishu Root {uuid.uuid4().hex[:6]}"),
-        "business_config": overrides.pop("business_config", {"root_department_id": "0"}),
+        "business_config": overrides.pop("business_config", {"root_department_id": "dept-real"}),
         "schedule_config": overrides.pop("schedule_config", {"mode": "disabled"}),
         "field_mapping": overrides.pop("field_mapping", {"username": "user_id"}),
         "root_scope_field": overrides.pop("root_scope_field", "root_department_id"),
@@ -724,9 +724,8 @@ def _password_init_preview_result():
     return CapabilityExecutionResult.success_result(
         "ok",
         payload={
-            "all_department_id": "0",
-            "items": [{"id": "dept-a", "parent_id": "0", "name": "Dept A"}],
-            "user_list": [{"user_id": "ou_0", "name": "User 0", "email": "u0@b.c", "mobile": "", "department_ids": ["dept-a"]}],
+            "items": [{"id": "dept-real", "parent_id": None, "name": "Real Department"}],
+            "user_list": [{"user_id": "ou_0", "name": "User 0", "email": "u0@b.c", "mobile": "", "department_ids": ["dept-real"]}],
         },
     )
 
@@ -775,7 +774,7 @@ def test_preview_keeps_password_init_in_platform_config(
     if config_key == "business_config":
         payload = _password_init_preview_payload(
             ready_integration_instance,
-            business_config={"root_department_id": "0", "password_init": password_init},
+            business_config={"root_department_id": "dept-real", "password_init": password_init},
         )
     else:
         payload = _password_init_preview_payload(
@@ -849,7 +848,7 @@ def test_run_detail_returns_full_run_payload(api_client, authenticated_user, use
 
     assert response.status_code == 200
     data = response.json()
-    # UserSyncRunSerializer fields=__all__ 输出包含 id / status / payload 等
+    # UserSyncRunSerializer 输出包含 id / status / payload 等字段
     # 部分字段可能被项目基类包装(见 BaseUser / MaintainerViewSet)
     if "data" in data and isinstance(data["data"], dict):
         data = data["data"]

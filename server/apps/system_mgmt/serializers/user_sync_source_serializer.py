@@ -14,6 +14,7 @@ from apps.system_mgmt.models import (
 from apps.system_mgmt.services import user_sync_service
 from apps.system_mgmt.services.capability_contract_service import (
     CapabilityContractError,
+    get_integration_capability_availability,
     validate_user_sync_contract,
     validate_user_sync_schedule_config,
 )
@@ -90,6 +91,7 @@ class UserSyncSourceSerializer(UsernameSerializer):
     integration_provider_key = serializers.SerializerMethodField()
     latest_run = serializers.SerializerMethodField()
     root_scope_field = serializers.SerializerMethodField()
+    dependency_status = serializers.SerializerMethodField()
 
     class Meta:
         model = UserSyncSource
@@ -113,6 +115,11 @@ class UserSyncSourceSerializer(UsernameSerializer):
         provider_key = obj.integration_instance.provider_key if obj.integration_instance_id else ""
         return get_user_sync_root_scope_field(provider_key)
 
+    def get_dependency_status(self, obj):
+        if not obj.integration_instance_id:
+            return {"available": False, "reason": "instance_not_ready"}
+        return get_integration_capability_availability(obj.integration_instance, "user_sync")
+
     def to_representation(self, instance):
         data = super().to_representation(instance)
         platform_config = deepcopy(data.get("platform_config") or {})
@@ -126,11 +133,14 @@ class UserSyncSourceSerializer(UsernameSerializer):
         integration_instance = attrs.get("integration_instance") or getattr(self.instance, "integration_instance", None)
         if integration_instance is None:
             raise serializers.ValidationError({"integration_instance": "Integration instance is required"})
-        if (
-            not integration_instance.enabled
-            or integration_instance.status != IntegrationInstanceStatusChoices.READY
-            or integration_instance.capability_status.get("user_sync") != IntegrationInstanceStatusChoices.READY
-        ):
+        changes_instance = bool(
+            self.instance
+            and "integration_instance" in attrs
+            and integration_instance.id != self.instance.integration_instance_id
+        )
+        if (self.instance is None or changes_instance) and not get_integration_capability_availability(
+            integration_instance, "user_sync"
+        )["available"]:
             raise serializers.ValidationError({"integration_instance": "Integration instance user_sync capability is not ready"})
 
         root_group_name = attrs.get("root_group_name") or getattr(self.instance, "root_group_name", "")
@@ -214,15 +224,10 @@ class UserSyncSourceSerializer(UsernameSerializer):
             if not department_result.success:
                 raise serializers.ValidationError({"business_config": department_result.summary})
 
-            normalized_root_department_id = user_sync_service.normalize_root_department_selection(
-                root_scope_value,
-                department_result.payload,
-            )
             valid_department_ids = user_sync_service.flatten_department_ids(department_result.payload.get("items") or [])
-            valid_department_ids.add(str(department_result.payload.get("all_department_id") or ""))
-            if normalized_root_department_id not in valid_department_ids:
-                raise serializers.ValidationError({"business_config": "Selected root department is invalid"})
-            business_config[root_scope_field] = normalized_root_department_id
+            if root_scope_value not in valid_department_ids:
+                raise serializers.ValidationError({"business_config": "当前同步范围已不可用，请重新选择部门"})
+            business_config[root_scope_field] = root_scope_value
 
         attrs["business_config"] = business_config
         return attrs

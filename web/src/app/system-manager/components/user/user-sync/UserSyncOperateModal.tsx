@@ -96,7 +96,7 @@ const UserSyncOperateModal: React.FC<UserSyncOperateModalProps> = ({
     );
 
     if (isDepartmentSelectMode(resolvedTemplate)) {
-      nextBusinessConfig.root_department_id = '__all__';
+      delete nextBusinessConfig.root_department_id;
       const defaultDepartmentIdType = getDefaultDepartmentIdType(resolvedTemplate);
       if (defaultDepartmentIdType) {
         nextBusinessConfig.department_id_type = defaultDepartmentIdType;
