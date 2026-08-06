@@ -31,8 +31,8 @@
       "required": false,
       "default_value": false,
       "description": "是否启用 SASL 认证（用户名和密码）",
-      "guide_short": "是否启用 SASL 认证。开启后下发 sasl.enabled；关闭时空串。Kafka SASL 默认走 PLAIN。",
-      "guide_short_en": "Controls SASL authentication. Enabling it passes sasl.enabled; disabling it passes an empty value. The exporter uses PLAIN when no other SASL mechanism is specified.",
+      "guide_short": "是否启用 SASL 认证。开启后下发 sasl.enabled，并需填写用户名、密码与认证机制（默认 plain）。",
+      "guide_short_en": "Controls SASL authentication. Enabling it passes sasl.enabled and requires username, password, and mechanism (default plain).",
       "transform_on_create": {
         "mapping": {
           "true": "--sasl.enabled",
@@ -107,19 +107,48 @@
     },
     {
       "name": "ENV_SASL_MECHANISM",
-      "label": "运行机制",
-      "type": "input",
-      "required": false,
-      "description": "用于处理和响应通过发布端口接收的请求，包括请求的解析、处理和返回结果的完整流程",
-      "guide_short": "SASL 机制：plain / sha256 / sha512 / gssapi；不填走 PLAIN。AKS/Strimzi 部署需 KafkaUser 的 authentication.type 与之匹配。",
-      "guide_short_en": "SASL mechanism: plain, sha256, sha512, or gssapi. An empty value uses PLAIN. For AKS or Strimzi, match the KafkaUser authentication.type.",
+      "label": "认证机制",
+      "type": "select",
+      "required": true,
+      "default_value": "plain",
+      "description": "Kafka SASL 认证机制，须与 Broker 配置一致",
+      "description_en": "Kafka SASL mechanism; must match the broker configuration",
+      "guide_short": "启用认证时必选。可选 plain / scram-sha256 / scram-sha512；默认 plain。须与 Broker 的 SASL 机制一致。",
+      "guide_short_en": "Required when authentication is enabled. Choose plain, scram-sha256, or scram-sha512; default is plain. Must match the broker SASL mechanism.",
       "widget_props": {
-        "placeholder": "plain"
+        "placeholder": "请选择认证机制",
+        "placeholder_en": "Select SASL mechanism"
+      },
+      "options": [
+        {
+          "label": "plain",
+          "value": "plain",
+          "label_en": "plain"
+        },
+        {
+          "label": "scram-sha256",
+          "value": "scram-sha256",
+          "label_en": "scram-sha256"
+        },
+        {
+          "label": "scram-sha512",
+          "value": "scram-sha512",
+          "label_en": "scram-sha512"
+        }
+      ],
+      "dependency": {
+        "field": "ENV_SASL_ENABLED",
+        "value": true
       },
       "transform_on_edit": {
-        "origin_path": "child.env_config.SASL_MECHANISM__{{config_id}}"
+        "origin_path": "child.env_config.SASL_MECHANISM__{{config_id}}",
+        "to_form": {
+          "mapping": {
+            "plain": ["", null, "plain"]
+          }
+        }
       },
-      "label_en": "Operation Mode"
+      "label_en": "SASL Mechanism"
     },
     {
       "name": "ENV_LISTEN_PORT",

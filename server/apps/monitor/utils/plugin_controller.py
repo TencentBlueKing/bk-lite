@@ -390,6 +390,11 @@ class Controller:
                 logger.warning(f"未找到模板：collector={collector}, collect_type={collect_type}, type={type_name}")
                 raise BaseAppException(f"未找到采集模板：collector={collector}, collect_type={collect_type}, type={type_name}")
 
+            if str(collect_type or "") == "exporter" and str(type_name or "").lower() == "kafka":
+                from apps.monitor.utils.kafka_sasl import ensure_kafka_sasl_mechanism_defaults
+
+                ensure_kafka_sasl_mechanism_defaults(config_info)
+
             env_config = {k[4:]: v for k, v in config_info.items() if k.startswith("ENV_")}
 
             for template in templates:
