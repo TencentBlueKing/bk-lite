@@ -227,7 +227,7 @@ const usePatchManagerApi = () => {
   // ── 基线管理 ──────────────────────────────────────────────────────────────────
 
   const getBaselineList = async (
-    params: { page?: number; page_size?: number; search?: string } = {},
+    params: { page?: number; page_size?: number; search?: string; patch_ids?: string } = {},
     config?: AxiosRequestConfig
   ): Promise<ListResponse<any>> =>
     get(`${BASE}/baseline/`, { params, ...config });

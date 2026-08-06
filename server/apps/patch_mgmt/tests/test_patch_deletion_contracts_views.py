@@ -3,7 +3,12 @@
 import pytest
 from rest_framework import status
 
-from apps.patch_mgmt.constants import GovernanceTaskStatus, GovernanceTaskType, OSType
+from apps.patch_mgmt.constants import (
+    GovernanceTaskStatus,
+    GovernanceTaskType,
+    OSType,
+    PatchSourceType,
+)
 from apps.patch_mgmt.models import (
     GovernanceTask,
     GovernanceTaskHost,
@@ -18,7 +23,12 @@ BASE = "/api/v1/patch_mgmt/api"
 
 @pytest.mark.django_db
 def test_deleting_custom_source_only_detaches_patches(su_client):
-    source = PatchSource.objects.create(name="custom", source_type="apt", team=[1])
+    source = PatchSource.objects.create(
+        name="custom",
+        source_type=PatchSourceType.APT_REPO,
+        url="https://archive.example.com/ubuntu",
+        team=[1],
+    )
     patch = Patch.objects.create(title="openssl", os_type=OSType.LINUX, team=[1])
     patch.sources.add(source)
 
@@ -27,6 +37,27 @@ def test_deleting_custom_source_only_detaches_patches(su_client):
     assert response.status_code == status.HTTP_200_OK
     assert Patch.objects.filter(pk=patch.id).exists()
     assert not patch.sources.filter(pk=source.id).exists()
+    patch.refresh_from_db()
+    assert patch.deleted_source_snapshots == [
+        {
+            "source_id": source.id,
+            "source_type": PatchSourceType.APT_REPO,
+            "url": "https://archive.example.com/ubuntu",
+        }
+    ]
+
+    list_response = su_client.get(f"{BASE}/patch/?page_size=-1")
+
+    assert list_response.status_code == status.HTTP_200_OK
+    assert list_response.data[0]["source_type"] == PatchSourceType.APT_REPO
+    assert list_response.data[0]["source_details"] == [
+        {
+            "source_id": source.id,
+            "source_type": PatchSourceType.APT_REPO,
+            "url": "https://archive.example.com/ubuntu",
+            "deleted": True,
+        }
+    ]
 
 
 @pytest.mark.django_db
