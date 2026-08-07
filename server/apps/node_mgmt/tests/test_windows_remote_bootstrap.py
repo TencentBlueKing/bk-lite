@@ -8,6 +8,7 @@ from django.core.cache import cache
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.utils.crypto.aes_crypto import AESCryptor
 from apps.node_mgmt.constants.controller import ControllerConstants
+from apps.node_mgmt.constants.installer import InstallerConstants
 from apps.node_mgmt.constants.node import NodeConstants
 from apps.node_mgmt.management.commands.installer_init import Command as InstallerInitCommand
 from apps.node_mgmt.models import ControllerTask, ControllerTaskNode, Node, PackageVersion
@@ -248,6 +249,55 @@ def test_retry_controller_rejects_manual_recovery_required_result(monkeypatch):
     assert task_node.result["execution_attempt"] == 2
 
 
+@pytest.mark.django_db
+def test_retry_controller_preserves_generated_install_node_id(monkeypatch):
+    region = CloudRegion.objects.create(name="retry-preserve-node-id-region")
+    package = PackageVersion.objects.create(
+        type="controller",
+        os=NodeConstants.WINDOWS_OS,
+        cpu_architecture=NodeConstants.X86_64_ARCH,
+        object="Controller",
+        version="retry-preserve-node-id",
+        name="controller-windows",
+    )
+    task = ControllerTask.objects.create(
+        cloud_region=region,
+        type="install",
+        status="finished",
+        package_version_id=package.id,
+    )
+    task_node = ControllerTaskNode.objects.create(
+        task=task,
+        ip="10.0.0.57",
+        node_name="windows-node",
+        os=NodeConstants.WINDOWS_OS,
+        organizations=[1],
+        port=5986,
+        username="old-user",
+        status="error",
+        result={
+            InstallerConstants.EXECUTION_ATTEMPT_KEY: 2,
+            InstallerConstants.INSTALL_NODE_ID_KEY: "existing-install-node-id",
+        },
+    )
+    monkeypatch.setattr(installer_tasks, "_dispatch_or_finalize_controller_task", lambda task_id: None)
+
+    installer_tasks.retry_controller(
+        task.id,
+        [task_node.id],
+        port=7443,
+        username="replacement-user",
+    )
+
+    task_node.refresh_from_db()
+    assert task_node.port == 7443
+    assert task_node.username == "replacement-user"
+    assert task_node.result == {
+        InstallerConstants.EXECUTION_ATTEMPT_KEY: 3,
+        InstallerConstants.INSTALL_NODE_ID_KEY: "existing-install-node-id",
+    }
+
+
 def test_windows_remote_bootstrap_stages_and_runs_native_worker():
     executor = FakeExecutor("executor-node")
     service = WindowsRemoteBootstrapService(executor_factory=lambda _: executor, resolver=FakeResolver)
@@ -260,7 +310,7 @@ def test_windows_remote_bootstrap_stages_and_runs_native_worker():
         session_url="https://server.example/api/installer/session/secret",
         target=WindowsBootstrapTarget(
             host="10.0.0.8",
-            port=5986,
+            port=7443,
             user="Administrator",
             password="credential",
         ),
@@ -275,7 +325,7 @@ def test_windows_remote_bootstrap_stages_and_runs_native_worker():
     assert stage["host_credentials"] == [
         {
             "host": "10.0.0.8",
-            "port": 5986,
+            "port": 7443,
             "user": "Administrator",
             "password": "credential",
             "connection": "winrm",
@@ -291,7 +341,7 @@ def test_windows_remote_bootstrap_stages_and_runs_native_worker():
     block = playbook[0]["tasks"][0]
     commands = block["block"]
     assert commands[0]["name"] == "Verify supported Windows and PowerShell version"
-    assert "PowerShell 5.1" in commands[0]["ansible.builtin.raw"]
+    assert "PowerShell 5.1" in commands[0]["ansible.windows.win_shell"]
     assert commands[1]["ansible.windows.win_file"]["state"] == "absent"
     assert commands[2]["ansible.windows.win_file"]["state"] == "directory"
     assert commands[3]["ansible.windows.win_acl"]["rights"] == "FullControl"
@@ -334,6 +384,19 @@ def test_windows_remote_bootstrap_stages_and_runs_native_worker():
         "C:/Windows/Temp/bklite-controller-session-0123456789abcdef0123456789abcdef",
     }
     assert output.startswith("BKINSTALL_EVENT ")
+
+
+def test_windows_preflight_uses_win_shell_instead_of_nested_powershell_command():
+    playbook = yaml.safe_load(WindowsRemoteBootstrapService._execution_playbook())
+    task = playbook[0]["tasks"][0]["block"][0]
+    command = task["ansible.windows.win_shell"]
+
+    assert "ansible.builtin.raw" not in task
+    assert "powershell.exe" not in command
+    assert "-Command" not in command
+    assert "$os = [Environment]::OSVersion.Version" in command
+    assert "$ps = $PSVersionTable.PSVersion" in command
+    assert "PowerShell 5.1" in command
 
 
 def test_windows_remote_bootstrap_rechecks_ownership_after_staging():
@@ -535,13 +598,39 @@ def test_windows_remote_bootstrap_extracts_events_from_ansible_combined_output()
 
 
 def test_installer_init_uploads_windows_bootstrap_artifact(tmp_path, monkeypatch):
+    import io
+
     uploaded = {}
     file_path = tmp_path / "bklite-controller-bootstrap.exe"
     file_path.write_bytes(b"bootstrap")
 
+    class RejectUnboundedRead:
+        def __init__(self, raw_file):
+            self.raw_file = raw_file
+            self.name = raw_file.name
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc_value, traceback):
+            self.raw_file.close()
+
+        def read(self, size=-1):
+            if size is None or size < 0:
+                raise AssertionError("installer artifact must not be read into memory at once")
+            return self.raw_file.read(size)
+
+        def seek(self, *args):
+            return self.raw_file.seek(*args)
+
     async def fake_upload(file, object_key):
         uploaded["object_key"] = object_key
+        uploaded["content"] = file.read(4) + file.read(64)
 
+    def guarded_open(path, mode="r", *args, **kwargs):
+        return RejectUnboundedRead(io.open(path, mode, *args, **kwargs))
+
+    monkeypatch.setattr("builtins.open", guarded_open)
     monkeypatch.setattr(
         "apps.node_mgmt.management.commands.installer_init.upload_file_to_s3",
         fake_upload,
@@ -555,6 +644,7 @@ def test_installer_init_uploads_windows_bootstrap_artifact(tmp_path, monkeypatch
     )
 
     assert uploaded["object_key"] == "installer/windows/x86_64/bklite-controller-bootstrap.exe"
+    assert uploaded["content"] == b"bootstrap"
 
 
 @pytest.mark.django_db
@@ -1020,7 +1110,6 @@ def test_windows_remote_request_rejects_unsafe_credentials(payload):
     "winrm_overrides",
     [
         {"winrm_scheme": "http"},
-        {"port": 5985},
         {"winrm_transport": "kerberos"},
         {"winrm_transport": "credssp"},
         {"winrm_transport": "basic"},
@@ -1053,6 +1142,60 @@ def test_windows_remote_install_accepts_only_the_stable_winrm_profile(winrm_over
 
     assert not serializer.is_valid()
     assert "nodes" in serializer.errors
+
+
+@pytest.mark.unit
+@pytest.mark.django_db
+def test_windows_remote_install_accepts_custom_https_port():
+    serializer = ControllerInstallRequestSerializer(
+        data={
+            "cloud_region_id": 7,
+            "work_node": "executor-node",
+            "package_id": 1,
+            "cpu_architecture": NodeConstants.X86_64_ARCH,
+            "nodes": [
+                {
+                    "ip": "10.0.0.8",
+                    "os": "windows",
+                    "organizations": [1],
+                    "port": 7443,
+                    "username": "Administrator",
+                    "password": "credential",
+                    "winrm_scheme": "https",
+                    "winrm_transport": "ntlm",
+                    "winrm_cert_validation": True,
+                }
+            ],
+        }
+    )
+
+    assert serializer.is_valid(), serializer.errors
+    assert serializer.validated_data["nodes"][0]["port"] == 7443
+
+
+@pytest.mark.unit
+@pytest.mark.django_db
+def test_windows_remote_install_defaults_to_https_port():
+    serializer = ControllerInstallRequestSerializer(
+        data={
+            "cloud_region_id": 7,
+            "work_node": "executor-node",
+            "package_id": 1,
+            "cpu_architecture": NodeConstants.X86_64_ARCH,
+            "nodes": [
+                {
+                    "ip": "10.0.0.8",
+                    "os": "windows",
+                    "organizations": [1],
+                    "username": "Administrator",
+                    "password": "credential",
+                }
+            ],
+        }
+    )
+
+    assert serializer.is_valid(), serializer.errors
+    assert serializer.validated_data["nodes"][0]["port"] == 5986
 
 
 @pytest.mark.unit

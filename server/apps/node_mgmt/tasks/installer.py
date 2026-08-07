@@ -779,8 +779,8 @@ def install_controller_on_nodes(
                 },
             )
 
-            install_node_id = uuid.uuid4().hex
             result = node_obj.result or {}
+            install_node_id = result.get(InstallerConstants.INSTALL_NODE_ID_KEY) or uuid.uuid4().hex
             result[InstallerConstants.INSTALL_NODE_ID_KEY] = install_node_id
             node_obj.result = result
             node_obj.save(update_fields=["result"])
@@ -1078,8 +1078,11 @@ def converge_controller_install_connectivity_for_node(node_id):
     if not node:
         return
 
+    target_filter = Q(**{f"result__{InstallerConstants.INSTALL_NODE_ID_KEY}": node_id})
+    if node.ip:
+        target_filter |= Q(ip=node.ip)
     running_task_nodes = ControllerTaskNode.objects.filter(
-        ip=node.ip,
+        target_filter,
         status="running",
         task__type="install",
     ).select_related("task")
@@ -1196,7 +1199,7 @@ def timeout_controller_install_task(task_id, expected_attempt=1, task_node_ids=N
 
 
 @shared_task
-def retry_controller(task_id, task_node_ids, password=None, private_key=None, passphrase=None):
+def retry_controller(task_id, task_node_ids, password=None, private_key=None, passphrase=None, port=None, username=None):
     """
     重试控制器安装任务中的特定节点
 
@@ -1206,6 +1209,8 @@ def retry_controller(task_id, task_node_ids, password=None, private_key=None, pa
         password: 节点密码（明文，将被加密后存储，可选）
         private_key: SSH私钥（PEM格式，将被加密后存储，可选）
         passphrase: 私钥密码短语（明文，将被加密后存储，可选）
+        port: 远程连接端口（可选）
+        username: 远程连接账号（可选）
     """
 
     task_obj = ControllerTask.objects.filter(id=task_id).first()
@@ -1234,6 +1239,15 @@ def retry_controller(task_id, task_node_ids, password=None, private_key=None, pa
 
     if password:
         update_data["password"] = aes_obj.encode(password)
+    if port is not None:
+        if isinstance(port, bool) or not isinstance(port, int) or not 1 <= port <= 65535:
+            raise BaseAppException("Remote connection port must be between 1 and 65535")
+        update_data["port"] = port
+    if username is not None:
+        username = username.strip()
+        if not username:
+            raise BaseAppException("Remote connection username cannot be empty")
+        update_data["username"] = username
     if private_key:
         update_data["private_key"] = aes_obj.encode(private_key)
     if passphrase:
@@ -1244,10 +1258,14 @@ def retry_controller(task_id, task_node_ids, password=None, private_key=None, pa
 
     for retry_node in retry_nodes:
         next_attempt = _get_execution_attempt(retry_node) + 1
+        previous_result = retry_node.result or {}
         retry_node.status = InstallerConstants.STEP_STATUS_WAITING
         retry_node.result = {
             InstallerConstants.EXECUTION_ATTEMPT_KEY: next_attempt,
         }
+        install_node_id = previous_result.get(InstallerConstants.INSTALL_NODE_ID_KEY)
+        if install_node_id:
+            retry_node.result[InstallerConstants.INSTALL_NODE_ID_KEY] = install_node_id
         retry_node.save(update_fields=["status", "result"])
 
     _dispatch_or_finalize_controller_task(task_id)

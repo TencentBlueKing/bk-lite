@@ -165,15 +165,18 @@ class WindowsRemoteBootstrapService:
                         "block": [
                             {
                                 "name": "Verify supported Windows and PowerShell version",
-                                "ansible.builtin.raw": (
-                                    'powershell.exe -NoProfile -NonInteractive -Command "'
-                                    "$ErrorActionPreference='Stop'; "
-                                    "$os=[Environment]::OSVersion.Version; "
-                                    "$ps=$PSVersionTable.PSVersion; "
-                                    "if ($os.Major -lt 10 -or $ps -lt [Version]'5.1') { "
-                                    "Write-Error 'BK-Lite remote installation requires Windows 10/Server 2016 and PowerShell 5.1 or newer'; "
-                                    "exit 42 }; "
-                                    "Write-Output ('Windows {0}; PowerShell {1}' -f $os,$ps)\""
+                                # Use win_shell instead of nested powershell.exe -Command via raw.
+                                # WinRM pipelining already executes inside PowerShell; an outer
+                                # double-quoted -Command layer expands $os/$ps before assignment.
+                                "ansible.windows.win_shell": (
+                                    "$ErrorActionPreference = 'Stop'\n"
+                                    "$os = [Environment]::OSVersion.Version\n"
+                                    "$ps = $PSVersionTable.PSVersion\n"
+                                    "if ($os.Major -lt 10 -or $ps -lt [Version]'5.1') {\n"
+                                    "  Write-Error 'BK-Lite remote installation requires Windows 10/Server 2016 and PowerShell 5.1 or newer'\n"
+                                    "  exit 42\n"
+                                    "}\n"
+                                    "Write-Output ('Windows ' + $os.ToString() + '; PowerShell ' + $ps.ToString())\n"
                                 ),
                                 "changed_when": False,
                             },
@@ -355,8 +358,13 @@ class WindowsRemoteBootstrapService:
         ownership_validator=None,
         execution_deadline_unix: int = 0,
     ) -> str:
-        if target.scheme != "https" or target.port != 5986 or target.transport != "ntlm" or target.validate_certificate is not True:
-            raise BaseAppException("Windows remote installation requires HTTPS, NTLM, port 5986, and server certificate validation")
+        if (
+            target.scheme != "https"
+            or not 1 <= target.port <= 65535
+            or target.transport != "ntlm"
+            or target.validate_certificate is not True
+        ):
+            raise BaseAppException("Windows remote installation requires HTTPS, NTLM, a valid port, and server certificate validation")
         parsed_session_url = urlparse(session_url)
         if parsed_session_url.scheme.lower() != "https" or not parsed_session_url.hostname:
             raise BaseAppException("Windows remote installation requires an HTTPS installer session URL")

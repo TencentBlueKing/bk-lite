@@ -14,6 +14,7 @@ from apps.node_mgmt.models.sidecar import Node
 from apps.node_mgmt.serializers.installer import (
     ControllerInstallRequestSerializer,
     ControllerManualInstallRequestSerializer,
+    ControllerRetryRequestSerializer,
     InstallCommandRequestSerializer,
     InstallerArtifactQuerySerializer,
 )
@@ -125,13 +126,17 @@ class InstallerViewSet(ViewSet):
     @action(detail=False, methods=["post"], url_path="controller/retry")
     @HasPermission("cloud_region_node-Edit")
     def controller_retry(self, request):
+        payload = request.data.copy()
+        if "task_node_ids" in payload and not isinstance(payload["task_node_ids"], list):
+            payload["task_node_ids"] = [payload["task_node_ids"]]
+        serializer = ControllerRetryRequestSerializer(data=payload)
+        serializer.is_valid(raise_exception=True)
+        data = cast(dict[str, Any], serializer.validated_data)
         scope = resolve_current_team_data_scope(request)
-        task_node_ids = request.data["task_node_ids"]
-        if not isinstance(task_node_ids, list):
-            task_node_ids = [task_node_ids]
+        task_node_ids = data["task_node_ids"]
 
         authorized_task_nodes = InstallerService.get_authorized_controller_task_node_queryset(
-            request.data["task_id"],
+            data["task_id"],
             authorized_nodes=get_authorized_node_queryset(request),
             scope=scope,
             request_user=request.user,
@@ -152,11 +157,13 @@ class InstallerViewSet(ViewSet):
             return WebUtils.response_error(error_message="Manual recovery is required before this node can be retried")
 
         retry_controller.delay(
-            request.data["task_id"],
+            data["task_id"],
             task_node_ids,
-            password=request.data.get("password"),
-            private_key=request.data.get("private_key"),
-            passphrase=request.data.get("passphrase"),
+            password=data.get("password"),
+            port=data.get("port"),
+            username=data.get("username"),
+            private_key=data.get("private_key"),
+            passphrase=data.get("passphrase"),
         )
         return WebUtils.response_success()
 

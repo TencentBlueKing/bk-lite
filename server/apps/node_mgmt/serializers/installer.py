@@ -29,7 +29,7 @@ class InstallNodeSerializer(serializers.Serializer):
         required=True,
         allow_empty=False,
     )
-    port = serializers.IntegerField(required=False, default=22)
+    port = serializers.IntegerField(required=False, min_value=1, max_value=65535)
     username = serializers.CharField(required=False, allow_blank=True, default="")
     password = serializers.CharField(required=False, allow_blank=True, default="")
     private_key = serializers.CharField(required=False, allow_blank=True, default="")
@@ -42,6 +42,7 @@ class InstallNodeSerializer(serializers.Serializer):
         default="ntlm",
     )
     winrm_cert_validation = serializers.BooleanField(required=False, default=True)
+
 
 class ControllerInstallRequestSerializer(serializers.Serializer):
     cloud_region_id = serializers.IntegerField()
@@ -72,14 +73,14 @@ class ControllerInstallRequestSerializer(serializers.Serializer):
         normalized_nodes = []
         for node in attrs["nodes"]:
             node_os = node.get("os") or NodeConstants.LINUX_OS
+            node.setdefault("port", 5986 if node_os == NodeConstants.WINDOWS_OS else 22)
             if not node.get("username"):
                 raise serializers.ValidationError({"nodes": "Remote installation requires a username"})
             if node_os == NodeConstants.WINDOWS_OS:
                 if not node.get("password"):
                     raise serializers.ValidationError({"nodes": "Windows remote installation requires a password"})
                 if (
-                    node.get("port") != 5986
-                    or node.get("winrm_scheme") != "https"
+                    node.get("winrm_scheme") != "https"
                     or node.get("winrm_transport") != "ntlm"
                     or node.get("winrm_cert_validation") is not True
                 ):
@@ -94,6 +95,19 @@ class ControllerInstallRequestSerializer(serializers.Serializer):
             normalized_nodes.append(node)
         attrs["nodes"] = normalized_nodes
         return attrs
+
+
+class ControllerRetryRequestSerializer(serializers.Serializer):
+    task_id = serializers.IntegerField(min_value=1)
+    task_node_ids = serializers.ListField(
+        child=serializers.IntegerField(min_value=1),
+        allow_empty=False,
+    )
+    port = serializers.IntegerField(required=False, min_value=1, max_value=65535)
+    username = serializers.CharField(required=False, allow_blank=False, max_length=100)
+    password = serializers.CharField(required=False, allow_blank=True, write_only=True)
+    private_key = serializers.CharField(required=False, allow_blank=True, write_only=True)
+    passphrase = serializers.CharField(required=False, allow_blank=True, write_only=True)
 
 
 class ControllerManualInstallRequestSerializer(serializers.Serializer):
