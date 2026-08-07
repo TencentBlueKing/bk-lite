@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from typing import Any, Sequence
 
 import json_repair
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_core.tools import BaseTool
 from pydantic import BaseModel, Field
 
@@ -149,8 +149,6 @@ def compact_planned_execution_messages(
     max_ai_chars: int = _DEFAULT_PLANNED_AI_TEXT_CHARS,
 ) -> list[Any]:
     """截断分步执行历史中的过长工具结果与 AI 文本，保留 tool_call 结构。"""
-    from langchain_core.messages import AIMessage, ToolMessage
-
     compacted: list[Any] = []
     for message in messages or []:
         if isinstance(message, ToolMessage):
