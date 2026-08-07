@@ -152,7 +152,8 @@ class ApmApplicationViewSet(viewsets.GenericViewSet):
         application = self.get_object()
         if application.is_builtin:
             return Response({"detail": "内置应用不可修改。"}, status=status.HTTP_409_CONFLICT)
-        serializer = ApplicationMutationSerializer(data=request.data)
+        payload = {key: value for key, value in request.data.items() if key != "application_id"}
+        serializer = ApplicationMutationSerializer(data=payload)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
         try:
