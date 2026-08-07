@@ -7,6 +7,11 @@ from dataclasses import dataclass, field
 from typing import Iterable, Mapping
 
 from apps.patch_mgmt.constants import OSType, RequirementAssessmentStatus
+from apps.patch_mgmt.services.linux_platform import (
+    LinuxHostFacts,
+    package_manager_family,
+    validate_linux_host_facts,
+)
 
 
 @dataclass(frozen=True)
@@ -34,17 +39,6 @@ class LinuxPackageFact:
     installed_version: str = ""
     comparison: int | None = None
     error: str = ""
-
-
-@dataclass(frozen=True)
-class LinuxHostFacts:
-    """Linux 目标机的适用性事实。"""
-
-    distro_id: str = ""
-    distro_like: tuple[str, ...] = ()
-    version_id: str = ""
-    architecture: str = ""
-    package_manager: str = ""
 
 
 @dataclass(frozen=True)
@@ -167,7 +161,8 @@ def _linux_not_applicable_reason(requirement: RequirementSpec, host: LinuxHostFa
         _normalized_architecture(value) for value in requirement.architectures if str(value or "").strip()
     }
     host_arch = _normalized_architecture(host.architecture)
-    if expected_arches and host_arch and host_arch not in expected_arches:
+    universal_arches = {"all", "any", "noarch"}
+    if expected_arches.isdisjoint(universal_arches) and host_arch not in expected_arches:
         return f"补丁架构不适用于当前主机（要求 {', '.join(sorted(expected_arches))}，主机 {host_arch}）"
 
     expected_distro = _normalized_distro(requirement.distro_name)
@@ -181,11 +176,47 @@ def _linux_not_applicable_reason(requirement: RequirementSpec, host: LinuxHostFa
 
     expected_manager = str(requirement.package_manager or "").strip().lower()
     host_manager = str(host.package_manager or "").strip().lower()
-    expected_family = "apt" if expected_manager == "apt" else ("rpm" if expected_manager in {"dnf", "yum"} else "")
-    host_family = "apt" if host_manager == "apt" else ("rpm" if host_manager in {"dnf", "yum"} else "")
-    if expected_family and host_family and expected_family != host_family:
+    if package_manager_family(expected_manager) != package_manager_family(host_manager):
         return f"补丁包管理器 {expected_manager} 不适用于当前主机 {host_manager}"
     return ""
+
+
+def _linux_requirement_metadata_error(requirement: RequirementSpec) -> str:
+    missing = []
+    if not requirement.identifier.strip():
+        missing.append("包名")
+    if not requirement.required_version.strip():
+        missing.append("包版本")
+    if not requirement.distro_name.strip():
+        missing.append("发行版")
+    if not requirement.os_version_range.strip():
+        missing.append("系统版本范围")
+    if not tuple(value for value in requirement.architectures if str(value or "").strip()):
+        missing.append("架构")
+    if not package_manager_family(requirement.package_manager):
+        missing.append("包管理器")
+    if missing:
+        return f"补丁元数据缺少：{', '.join(missing)}"
+    if _version_matches("0", requirement.os_version_range) is None:
+        return f"补丁系统版本范围无法解析：{requirement.os_version_range}"
+    return ""
+
+
+def evaluate_linux_applicability(
+    requirement: RequirementSpec,
+    host: LinuxHostFacts,
+) -> tuple[str, str]:
+    """只判断 Linux 要求是否适用，不读取安装状态。"""
+    host_error = validate_linux_host_facts(host)
+    if host_error:
+        return RequirementAssessmentStatus.UNKNOWN, host_error
+    metadata_error = _linux_requirement_metadata_error(requirement)
+    if metadata_error:
+        return RequirementAssessmentStatus.UNKNOWN, metadata_error
+    reason = _linux_not_applicable_reason(requirement, host)
+    if reason:
+        return RequirementAssessmentStatus.NOT_APPLICABLE, reason
+    return RequirementAssessmentStatus.SATISFIED, "补丁适用于当前主机"
 
 
 def _windows_not_applicable_reason(requirement: RequirementSpec, host: WindowsHostFacts) -> str:
@@ -209,12 +240,35 @@ def _evaluate_linux(
     facts: HostAssessmentFacts,
 ) -> RequirementAssessment:
     package_name = requirement.identifier.strip()
-    not_applicable_reason = _linux_not_applicable_reason(requirement, facts.linux_host)
-    if not_applicable_reason:
+    # 兼容升级前已下发但尚未完成的旧评估输出；新评估均会携带主机事实，
+    # 因而会进入严格的主机事实与补丁元数据校验。
+    legacy_without_host_facts = not any(
+        (
+            facts.linux_host.distro_id,
+            facts.linux_host.version_id,
+            facts.linux_host.architecture,
+            facts.linux_host.package_manager,
+        )
+    )
+    if not legacy_without_host_facts:
+        applicability, applicability_reason = evaluate_linux_applicability(
+            requirement, facts.linux_host
+        )
+    else:
+        applicability, applicability_reason = RequirementAssessmentStatus.SATISFIED, ""
+    if applicability == RequirementAssessmentStatus.UNKNOWN:
+        return _result(
+            requirement.requirement_id,
+            RequirementAssessmentStatus.UNKNOWN,
+            applicability_reason,
+            pkg_name=package_name,
+            required_version=requirement.required_version,
+        )
+    if applicability == RequirementAssessmentStatus.NOT_APPLICABLE:
         return _result(
             requirement.requirement_id,
             RequirementAssessmentStatus.NOT_APPLICABLE,
-            not_applicable_reason,
+            applicability_reason,
             pkg_name=package_name,
             required_version=requirement.required_version,
             host_distro=facts.linux_host.distro_id,
@@ -361,6 +415,7 @@ def evaluate_requirements(
             reasons = {
                 "missing linux_detail": "缺少 Linux 补丁详情",
                 "missing package name": "补丁未配置包名",
+                "conflicting linux package families": "补丁同时关联 APT 与 RPM 家族来源，无法安全判断适用性",
                 "missing windows_detail": "缺少 Windows 补丁详情",
                 "missing KB number": "补丁未配置 KB 号",
             }

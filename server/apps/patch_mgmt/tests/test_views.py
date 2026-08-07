@@ -978,6 +978,37 @@ class TestRiskViewApi:
         task = GovernanceTask.objects.get(task_type="install")
         trigger.assert_called_once_with(task.id)
 
+    def test_risk_remediate_preserves_preview_failure_warning(self, su_client, mocker):
+        from apps.patch_mgmt.models import GovernanceTask, HostComplianceSnapshot
+
+        mocker.patch("apps.patch_mgmt.services.governance_service._trigger_async")
+        target, patch, _baseline = self._setup()
+        HostComplianceSnapshot.objects.filter(
+            binding__target=target,
+            requirement__patch=patch,
+        ).update(
+            evidence={
+                "install_impact": {
+                    "summary": "",
+                    "error": "apt-get dry-run failed",
+                }
+            }
+        )
+
+        response = su_client.post(
+            f"{RISK_URL}remediate/",
+            {
+                "name": "坚持治理任务",
+                "items": [{"host_id": target.id, "patch_id": patch.id}],
+                "execution_mode": "now",
+            },
+            format="json",
+        )
+
+        assert response.status_code == status.HTTP_201_CREATED
+        risk_snapshot = GovernanceTask.objects.get(task_type="install").risk_snapshot
+        assert risk_snapshot[0]["preview_warning"] == "apt-get dry-run failed"
+
     def test_risk_remediate_requires_task_name(self, su_client):
         target, patch, _baseline = self._setup()
 
