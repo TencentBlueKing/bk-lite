@@ -6,8 +6,10 @@ import {
   OpsAnalysisBarGauge,
   OpsAnalysisGauge,
   OpsAnalysisEventTable,
+  OpsAnalysisEventTimeline,
   OpsAnalysisLine,
   OpsAnalysisPie,
+  OpsAnalysisRadar,
   OpsAnalysisSingle,
   OpsAnalysisStateTimeline,
   OpsAnalysisTable,
@@ -471,6 +473,100 @@ const FamilyOverview = () => {
       </div>
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1.2fr)_380px]">
+        <section className="space-y-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-1)] p-4">
+          <h3 className="text-sm font-semibold text-[var(--color-text-1)]">
+            OpsAnalysisEventTimeline
+          </h3>
+          <div className="space-y-4">
+            <div style={{ height: 260 }}>
+              <OpsAnalysisEventTimeline
+                rawData={[
+                  {
+                    time: '2026-08-01 10:15:00',
+                    title: 'CPU usage reached 95%',
+                    status: 'warning',
+                    category: 'monitor',
+                    description: 'node web-01 keep high for 10m',
+                    link: '/monitor/view/detail?id=1',
+                  },
+                  {
+                    time: '2026-08-01 10:17:00',
+                    title: 'Disk usage reached 98%',
+                    status: 'error',
+                    category: 'storage',
+                    description: 'node db-01 /data is close to full',
+                  },
+                ]}
+                config={{
+                  chartType: 'eventTimeline',
+                  eventTimeline: {
+                    sortOrder: 'desc',
+                  },
+                }}
+              />
+            </div>
+            <div style={{ height: 240 }}>
+              <OpsAnalysisEventTimeline
+                rawData={Array.from({ length: 120 }).map((_, index) => ({
+                  time: `2026-08-01 11:${String(index % 60).padStart(2, '0')}:00`,
+                  title: `event-${index + 1}`,
+                  status: index % 2 ? 'info' : 'success',
+                }))}
+                config={{
+                  chartType: 'eventTimeline',
+                  eventTimeline: { sortOrder: 'asc' },
+                }}
+              />
+            </div>
+          </div>
+        </section>
+
+        <section className="space-y-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-1)] p-4">
+          <h3 className="text-sm font-semibold text-[var(--color-text-1)]">
+            OpsAnalysisRadar
+          </h3>
+          <div className="space-y-4">
+            <div style={{ height: 260 }}>
+              <OpsAnalysisRadar
+                rawData={[
+                  { name: 'CPU', value: 78 },
+                  { name: 'Memory', value: 64 },
+                  { name: 'Disk', value: 45 },
+                  { name: 'Network', value: 58 },
+                ]}
+                config={{
+                  chartType: 'radar',
+                  radar: {
+                    min: 0,
+                    max: 100,
+                  },
+                }}
+              />
+            </div>
+            <div style={{ height: 260 }}>
+              <OpsAnalysisRadar
+                rawData={{
+                  cpu: 82,
+                  mem: 70,
+                  disk: 52,
+                }}
+                config={{
+                  chartType: 'radar',
+                  radar: {
+                    min: 0,
+                    max: 120,
+                    indicators: [
+                      { key: 'cpu', label: 'CPU' },
+                      { key: 'mem', label: 'Memory' },
+                      { key: 'disk', label: 'Disk' },
+                    ],
+                  },
+                }}
+              />
+            </div>
+          </div>
+        </section>
+
         <section className="space-y-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-1)] p-4">
           <h3 className="text-sm font-semibold text-[var(--color-text-1)]">
             OpsAnalysisTopN

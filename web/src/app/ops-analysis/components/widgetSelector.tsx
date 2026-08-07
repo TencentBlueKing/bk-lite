@@ -52,8 +52,10 @@ const ComponentSelector: React.FC<ComponentSelectorProps> = ({
     gauge: t('dataSource.gauge'),
     table: t('dataSource.table'),
     eventTable: t('dataSource.eventTable'),
+    eventTimeline: t('dashboard.eventTimeline'),
     message: t('dataSource.eventTable'),
     topN: t('dataSource.topN'),
+    radar: t('dashboard.radar'),
     room3D: t('dataSource.room3D'),
   };
 
