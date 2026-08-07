@@ -1,6 +1,6 @@
 """补丁管理 Dashboard 视图"""
 
-from django.db.models import Count
+from django.db.models import Count, Prefetch
 from rest_framework.decorators import action
 from rest_framework.exceptions import MethodNotAllowed
 from rest_framework.response import Response
@@ -19,16 +19,16 @@ from apps.patch_mgmt.constants import (
 from apps.patch_mgmt.models import (
     BaselineRequirement,
     GovernanceTask,
+    GovernanceTaskHost,
     HostBaselineBinding,
     Patch,
-    PatchBaseline,
-    PatchTarget,
 )
 from apps.patch_mgmt.serializers.governance import GovernanceTaskListSerializer
 from apps.patch_mgmt.services.execution_record_service import (
     filter_execution_record_roots,
 )
 from apps.patch_mgmt.services.risk_service import compute_host_compliance_status, compute_risk_items
+from apps.patch_mgmt.services.target_access import target_access_scope
 
 
 class PatchDashboardViewSet(AuthViewSet):
@@ -54,32 +54,32 @@ class PatchDashboardViewSet(AuthViewSet):
     @HasPermission("patch_dashboard-View")
     def stats(self, request):
         """汇总补丁管理关键指标"""
-        target_qs = self.get_queryset_by_permission(
-            request, PatchTarget.objects.all(), permission_key="patch_target"
-        )
-        patch_qs = self.get_queryset_by_permission(
-            request, Patch.objects.all(), permission_key="patch"
-        )
-        baseline_qs = self.get_queryset_by_permission(
-            request, PatchBaseline.objects.all(), permission_key="patch_baseline"
-        )
-        task_qs = self.get_queryset_by_permission(
-            request, GovernanceTask.objects.all(), permission_key="patch_governance"
-        )
+        target_qs = target_access_scope(request).queryset("View")
         target_ids = set(target_qs.values_list("id", flat=True))
+        operable_target_ids = set(
+            target_access_scope(request)
+            .queryset("Operate")
+            .values_list("id", flat=True)
+        )
+        visible_target_ids = target_qs.values("id")
+        binding_qs = HostBaselineBinding.objects.filter(
+            target_id__in=visible_target_ids
+        )
+        baseline_ids = set(binding_qs.values_list("baseline_id", flat=True))
+        patch_qs = Patch.objects.filter(
+            baseline_requirements__baseline_id__in=baseline_ids
+        ).distinct()
         patch_ids = set(patch_qs.values_list("id", flat=True))
-        baseline_ids = set(baseline_qs.values_list("id", flat=True))
+        task_qs = GovernanceTask.objects.filter(
+            host_results__target_id__in=visible_target_ids
+        ).distinct()
 
         target_total = len(target_ids)
         patch_total = len(patch_ids)
-        host_binding_filter = {
-            "target_id__in": target_ids,
-            "baseline_id__in": baseline_ids,
-        }
+        host_binding_filter = {"target_id__in": target_ids}
 
         high_severity_missing = BaselineRequirement.objects.filter(
             patch__severity__in=(PatchSeverity.CRITICAL, PatchSeverity.IMPORTANT),
-            patch_id__in=patch_ids,
             baseline_id__in=baseline_ids,
         ).count()
 
@@ -105,7 +105,9 @@ class PatchDashboardViewSet(AuthViewSet):
         denom = compliant_hosts + non_compliant_hosts
         compliance_rate = round((compliant_hosts / denom) * 100) if denom > 0 else 0
 
-        pending_reboot_targets = 0
+        pending_reboot_targets = binding_qs.filter(
+            pending_reboot_count__gt=0
+        ).count()
 
         failed_install_tasks = task_qs.filter(
             status=GovernanceTaskStatus.FAILED, task_type="install"
@@ -120,8 +122,6 @@ class PatchDashboardViewSet(AuthViewSet):
             item
             for item in all_risk_items
             if item.host_id in target_ids
-            and item.patch_id in patch_ids
-            and item.baseline_id in baseline_ids
         ]
         missing_risk_items = [i for i in risk_items if i.compliance == RiskCompliance.MISSING]
         pending_risk_count = len(missing_risk_items)
@@ -154,16 +154,29 @@ class PatchDashboardViewSet(AuthViewSet):
         ]
 
         # 与「风险治理 / 执行记录」使用同一根记录、权限、排序和状态口径。
+        visible_host_qs = GovernanceTaskHost.objects.filter(
+            target_id__in=visible_target_ids
+        ).select_related("task")
         recent_roots = list(
             filter_execution_record_roots(task_qs)
             .select_related("source_record")
-            .prefetch_related("host_results")
+            .prefetch_related(
+                Prefetch(
+                    "host_results",
+                    queryset=visible_host_qs,
+                    to_attr="_visible_host_results",
+                )
+            )
             .order_by("-created_at")[:10]
         )
         serialized_recent = GovernanceTaskListSerializer(
             recent_roots,
             many=True,
-            context={"request": request},
+            context={
+                "request": request,
+                "visible_target_ids": target_ids,
+                "operable_target_ids": operable_target_ids,
+            },
         ).data
         recent_tasks = [
             {

@@ -12,7 +12,6 @@
 所有执行结果回写到 GovernanceTaskHost（stage / exit_code / reason 等）。
 '''
 
-import logging
 import re
 import shlex
 import time
@@ -25,6 +24,7 @@ from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
 
+from apps.core.logger import logger
 from apps.core.mixinx import EncryptMixin
 from apps.patch_mgmt.constants import (
     ComplianceStatus,
@@ -42,8 +42,6 @@ from apps.patch_mgmt.services.target_execution_route import (
 )
 from apps.rpc.ansible import AnsibleExecutor
 from apps.rpc.executor import Executor
-
-logger = logging.getLogger('app')
 
 DEFAULT_TIMEOUT = 3600
 WINDOWS_PATCH_STAGE_DIR = 'C:/Windows/Temp/bk-lite-patches'
@@ -460,14 +458,14 @@ def _install_commands(
 
     pkg_names: list[str] = []
     for p in patches:
-        pkg_name = ''
         try:
-            pkg_name = (p.linux_detail.pkg_name or '').strip()
+            patch_pkg_names = p.linux_detail.package_names()
         except Exception:
-            pass
-        if not pkg_name or not _PKG_NAME_RE.match(pkg_name):
-            continue
-        pkg_names.append(pkg_name)
+            patch_pkg_names = []
+        for pkg_name in patch_pkg_names:
+            if not _PKG_NAME_RE.match(pkg_name) or pkg_name in pkg_names:
+                continue
+            pkg_names.append(pkg_name)
 
     if not pkg_names:
         return ['echo no installable package mapped']
@@ -486,6 +484,10 @@ def _assess_command(os_type: str, requirements: list | None = None) -> str:
     if os_type == OSType.WINDOWS:
         return (
             '$ProgressPreference="SilentlyContinue";'
+            '$os=Get-CimInstance Win32_OperatingSystem;'
+            '$caption=([string]$os.Caption).Replace("|"," ");'
+            '$arch=([string]$env:PROCESSOR_ARCHITECTURE).Replace("|"," ");'
+            '"BKPATCH_HOST|WINDOWS|{0}|{1}|{2}|{3}" -f $caption,$os.Version,$os.BuildNumber,$arch;'
             '$s=New-Object -ComObject Microsoft.Update.Session;'
             '$sr=$s.CreateUpdateSearcher();'
             '$r=$sr.Search("IsInstalled=0");'
@@ -505,18 +507,34 @@ def _assess_command(os_type: str, requirements: list | None = None) -> str:
             '"===HOTFIX===";'
             'Get-HotFix | ForEach-Object { $_.HotFixID }'
         )
-    commands: list[str] = []
+    package_requirements: list[tuple[int, int, str, str]] = []
     for requirement in requirements or []:
         try:
             detail = requirement.patch.linux_detail
-            package_name = (detail.pkg_name or '').strip()
-            required_version = (detail.pkg_version or '').strip()
+            package_items = getattr(detail, 'package_items', None)
+            if callable(package_items):
+                items = package_items()
+            else:
+                package_name = (getattr(detail, 'pkg_name', '') or '').strip()
+                items = [{
+                    'name': package_name,
+                    'version': (getattr(detail, 'pkg_version', '') or '').strip(),
+                }] if package_name else []
         except Exception:  # noqa: BLE001
-            package_name = ''
-            required_version = ''
+            items = []
+        if not items:
+            package_requirements.append((int(requirement.id), 0, '', ''))
+            continue
+        package_requirements.extend(
+            (int(requirement.id), spec_index, item['name'], item['version'])
+            for spec_index, item in enumerate(items)
+        )
+
+    commands: list[str] = []
+    for requirement_id, spec_index, package_name, required_version in package_requirements:
         if not package_name or not _PKG_NAME_RE.match(package_name):
             commands.append(
-                f"printf 'BKPATCH_LINUX|{int(requirement.id)}||unknown|||invalid_package_name\\n'"
+                f"printf 'BKPATCH_LINUX|{requirement_id}|{spec_index}||unknown|||invalid_package_name\\n'"
             )
             continue
         package_q = shlex.quote(package_name)
@@ -524,36 +542,47 @@ def _assess_command(os_type: str, requirements: list | None = None) -> str:
         commands.append(
             f"pkg={package_q}; required={version_q}; "
             "if [ -z \"$required\" ]; then "
-            f"printf 'BKPATCH_LINUX|{int(requirement.id)}|{package_name}|unknown|||missing_required_version\\n'; "
+            f"printf 'BKPATCH_LINUX|{requirement_id}|{spec_index}|{package_name}|unknown|||missing_required_version\\n'; "
             "elif command -v dpkg-query >/dev/null 2>&1; then "
             "value=$(dpkg-query -W -f='${db:Status-Abbrev}|${Version}' -- \"$pkg\" 2>/dev/null); rc=$?; "
             "if [ $rc -ne 0 ]; then "
-            f"printf 'BKPATCH_LINUX|{int(requirement.id)}|{package_name}|absent|||\\n'; "
+            f"printf 'BKPATCH_LINUX|{requirement_id}|{spec_index}|{package_name}|absent|||\\n'; "
             "else state=${value%%|*}; installed=${value#*|}; "
             "if [ \"$state\" != 'ii ' ]; then "
-            f"printf 'BKPATCH_LINUX|{int(requirement.id)}|{package_name}|absent|%s||\\n' \"$installed\"; "
+            f"printf 'BKPATCH_LINUX|{requirement_id}|{spec_index}|{package_name}|absent|%s||\\n' \"$installed\"; "
             "elif dpkg --compare-versions \"$installed\" ge \"$required\"; then "
-            f"printf 'BKPATCH_LINUX|{int(requirement.id)}|{package_name}|installed|%s|0|\\n' \"$installed\"; "
+            f"printf 'BKPATCH_LINUX|{requirement_id}|{spec_index}|{package_name}|installed|%s|0|\\n' \"$installed\"; "
             "else "
-            f"printf 'BKPATCH_LINUX|{int(requirement.id)}|{package_name}|installed|%s|-1|\\n' \"$installed\"; fi; fi; "
+            f"printf 'BKPATCH_LINUX|{requirement_id}|{spec_index}|{package_name}|installed|%s|-1|\\n' \"$installed\"; fi; fi; "
             "elif command -v rpm >/dev/null 2>&1; then "
             "installed=$(rpm -q --qf '%{EVR}' \"$pkg\" 2>/dev/null); rc=$?; "
             "if [ $rc -ne 0 ]; then "
-            f"printf 'BKPATCH_LINUX|{int(requirement.id)}|{package_name}|absent|||\\n'; "
+            f"printf 'BKPATCH_LINUX|{requirement_id}|{spec_index}|{package_name}|absent|||\\n'; "
             "else comparison=$(env BKPATCH_INSTALLED=\"$installed\" BKPATCH_REQUIRED=\"$required\" "
             "rpm --eval '%{lua: print(rpm.vercmp(os.getenv(\"BKPATCH_INSTALLED\"), os.getenv(\"BKPATCH_REQUIRED\")))}' 2>/dev/null); compare_rc=$?; "
             "if [ $compare_rc -ne 0 ] || ! printf '%s' \"$comparison\" | grep -Eq '^-?[0-9]+$'; then "
-            f"printf 'BKPATCH_LINUX|{int(requirement.id)}|{package_name}|unknown|%s||rpm_version_compare_failed\\n' \"$installed\"; "
+            f"printf 'BKPATCH_LINUX|{requirement_id}|{spec_index}|{package_name}|unknown|%s||rpm_version_compare_failed\\n' \"$installed\"; "
             "elif [ \"$comparison\" -ge 0 ]; then "
-            f"printf 'BKPATCH_LINUX|{int(requirement.id)}|{package_name}|installed|%s|0|\\n' \"$installed\"; "
+            f"printf 'BKPATCH_LINUX|{requirement_id}|{spec_index}|{package_name}|installed|%s|0|\\n' \"$installed\"; "
             "else "
-            f"printf 'BKPATCH_LINUX|{int(requirement.id)}|{package_name}|installed|%s|-1|\\n' \"$installed\"; fi; fi; "
+            f"printf 'BKPATCH_LINUX|{requirement_id}|{spec_index}|{package_name}|installed|%s|-1|\\n' \"$installed\"; fi; fi; "
             "else "
-            f"printf 'BKPATCH_LINUX|{int(requirement.id)}|{package_name}|unknown|||unsupported_package_manager\\n'; fi"
+            f"printf 'BKPATCH_LINUX|{requirement_id}|{spec_index}|{package_name}|unknown|||unsupported_package_manager\\n'; fi"
         )
     if not commands:
         return "printf 'BKPATCH_COLLECTION_ERROR|no_linux_requirements\\n'"
-    return '; '.join(commands)
+    host_facts = (
+        "os_id=''; os_like=''; os_version=''; "
+        "if [ -r /etc/os-release ]; then . /etc/os-release; "
+        "os_id=${ID:-}; os_like=${ID_LIKE:-}; os_version=${VERSION_ID:-}; fi; "
+        "if command -v dnf >/dev/null 2>&1; then manager=dnf; "
+        "elif command -v yum >/dev/null 2>&1; then manager=yum; "
+        "elif command -v apt-get >/dev/null 2>&1; then manager=apt; else manager=unknown; fi; "
+        "host_arch=$(uname -m 2>/dev/null); "
+        "printf 'BKPATCH_HOST|LINUX|%s|%s|%s|%s|%s\\n' "
+        '"$os_id" "$os_like" "$os_version" "$host_arch" "$manager"'
+    )
+    return f"{host_facts}; {'; '.join(commands)}"
 
 
 def _dry_run_command(os_type: str, pkg_names: list[str]) -> str:
@@ -562,7 +591,9 @@ def _dry_run_command(os_type: str, pkg_names: list[str]) -> str:
         return ''
     if os_type == OSType.WINDOWS:
         return ''  # Windows WUA 原子安装，不需要 dry-run
-    pkgs = ' '.join(pkg_names)
+    pkgs = ' '.join(shlex.quote(name) for name in pkg_names if _PKG_NAME_RE.match(name))
+    if not pkgs:
+        return ''
     # 用 if/elif 检测包管理器，避免 || 链导致 dnf --assumeno (exit 1) 触发 fallback
     # dnf/yum --assumeno 退出码 1 表示用户取消，属于正常行为；追加 || true 确保退出码 0
     return (
@@ -688,9 +719,9 @@ def _collect_install_impact(
     pkg_names = []
     for req in missing_requirements:
         try:
-            pkg_name = req.patch.linux_detail.pkg_name
-            if pkg_name:
-                pkg_names.append(pkg_name)
+            for pkg_name in req.patch.linux_detail.package_names():
+                if pkg_name not in pkg_names:
+                    pkg_names.append(pkg_name)
         except Exception:
             pass
 
@@ -1060,10 +1091,10 @@ def _update_binding_after_assess(
     )
 
     binding.missing_count = missing_count
-    if unknown_count:
-        binding.compliance_status = ComplianceStatus.UNKNOWN
-    elif missing_count:
+    if missing_count:
         binding.compliance_status = ComplianceStatus.NON_COMPLIANT
+    elif unknown_count:
+        binding.compliance_status = ComplianceStatus.UNKNOWN
     elif satisfied_count:
         binding.compliance_status = ComplianceStatus.COMPLIANT
     elif not_applicable_count:
@@ -2100,10 +2131,41 @@ def run_governance_host(task: GovernanceTask, target_id: int) -> None:
             for item in (task.risk_snapshot or [])
             if int(item.get("host_id") or 0) == target_id and item.get("patch_id")
         ]
+        selected_patch_ids = list(dict.fromkeys(selected_patch_ids))
+        if task.risk_snapshot:
+            binding = HostBaselineBinding.objects.filter(target_id=target_id).first()
+            expected_baseline_ids = {
+                int(item.get("baseline_id") or 0)
+                for item in task.risk_snapshot
+                if int(item.get("host_id") or 0) == target_id
+            }
+            remediable_patch_ids = set()
+            if binding and expected_baseline_ids == {binding.baseline_id}:
+                remediable_patch_ids = set(
+                    HostComplianceSnapshot.objects.filter(
+                        binding=binding,
+                        requirement__baseline_id=binding.baseline_id,
+                        requirement__patch_id__in=selected_patch_ids,
+                        status=RequirementAssessmentStatus.MISSING,
+                    ).values_list("requirement__patch_id", flat=True)
+                )
+            if not selected_patch_ids or remediable_patch_ids != set(selected_patch_ids):
+                _record_host_result(
+                    host,
+                    stage="failed",
+                    stage_color="error",
+                    reason="补丁已不在最新评估的待治理范围内，请重新评估后再治理",
+                    failed_stage="preflight",
+                    error_code="assessment_stale",
+                    can_retry=False,
+                )
+                if _finalize_task_status(task):
+                    _run_terminal_followups(task)
+                return
         _execute_install(
             target,
             host,
-            list(dict.fromkeys(selected_patch_ids)) if selected_patch_ids else task.patch_list or [],
+            selected_patch_ids if selected_patch_ids else task.patch_list or [],
             execution_id,
             timeout,
         )

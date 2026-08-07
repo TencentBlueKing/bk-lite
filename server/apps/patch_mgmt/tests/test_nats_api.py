@@ -2,27 +2,21 @@
 
 import pytest
 
-from apps.patch_mgmt.constants import GovernanceTaskStatus, GovernanceTaskType, OSType
-from apps.patch_mgmt.models import GovernanceTask, Patch, PatchTarget
-from apps.patch_mgmt.nats_api import get_patch_mgmt_module_data
+from apps.patch_mgmt.models import PatchTarget
+from apps.patch_mgmt.nats_api import (
+    get_patch_mgmt_module_data,
+    get_patch_mgmt_module_list,
+)
 from apps.rpc.patch_mgmt import PatchMgmt
 
 
 pytestmark = pytest.mark.django_db
 
 
-def test_module_data_filters_group_and_maps_patch_title_to_name():
-    allowed = Patch.objects.create(
-        title="allowed patch", os_type=OSType.LINUX, team=[1]
-    )
-    Patch.objects.create(title="other patch", os_type=OSType.LINUX, team=[2])
-
-    result = get_patch_mgmt_module_data("patch", "", 1, 10, 1, team=[1])
-
-    assert result == {
-        "count": 1,
-        "items": [{"id": allowed.id, "name": "allowed patch"}],
-    }
+def test_module_list_only_exposes_target_management():
+    assert get_patch_mgmt_module_list() == [
+        {"name": "patch_target", "display_name": "目标管理"}
+    ]
 
 
 def test_module_data_returns_target_instances_and_supports_pagination():
@@ -40,52 +34,21 @@ def test_module_data_returns_target_instances_and_supports_pagination():
     assert first.id < second.id
 
 
-def test_governance_module_only_returns_root_execution_records():
-    install = GovernanceTask.objects.create(
-        name="治理记录",
-        task_type=GovernanceTaskType.INSTALL,
-        status=GovernanceTaskStatus.COMPLETED,
-        team=[1],
-    )
-    GovernanceTask.objects.create(
-        name="评估任务",
-        task_type=GovernanceTaskType.ASSESS,
-        status=GovernanceTaskStatus.COMPLETED,
-        team=[1],
-    )
-    GovernanceTask.objects.create(
-        name="内部验证",
-        task_type=GovernanceTaskType.VERIFY,
-        status=GovernanceTaskStatus.COMPLETED,
-        parent_task=install,
-        team=[1],
-    )
-    reboot = GovernanceTask.objects.create(
-        name="重启记录",
-        task_type=GovernanceTaskType.REBOOT,
-        status=GovernanceTaskStatus.PENDING,
-        team=[1],
-    )
+@pytest.mark.parametrize(
+    "module",
+    [
+        "patch",
+        "patch_source",
+        "patch_baseline",
+        "patch_governance",
+        "patch_risk",
+        "patch_dashboard",
+    ],
+)
+def test_retired_data_permission_modules_are_not_queryable(module):
+    result = get_patch_mgmt_module_data(module, "", 1, 10, 1, team=[1])
 
-    result = get_patch_mgmt_module_data(
-        "patch_governance", "", 1, 10, 1, team=[1]
-    )
-
-    assert result == {
-        "count": 2,
-        "items": [
-            {"id": install.id, "name": install.name},
-            {"id": reboot.id, "name": reboot.name},
-        ],
-    }
-
-
-@pytest.mark.parametrize("module", ["patch_risk", "patch_dashboard"])
-def test_aggregate_module_has_no_independent_instances(module):
-    assert get_patch_mgmt_module_data(module, "", 1, 10, 1, team=[1]) == {
-        "count": 0,
-        "items": [],
-    }
+    assert result["result"] is False
 
 
 def test_unknown_module_returns_business_error():
@@ -96,7 +59,7 @@ def test_unknown_module_returns_business_error():
 
 def test_module_data_rejects_group_outside_authorized_teams():
     result = get_patch_mgmt_module_data(
-        "patch", "", 1, 10, 2, team=[1]
+        "patch_target", "", 1, 10, 2, team=[1]
     )
 
     assert result["result"] is False
@@ -111,7 +74,7 @@ def test_rpc_client_forwards_module_data(monkeypatch):
         "items": [],
     }
 
-    result = client.get_module_data(module="patch", page=1)
+    result = client.get_module_data(module="patch_target", page=1)
 
     assert result == {"count": 0, "items": []}
-    assert calls == [("get_patch_mgmt_module_data", {"module": "patch", "page": 1})]
+    assert calls == [("get_patch_mgmt_module_data", {"module": "patch_target", "page": 1})]

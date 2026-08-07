@@ -35,6 +35,7 @@ import MoreActionsDropdown from '@/components/more-actions-dropdown';
 import type { MoreActionsDropdownItem } from '@/components/more-actions-dropdown';
 import { OBJECT_DEFAULT_ICON } from '@/app/monitor/constants';
 import { isDerivativeObject } from '@/app/monitor/utils/monitorObject';
+import { sameMonitorId, toMonitorIdString } from '@/app/monitor/utils/monitorIds';
 import { cloneDeep } from 'lodash';
 import CreateTemplateModal from './createTemplateModal';
 import ResizableSidebar from '@/app/monitor/components/resizableSidebar';
@@ -76,6 +77,7 @@ const Integration = () => {
   const [pluginList, setPluginList] = useState<ObjectItem[]>([]);
   const [treeLoading, setTreeLoading] = useState<boolean>(false);
   const [objectId, setObjectId] = useState<React.Key>('');
+  const [objectType, setObjectType] = useState<string>('');
   const [pagination, setPagination] = useState<Pagination>({
     current: 1,
     total: 0,
@@ -91,7 +93,7 @@ const Integration = () => {
   useEffect(() => {
     if (isLoading) return;
     getPluginList();
-  }, [isLoading, objectId, pagination.current, pagination.pageSize]);
+  }, [isLoading, objectId, objectType, pagination.current, pagination.pageSize]);
 
   useEffect(() => {
     return () => {
@@ -115,15 +117,34 @@ const Integration = () => {
     pluginAbortControllerRef.current?.abort();
   };
 
+  const isTypeNodeKey = (key: string) => {
+    const keyStr = String(key);
+    if (keyStr === 'all') return false;
+    // 叶子节点 key 为对象数字 id；一级分类 key 为 MonitorObjectType.id（如 database）
+    return objects.some((item) => String(item.type) === keyStr);
+  };
+
   const handleObjectChange = async (id: string) => {
     cancelAllRequests();
     setPagination((prev) => ({ ...prev, current: 1 }));
-    setObjectId(id === 'all' ? '' : id);
+    if (id === 'all' || !id) {
+      setObjectId('');
+      setObjectType('');
+      return;
+    }
+    if (isTypeNodeKey(String(id))) {
+      setObjectId('');
+      setObjectType(String(id));
+      return;
+    }
+    setObjectType('');
+    setObjectId(id);
   };
 
   const getPluginList = async (
     params: {
       monitor_object_id?: React.Key | null;
+      monitor_object_type?: string | null;
       keyword?: string;
       page?: number;
     } = {}
@@ -138,12 +159,20 @@ const Integration = () => {
     setExportDisabled(true);
     setPageLoading(true);
     try {
+      const monitorObjectId =
+        params.monitor_object_id !== undefined
+          ? params.monitor_object_id
+          : objectId;
+      const monitorObjectType =
+        params.monitor_object_type !== undefined
+          ? params.monitor_object_type
+          : objectType;
       const data = await getMonitorPlugin(
         {
-          monitor_object_id:
-            params.monitor_object_id !== undefined
-              ? params.monitor_object_id
-              : objectId,
+          ...(monitorObjectId ? { monitor_object_id: monitorObjectId } : {}),
+          ...(monitorObjectType
+            ? { monitor_object_type: monitorObjectType }
+            : {}),
           keyword: params.keyword !== undefined ? params.keyword : searchText,
           page,
           page_size: pagination.pageSize
@@ -201,7 +230,7 @@ const Integration = () => {
           acc[item.type].children.push({
             title: item.display_name || '--',
             label: item.name || '--',
-            key: item.id,
+            key: toMonitorIdString(item.id),
             icon: item.icon,
             children: []
           });
@@ -260,6 +289,7 @@ const Integration = () => {
     setPagination((prev) => ({ ...prev, current: 1 }));
     getPluginList({
       monitor_object_id: objectId,
+      monitor_object_type: objectType,
       keyword: searchText,
       page: 1
     });
@@ -270,6 +300,7 @@ const Integration = () => {
     setPagination((prev) => ({ ...prev, current: 1 }));
     getPluginList({
       monitor_object_id: objectId,
+      monitor_object_type: objectType,
       keyword: '',
       page: 1
     });
@@ -343,7 +374,7 @@ const Integration = () => {
 
   const linkToDetial = (app: ObjectItem) => {
     const parentObject: any = objects.find(
-      (item) => item.id === app.parent_monitor_object
+      (item) => sameMonitorId(item.id, app.parent_monitor_object)
     );
     const objectInfo = parentObject || {};
     if (objectInfo.id) {
@@ -389,10 +420,11 @@ const Integration = () => {
         <div className="h-[calc(100vh-146px)] pt-5 px-2.5 pb-2.5 bg-[var(--color-bg-1)] overflow-y-auto">
           <TreeSelector
             showAllMenu
+            allowParentSelect
             data={treeData}
             defaultSelectedKey={
               searchParams.get('objId')
-                ? Number(searchParams.get('objId'))
+                ? toMonitorIdString(searchParams.get('objId'))
                 : 'all'
             }
             loading={treeLoading}
@@ -453,7 +485,7 @@ const Integration = () => {
               >
                 {pluginList.map((app) => {
                   const parentObject: any = objects.find(
-                    (item) => item.id === app.parent_monitor_object
+                    (item) => sameMonitorId(item.id, app.parent_monitor_object)
                   );
                   const objectName = parentObject?.name || '';
 

@@ -1,4 +1,5 @@
 import ipaddress
+import re
 
 from rest_framework import serializers
 
@@ -8,8 +9,11 @@ from apps.system_mgmt.models import NetworkWhiteList
 # 等于关闭全部 SSRF 防护的超网，禁止入库
 _FORBIDDEN_SUPERNETS = {"0.0.0.0/0", "::/0"}
 
-# domain 字段禁用的字符(防止 userinfo/CIDR 格式/通配/前导点等绕过)
-_DOMAIN_FORBIDDEN_CHARS = ("@", "/", "*", " ", "\t", "\n", "\r")
+# domain 字段禁用的字符(防止 userinfo/CIDR 格式/空白等绕过；* 仅允许 *.suffix 形态)
+_DOMAIN_FORBIDDEN_CHARS = ("@", "/", " ", "\t", "\n", "\r")
+
+# 通配后缀：*.example.com，后缀至少两段 label（禁止 *.com / *）
+_WILDCARD_DOMAIN_RE = re.compile(r"^\*\.[a-z0-9]([a-z0-9\-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9\-]*[a-z0-9])?)+$")
 
 
 class NetworkWhiteListSerializer(serializers.ModelSerializer):
@@ -47,6 +51,13 @@ class NetworkWhiteListSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(self._loader().get("error.invalid_domain_name_characters").format(domain=raw))
         if raw.startswith("."):
             raise serializers.ValidationError(self._loader().get("error.domain_name_leading_dot"))
+
+        if "*" in raw:
+            # 仅允许前缀通配 *.example.com（SwitchyOmega 同类写法）
+            if not _WILDCARD_DOMAIN_RE.match(raw):
+                raise serializers.ValidationError(self._loader().get("error.invalid_domain_name_wildcard").format(domain=raw))
+            return raw
+
         return raw
 
     def validate(self, attrs):
@@ -81,6 +92,7 @@ class NetworkWhiteListSerializer(serializers.ModelSerializer):
             if qs.exists():
                 raise serializers.ValidationError(self._loader().get("error.network_or_domain_exists"))
         return attrs
+
     def _loader(self):
         request = self.context.get("request")
         locale = getattr(getattr(request, "user", None), "locale", "en") or "en"

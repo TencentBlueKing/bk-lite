@@ -1,3 +1,4 @@
+'use client';
 import React, { useState, useEffect, useCallback, memo, useMemo } from 'react';
 import { Tooltip as Tip } from 'antd';
 import { useFormatTime } from '@/app/monitor/utils/common';

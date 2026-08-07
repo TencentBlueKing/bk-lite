@@ -249,13 +249,22 @@ class TestBuildDeepagentNodes:
             if call_index in failing_agent_calls:
                 from langchain_core.messages import ToolMessage
 
+                fail_spec = failing_agent_calls[call_index] if isinstance(failing_agent_calls, dict) else None
+                if isinstance(fail_spec, dict):
+                    tool_content = fail_spec.get("content", "connection refused")
+                    tool_status = fail_spec.get("status", "error")
+                    tool_name = fail_spec.get("name", "diagnose_kubernetes_pod_issues")
+                else:
+                    tool_content = "connection refused"
+                    tool_status = "error"
+                    tool_name = "diagnose_kubernetes_pod_issues"
                 appended_messages.insert(
                     0,
                     ToolMessage(
-                        content="connection refused",
-                        name="diagnose_kubernetes_pod_issues",
+                        content=tool_content,
+                        name=tool_name,
                         tool_call_id=f"failed-{call_index}",
-                        status="error",
+                        status=tool_status,
                     ),
                 )
             return {
@@ -333,9 +342,13 @@ class TestBuildDeepagentNodes:
         assert "read_file" not in system_text
         assert result["messages"][0].content == "你好！有什么可以帮你的？"
 
-    def test_context_overflow_stops_replan_and_returns_short_message(self):
+    def test_context_overflow_skips_current_step_and_continues_remaining(self):
         node = ToolsNodes()
-        node.all_tools = [_tool("list_kubernetes_events"), _tool("get_kubernetes_pod_logs")]
+        node.all_tools = [
+            _tool("list_kubernetes_events"),
+            _tool("get_kubernetes_pod_logs"),
+            _tool("validate_probe_configuration"),
+        ]
         req = _request(user_message="告警：Unhealthy startup probe")
         captured = {}
 
@@ -352,7 +365,10 @@ class TestBuildDeepagentNodes:
                     content=json.dumps(
                         {
                             "goal": "诊断",
-                            "steps": [{"objective": "查事件", "tools": ["list_kubernetes_events"]}],
+                            "steps": [
+                                {"objective": "查日志与事件", "tools": ["get_kubernetes_pod_logs", "list_kubernetes_events"]},
+                                {"objective": "验证探针配置", "tools": ["validate_probe_configuration"]},
+                            ],
                         },
                         ensure_ascii=False,
                     )
@@ -363,6 +379,8 @@ class TestBuildDeepagentNodes:
         async def _ainvoke(payload, config=None):
             captured.setdefault("agent_calls", 0)
             captured["agent_calls"] += 1
+            joined = "\n".join(str(getattr(m, "content", "") or "") for m in payload["messages"])
+            captured.setdefault("ainvoke_joined", []).append(joined)
             if captured["agent_calls"] == 1:
                 raise Exception(
                     "BadRequestError: Error code: 400 - "
@@ -371,7 +389,7 @@ class TestBuildDeepagentNodes:
                 )
             return {
                 **payload,
-                "messages": list(payload["messages"]) + [AIMessage(content="已根据现有信息给出结论")],
+                "messages": list(payload["messages"]) + [AIMessage(content=f"执行结果 {captured['agent_calls']}")],
             }
 
         fake_agent.ainvoke = _ainvoke
@@ -388,10 +406,102 @@ class TestBuildDeepagentNodes:
                 )
             )
 
-        # 规划 1 次；步骤撞上下文后不再重规划，只再走一次总结
+        # 规划 1 次；第 1 步溢出后不重规划，压缩上下文后继续第 2 步，再走总结
         assert len(captured["planner_calls"]) == 1
-        assert captured["agent_calls"] == 2
-        assert result["messages"][0].content == "已根据现有信息给出结论"
+        assert captured["agent_calls"] == 3
+        assert "上下文压缩" in captured["ainvoke_joined"][1]
+        assert result["messages"][-1].content == "执行结果 3"
+
+    def test_successful_step_compacts_history_before_next_step(self):
+        node = ToolsNodes()
+        node.all_tools = [
+            _tool("resolve_k8s_target_from_alert"),
+            _tool("diagnose_kubernetes_pod_issues"),
+        ]
+        req = _request(user_message="告警：Unhealthy startup probe")
+        captured = {}
+
+        gb = _FakeGraphBuilder()
+        name = asyncio.run(node.build_deepagent_nodes(gb, composite_node_name="deep_agent"))
+        wrapper = gb.nodes[name]
+
+        from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
+
+        class _PlanLLM:
+            async def ainvoke(self, messages, config=None):
+                captured.setdefault("planner_calls", []).append(messages)
+                return AIMessage(
+                    content=json.dumps(
+                        {
+                            "goal": "诊断",
+                            "steps": [
+                                {"objective": "反查命名空间", "tools": ["resolve_k8s_target_from_alert"]},
+                                {"objective": "诊断 Pod", "tools": ["diagnose_kubernetes_pod_issues"]},
+                            ],
+                        },
+                        ensure_ascii=False,
+                    )
+                )
+
+        fake_agent = MagicMock()
+
+        async def _ainvoke(payload, config=None):
+            captured.setdefault("agent_calls", 0)
+            captured["agent_calls"] += 1
+            joined = "\n".join(str(getattr(m, "content", "") or "") for m in payload["messages"])
+            captured.setdefault("ainvoke_joined", []).append(joined)
+            if captured["agent_calls"] == 1:
+                return {
+                    **payload,
+                    "messages": list(payload["messages"])
+                    + [
+                        ToolMessage(content="HUGE_TOOL_RESULT_" + ("x" * 8000), tool_call_id="t1", name="resolve_k8s_target_from_alert"),
+                        AIMessage(content="已解析 namespace=bk-lite"),
+                    ],
+                }
+            return {
+                **payload,
+                "messages": list(payload["messages"]) + [AIMessage(content=f"执行结果 {captured['agent_calls']}")],
+            }
+
+        fake_agent.ainvoke = _ainvoke
+
+        with patch("apps.opspilot.metis.llm.chain.node.create_deep_agent", return_value=fake_agent), patch.object(
+            ToolsNodes, "get_llm_client", return_value=_PlanLLM()
+        ), patch.object(ToolsNodes, "_build_knowledge_retrieve_tool", return_value=None), patch.object(
+            ToolsNodes, "_build_skill_backend_and_sources", return_value=(None, [], None)
+        ):
+            asyncio.run(
+                wrapper(
+                    {"messages": [HumanMessage(content="告警：Unhealthy")]},
+                    {"configurable": {"graph_request": req}},
+                )
+            )
+
+        assert captured["agent_calls"] == 3
+        assert "步骤摘要" in captured["ainvoke_joined"][1]
+        assert "HUGE_TOOL_RESULT_" not in captured["ainvoke_joined"][1]
+        assert "步骤摘要" in captured["ainvoke_joined"][2] or "工具执行计划目标" in captured["ainvoke_joined"][2]
+
+    def test_runtime_middleware_includes_tool_result_compaction(self):
+        from apps.opspilot.metis.llm.middleware.tool_runtime import ToolResultCompactionMiddleware
+
+        node = ToolsNodes()
+        node.all_tools = [_tool("list_kubernetes_events")]
+        req = _request(user_message="查事件")
+        captured = {}
+        with patch.object(ToolsNodes, "_build_knowledge_retrieve_tool", return_value=None):
+            self._run_wrapper(
+                node,
+                req,
+                captured,
+                plan_payload={
+                    "goal": "查事件",
+                    "steps": [{"objective": "读事件", "tools": ["list_kubernetes_events"]}],
+                },
+            )
+        middlewares = captured["create_kwargs"]["middleware"]
+        assert any(isinstance(item, ToolResultCompactionMiddleware) for item in middlewares)
 
     def test_passes_tools_and_returns_only_new_messages(self):
         node = ToolsNodes()
@@ -501,11 +611,12 @@ class TestBuildDeepagentNodes:
         assert call_limit.thread_limit == 10
 
     def test_tool_failure_replans_only_unfinished_steps(self):
+        # 不用 namespace 反查类工具，避免规划硬校验改写步骤顺序。
         node = ToolsNodes()
         node.all_tools = [
             _tool("current_time"),
             _tool("diagnose_kubernetes_pod_issues"),
-            _tool("list_kubernetes_events"),
+            _tool("validate_probe_configuration"),
         ]
         req = _request(user_message="定位 Pod 告警")
         captured = {}
@@ -527,11 +638,11 @@ class TestBuildDeepagentNodes:
                         ],
                     },
                     {
-                        "goal": "改用事件定位",
+                        "goal": "改验探针配置",
                         "steps": [
                             {
-                                "objective": "读取事件",
-                                "tools": ["list_kubernetes_events"],
+                                "objective": "验证探针配置",
+                                "tools": ["validate_probe_configuration"],
                             }
                         ],
                     },
@@ -542,13 +653,66 @@ class TestBuildDeepagentNodes:
         assert captured["visible_tool_calls"] == [
             ["current_time"],
             ["diagnose_kubernetes_pod_issues"],
-            ["list_kubernetes_events"],
+            ["validate_probe_configuration"],
             [],
         ]
         assert len(captured["planner_calls"]) == 2
         replan_prompt = "\n".join(str(message.content) for message in captured["planner_calls"][1])
         assert "确认时间: 执行结果 1" in replan_prompt
         assert "connection refused" in replan_prompt
+
+    def test_json_tool_error_payload_triggers_replan(self):
+        # 不用 list_kubernetes_pods：避免规划硬校验前置反查，干扰「JSON error → replan」断言。
+        node = ToolsNodes()
+        node.all_tools = [
+            _tool("diagnose_kubernetes_pod_issues"),
+            _tool("validate_probe_configuration"),
+        ]
+        req = _request(user_message="定位 Pod 告警")
+        captured = {}
+
+        with patch.object(ToolsNodes, "_build_knowledge_retrieve_tool", return_value=None):
+            self._run_wrapper(
+                node,
+                req,
+                captured,
+                plan_payloads=[
+                    {
+                        "goal": "定位 Pod 告警",
+                        "steps": [
+                            {
+                                "objective": "诊断 Pod",
+                                "tools": ["diagnose_kubernetes_pod_issues"],
+                            },
+                        ],
+                    },
+                    {
+                        "goal": "改验探针配置",
+                        "steps": [
+                            {
+                                "objective": "验证探针配置",
+                                "tools": ["validate_probe_configuration"],
+                            }
+                        ],
+                    },
+                ],
+                failing_agent_calls={
+                    1: {
+                        "content": '{"error": "Pod server-x 在命名空间 default 中不存在"}',
+                        "status": "success",
+                        "name": "diagnose_kubernetes_pod_issues",
+                    }
+                },
+            )
+
+        assert captured["visible_tool_calls"] == [
+            ["diagnose_kubernetes_pod_issues"],
+            ["validate_probe_configuration"],
+            [],
+        ]
+        assert len(captured["planner_calls"]) == 2
+        replan_prompt = "\n".join(str(message.content) for message in captured["planner_calls"][1])
+        assert "不存在" in replan_prompt
 
     def test_wires_skills_and_approval_when_configured(self):
         node = ToolsNodes()

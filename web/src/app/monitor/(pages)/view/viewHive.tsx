@@ -29,6 +29,7 @@ import { EditOutlined } from '@ant-design/icons';
 import { getEnumColor, isStringArray } from '@/app/monitor/utils/common';
 import { useUnitTransform } from '@/app/monitor/hooks/useUnitTransform';
 import { Select, Spin } from 'antd';
+import { findByMonitorId } from '@/app/monitor/utils/monitorIds';
 import { ListItem } from '@/types';
 const { Option } = Select;
 
@@ -71,12 +72,12 @@ const ViewHive: React.FC<ViewListProps> = ({ objects, objectId }) => {
   const [nodeList, setNodeList] = useState<ListItem[]>([]);
 
   const isPod = useMemo(() => {
-    return objects.find((item) => item.id === objectId)?.name === 'Pod';
+    return findByMonitorId(objects, objectId)?.name === 'Pod';
   }, [objects, objectId]);
 
   const metricList = useMemo(() => {
     if (objectId && objects?.length && mertics?.length) {
-      const target = objects.find((item) => item.id === objectId);
+      const target = findByMonitorId(objects, objectId);
       const metricNames = new Set(
         (target?.display_fields || [])
           .filter((col) => col.type !== 'field')
@@ -112,7 +113,7 @@ const ViewHive: React.FC<ViewListProps> = ({ objects, objectId }) => {
   useEffect(() => {
     if (isLoading) return;
     if (objectId && objects?.length) {
-      const objName = objects.find((item) => item.id === objectId)?.name;
+      const objName = findByMonitorId(objects, objectId)?.name;
       if (objName) {
         getInitData(objName);
       }
@@ -213,13 +214,14 @@ const ViewHive: React.FC<ViewListProps> = ({ objects, objectId }) => {
   const getInitData = async (name: string) => {
     const params = getParams();
     const objParams = {
-      monitor_object_id: String(objectId)
+      monitor_object_id: String(objectId),
+      name: isPod ? 'pod_status_phase' : 'node_status_condition'
     };
     const getInstList = await getInstanceSearch(objectId, params);
     const getQueryParams = await getInstanceQueryParams(name, objParams);
     setTableLoading(true);
     try {
-      const metricsData = await getMonitorMetrics(objParams);
+      const { items: metricsData } = await getMonitorMetrics(objParams);
       setMertics(metricsData || []);
       const tagetMerticItem = metricsData.find(
         (item: MetricItem) =>

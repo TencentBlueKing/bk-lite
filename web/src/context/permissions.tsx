@@ -106,8 +106,11 @@ export const PermissionsProvider = ({ children }: { children: ReactNode }) => {
         }
 
         if (routeClientId && menu.url) {
-          const urlContainsClientId = menu.url.includes(`/${routeClientId}/`);
-          if (!urlContainsClientId) {
+          const normalizedUrl = menu.url.replace(/\/+$/, '') || '/';
+          const clientRoot = `/${routeClientId}`;
+          const urlBelongsToClient =
+            normalizedUrl === clientRoot || normalizedUrl.startsWith(`${clientRoot}/`);
+          if (!urlBelongsToClient) {
             console.warn(`Menu ${menu.name} URL does not contain routeClientId: ${routeClientId}`);
             return false;
           }

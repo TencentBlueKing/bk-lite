@@ -23,7 +23,7 @@ from apps.opspilot.metis.llm.chain.k8s_report_tools import (
 pytestmark = pytest.mark.unit
 
 
-def _make_node(skill_capabilities: list[str]):
+def _make_node(skill_capabilities: list[str], execution_id: str | None = None):
     """直接构造一个 ToolsNodes 风格的 stub,只塞 _extra_config 和 capability 集合。
 
     ToolsNodes.__init__ 很重(建 LLM/工具),这里走 minimal 路径:
@@ -35,7 +35,10 @@ def _make_node(skill_capabilities: list[str]):
 
     node = ToolsNodes.__new__(ToolsNodes)
     node._skill_package_capabilities = set(skill_capabilities)
-    node._extra_config = SimpleNamespace(matched_skill_packages=[])
+    node._extra_config = SimpleNamespace(
+        matched_skill_packages=[],
+        execution_id=execution_id,
+    )
     return node
 
 
@@ -70,6 +73,50 @@ def test_emit_report_event_dispatches_with_capability_name_as_event():
     assert event_name == "config_analysis_report"  # 关键:不是 config_diff_report
     assert payload["title"].startswith("配置检查报告")
     assert payload["cluster_name"] == "Kubernetes - 1"
+
+
+def test_emit_report_event_uses_execution_id_as_stable_report_id():
+    """同一执行必须复用稳定 ID，前端才能更新而不是重复追加卡片。"""
+    node = _make_node(
+        skill_capabilities=["config_analysis_report"],
+        execution_id="exec-stable",
+    )
+    parsed = {
+        "cluster_name": "Kubernetes - 1",
+        "issues_detail": [
+            {"severity": "high", "issue": "未配置存活探针", "count": 1, "workloads": ["api"]}
+        ],
+    }
+
+    with patch("langchain_core.callbacks.dispatch_custom_event") as mock_dispatch:
+        result = node._emit_report_event("config_analysis_report", parsed)
+
+    assert result == "config_analysis_report_exec-stable"
+    assert mock_dispatch.call_args.args[1]["report_id"] == result
+
+
+@pytest.mark.asyncio
+async def test_aemit_report_event_uses_runnable_execution_id_as_stable_report_id():
+    """异步报告路径也必须使用执行级稳定 ID。"""
+    node = _make_node(skill_capabilities=["repair_diff_report"])
+    items = [
+        {
+            "workload_name": "api",
+            "workload_type": "Deployment",
+            "namespace": "default",
+            "severity": "high",
+            "summary": "缺探针",
+            "before_yaml": "x: 1",
+            "after_yaml": "x: 2",
+        }
+    ]
+    config = {"configurable": {"execution_id": "exec-async-stable"}}
+
+    with patch("langchain_core.callbacks.adispatch_custom_event", new_callable=AsyncMock) as mock_dispatch:
+        result = await node._aemit_report_event("repair_diff_report", items, config)
+
+    assert result == "repair_diff_report_exec-async-stable"
+    assert mock_dispatch.await_args.args[1]["report_id"] == result
 
 
 def test_emit_report_event_skips_when_renderer_returns_none():

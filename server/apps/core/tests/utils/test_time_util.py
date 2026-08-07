@@ -9,6 +9,7 @@
 import os
 import time
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 import pytest
 
@@ -130,3 +131,9 @@ class TestGetCrontabNextRuns:
     def test_空或非字符串抛_valueerror(self, bad):
         with pytest.raises(ValueError):
             get_crontab_next_runs(bad, base_time=self.BASE)
+
+    def test_默认按用户时区解释_now(self, mocker):
+        fixed_utc = datetime(2026, 1, 1, 1, 30, 0, tzinfo=ZoneInfo("UTC"))
+        mocker.patch("django.utils.timezone.now", return_value=fixed_utc)
+        assert get_crontab_next_runs("0 9 * * *", count=1, tz="UTC") == ["2026-01-01 09:00:00"]
+        assert get_crontab_next_runs("0 9 * * *", count=1, tz="Asia/Shanghai") == ["2026-01-02 09:00:00"]

@@ -11,6 +11,11 @@ class MonitorPluginFilter(FilterSet):
         required=False,  # 设置为非必填
         method="filter_monitor_object",  # 使用自定义过滤方法
     )
+    monitor_object_type = CharFilter(
+        label="监控对象分类",
+        required=False,
+        method="filter_monitor_object_type",
+    )
     # 注意:已移除 name 字段的 icontains 过滤
     # 改为由 views/plugin.py 的 list 视图,在 i18n 翻译后对五字段
     # (name / display_name / description / display_description / parent_object_display_name)
@@ -25,6 +30,12 @@ class MonitorPluginFilter(FilterSet):
             return queryset.filter(monitor_object=value)
         return queryset
 
+    def filter_monitor_object_type(self, queryset, name, value):
+        """按监控对象分类 ID 过滤（如 database），用于左侧树点一级分类看该类全部能力。"""
+        if value:
+            return queryset.filter(monitor_object__type_id=value).distinct()
+        return queryset
+
     class Meta:
         model = MonitorPlugin
-        fields = ["monitor_object_id", "template_type", "template_id"]
+        fields = ["monitor_object_id", "monitor_object_type", "template_type", "template_id"]

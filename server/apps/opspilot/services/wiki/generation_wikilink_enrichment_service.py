@@ -1,10 +1,9 @@
 """WikiLink enrichment for immutable candidate-generation page versions."""
 
-import logging
-
 from django.db import transaction
 from django.db.models import Max
 
+from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.models import KnowledgePage, PageVersion, WikiGeneration, WikiGenerationPage, WikiKnowledgeBase
 from apps.opspilot.services.wiki.generation_service import put_generation_member
 from apps.opspilot.services.wiki.wikilink_enrichment_service import (
@@ -14,8 +13,6 @@ from apps.opspilot.services.wiki.wikilink_enrichment_service import (
     apply_wikilink_suggestions,
     parse_wikilink_suggestions,
 )
-
-logger = logging.getLogger("opspilot")
 
 _TRACE_ACTIONS = frozenset({"create", "restore", "update", "unchanged"})
 

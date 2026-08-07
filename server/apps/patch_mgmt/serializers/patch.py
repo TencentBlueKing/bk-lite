@@ -2,11 +2,16 @@
 
 import re
 
+from django.db import transaction
 from rest_framework import serializers
 
 from apps.patch_mgmt.constants import PackageManagerType
 from apps.patch_mgmt.models import LinuxPatchDetail, Patch, WindowsPatchDetail
 from apps.patch_mgmt.serializers.permission import PatchPermissionSerializer
+from apps.patch_mgmt.services.patch_origin import (
+    source_details_for_patch,
+    source_type_for_patch,
+)
 from apps.patch_mgmt.utils.architecture import X86_64, UnsupportedArchitecture, normalize_architectures, validate_os_architecture
 from apps.patch_mgmt.utils.i18n import serializer_message
 
@@ -64,7 +69,16 @@ class LinuxPatchDetailSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = LinuxPatchDetail
-        fields = ["pkg_name", "pkg_version", "distro_name", "os_version_range", "architectures", "repo_type"]
+        fields = [
+            "pkg_name",
+            "pkg_version",
+            "packages",
+            "distro_name",
+            "os_version_range",
+            "architectures",
+            "repo_type",
+        ]
+        read_only_fields = ["packages"]
 
 
 class PatchListSerializer(PatchPermissionSerializer):
@@ -83,9 +97,11 @@ class PatchListSerializer(PatchPermissionSerializer):
     linux_detail = LinuxPatchDetailSerializer(required=False, allow_null=True)
     sources = serializers.PrimaryKeyRelatedField(many=True, read_only=True)
     source_type = serializers.SerializerMethodField()
+    source_details = serializers.SerializerMethodField()
     baseline_requirement_count = serializers.SerializerMethodField()
     package_info = serializers.SerializerMethodField()
     permission_key = "patch"
+    global_shared = True
 
     class Meta:
         model = Patch
@@ -104,6 +120,7 @@ class PatchListSerializer(PatchPermissionSerializer):
             "applicable_scope",
             "sources",
             "source_type",
+            "source_details",
             "package_info",
             "windows_detail",
             "linux_detail",
@@ -120,8 +137,10 @@ class PatchListSerializer(PatchPermissionSerializer):
         read_only_fields = ["id", "last_synced_at", "created_by", "created_at", "updated_at"]
 
     def get_source_type(self, obj):
-        first_source = obj.sources.first()
-        return first_source.source_type if first_source else None
+        return source_type_for_patch(obj)
+
+    def get_source_details(self, obj):
+        return source_details_for_patch(obj)
 
     def get_baseline_requirement_count(self, obj):
         return obj.baseline_requirements.count()
@@ -204,9 +223,16 @@ class PatchListSerializer(PatchPermissionSerializer):
                 patch=patch, defaults=windows_detail_data
             )
         if patch.os_type == "linux" and linux_detail_data:
-            LinuxPatchDetail.objects.update_or_create(
-                patch=patch, defaults=linux_detail_data
-            )
+            with transaction.atomic():
+                detail = LinuxPatchDetail.objects.select_for_update().filter(patch=patch).first()
+                defaults = dict(linux_detail_data)
+                if detail is not None and detail.packages:
+                    packages = [dict(item) if isinstance(item, dict) else item for item in detail.packages]
+                    if packages and isinstance(packages[0], dict):
+                        packages[0]["name"] = defaults.get("pkg_name", detail.pkg_name)
+                        packages[0]["version"] = defaults.get("pkg_version", detail.pkg_version)
+                        defaults["packages"] = packages
+                LinuxPatchDetail.objects.update_or_create(patch=patch, defaults=defaults)
 
 
 class PatchDetailSerializer(PatchListSerializer):

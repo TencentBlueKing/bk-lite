@@ -1,3 +1,4 @@
+'use client';
 import React, { useCallback } from 'react';
 import { TooltipProps } from 'recharts';
 import customTooltipStyle from './index.module.scss';

@@ -158,7 +158,7 @@ class TestPatchPermissionApiBoundaries:
         assert response.status_code == status.HTTP_403_FORBIDDEN
         assert not baseline.requirements.exists()
 
-    def test_baseline_instance_view_permission_cannot_add_requirement(
+    def test_baseline_edit_function_permission_ignores_retired_instance_rule(
         self, api_client, authenticated_user, mocker
     ):
         from apps.patch_mgmt.constants import OSType
@@ -190,8 +190,8 @@ class TestPatchPermissionApiBoundaries:
             format="json",
         )
 
-        assert response.status_code == status.HTTP_403_FORBIDDEN
-        assert not baseline.requirements.exists()
+        assert response.status_code == status.HTTP_200_OK
+        assert baseline.requirements.filter(patch=patch).exists()
 
     def test_risk_list_only_contains_targets_in_current_team_scope(
         self, api_client, authenticated_user, mocker

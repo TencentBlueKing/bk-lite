@@ -18,18 +18,22 @@ from apps.patch_mgmt.serializers.patch_target import (
     PatchTargetSerializer,
 )
 from apps.patch_mgmt.services.target_connectivity import probe_target_data, target_connection_data
-from apps.patch_mgmt.utils.data_permissions import require_authorized_ids
+from apps.patch_mgmt.services.target_deletion import purge_target_governance_history
+from apps.patch_mgmt.services.target_access import (
+    TargetRootedResourceMixin,
+    require_target_ids,
+)
 from apps.patch_mgmt.utils.i18n import patch_message
 from apps.patch_mgmt.utils.operation_log import (
     log_target_created,
-    log_target_deleted,
+    log_target_purged,
     log_target_updated,
 )
 
 logger = logging.getLogger("app")
 
 
-class PatchTargetViewSet(AuthViewSet):
+class PatchTargetViewSet(TargetRootedResourceMixin, AuthViewSet):
     """补丁管理目标视图集"""
 
     queryset = PatchTarget.objects.prefetch_related("baseline_binding__baseline")
@@ -103,8 +107,6 @@ class PatchTargetViewSet(AuthViewSet):
     def destroy(self, request, *args, **kwargs):
         target_id = self.get_object().id
         target = PatchTarget.objects.select_for_update().get(pk=target_id)
-        target_name = target.name
-
         if GovernanceTaskHost.objects.filter(
             target_id=target.id,
             task__status__in=GovernanceTaskStatus.ACTIVE_STATES,
@@ -158,8 +160,9 @@ class PatchTargetViewSet(AuthViewSet):
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 )
 
+        purge_target_governance_history(target.id)
         target.delete()
-        log_target_deleted(request, target_name)
+        log_target_purged(request)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     @action(detail=False, methods=["get"], url_path="imported-node-ids")
@@ -246,9 +249,7 @@ class PatchTargetViewSet(AuthViewSet):
         from apps.patch_mgmt.services.target_connectivity import probe_target
 
         target = self.get_object()
-        require_authorized_ids(
-            self, request, PatchTarget.objects.all(), [target.id], "patch_target"
-        )
+        require_target_ids(request, [target.id], "Operate")
         if request.data:
             serializer = PatchTargetConnectivitySerializer(data=request.data, partial=True)
             serializer.is_valid(raise_exception=True)

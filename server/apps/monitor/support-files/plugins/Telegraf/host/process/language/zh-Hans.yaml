@@ -4,7 +4,7 @@ Process:
 monitor_object:
   Process: 进程
 monitor_object_type:
-  OS: 主机资源
+  OS: 操作系统
 monitor_object_metric:
   Process:
     process_cpu_usage:

@@ -127,6 +127,7 @@ _EN_FALLBACKS = {
     "逗号分隔；黑名单优先于仅采集列表，例如 vfat,exfat,ntfs。": "Comma-separated; the denylist takes precedence over the allowlist, for example vfat,exfat,ntfs.",
     "指定当前程序的版本详情": "Version details of the current program.",
     "是否启用 SASL 认证（用户名和密码）": "Whether to enable SASL authentication with a username and password.",
+    "Kafka SASL 认证机制，须与 Broker 配置一致": "Kafka SASL mechanism; must match the broker configuration.",
     "用于处理和响应通过发布端口接收的请求，包括请求的解析、处理和返回结果的完整流程": "Handles and responds to requests received through the publishing port, including parsing, processing, and returning results.",
     "按正则包含要采集的 Topic": "Regular expression for topics to include in collection.",
     "按正则排除不需要采集的 Topic": "Regular expression for topics to exclude from collection.",
@@ -348,7 +349,11 @@ def enrich_ui_template_from_plugin_files(content: dict | None, plugin: MonitorPl
                             column[key] = deepcopy(value)
 
     if should_inject_snmp_interface_filters(plugin, enriched):
-        enriched = merge_snmp_interface_filter_ui(enriched)
+        enriched = merge_snmp_interface_filter_ui(enriched, plugin=plugin)
+    elif plugin is not None and str(getattr(plugin, "collect_type", "")).startswith("snmp"):
+        # 清除早期「所有 SNMP 都注入」遗留的 IF-MIB/过滤字段；没有公共接口表的
+        # 模板不能继续展示这些无效配置。
+        enriched = merge_snmp_interface_filter_ui(enriched, plugin=plugin)
 
     return enriched
 

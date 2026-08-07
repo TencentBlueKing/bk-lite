@@ -132,8 +132,9 @@ for (const required of [
 
 for (const required of [
   'silent = false',
-  'if (!silent) setLoading(true)',
-  'requestedTab === activeTab && !silent',
+  'coordinator.begin({ visible: !silent })',
+  'coordinator.shouldApply(ticket)',
+  'coordinator.finish(ticket)',
   'loadData(undefined, undefined, undefined, true)',
 ]) {
   if (!libraryPage.includes(required)) {

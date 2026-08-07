@@ -290,7 +290,7 @@ export default function ApmPoliciesPage() {
   return (
     <ApmRouteShell
       title="告警策略"
-      description="新建、编辑并启停服务告警策略；通知继续使用系统管理中的公开渠道。"
+      description="配置服务指标阈值与通知渠道，列表内可直接启停。"
       dependency="control"
     >
       <div className="flex flex-col gap-3">

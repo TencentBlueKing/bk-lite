@@ -85,6 +85,7 @@ error:
   forbidden_network_supernet: Adding 0.0.0.0/0 or ::/0 is forbidden because it disables all protection
   domain_name_required: Domain name cannot be empty
   invalid_domain_name_characters: 'Domain name contains invalid characters: {domain}'
+  invalid_domain_name_wildcard: 'Wildcard domains must look like *.example.com: {domain}'
   domain_name_leading_dot: Domain name cannot start with a dot
   network_whitelist_type_immutable: Network allowlist entry type cannot be changed
   network_or_domain_required: Exactly one of network and domain_name must be provided

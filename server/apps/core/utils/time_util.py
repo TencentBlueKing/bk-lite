@@ -4,9 +4,11 @@
 # @Author: windyzhao
 
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timezone, tzinfo
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from croniter import croniter
+from django.utils import timezone as django_timezone
 
 RFC3339_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$")
 
@@ -93,21 +95,37 @@ def format_timestamp(time_str: str):
     return formatted_timestamp
 
 
+def resolve_crontab_timezone(tz: str | tzinfo | None = None) -> tzinfo:
+    """Resolve crontab wall-clock timezone; fall back to Django current timezone."""
+    if isinstance(tz, tzinfo):
+        return tz
+    if isinstance(tz, str) and tz.strip():
+        try:
+            return ZoneInfo(tz.strip())
+        except (ZoneInfoNotFoundError, KeyError, ValueError):
+            pass
+    return django_timezone.get_current_timezone()
+
+
 def get_crontab_next_runs(
     crontab_expression: str,
     count: int = 6,
     base_time: datetime | None = None,
+    tz: str | tzinfo | None = None,
 ) -> list[str]:
     """
     Get the next N execution times for a crontab expression.
 
+    Cron fields are interpreted in ``tz`` (Django current / user timezone by default).
+
     Args:
         crontab_expression: 5-field crontab expression (minute hour day month weekday)
         count: Number of next execution times to return (default: 6)
-        base_time: Base time to calculate from (default: now)
+        base_time: Base time to calculate from (default: now in ``tz``)
+        tz: IANA timezone name or tzinfo; default Django current timezone
 
     Returns:
-        List of datetime strings (YYYY-MM-DD HH:MM:SS) for next executions
+        List of wall-clock datetime strings (YYYY-MM-DD HH:MM:SS) in ``tz``
 
     Raises:
         ValueError: If crontab expression is invalid
@@ -120,14 +138,22 @@ def get_crontab_next_runs(
     if not croniter.is_valid(expression):
         raise ValueError(f"Invalid crontab expression: {expression}")
 
+    resolved_tz = resolve_crontab_timezone(tz)
+
     if base_time is None:
-        base_time = datetime.now()
+        base_time = django_timezone.now().astimezone(resolved_tz)
+    elif base_time.tzinfo is None:
+        base_time = base_time.replace(tzinfo=resolved_tz)
+    else:
+        base_time = base_time.astimezone(resolved_tz)
 
     try:
         cron = croniter(expression, base_time)
         next_runs = []
         for _ in range(count):
             next_time = cron.get_next(datetime)
+            if next_time.tzinfo is not None:
+                next_time = next_time.astimezone(resolved_tz)
             next_runs.append(next_time.strftime("%Y-%m-%d %H:%M:%S"))
         return next_runs
     except Exception as e:

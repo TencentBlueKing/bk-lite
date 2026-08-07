@@ -59,14 +59,23 @@ export const resolveMetricExpressionUnits = ({
   metricUnit: string | null | undefined;
   calculationUnit: string | null | undefined;
   thresholdUnit: string | null | undefined;
-}): { metricUnit: string; calculationUnit: string; thresholdUnit: string } => ({
-  metricUnit:
-    queryType === 'formula' || isStringArray(metricUnit || '')
+}): { metricUnit: string; calculationUnit: string; thresholdUnit: string } => {
+  // none/short 与后端批量创建一致：不作为可配置 metric_unit，避免 serializer
+  // get_effective_units 提升后被 is_known_unit 拒绝（「结果单位无效」）。
+  const normalizedMetricUnit =
+    !metricUnit ||
+    metricUnit === 'none' ||
+    metricUnit === 'short' ||
+    queryType === 'formula' ||
+    isStringArray(metricUnit)
       ? ''
-      : metricUnit || '',
-  calculationUnit: calculationUnit || '',
-  thresholdUnit: thresholdUnit || calculationUnit || ''
-});
+      : metricUnit;
+  return {
+    metricUnit: normalizedMetricUnit,
+    calculationUnit: calculationUnit || '',
+    thresholdUnit: thresholdUnit || calculationUnit || ''
+  };
+};
 
 export const createMetricRow = (
   index: number,
@@ -506,7 +515,9 @@ const findMetricForRow = (
   metrics: MetricItem[]
 ): MetricItem | undefined =>
   metrics.find(
-    (item) => item.id === row.metricId || item.name === row.metricName
+    (item) =>
+      (row.metricId != null && String(item.id) === String(row.metricId)) ||
+      (!!row.metricName && item.name === row.metricName)
   );
 
 export const buildMetricExpressionPreviewPayload = ({
@@ -523,7 +534,7 @@ export const buildMetricExpressionPreviewPayload = ({
   algorithm,
   groupAlgorithm,
   groupBy,
-  threshold,
+  threshold = [],
   calculationUnit,
   thresholdUnit
 }: {
@@ -543,7 +554,7 @@ export const buildMetricExpressionPreviewPayload = ({
   algorithm: string | null;
   groupAlgorithm: string | null;
   groupBy: string[];
-  threshold: ThresholdField[];
+  threshold?: ThresholdField[];
   calculationUnit?: string | null;
   thresholdUnit?: string | null;
 }) => {

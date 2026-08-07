@@ -5,7 +5,7 @@ import { normalizeDashboardKey } from './shared/utils';
 export const PROFESSIONAL_DASHBOARD_GROUPS = {
   hardware: { label: '硬件设备', order: 10 },
   container: { label: '容器', order: 15 },
-  os: { label: '主机资源', order: 20 },
+  os: { label: '操作系统', order: 20 },
   network: { label: '网络', order: 30 },
   database: { label: '数据库', order: 40 },
   middleware: { label: '中间件', order: 50 }
@@ -26,8 +26,13 @@ const COMMUNITY_DASHBOARD_METADATA: ProfessionalDashboardMetaItem[] = [
   { key: 'tomcat', groupKey: 'middleware', objectName: 'Tomcat', objectDisplayName: 'Tomcat', inheritedPermissionPath: '/monitor/view' },
   { key: 'zookeeper', aliases: ['zk'], groupKey: 'middleware', objectName: 'Zookeeper', objectDisplayName: 'Zookeeper', inheritedPermissionPath: '/monitor/view' },
   { key: 'kafka', groupKey: 'middleware', objectName: 'Kafka', objectDisplayName: 'Kafka', inheritedPermissionPath: '/monitor/view' },
+  { key: 'etcd', groupKey: 'middleware', objectName: 'Etcd', objectDisplayName: 'Etcd', inheritedPermissionPath: '/monitor/view' },
+  { key: 'haproxy', groupKey: 'middleware', objectName: 'Haproxy', objectDisplayName: 'HAProxy', inheritedPermissionPath: '/monitor/view' },
+  { key: 'minio', groupKey: 'middleware', objectName: 'Minio', objectDisplayName: 'MinIO', inheritedPermissionPath: '/monitor/view' },
   { key: 'postgres', aliases: ['postgresql'], groupKey: 'database', objectName: 'Postgres', objectDisplayName: 'PostgreSQL', inheritedPermissionPath: '/monitor/view' },
   { key: 'elasticsearch', groupKey: 'database', objectName: 'ElasticSearch', objectDisplayName: 'Elasticsearch', inheritedPermissionPath: '/monitor/view' },
+  { key: 'oracle', groupKey: 'database', objectName: 'Oracle', objectDisplayName: 'Oracle', inheritedPermissionPath: '/monitor/view' },
+  { key: 'influxdb', groupKey: 'database', objectName: 'InfluxDB', objectDisplayName: 'InfluxDB', inheritedPermissionPath: '/monitor/view' },
   { key: 'host', aliases: ['os', '主机'], groupKey: 'os', objectName: 'Host', objectDisplayName: '主机', inheritedPermissionPath: '/monitor/view' },
   { key: 'process', aliases: ['进程'], groupKey: 'os', objectName: 'Process', objectDisplayName: '进程', inheritedPermissionPath: '/monitor/view' },
   { key: 'website', aliases: ['web', '网站'], groupKey: 'network', objectName: 'Website', objectDisplayName: '网站', inheritedPermissionPath: '/monitor/view' },

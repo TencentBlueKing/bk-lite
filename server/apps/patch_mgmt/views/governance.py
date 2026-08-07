@@ -1,6 +1,7 @@
 """治理任务视图"""
 
 from django.db import transaction
+from django.db.models import Prefetch
 from django.utils import timezone
 
 from rest_framework import status
@@ -12,7 +13,7 @@ from apps.core.decorators.api_permission import HasPermission
 from apps.core.utils.viewset_utils import AuthViewSet
 from apps.patch_mgmt.constants import GovernanceTaskStatus, GovernanceTaskType
 from apps.patch_mgmt.exceptions import PatchBusinessError
-from apps.patch_mgmt.models import GovernanceTask, GovernanceTaskHost, PatchTarget
+from apps.patch_mgmt.models import GovernanceTask, GovernanceTaskHost
 from apps.patch_mgmt.serializers.governance import (
     GovernanceTaskDetailSerializer,
     GovernanceTaskListSerializer,
@@ -26,7 +27,10 @@ from apps.patch_mgmt.services.governance_service import (
     create_reboot_task,
     create_retry_task,
 )
-from apps.patch_mgmt.utils.data_permissions import require_authorized_ids
+from apps.patch_mgmt.services.target_access import (
+    require_target_ids,
+    target_access_scope,
+)
 from apps.patch_mgmt.utils.i18n import patch_message, render_business_error
 from apps.patch_mgmt.utils.operation_log import log_governance_task_cancelled
 
@@ -51,7 +55,25 @@ class GovernanceTaskViewSet(AuthViewSet):
 
     def get_queryset(self):
         """执行记录只暴露用户直接创建的治理与重启根任务。"""
-        queryset = super().get_queryset().select_related("source_record")
+        visible_targets = target_access_scope(self.request).queryset("View")
+        visible_target_ids = visible_targets.values("id")
+        visible_hosts = GovernanceTaskHost.objects.filter(
+            target_id__in=visible_target_ids
+        ).select_related("task")
+        queryset = (
+            super()
+            .get_queryset()
+            .filter(host_results__target_id__in=visible_target_ids)
+            .select_related("source_record")
+            .prefetch_related(
+                Prefetch(
+                    "host_results",
+                    queryset=visible_hosts,
+                    to_attr="_visible_host_results",
+                )
+            )
+            .distinct()
+        )
         if self.action == "host_log":
             return queryset
         queryset = filter_execution_record_roots(queryset)
@@ -61,6 +83,30 @@ class GovernanceTaskViewSet(AuthViewSet):
         if requested_type in (GovernanceTaskType.INSTALL, GovernanceTaskType.REBOOT):
             queryset = queryset.filter(task_type=requested_type)
         return queryset
+
+    def get_queryset_by_permission(self, request, queryset, permission_key=None):
+        """任务 queryset 已按主机投影，不再叠加任务实例规则。"""
+        del permission_key
+        target_access_scope(request)
+        return queryset
+
+    def get_detail(self, request, *args, **kwargs):
+        """详情是否存在已由 get_queryset 的可见主机范围决定。"""
+        return self.get_serializer(self.get_object())
+
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        context["visible_target_ids"] = set(
+            target_access_scope(self.request)
+            .queryset("View")
+            .values_list("id", flat=True)
+        )
+        context["operable_target_ids"] = set(
+            target_access_scope(self.request)
+            .queryset("Operate")
+            .values_list("id", flat=True)
+        )
+        return context
 
     def get_serializer_class(self):
         if self.action == "retrieve":
@@ -85,10 +131,7 @@ class GovernanceTaskViewSet(AuthViewSet):
         data = request.data
         task_type = data.get("task_type")
         target_list = data.get("target_list") or []
-        require_authorized_ids(
-            self,
-            request, PatchTarget.objects.all(), target_list, "patch_target"
-        )
+        require_target_ids(request, target_list, "Operate")
 
         if task_type == GovernanceTaskType.VERIFY:
             return Response(
@@ -134,10 +177,6 @@ class GovernanceTaskViewSet(AuthViewSet):
     def cancel(self, request, pk=None):
         """取消尚未开始执行的主机，不中断已经下发的操作。"""
         scoped_task = self.get_object()
-        require_authorized_ids(
-            self, request, GovernanceTask.objects.all(), [scoped_task.id],
-            "patch_governance"
-        )
         reason = str(request.data.get("reason") or "").strip()
         if not reason:
             return Response(
@@ -159,7 +198,18 @@ class GovernanceTaskViewSet(AuthViewSet):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
-            waiting_hosts = GovernanceTaskHost.objects.filter(task=task, stage="waiting")
+            operable_target_ids = target_access_scope(request).queryset(
+                "Operate"
+            ).values("id")
+            waiting_hosts = GovernanceTaskHost.objects.filter(
+                task=task,
+                stage="waiting",
+                target_id__in=operable_target_ids,
+            )
+            skipped_count = GovernanceTaskHost.objects.filter(
+                task=task,
+                stage="waiting",
+            ).exclude(target_id__in=operable_target_ids).count()
             cancelled_count = waiting_hosts.update(
                 stage="cancelled",
                 stage_color="default",
@@ -200,6 +250,7 @@ class GovernanceTaskViewSet(AuthViewSet):
             {
                 "detail": patch_message(request, "message.hosts_cancelled", "Cancelled {count} waiting targets", count=cancelled_count),
                 "cancelled_count": cancelled_count,
+                "skipped_count": skipped_count,
             }
         )
 
@@ -208,10 +259,6 @@ class GovernanceTaskViewSet(AuthViewSet):
     def retry_host(self, request, pk=None):
         """重试选中的风险项，创建独立根执行记录。"""
         task = self.get_object()
-        require_authorized_ids(
-            self, request, GovernanceTask.objects.all(), [task.id],
-            "patch_governance"
-        )
         risk_item_id = str(request.data.get("risk_item_id") or "")
         if not risk_item_id:
             return Response({"detail": patch_message(request, "error.risk_item_id_required", "risk_item_id is required")}, status=status.HTTP_400_BAD_REQUEST)
@@ -226,10 +273,7 @@ class GovernanceTaskViewSet(AuthViewSet):
         if snapshot is None:
             return Response({"detail": patch_message(request, "error.risk_item_not_found", "Risk item not found")}, status=status.HTTP_404_NOT_FOUND)
         target_id = int(snapshot.get("host_id") or 0)
-        require_authorized_ids(
-            self,
-            request, PatchTarget.objects.all(), [target_id], "patch_target"
-        )
+        require_target_ids(request, [target_id], "Operate")
         try:
             new_task = create_retry_task(request, task, risk_item_id)
         except PatchBusinessError as exc:
@@ -253,10 +297,22 @@ class GovernanceTaskViewSet(AuthViewSet):
         if not risk_item_id:
             return Response({"detail": patch_message(request, "error.risk_item_id_required", "risk_item_id is required")}, status=status.HTTP_400_BAD_REQUEST)
         task = self.get_object()
-        require_authorized_ids(
-            self, request, GovernanceTask.objects.all(), [task.id],
-            "patch_governance", operation="View"
+        visible_target_ids = set(
+            target_access_scope(request)
+            .queryset("View")
+            .values_list("id", flat=True)
         )
+        selected = next(
+            (
+                item
+                for item in (task.risk_snapshot or [])
+                if str(item.get("id")) == str(risk_item_id)
+            ),
+            None,
+        )
+        if selected is None or int(selected.get("host_id") or 0) not in visible_target_ids:
+            return Response({"detail": patch_message(request, "error.risk_item_not_found", "Risk item not found")}, status=status.HTTP_404_NOT_FOUND)
+        task._visible_target_ids = visible_target_ids
         detail = build_risk_item_detail(task, risk_item_id)
         if detail is None:
             return Response({"detail": patch_message(request, "error.risk_item_not_found", "Risk item not found")}, status=status.HTTP_404_NOT_FOUND)

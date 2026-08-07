@@ -824,6 +824,23 @@ func isLikelyTimeoutError(err error) bool {
 	return strings.Contains(lower, "timeout") || strings.Contains(lower, "deadline exceeded")
 }
 
+func passwordAuthMethods(password string) []ssh.AuthMethod {
+	passwordAnswered := false
+	return []ssh.AuthMethod{
+		ssh.Password(password),
+		ssh.KeyboardInteractive(func(_ string, _ string, questions []string, echos []bool) ([]string, error) {
+			if len(questions) == 0 {
+				return nil, nil
+			}
+			if passwordAnswered || len(questions) != 1 || len(echos) != 1 || echos[0] {
+				return nil, errors.New("unable to authenticate: unsupported keyboard-interactive challenge; expected one hidden password prompt")
+			}
+			passwordAnswered = true
+			return []string{password}, nil
+		}),
+	}
+}
+
 func Execute(req ExecuteRequest, instanceId string) ExecuteResponse {
 	return executeWithConn(req, instanceId, nil)
 }
@@ -866,7 +883,7 @@ func executeWithConn(req ExecuteRequest, instanceId string, nc *nats.Conn) Execu
 	}
 
 	if req.Password != "" {
-		authMethods = append(authMethods, ssh.Password(req.Password))
+		authMethods = append(authMethods, passwordAuthMethods(req.Password)...)
 		logger.Debugf("[SSH Execute] Instance: %s, Password authentication enabled", instanceId)
 	}
 
@@ -950,7 +967,7 @@ func executeWithConn(req ExecuteRequest, instanceId string, nc *nats.Conn) Execu
 			}
 
 			if req.Password != "" {
-				legacyAuthMethods = append(legacyAuthMethods, ssh.Password(req.Password))
+				legacyAuthMethods = append(legacyAuthMethods, passwordAuthMethods(req.Password)...)
 			}
 
 			legacyConfig := &ssh.ClientConfig{

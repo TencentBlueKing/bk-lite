@@ -57,6 +57,11 @@ def log_target_deleted(request, target_name: str):
     log_operation(request, "delete", _APP, f"删除目标: {target_name}")
 
 
+def log_target_purged(request):
+    """主机业务数据已清理后只保留不含主机身份的全局审计事件。"""
+    log_operation(request, "delete", _APP, "删除补丁管理目标及其业务数据")
+
+
 # ── 扫描生命周期 ──────────────────────────────────────────────────────────────
 
 

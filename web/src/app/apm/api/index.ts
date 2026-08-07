@@ -5,8 +5,10 @@ import type {
   ApmApplication,
   ApmApplicationInput,
   ApmCloudRegion,
+  ApmDashboard,
   ApmIngestSnippet,
   ApmIngestSnippetInput,
+  ApmTimeWindow,
   ApmEvent,
   ApmEventQuery,
   ApmHealth,
@@ -25,6 +27,8 @@ import type {
   ApmTraceDetail,
   ApmTracePage,
   ApmTraceSearchParams,
+  ApmSpanPage,
+  ApmSpanSearchParams,
   ApmTopologyGraph,
   CatalogStatus,
 } from '@/app/apm/types';
@@ -132,6 +136,11 @@ const useApmApi = () => {
 
   const getHealth = useCallback(() => get<ApmHealth>('/apm/health/'), [get]);
 
+  const getDashboard = useCallback(
+    (window: ApmTimeWindow) => get<ApmDashboard>('/apm/dashboard/', { params: { window } }),
+    [get]
+  );
+
   const getServiceRed = useCallback(
     (serviceId: string, environment: string, startedAt?: string, endedAt?: string) =>
       get<ApmServiceRed>(`/apm/services/${serviceId}/metrics/`, {
@@ -161,6 +170,11 @@ const useApmApi = () => {
 
   const getTraces = useCallback(
     (params: ApmTraceSearchParams) => get<ApmTracePage>('/apm/traces/', { params }),
+    [get]
+  );
+
+  const getSpans = useCallback(
+    (params: ApmSpanSearchParams) => get<ApmSpanPage>('/apm/spans/', { params }),
     [get]
   );
 
@@ -248,6 +262,7 @@ const useApmApi = () => {
     updateApplication,
     getIngestSnippet,
     getHealth,
+    getDashboard,
     getServiceRed,
     getSlos,
     createSlo,
@@ -255,6 +270,7 @@ const useApmApi = () => {
     deleteSlo,
     setSloEnabled,
     getTraces,
+    getSpans,
     getTrace,
     getTopology,
     getPolicies,

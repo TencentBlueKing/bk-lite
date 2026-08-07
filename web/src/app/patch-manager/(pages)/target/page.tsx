@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Tag, Button, Input, InputNumber, Select, Space, Modal, Form, Radio, Upload, Alert, message, Tooltip, Popconfirm } from 'antd';
+import { Tag, Button, Input, InputNumber, Select, Space, Modal, Form, Radio, Upload, Alert, message, Tooltip } from 'antd';
 import { PlusOutlined, LinkOutlined, EditOutlined, InboxOutlined, CloseOutlined } from '@ant-design/icons';
 import PermissionWrapper from '@/components/permission';
 import TimeSelector from '@/components/time-selector';
@@ -15,7 +15,9 @@ import { PatchTarget, OSType } from '@/app/patch-manager/types';
 import ComplianceTag, { ComplianceStatus } from '@/app/patch-manager/components/compliance-tag';
 import DualSelector from '@/app/patch-manager/components/dual-selector';
 import CustomTable from '@/components/custom-table';
+import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import OperateDrawer from '@/app/patch-manager/components/operate-drawer';
+import PatchDeletePopconfirm from '@/app/patch-manager/components/delete-popconfirm';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { buildTargetFilterSearch, parseBaselineFilter } from './filter-state';
 import { useTranslation } from '@/utils/i18n';
@@ -33,6 +35,7 @@ interface HostRow {
   name: string;
   ip: string;
   os: string;
+  teamNames: string[];
   source_type?: 'manual' | 'node_mgmt';
   baseline: string | null;
   baseline_id?: number | null;
@@ -92,6 +95,7 @@ function mapTargetToRow(item: PatchTargetItem): HostRow {
     name: item.name ?? '',
     ip: item.ip ?? '',
     os: item.os_type_display ?? item.os_type ?? '',
+    teamNames: item.team_name ?? [],
     source_type: item.source_type,
     baseline: item.baseline_name ?? item.baseline ?? null,
     baseline_id: item.baseline_id ?? null,
@@ -617,6 +621,15 @@ export default function TargetPage() {
     { title: 'IP', dataIndex: 'ip', width: 120, render: (v: string) => <span style={{ color: 'var(--color-text-3, #8c8c8c)' }}>{v}</span> },
     { title: t('patchManager.osType'), dataIndex: 'os', width: 120 },
     {
+      title: t('patchManager.targetPage.organization'),
+      dataIndex: 'teamNames',
+      width: 160,
+      render: (names: string[]) => {
+        const text = (names || []).join(',') || '—';
+        return <EllipsisWithTooltip text={text} className="w-full overflow-hidden text-ellipsis whitespace-nowrap" />;
+      },
+    },
+    {
       title: t('patchManager.targetPage.source'),
       dataIndex: 'source_type',
       width: 100,
@@ -697,7 +710,7 @@ export default function TargetPage() {
                 <span style={{ color: 'var(--color-text-4, #bfbfbf)', cursor: 'not-allowed' }}>{t('patchManager.targetPage.bindBaseline')}</span>
               </Tooltip>
             ) : (
-              <PermissionWrapper requiredPermissions={['Edit']} permissionPath="/patch-manager/baseline" instPermissions={r.permission}><a style={{ color: 'var(--color-primary, #1677ff)' }} onClick={() => { setSelectedKeys([r.key]); setBindBaseline(r.baseline_id ?? undefined); setBindOpen(true); }}>
+              <PermissionWrapper requiredPermissions={['Edit']} instPermissions={r.permission}><a style={{ color: 'var(--color-primary, #1677ff)' }} onClick={() => { setSelectedKeys([r.key]); setBindBaseline(r.baseline_id ?? undefined); setBindOpen(true); }}>
                 {t('patchManager.targetPage.bindBaseline')}
               </a></PermissionWrapper>
             )}
@@ -728,9 +741,9 @@ export default function TargetPage() {
                 <span style={{ color: 'var(--color-text-4, #bfbfbf)', cursor: 'not-allowed' }}>{t('patchManager.delete')}</span>
               </Tooltip>
             ) : (
-              <PermissionWrapper requiredPermissions={['Delete']} instPermissions={r.permission}><Popconfirm title={t('patchManager.targetPage.deleteConfirm')} onConfirm={() => handleDelete(r.key)} okText={t('patchManager.delete')} cancelText={t('patchManager.cancel')}>
+              <PermissionWrapper requiredPermissions={['Delete']} instPermissions={r.permission}><PatchDeletePopconfirm title={t('patchManager.targetPage.deleteConfirm')} onConfirm={() => handleDelete(r.key)} okText={t('patchManager.delete')} cancelText={t('patchManager.cancel')}>
                 <a style={{ color: '#ff4d4f' }}>{t('patchManager.delete')}</a>
-              </Popconfirm></PermissionWrapper>
+              </PatchDeletePopconfirm></PermissionWrapper>
             )}
           </Space>
         );
@@ -789,7 +802,7 @@ export default function TargetPage() {
                   : ''
               }
             >
-              <PermissionWrapper requiredPermissions={['Edit']} permissionPath="/patch-manager/baseline"><Button icon={<LinkOutlined />} disabled={bulkBindDisabled} onClick={() => { setBindBaseline(undefined); setBindOpen(true); }}>
+              <PermissionWrapper requiredPermissions={['Edit']}><Button icon={<LinkOutlined />} disabled={bulkBindDisabled} onClick={() => { setBindBaseline(undefined); setBindOpen(true); }}>
                 {t('patchManager.targetPage.bulkBind')}{selectedKeys.length ? `(${selectedKeys.length})` : ''}
               </Button></PermissionWrapper>
             </Tooltip>
@@ -830,13 +843,13 @@ export default function TargetPage() {
         />
       </div>
 
-      <Modal title={t('patchManager.targetPage.bulkBind')} open={bindOpen} onCancel={() => setBindOpen(false)} onOk={handleBind} okText={t('patchManager.confirm')} cancelText={t('patchManager.cancel')} confirmLoading={actionLoading} okButtonProps={{ disabled: !bindBaseline || !baselines.find((item) => item.id === bindBaseline)?.permission?.includes('Operate') }}>
+      <Modal title={t('patchManager.targetPage.bulkBind')} open={bindOpen} onCancel={() => setBindOpen(false)} onOk={handleBind} okText={t('patchManager.confirm')} cancelText={t('patchManager.cancel')} confirmLoading={actionLoading} okButtonProps={{ disabled: !bindBaseline || bulkBindDisabled }}>
         <p style={{ color: 'var(--color-text-2, #595959)' }}>{t('patchManager.targetPage.bindSelection', undefined, { count: selectedKeys.length })}</p>
         <Select
           style={{ width: '100%' }}
           placeholder={t('patchManager.targetPage.selectBaseline')}
           virtual
-          options={baselines.map((b) => ({ label: b.name, value: b.id, disabled: !b.permission?.includes('Operate') }))}
+          options={baselines.map((b) => ({ label: b.name, value: b.id }))}
           value={bindBaseline}
           onChange={setBindBaseline}
         />

@@ -43,9 +43,9 @@ const SLOW_TABLE_COLUMNS = [
     )
   },
   {
-    key: '_msg',
+    key: 'message',
     title: 'SQL 预览',
-    dataIndex: '_msg',
+    dataIndex: 'message',
     ellipsis: false,
     render: (val: string) => {
       if (!val) return '--';
@@ -105,7 +105,7 @@ const SLOW_TABLE_COLUMNS = [
     align: 'right' as const,
     width: 90,
     render: (val: any, record: TableDataItem) =>
-      formatRows(val ?? extractRowsExamined(String(record?._msg || '')))
+      formatRows(val ?? extractRowsExamined(String(record?.message || '')))
   }
 ];
 

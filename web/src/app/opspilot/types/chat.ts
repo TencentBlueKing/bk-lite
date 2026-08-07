@@ -15,6 +15,15 @@ export type { BrowserTaskReceivedData };
 export type BrowserStepProgressValue = BrowserStepProgressData;
 export type BrowserTaskReceivedValue = BrowserTaskReceivedData;
 export type AgentStepProgressValue = AgentStepProgressData;
+
+export interface PlannedExecutionStepValue {
+  phase: 'start' | 'end' | string;
+  step_index: number;
+  total_steps: number;
+  objective: string;
+  tools?: string[];
+}
+
 export interface SkillViewValue {
   items: SkillViewItem[];
 }
@@ -236,7 +245,7 @@ export interface AGUIMessage {
   message?: string;
   code?: string;
   name?: string;
-  value?: BrowserStepProgressValue | BrowserTaskReceivedValue | ApprovalRequestValue | UserChoiceRequestValue | AgentStepProgressValue | SubAgentProgressValue | SkillViewValue | ConfigAnalysisReportValue | Record<string, unknown>;
+  value?: BrowserStepProgressValue | BrowserTaskReceivedValue | ApprovalRequestValue | UserChoiceRequestValue | AgentStepProgressValue | SubAgentProgressValue | SkillViewValue | ConfigAnalysisReportValue | PlannedExecutionStepValue | Record<string, unknown>;
 }
 
 export interface GuideParseResult {

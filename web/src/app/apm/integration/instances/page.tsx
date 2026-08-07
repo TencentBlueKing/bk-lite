@@ -13,6 +13,7 @@ import CatalogState, {
 import OrganizationAssignmentModal from '@/app/apm/components/organization-assignment-modal';
 import ServiceIdentity from '@/app/apm/components/service-identity';
 import ApmStatusTag from '@/app/apm/components/status-tag';
+import { formatRelativeTime } from '@/app/apm/components/metric-format';
 import type { ApmApplication, ApmServiceInstance, CatalogStatus } from '@/app/apm/types';
 import Permission from '@/components/permission';
 import { useUserInfoContext } from '@/context/userInfo';
@@ -164,9 +165,13 @@ export default function ApmIntegrationInstancesPage() {
     {
       title: '最近上报',
       dataIndex: 'last_seen_at',
-      width: 190,
+      width: 120,
       responsive: ['md'],
-      render: (value) => <span className="tabular-nums">{dayjs(value).format('YYYY-MM-DD HH:mm:ss')}</span>,
+      render: (value) => (
+        <Typography.Text type="secondary" className="text-xs" title={dayjs(value).format('YYYY-MM-DD HH:mm:ss')}>
+          {formatRelativeTime(value)}
+        </Typography.Text>
+      ),
     },
     { title: '状态', dataIndex: 'status', width: 100, render: (value: CatalogStatus) => <ApmStatusTag status={value} /> },
     {
@@ -221,7 +226,7 @@ export default function ApmIntegrationInstancesPage() {
   return (
     <ApmRouteShell
       title="接入实例"
-      description="查看由遥测数据自动发现的运行实例；服务健康度与 RED 指标请前往“服务”。"
+      description="按运行实例查看上报状态与组织归属；逻辑服务健康请前往服务目录。"
     >
       {catalogDegraded ? (
         <Alert

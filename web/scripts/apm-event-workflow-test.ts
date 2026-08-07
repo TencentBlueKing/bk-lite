@@ -15,6 +15,12 @@ assert.match(events, /event\.status === 'firing'/, '活跃告警必须来自 APM
 assert.match(events, /event\.status === 'recovered'/, '历史告警必须来自 APM recovered 状态');
 assert.match(events, /告警分布/, '告警页应提供与原型一致的时间分布概览');
 assert.match(events, /搜索告警标题 \/ 服务 \/ 规则/, '告警页应支持原型中的快捷搜索');
+assert.match(events, /Drawer/, '告警页必须提供详情抽屉');
+assert.match(events, /openDrawer|setSelected/, '告警行必须可打开详情');
+assert.match(events, /Timeline/, '告警详情必须提供事件时间线');
+assert.match(events, /retryNotificationDelivery/, '告警详情必须保留投递失败重投');
+assert.match(events, /searchParams\.get\('service'\)/, '告警页必须接受服务深链筛选');
+assert.match(events, /environmentFilter/, '告警页必须支持环境筛选以便服务目录下钻');
 for (const range of ["'1h'", "'24h'", "'7d'"]) {
   assert.ok(events.includes(range), `告警页应支持原型中的时间范围 ${range}`);
 }

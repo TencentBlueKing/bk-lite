@@ -22,6 +22,7 @@ import {
   ObjectItem,
 } from '@/app/monitor/types';
 import { getBaseInstanceColumn } from '@/app/monitor/utils/common';
+import { findByMonitorId } from '@/app/monitor/utils/monitorIds';
 import { CloseOutlined } from '@ant-design/icons';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 
@@ -57,7 +58,8 @@ const SelectInstance = forwardRef<ModalRef, ModalConfig>(
         },
       ];
       const row =
-        objects.find((item: ObjectItem) => item.id === monitorObject) || {};
+        (findByMonitorId(objects as ObjectItem[], monitorObject) ||
+          {}) as ObjectItem;
       return [
         ...getBaseInstanceColumn({
           objects: objects as ObjectItem[],

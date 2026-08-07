@@ -106,6 +106,7 @@ export const createConversation = async (data: any): Promise<CustomChatMessage[]
       approvalRequests?: any;
       repairCommands?: any;
       reportFileDownloads?: any;
+      plannedExecutionSteps?: any;
       toolCalls?: any;
     } = {
       content: rawContent,
@@ -129,6 +130,7 @@ export const createConversation = async (data: any): Promise<CustomChatMessage[]
         approvalRequests: parsed.approvalRequests,
         repairCommands: parsed.repairCommands,
         reportFileDownloads: parsed.reportFileDownloads,
+        plannedExecutionSteps: parsed.plannedExecutionSteps,
         toolCalls: parsed.toolCalls
       };
     } else if (shouldProcessOpenAI) {
@@ -153,7 +155,9 @@ export const createConversation = async (data: any): Promise<CustomChatMessage[]
       approvalRequests: processed.approvalRequests,
       repairCommands: processed.repairCommands,
       reportFileDownloads: processed.reportFileDownloads,
+      plannedExecutionSteps: processed.plannedExecutionSteps,
       toolCalls: processed.toolCalls,
+      isStreamingTools: false,
     } as CustomChatMessage;
   }));
 };
