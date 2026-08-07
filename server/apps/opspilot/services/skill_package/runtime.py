@@ -5,6 +5,8 @@ from typing import Any, Iterable
 
 import yaml
 
+from apps.core.logger import opspilot_logger as logger
+
 # SKILL.md frontmatter 提取正则(与 importer._split_frontmatter 保持一致)
 _SKILL_MD_FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*(?:\n|$)", re.DOTALL)
 # 策略字段:由 SKILL.md frontmatter / skill.yaml 决定,覆盖 DB manifest
@@ -71,8 +73,14 @@ def build_skill_package_prompt(
     user_message: Any,
     available_tool_names: Iterable[str] | None = None,
 ) -> tuple[str, list[dict[str, Any]]]:
-    # 列出所有已启用的技能包(不靠 keyword 匹配筛,避免"今天天气" 也强塞包)。
-    # LLM 看到完整列表后按用户问题挑相关的 1+ 个用,而不是"显示的都用上"。
+    """把已启用技能包以渐进披露目录写入 system prompt。
+
+    只注入名称 / 短说明 / 触发词 / 依赖工具，**不**塞入完整 ``skill_markdown``。
+    完整正文由 DeepAgent ``SkillsMiddleware`` 物化为 ``SKILL.md``，模型按需
+    ``read_file`` 读取，避免寒暄类问题也烧掉整包 token。
+    """
+    # 列出所有已启用的技能包(不靠 keyword 匹配筛,避免"今天天气"也强塞正文)。
+    # LLM 看到目录后按用户问题挑相关的 1+ 个用,而不是"显示的都用上"。
     enabled = normalize_skill_packages(skill_packages)
     if not enabled:
         return base_prompt or "", []
@@ -88,24 +96,45 @@ def build_skill_package_prompt(
         if _package_match_key(package) in matched_ids:
             matched_packages.append(_package_summary(package, missing_tools))
         missing_notice = f"\n- 缺少依赖工具：{'、'.join(missing_tools)}" if missing_tools else ""
+        description = _compact_package_description(package)
         blocks.append(
             "\n".join(
                 [
                     f"### {package_name}",
-                    f"- 已采用技能包：{package_name}",
-                    f"- 说明：{package.get('description') or '无'}",
+                    f"- 说明：{description}",
                     f"- 触发词：{_join_list(package.get('triggers')) or '无'}",
                     f"- 依赖工具：{_join_list(package.get('required_tools')) or '无'}{missing_notice}",
-                    "",
-                    str(package.get("skill_markdown") or package.get("content") or "").strip(),
                 ]
             )
         )
     blocks.append(
-        "\n使用规则：以下技能包**已启用**(可被调用),但**仅当用户问题与某个技能包的能力边界相关时才采用**;用户明说「使用xx」时,直接调用对应那个,其他技能包忽略;用户没明说时,根据问题**挑 1 个或几个最相关的用**,不要「列出来的全用上」。如采用技能包方法,必须在思考区或最终答复开头写明 `已采用技能包:<技能包名称>`。技能包不是工具调用,不要把技能包写成已调用工具;技能包提供任务方法和输出约束,事实数据必须来自工具或上下文。"
-        "\n运行规则：当用户要求你实际获取、访问、转换、读取、生成或处理外部内容时，不要只输出安装步骤或示例代码；必须优先调用当前可用工具完成任务。DeepAgent 沙箱提供 `execute`、`read_file`、`write_file` 等工具时，应使用这些工具运行技能包中的 CLI 或脚本，并基于工具返回的真实结果回答。只有工具不可用或执行失败时，才说明失败原因并给出人工执行步骤。"
+        "\n使用规则：以上是技能包**目录**(仅名称与短说明)。完整步骤在 DeepAgent 技能库的 "
+        "`/skills/<name>/SKILL.md` 中，需要时用 `read_file`（建议 `limit=1000`）按需读取，"
+        "**不要假设本列表已包含全文**。"
+        "以下技能包**已启用**(可被调用),但**仅当用户问题与某个技能包的能力边界相关时才采用**;"
+        "用户明说「使用xx」时,直接调用对应那个,其他技能包忽略;用户没明说时,根据问题"
+        "**挑 1 个或几个最相关的用**,不要「列出来的全用上」。"
+        "如采用技能包方法,必须在思考区或最终答复开头写明 `已采用技能包:<技能包名称>`。"
+        "技能包不是工具调用,不要把技能包写成已调用工具;技能包提供任务方法和输出约束,"
+        "事实数据必须来自工具或上下文。"
+        "\n运行规则：当用户要求你实际获取、访问、转换、读取、生成或处理外部内容时，"
+        "不要只输出安装步骤或示例代码；必须优先调用当前可用工具完成任务。"
+        "DeepAgent 沙箱提供 `execute`、`read_file`、`write_file` 等工具时，"
+        "应使用这些工具运行技能包中的 CLI 或脚本，并基于工具返回的真实结果回答。"
+        "只有工具不可用或执行失败时，才说明失败原因并给出人工执行步骤。"
     )
     return (base_prompt or "") + "\n".join(blocks), matched_packages
+
+
+_COMPACT_DESCRIPTION_LIMIT = 240
+
+
+def _compact_package_description(package: dict[str, Any]) -> str:
+    """目录用短说明；过长描述截断，避免变相塞入正文。"""
+    text = " ".join(str(package.get("description") or "无").split()).strip() or "无"
+    if len(text) <= _COMPACT_DESCRIPTION_LIMIT:
+        return text
+    return text[: _COMPACT_DESCRIPTION_LIMIT - 1].rstrip() + "…"
 
 
 def build_skill_package_strategy(matched_skill_packages: Any) -> dict[str, Any]:
