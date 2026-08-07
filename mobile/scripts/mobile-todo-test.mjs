@@ -92,9 +92,10 @@ test('待办 adapter 只复用现有 Web/Server 接口和权限，不声明新�
 });
 
 test('待办页面覆盖列表、搜索、详情三区段和轻处置且不跨模块跳转', async () => {
-  const [listPage, listStyles, searchPage, detailPage, feed, zh, en] = await Promise.all([
+  const [listPage, listStyles, segmentTabsStyles, searchPage, detailPage, feed, zh, en] = await Promise.all([
     readProjectFile('src/app/todo/page.tsx'),
     readProjectFile('src/features/todo/todo.module.css'),
+    readProjectFile('src/components/mobile-segment-tabs/index.module.css'),
     readProjectFile('src/app/todo/search/page.tsx'),
     readProjectFile('src/app/todo/alerts/detail/page.tsx'),
     readProjectFile('src/features/todo/use-alert-feed.ts'),
@@ -102,6 +103,7 @@ test('待办页面覆盖列表、搜索、详情三区段和轻处置且不跨�
     readProjectFile('src/locales/en.json'),
   ]);
 
+  assert.match(listPage, /MobileSegmentTabs/);
   assert.match(listPage, /Tabs\.Tab[\s\S]*key="mine"[\s\S]*key="high"[\s\S]*key="open"/);
   assert.match(listPage, /formatAlertCount|tabBadge/);
   assert.match(listPage, /MobilePullToRefresh/);
@@ -115,7 +117,9 @@ test('待办页面覆盖列表、搜索、详情三区段和轻处置且不跨�
   assert.match(listPage, /clearMobileViewStale/);
   assert.match(feed, /const revalidate = useCallback/);
   assert.doesNotMatch(listStyles, /\.tabs\s+:global\(\.adm-tabs-tab-active\)::after/);
-  assert.match(listStyles, /\.tabs\s+:global\(\.adm-tabs-tab-line\)\s*\{\s*display:\s*none/);
+  assert.doesNotMatch(segmentTabsStyles, /\.tabs\s+:global\(\.adm-tabs-tab-active\)::after/);
+  // 下划线隐藏已收口到共享 MobileSegmentTabs，不再散落在待办业务样式。
+  assert.match(segmentTabsStyles, /\.tabs\s+:global\(\.adm-tabs-tab-line\)\s*\{\s*display:\s*none/);
   assert.match(listStyles, /\.statusPill/);
   assert.match(listStyles, /\.tabBadge/);
   assert.match(searchPage, /'title'[\s\S]*'content'[\s\S]*'alert_id'/);
@@ -164,12 +168,12 @@ test('轻处置后标记列表缓存失效，返回时可先展示再静默刷�
   assert.equal(cache.isMobileViewStale('u1:t1', 'todo-root'), false);
 });
 
-test('关注告警列表使用紧凑色柱和一致的 12/14 字号层级', async () => {
+test('关注告警列表使用紧凑色柱与语义字号层级', async () => {
   const styles = await readProjectFile('src/features/todo/todo.module.css');
 
   assert.match(styles, /\.severityMark\s*\{[^}]*height:\s*28px/s);
-  assert.match(styles, /\.levelName\s*\{[^}]*font-size:\s*12px/s);
-  assert.match(styles, /\.statusText,\s*\.cardDuration\s*\{[^}]*font-size:\s*12px/s);
-  assert.match(styles, /\.alertTitle\s*\{[^}]*font-size:\s*14px/s);
+  assert.match(styles, /\.levelName\s*\{[^}]*font-size:\s*var\(--font-size-secondary\)/s);
+  assert.match(styles, /\.statusText,\s*\.cardDuration\s*\{[^}]*font-size:\s*var\(--font-size-secondary\)/s);
+  assert.match(styles, /\.alertTitle\s*\{[^}]*font-size:\s*var\(--font-size-subtitle\)/s);
   assert.match(styles, /\.alertCard\s*\{[^}]*min-height:\s*92px/s);
 });
