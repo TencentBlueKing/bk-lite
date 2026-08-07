@@ -259,6 +259,26 @@ assert.deepEqual(
   { metricUnit: '', calculationUnit: '', thresholdUnit: '' }
 );
 
+// none/short：保存时三字段均为空，避免后端 get_effective_units 提升后校验失败
+assert.deepEqual(
+  resolveMetricExpressionUnits({
+    queryType: 'metric',
+    metricUnit: 'none',
+    calculationUnit: null,
+    thresholdUnit: null,
+  }),
+  { metricUnit: '', calculationUnit: '', thresholdUnit: '' }
+);
+assert.deepEqual(
+  resolveMetricExpressionUnits({
+    queryType: 'metric',
+    metricUnit: 'short',
+    calculationUnit: null,
+    thresholdUnit: null,
+  }),
+  { metricUnit: '', calculationUnit: '', thresholdUnit: '' }
+);
+
 assert.equal(isVacantThresholdUnit(null), true);
 assert.equal(isVacantThresholdUnit(undefined), true);
 assert.equal(isVacantThresholdUnit(''), true);
