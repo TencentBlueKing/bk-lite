@@ -15,6 +15,7 @@ from apps.node_mgmt.serializers.installer import (
     ControllerInstallRequestSerializer,
     ControllerManualInstallRequestSerializer,
     ControllerRetryRequestSerializer,
+    ControllerUninstallRequestSerializer,
     InstallCommandRequestSerializer,
     InstallerArtifactQuerySerializer,
 )
@@ -108,15 +109,38 @@ class InstallerViewSet(ViewSet):
     @action(detail=False, methods=["post"], url_path="controller/uninstall")
     @HasPermission("cloud_region_node-Delete")
     def controller_uninstall(self, request):
-        node_ids = [node["node_id"] for node in request.data.get("nodes", []) if node.get("node_id")]
-        if node_ids:
-            _, error_response = authorize_node_ids(request, node_ids)
-            if error_response:
-                return error_response
+        requested_nodes = request.data.get("nodes", [])
+        if not isinstance(requested_nodes, list) or not requested_nodes:
+            return WebUtils.response_error(error_message="nodes is required")
+        node_ids = [node.get("node_id") for node in requested_nodes if isinstance(node, dict) and node.get("node_id")]
+        if len(node_ids) != len(requested_nodes):
+            return WebUtils.response_error(error_message="node_id is required for every uninstall target")
+        authorized_nodes, error_response = authorize_node_ids(request, node_ids)
+        if error_response:
+            return error_response
+
+        authorized_map = {str(node.id): node for node in authorized_nodes}
+        canonical_payload = {**request.data, "nodes": []}
+        for requested_node in requested_nodes:
+            actual_node = authorized_map[str(requested_node["node_id"])]
+            canonical_payload["nodes"].append(
+                {
+                    **requested_node,
+                    "node_id": str(actual_node.id),
+                    "ip": actual_node.ip,
+                    "os": actual_node.operating_system,
+                }
+            )
+
+        serializer = ControllerUninstallRequestSerializer(data=canonical_payload)
+        serializer.is_valid(raise_exception=True)
+        data = cast(dict[str, Any], serializer.validated_data)
+        if any(node.cloud_region_id != data["cloud_region_id"] for node in authorized_nodes):
+            return WebUtils.response_403("Uninstall target does not belong to the requested cloud region")
         task_id = InstallerService.uninstall_controller(
-            request.data["cloud_region_id"],
-            request.data["work_node"],
-            request.data["nodes"],
+            data["cloud_region_id"],
+            data["work_node"],
+            data["nodes"],
             request.user.username,
             getattr(request.user, "domain", "domain.com"),
         )

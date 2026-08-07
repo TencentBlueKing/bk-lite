@@ -418,6 +418,13 @@ def _save_node_pending_connectivity(node_obj, final_message):
     node_obj.result = result
     node_obj.save(update_fields=["status", "result"])
 
+    # Sidecar may register while the bootstrap result is still being persisted.
+    # Reconcile once after entering connectivity_waiting so an early callback is
+    # not forced to wait for the next heartbeat.
+    install_node_id = result.get(InstallerConstants.INSTALL_NODE_ID_KEY)
+    if install_node_id and Node.objects.filter(id=install_node_id).exists():
+        converge_controller_install_connectivity_for_node(install_node_id)
+
 
 def _refresh_installer_progress(node_obj):
     result = node_obj.result or {}
@@ -1288,13 +1295,14 @@ def uninstall_controller(task_id):
 
         has_password = bool(node_obj.password)
         has_private_key = bool(node_obj.private_key)
+        is_windows = node_obj.os == NodeConstants.WINDOWS_OS
 
-        if not has_password and not has_private_key:
+        if (is_windows and not has_password) or (not is_windows and not has_password and not has_private_key):
             _add_step(
                 node_obj,
                 "credential_check",
                 "error",
-                "No authentication method provided. Password or private key is required.",
+                "Windows requires a password; Linux requires a password or private key.",
             )
             _save_node_result(node_obj, "error", "Credential validation failed")
             continue
@@ -1325,17 +1333,33 @@ def uninstall_controller(task_id):
             passphrase = aes_obj.decode(node_obj.passphrase)
 
         try:
-            uninstall_command = get_uninstall_command(node_obj.os)
-            exec_command_to_remote(
-                task_obj.work_node,
-                node_obj.ip,
-                node_obj.username,
-                password,
-                uninstall_command,
-                node_obj.port,
-                private_key=private_key,
-                passphrase=passphrase,
-            )
+            if is_windows:
+                WindowsRemoteBootstrapService().uninstall(
+                    cloud_region_id=task_obj.cloud_region_id,
+                    task_node_id=node_obj.id,
+                    target=WindowsBootstrapTarget(
+                        host=node_obj.ip,
+                        port=node_obj.port,
+                        user=node_obj.username,
+                        password=password,
+                        scheme=node_obj.winrm_scheme,
+                        transport=node_obj.winrm_transport,
+                        validate_certificate=node_obj.winrm_cert_validation,
+                    ),
+                    timeout=InstallerConstants.COMMAND_EXECUTE_TIMEOUT,
+                )
+            else:
+                uninstall_command = get_uninstall_command(node_obj.os)
+                exec_command_to_remote(
+                    task_obj.work_node,
+                    node_obj.ip,
+                    node_obj.username,
+                    password,
+                    uninstall_command,
+                    node_obj.port,
+                    private_key=private_key,
+                    passphrase=passphrase,
+                )
             _advance_step(
                 node_obj,
                 "success",
@@ -1348,23 +1372,27 @@ def uninstall_controller(task_id):
                     )
                 ],
             )
-            exec_command_to_remote(
-                task_obj.work_node,
-                node_obj.ip,
-                node_obj.username,
-                password,
-                ControllerConstants.CONTROLLER_DIR_DELETE_COMMAND.get(node_obj.os),
-                node_obj.port,
-                private_key=private_key,
-                passphrase=passphrase,
-            )
+            if not is_windows:
+                exec_command_to_remote(
+                    task_obj.work_node,
+                    node_obj.ip,
+                    node_obj.username,
+                    password,
+                    ControllerConstants.CONTROLLER_DIR_DELETE_COMMAND.get(node_obj.os),
+                    node_obj.port,
+                    private_key=private_key,
+                    passphrase=passphrase,
+                )
             _advance_step(
                 node_obj,
                 "success",
                 "Installation directory removed",
                 next_steps=[_build_step("delete_node", "running", "Remove node record")],
             )
-            Node.objects.filter(cloud_region_id=task_obj.cloud_region_id, ip=node_obj.ip).delete()
+            if node_obj.node_id:
+                Node.objects.filter(id=node_obj.node_id, cloud_region_id=task_obj.cloud_region_id).delete()
+            else:
+                Node.objects.filter(cloud_region_id=task_obj.cloud_region_id, ip=node_obj.ip).delete()
             _update_step_status(node_obj, "success", "Node record removed")
 
         except Exception as e:
