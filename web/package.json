@@ -120,7 +120,7 @@
     "test:e2e:install": "playwright install chromium",
     "type-check": "pnpm clean && pnpm prepare-enterprise && next typegen && tsc -p tsconfig.json --noEmit",
     "precommit": "node -r dotenv/config scripts/generate-tsconfig.js dotenv_config_path=.env.local",
-    "prepare": "husky install",
+    "prepare": "cd .. && husky .husky",
     "analyze": "node scripts/build.mjs --analyze --webpack",
     "storybook": "storybook dev -p 6006",
     "build-storybook": "storybook build",
