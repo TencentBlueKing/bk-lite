@@ -276,49 +276,56 @@ export const usePluginFromJson = () => {
           {basicFields.map((fieldConfig: any) =>
             renderFormField(fieldConfig, extra.mode)
           )}
-          {advancedFields.length > 0 && (
-            <Form.Item
-              noStyle
-              shouldUpdate={
-                isInterfaceFilterAdvanced
-                  ? (previousValues, currentValues) =>
-                    previousValues.enable_ifmib !== currentValues.enable_ifmib
-                  : false
-              }
-            >
-              {({ getFieldValue }) =>
-                // 未初始化时沿用 enable_ifmib 默认 true；只有明确关闭才隐藏整个区域。
-                !shouldRenderAdvancedFieldsPanel(
-                  isInterfaceFilterAdvanced,
-                  getFieldValue('enable_ifmib')
-                ) ? null : (
-            <Collapse
-              bordered={false}
-              ghost
-              className="mb-4 max-w-[720px] bg-transparent [&_.ant-collapse-header]:!items-center [&_.ant-collapse-header]:!px-0 [&_.ant-collapse-expand-icon]:!me-2 [&_.ant-collapse-content-box]:!px-0 [&_.ant-collapse-content-box]:!pb-1 [&_.ant-collapse-content-box]:!pt-3"
-              expandIconPosition="start"
-              items={[{
-                key: 'advanced-options',
-                label: (
-                  <div>
-                    <div className="text-[13px] font-medium leading-5 text-[var(--color-text-1)]">
-                      {advancedTitle}
-                    </div>
-                    {advancedHint ? (
-                      <div className="mt-0.5 text-[12px] font-normal leading-[18px] text-[var(--color-text-3)]">
-                        {advancedHint}
+          {advancedFields.length > 0 && (() => {
+            // Ant Design：函数子节点的 Form.Item 必须带 truthy 的 shouldUpdate/dependencies，
+            // 否则子节点不会渲染。网站拨测等非 IF-MIB 面板不能写 shouldUpdate={false}。
+            const advancedCollapse = (
+              <Collapse
+                bordered={false}
+                ghost
+                className="mb-4 max-w-[720px] bg-transparent [&_.ant-collapse-header]:!items-center [&_.ant-collapse-header]:!px-0 [&_.ant-collapse-expand-icon]:!me-2 [&_.ant-collapse-content-box]:!px-0 [&_.ant-collapse-content-box]:!pb-1 [&_.ant-collapse-content-box]:!pt-3"
+                expandIconPosition="start"
+                items={[{
+                  key: 'advanced-options',
+                  label: (
+                    <div>
+                      <div className="text-[13px] font-medium leading-5 text-[var(--color-text-1)]">
+                        {advancedTitle}
                       </div>
-                    ) : null}
-                  </div>
-                ),
-                forceRender: true,
-                children: renderAdvancedFieldGroups(advancedFields),
-              }]}
-            />
-                )
-              }
-            </Form.Item>
-          )}
+                      {advancedHint ? (
+                        <div className="mt-0.5 text-[12px] font-normal leading-[18px] text-[var(--color-text-3)]">
+                          {advancedHint}
+                        </div>
+                      ) : null}
+                    </div>
+                  ),
+                  forceRender: true,
+                  children: renderAdvancedFieldGroups(advancedFields),
+                }]}
+              />
+            );
+            if (!isInterfaceFilterAdvanced) {
+              return advancedCollapse;
+            }
+            return (
+              <Form.Item
+                noStyle
+                shouldUpdate={(previousValues, currentValues) =>
+                  previousValues.enable_ifmib !== currentValues.enable_ifmib
+                }
+              >
+                {({ getFieldValue }) =>
+                  // 未初始化时沿用 enable_ifmib 默认 true；只有明确关闭才隐藏整个区域。
+                  !shouldRenderAdvancedFieldsPanel(
+                    isInterfaceFilterAdvanced,
+                    getFieldValue('enable_ifmib')
+                  )
+                    ? null
+                    : advancedCollapse
+                }
+              </Form.Item>
+            );
+          })()}
         </>
       );
 
