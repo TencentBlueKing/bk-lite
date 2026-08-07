@@ -9,7 +9,6 @@ from urllib.parse import parse_qs, urlparse
 
 import json_repair
 from deepagents import create_deep_agent
-from langchain.agents.middleware import ModelCallLimitMiddleware
 from langchain_core.callbacks import adispatch_custom_event, dispatch_custom_event
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_core.runnables import RunnableConfig
@@ -64,6 +63,14 @@ from apps.opspilot.metis.llm.chain.lc_patches import (  # noqa: E402,F401
 from apps.opspilot.metis.llm.common.llm_client_factory import LLMClientFactory
 from apps.opspilot.metis.llm.common.structured_output_parser import StructuredOutputParser
 from apps.opspilot.metis.llm.common.token_usage import TokenUsageAccumulator
+from apps.opspilot.metis.llm.middleware.planned_execution_limits import (
+    PlannedExecutionLimitMiddleware,
+    ask_limit_continue,
+    detect_limit_kind,
+    get_planned_execution_run_model_call_limit,
+    resolve_planned_execution_soft_budget_ratio,
+    resolve_planned_execution_token_budget,
+)
 from apps.opspilot.metis.llm.middleware.token_usage import TokenUsageTrackingMiddleware
 from apps.opspilot.metis.llm.middleware.tool_runtime import (
     PLANNED_EXECUTION_ALWAYS_ON_BUSINESS_TOOLS,
@@ -2931,14 +2938,16 @@ class ToolsNodes(BasicNode):
                 allow_unregistered_tools=False,
                 include_always_visible=True,
             )
+            limit_middleware = PlannedExecutionLimitMiddleware(
+                run_limit=get_planned_execution_run_model_call_limit(),
+                token_budget=resolve_planned_execution_token_budget(graph_request),
+                soft_budget_ratio=resolve_planned_execution_soft_budget_ratio(graph_request),
+                accumulator=(token_usage_accumulator if isinstance(token_usage_accumulator, TokenUsageAccumulator) else None),
+            )
             runtime_middleware = [
                 visibility_middleware,
                 ToolResultCompactionMiddleware(),
-                ModelCallLimitMiddleware(
-                    run_limit=3,
-                    thread_limit=10,
-                    exit_behavior="end",
-                ),
+                limit_middleware,
             ]
             final_system_prompt += (
                 "\n\n【分步工具执行】外部规划器已经拆分任务。"
@@ -3110,6 +3119,7 @@ class ToolsNodes(BasicNode):
                             "tools": visible_names,
                         },
                     )
+                    limit_middleware.reset_step_continues()
                     step_message = _internal_message(
                         f"执行计划当前步骤：{step.objective}\n"
                         f"本步骤计划工具：{', '.join(step.tools) or '无'}。\n"
@@ -3121,25 +3131,95 @@ class ToolsNodes(BasicNode):
                         **agent_state,
                         "messages": list(agent_state.get("messages") or []) + [step_message],
                     }
-                    try:
-                        step_result = await deep_agent.ainvoke(
-                            step_payload,
-                            config=deep_config,
-                        )
-                    except Exception as step_exc:
-                        failure = f"步骤“{step.objective}”执行异常 " f"{type(step_exc).__name__}: {str(step_exc)[:800]}"
-                        # 上下文溢出：不带着全量工具目录重规划，但压缩上下文后继续后续步骤。
-                        if is_context_size_error(step_exc):
-                            logger.warning(
-                                "DeepAgent 步骤因上下文窗口不足失败，跳过当前步并继续后续步骤: %s",
-                                failure,
+                    step_finished = False
+                    replanned = False
+                    while not step_finished:
+                        try:
+                            step_result = await deep_agent.ainvoke(
+                                step_payload,
+                                config=deep_config,
                             )
+                        except Exception as step_exc:
+                            failure = f"步骤“{step.objective}”执行异常 " f"{type(step_exc).__name__}: {str(step_exc)[:800]}"
+                            # 上下文溢出：不带着全量工具目录重规划，但压缩上下文后继续后续步骤。
+                            if is_context_size_error(step_exc):
+                                logger.warning(
+                                    "DeepAgent 步骤因上下文窗口不足失败，跳过当前步并继续后续步骤: %s",
+                                    failure,
+                                )
+                                completed_steps.append(
+                                    CompletedExecutionStep(
+                                        objective=step.objective,
+                                        result="本步骤因模型上下文窗口不足未能执行。",
+                                    )
+                                )
+                                await _emit_step_boundary(
+                                    "planned_execution_step",
+                                    {
+                                        "phase": "end",
+                                        "step_index": step_index,
+                                        "total_steps": total_steps,
+                                        "objective": step.objective,
+                                        "tools": list(step.tools),
+                                        "status": "skipped_context_overflow",
+                                    },
+                                )
+                                agent_state = _compact_agent_state_with_summaries(overflow=True)
+                                step_finished = True
+                                break
+                            if replan_count >= 2:
+                                raise
+                            replan_count += 1
+                            replacement = await planner.plan(
+                                planning_question,
+                                tools,
+                                completed_steps=completed_steps,
+                                failure=failure,
+                                config=config,
+                            )
+                            pending_steps = list(replacement.steps)
+                            total_steps = len(completed_steps) + len(pending_steps)
+                            logger.warning(
+                                "DeepAgent 当前及后续步骤已重规划: count=%s, failure=%s, steps=%s",
+                                replan_count,
+                                failure,
+                                [item.objective for item in pending_steps],
+                            )
+                            replanned = True
+                            step_finished = True
+                            break
+
+                        result_messages = list(step_result.get("messages") or [])
+                        step_messages = result_messages[len(step_payload["messages"]) :]
+                        limit_kind = detect_limit_kind(step_messages)
+                        if limit_kind:
+                            _collect_output_messages(step_messages)
+                            agent_state = step_result
+                            should_continue = await ask_limit_continue(
+                                kind=limit_kind,
+                                step_objective=step.objective,
+                                config=config,
+                            )
+                            if should_continue and limit_middleware.grant_continue(limit_kind):
+                                logger.info(
+                                    "DeepAgent 步骤限制续跑: kind=%s, objective=%s, continue_count=%s",
+                                    limit_kind,
+                                    step.objective,
+                                    limit_middleware.continue_count,
+                                )
+                                continue_msg = _internal_message("用户选择继续当前步骤。请从中断处接着完成，" "不要重复已成功的工具调用；证据足够后立即结束。")
+                                step_payload = {
+                                    **agent_state,
+                                    "messages": list(agent_state.get("messages") or []) + [continue_msg],
+                                }
+                                continue
                             completed_steps.append(
                                 CompletedExecutionStep(
                                     objective=step.objective,
-                                    result="本步骤因模型上下文窗口不足未能执行。",
+                                    result=_step_summary(step_messages) or "本步骤因调用/预算上限提前结束。",
                                 )
                             )
+                            agent_state = _compact_agent_state_with_summaries(overflow=False)
                             await _emit_step_boundary(
                                 "planned_execution_step",
                                 {
@@ -3148,104 +3228,91 @@ class ToolsNodes(BasicNode):
                                     "total_steps": total_steps,
                                     "objective": step.objective,
                                     "tools": list(step.tools),
-                                    "status": "skipped_context_overflow",
+                                    "status": f"limited_{limit_kind}",
                                 },
                             )
-                            agent_state = _compact_agent_state_with_summaries(overflow=True)
-                            continue
-                        if replan_count >= 2:
-                            raise
-                        replan_count += 1
-                        replacement = await planner.plan(
-                            planning_question,
-                            tools,
-                            completed_steps=completed_steps,
-                            failure=failure,
-                            config=config,
-                        )
-                        pending_steps = list(replacement.steps)
-                        total_steps = len(completed_steps) + len(pending_steps)
-                        logger.warning(
-                            "DeepAgent 当前及后续步骤已重规划: count=%s, failure=%s, steps=%s",
-                            replan_count,
-                            failure,
-                            [item.objective for item in pending_steps],
-                        )
-                        continue
+                            step_finished = True
+                            break
 
-                    result_messages = list(step_result.get("messages") or [])
-                    step_messages = result_messages[len(step_payload["messages"]) :]
-                    failure = _step_failure(step_messages)
-                    agent_state = step_result
-                    if failure:
+                        failure = _step_failure(step_messages)
+                        agent_state = step_result
+                        if failure:
+                            _collect_output_messages(step_messages)
+                            if is_context_size_error(failure):
+                                logger.warning(
+                                    "DeepAgent 步骤工具结果提示上下文不足，跳过当前步并继续后续步骤: %s",
+                                    failure,
+                                )
+                                completed_steps.append(
+                                    CompletedExecutionStep(
+                                        objective=step.objective,
+                                        result="本步骤因模型上下文窗口不足未能完成。",
+                                    )
+                                )
+                                await _emit_step_boundary(
+                                    "planned_execution_step",
+                                    {
+                                        "phase": "end",
+                                        "step_index": step_index,
+                                        "total_steps": total_steps,
+                                        "objective": step.objective,
+                                        "tools": list(step.tools),
+                                        "status": "skipped_context_overflow",
+                                    },
+                                )
+                                agent_state = _compact_agent_state_with_summaries(overflow=True)
+                                step_finished = True
+                                break
+                            if replan_count >= 2:
+                                raise ToolPlanningError(failure)
+                            replan_count += 1
+                            replacement = await planner.plan(
+                                planning_question,
+                                tools,
+                                completed_steps=completed_steps,
+                                failure=failure,
+                                config=config,
+                            )
+                            pending_steps = list(replacement.steps)
+                            total_steps = len(completed_steps) + len(pending_steps)
+                            logger.warning(
+                                "DeepAgent 当前及后续步骤已重规划: count=%s, failure=%s, steps=%s",
+                                replan_count,
+                                failure,
+                                [item.objective for item in pending_steps],
+                            )
+                            agent_state = _compact_agent_state_with_summaries(overflow=False)
+                            replanned = True
+                            step_finished = True
+                            break
+
                         _collect_output_messages(step_messages)
-                        if is_context_size_error(failure):
-                            logger.warning(
-                                "DeepAgent 步骤工具结果提示上下文不足，跳过当前步并继续后续步骤: %s",
-                                failure,
+                        completed_steps.append(
+                            CompletedExecutionStep(
+                                objective=step.objective,
+                                result=_step_summary(step_messages),
                             )
-                            completed_steps.append(
-                                CompletedExecutionStep(
-                                    objective=step.objective,
-                                    result="本步骤因模型上下文窗口不足未能完成。",
-                                )
-                            )
-                            await _emit_step_boundary(
-                                "planned_execution_step",
-                                {
-                                    "phase": "end",
-                                    "step_index": step_index,
-                                    "total_steps": total_steps,
-                                    "objective": step.objective,
-                                    "tools": list(step.tools),
-                                    "status": "skipped_context_overflow",
-                                },
-                            )
-                            agent_state = _compact_agent_state_with_summaries(overflow=True)
-                            continue
-                        if replan_count >= 2:
-                            raise ToolPlanningError(failure)
-                        replan_count += 1
-                        replacement = await planner.plan(
-                            planning_question,
-                            tools,
-                            completed_steps=completed_steps,
-                            failure=failure,
-                            config=config,
                         )
-                        pending_steps = list(replacement.steps)
-                        total_steps = len(completed_steps) + len(pending_steps)
-                        logger.warning(
-                            "DeepAgent 当前及后续步骤已重规划: count=%s, failure=%s, steps=%s",
-                            replan_count,
-                            failure,
-                            [item.objective for item in pending_steps],
-                        )
+                        # 步间只保留摘要，避免巨型 diagnose/logs 结果拖垮后续步与最终总结。
                         agent_state = _compact_agent_state_with_summaries(overflow=False)
-                        continue
-
-                    _collect_output_messages(step_messages)
-                    completed_steps.append(
-                        CompletedExecutionStep(
-                            objective=step.objective,
-                            result=_step_summary(step_messages),
+                        await _emit_step_boundary(
+                            "planned_execution_step",
+                            {
+                                "phase": "end",
+                                "step_index": step_index,
+                                "total_steps": total_steps,
+                                "objective": step.objective,
+                                "tools": list(step.tools),
+                            },
                         )
-                    )
-                    # 步间只保留摘要，避免巨型 diagnose/logs 结果拖垮后续步与最终总结。
-                    agent_state = _compact_agent_state_with_summaries(overflow=False)
-                    await _emit_step_boundary(
-                        "planned_execution_step",
-                        {
-                            "phase": "end",
-                            "step_index": step_index,
-                            "total_steps": total_steps,
-                            "objective": step.objective,
-                            "tools": list(step.tools),
-                        },
-                    )
+                        step_finished = True
+
+                    if replanned:
+                        continue
 
                 active_tools.clear()
                 visibility_middleware.include_always_visible = False
+                limit_middleware.enforce_limits = False
                 completed_text = "\n".join(f"- {step.objective}: {step.result}" for step in completed_steps) or "没有需要执行工具的步骤"
                 final_message = _internal_message(
                     f"工具执行计划目标：{plan.goal or planning_question}\n"

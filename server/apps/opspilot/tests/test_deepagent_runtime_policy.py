@@ -95,6 +95,85 @@ def test_progressive_tools_env_defaults_enabled(monkeypatch):
     assert is_progressive_tools_enabled() is True
 
 
+def test_run_model_call_limit_env(monkeypatch):
+    from apps.opspilot.metis.llm.middleware.tool_runtime import get_planned_execution_run_model_call_limit
+
+    monkeypatch.delenv("OPSPILOT_DEEPAGENT_RUN_MODEL_CALL_LIMIT", raising=False)
+    assert get_planned_execution_run_model_call_limit() == 10
+    monkeypatch.setenv("OPSPILOT_DEEPAGENT_RUN_MODEL_CALL_LIMIT", "12")
+    assert get_planned_execution_run_model_call_limit() == 12
+    monkeypatch.setenv("OPSPILOT_DEEPAGENT_RUN_MODEL_CALL_LIMIT", "0")
+    assert get_planned_execution_run_model_call_limit() == 10
+    monkeypatch.setenv("OPSPILOT_DEEPAGENT_RUN_MODEL_CALL_LIMIT", "abc")
+    assert get_planned_execution_run_model_call_limit() == 10
+
+
+def test_max_tokens_budget_env_and_request(monkeypatch):
+    from apps.opspilot.metis.llm.middleware.planned_execution_limits import (
+        get_planned_execution_max_tokens_budget,
+        resolve_planned_execution_token_budget,
+    )
+
+    monkeypatch.delenv("OPSPILOT_DEEPAGENT_MAX_TOKENS_BUDGET", raising=False)
+    assert get_planned_execution_max_tokens_budget() == 0
+    monkeypatch.setenv("OPSPILOT_DEEPAGENT_MAX_TOKENS_BUDGET", "50000")
+    assert get_planned_execution_max_tokens_budget() == 50000
+    assert resolve_planned_execution_token_budget(SimpleNamespace(max_tokens_budget=0)) == 50000
+    assert resolve_planned_execution_token_budget(SimpleNamespace(max_tokens_budget=8000)) == 8000
+    monkeypatch.setenv("OPSPILOT_DEEPAGENT_MAX_TOKENS_BUDGET", "-1")
+    assert get_planned_execution_max_tokens_budget() == 0
+
+
+def test_planned_execution_limit_middleware_messages_and_continue():
+    from apps.opspilot.metis.llm.common.token_usage import TokenUsageAccumulator
+    from apps.opspilot.metis.llm.middleware.planned_execution_limits import (
+        LIMIT_MARKER_MODEL_CALLS,
+        LIMIT_MARKER_TOKEN_BUDGET,
+        PlannedExecutionLimitMiddleware,
+        build_limit_exceeded_message,
+        detect_limit_kind,
+    )
+
+    model_msg = build_limit_exceeded_message("model_calls", used=10, limit=10)
+    assert LIMIT_MARKER_MODEL_CALLS in model_msg
+    assert "模型调用次数已达上限" in model_msg
+    token_msg = build_limit_exceeded_message("token_budget", used=100, limit=100)
+    assert LIMIT_MARKER_TOKEN_BUDGET in token_msg
+
+    from langchain_core.messages import AIMessage
+
+    assert detect_limit_kind([AIMessage(content=model_msg)]) == "model_calls"
+    assert detect_limit_kind([AIMessage(content=token_msg)]) == "token_budget"
+
+    accumulator = TokenUsageAccumulator()
+    accumulator.total_tokens = 100
+    middleware = PlannedExecutionLimitMiddleware(
+        run_limit=2,
+        token_budget=100,
+        soft_budget_ratio=0.8,
+        accumulator=accumulator,
+    )
+    hard = middleware.before_model({"run_model_call_count": 0, "messages": []}, None)
+    assert hard is not None
+    assert hard["jump_to"] == "end"
+    assert LIMIT_MARKER_TOKEN_BUDGET in hard["messages"][0].content
+
+    middleware.enforce_limits = False
+    assert middleware.before_model({"run_model_call_count": 99, "messages": []}, None) is None
+    middleware.enforce_limits = True
+
+    middleware2 = PlannedExecutionLimitMiddleware(run_limit=2, token_budget=0)
+    hard2 = middleware2.before_model({"run_model_call_count": 2, "messages": []}, None)
+    assert hard2 is not None
+    assert LIMIT_MARKER_MODEL_CALLS in hard2["messages"][0].content
+
+    assert middleware2.grant_continue("model_calls") is True
+    assert middleware2.effective_run_limit == 4
+    assert middleware2.grant_continue("model_calls") is True
+    assert middleware2.grant_continue("model_calls") is True
+    assert middleware2.grant_continue("model_calls") is False
+
+
 @pytest.mark.asyncio
 async def test_planner_uses_compact_catalog_and_normalizes_tool_plan():
     long_description = "诊断 Pod 故障。" + "不要把这段完整说明发给规划模型。" * 100
