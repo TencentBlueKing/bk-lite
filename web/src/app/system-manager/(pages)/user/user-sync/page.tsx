@@ -159,6 +159,9 @@ const UserSyncPage: React.FC = () => {
         ? t(`system.user.userSyncPage.runStatus.${latestStatus}`)
         : t('system.user.userSyncPage.noRun');
       const syncCycleText = getScheduleSummary(source.schedule_config, source.enabled, t);
+      const dependencyStatusText = source.dependency_status?.available
+        ? ''
+        : t(`system.user.userSyncPage.dependencyReason.${source.dependency_status?.reason}`);
 
       return {
         id: source.id,
@@ -173,7 +176,8 @@ const UserSyncPage: React.FC = () => {
         latestSyncTimeText,
         latestStatusText,
         latestStatusTone: latestStatus ? STATUS_TONE_MAP[latestStatus] : 'default',
-        syncDisabled: !source.enabled,
+        syncDisabled: !source.enabled || !source.dependency_status?.available,
+        dependencyStatusText,
       };
     });
   }, [availableInstances, convertToLocalizedTime, sources, t]);

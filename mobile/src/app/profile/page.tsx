@@ -1,34 +1,95 @@
 'use client';
+
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { Dialog, List, Switch, Toast } from 'antd-mobile';
+import { RedoOutline } from 'antd-mobile-icons';
 import LanguageSelector from '@/components/language-selector';
-import { useAuth } from '@/context/auth';
-import { useTheme } from '@/context/theme';
-import { useTranslation } from '@/utils/i18n';
-import { List, Switch, Toast, Dialog } from 'antd-mobile';
 import MobileTabShell from '@/components/mobile-tab-shell';
 import MobilePageHeader from '@/components/mobile-page-header';
+import MobilePullToRefresh from '@/components/mobile-pull-to-refresh';
+import { useAuth } from '@/context/auth';
+import { useTheme } from '@/context/theme';
+import { useMobileAvailability } from '@/platform/availability/context';
+import { useTranslation } from '@/utils/i18n';
+import { getUserInfo, type AccountUserInfo } from '@/api/user';
+import styles from './page.module.css';
 
 export default function ProfilePage() {
   const { t } = useTranslation();
   const { toggleTheme, isDark } = useTheme();
   const { userInfo, logout, isLoading: authLoading } = useAuth();
+  const { status: availabilityStatus, refresh: refreshAvailability } = useMobileAvailability();
   const router = useRouter();
+  const [account, setAccount] = useState<AccountUserInfo | null>(null);
+  const [accountStatus, setAccountStatus] = useState<'loading' | 'ready' | 'error'>('loading');
+  const [accountRetrying, setAccountRetrying] = useState(false);
+  const availabilityAutoRetriedRef = useRef(false);
 
+  const loadAccount = useCallback(async () => {
+    setAccountStatus('loading');
+    try {
+      const response = await getUserInfo();
+      if (!response.result) throw new Error(response.message || 'Unable to load account');
+      setAccount(response.data);
+      setAccountStatus('ready');
+    } catch {
+      setAccountStatus('error');
+    }
+  }, []);
+
+  const handleAccountRetry = useCallback(async () => {
+    setAccountRetrying(true);
+    try {
+      await loadAccount();
+    } finally {
+      setAccountRetrying(false);
+    }
+  }, [loadAccount]);
+
+  useEffect(() => { void loadAccount(); }, [loadAccount]);
+
+  useEffect(() => {
+    if (availabilityStatus === 'ready') {
+      availabilityAutoRetriedRef.current = false;
+      return;
+    }
+    // One automatic retry when Me becomes the fail-closed landing surface; avoid error→loading→error loops.
+    if (availabilityStatus !== 'error' || availabilityAutoRetriedRef.current) return;
+    availabilityAutoRetriedRef.current = true;
+    void refreshAvailability();
+  }, [availabilityStatus, refreshAvailability]);
+
+  const handlePullRefresh = useCallback(async () => {
+    const tasks: Array<Promise<unknown>> = [loadAccount()];
+    if (availabilityStatus === 'error') tasks.push(refreshAvailability());
+    await Promise.all(tasks);
+  }, [availabilityStatus, loadAccount, refreshAvailability]);
+
+  const organizations = useMemo(() => (
+    (account?.group_list || []).map((item) => item.name).filter((name): name is string => Boolean(name))
+  ), [account?.group_list]);
+  const roles = useMemo(() => {
+    const values = (account?.role_list || []).map((role) => {
+      if (!role.app && role.name === 'admin') return t('account.superAdmin');
+      return role.app_display_name ? `${role.app_display_name} · ${role.name}` : role.name;
+    }).filter(Boolean);
+    return Array.from(new Set(values));
+  }, [account?.role_list, t]);
+  const displayName = account?.display_name || userInfo?.display_name || userInfo?.username || t('account.user');
+  const username = account?.username || userInfo?.username || '--';
+  const domain = account?.domain || userInfo?.domain || '--';
 
   const handleLogoutClick = () => {
-    Dialog.confirm({
+    void Dialog.confirm({
       content: t('auth.logoutConfirm'),
       confirmText: t('common.confirm'),
       cancelText: t('common.cancel'),
       onConfirm: async () => {
         try {
           await logout();
-        } catch (error) {
-          console.error('退出登录失败:', error);
-          Toast.show({
-            content: t('auth.logoutFailed'),
-            icon: 'fail',
-          });
+        } catch {
+          Toast.show({ content: t('auth.logoutFailed'), icon: 'fail' });
         }
       },
     });
@@ -36,107 +97,82 @@ export default function ProfilePage() {
 
   return (
     <MobileTabShell activeTab="profile">
-    <div className="flex flex-col h-full bg-[var(--color-background-body)]">
-      <MobilePageHeader title={t('navigation.profile')} />
+      <main className={styles.page}>
+        <MobilePageHeader title={t('navigation.profile')} />
+        <div className={styles.scroll}>
+          <MobilePullToRefresh onRefresh={handlePullRefresh}>
+            <section className={styles.identity} aria-label={t('account.title')}>
+              <div className={styles.avatar} aria-hidden="true">{displayName.charAt(0).toUpperCase() || 'U'}</div>
+              <div className={styles.identityCopy}>
+                <h2>{displayName}</h2>
+                <p>@{username}</p>
+                {accountStatus === 'ready' && (organizations.length > 0 || roles.length > 0) && (
+                  <div className={styles.identityMeta} aria-label={t('account.accountOverview')}>
+                    {organizations.map((name) => (
+                      <span className={styles.metaChip} key={`org-${name}`}>
+                        {t('account.organization')} · {name}
+                      </span>
+                    ))}
+                    {roles.map((name) => (
+                      <span className={styles.metaChip} key={`role-${name}`}>
+                        {name}
+                      </span>
+                    ))}
+                  </div>
+                )}
+                {accountStatus === 'loading' && (
+                  <div className={styles.identityMetaLoading} role="status" aria-label={t('common.loading')}>
+                    <span /><span />
+                  </div>
+                )}
+                {accountStatus === 'error' && (
+                  <div className={styles.identityError} role="alert">
+                    <span>{t('account.loadFailed')}</span>
+                    <button
+                      type="button"
+                      className={styles.identityRetry}
+                      aria-label={t('common.retry')}
+                      disabled={accountRetrying}
+                      onClick={() => void handleAccountRetry()}
+                    >
+                      <RedoOutline className={accountRetrying ? styles.identityRetrySpin : undefined} aria-hidden />
+                    </button>
+                  </div>
+                )}
+              </div>
+              <span className={styles.domain}>{domain}</span>
+            </section>
 
-      {/* 用户信息卡片 */}
-      <div className="mx-4 mt-4 mb-6 p-5 bg-[var(--color-bg)] rounded-2xl shadow-sm">
-        <div className="flex items-center">
-          <div
-            className="flex items-center justify-center flex-shrink-0 rounded-full mr-3 text-2xl font-semibold text-[var(--color-text-on-primary)] bg-[var(--color-primary)]"
-            style={{
-              width: '50px',
-              height: '50px',
-            }}
-          >
-            {userInfo?.display_name?.charAt(0)?.toUpperCase() || userInfo?.username?.charAt(0)?.toUpperCase() || 'U'}
-          </div>
-          <div className="flex-1 min-w-0">
-            <h2 className="text-lg font-semibold text-[var(--color-text-1)] mb-1 truncate">
-              {userInfo?.display_name || userInfo?.username || t('account.user')}
-            </h2>
-            <span className="text-[var(--color-text-3)] text-xs font-medium truncate block">
-              {t('account.username')}:{userInfo?.username}
-            </span>
-          </div>
-          {userInfo?.domain && (
-            <div className="inline-flex items-center px-2 py-0.5 bg-blue-500 rounded">
-              <span className="text-[var(--color-text-on-primary)] text-xs font-medium">
-                {userInfo.domain}
-              </span>
-            </div>
-          )}
-        </div>
-      </div>
+            <section className={styles.menuSection}>
+              <List>
+                <List.Item
+                  prefix={<span className={`${styles.menuIcon} iconfont icon-zhanghaoyuanquan`} aria-hidden="true" />}
+                  onClick={() => router.push('/profile/accountDetails')}
+                  clickable
+                >
+                  {t('common.accountsAndSecurity')}
+                </List.Item>
+              </List>
+            </section>
 
-      {/* 功能菜单 */}
-      <div className="flex-1 min-h-0 overflow-y-auto pb-4">
-        <div className="mx-4 mb-4 bg-[var(--color-bg)] rounded-2xl shadow-sm overflow-hidden">
-          <List>
-            <List.Item
-              prefix={
-                <div className="flex items-center justify-center w-7 h-7 bg-[var(--color-primary-bg-active)] rounded-lg mr-2.5">
-                  <span className="iconfont icon-zhanghaoyuanquan text-[var(--color-primary)] text-lg"></span>
-                </div>
-              }
-              onClick={() => {
-                router.push('/profile/accountDetails');
-              }}
-              clickable
-            >
-              <span className="text-[var(--color-text-1)] text-base font-medium">
-                {t('common.accountsAndSecurity')}
-              </span>
-            </List.Item>
-          </List>
-        </div>
+            <section className={styles.menuSection}>
+              <List>
+                <LanguageSelector />
+                <List.Item
+                  prefix={<span className={`${styles.menuIcon} iconfont icon-yueliang`} aria-hidden="true" />}
+                  extra={<Switch checked={isDark} onChange={toggleTheme} style={{ '--height': '28px', '--width': '48px' }} />}
+                >
+                  {t('common.darkMode')}
+                </List.Item>
+              </List>
+            </section>
 
-        {/* 设置选项 */}
-        <div className="mx-4 mb-4 bg-[var(--color-bg)] rounded-2xl shadow-sm overflow-hidden">
-          <List>
-            <LanguageSelector />
-            <List.Item
-              prefix={
-                <div className="flex items-center justify-center w-7 h-7 bg-[var(--color-primary-bg-active)] rounded-lg mr-2.5">
-                  <span className="iconfont icon-yueliang text-yellow-500 text-lg"></span>
-                </div>
-              }
-              extra={
-                <Switch
-                  checked={isDark}
-                  onChange={toggleTheme}
-                  style={{
-                    '--height': '22px',
-                    '--width': '40px',
-                  }}
-                />
-              }
-            >
-              <span className="text-[var(--color-text-1)] text-base font-medium">
-                {t('common.darkMode')}
-              </span>
-            </List.Item>
-          </List>
+            <button type="button" className={styles.logoutButton} disabled={authLoading} onClick={handleLogoutClick}>
+              {authLoading ? t('common.loggingOut') : t('common.logout')}
+            </button>
+          </MobilePullToRefresh>
         </div>
-
-        {/* 退出登录按钮 */}
-        <div className="mx-4 mt-6 mb-4">
-          <div
-            className="bg-[var(--color-bg)] rounded-2xl shadow-sm overflow-hidden cursor-pointer active:opacity-70"
-            onClick={authLoading ? undefined : handleLogoutClick}
-          >
-            <div className="py-2.5 text-center">
-              <span
-                className={`text-base font-medium ${authLoading ? 'text-[var(--color-text-3)]' : 'text-red-500'
-                  }`}
-              >
-                {authLoading ? t('common.loggingOut') : t('common.logout')}
-              </span>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
+      </main>
     </MobileTabShell>
   );
 }

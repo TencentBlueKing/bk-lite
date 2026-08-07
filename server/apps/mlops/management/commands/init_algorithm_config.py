@@ -6,6 +6,7 @@ from django.core.management.base import BaseCommand
 
 from apps.core.logger import mlops_logger as logger
 from apps.mlops.models import AlgorithmConfig
+from apps.mlops.utils.container_image import is_valid_container_image_reference
 
 
 class Command(BaseCommand):
@@ -100,6 +101,9 @@ class Command(BaseCommand):
             if field_name != "scenario_description" and not payload[field_name].strip():
                 return False, {}, f"{field_name} 不能为空字符串"
 
+        if not is_valid_container_image_reference(payload["image"]):
+            return False, {}, "image 不是合法的容器镜像引用"
+
         if payload["name"] != config_file.stem:
             return False, {}, "name 必须与文件名 stem 完全一致"
 
@@ -110,9 +114,6 @@ class Command(BaseCommand):
         self.stderr.write(message)
 
     def _write_summary(self, created_count: int, skipped_existing_count: int, skipped_invalid_count: int):
-        summary = (
-            f"初始化完成: created={created_count}, "
-            f"skipped_existing={skipped_existing_count}, skipped_invalid={skipped_invalid_count}"
-        )
+        summary = f"初始化完成: created={created_count}, " f"skipped_existing={skipped_existing_count}, skipped_invalid={skipped_invalid_count}"
         self.stdout.write(summary)
         logger.info(summary)

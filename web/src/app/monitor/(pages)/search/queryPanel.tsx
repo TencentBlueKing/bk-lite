@@ -28,18 +28,19 @@ import { useConditionList } from '@/app/monitor/hooks';
 import useMonitorApi from '@/app/monitor/api';
 import useViewApi from '@/app/monitor/api/view';
 import useApiClient from '@/utils/request';
+import { runWithConcurrency } from '@/app/monitor/dashboards/shared/utils/concurrency';
 import { useSearchParams } from 'next/navigation';
 import {
   ListItem,
   MetricItem,
   IndexViewItem,
-  ObjectItem,
-  GroupInfo
+  ObjectItem
 } from '@/app/monitor/types';
 import {
   buildGroupedMetricSelectOptions,
   METRIC_SELECT_POPUP_CLASSNAME,
 } from '@/app/monitor/components/metricSelectOptions';
+import { loadMonitorPluginsByObjectCached } from '@/app/monitor/utils/monitorPluginCache';
 import {
   InstanceItem,
   PluginItem,
@@ -121,6 +122,12 @@ const QueryPanel = forwardRef<QueryPanelRef, QueryPanelProps>(
     const [metricsGroupMap, setMetricsGroupMap] = useState<
       Record<string, IndexViewItem[]>
     >({});
+    const [metricSearchResultMap, setMetricSearchResultMap] = useState<
+      Record<string, IndexViewItem[]>
+    >({});
+    const [selectedMetricMap, setSelectedMetricMap] = useState<
+      Record<string, MetricItem>
+    >({});
     const [metricSearchMap, setMetricSearchMap] = useState<
       Record<string, string>
     >({});
@@ -149,6 +156,9 @@ const QueryPanel = forwardRef<QueryPanelRef, QueryPanelProps>(
     const metricsAbortControllerRef = useRef<Record<string, AbortController>>(
       {}
     );
+    const metricSearchTimerRef = useRef<Record<string, ReturnType<typeof setTimeout>>>(
+      {}
+    );
     const instanceAbortControllerRef = useRef<Record<string, AbortController>>(
       {}
     );
@@ -168,10 +178,22 @@ const QueryPanel = forwardRef<QueryPanelRef, QueryPanelProps>(
       objects.forEach((obj) => {
         objectsMap[String(obj.id)] = obj;
       });
+      const payloadMetricsMap = { ...metricsMap };
+      queryGroups.forEach((group) => {
+        const selectedMetric = selectedMetricMap[group.id];
+        if (!selectedMetric) return;
+        const key = getMetricsMapKey(group.object, group.plugin);
+        const current = payloadMetricsMap[key] || [];
+        payloadMetricsMap[key] = current.some(
+          (metric) => metric.id === selectedMetric.id
+        )
+          ? current
+          : [...current, selectedMetric];
+      });
       return {
         queryGroups,
         activeGroup,
-        metricsMap,
+        metricsMap: payloadMetricsMap,
         instancesMap,
         pluginsMap,
         objectsMap
@@ -194,6 +216,9 @@ const QueryPanel = forwardRef<QueryPanelRef, QueryPanelProps>(
         );
         Object.values(instanceAbortControllerRef.current).forEach((c) =>
           c?.abort()
+        );
+        Object.values(metricSearchTimerRef.current).forEach((timer) =>
+          clearTimeout(timer)
         );
       };
     }, []);
@@ -238,6 +263,9 @@ const QueryPanel = forwardRef<QueryPanelRef, QueryPanelProps>(
             Boolean(initialMetricId && !/^\d+$/.test(initialMetricId)),
             initialMetricId && !/^\d+$/.test(initialMetricId)
               ? initialMetricId
+              : null,
+            initialMetricId && /^\d+$/.test(initialMetricId)
+              ? Number(initialMetricId)
               : null
           );
         }
@@ -300,7 +328,8 @@ const QueryPanel = forwardRef<QueryPanelRef, QueryPanelProps>(
       groupId?: string,
       preferredPluginId?: React.Key | null,
       allowFirstPluginFallback = false,
-      legacyMetricName?: string | null
+      legacyMetricName?: string | null,
+      preferredMetricId?: React.Key | null
     ): Promise<PluginItem[]> => {
       const key = String(objectId);
       pluginAbortControllerRef.current[key]?.abort();
@@ -308,11 +337,13 @@ const QueryPanel = forwardRef<QueryPanelRef, QueryPanelProps>(
       pluginAbortControllerRef.current[key] = abortController;
       try {
         setPluginLoading((prev) => ({ ...prev, [key]: true }));
-        const data = await getMonitorPlugin(
-          { monitor_object_id: objectId },
-          { signal: abortController.signal }
-        );
-        const plugins = (data || []) as PluginItem[];
+        const plugins = (await loadMonitorPluginsByObjectCached(
+          objectId,
+          () => getMonitorPlugin({ monitor_object_id: objectId })
+        )) as PluginItem[];
+        if (abortController.signal.aborted) {
+          return [];
+        }
         setPluginsMap((prev) => ({ ...prev, [key]: plugins }));
         const selectedPlugin =
           preferredPluginId ||
@@ -320,7 +351,13 @@ const QueryPanel = forwardRef<QueryPanelRef, QueryPanelProps>(
           (allowFirstPluginFallback ? plugins[0]?.id : null);
         if (groupId && selectedPlugin) {
           updateQueryGroup(groupId, { plugin: selectedPlugin });
-          getMetrics(objectId, selectedPlugin, groupId, legacyMetricName);
+          getMetrics(
+            objectId,
+            selectedPlugin,
+            groupId,
+            legacyMetricName,
+            preferredMetricId
+          );
           getInstList(objectId, selectedPlugin);
         }
         return plugins;
@@ -335,48 +372,97 @@ const QueryPanel = forwardRef<QueryPanelRef, QueryPanelProps>(
       objectId: React.Key,
       pluginId?: React.Key | null,
       groupId?: string,
-      legacyMetricName?: string | null
+      legacyMetricName?: string | null,
+      selectedMetricId?: React.Key | null,
+      keyword = ''
     ): Promise<MetricItem[]> => {
       const key = getMetricsMapKey(objectId, pluginId);
-      metricsAbortControllerRef.current[key]?.abort();
+      const requestKey = keyword.trim() && groupId ? `${key}|${groupId}` : key;
+      metricsAbortControllerRef.current[requestKey]?.abort();
       const abortController = new AbortController();
-      metricsAbortControllerRef.current[key] = abortController;
+      metricsAbortControllerRef.current[requestKey] = abortController;
       try {
         setMetricsLoading((prev) => ({ ...prev, [key]: true }));
         const config = { signal: abortController.signal };
         const params = {
-          monitor_object_id: objectId,
-          ...(pluginId ? { monitor_plugin_id: String(pluginId) } : {})
+          monitor_object_id: String(objectId),
+          ...(pluginId ? { monitor_plugin_id: String(pluginId) } : {}),
+          ...(keyword.trim() ? { keyword: keyword.trim() } : {})
         };
-        const [groupList, metricsList] = await Promise.all([
+        const [groupList, firstMetricsPage] = await Promise.all([
           getMetricsGroup(params, config),
           getMonitorMetrics(params, config)
         ]);
-        const metricData = cloneDeep(metricsList || []);
-        setMetricsMap((prev) => ({ ...prev, [key]: metricsList || [] }));
-        const groupData = groupList.map((item: GroupInfo) => ({
+        if (abortController.signal.aborted) return [];
+        let metricsList = firstMetricsPage;
+        const selectedMetricExists = metricsList.items.some(
+          (metric) => String(metric.id) === String(selectedMetricId)
+        );
+        const legacyMetricExists = legacyMetricName
+          ? metricsList.items.some((metric) => metric.name === legacyMetricName)
+          : true;
+        if (!keyword.trim() && ((!selectedMetricExists && selectedMetricId) || !legacyMetricExists)) {
+          const selectedPage = await getMonitorMetrics(
+            {
+              monitor_object_id: String(objectId),
+              ...(pluginId ? { monitor_plugin_id: String(pluginId) } : {}),
+              ...(!selectedMetricExists && selectedMetricId
+                ? { id: selectedMetricId }
+                : { name: legacyMetricName || '' })
+            },
+            config
+          );
+          if (abortController.signal.aborted) return [];
+          metricsList = {
+            ...metricsList,
+            items: [...metricsList.items, ...selectedPage.items],
+            metric_groups: [
+              ...(metricsList.metric_groups || []),
+              ...(selectedPage.metric_groups || [])
+            ]
+          };
+        }
+        const metricData = cloneDeep(metricsList.items);
+        if (!keyword.trim()) {
+          setMetricsMap((prev) => ({ ...prev, [key]: metricsList.items }));
+        }
+        const groupData: IndexViewItem[] = (
+          metricsList.metric_groups || groupList.items
+        ).map((item) => ({
           ...item,
+          id: Number(item.id),
           child: []
         }));
         metricData.forEach((metric: MetricItem) => {
           const target = groupData.find(
-            (item: GroupInfo) => item.id === metric.metric_group
+            (item) => item.id === metric.metric_group
           );
           if (target) {
             target.child.push(metric);
           }
         });
-        const filteredGroupData = groupData.filter(
-          (item: IndexViewItem) => !!item.child?.length
-        );
-        setMetricsGroupMap((prev) => ({ ...prev, [key]: filteredGroupData }));
+        const filteredGroupData = groupData.filter((item) => !!item.child?.length);
+        if (keyword.trim() && groupId) {
+          setMetricSearchResultMap((prev) => ({
+            ...prev,
+            [groupId]: filteredGroupData
+          }));
+        } else {
+          setMetricsGroupMap((prev) => ({ ...prev, [key]: filteredGroupData }));
+          if (groupId) {
+            setMetricSearchResultMap((prev) => ({
+              ...prev,
+              [groupId]: filteredGroupData
+            }));
+          }
+        }
         const group = groupId
           ? queryGroups.find((item) => item.id === groupId)
           : null;
         const legacyName = legacyMetricName || group?.legacyMetricName;
         if (legacyName && !group?.metric) {
           const legacyMetric = resolveMetricSelection(
-            metricsList || [],
+            metricsList.items,
             legacyName
           );
           if (legacyMetric && (group?.id || groupId)) {
@@ -386,11 +472,13 @@ const QueryPanel = forwardRef<QueryPanelRef, QueryPanelProps>(
             });
           }
         }
-        return metricsList || [];
+        return metricsList.items;
       } catch {
         return [];
       } finally {
-        setMetricsLoading((prev) => ({ ...prev, [key]: false }));
+        if (metricsAbortControllerRef.current[requestKey] === abortController) {
+          setMetricsLoading((prev) => ({ ...prev, [key]: false }));
+        }
       }
     };
 
@@ -459,6 +547,11 @@ const QueryPanel = forwardRef<QueryPanelRef, QueryPanelProps>(
           queryGroups[0].id === groupId ? queryGroups[1]?.id : queryGroups[0].id
         );
       }
+      setSelectedMetricMap((prev) => {
+        const next = { ...prev };
+        delete next[groupId];
+        return next;
+      });
     };
 
     const duplicateQueryGroup = (groupId: string) => {
@@ -470,6 +563,12 @@ const QueryPanel = forwardRef<QueryPanelRef, QueryPanelProps>(
         name: generateGroupName(queryGroups.length)
       };
       setQueryGroups((prev) => [...prev, newGroup]);
+      if (selectedMetricMap[groupId]) {
+        setSelectedMetricMap((prev) => ({
+          ...prev,
+          [newGroup.id]: selectedMetricMap[groupId]
+        }));
+      }
     };
 
     const toggleGroupCollapse = (groupId: string) => {
@@ -486,6 +585,11 @@ const QueryPanel = forwardRef<QueryPanelRef, QueryPanelProps>(
     };
 
     const handleObjectChange = (groupId: string, objectId: React.Key) => {
+      setSelectedMetricMap((prev) => {
+        const next = { ...prev };
+        delete next[groupId];
+        return next;
+      });
       updateQueryGroup(groupId, {
         object: objectId,
         plugin: null,
@@ -505,6 +609,11 @@ const QueryPanel = forwardRef<QueryPanelRef, QueryPanelProps>(
     ) => {
       const group = queryGroups.find((g) => g.id === groupId);
       if (!group) return;
+      setSelectedMetricMap((prev) => {
+        const next = { ...prev };
+        delete next[groupId];
+        return next;
+      });
       updateQueryGroup(groupId, {
         plugin: pluginId,
         instanceIds: [],
@@ -521,14 +630,38 @@ const QueryPanel = forwardRef<QueryPanelRef, QueryPanelProps>(
     const handleMetricChange = (groupId: string, metricId: React.Key) => {
       const group = queryGroups.find((g) => g.id === groupId);
       if (!group) return;
-      const metrics =
-        metricsMap[getMetricsMapKey(group.object, group.plugin)] || [];
+      const dataKey = getMetricsMapKey(group.object, group.plugin);
+      const searchMetrics = (metricSearchResultMap[groupId] || []).flatMap(
+        (item) => item.child || []
+      );
+      const metrics = [...searchMetrics, ...(metricsMap[dataKey] || [])];
       const target = resolveMetricSelection(metrics, metricId);
+      if (target) {
+        setSelectedMetricMap((prev) => ({ ...prev, [groupId]: target }));
+      }
       updateQueryGroup(groupId, {
         metric: target?.id || metricId,
         legacyMetricName: null,
         conditions: []
       });
+    };
+
+    const handleMetricSearch = (group: QueryGroup, value: string) => {
+      setMetricSearchMap((prev) => ({ ...prev, [group.id]: value }));
+      const previousTimer = metricSearchTimerRef.current[group.id];
+      if (previousTimer) {
+        clearTimeout(previousTimer);
+      }
+      metricSearchTimerRef.current[group.id] = setTimeout(() => {
+        getMetrics(
+          group.object,
+          group.plugin,
+          group.id,
+          null,
+          selectedMetricMap[group.id]?.id || group.metric,
+          value
+        );
+      }, 300);
     };
 
     const getConditionValueOptionsKey = (
@@ -561,8 +694,10 @@ const QueryPanel = forwardRef<QueryPanelRef, QueryPanelProps>(
 
       setConditionValueLoadingMap((prev) => ({ ...prev, [cacheKey]: true }));
       try {
-        const responses = await Promise.all(
-          group.instanceIds.map((instanceId) =>
+        const responses = await runWithConcurrency(
+          group.instanceIds,
+          4,
+          (instanceId) =>
             getMetricsInstanceQuery({
               monitor_object_id: group.object,
               instance_id: instanceId,
@@ -571,7 +706,6 @@ const QueryPanel = forwardRef<QueryPanelRef, QueryPanelProps>(
               limit: 200,
               mode: 'limited'
             })
-          )
         );
         const series = responses.flatMap(
           (resp) => resp?.data?.result || []
@@ -690,7 +824,8 @@ const QueryPanel = forwardRef<QueryPanelRef, QueryPanelProps>(
         metricsMap,
         instancesMap,
         loadPlugins: getPlugins,
-        loadMetrics: (objectId, pluginId) => getMetrics(objectId, pluginId),
+        loadMetrics: (objectId, pluginId, selectedMetricId) =>
+          getMetrics(objectId, pluginId, undefined, null, selectedMetricId),
         loadInstances: getInstList,
         getResourceKey: getMetricsMapKey,
         resolvePlugin: (plugins, group) =>
@@ -727,11 +862,14 @@ const QueryPanel = forwardRef<QueryPanelRef, QueryPanelProps>(
     const renderQueryGroup = (group: QueryGroup) => {
       const pluginOptions = pluginsMap[String(group.object)] || [];
       const dataKey = getMetricsMapKey(group.object, group.plugin);
-      const groupMetrics = metricsGroupMap[dataKey] || [];
+      const groupMetrics =
+        metricSearchResultMap[group.id] || metricsGroupMap[dataKey] || [];
       const groupInstances = instancesMap[dataKey] || [];
       // 直接从当前指标定义取维度，避免 URL 深链只填 metric、未走 handleMetricChange 时标签为空。
       const selectedMetric = resolveMetricSelection(
-        metricsMap[dataKey] || [],
+        [selectedMetricMap[group.id], ...(metricsMap[dataKey] || [])].filter(
+          (metric): metric is MetricItem => Boolean(metric)
+        ),
         group.metric
       );
       const groupLabels = resolveMetricDimensionLabels(selectedMetric);
@@ -873,7 +1011,7 @@ const QueryPanel = forwardRef<QueryPanelRef, QueryPanelProps>(
                     .toLowerCase()
                     .includes(input.toLowerCase())
                 }
-                onChange={(val) => handleObjectChange(group.id, val)}
+                onChange={(val) => handleObjectChange(group.id, String(val))}
               >
                 {objects.map((item) => (
                   <Option
@@ -908,7 +1046,7 @@ const QueryPanel = forwardRef<QueryPanelRef, QueryPanelProps>(
                     label: item.display_name || item.name || String(item.id),
                     value: item.id
                   }))}
-                  onChange={(val) => handlePluginChange(group.id, val)}
+                  onChange={(val) => handlePluginChange(group.id, String(val))}
                 />
               </div>
             )}
@@ -962,21 +1100,13 @@ const QueryPanel = forwardRef<QueryPanelRef, QueryPanelProps>(
                   groupMetrics,
                   metricSearchMap[group.id] || '',
                 )}
-                onSearch={(value) =>
-                  setMetricSearchMap((prev) => ({
-                    ...prev,
-                    [group.id]: value,
-                  }))
-                }
+                onSearch={(value) => handleMetricSearch(group, value)}
                 onDropdownVisibleChange={(open) => {
                   if (!open) {
-                    setMetricSearchMap((prev) => ({
-                      ...prev,
-                      [group.id]: '',
-                    }));
+                    handleMetricSearch(group, '');
                   }
                 }}
-                onChange={(val) => handleMetricChange(group.id, val)}
+                onChange={(val) => handleMetricChange(group.id, String(val))}
               />
             </div>
             {/* 汇聚方法 */}

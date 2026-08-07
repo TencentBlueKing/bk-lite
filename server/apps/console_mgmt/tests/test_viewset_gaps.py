@@ -87,7 +87,13 @@ class TestCurrentUserAppsTranslation:
         from apps.system_mgmt.models.app import App
 
         user, client = make_client("transuser", locale="zh-CN")
-        App.objects.create(name="monitor", display_name="监控", is_build_in=True, tags=["tag.ops"])
+        App.objects.create(
+            name="monitor",
+            display_name="监控",
+            url="/monitor/view",
+            is_build_in=True,
+            tags=["tag.ops"],
+        )
         UserAppSet.objects.create(
             username=user.username,
             domain=user.domain,
@@ -102,6 +108,37 @@ class TestCurrentUserAppsTranslation:
         item = data[0]
         # tags 应从 App 表最新值刷新（经 loader 翻译，缺翻译时回退原 key）
         assert item["tags"] == ["tag.ops"] or all(isinstance(t, str) for t in item["tags"])
+
+    def test_内置应用入口url跟随App表刷新(self, make_client):
+        from apps.system_mgmt.models.app import App
+
+        user, client = make_client("apmentry")
+        App.objects.create(
+            name="apm",
+            display_name="APM",
+            url="/apm/home",
+            icon="monitor",
+            is_build_in=True,
+            tags=["tag.apm_integration"],
+        )
+        UserAppSet.objects.create(
+            username=user.username,
+            domain=user.domain,
+            app_config_list=[
+                {
+                    "name": "apm",
+                    "is_build_in": True,
+                    "url": "/apm/services",
+                    "icon": "old-icon",
+                    "tags": ["stale"],
+                },
+            ],
+        )
+        resp = client.get(f"{APP_BASE}current_user_apps/")
+        assert resp.status_code == 200
+        item = _data(resp)[0]
+        assert item["url"] == "/apm/home"
+        assert item["icon"] == "monitor"
 
     def test_无配置返回空列表(self, make_client):
         user, client = make_client("emptyuser")

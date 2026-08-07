@@ -1,15 +1,9 @@
 """Shared business logic for OpenAI-compatible chat completion endpoints.
 
-`openai_completions` (v1/chat/completions) and `lobe_skill_execute`
-(lobe_chat/v1/chat/completions) share ~80% of their flow: parse the JSON body,
-resolve the caller IP, detect stream mode, validate the API token, resolve the
-target skill + invocation params, enrich the params with skill-level toggles,
-then dispatch to either the non-streaming JSON response or the streaming SSE
-response.
-
-This module extracts that shared flow into ``ChatCompletionService`` so both
-views become thin adapters. The request/response/stream behavior is preserved
-byte-for-byte; the OpenAI ``{"choices": [...]}`` envelope is untouched.
+``openai_completions`` (v1/chat/completions) uses this service to parse the JSON
+body, resolve the caller IP, detect stream mode, validate the API token, resolve
+the target skill + invocation params, enrich params, then dispatch to either the
+non-streaming JSON response or the streaming SSE response.
 
 The service intentionally delegates token validation, skill resolution and
 chat invocation back through the callables supplied by the view layer. This
@@ -22,18 +16,20 @@ from typing import Any, Callable, Optional
 
 from django.http import JsonResponse
 
+from apps.core.logger import opspilot_logger as logger
+from apps.opspilot.services.caller_identity import CallerIdentityError
+
 
 class ChatCompletionService:
     """Holds the shared token-validation / skill-resolution / stream logic
-    used by the OpenAI-compatible chat completion endpoints.
+    used by the OpenAI-compatible chat completion endpoint.
 
-    The two endpoints differ only in:
+    Callers customize behavior via injected callables:
 
-    * how the caller token is validated (``validate_fn``) and how the resulting
-      identity exposes its ``username`` (``user_id_getter``);
-    * the arguments passed to skill resolution (``skill_resolver``);
-    * an optional post-resolution hook (``post_resolve_hook``) that lobe uses to
-      persist conversation history and build a ``history_log``.
+    * how the caller token is validated (``validate``) and how the resulting
+      identity exposes its ``username`` (``get_user_id``);
+    * the arguments passed to skill resolution (``resolve_skill``);
+    * optional post-resolution hooks (``enrich_params`` / ``post_resolve_hook``).
 
     Everything else — JSON parsing, stream-mode detection, error envelopes,
     common param enrichment, and dispatch to invoke/stream — is identical and
@@ -59,6 +55,17 @@ class ChatCompletionService:
         self._invoke_chat = invoke_chat
         self._stream_chat = stream_chat
 
+    def _internal_enrich_error_response(self, stream_mode: bool):
+        error_message = "Internal server error"
+        if stream_mode:
+            response = self._generate_stream_error(error_message)
+            response.status_code = 500
+            return response
+        return JsonResponse(
+            {"choices": [{"message": {"role": "assistant", "content": error_message}}]},
+            status=500,
+        )
+
     def run(
         self,
         request,
@@ -66,6 +73,7 @@ class ChatCompletionService:
         validate: Callable[[str, dict], tuple[bool, Any]],
         resolve_skill: Callable[[dict, Any], tuple[Any, Optional[dict], Optional[dict]]],
         get_user_id: Callable[[Any], str],
+        enrich_params: Optional[Callable[[Any, Any, dict], None]] = None,
         post_resolve_hook: Optional[Callable[[dict, Any, str, Any, dict], Optional[Any]]] = None,
     ):
         """Execute the shared completion flow.
@@ -78,6 +86,10 @@ class ChatCompletionService:
             resolve_skill: Called with ``(parsed_body, user)``; returns
                 ``(skill_obj, params, error)`` like ``get_skill_and_params``.
             get_user_id: Extracts the ``username`` from the validated identity.
+            enrich_params: Optional server-side callback invoked immediately
+                after validation with ``(request, user, server_params)``. The
+                fresh server-owned mapping is merged after skill resolution so
+                its values override request- or skill-derived params.
             post_resolve_hook: Optional callback invoked after params are enriched.
                 Receives ``(params, skill_obj, user_message, user, parsed_body)``
                 and may return a ``history_log`` to thread into the chat
@@ -104,6 +116,26 @@ class ChatCompletionService:
             else:
                 return JsonResponse(msg)
         user = msg
+
+        server_enriched_params = {}
+        if enrich_params is not None:
+            try:
+                enrich_params(request, user, server_enriched_params)
+            except CallerIdentityError as e:
+                status_code = e.status_code
+                if type(status_code) is int and 400 <= status_code <= 599:
+                    if stream_mode:
+                        return self._generate_stream_error(str(e))
+                    return JsonResponse(
+                        {"choices": [{"message": {"role": "assistant", "content": str(e)}}]},
+                        status=status_code,
+                    )
+                logger.exception("Caller identity enrichment returned an invalid status code")
+                return self._internal_enrich_error_response(stream_mode)
+            except Exception:
+                logger.exception("Unexpected chat completion parameter enrichment failure")
+                return self._internal_enrich_error_response(stream_mode)
+
         try:
             skill_obj, params, error = resolve_skill(kwargs, user)
             if error:
@@ -122,6 +154,7 @@ class ChatCompletionService:
         params["user_id"] = get_user_id(user)
         params["enable_suggest"] = skill_obj.enable_suggest
         params["enable_query_rewrite"] = skill_obj.enable_query_rewrite
+        params.update(server_enriched_params)
         user_message = params.get("user_message")
 
         history_log = None

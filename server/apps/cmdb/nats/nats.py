@@ -43,6 +43,7 @@ from apps.cmdb.services.collect_credential_result_service import CollectCredenti
 from apps.cmdb.services.config_file_service import ConfigFileService
 from apps.cmdb.services.instance import InstanceManage
 from apps.cmdb.services.model import ModelManage
+from apps.cmdb.services.module_ingest import CmdbModuleIngestService
 from apps.cmdb.services.rack_room import format_rack_location_label, parse_rack_location
 from apps.cmdb.services.region_resource_overview import build_region_resource_items, extract_region_options
 from apps.cmdb.utils.base import get_default_group_id
@@ -575,6 +576,18 @@ def create_instance(params):
 
 
 @nats_client.register
+def ingest_from_source(params):
+    """跨模块推送写入 CMDB（host：node_id 优先 + ip/cloud 存量认领）。
+
+    params 为 IngestEnvelope 扩展字段，另需授权上下文之一：
+      allowed_org_ids / service_scope.allowed_org_ids / user_info
+    """
+    params = dict(params or {})
+    params["allowed_org_ids"] = _resolve_allowed_org_ids(params)
+    return CmdbModuleIngestService.ingest(params)
+
+
+@nats_client.register
 def delete_instance(params):
     """
     删除实例（支持单个或批量）
@@ -887,9 +900,12 @@ def get_cmdb_statistics(user_info=None, **kwargs):
         {
             "result": True,
             "data": {
+                "classification_count": 5,
                 "model_count": 15,
                 "instance_count": 1234,
-                "classification_count": 5
+                "model_with_instance_count": 12,
+                "empty_model_count": 3,
+                "model_coverage_rate": 80.0
             },
             "message": ""
         }
@@ -899,7 +915,14 @@ def get_cmdb_statistics(user_info=None, **kwargs):
     if model_permissions_map is None or instance_permissions_map is None:
         return {
             "result": True,
-            "data": {"model_count": 0, "instance_count": 0, "classification_count": 0},
+            "data": {
+                "classification_count": 0,
+                "model_count": 0,
+                "instance_count": 0,
+                "model_with_instance_count": 0,
+                "empty_model_count": 0,
+                "model_coverage_rate": 0,
+            },
             "message": "",
         }
 

@@ -17,6 +17,7 @@ export interface ListItem {
   display_name?: string;
   id?: string | number;
   value?: string | number;
+  color?: string;
 }
 
 export interface ModalConfig {
@@ -153,7 +154,7 @@ export interface GapInterval {
 
 export interface SegmentedItem {
   label: string;
-  value: string;
+  value: string | number;
 }
 
 export interface Pagination {
@@ -292,6 +293,7 @@ export interface MetricItem {
   unit?: string;
   displayType?: string;
   description?: string;
+  is_ifmib?: boolean;
   viewData?: ChartData[] | InterfaceTableItem[];
   displayUnit?: string;
   seriesBudget?: {

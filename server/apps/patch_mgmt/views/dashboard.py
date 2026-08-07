@@ -1,6 +1,6 @@
 """补丁管理 Dashboard 视图"""
 
-from django.db.models import Count, Exists, OuterRef
+from django.db.models import Count, Prefetch
 from rest_framework.decorators import action
 from rest_framework.exceptions import MethodNotAllowed
 from rest_framework.response import Response
@@ -19,16 +19,16 @@ from apps.patch_mgmt.constants import (
 from apps.patch_mgmt.models import (
     BaselineRequirement,
     GovernanceTask,
+    GovernanceTaskHost,
     HostBaselineBinding,
     Patch,
-    PatchBaseline,
-    PatchTarget,
 )
 from apps.patch_mgmt.serializers.governance import GovernanceTaskListSerializer
 from apps.patch_mgmt.services.execution_record_service import (
     filter_execution_record_roots,
 )
-from apps.patch_mgmt.services.risk_service import compute_risk_items
+from apps.patch_mgmt.services.risk_service import compute_host_compliance_status, compute_risk_items
+from apps.patch_mgmt.services.target_access import target_access_scope
 
 
 class PatchDashboardViewSet(AuthViewSet):
@@ -54,56 +54,50 @@ class PatchDashboardViewSet(AuthViewSet):
     @HasPermission("patch_dashboard-View")
     def stats(self, request):
         """汇总补丁管理关键指标"""
-        target_qs = self.get_queryset_by_permission(
-            request, PatchTarget.objects.all(), permission_key="patch_target"
-        )
-        patch_qs = self.get_queryset_by_permission(
-            request, Patch.objects.all(), permission_key="patch"
-        )
-        baseline_qs = self.get_queryset_by_permission(
-            request, PatchBaseline.objects.all(), permission_key="patch_baseline"
-        )
-        task_qs = self.get_queryset_by_permission(
-            request, GovernanceTask.objects.all(), permission_key="patch_governance"
-        )
+        target_qs = target_access_scope(request).queryset("View")
         target_ids = set(target_qs.values_list("id", flat=True))
+        operable_target_ids = set(
+            target_access_scope(request)
+            .queryset("Operate")
+            .values_list("id", flat=True)
+        )
+        visible_target_ids = target_qs.values("id")
+        binding_qs = HostBaselineBinding.objects.filter(
+            target_id__in=visible_target_ids
+        )
+        baseline_ids = set(binding_qs.values_list("baseline_id", flat=True))
+        patch_qs = Patch.objects.filter(
+            baseline_requirements__baseline_id__in=baseline_ids
+        ).distinct()
         patch_ids = set(patch_qs.values_list("id", flat=True))
-        baseline_ids = set(baseline_qs.values_list("id", flat=True))
+        task_qs = GovernanceTask.objects.filter(
+            host_results__target_id__in=visible_target_ids
+        ).distinct()
 
         target_total = len(target_ids)
         patch_total = len(patch_ids)
-        host_binding_filter = {
-            "target_id__in": target_ids,
-            "baseline_id__in": baseline_ids,
-        }
+        host_binding_filter = {"target_id__in": target_ids}
 
         high_severity_missing = BaselineRequirement.objects.filter(
             patch__severity__in=(PatchSeverity.CRITICAL, PatchSeverity.IMPORTANT),
-            patch_id__in=patch_ids,
             baseline_id__in=baseline_ids,
         ).count()
 
         affected_targets = HostBaselineBinding.objects.filter(**host_binding_filter).count()
         # 真实合规分布（按 binding.compliance_status 聚合，evaluating 按运行中任务计算）
         binding_status_qs = HostBaselineBinding.objects.filter(**host_binding_filter)
-        compliant_hosts = binding_status_qs.filter(compliance_status=ComplianceStatus.COMPLIANT).count()
-        non_compliant_hosts = binding_status_qs.filter(compliance_status=ComplianceStatus.NON_COMPLIANT).count()
-        pending_hosts = binding_status_qs.filter(compliance_status=ComplianceStatus.PENDING).count()
-        failed_hosts = binding_status_qs.filter(compliance_status=ComplianceStatus.FAILED).count()
+        status_counts = defaultdict(int)
+        for binding in binding_status_qs.select_related("target"):
+            status_counts[compute_host_compliance_status(binding.target)] += 1
+        compliant_hosts = status_counts[ComplianceStatus.COMPLIANT]
+        non_compliant_hosts = status_counts[ComplianceStatus.NON_COMPLIANT]
+        pending_hosts = status_counts[ComplianceStatus.PENDING]
+        failed_hosts = status_counts[ComplianceStatus.FAILED]
+        unknown_hosts = status_counts[ComplianceStatus.UNKNOWN]
+        not_applicable_hosts = status_counts[ComplianceStatus.NOT_APPLICABLE]
         unconfigured_hosts = target_qs.filter(baseline_binding__isnull=True).count()
 
-        active_assessment = Exists(
-            task_qs.filter(
-                host_results__target_id=OuterRef("target_id"),
-                task_type__in=(GovernanceTaskType.ASSESS, GovernanceTaskType.VERIFY),
-                status__in=GovernanceTaskStatus.ACTIVE_STATES,
-            )
-        )
-        evaluating_hosts = (
-            binding_status_qs.annotate(_active_assessment=active_assessment)
-            .filter(_active_assessment=True)
-            .count()
-        )
+        evaluating_hosts = status_counts[ComplianceStatus.EVALUATING]
 
         # 评估覆盖率 = 已评估主机 / 纳管主机（已绑定 binding 即可视为"已纳入评估"）
         coverage_rate = round((affected_targets / target_total) * 100) if target_total > 0 else 0
@@ -111,7 +105,9 @@ class PatchDashboardViewSet(AuthViewSet):
         denom = compliant_hosts + non_compliant_hosts
         compliance_rate = round((compliant_hosts / denom) * 100) if denom > 0 else 0
 
-        pending_reboot_targets = 0
+        pending_reboot_targets = binding_qs.filter(
+            pending_reboot_count__gt=0
+        ).count()
 
         failed_install_tasks = task_qs.filter(
             status=GovernanceTaskStatus.FAILED, task_type="install"
@@ -126,8 +122,6 @@ class PatchDashboardViewSet(AuthViewSet):
             item
             for item in all_risk_items
             if item.host_id in target_ids
-            and item.patch_id in patch_ids
-            and item.baseline_id in baseline_ids
         ]
         missing_risk_items = [i for i in risk_items if i.compliance == RiskCompliance.MISSING]
         pending_risk_count = len(missing_risk_items)
@@ -154,20 +148,35 @@ class PatchDashboardViewSet(AuthViewSet):
             {"label": "待评估", "count": pending_hosts, "color": "default", "filter": "pending"},
             {"label": "评估中", "count": evaluating_hosts, "color": "processing", "filter": "evaluating"},
             {"label": "评估失败", "count": failed_hosts, "color": "default", "filter": "failed"},
+            {"label": "评估异常/未知", "count": unknown_hosts, "color": "warning", "filter": "unknown"},
+            {"label": "不适用", "count": not_applicable_hosts, "color": "default", "filter": "not_applicable"},
             {"label": "未配置", "count": unconfigured_hosts, "color": "warning", "filter": "unconfigured"},
         ]
 
         # 与「风险治理 / 执行记录」使用同一根记录、权限、排序和状态口径。
+        visible_host_qs = GovernanceTaskHost.objects.filter(
+            target_id__in=visible_target_ids
+        ).select_related("task")
         recent_roots = list(
             filter_execution_record_roots(task_qs)
             .select_related("source_record")
-            .prefetch_related("host_results")
+            .prefetch_related(
+                Prefetch(
+                    "host_results",
+                    queryset=visible_host_qs,
+                    to_attr="_visible_host_results",
+                )
+            )
             .order_by("-created_at")[:10]
         )
         serialized_recent = GovernanceTaskListSerializer(
             recent_roots,
             many=True,
-            context={"request": request},
+            context={
+                "request": request,
+                "visible_target_ids": target_ids,
+                "operable_target_ids": operable_target_ids,
+            },
         ).data
         recent_tasks = [
             {
@@ -237,6 +246,8 @@ class PatchDashboardViewSet(AuthViewSet):
             "pending_hosts": pending_hosts,
             "evaluating_hosts": evaluating_hosts,
             "failed_hosts": failed_hosts,
+            "unknown_hosts": unknown_hosts,
+            "not_applicable_hosts": not_applicable_hosts,
             "compliance_distribution": compliance_distribution,
             "scan_tasks": {"total": 0, "running": 0, "pending": 0, "completed": 0, "failed": 0},
             "install_tasks": {"total": 0, "running": 0, "pending": 0, "success": 0, "failed": 0},

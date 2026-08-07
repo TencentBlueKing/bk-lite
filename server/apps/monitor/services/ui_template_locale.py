@@ -32,6 +32,36 @@ _FILE_OVERLAY_TOP_KEYS = ("advanced_panel",)
 
 _EN_LOCALES = {"en", "en-us", "en-gb"}
 
+# UI.json 磁盘 overlay 按路径+mtime 缓存，避免每次 enrich 重复读盘。
+_UI_FILE_OVERLAY_CACHE: dict[str, tuple[float, dict]] = {}
+_UI_FILE_OVERLAY_CACHE_MAX = 256
+
+
+def _load_ui_file_overlay(ui_file: Path) -> dict | None:
+    try:
+        mtime = ui_file.stat().st_mtime
+    except OSError:
+        return None
+    key = str(ui_file)
+    hit = _UI_FILE_OVERLAY_CACHE.get(key)
+    if hit and hit[0] == mtime:
+        return hit[1]
+    try:
+        file_ui = json.loads(ui_file.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError, TypeError):
+        return None
+    if not isinstance(file_ui, dict):
+        return None
+    if len(_UI_FILE_OVERLAY_CACHE) >= _UI_FILE_OVERLAY_CACHE_MAX:
+        _UI_FILE_OVERLAY_CACHE.clear()
+    _UI_FILE_OVERLAY_CACHE[key] = (mtime, file_ui)
+    return file_ui
+
+
+def clear_ui_file_overlay_cache() -> None:
+    _UI_FILE_OVERLAY_CACHE.clear()
+
+
 # UI.json 的历史模板中有一小组重复的输入提示尚未提供 ``*_en`` 字段。
 # 仅对这里审定过的精确文案回退，避免把任意中文内容当作可自动翻译的文本。
 _EN_FALLBACKS = {
@@ -97,6 +127,7 @@ _EN_FALLBACKS = {
     "逗号分隔；黑名单优先于仅采集列表，例如 vfat,exfat,ntfs。": "Comma-separated; the denylist takes precedence over the allowlist, for example vfat,exfat,ntfs.",
     "指定当前程序的版本详情": "Version details of the current program.",
     "是否启用 SASL 认证（用户名和密码）": "Whether to enable SASL authentication with a username and password.",
+    "Kafka SASL 认证机制，须与 Broker 配置一致": "Kafka SASL mechanism; must match the broker configuration.",
     "用于处理和响应通过发布端口接收的请求，包括请求的解析、处理和返回结果的完整流程": "Handles and responds to requests received through the publishing port, including parsing, processing, and returning results.",
     "按正则包含要采集的 Topic": "Regular expression for topics to include in collection.",
     "按正则排除不需要采集的 Topic": "Regular expression for topics to exclude from collection.",
@@ -265,10 +296,7 @@ def enrich_ui_template_from_plugin_files(content: dict | None, plugin: MonitorPl
     if plugin_dir is not None:
         ui_file = Path(plugin_dir) / "UI.json"
         if ui_file.is_file():
-            try:
-                file_ui = json.loads(ui_file.read_text(encoding="utf-8"))
-            except (OSError, json.JSONDecodeError, TypeError):
-                file_ui = None
+            file_ui = _load_ui_file_overlay(ui_file)
 
             if isinstance(file_ui, dict):
                 file_fields = {
@@ -321,7 +349,11 @@ def enrich_ui_template_from_plugin_files(content: dict | None, plugin: MonitorPl
                             column[key] = deepcopy(value)
 
     if should_inject_snmp_interface_filters(plugin, enriched):
-        enriched = merge_snmp_interface_filter_ui(enriched)
+        enriched = merge_snmp_interface_filter_ui(enriched, plugin=plugin)
+    elif plugin is not None and str(getattr(plugin, "collect_type", "")).startswith("snmp"):
+        # 清除早期「所有 SNMP 都注入」遗留的 IF-MIB/过滤字段；没有公共接口表的
+        # 模板不能继续展示这些无效配置。
+        enriched = merge_snmp_interface_filter_ui(enriched, plugin=plugin)
 
     return enriched
 

@@ -1539,3 +1539,40 @@ def get_monitor_statistics(user_info=None, **kwargs):
         },
         "message": "",
     }
+
+
+def _resolve_monitor_ingest_allowed_org_ids(params):
+    """解析跨模块 ingest 的组织授权范围；不得从 raw.organization 反推。"""
+    if "allowed_org_ids" in (params or {}):
+        return _normalize_organization_ids(params.get("allowed_org_ids"))
+
+    for scope_key in ("service_scope", "scope"):
+        scope = (params or {}).get(scope_key)
+        if isinstance(scope, dict) and "allowed_org_ids" in scope:
+            return _normalize_organization_ids(scope.get("allowed_org_ids"))
+
+    user_info = (params or {}).get("user_info")
+    if isinstance(user_info, dict):
+        team = user_info.get("team")
+        if team not in (None, ""):
+            return _normalize_organization_ids(
+                [team] if not isinstance(team, (list, tuple)) else team
+            )
+
+    raise ValueError("authorization scope is required for monitor ingest")
+
+
+@nats_client.register
+def monitor_ingest_from_source(params):
+    """跨模块推送写入监控（node_id 优先，其次 cmdb_id）。
+
+    params 为 IngestEnvelope 扩展字段，另需授权上下文之一：
+      allowed_org_ids / service_scope.allowed_org_ids / user_info.team
+
+    NATS 方法名带 monitor_ 前缀，避免与 CMDB.ingest_from_source 冲突。
+    """
+    from apps.monitor.services.module_ingest import MonitorModuleIngestService
+
+    params = dict(params or {})
+    params["allowed_org_ids"] = _resolve_monitor_ingest_allowed_org_ids(params)
+    return MonitorModuleIngestService.ingest(params)

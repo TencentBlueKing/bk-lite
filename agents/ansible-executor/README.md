@@ -81,6 +81,14 @@ make package
 dist/ansible-executor/
 ```
 
+`make package` 会校验 Windows collection 的打包层级，缺少以下文件时直接失败：
+
+```text
+dist/ansible-executor/_internal/collections/ansible_collections/ansible/windows/plugins/modules/win_copy.ps1
+```
+
+发布时必须归档完整的 onedir 目录，不能只复制 `ansible-executor` 主程序，也不能把 collection 放成 `_internal/collections/ansible/windows`。
+
 运行方式：
 
 ```bash

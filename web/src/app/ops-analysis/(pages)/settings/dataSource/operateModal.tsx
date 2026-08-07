@@ -52,6 +52,7 @@ import {
 
 const OperateModal: React.FC<OperateModalProps> = ({
   open,
+  mode,
   currentRow,
   onClose,
   onSuccess,
@@ -59,7 +60,9 @@ const OperateModal: React.FC<OperateModalProps> = ({
   const { t } = useTranslation();
   const guardClose = useUnsavedConfirm();
   const [form] = Form.useForm();
-  const handleClose = () => guardClose(form.isFieldsTouched(), onClose);
+  const readOnly = mode === "view";
+  const handleClose = () =>
+    readOnly ? onClose() : guardClose(form.isFieldsTouched(), onClose);
   const { selectedGroup } = useUserInfoContext();
   const [params, setParams] = React.useState<ParamItem[]>([]);
   const [loading, setLoading] = React.useState(false);
@@ -359,6 +362,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
   };
 
   const onFinish = async (values: any) => {
+    if (readOnly) return;
     try {
       setLoading(true);
 
@@ -423,9 +427,11 @@ const OperateModal: React.FC<OperateModalProps> = ({
   return (
     <Drawer
       title={
-        currentRow
-          ? `${t("common.edit")}${t("dataSource.title")} - ${currentRow.name}`
-          : `${t("common.add")}${t("dataSource.title")}`
+        mode === "view" && currentRow
+          ? `${t("common.view")}${t("dataSource.title")} - ${currentRow.name}`
+          : currentRow
+            ? `${t("common.edit")}${t("dataSource.title")} - ${currentRow.name}`
+            : `${t("common.add")}${t("dataSource.title")}`
       }
       placement="right"
       width={900}
@@ -440,15 +446,20 @@ const OperateModal: React.FC<OperateModalProps> = ({
       }}
       footer={
         <div style={{ textAlign: "right" }}>
+          {readOnly ? null : (
+            <Button
+              type="primary"
+              loading={loading}
+              onClick={() => form.submit()}
+            >
+              {t("common.confirm")}
+            </Button>
+          )}
           <Button
-            type="primary"
-            loading={loading}
-            onClick={() => form.submit()}
+            style={{ marginLeft: readOnly ? 0 : 8 }}
+            onClick={handleClose}
           >
-            {t("common.confirm")}
-          </Button>
-          <Button style={{ marginLeft: 8 }} onClick={handleClose}>
-            {t("common.cancel")}
+            {readOnly ? t("common.close") : t("common.cancel")}
           </Button>
         </div>
       }
@@ -457,6 +468,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
         form={form}
         layout="vertical"
         onFinish={onFinish}
+        disabled={readOnly}
       >
         <Form.Item
           name="source_type"
@@ -614,6 +626,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
             placeholder={`${t("common.selectMsg")}${t("common.group")}`}
             multiple={true}
             mode="ownership"
+            disabled={readOnly}
           />
         </Form.Item>
         <Form.Item name="desc" label={t("dataSource.describe")}>
@@ -763,6 +776,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
           <Form.Item label={t("dataSource.excelImport")}>
             <div>
               <Upload
+                disabled={readOnly}
                 accept=".xlsx"
                 maxCount={1}
                 beforeUpload={(file) => {
@@ -793,6 +807,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
             previewLoading={previewLoading}
             onPreview={handlePreview}
             onApplyPreviewFields={handleApplyPreviewFields}
+            readOnly={readOnly}
           />
         )}
         {isNatsSource && (
@@ -800,6 +815,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
             ref={paramTableRef}
             params={params}
             onChange={setParams}
+            readOnly={readOnly}
           />
         )}
         {showSchemaConfig && (
@@ -807,6 +823,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
             ref={fieldSchemaTableRef}
             schemaFields={schemaFields}
             onChange={setSchemaFields}
+            readOnly={readOnly}
           />
         )}
       </Form>

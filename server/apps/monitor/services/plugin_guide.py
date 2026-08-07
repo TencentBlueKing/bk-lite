@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import time
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -10,6 +11,10 @@ from apps.monitor.constants.plugin import PluginConstants
 from apps.monitor.models import MonitorPlugin
 
 SUPPORTED_GUIDE_LOCALES = ("zh-Hans", "en")
+
+# resolve 结果进程内缓存；插件目录很少变，避免每次 UI enrich 扫盘。
+_PLUGIN_DIR_CACHE_TTL_SECONDS = 60.0
+_plugin_dir_cache: dict[tuple[str, str, str], tuple[float, Optional[str]]] = {}
 
 
 class PluginGuideService:
@@ -26,13 +31,7 @@ class PluginGuideService:
         return "zh-Hans"
 
     @staticmethod
-    def resolve_plugin_dir(plugin: MonitorPlugin) -> Optional[Path]:
-        collector = (plugin.collector or "").strip()
-        collect_type = (plugin.collect_type or "").strip()
-        plugin_name = (plugin.name or "").strip()
-        if not collector or not collect_type or not plugin_name:
-            return None
-
+    def _lookup_plugin_dir(collector: str, collect_type: str, plugin_name: str) -> Optional[Path]:
         for root in (PluginConstants.DIRECTORY, PluginConstants.ENTERPRISE_DIRECTORY):
             base = Path(root) / collector / collect_type
             if not base.is_dir():
@@ -54,6 +53,32 @@ class PluginGuideService:
             if matched_by_name is not None:
                 return matched_by_name
         return None
+
+    @staticmethod
+    def resolve_plugin_dir(plugin: MonitorPlugin) -> Optional[Path]:
+        collector = (plugin.collector or "").strip()
+        collect_type = (plugin.collect_type or "").strip()
+        plugin_name = (plugin.name or "").strip()
+        if not collector or not collect_type or not plugin_name:
+            return None
+
+        cache_key = (collector, collect_type, plugin_name)
+        now = time.monotonic()
+        cached = _plugin_dir_cache.get(cache_key)
+        if cached and now - cached[0] < _PLUGIN_DIR_CACHE_TTL_SECONDS:
+            return Path(cached[1]) if cached[1] else None
+
+        matched = PluginGuideService._lookup_plugin_dir(collector, collect_type, plugin_name)
+        _plugin_dir_cache[cache_key] = (now, str(matched) if matched else None)
+        if len(_plugin_dir_cache) > 1024:
+            # 简易淘汰，避免长期进程无限增长。
+            _plugin_dir_cache.clear()
+            _plugin_dir_cache[cache_key] = (now, str(matched) if matched else None)
+        return matched
+
+    @staticmethod
+    def clear_plugin_dir_cache() -> None:
+        _plugin_dir_cache.clear()
 
     @classmethod
     def get_guide(cls, plugin: MonitorPlugin, locale: Optional[str] = None) -> Dict[str, Any]:

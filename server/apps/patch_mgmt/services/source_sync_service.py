@@ -4,11 +4,12 @@
 不涉及：实际网络 I/O、补丁下载。实际探测与同步执行由调用方（Celery task）负责接入。
 """
 
-import logging
 from typing import Optional
 
+from django.db import transaction
 from django.utils import timezone
 
+from apps.core.logger import patch_mgmt_logger as logger
 from apps.patch_mgmt.constants import (
     ConnectivityStatus,
     OSType,
@@ -16,13 +17,119 @@ from apps.patch_mgmt.constants import (
     PatchSourceType,
 )
 from apps.patch_mgmt.models import PatchSource
+from apps.patch_mgmt.services.linux_platform import package_manager_family
 from apps.patch_mgmt.services.patch_source_service import PatchSourceService
+from apps.patch_mgmt.utils.architecture import X86_64, normalize_architecture, normalize_architectures
 
-logger = logging.getLogger("app")
+# RPM updateinfo 会把同一公告涉及的所有子包放在一条 update 中；
+# Oracle/Rocky 9 的真实安全公告可达 205 个包。保留有界载荷，同时为真实仓库留出余量。
+MAX_LINUX_PACKAGES_PER_ADVISORY = 512
+MAX_LINUX_PACKAGE_NAME_LENGTH = 256
+MAX_LINUX_PACKAGE_VERSION_LENGTH = 128
 
 
 class SourceSyncError(Exception):
     """补丁源同步异常基类"""
+
+
+def _normalize_linux_packages(packages, *, fallback_arch: str) -> list[dict[str, str]]:
+    """把公告软件包规范化为稳定、去重、可持久化的列表。"""
+    canonical_fallback = normalize_architecture(fallback_arch, default=X86_64)
+    normalized: list[dict[str, str]] = []
+    seen: set[tuple[str, str, str]] = set()
+    for package in packages or []:
+        name = str(getattr(package, "name", "") or "").strip()
+        if not name:
+            continue
+        version = str(getattr(package, "version", "") or "").strip()
+        if len(name) > MAX_LINUX_PACKAGE_NAME_LENGTH or len(version) > MAX_LINUX_PACKAGE_VERSION_LENGTH:
+            raise SourceSyncError("Linux 公告的软件包名称或版本过长")
+        arch = normalize_architecture(
+            getattr(package, "arch", ""),
+            default=canonical_fallback,
+        )
+        key = (name, version, arch)
+        if key in seen:
+            continue
+        if len(normalized) >= MAX_LINUX_PACKAGES_PER_ADVISORY:
+            raise SourceSyncError(
+                f"单条 Linux 公告去重后的软件包数量不能超过 {MAX_LINUX_PACKAGES_PER_ADVISORY}"
+            )
+        seen.add(key)
+        normalized.append({"name": name, "version": version, "arch": arch})
+    return normalized
+
+
+def _linux_detail_defaults(advisory, source) -> dict:
+    """构造 Linux 详情写入值，并保留首包字段兼容旧 API。"""
+    packages = _normalize_linux_packages(
+        advisory.packages,
+        fallback_arch=source.arch or X86_64,
+    )
+    first_package = packages[0] if packages else None
+    missing = []
+    if first_package is None:
+        missing.append("软件包")
+    if not str(source.distro_name or "").strip():
+        missing.append("发行版")
+    if not str(source.os_version or "").strip():
+        missing.append("系统版本")
+    if not package_manager_family(source.source_type):
+        missing.append("包管理器")
+    if missing:
+        raise SourceSyncError(f"Linux 补丁元数据缺少：{', '.join(missing)}")
+    return {
+        "pkg_name": first_package["name"] if first_package else "",
+        "pkg_version": first_package["version"] if first_package else "",
+        "packages": packages,
+        "distro_name": source.distro_name or "",
+        "os_version_range": source.os_version or "",
+        "architectures": normalize_architectures(
+            (package["arch"] for package in packages),
+            fallback=source.arch or X86_64,
+        ),
+        "repo_type": PackageManagerType.normalize(source.source_type),
+        "install_deps": advisory.install_deps or {},
+    }
+
+
+def _linux_patch_families(patch) -> set[str]:
+    families = set()
+    try:
+        family = package_manager_family(patch.linux_detail.repo_type)
+        if family:
+            families.add(family)
+    except Exception:  # noqa: BLE001
+        pass
+    for source in patch.sources.all():
+        family = package_manager_family(source.source_type)
+        if family:
+            families.add(family)
+    for snapshot in patch.deleted_source_snapshots or []:
+        if not isinstance(snapshot, dict):
+            continue
+        family = package_manager_family(snapshot.get("source_type", ""))
+        if family:
+            families.add(family)
+    return families
+
+
+def _resolve_linux_patch(source, title: str, defaults: dict):
+    """同名公告只在同一包生态内合并，禁止把 APT 与 RPM 来源压进同一补丁。"""
+    from apps.patch_mgmt.models import Patch
+
+    source_family = package_manager_family(source.source_type)
+    candidates = (
+        Patch.objects.select_for_update()
+        .filter(title=title, os_type=OSType.LINUX)
+        .prefetch_related("sources")
+        .order_by("id")
+    )
+    for patch in candidates:
+        families = _linux_patch_families(patch)
+        if families == {source_family}:
+            return patch, False
+    return Patch.objects.create(title=title, os_type=OSType.LINUX, **defaults), True
 
 
 class SourceSyncService:
@@ -157,40 +264,32 @@ class SourceSyncService:
         for adv in advisories:
             patch_type = PatchType.SECURITY if adv.adv_type == "security" else PatchType.GENERIC
             severity = sev_map.get(adv.severity.lower(), PatchSeverity.MODERATE) if adv.severity else PatchSeverity.MODERATE
-            patch, is_new = Patch.objects.get_or_create(
-                title=adv.advisory_id,
-                os_type=OSType.LINUX,
-                defaults={
-                    "patch_type": patch_type,
-                    "severity": severity,
-                    "cve_list": adv.cve_list,
-                    "team": list(source.team or []),
-                    "pkg_status": PackageStatus.READY,
-                    "released_at": None,
-                },
-            )
-            patch.sources.add(source)
-            # 同步成功后统一标记为就绪，安装时再从源下载。
-            patch.patch_type = patch_type
-            patch.severity = severity
-            patch.cve_list = adv.cve_list
-            patch.pkg_status = PackageStatus.READY
-            patch.last_synced_at = now
-            patch.save(update_fields=["patch_type", "severity", "cve_list", "pkg_status", "last_synced_at", "updated_at"])
+            with transaction.atomic():
+                patch, is_new = _resolve_linux_patch(
+                    source,
+                    adv.advisory_id,
+                    {
+                        "patch_type": patch_type,
+                        "severity": severity,
+                        "cve_list": adv.cve_list,
+                        "team": list(source.team or []),
+                        "pkg_status": PackageStatus.READY,
+                        "released_at": None,
+                    },
+                )
+                patch.sources.add(source)
+                # 同步成功后统一标记为就绪，安装时再从源下载。
+                patch.patch_type = patch_type
+                patch.severity = severity
+                patch.cve_list = adv.cve_list
+                patch.pkg_status = PackageStatus.READY
+                patch.last_synced_at = now
+                patch.save(update_fields=["patch_type", "severity", "cve_list", "pkg_status", "last_synced_at", "updated_at"])
 
-            first_pkg = adv.packages[0] if adv.packages else None
-            LinuxPatchDetail.objects.update_or_create(
-                patch=patch,
-                defaults={
-                    "pkg_name": first_pkg.name if first_pkg else "",
-                    "pkg_version": first_pkg.version if first_pkg else "",
-                    "distro_name": source.distro_name or "",
-                    "os_version_range": source.os_version or "",
-                    "architectures": sorted({p.arch for p in adv.packages if p.arch}),
-                    "repo_type": PackageManagerType.normalize(source.source_type),
-                    "install_deps": adv.install_deps or {},
-                },
-            )
+                LinuxPatchDetail.objects.update_or_create(
+                    patch=patch,
+                    defaults=_linux_detail_defaults(adv, source),
+                )
             if is_new:
                 created += 1
             else:
@@ -253,21 +352,39 @@ class SourceSyncService:
             from apps.patch_mgmt.services.linux_repo_sync import fetch_advisories
 
             advisories = fetch_advisories(source)
-            existing_titles = set(
-                Patch.objects.filter(os_type=OSType.LINUX)
-                .values_list("title", flat=True)
-            )
+            candidate_titles = {
+                value
+                for advisory in advisories
+                for value in (advisory.advisory_id, advisory.title)
+                if value
+            }
+            existing_by_title: dict[str, list] = {}
+            for patch in (
+                Patch.objects.filter(os_type=OSType.LINUX, title__in=candidate_titles)
+                .prefetch_related("sources")
+            ):
+                existing_by_title.setdefault(patch.title, []).append(patch)
+            source_family = package_manager_family(source.source_type)
             candidates = []
             for adv in advisories:
-                first_pkg = adv.packages[0] if adv.packages else None
+                packages = _normalize_linux_packages(
+                    adv.packages,
+                    fallback_arch=source.arch or X86_64,
+                )
+                first_pkg = packages[0] if packages else None
                 candidates.append({
                     "key": adv.advisory_id,
-                    "name": first_pkg.name if first_pkg else adv.advisory_id,
+                    "name": first_pkg["name"] if first_pkg else adv.advisory_id,
                     "title": adv.title,
-                    "version": first_pkg.version if first_pkg else "",
+                    "version": first_pkg["version"] if first_pkg else "",
+                    "packages": packages,
                     "dist": source.distro_name or "",
-                    "arch": (first_pkg.arch if first_pkg and first_pkg.arch else source.arch or ""),
-                    "added": adv.advisory_id in existing_titles or adv.title in existing_titles,
+                    "arch": first_pkg["arch"] if first_pkg else normalize_architecture(source.arch, default=X86_64),
+                    "added": any(
+                        _linux_patch_families(patch) == {source_family}
+                        for title in (adv.advisory_id, adv.title)
+                        for patch in existing_by_title.get(title, [])
+                    ),
                     "severity": adv.severity or "",
                 })
             return candidates
@@ -293,7 +410,7 @@ class SourceSyncService:
                     "title": upd.title,
                     "version": ", ".join(upd.products[:3]) if upd.products else "",
                     "dist": "",
-                    "arch": source.arch or "x64",
+                    "arch": X86_64,
                     "added": name in existing_titles or upd.kb_number in existing_titles or upd.title in existing_titles,
                 })
             return candidates
@@ -301,18 +418,35 @@ class SourceSyncService:
         raise SourceSyncError(f"源类型 {source.source_type!r} 不支持预览同步")
 
     @classmethod
-    def ingest_selected(cls, source: PatchSource, keys: list, severity_overrides: dict = None) -> dict:
+    def ingest_selected(
+        cls,
+        source: PatchSource,
+        keys: list,
+        severity_overrides: dict = None,
+        *,
+        team_id: int | None = None,
+    ) -> dict:
         """将选中的候选补丁入库（创建 Patch 记录）。
 
         Args:
             source: 补丁源实例。
             keys: 选中的候选 key 列表（advisory_id 或 update_id）。
             severity_overrides: 前端传入的严重级别覆盖，{advisory_id: severity_value}。
+            team_id: 发起入库的可信当前团队；传入时补丁只增加该团队归属。
 
         Returns:
             {"created": N, "updated": N, "skipped": N, "total": N}
         """
         severity_overrides = severity_overrides or {}
+        if source.is_builtin and team_id is None:
+            raise SourceSyncError("内置补丁源入库必须指定当前团队")
+        if team_id is not None:
+            try:
+                team_id = int(team_id)
+            except (TypeError, ValueError) as exc:
+                raise SourceSyncError("入库团队 ID 无效") from exc
+            if team_id <= 0:
+                raise SourceSyncError("入库团队 ID 无效")
         from apps.patch_mgmt.constants import (
             OSType,
             PackageStatus,
@@ -325,6 +459,21 @@ class SourceSyncService:
         key_set = set(keys)
         created = updated = skipped = 0
         now = timezone.now()
+
+        def initial_teams() -> list[int]:
+            if team_id is not None:
+                return [team_id]
+            return list(source.team or [])
+
+        def add_ingest_team(patch) -> bool:
+            if team_id is None:
+                return False
+            teams = list(patch.team or [])
+            if team_id in teams:
+                return False
+            teams.append(team_id)
+            patch.team = teams
+            return True
 
         if source.is_linux_source:
             advisories = fetch_advisories(source)
@@ -346,38 +495,40 @@ class SourceSyncService:
                     severity = sev_map.get(adv.severity.lower(), PatchSeverity.MODERATE)
                 else:
                     severity = PatchSeverity.MODERATE
-                patch, is_new = Patch.objects.get_or_create(
-                    title=adv.advisory_id,
-                    os_type=OSType.LINUX,
-                    defaults={
-                        "patch_type": patch_type,
-                        "severity": severity,
-                        "cve_list": adv.cve_list,
-                        "team": list(source.team or []),
-                        "pkg_status": PackageStatus.READY,
-                    },
-                )
-                patch.sources.add(source)
-                patch.patch_type = patch_type
-                patch.severity = severity
-                patch.cve_list = adv.cve_list
-                patch.pkg_status = PackageStatus.READY
-                patch.last_synced_at = now
-                patch.save(update_fields=["patch_type", "severity", "cve_list", "pkg_status", "last_synced_at", "updated_at"])
+                with transaction.atomic():
+                    patch, is_new = _resolve_linux_patch(
+                        source,
+                        adv.advisory_id,
+                        {
+                            "patch_type": patch_type,
+                            "severity": severity,
+                            "cve_list": adv.cve_list,
+                            "team": initial_teams(),
+                            "pkg_status": PackageStatus.READY,
+                        },
+                    )
+                    patch.sources.add(source)
+                    patch.patch_type = patch_type
+                    patch.severity = severity
+                    patch.cve_list = adv.cve_list
+                    patch.pkg_status = PackageStatus.READY
+                    patch.last_synced_at = now
+                    update_fields = [
+                        "patch_type",
+                        "severity",
+                        "cve_list",
+                        "pkg_status",
+                        "last_synced_at",
+                        "updated_at",
+                    ]
+                    if add_ingest_team(patch):
+                        update_fields.append("team")
+                    patch.save(update_fields=update_fields)
 
-                first_pkg = adv.packages[0] if adv.packages else None
-                LinuxPatchDetail.objects.update_or_create(
-                    patch=patch,
-                    defaults={
-                        "pkg_name": first_pkg.name if first_pkg else "",
-                        "pkg_version": first_pkg.version if first_pkg else "",
-                        "distro_name": source.distro_name or "",
-                        "os_version_range": source.os_version or "",
-                        "architectures": sorted({p.arch for p in adv.packages if p.arch}),
-                        "repo_type": PackageManagerType.normalize(source.source_type),
-                        "install_deps": adv.install_deps or {},
-                    },
-                )
+                    LinuxPatchDetail.objects.update_or_create(
+                        patch=patch,
+                        defaults=_linux_detail_defaults(adv, source),
+                    )
                 if is_new:
                     created += 1
                 else:
@@ -386,6 +537,7 @@ class SourceSyncService:
         elif source.source_type == "wsus":
             from apps.patch_mgmt.services.wsus_sync import (
                 WsusClient,
+                apply_wsus_replacement_relationships,
                 normalize_wsus_kb,
                 resolve_wsus_patch,
             )
@@ -420,7 +572,7 @@ class SourceSyncService:
                         "patch_type": PatchType.SECURITY,
                         "severity": severity,
                         "cve_list": [],
-                        "team": list(source.team or []),
+                        "team": initial_teams(),
                         "pkg_status": PackageStatus.READY,
                     },
                 )
@@ -432,13 +584,28 @@ class SourceSyncService:
                 patch.severity = severity
                 patch.pkg_status = PackageStatus.READY
                 patch.last_synced_at = now
-                patch.save(update_fields=["patch_type", "severity", "pkg_status", "last_synced_at", "updated_at"])
+                patch.applicable_rules = {
+                    **(patch.applicable_rules or {}),
+                    "wsus_update_id": upd.update_id,
+                }
+                update_fields = [
+                    "patch_type",
+                    "severity",
+                    "pkg_status",
+                    "last_synced_at",
+                    "applicable_rules",
+                    "updated_at",
+                ]
+                if add_ingest_team(patch):
+                    update_fields.append("team")
+                patch.save(update_fields=update_fields)
 
                 WindowsPatchDetail.objects.update_or_create(
                     patch=patch,
                     defaults={
                         "kb_number": normalized_kb,
                         "product_list": upd.products or [],
+                        "architectures": [X86_64],
                         "ms_bulletin": (upd.security_bulletins[0] if upd.security_bulletins else ""),
                     },
                 )
@@ -446,6 +613,7 @@ class SourceSyncService:
                     created += 1
                 else:
                     updated += 1
+            apply_wsus_replacement_relationships(updates)
         else:
             raise SourceSyncError(f"源类型 {source.source_type!r} 不支持入库")
 

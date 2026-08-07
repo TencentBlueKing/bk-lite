@@ -10,6 +10,7 @@ from rest_framework.response import Response
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.utils.viewset_utils import AuthViewSet
 from apps.patch_mgmt.constants import ComplianceStatus, GovernanceTaskStatus, GovernanceTaskType
+from apps.patch_mgmt.filters.baseline import PatchBaselineFilter
 from apps.patch_mgmt.models import (
     BaselineRequirement,
     GovernanceTask,
@@ -26,15 +27,24 @@ from apps.patch_mgmt.serializers.baseline import (
     PatchBaselineDetailSerializer,
     PatchBaselineListSerializer,
 )
-from apps.patch_mgmt.utils.data_permissions import require_authorized_ids
+from apps.patch_mgmt.services.target_access import (
+    GlobalSharedResourceMixin,
+    require_target_ids,
+    target_access_scope,
+)
 from apps.patch_mgmt.utils.i18n import patch_message, render_business_error
 
 
-class PatchBaselineViewSet(AuthViewSet):
+class PatchBaselineViewSet(GlobalSharedResourceMixin, AuthViewSet):
     """补丁基线视图集"""
 
-    queryset = PatchBaseline.objects.all()
+    queryset = PatchBaseline.objects.prefetch_related(
+        "requirements__patch__windows_detail",
+        "requirements__patch__linux_detail",
+        "requirements__patch__sources",
+    ).all()
     serializer_class = PatchBaselineListSerializer
+    filterset_class = PatchBaselineFilter
     search_fields = ["name"]
     ORGANIZATION_FIELD = "team"
     permission_key = "patch_baseline"
@@ -74,13 +84,9 @@ class PatchBaselineViewSet(AuthViewSet):
     def requirements(self, request, pk=None):
         """查询补丁要求清单。"""
         baseline = self.get_object()
-        require_authorized_ids(
-            self, request, PatchBaseline.objects.all(), [baseline.id],
-            "patch_baseline", operation="View"
-        )
         reqs = baseline.requirements.select_related(
             "patch__windows_detail", "patch__linux_detail"
-        )
+        ).prefetch_related("patch__sources")
         serializer = BaselineRequirementSerializer(reqs, many=True)
         return Response(serializer.data)
 
@@ -89,12 +95,20 @@ class PatchBaselineViewSet(AuthViewSet):
     def add_requirements(self, request, pk=None):
         """添加补丁要求。"""
         baseline = self.get_object()
-        require_authorized_ids(
-            self, request, PatchBaseline.objects.all(), [baseline.id],
-            "patch_baseline"
-        )
         patch_ids = request.data.get("patch_ids", [])
-        require_authorized_ids(self, request, Patch.objects.all(), patch_ids, "patch")
+        missing_patch_ids = sorted(
+            {int(value) for value in patch_ids}
+            - set(Patch.objects.filter(pk__in=patch_ids).values_list("pk", flat=True))
+        )
+        if missing_patch_ids:
+            raise DRFValidationError(
+                patch_message(
+                    request,
+                    "error.patch_not_found",
+                    "Some selected patches do not exist: {ids}",
+                    ids=missing_patch_ids,
+                )
+            )
         condition = request.data.get("condition", "")
         created = []
         for pid in patch_ids:
@@ -115,10 +129,6 @@ class PatchBaselineViewSet(AuthViewSet):
     def delete_requirements(self, request, pk=None):
         """移除补丁要求。"""
         baseline = self.get_object()
-        require_authorized_ids(
-            self, request, PatchBaseline.objects.all(), [baseline.id],
-            "patch_baseline"
-        )
         req_ids = request.data.get("requirement_ids", [])
         deleted_count, _ = BaselineRequirement.objects.filter(
             id__in=req_ids, baseline=baseline
@@ -129,14 +139,10 @@ class PatchBaselineViewSet(AuthViewSet):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     @action(detail=True, methods=["post"])
-    @HasPermission("patch_baseline-Edit")
+    @HasPermission("patch_target-Edit")
     def bind_hosts(self, request, pk=None):
         """绑定主机到基线"""
         baseline = self.get_object()
-        require_authorized_ids(
-            self, request, PatchBaseline.objects.all(), [baseline.id],
-            "patch_baseline"
-        )
         target_ids = sorted(
             {
                 int(target_id)
@@ -146,14 +152,16 @@ class PatchBaselineViewSet(AuthViewSet):
         )
         if not target_ids:
             raise DRFValidationError(patch_message(request, "error.target_ids_required", "Select at least one target"))
-        require_authorized_ids(
-            self,
-            request, PatchTarget.objects.all(), target_ids, "patch_target"
+        require_target_ids(request, target_ids, "Operate")
+        operable_target_ids = target_access_scope(request).queryset(
+            "Operate"
+        ).values("id")
+        current_operable_target_ids = set(
+            baseline.host_bindings.filter(
+                target_id__in=operable_target_ids
+            ).values_list("target_id", flat=True)
         )
-        current_target_ids = set(
-            baseline.host_bindings.values_list("target_id", flat=True)
-        )
-        if current_target_ids == set(target_ids):
+        if current_operable_target_ids == set(target_ids):
             return Response({"bound": len(target_ids), "changed": False})
 
         previous_baselines = list(
@@ -166,7 +174,9 @@ class PatchBaselineViewSet(AuthViewSet):
             self._invalidate_active_assessments(previous_baseline)
             self._reset_bindings_to_pending(previous_baseline)
         with transaction.atomic():
-            baseline.host_bindings.exclude(target_id__in=target_ids).delete()
+            baseline.host_bindings.filter(
+                target_id__in=operable_target_ids
+            ).exclude(target_id__in=target_ids).delete()
             for tid in target_ids:
                 binding, created = HostBaselineBinding.objects.update_or_create(
                     target_id=tid,
@@ -211,16 +221,19 @@ class PatchBaselineViewSet(AuthViewSet):
     def hosts(self, request, pk=None):
         """已绑定主机列表"""
         baseline = self.get_object()
-        require_authorized_ids(
-            self, request, PatchBaseline.objects.all(), [baseline.id],
-            "patch_baseline", operation="View"
+        visible_targets = target_access_scope(request).queryset("View").values("id")
+        bindings = baseline.host_bindings.filter(
+            target_id__in=visible_targets
+        ).select_related("target", "baseline")
+        serializer = HostBaselineBindingSerializer(
+            bindings,
+            many=True,
+            context=self.get_serializer_context(),
         )
-        bindings = baseline.host_bindings.select_related("target", "baseline")
-        serializer = HostBaselineBindingSerializer(bindings, many=True)
         return Response(serializer.data)
 
     @action(detail=True, methods=["post"])
-    @HasPermission("patch_baseline-Edit")
+    @HasPermission("patch_governance-Add")
     def assess(self, request, pk=None):
         """对基线当前绑定的全部主机创建一次并行评估任务。"""
         from apps.patch_mgmt.services.governance_service import (
@@ -229,10 +242,6 @@ class PatchBaselineViewSet(AuthViewSet):
         )
 
         baseline = self.get_object()
-        require_authorized_ids(
-            self, request, PatchBaseline.objects.all(), [baseline.id],
-            "patch_baseline"
-        )
         requirements = list(baseline.requirements.order_by("id"))
         if not requirements:
             return Response(
@@ -240,7 +249,13 @@ class PatchBaselineViewSet(AuthViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
         bindings = list(
-            baseline.host_bindings.select_related("target").order_by("id")
+            baseline.host_bindings.filter(
+                target_id__in=target_access_scope(request)
+                .queryset("Operate")
+                .values("id")
+            )
+            .select_related("target")
+            .order_by("id")
         )
         if not bindings:
             return Response(
@@ -249,10 +264,6 @@ class PatchBaselineViewSet(AuthViewSet):
             )
 
         target_ids = [binding.target_id for binding in bindings]
-        require_authorized_ids(
-            self,
-            request, PatchTarget.objects.all(), target_ids, "patch_target"
-        )
         busy_target_ids = list(
             GovernanceTask.objects.filter(
                 host_results__target_id__in=target_ids,

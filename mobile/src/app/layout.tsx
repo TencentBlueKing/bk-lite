@@ -1,5 +1,6 @@
 import '@/styles/globals.css';
 import type { Metadata, Viewport } from 'next';
+import { MobilePolyfills } from '@/polyfills';
 import { withBasePath } from '@/utils/basePath';
 import { AppProviders } from './app-providers';
 
@@ -34,6 +35,7 @@ export default function RootLayout({
         <link rel="icon" href={withBasePath('/logo-site.png')} type="image/png" />
       </head>
       <body className="antialiased">
+        <MobilePolyfills />
         <AppProviders>{children}</AppProviders>
       </body>
     </html>

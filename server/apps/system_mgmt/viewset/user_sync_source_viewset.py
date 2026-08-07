@@ -12,7 +12,6 @@ from apps.system_mgmt.providers import RuntimeApplicationService
 from apps.system_mgmt.models import Group, IntegrationInstance, IntegrationInstanceStatusChoices, UserSyncRun, UserSyncSource
 from apps.system_mgmt.serializers.user_sync_source_serializer import UserSyncRunSerializer, UserSyncSourceSerializer
 from apps.system_mgmt.services.user_sync_service import (
-    ALL_DEPARTMENT_SELECTION_ID,
     delete_user_sync_source,
     flatten_department_ids,
     get_user_sync_root_department_input_mode,
@@ -106,15 +105,16 @@ class UserSyncSourceViewSet(MaintainerViewSet):
             )
 
         runtime_service = RuntimeApplicationService()
+        business_config = {"root_department_id": current_root_department_id}
+        if department_id_type:
+            business_config["department_id_type"] = department_id_type
+
         result = runtime_service.execute(
             provider_key=integration_instance.provider_key,
             capability_key="user_sync",
             operation="list_departments",
             config=integration_instance.get_runtime_config(),
-            business_config={
-                "root_department_id": current_root_department_id,
-                "department_id_type": department_id_type,
-            },
+            business_config=business_config,
         )
         if not result.success:
             return JsonResponse(
@@ -127,27 +127,20 @@ class UserSyncSourceViewSet(MaintainerViewSet):
             )
 
         payload = result.payload
-        all_department_id = str(payload.get("all_department_id") or "")
         available_department_ids = flatten_department_ids(payload.get("items") or [])
-        if current_root_department_id == ALL_DEPARTMENT_SELECTION_ID:
-            selected_id = ALL_DEPARTMENT_SELECTION_ID
-            selection_missing = False
-        elif current_root_department_id == all_department_id and all_department_id:
-            selected_id = ALL_DEPARTMENT_SELECTION_ID
-            selection_missing = False
-        elif current_root_department_id in available_department_ids:
-            selected_id = current_root_department_id
-            selection_missing = False
-        else:
-            selected_id = str(payload.get("selected_id") or "")
-            selection_missing = bool(payload.get("selection_missing"))
-        return Response(
+        selected_id = current_root_department_id if current_root_department_id in available_department_ids else ""
+        selection_missing = bool(current_root_department_id and not selected_id)
+        response = Response(
             {
                 "items": payload.get("items") or [],
                 "selected_id": selected_id,
                 "selection_missing": selection_missing,
             }
         )
+        server_timing = payload.get("server_timing")
+        if isinstance(server_timing, str) and server_timing:
+            response["Server-Timing"] = server_timing
+        return response
 
     @action(methods=["GET"], detail=False, url_path="records")
     @HasPermission("user_sync-View")

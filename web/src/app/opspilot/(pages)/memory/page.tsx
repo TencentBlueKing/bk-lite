@@ -3,7 +3,7 @@
 import React, {useCallback, useEffect, useState} from 'react';
 import {useRouter} from 'next/navigation';
 import Image from 'next/image';
-import {Button, Card, Form, Input, message, Modal, Spin, Tag} from 'antd';
+import {Button, Card, Form, Input, message, Spin, Tag} from 'antd';
 import {PlusOutlined} from '@ant-design/icons';
 import PermissionWrapper from '@/components/permission';
 import OperateModal from '@/components/operate-modal';
@@ -68,6 +68,10 @@ const MemoryCard: React.FC<MemoryCardProps> = ({space, onOpen, onEdit, onDelete}
               label: t('common.delete'),
               permission: 'Delete',
               danger: true,
+              confirm: {
+                title: t('memory.deleteConfirm'),
+                content: t('memory.deleteConfirmContent', undefined, { name }),
+              },
               onClick: () => onDelete(space),
             },
           ]}
@@ -141,7 +145,6 @@ const MemoryPage = () => {
     } finally {
       setLoading(false);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -177,19 +180,14 @@ const MemoryPage = () => {
     setIsModalVisible(true);
   };
 
-  const handleDelete = (space: MemorySpace) => {
-    Modal.confirm({
-      title: t('memory.deleteConfirm'),
-      onOk: async () => {
-        try {
-          await deleteMemorySpace(space.id);
-          message.success(t('common.delSuccess'));
-          loadSpaces();
-        } catch {
-          message.error(t('common.delFailed'));
-        }
-      },
-    });
+  const handleDelete = async (space: MemorySpace) => {
+    try {
+      await deleteMemorySpace(space.id);
+      message.success(t('common.delSuccess'));
+      loadSpaces();
+    } catch {
+      message.error(t('common.delFailed'));
+    }
   };
 
   const handleSubmit = async () => {

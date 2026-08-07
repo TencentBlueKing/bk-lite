@@ -9,6 +9,10 @@ from apps.patch_mgmt.services import target_connectivity
 from apps.patch_mgmt.services.target_connectivity import probe_target, probe_target_data
 
 TARGET_URL = "/api/v1/patch_mgmt/api/patch_target/"
+LINUX_PROBE_STDOUT = (
+    "patch-connectivity-ok\n"
+    "BKPATCH_HOST|LINUX|ubuntu|debian|24.04|x86_64|apt\n"
+)
 
 
 def _target(**kw) -> PatchTarget:
@@ -31,7 +35,7 @@ class TestProbeTargetData:
         ).return_value
         executor.execute_ssh.return_value = {
             "exit_code": 0,
-            "stdout": "patch-connectivity-ok\n",
+            "stdout": LINUX_PROBE_STDOUT,
         }
 
         result = probe_target_data({
@@ -88,6 +92,36 @@ class TestProbeTargetData:
         assert credential["password"] == "plain-secret"
         executor.task_query.assert_called_once_with("probe-task", timeout=5)
 
+    def test_manual_windows_uses_direct_winrm_only_in_explicit_debug_mode(
+        self, mocker, settings
+    ):
+        settings.DEBUG = True
+        settings.PATCH_MGMT_WINDOWS_EXECUTION_MODE = "direct_winrm"
+        session = mocker.patch(
+            "apps.patch_mgmt.services.target_connectivity.winrm.Session"
+        ).return_value
+        session.run_ps.return_value = type(
+            "Result",
+            (),
+            {"status_code": 0, "std_out": b"patch-connectivity-ok", "std_err": b""},
+        )()
+
+        probe = probe_target_data({
+            "ip": "10.0.0.9",
+            "os_type": OSType.WINDOWS,
+            "source_type": PatchTargetSource.MANUAL,
+            "winrm_port": 5985,
+            "winrm_scheme": "http",
+            "winrm_transport": "ntlm",
+            "winrm_user": "Administrator",
+            "winrm_password": "plain-secret",
+            "winrm_cert_validation": False,
+        })
+
+        assert probe.reachable is True
+        assert probe.transport == "direct_winrm"
+        assert probe.port == 5985
+
 
 @pytest.mark.django_db
 class TestProbeTarget:
@@ -97,7 +131,7 @@ class TestProbeTarget:
         )
         executor_factory.return_value.execute_local.return_value = {
             "exit_code": 0,
-            "stdout": "patch-connectivity-ok",
+            "stdout": LINUX_PROBE_STDOUT,
         }
         target = _target(
             source_type=PatchTargetSource.NODE_MGMT,
@@ -153,7 +187,7 @@ class TestProbeTarget:
         ).return_value
         executor.execute_ssh.return_value = {
             "exit_code": 0,
-            "stdout": "patch-connectivity-ok",
+            "stdout": LINUX_PROBE_STDOUT,
         }
 
         res = probe_target(target)
@@ -175,6 +209,24 @@ class TestProbeTarget:
 
         assert res.reachable is False
         assert res.reason_code == "command_failed"
+
+    def test_linux_command_reachable_but_host_facts_missing_is_failed(self, mocker):
+        executor = mocker.patch(
+            "apps.patch_mgmt.services.target_connectivity.Executor"
+        ).return_value
+        executor.execute_local.return_value = {
+            "exit_code": 0,
+            "stdout": "patch-connectivity-ok",
+        }
+
+        res = probe_target(_target(
+            source_type=PatchTargetSource.NODE_MGMT,
+            node_id="node-1",
+        ))
+
+        assert res.reachable is False
+        assert res.reason_code == "host_facts_unavailable"
+        assert "主机事实识别失败" in res.detail
 
     def test_missing_node_id_is_explicit_configuration_failure(self):
         res = probe_target(_target(

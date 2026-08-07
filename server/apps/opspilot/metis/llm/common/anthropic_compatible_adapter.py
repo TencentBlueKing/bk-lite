@@ -19,6 +19,27 @@ _ANTHROPIC_VERSION = "2023-06-01"
 ANTHROPIC_INVALID_API_KEY_ERROR = "API Key 无效"
 
 
+def normalize_anthropic_compatible_api_base(api_base: str, vendor_type: str = "") -> str:
+    """Normalize vendor Anthropic-compatible base URLs.
+
+    DeepSeek 官方 Anthropic 兼容入口为 ``https://api.deepseek.com/anthropic``。
+    若配置成 OpenAI 根地址（``https://api.deepseek.com`` / ``.../v1``），
+    再拼 ``/v1/messages`` 会打到错误路径，表现为模型“收到空消息”。
+    """
+    base = (api_base or "").strip().rstrip("/")
+    if not base or base == "https://api.openai.com":
+        return "https://api.anthropic.com"
+    vendor = (vendor_type or "").strip().casefold()
+    if vendor == "deepseek":
+        if base.endswith("/anthropic"):
+            return base
+        if base.endswith("/v1"):
+            base = base[: -len("/v1")]
+        if base.rstrip("/") == "https://api.deepseek.com":
+            return "https://api.deepseek.com/anthropic"
+    return base
+
+
 def normalize_messages_url(api_base: str) -> str:
     """Return the /v1/messages URL for the given api_base.
 
@@ -193,11 +214,13 @@ class AnthropicCompatibleChatClient(BaseChatModel):
     api_key: str
     api_base: str
     temperature: float
+    max_tokens: int = 4096
     disable_streaming: bool = False
     timeout: int = 15
     vendor_type: str = ""
     bound_tools: List[Any] = []
     bound_tool_choice: Optional[str] = None
+    thinking_enabled: Optional[bool] = None
 
     @property
     def _llm_type(self) -> str:
@@ -214,9 +237,12 @@ class AnthropicCompatibleChatClient(BaseChatModel):
             model=self.model,
             messages=messages,
             temperature=self.temperature,
+            max_tokens=self.max_tokens,
             tools=self.bound_tools,
             tool_choice=self.bound_tool_choice,
         )
+        if self.thinking_enabled is not None and "deepseek" in (self.vendor_type or self.model or "").casefold():
+            payload["thinking"] = {"type": "enabled" if self.thinking_enabled else "disabled"}
         response = safe_post_llm_endpoint(
             normalize_messages_url(self.api_base),
             headers=build_anthropic_headers(self.api_key),

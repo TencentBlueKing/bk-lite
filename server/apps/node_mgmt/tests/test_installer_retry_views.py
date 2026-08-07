@@ -75,6 +75,28 @@ def test_controller_retry_rejects_task_nodes_outside_authorized_scope(
     assert retry_called["value"] is False
 
 
+def test_controller_retry_rejects_invalid_port_before_dispatch(
+    api_client,
+    authenticated_user,
+    monkeypatch,
+):
+    _prepare_client(api_client, authenticated_user, monkeypatch)
+    retry_called = {"value": False}
+    monkeypatch.setattr(
+        "apps.node_mgmt.views.installer.retry_controller.delay",
+        lambda *args, **kwargs: retry_called.__setitem__("value", True),
+    )
+
+    response = api_client.post(
+        URL,
+        {"task_id": 39, "task_node_ids": [101], "port": 70000, "password": "replacement"},
+        format="json",
+    )
+
+    assert response.status_code == 400
+    assert retry_called["value"] is False
+
+
 def test_controller_retry_dispatches_when_all_task_nodes_are_authorized(
     api_client,
     authenticated_user,
@@ -114,7 +136,13 @@ def test_controller_retry_dispatches_when_all_task_nodes_are_authorized(
 
     response = api_client.post(
         URL,
-        {"task_id": 39, "task_node_ids": [101, 102], "private_key": "replacement-key"},
+        {
+            "task_id": 39,
+            "task_node_ids": [101, 102],
+            "port": 2222,
+            "username": "replacement-user",
+            "private_key": "replacement-key",
+        },
         format="json",
     )
 
@@ -128,6 +156,8 @@ def test_controller_retry_dispatches_when_all_task_nodes_are_authorized(
     assert captured["delay_args"] == (39, [101, 102])
     assert captured["delay_kwargs"] == {
         "password": None,
+        "port": 2222,
+        "username": "replacement-user",
         "private_key": "replacement-key",
         "passphrase": None,
     }

@@ -5,16 +5,30 @@
 
 import './styles/chat.css';
 import './styles/floating-button.css';
-import { Chat } from './Chat';
-import { FloatingButton } from './FloatingButton';
+import { Chat, type ChatProps } from './Chat';
+import { FloatingButton, type FloatingButtonProps } from './FloatingButton';
 import React from 'react';
 import ReactDOM from 'react-dom/client';
+import type { Root } from 'react-dom/client';
+
+type WebChatInitConfig = ChatProps & FloatingButtonProps;
+
+let floatingRoot: Root | null = null;
+let floatingContainer: HTMLElement | null = null;
+
+const destroyFloatingWebChat = () => {
+  floatingRoot?.unmount();
+  floatingRoot = null;
+  floatingContainer?.remove();
+  floatingContainer = null;
+};
 
 // Create global WebChat namespace
 declare global {
   interface Window {
     WebChat: {
-      default: (config: any, elementId: string | null) => void;
+      default: (config: WebChatInitConfig, elementId: string | null) => void;
+      destroy: () => void;
       Chat: typeof Chat;
       FloatingButton: typeof FloatingButton;
     };
@@ -26,19 +40,22 @@ declare global {
  * Usage: window.WebChat.default(config, elementId)
  */
 const WebChatInit = (
-  config: any,
+  config: WebChatInitConfig,
   elementId?: string | null
 ) => {
   // If no elementId provided, create floating button mode
   if (!elementId) {
+    destroyFloatingWebChat();
+
     // Create container
     const container = document.createElement('div');
     container.id = 'webchat-root';
     document.body.appendChild(container);
 
     // Create root and render floating button
-    const root = ReactDOM.createRoot(container);
-    root.render(React.createElement(FloatingButton, config));
+    floatingContainer = container;
+    floatingRoot = ReactDOM.createRoot(container);
+    floatingRoot.render(React.createElement(FloatingButton, config));
     return;
   }
 
@@ -57,6 +74,7 @@ const WebChatInit = (
 if (typeof window !== 'undefined') {
   window.WebChat = {
     default: WebChatInit,
+    destroy: destroyFloatingWebChat,
     Chat,
     FloatingButton,
   };
@@ -64,6 +82,7 @@ if (typeof window !== 'undefined') {
 
 export default {
   default: WebChatInit,
+  destroy: destroyFloatingWebChat,
   Chat,
   FloatingButton,
 };

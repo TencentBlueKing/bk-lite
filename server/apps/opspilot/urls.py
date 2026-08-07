@@ -21,12 +21,14 @@ from apps.opspilot.viewsets import (
     SkillToolsViewSet,
     WikiBuildRecordViewSet,
     WikiCheckItemViewSet,
+    WikiDirectoryViewSet,
     WikiKnowledgeBaseViewSet,
     WikiMaterialViewSet,
     WikiPageViewSet,
     WorkFlowTaskResultViewSet,
 )
 from apps.opspilot.viewsets.memory_engine_view import MemoryEngineViewSet
+from apps.opspilot.viewsets.wiki_media_proxy_view import WikiParsedMediaProxyView
 
 router = routers.DefaultRouter()
 # model_provider
@@ -57,12 +59,24 @@ router.register(r"memory_mgmt/memory_engines", MemoryEngineViewSet, basename="me
 
 # wiki (new knowledge base)
 router.register(r"wiki_mgmt/knowledge_base", WikiKnowledgeBaseViewSet, basename="wiki_knowledge_base")
+router.register(r"wiki_mgmt/directory", WikiDirectoryViewSet, basename="wiki_directory")
 router.register(r"wiki_mgmt/material", WikiMaterialViewSet, basename="wiki_material")
 router.register(r"wiki_mgmt/page", WikiPageViewSet, basename="wiki_page")
 router.register(r"wiki_mgmt/build_record", WikiBuildRecordViewSet, basename="wiki_build_record")
 router.register(r"wiki_mgmt/check_item", WikiCheckItemViewSet, basename="wiki_check_item")
 
 urlpatterns = router.urls
+
+# wiki media 同源代理（HMAC，供 <img> 无 Bearer 加载）
+_wiki_media_proxy = WikiParsedMediaProxyView.as_view()
+_wiki_media_proxy.api_exempt = True
+urlpatterns += [
+    path(
+        r"wiki_mgmt/media/",
+        _wiki_media_proxy,
+        name="wiki_parsed_media_proxy",
+    ),
+]
 
 # bot open api
 urlpatterns += [
@@ -76,11 +90,6 @@ urlpatterns += [
         r"bot_mgmt/v1/chat/completions",
         views.openai_completions,
         name="openai_completions",
-    ),
-    path(
-        r"bot_mgmt/lobe_chat/v1/chat/completions",
-        views.lobe_skill_execute,
-        name="lobe_openai_completions",
     ),
     path(
         r"bot_mgmt/get_active_users_line_data/",

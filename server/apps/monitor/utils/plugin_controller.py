@@ -1,6 +1,7 @@
 import uuid
 
-from jinja2 import BaseLoader, DebugUndefined, Environment
+from jinja2 import BaseLoader, DebugUndefined
+from jinja2.defaults import DEFAULT_FILTERS
 
 from apps.core.exceptions.base_app_exception import BaseAppException, ValidationAppException
 from apps.core.utils.safe_template import (
@@ -17,7 +18,6 @@ from apps.monitor.utils.dimension import parse_instance_id
 from apps.rpc.node_mgmt import NodeMgmt
 
 
-_DEFAULT_JINJA_ENV = Environment()
 _MONITOR_TEMPLATE_ALLOWED_FILTERS = (
     "default",
     "lower",
@@ -26,6 +26,11 @@ _MONITOR_TEMPLATE_ALLOWED_FILTERS = (
     "to_toml_str_array",
 )
 _MONITOR_TEMPLATE_ALLOWED_VARIABLES = {
+    # SNMP 接口过滤运行时注入片段的固定 Jinja 局部变量。
+    "_ifdescr_exclude",
+    "_ifdescr_include",
+    "_iftype_exclude",
+    "_iftype_include",
     "ENV_BEARER_TOKEN",
     "ENV_PASSWORD",
     "agents",
@@ -42,11 +47,13 @@ _MONITOR_TEMPLATE_ALLOWED_VARIABLES = {
     "dbname",
     "disk_exclude_fstypes",
     "disk_include_fstypes",
+    "enable_ifmib",
     "endpoint",
     "expect",
     "host",
     "ifdescr_exclude",
     "ifdescr_include",
+    "ifmib_capable",
     "iftype_exclude",
     "iftype_include",
     "insecure_skip_verify",
@@ -176,15 +183,15 @@ class Controller:
             missing_filters = [
                 name
                 for name in _MONITOR_TEMPLATE_ALLOWED_FILTERS
-                if name not in _DEFAULT_JINJA_ENV.filters and name not in env.filters
+                if name not in DEFAULT_FILTERS and name not in env.filters
             ]
             if missing_filters:
                 raise BaseAppException(f"Missing default Jinja filters: {', '.join(missing_filters)}")
             env.filters.update(
                 {
-                    name: _DEFAULT_JINJA_ENV.filters[name]
+                    name: DEFAULT_FILTERS[name]
                     for name in _MONITOR_TEMPLATE_ALLOWED_FILTERS
-                    if name in _DEFAULT_JINJA_ENV.filters
+                    if name in DEFAULT_FILTERS
                 }
             )
             self._jinja_env = env
@@ -254,13 +261,20 @@ class Controller:
                     logger.error(f"解析 instance_id 失败: {instance_id}, 错误: {e}")
                     raise ValueError(f"无效的 instance_id 格式: {instance_id}") from e
 
+        from apps.monitor.utils.snmp_ifmib_capability import is_ifmib_capable_render_context
         from apps.monitor.utils.snmp_interface_template import (
+            ensure_core_network_ifmib_jinja,
             ensure_snmp_interface_filter_jinja,
             needs_snmp_interface_filter_jinja,
+            validate_rendered_core_network_ifmib,
         )
 
-        # SNMP 接口过滤 Jinja 单一真相源：渲染前幂等注入，插件 child 模板无需复制
-        if needs_snmp_interface_filter_jinja(template_content):
+        template_content = ensure_core_network_ifmib_jinja(template_content, _context)
+        # 接口过滤与公共 IF-MIB 同能力边界：非 Network Device（如 hardware_server）
+        # 即使模板含 ifDescr，也不得静默注入默认 ifType 排除。
+        if is_ifmib_capable_render_context(_context) and needs_snmp_interface_filter_jinja(
+            template_content
+        ):
             template_content = ensure_snmp_interface_filter_jinja(template_content)
 
         safe_context = sanitize_template_context(_context)
@@ -274,7 +288,9 @@ class Controller:
             raise BaseAppException(f"采集模板包含未授权变量: {e}") from e
 
         template = self.jinja_env.from_string(template_content)
-        return template.render(safe_context)
+        rendered_template = template.render(safe_context)
+        validate_rendered_core_network_ifmib(rendered_template, _context)
+        return rendered_template
 
     def format_configs(self):
         """
@@ -348,8 +364,9 @@ class Controller:
 
         plugin_id = self.data.get("monitor_plugin_id")
         plugin_template_id = None
+        plugin_obj = None
         if plugin_id:
-            plugin_obj = MonitorPlugin.objects.filter(id=plugin_id).only("template_id").first()
+            plugin_obj = MonitorPlugin.objects.filter(id=plugin_id).prefetch_related("monitor_object").first()
             if plugin_obj:
                 plugin_template_id = plugin_obj.template_id
         configs = self.format_configs()
@@ -377,6 +394,11 @@ class Controller:
                 logger.warning(f"未找到模板：collector={collector}, collect_type={collect_type}, type={type_name}")
                 raise BaseAppException(f"未找到采集模板：collector={collector}, collect_type={collect_type}, type={type_name}")
 
+            if str(collect_type or "") == "exporter" and str(type_name or "").lower() == "kafka":
+                from apps.monitor.utils.kafka_sasl import ensure_kafka_sasl_mechanism_defaults
+
+                ensure_kafka_sasl_mechanism_defaults(config_info)
+
             env_config = {k[4:]: v for k, v in config_info.items() if k.startswith("ENV_")}
 
             for template in templates:
@@ -391,11 +413,22 @@ class Controller:
                         "plugin_id": plugin_template_id or plugin_id,
                         "monitor_plugin_id": plugin_id,
                     }
-                    if collect_type == "snmp" and "iftype_exclude" not in render_context:
-                        from apps.monitor.constants.snmp_interface import DEFAULT_IFTYPE_EXCLUDE
+                    from apps.monitor.utils.snmp_ifmib_capability import is_ifmib_capable_plugin
 
-                        render_context["iftype_exclude"] = list(DEFAULT_IFTYPE_EXCLUDE)
-                    if collect_type == "snmp" and is_child:
+                    render_context["ifmib_capable"] = is_ifmib_capable_plugin(plugin_obj)
+                    if render_context["ifmib_capable"]:
+                        # IF-MIB 是本次下发选项。接入页默认启用；用户可以只对当前
+                        # 新实例关闭，已下发实例的 TOML 快照不会受影响。
+                        render_context.setdefault("enable_ifmib", True)
+                        # 默认 ifType 排除仅对具备过滤 UI 的 Network Device 注入，
+                        # 避免 hardware_server 等无开关对象静默丢接口。
+                        if "iftype_exclude" not in render_context:
+                            from apps.monitor.constants.snmp_interface import DEFAULT_IFTYPE_EXCLUDE
+
+                            render_context["iftype_exclude"] = list(DEFAULT_IFTYPE_EXCLUDE)
+                    # 与 IF-MIB 能力判定一致：覆盖 snmp / snmp_h3c 等厂商 collect_type。
+                    snmp_collect = str(collect_type or "").startswith("snmp")
+                    if snmp_collect and is_child:
                         from apps.monitor.utils.snmp_interface_filters import (
                             assert_snmp_interface_filter_mutex_from_values,
                         )

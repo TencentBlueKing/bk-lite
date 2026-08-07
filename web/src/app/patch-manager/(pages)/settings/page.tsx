@@ -1,9 +1,11 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Tag, Button, Tabs, Input, Select, Space, TimePicker, Alert, message, Form, Switch, Modal, InputNumber, Spin, Popconfirm } from 'antd';
+import { Tag, Button, Tabs, Input, Select, Space, TimePicker, Alert, message, Form, Switch, Modal, InputNumber, Spin, Tooltip } from 'antd';
 import PermissionWrapper from '@/components/permission';
+import PatchDeletePopconfirm from '@/app/patch-manager/components/delete-popconfirm';
 import Password from '@/components/password';
+import SourceOriginBadge from '@/components/source-origin-badge';
 import type { Dayjs } from 'dayjs';
 import dayjs from 'dayjs';
 import { PlusOutlined, ClockCircleOutlined, LinkOutlined, EditOutlined, PlayCircleOutlined, CheckCircleOutlined } from '@ant-design/icons';
@@ -16,6 +18,11 @@ import styles from './page.module.scss';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import { useTranslation } from '@/utils/i18n';
 import { createListRequestCoordinator } from '@/app/patch-manager/utils/list-request-coordinator';
+import {
+  formatSourceApplicableScope,
+  LINUX_ARCHITECTURE_OPTIONS,
+  normalizeArchitecture,
+} from '@/app/patch-manager/constants/architecture';
 
 const SOURCE_TYPE_OPTIONS: { label: string; value: PatchSourceType }[] = [
   { label: 'WSUS', value: 'wsus' },
@@ -23,6 +30,29 @@ const SOURCE_TYPE_OPTIONS: { label: string; value: PatchSourceType }[] = [
   { label: 'dnf repo', value: 'dnf_repo' },
   { label: 'apt repo', value: 'apt_repo' },
 ];
+
+const SOURCE_URL_TEXT_KEYS: Record<PatchSourceType, { label: string; help: string; placeholder: string }> = {
+  wsus: {
+    label: 'patchManager.catalogUrl',
+    help: 'patchManager.settingsPage.wsusUrlHelp',
+    placeholder: 'patchManager.settingsPage.wsusUrlPlaceholder',
+  },
+  yum_repo: {
+    label: 'patchManager.repoUrl',
+    help: 'patchManager.settingsPage.yumRepoUrlHelp',
+    placeholder: 'patchManager.settingsPage.yumRepoUrlPlaceholder',
+  },
+  dnf_repo: {
+    label: 'patchManager.repoUrl',
+    help: 'patchManager.settingsPage.dnfRepoUrlHelp',
+    placeholder: 'patchManager.settingsPage.dnfRepoUrlPlaceholder',
+  },
+  apt_repo: {
+    label: 'patchManager.repoUrl',
+    help: 'patchManager.settingsPage.aptRepoUrlHelp',
+    placeholder: 'patchManager.settingsPage.aptRepoUrlPlaceholder',
+  },
+};
 
 const SAVED_SECRET = '********';
 
@@ -62,7 +92,11 @@ function SourcesTab({ activeKey }: { activeKey: string }) {
   const [sourceModalOpen, setSourceModalOpen] = useState(false);
   const [editingSource, setEditingSource] = useState<PatchSource | null>(null);
   const [form] = Form.useForm();
-  const sourceType = Form.useWatch('source_type', form);
+  const sourceType = (Form.useWatch('source_type', form) || 'wsus') as PatchSourceType;
+  const sourceUrlTextKeys = SOURCE_URL_TEXT_KEYS[sourceType];
+  const sourceUrlLabel = t(sourceUrlTextKeys.label);
+  const sourceUrlHelp = t(sourceUrlTextKeys.help);
+  const sourceUrlPlaceholder = t(sourceUrlTextKeys.placeholder);
   const [sourceSearch, setSourceSearch] = useState('');
   const [pagination, setPagination] = useState({ current: 1, pageSize: 20, total: 0 });
   const [testingConnectivity, setTestingConnectivity] = useState(false);
@@ -116,6 +150,7 @@ function SourcesTab({ activeKey }: { activeKey: string }) {
     form.resetFields();
     form.setFieldsValue(record ? {
       ...record,
+      arch: normalizeArchitecture(record.arch),
       proxy: proxyStr,
       auth_password: record.has_auth_password ? SAVED_SECRET : undefined,
     } : { name: '', source_type: 'wsus', url: '', proxy: '', is_enabled: true });
@@ -135,7 +170,11 @@ function SourcesTab({ activeKey }: { activeKey: string }) {
     }
     const payload: Record<string, any> = { ...values, proxy_host: proxyHost, proxy_port: proxyPort };
     delete payload.proxy;
-    if (payload.auth_password === SAVED_SECRET) {
+    if (payload.source_type === 'wsus') delete payload.arch;
+    if (
+      payload.auth_password === SAVED_SECRET
+      || (editingSource?.has_auth_password && !payload.auth_password)
+    ) {
       delete payload.auth_password;
     }
     return payload;
@@ -226,7 +265,20 @@ function SourcesTab({ activeKey }: { activeKey: string }) {
   };
 
   const cols: ColumnsType<PatchSource> = [
-    { title: t('patchManager.pluginName'), dataIndex: 'name', width: 150 },
+    {
+      title: t('patchManager.pluginName'),
+      dataIndex: 'name',
+      width: 220,
+    },
+    {
+      title: t('patchManager.builtin'),
+      dataIndex: 'is_builtin',
+      width: 88,
+      align: 'center',
+      render: (isBuiltin: boolean) => isBuiltin
+        ? <SourceOriginBadge kind="builtin" label={t('patchManager.yes')} />
+        : <span style={{ color: 'var(--color-text-3, #8c8c8c)' }}>{t('patchManager.no')}</span>,
+    },
     {
       title: t('patchManager.settingsPage.type'),
       dataIndex: 'source_type',
@@ -248,8 +300,12 @@ function SourcesTab({ activeKey }: { activeKey: string }) {
       title: t('patchManager.enable'),
       width: 90,
       render: (_: unknown, r: PatchSource) => (
-        <PermissionWrapper requiredPermissions={['Edit']} instPermissions={r.permission}>
-          <Switch size="small" checked={r.is_enabled} onChange={(checked) => handleToggleEnabled(r, checked)} />
+        <PermissionWrapper requiredPermissions={['Edit']}>
+          <Switch
+            size="small"
+            checked={r.is_enabled}
+            onChange={(checked) => handleToggleEnabled(r, checked)}
+          />
         </PermissionWrapper>
       ),
     },
@@ -261,10 +317,13 @@ function SourcesTab({ activeKey }: { activeKey: string }) {
       ),
     },
     {
-      title: t('patchManager.settingsPage.applicableSystem'),
-      width: 180,
+      title: t('patchManager.settingsPage.applicableScope'),
+      width: 220,
       ellipsis: true,
-      render: (_: unknown, r: PatchSource) => r.distro_name || r.os_version || r.arch || '—',
+      render: (_: unknown, r: PatchSource) => formatSourceApplicableScope(
+        r,
+        t('patchManager.settingsPage.wsusApplicableScope'),
+      ),
     },
     {
       title: t('patchManager.operation'),
@@ -272,11 +331,21 @@ function SourcesTab({ activeKey }: { activeKey: string }) {
       fixed: 'right',
       render: (_: unknown, r: PatchSource) => (
         <Space size={10}>
-          <PermissionWrapper requiredPermissions={['Edit']} instPermissions={r.permission}><a style={{ color: 'var(--color-primary, #1677ff)' }} onClick={() => openSourceModal(r)}>{t('patchManager.edit')}</a></PermissionWrapper>
-          <PermissionWrapper requiredPermissions={['Edit']} instPermissions={r.permission}><a style={{ color: 'var(--color-primary, #1677ff)' }} onClick={() => runConnectionTest([r.id])}>{t('patchManager.testConnection')}</a></PermissionWrapper>
-          <PermissionWrapper requiredPermissions={['Delete']} instPermissions={r.permission}><Popconfirm title={t('patchManager.settingsPage.confirmDeleteSource')} onConfirm={() => handleDeleteSource(r)} okText={t('patchManager.delete')} cancelText={t('patchManager.cancel')}>
-            <a style={{ color: '#ff4d4f' }}>{t('patchManager.delete')}</a>
-          </Popconfirm></PermissionWrapper>
+          <PermissionWrapper requiredPermissions={['Edit']}><a style={{ color: 'var(--color-primary, #1677ff)' }} onClick={() => openSourceModal(r)}>{t('patchManager.edit')}</a></PermissionWrapper>
+          <PermissionWrapper requiredPermissions={['Edit']}><a style={{ color: 'var(--color-primary, #1677ff)' }} onClick={() => runConnectionTest([r.id])}>{t('patchManager.testConnection')}</a></PermissionWrapper>
+          {r.is_builtin ? (
+            <Tooltip title={t('patchManager.settingsPage.builtinDeleteDisabled')}>
+              <span>
+                <Button type="link" danger disabled size="small" style={{ padding: 0, height: 'auto' }}>
+                  {t('patchManager.delete')}
+                </Button>
+              </span>
+            </Tooltip>
+          ) : (
+            <PermissionWrapper requiredPermissions={['Delete']}><PatchDeletePopconfirm title={t('patchManager.settingsPage.confirmDeleteSource', undefined, { name: r.name })} description={t('patchManager.settingsPage.deleteSourceDescription')} onConfirm={() => handleDeleteSource(r)} okText={t('patchManager.delete')} cancelText={t('patchManager.cancel')} okButtonProps={{ danger: true }}>
+              <a style={{ color: '#ff4d4f' }}>{t('patchManager.delete')}</a>
+            </PatchDeletePopconfirm></PermissionWrapper>
+          )}
         </Space>
       ),
     },
@@ -307,7 +376,6 @@ function SourcesTab({ activeKey }: { activeKey: string }) {
               type: 'checkbox',
               selectedRowKeys: selectedSources,
               onChange: setSelectedSources,
-              getCheckboxProps: (record: PatchSource) => ({ disabled: !record.permission?.includes('Operate') }),
             }}
             columns={cols}
             dataSource={sources}
@@ -327,13 +395,14 @@ function SourcesTab({ activeKey }: { activeKey: string }) {
         title={editingSource ? t('patchManager.settingsPage.editSource') : t('patchManager.settingsPage.addSource')}
         open={sourceModalOpen}
         onCancel={() => setSourceModalOpen(false)}
+        styles={{ body: { maxHeight: 'calc(100vh - 240px)', overflowY: 'auto' } }}
         footer={
           <Space style={{ width: '100%', justifyContent: 'flex-end' }}>
             <Button onClick={() => setSourceModalOpen(false)}>{t('patchManager.cancel')}</Button>
-            <PermissionWrapper requiredPermissions={[editingSource ? 'Edit' : 'Add']} instPermissions={editingSource?.permission}>
+            <PermissionWrapper requiredPermissions={[editingSource ? 'Edit' : 'Add']}>
               <Button loading={testingConnectivity} onClick={handleSourceFormTest}>{t('patchManager.testConnection')}</Button>
             </PermissionWrapper>
-            <PermissionWrapper requiredPermissions={[editingSource ? 'Edit' : 'Add']} instPermissions={editingSource?.permission}>
+            <PermissionWrapper requiredPermissions={[editingSource ? 'Edit' : 'Add']}>
               <Button type="primary" loading={actionLoading} onClick={handleSaveSource}>{t('patchManager.save')}</Button>
             </PermissionWrapper>
           </Space>
@@ -346,18 +415,31 @@ function SourcesTab({ activeKey }: { activeKey: string }) {
           <Form.Item label={t('patchManager.settingsPage.type')} name="source_type" rules={[{ required: true, message: t('patchManager.settingsPage.typeRequired') }]}>
             <Select options={SOURCE_TYPE_OPTIONS} />
           </Form.Item>
-          <Form.Item label="URL" name="url" rules={[{ required: true, message: t('patchManager.settingsPage.urlRequired') }]}>
-            <Input placeholder="https://..." />
+          <Form.Item
+            label={sourceUrlLabel}
+            name="url"
+            tooltip={sourceUrlHelp}
+            rules={[{ required: true, message: t('patchManager.settingsPage.urlRequired') }]}
+          >
+            <Input placeholder={sourceUrlPlaceholder} />
           </Form.Item>
           <Form.Item label={t('patchManager.settingsPage.proxy')} name="proxy">
             <Input placeholder={t('patchManager.settingsPage.proxyPlaceholder')} />
           </Form.Item>
           {sourceType === 'wsus' && (
             <>
-              <Form.Item label={t('patchManager.authUser')} name="auth_user">
+              <Form.Item
+                label={t('patchManager.authUser')}
+                name="auth_user"
+                rules={[{ required: true, message: t('patchManager.settingsPage.authUserRequired') }]}
+              >
                 <Input placeholder={t('patchManager.settingsPage.authUserPlaceholder')} />
               </Form.Item>
-              <Form.Item label={t('patchManager.authPassword')} name="auth_password">
+              <Form.Item
+                label={t('patchManager.authPassword')}
+                name="auth_password"
+                rules={[{ required: true, message: t('patchManager.settingsPage.authPasswordRequired') }]}
+              >
                 <Password
                   placeholder={t('patchManager.settingsPage.authPasswordPlaceholder')}
                   clickToEdit={Boolean(editingSource?.has_auth_password)}
@@ -367,17 +449,24 @@ function SourcesTab({ activeKey }: { activeKey: string }) {
           )}
           {sourceType !== 'wsus' && (
             <>
-              <Form.Item label={t('patchManager.settingsPage.applicableSystem')} name="distro_name" rules={[{ required: true, message: t('patchManager.settingsPage.applicableSystemRequired') }]}>
-                <Input placeholder={t('patchManager.settingsPage.applicableSystemPlaceholder')} />
+              <Form.Item label={t('patchManager.distro')} name="distro_name" rules={[{ required: true, message: t('patchManager.settingsPage.distroRequired') }]}>
+                <Input placeholder={t('patchManager.settingsPage.distroPlaceholder')} />
               </Form.Item>
               <Form.Item label={t('patchManager.osVersion')} name="os_version">
                 <Input placeholder={t('patchManager.settingsPage.osVersionPlaceholder')} />
               </Form.Item>
+              <Form.Item
+                label={t('patchManager.arch')}
+                name="arch"
+                rules={[{ required: true, message: t('patchManager.libraryPage.archRequired') }]}
+              >
+                <Select
+                  placeholder={t('patchManager.settingsPage.archPlaceholder')}
+                  options={LINUX_ARCHITECTURE_OPTIONS}
+                />
+              </Form.Item>
             </>
           )}
-          <Form.Item label={t('patchManager.arch')} name="arch">
-            <Input placeholder={t('patchManager.settingsPage.archPlaceholder')} />
-          </Form.Item>
           <Form.Item label={t('patchManager.enabled')} name="is_enabled" valuePropName="checked">
             <Switch />
           </Form.Item>

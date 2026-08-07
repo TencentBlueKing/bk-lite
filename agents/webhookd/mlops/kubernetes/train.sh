@@ -37,6 +37,10 @@ ID=$(echo "$JSON_DATA" | jq -r '.id // empty' 2>/dev/null) || {
     json_error "JSON_PARSE_FAILED" "" "Failed to parse JSON data"
     exit 1
 }
+if ! validate_container_image_json_boundary "$JSON_DATA"; then
+    json_error "INVALID_TRAIN_IMAGE" "${ID:-unknown}" "train_image must be a valid container image reference"
+    exit 1
+fi
 BUCKET=$(echo "$JSON_DATA" | jq -r '.bucket // empty')
 DATASET=$(echo "$JSON_DATA" | jq -r '.dataset // empty')
 CONFIG=$(echo "$JSON_DATA" | jq -r '.config // empty')
@@ -79,6 +83,11 @@ fi
 
 if [ -z "$TRAIN_IMAGE" ]; then
     json_error "MISSING_TRAIN_IMAGE" "$ID" "Missing required field: train_image"
+    exit 1
+fi
+
+if ! validate_container_image_reference "$TRAIN_IMAGE"; then
+    json_error "INVALID_TRAIN_IMAGE" "$ID" "train_image must be a valid container image reference"
     exit 1
 fi
 
@@ -169,7 +178,7 @@ spec:
       restartPolicy: Never
       containers:
       - name: train
-        image: ${TRAIN_IMAGE}
+        image: "${TRAIN_IMAGE}"
         command: ["/apps/support-files/scripts/train-model.sh"]
         args: ["${BUCKET}", "${DATASET}", "${CONFIG}"]
         env:

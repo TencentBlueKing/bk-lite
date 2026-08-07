@@ -1,7 +1,7 @@
 {
   "client_id": "apm",
   "name": "APM",
-  "url": "/apm/services",
+  "url": "/apm/home",
   "icon": "monitor",
   "tags": [
     "tag.apm_integration",
@@ -12,11 +12,26 @@
   "description": "app.apm",
   "menus": [
     {
+      "name": "Home",
+      "children": [
+        {
+          "id": "home",
+          "name": "Home",
+          "operation": ["View"]
+        }
+      ]
+    },
+    {
       "name": "Integration",
       "children": [
         {
           "id": "integration_add",
           "name": "Add integration",
+          "operation": ["View", "Operate"]
+        },
+        {
+          "id": "applications",
+          "name": "Applications",
           "operation": ["View", "Operate"]
         },
         {
@@ -67,7 +82,9 @@
       "name": "normal",
       "role_name": "apm_normal",
       "menus": [
+        "home-View",
         "integration_add-View",
+        "applications-View",
         "integration_instances-View",
         "services-View",
         "traces-View",

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Spin, Select, Segmented } from 'antd';
+import { Pagination, Spin, Select, Segmented } from 'antd';
 import TimeSelector from '@/components/time-selector';
 import Collapse from '@/components/collapse';
 import useApiClient from '@/utils/request';
@@ -10,7 +10,6 @@ import {
   TableDataItem,
   TimeSelectorDefaultValue,
   TimeValuesProps,
-  GroupInfo,
   MetricItem,
   IndexViewItem,
 } from '@/app/monitor/types';
@@ -49,6 +48,7 @@ const MonitorView: React.FC<ViewModalProps> = ({
     useMonitorApi();
   const { t } = useTranslation();
   const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const metricSearchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const [metricId, setMetricId] = useState<number | null>();
   const [timeValues, setTimeValues] = useState<TimeValuesProps>({
@@ -67,6 +67,9 @@ const MonitorView: React.FC<ViewModalProps> = ({
   const [frequence, setFrequence] = useState<number>(0);
   const [metricData, setMetricData] = useState<IndexViewItem[]>([]);
   const [originMetricData, setOriginMetricData] = useState<IndexViewItem[]>([]);
+  const [metricPage, setMetricPage] = useState(1);
+  const [metricCount, setMetricCount] = useState(0);
+  const [metricKeyword, setMetricKeyword] = useState('');
   const [activeTab, setActiveTab] = useState<string>('');
   const [tabOptions, setTabOptions] = useState(plugins);
   const [processObjectId, setProcessObjectId] = useState('');
@@ -99,6 +102,7 @@ const MonitorView: React.FC<ViewModalProps> = ({
   // 请求并发控制：与指标详情页一致，排队而非取消最早请求。
   const MAX_CONCURRENT_REQUESTS = 4;
   const activeRequestsRef = useRef<Map<number, AbortController>>(new Map());
+  const metricCatalogAbortRef = useRef<AbortController | null>(null);
   const requestGenerationRef = useRef(0);
   const visibleMetricIdsRef = useRef<Set<number>>(new Set());
   const metricDataRef = useRef<IndexViewItem[]>([]);
@@ -205,7 +209,11 @@ const MonitorView: React.FC<ViewModalProps> = ({
   useEffect(() => {
     return () => {
       cancelAllRequests();
+      metricCatalogAbortRef.current?.abort();
       clearTimer();
+      if (metricSearchTimerRef.current) {
+        clearTimeout(metricSearchTimerRef.current);
+      }
     };
   }, []);
 
@@ -248,8 +256,13 @@ const MonitorView: React.FC<ViewModalProps> = ({
   }, [isProcessMetricsView, processObjectId, hostLogicalId]);
 
   const onTabChange = (val: string) => {
+    if (metricSearchTimerRef.current) {
+      clearTimeout(metricSearchTimerRef.current);
+    }
     setActiveTab(val);
     setMetricId(null);
+    setMetricPage(1);
+    setMetricKeyword('');
     setProcessFilterNames([]);
     cancelAllRequests();
     setResetCounter((prev) => prev + 1);
@@ -257,13 +270,15 @@ const MonitorView: React.FC<ViewModalProps> = ({
     setVisibleMetricIds(new Set());
 
     // 切换tab时重新初始化（需要重新获取该tab下的数据）
-    getInitData(val);
+    getInitData(val, undefined, 1, '');
   };
 
   // 初始化数据，包括分组和指标列表（只在弹窗时调用一次）
   const getInitData = async (
     tab: string,
-    processTarget?: { processObjectId: string; processPluginId: string }
+    processTarget?: { processObjectId: string; processPluginId: string },
+    page = 1,
+    keyword = ''
   ) => {
     const processOid = processTarget?.processObjectId || processObjectId;
     const processPid = processTarget?.processPluginId || processPluginId;
@@ -275,51 +290,54 @@ const MonitorView: React.FC<ViewModalProps> = ({
       return;
     }
     const params = {
-      monitor_object_id: processTab ? processOid : monitorObject,
+      monitor_object_id: String(processTab ? processOid : monitorObject),
       monitor_plugin_id: processTab ? processPid : tab,
+      page,
+      ...(keyword.trim() ? { keyword: keyword.trim() } : {})
     };
-    const getGroupList = getMetricsGroup(params);
-    const getMetrics = getMonitorMetrics(params);
+    metricCatalogAbortRef.current?.abort();
+    const abortController = new AbortController();
+    metricCatalogAbortRef.current = abortController;
+    const config = { signal: abortController.signal };
     setLoading(true);
     try {
-      Promise.all([getGroupList, getMetrics])
-        .then((res) => {
-          const groupData = res[0].map((item: GroupInfo) => ({
-            ...item,
-            isLoading: false,
-            child: [],
-          }));
-          const metricData = res[1];
-          metricData.forEach((metric: MetricItem) => {
-            const target = groupData.find(
-              (item: GroupInfo) => item.id === metric.metric_group
-            );
-            if (target) {
-              target.child.push({
-                ...metric,
-                viewData: [],
-              });
-            }
-          });
-          const _groupData = groupData.filter(
-            (item: IndexViewItem) => !!item.child?.length
-          );
-          setMetricData(_groupData);
-          setOriginMetricData(_groupData);
-          if (_groupData.length > 0) {
-            // 默认展开全部分组，避免用户逐个点开；具体指标卡仍靠滚入视图懒加载。
-            setExpandedIds(new Set(_groupData.map((group: IndexViewItem) => group.id)));
-          }
-          setLoadedMetricIds(new Set());
-          setLoadingMetricIds(new Set());
-          setCancelledMetricIds(new Set());
-          setVisibleMetricIds(new Set());
-        })
-        .finally(() => {
-          setLoading(false);
-        });
+      const res = await Promise.all([
+        getMetricsGroup(params, config),
+        getMonitorMetrics(params, config)
+      ]);
+      if (abortController.signal.aborted) return;
+      const groupData: IndexViewItem[] = (
+        res[1].metric_groups || res[0].items
+      ).map((item) => ({
+        ...item,
+        id: Number(item.id),
+        isLoading: false,
+        child: [],
+      }));
+      res[1].items.forEach((metric: MetricItem) => {
+        const target = groupData.find((item) => item.id === metric.metric_group);
+        if (target) {
+          target.child.push({ ...metric, viewData: [] });
+        }
+      });
+      const nextGroups = groupData.filter((item) => !!item.child?.length);
+      setMetricCount(res[1].count);
+      setMetricData(nextGroups);
+      setOriginMetricData(nextGroups);
+      setExpandedIds(new Set(nextGroups.map((group) => group.id)));
+      setLoadedMetricIds(new Set());
+      setLoadingMetricIds(new Set());
+      setCancelledMetricIds(new Set());
+      setVisibleMetricIds(new Set());
     } catch {
-      setLoading(false);
+      if (!abortController.signal.aborted) {
+        setMetricData([]);
+        setOriginMetricData([]);
+      }
+    } finally {
+      if (metricCatalogAbortRef.current === abortController) {
+        setLoading(false);
+      }
     }
   };
 
@@ -651,6 +669,27 @@ const MonitorView: React.FC<ViewModalProps> = ({
     }
   };
 
+  const handleMetricKeywordChange = (value: string) => {
+    setMetricKeyword(value);
+    if (metricSearchTimerRef.current) {
+      clearTimeout(metricSearchTimerRef.current);
+    }
+    metricSearchTimerRef.current = setTimeout(() => {
+      setMetricPage(1);
+      setMetricId(null);
+      cancelAllRequests();
+      getInitData(activeTab, undefined, 1, value);
+    }, 300);
+  };
+
+  const handleMetricPageChange = (page: number) => {
+    setMetricPage(page);
+    setMetricId(null);
+    cancelAllRequests();
+    setResetCounter((prev) => prev + 1);
+    getInitData(activeTab, undefined, page, metricKeyword);
+  };
+
   const handleProcessFilterChange = (names: string[]) => {
     setProcessFilterNames(names);
     cancelAllRequests();
@@ -765,7 +804,7 @@ const MonitorView: React.FC<ViewModalProps> = ({
   const linkToPolicy = (row: TableDataItem) => {
     const _row = {
       monitorName: monitorName,
-      monitorObjId: monitorObject + '',
+      monitorObjId: String(monitorObject),
       instanceId: form?.instance_id || '',
       metricId: row.name,
       type: 'add',
@@ -786,6 +825,7 @@ const MonitorView: React.FC<ViewModalProps> = ({
             allowClear
             {...metricSelect.selectSearchProps}
             options={metricSelect.options}
+            onSearch={handleMetricKeywordChange}
             onChange={handleMetricIdChange}
           />
           {isProcessMetricsView ? (
@@ -852,6 +892,17 @@ const MonitorView: React.FC<ViewModalProps> = ({
           ))}
         </Spin>
       </div>
+      {metricCount > 100 && (
+        <div className="mt-4 flex justify-end">
+          <Pagination
+            current={metricPage}
+            pageSize={100}
+            showSizeChanger={false}
+            total={metricCount}
+            onChange={handleMetricPageChange}
+          />
+        </div>
+      )}
     </div>
   );
 };

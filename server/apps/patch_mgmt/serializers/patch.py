@@ -2,16 +2,44 @@
 
 import re
 
+from django.db import transaction
 from rest_framework import serializers
 
 from apps.patch_mgmt.constants import PackageManagerType
 from apps.patch_mgmt.models import LinuxPatchDetail, Patch, WindowsPatchDetail
 from apps.patch_mgmt.serializers.permission import PatchPermissionSerializer
+from apps.patch_mgmt.services.patch_origin import (
+    source_details_for_patch,
+    source_type_for_patch,
+)
+from apps.patch_mgmt.utils.architecture import X86_64, UnsupportedArchitecture, normalize_architectures, validate_os_architecture
 from apps.patch_mgmt.utils.i18n import serializer_message
 
 
 class WindowsPatchDetailSerializer(serializers.ModelSerializer):
     """Windows 补丁详情序列化器（支持读写）"""
+
+    def validate_architectures(self, values):
+        try:
+            normalized = [
+                validate_os_architecture("windows", value, allow_blank=False)
+                for value in values
+            ]
+            return list(dict.fromkeys(normalized))
+        except UnsupportedArchitecture as exc:
+            raise serializers.ValidationError(
+                serializer_message(
+                    self,
+                    "error.unsupported_architecture",
+                    "Windows currently supports x86_64 only",
+                )
+            ) from exc
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        if not attrs.get("architectures"):
+            attrs["architectures"] = [X86_64]
+        return attrs
 
     class Meta:
         model = WindowsPatchDetail
@@ -31,9 +59,26 @@ class LinuxPatchDetailSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(serializer_message(self, "error.invalid_choice", "Not a valid choice."))
         return repo_type
 
+    def validate_architectures(self, values):
+        try:
+            return normalize_architectures(values)
+        except UnsupportedArchitecture as exc:
+            raise serializers.ValidationError(
+                serializer_message(self, "error.unsupported_architecture", "Only x86_64 and ARM64 are supported")
+            ) from exc
+
     class Meta:
         model = LinuxPatchDetail
-        fields = ["pkg_name", "pkg_version", "distro_name", "os_version_range", "architectures", "repo_type"]
+        fields = [
+            "pkg_name",
+            "pkg_version",
+            "packages",
+            "distro_name",
+            "os_version_range",
+            "architectures",
+            "repo_type",
+        ]
+        read_only_fields = ["packages"]
 
 
 class PatchListSerializer(PatchPermissionSerializer):
@@ -52,9 +97,11 @@ class PatchListSerializer(PatchPermissionSerializer):
     linux_detail = LinuxPatchDetailSerializer(required=False, allow_null=True)
     sources = serializers.PrimaryKeyRelatedField(many=True, read_only=True)
     source_type = serializers.SerializerMethodField()
+    source_details = serializers.SerializerMethodField()
     baseline_requirement_count = serializers.SerializerMethodField()
     package_info = serializers.SerializerMethodField()
     permission_key = "patch"
+    global_shared = True
 
     class Meta:
         model = Patch
@@ -73,6 +120,7 @@ class PatchListSerializer(PatchPermissionSerializer):
             "applicable_scope",
             "sources",
             "source_type",
+            "source_details",
             "package_info",
             "windows_detail",
             "linux_detail",
@@ -89,8 +137,10 @@ class PatchListSerializer(PatchPermissionSerializer):
         read_only_fields = ["id", "last_synced_at", "created_by", "created_at", "updated_at"]
 
     def get_source_type(self, obj):
-        first_source = obj.sources.first()
-        return first_source.source_type if first_source else None
+        return source_type_for_patch(obj)
+
+    def get_source_details(self, obj):
+        return source_details_for_patch(obj)
 
     def get_baseline_requirement_count(self, obj):
         return obj.baseline_requirements.count()
@@ -114,6 +164,42 @@ class PatchListSerializer(PatchPermissionSerializer):
     def validate(self, attrs):
         attrs = super().validate(attrs)
         os_type = attrs.get("os_type", getattr(self.instance, "os_type", None))
+        linux_detail = attrs.get("linux_detail")
+        if os_type == "linux" and (self.instance is None or linux_detail is not None):
+            existing = None
+            if self.instance is not None:
+                try:
+                    existing = self.instance.linux_detail
+                except LinuxPatchDetail.DoesNotExist:
+                    pass
+            values = {
+                "pkg_name": getattr(existing, "pkg_name", ""),
+                "pkg_version": getattr(existing, "pkg_version", ""),
+                "distro_name": getattr(existing, "distro_name", ""),
+                "os_version_range": getattr(existing, "os_version_range", ""),
+                "architectures": getattr(existing, "architectures", []),
+                "repo_type": getattr(existing, "repo_type", ""),
+            }
+            if linux_detail:
+                values.update(linux_detail)
+            labels = {
+                "pkg_name": "包名",
+                "pkg_version": "包版本",
+                "distro_name": "发行版",
+                "os_version_range": "系统版本范围",
+                "architectures": "架构",
+                "repo_type": "包管理器",
+            }
+            missing = [label for field, label in labels.items() if not values.get(field)]
+            existing_complete = existing is not None and all(
+                getattr(existing, field, None) for field in labels
+            )
+            # 新建补丁和原本完整的补丁必须保持元数据完整；历史不完整记录允许
+            # 继续编辑，评估时会安全归为 unknown，避免升级后突然无法维护旧数据。
+            if missing and (self.instance is None or existing is None or existing_complete):
+                raise serializers.ValidationError(
+                    {"linux_detail": f"Linux 补丁元数据缺少：{', '.join(missing)}"}
+                )
         windows_detail = attrs.get("windows_detail")
         if os_type != "windows" or windows_detail is None:
             return attrs
@@ -122,7 +208,15 @@ class PatchListSerializer(PatchPermissionSerializer):
         match = re.fullmatch(r"(?i:KB)(\d+)", raw_kb)
         if not match:
             raise serializers.ValidationError(
-                {"windows_detail": {"kb_number": serializer_message(self, "error.invalid_kb_number", "KB number must start with KB followed by digits")}}
+                {
+                    "windows_detail": {
+                        "kb_number": serializer_message(
+                            self,
+                            "error.invalid_kb_number",
+                            "KB number must start with KB followed by digits",
+                        )
+                    }
+                }
             )
 
         kb_number = f"KB{match.group(1)}"
@@ -131,7 +225,16 @@ class PatchListSerializer(PatchPermissionSerializer):
             duplicate = duplicate.exclude(patch=self.instance)
         if duplicate.exists():
             raise serializers.ValidationError(
-                {"windows_detail": {"kb_number": serializer_message(self, "error.duplicate_kb", "{kb} already exists and cannot be created again", kb=kb_number)}}
+                {
+                    "windows_detail": {
+                        "kb_number": serializer_message(
+                            self,
+                            "error.duplicate_kb",
+                            "{kb} already exists and cannot be created again",
+                            kb=kb_number,
+                        )
+                    }
+                }
             )
         windows_detail["kb_number"] = kb_number
         return attrs
@@ -156,9 +259,16 @@ class PatchListSerializer(PatchPermissionSerializer):
                 patch=patch, defaults=windows_detail_data
             )
         if patch.os_type == "linux" and linux_detail_data:
-            LinuxPatchDetail.objects.update_or_create(
-                patch=patch, defaults=linux_detail_data
-            )
+            with transaction.atomic():
+                detail = LinuxPatchDetail.objects.select_for_update().filter(patch=patch).first()
+                defaults = dict(linux_detail_data)
+                if detail is not None and detail.packages:
+                    packages = [dict(item) if isinstance(item, dict) else item for item in detail.packages]
+                    if packages and isinstance(packages[0], dict):
+                        packages[0]["name"] = defaults.get("pkg_name", detail.pkg_name)
+                        packages[0]["version"] = defaults.get("pkg_version", detail.pkg_version)
+                        defaults["packages"] = packages
+                LinuxPatchDetail.objects.update_or_create(patch=patch, defaults=defaults)
 
 
 class PatchDetailSerializer(PatchListSerializer):

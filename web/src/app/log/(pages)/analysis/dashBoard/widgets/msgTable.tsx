@@ -67,9 +67,9 @@ const Msgtable: React.FC<MsgtableProps> = ({
           <div className="mb-1">
             <CopyTwoTone
               className="cursor-pointer mr-[4px]"
-              onClick={() => copy(record._msg)}
+              onClick={() => copy(record.message)}
             />
-            <span className="font-[500] break-all">{record._msg}</span>
+            <span className="font-[500] break-all">{record.message}</span>
           </div>
           <div>
             <span className="mr-3">

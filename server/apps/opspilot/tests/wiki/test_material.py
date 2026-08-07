@@ -186,7 +186,7 @@ def test_ingest_unsupported_type_marks_failed():
     m = Material.objects.create(knowledge_base=kb, name="f", material_type="file")
     ingest_material(m, llm_model_id=None)
     m.refresh_from_db()
-    assert m.status == "failed"
+    assert m.status == "parse_failed"
 
 
 @pytest.mark.django_db
@@ -197,15 +197,8 @@ class TestMaterialViews:
         body = resp.json()
         return body.get("data", body)
 
-    def test_create_text_material_auto_ingests(self, api_client, monkeypatch):
+    def test_create_text_material_stays_pending_until_build(self, api_client):
         from apps.opspilot.models import WikiKnowledgeBase
-
-        class Parser:
-            def parse_text(self, text, *, filename="raw.txt"):
-                return text
-
-        monkeypatch.setattr("apps.opspilot.services.wiki.material_service.get_parser", lambda: Parser())
-        monkeypatch.setattr("apps.opspilot.services.wiki.material_service.save_parsed_markdown", lambda material, md, digest: "wiki/parsed/view.md")
 
         kb = WikiKnowledgeBase.objects.create(name="kb", team=[1])
         resp = api_client.post(
@@ -215,8 +208,8 @@ class TestMaterialViews:
         )
         assert resp.status_code in (200, 201), resp.content
         data = self._data(resp)
-        assert data["status"] == "done"
-        assert data["ai_summary"]
+        assert data["status"] == "pending"
+        assert not data["ai_summary"]
 
         lst = api_client.get(self.BASE + f"?knowledge_base={kb.id}")
         assert lst.status_code == 200
@@ -302,13 +295,22 @@ class TestMaterialViews:
         assert file_material.name == "manual.pdf"
         assert file_material.ocr_enhance is True
         assert file_material.text_content == ""
-        assert file_material.status == "done"
+        assert file_material.status == "updated"
 
     def test_list_retrieve_info_and_async_actions(self, api_client, monkeypatch):
         from apps.opspilot.models import KnowledgePage, Material, MaterialVersion, PageEvidence, PageVersion, WikiKnowledgeBase
+        from apps.opspilot.services.wiki.structure_service import bootstrap_knowledge_base
         from apps.opspilot.viewsets import wiki_material_view
 
+        monkeypatch.setattr(
+            wiki_material_view,
+            "load_parsed_markdown",
+            lambda material, for_display=False: "# MarkItDown full body\n\nparsed content",
+        )
+
         kb = WikiKnowledgeBase.objects.create(name="kb", team=[1])
+        bootstrap_knowledge_base(kb, operator="tester")
+        kb.refresh_from_db()
         material = Material.objects.create(
             knowledge_base=kb,
             name="web",
@@ -316,6 +318,7 @@ class TestMaterialViews:
             url="https://example.com/wiki",
             status="done",
             ai_summary="summary",
+            source_identity="web:https://example.com/wiki",
         )
         version = MaterialVersion.objects.create(material=material, content_hash="h1", content_locator="wiki/parsed/web.md")
         material.current_version = version
@@ -338,6 +341,7 @@ class TestMaterialViews:
         assert info.status_code == 200
         data = self._data(info)
         assert data["original"] == "https://example.com/wiki"
+        assert data["parsed_markdown"] == "# MarkItDown full body\n\nparsed content"
         assert data["versions"][0]["content_locator"] == "wiki/parsed/web.md"
         assert data["contributed_pages"][0]["title"] == "Page"
 
@@ -353,21 +357,27 @@ class TestMaterialViews:
             format="json",
         )
         assert created_file.status_code == 201
-        assert self._data(created_file)["status"] == "parsing"
+        assert self._data(created_file)["status"] == "pending"
 
         ingest = api_client.post(self.BASE + f"{material.id}/ingest/", {}, format="json")
         assert ingest.status_code == 200
         assert self._data(ingest)["status"] == "parsing"
+        Material.objects.filter(pk=material.pk).update(status="done")
 
         calls = []
 
         class Task:
             @staticmethod
-            def delay(material_id, llm_model_id, operator):
-                calls.append((material_id, llm_model_id, operator))
+            def delay(material_id, llm_model_id, operator, **kwargs):
+                calls.append((material_id, llm_model_id, operator, kwargs))
 
         monkeypatch.setattr("apps.opspilot.tasks.wiki_build_material_task", Task)
         build = api_client.post(self.BASE + f"{material.id}/build/", {"async": True}, format="json")
         assert build.status_code == 200
-        assert self._data(build)["status"] == "building"
+        assert self._data(build)["status"] == "parsing"
         assert calls and calls[0][0] == material.id
+        assert calls[0][3] == {
+            "classification_root_id": None,
+            "ensure_parsed": True,
+            "source_status": "done",
+        }

@@ -1,4 +1,4 @@
-"""内置 webhook 域名数据迁移行为测试。"""
+"""内置 webhook 域名种子：0041 写入、0044 移除。"""
 
 from importlib import import_module
 
@@ -13,31 +13,36 @@ BUILTIN_WEBHOOK_DOMAINS = {
     "open.larksuite.com",
     "oapi.dingtalk.com",
 }
-MIGRATION = import_module("apps.system_mgmt.migrations.0041_networkwhitelist_domain_build_in")
-
-
-def _run_seed_migration():
-    MIGRATION.seed_builtin_webhook_domains(django_apps, None)
+SEED_MIGRATION = import_module("apps.system_mgmt.migrations.0041_networkwhitelist_domain_build_in")
+REMOVE_MIGRATION = import_module("apps.system_mgmt.migrations.0044_remove_builtin_webhook_domains")
 
 
 @pytest.mark.django_db
 def test_init_builtin_whitelist_seeds_four_rows():
     NetworkWhiteList.objects.filter(domain_name__in=BUILTIN_WEBHOOK_DOMAINS).delete()
 
-    _run_seed_migration()
+    SEED_MIGRATION.seed_builtin_webhook_domains(django_apps, None)
 
     rows = NetworkWhiteList.objects.filter(domain_name__in=BUILTIN_WEBHOOK_DOMAINS, is_build_in=True)
     assert rows.count() == 4
     assert set(rows.values_list("domain_name", flat=True)) == BUILTIN_WEBHOOK_DOMAINS
-    assert all(row.enabled for row in rows)
 
 
 @pytest.mark.django_db
-def test_init_builtin_whitelist_idempotent():
+def test_remove_builtin_webhook_domains_clears_seed_rows():
     NetworkWhiteList.objects.filter(domain_name__in=BUILTIN_WEBHOOK_DOMAINS).delete()
+    SEED_MIGRATION.seed_builtin_webhook_domains(django_apps, None)
+    # 用户自建同名域名（非 build_in）应保留
+    NetworkWhiteList.objects.create(
+        domain_name="custom.example.com",
+        network="",
+        is_build_in=False,
+        enabled=True,
+        created_by="t",
+        updated_by="t",
+    )
 
-    _run_seed_migration()
-    _run_seed_migration()
+    REMOVE_MIGRATION.remove_builtin_webhook_domains(django_apps, None)
 
-    rows = NetworkWhiteList.objects.filter(domain_name__in=BUILTIN_WEBHOOK_DOMAINS, is_build_in=True)
-    assert rows.count() == 4
+    assert NetworkWhiteList.objects.filter(domain_name__in=BUILTIN_WEBHOOK_DOMAINS, is_build_in=True).count() == 0
+    assert NetworkWhiteList.objects.filter(domain_name="custom.example.com").exists()

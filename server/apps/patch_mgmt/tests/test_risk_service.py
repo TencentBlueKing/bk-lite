@@ -1,6 +1,9 @@
 """风险计算服务单元测试"""
 
+from datetime import timedelta
+
 import pytest
+from django.utils import timezone
 
 from apps.patch_mgmt.constants import (
     ComplianceStatus,
@@ -32,6 +35,27 @@ def _binding(target, baseline, status=ComplianceStatus.NON_COMPLIANT):
         binding.compliance_status = status
         binding.save(update_fields=["compliance_status", "updated_at"])
     return binding
+
+
+@pytest.mark.django_db
+def test_expired_active_assessment_projects_target_status_as_failed():
+    baseline = PatchBaseline.objects.create(name="expired", os_type=OSType.LINUX, team=[1])
+    target = PatchTarget.objects.create(name="host", ip="10.0.0.9", os_type=OSType.LINUX)
+    _binding(target, baseline, status=ComplianceStatus.COMPLIANT)
+    task = GovernanceTask.objects.create(
+        name="expired assess",
+        task_type=GovernanceTaskType.ASSESS,
+        status=GovernanceTaskStatus.RUNNING,
+        target_list=[target.id],
+    )
+    GovernanceTaskHost.objects.create(
+        task=task,
+        target_id=target.id,
+        stage="scanning",
+        stage_deadline_at=timezone.now() - timedelta(seconds=1),
+    )
+
+    assert risk_service.compute_host_compliance_status(target) == ComplianceStatus.FAILED
 
 
 @pytest.mark.django_db
@@ -303,6 +327,98 @@ def test_compute_risk_items_install_completed_pending_reboot():
     assert len(items) == 1
     assert items[0].compliance == RiskCompliance.MISSING
     assert items[0].remediation == RemediationStatus.PENDING_REBOOT
+
+
+@pytest.mark.django_db
+def test_new_missing_assessment_resets_older_completed_install_to_unplanned():
+    """新评估已确认补丁缺失时，更早的成功安装不能继续投影为“修复失败”。"""
+    baseline = PatchBaseline.objects.create(name="baseline", os_type=OSType.LINUX, team=[1])
+    target = PatchTarget.objects.create(name="host", ip="10.0.0.1", os_type=OSType.LINUX, team=[1])
+    binding = _binding(target, baseline)
+    patch = Patch.objects.create(title="openssl", os_type=OSType.LINUX, team=[1])
+    LinuxPatchDetail.objects.create(patch=patch, pkg_name="openssl")
+    requirement = BaselineRequirement.objects.create(baseline=baseline, patch=patch)
+
+    evaluated_at = timezone.now()
+    HostComplianceSnapshot.objects.create(
+        binding=binding,
+        requirement=requirement,
+        satisfied=False,
+        reason="openssl 已安装版本低于最低版本",
+        evaluated_at=evaluated_at,
+    )
+    install_task = GovernanceTask.objects.create(
+        name="older-install",
+        task_type=GovernanceTaskType.INSTALL,
+        status=GovernanceTaskStatus.COMPLETED,
+        target_list=[target.id],
+        patch_list=[patch.id],
+        risk_snapshot=[{"host_id": target.id, "patch_id": patch.id}],
+        team=[1],
+    )
+    GovernanceTask.objects.filter(pk=install_task.pk).update(
+        created_at=evaluated_at - timedelta(minutes=10),
+        finished_at=evaluated_at - timedelta(minutes=9),
+    )
+    GovernanceTaskHost.objects.create(
+        task=install_task,
+        target_id=target.id,
+        target_name=target.name,
+        stage="completed",
+        stage_color="success",
+    )
+
+    items = risk_service.compute_risk_items()
+
+    assert len(items) == 1
+    assert items[0].compliance == RiskCompliance.MISSING
+    assert items[0].remediation == RemediationStatus.UNPLANNED
+
+
+@pytest.mark.django_db
+def test_new_missing_assessment_resets_older_failed_verify_to_unplanned():
+    """新评估已确认补丁缺失时，更早的验证失败不能继续投影为“修复失败”。"""
+    baseline = PatchBaseline.objects.create(name="baseline", os_type=OSType.LINUX, team=[1])
+    target = PatchTarget.objects.create(name="host", ip="10.0.0.1", os_type=OSType.LINUX, team=[1])
+    binding = _binding(target, baseline)
+    patch = Patch.objects.create(title="openssl", os_type=OSType.LINUX, team=[1])
+    LinuxPatchDetail.objects.create(patch=patch, pkg_name="openssl")
+    requirement = BaselineRequirement.objects.create(baseline=baseline, patch=patch)
+
+    evaluated_at = timezone.now()
+    HostComplianceSnapshot.objects.create(
+        binding=binding,
+        requirement=requirement,
+        satisfied=False,
+        reason="openssl 已安装版本低于最低版本",
+        evaluated_at=evaluated_at,
+    )
+    verify_task = GovernanceTask.objects.create(
+        name="older-failed-verify",
+        task_type=GovernanceTaskType.VERIFY,
+        status=GovernanceTaskStatus.FAILED,
+        target_list=[target.id],
+        patch_list=[patch.id],
+        risk_snapshot=[{"host_id": target.id, "patch_id": patch.id}],
+        team=[1],
+    )
+    GovernanceTask.objects.filter(pk=verify_task.pk).update(
+        created_at=evaluated_at - timedelta(minutes=10),
+        finished_at=evaluated_at - timedelta(minutes=9),
+    )
+    GovernanceTaskHost.objects.create(
+        task=verify_task,
+        target_id=target.id,
+        target_name=target.name,
+        stage="failed",
+        stage_color="error",
+    )
+
+    items = risk_service.compute_risk_items()
+
+    assert len(items) == 1
+    assert items[0].compliance == RiskCompliance.MISSING
+    assert items[0].remediation == RemediationStatus.UNPLANNED
 
 
 @pytest.mark.django_db

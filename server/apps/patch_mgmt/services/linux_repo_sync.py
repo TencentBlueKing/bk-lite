@@ -26,6 +26,11 @@ import requests
 
 from apps.patch_mgmt.constants import PatchSourceType
 from apps.patch_mgmt.models import PatchSource
+from apps.patch_mgmt.utils.architecture import (
+    X86_64,
+    normalize_architecture,
+    repository_package_applies,
+)
 
 logger = logging.getLogger("app")
 
@@ -55,9 +60,20 @@ class ParsedAdvisory:
     install_deps: dict = field(default_factory=dict)  # apt: {depends, conflicts, breaks, replaces}
 
 
-def _get(url: str) -> bytes:
+def _build_proxies(source: PatchSource) -> Optional[dict]:
+    if source.proxy_host and source.proxy_port:
+        proxy = f"http://{source.proxy_host}:{source.proxy_port}"
+        return {"http": proxy, "https": proxy}
+    return None
+
+
+def _get(url: str, source: PatchSource) -> bytes:
     try:
-        resp = requests.get(url, timeout=FETCH_TIMEOUT)
+        resp = requests.get(
+            url,
+            timeout=FETCH_TIMEOUT,
+            proxies=_build_proxies(source),
+        )
         resp.raise_for_status()
         return resp.content
     except requests.RequestException as exc:
@@ -156,16 +172,34 @@ def fetch_advisories(source: PatchSource) -> List[ParsedAdvisory]:
     if not base:
         raise RepoSyncError("补丁源未配置 URL")
 
-    repomd = _get(f"{base}/repodata/repomd.xml")
+    repomd = _get(f"{base}/repodata/repomd.xml", source)
     href = _find_updateinfo_href(repomd)
     if not href:
         logger.info("fetch_advisories: source_id=%s repo 无 updateinfo", source.pk)
         return []
 
-    data = _get(f"{base}/{href}")
+    data = _get(f"{base}/{href}", source)
     if href.endswith(".gz"):
         try:
             data = gzip.decompress(data)
         except OSError as exc:
             raise RepoSyncError(f"updateinfo 解压失败: {exc}")
-    return _parse_updateinfo(data)
+    parsed_advisories = _parse_updateinfo(data)
+    canonical_arch = normalize_architecture(source.arch, default=X86_64)
+    advisories = []
+    for advisory in parsed_advisories:
+        applicable_packages = []
+        for package in advisory.packages:
+            if not repository_package_applies(
+                package.arch,
+                source_type=source.source_type,
+                target_architecture=canonical_arch,
+            ):
+                continue
+            package.arch = canonical_arch
+            applicable_packages.append(package)
+        if not applicable_packages:
+            continue
+        advisory.packages = applicable_packages
+        advisories.append(advisory)
+    return advisories

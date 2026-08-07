@@ -570,23 +570,23 @@ export const MetricsSection = ({ dashboard, styles }: MetricsSectionProps) => {
             items={
               isHost
                 ? [
-                    {
-                      label: '主机指标',
-                      detail: '通过插件页签切换主机采集来源，查看完整 OS 指标历史曲线。'
-                    },
-                    {
-                      label: '进程 (Telegraf)',
-                      detail:
+                  {
+                    label: '主机指标',
+                    detail: '通过插件页签切换主机采集来源，查看完整 OS 指标历史曲线。'
+                  },
+                  {
+                    label: '进程 (Telegraf)',
+                    detail:
                         '在同一插件页签中切换「进程 (Telegraf)」，按主机 instance_id 查看该主机下进程历史折线。'
-                    }
-                  ]
+                  }
+                ]
                 : [
-                    {
-                      label: '监控指标全景',
-                      detail:
+                  {
+                    label: '监控指标全景',
+                    detail:
                         '承载完整原始监控视图，适合在仪表盘发现异常后继续下钻排查。'
-                    }
-                  ]
+                  }
+                ]
             }
             styles={styles}
           />

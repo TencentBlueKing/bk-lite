@@ -22,6 +22,37 @@ type recordingProgressPublisher struct {
 	flushes  int
 }
 
+type recordingCloser struct {
+	closed bool
+}
+
+func (closer *recordingCloser) Close() error {
+	closer.closed = true
+	return nil
+}
+
+func TestCloseAndRemovePartialDownloadClosesBeforeRemove(t *testing.T) {
+	closer := &recordingCloser{}
+	removed := false
+	remove := func(path string) error {
+		if !closer.closed {
+			t.Fatal("partial download must be closed before removal on Windows")
+		}
+		if path != `C:\Windows\Temp\sidecar-partial.zip` {
+			t.Fatalf("unexpected removal path: %s", path)
+		}
+		removed = true
+		return nil
+	}
+
+	if err := closeAndRemovePartialDownload(closer, `C:\Windows\Temp\sidecar-partial.zip`, remove); err != nil {
+		t.Fatalf("cleanup partial download: %v", err)
+	}
+	if !removed {
+		t.Fatal("partial download was not removed")
+	}
+}
+
 type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (fn roundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) {
@@ -118,6 +149,29 @@ func (fake *fakeWindowsServiceController) Start(installDir string, _ bool) error
 
 func (fake *fakeWindowsServiceController) Remove() error {
 	fake.removeCalls++
+	return nil
+}
+
+// observingWindowsServiceController records whether a backup directory was in
+// place when the new service was started, which is the only moment where a
+// transactional upgrade is distinguishable from a fresh install.
+type observingWindowsServiceController struct {
+	backupDir            string
+	backupExistedOnStart bool
+}
+
+func (fake *observingWindowsServiceController) Stop() (bool, error) {
+	return false, nil
+}
+
+func (fake *observingWindowsServiceController) Start(_ string, _ bool) error {
+	if _, err := os.Stat(fake.backupDir); err == nil {
+		fake.backupExistedOnStart = true
+	}
+	return nil
+}
+
+func (fake *observingWindowsServiceController) Remove() error {
 	return nil
 }
 
@@ -293,6 +347,50 @@ func TestInstallerStepPositionUsesNewEightStepProtocol(t *testing.T) {
 	index, total := installerStepPosition("download_package")
 	if index != 4 || total != 8 {
 		t.Fatalf("expected download step 4/8, got %d/%d", index, total)
+	}
+}
+
+func TestInstallWindowsPackageTreatsPreCreatedEmptyDirectoryAsFreshInstall(t *testing.T) {
+	installDir := filepath.Join(t.TempDir(), "fusion-collectors")
+	if err := os.MkdirAll(installDir, 0755); err != nil {
+		t.Fatalf("create install dir: %v", err)
+	}
+	zipPath := writeControllerZip(t, map[string]string{
+		"controller/collector-sidecar.exe": "new-binary",
+	})
+	controller := &observingWindowsServiceController{backupDir: installDir + ".bklite-backup"}
+	cfg := &Config{
+		ServerURL:  "https://bk.example",
+		APIToken:   "token",
+		NodeID:     "node-1",
+		NodeName:   "node-1",
+		ZoneID:     "1",
+		GroupID:    "1",
+		OS:         "windows",
+		InstallDir: installDir,
+		Package:    PackageConfig{CPUArchitecture: "x86_64"},
+	}
+
+	if err := installWindowsPackage(cfg, zipPath, controller); err != nil {
+		t.Fatalf("install Windows package: %v", err)
+	}
+	if controller.backupExistedOnStart {
+		t.Fatal("fresh install must not back up the pre-created empty directory")
+	}
+	if _, err := os.Stat(installDir + ".bklite-backup"); !os.IsNotExist(err) {
+		t.Fatalf("fresh install must not leave a backup directory: %v", err)
+	}
+	for _, marker := range []string{windowsActivationPendingMarker, windowsActivationCommittedMarker} {
+		if _, err := os.Stat(filepath.Join(installDir, marker)); !os.IsNotExist(err) {
+			t.Fatalf("fresh install must not leave activation marker %s: %v", marker, err)
+		}
+	}
+	content, err := os.ReadFile(filepath.Join(installDir, "collector-sidecar.exe"))
+	if err != nil {
+		t.Fatalf("read installed binary: %v", err)
+	}
+	if string(content) != "new-binary" {
+		t.Fatalf("new installation was not activated: %q", content)
 	}
 }
 
@@ -672,6 +770,120 @@ func TestInstallWindowsPackagePreservesRuntimeDataAfterSuccessfulActivation(t *t
 	}
 }
 
+func TestInstallWindowsPackagePreservesUninstallEntrypointAfterSuccessfulActivation(t *testing.T) {
+	installDir := filepath.Join(t.TempDir(), "fusion-collectors")
+	if err := os.MkdirAll(installDir, 0755); err != nil {
+		t.Fatalf("create install dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(installDir, "collector-sidecar.exe"), []byte("old-binary"), 0644); err != nil {
+		t.Fatalf("write old binary: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(installDir, "uninstall.exe"), []byte("nsis-uninstaller"), 0644); err != nil {
+		t.Fatalf("write uninstaller: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(installDir, "installer.ico"), []byte("icon"), 0644); err != nil {
+		t.Fatalf("write installer icon: %v", err)
+	}
+	zipPath := writeControllerZip(t, map[string]string{
+		"controller/collector-sidecar.exe": "new-binary",
+	})
+	controller := &fakeWindowsServiceController{serviceExisted: true}
+	cfg := &Config{
+		ServerURL:  "https://bk.example",
+		APIToken:   "token",
+		NodeID:     "node-1",
+		NodeName:   "node-1",
+		ZoneID:     "1",
+		GroupID:    "1",
+		OS:         "windows",
+		InstallDir: installDir,
+		Package:    PackageConfig{CPUArchitecture: "x86_64"},
+	}
+
+	if err := installWindowsPackage(cfg, zipPath, controller); err != nil {
+		t.Fatalf("install Windows package: %v", err)
+	}
+	newBinary, err := os.ReadFile(filepath.Join(installDir, "collector-sidecar.exe"))
+	if err != nil || string(newBinary) != "new-binary" {
+		t.Fatalf("new binary was not activated: %q, %v", newBinary, err)
+	}
+	uninstaller, err := os.ReadFile(filepath.Join(installDir, "uninstall.exe"))
+	if err != nil || string(uninstaller) != "nsis-uninstaller" {
+		t.Fatalf("uninstaller was not preserved: %q, %v", uninstaller, err)
+	}
+	icon, err := os.ReadFile(filepath.Join(installDir, "installer.ico"))
+	if err != nil || string(icon) != "icon" {
+		t.Fatalf("installer icon was not preserved: %q, %v", icon, err)
+	}
+}
+
+func TestInstallWindowsPackageKeepsPackageProvidedInstallerFiles(t *testing.T) {
+	installDir := filepath.Join(t.TempDir(), "fusion-collectors")
+	if err := os.MkdirAll(installDir, 0755); err != nil {
+		t.Fatalf("create install dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(installDir, "collector-sidecar.exe"), []byte("old-binary"), 0644); err != nil {
+		t.Fatalf("write old binary: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(installDir, "uninstall.exe"), []byte("old-uninstaller"), 0644); err != nil {
+		t.Fatalf("write old uninstaller: %v", err)
+	}
+	zipPath := writeControllerZip(t, map[string]string{
+		"controller/collector-sidecar.exe": "new-binary",
+		"controller/uninstall.exe":         "packaged-uninstaller",
+	})
+	controller := &fakeWindowsServiceController{serviceExisted: true}
+	cfg := &Config{
+		ServerURL:  "https://bk.example",
+		APIToken:   "token",
+		NodeID:     "node-1",
+		NodeName:   "node-1",
+		ZoneID:     "1",
+		GroupID:    "1",
+		OS:         "windows",
+		InstallDir: installDir,
+		Package:    PackageConfig{CPUArchitecture: "x86_64"},
+	}
+
+	if err := installWindowsPackage(cfg, zipPath, controller); err != nil {
+		t.Fatalf("install Windows package: %v", err)
+	}
+	uninstaller, err := os.ReadFile(filepath.Join(installDir, "uninstall.exe"))
+	if err != nil || string(uninstaller) != "packaged-uninstaller" {
+		t.Fatalf("package-provided uninstaller must win: %q, %v", uninstaller, err)
+	}
+}
+
+func TestInstallWindowsPackageSucceedsWithoutPreviousUninstaller(t *testing.T) {
+	installDir := filepath.Join(t.TempDir(), "fusion-collectors")
+	zipPath := writeControllerZip(t, map[string]string{
+		"controller/collector-sidecar.exe": "new-binary",
+	})
+	controller := &fakeWindowsServiceController{}
+	cfg := &Config{
+		ServerURL:  "https://bk.example",
+		APIToken:   "token",
+		NodeID:     "node-1",
+		NodeName:   "node-1",
+		ZoneID:     "1",
+		GroupID:    "1",
+		OS:         "windows",
+		InstallDir: installDir,
+		Package:    PackageConfig{CPUArchitecture: "x86_64"},
+	}
+
+	if err := installWindowsPackage(cfg, zipPath, controller); err != nil {
+		t.Fatalf("first Windows installation: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(installDir, "uninstall.exe")); !os.IsNotExist(err) {
+		t.Fatalf("first installation must not fabricate an uninstaller: %v", err)
+	}
+	newBinary, err := os.ReadFile(filepath.Join(installDir, "collector-sidecar.exe"))
+	if err != nil || string(newBinary) != "new-binary" {
+		t.Fatalf("new binary was not activated: %q, %v", newBinary, err)
+	}
+}
+
 func TestInstallWindowsPackagePreservesExistingServiceRegistration(t *testing.T) {
 	installDir := filepath.Join(t.TempDir(), "fusion-collectors")
 	if err := os.MkdirAll(installDir, 0755); err != nil {
@@ -898,6 +1110,33 @@ func TestWriteConfigKeepsSidecarTLSVerificationEnabled(t *testing.T) {
 	}
 	if !strings.Contains(string(content), "tls_skip_verify: false") {
 		t.Fatalf("TLS verification was not enabled: %s", content)
+	}
+}
+
+func TestWriteConfigPersistsNATSTLSCAForWindowsCollectors(t *testing.T) {
+	installDir := t.TempDir()
+	caContent := "-----BEGIN CERTIFICATE-----\ntest-ca\n-----END CERTIFICATE-----\n"
+	cfg := &Config{
+		ServerURL:  "https://bk.example",
+		APIToken:   "token",
+		NodeID:     "node-1",
+		NodeName:   "node-1",
+		ZoneID:     "1",
+		GroupID:    "1",
+		InstallDir: installDir,
+		Package:    PackageConfig{CPUArchitecture: "x86_64"},
+		Storage:    StorageConfig{NATSTLSCA: caContent},
+	}
+
+	if err := writeConfig(cfg); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	content, err := os.ReadFile(filepath.Join(installDir, "certs", "nats-ca.crt"))
+	if err != nil {
+		t.Fatalf("read persisted NATS CA: %v", err)
+	}
+	if string(content) != caContent {
+		t.Fatalf("unexpected persisted NATS CA: %q", content)
 	}
 }
 

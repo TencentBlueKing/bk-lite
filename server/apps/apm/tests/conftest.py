@@ -18,8 +18,11 @@ def apm_user():
     )
     user.permission = {
         "apm": {
+            "home-View",
             "integration_add-View",
             "integration_add-Operate",
+            "applications-View",
+            "applications-Operate",
             "integration_instances-View",
             "integration_instances-Operate",
             "services-View",

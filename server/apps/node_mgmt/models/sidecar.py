@@ -47,6 +47,9 @@ class Node(TimeInfo, MaintainerInfo):
         default=ControllerConstants.NODE_TYPE_HOST,
         verbose_name="节点类型",
     )
+    cmdb_id = models.CharField(max_length=64, blank=True, default="", db_index=True, verbose_name="CMDB实例ID")
+    monitor_id = models.CharField(max_length=200, blank=True, default="", db_index=True, verbose_name="监控实例ID")
+    push_status = JSONField(default=dict, verbose_name="跨模块推送状态")
 
     class Meta:
         verbose_name = "节点信息"

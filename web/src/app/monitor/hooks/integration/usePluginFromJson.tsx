@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo } from 'react';
-import { Collapse } from 'antd';
+import { Collapse, Form } from 'antd';
 import { useConfigRenderer } from './useConfigRenderer';
 import { DataMapper } from './useDataMapper';
 import {
@@ -7,6 +7,7 @@ import {
   splitWebsiteRequestUrl,
   validateWebsiteRequestHeaders
 } from './http-request-config';
+import { resolveSnmpInterfaceFilterMode } from './snmpInterfaceFilterMode';
 import useIntegrationApi from '@/app/monitor/api/integration';
 import useApiClient from '@/utils/request';
 import { useTranslation } from '@/utils/i18n';
@@ -34,6 +35,55 @@ export const fillOptionalFormFields = (
   });
   return result;
 };
+
+const INTERFACE_FILTER_FIELD_NAMES = new Set([
+  'interface_filter_mode',
+  'iftype_exclude',
+  'iftype_include',
+  'ifdescr_exclude',
+  'ifdescr_include'
+]);
+
+interface FieldDependency {
+  field?: string | string[];
+  value?: unknown;
+  conditions?: Array<Array<{ equals?: unknown }>>;
+}
+
+interface AdvancedFormField {
+  name: string;
+  section?: string;
+  dependency?: FieldDependency;
+}
+
+/**
+ * IF-MIB 的接口过滤只在接口表启用时才有意义。此处识别这一类独占高级面板，
+ * 供外层直接随 enable_ifmib 隐藏整个折叠区，避免留下没有字段的空面板。
+ */
+export const isIfmibFilterAdvancedPanel = (advancedFields: AdvancedFormField[]) =>
+  advancedFields.length > 0 &&
+  advancedFields.every(
+    (field) => {
+      const dependency = field.dependency;
+      const enableIfmibIndex = Array.isArray(dependency?.field)
+        ? dependency.field.indexOf('enable_ifmib')
+        : -1;
+      const dependsOnEnabledIfmib =
+        (dependency?.field === 'enable_ifmib' && dependency?.value === true) ||
+        (enableIfmibIndex >= 0 && dependency?.conditions?.[enableIfmibIndex]?.some(
+          (condition) => condition?.equals === true
+        ));
+      return (
+        (field.section === 'interface_filter' || INTERFACE_FILTER_FIELD_NAMES.has(field.name)) &&
+        dependsOnEnabledIfmib
+      );
+    }
+  );
+
+export const shouldRenderAdvancedFieldsPanel = (
+  isIfmibFilterPanel: boolean,
+  enableIfmib: unknown
+) => !isIfmibFilterPanel || enableIfmib !== false;
 
 export const usePluginFromJson = () => {
   const { isLoading } = useApiClient();
@@ -148,7 +198,10 @@ export const usePluginFromJson = () => {
               if (field.visible_in === 'auto' && mode === 'edit') return null;
               if (field.visible_in === 'edit' && mode === 'auto') return null;
             }
-            if (mode === 'edit' && field.editable === false) {
+            if (
+              mode === 'edit'
+              && (field.editable === false || field.name === 'enable_ifmib')
+            ) {
               fieldCopy.widget_props = {
                 ...field.widget_props,
                 disabled: true
@@ -164,16 +217,7 @@ export const usePluginFromJson = () => {
       const basicFields = formFields?.filter((field: any) => !field.advanced) || [];
       const ADVANCED_SECTION_ORDER = ['request', 'auth', 'response', 'tls', 'interface_filter'];
       const advancedPanel = config.advanced_panel || {};
-      const isInterfaceFilterAdvanced =
-        Boolean(advancedPanel.title) ||
-        (advancedFields.length > 0 &&
-          advancedFields.every(
-            (field: any) =>
-              field.section === 'interface_filter' ||
-              ['iftype_exclude', 'iftype_include', 'ifdescr_exclude', 'ifdescr_include'].includes(
-                field.name
-              )
-          ));
+      const isInterfaceFilterAdvanced = isIfmibFilterAdvancedPanel(advancedFields);
       const advancedTitle =
         advancedPanel.title ||
         (isInterfaceFilterAdvanced
@@ -232,31 +276,56 @@ export const usePluginFromJson = () => {
           {basicFields.map((fieldConfig: any) =>
             renderFormField(fieldConfig, extra.mode)
           )}
-          {advancedFields.length > 0 && (
-            <Collapse
-              bordered={false}
-              ghost
-              className="mb-4 max-w-[720px] bg-transparent [&_.ant-collapse-header]:!items-center [&_.ant-collapse-header]:!px-0 [&_.ant-collapse-expand-icon]:!me-2 [&_.ant-collapse-content-box]:!px-0 [&_.ant-collapse-content-box]:!pb-1 [&_.ant-collapse-content-box]:!pt-3"
-              expandIconPosition="start"
-              items={[{
-                key: 'advanced-options',
-                label: (
-                  <div>
-                    <div className="text-[13px] font-medium leading-5 text-[var(--color-text-1)]">
-                      {advancedTitle}
-                    </div>
-                    {advancedHint ? (
-                      <div className="mt-0.5 text-[12px] font-normal leading-[18px] text-[var(--color-text-3)]">
-                        {advancedHint}
+          {advancedFields.length > 0 && (() => {
+            // Ant Design：函数子节点的 Form.Item 必须带 truthy 的 shouldUpdate/dependencies，
+            // 否则子节点不会渲染。网站拨测等非 IF-MIB 面板不能写 shouldUpdate={false}。
+            const advancedCollapse = (
+              <Collapse
+                bordered={false}
+                ghost
+                className="mb-4 max-w-[720px] bg-transparent [&_.ant-collapse-header]:!items-center [&_.ant-collapse-header]:!px-0 [&_.ant-collapse-expand-icon]:!me-2 [&_.ant-collapse-content-box]:!px-0 [&_.ant-collapse-content-box]:!pb-1 [&_.ant-collapse-content-box]:!pt-3"
+                expandIconPosition="start"
+                items={[{
+                  key: 'advanced-options',
+                  label: (
+                    <div>
+                      <div className="text-[13px] font-medium leading-5 text-[var(--color-text-1)]">
+                        {advancedTitle}
                       </div>
-                    ) : null}
-                  </div>
-                ),
-                forceRender: true,
-                children: renderAdvancedFieldGroups(advancedFields),
-              }]}
-            />
-          )}
+                      {advancedHint ? (
+                        <div className="mt-0.5 text-[12px] font-normal leading-[18px] text-[var(--color-text-3)]">
+                          {advancedHint}
+                        </div>
+                      ) : null}
+                    </div>
+                  ),
+                  forceRender: true,
+                  children: renderAdvancedFieldGroups(advancedFields),
+                }]}
+              />
+            );
+            if (!isInterfaceFilterAdvanced) {
+              return advancedCollapse;
+            }
+            return (
+              <Form.Item
+                noStyle
+                shouldUpdate={(previousValues, currentValues) =>
+                  previousValues.enable_ifmib !== currentValues.enable_ifmib
+                }
+              >
+                {({ getFieldValue }) =>
+                  // 未初始化时沿用 enable_ifmib 默认 true；只有明确关闭才隐藏整个区域。
+                  !shouldRenderAdvancedFieldsPanel(
+                    isInterfaceFilterAdvanced,
+                    getFieldValue('enable_ifmib')
+                  )
+                    ? null
+                    : advancedCollapse
+                }
+              </Form.Item>
+            );
+          })()}
         </>
       );
 
@@ -332,6 +401,10 @@ export const usePluginFromJson = () => {
                 );
               }
             });
+            // interface_filter_mode 不落库，需从 tagpass/tagdrop 反推，避免编辑回显恒为 exclude。
+            if (formFields?.some((field: any) => field?.name === 'interface_filter_mode')) {
+              formValues.interface_filter_mode = resolveSnmpInterfaceFilterMode(formValues);
+            }
             if (config.instance_type === 'web') {
               const requestUrl = apiData?.child?.content?.config?.urls?.[0];
               if (requestUrl) {

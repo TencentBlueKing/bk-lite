@@ -1,6 +1,6 @@
 from django.db import ProgrammingError
-from django.db.models import Prefetch
-from rest_framework import viewsets
+from django.db.models import Prefetch, Q
+from rest_framework import status, viewsets
 from rest_framework.decorators import action
 
 from apps.core.decorators.api_permission import HasPermission
@@ -11,11 +11,12 @@ from apps.monitor.constants.language import LanguageConstants
 from apps.monitor.filters.plugin import MonitorPluginFilter
 from apps.monitor.models import MonitorPlugin, MonitorPluginUITemplate
 from apps.monitor.models.monitor_object import MonitorObject
-from apps.monitor.serializers.plugin import MonitorPluginSerializer
+from apps.monitor.serializers.plugin import MonitorPluginListSerializer, MonitorPluginSerializer
 from apps.monitor.services.custom_snmp_plugin import CustomSnmpPluginService
 from apps.monitor.services.plugin import MonitorPluginService
 from apps.monitor.services.plugin_guide import PluginGuideService
 from apps.monitor.services.template_access_guide import TemplateAccessGuideService
+from apps.monitor.utils.pagination import parse_page_params
 from config.drf.pagination import CustomPageNumberPagination
 
 
@@ -34,6 +35,11 @@ class MonitorPluginViewSet(viewsets.ModelViewSet):
         """内置插件只读，禁止修改 / 删除（BL-NEW-005）。"""
         if getattr(plugin, "is_pre", False):
             raise BaseAppException("内置插件为只读，禁止修改或删除")
+
+    def get_serializer_class(self):
+        if self.action == "list":
+            return MonitorPluginListSerializer
+        return MonitorPluginSerializer
 
     @HasPermission("integration_configure-Add")
     def create(self, request, *args, **kwargs):
@@ -66,76 +72,162 @@ class MonitorPluginViewSet(viewsets.ModelViewSet):
         "parent_object_display_name",
     )
 
-    def list(self, request, *args, **kwargs):
+    @staticmethod
+    def _parent_prefetch():
         # 一次 Prefetch 把「父监控对象」(parent__isnull=True) 全部拉到内存,
         # 缓存到 plugin.parent_objects(to_attr),供下面两个消费者复用:
         #   1. serializer.get_parent_monitor_object  — 取第一个父对象 id
         #   2. 本视图 — 拼 id -> obj 字典,供 result['parent_object_display_name'] 用
-        # 必须用 to_attr 而不是普通 prefetch_related('monitor_object'),
-        # 因为 serializer 内部是 .filter(parent__isnull=True),该 filter 不在普通 prefetch 缓存里,
-        # 会绕过缓存重新发 SQL(每个 plugin 一次 N+1)。
-        parent_prefetch = Prefetch(
+        return Prefetch(
             "monitor_object",
             queryset=MonitorObject.objects.filter(parent__isnull=True),
             to_attr="parent_objects",
         )
-        # 同时预取默认关联 + 父对象子集:
-        # - "monitor_object"  填充 obj.monitor_object 默认缓存,供 DRF __all__ 序列化用
-        #                   (ManyToMany 关系,DRF 会调 .all() 取 PK 列表,否则每条 plugin 一次 SQL)
-        # - parent_prefetch  填充 obj.parent_objects(to_attr),供 get_parent_monitor_object 与本视图用
-        # 两个 prefetch 在 Django 层是独立查询,但都是单次 SQL,
-        # 整 list 视图稳定 3 次 SQL:1 主查询 + 2 预取,与插件数无关。
-        queryset = self.filter_queryset(self.get_queryset()).prefetch_related(
-            "monitor_object",
-            parent_prefetch,
-        )
-        serializer = self.get_serializer(queryset, many=True)
-        results = serializer.data
 
-        lan = LanguageLoader(app=LanguageConstants.APP, default_lang=request.user.locale)
-
-        # 把 prefetch 出的父对象拼成 id -> obj 字典,后续 O(1) 查表
-        # 直接读 to_attr 缓存,不再发 SQL
+    @staticmethod
+    def _build_parent_obj_by_id(plugins) -> dict:
         parent_obj_by_id: dict = {}
-        for plugin in queryset:
+        for plugin in plugins:
             for obj in getattr(plugin, "parent_objects", []):
                 parent_obj_by_id[obj.id] = obj
+        return parent_obj_by_id
 
-        # keyword 优先;name 作为兼容 alias(老调用方可能还在用 ?name=xxx)
-        # 两者走完全相同的翻译后内存搜索逻辑,行为对齐
-        keyword = (request.query_params.get("keyword") or request.query_params.get("name") or "").strip()
-        kw = keyword.lower()
+    @classmethod
+    def _apply_keyword_coarse_filter(cls, queryset, kw: str, lan):
+        """缩小 keyword 候选集后再做完整序列化。
 
+        1) DB 粗筛:name / display_name / description / 父对象 name|display_name
+           (description 仅扩候选;精筛仍用 display_description,避免 3Com MIB 误命中)
+        2) 轻量 i18n 扫描:只读 id/name/display_name/description/template_type,
+           用 lan.get 补中文翻译命中(DB 无中文时不会漏「华为」等)
+        完整 DRF 序列化 + M2M prefetch 只对候选 id 执行。
+        """
+        if not kw:
+            return queryset
+
+        db_ids = set(
+            queryset.filter(
+                Q(name__icontains=kw)
+                | Q(display_name__icontains=kw)
+                | Q(description__icontains=kw)
+                | Q(monitor_object__parent__isnull=True, monitor_object__display_name__icontains=kw)
+                | Q(monitor_object__parent__isnull=True, monitor_object__name__icontains=kw)
+            ).values_list("id", flat=True)
+        )
+
+        # i18n 可能未回写 DB:对剩余插件做轻量扫描(无 M2M / 无完整 serializer)
+        for plugin in queryset.only(
+            "id", "name", "display_name", "description", "template_type"
+        ).iterator(chunk_size=200):
+            if plugin.id in db_ids:
+                continue
+            plugin_key = f"{LanguageConstants.MONITOR_OBJECT_PLUGIN}.{plugin.name}"
+            if plugin.template_type in {"api", "pull"}:
+                display_name = plugin.display_name or plugin.name
+                display_description = (
+                    lan.get(f"{plugin_key}.desc") or plugin.description or plugin.name
+                )
+            else:
+                display_name = lan.get(f"{plugin_key}.name") or plugin.display_name or plugin.name
+                display_description = (
+                    lan.get(f"{plugin_key}.desc") or plugin.description or plugin.name
+                )
+            haystacks = (
+                plugin.name or "",
+                display_name or "",
+                display_description or "",
+            )
+            if any(kw in value.lower() for value in haystacks):
+                db_ids.add(plugin.id)
+
+        if not db_ids:
+            return queryset.none()
+        return queryset.filter(id__in=db_ids)
+
+    def _enrich_plugin_results(self, results, lan, parent_obj_by_id: dict):
+        """补齐 display_* / is_custom / parent_object_display_name(原地修改)。"""
         for result in results:
             if result.get("template_type") in {"api", "pull"}:
                 result["display_name"] = result.get("display_name") or result["name"]
-                # 优先 i18n 翻译,fallback DB 字段(避免强制覆盖)
                 result["display_description"] = (
-                    lan.get(f"{LanguageConstants.MONITOR_OBJECT_PLUGIN}.{result['name']}.desc") or result["description"] or result["name"]
+                    lan.get(f"{LanguageConstants.MONITOR_OBJECT_PLUGIN}.{result['name']}.desc")
+                    or result["description"]
+                    or result["name"]
                 )
             else:
                 plugin_key = f"{LanguageConstants.MONITOR_OBJECT_PLUGIN}.{result['name']}"
-                # 始终优先使用 i18n 翻译,DB 字段只作为最终 fallback
-                result["display_name"] = lan.get(f"{plugin_key}.name") or result.get("display_name") or result["name"]
-                # 同 display_name:优先 i18n 翻译,fallback DB 字段(可能多语言混合),最后 fallback 到 name
-                result["display_description"] = lan.get(f"{plugin_key}.desc") or result["description"] or result["name"]
+                result["display_name"] = (
+                    lan.get(f"{plugin_key}.name") or result.get("display_name") or result["name"]
+                )
+                result["display_description"] = (
+                    lan.get(f"{plugin_key}.desc") or result["description"] or result["name"]
+                )
             result["is_custom"] = result.get("template_type") in {"api", "pull", "snmp"}
 
-            # 父监控对象 display_name(用于关键字搜索覆盖卡片上的「交换机/路由器」tag)
             parent_id = result.get("parent_monitor_object")
             parent_obj = parent_obj_by_id.get(parent_id) if parent_id is not None else None
             if parent_obj is not None:
-                # MonitorObject.display_name 是 DB 字段,无需 i18n
                 result["parent_object_display_name"] = parent_obj.display_name or parent_obj.name
             else:
                 result["parent_object_display_name"] = ""
+        return results
 
-        # 「所见即所搜」:在 i18n 翻译完成后再做内存过滤,覆盖所有卡片可见字段
-        # 必须放在 i18n 之后,否则 DB 侧裁掉的就再也回不来了
+    def _serialize_and_enrich(self, queryset, lan):
+        plugins = list(queryset.prefetch_related("monitor_object", self._parent_prefetch()))
+        results = self.get_serializer(plugins, many=True).data
+        parent_obj_by_id = self._build_parent_obj_by_id(plugins)
+        return self._enrich_plugin_results(results, lan, parent_obj_by_id)
+
+    def list(self, request, *args, **kwargs):
+        queryset = self.filter_queryset(self.get_queryset()).order_by("id")
+        lan = LanguageLoader(app=LanguageConstants.APP, default_lang=request.user.locale)
+
+        keyword = (request.query_params.get("keyword") or request.query_params.get("name") or "").strip()
+        kw = keyword.lower()
+
+        page_size_raw = request.query_params.get("page_size")
+        use_pagination = page_size_raw not in (None, "", "0", "-1")
+
+        if use_pagination and not kw:
+            page, page_size = parse_page_params(
+                request.query_params,
+                default_page=1,
+                default_page_size=20,
+                allow_page_size_all=True,
+            )
+            if page_size != -1:
+                page_size = min(page_size, CustomPageNumberPagination.max_page_size)
+            count = queryset.count()
+            start = (page - 1) * page_size
+            end = start + page_size
+            items = self._serialize_and_enrich(queryset[start:end], lan)
+            return WebUtils.response_success({"count": count, "items": items})
+
         if kw:
-            results = [r for r in results if any(kw in (r.get(f) or "").lower() for f in self.KEYWORD_FIELDS)]
+            queryset = self._apply_keyword_coarse_filter(queryset, kw, lan)
 
-        return WebUtils.response_success(results)
+        results = self._serialize_and_enrich(queryset, lan)
+
+        if kw:
+            results = [
+                r for r in results if any(kw in (r.get(f) or "").lower() for f in self.KEYWORD_FIELDS)
+            ]
+
+        if not use_pagination:
+            return WebUtils.response_success(results)
+
+        page, page_size = parse_page_params(
+            request.query_params,
+            default_page=1,
+            default_page_size=20,
+            allow_page_size_all=True,
+        )
+        if page_size != -1:
+            page_size = min(page_size, CustomPageNumberPagination.max_page_size)
+        count = len(results)
+        start = (page - 1) * page_size
+        end = start + page_size
+        return WebUtils.response_success({"count": count, "items": results[start:end]})
 
     @HasPermission("integration_list-Setting")
     def destroy(self, request, *args, **kwargs):
@@ -260,19 +352,35 @@ class MonitorPluginViewSet(viewsets.ModelViewSet):
         )
         return WebUtils.response_success(ui_template)
 
-    @action(methods=["get", "put"], detail=True, url_path="collect_template")
     @HasPermission("integration_collect-View,integration_configure-Add")
-    def collect_template(self, request, pk=None):
+    def _get_collect_template(self, request, pk=None):
         plugin = self.get_object()
         if plugin.template_type != "snmp":
             return WebUtils.response_error(error_message="当前模板不是自建 SNMP 模板")
 
-        if request.method.lower() == "get":
-            data = CustomSnmpPluginService.get_collect_template(plugin)
-            return WebUtils.response_success(data)
+        data = CustomSnmpPluginService.get_collect_template(plugin)
+        return WebUtils.response_success(data)
+
+    @HasPermission("integration_configure-Add")
+    def _update_collect_template(self, request, pk=None):
+        plugin = self.get_object()
+        if plugin.template_type != "snmp":
+            return WebUtils.response_error(error_message="当前模板不是自建 SNMP 模板")
 
         data = CustomSnmpPluginService.update_collect_template(
             plugin,
             request.data.get("content", ""),
         )
         return WebUtils.response_success(data)
+
+    @action(methods=["get", "put"], detail=True, url_path="collect_template")
+    def collect_template(self, request, pk=None):
+        method = request.method.lower()
+        if method in {"get", "head"}:
+            return self._get_collect_template(request, pk)
+        if method == "put":
+            return self._update_collect_template(request, pk)
+        return WebUtils.response_error(
+            error_message="不支持的请求方法",
+            status_code=status.HTTP_405_METHOD_NOT_ALLOWED,
+        )

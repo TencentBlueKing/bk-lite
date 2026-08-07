@@ -12,7 +12,6 @@
     "node_ip",
     "timestamp",
     "received_at",
-    "trap_message",
-    "raw_message"
+    "message"
   ]
 }

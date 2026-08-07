@@ -833,7 +833,7 @@
         "totalLogCount": "Total Log Count",
         "totalLogCountDesc": "Counts total Redis log records within the selected time range.",
         "errCount": "ERR Count",
-        "errCountDesc": "Counts protocol error logs whose `_msg` starts with ERR.",
+        "errCountDesc": "Counts protocol error logs whose `message` starts with ERR.",
         "typeClusterErrors": "Type / Cluster Errors",
         "typeClusterErrorsDesc": "Counts WRONGTYPE data-type errors and CLUSTERDOWN cluster-failure logs.",
         "authFailures": "Authentication Failures",

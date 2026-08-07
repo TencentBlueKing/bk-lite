@@ -67,9 +67,18 @@ class CloudAkSkNodeParamsMixin:
         return credential_data
 
     def env_config(self, *args, **kwargs):
+        # 兼容平台 API 表单（username/password）与云 AK/SK 表单；采集器同样接受两套键名
         return {
-            f"PASSWORD_access_key_{self._instance_id}": self.credential.get("accessKey", ""),
-            f"PASSWORD_access_secret_{self._instance_id}": self.credential.get("accessSecret", ""),
+            f"PASSWORD_access_key_{self._instance_id}": (
+                self.credential.get("accessKey")
+                or self.credential.get("username")
+                or ""
+            ),
+            f"PASSWORD_access_secret_{self._instance_id}": (
+                self.credential.get("accessSecret")
+                or self.credential.get("password")
+                or ""
+            ),
         }
 
     @classmethod

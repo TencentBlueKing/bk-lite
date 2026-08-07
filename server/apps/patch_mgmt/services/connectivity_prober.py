@@ -6,7 +6,7 @@
 
 探测策略（仅针对配置了 URL 的源）：
   - yum/dnf repo：GET <url>/repodata/repomd.xml（同时校验是有效 repo）
-  - apt repo：GET <url>/dists/（检查 apt 仓库结构目录存在）
+  - apt repo：流式 GET security Packages.gz 索引（校验版本与架构路径）
   - WSUS：SOAP GetUpdateServerStatus（协议级校验）
 
 判定：HTTP 状态码 < 400 视为可达（2xx/3xx）；>=400（如 404 repomd 不存在）或
@@ -23,6 +23,7 @@ import requests
 
 from apps.patch_mgmt.constants import PatchSourceType
 from apps.patch_mgmt.models import PatchSource
+from apps.patch_mgmt.utils.architecture import X86_64, repository_architecture
 
 logger = logging.getLogger("app")
 
@@ -48,7 +49,8 @@ def _build_probe_url(source: PatchSource, url: str) -> str:
         return f"{base}/repodata/repomd.xml"
     if source.source_type == PatchSourceType.APT_REPO:
         codename = _resolve_apt_codename(source.os_version)
-        return f"{base}/dists/{codename}/InRelease"
+        arch = repository_architecture(source.arch or X86_64, source.source_type)
+        return f"{base}/dists/{codename}-security/main/binary-{arch}/Packages.gz"
     # 其他源：探测配置的基址。
     return url
 
@@ -91,7 +93,7 @@ def _valid_repository_metadata(source: PatchSource, content: bytes) -> bool:
     if source.source_type in (PatchSourceType.YUM_REPO, PatchSourceType.DNF_REPO):
         return b"<repomd" in sample
     if source.source_type == PatchSourceType.APT_REPO:
-        return b"origin:" in sample and (b"suite:" in sample or b"codename:" in sample)
+        return sample.startswith(b"\x1f\x8b")
     return True
 
 
@@ -119,31 +121,19 @@ def probe_source(source: PatchSource) -> Optional[ProbeResult]:
     auth = _build_auth(source)
 
     try:
+        stream = source.source_type == PatchSourceType.APT_REPO
         resp = requests.get(
             target,
             timeout=PROBE_TIMEOUT,
             proxies=proxies,
             auth=auth,
             allow_redirects=True,
-            stream=False,
+            stream=stream,
         )
-        if (
-            source.source_type == PatchSourceType.APT_REPO
-            and resp.status_code == 404
-            and target.endswith("/InRelease")
-        ):
+        try:
+            content = next(resp.iter_content(chunk_size=2), b"") if stream else resp.content
+        finally:
             resp.close()
-            target = target.removesuffix("/InRelease") + "/Release"
-            resp = requests.get(
-                target,
-                timeout=PROBE_TIMEOUT,
-                proxies=proxies,
-                auth=auth,
-                allow_redirects=True,
-                stream=False,
-            )
-        content = resp.content
-        resp.close()
         reachable = resp.status_code < 400 and _valid_repository_metadata(source, content)
         detail = f"GET {target} -> {resp.status_code}"
         if resp.status_code < 400 and not reachable:

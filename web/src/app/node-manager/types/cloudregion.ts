@@ -206,6 +206,8 @@ interface ControllerInstallFields {
   work_node?: string;
   sidecar_package?: string;
   executor_package?: string;
+  /** 安装时勾选的推送目标；取消勾选则不推送，无级联 */
+  push_targets?: Array<'cmdb' | 'monitor'>;
 }
 
 interface ControllerInstallProps {

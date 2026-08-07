@@ -136,6 +136,17 @@
       "description": "Represents the average system load over the last 15 minutes, commonly used to evaluate long-term load stability."
     },
     {
+      "metric_group": "System",
+      "name": "system_uptime",
+      "query": "system_uptime{instance_type=\"os\", __$labels__}",
+      "display_name": "System Uptime",
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "instance_id_keys": ["instance_id"],
+      "description": "System uptime in seconds since last boot"
+    },
+    {
       "metric_group": "Disk IO",
       "name": "diskio_io_util",
       "query": "diskio_io_util{instance_type=\"os\", __$labels__}",

@@ -23,9 +23,119 @@ class WikiKnowledgeBase(MaintainerInfo, TimeInfo):
     risk_rules = models.JSONField(default=dict)
     template_key = models.CharField(max_length=50, default="general")
     status = models.CharField(max_length=20, default="active")  # active / archived
+    active_structure_revision = models.ForeignKey(
+        "WikiStructureRevision",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="active_for_knowledge_bases",
+    )
+    active_generation = models.ForeignKey(
+        "WikiGeneration",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="active_for_knowledge_bases",
+    )
+    directory_enabled = models.BooleanField(default=False)
+    directory_migration_state = models.CharField(
+        max_length=20,
+        default="legacy",
+        db_index=True,
+        help_text="legacy / backfilling / ready / enabled",
+    )
 
     class Meta:
         db_table = "opspilot_wiki_knowledge_base"
+
+    def __str__(self):
+        return self.name
+
+
+class WikiStructureRevision(MaintainerInfo, TimeInfo):
+    """知识库不可变目录结构快照。"""
+
+    knowledge_base = models.ForeignKey(
+        WikiKnowledgeBase,
+        on_delete=models.CASCADE,
+        related_name="structure_revisions",
+    )
+    revision_no = models.PositiveIntegerField()
+    structure_snapshot = models.JSONField(default=dict)
+    fingerprint = models.CharField(max_length=64, db_index=True)
+
+    class Meta:
+        db_table = "opspilot_wiki_structure_revision"
+        ordering = ["-revision_no"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["knowledge_base", "revision_no"],
+                name="uniq_wiki_structure_revision_no",
+            )
+        ]
+
+
+class WikiDirectory(MaintainerInfo, TimeInfo):
+    """当前活动结构的规范化目录投影。"""
+
+    ORIGIN_CHOICES = (
+        ("system", "System"),
+        ("schema", "Schema"),
+        ("manual", "Manual"),
+    )
+    STATUS_CHOICES = (
+        ("active", "Active"),
+        ("retired", "Retired"),
+        ("merged", "Merged"),
+        ("archived", "Archived"),
+    )
+
+    knowledge_base = models.ForeignKey(
+        WikiKnowledgeBase,
+        on_delete=models.CASCADE,
+        related_name="directories",
+    )
+    key = models.CharField(max_length=64)
+    name = models.CharField(max_length=255)
+    description = models.TextField(blank=True, default="")
+    parent = models.ForeignKey(
+        "self",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="children",
+    )
+    sort_order = models.IntegerField(default=0)
+    origin = models.CharField(max_length=20, choices=ORIGIN_CHOICES, default="manual")
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="active")
+    accepts_pages = models.BooleanField(default=True)
+    merged_into = models.ForeignKey(
+        "self",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="merged_directories",
+    )
+
+    class Meta:
+        db_table = "opspilot_wiki_directory"
+        ordering = ["sort_order", "id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["knowledge_base", "key"],
+                name="uniq_wiki_directory_key",
+            )
+        ]
+        indexes = [
+            models.Index(
+                fields=["knowledge_base", "status", "parent", "sort_order"],
+                name="wiki_dir_tree_idx",
+            )
+        ]
+
+    @property
+    def is_system(self):
+        return self.origin == "system"
 
     def __str__(self):
         return self.name
@@ -48,11 +158,29 @@ class Material(MaintainerInfo, TimeInfo):
     sync_policy = models.JSONField(default=dict)
     text_content = models.TextField(blank=True, default="")
     ocr_enhance = models.BooleanField(default=False)
+    source_relative_path = models.CharField(max_length=1024, blank=True, default="")
+    source_identity = models.CharField(max_length=255, blank=True, default="", db_index=True)
+    source_folder_path = models.CharField(max_length=1024, blank=True, default="")
+    classification_root = models.ForeignKey(
+        WikiDirectory,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="source_materials",
+    )
     content_hash = models.CharField(max_length=64, blank=True, default="", db_index=True)
     ai_summary = models.TextField(blank=True, default="")
-    # pending / building / done / partial / failed / updated / invalid
+    # 用户只看到未构建/构建中/构建成功/构建失败；内部保留阶段 key 供排障。
+    # pending / parsing / done / building / built / parse_failed /
+    # build_failed / updated / invalid
     status = models.CharField(max_length=20, default="pending")
-    current_version = models.ForeignKey("MaterialVersion", null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    current_version = models.ForeignKey(
+        "MaterialVersion",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
+    )
     error_message = models.TextField(blank=True, default="")
 
     class Meta:
@@ -81,14 +209,37 @@ class WikiImageCaption(TimeInfo):
 
 
 class KnowledgePage(MaintainerInfo, TimeInfo):
+    DIRECTORY_ASSIGNMENT_MODES = (
+        ("auto", "Auto"),
+        ("manual", "Manual"),
+    )
+
     knowledge_base = models.ForeignKey(WikiKnowledgeBase, on_delete=models.CASCADE, related_name="pages")
     page_type = models.CharField(max_length=50)  # 由 schema 定义
     title = models.CharField(max_length=255, db_index=True)
     tags = models.JSONField(default=list)
-    current_version = models.ForeignKey("PageVersion", null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    current_version = models.ForeignKey(
+        "PageVersion",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
+    )
     contribution = models.CharField(max_length=20, default="ai")  # ai / human / mixed
     update_method = models.CharField(max_length=30, blank=True, default="")
     status = models.CharField(max_length=20, default="active")  # active / archived / source_invalid
+    directory = models.ForeignKey(
+        WikiDirectory,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="pages",
+    )
+    directory_assignment_mode = models.CharField(
+        max_length=10,
+        choices=DIRECTORY_ASSIGNMENT_MODES,
+        default="auto",
+    )
 
     class Meta:
         db_table = "opspilot_wiki_page"
@@ -106,7 +257,20 @@ class PageVersion(TimeInfo):
     meta_snapshot = models.JSONField(default=dict)
     # human_edit / ai_create / ai_merge / material_update / rebuild / restore / candidate
     change_type = models.CharField(max_length=30)
-    build_record = models.ForeignKey("BuildRecord", null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    build_record = models.ForeignKey(
+        "BuildRecord",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
+    )
+    created_in_generation = models.ForeignKey(
+        "WikiGeneration",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="created_page_versions",
+    )
     is_current = models.BooleanField(default=False)
     created_by = models.CharField(max_length=100, blank=True, default="")
 
@@ -114,21 +278,318 @@ class PageVersion(TimeInfo):
         db_table = "opspilot_wiki_page_version"
 
 
+class WikiGeneration(MaintainerInfo, TimeInfo):
+    """一次不可变的知识集合发布候选或历史快照。"""
+
+    KIND_CHOICES = (
+        ("build", "Build"),
+        ("governance", "Governance"),
+        ("rollback", "Rollback"),
+    )
+    STATUS_CHOICES = (
+        ("preparing", "Preparing"),
+        ("ready", "Ready"),
+        ("active", "Active"),
+        ("superseded", "Superseded"),
+        ("failed", "Failed"),
+        ("cancelled", "Cancelled"),
+    )
+
+    knowledge_base = models.ForeignKey(
+        WikiKnowledgeBase,
+        on_delete=models.CASCADE,
+        related_name="generations",
+    )
+    build_record = models.ForeignKey(
+        "BuildRecord",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="generations",
+    )
+    structure_revision = models.ForeignKey(
+        WikiStructureRevision,
+        on_delete=models.PROTECT,
+        related_name="generations",
+    )
+    base_generation = models.ForeignKey(
+        "self",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="derived_generations",
+    )
+    rollback_of = models.ForeignKey(
+        "self",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="rollback_generations",
+    )
+    kind = models.CharField(max_length=20, choices=KIND_CHOICES)
+    structure_fingerprint = models.CharField(max_length=64, db_index=True)
+    pipeline_version = models.CharField(max_length=64)
+    source_fingerprints = models.JSONField(default=list)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="preparing", db_index=True)
+
+    class Meta:
+        db_table = "opspilot_wiki_generation"
+        ordering = ["-created_at", "-id"]
+        indexes = [
+            models.Index(
+                fields=["knowledge_base", "status", "created_at"],
+                name="wiki_gen_status_idx",
+            )
+        ]
+
+
+class WikiGenerationPage(TimeInfo):
+    """generation 的完整页面成员及其冻结显示快照。"""
+
+    generation = models.ForeignKey(
+        WikiGeneration,
+        on_delete=models.PROTECT,
+        related_name="page_members",
+    )
+    page = models.ForeignKey(
+        KnowledgePage,
+        on_delete=models.PROTECT,
+        related_name="generation_memberships",
+    )
+    page_version = models.ForeignKey(
+        PageVersion,
+        on_delete=models.PROTECT,
+        related_name="generation_memberships",
+    )
+    directory = models.ForeignKey(
+        WikiDirectory,
+        on_delete=models.PROTECT,
+        related_name="generation_memberships",
+    )
+    directory_key_snapshot = models.CharField(max_length=64)
+    directory_breadcrumb_snapshot = models.JSONField(default=list)
+    assignment_mode = models.CharField(
+        max_length=10,
+        choices=KnowledgePage.DIRECTORY_ASSIGNMENT_MODES,
+    )
+    page_status = models.CharField(max_length=20)
+    page_display_snapshot = models.JSONField(default=dict)
+
+    class Meta:
+        db_table = "opspilot_wiki_generation_page"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["generation", "page"],
+                name="uniq_wiki_generation_page",
+            ),
+            models.CheckConstraint(
+                check=models.Q(page_status="active"),
+                name="wiki_gen_page_active_only",
+            ),
+        ]
+        indexes = [
+            models.Index(
+                fields=["generation", "directory", "page_status"],
+                name="wiki_gen_page_scope_idx",
+            )
+        ]
+
+
+class WikiGenerationIndexEntry(TimeInfo):
+    """Generation-owned compact retrieval entry for one active page version."""
+
+    generation = models.ForeignKey(
+        WikiGeneration,
+        on_delete=models.PROTECT,
+        related_name="index_entries",
+    )
+    page = models.ForeignKey(
+        KnowledgePage,
+        on_delete=models.PROTECT,
+        related_name="generation_index_entries",
+    )
+    page_version = models.ForeignKey(
+        PageVersion,
+        on_delete=models.PROTECT,
+        related_name="generation_index_entries",
+    )
+    directory = models.ForeignKey(
+        WikiDirectory,
+        on_delete=models.PROTECT,
+        related_name="generation_index_entries",
+    )
+    title = models.CharField(max_length=255)
+    normalized_title = models.CharField(max_length=255)
+    aliases = models.JSONField(default=list)
+    page_type = models.CharField(max_length=50, default="concept")
+    tags = models.JSONField(default=list)
+    directory_key = models.CharField(max_length=64)
+    directory_breadcrumb = models.JSONField(default=list)
+    headings = models.JSONField(default=list)
+    keywords = models.JSONField(default=list)
+    entities = models.JSONField(default=list)
+    summary = models.TextField(blank=True, default="")
+    search_text = models.TextField(blank=True, default="")
+    content_fingerprint = models.CharField(max_length=64, db_index=True)
+
+    class Meta:
+        db_table = "opspilot_wiki_generation_index_entry"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["generation", "page"],
+                name="uniq_wiki_gen_index_page",
+            )
+        ]
+        indexes = [
+            models.Index(
+                fields=["generation", "normalized_title"],
+                name="wiki_gen_idx_title_idx",
+            ),
+            models.Index(
+                fields=["generation", "directory", "page_type"],
+                name="wiki_gen_idx_scope_idx",
+            ),
+        ]
+
+
+class WikiGenerationOverview(TimeInfo):
+    """Deterministic navigation overview plus optional semantic enhancement."""
+
+    SEMANTIC_STATUS_CHOICES = (
+        ("pending", "Pending"),
+        ("ready", "Ready"),
+        ("degraded", "Degraded"),
+        ("skipped", "Skipped"),
+    )
+
+    generation = models.ForeignKey(
+        WikiGeneration,
+        on_delete=models.PROTECT,
+        related_name="overviews",
+    )
+    directory = models.ForeignKey(
+        WikiDirectory,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="generation_overviews",
+    )
+    scope_key = models.CharField(max_length=64)
+    deterministic_text = models.TextField(default="")
+    semantic_text = models.TextField(blank=True, default="")
+    semantic_status = models.CharField(
+        max_length=20,
+        choices=SEMANTIC_STATUS_CHOICES,
+        default="pending",
+    )
+    referenced_page_ids = models.JSONField(default=list)
+    content_fingerprint = models.CharField(max_length=64, db_index=True)
+
+    class Meta:
+        db_table = "opspilot_wiki_generation_overview"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["generation", "scope_key"],
+                name="uniq_wiki_gen_overview_scope",
+            )
+        ]
+        indexes = [
+            models.Index(
+                fields=["generation", "directory"],
+                name="wiki_gen_overview_scope_idx",
+            )
+        ]
+
+
+class PageDirectoryChange(MaintainerInfo, TimeInfo):
+    """页面目录与归类模式变更的不可变审计记录。"""
+
+    page = models.ForeignKey(
+        KnowledgePage,
+        on_delete=models.PROTECT,
+        related_name="directory_changes",
+    )
+    generation = models.ForeignKey(
+        WikiGeneration,
+        on_delete=models.PROTECT,
+        related_name="directory_changes",
+    )
+    structure_revision = models.ForeignKey(
+        WikiStructureRevision,
+        on_delete=models.PROTECT,
+        related_name="page_directory_changes",
+    )
+    from_directory = models.ForeignKey(
+        WikiDirectory,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="directory_changes_from",
+    )
+    to_directory = models.ForeignKey(
+        WikiDirectory,
+        on_delete=models.PROTECT,
+        related_name="directory_changes_to",
+    )
+    from_assignment_mode = models.CharField(
+        max_length=10,
+        choices=KnowledgePage.DIRECTORY_ASSIGNMENT_MODES,
+        blank=True,
+        default="",
+    )
+    to_assignment_mode = models.CharField(
+        max_length=10,
+        choices=KnowledgePage.DIRECTORY_ASSIGNMENT_MODES,
+    )
+    source = models.CharField(max_length=30, db_index=True)
+    operator = models.CharField(max_length=100, blank=True, default="")
+    reason = models.TextField(blank=True, default="")
+
+    class Meta:
+        db_table = "opspilot_wiki_page_directory_change"
+        ordering = ["-created_at", "-id"]
+        indexes = [
+            models.Index(
+                fields=["page", "created_at"],
+                name="wiki_page_dir_change_idx",
+            )
+        ]
+
+
 class PageRelation(TimeInfo):
-    from_page = models.ForeignKey(KnowledgePage, on_delete=models.CASCADE, related_name="relations_out")
-    to_page = models.ForeignKey(KnowledgePage, on_delete=models.CASCADE, related_name="relations_in")
+    from_page = models.ForeignKey(KnowledgePage, on_delete=models.PROTECT, related_name="relations_out")
+    to_page = models.ForeignKey(KnowledgePage, on_delete=models.PROTECT, related_name="relations_in")
     relation_type = models.CharField(max_length=30)  # reference / shared_source / ai_identified
     weight = models.FloatField(default=1.0)
     via_material = models.ForeignKey(Material, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    generation = models.ForeignKey(
+        WikiGeneration,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="relations",
+    )
 
     class Meta:
         db_table = "opspilot_wiki_page_relation"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["generation", "from_page", "to_page", "relation_type"],
+                name="uniq_wiki_rel_generation",
+            )
+        ]
 
 
 class PageEvidence(TimeInfo):
     page = models.ForeignKey(KnowledgePage, on_delete=models.CASCADE, related_name="evidences")
     material = models.ForeignKey(Material, on_delete=models.CASCADE, related_name="evidences")
-    material_version = models.ForeignKey(MaterialVersion, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    material_version = models.ForeignKey(
+        MaterialVersion,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
+    )
     locator = models.TextField(blank=True, default="")
 
     class Meta:
@@ -157,6 +618,48 @@ class BuildRecord(MaintainerInfo, TimeInfo):
     knowledge_base = models.ForeignKey(WikiKnowledgeBase, on_delete=models.CASCADE, related_name="build_records")
     trigger = models.CharField(max_length=30, default="material")  # material / rebuild / material_update / material_delete
     operator = models.CharField(max_length=100, blank=True, default="")
+    generation = models.ForeignKey(
+        "WikiGeneration",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="primary_build_records",
+    )
+    base_generation = models.ForeignKey(
+        "WikiGeneration",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="based_build_records",
+    )
+    rollback_of_generation = models.ForeignKey(
+        "WikiGeneration",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="rollback_build_records",
+    )
+    structure_revision = models.ForeignKey(
+        "WikiStructureRevision",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="build_records",
+    )
+    structure_fingerprint = models.CharField(
+        max_length=64,
+        blank=True,
+        default="",
+    )
+    pipeline_version = models.CharField(
+        max_length=64,
+        blank=True,
+        default="",
+    )
+    source_fingerprints = models.JSONField(default=list)
+    page_actions = models.JSONField(default=list)
+    directory_trace = models.JSONField(default=list)
+    activation = models.JSONField(default=dict)
     inputs = models.JSONField(default=dict)
     stage = models.CharField(max_length=30, default="queued")
     progress = models.FloatField(default=0)
@@ -164,10 +667,68 @@ class BuildRecord(MaintainerInfo, TimeInfo):
     affected_pages = models.JSONField(default=list)
     errors = models.JSONField(default=list)
     maintenance = models.JSONField(default=dict)
+    budget_trace = models.JSONField(default=dict)
+    checkpoint = models.JSONField(default=dict)
     status = models.CharField(max_length=20, default="running")  # running / success / partial / failed
 
     class Meta:
         db_table = "opspilot_wiki_build_record"
+
+
+class WikiImportPreflight(MaintainerInfo, TimeInfo):
+    STATUS_CHOICES = (
+        ("active", "Active"),
+        ("consumed", "Consumed"),
+        ("expired", "Expired"),
+    )
+
+    knowledge_base = models.ForeignKey(
+        WikiKnowledgeBase,
+        on_delete=models.CASCADE,
+        related_name="import_preflights",
+    )
+    token_hash = models.CharField(max_length=64, unique=True)
+    actor = models.CharField(max_length=150)
+    archive_sha256 = models.CharField(max_length=64, db_index=True)
+    filename = models.CharField(max_length=255, blank=True, default="")
+    archive_kind = models.CharField(max_length=20)
+    base_generation = models.ForeignKey(
+        WikiGeneration,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="import_preflights",
+    )
+    structure_revision = models.ForeignKey(
+        WikiStructureRevision,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="import_preflights",
+    )
+    structure_version = models.PositiveIntegerField(null=True, blank=True)
+    classification_root = models.ForeignKey(
+        WikiDirectory,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="import_preflights",
+    )
+    options = models.JSONField(default=dict)
+    preview = models.JSONField(default=dict)
+    preview_fingerprint = models.CharField(max_length=64)
+    expires_at = models.DateTimeField()
+    consumed_at = models.DateTimeField(null=True, blank=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="active", db_index=True)
+
+    class Meta:
+        db_table = "opspilot_wiki_import_preflight"
+        indexes = [
+            models.Index(
+                fields=["knowledge_base", "status", "expires_at"],
+                name="wiki_import_preflight_idx",
+            )
+        ]
 
 
 class CheckItem(MaintainerInfo, TimeInfo):
@@ -192,7 +753,17 @@ class CheckItem(MaintainerInfo, TimeInfo):
         db_table = "opspilot_wiki_check_item"
         constraints = [
             models.CheckConstraint(
-                check=(~models.Q(status="open") | models.Q(check_type__in=("cannot_merge", "material_update", "duplicate", "conflict"))),
+                check=(
+                    ~models.Q(status="open")
+                    | models.Q(
+                        check_type__in=(
+                            "cannot_merge",
+                            "material_update",
+                            "duplicate",
+                            "conflict",
+                        )
+                    )
+                ),
                 name="wiki_check_open_decision_only",
             )
         ]

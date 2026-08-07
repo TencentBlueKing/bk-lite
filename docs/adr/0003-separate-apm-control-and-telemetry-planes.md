@@ -1,6 +1,8 @@
 # ADR 0003：APM 控制面与遥测数据面分离
 
-Status: accepted
+Status: superseded by ADR 0006
+
+> 本 ADR 的“控制面不承载原始 Span、外部遥测依赖不得阻断 Server 启动”原则继续有效；具体数据面存储、采样与传输决定由 ADR 0006 取代。
 
 ## Context
 

@@ -8,7 +8,9 @@ import {
   message,
   Spin,
   Segmented,
-  Empty
+  Empty,
+  Pagination,
+  Tag
 } from 'antd';
 import useApiClient from '@/utils/request';
 import useMonitorApi from '@/app/monitor/api';
@@ -19,7 +21,6 @@ import CustomTable from '@/components/custom-table';
 import {
   ColumnItem,
   ModalRef,
-  GroupInfo,
   IntegrationItem,
   ObjectItem,
   MetricItem
@@ -35,6 +36,7 @@ import {
   getObjectTypeByName
 } from '@/app/monitor/utils/monitorObject';
 import { cloneDeep } from 'lodash';
+import { buildIfmibMetricView, getDefaultMetricGroupOpenState } from './ifmibMetricView';
 
 const Configure = () => {
   const { isLoading } = useApiClient();
@@ -52,6 +54,7 @@ const Configure = () => {
   const groupId = searchParams.get('id');
   const pluginID = searchParams.get('plugin_id') || '';
   const templateType = searchParams.get('template_type') || '';
+  const enableIfmib = searchParams.get('enable_ifmib') !== 'false';
   const groupRef = useRef<ModalRef>(null);
   const metricRef = useRef<ModalRef>(null);
   const [searchText, setSearchText] = useState<string>('');
@@ -61,7 +64,10 @@ const Configure = () => {
   >([]);
   const [metrics, setMetrics] = useState<MetricItem[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
-  const [groupList, setGroupList] = useState<MetricListItem[]>([]);
+  const [metricPage, setMetricPage] = useState(1);
+  const [metricCount, setMetricCount] = useState(0);
+  // 保留接口返回的真实分组供指标编辑使用。
+  const [apiGroupList, setApiGroupList] = useState<MetricListItem[]>([]);
   const [activeTab, setActiveTab] = useState<string>('');
   const [items, setItems] = useState<IntegrationItem[]>([]);
   const [draggingItemId, setDraggingItemId] = useState<string | null>(null);
@@ -69,6 +75,12 @@ const Configure = () => {
   const [confirmLoading, setConfirmLoading] = useState(false);
   const [groupConfirmLoading, setGroupConfirmLoading] = useState(false);
   const [showTabs, setShowTabs] = useState<boolean>(false);
+  const metricTableRef = useRef<HTMLDivElement>(null);
+  const manuallyClosedGroupIds = useRef<Set<string>>(new Set());
+  const metricCatalogAbortRef = useRef<AbortController | null>(null);
+  const canReorderCatalog = metricCount <= 100 && !searchText.trim();
+
+  useEffect(() => () => metricCatalogAbortRef.current?.abort(), []);
 
   const columns: ColumnItem[] = [
     {
@@ -83,7 +95,12 @@ const Configure = () => {
       dataIndex: 'display_name',
       width: 120,
       key: 'display_name',
-      ellipsis: true
+      ellipsis: true,
+      render: (_, record) => (
+        <div className="flex items-center gap-1 overflow-hidden">
+          <span className="truncate">{record.display_name || '--'}</span>
+        </div>
+      )
     },
     {
       title: t('monitor.integrations.dimension'),
@@ -105,7 +122,14 @@ const Configure = () => {
       title: t('monitor.integrations.dataType'),
       dataIndex: 'data_type',
       key: 'data_type',
-      width: 100
+      width: 100,
+      render: (value: string) => (
+        <>{value === 'Enum'
+          ? t('monitor.integrations.enum')
+          : value === 'Number'
+            ? t('monitor.integrations.number')
+            : value}</>
+      )
     },
     {
       title: t('common.unit'),
@@ -166,7 +190,7 @@ const Configure = () => {
   useEffect(() => {
     if (isLoading) return;
     getObjects();
-  }, [isLoading]);
+  }, [isLoading, enableIfmib]);
 
   const getObjects = async () => {
     setLoading(true);
@@ -218,83 +242,91 @@ const Configure = () => {
     }
   };
 
-  const getInitData = async (objId = activeTab, preserveState = false) => {
+  const getInitData = async (
+    objId = activeTab,
+    preserveState = false,
+    page = metricPage,
+    keyword = searchText.trim()
+  ) => {
     const params = {
       monitor_object_id: +objId,
-      monitor_plugin_id: +pluginID
+      monitor_plugin_id: +pluginID,
+      ...(keyword ? { keyword } : {})
     };
-    const getGroupList = getMetricsGroup(params);
-
-    const getMetrics = getMonitorMetrics({
-      ...params,
-      monitor_plugin_id: +pluginID
-    });
+    metricCatalogAbortRef.current?.abort();
+    const abortController = new AbortController();
+    metricCatalogAbortRef.current = abortController;
+    const config = { signal: abortController.signal };
     setLoading(true);
-    const currentSearchText = preserveState ? searchText : '';
     const currentOpenState = preserveState
       ? new Map(filteredMetricData.map((g) => [g.id, g.isOpen]))
       : null;
 
     if (!preserveState) {
       setSearchText('');
+      manuallyClosedGroupIds.current.clear();
     }
     try {
-      Promise.all([getGroupList, getMetrics])
-        .then((res) => {
-          const groupData = res[0].map((item: GroupInfo, index: number) => ({
-            ...item,
-            child: [],
-            isOpen: currentOpenState
-              ? (currentOpenState.get(item.id as string) ?? false)
-              : !index
-          }));
-          const metricData = res[1];
-          setMetrics(res[1] || []);
-          metricData.forEach((metric: MetricItem) => {
-            const target = groupData.find(
-              (item: GroupInfo) => item.id === metric.metric_group
-            );
-            if (target) {
-              target.child.push(metric);
-            }
-          });
-          setGroupList(groupData);
-          setMetricData(groupData);
-          if (preserveState && currentSearchText.trim()) {
-            const lowerSearchText = currentSearchText.toLowerCase();
-            const filtered = groupData
-              .map((group: MetricListItem) => {
-                const filteredChild = (group.child || []).filter(
-                  (metric: MetricItem) => {
-                    const name = metric.name?.toLowerCase() || '';
-                    const displayName =
-                      metric.display_name?.toLowerCase() || '';
-                    return (
-                      name.includes(lowerSearchText) ||
-                      displayName.includes(lowerSearchText)
-                    );
-                  }
-                );
-                if (filteredChild.length > 0) {
-                  return {
-                    ...group,
-                    child: filteredChild,
-                    isOpen: currentOpenState?.get(group.id) ?? true
-                  };
-                }
-                return null;
-              })
-              .filter(Boolean) as MetricListItem[];
-            setFilteredMetricData(filtered);
-          } else {
-            setFilteredMetricData(groupData);
-          }
-        })
-        .finally(() => {
-          setLoading(false);
-        });
+      // 厂商指标按页分页；IF-MIB 固定约十余条，单独拉全量后置底归并，避免拆页。
+      const [groupPage, metricsPage, ifmibPage] = await Promise.all([
+        getMetricsGroup(params, config),
+        getMonitorMetrics(
+          { ...params, include_ifmib: false, page },
+          config
+        ),
+        enableIfmib
+          ? getMonitorMetrics(
+            {
+              ...params,
+              include_ifmib: true,
+              is_ifmib: true,
+              page: 1,
+              page_size: 100
+            },
+            config
+          )
+          : Promise.resolve({ count: 0, items: [], metric_groups: [] })
+      ]);
+      if (abortController.signal.aborted) return;
+      const rawGroupList: MetricListItem[] = (
+        metricsPage.metric_groups || groupPage.items
+      ).map((group) => ({
+        ...group,
+        id: String(group.id),
+        name: group.name || '',
+        is_pre: group.is_pre === true,
+        child: []
+      }));
+      setMetricCount(metricsPage.count);
+      setApiGroupList(rawGroupList);
+      const catalogMetrics = enableIfmib
+        ? [...metricsPage.items, ...ifmibPage.items]
+        : metricsPage.items;
+      const metricView = buildIfmibMetricView(
+        rawGroupList,
+        catalogMetrics,
+        enableIfmib,
+        (key) => t(key)
+      );
+      const defaultOpenState = getDefaultMetricGroupOpenState(metricView);
+      const groupData = metricView.map((group) => ({
+        ...group,
+        isOpen: currentOpenState
+          ? (currentOpenState.get(group.id) ?? defaultOpenState.get(group.id))
+          : defaultOpenState.get(group.id)
+      }));
+      setMetrics(groupData.flatMap((group) => group.child));
+      setMetricData(groupData);
+      setFilteredMetricData(groupData);
     } catch {
-      setLoading(false);
+      if (!abortController.signal.aborted) {
+        setMetricData([]);
+        setFilteredMetricData([]);
+      }
+    } finally {
+      if (metricCatalogAbortRef.current === abortController) {
+        setLoading(false);
+      }
     }
   };
 
@@ -302,48 +334,15 @@ const Configure = () => {
     setSearchText(e.target.value);
   };
 
-  const filterMetricData = (text: string) => {
-    if (!text.trim()) {
-      const restored = metricData.map((group, index) => ({
-        ...group,
-        isOpen: !index
-      }));
-      setFilteredMetricData(restored);
-      return;
-    }
-    const lowerSearchText = text.toLowerCase();
-    const filtered = metricData
-      .map((group) => {
-        const filteredChild = (group.child || []).filter(
-          (metric: MetricItem) => {
-            const name = metric.name?.toLowerCase() || '';
-            const displayName = metric.display_name?.toLowerCase() || '';
-            return (
-              name.includes(lowerSearchText) ||
-              displayName.includes(lowerSearchText)
-            );
-          }
-        );
-        if (filteredChild.length > 0) {
-          return {
-            ...group,
-            child: filteredChild,
-            isOpen: true
-          };
-        }
-        return null;
-      })
-      .filter(Boolean) as MetricListItem[];
-    setFilteredMetricData(filtered);
-  };
-
   const onTxtPressEnter = () => {
-    filterMetricData(searchText);
+    setMetricPage(1);
+    getInitData(activeTab, true, 1, searchText.trim());
   };
 
   const onTxtClear = () => {
     setSearchText('');
-    filterMetricData('');
+    setMetricPage(1);
+    getInitData(activeTab, true, 1, '');
   };
 
   const openGroupModal = (type: string, row = {}) => {
@@ -385,7 +384,13 @@ const Configure = () => {
   const onTabChange = (val: string) => {
     setMetricData([]);
     setActiveTab(val);
-    getInitData(val);
+    setMetricPage(1);
+    getInitData(val, false, 1);
+  };
+
+  const onMetricPageChange = (page: number) => {
+    setMetricPage(page);
+    getInitData(activeTab, true, page, searchText.trim());
   };
 
   const onDragStart = (e: React.DragEvent<HTMLDivElement>, id: string) => {
@@ -422,22 +427,23 @@ const Configure = () => {
   ) => {
     e.preventDefault();
     setDragOverTargetId(null);
+    if (!canReorderCatalog) return;
     if (draggingItemId && draggingItemId !== targetId) {
       const draggingIndex = metricData.findIndex(
         (item) => item.id === draggingItemId
       );
       const targetIndex = metricData.findIndex((item) => item.id === targetId);
-      const reorderedData: any = cloneDeep(metricData);
-      const [draggedItem] = reorderedData.splice(draggingIndex, 1);
-      reorderedData.splice(targetIndex, 0, draggedItem);
       if (draggingIndex !== -1 && targetIndex !== -1) {
+        const reorderedData = cloneDeep<MetricListItem[]>(metricData);
+        const [draggedItem] = reorderedData.splice(draggingIndex, 1);
+        reorderedData.splice(targetIndex, 0, draggedItem);
         try {
           setLoading(true);
           const updatedOrder = reorderedData
             .filter((item: MetricListItem) => !item.is_pre)
             .map(
-              (item: MetricItem, index: number) => ({
-                id: item.id,
+              (item: MetricListItem, index: number) => ({
+                id: Number(item.id),
                 sort_order: index
               })
             );
@@ -452,16 +458,18 @@ const Configure = () => {
     }
   };
 
-  const onRowDragEnd = async (data: any) => {
+  const onRowDragEnd = async (data?: MetricItem[]) => {
+    if (!canReorderCatalog) return;
     setLoading(true);
+    const orderedData = [...(data || [])];
     metrics
       .filter((metricItem) => !metricItem.is_pre)
       .forEach((metricItem) => {
-        if (!data.map((item: MetricItem) => item.id).includes(metricItem.id)) {
-          data.push(metricItem);
+        if (!orderedData.map((item) => item.id).includes(metricItem.id)) {
+          orderedData.push(metricItem);
         }
       });
-    const updatedOrder = data
+    const updatedOrder = orderedData
       .filter((item: MetricItem) => !item.is_pre)
       .map((item: MetricItem, index: number) => ({
         id: item.id,
@@ -479,12 +487,43 @@ const Configure = () => {
   };
 
   const onToggle = (id: string, isOpen: boolean) => {
+    if (isOpen) {
+      manuallyClosedGroupIds.current.delete(id);
+    } else {
+      manuallyClosedGroupIds.current.add(id);
+    }
     setMetricData((prev) =>
       prev.map((item) => (item.id === id ? { ...item, isOpen } : item))
     );
     setFilteredMetricData((prev) =>
       prev.map((item) => (item.id === id ? { ...item, isOpen } : item))
     );
+  };
+
+  const autoExpandVisibleGroups = () => {
+    const container = metricTableRef.current;
+    if (!container || searchText.trim()) return;
+    const containerRect = container.getBoundingClientRect();
+    const visibleGroupIds = Array.from(
+      container.querySelectorAll<HTMLElement>('[data-metric-group-id]')
+    )
+      .filter((element) => {
+        const rect = element.getBoundingClientRect();
+        return rect.top < containerRect.bottom && rect.bottom > containerRect.top;
+      })
+      .map((element) => element.dataset.metricGroupId)
+      .filter((id): id is string => Boolean(id));
+
+    if (!visibleGroupIds.length) return;
+    const shouldOpen = new Set(
+      visibleGroupIds.filter((id) => !manuallyClosedGroupIds.current.has(id))
+    );
+    if (!shouldOpen.size) return;
+    const openVisibleGroups = (groups: MetricListItem[]) => groups.map((group) => (
+      shouldOpen.has(group.id) && !group.isOpen ? { ...group, isOpen: true } : group
+    ));
+    setMetricData(openVisibleGroups);
+    setFilteredMetricData(openVisibleGroups);
   };
 
   return (
@@ -525,6 +564,8 @@ const Configure = () => {
       </div>
       <Spin spinning={loading}>
         <div
+          ref={metricTableRef}
+          onScroll={autoExpandVisibleGroups}
           className={metricStyle.metricTable}
           style={{
             height: showTabs ? 'calc(100vh - 396px)' : 'calc(100vh - 346px)'
@@ -532,21 +573,30 @@ const Configure = () => {
         >
           {!!filteredMetricData.length ? (
             filteredMetricData.map((metricItem) => (
-              <Collapse
+              <div key={metricItem.id} data-metric-group-id={metricItem.id}>
+                <Collapse
                 className={`mb-[10px] ${
                   dragOverTargetId === metricItem.id &&
                   draggingItemId !== dragOverTargetId
                     ? 'border-t-[1px] border-blue-200'
                     : ''
                 }`}
-                key={metricItem.id}
-                sortable={!metricItem.is_pre}
+                sortable={!metricItem.is_pre && canReorderCatalog}
                 dragHandleOnly
                 onDragStart={(e) => onDragStart(e, metricItem.id)}
                 onDragEnd={onDragEnd}
                 onDragOver={(e) => onDragOver(e, metricItem.id)}
                 onDrop={(e) => onDrop(e, metricItem.id)}
-                title={metricItem.display_name || ''}
+                title={
+                  <div className="flex items-center gap-2">
+                    <span>{metricItem.display_name || ''}</span>
+                    {metricItem.is_ifmib_group === true && (
+                      <Tag className="m-0" color="blue">
+                        IF-MIB
+                      </Tag>
+                    )}
+                  </div>
+                }
                 isOpen={metricItem.isOpen}
                 onToggle={(isOpen) => onToggle(metricItem.id, isOpen)}
                 icon={
@@ -588,18 +638,31 @@ const Configure = () => {
                   columns={columns}
                   rowKey="id"
                   rowDraggable={
+                    canReorderCatalog &&
                     metricItem.child?.length > 1 &&
                     metricItem.child.every((item) => !item.is_pre)
                   }
                   onRowDragEnd={onRowDragEnd}
                 />
-              </Collapse>
+                </Collapse>
+              </div>
             ))
           ) : (
             <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} />
           )}
         </div>
       </Spin>
+      {metricCount > 100 && (
+        <div className="mt-[16px] flex justify-end">
+          <Pagination
+            current={metricPage}
+            pageSize={100}
+            showSizeChanger={false}
+            total={metricCount}
+            onChange={onMetricPageChange}
+          />
+        </div>
+      )}
       <GroupModal
         ref={groupRef}
         monitorObject={+activeTab}
@@ -610,7 +673,7 @@ const Configure = () => {
         ref={metricRef}
         monitorObject={+activeTab}
         pluginId={+pluginID}
-        groupList={groupList}
+        groupList={apiGroupList}
         onSuccess={operateMtric}
       />
     </div>

@@ -34,9 +34,9 @@
   ```
 
 #### 3 Specify Return Fields
-- Return only specified fields (e.g., `_time`, `_stream`, and `_msg`):
+- Return only specified fields (e.g., `_time`, `_stream`, and `message`):
   ```logs
-  error _time:5m | fields _time, _stream, _msg
+  error _time:5m | fields _time, _stream, message
   ```
 
 #### 4 Exclude Specific Logs

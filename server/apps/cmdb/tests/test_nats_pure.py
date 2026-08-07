@@ -5,11 +5,35 @@
 
 import datetime
 from types import SimpleNamespace
+from unittest.mock import patch
 
 import pytest
 from django.utils import timezone
 
 from apps.cmdb.nats import nats as N
+
+
+@patch.object(N, "_build_nats_permission_map", return_value=None)
+@patch.object(N, "_build_nats_model_permission_map", return_value=None)
+@pytest.mark.unit
+def test_get_cmdb_statistics_keeps_complete_zero_schema_without_permission(model_permission_mock, instance_permission_mock):
+    result = N.get_cmdb_statistics(user_info={"team": 1, "user": "alice"})
+
+    assert result == {
+        "result": True,
+        "data": {
+            "classification_count": 0,
+            "model_count": 0,
+            "instance_count": 0,
+            "model_with_instance_count": 0,
+            "empty_model_count": 0,
+            "model_coverage_rate": 0,
+        },
+        "message": "",
+    }
+    model_permission_mock.assert_called_once()
+    instance_permission_mock.assert_called_once()
+
 
 # --------------------------------------------------------------------------
 # _normalize_to_list

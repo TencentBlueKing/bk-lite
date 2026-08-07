@@ -295,7 +295,7 @@ def reconcile_governance_host(task_id: int, target_id: int) -> None:
     reconcile_host_result(task_id, target_id)
 
 
-@shared_task(max_retries=0)
+@shared_task(queue="patch_maintenance", max_retries=0)
 def watch_governance_timeouts() -> None:
     """周期收口调度/阶段超时；安装和重启只进入结果确认，不直接判失败。"""
     from apps.patch_mgmt.config import DISPATCH_TIMEOUT, RECONCILE_TIMEOUT
@@ -388,6 +388,18 @@ def watch_governance_timeouts() -> None:
     for task in GovernanceTask.objects.filter(pk__in=changed_task_ids):
         _finalize_task_status(task)
 
+    # 独立收敛父任务与子任务的终态不一致；没有子结果的刚启动任务不在此误收口。
+    inconsistent_tasks = (
+        GovernanceTask.objects.filter(
+            status__in=GovernanceTaskStatus.ACTIVE_STATES,
+            host_results__isnull=False,
+        )
+        .distinct()
+        .order_by("id")[:500]
+    )
+    for task in inconsistent_tasks:
+        _finalize_task_status(task)
+
 
 @shared_task(max_retries=0)
 def ingest_patch_source(source_id: int, keys: list) -> dict:
@@ -413,13 +425,16 @@ def ingest_patch_source(source_id: int, keys: list) -> dict:
         return {"error": "补丁源不存在"}
 
     try:
-        result = SourceSyncService.ingest_selected(source, [str(k) for k in keys])
-    except (SourceSyncError,) as exc:
-        logger.warning("[ingest_patch_source] 同步入库失败: source_id=%s %s", source_id, exc)
-        return {"error": str(exc)}
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("[ingest_patch_source] 同步入库异常: source_id=%s", source_id, exc_info=True)
-        return {"error": f"同步入库异常: {exc}"}
+        try:
+            result = SourceSyncService.ingest_selected(source, [str(k) for k in keys])
+        except (SourceSyncError,) as exc:
+            logger.warning("[ingest_patch_source] 同步入库失败: source_id=%s %s", source_id, exc)
+            return {"error": str(exc)}
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("[ingest_patch_source] 同步入库异常: source_id=%s", source_id, exc_info=True)
+            return {"error": f"同步入库异常: {exc}"}
+    finally:
+        PatchSource.objects.filter(pk=source_id).update(sync_in_progress=False)
 
     logger.info("[ingest_patch_source] 完成: source_id=%s result=%s", source_id, result)
     return result

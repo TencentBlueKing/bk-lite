@@ -39,15 +39,19 @@ export function buildPlatformApiCredential(
   modelId: string,
   raw: CredentialPoolItem,
 ): CredentialPoolItem {
+  const username = String(raw.username || '').trim();
   const credential: CredentialPoolItem = {
     ...(raw.credential_id ? { credential_id: raw.credential_id } : {}),
-    username: String(raw.username || '').trim(),
+    username,
+    // 兼容 CloudAkSk / encrypted_fields=accessKey|accessSecret 的企业云对象
+    accessKey: username,
     port: Number(raw.port || getPlatformApiCredentialConfig(modelId).defaultPort),
     verify_tls: raw.verify_tls !== false,
   };
   const password = String(raw.password || '').trim();
   if (password && password !== PASSWORD_PLACEHOLDER) {
     credential.password = password;
+    credential.accessSecret = password;
   }
   return credential;
 }

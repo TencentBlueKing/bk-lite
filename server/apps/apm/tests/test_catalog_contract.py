@@ -3,200 +3,156 @@ from datetime import timedelta
 import pytest
 from django.utils import timezone
 
-from apps.apm.models import (
-    ApmService,
-    ApmServiceInstance,
-    ApmServiceInstanceOrganization,
-    ApmServiceOrganization,
-)
-from apps.apm.services import DjangoIngestSourceService, DjangoTelemetryCatalogService
+from apps.apm.models import ApmApplication, ApmApplicationOrganization, ApmService, ApmServiceInstance, ApmServiceOrganization
+from apps.apm.services import DjangoApmApplicationService, DjangoTelemetryCatalogService
 from apps.apm.services.contracts import CatalogDiscovery
-
+from apps.apm.tests.helpers import create_application
 
 pytestmark = pytest.mark.django_db
 
 
-def _create_source(name: str, organizations: list[int]):
-    return DjangoIngestSourceService().create(
-        name=name,
-        ingest_type="otlp_http",
-        organization_ids=organizations,
-        actor="tester",
-    ).source
+def test_service_and_instance_are_discovered_under_a_known_application():
+    application = create_application("shop", (10, 20))
+
+    result = DjangoTelemetryCatalogService().discover(CatalogDiscovery("shop", " checkout ", "pod-a", "production", version="1.2.3"))
+
+    assert result.service.application == application
+    assert result.service.normalized_namespace == "shop"
+    assert result.instance.service == result.service
+    assert result.instance.version == "1.2.3"
+    assert set(result.service.organization_links.values_list("organization", flat=True)) == {10, 20}
+    assert set(result.instance.organization_links.values_list("organization", flat=True)) == {10, 20}
 
 
-def test_service_and_instance_identity_are_distinct_and_normalized():
-    source_a = _create_source("source-a", [10])
-    source_b = _create_source("source-b", [20])
+def test_unknown_application_cannot_create_catalog_rows():
     catalog = DjangoTelemetryCatalogService()
-    started_at = timezone.now()
 
-    first = catalog.discover(
-        CatalogDiscovery(
-            ingest_source_id=source_a.id,
-            service_namespace=None,
-            service_name=" checkout ",
-            instance_id="pod-a",
-            environment="prod",
-            seen_at=started_at,
-        )
+    with pytest.raises(ApmApplication.DoesNotExist):
+        catalog.discover(CatalogDiscovery("unknown", "checkout", "pod-a", "prod"))
+
+    assert ApmService.objects.count() == 0
+    assert ApmServiceInstance.objects.count() == 0
+
+
+def test_empty_namespace_is_discovered_under_builtin_application():
+    application = ApmApplication.objects.get(application_id="", is_builtin=True)
+    ApmApplicationOrganization.objects.create(application=application, organization=10)
+
+    result = DjangoTelemetryCatalogService().discover(CatalogDiscovery("", "kernel-worker", "node-a", "prod"))
+
+    assert result.service.application == application
+    assert result.service.namespace == ""
+    assert set(result.service.organization_links.values_list("organization", flat=True)) == {10}
+
+
+def test_builtin_application_tracks_the_current_application_organization_union():
+    shop = create_application("shop", (10,))
+    create_application("billing", (20,))
+    uncategorized = DjangoTelemetryCatalogService().discover(CatalogDiscovery("", "kernel-worker", "node-a", "prod")).service
+
+    DjangoApmApplicationService().update(
+        shop.id,
+        name=shop.name,
+        description="",
+        organization_ids=[30],
+        actor="tester",
     )
-    second = catalog.discover(
-        CatalogDiscovery(
-            ingest_source_id=source_b.id,
-            service_namespace="",
-            service_name="checkout",
-            instance_id="pod-b",
-            environment="staging",
-            seen_at=started_at + timedelta(minutes=1),
-        )
-    )
 
-    assert first.service == second.service
-    assert first.instance != second.instance
-    assert ApmService.objects.count() == 1
-    assert ApmServiceInstance.objects.count() == 2
-    assert first.service.normalized_namespace == ""
-    assert first.service.name == " checkout "
+    builtin = ApmApplication.objects.get(is_builtin=True)
+    assert set(builtin.organization_links.values_list("organization", flat=True)) == {20, 30}
+    assert set(uncategorized.organization_links.values_list("organization", flat=True)) == {20, 30}
 
 
-def test_missing_instance_identity_discovers_the_service_without_creating_a_fake_instance():
-    source = _create_source("source", [10])
+def test_missing_instance_identity_discovers_service_without_fake_instance():
+    create_application("shop", (10,))
 
-    result = DjangoTelemetryCatalogService().discover(
-        CatalogDiscovery(
-            ingest_source_id=source.id,
-            service_namespace="shop",
-            service_name="checkout",
-            instance_id=None,
-            environment="prod",
-        )
-    )
+    result = DjangoTelemetryCatalogService().discover(CatalogDiscovery("shop", "checkout", None, "prod"))
 
     assert result.missing_instance_identity is True
-    assert result.instance is None
     assert result.service is not None
-    assert result.service.namespace == "shop"
-    assert result.service.name == "checkout"
-    assert set(result.service.organization_links.values_list("organization", flat=True)) == {10}
+    assert result.instance is None
     assert ApmServiceInstance.objects.count() == 0
-    assert ApmService.objects.count() == 1
-    source.refresh_from_db()
-    assert source.last_missing_instance_identity_at is not None
 
 
-def test_first_instance_defines_service_organizations_and_later_changes_do_not_leak():
-    ingest_service = DjangoIngestSourceService()
-    source = ingest_service.create(
-        name="source",
-        ingest_type="otlp_http",
-        organization_ids=[10, 20],
-        actor="tester",
-    ).source
+def test_catalog_accepts_identity_values_at_the_persistence_limits_without_truncation():
+    create_application("shop", (10,))
+    discovery = CatalogDiscovery(
+        "shop",
+        "服" * 256,
+        "实" * 512,
+        "环" * 256,
+        version="版" * 256,
+    )
+
+    result = DjangoTelemetryCatalogService().discover(discovery)
+
+    assert result.service.name == discovery.service_name
+    assert result.instance.instance_id == discovery.instance_id
+    assert result.instance.environment == discovery.environment
+    assert result.instance.version == discovery.version
+
+
+def test_application_organization_changes_sync_services_and_only_inherited_instances():
+    application = create_application("shop", (10,))
     catalog = DjangoTelemetryCatalogService()
+    inherited = catalog.discover(CatalogDiscovery("shop", "checkout", "pod-a", "prod")).instance
+    custom = catalog.discover(CatalogDiscovery("shop", "checkout", "pod-b", "prod")).instance
+    catalog.set_instance_organizations(custom.id, [20], actor="tester")
 
-    first = catalog.discover(
-        CatalogDiscovery(
-            ingest_source_id=source.id,
-            service_namespace="shop",
-            service_name="checkout",
-            instance_id="pod-a",
-            environment="prod",
-        )
-    )
-    ingest_service.set_organizations(source.id, [30], actor="tester")
-    second = catalog.discover(
-        CatalogDiscovery(
-            ingest_source_id=source.id,
-            service_namespace="shop",
-            service_name="checkout",
-            instance_id="pod-b",
-            environment="prod",
-        )
-    )
-
-    assert set(
-        ApmServiceInstanceOrganization.objects.filter(instance=first.instance).values_list(
-            "organization",
-            flat=True,
-        )
-    ) == {30}
-    assert set(
-        ApmServiceInstanceOrganization.objects.filter(instance=second.instance).values_list(
-            "organization",
-            flat=True,
-        )
-    ) == {30}
-    assert set(
-        ApmServiceOrganization.objects.filter(service=first.service).values_list(
-            "organization",
-            flat=True,
-        )
-    ) == {10, 20}
-
-
-def test_custom_instance_organizations_stop_following_source_defaults():
-    ingest_service = DjangoIngestSourceService()
-    source = ingest_service.create(
-        name="source",
-        ingest_type="otlp_http",
-        organization_ids=[10],
+    DjangoApmApplicationService().update(
+        application.id,
+        name=application.name,
+        description="",
+        organization_ids=[30],
         actor="tester",
-    ).source
-    catalog = DjangoTelemetryCatalogService()
-    result = catalog.discover(
-        CatalogDiscovery(
-            ingest_source_id=source.id,
-            service_namespace="shop",
-            service_name="checkout",
-            instance_id="pod-a",
-            environment="prod",
-        )
+    )
+    custom.refresh_from_db()
+    inherited.service.refresh_from_db()
+
+    assert set(inherited.service.organization_links.values_list("organization", flat=True)) == {30}
+    assert set(inherited.organization_links.values_list("organization", flat=True)) == {30}
+    assert set(custom.organization_links.values_list("organization", flat=True)) == {20}
+    assert custom.permission_mode == ApmServiceInstance.PermissionMode.CUSTOM
+
+
+def test_application_organization_sync_rolls_back_all_catalog_levels(mocker):
+    application = create_application("shop", (10,))
+    original_name = application.name
+    discovered = DjangoTelemetryCatalogService().discover(CatalogDiscovery("shop", "checkout", "pod-a", "prod"))
+    mocker.patch(
+        "apps.apm.services.applications.ApmServiceInstanceOrganization.objects.bulk_create",
+        side_effect=RuntimeError("injected failure"),
     )
 
-    catalog.set_instance_organizations(result.instance.id, [20], actor="tester")
-    ingest_service.set_organizations(source.id, [30], actor="tester")
+    with pytest.raises(RuntimeError, match="injected failure"):
+        DjangoApmApplicationService().update(
+            application.id,
+            name="renamed",
+            description="",
+            organization_ids=[30],
+            actor="tester",
+        )
 
-    result.instance.refresh_from_db()
-    assert result.instance.permission_mode == ApmServiceInstance.PermissionMode.CUSTOM
-    assert set(result.instance.organization_links.values_list("organization", flat=True)) == {20}
+    application.refresh_from_db()
+    discovered.service.refresh_from_db()
+    discovered.instance.refresh_from_db()
+    assert application.name == original_name
+    assert set(application.organization_links.values_list("organization", flat=True)) == {10}
+    assert set(discovered.service.organization_links.values_list("organization", flat=True)) == {10}
+    assert set(discovered.instance.organization_links.values_list("organization", flat=True)) == {10}
 
 
-def test_latest_source_handoff_updates_inherited_permissions_but_stale_observations_do_not_regress():
+def test_latest_observation_updates_metadata_without_regressing_on_stale_data():
+    create_application("shop", (10,))
+    catalog = DjangoTelemetryCatalogService()
     now = timezone.now()
-    source_a = _create_source("source-a", [10])
-    source_b = _create_source("source-b", [20])
-    catalog = DjangoTelemetryCatalogService()
-    first = catalog.discover(
-        CatalogDiscovery(source_a.id, "shop", "checkout", "pod-a", "testing", seen_at=now)
-    )
+    first = catalog.discover(CatalogDiscovery("shop", "checkout", "pod-a", "testing", seen_at=now))
 
-    catalog.discover(
-        CatalogDiscovery(
-            source_b.id,
-            "shop",
-            "checkout",
-            "pod-a",
-            "production",
-            version="2.0",
-            seen_at=now + timedelta(minutes=1),
-        )
-    )
-    catalog.discover(
-        CatalogDiscovery(
-            source_a.id,
-            "shop",
-            "checkout",
-            "pod-a",
-            "stale-environment",
-            version="1.0",
-            seen_at=now - timedelta(minutes=1),
-        )
-    )
+    catalog.discover(CatalogDiscovery("shop", "checkout", "pod-a", "production", version="2.0", seen_at=now + timedelta(minutes=1)))
+    catalog.discover(CatalogDiscovery("shop", "checkout", "pod-a", "stale", version="1.0", seen_at=now - timedelta(minutes=1)))
 
     first.instance.refresh_from_db()
-    assert first.instance.ingest_source == source_b
     assert first.instance.environment == "production"
     assert first.instance.version == "2.0"
     assert first.instance.last_seen_at == now + timedelta(minutes=1)
-    assert set(first.instance.organization_links.values_list("organization", flat=True)) == {20}
+    assert ApmServiceOrganization.objects.filter(service=first.service).count() == 1

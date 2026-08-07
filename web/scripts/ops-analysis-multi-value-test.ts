@@ -105,18 +105,8 @@ assert.match(
 
 assert.match(
   read('../server/apps/operation_analysis/support-files/builtin_canvases.yaml'),
-  /key: 主机操作系统分布::get_instance_group_by[\s\S]*?chart_type:\s*\r?\n\s+- pie\s*\r?\n\s+- multiValue/,
+  /key: 主机操作系统分布::get_instance_group_by[\s\S]*?name: 主机操作系统分布[\s\S]*?chart_type:\s*\r?\n\s+- pie\s*\r?\n\s+- multiValue/,
 );
-
-const sourceApiEntries = JSON.parse(
-  read('../server/apps/operation_analysis/support-files/source_api.json'),
-) as Array<{ name?: string; rest_api?: string; chart_type?: string[] }>;
-const instanceGroupBySource = sourceApiEntries.find(
-  (item) =>
-    item.name === '主机操作系统分布' &&
-    item.rest_api === 'get_instance_group_by',
-);
-assert.deepEqual(instanceGroupBySource?.chart_type, ['pie', 'multiValue']);
 
 assert.match(read('src/app/ops-analysis/types/dataSource.ts'), /\| 'multiValue'/);
 assert.match(read('src/app/ops-analysis/types/screen.ts'), /\| 'multiValue'/);

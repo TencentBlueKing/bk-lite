@@ -9,8 +9,9 @@ export type SSHCredentialType = 'password' | 'key';
 export type WinRMScheme = 'http' | 'https';
 export type WinRMTransport = 'basic' | 'ntlm' | 'kerberos' | 'credssp';
 export type PatchSourceType = 'wsus' | 'yum_repo' | 'dnf_repo' | 'apt_repo';
+export type PatchOriginType = PatchSourceType | 'manual';
 export type PatchTargetSource = 'manual' | 'node_mgmt';
-export type ComplianceStatus = 'compliant' | 'non_compliant' | 'pending' | 'evaluating' | 'failed' | 'unconfigured';
+export type ComplianceStatus = 'compliant' | 'non_compliant' | 'pending' | 'evaluating' | 'failed' | 'unconfigured' | 'unknown' | 'not_applicable';
 
 // ── 通知配置候选 ──────────────────────────────────────────────────────────────
 
@@ -37,6 +38,7 @@ export interface ListResponse<T> {
 export interface PatchSource {
   id: number;
   name: string;
+  is_builtin: boolean;
   source_type: PatchSourceType;
   source_type_display?: string;
   connectivity_status_display?: string;
@@ -96,7 +98,8 @@ export interface Patch {
   windows_detail?: WindowsPatchDetail | null;
   linux_detail?: LinuxPatchDetail | null;
   sources: number[];
-  source_type: PatchSourceType | null;
+  source_type: PatchOriginType | null;
+  source_details?: PatchSourceDetail[];
   baseline_requirement_count?: number;
   released_at: string | null;
   last_synced_at: string | null;
@@ -110,6 +113,13 @@ export interface Patch {
     sha256: string;
     extension: '.msu' | '.cab';
   } | null;
+}
+
+export interface PatchSourceDetail {
+  source_id: number | null;
+  source_type: PatchSourceType;
+  url: string;
+  deleted: boolean;
 }
 
 export interface WindowsPatchDetail {
@@ -136,6 +146,7 @@ export interface PatchParams {
   severity?: PatchSeverity;
   pkg_status?: PackageStatus;
   source_isnull?: boolean;
+  source_type?: PatchOriginType;
   team?: string;
   search?: string;
   name?: string;
@@ -181,6 +192,7 @@ export interface PatchTarget {
   has_pending_reboot?: boolean;
   arch?: string;
   team: number[];
+  team_name?: string[];
   created_at: string;
   updated_at: string;
   permission?: string[];
@@ -249,6 +261,8 @@ export interface PatchDashboardStats {
   coverage_rate?: number;
   non_compliant_hosts?: number;
   unconfigured_hosts?: number;
+  unknown_hosts?: number;
+  not_applicable_hosts?: number;
   pending_risk_count?: number;
   failed_tasks?: number;
   compliance_distribution?: ComplianceDistributionItem[];

@@ -1,11 +1,14 @@
 import { useCallback } from 'react';
 import useApiClient from '@/utils/request';
+import type { RequestConfig } from '@/utils/request';
 import type {
-  ApmIngestSource,
-  ApmIngestSourceInput,
-  ApmIngestSourceWithCredential,
+  ApmApplication,
+  ApmApplicationInput,
+  ApmCloudRegion,
+  ApmDashboard,
   ApmIngestSnippet,
   ApmIngestSnippetInput,
+  ApmTimeWindow,
   ApmEvent,
   ApmEventQuery,
   ApmHealth,
@@ -17,20 +20,29 @@ import type {
   ApmPolicy,
   ApmPolicyInput,
   ApmPolicyQueryResult,
+  ApmPage,
   ApmNotificationChannel,
   ApmNotificationDelivery,
   ApmNotificationRecipient,
   ApmTraceDetail,
   ApmTracePage,
   ApmTraceSearchParams,
+  ApmSpanPage,
+  ApmSpanSearchParams,
   ApmTopologyGraph,
   CatalogStatus,
 } from '@/app/apm/types';
 
 interface InstanceQuery {
+  application?: string;
   environment?: string;
   status?: CatalogStatus;
   include_archived?: boolean;
+  started_at?: string;
+  ended_at?: string;
+  keyword?: string;
+  page?: number;
+  page_size?: number;
 }
 
 const useApmApi = () => {
@@ -52,6 +64,11 @@ const useApmApi = () => {
 
   const getInstances = useCallback(
     (params: InstanceQuery = {}) => get<ApmServiceInstance[]>('/apm/instances/', { params }),
+    [get]
+  );
+
+  const getInstancePage = useCallback(
+    (params: InstanceQuery) => get<ApmPage<ApmServiceInstance>>('/apm/instances/', { params }),
     [get]
   );
 
@@ -87,40 +104,42 @@ const useApmApi = () => {
     [post]
   );
 
-  const getIngestSources = useCallback(() => get<ApmIngestSource[]>('/apm/ingest-sources/'), [get]);
+  const getApplications = useCallback(
+    (config: RequestConfig = {}) => get<ApmApplication[]>('/apm/applications/', config),
+    [get]
+  );
 
-  const createIngestSource = useCallback(
-    (payload: ApmIngestSourceInput) =>
-      post<ApmIngestSourceWithCredential>('/apm/ingest-sources/', payload),
+  const getCloudRegions = useCallback(
+    (config: RequestConfig = {}) => get<ApmCloudRegion[]>('/apm/integration-config/regions/', config),
+    [get]
+  );
+
+  const createApplication = useCallback(
+    (payload: ApmApplicationInput) => post<ApmApplication>('/apm/applications/', payload),
     [post]
   );
 
-  const rotateIngestSource = useCallback(
-    (sourceId: string) =>
-      post<ApmIngestSourceWithCredential>(`/apm/ingest-sources/${sourceId}/rotate/`),
-    [post]
-  );
-
-  const disableIngestSource = useCallback(
-    (sourceId: string) => post<ApmIngestSource>(`/apm/ingest-sources/${sourceId}/disable/`),
-    [post]
-  );
-
-  const setIngestSourceOrganizations = useCallback(
-    (sourceId: string, organizationIds: number[]) =>
-      put<ApmIngestSource>(`/apm/ingest-sources/${sourceId}/organizations/`, {
-        organization_ids: organizationIds,
-      }),
+  const updateApplication = useCallback(
+    (applicationId: string, payload: ApmApplicationInput) =>
+      put<ApmApplication>(`/apm/applications/${applicationId}/`, payload),
     [put]
   );
 
   const getIngestSnippet = useCallback(
-    (sourceId: string, payload: ApmIngestSnippetInput) =>
-      post<ApmIngestSnippet>(`/apm/ingest-sources/${sourceId}/snippet/`, payload),
+    (payload: ApmIngestSnippetInput) => post<ApmIngestSnippet>(
+      '/apm/integration-config/',
+      payload,
+      { suppressErrorNotification: true }
+    ),
     [post]
   );
 
   const getHealth = useCallback(() => get<ApmHealth>('/apm/health/'), [get]);
+
+  const getDashboard = useCallback(
+    (window: ApmTimeWindow) => get<ApmDashboard>('/apm/dashboard/', { params: { window } }),
+    [get]
+  );
 
   const getServiceRed = useCallback(
     (serviceId: string, environment: string, startedAt?: string, endedAt?: string) =>
@@ -151,6 +170,11 @@ const useApmApi = () => {
 
   const getTraces = useCallback(
     (params: ApmTraceSearchParams) => get<ApmTracePage>('/apm/traces/', { params }),
+    [get]
+  );
+
+  const getSpans = useCallback(
+    (params: ApmSpanSearchParams) => get<ApmSpanPage>('/apm/spans/', { params }),
     [get]
   );
 
@@ -227,17 +251,18 @@ const useApmApi = () => {
     getServices,
     getService,
     getInstances,
+    getInstancePage,
     setInstanceOrganizations,
     setInstanceArchived,
     setServiceOrganizations,
     setServiceArchived,
-    getIngestSources,
-    createIngestSource,
-    rotateIngestSource,
-    disableIngestSource,
-    setIngestSourceOrganizations,
+    getApplications,
+    getCloudRegions,
+    createApplication,
+    updateApplication,
     getIngestSnippet,
     getHealth,
+    getDashboard,
     getServiceRed,
     getSlos,
     createSlo,
@@ -245,6 +270,7 @@ const useApmApi = () => {
     deleteSlo,
     setSloEnabled,
     getTraces,
+    getSpans,
     getTrace,
     getTopology,
     getPolicies,

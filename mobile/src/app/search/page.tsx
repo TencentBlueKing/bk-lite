@@ -26,11 +26,16 @@ import {
     MOBILE_SESSION_PAGE_SIZE,
     shouldShowSessionPagination,
 } from '@/utils/sessionPagination';
+import { useLocale } from '@/context/locale';
+import { useAuth } from '@/context/auth';
+import { formatAccountSearchTime } from '@/platform/preferences/dateTime';
 
 type SearchType = 'ConversationList' | 'WorkbenchPage' | 'ChatHistory';
 
 export default function SearchPage() {
     const { t } = useTranslation();
+    const { locale } = useLocale();
+    const { userInfo } = useAuth();
     const router = useRouter();
     const searchParams = useSearchParams();
     const searchType = (searchParams?.get('type') || 'ConversationList') as SearchType;
@@ -47,6 +52,7 @@ export default function SearchPage() {
     const handleBack = useMobileBack({ fallbackHref });
 
     const [searchValue, setSearchValue] = useState('');
+    const [keyword, setKeyword] = useState('');
     const [workbenchResults, setWorkbenchResults] = useState<ChatApplicationItem[]>([]);
     const [conversationSessions, setConversationSessions] = useState<SessionItem[]>([]);
     const [loading, setLoading] = useState(false);
@@ -110,21 +116,24 @@ export default function SearchPage() {
         }
     }, []);
 
-    // 防抖搜索
-    useEffect(() => {
-        if (searchType !== 'WorkbenchPage') return;
+    const submitSearch = (value: string) => {
+        const next = value.trim();
+        setSearchValue(value);
+        setKeyword(next);
+        if (searchType === 'WorkbenchPage') {
+            void searchWorkbenchApps(next);
+        }
+    };
 
-        const timer = setTimeout(() => {
-            searchWorkbenchApps(searchValue);
-        }, 300);
-
-        return () => {
-            clearTimeout(timer);
-            if (abortControllerRef.current) {
-                abortControllerRef.current.abort();
-            }
-        };
-    }, [searchValue, searchType, searchWorkbenchApps]);
+    const clearSearch = () => {
+        setSearchValue('');
+        setKeyword('');
+        setWorkbenchResults([]);
+        setLoadFailed(false);
+        if (abortControllerRef.current) {
+            abortControllerRef.current.abort();
+        }
+    };
 
     const loadConversationSessions = useCallback(async ({ append = false, page = 1 } = {}) => {
         if (conversationRequestRef.current) return;
@@ -182,29 +191,29 @@ export default function SearchPage() {
         conversationSessions.length,
     );
 
-    // 获取非工作台的搜索结果
+    // 获取非工作台的搜索结果（仅在确认搜索后按已提交关键词过滤）
     const getOtherSearchResults = useCallback(() => {
-        if (!searchValue.trim()) return [];
+        if (!keyword.trim()) return [];
 
-        const keyword = searchValue.trim().toLowerCase();
+        const needle = keyword.trim().toLowerCase();
 
         if (searchType === 'ConversationList') {
             return conversationSessions.filter(
                 (session) =>
-                    (session.title || t('conversations.untitled')).toLowerCase().includes(keyword)
+                    (session.title || t('conversations.untitled')).toLowerCase().includes(needle)
             );
         } else if (searchType === 'ChatHistory') {
             // 搜索聊天记录
             const filtered = mockChatMessages.filter((message) => message.chatId === botId)?.filter(
                 (message) =>
-                    message.content.toLowerCase().includes(keyword)
+                    message.content.toLowerCase().includes(needle)
             );
             // 按时间倒序排序（最新的在前面）
             return filtered.sort((a, b) => b.timestamp - a.timestamp);
         }
 
         return [];
-    }, [searchValue, searchType, botId, conversationSessions, t]);
+    }, [keyword, searchType, botId, conversationSessions, t]);
 
     // 获取搜索结果
     const searchResults = searchType === 'WorkbenchPage' ? workbenchResults : getOtherSearchResults();
@@ -230,7 +239,7 @@ export default function SearchPage() {
                 }
                 extra={
                     <div className="flex flex-col items-end space-y-1">
-                        <span className="text-xs text-[var(--color-text-4)]">
+                        <span className="text-sm text-[var(--color-text-4)]">
                             {formatMessageTime(messageItem.timestamp)}
                         </span>
                     </div>
@@ -281,16 +290,6 @@ export default function SearchPage() {
                 router.push(buildConversationHref({ botId: item.bot, nodeId: item.node_id }));
             }}
         >
-            {/* 右上角状态 - 默认在线 */}
-            <span
-                aria-hidden="true"
-                className="absolute top-0 right-0 w-6 h-6"
-                style={{
-                    clipPath: 'polygon(100% 0, 100% 100%, 0 0)',
-                    backgroundColor: 'var(--color-success)',
-                }}
-            />
-
             <div className="flex items-start space-x-3">
                 {/* 缩略图 */}
                 <div className="flex-shrink-0 relative">
@@ -315,7 +314,7 @@ export default function SearchPage() {
                     </div>
 
                     {/* 描述文本 */}
-                    <p className="text-xs text-[var(--color-text-2)] mb-3 leading-relaxed truncate">
+                    <p className="text-sm text-[var(--color-text-2)] mb-3 leading-relaxed truncate">
                         {item.app_description || t('workbench.noIntroduction')}
                     </p>
 
@@ -327,7 +326,7 @@ export default function SearchPage() {
                                 return (
                                     <span
                                         key={tag}
-                                        className="px-2 py-0.5 text-xs font-medium rounded"
+                                        className="px-2 py-0.5 text-sm font-medium rounded"
                                         style={{
                                             backgroundColor: tagColor.bg,
                                             color: tagColor.text,
@@ -346,35 +345,11 @@ export default function SearchPage() {
 
     // 格式化时间戳
     const formatMessageTime = (timestamp: number) => {
-        const date = new Date(timestamp);
-        const now = new Date();
-        const diff = now.getTime() - timestamp;
-
-        // 今天
-        if (date.toDateString() === now.toDateString()) {
-            return date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
-        }
-
-        // 昨天
-        const yesterday = new Date(now);
-        yesterday.setDate(yesterday.getDate() - 1);
-        if (date.toDateString() === yesterday.toDateString()) {
-            return t('search.yesterday');
-        }
-
-        // 一周内
-        if (diff < 7 * 24 * 60 * 60 * 1000) {
-            const days = ['日', '一', '二', '三', '四', '五', '六'];
-            return `周${days[date.getDay()]}`;
-        }
-
-        // 今年
-        if (date.getFullYear() === now.getFullYear()) {
-            return `${date.getMonth() + 1}月${date.getDate()}日`;
-        }
-
-        // 更早
-        return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日`;
+        return formatAccountSearchTime(
+            timestamp,
+            { locale, timezone: userInfo?.timezone || 'Asia/Shanghai' },
+            t('search.yesterday'),
+        );
     };
 
     // 获取占位符文本
@@ -408,11 +383,12 @@ export default function SearchPage() {
                         placeholder={getPlaceholder()}
                         value={searchValue}
                         onChange={setSearchValue}
-                        onClear={() => setSearchValue('')}
+                        onSearch={submitSearch}
+                        onClear={clearSearch}
                         style={{
                             '--border-radius': '18px',
                             '--background': 'var(--color-fill-2)',
-                            '--height': '36px',
+                            '--height': '40px',
                         }}
                     />
                 </div>
@@ -420,11 +396,11 @@ export default function SearchPage() {
 
             {/* 搜索结果 */}
             <div className="flex-1 overflow-y-auto">
-                {!searchValue.trim() ? (
-                    // 空状态 - 未输入搜索词
+                {!keyword.trim() ? (
+                    // 空状态 - 未确认搜索
                     <div className="h-full flex flex-col items-center justify-center h-64 text-[var(--color-text-3)]">
                         <SearchOutline className='text-7xl mb-4' />
-                        <p className="text-sm">{t('search.searchHint')}</p>
+                        <p className="text-base">{t('search.searchHint')}</p>
                     </div>
                 ) : loading && (searchType === 'WorkbenchPage' || searchType === 'ConversationList') ? (
                     // 加载状态
@@ -443,7 +419,7 @@ export default function SearchPage() {
                                 className="min-h-11 rounded-lg px-4 text-[var(--color-primary)] active:bg-[var(--color-fill-2)]"
                                 onClick={() => {
                                     if (searchType === 'WorkbenchPage') {
-                                        void searchWorkbenchApps(searchValue);
+                                        void searchWorkbenchApps(keyword);
                                     } else {
                                         setConversationReloadVersion((version) => version + 1);
                                     }
@@ -457,8 +433,8 @@ export default function SearchPage() {
                     // 空状态 - 无搜索结果
                     <div className="h-full flex flex-col items-center justify-center h-64 text-[var(--color-text-3)]">
                         <FrownOutline className='text-7xl mb-4' />
-                        <p className="text-sm">{t('search.noResults')}</p>
-                        <p className="text-xs mt-1">{t('search.tryOtherKeywords')}</p>
+                        <p className="text-base">{t('search.noResults')}</p>
+                        <p className="text-sm mt-1">{t('search.tryOtherKeywords')}</p>
                         {searchType === 'ConversationList' && showConversationPagination && (
                             <InfiniteScroll
                                 loadMore={loadMoreConversationSessions}

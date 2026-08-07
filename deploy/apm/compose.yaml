@@ -1,105 +1,166 @@
 name: bk-lite-apm
 
 services:
-  apm-edge:
-    image: ${APM_EDGE_IMAGE:-nginx:1.29.1-alpine}
+  apm-nats:
+    image: ${APM_NATS_IMAGE:-nats:2.10.25-alpine}
     restart: unless-stopped
-    depends_on:
-      apm-otel-collector:
-        condition: service_started
+    command: [--config=/etc/nats/nats-server.conf]
     environment:
-      APM_SERVER_UPSTREAM: ${APM_SERVER_UPSTREAM:-http://host.docker.internal:8000}
-      APM_INGEST_RATE: ${APM_INGEST_RATE:-20r/s}
-      APM_INGEST_BURST: ${APM_INGEST_BURST:-40}
-      APM_MAX_REQUEST_BODY: ${APM_MAX_REQUEST_BODY:-8m}
-    ports:
-      - "${APM_OTLP_HTTP_BIND:-0.0.0.0}:${APM_OTLP_HTTP_PORT:-4318}:8080"
-      - "${APM_OTLP_GRPC_BIND:-0.0.0.0}:${APM_OTLP_GRPC_PORT:-4317}:8081"
-    extra_hosts:
-      - host.docker.internal:host-gateway
+      NATS_ADMIN_USERNAME: ${APM_NATS_ADMIN_USERNAME:-apm_admin}
+      NATS_ADMIN_PASSWORD: ${APM_NATS_ADMIN_PASSWORD:-admin-contract-password}
+      NATS_REGION_USERNAME: ${APM_NATS_REGION_USERNAME:-apm_region}
+      NATS_REGION_PASSWORD: ${APM_NATS_REGION_PASSWORD:-region-contract-password}
+      NATS_REGION_PUBLISH_SUBJECT: apm.traces.${APM_CLOUD_REGION_ID:-local}
+      NATS_SYSTEM_USERNAME: ${APM_NATS_SYSTEM_USERNAME:-apm_system}
+      NATS_SYSTEM_PASSWORD: ${APM_NATS_SYSTEM_PASSWORD:-system-contract-password}
     volumes:
-      - ./nginx/apm.conf.template:/etc/nginx/templates/apm.conf.template:ro
-    tmpfs:
-      - /var/cache/nginx/apm-auth:size=16m,mode=0700
-    healthcheck:
-      test: [CMD, wget, -q, -O, /dev/null, http://127.0.0.1:8080/healthz]
-      interval: 10s
-      timeout: 3s
-      retries: 3
-      start_period: 5s
-    mem_limit: ${APM_EDGE_MEMORY_LIMIT:-64m}
-    cpus: ${APM_EDGE_CPU_LIMIT:-0.50}
+      - ./nats/nats-server.conf:/etc/nats/nats-server.conf:ro
+      - apm_nats_data:/data/jetstream
+    ports:
+      - "${APM_NATS_MONITOR_BIND:-127.0.0.1}:${APM_NATS_MONITOR_PORT:-18222}:8222"
+    mem_limit: ${APM_NATS_MEMORY_LIMIT:-384m}
+    cpus: ${APM_NATS_CPU_LIMIT:-1.00}
     security_opt:
       - no-new-privileges:true
 
-  apm-collector-queue-init:
-    image: ${APM_QUEUE_INIT_IMAGE:-nginx:1.29.1-alpine}
+  apm-nats-init:
+    image: ${APM_NATS_BOX_IMAGE:-natsio/nats-box:0.17.0}
+    restart: "no"
+    depends_on:
+      apm-nats:
+        condition: service_started
+    entrypoint: [/bin/sh, -ec]
+    command:
+      - |
+        SERVER="nats://${APM_NATS_ADMIN_USERNAME:-apm_admin}:${APM_NATS_ADMIN_PASSWORD:-admin-contract-password}@apm-nats:4222"
+        attempts=0
+        until nats --server "$${SERVER}" server check connection >/dev/null 2>&1; do
+          attempts=$$((attempts + 1))
+          [ "$${attempts}" -lt 60 ] || { echo "NATS did not become ready" >&2; exit 1; }
+          sleep 1
+        done
+        nats --server "$${SERVER}" stream info APM_TRACES >/dev/null 2>&1 || \
+          nats --server "$${SERVER}" stream add APM_TRACES \
+            --subjects "apm.traces.>" --storage file --retention limits --discard old \
+            --max-bytes "${APM_NATS_STREAM_MAX_BYTES:-268435456}" \
+            --max-age "${APM_NATS_STREAM_MAX_AGE:-24h}" \
+            --max-msg-size "${APM_NATS_MAX_MESSAGE_BYTES:-8388608}" \
+            --dupe-window "${APM_NATS_DUPLICATE_WINDOW:-2m}" --replicas 1 --defaults
+        nats --server "$${SERVER}" consumer info APM_TRACES BKLITE_APM_SYSTEM >/dev/null 2>&1 || \
+          nats --server "$${SERVER}" consumer add APM_TRACES BKLITE_APM_SYSTEM \
+            --filter "apm.traces.>" --pull --deliver all --ack explicit \
+            --wait "${APM_NATS_ACK_WAIT:-60s}" \
+            --max-deliver "${APM_NATS_MAX_DELIVER:-8}" \
+            --max-pending "${APM_NATS_MAX_ACK_PENDING:-256}" --replay instant --defaults
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+
+  apm-regional-queue-init:
+    image: ${APM_QUEUE_INIT_IMAGE:-busybox:1.37.0}
     restart: "no"
     user: "0:0"
     command:
       - /bin/sh
       - -ec
       - |
-        chown "${APM_COLLECTOR_UID:-10001}:${APM_COLLECTOR_GID:-10001}" /var/lib/otelcol/queue
+        chown "${APM_COLLECTOR_UID:-65532}:${APM_COLLECTOR_GID:-65532}" /var/lib/otelcol/queue
         chmod 0700 /var/lib/otelcol/queue
     network_mode: none
     read_only: true
     volumes:
-      - apm_collector_queue:/var/lib/otelcol/queue
-    cap_drop:
-      - ALL
-    cap_add:
-      - CHOWN
-      - DAC_OVERRIDE
-      - FOWNER
+      - apm_regional_queue:/var/lib/otelcol/queue
+    cap_drop: [ALL]
+    cap_add: [CHOWN, DAC_OVERRIDE, FOWNER]
     security_opt:
       - no-new-privileges:true
 
-  apm-otel-collector:
-    image: ${APM_COLLECTOR_IMAGE:-otel/opentelemetry-collector-contrib:0.153.0}
+  apm-regional-collector:
+    image: ${APM_COLLECTOR_IMAGE:-bklite/apm-otel-collector:0.153.0-bklite.1}
+    build:
+      context: ./collector
     restart: unless-stopped
-    user: "${APM_COLLECTOR_UID:-10001}:${APM_COLLECTOR_GID:-10001}"
-    command: [--config=/etc/otelcol-contrib/collector.yaml]
+    user: "${APM_COLLECTOR_UID:-65532}:${APM_COLLECTOR_GID:-65532}"
+    command: [--config=/etc/bklite-apm/regional.yaml]
     depends_on:
-      apm-collector-queue-init:
+      apm-regional-queue-init:
         condition: service_completed_successfully
-      apm-victoria-traces:
-        condition: service_started
+      apm-nats-init:
+        condition: service_completed_successfully
     environment:
-      APM_COLLECTOR_MEMORY_LIMIT_MIB: ${APM_COLLECTOR_MEMORY_LIMIT_MIB:-384}
-      APM_COLLECTOR_MEMORY_SPIKE_MIB: ${APM_COLLECTOR_MEMORY_SPIKE_MIB:-96}
-      APM_TAIL_DECISION_WAIT: ${APM_TAIL_DECISION_WAIT:-10s}
-      APM_TAIL_NUM_TRACES: ${APM_TAIL_NUM_TRACES:-50000}
-      APM_TAIL_EXPECTED_TRACES_PER_SEC: ${APM_TAIL_EXPECTED_TRACES_PER_SEC:-1000}
-      APM_SLOW_TRACE_THRESHOLD_MS: ${APM_SLOW_TRACE_THRESHOLD_MS:-1000}
-      APM_NORMAL_TRACE_SAMPLE_PERCENT: ${APM_NORMAL_TRACE_SAMPLE_PERCENT:-10}
-      APM_TRACE_BATCH_SIZE: ${APM_TRACE_BATCH_SIZE:-512}
-      APM_TRACE_BATCH_MAX_SIZE: ${APM_TRACE_BATCH_MAX_SIZE:-1024}
-      APM_METRIC_BATCH_SIZE: ${APM_METRIC_BATCH_SIZE:-512}
-      APM_METRIC_BATCH_MAX_SIZE: ${APM_METRIC_BATCH_MAX_SIZE:-1024}
-      APM_SPANMETRICS_CARDINALITY_LIMIT: ${APM_SPANMETRICS_CARDINALITY_LIMIT:-10000}
-      APM_TRACE_EXPORT_QUEUE_SIZE: ${APM_TRACE_EXPORT_QUEUE_SIZE:-2048}
-      APM_METRIC_EXPORT_QUEUE_SIZE: ${APM_METRIC_EXPORT_QUEUE_SIZE:-2048}
-      APM_VICTORIATRACES_OTLP_ENDPOINT: ${APM_VICTORIATRACES_OTLP_ENDPOINT:-http://apm-victoria-traces:10428/insert/opentelemetry/v1/traces}
-      APM_VICTORIAMETRICS_WRITE_ENDPOINT: ${APM_VICTORIAMETRICS_WRITE_ENDPOINT:-http://host.docker.internal:8428/api/v1/write}
-    extra_hosts:
-      - host.docker.internal:host-gateway
-    expose:
-      - "4317"
-      - "4318"
-      - "13133"
-      - "8888"
+      APM_CLOUD_REGION_ID: ${APM_CLOUD_REGION_ID:-local}
+      APM_NATS_URL: ${APM_REGIONAL_NATS_URL:-nats://apm_region:region-contract-password@apm-nats:4222}
+      APM_NATS_CREDENTIALS_FILE: ${APM_REGIONAL_NATS_CREDENTIALS_FILE:-}
+      APM_NATS_CA_FILE: ${APM_NATS_CA_FILE:-}
+      APM_NATS_CERT_FILE: ${APM_NATS_CERT_FILE:-}
+      APM_NATS_KEY_FILE: ${APM_NATS_KEY_FILE:-}
+      APM_NATS_TLS_SERVER_NAME: ${APM_NATS_TLS_SERVER_NAME:-}
+      APM_NATS_MAX_MESSAGE_BYTES: ${APM_NATS_MAX_MESSAGE_BYTES:-8388608}
+      APM_COLLECTOR_MEMORY_LIMIT_MIB: ${APM_REGIONAL_MEMORY_LIMIT_MIB:-384}
+      APM_COLLECTOR_MEMORY_SPIKE_MIB: ${APM_REGIONAL_MEMORY_SPIKE_MIB:-96}
+      APM_TRACE_BATCH_SIZE: ${APM_TRACE_BATCH_SIZE:-256}
+      APM_TRACE_BATCH_MAX_SIZE: ${APM_TRACE_BATCH_MAX_SIZE:-512}
+      APM_REGIONAL_QUEUE_MAX_BYTES: ${APM_REGIONAL_QUEUE_MAX_BYTES:-1073741824}
+    ports:
+      - "${APM_OTLP_HTTP_BIND:-127.0.0.1}:${APM_OTLP_HTTP_PORT:-4318}:4318"
+      - "${APM_OTLP_GRPC_BIND:-127.0.0.1}:${APM_OTLP_GRPC_PORT:-4317}:4317"
+      - "${APM_REGIONAL_HEALTH_BIND:-127.0.0.1}:${APM_REGIONAL_HEALTH_PORT:-13133}:13133"
+      - "${APM_REGIONAL_METRICS_BIND:-127.0.0.1}:${APM_REGIONAL_METRICS_PORT:-18888}:8888"
+    expose: [13133, 8888]
     volumes:
-      - ./otel/collector.yaml:/etc/otelcol-contrib/collector.yaml:ro
-      - apm_collector_queue:/var/lib/otelcol/queue
+      - ./otel/regional.yaml:/etc/bklite-apm/regional.yaml:ro
+      - apm_regional_queue:/var/lib/otelcol/queue
     healthcheck:
-      test: [CMD, /otelcol-contrib, validate, --config=/etc/otelcol-contrib/collector.yaml]
+      test: [CMD, /bklite-otelcol, validate, --config=/etc/bklite-apm/regional.yaml]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 10s
-    mem_limit: ${APM_COLLECTOR_CONTAINER_MEMORY_LIMIT:-512m}
-    cpus: ${APM_COLLECTOR_CPU_LIMIT:-1.00}
+    mem_limit: ${APM_REGIONAL_CONTAINER_MEMORY_LIMIT:-512m}
+    cpus: ${APM_REGIONAL_CPU_LIMIT:-1.00}
+    security_opt:
+      - no-new-privileges:true
+
+  apm-system-collector:
+    image: ${APM_COLLECTOR_IMAGE:-bklite/apm-otel-collector:0.153.0-bklite.1}
+    build:
+      context: ./collector
+    restart: unless-stopped
+    user: "${APM_COLLECTOR_UID:-65532}:${APM_COLLECTOR_GID:-65532}"
+    command: [--config=/etc/bklite-apm/system.yaml]
+    depends_on:
+      apm-nats-init:
+        condition: service_completed_successfully
+      apm-victoria-traces:
+        condition: service_started
+    environment:
+      APM_NATS_URL: ${APM_SYSTEM_NATS_URL:-nats://apm_system:system-contract-password@apm-nats:4222}
+      APM_NATS_STREAM: ${APM_NATS_STREAM:-APM_TRACES}
+      APM_NATS_CONSUMER: ${APM_NATS_CONSUMER:-BKLITE_APM_SYSTEM}
+      APM_NATS_CREDENTIALS_FILE: ${APM_SYSTEM_NATS_CREDENTIALS_FILE:-}
+      APM_NATS_CA_FILE: ${APM_NATS_CA_FILE:-}
+      APM_NATS_CERT_FILE: ${APM_NATS_CERT_FILE:-}
+      APM_NATS_KEY_FILE: ${APM_NATS_KEY_FILE:-}
+      APM_NATS_TLS_SERVER_NAME: ${APM_NATS_TLS_SERVER_NAME:-}
+      APM_NATS_MAX_ACK_PENDING: ${APM_NATS_MAX_ACK_PENDING:-256}
+      APM_COLLECTOR_MEMORY_LIMIT_MIB: ${APM_SYSTEM_MEMORY_LIMIT_MIB:-384}
+      APM_COLLECTOR_MEMORY_SPIKE_MIB: ${APM_SYSTEM_MEMORY_SPIKE_MIB:-96}
+      APM_VICTORIATRACES_OTLP_ENDPOINT: ${APM_VICTORIATRACES_OTLP_ENDPOINT:-http://apm-victoria-traces:10428/insert/opentelemetry/v1/traces}
+    expose: [13133, 8888]
+    ports:
+      - "${APM_SYSTEM_HEALTH_BIND:-127.0.0.1}:${APM_SYSTEM_HEALTH_PORT:-23133}:13133"
+      - "${APM_SYSTEM_METRICS_BIND:-127.0.0.1}:${APM_SYSTEM_METRICS_PORT:-18889}:8888"
+    volumes:
+      - ./otel/system.yaml:/etc/bklite-apm/system.yaml:ro
+    healthcheck:
+      test: [CMD, /bklite-otelcol, validate, --config=/etc/bklite-apm/system.yaml]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    mem_limit: ${APM_SYSTEM_CONTAINER_MEMORY_LIMIT:-512m}
+    cpus: ${APM_SYSTEM_CPU_LIMIT:-1.00}
     security_opt:
       - no-new-privileges:true
 
@@ -108,9 +169,10 @@ services:
     restart: unless-stopped
     command:
       - -storageDataPath=/victoria-traces-data
-      - -retentionPeriod=${APM_TRACE_RETENTION:-7d}
+      - -retentionPeriod=${APM_TRACE_RETENTION:-35d}
       - -httpListenAddr=:10428
       - -opentelemetry.traces.maxRequestSize=${APM_VICTORIATRACES_MAX_REQUEST_SIZE:-8MiB}
+      - -servicegraph.enableTask=true
     ports:
       - "${APM_VICTORIATRACES_QUERY_BIND:-127.0.0.1}:${APM_VICTORIATRACES_QUERY_PORT:-10428}:10428"
     volumes:
@@ -126,30 +188,7 @@ services:
     security_opt:
       - no-new-privileges:true
 
-  apm-victoriametrics:
-    image: ${APM_VICTORIAMETRICS_IMAGE:-victoriametrics/victoria-metrics:v1.144.0}
-    profiles: [standalone-metrics]
-    restart: unless-stopped
-    command:
-      - -storageDataPath=/victoria-metrics-data
-      - -retentionPeriod=${APM_METRIC_RETENTION:-30d}
-      - -httpListenAddr=:8428
-    ports:
-      - "${APM_VICTORIAMETRICS_QUERY_BIND:-127.0.0.1}:${APM_VICTORIAMETRICS_QUERY_PORT:-8428}:8428"
-    volumes:
-      - apm_victoria_metrics_data:/victoria-metrics-data
-    healthcheck:
-      test: [CMD, /victoria-metrics-prod, -version]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 10s
-    mem_limit: ${APM_VICTORIAMETRICS_MEMORY_LIMIT:-512m}
-    cpus: ${APM_VICTORIAMETRICS_CPU_LIMIT:-1.00}
-    security_opt:
-      - no-new-privileges:true
-
 volumes:
-  apm_collector_queue:
+  apm_nats_data:
+  apm_regional_queue:
   apm_victoria_traces_data:
-  apm_victoria_metrics_data:

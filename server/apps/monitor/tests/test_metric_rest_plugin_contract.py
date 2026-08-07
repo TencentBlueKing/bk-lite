@@ -12,8 +12,8 @@ from apps.monitor.views.monitor_metrics import MetricViewSet
 
 
 @pytest.mark.django_db
-def test_metric_list_returns_monitor_plugin_name():
-    """展示列按 plugin+metric 解析元数据时，REST 指标列表必须返回插件内部名。"""
+def test_metric_list_returns_paginated_monitor_plugin_name():
+    """展示列按 plugin+metric 解析元数据时，分页指标接口仍返回插件内部名。"""
     monitor_object = MonitorObject.objects.create(
         name="MetricRestContractHost",
         display_name="MetricRestContractHost",
@@ -48,6 +48,7 @@ def test_metric_list_returns_monitor_plugin_name():
 
     response = MetricViewSet.as_view({"get": "list"})(request)
     payload = json.loads(response.content)
-    result = next(item for item in payload["data"] if item["id"] == metric.id)
+    result = next(item for item in payload["data"]["items"] if item["id"] == metric.id)
 
+    assert payload["data"]["count"] == 1
     assert result["monitor_plugin_name"] == plugin.name

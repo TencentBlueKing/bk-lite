@@ -4,7 +4,7 @@ from decimal import Decimal
 from django.utils import timezone
 from rest_framework import serializers
 
-from apps.apm.models import ApmIngestSource, ApmPolicy, ApmService, ApmServiceInstance, ApmSlo
+from apps.apm.models import ApmApplication, ApmPolicy, ApmService, ApmServiceInstance, ApmSlo
 from apps.apm.services.status import catalog_status
 
 
@@ -18,46 +18,73 @@ class OrganizationAssignmentSerializer(serializers.Serializer):
         return sorted(set(value))
 
 
-class CreateIngestSourceSerializer(OrganizationAssignmentSerializer):
+class ApplicationMutationSerializer(OrganizationAssignmentSerializer):
+    application_id = serializers.RegexField(
+        regex=r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+        max_length=128,
+        required=False,
+        error_messages={"invalid": "应用 ID 仅支持字母、数字、点、下划线和连字符，且必须以字母或数字开头。"},
+    )
     name = serializers.CharField(max_length=128)
-    ingest_type = serializers.ChoiceField(choices=ApmIngestSource.IngestType.choices)
-    cloud_region_id = serializers.IntegerField(required=False, allow_null=True)
-    environment_hint = serializers.CharField(max_length=128, required=False, allow_blank=True)
+    description = serializers.CharField(max_length=512, required=False, allow_blank=True)
+
+    def validate_application_id(self, value):
+        if ApmApplication.objects.filter(application_id=value).exists():
+            raise serializers.ValidationError("该应用 ID 已存在。")
+        return value
+
+    def validate(self, attrs):
+        if self.context.get("creating") and not attrs.get("application_id"):
+            raise serializers.ValidationError({"application_id": "该字段必填。"})
+        return attrs
 
 
 class IngestSnippetSerializer(serializers.Serializer):
-    credential = serializers.CharField(max_length=128, trim_whitespace=False, write_only=True)
+    application_id = serializers.CharField(max_length=128)
+    cloud_region_id = serializers.IntegerField(min_value=1)
     language = serializers.ChoiceField(choices=("python", "nodejs", "java", "go"))
     runtime = serializers.ChoiceField(choices=("kubernetes", "docker", "host", "other"))
-    endpoint = serializers.URLField(max_length=512)
-    service_namespace = serializers.CharField(max_length=256, allow_blank=True)
+    endpoint = serializers.CharField(max_length=512, required=False, write_only=True)
     service_name = serializers.CharField(max_length=256)
+    service_version = serializers.CharField(max_length=256, required=False, allow_blank=True)
     environment = serializers.CharField(max_length=256, allow_blank=True)
 
-    def validate_endpoint(self, value):
-        if not value.lower().startswith(("http://", "https://")):
-            raise serializers.ValidationError("OTLP 端点只支持 HTTP 或 HTTPS。")
-        return value
+    def validate_endpoint(self, _value):
+        raise serializers.ValidationError("OTLP 端点必须由服务器根据云区域配置解析，客户端不得提交。")
 
 
-class ApmIngestSourceSerializer(serializers.ModelSerializer):
+class CatalogListQuerySerializer(serializers.Serializer):
+    page = serializers.IntegerField(min_value=1, required=False)
+    page_size = serializers.IntegerField(min_value=1, required=False)
+    application = serializers.CharField(max_length=128, required=False, allow_blank=True)
+    environment = serializers.CharField(max_length=256, required=False, allow_blank=True)
+    status = serializers.ChoiceField(choices=("active", "silent", "archived"), required=False)
+    include_archived = serializers.BooleanField(required=False, default=False)
+    started_at = serializers.DateTimeField(required=False)
+    ended_at = serializers.DateTimeField(required=False)
+    keyword = serializers.CharField(max_length=256, required=False, allow_blank=True)
+
+    def validate(self, attrs):
+        started_at = attrs.get("started_at")
+        ended_at = attrs.get("ended_at")
+        if started_at is not None and ended_at is not None and started_at >= ended_at:
+            raise serializers.ValidationError("started_at 必须早于 ended_at。")
+        return attrs
+
+
+class ApmApplicationSerializer(serializers.ModelSerializer):
     organization_ids = serializers.SerializerMethodField()
-    missing_instance_identity = serializers.SerializerMethodField()
+    service_count = serializers.IntegerField(read_only=True, default=0)
 
     class Meta:
-        model = ApmIngestSource
+        model = ApmApplication
         fields = (
             "id",
+            "application_id",
             "name",
-            "ingest_type",
-            "cloud_region_id",
-            "environment_hint",
-            "credential_prefix",
-            "is_enabled",
-            "first_received_at",
-            "last_received_at",
-            "last_missing_instance_identity_at",
-            "missing_instance_identity",
+            "description",
+            "is_builtin",
+            "service_count",
             "organization_ids",
             "created_at",
             "updated_at",
@@ -68,12 +95,10 @@ class ApmIngestSourceSerializer(serializers.ModelSerializer):
     def get_organization_ids(self, obj):
         return list(obj.organization_links.order_by("organization").values_list("organization", flat=True))
 
-    def get_missing_instance_identity(self, obj):
-        missing_at = obj.last_missing_instance_identity_at
-        return missing_at is not None and missing_at >= timezone.now() - timedelta(minutes=15)
-
 
 class ApmServiceSerializer(serializers.ModelSerializer):
+    application_id = serializers.CharField(source="application.application_id", read_only=True)
+    application_name = serializers.CharField(source="application.name", read_only=True)
     organization_ids = serializers.SerializerMethodField()
     status = serializers.SerializerMethodField()
     environment_views = serializers.SerializerMethodField()
@@ -82,6 +107,8 @@ class ApmServiceSerializer(serializers.ModelSerializer):
         model = ApmService
         fields = (
             "id",
+            "application_id",
+            "application_name",
             "namespace",
             "name",
             "first_seen_at",
@@ -127,7 +154,8 @@ class ApmServiceSerializer(serializers.ModelSerializer):
 class ApmServiceInstanceSerializer(serializers.ModelSerializer):
     service_namespace = serializers.CharField(source="service.namespace", read_only=True)
     service_name = serializers.CharField(source="service.name", read_only=True)
-    ingest_source_name = serializers.CharField(source="ingest_source.name", read_only=True)
+    application_id = serializers.CharField(source="service.application.application_id", read_only=True)
+    application_name = serializers.CharField(source="service.application.name", read_only=True)
     organization_ids = serializers.SerializerMethodField()
     status = serializers.SerializerMethodField()
 
@@ -137,11 +165,11 @@ class ApmServiceInstanceSerializer(serializers.ModelSerializer):
             "id",
             "service_namespace",
             "service_name",
+            "application_id",
+            "application_name",
             "instance_id",
             "environment",
             "version",
-            "ingest_source_id",
-            "ingest_source_name",
             "permission_mode",
             "first_seen_at",
             "last_seen_at",
@@ -227,6 +255,10 @@ class TraceSearchSerializer(serializers.Serializer):
     service_name = serializers.CharField(max_length=256)
     environment = serializers.CharField(max_length=256, allow_blank=True)
     instance_id = serializers.CharField(max_length=512, required=False)
+    span_name = serializers.CharField(max_length=512, required=False, allow_blank=True)
+    status = serializers.ChoiceField(choices=("ok", "error"), required=False)
+    min_duration_ms = serializers.FloatField(required=False, min_value=0)
+    max_duration_ms = serializers.FloatField(required=False, min_value=0)
     started_at = serializers.DateTimeField(required=False)
     ended_at = serializers.DateTimeField(required=False)
     cursor = serializers.CharField(max_length=512, required=False)
@@ -240,6 +272,47 @@ class TraceSearchSerializer(serializers.Serializer):
         started_at = attrs.get("started_at") or ended_at - timedelta(hours=1)
         attrs["started_at"] = started_at
         attrs["ended_at"] = ended_at
+        min_duration = attrs.get("min_duration_ms")
+        max_duration = attrs.get("max_duration_ms")
+        if min_duration is not None and max_duration is not None and min_duration > max_duration:
+            raise serializers.ValidationError("min_duration_ms 不能大于 max_duration_ms")
+        if attrs.get("span_name") == "":
+            attrs.pop("span_name", None)
+        return attrs
+
+
+class SpanSearchSerializer(serializers.Serializer):
+    service_namespace = serializers.CharField(max_length=256, required=False, allow_blank=True)
+    service_name = serializers.CharField(max_length=256)
+    environment = serializers.CharField(max_length=256, allow_blank=True)
+    instance_id = serializers.CharField(max_length=512, required=False)
+    span_name = serializers.CharField(max_length=512, required=False, allow_blank=True)
+    status = serializers.ChoiceField(choices=("ok", "error"), required=False)
+    kind = serializers.ChoiceField(
+        choices=("internal", "server", "client", "producer", "consumer"),
+        required=False,
+    )
+    min_duration_ms = serializers.FloatField(required=False, min_value=0)
+    max_duration_ms = serializers.FloatField(required=False, min_value=0)
+    started_at = serializers.DateTimeField(required=False)
+    ended_at = serializers.DateTimeField(required=False)
+    cursor = serializers.CharField(max_length=512, required=False)
+    limit = serializers.IntegerField(min_value=1, max_value=100, default=20)
+
+    def validate(self, attrs):
+        unsupported = sorted(set(self.initial_data) - set(self.fields))
+        if unsupported:
+            raise serializers.ValidationError(f"不支持的 Span 查询参数: {', '.join(unsupported)}")
+        ended_at = attrs.get("ended_at") or timezone.now()
+        started_at = attrs.get("started_at") or ended_at - timedelta(hours=1)
+        attrs["started_at"] = started_at
+        attrs["ended_at"] = ended_at
+        min_duration = attrs.get("min_duration_ms")
+        max_duration = attrs.get("max_duration_ms")
+        if min_duration is not None and max_duration is not None and min_duration > max_duration:
+            raise serializers.ValidationError("min_duration_ms 不能大于 max_duration_ms")
+        if attrs.get("span_name") == "":
+            attrs.pop("span_name", None)
         return attrs
 
 
@@ -331,11 +404,7 @@ class ApmPolicySerializer(serializers.ModelSerializer):
             getattr(self.instance, "notice_type_ids", []),
         )
         notification_targets = attrs.get("notification_targets")
-        existing_targets = (
-            list(self.instance.notification_targets.values_list("channel_id", flat=True))
-            if self.instance is not None
-            else []
-        )
+        existing_targets = list(self.instance.notification_targets.values_list("channel_id", flat=True)) if self.instance is not None else []
         if notice and not notice_type_ids and not notification_targets and not existing_targets:
             raise serializers.ValidationError({"notification_targets": "启用通知时至少选择一个渠道。"})
         if notification_targets is not None:
@@ -360,6 +429,14 @@ class ApmPolicySerializer(serializers.ModelSerializer):
                         recipients.append(recipient)
             data["notice_users"] = recipients
         return data
+
+
+class ApmDashboardQuerySerializer(serializers.Serializer):
+    window = serializers.ChoiceField(
+        choices=("15m", "1h", "4h", "1d", "7d"),
+        default="1h",
+        required=False,
+    )
 
 
 class ApmEventQuerySerializer(serializers.Serializer):

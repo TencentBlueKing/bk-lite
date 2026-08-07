@@ -1,5 +1,9 @@
-import { redirect } from 'next/navigation';
+import { redirectWithQuery } from '@/app/apm/lib/redirect-with-query';
 
-export default function ApmPage() {
-  redirect('/apm/services');
+type PageProps = {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+};
+
+export default async function ApmRootRedirectPage({ searchParams }: PageProps) {
+  redirectWithQuery('/apm/home', await searchParams);
 }

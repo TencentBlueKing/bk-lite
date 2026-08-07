@@ -1,78 +1,64 @@
 import fs from 'fs';
 import path from 'path';
 import withBundleAnalyzer from '@next/bundle-analyzer';
-import { prepareEnterpriseRoutes } from './scripts/prepare-enterprise.mjs';
-import { combineLocales, combineMenus, copyPublicDirectories } from './src/utils/dynamicsMerged.mjs';
 
 const enterpriseWebLink = path.resolve(process.cwd(), 'enterprise');
 const enterpriseWebRoot = fs.existsSync(enterpriseWebLink) ? fs.realpathSync(enterpriseWebLink) : '';
+const repositoryRoot = path.resolve(process.cwd(), '..');
 
-// 在模块加载时就执行准备工作
-const isProduction = process.env.NODE_ENV === 'production';
-
-// 准备构建资源
-async function prepareBuildAssets() {
-  console.log('🔄 Preparing build assets...');
-
-  await prepareEnterpriseRoutes();
-  
-  // 合并 locales 和 menus
-  await combineLocales();
-  await combineMenus();
-  
-  // 拷贝 public 目录
-  copyPublicDirectories();
-  
-  console.log('✅ Build assets prepared successfully!');
+// Local enterprise layout keeps WeOpsX-Enterprise as a sibling of bk-lite.
+// Turbopack/file tracing must cover that realpath, not only the BK-Lite repo root.
+function commonFilesystemRoot(left, right) {
+  const leftParts = path.resolve(left).split(path.sep);
+  const rightParts = path.resolve(right).split(path.sep);
+  const shared = [];
+  for (let i = 0; i < Math.min(leftParts.length, rightParts.length); i += 1) {
+    if (leftParts[i] !== rightParts[i]) {
+      break;
+    }
+    shared.push(leftParts[i]);
+  }
+  return shared.length > 1 ? shared.join(path.sep) : path.sep;
 }
 
-// 只在生产构建时执行准备工作
-if (isProduction) {
-  await prepareBuildAssets();
-}
+const workspaceRoot = enterpriseWebRoot
+  ? commonFilesystemRoot(repositoryRoot, enterpriseWebRoot)
+  : undefined;
 
-const withCombineLocalesAndMenus = (nextConfig = {}) => {
-  return nextConfig;
-};
-
-const withCopyPublicDirs = (nextConfig = {}) => {
-  return nextConfig;
-};
-
-const nextConfig = withCombineLocalesAndMenus(
-  withCopyPublicDirs(
-    withBundleAnalyzer({
-      enabled: process.env.ANALYZE === 'true',
-    })({
-      reactStrictMode: true,
-      env: {
-        ENTERPRISE_WEB_ROOT: enterpriseWebRoot,
-      },
-      sassOptions: {
-        implementation: 'sass-embedded',
-      },
-      staticPageGenerationTimeout: 300,
-      transpilePackages: ['@antv/g6'],
-      typescript: {
-        ignoreBuildErrors: true,
-      },
-      experimental: {
-        externalDir: true,
-        outputFileTracingRoot: enterpriseWebRoot
-          ? path.resolve(process.cwd(), '../..')
-          : undefined,
-        // proxyTimeout: 300_000, // Set timeout to 300 seconds
-      },
-      // async rewrites() {
-      //   return [
-      //     {
-      //       source: '/reqApi/:path*',
-      //       destination: `${process.env.NEXTAPI_URL}/:path*/`,
-      //     },
-      //   ];
-      // },
-    })
-  )
-);
+const nextConfig = withBundleAnalyzer({
+  enabled: process.env.ANALYZE === 'true',
+})({
+  reactStrictMode: true,
+  allowedDevOrigins: ['bklite.weops.com'],
+  env: {
+    ENTERPRISE_WEB_ROOT: enterpriseWebRoot,
+  },
+  sassOptions: {
+    implementation: 'sass-embedded',
+  },
+  staticPageGenerationTimeout: 300,
+  transpilePackages: ['@antv/g6'],
+  typescript: {
+    tsconfigPath: 'tsconfig.build.json',
+  },
+  outputFileTracingRoot: workspaceRoot,
+  turbopack: workspaceRoot
+    ? { root: workspaceRoot }
+    : undefined,
+  experimental: {
+    externalDir: true,
+    turbopackFileSystemCacheForDev: true,
+    turbopackFileSystemCacheForBuild: true,
+    // proxyTimeout: 300_000, // Set timeout to 300 seconds
+  },
+  // async rewrites() {
+  //   return [
+  //     {
+  //       source: '/reqApi/:path*',
+  //       destination: `${process.env.NEXTAPI_URL}/:path*/`,
+  //     },
+  //   ];
+  // },
+});
 
 export default nextConfig;

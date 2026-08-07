@@ -2,6 +2,27 @@
  * Parse a receiver input string (comma/newline-separated) into a trimmed string array.
  * Empty entries are filtered out.
  */
+import type {
+  AvailableInstance,
+  IMNotificationChannel,
+} from '@/app/system-manager/types/im-notification';
+
+export function getImNotificationUnavailableEditingInstance(
+  availableInstances: AvailableInstance[],
+  editingChannel: Pick<IMNotificationChannel, 'integration_instance' | 'integration_instance_name' | 'provider_key'> | null,
+): AvailableInstance | null {
+  if (!editingChannel || availableInstances.some((item) => item.id === editingChannel.integration_instance)) {
+    return null;
+  }
+
+  return {
+    id: editingChannel.integration_instance,
+    name: editingChannel.integration_instance_name,
+    provider_key: editingChannel.provider_key || '',
+    provider_name: '',
+  };
+}
+
 export function parseReceiversInput(raw: string): string[] {
   if (!raw || !raw.trim()) return [];
   return raw

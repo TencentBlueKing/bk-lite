@@ -917,6 +917,10 @@ func connectNATS(storage *StorageConfig) (*nats.Conn, error) {
 	return nc, nil
 }
 
+func closeAndRemovePartialDownload(file io.Closer, path string, remove func(string) error) error {
+	return errors.Join(file.Close(), remove(path))
+}
+
 func downloadFromStorage(storage *StorageConfig) (string, error) {
 	if strings.TrimSpace(storage.NATSServers) == "" {
 		return "", fmt.Errorf("missing nats_servers")
@@ -964,7 +968,6 @@ func downloadFromStorage(storage *StorageConfig) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer f.Close()
 
 	limitedObject := io.LimitReader(obj, controllerPackageMaxDownloadBytes+1)
 	var downloaded int64
@@ -981,7 +984,13 @@ func downloadFromStorage(storage *StorageConfig) (string, error) {
 		err = fmt.Errorf("controller package exceeds download size limit: %d", controllerPackageMaxDownloadBytes)
 	}
 	if err != nil {
-		os.Remove(tmp)
+		if cleanupErr := closeAndRemovePartialDownload(f, tmp, os.Remove); cleanupErr != nil {
+			return "", fmt.Errorf("%w; cleanup partial download: %v", err, cleanupErr)
+		}
+		return "", err
+	}
+	if err := f.Close(); err != nil {
+		_ = os.Remove(tmp)
 		return "", err
 	}
 
@@ -1212,6 +1221,20 @@ func writeConfig(cfg *Config) error {
 }
 
 func writeConfigTo(cfg *Config, outputDir string) error {
+	if strings.TrimSpace(cfg.Storage.NATSTLSCA) != "" {
+		certDir := filepath.Join(outputDir, "certs")
+		if err := os.MkdirAll(certDir, 0755); err != nil {
+			return fmt.Errorf("create NATS CA directory: %w", err)
+		}
+		certPath := filepath.Join(certDir, "nats-ca.crt")
+		if err := os.WriteFile(certPath, []byte(cfg.Storage.NATSTLSCA), 0600); err != nil {
+			return fmt.Errorf("write NATS CA: %w", err)
+		}
+		if err := restrictSensitiveFile(certPath); err != nil {
+			return fmt.Errorf("restrict NATS CA: %w", err)
+		}
+	}
+
 	escapePath := func(p string) string {
 		return strings.ReplaceAll(p, `\`, `\\`)
 	}
@@ -1296,6 +1319,12 @@ func (controller *scWindowsServiceController) Remove() error {
 
 var windowsRuntimeDirectories = []string{"cache", "logs", "generated"}
 
+// uninstall.exe 与 installer.ico 由 NSIS 安装器写入安装目录，控制器包本身不含这两个
+// 文件。GUI 安装时 NSIS 会在 worker 结束后重新写入，但服务端远程安装直接执行
+// bootstrap worker，不经过 NSIS；事务式激活把旧目录整体改名后，若不迁回这两个文件，
+// 卸载注册表项 UninstallString / DisplayIcon 指向的文件就不复存在，控制面板卸载入口失效。
+var windowsPreservedInstallerFiles = []string{"uninstall.exe", "installer.ico"}
+
 const (
 	windowsActivationPendingMarker   = ".bklite-activation-pending"
 	windowsActivationCommittedMarker = ".bklite-activation-committed"
@@ -1314,7 +1343,26 @@ func moveWindowsRuntimeData(backupDir, installDir string) ([]string, error) {
 		if err := os.RemoveAll(target); err != nil {
 			return moved, err
 		}
-		if err := os.Rename(source, target); err != nil {
+		if err := renameWithWindowsTransientRetry(source, target); err != nil {
+			return moved, err
+		}
+		moved = append(moved, name)
+	}
+	for _, name := range windowsPreservedInstallerFiles {
+		source := filepath.Join(backupDir, name)
+		if _, err := os.Stat(source); os.IsNotExist(err) {
+			continue
+		} else if err != nil {
+			return moved, err
+		}
+		target := filepath.Join(installDir, name)
+		if _, err := os.Stat(target); err == nil {
+			// 新包自带同名文件时以新包为准，不用旧文件覆盖。
+			continue
+		} else if !os.IsNotExist(err) {
+			return moved, err
+		}
+		if err := renameWithWindowsTransientRetry(source, target); err != nil {
 			return moved, err
 		}
 		moved = append(moved, name)
@@ -1330,7 +1378,7 @@ func restoreWindowsRuntimeData(installDir, backupDir string, moved []string) err
 		if err := os.RemoveAll(target); err != nil {
 			return err
 		}
-		if err := os.Rename(source, target); err != nil {
+		if err := renameWithWindowsTransientRetry(source, target); err != nil {
 			return err
 		}
 	}
@@ -1359,7 +1407,7 @@ func restorePreviousWindowsInstallation(
 				return fmt.Errorf("remove activation marker: %w", err)
 			}
 		}
-		if err := os.Rename(backupDir, installDir); err != nil {
+		if err := renameWithWindowsTransientRetry(backupDir, installDir); err != nil {
 			return fmt.Errorf("restore previous installation: %w", err)
 		}
 	}
@@ -1422,7 +1470,8 @@ func recoverInterruptedWindowsInstallation(
 		}
 	}
 	movedRuntimeDirectories := []string{}
-	for _, name := range windowsRuntimeDirectories {
+	preservedEntries := append(append([]string{}, windowsRuntimeDirectories...), windowsPreservedInstallerFiles...)
+	for _, name := range preservedEntries {
 		source := filepath.Join(installDir, name)
 		target := filepath.Join(backupDir, name)
 		if _, sourceErr := os.Stat(source); sourceErr != nil {
@@ -1539,6 +1588,28 @@ func writeWindowsInstallFence(fencePath string, content []byte) error {
 	return replaceFileAtomically(temporaryPath, fencePath)
 }
 
+// discardEmptyWindowsInstallDir removes an installation directory that exists but
+// holds nothing. Launchers such as the NSIS GUI may create it before the worker
+// runs; treating that empty directory as a previous installation would push a
+// fresh install through the backup, rollback and service-restart path it does not
+// need. A running installation always has files, so this never discards one.
+func discardEmptyWindowsInstallDir(installDir string) error {
+	entries, err := os.ReadDir(installDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	if len(entries) > 0 {
+		return nil
+	}
+	if err := os.Remove(installDir); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	return nil
+}
+
 func installWindowsPackage(cfg *Config, zipPath string, controller windowsServiceController) error {
 	installDir := filepath.Clean(cfg.InstallDir)
 	stagingDir := installDir + ".bklite-staging"
@@ -1580,6 +1651,9 @@ func installWindowsPackage(cfg *Config, zipPath string, controller windowsServic
 		}
 	} else if !os.IsNotExist(err) {
 		return err
+	}
+	if err := discardEmptyWindowsInstallDir(installDir); err != nil {
+		return fmt.Errorf("discard empty installation directory: %w", err)
 	}
 	if err := os.RemoveAll(stagingDir); err != nil {
 		return fmt.Errorf("clean staging directory: %w", err)
@@ -1642,7 +1716,7 @@ func installWindowsPackage(cfg *Config, zipPath string, controller windowsServic
 			}
 			return fmt.Errorf("write activation marker: %w", markerErr)
 		}
-		if err := os.Rename(installDir, backupDir); err != nil {
+		if err := renameWithWindowsTransientRetry(installDir, backupDir); err != nil {
 			backupErr := err
 			removeMarkerErr := os.Remove(pendingMarker)
 			if serviceExisted {
@@ -1658,7 +1732,7 @@ func installWindowsPackage(cfg *Config, zipPath string, controller windowsServic
 	} else if !os.IsNotExist(err) {
 		return err
 	}
-	if err := os.Rename(stagingDir, installDir); err != nil {
+	if err := renameWithWindowsTransientRetry(stagingDir, installDir); err != nil {
 		activationErr := err
 		if restoreErr := restorePreviousWindowsInstallation(controller, installDir, backupDir, installExisted, serviceExisted, nil); restoreErr != nil {
 			return fmt.Errorf("activate staged installation: %v; rollback: %w", activationErr, restoreErr)
@@ -1704,7 +1778,7 @@ func installWindowsPackage(cfg *Config, zipPath string, controller windowsServic
 	if installExisted {
 		pendingMarker := filepath.Join(backupDir, windowsActivationPendingMarker)
 		committedMarker := filepath.Join(backupDir, windowsActivationCommittedMarker)
-		if err := os.Rename(pendingMarker, committedMarker); err != nil {
+		if err := renameWithWindowsTransientRetry(pendingMarker, committedMarker); err != nil {
 			commitErr := err
 			if _, stopErr := controller.Stop(); stopErr != nil {
 				return fmt.Errorf("commit Windows activation: %v; stop new service before rollback: %w", commitErr, stopErr)

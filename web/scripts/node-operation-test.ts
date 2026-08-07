@@ -1,5 +1,9 @@
 import assert from 'node:assert/strict';
-import { isControllerOperationDisabled } from '../src/app/node-manager/utils/nodeOperation.ts';
+import {
+  buildControllerUninstallRequestNode,
+  buildControllerUninstallRow,
+  isControllerOperationDisabled
+} from '../src/app/node-manager/utils/nodeOperation.ts';
 
 const linuxAutoNode = {
   key: 'linux-auto',
@@ -32,9 +36,15 @@ assert.equal(
 );
 
 assert.equal(
+  isControllerOperationDisabled([windowsManualNode]),
+  false,
+  'Windows nodes should support controller uninstall'
+);
+
+assert.equal(
   isControllerOperationDisabled([linuxManualNode, windowsManualNode]),
   true,
-  'controller operation should still require a single non-Windows operating system'
+  'controller operation should require a single operating system'
 );
 
 assert.equal(
@@ -42,5 +52,20 @@ assert.equal(
   true,
   'controller operation should be disabled when no node is selected'
 );
+
+const windowsUninstallRow = buildControllerUninstallRow(windowsManualNode);
+assert.equal(windowsUninstallRow.node_id, 'windows-manual');
+assert.equal(windowsUninstallRow.port, 5986);
+assert.equal(windowsUninstallRow.username, 'Administrator');
+
+const windowsUninstallRequest = buildControllerUninstallRequestNode({
+  ...windowsUninstallRow,
+  password: 'credential'
+});
+assert.equal(windowsUninstallRequest.node_id, 'windows-manual');
+assert.equal(windowsUninstallRequest.port, 5986);
+assert.equal(windowsUninstallRequest.winrm_scheme, 'https');
+assert.equal(windowsUninstallRequest.winrm_transport, 'ntlm');
+assert.equal(windowsUninstallRequest.winrm_cert_validation, true);
 
 console.log('node-operation tests passed');

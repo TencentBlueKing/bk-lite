@@ -1,3 +1,9 @@
 export default function ApmLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  return <section className="min-h-full bg-[var(--color-bg-1)]">{children}</section>;
+  // Unified APM desk canvas ≈ Storybook #fafbfc (token mix, not hardcoded hex).
+  // All APM routes inherit this; route shells should stay transparent.
+  return (
+    <section className="h-full min-h-full bg-[color-mix(in_srgb,var(--color-bg)_65%,var(--color-background-body))]">
+      {children}
+    </section>
+  );
 }

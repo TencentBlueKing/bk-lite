@@ -3,6 +3,7 @@
 import React from 'react';
 import { Segmented, Select } from 'antd';
 import type { InputControlConfig, InputOption } from '@/app/ops-analysis/types/dataSource';
+import styles from './componentParamSwitchControl.module.scss';
 
 interface ComponentParamSwitchControlProps {
   inputConfig?: InputControlConfig;
@@ -27,7 +28,7 @@ const ComponentParamSwitchControl: React.FC<ComponentParamSwitchControlProps> = 
     return (
       <Segmented
         block={block}
-        className="min-w-max"
+        className={`min-w-max ${styles.control}`}
         options={options}
         value={value}
         onChange={(nextValue) => onChange?.(nextValue as string | number)}
@@ -38,7 +39,7 @@ const ComponentParamSwitchControl: React.FC<ComponentParamSwitchControlProps> = 
   if (inputConfig.control === 'select') {
     return (
       <Select
-        className="min-w-32"
+        className={`min-w-32 ${styles.control}`}
         options={options}
         value={value}
         onChange={(nextValue) => onChange?.(nextValue)}

@@ -638,16 +638,19 @@ class BotViewSet(PinMixin, AuthViewSet):
         Returns:
             result: bool - Success flag
             data: list - List of next execution times in "YYYY-MM-DD HH:MM:SS" format
+                (wall clock in the current user's timezone)
             message: str - Error message if failed
         """
         crontab_expression = request.data.get("crontab_expression", "")
         count = min(int(request.data.get("count", 6)), 20)  # Max 20
+        # Prefer profile timezone; auth backend also activates it as Django current TZ.
+        user_timezone = getattr(request.user, "timezone", None) or request.data.get("timezone")
 
         if not crontab_expression:
             message = self.loader.get("error.crontab_expression_required") if self.loader else "crontab_expression is required"
             return JsonResponse({"result": False, "message": message})
         try:
-            next_runs = get_crontab_next_runs(crontab_expression, count=count)
+            next_runs = get_crontab_next_runs(crontab_expression, count=count, tz=user_timezone)
             return JsonResponse({"result": True, "data": next_runs})
         except ValueError:
             template = self.loader.get("error.invalid_crontab_expression") if self.loader else "Invalid crontab expression: {expression}"

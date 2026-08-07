@@ -18,3 +18,8 @@ export const DEFAULT_REFRESH_FREQUENCY_LIST: ListItem[] = [
   { label: '5m', value: 300000 },
   { label: '10m', value: 600000 }
 ];
+
+/** 专业仪表盘实例选择器单页大小。 */
+export const DASHBOARD_INSTANCE_SELECTOR_PAGE_SIZE = 500;
+/** 专业仪表盘实例选择器累计拉取上限（分页累加，避免 page_size=-1）。 */
+export const DASHBOARD_INSTANCE_SELECTOR_MAX_ITEMS = 2000;

@@ -1,5 +1,10 @@
 export type CatalogStatus = 'active' | 'silent' | 'archived';
 
+export interface ApmPage<T> {
+  count: number;
+  items: T[];
+}
+
 export interface ApmEnvironmentView {
   environment: string;
   last_seen_at: string;
@@ -8,6 +13,8 @@ export interface ApmEnvironmentView {
 
 export interface ApmService {
   id: string;
+  application_id: string;
+  application_name: string;
   namespace: string;
   name: string;
   first_seen_at: string;
@@ -26,8 +33,8 @@ export interface ApmServiceInstance {
   instance_id: string;
   environment: string;
   version: string;
-  ingest_source_id: string;
-  ingest_source_name: string;
+  application_id: string;
+  application_name: string;
   permission_mode: 'inherited' | 'custom';
   first_seen_at: string;
   last_seen_at: string;
@@ -101,6 +108,84 @@ export interface ApmSlo extends Omit<ApmSloInput, 'objective'> {
 
 export type ApmTopologyHealth = 'healthy' | 'warning' | 'critical' | 'unknown';
 
+export type ApmTimeWindow = '15m' | '1h' | '4h' | '1d' | '7d';
+
+export type ApmDashboardSectionStatus = 'ok' | 'failed' | 'empty';
+
+export interface ApmDashboardSection<T> {
+  status: ApmDashboardSectionStatus;
+  data?: T;
+  error?: string;
+}
+
+export interface ApmDashboardKpiData {
+  application_count: number;
+  service_count: number;
+  active_alert_count: number;
+  request_rate: number | null;
+  error_request_rate: number | null;
+  p95_ms: number | null;
+  sparklines: {
+    application_count: (number | null)[];
+    service_count: (number | null)[];
+    active_alert_count: (number | null)[];
+    request_rate: (number | null)[];
+    error_request_rate: (number | null)[];
+    p95_ms: (number | null)[];
+  };
+}
+
+export interface ApmDashboardHealthBucket {
+  key: ApmTopologyHealth;
+  label: string;
+  count: number;
+}
+
+export interface ApmDashboardHealthData {
+  total: number;
+  buckets: ApmDashboardHealthBucket[];
+}
+
+export interface ApmDashboardAlertRow {
+  id: string;
+  service: string;
+  service_id: string | null;
+  name: string;
+  severity: 'critical' | 'warning';
+  environment: string;
+  started_at: string;
+}
+
+export interface ApmDashboardSloRow {
+  id: string;
+  service_id: string;
+  service_name: string;
+  environment: string;
+  objective: number;
+  current_rate: number;
+  met: boolean;
+}
+
+export interface ApmDashboardTopRow {
+  service_id: string;
+  service_name: string;
+  environment: string;
+  value: number;
+  sub_value: number | null;
+}
+
+export interface ApmDashboard {
+  empty: boolean;
+  window: ApmTimeWindow;
+  kpis: ApmDashboardSection<ApmDashboardKpiData>;
+  health: ApmDashboardSection<ApmDashboardHealthData>;
+  slos: ApmDashboardSection<{ items: ApmDashboardSloRow[] }>;
+  alerts: ApmDashboardSection<{ items: ApmDashboardAlertRow[] }>;
+  top_error_rate: ApmDashboardSection<{ items: ApmDashboardTopRow[] }>;
+  top_p95: ApmDashboardSection<{ items: ApmDashboardTopRow[] }>;
+  releases: ApmDashboardSection<{ items: [] }>;
+}
+
 export interface ApmTopologyNode {
   id: string;
   service_namespace: string;
@@ -128,18 +213,13 @@ export interface ApmTopologyGraph {
   data_state: 'available' | 'no_data';
 }
 
-export interface ApmIngestSource {
+export interface ApmApplication {
   id: string;
+  application_id: string;
   name: string;
-  ingest_type: 'otlp_http' | 'otlp_grpc';
-  cloud_region_id: number | null;
-  environment_hint: string;
-  credential_prefix: string;
-  is_enabled: boolean;
-  first_received_at: string | null;
-  last_received_at: string | null;
-  last_missing_instance_identity_at: string | null;
-  missing_instance_identity: boolean;
+  description: string;
+  is_builtin: boolean;
+  service_count: number;
   organization_ids: number[];
   created_at: string;
   updated_at: string;
@@ -147,38 +227,45 @@ export interface ApmIngestSource {
   updated_by: string;
 }
 
-export interface ApmIngestSourceInput {
+export interface ApmApplicationInput {
+  application_id?: string;
   name: string;
-  ingest_type: ApmIngestSource['ingest_type'];
+  description?: string;
   organization_ids: number[];
-  cloud_region_id?: number | null;
-  environment_hint?: string;
-}
-
-export interface ApmIngestSourceWithCredential extends ApmIngestSource {
-  credential: string;
 }
 
 export interface ApmIngestSnippetInput {
-  credential: string;
+  application_id: string;
+  cloud_region_id: number;
   language: 'python' | 'nodejs' | 'java' | 'go';
   runtime: 'kubernetes' | 'docker' | 'host' | 'other';
-  endpoint: string;
-  service_namespace: string;
   service_name: string;
+  service_version?: string;
   environment: string;
 }
 
+export interface ApmCloudRegion {
+  id: number;
+  name: string;
+}
+
 export interface ApmIngestSnippet {
+  application_id: string;
+  application_name: string;
+  cloud_region: ApmCloudRegion;
+  http_endpoint: string;
   environment: Record<string, string>;
   code: string;
 }
 
 export interface ApmHealth {
   catalog_reconcile: ApmHealthComponent;
-  collector: ApmHealthComponent;
-  trace_store: ApmHealthComponent;
-  metric_store: ApmHealthComponent;
+  regional_collector: ApmHealthComponent;
+  nats_publish: ApmHealthComponent;
+  jetstream: ApmHealthComponent;
+  system_collector: ApmHealthComponent;
+  victoria_traces: ApmHealthComponent;
+  victoria_traces_retention: ApmHealthComponent;
   notification_responder: ApmHealthComponent;
   policy_evaluation: ApmHealthComponent;
   notification_delivery: ApmHealthComponent & { failed_deliveries?: number };
@@ -190,6 +277,19 @@ export interface ApmHealthComponent {
   last_failed_at?: string;
   last_checked_at?: string;
   error_code?: string;
+  publish_acks?: number;
+  last_publish_ack_at?: string;
+  stream_bytes?: number;
+  stream_messages?: number;
+  capacity_percent?: number;
+  queue_size?: number;
+  queue_capacity?: number;
+  queue_capacity_percent?: number;
+  consumer_pending?: number;
+  consumer_ack_pending?: number;
+  consumer_redelivered?: number;
+  configured_days?: number;
+  required_days?: number;
 }
 
 export interface ApmTraceSummary {
@@ -240,6 +340,47 @@ export interface ApmTraceSearchParams {
   service_name: string;
   environment: string;
   instance_id?: string;
+  span_name?: string;
+  status?: 'ok' | 'error';
+  min_duration_ms?: number;
+  max_duration_ms?: number;
+  started_at?: string;
+  ended_at?: string;
+  cursor?: string;
+  limit?: number;
+}
+
+export interface ApmSpanSummary {
+  trace_id: string;
+  span_id: string;
+  started_at: string;
+  duration_ms: number;
+  service_namespace: string;
+  service_name: string;
+  environment: string;
+  instance_id: string | null;
+  status: 'ok' | 'error';
+  name: string;
+  kind: string;
+  http_method: string | null;
+  http_status_code: string | null;
+}
+
+export interface ApmSpanPage {
+  items: ApmSpanSummary[];
+  next_cursor: string | null;
+}
+
+export interface ApmSpanSearchParams {
+  service_namespace?: string;
+  service_name: string;
+  environment: string;
+  instance_id?: string;
+  span_name?: string;
+  status?: 'ok' | 'error';
+  kind?: 'internal' | 'server' | 'client' | 'producer' | 'consumer';
+  min_duration_ms?: number;
+  max_duration_ms?: number;
   started_at?: string;
   ended_at?: string;
   cursor?: string;

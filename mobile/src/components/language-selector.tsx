@@ -1,12 +1,14 @@
 'use client';
-import React, { useState } from 'react';
+
+import { useState } from 'react';
+import { ActionSheet, List, Toast, SpinLoading } from 'antd-mobile';
+import { CheckOutline } from 'antd-mobile-icons';
 import { useLocale } from '@/context/locale';
 import { useAuth } from '@/context/auth';
 import { useTranslation } from '@/utils/i18n';
-import { ActionSheet, List, Toast, SpinLoading } from 'antd-mobile';
-import { CheckOutline, GlobalOutline } from 'antd-mobile-icons';
 import { LanguageOption, LanguageSelectorProps } from '@/types/common';
 import { updateUserInfo as updateUserInfoApi } from '@/api/user';
+import styles from './language-selector.module.css';
 
 const languages: LanguageOption[] = [
   {
@@ -99,23 +101,16 @@ export default function LanguageSelector({ onSelect }: LanguageSelectorProps) {
     <>
       <List.Item
         prefix={
-          <div className="flex items-center justify-center w-7 h-7 bg-[var(--color-primary-bg-active)] rounded-lg mr-2.5">
-            <GlobalOutline className="text-[var(--color-primary)] text-lg" />
-          </div>
+          <span
+            className={`${styles.menuIcon} iconfont icon-yuyan`}
+            aria-hidden="true"
+          />
         }
-        extra={
-          <div className="flex items-center">
-            <span className="text-[var(--color-text-3)] text-sm mr-2">
-              {currentLanguage.label}
-            </span>
-          </div>
-        }
+        extra={<span className={styles.currentLocale}>{currentLanguage.label}</span>}
         onClick={() => setVisible(true)}
         clickable
       >
-        <span className="text-[var(--color-text-1)] text-base font-medium">
-          {t('common.languageSettings')}
-        </span>
+        {t('common.languageSettings')}
       </List.Item>
 
       <ActionSheet

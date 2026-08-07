@@ -28,6 +28,7 @@ from apps.patch_mgmt.services.linux_repo_sync import (
     ParsedPackage,
     RepoSyncError,
 )
+from apps.patch_mgmt.utils.architecture import X86_64, normalize_architecture, repository_architecture
 
 logger = logging.getLogger("app")
 
@@ -87,6 +88,7 @@ def fetch_ubuntu_usn(source: PatchSource, codename: str) -> List[ParsedAdvisory]
         RepoSyncError: API 请求失败。
     """
     proxies = _build_proxies(source)
+    canonical_arch = normalize_architecture(source.arch, default=X86_64)
     all_notices = []
     for page in range(USN_MAX_PAGES):
         offset = page * USN_PAGE_SIZE
@@ -143,7 +145,7 @@ def fetch_ubuntu_usn(source: PatchSource, codename: str) -> List[ParsedAdvisory]
             packages.append(ParsedPackage(
                 name=name,
                 version=version,
-                arch=source.arch or "all",
+                arch=canonical_arch,
             ))
 
         advisories.append(ParsedAdvisory(
@@ -176,8 +178,9 @@ def fetch_apt_packages_index(source: PatchSource, codename: str) -> List[ParsedA
         raise RepoSyncError("补丁源未配置 URL")
 
     component = "main"
-    arch = source.arch or "amd64"
-    packages_url = f"{base}/dists/{codename}-security/{component}/binary-{arch}/Packages.gz"
+    canonical_arch = normalize_architecture(source.arch, default=X86_64)
+    repo_arch = repository_architecture(canonical_arch, PatchSourceType.APT_REPO)
+    packages_url = f"{base}/dists/{codename}-security/{component}/binary-{repo_arch}/Packages.gz"
 
     proxies = _build_proxies(source)
     try:
@@ -211,7 +214,7 @@ def fetch_apt_packages_index(source: PatchSource, codename: str) -> List[ParsedA
         if not pkg_name:
             continue
         pkg_version = fields.get("Version", "")
-        pkg_arch = fields.get("Architecture", arch)
+        pkg_arch = canonical_arch
 
         install_deps = {}
         if fields.get("Depends"):

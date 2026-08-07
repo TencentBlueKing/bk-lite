@@ -9,8 +9,46 @@ import type {
 } from '@/app/system-manager/types/integration-center';
 import { resolveIntegrationProviderIcon } from '@/app/system-manager/utils/integrationCenter';
 
+export function isBuiltinLoginAuthBinding(providerKey?: string | null): boolean {
+  return providerKey === 'bk_lite_builtin';
+}
+
 export function shouldShowLoginAuthUnmatchedUserAction(providerKey?: string | null): boolean {
   return providerKey === 'wechat';
+}
+
+export function getLoginAuthInstanceNotFoundContent({
+  loading,
+  hasAvailableInstances,
+  loadingText,
+  emptyText,
+}: {
+  loading: boolean;
+  hasAvailableInstances: boolean;
+  loadingText: string;
+  emptyText: string;
+}): string | undefined {
+  if (loading) {
+    return loadingText;
+  }
+
+  return hasAvailableInstances ? undefined : emptyText;
+}
+
+export function getLoginAuthUnavailableEditingInstance(
+  availableInstances: AvailableInstance[],
+  editingBinding: LoginAuthBinding | null,
+): AvailableInstance | null {
+  if (!editingBinding || availableInstances.some((item) => item.id === editingBinding.integration_instance)) {
+    return null;
+  }
+
+  return {
+    id: editingBinding.integration_instance,
+    name: editingBinding.integration_instance_name,
+    provider_key: editingBinding.provider_key || '',
+    provider_name: '',
+  };
 }
 
 export function resolveLoginAuthProviderKey(

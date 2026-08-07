@@ -26,9 +26,9 @@ export const useDashboardSubscriptionApi = () => {
           : filter.resourceType === 'dashboard'
             ? { dashboard_id: filter.resourceId }
             : {
-                resource_type: filter.resourceType,
-                resource_id: filter.resourceId,
-              };
+              resource_type: filter.resourceType,
+              resource_id: filter.resourceId,
+            };
       return get<DashboardSubscription[]>(SUBSCRIPTION_ENDPOINT, {
         params,
       });

@@ -28,11 +28,8 @@ from langgraph.constants import START
 
 from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.metis.llm.chain.entity import BasicLLMRequest, BasicLLMResponse
+from apps.opspilot.metis.llm.chain.report_renderers import find_unclosed_phantom_tool_call_start, strip_phantom_tool_calls
 from apps.opspilot.metis.llm.common.token_usage import TokenUsageAccumulator
-from apps.opspilot.metis.llm.chain.report_renderers import (
-    find_unclosed_phantom_tool_call_start,
-    strip_phantom_tool_calls,
-)
 from apps.opspilot.utils.execution_interrupt import is_interrupt_requested_async
 
 # deepagents 引擎内置工具（规划/虚拟文件系统/子代理）。这些是 agent 的内部
@@ -51,6 +48,25 @@ _DEEPAGENT_BUILTIN_TOOL_NAMES = frozenset(
         "task",
     }
 )
+
+# 纯文本轮开播条件（与模型无关，不按厂商硬编码）：
+# 1) 连续多个正文 stream chunk 且未见 tool_call，或
+# 2) 缓冲正文已明显长于典型「先旁白再调工具」短句（兼容 Minimax 等单大片输出）。
+# 短旁白（通常 < 该阈值）继续缓冲，等 tool_call 到达后丢弃。
+_AGUI_PLAIN_TEXT_LIVE_AFTER_CHUNKS = 2
+_AGUI_PLAIN_TEXT_LIVE_AFTER_CHARS = 96
+# 单次推送过长时拆成多条 TEXT_MESSAGE_CONTENT，避免「一整段一个 delta」。
+_AGUI_LIVE_DELTA_CHARS = 64
+
+
+def _split_text_deltas(text: str, max_chars: int = _AGUI_LIVE_DELTA_CHARS) -> list[str]:
+    """把长文本拆成多段 delta；不按模型名分支。"""
+    value = str(text or "")
+    if not value:
+        return []
+    if max_chars <= 0 or len(value) <= max_chars:
+        return [value]
+    return [value[i : i + max_chars] for i in range(0, len(value), max_chars)]
 
 
 def _is_hidden_builtin_tool(tool_name: str) -> bool:
@@ -401,6 +417,84 @@ class BasicGraph(ABC):
 
         return "".join(text_parts), "".join(thinking_parts)
 
+    def _emit_assistant_text_message(self, encoder: EventEncoder, text: str) -> list[str]:
+        """把一整段助手正文编码为 TEXT_MESSAGE_START/CONTENT*/END（长文拆多段 CONTENT）。"""
+        text = str(text or "")
+        if not text:
+            return []
+        msg_id = str(uuid.uuid4())
+        events = [
+            encoder.encode(
+                TextMessageStartEvent(
+                    type=EventType.TEXT_MESSAGE_START,
+                    message_id=msg_id,
+                    role="assistant",
+                    timestamp=int(time.time() * 1000),
+                )
+            )
+        ]
+        for piece in _split_text_deltas(text):
+            events.append(
+                encoder.encode(
+                    TextMessageContentEvent(
+                        type=EventType.TEXT_MESSAGE_CONTENT,
+                        message_id=msg_id,
+                        delta=piece,
+                        timestamp=int(time.time() * 1000),
+                    )
+                )
+            )
+        events.append(
+            encoder.encode(
+                TextMessageEndEvent(
+                    type=EventType.TEXT_MESSAGE_END,
+                    message_id=msg_id,
+                    timestamp=int(time.time() * 1000),
+                )
+            )
+        )
+        return events
+
+    def _emit_live_text_delta(
+        self,
+        encoder: EventEncoder,
+        run_id: str,
+        text: str,
+        *,
+        message_id: Optional[str],
+        message_started: bool,
+    ) -> tuple[list[str], Optional[str], bool]:
+        """实时追加正文 delta；必要时先发 TEXT_MESSAGE_START；过长则拆多段。"""
+        text = str(text or "")
+        if not text:
+            return [], message_id, message_started
+        events: list[str] = []
+        if not message_started or not message_id:
+            message_id = f"msg_{run_id}_{int(time.time() * 1000)}"
+            message_started = True
+            events.append(
+                encoder.encode(
+                    TextMessageStartEvent(
+                        type=EventType.TEXT_MESSAGE_START,
+                        message_id=message_id,
+                        role="assistant",
+                        timestamp=int(time.time() * 1000),
+                    )
+                )
+            )
+        for piece in _split_text_deltas(text):
+            events.append(
+                encoder.encode(
+                    TextMessageContentEvent(
+                        type=EventType.TEXT_MESSAGE_CONTENT,
+                        message_id=message_id,
+                        delta=piece,
+                        timestamp=int(time.time() * 1000),
+                    )
+                )
+            )
+        return events, message_id, message_started
+
     def _handle_chat_model_stream_content(
         self,
         chunk: Any,
@@ -411,7 +505,8 @@ class BasicGraph(ABC):
         show_think: bool,
         thinking_started: bool,
         text_strip_buffers: Optional[Dict[str, str]] = None,
-    ) -> tuple[list[str], Optional[str], bool, bool]:
+        emit_text: bool = True,
+    ) -> tuple[list[str], Optional[str], bool, bool, str]:
         """处理 on_chat_model_stream 事件中的文本内容
 
         text_strip_buffers: per-message_id 的 tail 缓冲,用于跨 streaming chunk 的
@@ -419,12 +514,16 @@ class BasicGraph(ABC):
         时,per-chunk strip 抓不到闭合配对;buffer 方式把上一 chunk 末尾 N 字符留到下
         一 chunk 拼回去再 strip,跨 chunk 也能抹掉。
 
+        emit_text: False 时不推送 TEXT_MESSAGE_*（供 agui_stream 按轮次缓冲，避免工具旁白泄漏），
+        仍推送 thinking，并把本应作为正文的文本经第 5 个返回值交还给调用方。
+
         Returns:
-            (events_to_yield, updated_message_id, updated_message_started, updated_thinking_started)
+            (events, message_id, message_started, thinking_started, buffered_text_delta)
         """
         events = []
+        buffered_text = ""
         if not (chunk and hasattr(chunk, "content")):
-            return events, current_message_id, message_started, thinking_started
+            return events, current_message_id, message_started, thinking_started, buffered_text
 
         # 处理 Anthropic 格式的 content（可能是 list of content blocks）
         content_delta, thinking_delta = self._extract_content_from_chunk(chunk.content)
@@ -466,7 +565,7 @@ class BasicGraph(ABC):
                 thinking_delta = rc
 
         if not chunk.content and not thinking_delta:
-            return events, current_message_id, message_started, thinking_started
+            return events, current_message_id, message_started, thinking_started, buffered_text
 
         # 处理 thinking 内容（Anthropic 格式 / vLLM reasoning-parser 格式）
         if thinking_delta and show_think:
@@ -493,64 +592,49 @@ class BasicGraph(ABC):
 
         # 如果没有文本内容，直接返回
         if not content_delta:
-            return events, current_message_id, message_started, thinking_started
+            return events, current_message_id, message_started, thinking_started, buffered_text
+
+        def _append_plain_text(plain: str) -> None:
+            nonlocal current_message_id, message_started, buffered_text
+            if not plain:
+                return
+            if not emit_text:
+                buffered_text += plain
+                return
+            if not message_started:
+                current_message_id = f"msg_{run_id}_{int(time.time() * 1000)}"
+                message_started = True
+                events.append(
+                    encoder.encode(
+                        TextMessageStartEvent(
+                            type=EventType.TEXT_MESSAGE_START,
+                            message_id=current_message_id,
+                            role="assistant",
+                            timestamp=int(time.time() * 1000),
+                        )
+                    )
+                )
+            events.append(
+                encoder.encode(
+                    TextMessageContentEvent(
+                        type=EventType.TEXT_MESSAGE_CONTENT,
+                        message_id=current_message_id,
+                        delta=plain,
+                        timestamp=int(time.time() * 1000),
+                    )
+                )
+            )
 
         if show_think:
             remaining_content = content_delta
             while remaining_content:
                 think_start = remaining_content.find("<think>")
                 if think_start == -1:
-                    if remaining_content:
-                        if not message_started:
-                            current_message_id = f"msg_{run_id}_{int(time.time() * 1000)}"
-                            message_started = True
-                            events.append(
-                                encoder.encode(
-                                    TextMessageStartEvent(
-                                        type=EventType.TEXT_MESSAGE_START,
-                                        message_id=current_message_id,
-                                        role="assistant",
-                                        timestamp=int(time.time() * 1000),
-                                    )
-                                )
-                            )
-                        events.append(
-                            encoder.encode(
-                                TextMessageContentEvent(
-                                    type=EventType.TEXT_MESSAGE_CONTENT,
-                                    message_id=current_message_id,
-                                    delta=remaining_content,
-                                    timestamp=int(time.time() * 1000),
-                                )
-                            )
-                        )
+                    _append_plain_text(remaining_content)
                     break
 
                 plain_prefix = remaining_content[:think_start]
-                if plain_prefix:
-                    if not message_started:
-                        current_message_id = f"msg_{run_id}_{int(time.time() * 1000)}"
-                        message_started = True
-                        events.append(
-                            encoder.encode(
-                                TextMessageStartEvent(
-                                    type=EventType.TEXT_MESSAGE_START,
-                                    message_id=current_message_id,
-                                    role="assistant",
-                                    timestamp=int(time.time() * 1000),
-                                )
-                            )
-                        )
-                    events.append(
-                        encoder.encode(
-                            TextMessageContentEvent(
-                                type=EventType.TEXT_MESSAGE_CONTENT,
-                                message_id=current_message_id,
-                                delta=plain_prefix,
-                                timestamp=int(time.time() * 1000),
-                            )
-                        )
-                    )
+                _append_plain_text(plain_prefix)
 
                 remaining_content = remaining_content[think_start + len("<think>") :]
                 think_end = remaining_content.find("</think>")
@@ -599,35 +683,10 @@ class BasicGraph(ABC):
                     thinking_started = False
                     remaining_content = remaining_content[think_end + len("</think>") :]
 
-            return events, current_message_id, message_started, thinking_started
+            return events, current_message_id, message_started, thinking_started, buffered_text
 
-        # 首次输出内容时发送 TEXT_MESSAGE_START
-        if not message_started:
-            current_message_id = f"msg_{run_id}_{int(time.time() * 1000)}"
-            message_started = True
-            events.append(
-                encoder.encode(
-                    TextMessageStartEvent(
-                        type=EventType.TEXT_MESSAGE_START,
-                        message_id=current_message_id,
-                        role="assistant",
-                        timestamp=int(time.time() * 1000),
-                    )
-                )
-            )
-
-        # 发送内容块 (token-by-token)
-        events.append(
-            encoder.encode(
-                TextMessageContentEvent(
-                    type=EventType.TEXT_MESSAGE_CONTENT,
-                    message_id=current_message_id,
-                    delta=content_delta,
-                    timestamp=int(time.time() * 1000),
-                )
-            )
-        )
-        return events, current_message_id, message_started, thinking_started
+        _append_plain_text(content_delta)
+        return events, current_message_id, message_started, thinking_started, buffered_text
 
     def _handle_tool_call_chunks(
         self,
@@ -822,32 +881,82 @@ class BasicGraph(ABC):
             return messages.value or []
         return messages
 
-    def _handle_chain_end_messages(
+    def _resolve_tool_call_meta_from_messages(self, messages: list, tool_call_id: str, tool_message: ToolMessage) -> tuple[str, Any]:
+        """从同批 messages 里的 AIMessage.tool_calls 还原工具名与参数。"""
+        tool_name = str(getattr(tool_message, "name", "") or "").strip() or "unknown"
+        tool_args: Any = None
+        for message in messages:
+            if not isinstance(message, AIMessage):
+                continue
+            for tool_call in getattr(message, "tool_calls", None) or []:
+                if hasattr(tool_call, "get"):
+                    tid = tool_call.get("id")
+                    name = tool_call.get("name")
+                    args = tool_call.get("args")
+                else:
+                    tid = getattr(tool_call, "id", None)
+                    name = getattr(tool_call, "name", None)
+                    args = getattr(tool_call, "args", None)
+                if tid == tool_call_id:
+                    if name:
+                        tool_name = str(name)
+                    tool_args = args
+                    return tool_name, tool_args
+        return tool_name, tool_args
+
+    def _ensure_tool_call_events_for_tool_message(
         self,
-        event_data: Dict[str, Any],
+        tool_message: ToolMessage,
+        messages: list,
         encoder: EventEncoder,
         current_tool_calls: Dict[str, Dict],
-        include_text: bool = True,
     ) -> list[str]:
-        """把节点结束时返回的 LangChain messages 补成 AG-UI 事件。
-
-        DeepAgent 会在内部执行工具，外层 LangGraph 不一定逐个抛出 on_tool_end。
-        这时工具结果只存在于节点 output.messages 的 ToolMessage 中，需要在这里
-        回填成 TOOL_CALL_RESULT，否则前端会把工具调用标成“未收到结果事件”。
-        """
-        output = event_data.get("output")
-        messages = []
-        if isinstance(output, dict):
-            messages = output.get("messages") or []
-        elif hasattr(output, "get"):
-            messages = output.get("messages") or []
-        elif hasattr(output, "messages"):
-            messages = getattr(output, "messages") or []
-
-        messages = self._unwrap_overwrite_messages(messages)
-        if not messages:
+        """ToolMessage 尚未对应 TOOL_CALL_START 时补发 START/ARGS（DeepAgent 嵌套常见）。"""
+        tool_call_id = str(getattr(tool_message, "tool_call_id", "") or "").strip()
+        if not tool_call_id or tool_call_id in current_tool_calls:
             return []
 
+        tool_name, tool_args = self._resolve_tool_call_meta_from_messages(messages, tool_call_id, tool_message)
+        if _is_hidden_builtin_tool(tool_name):
+            return []
+
+        current_tool_calls[tool_call_id] = {
+            "name": tool_name,
+            "started": True,
+            "tool_started": True,
+        }
+        events = [
+            encoder.encode(
+                ToolCallStartEvent(
+                    type=EventType.TOOL_CALL_START,
+                    tool_call_id=tool_call_id,
+                    tool_call_name=tool_name,
+                    parent_message_id=None,
+                    timestamp=int(time.time() * 1000),
+                )
+            )
+        ]
+        if tool_args not in (None, "", {}, []):
+            masked_args = _mask_sensitive_data(tool_args) if isinstance(tool_args, dict) else tool_args
+            events.append(
+                encoder.encode(
+                    ToolCallArgsEvent(
+                        type=EventType.TOOL_CALL_ARGS,
+                        tool_call_id=tool_call_id,
+                        delta=json.dumps(masked_args, ensure_ascii=False) if isinstance(masked_args, dict) else str(masked_args),
+                        timestamp=int(time.time() * 1000),
+                    )
+                )
+            )
+        return events
+
+    def _emit_tool_result_events_from_messages(
+        self,
+        messages: list,
+        encoder: EventEncoder,
+        current_tool_calls: Dict[str, Dict],
+    ) -> tuple[list[str], bool, Optional[AIMessage]]:
+        """遍历 messages，补齐缺失的工具 START，并回填 RESULT。"""
         events: list[str] = []
         emitted_tool_result = False
         latest_ai_message_after_tool_result: Optional[AIMessage] = None
@@ -861,8 +970,19 @@ class BasicGraph(ABC):
             if not isinstance(message, ToolMessage):
                 continue
 
-            tool_call_id = getattr(message, "tool_call_id", "")
-            if not tool_call_id or tool_call_id not in current_tool_calls:
+            tool_call_id = str(getattr(message, "tool_call_id", "") or "").strip()
+            if not tool_call_id:
+                continue
+
+            events.extend(
+                self._ensure_tool_call_events_for_tool_message(
+                    message,
+                    messages,
+                    encoder,
+                    current_tool_calls,
+                )
+            )
+            if tool_call_id not in current_tool_calls:
                 continue
 
             tool_info = current_tool_calls[tool_call_id]
@@ -896,6 +1016,40 @@ class BasicGraph(ABC):
             tool_info["result_sent"] = True
             emitted_tool_result = True
             latest_ai_message_after_tool_result = None
+
+        return events, emitted_tool_result, latest_ai_message_after_tool_result
+
+    def _handle_chain_end_messages(
+        self,
+        event_data: Dict[str, Any],
+        encoder: EventEncoder,
+        current_tool_calls: Dict[str, Dict],
+        include_text: bool = True,
+    ) -> list[str]:
+        """把节点结束时返回的 LangChain messages 补成 AG-UI 事件。
+
+        DeepAgent 会在内部执行工具，外层 LangGraph 不一定逐个抛出 on_tool_end。
+        这时工具结果只存在于节点 output.messages 的 ToolMessage 中，需要在这里
+        回填成 TOOL_CALL_START/RESULT，否则前端步骤详情会显示「本步无工具调用」。
+        """
+        output = event_data.get("output")
+        messages = []
+        if isinstance(output, dict):
+            messages = output.get("messages") or []
+        elif hasattr(output, "get"):
+            messages = output.get("messages") or []
+        elif hasattr(output, "messages"):
+            messages = getattr(output, "messages") or []
+
+        messages = self._unwrap_overwrite_messages(messages)
+        if not messages:
+            return []
+
+        events, _, latest_ai_message_after_tool_result = self._emit_tool_result_events_from_messages(
+            messages,
+            encoder,
+            current_tool_calls,
+        )
 
         if include_text and latest_ai_message_after_tool_result is not None:
             for ev in self._handle_chat_model_end_event(
@@ -950,52 +1104,11 @@ class BasicGraph(ABC):
         if not messages:
             return []
 
-        events: list[str] = []
-        emitted_tool_result = False
-        latest_ai_message_after_tool_result: Optional[AIMessage] = None
-
-        for message in messages:
-            if isinstance(message, AIMessage):
-                if emitted_tool_result and (getattr(message, "content", "") or ""):
-                    latest_ai_message_after_tool_result = message
-                continue
-            if not isinstance(message, ToolMessage):
-                continue
-
-            tool_call_id = getattr(message, "tool_call_id", "")
-            if not tool_call_id or tool_call_id not in current_tool_calls:
-                continue
-            tool_info = current_tool_calls[tool_call_id]
-            if tool_info.get("result_sent"):
-                continue
-
-            if not tool_info.get("ended"):
-                events.append(
-                    encoder.encode(
-                        ToolCallEndEvent(
-                            type=EventType.TOOL_CALL_END,
-                            tool_call_id=tool_call_id,
-                            timestamp=int(time.time() * 1000),
-                        )
-                    )
-                )
-                tool_info["ended"] = True
-
-            events.append(
-                encoder.encode(
-                    ToolCallResultEvent(
-                        type=EventType.TOOL_CALL_RESULT,
-                        message_id=f"result_{uuid.uuid4()}",
-                        tool_call_id=tool_call_id,
-                        content=str(getattr(message, "content", "") or ""),
-                        role="tool",
-                        timestamp=int(time.time() * 1000),
-                    )
-                )
-            )
-            tool_info["result_sent"] = True
-            emitted_tool_result = True
-            latest_ai_message_after_tool_result = None
+        events, _, latest_ai_message_after_tool_result = self._emit_tool_result_events_from_messages(
+            messages,
+            encoder,
+            current_tool_calls,
+        )
 
         if latest_ai_message_after_tool_result is not None:
             content = str(getattr(latest_ai_message_after_tool_result, "content", "") or "")
@@ -1022,6 +1135,7 @@ class BasicGraph(ABC):
         current_tool_calls: Dict[str, Dict],
         message_started: bool = False,
         allow_non_streaming_text: bool = False,
+        fallback_text: str = "",
     ) -> list[str]:
         """处理 on_chat_model_end 事件：补充文本输出（非流式 adapter）和工具调用"""
         events = []
@@ -1035,38 +1149,12 @@ class BasicGraph(ABC):
         text_content = getattr(output, "content", "") or ""
         # 跟 streaming 同样的处理:剥 LLM 幻觉的 XML 工具调用
         text_content = strip_phantom_tool_calls(text_content)
+        if not text_content and fallback_text:
+            text_content = strip_phantom_tool_calls(fallback_text)
         tool_calls_list = getattr(output, "tool_calls", None) or []
         if text_content and not tool_calls_list and (not message_started or allow_non_streaming_text):
-            # 纯文本响应（非流式）：发 TEXT_MESSAGE_START + CONTENT + END
-            msg_id = str(uuid.uuid4()) if allow_non_streaming_text else (current_message_id or str(uuid.uuid4()))
-            events.append(
-                encoder.encode(
-                    TextMessageStartEvent(
-                        type=EventType.TEXT_MESSAGE_START,
-                        message_id=msg_id,
-                        timestamp=int(time.time() * 1000),
-                    )
-                )
-            )
-            events.append(
-                encoder.encode(
-                    TextMessageContentEvent(
-                        type=EventType.TEXT_MESSAGE_CONTENT,
-                        message_id=msg_id,
-                        delta=text_content,
-                        timestamp=int(time.time() * 1000),
-                    )
-                )
-            )
-            events.append(
-                encoder.encode(
-                    TextMessageEndEvent(
-                        type=EventType.TEXT_MESSAGE_END,
-                        message_id=msg_id,
-                        timestamp=int(time.time() * 1000),
-                    )
-                )
-            )
+            # 纯文本响应：发 TEXT_MESSAGE_START + CONTENT + END
+            events.extend(self._emit_assistant_text_message(encoder, text_content))
             return events
 
         # 工具调用：补充未经 on_chat_model_stream 发出的 tool_call 事件
@@ -1116,7 +1204,7 @@ class BasicGraph(ABC):
                 current_tool_calls[tool_call_id]["args"] = tool_args
         return events
 
-    async def agui_stream(
+    async def agui_stream(  # noqa: C901
         self,
         request: BasicLLMRequest,
         token_usage_accumulator: Optional[TokenUsageAccumulator] = None,
@@ -1141,8 +1229,17 @@ class BasicGraph(ABC):
         current_tool_calls: Dict[str, Dict] = {}
         message_started = False
         thinking_started = False
-        suppress_text_after_tool_call = False
         tool_result_seen_since_model_end = False
+        # 本轮模型输出的正文缓冲：
+        # - 见 tool_call 前先缓冲；一旦出现 tool_call 则丢弃（旁白不进正文）
+        # - 连续多个正文 chunk 仍无 tool_call → 判定为纯文本轮，开始实时推送
+        # - 仅 1 个短 chunk 后就 tool_call 的旁白轮：全程不推正文
+        pending_turn_text = ""
+        turn_saw_tool_call_chunks = False
+        turn_plain_text_chunks = 0
+        turn_text_live = False
+        pending_turn_strip_key = "__pending_turn__"
+        output_truncated = False
         # 跨 streaming chunk 的 phantom tool call strip buffer。
         # key = message_id,value = 该 message 累积的未 emit tail。
         # 当 message_id 变化时清理旧 entry(消息结束 → 它的 tail 不再有用了)。
@@ -1218,25 +1315,67 @@ class BasicGraph(ABC):
 
                 if event_type == "on_chat_model_stream":
                     chunk = event_data.get("chunk")
-                    if not suppress_text_after_tool_call:
-                        content_events, current_message_id, message_started, thinking_started = self._handle_chat_model_stream_content(
-                            chunk,
-                            encoder,
-                            run_id,
-                            current_message_id,
-                            message_started,
-                            show_think,
-                            thinking_started,
-                            text_strip_buffers,
-                        )
-                        for ev in content_events:
-                            yield ev
-                    # 处理工具调用 chunks
+                    chunk_metadata = dict(getattr(chunk, "response_metadata", {}) or {})
+                    chunk_reason = str(chunk_metadata.get("finish_reason") or chunk_metadata.get("stop_reason") or "").casefold()
+                    if chunk_reason in {"length", "max_tokens", "max_output_tokens", "token_limit"}:
+                        output_truncated = True
+
+                    # 先看 tool_call：同 chunk 内工具优先于正文，避免旁白泄漏。
                     tool_chunk_events = self._handle_tool_call_chunks(chunk, encoder, current_message_id, current_tool_calls)
                     if tool_chunk_events:
-                        suppress_text_after_tool_call = True
+                        turn_saw_tool_call_chunks = True
+                        pending_turn_text = ""
+                        turn_plain_text_chunks = 0
+                        turn_text_live = False
                     for ev in tool_chunk_events:
                         yield ev
+
+                    # thinking 仍即时推送；正文默认进缓冲，确认无工具后再实时推。
+                    content_events, _, _, thinking_started, text_piece = self._handle_chat_model_stream_content(
+                        chunk,
+                        encoder,
+                        run_id,
+                        pending_turn_strip_key,
+                        False,
+                        show_think,
+                        thinking_started,
+                        text_strip_buffers,
+                        emit_text=False,
+                    )
+                    for ev in content_events:
+                        yield ev
+
+                    if turn_saw_tool_call_chunks:
+                        # 本轮已确定走工具：丢弃旁白，不再累积/推送正文。
+                        pending_turn_text = ""
+                    elif text_piece:
+                        pending_turn_text += text_piece
+                        turn_plain_text_chunks += 1
+                        should_go_live = (
+                            turn_text_live
+                            or turn_plain_text_chunks >= _AGUI_PLAIN_TEXT_LIVE_AFTER_CHUNKS
+                            or len(pending_turn_text) >= _AGUI_PLAIN_TEXT_LIVE_AFTER_CHARS
+                        )
+                        if should_go_live and pending_turn_text:
+                            live_events, current_message_id, message_started = self._emit_live_text_delta(
+                                encoder,
+                                run_id,
+                                pending_turn_text,
+                                message_id=current_message_id,
+                                message_started=message_started,
+                            )
+                            for ev in live_events:
+                                if "TEXT_MESSAGE_CONTENT" in ev:
+                                    try:
+                                        payload = json.loads(ev.split("data: ", 1)[1])
+                                        content = payload.get("delta") or ""
+                                        if content:
+                                            emitted_text_signatures.add(content)
+                                    except (json.JSONDecodeError, IndexError):
+                                        pass
+                                yield ev
+                            pending_turn_text = ""
+                            turn_text_live = True
 
                 elif event_type == "on_tool_start":
                     for ev in self._handle_tool_start_event(
@@ -1254,23 +1393,88 @@ class BasicGraph(ABC):
                     tool_result_seen_since_model_end = True
 
                 elif event_type == "on_chat_model_end":
-                    if (
-                        token_usage_accumulator is not None
-                        and not token_usage_accumulator.middleware_tracking
-                    ):
+                    if token_usage_accumulator is not None and not token_usage_accumulator.middleware_tracking:
                         added, reported = token_usage_accumulator.add(event.get("run_id"), event_data.get("output"))
                         if added and not reported:
                             logger.warning(
                                 "AGUI LLM call did not report token usage: run_id=%s",
                                 event.get("run_id"),
                             )
+                    leftover_strip = text_strip_buffers.pop(pending_turn_strip_key, "")
+                    if leftover_strip:
+                        pending_turn_text += strip_phantom_tool_calls(leftover_strip)
+
+                    output = event_data.get("output")
+                    end_tool_calls = getattr(output, "tool_calls", None) or []
+                    turn_has_tools = bool(end_tool_calls) or turn_saw_tool_call_chunks
+                    # 有工具：丢弃本轮旁白缓冲，只补工具事件。
+                    # 已实时推送：冲掉剩余缓冲并结束消息，禁止再整段重发。
+                    # 未实时推送的短纯文本：chat_model_end 一次性发出。
+                    if turn_has_tools:
+                        pending_turn_text = ""
+                        fallback_text = ""
+                        allow_non_streaming_text = bool(tool_result_seen_since_model_end)
+                        if message_started and current_message_id is not None:
+                            yield encoder.encode(
+                                TextMessageEndEvent(
+                                    type=EventType.TEXT_MESSAGE_END,
+                                    message_id=current_message_id,
+                                    timestamp=int(time.time() * 1000),
+                                )
+                            )
+                            message_started = False
+                    elif turn_text_live:
+                        if pending_turn_text:
+                            live_events, current_message_id, message_started = self._emit_live_text_delta(
+                                encoder,
+                                run_id,
+                                pending_turn_text,
+                                message_id=current_message_id,
+                                message_started=message_started,
+                            )
+                            for ev in live_events:
+                                if "TEXT_MESSAGE_CONTENT" in ev:
+                                    try:
+                                        payload = json.loads(ev.split("data: ", 1)[1])
+                                        content = payload.get("delta") or ""
+                                        if content:
+                                            emitted_text_signatures.add(content)
+                                    except (json.JSONDecodeError, IndexError):
+                                        pass
+                                yield ev
+                            pending_turn_text = ""
+                        if message_started and current_message_id is not None:
+                            yield encoder.encode(
+                                TextMessageEndEvent(
+                                    type=EventType.TEXT_MESSAGE_END,
+                                    message_id=current_message_id,
+                                    timestamp=int(time.time() * 1000),
+                                )
+                            )
+                            message_started = False
+                        fallback_text = ""
+                        allow_non_streaming_text = False
+                    else:
+                        fallback_text = pending_turn_text
+                        allow_non_streaming_text = True
+
+                    model_metadata = dict(getattr(output, "response_metadata", {}) or {})
+                    model_reason = str(model_metadata.get("finish_reason") or model_metadata.get("stop_reason") or "").casefold()
+                    token_usage = model_metadata.get("token_usage") or {}
+                    completion_tokens = token_usage.get("completion_tokens") or token_usage.get("output_tokens") or 0
+                    if model_reason in {"length", "max_tokens", "max_output_tokens", "token_limit"} or (
+                        request.max_output_tokens > 0 and isinstance(completion_tokens, int) and completion_tokens >= request.max_output_tokens
+                    ):
+                        output_truncated = True
                     chat_model_end_events = self._handle_chat_model_end_event(
                         event_data,
                         encoder,
                         current_message_id,
                         current_tool_calls,
-                        message_started,
-                        allow_non_streaming_text=tool_result_seen_since_model_end,
+                        # 已实时推送过正文时传 True，避免 end 再用 output.content 整段重发。
+                        message_started=turn_text_live,
+                        allow_non_streaming_text=allow_non_streaming_text,
+                        fallback_text=fallback_text,
                     )
                     # 收集本轮 chat_model_end 实际 emit 的文本指纹,
                     # 后续 on_chain_end 若再 emit 相同内容会基于此集合去重。
@@ -1285,7 +1489,11 @@ class BasicGraph(ABC):
                                 pass
                     for ev in chat_model_end_events:
                         yield ev
-                    suppress_text_after_tool_call = False
+                    pending_turn_text = ""
+                    turn_saw_tool_call_chunks = False
+                    turn_plain_text_chunks = 0
+                    turn_text_live = False
+                    message_started = False
                     tool_result_seen_since_model_end = False
 
                 elif event_type == "on_chain_end":
@@ -1329,6 +1537,32 @@ class BasicGraph(ABC):
             except asyncio.QueueEmpty:
                 pass
 
+            if output_truncated and (request.extra_config or {}).get("wiki_budget") is not None:
+                warning_message_id = current_message_id or str(uuid.uuid4())
+                if not message_started:
+                    yield encoder.encode(
+                        TextMessageStartEvent(
+                            type=EventType.TEXT_MESSAGE_START,
+                            message_id=warning_message_id,
+                            timestamp=int(time.time() * 1000),
+                        )
+                    )
+                yield encoder.encode(
+                    TextMessageContentEvent(
+                        type=EventType.TEXT_MESSAGE_CONTENT,
+                        message_id=warning_message_id,
+                        delta="\n\n> 回答已达到输出 token 上限，内容可能被截断",
+                        timestamp=int(time.time() * 1000),
+                    )
+                )
+                if not message_started:
+                    yield encoder.encode(
+                        TextMessageEndEvent(
+                            type=EventType.TEXT_MESSAGE_END,
+                            message_id=warning_message_id,
+                            timestamp=int(time.time() * 1000),
+                        )
+                    )
             # 发送消息结束事件
             if message_started and current_message_id is not None:
                 yield encoder.encode(
@@ -1477,7 +1711,13 @@ class BasicGraph(ABC):
                     token_usage_accumulator.missing_usage_calls,
                 )
             usage = token_usage_accumulator.as_openai_usage()
-            last_message_content = result["messages"][-1].content if result["messages"] else ""
+            last_message = result["messages"][-1] if result["messages"] else None
+            last_message_content = last_message.content if last_message is not None else ""
+            metadata = dict(last_message.response_metadata or {}) if isinstance(last_message, AIMessage) else {}
+            finish_reason = str(metadata.get("finish_reason") or metadata.get("stop_reason") or "").strip() or None
+            output_truncated = str(finish_reason or "").casefold() in {"length", "max_tokens", "max_output_tokens", "token_limit"} or (
+                request.max_output_tokens > 0 and usage["completion_tokens"] >= request.max_output_tokens
+            )
             return BasicLLMResponse(
                 message=last_message_content,
                 total_tokens=usage["total_tokens"],
@@ -1485,6 +1725,8 @@ class BasicGraph(ABC):
                 completion_tokens=usage["completion_tokens"],
                 llm_call_count=token_usage_accumulator.call_count,
                 token_usage_calls=token_usage_accumulator.as_call_details(),
+                finish_reason=finish_reason,
+                output_truncated=output_truncated,
                 browser_steps=browser_steps_collector,
             )
         except Exception as e:

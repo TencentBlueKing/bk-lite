@@ -24,7 +24,7 @@ const formatTime = (val: any): string => {
   }
 };
 
-// 从 _msg 推断事件类型及颜色
+// 从 message 推断事件类型及颜色
 const detectEventType = (msg: string): { label: string; color: string } => {
   if (!msg) return { label: '其他', color: 'default' };
   const upper = msg.toUpperCase();
@@ -77,7 +77,7 @@ const COLUMNS = [
   {
     key: 'event_type',
     title: '事件类型',
-    dataIndex: '_msg',
+    dataIndex: 'message',
     width: 120,
     render: (msg: string) => {
       const { label } = detectEventType(msg);
@@ -115,9 +115,9 @@ const COLUMNS = [
     }
   },
   {
-    key: '_msg',
+    key: 'message',
     title: '日志内容',
-    dataIndex: '_msg',
+    dataIndex: 'message',
     render: (val: string) => {
       if (!val) return '--';
       const preview = val.length > 80 ? `${val.slice(0, 80)}…` : val;

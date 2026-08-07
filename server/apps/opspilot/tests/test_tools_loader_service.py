@@ -156,6 +156,29 @@ class TestLoadTools:
         mocker.patch.object(ToolsLoader, "_discover_specific_tool", return_value=[])
         assert ToolsLoader.load_tools("langchain:kubernetes") == []
 
+    def test_monitor_真实模块精确加载七个工具且不追加额外提示(self):
+        from apps.opspilot.metis.llm.tools import monitor
+
+        original_descriptions = {name: getattr(monitor, name).description for name in monitor.__all__ if name != "CONSTRUCTOR_PARAMS"}
+
+        tools = ToolsLoader.load_tools(
+            "langchain:monitor",
+            extra_tools_prompt="MUST_NOT_APPEAR_IN_MONITOR_DESCRIPTION",
+            extra_param_prompt={"credential": "MUST_NOT_APPEAR_IN_MONITOR_DESCRIPTION"},
+        )
+
+        assert {tool.name for tool in tools} == {
+            "monitor_list_objects",
+            "monitor_list_object_instances",
+            "monitor_list_object_metrics",
+            "monitor_list_instance_metrics",
+            "monitor_query_metric_data",
+            "monitor_list_active_alerts",
+            "monitor_query_alert_segments",
+        }
+        assert len(tools) == 7
+        assert {tool.name: tool.description for tool in tools} == original_descriptions
+
 
 class TestToolModulesRegistry:
     def test_注册表包含核心数据库与_k8s_类别(self):
@@ -165,5 +188,8 @@ class TestToolModulesRegistry:
             assert isinstance(path, str)
             assert isinstance(enable, bool)
 
-    def test_monitor_刻意不在静态注册表(self):
-        assert "monitor" not in ToolsLoader.TOOL_MODULES
+    def test_monitor_注册为不启用额外提示的真实模块(self):
+        assert ToolsLoader.TOOL_MODULES["monitor"] == (
+            "apps.opspilot.metis.llm.tools.monitor",
+            False,
+        )

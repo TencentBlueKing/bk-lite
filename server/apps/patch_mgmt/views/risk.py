@@ -5,18 +5,14 @@
 但 list/retrieve 都被完全重写，不会触发标准 ModelViewSet 行为。
 """
 
-from django.db.models import Q
-
 from rest_framework.decorators import action
 from rest_framework.exceptions import MethodNotAllowed
 from rest_framework.response import Response
 
 from apps.core.decorators.api_permission import HasPermission
-from apps.core.utils import viewset_utils
-from apps.core.utils.team_utils import get_current_team
-from apps.core.utils.viewset_utils import AuthViewSet, build_json_membership_query
+from apps.core.utils.viewset_utils import AuthViewSet
 from apps.patch_mgmt.exceptions import PatchBusinessError
-from apps.patch_mgmt.models import GovernanceTask, Patch, PatchBaseline, PatchTarget
+from apps.patch_mgmt.models import GovernanceTask
 from apps.patch_mgmt.serializers.governance import GovernanceTaskListSerializer
 from apps.patch_mgmt.services.risk_service import (
     aggregate_by_baseline,
@@ -25,7 +21,10 @@ from apps.patch_mgmt.services.risk_service import (
     compute_risk_items,
     filter_risk_items,
 )
-from apps.patch_mgmt.utils.data_permissions import require_authorized_ids
+from apps.patch_mgmt.services.target_access import (
+    require_target_ids,
+    target_access_scope,
+)
 from apps.patch_mgmt.utils.i18n import patch_message, render_business_error
 
 
@@ -74,68 +73,23 @@ class RiskViewSet(AuthViewSet):
         raise MethodNotAllowed(request.method)
 
     def _scoped_items(self, request):
-        """仅返回同时具备主机、补丁和基线数据权限的风险项。"""
+        """风险项只以主机数据权限投影。"""
+        access = target_access_scope(request)
         target_ids = set(
-            self.get_queryset_by_permission(
-                request, PatchTarget.objects.all(), permission_key="patch_target"
-            ).values_list("id", flat=True)
-        )
-        patch_ids = set(
-            self.get_queryset_by_permission(
-                request, Patch.objects.all(), permission_key="patch"
-            ).values_list("id", flat=True)
-        )
-        baseline_ids = set(
-            self.get_queryset_by_permission(
-                request, PatchBaseline.objects.all(), permission_key="patch_baseline"
-            ).values_list("id", flat=True)
+            access.queryset("View").values_list("id", flat=True)
         )
         items = [
             item
             for item in compute_risk_items()
             if item.host_id in target_ids
-            and item.patch_id in patch_ids
-            and item.baseline_id in baseline_ids
         ]
-        operable_target_ids = self._operable_ids(
-            request, PatchTarget.objects.all(), "patch_target"
-        )
-        operable_patch_ids = self._operable_ids(
-            request, Patch.objects.all(), "patch"
+        operable_target_ids = set(
+            access.queryset("Operate").values_list("id", flat=True)
         )
         for item in items:
             item.can_reboot = item.host_id in operable_target_ids
-            item.can_remediate = (
-                item.can_reboot and item.patch_id in operable_patch_ids
-            )
+            item.can_remediate = item.can_reboot
         return items
-
-    def _operable_ids(self, request, queryset, permission_key):
-        """返回当前用户对指定资源具备 Operate 的实例 ID。"""
-        if getattr(request.user, "is_superuser", False):
-            return set(queryset.values_list("id", flat=True))
-        current_team = get_current_team(request, "0")
-        include_children = request.COOKIES.get("include_children", "0") == "1"
-        rules = viewset_utils.get_permission_rules(
-            request.user,
-            current_team,
-            self._get_app_name(),
-            permission_key,
-            include_children,
-        )
-        instance_ids = [
-            item.get("id")
-            for item in rules.get("instance", [])
-            if "Operate" in (item.get("permission") or [])
-        ]
-        team_query = build_json_membership_query(
-            queryset, self.ORGANIZATION_FIELD, rules.get("team", [])
-        )
-        return set(
-            queryset.filter(team_query | Q(pk__in=instance_ids)).values_list(
-                "id", flat=True
-            )
-        )
 
     @HasPermission("patch_risk-View")
     def list(self, request, *args, **kwargs):
@@ -208,7 +162,7 @@ class RiskViewSet(AuthViewSet):
           "execution_window_start": "...",   # optional
           "execution_window_end": "...",     # optional
           "auto_reboot": false,
-          "name": "可选-任务名"                 # optional
+          "name": "任务名"                      # required
         }
         """
         from apps.patch_mgmt.services.governance_service import (
@@ -219,19 +173,8 @@ class RiskViewSet(AuthViewSet):
         items = request.data.get("items") or []
         if not isinstance(items, list) or not items:
             return Response({"detail": patch_message(request, "error.items_required", "items is required")}, status=400)
-        require_authorized_ids(
-            self,
-            request,
-            PatchTarget.objects.all(),
-            [item.get("host_id") for item in items],
-            "patch_target",
-        )
-        require_authorized_ids(
-            self,
-            request,
-            Patch.objects.all(),
-            [item.get("patch_id") for item in items],
-            "patch",
+        require_target_ids(
+            request, [item.get("host_id") for item in items], "Operate"
         )
         try:
             task = create_remediation_task(request, items, request.data)
@@ -253,9 +196,7 @@ class RiskViewSet(AuthViewSet):
         target_ids = request.data.get("target_ids") or []
         if not isinstance(target_ids, list) or not target_ids:
             return Response({"detail": patch_message(request, "error.target_ids_required", "target_ids is required")}, status=400)
-        require_authorized_ids(
-            self, request, PatchTarget.objects.all(), target_ids, "patch_target"
-        )
+        require_target_ids(request, target_ids, "Operate")
         try:
             return Response(get_reboot_scope(target_ids))
         except PatchBusinessError as exc:
@@ -271,7 +212,7 @@ class RiskViewSet(AuthViewSet):
           "target_ids": [1, 2, 3],
           "execution_window_start": "...",
           "execution_window_end": "...",
-          "name": "可选-任务名"
+          "name": "任务名"
         }
         """
         from apps.patch_mgmt.services.governance_service import HostBusyError, create_reboot_task
@@ -279,9 +220,7 @@ class RiskViewSet(AuthViewSet):
         target_ids = request.data.get("target_ids") or []
         if not isinstance(target_ids, list) or not target_ids:
             return Response({"detail": patch_message(request, "error.target_ids_required", "target_ids is required")}, status=400)
-        require_authorized_ids(
-            self, request, PatchTarget.objects.all(), target_ids, "patch_target"
-        )
+        require_target_ids(request, target_ids, "Operate")
         try:
             task = create_reboot_task(request, target_ids, request.data)
         except HostBusyError as exc:

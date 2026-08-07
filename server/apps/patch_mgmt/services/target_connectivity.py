@@ -1,16 +1,24 @@
 """沿补丁真实执行链路探测目标机连通性。"""
 
 import io
-import logging
 import re
 import time
 import uuid
 from dataclasses import dataclass
 from typing import Any, Optional
 
+import winrm
+from django.conf import settings
+
+from apps.core.logger import patch_mgmt_logger as logger
 from apps.core.mixinx import EncryptMixin
 from apps.patch_mgmt.constants import OSType
 from apps.patch_mgmt.models import PatchTarget
+from apps.patch_mgmt.services.linux_platform import (
+    linux_host_facts_command,
+    parse_linux_host_facts,
+    validate_linux_host_facts,
+)
 from apps.patch_mgmt.services.target_execution_route import (
     TargetExecutionRoute,
     TargetExecutorUnavailable,
@@ -19,8 +27,6 @@ from apps.patch_mgmt.services.target_execution_route import (
 )
 from apps.rpc.ansible import AnsibleExecutor
 from apps.rpc.executor import Executor
-
-logger = logging.getLogger("app")
 
 PROBE_MARKER = "patch-connectivity-ok"
 PROBE_TIMEOUT = 10
@@ -84,6 +90,15 @@ def probe_target_data(data: dict) -> TargetProbeResult:
     """沿与补丁执行一致的路由探测目标；表单数据中的凭据必须是明文。"""
     route: Optional[TargetExecutionRoute] = None
     try:
+        if (
+            data.get("source_type") == "manual"
+            and data.get("os_type") == OSType.WINDOWS
+            and getattr(settings, "PATCH_MGMT_WINDOWS_EXECUTION_MODE", "executor")
+            == "direct_winrm"
+        ):
+            if not settings.DEBUG:
+                raise RuntimeError("direct_winrm 仅允许在 DEBUG=True 的本地环境使用")
+            return _probe_direct_winrm(data)
         route = resolve_target_execution_route(data)
         if route.transport == TargetTransport.NODE_EXECUTOR:
             return _probe_node_executor(data, route)
@@ -104,20 +119,55 @@ def probe_target_data(data: dict) -> TargetProbeResult:
         return result
 
 
+def _probe_direct_winrm(data: dict) -> TargetProbeResult:
+    scheme = data.get("winrm_scheme") or "http"
+    port = int(data.get("winrm_port") or 5985)
+    cert_validation = "validate" if data.get("winrm_cert_validation", True) else "ignore"
+    endpoint = f"{scheme}://{data['ip']}:{port}/wsman"
+    session = winrm.Session(
+        endpoint,
+        auth=(data.get("winrm_user") or "", data.get("winrm_password") or ""),
+        transport=data.get("winrm_transport") or "ntlm",
+        server_cert_validation=cert_validation,
+        operation_timeout_sec=PROBE_TIMEOUT,
+        read_timeout_sec=PROBE_TIMEOUT + 10,
+    )
+    raw = session.run_ps(f"Write-Output {PROBE_MARKER}")
+    route = TargetExecutionRoute(TargetTransport.DIRECT_WINRM, "local-debug", port)
+    return _command_result(
+        {
+            "exit_code": raw.status_code,
+            "stdout": raw.std_out.decode("utf-8", errors="replace") if raw.std_out else "",
+            "stderr": raw.std_err.decode("utf-8", errors="replace") if raw.std_err else "",
+        },
+        route,
+        "本地 DEBUG WinRM 已在目标机成功执行探测命令",
+    )
+
+
 def _probe_node_executor(data: dict, route: TargetExecutionRoute) -> TargetProbeResult:
     is_windows = data.get("os_type") == OSType.WINDOWS
-    command = f"Write-Output {PROBE_MARKER}" if is_windows else f"printf {PROBE_MARKER}"
+    command = (
+        f"Write-Output {PROBE_MARKER}"
+        if is_windows
+        else linux_host_facts_command(marker=PROBE_MARKER)
+    )
     result = Executor(route.instance_id).execute_local(
         command,
         timeout=PROBE_TIMEOUT,
         shell="powershell" if is_windows else "sh",
     )
-    return _command_result(result, route, "节点 Executor 已在目标机成功执行探测命令")
+    return _command_result(
+        result,
+        route,
+        "节点 Executor 已在目标机成功执行探测命令并识别主机事实",
+        require_linux_facts=not is_windows,
+    )
 
 
 def _probe_nats_ssh(data: dict, route: TargetExecutionRoute) -> TargetProbeResult:
     result = Executor(route.instance_id).execute_ssh(
-        f"printf {PROBE_MARKER}",
+        linux_host_facts_command(marker=PROBE_MARKER),
         host=data["ip"],
         username=data.get("ssh_user") or "",
         password=data.get("ssh_password") or None,
@@ -128,7 +178,12 @@ def _probe_nats_ssh(data: dict, route: TargetExecutionRoute) -> TargetProbeResul
         connection_test=True,
         fast_fail=True,
     )
-    return _command_result(result, route, "区域 NATS Executor 已通过 SSH 执行探测命令")
+    return _command_result(
+        result,
+        route,
+        "区域 NATS Executor 已通过 SSH 执行探测命令并识别主机事实",
+        require_linux_facts=True,
+    )
 
 
 def _probe_ansible_winrm(data: dict, route: TargetExecutionRoute) -> TargetProbeResult:
@@ -177,6 +232,8 @@ def _command_result(
     result: Any,
     route: TargetExecutionRoute,
     success_detail: str,
+    *,
+    require_linux_facts: bool = False,
 ) -> TargetProbeResult:
     normalized = _normalize_result(result)
     exit_code = normalized.get("exit_code")
@@ -199,6 +256,18 @@ def _command_result(
             "command",
             "command_failed",
         )
+    if require_linux_facts:
+        facts = parse_linux_host_facts(str(normalized.get("stdout") or ""))
+        facts_error = validate_linux_host_facts(facts)
+        if facts_error:
+            return TargetProbeResult(
+                False,
+                route.port,
+                f"命令可达，但主机事实识别失败：{facts_error}",
+                route.transport,
+                "command",
+                "host_facts_unavailable",
+            )
     return TargetProbeResult(True, route.port, success_detail, route.transport)
 
 

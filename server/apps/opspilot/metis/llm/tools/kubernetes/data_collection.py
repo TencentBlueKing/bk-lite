@@ -1,5 +1,7 @@
 """Kubernetes 告警驱动数据采集编排工具。"""
 
+from __future__ import annotations
+
 import copy
 import json
 import re
@@ -178,6 +180,133 @@ def _extract_labels(alert):
     return labels if isinstance(labels, dict) else {}
 
 
+_PAREN_GROUP_RE = re.compile(r"[（(]([^）)]+)[）)]")
+_POD_LIKE_NAME_RE = re.compile(r"\b([a-z0-9](?:[-a-z0-9]*[a-z0-9])?(?:-[a-f0-9]{5,10}){1,2})\b", re.IGNORECASE)
+
+
+def _guess_resource_name_from_text(*texts: str) -> str | None:
+    """从告警标题/正文中猜测 Pod 名（含 ReplicaSet hash 后缀形态）。"""
+    for text in texts:
+        if not isinstance(text, str) or not text.strip():
+            continue
+        for match in _PAREN_GROUP_RE.finditer(text):
+            parts = [part.strip() for part in re.split(r"[,，、/|]", match.group(1)) if part.strip()]
+            # 典型：kubernetes，bk-lite-k3s，server-5b8fb979d7-csdcc
+            if parts:
+                candidate = parts[-1]
+                if _POD_LIKE_NAME_RE.fullmatch(candidate) or "-" in candidate:
+                    return candidate
+        match = _POD_LIKE_NAME_RE.search(text)
+        if match:
+            return match.group(1)
+    return None
+
+
+def _apply_namespace_lookup(target: dict, pods: list, events: list) -> dict:
+    """在缺 namespace 时，用 Pod 列表 / Events 反查命名空间。"""
+    resource_name = target.get("pod_name") or target.get("resource_name")
+    if not resource_name or target.get("namespace"):
+        return target
+
+    namespaces = []
+    for pod in pods or []:
+        if not isinstance(pod, dict):
+            continue
+        if pod.get("name") == resource_name and pod.get("namespace"):
+            namespaces.append(str(pod["namespace"]))
+
+    if not namespaces:
+        for event in events or []:
+            if not isinstance(event, dict):
+                continue
+            obj = str(event.get("object") or "")
+            if obj.endswith(f"/{resource_name}") or obj == resource_name:
+                ns = event.get("namespace")
+                if ns:
+                    namespaces.append(str(ns))
+
+    unique = list(dict.fromkeys(namespaces))
+    if len(unique) == 1:
+        target["namespace"] = unique[0]
+        target["namespace_lookup"] = "pods_or_events"
+        if "namespace" in (target.get("missing_data") or []):
+            target["missing_data"] = [item for item in target["missing_data"] if item != "namespace"]
+        if target.get("resource_type") and target.get("resource_name"):
+            target["resolved"] = True
+            target["reason"] = None
+    elif len(unique) > 1:
+        target["missing_data"] = list(dict.fromkeys((target.get("missing_data") or []) + ["namespace"]))
+        target["namespace_candidates"] = unique
+        target["resolved"] = False
+        target["reason"] = f"Multiple namespaces matched resource {resource_name}: {', '.join(unique)}"
+    else:
+        target["missing_data"] = list(dict.fromkeys((target.get("missing_data") or []) + ["namespace"]))
+        if not target.get("reason"):
+            target["reason"] = f"Namespace not found for resource {resource_name} via pods/events lookup"
+        target["resolved"] = False
+
+    return target
+
+
+def _build_k8s_target_from_alert(alert: dict) -> dict:
+    labels = _extract_labels(alert)
+    title = alert.get("title") or ""
+    message = alert.get("message") or ""
+
+    pod_name = _first_non_empty(
+        labels.get("pod"),
+        labels.get("pod_name"),
+        labels.get("resource_name") if str(labels.get("resource_type") or "").lower() in ("", "pod") else None,
+    )
+    if not pod_name:
+        pod_name = _guess_resource_name_from_text(title, message)
+
+    target = {
+        "cluster": labels.get("cluster") or labels.get("cluster_id"),
+        "namespace": labels.get("namespace"),
+        "resource_type": None,
+        "resource_name": None,
+        "pod_name": pod_name,
+        "container_name": labels.get("container"),
+        "node_name": labels.get("node"),
+        "deployment_name": labels.get("deployment"),
+        "service_name": labels.get("service") or labels.get("service_name"),
+        "resolved": False,
+        "missing_data": [],
+        "reason": None,
+    }
+
+    resource_type_label = str(labels.get("resource_type") or labels.get("kind") or "").lower()
+    if target["pod_name"] or resource_type_label == "pod":
+        target["resource_type"] = "pod"
+        target["resource_name"] = target["pod_name"] or labels.get("resource_name")
+    elif target["node_name"] or resource_type_label == "node":
+        target["resource_type"] = "node"
+        target["resource_name"] = target["node_name"] or labels.get("resource_name")
+    elif target["service_name"] or resource_type_label == "service":
+        target["resource_type"] = "service"
+        target["resource_name"] = target["service_name"] or labels.get("resource_name")
+    elif target["deployment_name"] or resource_type_label == "deployment":
+        target["resource_type"] = "deployment"
+        target["resource_name"] = target["deployment_name"] or labels.get("resource_name")
+    elif labels.get("resource_name"):
+        target["resource_type"] = resource_type_label or "pod"
+        target["resource_name"] = labels.get("resource_name")
+        if target["resource_type"] == "pod":
+            target["pod_name"] = target["resource_name"]
+
+    if target["resource_type"] and target["resource_name"] and target["namespace"]:
+        target["resolved"] = True
+    elif not target["resource_type"] or not target["resource_name"]:
+        target["reason"] = "Missing resource identifier needed to resolve Kubernetes target"
+        target["missing_data"].append("resource_type_or_name")
+    elif not target["namespace"]:
+        target["missing_data"].append("namespace")
+        target["reason"] = "Missing namespace; will attempt pods/events reverse lookup"
+
+    return target
+
+
 @tool()
 def normalize_alert_event(alert_payload, config: RunnableConfig = None):
     """标准化 workflow 告警输入结构。"""
@@ -201,43 +330,37 @@ def normalize_alert_event(alert_payload, config: RunnableConfig = None):
 
 @tool()
 def resolve_k8s_target_from_alert(normalized_alert, config: RunnableConfig = None):
-    """从标准化告警中解析 Kubernetes 目标对象。"""
+    """从标准化告警中解析 Kubernetes 目标对象；缺 namespace 时通过 Pod/Events 反查。"""
     alert = normalized_alert if isinstance(normalized_alert, dict) else {}
-    labels = _extract_labels(alert)
+    if isinstance(normalized_alert, str):
+        try:
+            alert = json.loads(normalized_alert)
+        except Exception:
+            alert = {}
 
-    target = {
-        "cluster": labels.get("cluster") or labels.get("cluster_id"),
-        "namespace": labels.get("namespace"),
-        "resource_type": None,
-        "resource_name": None,
-        "pod_name": labels.get("pod"),
-        "container_name": labels.get("container"),
-        "node_name": labels.get("node"),
-        "deployment_name": labels.get("deployment"),
-        "service_name": labels.get("service") or labels.get("service_name"),
-        "resolved": False,
-        "missing_data": [],
-        "reason": None,
-    }
+    target = _build_k8s_target_from_alert(alert if isinstance(alert, dict) else {})
 
-    if target["pod_name"]:
-        target["resource_type"] = "pod"
-        target["resource_name"] = target["pod_name"]
-    elif target["node_name"]:
-        target["resource_type"] = "node"
-        target["resource_name"] = target["node_name"]
-    elif target["service_name"] and target["namespace"]:
-        target["resource_type"] = "service"
-        target["resource_name"] = target["service_name"]
-    elif target["deployment_name"] and target["namespace"]:
-        target["resource_type"] = "deployment"
-        target["resource_name"] = target["deployment_name"]
+    needs_lookup = bool(target.get("resource_name") or target.get("pod_name")) and not target.get("namespace")
+    if needs_lookup:
+        from apps.opspilot.metis.llm.tools.kubernetes.resources import list_kubernetes_events, list_kubernetes_pods
 
-    if target["resource_type"] and target["resource_name"]:
+        pods = _json_or_raw(list_kubernetes_pods.invoke({"namespace": None}, config=config)) or []
+        events = _json_or_raw(list_kubernetes_events.invoke({"namespace": None}, config=config)) or []
+        if not isinstance(pods, list):
+            pods = []
+        if not isinstance(events, list):
+            events = []
+        target = _apply_namespace_lookup(target, pods, events)
+
+    if target.get("resource_type") and target.get("resource_name") and target.get("namespace"):
         target["resolved"] = True
-    else:
-        target["reason"] = "Missing resource identifier needed to resolve Kubernetes target"
-        target["missing_data"].append("resource_type_or_name")
+        if not target.get("reason"):
+            target["reason"] = None
+    elif target.get("resource_type") and target.get("resource_name") and not target.get("namespace"):
+        target["resolved"] = False
+        target["missing_data"] = list(dict.fromkeys((target.get("missing_data") or []) + ["namespace"]))
+        if not target.get("reason"):
+            target["reason"] = "Missing namespace after pods/events reverse lookup"
 
     return json.dumps(target, ensure_ascii=False)
 

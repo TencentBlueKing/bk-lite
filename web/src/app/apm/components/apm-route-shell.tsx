@@ -37,7 +37,7 @@ export default function ApmRouteShell({
   children,
 }: ApmRouteShellProps) {
   return (
-    <div className="h-full overflow-auto bg-[var(--color-background-body)] p-4 lg:p-5">
+    <div className="h-full overflow-auto p-4 lg:p-5">
       <div className="mx-auto flex w-full flex-col gap-4">
         <header className="flex flex-col gap-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-4 py-3 md:flex-row md:items-center md:justify-between">
           <div className="flex min-w-0 items-center gap-3">

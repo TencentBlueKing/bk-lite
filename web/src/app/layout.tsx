@@ -17,7 +17,7 @@ import TopMenu from '@/app/(core)/components/top-menu';
 import { Watermark, message } from 'antd';
 import Spin from '@/components/spin';
 import { portalBrandingDefaults, usePortalBranding } from '@/hooks/usePortalBranding';
-import { getProfessionalDashboardPermissionPath } from '@/app/monitor/dashboards/registry';
+import { getProfessionalDashboardPermissionPath } from '@/app/monitor/dashboards/metadata';
 import { isProfessionalDashboardRoute } from '@/app/monitor/dashboards/shared/utils';
 import '@/styles/globals.css';
 import { MenuItem } from '@/types/index'
@@ -30,6 +30,7 @@ import {
 import { isSessionExpiredState } from '@/utils/sessionExpiry'
 import { useUserInfoContext } from '@/context/userInfo';
 import { RouteScopedLayout } from '@/app/routeScopedLayout';
+import GlobalWebChat from '@/app/(core)/components/global-webchat';
 
 const Loader = () => (
   <div className="flex justify-center items-center h-screen">
@@ -353,6 +354,7 @@ const StandardRouteLayout = ({ children }: { children: React.ReactNode }) => (
   <>
     <PortalTabTitle />
     <LayoutWithProviders>{children}</LayoutWithProviders>
+    <GlobalWebChat />
   </>
 );
 

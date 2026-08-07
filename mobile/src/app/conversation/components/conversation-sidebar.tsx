@@ -281,7 +281,12 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
                                         className="flex-shrink-0 whitespace-nowrap text-xs font-normal leading-none tabular-nums text-[var(--color-text-4)]"
                                         dateTime={activityTime}
                                     >
-                                        {formatSessionActivity(activityTime, locale, t('common.yesterday'))}
+                                        {formatSessionActivity(
+                                            activityTime,
+                                            locale,
+                                            t('common.yesterday'),
+                                            userInfo?.timezone,
+                                        )}
                                     </time>
                                 )}
                             </button>

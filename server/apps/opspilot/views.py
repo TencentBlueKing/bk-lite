@@ -2,6 +2,7 @@ import datetime
 import json
 import time
 import uuid
+from types import SimpleNamespace
 from typing import Any
 
 from asgiref.sync import sync_to_async
@@ -18,13 +19,14 @@ from apps.core.utils.exempt import api_exempt
 from apps.core.utils.loader import LanguageLoader
 from apps.core.utils.team_utils import get_current_team
 from apps.opspilot.enum import WorkFlowTaskStatus
-from apps.opspilot.models import Bot, BotChannel, BotConversationHistory, BotWebChatSession, BotWorkFlow, LLMSkill, WorkFlowTaskResult
+from apps.opspilot.models import Bot, BotChannel, BotWebChatSession, BotWorkFlow, LLMSkill, WorkFlowTaskResult
 from apps.opspilot.serializers.request_serializers import (
     InterruptChatFlowRequestSerializer,
     SubmitApprovalRequestSerializer,
     SubmitChoiceRequestSerializer,
 )
 from apps.opspilot.services import usage_statistics_service
+from apps.opspilot.services.caller_identity import CALLER_IDENTITY_CONFIG_KEY, CallerIdentityError, capture_caller_identity, mark_api_secret_identity
 from apps.opspilot.services.chat_completion_service import ChatCompletionService
 from apps.opspilot.services.chat_service import ChatService
 from apps.opspilot.services.dingtalk_chat_flow_utils import DingTalkChatFlowUtils, start_dingtalk_stream_client
@@ -154,16 +156,19 @@ def validate_openai_token(token, team=None, is_mobile=False):
         if not result.get("result"):  # pragma: no cover
             return False, {"choices": [{"message": {"role": "assistant", "content": loader.get("error.no_authorization", "No authorization")}}]}
         user_info = result.get("data")  # pragma: no cover
-        user = UserAPISecret(  # pragma: no cover
+        # JWT/session identity must not be a UserAPISecret instance: capture_caller_identity
+        # treats that model as API-secret scope (bound team, no include_children cookie).
+        user = SimpleNamespace(  # pragma: no cover
             username=user_info["username"],
             domain=user_info["domain"],
             team=int(team),
+            locale=user_info.get("locale", "en"),
+            group_list=user_info.get("group_list", []),
+            is_authenticated=True,
         )
-        # Token 认证：从 verify_token 结果获取 locale 和 group_list
-        user.locale = user_info.get("locale", "en")  # pragma: no cover
-        user.group_list = user_info.get("group_list", [])  # pragma: no cover
     else:
         # UserAPISecret 认证：查询用户信息获取 locale
+        mark_api_secret_identity(user)
         user.locale = _get_user_locale(user.username, user.domain)  # pragma: no cover
     return True, user  # pragma: no cover
 
@@ -188,22 +193,6 @@ def _get_user_locale(username: str, domain: str) -> str:
     except Exception as e:
         logger.warning(f"Failed to get user locale for {username}@{domain}: {e}")  # pragma: no cover
     return "en"
-
-
-def validate_header_token(token, bot_id):
-    loader = LanguageLoader(app="opspilot", default_lang="en")
-    if not token:
-        return False, {"choices": [{"message": {"role": "assistant", "content": loader.get("error.no_authorization", "No authorization")}}]}
-    bot_obj = Bot.objects.filter(id=bot_id, online=True).first()  # pragma: no cover
-    if not bot_obj:  # pragma: no cover
-        return False, {"choices": [{"message": {"role": "assistant", "content": loader.get("error.bot_not_online", "No bot online")}}]}
-    token = token.split("Bearer ")[-1]  # pragma: no cover
-    client = SystemMgmt()  # pragma: no cover
-    # res = client.verify_token(token)
-    res = client.get_pilot_permission_by_token(token, bot_id, bot_obj.team)  # pragma: no cover
-    if not res.get("result"):  # pragma: no cover
-        return False, {"choices": [{"message": {"role": "assistant", "content": loader.get("error.no_authorization", "No authorization")}}]}
-    return True, {"username": res["data"]["username"]}  # pragma: no cover
 
 
 def get_skill_and_params(kwargs, team, bot_id=None):
@@ -336,6 +325,10 @@ def _build_chat_completion_service() -> ChatCompletionService:  # pragma: no cov
     )
 
 
+def _enrich_openai_params(request, user, params):  # pragma: no cover
+    params[CALLER_IDENTITY_CONFIG_KEY] = capture_caller_identity(request, user)
+
+
 @api_exempt
 def openai_completions(request):  # pragma: no cover
     """Main entry point for OpenAI completions"""
@@ -345,44 +338,7 @@ def openai_completions(request):  # pragma: no cover
         validate=lambda token, kwargs: validate_openai_token(token),
         resolve_skill=lambda kwargs, user: get_skill_and_params(kwargs, user.team),
         get_user_id=lambda user: user.username,
-    )
-
-
-def _lobe_persist_history(params, skill_obj, user_message, user, kwargs):  # pragma: no cover
-    """Persist the inbound user turn and build the bot-side history log.
-
-    Mirrors the legacy ``lobe_skill_execute`` side effects exactly: it creates a
-    ``user`` conversation row and returns an unsaved ``bot`` conversation row to
-    be filled in once the assistant response is produced.
-    """
-    bot = Bot.objects.get(id=kwargs["studio_id"])
-    BotConversationHistory.objects.create(
-        bot_id=kwargs.get("studio_id"),
-        channel_user_id=user["username"],
-        created_by=bot.created_by,
-        domain=bot.domain,
-        conversation_role="user",
-        conversation=user_message,
-    )
-    return BotConversationHistory(
-        bot_id=kwargs.get("studio_id"),
-        channel_user_id=user["username"],
-        created_by=bot.created_by,
-        domain=bot.domain,
-        conversation_role="bot",
-        conversation="",
-    )
-
-
-@api_exempt
-def lobe_skill_execute(request):  # pragma: no cover
-    service = _build_chat_completion_service()
-    return service.run(
-        request,
-        validate=lambda token, kwargs: validate_header_token(token, int(kwargs["studio_id"])),
-        resolve_skill=lambda kwargs, user: get_skill_and_params(kwargs, "", kwargs.get("studio_id")),
-        get_user_id=lambda user: user["username"],
-        post_resolve_hook=_lobe_persist_history,
+        enrich_params=_enrich_openai_params,
     )
 
 
@@ -538,7 +494,11 @@ async def execute_chat_flow(request, bot_id, node_id):  # pragma: no cover
     # 验证Bot — 始终按已验证用户所属团队作用域解析 bot，所有客户端一致
     # (此前移动端基于可伪造的 User-Agent 绕过 team 校验，构成跨租户越权，已移除)
     user = msg
-    current_team = int(user.team)
+    try:
+        caller_snapshot = capture_caller_identity(request, user)
+    except CallerIdentityError as e:
+        return JsonResponse({"result": False, "message": str(e)}, status=e.status_code)
+    current_team = caller_snapshot["team_id"]
     # 构建 team 过滤：
     # - 测试(is_test=True，管理页测试)：仅【管理组织】可发起。测试会回填管理画布、占用"同 bot
     #   同时仅一个测试"的槽位，属管理活动，使用组织不得触发(即便经 API)。
@@ -610,6 +570,7 @@ async def execute_chat_flow(request, bot_id, node_id):  # pragma: no cover
             "session_id": session_id,
             "execution_id": engine.execution_id,
             "locale": getattr(user, "locale", "en"),  # 用户语言设置，用于 browser-use 输出国际化
+            CALLER_IDENTITY_CONFIG_KEY: caller_snapshot,
         }
 
         logger.info(f"开始执行ChatFlow流程，bot_id: {bot_id}, node_id: {node_id}, user: {user.username}, node_type: {node_type}")

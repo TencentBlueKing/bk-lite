@@ -199,7 +199,6 @@ const ChartNodeContent: React.FC<ChartNodeProps> = ({ node }) => {
 const ChartNode: React.FC<ChartNodeProps> = ({ node }) => {
   const { locale, messages } = getLocaleData();
   return (
-    // @ts-expect-error react-intl type incompatibility with React 19
     <IntlProvider locale={locale} messages={messages}>
       <ChartNodeContent node={node} />
     </IntlProvider>

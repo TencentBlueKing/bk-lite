@@ -153,6 +153,11 @@ test('会话、工作台和搜索加载失败时保留明确重试入口', async
   assert.match(conversation, /!messagesLoadFailed && \(/);
   assert.match(workbench, /loadFailed[\s\S]*fetchApplications\(activeTab\)/);
   assert.match(search, /loadFailed[\s\S]*setConversationReloadVersion/);
+  // OpsPilot 搜索页远程请求须确认后触发，不得输入防抖
+  assert.match(search, /onSearch=\{submitSearch\}/);
+  assert.match(search, /const \[keyword,\s*setKeyword\]/);
+  assert.doesNotMatch(search, /setTimeout\(\(\)\s*=>\s*\{[\s\S]*searchWorkbenchApps/, '工作台搜索不得输入防抖请求');
+  assert.match(search, /!keyword\.trim\(\)/);
 });
 
 test('翻译函数在重渲染之间保持稳定，避免会话详情重复请求', async () => {
@@ -170,7 +175,8 @@ test('搜索应用卡和返回操作可通过语义化按钮访问', async () =>
   assert.match(search, /<button\s+type="button"\s+key=\{item\.id\}/);
   assert.match(search, /aria-label=\{t\('common\.back'\)\}/);
   assert.match(search, /min-h-11 min-w-11/);
-  assert.match(search, /backgroundColor: 'var\(--color-success\)'/);
+  assert.match(search, /getAppTagColor\(tag\)/);
+  assert.match(search, /backgroundColor: tagColor\.bg/);
 });
 
 test('智能应用、对话和我的页面共用一级标题样式', async () => {
@@ -314,12 +320,12 @@ test('主页面头部与底栏背景连续覆盖 iOS 安全区', async () => {
   assert.doesNotMatch(globals, /body\s*\{[^}]*padding-(?:top|bottom):\s*var\(--safe-area-inset-/s);
   assert.match(header, /padding-top:\s*var\(--safe-area-inset-top\)/);
   assert.match(header, /background:\s*var\(--color-page-header-bg\)/);
-  assert.match(shell, /padding-bottom:\s*max\(4px, var\(--safe-area-inset-bottom\)\)/);
+  assert.match(shell, /padding-bottom:\s*max\(6px, var\(--safe-area-inset-bottom\)\)/);
   assert.match(shell, /\.bottomNav\s*\{[^}]*background:\s*var\(--color-bottom-nav-bg\)/s);
   assert.equal((variables.match(/--mobile-header-height:\s*56px/g) || []).length, 2);
   assert.equal((variables.match(/--color-app-chrome-bg:\s*var\(--color-background-body\)/g) || []).length, 2);
   assert.equal((variables.match(/--color-page-header-bg:\s*var\(--color-app-chrome-bg\)/g) || []).length, 2);
-  assert.equal((variables.match(/--color-bottom-nav-bg:\s*var\(--color-app-chrome-bg\)/g) || []).length, 2);
+  assert.equal((variables.match(/--color-bottom-nav-bg:\s*var\(--color-bg\)/g) || []).length, 2);
   assert.equal((variables.match(/--color-page-header-bg:/g) || []).length, 2);
   assert.equal((variables.match(/--color-bottom-nav-bg:/g) || []).length, 2);
 });
@@ -350,7 +356,8 @@ test('二级页面共用可回退到安全父页的返回语义', async () => {
   assert.match(navigation, /router\.back\(\)/);
   assert.match(navigation, /router\.replace\(fallbackHref\)/);
   assert.match(navigation, /onBeforeBack\?\.\(\)/);
-  assert.match(pageHeader, /useMobileBack\(\{ fallbackHref: backHref \|\| '\/workbench' \}\)/);
+  assert.match(pageHeader, /onBeforeBack\?: \(\) => boolean/);
+  assert.match(pageHeader, /useMobileBack\(\{\s*fallbackHref: backHref \|\| '\/workbench',\s*onBeforeBack,\s*\}\)/);
   assert.match(conversations, /backHref="\/workbench"/);
   assert.match(search, /useMobileBack\(\{ fallbackHref \}\)/);
   assert.match(appDetail, /fallbackHref: '\/workbench'/);
@@ -377,15 +384,15 @@ test('iOS 容器按路由启停 WKWebView 原生边缘返回手势', async () =>
   assert.match(rustEntry, /set_back_forward_navigation_gestures/);
   assert.match(rustEntry, /apply_back_forward_navigation_gestures\(&main_webview, false\)/);
 
-  const gestureRoutes = navigation.match(
-    /NATIVE_BACK_GESTURE_ENABLED_ROUTES\s*=\s*new Set\(\[([\s\S]*?)\]\)/,
-  )?.[1];
-  assert.ok(gestureRoutes);
-  for (const route of ['/conversations', '/search', '/workbench/detail', '/profile/accountDetails']) {
-    assert.ok(gestureRoutes.includes(`'${route}'`));
+  assert.match(navigation, /export function shouldEnableNativeBackGesture/);
+  assert.match(navigation, /pathname === '\/conversation' \|\| ROOT_ROUTES\.has\(pathname\)/);
+  assert.match(navigation, /pathname === '\/conversations'/);
+  assert.match(navigation, /pathname === '\/search'/);
+  for (const routePrefix of ['/todo/', '/monitor/', '/assets/', '/workbench/', '/profile/']) {
+    assert.ok(navigation.includes(`pathname.startsWith('${routePrefix}')`));
   }
-  for (const route of ['/workbench', '/profile', '/conversation']) {
-    assert.equal(gestureRoutes.includes(`'${route}'`), false);
+  for (const rootRoute of ['/todo', '/monitor', '/assets', '/workbench', '/profile']) {
+    assert.ok(navigation.includes(`'${rootRoute}'`));
   }
 
   assert.match(navigation, /import\('@tauri-apps\/api\/core'\)/);
@@ -410,16 +417,19 @@ test('一级页面标题统一使用稍小的排版 token', async () => {
   const variables = await readProjectFile('src/styles/variables.css');
 
   assert.match(pageHeaderStyles, /font-size:\s*var\(--mobile-page-title-font-size\)/);
-  assert.equal((variables.match(/--mobile-page-title-font-size:\s*17px/g) || []).length, 2);
+  assert.equal((variables.match(/--mobile-page-title-font-size:\s*var\(--font-size-title\)/g) || []).length, 2);
 });
 
 test('外层历史对话列表保留真实最近活跃时间', async () => {
   const conversations = await readProjectFile('src/app/conversations/page.tsx');
   const time = await readProjectFile('src/app/conversations/session-time.ts');
+  const accountTime = await readProjectFile('src/platform/preferences/dateTime.ts');
 
   assert.match(conversations, /session\.updated_at \|\| session\.created_at/);
   assert.match(conversations, /formatSessionActivity/);
-  assert.match(time, /Intl\.DateTimeFormat/);
+  assert.match(time, /formatAccountActivity/);
+  assert.match(accountTime, /Intl\.DateTimeFormat/);
+  assert.match(accountTime, /timeZone:\s*normalizeAccountTimezone/);
 });
 
 test('Mobile 会话列表使用独立分页接口', async () => {
@@ -644,13 +654,13 @@ test('移动端根壳层与 iOS 上下安全区共用连续画布背景', async 
   assert.match(globals, /html,\s*body\s*\{[^}]*background(?:-color)?:\s*var\(--color-background-body\)/s);
 });
 
-test('底部导航使用 iOS 式纯色选中态而不给图标添加背景框', async () => {
+test('底部导航使用高对比实色选中图标与克制的按压反馈', async () => {
   const tabShell = await readProjectFile('src/components/mobile-tab-shell/index.module.css');
 
-  assert.doesNotMatch(tabShell, /\.navItemActive \.navIcon\s*\{[^}]*background:/s);
+  assert.match(tabShell, /\.navItemActive \.navIcon\s*\{[^}]*background:\s*var\(--color-primary\)/s);
   assert.doesNotMatch(tabShell, /\.navItem:active \.navIcon\s*\{[^}]*background:/s);
-  assert.match(tabShell, /\.navItem:active\s*\{[^}]*opacity:\s*0\.65/s);
-  assert.match(tabShell, /\.navIcon\s*\{[^}]*font-size:\s*23px/s);
+  assert.match(tabShell, /\.navItem:active\s*\{[^}]*opacity:\s*0\.78/s);
+  assert.match(tabShell, /\.navIcon\s*\{[^}]*font-size:\s*21px/s);
 });
 
 test('会话侧栏使用 transform 跟手推移主页面', async () => {

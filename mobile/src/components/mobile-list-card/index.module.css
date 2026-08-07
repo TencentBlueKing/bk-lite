@@ -1,0 +1,176 @@
+.card {
+  position: relative;
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  min-height: 88px;
+  align-items: start;
+  padding: 14px 16px;
+  color: inherit;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+  background: var(--color-bg);
+  border: 0;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  transition: background-color 140ms ease;
+}
+
+.cardFlush {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 10px;
+  border-radius: 0;
+}
+
+.cardFlush::after {
+  position: absolute;
+  right: 16px;
+  bottom: 0;
+  left: 16px;
+  height: 1px;
+  content: '';
+  background: var(--color-border-1);
+}
+
+.cardFlushHasLeading::after {
+  left: 30px;
+}
+
+.cardFlush:last-child::after {
+  display: none;
+}
+
+.cardRaised {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 12px;
+  margin: 0;
+  padding: 14px 14px 14px 12px;
+  border: 1px solid var(--color-border-1);
+  border-radius: 12px;
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
+}
+
+.cardRaised + .cardRaised {
+  margin-top: 10px;
+}
+
+.card:active {
+  background: var(--color-fill-1);
+}
+
+.card:focus-visible {
+  z-index: 1;
+  outline: 2px solid var(--color-primary);
+  outline-offset: -2px;
+}
+
+.leading {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  margin-top: 2px;
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.topline {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+  min-width: 0;
+}
+
+.eyebrow {
+  display: flex;
+  flex: 1;
+  gap: 6px;
+  align-items: center;
+  min-width: 0;
+  overflow: hidden;
+  font-size: var(--font-size-secondary);
+  font-weight: 650;
+  line-height: 1.4;
+  color: var(--color-text-2);
+}
+
+.eyebrow > * {
+  min-width: 0;
+}
+
+.title {
+  display: -webkit-box;
+  overflow: hidden;
+  margin: 0;
+  font-size: var(--font-size-subtitle);
+  font-weight: 650;
+  line-height: 1.45;
+  color: var(--color-text-1);
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.meta {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  overflow: hidden;
+  font-size: var(--font-size-secondary);
+  line-height: 1.45;
+  color: var(--color-text-3);
+}
+
+.metaText {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.trailing {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-end;
+  align-self: center;
+  max-width: 38%;
+  font-size: var(--font-size-secondary);
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-3);
+  text-align: right;
+}
+
+.chevron {
+  font-size: var(--font-size-subtitle);
+  color: var(--color-text-4);
+}
+
+@media (max-width: 340px) {
+  .cardFlush {
+    padding-right: 12px;
+    padding-left: 12px;
+  }
+
+  .cardFlush::after {
+    right: 12px;
+    left: 12px;
+  }
+
+  .cardFlushHasLeading::after {
+    left: 25px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card {
+    transition: none;
+  }
+}

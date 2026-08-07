@@ -378,7 +378,7 @@ Content-Type: application/json
 | files[].file_id | int | 是 | 上传接口返回的 file_id |
 | files[].file_key | string | 是 | 上传接口返回的 file_key |
 
-> ⚠️ **安全校验**：`file_id` 和 `file_key` 必须同时匹配才能删除，防止猜测 ID 或 key 进行越权删除。
+> ⚠️ **安全校验**：`file_id`、`file_key` 和 API Secret 绑定的团队必须同时匹配才能删除。跨团队文件与不存在文件返回相同结果，防止枚举其他团队的文件。
 
 **Response (成功):**
 ```json
@@ -428,6 +428,8 @@ Content-Type: application/json
 | timeout | int | 否 | 超时秒数，默认 600 |
 | team | array | 是 | 团队 ID 列表 |
 | callback_url | string | 否 | 任务完成回调地址 |
+
+> ⚠️ **团队隔离**：`file_keys` 对应的文件必须全部属于 `team` 声明的团队范围；跨团队文件、无归属历史文件与不存在文件都会被拒绝，且不会创建或派发作业。
 
 **Response:** 同脚本执行
 

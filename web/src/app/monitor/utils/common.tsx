@@ -553,11 +553,11 @@ export const getBaseInstanceColumn = (config: {
       onCell: () => ({ style: { minWidth: 150 } }),
       ...(isAssetIp
         ? {
-            filterMultiple: true,
-            filterSearch: true,
-            filterParam: 'asset.ip',
-            filters: ipFilters.length ? ipFilters : undefined
-          }
+          filterMultiple: true,
+          filterSearch: true,
+          filterParam: 'asset.ip',
+          filters: ipFilters.length ? ipFilters : undefined
+        }
         : {}),
       render: (_: unknown, record: TableDataItem) =>
         renderAssetText(formatSummaryFact(record.summary_facts?.[column.fact]))
@@ -897,17 +897,30 @@ const getEnterpriseBrands = (): Array<{ match: RegExp; label: string; icon?: str
   return [];
 };
 
+const brandIconCache = new Map<string, string | undefined>();
+const brandLabelCache = new Map<string, string | undefined>();
+
 // 按插件名取品牌 logo 图标;命中 CE BRANDS 或运行时注入的 EE __ENTERPRISE_BRANDS 任一即返回。
 // 失败降级:都未命中 → undefined,调用方回退到监控对象 icon。
 export const getPluginBrandIcon = (pluginName = ''): string | undefined => {
+  if (brandIconCache.has(pluginName)) {
+    return brandIconCache.get(pluginName);
+  }
   const all = [...BRANDS, ...getEnterpriseBrands()];
-  return all.find((brand) => brand.match.test(pluginName))?.icon;
+  const icon = all.find((brand) => brand.match.test(pluginName))?.icon;
+  brandIconCache.set(pluginName, icon);
+  return icon;
 };
 
 // 按名称(实例名/插件名)取品牌标签,用于仪表盘头部标识;同 getPluginBrandIcon 拼接策略。
 export const getBrandLabel = (text = ''): string | undefined => {
+  if (brandLabelCache.has(text)) {
+    return brandLabelCache.get(text);
+  }
   const all = [...BRANDS, ...getEnterpriseBrands()];
-  return all.find((brand) => brand.match.test(text))?.label;
+  const label = all.find((brand) => brand.match.test(text))?.label;
+  brandLabelCache.set(text, label);
+  return label;
 };
 
 export const getRecentTimeRange = (timeValues: TimeValuesProps) => {

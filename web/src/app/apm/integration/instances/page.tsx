@@ -13,39 +13,47 @@ import CatalogState, {
 import OrganizationAssignmentModal from '@/app/apm/components/organization-assignment-modal';
 import ServiceIdentity from '@/app/apm/components/service-identity';
 import ApmStatusTag from '@/app/apm/components/status-tag';
-import type { ApmServiceInstance, CatalogStatus } from '@/app/apm/types';
+import { formatRelativeTime } from '@/app/apm/components/metric-format';
+import type { ApmApplication, ApmServiceInstance, CatalogStatus } from '@/app/apm/types';
 import Permission from '@/components/permission';
 import { useUserInfoContext } from '@/context/userInfo';
+import { useTranslation } from '@/utils/i18n';
 
 type PageState = CatalogStateKind | 'ready';
-type TimeRange = '15m' | '1h' | '4h' | '1d' | '7d';
+type TimeRange = '15m' | '1h' | '4h' | '1d' | '7d' | '30d' | 'all';
 
-const RANGE_MS: Record<TimeRange, number> = {
-  '15m': 15 * 60 * 1000,
-  '1h': 60 * 60 * 1000,
-  '4h': 4 * 60 * 60 * 1000,
-  '1d': 24 * 60 * 60 * 1000,
-  '7d': 7 * 24 * 60 * 60 * 1000,
+const RANGE_UNITS: Record<Exclude<TimeRange, 'all'>, [number, dayjs.ManipulateType]> = {
+  '15m': [15, 'minute'],
+  '1h': [1, 'hour'],
+  '4h': [4, 'hour'],
+  '1d': [1, 'day'],
+  '7d': [7, 'day'],
+  '30d': [30, 'day'],
 };
 
 export default function ApmIntegrationInstancesPage() {
+  const { t } = useTranslation();
   const {
+    getApplications,
     getHealth,
-    getIngestSources,
-    getInstances,
+    getInstancePage,
     setInstanceArchived,
     setInstanceOrganizations,
     isLoading: authLoading,
   } = useApmApi();
   const { flatGroups } = useUserInfoContext();
   const [instances, setInstances] = useState<ApmServiceInstance[]>([]);
-  const [hasMissingIdentity, setHasMissingIdentity] = useState(false);
+  const [applications, setApplications] = useState<ApmApplication[]>([]);
+  const [total, setTotal] = useState(0);
   const [catalogDegraded, setCatalogDegraded] = useState(false);
-  const [status, setStatus] = useState<CatalogStatus | undefined>();
+  const [status, setStatus] = useState<CatalogStatus | undefined>('active');
   const [keyword, setKeyword] = useState('');
-  const [sourceName, setSourceName] = useState('all');
-  const [environment, setEnvironment] = useState('all');
-  const [timeRange, setTimeRange] = useState<TimeRange>('7d');
+  const [appliedKeyword, setAppliedKeyword] = useState('');
+  const [applicationId, setApplicationId] = useState('all');
+  const [environment, setEnvironment] = useState('');
+  const [timeRange, setTimeRange] = useState<TimeRange>('1d');
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
   const [state, setState] = useState<PageState>('loading');
   const [refreshKey, setRefreshKey] = useState(0);
   const [organizationInstance, setOrganizationInstance] = useState<ApmServiceInstance | null>(null);
@@ -60,17 +68,31 @@ export default function ApmIntegrationInstancesPage() {
     if (authLoading) return;
     let active = true;
     setState('loading');
+    const endedAt = dayjs();
+    const range = timeRange === 'all' ? undefined : RANGE_UNITS[timeRange];
+    const startedAt = range ? endedAt.subtract(range[0], range[1]) : undefined;
     Promise.all([
-      getInstances({ status, include_archived: status === 'archived' }),
-      getIngestSources(),
+      getInstancePage({
+        page,
+        page_size: pageSize,
+        application: applicationId === 'all' ? undefined : applicationId,
+        environment: environment.trim() || undefined,
+        status,
+        include_archived: status === 'archived',
+        started_at: startedAt?.toISOString(),
+        ended_at: startedAt ? endedAt.toISOString() : undefined,
+        keyword: appliedKeyword.trim() || undefined,
+      }),
+      getApplications(),
       getHealth().catch(() => ({ catalog_reconcile: { status: 'degraded' as const } })),
     ])
-      .then(([items, sources, health]) => {
+      .then(([result, applicationItems, health]) => {
         if (!active) return;
-        setInstances(items);
-        setHasMissingIdentity(sources.some((source) => source.missing_instance_identity));
+        setInstances(result.items);
+        setApplications(applicationItems);
+        setTotal(result.count);
         setCatalogDegraded(health.catalog_reconcile.status === 'degraded');
-        setState(items.length ? 'ready' : 'empty');
+        setState(result.items.length ? 'ready' : 'empty');
       })
       .catch((error) => {
         if (active) setState(catalogErrorKind(error));
@@ -78,7 +100,20 @@ export default function ApmIntegrationInstancesPage() {
     return () => {
       active = false;
     };
-  }, [authLoading, getHealth, getIngestSources, getInstances, refreshKey, status]);
+  }, [
+    applicationId,
+    appliedKeyword,
+    authLoading,
+    environment,
+    getApplications,
+    getHealth,
+    getInstancePage,
+    page,
+    pageSize,
+    refreshKey,
+    status,
+    timeRange,
+  ]);
 
   const submitOrganizations = async (organizationIds: number[]) => {
     if (!organizationInstance) return;
@@ -99,26 +134,10 @@ export default function ApmIntegrationInstancesPage() {
     setRefreshKey((value) => value + 1);
   };
 
-  const filteredInstances = useMemo(() => {
-    const normalizedKeyword = keyword.trim().toLowerCase();
-    const rangeStart = Date.now() - RANGE_MS[timeRange];
-    return instances
-      .filter((item) => sourceName === 'all' || item.ingest_source_name === sourceName)
-      .filter((item) => environment === 'all' || item.environment === environment)
-      .filter((item) => new Date(item.last_seen_at).getTime() >= rangeStart)
-      .filter((item) => !normalizedKeyword || (
-        `${item.service_namespace} ${item.service_name} ${item.instance_id}`
-          .toLowerCase()
-          .includes(normalizedKeyword)
-      ));
-  }, [environment, instances, keyword, sourceName, timeRange]);
-
-  const sourceOptions = useMemo(() => Array.from(new Set(instances.map((item) => item.ingest_source_name)))
-    .filter(Boolean)
-    .map((value) => ({ value, label: value })), [instances]);
-  const environmentOptions = useMemo(() => Array.from(new Set(instances.map((item) => item.environment)))
-    .filter(Boolean)
-    .map((value) => ({ value, label: value })), [instances]);
+  const applicationOptions = useMemo(() => applications.map((application) => ({
+    value: application.application_id,
+    label: `${application.name}（${application.application_id || '未归类'}）`,
+  })), [applications]);
 
   const columns: TableColumnsType<ApmServiceInstance> = [
     {
@@ -135,7 +154,7 @@ export default function ApmIntegrationInstancesPage() {
       render: (value) => <Typography.Text ellipsis className="block max-w-56 font-mono text-xs">{value}</Typography.Text>,
     },
     { title: '版本', dataIndex: 'version', width: 100, responsive: ['lg'], render: (value) => value || '—' },
-    { title: '接入源', dataIndex: 'ingest_source_name', width: 140, responsive: ['xl'] },
+    { title: '应用', dataIndex: 'application_name', width: 140, responsive: ['xl'], render: (value, item) => value || item.application_id || '—' },
     {
       title: '接入时间',
       dataIndex: 'first_seen_at',
@@ -146,9 +165,13 @@ export default function ApmIntegrationInstancesPage() {
     {
       title: '最近上报',
       dataIndex: 'last_seen_at',
-      width: 190,
+      width: 120,
       responsive: ['md'],
-      render: (value) => <span className="tabular-nums">{dayjs(value).format('YYYY-MM-DD HH:mm:ss')}</span>,
+      render: (value) => (
+        <Typography.Text type="secondary" className="text-xs" title={dayjs(value).format('YYYY-MM-DD HH:mm:ss')}>
+          {formatRelativeTime(value)}
+        </Typography.Text>
+      ),
     },
     { title: '状态', dataIndex: 'status', width: 100, render: (value: CatalogStatus) => <ApmStatusTag status={value} /> },
     {
@@ -202,18 +225,9 @@ export default function ApmIntegrationInstancesPage() {
 
   return (
     <ApmRouteShell
-      title="接入列表"
-      description="按接入维度查看所有已上报实例；服务健康度与 RED 指标请前往“服务”。"
+      title="接入实例"
+      description="按运行实例查看上报状态与组织归属；逻辑服务健康请前往服务目录。"
     >
-      {hasMissingIdentity ? (
-        <Alert
-          className="mb-4"
-          type="warning"
-          showIcon
-          message="检测到最近 15 分钟内缺少 service.instance.id 的 Span"
-          description="这些 Span 仍参与服务级指标，但不会创建虚假的接入实例。请按接入片段配置动态实例 ID。"
-        />
-      ) : null}
       {catalogDegraded ? (
         <Alert
           className="mb-4"
@@ -226,28 +240,45 @@ export default function ApmIntegrationInstancesPage() {
       <div className="flex flex-col gap-3">
         <ApmSurface padding="compact">
           <div className="flex flex-wrap items-center gap-3">
-            <Input
+            <Input.Search
               allowClear
               aria-label="按服务、应用或实例 ID 搜索"
               className="min-w-64 flex-1 md:max-w-sm"
               prefix={<SearchOutlined className="text-[var(--color-text-4)]" aria-hidden="true" />}
               placeholder="搜索服务名 / 应用 / 实例 ID"
               value={keyword}
-              onChange={(event) => setKeyword(event.target.value)}
+              onChange={(event) => {
+                setKeyword(event.target.value);
+                if (!event.target.value) {
+                  setAppliedKeyword('');
+                  setPage(1);
+                }
+              }}
+              onSearch={(value) => {
+                setAppliedKeyword(value);
+                setPage(1);
+              }}
             />
             <Select
               className="w-40"
-              aria-label="按接入源筛选"
-              value={sourceName}
-              options={[{ value: 'all', label: '全部接入方式' }, ...sourceOptions]}
-              onChange={setSourceName}
+              aria-label="按应用筛选"
+              value={applicationId}
+              options={[{ value: 'all', label: '全部应用' }, ...applicationOptions]}
+              onChange={(value) => {
+                setApplicationId(value);
+                setPage(1);
+              }}
             />
-            <Select
+            <Input
+              allowClear
               className="w-36"
               aria-label="按环境筛选"
               value={environment}
-              options={[{ value: 'all', label: '全部环境' }, ...environmentOptions]}
-              onChange={setEnvironment}
+              placeholder="全部环境（输入精确值）"
+              onChange={(event) => {
+                setEnvironment(event.target.value);
+                setPage(1);
+              }}
             />
             <Select<CatalogStatus>
               className="w-40"
@@ -255,7 +286,10 @@ export default function ApmIntegrationInstancesPage() {
               aria-label="按实例状态筛选"
               placeholder="全部状态"
               value={status}
-              onChange={setStatus}
+              onChange={(value) => {
+                setStatus(value);
+                setPage(1);
+              }}
               options={[
                 { value: 'active', label: '活跃' },
                 { value: 'silent', label: '静默' },
@@ -267,14 +301,20 @@ export default function ApmIntegrationInstancesPage() {
               buttonStyle="solid"
               size="small"
               value={timeRange}
-              onChange={(event) => setTimeRange(event.target.value)}
+              onChange={(event) => {
+                setTimeRange(event.target.value);
+                setPage(1);
+              }}
             >
-              {(Object.keys(RANGE_MS) as TimeRange[]).map((value) => (
-                <Radio.Button key={value} value={value}>{value}</Radio.Button>
+              {([...Object.keys(RANGE_UNITS), 'all'] as TimeRange[]).map((value) => (
+                <Radio.Button key={value} value={value}>{value === 'all' ? '全部' : value}</Radio.Button>
               ))}
             </Radio.Group>
             <Typography.Text type="secondary" className="ml-auto text-xs tabular-nums">
-              已接入 {filteredInstances.length} 个实例
+              已接入 {total} 个实例
+            </Typography.Text>
+            <Typography.Text type="secondary" className="basis-full text-xs">
+              {t('apm.instances.defaultActiveHelp', '默认显示活跃实例；切换状态或时间范围可查看静默、归档与历史实例。')}
             </Typography.Text>
           </div>
         </ApmSurface>
@@ -283,12 +323,18 @@ export default function ApmIntegrationInstancesPage() {
             <Table
               rowKey="id"
               columns={columns}
-              dataSource={filteredInstances}
+              dataSource={instances}
               pagination={{
-                defaultPageSize: 20,
+                current: page,
+                pageSize,
+                total,
                 pageSizeOptions: [10, 20, 50, 100],
                 showSizeChanger: true,
                 showTotal: (total) => `共 ${total} 条`,
+              }}
+              onChange={(pagination) => {
+                setPage(pagination.current ?? 1);
+                setPageSize(pagination.pageSize ?? 20);
               }}
             />
           ) : (
@@ -301,7 +347,7 @@ export default function ApmIntegrationInstancesPage() {
         title={`调整实例组织${organizationInstance ? `：${organizationInstance.instance_id}` : ''}`}
         organizationIds={organizationInstance?.organization_ids ?? []}
         submitting={organizationSubmitting}
-        description="保存后此实例转为自定义组织，不再自动继承接入源后续的组织调整。"
+        description="保存后此实例转为自定义组织，不再自动继承应用后续的组织调整。"
         onCancel={() => setOrganizationInstance(null)}
         onSubmit={submitOrganizations}
       />

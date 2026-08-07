@@ -5,6 +5,7 @@ import { useDataSourceApi } from '@/app/ops-analysis/api/dataSource';
 import { DatasourceItem, ParamItem } from '@/app/ops-analysis/types/dataSource';
 import {
   type DataSourceFormParams as FormParams,
+  getDataSourceFormParamInitialValue,
   processDataSourceFormParamsForSubmit,
 } from '@/app/ops-analysis/utils/dataSourceFormParams';
 
@@ -51,26 +52,7 @@ export const useDataSourceManager = () => {
 
   const setDefaultParamValues = (params: ParamItem[], formParams: FormParams): void => {
     params.forEach((param) => {
-      switch (param.type) {
-        case 'timeRange':
-          formParams[param.name] = param.value ?? 10080;
-          break;
-        case 'boolean':
-          formParams[param.name] = param.value ?? false;
-          break;
-        case 'number':
-          formParams[param.name] = param.value ?? 0;
-          break;
-        case 'date':
-          if (param.value && (typeof param.value === 'string' || typeof param.value === 'number')) {
-            formParams[param.name] = dayjs(param.value);
-          } else {
-            formParams[param.name] = null;
-          }
-          break;
-        default:
-          formParams[param.name] = param.value ?? '';
-      }
+      formParams[param.name] = getDataSourceFormParamInitialValue(param);
     });
   };
 

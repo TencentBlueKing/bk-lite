@@ -5,14 +5,20 @@ import type {
   UnifiedFilterDefinition,
 } from '@/app/ops-analysis/types/dashBoard';
 import type { InputOption, ParamItem } from '@/app/ops-analysis/types/dataSource';
+import { supportsComponentSwitch } from '@/app/ops-analysis/utils/componentParamSwitch';
 import { formatOpsRequestTime } from '@/app/ops-analysis/utils/dateTime';
+import { buildTableQueryParams } from '@/app/ops-analysis/utils/tablePagination';
+import {
+  isBindableDataSourceParamType,
+  type BindableDataSourceParamType,
+} from '@/app/ops-analysis/utils/dataSourceParamContract';
 import {
   DateRangeResolutionContext,
   getDateRangeTimezone,
   resolveDateRange,
 } from '@/app/ops-analysis/utils/dateRange';
 
-export type BindableParamType = 'string' | 'timeRange' | 'dateRange';
+export type BindableParamType = BindableDataSourceParamType;
 export type UnifiedFilterInputMode = 'input' | 'select' | 'radio' | 'organization';
 
 const UNIFIED_FILTER_INPUT_MODES: UnifiedFilterInputMode[] = [
@@ -91,7 +97,7 @@ export const getBindableFilterParams = (
   (Array.isArray(params) ? params : []).filter(
     (param): param is ParamItem & { type: BindableParamType } =>
       param.filterType === 'filter' &&
-      (param.type === 'string' || param.type === 'timeRange' || param.type === 'dateRange'),
+      isBindableDataSourceParamType(param.type),
   );
 
 export const buildDefaultFilterBindings = (
@@ -137,8 +143,9 @@ export const formatTimeRange = (timeParams: any): string[] => {
 
   if (timeParams && typeof timeParams === 'number') {
     // 数值类型：表示分钟数
-    endTime = dayjs().valueOf();
-    startTime = dayjs().subtract(timeParams, 'minute').valueOf();
+    const now = dayjs();
+    endTime = now.valueOf();
+    startTime = now.subtract(timeParams, 'minute').valueOf();
   } else if (timeParams && Array.isArray(timeParams) && timeParams.length === 2) {
     // 数组类型：[startTime, endTime]
     startTime = timeParams[0];
@@ -147,16 +154,18 @@ export const formatTimeRange = (timeParams: any): string[] => {
     // 对象类型：{ start, end, selectValue? }
     if (timeParams.selectValue && timeParams.selectValue > 0) {
       // 有快捷选项时，基于当前时间重新计算相对时间
-      endTime = dayjs().valueOf();
-      startTime = dayjs().subtract(timeParams.selectValue, 'minute').valueOf();
+      const now = dayjs();
+      endTime = now.valueOf();
+      startTime = now.subtract(timeParams.selectValue, 'minute').valueOf();
     } else {
       startTime = timeParams.start;
       endTime = timeParams.end;
     }
   } else {
     // 默认时间范围：最近7天
-    endTime = dayjs().valueOf();
-    startTime = dayjs().subtract(7, 'day').valueOf();
+    const now = dayjs();
+    endTime = now.valueOf();
+    startTime = now.subtract(7, 'day').valueOf();
   }
 
   const startTimeStr = formatOpsRequestTime(startTime);
@@ -204,6 +213,9 @@ export const formatDataSourceParamValue = (
   resolutionContext: DateRangeResolutionContext,
   timeRangeFormatter: (timeParams: any) => unknown = formatTimeRange,
 ): unknown | typeof OMIT_DATA_SOURCE_PARAM => {
+  if (value === null || value === undefined || value === '') {
+    return OMIT_DATA_SOURCE_PARAM;
+  }
   if (type === 'dateRange') {
     return resolveDateRange(value, resolutionContext) ?? OMIT_DATA_SOURCE_PARAM;
   }
@@ -259,14 +271,18 @@ export const buildWidgetExtraParams = ({
   isTableLikeChart,
   tableQueryParams,
   runtimeParams,
+  dataSourceParams,
 }: {
   namespaceId?: number;
   isTableLikeChart: boolean;
   tableQueryParams: Record<string, unknown>;
   runtimeParams: Record<string, unknown>;
+  dataSourceParams?: ParamItem[];
 }) => ({
   ...(namespaceId !== undefined ? { namespace_id: namespaceId } : {}),
-  ...(isTableLikeChart ? tableQueryParams : {}),
+  ...(isTableLikeChart
+    ? buildTableQueryParams({ dataSourceParams, queryParams: tableQueryParams })
+    : {}),
   ...runtimeParams,
 });
 
@@ -307,11 +323,9 @@ export const createWidgetRequestHistory = (
 export const decideWidgetRequest = ({
   history,
   current,
-  suppressInitialCacheFetch,
 }: {
   history: WidgetRequestHistory;
   current: WidgetRequestSnapshot;
-  suppressInitialCacheFetch: boolean;
 }): { shouldFetch: boolean; nextHistory: WidgetRequestHistory } => {
   const requestAvailable =
     current.requestEnabled &&
@@ -343,13 +357,12 @@ export const decideWidgetRequest = ({
     current.isTableLikeChart &&
     history.tableQueryKey !== current.tableQueryKey;
   const shouldFetch =
-    !suppressInitialCacheFetch &&
-    (!history.hasRequested ||
+    !history.hasRequested ||
       history.signature !== current.requestSignature ||
       history.reloadVersion !== current.reloadVersion ||
       shouldFetchForFilterSearch ||
       shouldFetchForNamespaceSearch ||
-      shouldFetchForTableQuery);
+      shouldFetchForTableQuery;
 
   return {
     shouldFetch,
@@ -359,8 +372,7 @@ export const decideWidgetRequest = ({
       namespaceSearchVersion: current.namespaceSearchVersion,
       reloadVersion: current.reloadVersion,
       tableQueryKey: current.tableQueryKey,
-      hasRequested:
-        history.hasRequested || shouldFetch || suppressInitialCacheFetch,
+      hasRequested: history.hasRequested || shouldFetch,
     },
   };
 };
@@ -380,7 +392,7 @@ export const shouldShowInitialWidgetLoading = ({
 export const hasActiveWidgetRuntimeParams = (
   chartType: string | undefined,
   runtimeParams: Record<string, unknown>,
-): boolean => chartType === 'topN' && Object.keys(runtimeParams).length > 0;
+): boolean => supportsComponentSwitch(chartType) && Object.keys(runtimeParams).length > 0;
 
 export const buildWidgetRequestParams = ({
   config,
@@ -484,7 +496,11 @@ export const processDataSourceParams = ({
 }) => {
 
   if (!sourceParams || !Array.isArray(sourceParams)) {
-    return userParams;
+    return Object.fromEntries(
+      Object.entries(userParams).filter(
+        ([, value]) => value !== null && value !== undefined && value !== '',
+      ),
+    );
   }
 
   const processedParams: Record<string, unknown> = { ...userParams };
@@ -576,9 +592,22 @@ export const processDataSourceParams = ({
 
       case 'params':
         // 私有参数：使用用户传入的参数值
-        if (processedParams[name] !== undefined) {
-          setProcessedParam(name, type, processedParams[name]);
-        } else if (defaultValue !== undefined) {
+        if (Object.prototype.hasOwnProperty.call(processedParams, name)) {
+          const paramValue = processedParams[name];
+          if (
+            paramValue === null ||
+            paramValue === undefined ||
+            paramValue === ''
+          ) {
+            delete processedParams[name];
+          } else {
+            setProcessedParam(name, type, paramValue);
+          }
+        } else if (
+          defaultValue !== null &&
+          defaultValue !== undefined &&
+          defaultValue !== ''
+        ) {
           setProcessedParam(name, type, defaultValue);
         }
         break;
@@ -591,5 +620,9 @@ export const processDataSourceParams = ({
     }
   });
 
-  return processedParams;
+  return Object.fromEntries(
+    Object.entries(processedParams).filter(
+      ([, value]) => value !== null && value !== undefined && value !== '',
+    ),
+  );
 };

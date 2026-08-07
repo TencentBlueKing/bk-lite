@@ -279,7 +279,7 @@ class TestOpenFileDeleteView:
         assert not DistributionFile.objects.filter(id=df.id).exists()
 
     def test_delete_cross_team_file_fails(self):
-        """跨组删除文件失败（返回 no_permission）"""
+        """跨组删除文件失败，并按不存在返回以避免泄露文件归属"""
         from apps.job_mgmt.models import DistributionFile
 
         df = DistributionFile.objects.create(
@@ -299,14 +299,15 @@ class TestOpenFileDeleteView:
         assert response.status_code == 200
         data = response.json()["data"]
         assert data["deleted"] == 0
-        assert "no_permission" in data
-        assert len(data["no_permission"]) == 1
-        assert data["no_permission"][0]["file_id"] == df.id
+        assert "not_found" in data
+        assert len(data["not_found"]) == 1
+        assert data["not_found"][0]["file_id"] == df.id
+        assert "no_permission" not in data
         # 文件仍然存在
         assert DistributionFile.objects.filter(id=df.id).exists()
 
     def test_delete_legacy_file_without_team_fails(self):
-        """历史文件（无 team）无法通过 open API 删除"""
+        """历史文件（无 team）无法通过 open API 删除，且不泄露其存在性"""
         from apps.job_mgmt.models import DistributionFile
 
         df = DistributionFile.objects.create(
@@ -326,7 +327,8 @@ class TestOpenFileDeleteView:
         assert response.status_code == 200
         data = response.json()["data"]
         assert data["deleted"] == 0
-        assert "no_permission" in data
+        assert "not_found" in data
+        assert "no_permission" not in data
         # 文件仍然存在
         assert DistributionFile.objects.filter(id=df.id).exists()
 

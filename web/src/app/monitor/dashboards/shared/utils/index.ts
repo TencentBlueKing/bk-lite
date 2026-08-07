@@ -10,6 +10,8 @@ export * from './collection-status';
 export * from './concurrency';
 export * from './use-load-sequence';
 export * from './return-navigation';
+export * from './fetch-instance-pages';
+export * from './top-bars';
 
 export const normalizeDashboardKey = (value?: string | null) => String(value || '').trim().toLowerCase();
 

@@ -6,6 +6,7 @@ WORKDIR /app
 
 # 设置Node.js最大堆内存为4GB
 ENV NODE_OPTIONS="--max-old-space-size=8192"
+ENV PNPM_HOME="/pnpm"
 
 # 跳过 electron 二进制下载（react-devtools 的传递依赖，构建期不需要）
 ENV ELECTRON_SKIP_BINARY_DOWNLOAD=1
@@ -18,7 +19,8 @@ RUN if [ -n "$NEXUS_NODEJS_REPOSITY" ]; then \
   echo "Using default npm registry"; \
   fi
 
-RUN npm install -g pnpm@9.15.4
+RUN corepack enable && corepack prepare pnpm@11.20.0 --activate
+RUN pnpm config set store-dir /pnpm/store
 
 # 如果提供了 NEXUS_NODEJS_REPOSITY，则切换 pnpm 源
 RUN if [ -n "$NEXUS_NODEJS_REPOSITY" ]; then \
@@ -30,16 +32,13 @@ RUN if [ -n "$NEXUS_NODEJS_REPOSITY" ]; then \
 
 ADD . .
 
-RUN printf 'packages:\n  - "src/app/*"\n' > pnpm-workspace.yaml
-
 RUN echo 'NEXTAPI_URL="http://bklite-server:8000"' > .env.local
 
-RUN pnpm install --ignore-scripts
-RUN pnpm rebuild esbuild sharp unrs-resolver
+RUN pnpm install --frozen-lockfile
 RUN pnpm run build
 
 FROM node:24-alpine
-RUN npm install -g pnpm@9.15.4
+RUN corepack enable && corepack prepare pnpm@11.20.0 --activate
 
 # 在生产环境也设置内存限制
 ENV NODE_OPTIONS="--max-old-space-size=2048"
@@ -49,6 +48,9 @@ COPY --from=builder /app/.next ./.next
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/package.json ./
+# pnpm 11 在 run script 前校验依赖状态；必须带上声明 verifyDepsBeforeRun: false
+# 的 pnpm-workspace.yaml 与 lockfile，否则运行期触发交互式重装直接崩溃
+COPY --from=builder /app/pnpm-workspace.yaml /app/pnpm-lock.yaml ./
 
 CMD ["pnpm", "run", "start"]
 # 或者直接写明端口（如需更显式可改为：CMD ["pnpm", "exec", "next", "start", "-p", "3001"]）

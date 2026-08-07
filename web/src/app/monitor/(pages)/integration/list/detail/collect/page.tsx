@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { Button, Empty, Modal, Spin, message } from 'antd';
 import { useSearchParams } from 'next/navigation';
 import CodeEditor from '@/components/code-editor';
+import PermissionWrapper from '@/components/permission';
 import useIntegrationApi from '@/app/monitor/api/integration';
 import { useTranslation } from '@/utils/i18n';
 
@@ -118,16 +119,19 @@ const CollectPage = () => {
         </div>
 
         <div className="my-4 flex justify-end">
-          <Button
-            type="primary"
-            loading={saving}
-            disabled={
-              loading || !!loadError || content.trim() === initialContent.trim()
-            }
-            onClick={handleSave}
+          <PermissionWrapper
+            requiredPermissions={['Add']}
+            permissionPath="/monitor/integration/list/detail/configure"
           >
-            {t('common.save')}
-          </Button>
+            <Button
+              type="primary"
+              loading={saving}
+              disabled={loading || !!loadError || content.trim() === initialContent.trim()}
+              onClick={handleSave}
+            >
+              {t('common.save')}
+            </Button>
+          </PermissionWrapper>
         </div>
       </div>
     </Spin>

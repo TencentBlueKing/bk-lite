@@ -16,8 +16,8 @@ const globalStyles = read('src/styles/globals.css');
 assertPresent(page, /i\.remediation\s*===\s*'pending_reboot'/, '待重启主机判定');
 assertPresent(
   page,
-  /hostIds\.size\s*>\s*0\s*&&\s*Array\.from\(hostIds\)\.every\(\(hostId\)\s*=>\s*pendingRebootHostIds\.has\(hostId\)\)/,
-  '聚合行所有主机必须可重启',
+  /hostIds\.size\s*>\s*0\s*&&\s*Array\.from\(hostIds\)\.every\(\(hostId\)\s*=>\s*pendingRebootHostIds\.has\(hostId\)\s*&&\s*operableHostIds\.has\(hostId\)\)/,
+  '聚合行所有主机必须待重启且可操作',
 );
 assertPresent(page, /selectedRows\.length\s*>\s*0\s*&&\s*selectedRows\.every\(\(r\)\s*=>\s*canReboot\(r\.items\s*\|\|\s*\[\]\)\)/, '批量重启全选校验');
 assertPresent(page, /patchManager\.risk\.rebootSelectionBlocked/, '批量重启禁用原因');
@@ -33,6 +33,12 @@ if (rebootTooltipZIndex <= dropdownZIndex) {
 }
 assertPresent(page, /rebootable\s*&&\s*\([\s\S]{0,400}patchManager\.risk\.reboot/, '行内重启按钮按需显示');
 assertAbsent(page, /patchManager\.risk\.noRebootableHosts[\s\S]{0,150}patchManager\.risk\.reboot/, '行内废弃的置灰重启按钮');
+assertPresent(page, /openScope\(\[row\],\s*'治理'\)/, '行内治理使用“治理”默认名前缀');
+assertPresent(page, /openScope\(undefined,\s*'一键治理'\)/, '批量治理使用“一键治理”默认名前缀');
+assertPresent(page, /openReboot\(\[row\],\s*'重启'\)/, '行内重启使用“重启”默认名前缀');
+assertPresent(page, /openReboot\(selectedRows,\s*'一键重启'\)/, '批量重启使用“一键重启”默认名前缀');
+assertPresent(page, /<Form layout="vertical" component=\{false\}>/, '治理与重启必填项使用纵向表单布局');
+assertPresent(page, /buildDefaultTaskName\([\s\S]{0,800}getFullYear\(\)[\s\S]{0,300}padStart\(2, '0'\)/, '默认任务名携带本地日期');
 assertPresent(
   page,
   /api\.previewRebootRisk\(targetIds\)/,

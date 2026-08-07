@@ -17,10 +17,11 @@ import {
   normalizeCredentialPool,
   trimFormString,
 } from '../hooks/formatTaskValues';
-import { Form, Spin } from 'antd';
+import { Form, Spin, Alert } from 'antd';
 import useAssetManageStore from '@/app/cmdb/store/useAssetManage';
 import CredentialPoolEditor from './credentialPoolEditor';
 import { resolveCredentialHelp } from './credentialHelp';
+import styles from '../index.module.scss';
 
 interface HostTaskFormProps {
   onClose: () => void;
@@ -181,6 +182,12 @@ const HostTask: React.FC<HostTaskFormProps> = ({
             addonAfter: t('Collection.k8sTask.second'),
           }}
         >
+          <Alert
+            type="info"
+            showIcon
+            className={`${styles.formFieldHint} mb-4`}
+            message={t('Collection.hostCredentialOptionalTip')}
+          />
           <Form.Item name="credentialPool">
             <CredentialPoolEditor
               credentialShape="ssh"
