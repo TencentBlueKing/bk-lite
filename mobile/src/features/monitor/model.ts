@@ -110,6 +110,8 @@ export interface ResolvedMonitorRecentView {
   item: MonitorRecentViewItem;
   object: MonitorObject;
   instance: MonitorInstance;
+  /** 摘要枚举指标 unit 索引；缺失时回落原始值 */
+  metricUnits?: Map<string, string>;
 }
 
 export function normalizeRecentViews(value: unknown): MonitorRecentViewsConfig {
@@ -239,20 +241,97 @@ function readInstanceField(instance: MonitorInstance, key: string) {
   return undefined;
 }
 
-function formatDisplayValue(raw: unknown): string | null {
+/** 与 Web `isStringArray` 一致：unit 为枚举选项 JSON 数组时视为枚举指标。 */
+export function isEnumMetricUnit(unit: string): boolean {
+  if (!unit || typeof unit !== 'string') return false;
+  try {
+    return Array.isArray(JSON.parse(unit));
+  } catch {
+    return false;
+  }
+}
+
+/** 与 Web `getEnumValue` 一致：用指标 unit 中的选项表把原始值映射成可读名。 */
+export function resolveEnumMetricLabel(unit: string, value: unknown): string | null {
+  if (!isEnumMetricUnit(unit) || value === undefined || value === null || value === '') return null;
+  try {
+    const options = JSON.parse(unit) as Array<{ id?: unknown; name?: unknown }>;
+    if (!Array.isArray(options)) return null;
+    const numericId = Number(value);
+    const match = options.find((item) => {
+      if (item?.id === value) return true;
+      if (!Number.isFinite(numericId)) return false;
+      return Number(item?.id) === numericId;
+    });
+    if (match?.name === undefined || match?.name === null || match?.name === '') return null;
+    return String(match.name);
+  } catch {
+    return null;
+  }
+}
+
+export function displayMetricUnitKey(plugin: string, metric: string) {
+  return plugin ? `${plugin}::${metric}` : metric;
+}
+
+/** 摘要列要用的指标名（去重），供 `name_in` 拉取枚举 unit。 */
+export function displayFieldMetricNames(object: MonitorObject): string[] {
+  const names = new Set<string>();
+  object.displayFields.forEach((field) => {
+    field.metrics.forEach((binding) => {
+      if (binding.metric) names.add(binding.metric);
+    });
+  });
+  return Array.from(names);
+}
+
+export function buildDisplayMetricUnitIndex(
+  metrics: ReadonlyArray<{ name: string; unit: string; pluginName?: string }>,
+): Map<string, string> {
+  const index = new Map<string, string>();
+  metrics.forEach((metric) => {
+    if (!metric.name) return;
+    if (metric.pluginName) index.set(displayMetricUnitKey(metric.pluginName, metric.name), metric.unit);
+    if (!index.has(metric.name)) index.set(metric.name, metric.unit);
+  });
+  return index;
+}
+
+function lookupMetricUnit(
+  unitIndex: Map<string, string> | undefined,
+  binding: MonitorDisplayBinding,
+) {
+  if (!unitIndex) return undefined;
+  return unitIndex.get(displayMetricUnitKey(binding.plugin, binding.metric))
+    ?? unitIndex.get(binding.metric);
+}
+
+function formatDisplayValue(raw: unknown, enumUnit?: string): string | null {
   if (raw === undefined || raw === null || raw === '') return null;
   if (typeof raw === 'object' && !Array.isArray(raw)) {
     const cell = raw as Record<string, unknown>;
     if (cell.value === undefined || cell.value === null || cell.value === '') return null;
+    if (enumUnit) {
+      const label = resolveEnumMetricLabel(enumUnit, cell.value);
+      if (label !== null) return label;
+    }
     const value = String(cell.value);
     const unit = cell.unit === undefined || cell.unit === null ? '' : String(cell.unit);
     return unit ? `${value}${unit}` : value;
+  }
+  if (enumUnit) {
+    const label = resolveEnumMetricLabel(enumUnit, raw);
+    if (label !== null) return label;
   }
   return String(raw);
 }
 
 /** 按 Web resolveCell 规则取列值：绑定顺序首个有值；兼容 column_key / fact 回退。 */
-export function resolveDisplayFieldValue(field: MonitorDisplayField, instance: MonitorInstance) {
+export function resolveDisplayFieldValue(
+  field: MonitorDisplayField,
+  instance: MonitorInstance,
+  metricUnits?: Map<string, string>,
+) {
   for (const binding of field.metrics || []) {
     const key = displayFieldKey(
       binding.plugin,
@@ -260,14 +339,15 @@ export function resolveDisplayFieldValue(field: MonitorDisplayField, instance: M
       field.type === 'field' ? binding.field : undefined,
     );
     const raw = readInstanceField(instance, key);
+    const enumUnit = lookupMetricUnit(metricUnits, binding);
     if (field.type === 'field') {
       if (raw != null && raw !== '') {
-        const formatted = formatDisplayValue(raw);
+        const formatted = formatDisplayValue(raw, enumUnit);
         if (formatted !== null) return formatted;
       }
       continue;
     }
-    const formatted = formatDisplayValue(raw);
+    const formatted = formatDisplayValue(raw, enumUnit);
     if (formatted !== null) return formatted;
   }
   return formatDisplayValue(readInstanceField(instance, field.key));
@@ -277,9 +357,10 @@ export function instanceSummaryEntries(
   object: MonitorObject,
   instance: MonitorInstance,
   limit = 4,
+  metricUnits?: Map<string, string>,
 ) {
   return object.displayFields
-    .map((field) => ({ label: field.name, value: resolveDisplayFieldValue(field, instance) }))
+    .map((field) => ({ label: field.name, value: resolveDisplayFieldValue(field, instance, metricUnits) }))
     .filter((entry) => entry.value !== null)
     .slice(0, limit)
     .map((entry) => ({ label: entry.label, value: entry.value as string }));
@@ -290,10 +371,11 @@ export function instanceListSummaryEntries(
   object: MonitorObject,
   instance: MonitorInstance,
   limit = INSTANCE_LIST_SUMMARY_LIMIT,
+  metricUnits?: Map<string, string>,
 ) {
   return object.displayFields.slice(0, limit).map((field) => ({
     label: field.name,
-    value: resolveDisplayFieldValue(field, instance),
+    value: resolveDisplayFieldValue(field, instance, metricUnits),
   }));
 }
 
