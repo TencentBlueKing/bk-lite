@@ -322,6 +322,61 @@ class TestSyncLinuxRepo:
         assert second["updated"] == 1
         assert patch.team == [1]
 
+    def test_same_title_from_apt_and_rpm_sources_creates_distinct_patches(self, mocker):
+        advisory = ParsedAdvisory(
+            advisory_id="SHARED-ADVISORY",
+            title="Shared title",
+            adv_type="security",
+            severity="Important",
+            packages=[ParsedPackage("shared-pkg", "1.0", "x86_64")],
+        )
+        mocker.patch(
+            "apps.patch_mgmt.services.linux_repo_sync.fetch_advisories",
+            return_value=[advisory],
+        )
+        rpm_source = _source(name="rpm-source", source_type=PatchSourceType.DNF_REPO)
+        apt_source = _source(
+            name="apt-source",
+            source_type=PatchSourceType.APT_REPO,
+            distro_name="Ubuntu",
+            os_version="24.04",
+        )
+
+        SourceSyncService.ingest_selected(rpm_source, [advisory.advisory_id])
+        apt_preview = SourceSyncService.preview_sync_candidates(apt_source)
+        SourceSyncService.ingest_selected(apt_source, [advisory.advisory_id])
+
+        patches = list(
+            Patch.objects.filter(title=advisory.advisory_id)
+            .select_related("linux_detail")
+            .order_by("id")
+        )
+        assert apt_preview[0]["added"] is False
+        assert len(patches) == 2
+        assert {patch.linux_detail.repo_type for patch in patches} == {
+            PackageManagerType.APT,
+            PackageManagerType.DNF,
+        }
+
+    def test_preview_marks_same_family_existing_patch_as_added(self, mocker):
+        advisory = ParsedAdvisory(
+            advisory_id="SAME-RPM-ADVISORY",
+            title="Same RPM title",
+            adv_type="security",
+            severity="Important",
+            packages=[ParsedPackage("same-pkg", "1.0", "x86_64")],
+        )
+        mocker.patch(
+            "apps.patch_mgmt.services.linux_repo_sync.fetch_advisories",
+            return_value=[advisory],
+        )
+        yum_source = _source(name="yum-source", source_type=PatchSourceType.YUM_REPO)
+        dnf_source = _source(name="dnf-source", source_type=PatchSourceType.DNF_REPO)
+
+        SourceSyncService.ingest_selected(yum_source, [advisory.advisory_id])
+
+        assert SourceSyncService.preview_sync_candidates(dnf_source)[0]["added"] is True
+
     def test_builtin_source_ingest_rejects_missing_current_team(self, mocker):
         mocker.patch(
             "apps.patch_mgmt.services.linux_repo_sync.fetch_advisories",
