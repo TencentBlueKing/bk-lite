@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Dialog, List, Switch, Toast } from 'antd-mobile';
+import { RedoOutline } from 'antd-mobile-icons';
 import LanguageSelector from '@/components/language-selector';
 import MobileTabShell from '@/components/mobile-tab-shell';
 import MobilePageHeader from '@/components/mobile-page-header';
@@ -22,7 +23,7 @@ export default function ProfilePage() {
   const router = useRouter();
   const [account, setAccount] = useState<AccountUserInfo | null>(null);
   const [accountStatus, setAccountStatus] = useState<'loading' | 'ready' | 'error'>('loading');
-  const [availabilityRetrying, setAvailabilityRetrying] = useState(false);
+  const [accountRetrying, setAccountRetrying] = useState(false);
   const availabilityAutoRetriedRef = useRef(false);
 
   const loadAccount = useCallback(async () => {
@@ -37,6 +38,15 @@ export default function ProfilePage() {
     }
   }, []);
 
+  const handleAccountRetry = useCallback(async () => {
+    setAccountRetrying(true);
+    try {
+      await loadAccount();
+    } finally {
+      setAccountRetrying(false);
+    }
+  }, [loadAccount]);
+
   useEffect(() => { void loadAccount(); }, [loadAccount]);
 
   useEffect(() => {
@@ -47,22 +57,8 @@ export default function ProfilePage() {
     // One automatic retry when Me becomes the fail-closed landing surface; avoid error→loading→error loops.
     if (availabilityStatus !== 'error' || availabilityAutoRetriedRef.current) return;
     availabilityAutoRetriedRef.current = true;
-    let cancelled = false;
-    setAvailabilityRetrying(true);
-    void refreshAvailability().finally(() => {
-      if (!cancelled) setAvailabilityRetrying(false);
-    });
-    return () => { cancelled = true; };
+    void refreshAvailability();
   }, [availabilityStatus, refreshAvailability]);
-
-  const handleAvailabilityRetry = useCallback(async () => {
-    setAvailabilityRetrying(true);
-    try {
-      await refreshAvailability();
-    } finally {
-      setAvailabilityRetrying(false);
-    }
-  }, [refreshAvailability]);
 
   const handlePullRefresh = useCallback(async () => {
     const tasks: Array<Promise<unknown>> = [loadAccount()];
@@ -105,23 +101,6 @@ export default function ProfilePage() {
         <MobilePageHeader title={t('navigation.profile')} />
         <div className={styles.scroll}>
           <MobilePullToRefresh onRefresh={handlePullRefresh}>
-            {availabilityStatus === 'error' && (
-              <div className={styles.availabilityBanner} role="alert">
-                <div className={styles.availabilityBannerCopy}>
-                  <strong>{t('availability.loadFailed')}</strong>
-                  <span>{t('availability.retryHint')}</span>
-                </div>
-                <button
-                  type="button"
-                  className={styles.availabilityBannerAction}
-                  disabled={availabilityRetrying}
-                  onClick={() => void handleAvailabilityRetry()}
-                >
-                  {availabilityRetrying ? t('common.loading') : t('common.retry')}
-                </button>
-              </div>
-            )}
-
             <section className={styles.identity} aria-label={t('account.title')}>
               <div className={styles.avatar} aria-hidden="true">{displayName.charAt(0).toUpperCase() || 'U'}</div>
               <div className={styles.identityCopy}>
@@ -149,8 +128,14 @@ export default function ProfilePage() {
                 {accountStatus === 'error' && (
                   <div className={styles.identityError} role="alert">
                     <span>{t('account.loadFailed')}</span>
-                    <button type="button" onClick={() => void loadAccount()}>
-                      {t('common.retry')}
+                    <button
+                      type="button"
+                      className={styles.identityRetry}
+                      aria-label={t('common.retry')}
+                      disabled={accountRetrying}
+                      onClick={() => void handleAccountRetry()}
+                    >
+                      <RedoOutline className={accountRetrying ? styles.identityRetrySpin : undefined} aria-hidden />
                     </button>
                   </div>
                 )}

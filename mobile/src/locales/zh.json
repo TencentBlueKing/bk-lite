@@ -55,10 +55,6 @@
         "profile": "我的",
         "primaryNavigation": "主导航"
     },
-    "availability": {
-        "loadFailed": "业务模块权限与许可加载失败，当前仅保留“我的”。",
-        "retryHint": "可点重试或下拉刷新；回到前台也会自动再试，成功后业务入口会恢复。"
-    },
     "moduleShell": {
         "todoTitle": "待办模块",
         "monitorTitle": "监控模块",
