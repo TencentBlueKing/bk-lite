@@ -17,7 +17,7 @@ import { APACHE_DASHBOARD_CONFIG } from './config';
 import styles from './index.module.scss';
 
 const SUMMARY_TITLES = ['运行时长', '请求处理速率', '数据传输速率', 'Worker 饱和度', '请求变化速率'];
-const CHART_TITLES = ['请求吞吐趋势', 'Worker 状态趋势', 'Scoreboard 状态趋势', '系统负载趋势'];
+const CHART_TITLES = ['请求速率趋势', '传输速率趋势', 'Worker 状态趋势', 'Scoreboard 状态趋势', '系统负载趋势'];
 const RING_TITLES = ['Worker 使用分布'];
 const DETAIL_TITLES = ['运行细节'];
 
@@ -28,7 +28,7 @@ export default function ApacheDashboardPage() {
   const rings = useFilteredRingPanels(dashboard.ringPanels, RING_TITLES);
   const details = useFilteredDetailPanels(dashboard.detailPanels, DETAIL_TITLES);
 
-  const [throughputChart, workerChart, scoreboardChart, loadChart] = charts;
+  const [reqRateChart, byteRateChart, workerChart, scoreboardChart, loadChart] = charts;
   const [workerRing] = rings;
   const [runtimeDetail] = details;
 
@@ -41,26 +41,28 @@ export default function ApacheDashboardPage() {
           <div className={styles.sectionLabel}>健康概览</div>
           <KpiSection dashboard={dashboard} summaryCards={summaryCards} kpiCols={6} styles={styles} />
 
-          {/* Row 1: 请求吞吐 span6 + Worker 状态 span6 = 12 */}
+          {/* Row 1: 请求速率 + 传输速率；Worker 状态 */}
           <div className={styles.sectionLabel}>性能趋势</div>
           <FlexiblePanelSection styles={styles}>
-            {[throughputChart, workerChart].map((chart) => chart ? (
-              <TrendChartPanel
-                key={chart.chart.title}
-                title={chart.chart.title}
-                subtitle={chart.chart.subtitle}
-                guide={chart.chart.guide}
-                legends={chart.legends}
-                data={chart.data}
-                metric={chart.metric}
-                unit={chart.unit}
-                loading={dashboard.loading}
-                seriesStyles={chart.seriesStyles}
-                onXRangeChange={dashboard.onXRangeChange}
-                className={`${styles.span6} ${styles.compactTrend}`}
-                styles={styles}
-              />
-            ) : null)}
+            {[reqRateChart, byteRateChart, workerChart].map((chart) =>
+              chart ? (
+                <TrendChartPanel
+                  key={chart.chart.title}
+                  title={chart.chart.title}
+                  subtitle={chart.chart.subtitle}
+                  guide={chart.chart.guide}
+                  legends={chart.legends}
+                  data={chart.data}
+                  metric={chart.metric}
+                  unit={chart.unit}
+                  loading={dashboard.loading}
+                  seriesStyles={chart.seriesStyles}
+                  onXRangeChange={dashboard.onXRangeChange}
+                  className={`${styles.span4} ${styles.compactTrend}`}
+                  styles={styles}
+                />
+              ) : null
+            )}
           </FlexiblePanelSection>
 
           {/* Row 2: Worker 使用环 span4 + 系统负载趋势 span8 = 12 —— 环图配折线消除中部留白 */}

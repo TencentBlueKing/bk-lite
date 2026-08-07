@@ -692,15 +692,19 @@ export function useSimpleDashboardData(config: SimpleDashboardConfig) {
             : { label: '运行正常', tone: 'success' as const }
         : undefined;
 
+      // 枚举卡失配时趋势线无语义（连续浮点冒充 0/1），清空避免误导。
+      const enumUnresolved = Boolean(card.enumMap && hasData && enumResult?.value === '未知');
+
       return {
-        card,
+        card: enumUnresolved ? { ...card, hideTrend: true } : card,
         mainValue,
         valueColor: enumResult?.color || healthResult?.color || (!hasData && card.emptyValue ? '#8c95a8' : undefined),
-        compare: card.compare
+        // 无数据时 getLatest 会退化成 0，若仍算环比会误显示「较上一周期 0.0%」。
+        compare: card.compare && hasData
           ? getPeriodCompare(getLatest(card.metric), getLatestChartValue(previousMetricMap[card.metric]?.viewData || []))
           : null,
         footerItems: (card.footer || []).map((field) => ({ label: field.label, value: formatField(field) })),
-        trendData: metricMap[card.metric]?.viewData || [],
+        trendData: enumUnresolved ? [] : (metricMap[card.metric]?.viewData || []),
         noDataType: getNoDataType(card.metric),
         uptimeState
       };
