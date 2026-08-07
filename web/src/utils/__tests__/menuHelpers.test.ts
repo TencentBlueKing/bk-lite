@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   findMatchedMenuPath,
+  getDeepestMatchedMenuItems,
   getFirstLayerSiblingMenuItems,
   isMenuPathMatch,
 } from '../menuHelpers';
@@ -120,5 +121,55 @@ describe('getFirstLayerSiblingMenuItems', () => {
       .filter((item) => !item.isNotMenuItem)
       .map((item) => item.title);
     expect(siblings).toEqual(['调用链', '端点', '错误']);
+  });
+});
+
+const skillMenus: MenuItem[] = [
+  {
+    title: '智能体',
+    url: '/opspilot/skill',
+    name: 'skill_list',
+    hasDetail: true,
+    children: [
+      {
+        title: '设置',
+        url: '/opspilot/skill/detail/settings',
+        icon: 'shezhi',
+        name: 'skill_setting',
+      },
+      {
+        title: '调用日志',
+        url: '/opspilot/skill/detail/invocationLogs',
+        icon: 'talk-line',
+        name: 'skill_invocation_logs',
+      },
+      {
+        title: '对话',
+        url: '/opspilot/skill/chat',
+        name: 'skill_chat',
+        isNotMenuItem: true,
+      },
+    ],
+  },
+];
+
+describe('getDeepestMatchedMenuItems', () => {
+  it('falls back to parent siblings when current page is a leaf (opspilot skill)', () => {
+    const items = getDeepestMatchedMenuItems(
+      skillMenus,
+      '/opspilot/skill/detail/settings'
+    ).map((item) => item.title);
+    expect(items).toEqual(['设置', '调用日志']);
+  });
+
+  it('still prefers deeper APM routes over app-root /apm when resolving secondary items', () => {
+    const items = getDeepestMatchedMenuItems(apmMenus, '/apm/integration/add').map(
+      (item) => item.title
+    );
+    expect(items).toEqual(['添加接入', '接入实例', '应用管理']);
+  });
+
+  it('returns empty on app-root leaf without siblings (APM home)', () => {
+    expect(getDeepestMatchedMenuItems(apmMenus, '/apm')).toEqual([]);
   });
 });

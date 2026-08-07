@@ -91,9 +91,16 @@ export const shouldRenderSecondLayerMenu = (
   return true;
 };
 
+const filterVisibleMenuItems = (items: MenuItem[] = []): MenuItem[] =>
+  items.filter((item) => !item.isNotMenuItem && !item.isDirectory);
+
 /**
- * Get the deepest matched menu items for the current path.
- * Returns the children of the deepest matched item, or an empty array if no match.
+ * Get secondary menu items for the current path (detail side menus).
+ *
+ * Uses longest-path matching (so app-root menus like `/apm` do not steal
+ * deeper routes). When the deepest match is a leaf page with no children,
+ * fall back to the parent's visible children — the previous WithSideMenuLayout
+ * behavior needed by opspilot skill/studio detail pages.
  */
 export const getDeepestMatchedMenuItems = (
   menus: MenuItem[],
@@ -103,7 +110,16 @@ export const getDeepestMatchedMenuItems = (
   if (!matchedPath || matchedPath.length === 0) return [];
 
   const deepest = matchedPath[matchedPath.length - 1];
-  return deepest.children ?? [];
+  if (deepest.children?.length) {
+    return filterVisibleMenuItems(deepest.children);
+  }
+
+  if (matchedPath.length >= 2) {
+    const parent = matchedPath[matchedPath.length - 2];
+    return filterVisibleMenuItems(parent.children);
+  }
+
+  return [];
 };
 
 /**
@@ -121,9 +137,6 @@ export const getFirstLayerSiblingMenuItems = (
   const firstLayer = matchedPath[0];
   return firstLayer.children ?? [];
 };
-
-const filterVisibleMenuItems = (items: MenuItem[] = []): MenuItem[] =>
-  items.filter((item) => !item.isNotMenuItem && !item.isDirectory);
 
 const findClosestAncestorMenuWithChildren = (
   items: MenuItem[],
