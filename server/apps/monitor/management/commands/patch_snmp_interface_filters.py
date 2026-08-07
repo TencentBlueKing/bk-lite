@@ -139,16 +139,26 @@ class Command(BaseCommand):
 
         # 厂商实例 collect_type 为 snmp_cisco / snmp_h3c 等；精确匹配 "snmp" 会漏补。
         # 同时仅对 IF-MIB 过滤能力插件补齐，避免 hardware_server 被写入默认 tagdrop。
-        config_ids = [
-            config.id
-            for config in CollectConfig.objects.filter(
-                collect_type__startswith="snmp",
-                is_child=True,
-            ).select_related("monitor_plugin")
-            if is_patchable_snmp_child_config(config)
-        ]
+        # 按 plugin_id 缓存能力判定：_is_network_device_snmp_plugin 含 exists()/manifest I/O，
+        # 不可对每行 CollectConfig 重复调用（management 命令也会踩 N+1）。
+        capable_by_plugin_id: dict[int | None, bool] = {}
+        config_ids: list = []
+        for config in CollectConfig.objects.filter(
+            collect_type__startswith="snmp",
+            is_child=True,
+        ).select_related("monitor_plugin"):
+            plugin = getattr(config, "monitor_plugin", None)
+            plugin_id = getattr(plugin, "pk", None)
+            if plugin_id not in capable_by_plugin_id:
+                capable_by_plugin_id[plugin_id] = is_interface_filter_capable_plugin(plugin)
+            if is_patchable_snmp_child_config(
+                config, capable=capable_by_plugin_id[plugin_id]
+            ):
+                config_ids.append(config.id)
         if not config_ids:
-            self.stdout.write("No SNMP child configs found / 未发现 SNMP 子配置")
+            self.stdout.write(
+                "No IF-MIB-capable SNMP child configs found / 未发现具备 IF-MIB 过滤能力的 SNMP 子配置"
+            )
             return
 
         node_mgmt = NodeMgmt()

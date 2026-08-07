@@ -39,6 +39,12 @@ class TestPatchSnmpInterfaceFilterSelection:
             capable=True,
         )
 
+    def test_capable_override_avoids_recomputing_plugin_capability(self):
+        """Command 应按 plugin_id 缓存后传入 capable=，避免对每行再查 M2M。"""
+        config = SimpleNamespace(collect_type="snmp_h3c", monitor_plugin=object())
+        assert is_patchable_snmp_child_config(config, capable=True) is True
+        assert is_patchable_snmp_child_config(config, capable=False) is False
+
     def test_patch_child_content_adds_default_tagdrop_for_ifdescr_tables(self):
         content = {
             "config": {
