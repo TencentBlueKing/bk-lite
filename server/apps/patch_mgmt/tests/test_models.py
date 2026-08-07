@@ -3,6 +3,7 @@
 Todo 2 行为定义：重复别名拒绝、重叠构建号拒绝、
 非法状态/关系守卫、代表性记录创建。
 """
+
 from types import SimpleNamespace
 
 import pytest
@@ -20,8 +21,8 @@ from apps.patch_mgmt.models import (
     WindowsPatchDetail,
 )
 
-
 # ── Patch + detail table creation ───────────────────────────────────────────
+
 
 @pytest.mark.django_db
 class TestPatchRecordCreation:
@@ -64,9 +65,7 @@ class TestPatchRecordCreation:
 
         bulk_duplicate = Patch.objects.create(title="Bulk Duplicate Windows Patch", os_type=OSType.WINDOWS)
         with pytest.raises(IntegrityError), transaction.atomic():
-            WindowsPatchDetail.objects.bulk_create(
-                [WindowsPatchDetail(patch=bulk_duplicate, kb_number="KB5034442")]
-            )
+            WindowsPatchDetail.objects.bulk_create([WindowsPatchDetail(patch=bulk_duplicate, kb_number="KB5034442")])
 
     def test_mysql_kb_guard_migration_rejects_duplicate_without_clearing_kb(self):
         from importlib import import_module
@@ -83,7 +82,7 @@ class TestPatchRecordCreation:
         duplicate = WindowsPatchDetail(patch=duplicate_patch, kb_number="KB5034443", kb_number_guard=None)
         models.QuerySet(model=WindowsPatchDetail, using="default").bulk_create([duplicate])
 
-        migration = import_module("apps.patch_mgmt.migrations.0008_cross_database_kb_guard")
+        migration = import_module("apps.patch_mgmt.migrations.0009_cross_database_kb_guard")
         schema_editor = SimpleNamespace(connection=connection)
         with pytest.raises(RuntimeError, match="重复 KB 编号"):
             migration.ensure_kb_numbers_unique(apps, schema_editor)

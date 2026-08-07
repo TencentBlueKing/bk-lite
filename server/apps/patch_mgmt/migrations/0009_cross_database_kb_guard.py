@@ -6,14 +6,7 @@ def ensure_kb_numbers_unique(apps, schema_editor):
     alias = schema_editor.connection.alias
     WindowsPatchDetail = apps.get_model("patch_mgmt", "WindowsPatchDetail")
     details = WindowsPatchDetail.objects.using(alias)
-    duplicate = (
-        details.exclude(kb_number="")
-        .values("kb_number")
-        .annotate(total=Count("patch_id"))
-        .filter(total__gt=1)
-        .order_by("kb_number")
-        .first()
-    )
+    duplicate = details.exclude(kb_number="").values("kb_number").annotate(total=Count("patch_id")).filter(total__gt=1).order_by("kb_number").first()
     if duplicate is not None:
         raise RuntimeError("Windows 补丁存在重复 KB 编号，请先完成业务核对再迁移")
 
@@ -31,7 +24,7 @@ def clear_kb_number_guard(apps, schema_editor):
 
 
 class Migration(migrations.Migration):
-    dependencies = [("patch_mgmt", "0007_patchsource_sync_in_progress")]
+    dependencies = [("patch_mgmt", "0008_patch_deleted_source_snapshots")]
 
     operations = [
         migrations.RunPython(ensure_kb_numbers_unique, migrations.RunPython.noop),

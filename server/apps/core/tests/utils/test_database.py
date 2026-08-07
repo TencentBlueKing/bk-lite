@@ -80,7 +80,7 @@ def test_bulk_create_with_primary_keys_inserts_individually_when_backend_cannot_
             "apps.operation_analysis.migrations.0023_cross_database_execution_guards",
             "ensure_execution_keys_unique",
         ),
-        ("apps.patch_mgmt.migrations.0008_cross_database_kb_guard", "ensure_kb_numbers_unique"),
+        ("apps.patch_mgmt.migrations.0009_cross_database_kb_guard", "ensure_kb_numbers_unique"),
         ("apps.system_mgmt.migrations.0045_cross_database_running_guards", "ensure_running_runs_unique"),
     ],
 )
