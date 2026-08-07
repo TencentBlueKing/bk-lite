@@ -39,12 +39,6 @@ def populate_execution_guards(apps, schema_editor):
     executions.filter(trigger_type="scheduled", scheduled_time_utc__isnull=False).update(scheduled_guard=True)
 
 
-def clear_execution_guards(apps, schema_editor):
-    alias = schema_editor.connection.alias
-    DashboardReportExecution = apps.get_model("operation_analysis", "DashboardReportExecution")
-    DashboardReportExecution.objects.using(alias).update(request_guard=None, scheduled_guard=None)
-
-
 class Migration(migrations.Migration):
     dependencies = [("operation_analysis", "0022_cross_database_active_share_guard")]
 
@@ -60,19 +54,5 @@ class Migration(migrations.Migration):
             name="scheduled_guard",
             field=models.BooleanField(default=None, editable=False, null=True),
         ),
-        migrations.RunPython(populate_execution_guards, clear_execution_guards),
-        migrations.AddConstraint(
-            model_name="dashboardreportexecution",
-            constraint=models.UniqueConstraint(
-                fields=("subscription", "request_id", "trigger_type", "request_guard"),
-                name="uniq_dashboard_report_execution_request_guard",
-            ),
-        ),
-        migrations.AddConstraint(
-            model_name="dashboardreportexecution",
-            constraint=models.UniqueConstraint(
-                fields=("subscription", "scheduled_time_utc", "trigger_type", "scheduled_guard"),
-                name="uniq_dashboard_report_execution_scheduled_guard",
-            ),
-        ),
+        migrations.RunPython(populate_execution_guards, migrations.RunPython.noop),
     ]
