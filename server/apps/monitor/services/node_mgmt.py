@@ -3,6 +3,7 @@ from django.db import IntegrityError, models, transaction
 from apps.core.exceptions.base_app_exception import BaseAppException, UnauthorizedException
 from apps.core.logger import monitor_logger as logger
 from apps.core.utils.current_team_scope import CurrentTeamDataScope, scope_permission_queryset
+from apps.core.utils.database import bulk_create_with_primary_keys
 from apps.core.utils.permission_utils import get_permission_rules
 from apps.monitor.constants.database import DatabaseConstants
 from apps.monitor.constants.permission import PermissionConstants
@@ -410,7 +411,11 @@ class InstanceConfigService:
             )
 
         if rules:
-            created_rules = MonitorObjectOrganizationRule.objects.bulk_create(rules, batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE)
+            created_rules = bulk_create_with_primary_keys(
+                MonitorObjectOrganizationRule.objects,
+                rules,
+                batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE,
+            )
             return [rule.id for rule in created_rules]
 
         return []
@@ -479,7 +484,11 @@ class InstanceConfigService:
 
         # 批量创建所有规则
         if all_rules:
-            created_rules = MonitorObjectOrganizationRule.objects.bulk_create(all_rules, batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE)
+            created_rules = bulk_create_with_primary_keys(
+                MonitorObjectOrganizationRule.objects,
+                all_rules,
+                batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE,
+            )
             logger.info(f"批量创建默认规则数量: {len(created_rules)}")
             return [rule.id for rule in created_rules]
 
@@ -1013,7 +1022,6 @@ class InstanceConfigService:
                 except ValueError as exc:
                     raise BaseAppException(str(exc)) from exc
             if (config_obj.collect_type or "").startswith("snmp"):
-                from apps.monitor.utils.config_format import ConfigFormat
                 from apps.monitor.utils.snmp_interface_filters import normalize_snmp_interface_filter_config
                 from apps.monitor.utils.snmp_interface_template import has_interface_collection
 

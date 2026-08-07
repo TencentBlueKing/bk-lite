@@ -1,6 +1,6 @@
 from copy import copy
 
-from django.db.models import Prefetch, Q
+from django.db.models import OuterRef, Prefetch, Q, Subquery
 from django.http import JsonResponse
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -22,12 +22,13 @@ from apps.system_mgmt.utils.operation_log_utils import log_operation
 
 
 class UserSyncSourceViewSet(MaintainerViewSet):
+    latest_run_id = UserSyncRun.objects.filter(source_id=OuterRef("source_id")).order_by("-started_at", "-id").values("id")[:1]
     queryset = (
         UserSyncSource.objects.select_related("integration_instance")
         .prefetch_related(
             Prefetch(
                 "runs",
-                queryset=UserSyncRun.objects.order_by("-started_at", "-id")[:1],
+                queryset=UserSyncRun.objects.filter(id=Subquery(latest_run_id)),
                 to_attr="_prefetched_latest_run",
             )
         )

@@ -8,6 +8,7 @@ from django.db.models import Q
 from django.utils import timezone as django_timezone
 
 from apps.core.logger import system_mgmt_logger as logger
+from apps.core.utils.database import bulk_create_with_primary_keys
 from apps.core.utils.permission_cache import clear_users_permission_cache
 from apps.rpc.base import RpcClient
 from apps.system_mgmt.models import Channel, ErrorLog, Group, LoginModule, SystemSettings, User
@@ -169,7 +170,7 @@ def _sync_groups(group_list, parent_group, parent_group_id):
 
     # 批量创建新组
     if add_groups:
-        created_groups = Group.objects.bulk_create(add_groups, batch_size=100)
+        created_groups = bulk_create_with_primary_keys(Group.objects, add_groups, batch_size=100)
         logger.info(f"Created {len(created_groups)} groups under parent {parent_group.name}")
 
         # 为新创建的组添加映射并递归处理子组

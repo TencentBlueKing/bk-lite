@@ -30,7 +30,8 @@ def patch():
     """
     _patch_migrate_patch_mysql_support()
     _patch_jsonfield_contains_lookup()
-    logger.info("MySQL patches applied (migrate_patch MySQL support + JSON contains lookup)")
+    _patch_regex_lookup()
+    logger.info("MySQL patches applied (migrate_patch support + JSON contains + MySQL 5.7 regex)")
 
 
 def _patch_migrate_patch_mysql_support():
@@ -105,8 +106,31 @@ def _patch_jsonfield_contains_lookup():
             # 使用 MySQL 的 JSON_CONTAINS 函数
             # JSON_CONTAINS(target, candidate[, path])
             json_str = json.dumps(value, ensure_ascii=False)
-            return f"JSON_CONTAINS({lhs}, %s)", lhs_params + [json_str]
+            return f"JSON_CONTAINS({lhs}, %s)", (*lhs_params, json_str)
 
     # 注册新的 lookup（覆盖默认的）
     JSONField.register_lookup(MySQLJSONContains)
     logger.debug("JSONField.contains lookup patched for MySQL")
+
+
+def _patch_regex_lookup():
+    """让 Django 的正则查询兼容不提供 REGEXP_LIKE 的 MySQL 5.7。"""
+    try:
+        # cw_cornerstone 复用 Django 的 MySQL operations 模块，没有自有 operations.py。
+        from django.db.backends.mysql.operations import DatabaseOperations
+    except ImportError:
+        logger.warning("Django MySQL backend not installed, skipping MySQL 5.7 regex patch")
+        return
+
+    original_regex_lookup = DatabaseOperations.regex_lookup
+    if getattr(original_regex_lookup, "_bklite_mysql57_compatible", False):
+        return
+
+    def regex_lookup(self, lookup_type):
+        if not self.connection.mysql_is_mariadb and self.connection.mysql_version >= (8, 0):
+            return original_regex_lookup(self, lookup_type)
+        return "%s REGEXP BINARY %s" if lookup_type == "regex" else "%s REGEXP %s"
+
+    regex_lookup._bklite_mysql57_compatible = True
+    DatabaseOperations.regex_lookup = regex_lookup
+    logger.debug("cw_cornerstone MySQL regex lookup patched for MySQL 5.7")

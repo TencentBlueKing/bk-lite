@@ -132,6 +132,27 @@ def test_evaluation_creates_one_idempotent_trigger_and_one_recovery(policy):
     ).exists()
 
 
+def test_mysql_outbox_portable_constraint_rejects_raw_queryset_duplicate(policy):
+    from django.db import IntegrityError, connection, models, transaction
+
+    if connection.vendor != "mysql":
+        pytest.skip("MySQL 5.7 legacy data migration contract")
+
+    service = DjangoApmPolicyService(MutableMetricStore(ServiceRed(20, 0.10, 100, 150)), InMemoryNotificationDispatcher())
+    evaluated_at = timezone.now().replace(second=0, microsecond=0)
+    service.evaluate(policy.id, evaluated_at=evaluated_at)
+    service.evaluate(policy.id, evaluated_at=evaluated_at + timedelta(minutes=1))
+    original = ApmAlertOutbox.objects.get()
+    duplicate = ApmAlertOutbox(
+        event_key=f"{original.event_key}:duplicate",
+        event=original.event,
+        channel_id=original.channel_id,
+        payload={},
+    )
+    with pytest.raises(IntegrityError), transaction.atomic():
+        models.QuerySet(model=ApmAlertOutbox, using="default").bulk_create([duplicate])
+
+
 def test_metric_failure_keeps_last_state_and_produces_no_event(policy):
     metric_store = MutableMetricStore(ServiceRed(20, 0.10, 100, 150))
     service = DjangoApmPolicyService(metric_store, InMemoryNotificationDispatcher())

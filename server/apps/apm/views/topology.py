@@ -65,10 +65,12 @@ class ApmTopologyViewSet(viewsets.ViewSet):
         )
         if environment := data.get("environment"):
             instances = instances.filter(environment=environment)
-        targets = [
-            TopologyTarget(instance.service.namespace, instance.service.name, instance.environment)
-            for instance in instances.order_by("service_id", "environment").distinct("service_id", "environment")
-        ]
+        target_rows = (
+            instances.values("service_id", "service__namespace", "service__name", "environment")
+            .order_by("service_id", "environment")
+            .distinct()
+        )
+        targets = [TopologyTarget(row["service__namespace"], row["service__name"], row["environment"]) for row in target_rows]
         try:
             graph = self._service().build(
                 targets,

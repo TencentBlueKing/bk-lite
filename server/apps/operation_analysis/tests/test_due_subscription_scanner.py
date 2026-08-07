@@ -456,6 +456,7 @@ def test_weekly_outage_cross_week_creates_only_one_execution(
     stats = DueSubscriptionScanner.scan(now=now)
     assert stats.created == 1
     execution = DashboardReportExecution.objects.get(subscription=sub)
+    assert execution.scheduled_guard is True
     assert execution.scheduled_time_utc == datetime(
         2026, 8, 10, 1, 0, tzinfo=dt_timezone.utc
     )

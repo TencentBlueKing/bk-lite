@@ -1,4 +1,5 @@
-from django.db import models
+from django.db import models, transaction
+from django.db.models.expressions import BaseExpression
 from django.db.models import JSONField
 
 from apps.core.models.maintainer_info import MaintainerInfo
@@ -32,6 +33,32 @@ class ControllerTask(TimeInfo, MaintainerInfo):
         ]
 
 
+class ControllerTaskNodeQuerySet(models.QuerySet):
+    def update(self, **kwargs):
+        if "organizations" in kwargs:
+            if isinstance(kwargs["organizations"], BaseExpression):
+                raise ValueError("organizations 表达式更新无法安全规范化")
+            kwargs["organizations"] = ControllerTaskNode.normalized_organizations(kwargs["organizations"])
+        return super().update(**kwargs)
+
+    def bulk_create(self, objs, *args, **kwargs):
+        objs = list(objs)
+        for obj in objs:
+            obj.normalize_organizations_snapshot()
+        return super().bulk_create(objs, *args, **kwargs)
+
+    def bulk_update(self, objs, fields, *args, **kwargs):
+        objs = list(objs)
+        if "organizations" in fields:
+            for obj in objs:
+                obj.normalize_organizations_snapshot()
+            with transaction.atomic(using=self.db):
+                for obj in objs:
+                    obj.save(update_fields=fields, using=self.db)
+            return len(objs)
+        return super().bulk_update(objs, fields, *args, **kwargs)
+
+
 class ControllerTaskNode(models.Model):
     task = models.ForeignKey(ControllerTask, on_delete=models.CASCADE, verbose_name="任务")
     node_id = models.CharField(max_length=100, blank=True, default="", db_index=True, verbose_name="节点ID")
@@ -52,6 +79,8 @@ class ControllerTaskNode(models.Model):
     status = models.CharField(max_length=100, default="", verbose_name="任务状态")
     result = JSONField(default=dict, verbose_name="结果")
 
+    objects = ControllerTaskNodeQuerySet.as_manager()
+
     class Meta:
         verbose_name = "控制器任务节点"
         verbose_name_plural = "控制器任务节点"
@@ -59,6 +88,21 @@ class ControllerTaskNode(models.Model):
             models.Index(fields=["ip", "status"], name="nm_ctrl_node_ip_st_idx"),
             models.Index(fields=["task", "status"], name="nm_ctrl_tasknode_st_idx"),
         ]
+
+    def normalize_organizations_snapshot(self):
+        self.organizations = self.normalized_organizations(self.organizations)
+
+    @staticmethod
+    def normalized_organizations(organizations):
+        if not isinstance(organizations, list) or any(isinstance(value, bool) or not isinstance(value, int) for value in organizations):
+            # 非规范历史快照必须 fail closed；提前清空可避免 MySQL JSON 将 1.0
+            # 反序列化为 1 后意外获得组织权限。
+            return []
+        return organizations
+
+    def save(self, *args, **kwargs):
+        self.normalize_organizations_snapshot()
+        return super().save(*args, **kwargs)
 
 
 class CollectorTask(TimeInfo, MaintainerInfo):

@@ -1,5 +1,6 @@
 import uuid
 from datetime import timedelta
+from types import SimpleNamespace
 
 import pytest
 from django.db import IntegrityError, transaction
@@ -43,6 +44,64 @@ def test_active_share_is_unique_per_resource_type_and_sharer(dashboard):
 
     with pytest.raises(IntegrityError), transaction.atomic():
         make_link(dashboard)
+
+
+@pytest.mark.django_db
+def test_active_share_guard_cannot_be_bypassed_by_bulk_writes(dashboard):
+    active = make_link(dashboard)
+    inactive = make_link(dashboard, status=DashboardShareLink.Status.DASHBOARD_INVALID)
+    inactive.status = DashboardShareLink.Status.ACTIVE
+
+    with pytest.raises(IntegrityError), transaction.atomic():
+        DashboardShareLink.objects.bulk_update([inactive], ["status"])
+
+    duplicate = DashboardShareLink(
+        dashboard=dashboard,
+        dashboard_instance_id=active.dashboard_instance_id,
+        tenant_domain=active.tenant_domain,
+        space_id=active.space_id,
+        sharer_username=active.sharer_username,
+        sharer_domain=active.sharer_domain,
+    )
+    with pytest.raises(IntegrityError), transaction.atomic():
+        DashboardShareLink.objects.bulk_create([duplicate])
+
+    with pytest.raises(IntegrityError), transaction.atomic():
+        DashboardShareLink.objects.filter(pk=inactive.pk).update(
+            status=DashboardShareLink.Status.ACTIVE,
+            active_guard=None,
+        )
+    with pytest.raises(ValueError, match="派生保护字段"):
+        DashboardShareLink.objects.filter(pk=active.pk).update(active_guard=None)
+
+
+@pytest.mark.django_db
+def test_mysql_guard_migration_rejects_duplicate_without_invalidating_links(dashboard):
+    from importlib import import_module
+
+    from django.apps import apps
+    from django.db import connection, models
+
+    if connection.vendor != "mysql":
+        pytest.skip("MySQL 5.7 legacy data migration contract")
+
+    oldest = make_link(dashboard)
+    duplicate = make_link(dashboard, status=DashboardShareLink.Status.DASHBOARD_INVALID)
+    models.QuerySet(model=DashboardShareLink, using="default").filter(pk=duplicate.pk).update(
+        status=DashboardShareLink.Status.ACTIVE,
+        active_guard=None,
+    )
+
+    migration = import_module("apps.operation_analysis.migrations.0022_cross_database_active_share_guard")
+    schema_editor = SimpleNamespace(connection=connection)
+    with pytest.raises(RuntimeError, match="重复的有效画布分享链接"):
+        migration.ensure_active_links_unique(apps, schema_editor)
+
+    oldest.refresh_from_db()
+    duplicate.refresh_from_db()
+    assert oldest.status == DashboardShareLink.Status.ACTIVE
+    assert duplicate.status == DashboardShareLink.Status.ACTIVE
+    assert duplicate.active_guard is None
 
 
 @pytest.mark.django_db

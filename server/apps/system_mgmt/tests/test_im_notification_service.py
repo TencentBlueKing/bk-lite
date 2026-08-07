@@ -1,9 +1,10 @@
 import json
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import uuid
 import pytest
-from django.db import IntegrityError
+from django.db import IntegrityError, transaction
 
 from apps.system_mgmt.models import IMNotificationChannel, IMNotificationSyncRun, IMNotificationUserMapping, IntegrationInstance, User
 from apps.system_mgmt.providers.adapters.feishu import FeishuIMNotificationAdapter
@@ -236,7 +237,6 @@ def test_channel_update_marks_needs_resync_when_critical_config_changes(channel,
 
 
 def test_feishu_send_message_serializes_multiline_text_content():
-    channel = IMNotificationChannel(external_receive_field="user_id")
     expected_content = json.dumps({"text": "Title\nBody"}, ensure_ascii=False)
 
     class FakeResponse:
@@ -315,6 +315,38 @@ def test_im_notification_sync_run_allows_only_one_running_run_per_channel(channe
 
     with pytest.raises(IntegrityError):
         IMNotificationSyncRun.objects.create(channel=channel, trigger_mode="schedule", status="running")
+
+
+@pytest.mark.django_db
+def test_mysql_guard_migration_rejects_duplicate_im_run_without_changing_status(channel):
+    from importlib import import_module
+
+    from django.apps import apps
+    from django.db import connection, models
+
+    if connection.vendor != "mysql":
+        pytest.skip("MySQL 5.7 legacy data migration contract")
+
+    older = IMNotificationSyncRun.objects.create(channel=channel, status="running")
+    with pytest.raises(IntegrityError), transaction.atomic():
+        IMNotificationSyncRun.objects.bulk_create([IMNotificationSyncRun(channel=channel, status="running")])
+    newer = IMNotificationSyncRun.objects.create(channel=channel, status="failed")
+    models.QuerySet(model=IMNotificationSyncRun, using="default").filter(pk=newer.pk).update(
+        status="running",
+        running_guard=None,
+    )
+
+    migration = import_module("apps.system_mgmt.migrations.0045_cross_database_running_guards")
+    schema_editor = SimpleNamespace(connection=connection)
+    with pytest.raises(RuntimeError, match="重复运行记录"):
+        migration.ensure_running_runs_unique(apps, schema_editor)
+
+    older.refresh_from_db()
+    newer.refresh_from_db()
+    assert older.status == "running"
+    assert older.running_guard is True
+    assert newer.status == "running"
+    assert newer.running_guard is None
 
 
 @pytest.mark.django_db
