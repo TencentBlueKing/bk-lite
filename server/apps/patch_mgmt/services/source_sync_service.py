@@ -22,7 +22,9 @@ from apps.patch_mgmt.utils.architecture import X86_64, normalize_architecture, n
 
 logger = logging.getLogger("app")
 
-MAX_LINUX_PACKAGES_PER_ADVISORY = 128
+# RPM updateinfo 会把同一公告涉及的所有子包放在一条 update 中；
+# Oracle/Rocky 9 的真实安全公告可达 205 个包。保留有界载荷，同时为真实仓库留出余量。
+MAX_LINUX_PACKAGES_PER_ADVISORY = 512
 MAX_LINUX_PACKAGE_NAME_LENGTH = 256
 MAX_LINUX_PACKAGE_VERSION_LENGTH = 128
 
@@ -36,9 +38,7 @@ def _normalize_linux_packages(packages, *, fallback_arch: str) -> list[dict[str,
     canonical_fallback = normalize_architecture(fallback_arch, default=X86_64)
     normalized: list[dict[str, str]] = []
     seen: set[tuple[str, str, str]] = set()
-    for index, package in enumerate(packages or []):
-        if index >= MAX_LINUX_PACKAGES_PER_ADVISORY:
-            raise SourceSyncError(f"单条 Linux 公告的软件包数量不能超过 {MAX_LINUX_PACKAGES_PER_ADVISORY}")
+    for package in packages or []:
         name = str(getattr(package, "name", "") or "").strip()
         if not name:
             continue
@@ -52,6 +52,10 @@ def _normalize_linux_packages(packages, *, fallback_arch: str) -> list[dict[str,
         key = (name, version, arch)
         if key in seen:
             continue
+        if len(normalized) >= MAX_LINUX_PACKAGES_PER_ADVISORY:
+            raise SourceSyncError(
+                f"单条 Linux 公告去重后的软件包数量不能超过 {MAX_LINUX_PACKAGES_PER_ADVISORY}"
+            )
         seen.add(key)
         normalized.append({"name": name, "version": version, "arch": arch})
     return normalized
