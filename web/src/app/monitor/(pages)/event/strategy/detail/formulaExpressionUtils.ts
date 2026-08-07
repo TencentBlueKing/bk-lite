@@ -515,7 +515,9 @@ const findMetricForRow = (
   metrics: MetricItem[]
 ): MetricItem | undefined =>
   metrics.find(
-    (item) => item.id === row.metricId || item.name === row.metricName
+    (item) =>
+      (row.metricId != null && String(item.id) === String(row.metricId)) ||
+      (!!row.metricName && item.name === row.metricName)
   );
 
 export const buildMetricExpressionPreviewPayload = ({
@@ -532,7 +534,7 @@ export const buildMetricExpressionPreviewPayload = ({
   algorithm,
   groupAlgorithm,
   groupBy,
-  threshold,
+  threshold = [],
   calculationUnit,
   thresholdUnit
 }: {
@@ -552,7 +554,7 @@ export const buildMetricExpressionPreviewPayload = ({
   algorithm: string | null;
   groupAlgorithm: string | null;
   groupBy: string[];
-  threshold: ThresholdField[];
+  threshold?: ThresholdField[];
   calculationUnit?: string | null;
   thresholdUnit?: string | null;
 }) => {

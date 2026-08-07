@@ -35,6 +35,7 @@ import MoreActionsDropdown from '@/components/more-actions-dropdown';
 import type { MoreActionsDropdownItem } from '@/components/more-actions-dropdown';
 import { OBJECT_DEFAULT_ICON } from '@/app/monitor/constants';
 import { isDerivativeObject } from '@/app/monitor/utils/monitorObject';
+import { sameMonitorId, toMonitorIdString } from '@/app/monitor/utils/monitorIds';
 import { cloneDeep } from 'lodash';
 import CreateTemplateModal from './createTemplateModal';
 import ResizableSidebar from '@/app/monitor/components/resizableSidebar';
@@ -229,7 +230,7 @@ const Integration = () => {
           acc[item.type].children.push({
             title: item.display_name || '--',
             label: item.name || '--',
-            key: item.id,
+            key: toMonitorIdString(item.id),
             icon: item.icon,
             children: []
           });
@@ -373,7 +374,7 @@ const Integration = () => {
 
   const linkToDetial = (app: ObjectItem) => {
     const parentObject: any = objects.find(
-      (item) => item.id === app.parent_monitor_object
+      (item) => sameMonitorId(item.id, app.parent_monitor_object)
     );
     const objectInfo = parentObject || {};
     if (objectInfo.id) {
@@ -423,7 +424,7 @@ const Integration = () => {
             data={treeData}
             defaultSelectedKey={
               searchParams.get('objId')
-                ? Number(searchParams.get('objId'))
+                ? toMonitorIdString(searchParams.get('objId'))
                 : 'all'
             }
             loading={treeLoading}
@@ -484,7 +485,7 @@ const Integration = () => {
               >
                 {pluginList.map((app) => {
                   const parentObject: any = objects.find(
-                    (item) => item.id === app.parent_monitor_object
+                    (item) => sameMonitorId(item.id, app.parent_monitor_object)
                   );
                   const objectName = parentObject?.name || '';
 

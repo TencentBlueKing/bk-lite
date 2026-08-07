@@ -338,7 +338,9 @@ const StrategyOperation = () => {
     const nextLabelsByRef: Record<string, string[]> = {};
     metricRows.forEach((row) => {
       const target = metrics.find(
-        (item) => item.id === row.metricId || item.name === row.metricName
+        (item) =>
+          (row.metricId != null && String(item.id) === String(row.metricId)) ||
+          (!!row.metricName && item.name === row.metricName)
       );
       nextLabelsByRef[row.ref] = getMetricDimensionNames(target?.dimensions);
     });
@@ -347,7 +349,9 @@ const StrategyOperation = () => {
     if (metricRows.length === 1) {
       const row = metricRows[0];
       const target = metrics.find(
-        (item) => item.id === row.metricId || item.name === row.metricName
+        (item) =>
+          (row.metricId != null && String(item.id) === String(row.metricId)) ||
+          (!!row.metricName && item.name === row.metricName)
       );
       setMetric(row.metricName || target?.name || null);
       setConditions(row.filters || []);
@@ -485,7 +489,7 @@ const StrategyOperation = () => {
     const { query_condition } = data;
     if (query_condition?.type === 'metric' && initMetricData.length > 0) {
       const _metrics = initMetricData.find(
-        (item) => item.id === query_condition?.metric_id
+        (item) => query_condition?.metric_id != null && String(item.id) === String(query_condition.metric_id)
       );
       if (_metrics) {
         setMetric(_metrics?.name || '');
@@ -523,7 +527,7 @@ const StrategyOperation = () => {
         query_condition
       );
       const rows = restoredState.rows.map((row) => {
-        const target = initMetricData.find((item) => item.id === row.metricId);
+        const target = initMetricData.find((item) => row.metricId != null && String(item.id) === String(row.metricId));
         return {
           ...row,
           metricName: target?.name || row.metricName
@@ -809,7 +813,8 @@ const StrategyOperation = () => {
         const primaryMetric = metricRows[0];
         const mertricTarget = metrics.find(
           (item) =>
-            item.id === primaryMetric?.metricId ||
+            (primaryMetric?.metricId != null &&
+              String(item.id) === String(primaryMetric.metricId)) ||
             item.name === primaryMetric?.metricName
         );
         selectedMetricSourceUnit = mertricTarget?.unit;

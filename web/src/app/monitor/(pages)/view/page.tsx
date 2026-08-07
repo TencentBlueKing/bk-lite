@@ -14,6 +14,7 @@ import ResizableSidebar from '@/app/monitor/components/resizableSidebar';
 import { cloneDeep } from 'lodash';
 import { getMonitorViewObjectUrl } from '@/app/monitor/dashboards/shared/utils';
 import { getProfessionalObjectDisplayName } from '@/app/monitor/dashboards/registry';
+import { findByMonitorId, toMonitorIdString } from '@/app/monitor/utils/monitorIds';
 
 const Integration = () => {
   const { isLoading } = useApiClient();
@@ -29,7 +30,7 @@ const Integration = () => {
   const tableOptions = useTableOptions();
 
   const showTab = useMemo(() => {
-    const objectName = objects.find((item) => item.id === objectId)?.name || '';
+    const objectName = findByMonitorId(objects, objectId)?.name || '';
     return ['Pod', 'Node'].includes(objectName);
   }, [objects, objectId]);
 
@@ -68,9 +69,12 @@ const Integration = () => {
   useEffect(() => {
     if (!objects.length) return;
     const requestedObjectId = searchParams.get('object_id');
-    const selectedObject = objects.find((item) => String(item.id) === requestedObjectId) || objects[0];
-    setObjectId(selectedObject?.id || '');
-    setDefaultSelectObj(selectedObject?.id || '');
+    const selectedObject =
+      objects.find((item) => toMonitorIdString(item.id) === requestedObjectId) ||
+      objects[0];
+    const selectedId = toMonitorIdString(selectedObject?.id);
+    setObjectId(selectedId);
+    setDefaultSelectObj(selectedId);
   }, [objects, searchParams]);
 
   const getTreeData = (data: ObjectItem[]): TreeItem[] => {
@@ -85,7 +89,7 @@ const Integration = () => {
       acc[item.type].children.push({
         title: getProfessionalObjectDisplayName(item.name, item.display_name) || '--',
         label: item.name || '--',
-        key: item.id,
+        key: toMonitorIdString(item.id),
         icon: item.icon,
         count: item.instance_count || 0,
         children: [],
