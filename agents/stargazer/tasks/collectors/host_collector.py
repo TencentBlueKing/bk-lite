@@ -1,4 +1,5 @@
 # -- coding: utf-8 --
+import asyncio
 import json
 import time
 import logging
@@ -369,9 +370,9 @@ class HostCollector(BaseCollector):
     async def _execute_collection(
         self, callback: Dict[str, Any] | None = None, task_id: str | None = None
     ) -> Dict[str, Any]:
-        from core.ansible_rpc import ansible_adhoc
+        from core.infra.ansible_rpc import ansible_adhoc
 
-        config = self._resolve_execution_config()
+        config = await asyncio.to_thread(self._resolve_execution_config)
         return await ansible_adhoc(
             ansible_node_id=config["ansible_node_id"],
             host_credentials=config["host_credentials"],
@@ -434,7 +435,7 @@ class HostCollector(BaseCollector):
 
     async def collect(self) -> str:
         result = await self._execute_collection()
-        return self.process_adhoc_result(result)
+        return await asyncio.to_thread(self.process_adhoc_result, result)
 
     def _extract_stdout(self, result: Dict[str, Any]) -> str:
         task_result = result.get("result", {})

@@ -2,6 +2,7 @@
 # @File: aliyun_info.py
 # @Time: 2025/3/10 15:06
 # @Author: windyzhao
+import asyncio
 import copy
 import json
 import time
@@ -181,7 +182,6 @@ class CwAliyun(object):
         :param region_id:
         :param kwargs:
         """
-        print(params)
         self.AccessKey = params["secret_id"]
         self.AccessSecret = params["secret_key"]
         self.RegionId = params.get("region_id", "cn-hangzhou")
@@ -229,6 +229,10 @@ class CwAliyun(object):
             aliyun_client=self.client, name=item, region=self.RegionId, auth=self.auth, 
             auth_config=self.auth_config, custom_endpoint=self.custom_endpoint
         )
+
+    async def list_all_resources(self, **kwargs):
+        manager = self.__getattr__("list_all_resources")
+        return await manager.list_all_resources(**kwargs)
 
 
 class Aliyun(object):
@@ -1425,7 +1429,10 @@ serverless"""
             print("list_nas error")
             return {"result": False, "message": repr(e)}
 
-    def list_all_resources(self, **kwargs):
+    async def list_all_resources(self, **kwargs):
+        return await asyncio.to_thread(self._list_all_resources_sync, **kwargs)
+
+    def _list_all_resources_sync(self, **kwargs):
 
         def handle_resource(resource_func, resource_name):
             try:

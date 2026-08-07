@@ -127,7 +127,7 @@ cd algorithms/<svc> && make install && make serving  # BentoML :3000；uv run py
 6. `mobile dev:tauri` 连不上后端 → 确认 `tauri.conf.json` `devUrl=3001` 且后端可达。
 7. `mobile build:android` 签名报错 → 补 `src-tauri/gen/android/keystore.properties` 与 keystore。
 8. `webchat publish` 失败 → 检查 `NPM_TOKEN`、npm 权限与版本冲突。
-9. `stargazer` 无任务消费 → Redis/NATS 与 Server/Worker 一致,先起 Worker。
+9. `stargazer` 不接纳采集 → 检查 Redis/NATS 与 `/api/health/ready`；Stargazer 已无独立 ARQ Worker。
 10. K8s 采集器无数据 → 检查 `secret.env` 的 `CLUSTER_NAME/NATS_*` 与 `ca.crt`。
 
 > 质量门禁与代码红线见 [工程质量规格](specs/capabilities/engineering-quality.md)；回滚与韧性见 [平台可靠性规格](specs/capabilities/platform-reliability.md)。
