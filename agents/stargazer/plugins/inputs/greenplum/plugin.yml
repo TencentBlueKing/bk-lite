@@ -1,11 +1,13 @@
 name: greenplum
-version: "1.0.0"
+version: 1.0.0
 category: database
 metadata:
-  display_name: "Greenplum"
-  description: "Greenplum 数据库协议采集插件（PG 兼容）"
-  author: "WeOps"
-  tags: [database, greenplum]
+  display_name: Greenplum
+  description: Greenplum 数据库协议采集插件（PG 兼容）
+  author: WeOps
+  tags:
+  - database
+  - greenplum
   cloud_protocol: false
   model_id: greenplum
 executors:
@@ -15,4 +17,7 @@ executors:
     collector:
       module: plugins.inputs.greenplum.greenplum_info
       class: GreenplumInfo
+    target_policy:
+      mode: tcp
+      port: 5432
 default_executor: protocol

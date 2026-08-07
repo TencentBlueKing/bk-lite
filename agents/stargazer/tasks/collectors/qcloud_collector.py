@@ -5,6 +5,7 @@
 """
 QCloud 监控数据采集器
 """
+import asyncio
 import datetime
 from typing import Dict, Any
 from sanic.log import logger
@@ -15,6 +16,9 @@ class QCloudCollector(BaseCollector):
     """腾讯云监控数据采集器"""
 
     async def collect(self) -> str:
+        return await asyncio.to_thread(self._collect_sync)
+
+    def _collect_sync(self) -> str:
         """
         采集 QCloud 监控指标
 
@@ -28,7 +32,7 @@ class QCloudCollector(BaseCollector):
         password = self.params["password"]
         minutes = self.params.get("minutes", 5)
 
-        logger.info(f"[QCloud Collector] User={username}, Minutes={minutes}")
+        logger.info(f"[QCloud Collector] Minutes={minutes}")
 
         # 获取时间范围
         end_time = datetime.datetime.now()
@@ -95,4 +99,3 @@ class QCloudCollector(BaseCollector):
         logger.info(f"[QCloud Collector] Completed: {total_resources_processed} resources, {len(influxdb_data)} bytes")
 
         return influxdb_data
-

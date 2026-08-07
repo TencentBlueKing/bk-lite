@@ -3,6 +3,7 @@
 # @Time：2025/6/16 15:14
 # @Author：bennie
 from functools import cached_property
+import asyncio
 import time
 from typing import List, Dict
 
@@ -546,7 +547,10 @@ class TencentCloudManager:
             result.update(handle_resource(resource_func, resource_name))
         return result
 
-    def list_all_resources(self):
+    async def list_all_resources(self):
+        return await asyncio.to_thread(self._list_all_resources_sync)
+
+    def _list_all_resources_sync(self):
         try:
             result = self.exec_script()
             inst_data = {"result": result, "success": True}

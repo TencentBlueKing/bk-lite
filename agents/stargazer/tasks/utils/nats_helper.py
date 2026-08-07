@@ -14,7 +14,7 @@ import traceback
 from typing import Dict, Any
 from sanic.log import logger
 from influxdb_client import Point, WritePrecision
-from core.nats_utils import NatsLinesPublishError, nats_publish, nats_publish_lines
+from core.infra.nats_utils import NatsLinesPublishError, nats_publish, nats_publish_lines
 
 
 class MetricsPublishError(RuntimeError):
@@ -253,7 +253,7 @@ async def publish_metrics_to_nats(
     每条指标数据单独发送一次消息
 
     Args:
-        ctx: ARQ 上下文
+        ctx: 采集运行上下文
         metrics_data: Prometheus 格式的指标数据
         params: 采集参数（包含 tags）
         task_id: 任务ID
@@ -605,5 +605,14 @@ def _build_common_tags(params: Dict[str, Any]) -> Dict[str, str]:
         "collect_type": api_tags.get("collect_type") or "monitor",
         "config_type": api_tags.get("config_type") or "auto",
     }
+    for identity_key in (
+        "collection_task_id",
+        "collection_fence",
+        "collection_target",
+        "collection_plugin_ref",
+        "collection_result_id",
+    ):
+        if params.get(identity_key) not in (None, ""):
+            tags[identity_key] = params[identity_key]
 
     return {key: _clean_common_tag_value(value) for key, value in tags.items() if value}
