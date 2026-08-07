@@ -31,7 +31,7 @@ if echo "$CHANGED_FILES" | grep -q '\.py$'; then
 fi
 
 # ===== Web frontend checks =====
-WEB_FILES=$(echo "$CHANGED_FILES" | grep "^web/" | grep -E '\.(js|jsx|ts|tsx)$')
+WEB_FILES=$(echo "$CHANGED_FILES" | grep "^web/" | grep -E '\.(js|jsx|ts|tsx)$' || true)
 if [ -n "$WEB_FILES" ]; then
     echo "Checking web project..."
     WEB_LINT_FILES=$(echo "$WEB_FILES" | sed 's|^web/||' | grep -v '^scripts/' || true)
@@ -44,7 +44,7 @@ if [ -n "$WEB_FILES" ]; then
 fi
 
 # ===== Mobile frontend checks =====
-MOBILE_FILES=$(echo "$CHANGED_FILES" | grep "^mobile/" | grep -E '\.(js|jsx|ts|tsx)$')
+MOBILE_FILES=$(echo "$CHANGED_FILES" | grep "^mobile/" | grep -E '\.(js|jsx|ts|tsx)$' || true)
 if [ -n "$MOBILE_FILES" ]; then
     echo "Checking mobile project..."
     MOBILE_LINT_FILES=$(echo "$MOBILE_FILES" | sed 's|^mobile/||')
