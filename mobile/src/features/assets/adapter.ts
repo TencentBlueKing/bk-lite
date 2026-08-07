@@ -29,7 +29,8 @@ export async function listAssetCatalog(signal?: AbortSignal) {
 }
 
 export async function listAssetInstances(modelId: string, page = 1, keyword = '', signal?: AbortSignal): Promise<PageResult<AssetInstance>> {
-  const raw = record(unwrap<unknown>(await apiPost('/cmdb/api/instance/search/', { query_list: keyword ? [{ field: 'inst_name', type: 'str', value: keyword }] : [], page, page_size: 20, order: '', model_id: modelId, role: '', case_sensitive: false }, { signal })));
+  // Web searchFilter 对 str 字段用 str*（contains）；裸 type "str" 会被 CMDB format_search_params 静默跳过
+  const raw = record(unwrap<unknown>(await apiPost('/cmdb/api/instance/search/', { query_list: keyword ? [{ field: 'inst_name', type: 'str*', value: keyword }] : [], page, page_size: 20, order: '', model_id: modelId, role: '', case_sensitive: false }, { signal })));
   return { count: number(raw.count), items: (Array.isArray(raw.insts) ? raw.insts : []).map((item) => mapInstance(item, modelId)).filter((item) => item.id !== undefined && item.id !== null) };
 }
 
@@ -45,6 +46,16 @@ export async function resolveFollowedAssets(config: FollowedAssetsConfig, models
 }
 
 export async function getAssetInstance(instanceId: string | number, signal?: AbortSignal) { return mapInstance(unwrap<unknown>(await apiGet(`/cmdb/api/instance/${instanceId}/`, undefined, { signal })), ''); }
+
+/** Web 无单模型 GET，模型元数据统一走 `/cmdb/api/model/` 列表后按 model_id 匹配 */
+export async function getAssetModel(modelId: string, signal?: AbortSignal): Promise<AssetModel | null> {
+  const raw = unwrap<unknown>(await apiGet('/cmdb/api/model/', undefined, { signal }));
+  const items = (Array.isArray(raw) ? raw : []).map((value) => record(value));
+  const found = items.find((item) => text(item.model_id) === modelId && item.is_visible !== false);
+  if (!found) return null;
+  const id = text(found.model_id);
+  return { id, name: text(found.model_name || id), classificationId: text(found.classification_id), icon: text(found.icn), order: number(found.order_id), visible: true, count: 0 };
+}
 export async function getAssetFieldGroups(modelId: string, signal?: AbortSignal): Promise<{ modelId: string; modelName: string; groups: AssetFieldGroup[] }> {
   const raw = record(unwrap<unknown>(await apiGet('/cmdb/api/field_groups/full_info/', { model_id: modelId }, { signal })));
   const groups = (Array.isArray(raw.groups) ? raw.groups : []).map((value) => { const item = record(value); return {

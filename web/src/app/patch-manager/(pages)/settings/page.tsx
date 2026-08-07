@@ -1,8 +1,9 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Tag, Button, Tabs, Input, Select, Space, TimePicker, Alert, message, Form, Switch, Modal, InputNumber, Spin, Popconfirm, Tooltip } from 'antd';
+import { Tag, Button, Tabs, Input, Select, Space, TimePicker, Alert, message, Form, Switch, Modal, InputNumber, Spin, Tooltip } from 'antd';
 import PermissionWrapper from '@/components/permission';
+import PatchDeletePopconfirm from '@/app/patch-manager/components/delete-popconfirm';
 import Password from '@/components/password';
 import SourceOriginBadge from '@/components/source-origin-badge';
 import type { Dayjs } from 'dayjs';
@@ -341,9 +342,9 @@ function SourcesTab({ activeKey }: { activeKey: string }) {
               </span>
             </Tooltip>
           ) : (
-            <PermissionWrapper requiredPermissions={['Delete']}><Popconfirm title={t('patchManager.settingsPage.confirmDeleteSource')} onConfirm={() => handleDeleteSource(r)} okText={t('patchManager.delete')} cancelText={t('patchManager.cancel')}>
+            <PermissionWrapper requiredPermissions={['Delete']}><PatchDeletePopconfirm title={t('patchManager.settingsPage.confirmDeleteSource', undefined, { name: r.name })} description={t('patchManager.settingsPage.deleteSourceDescription')} onConfirm={() => handleDeleteSource(r)} okText={t('patchManager.delete')} cancelText={t('patchManager.cancel')} okButtonProps={{ danger: true }}>
               <a style={{ color: '#ff4d4f' }}>{t('patchManager.delete')}</a>
-            </Popconfirm></PermissionWrapper>
+            </PatchDeletePopconfirm></PermissionWrapper>
           )}
         </Space>
       ),

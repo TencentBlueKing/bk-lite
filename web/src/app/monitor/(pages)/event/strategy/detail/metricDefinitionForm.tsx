@@ -2,7 +2,6 @@ import React, { useEffect, useCallback, useMemo } from 'react';
 import {
   Form,
   Input,
-  Segmented,
   Select,
   Tooltip,
   InputNumber,
@@ -156,9 +155,17 @@ const MetricDefinitionForm: React.FC<MetricDefinitionFormProps> = ({
           }
           rules={[{ required: true, message: t('common.required') }]}
         >
-          <Segmented
-            className="custom-tabs"
+          <Select
+            style={{ width: '100%' }}
+            placeholder={t('monitor.events.collectionTemplate')}
+            showSearch
+            allowClear={false}
             options={pluginList}
+            filterOption={(input, option) =>
+              String(option?.label || '')
+                .toLowerCase()
+                .includes(input.toLowerCase())
+            }
             onChange={onCollectTypeChange}
           />
         </Form.Item>

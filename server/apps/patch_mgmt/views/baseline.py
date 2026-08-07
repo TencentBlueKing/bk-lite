@@ -10,6 +10,7 @@ from rest_framework.response import Response
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.utils.viewset_utils import AuthViewSet
 from apps.patch_mgmt.constants import ComplianceStatus, GovernanceTaskStatus, GovernanceTaskType
+from apps.patch_mgmt.filters.baseline import PatchBaselineFilter
 from apps.patch_mgmt.models import (
     BaselineRequirement,
     GovernanceTask,
@@ -37,8 +38,12 @@ from apps.patch_mgmt.utils.i18n import patch_message, render_business_error
 class PatchBaselineViewSet(GlobalSharedResourceMixin, AuthViewSet):
     """补丁基线视图集"""
 
-    queryset = PatchBaseline.objects.all()
+    queryset = PatchBaseline.objects.prefetch_related(
+        "requirements__patch__windows_detail",
+        "requirements__patch__linux_detail",
+    ).all()
     serializer_class = PatchBaselineListSerializer
+    filterset_class = PatchBaselineFilter
     search_fields = ["name"]
     ORGANIZATION_FIELD = "team"
     permission_key = "patch_baseline"

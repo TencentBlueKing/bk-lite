@@ -20,16 +20,6 @@
   padding: 12px 12px 20px;
 }
 
-.tabs :global(.adm-tabs-tab-list) {
-  overflow-x: auto;
-  scrollbar-width: none;
-  -webkit-overflow-scrolling: touch;
-}
-
-.tabs :global(.adm-tabs-tab-list)::-webkit-scrollbar {
-  display: none;
-}
-
 .avatar {
   width: 48px;
   height: 48px;
@@ -67,7 +57,7 @@
   padding: 0 8px;
   align-items: center;
   overflow: hidden;
-  font-size: 11px;
+  font-size: var(--font-size-secondary);
   font-weight: 650;
   line-height: 1.2;
   color: var(--color-primary);

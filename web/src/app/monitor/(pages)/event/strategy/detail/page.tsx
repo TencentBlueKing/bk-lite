@@ -52,13 +52,13 @@ import {
 } from '@/app/monitor/constants/event';
 import {
   buildMetricUnitCascaderOptions,
-  filterInvalidCalculationUnit,
   getCalculationUnitOnMetricRowsChange,
   getReverseModeCalculationUnit,
   getThresholdUnitOnCalculationUnitChange,
   resolveEffectiveCalculationUnit,
   resolveInitialMetricPluginId,
   resolveThresholdUnit,
+  resolveUnitOnMetricSelect,
   restoreCalculationUnitState
 } from './strategyDetailUtils';
 import { MetricExpressionRow } from './metricExpressionTypes';
@@ -73,9 +73,6 @@ import {
   toMetricExpressionStateFromQueryCondition
 } from './formulaExpressionUtils';
 const defaultGroup = ['instance_id'];
-
-// 过滤无效的单位值（none 、 short 和 JSON 字符串格式 已从单位列表中移除，不能作为单位值）
-// 已上提至 strategyDetailUtils.filterInvalidCalculationUnit
 
 const StrategyOperation = () => {
   const { t } = useTranslation();
@@ -280,7 +277,7 @@ const StrategyOperation = () => {
           const target = initMetricData.find((item) => item.name === _metricId);
           if (target) {
             const _labels = getMetricDimensionNames(target?.dimensions);
-            const initialBuiltInUnit = filterInvalidCalculationUnit(target?.unit);
+            const initialBuiltInUnit = resolveUnitOnMetricSelect(target?.unit);
             setCalculationUnit(initialBuiltInUnit);
             // 计算完整的分组维度选项列表并设置为所有选项
             const fixedList =
@@ -610,30 +607,10 @@ const StrategyOperation = () => {
 
     // 选择指标后触发验证，清除错误信息（包括指标、条件维度和告警阈值）
     form.validateFields(['metric', 'threshold']);
-    // 自动设置告警阈值单位为指标的默认单位（过滤掉 none 和 short）
-    const filteredUnit = filterInvalidCalculationUnit(target?.unit);
-    if (filteredUnit) {
-      setCalculationUnit(filteredUnit);
-      setThresholdUnit(filteredUnit);
-      return;
-    }
-    const unitList = commonContext?.unitList || [];
-    const baseFilteredList = unitList.filter(
-      (item) => !['none', 'short'].includes(item.unit_id)
-    );
-    const metricUnitItem = unitList.find(
-      (item) => item.unit_id === target?.unit
-    );
-    let defaultUnit: string | null = null;
-    if (metricUnitItem) {
-      // 找到相同 system 的第一个单位
-      const sameSystemUnit = baseFilteredList.find(
-        (item) => item.system === metricUnitItem.system
-      );
-      defaultUnit = sameSystemUnit?.unit_id || null;
-    }
-    setCalculationUnit(defaultUnit);
-    setThresholdUnit(defaultUnit);
+    // none/short/枚举 → null，禁止再按 system===null 回落到 cps 等独立单位
+    const nextUnit = resolveUnitOnMetricSelect(target?.unit);
+    setCalculationUnit(nextUnit);
+    setThresholdUnit(nextUnit);
   };
 
   const getMetrics = async (params = {}, type = '') => {

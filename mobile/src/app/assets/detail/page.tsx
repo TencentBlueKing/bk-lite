@@ -17,10 +17,11 @@ import {
   type AssetInstance,
   type FollowedAssetsConfig,
 } from '@/features/assets/model';
-import { getAssetFieldGroups, getAssetInstance, getFollowedConfig, updateFollowedConfig } from '@/features/assets/adapter';
+import { getAssetFieldGroups, getAssetInstance, getAssetModel, getFollowedConfig, updateFollowedConfig } from '@/features/assets/adapter';
+import { resolveAssetModelIconUrl } from '@/features/assets/model-icon';
 import { useAuth } from '@/context/auth';
 import { formatAccountDateTime } from '@/platform/preferences/dateTime';
-import { readMobileViewSnapshot, writeMobileViewSnapshot } from '@/navigation/mobile-view-cache';
+import { invalidateMobileViewSnapshot, readMobileViewSnapshot, writeMobileViewSnapshot } from '@/navigation/mobile-view-cache';
 import { getCurrentTeamCookie } from '@/utils/teamCookie';
 import { useTranslation } from '@/utils/i18n';
 import styles from '@/features/assets/assets.module.css';
@@ -40,6 +41,8 @@ function AssetDetailContent() {
   const [followStatus, setFollowStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [resolvedModelId, setResolvedModelId] = useState(modelId);
   const [resolvedModelName, setResolvedModelName] = useState(modelName);
+  const [modelIcon, setModelIcon] = useState('');
+  const [iconFailed, setIconFailed] = useState(false);
   const [status, setStatus] = useState<'loading' | 'ready' | 'error' | 'forbidden' | 'missing'>('loading');
   const [saving, setSaving] = useState(false);
   const requestId = useRef(0);
@@ -59,9 +62,10 @@ function AssetDetailContent() {
     try {
       const detail = await getAssetInstance(instanceId, controller.signal);
       const actualModelId = detail.modelId || modelId;
-      const [fieldResult, followedResult] = await Promise.allSettled([
+      const [fieldResult, followedResult, modelResult] = await Promise.allSettled([
         getAssetFieldGroups(actualModelId, controller.signal),
         getFollowedConfig(controller.signal),
+        getAssetModel(actualModelId, controller.signal),
       ]);
       if (currentId !== requestId.current) return;
       if (fieldResult.status === 'rejected') throw fieldResult.reason;
@@ -70,6 +74,10 @@ function AssetDetailContent() {
       setExpandedGroups(new Set(fieldResult.value.groups.filter((group) => !group.collapsed).map((group) => String(group.id))));
       setResolvedModelId(fieldResult.value.modelId || actualModelId);
       setResolvedModelName(fieldResult.value.modelName || modelName);
+      // 图标读取失败不阻塞详情；回退由 resolveAssetModelIconUrl 按内置模型与默认图处理
+      if (modelResult.status === 'fulfilled' && modelResult.value) {
+        setModelIcon(modelResult.value.icon);
+      }
       if (followedResult.status === 'fulfilled') {
         setConfig(followedResult.value);
         setFollowStatus('ready');
@@ -115,6 +123,7 @@ function AssetDetailContent() {
           followed: nowFollowed ? [asset, ...remaining] : remaining,
         }, rootSnapshot.scrollTop);
       }
+      invalidateMobileViewSnapshot(cacheScope, 'assets-root');
       Toast.show({ icon: 'success', content: nowFollowed ? t('assets.followSuccess') : t('assets.unfollowSuccess') });
     } catch {
       Toast.show({ icon: 'fail', content: t('assets.followFailed') });
@@ -128,6 +137,7 @@ function AssetDetailContent() {
   const followLabel = followStatus === 'error'
     ? t('assets.followUnavailable')
     : followed ? t('assets.unfollow') : t('assets.follow');
+  const heroIconSrc = resolveAssetModelIconUrl(modelIcon, resolvedModelId);
 
   const backParams = new URLSearchParams();
   const classificationId = params.get('classificationId') || '';
@@ -166,7 +176,21 @@ function AssetDetailContent() {
       <div className={styles.scroll}>
         <section className={styles.hero}>
           <div className={styles.heroTop}>
-            <span className={styles.heroIcon}><AppstoreOutline aria-hidden="true" /></span>
+            <span className={styles.heroIcon}>
+              {heroIconSrc && !iconFailed ? (
+                <img
+                  key={heroIconSrc}
+                  className={styles.heroIconImage}
+                  src={heroIconSrc}
+                  alt=""
+                  loading="lazy"
+                  decoding="async"
+                  onError={() => setIconFailed(true)}
+                />
+              ) : (
+                <AppstoreOutline aria-hidden="true" />
+              )}
+            </span>
             <div className={styles.heroCopy}>
               <span className={styles.heroModel}>{resolvedModelName}</span>
               <h1 className={styles.heroTitle}>{asset.name}</h1>

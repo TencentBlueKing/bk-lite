@@ -1,5 +1,7 @@
 export const MONITOR_PAGE_SIZE = 20;
 export const INSTANCE_LIST_SUMMARY_LIMIT = 3;
+export const MAX_RECENT_VIEWS = 20;
+export const RECENT_VIEW_SUMMARY_LIMIT = 3;
 
 const DISPLAY_FIELD_KEY_SEP = '::';
 const FIELD_DISPLAY_KEY_PREFIX = 'field';
@@ -94,6 +96,66 @@ export interface PageResult<T> {
   items: T[];
 }
 
+export interface MonitorRecentViewItem {
+  objectId: number;
+  instanceId: string;
+  viewedAt: string;
+}
+
+export interface MonitorRecentViewsConfig {
+  items: MonitorRecentViewItem[];
+}
+
+export interface ResolvedMonitorRecentView {
+  item: MonitorRecentViewItem;
+  object: MonitorObject;
+  instance: MonitorInstance;
+}
+
+export function normalizeRecentViews(value: unknown): MonitorRecentViewsConfig {
+  const source = typeof value === 'object' && value !== null ? value as { items?: unknown } : {};
+  const items = (Array.isArray(source.items) ? source.items : []).flatMap((raw) => {
+    if (typeof raw !== 'object' || raw === null) return [];
+    const row = raw as Record<string, unknown>;
+    const objectId = Number(row.object_id ?? row.objectId);
+    const instanceId = String(row.instance_id ?? row.instanceId ?? '').trim();
+    const viewedAt = String(row.viewed_at ?? row.viewedAt ?? '');
+    if (!Number.isFinite(objectId) || objectId <= 0 || !instanceId) return [];
+    return [{ objectId, instanceId, viewedAt }];
+  }).sort((left, right) => new Date(right.viewedAt || 0).getTime() - new Date(left.viewedAt || 0).getTime())
+    .slice(0, MAX_RECENT_VIEWS);
+  return { items };
+}
+
+export function formatRecentViewTime(
+  value: string,
+  preferences: { locale: string; timezone: string },
+  labels: { justNow: string; minutes: string; hours: string; yesterday: string },
+  nowValue = Date.now(),
+): string {
+  const viewedAt = new Date(value).getTime();
+  if (!Number.isFinite(viewedAt)) return '';
+  const deltaMs = Math.max(0, nowValue - viewedAt);
+  const deltaMinutes = Math.floor(deltaMs / 60_000);
+  if (deltaMinutes < 1) return labels.justNow;
+  if (deltaMinutes < 60) return labels.minutes.replace('{count}', String(deltaMinutes));
+  const deltaHours = Math.floor(deltaMinutes / 60);
+  if (deltaHours < 24) return labels.hours.replace('{count}', String(deltaHours));
+  const viewedDate = new Date(viewedAt);
+  const nowDate = new Date(nowValue);
+  const viewedDay = new Date(viewedDate.getFullYear(), viewedDate.getMonth(), viewedDate.getDate()).getTime();
+  const yesterdayDay = new Date(nowDate.getFullYear(), nowDate.getMonth(), nowDate.getDate() - 1).getTime();
+  if (viewedDay === yesterdayDay) return labels.yesterday;
+  const locale = preferences.locale.toLowerCase().startsWith('zh') ? 'zh-Hans' : 'en';
+  return new Intl.DateTimeFormat(locale, {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    timeZone: preferences.timezone || 'Asia/Shanghai',
+  }).format(viewedDate);
+}
+
 export function monitorRequestErrorKind(error: unknown): 'forbidden' | 'missing' | 'error' {
   if (!(error instanceof Error)) return 'error';
   if (/API Error:\s*403\b/.test(error.message)) return 'forbidden';
@@ -125,6 +187,41 @@ export function sortMonitorInstances(instances: readonly MonitorInstance[]) {
     if (leftRank !== rightRank) return leftRank - rightRank;
     return (right.lastReportedAt || 0) - (left.lastReportedAt || 0);
   });
+}
+
+/** 与 Web viewList 上报状态列一致：仅 normal，其余均视为 unavailable。 */
+export function resolveMonitorReportingStatus(status: string): 'normal' | 'unavailable' | '' {
+  if (!status) return '';
+  return status === 'normal' ? 'normal' : 'unavailable';
+}
+
+export type MonitorReportingStatusFilter = 'normal' | 'unavailable';
+
+/** 与 Web 表头筛选一致：仅单选 status 时生效；双选/空选等同不过滤。 */
+export function normalizeReportingStatusFilters(
+  statuses: readonly string[] | undefined,
+): MonitorReportingStatusFilter[] {
+  const unique = Array.from(new Set(
+    (statuses || []).filter((item): item is MonitorReportingStatusFilter => (
+      item === 'normal' || item === 'unavailable'
+    )),
+  ));
+  return unique.length === 1 ? unique : [];
+}
+
+/** 从 storage_instance_key / instance_id 提取 list 查询用的名称 hint。 */
+export function parseMonitorInstanceLookupHints(instanceId: string) {
+  const trimmed = instanceId.trim();
+  if (!trimmed) return { name: '', idValues: [] as string[] };
+  const tupleMatch = /^\((.*)\)$/.exec(trimmed);
+  if (tupleMatch) {
+    const parts = tupleMatch[1]
+      .split(',')
+      .map((part) => part.trim().replace(/^['"]|['"]$/g, ''))
+      .filter(Boolean);
+    return { name: parts[0] || '', idValues: parts };
+  }
+  return { name: trimmed, idValues: [trimmed] };
 }
 
 /** 与 Web / 服务端 display_field_key 保持一致。 */
@@ -162,7 +259,15 @@ export function resolveDisplayFieldValue(field: MonitorDisplayField, instance: M
       binding.metric,
       field.type === 'field' ? binding.field : undefined,
     );
-    const formatted = formatDisplayValue(readInstanceField(instance, key));
+    const raw = readInstanceField(instance, key);
+    if (field.type === 'field') {
+      if (raw != null && raw !== '') {
+        const formatted = formatDisplayValue(raw);
+        if (formatted !== null) return formatted;
+      }
+      continue;
+    }
+    const formatted = formatDisplayValue(raw);
     if (formatted !== null) return formatted;
   }
   return formatDisplayValue(readInstanceField(instance, field.key));

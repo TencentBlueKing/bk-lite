@@ -94,7 +94,7 @@
   align-items: center;
   min-width: 0;
   overflow: hidden;
-  font-size: 12px;
+  font-size: var(--font-size-secondary);
   font-weight: 650;
   line-height: 1.4;
   color: var(--color-text-2);
@@ -108,7 +108,7 @@
   display: -webkit-box;
   overflow: hidden;
   margin: 0;
-  font-size: 14px;
+  font-size: var(--font-size-subtitle);
   font-weight: 650;
   line-height: 1.45;
   color: var(--color-text-1);
@@ -123,7 +123,7 @@
   gap: 6px;
   min-width: 0;
   overflow: hidden;
-  font-size: 12px;
+  font-size: var(--font-size-secondary);
   line-height: 1.45;
   color: var(--color-text-3);
 }
@@ -142,14 +142,14 @@
   align-items: flex-end;
   align-self: center;
   max-width: 38%;
-  font-size: 12px;
+  font-size: var(--font-size-secondary);
   font-variant-numeric: tabular-nums;
   color: var(--color-text-3);
   text-align: right;
 }
 
 .chevron {
-  font-size: 14px;
+  font-size: var(--font-size-subtitle);
   color: var(--color-text-4);
 }
 

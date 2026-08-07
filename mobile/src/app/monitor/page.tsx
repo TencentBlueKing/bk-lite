@@ -5,9 +5,10 @@ import { useSearchParams } from 'next/navigation';
 import MobilePageHeader from '@/components/mobile-page-header';
 import MobileSegmentTabs from '@/components/mobile-segment-tabs';
 import MobileTabShell from '@/components/mobile-tab-shell';
-import { MobileResult, MobileSkeleton } from '@/components/mobile-feedback';
+import { MobileSkeleton } from '@/components/mobile-feedback';
 import { useAuth } from '@/context/auth';
 import MonitorInstancesPanel from '@/features/monitor/instances-panel';
+import MonitorRecentViewsPanel from '@/features/monitor/recent-views-panel';
 import {
   readMobileViewSnapshot,
   writeMobileViewSnapshot,
@@ -28,7 +29,7 @@ function MonitorPageContent() {
   const objectName = params.get('objectName') || '';
   const cacheScope = `${userInfo?.id || 0}:${getCurrentTeamCookie() || 'none'}`;
   const initialSnapshot = useRef(readMobileViewSnapshot<MonitorRootViewState>(cacheScope, 'monitor-root'));
-  const [activeTab, setActiveTab] = useState(initialSnapshot.current?.data.activeTab || 'all');
+  const [activeTab, setActiveTab] = useState(initialSnapshot.current?.data.activeTab || 'recent');
 
   useEffect(() => {
     writeMobileViewSnapshot<MonitorRootViewState>(cacheScope, 'monitor-root', { activeTab }, 0);
@@ -38,14 +39,12 @@ function MonitorPageContent() {
     <MobileTabShell activeTab="monitor">
       <main className={styles.page}>
         <MobilePageHeader title={t('navigation.monitor')} />
-        <MobileSegmentTabs className={styles.tabs} activeKey={activeTab} onChange={setActiveTab}>
-          <MobileSegmentTabs.Tab key="all" title={t('monitor.tabs.all')} />
+        <MobileSegmentTabs activeKey={activeTab} onChange={setActiveTab}>
           <MobileSegmentTabs.Tab key="recent" title={t('monitor.tabs.recent')} />
+          <MobileSegmentTabs.Tab key="all" title={t('monitor.tabs.all')} />
         </MobileSegmentTabs>
         {activeTab === 'recent' ? (
-          <div className={`${styles.scroll} ${styles.placeholder}`}>
-            <MobileResult kind="empty" title={t('monitor.recentPlaceholder')} />
-          </div>
+          <MonitorRecentViewsPanel />
         ) : (
           <MonitorInstancesPanel objectId={objectId} objectName={objectName} />
         )}

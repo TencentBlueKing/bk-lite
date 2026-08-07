@@ -18,9 +18,10 @@ from apps.patch_mgmt.serializers.patch_source import (
     PatchSourceSerializer,
 )
 from apps.patch_mgmt.services.connectivity_prober import probe_source
+from apps.patch_mgmt.services.patch_origin import snapshot_deleted_source
 from apps.patch_mgmt.services.target_access import GlobalSharedResourceMixin
-from apps.patch_mgmt.utils.operation_log import log_source_changed
 from apps.patch_mgmt.utils.i18n import patch_message
+from apps.patch_mgmt.utils.operation_log import log_source_changed
 
 
 class PatchSourceViewSet(GlobalSharedResourceMixin, AuthViewSet):
@@ -179,6 +180,7 @@ class PatchSourceViewSet(GlobalSharedResourceMixin, AuthViewSet):
                 },
                 status=409,
             )
+        snapshot_deleted_source(source)
         log_source_changed(request, "delete", source.name)
         source.delete()
         return Response(status=204)

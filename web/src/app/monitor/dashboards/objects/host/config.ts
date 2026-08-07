@@ -75,6 +75,15 @@ export const HOST_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       color: '#597ef7'
     },
     {
+      name: 'system_uptime',
+      display_name: '运行时长',
+      description: '主机自上次启动以来的持续运行时间，反映主机稳定性。',
+      unit: 's',
+      // ①Telegraf host；②HTTP Remote；③Windows WMI。
+      query: 'system_uptime{instance_type="os", __$labels__} or system_uptime_gauge{instance_type="os", __$labels__} or system_uptime_gauge_value{instance_type="os", config_type="windows_wmi", __$labels__}',
+      color: '#597ef7'
+    },
+    {
       name: 'mem_used_percent',
       display_name: '内存使用率',
       description: '主机内存使用率。',
@@ -166,6 +175,17 @@ export const HOST_DASHBOARD_CONFIG: SimpleDashboardConfig = {
   ],
   summaryCards: [
     {
+      title: '运行时长',
+      metric: 'system_uptime',
+      unit: 's',
+      formatter: 'duration',
+      isUptimeCard: true,
+      icon: 'clock',
+      color: '#597ef7',
+      guide: [{ label: '运行时长', detail: '主机自上次启动后的持续运行时间；期间发生重启会重新计时。' }],
+      footer: [{ label: '启动', metric: 'system_uptime', formatter: 'startedAt' }]
+    },
+    {
       title: 'CPU 使用率',
       metric: 'cpu_usage_total',
       color: '#2f6bff',
@@ -192,17 +212,6 @@ export const HOST_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       guide: [{
         label: '磁盘使用率',
         detail: '取各挂载点中最高的使用率，反映主机最满分区。持续偏高时先清理该分区或扩容，并对照下方磁盘吞吐是否伴随写入压力。'
-      }]
-    },
-    {
-      title: 'I/O Wait 占比',
-      metric: 'cpu_usage_iowait_total',
-      color: '#ff8a1f',
-      icon: 'thunder',
-      compare: true,
-      guide: [{
-        label: 'I/O Wait 占比',
-        detail: 'CPU 等待 I/O 的时间占比（主要适用于 Linux）。持续偏高时对照下方磁盘吞吐与阻塞进程，优先排查慢盘或网络阻塞。Windows 主机通常无对等指标。'
       }]
     },
     {

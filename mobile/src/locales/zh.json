@@ -31,6 +31,7 @@
         "accountsAndSecurity": "账户与安全",
         "noData": "暂无数据",
         "yesterday": "昨天",
+        "close": "关闭",
         "copiedToClipboard": "已复制到剪贴板",
         "camera": "相机",
         "gallery": "相册",
@@ -55,7 +56,8 @@
         "primaryNavigation": "主导航"
     },
     "availability": {
-        "loadFailed": "业务模块权限与许可加载失败，当前仅保留“我的”。"
+        "loadFailed": "业务模块权限与许可加载失败，当前仅保留“我的”。",
+        "retryHint": "可点重试或下拉刷新；回到前台也会自动再试，成功后业务入口会恢复。"
     },
     "moduleShell": {
         "todoTitle": "待办模块",
@@ -111,30 +113,33 @@
     "monitor": {
         "tabs": { "all": "全部实例", "recent": "最近查看" },
         "objectTree": "监控对象", "selectObject": "按分类选择", "selectObjectFirst": "请先选择监控对象", "selectObjectHint": "实例只在当前对象范围内查询",
-        "recentPlaceholder": "最近查看暂未开放",
-        "objects": "监控对象", "instances": "监控实例", "searchWithin": "在{name}中搜索", "resultCount": "共 {count} 个实例",
-        "allObjects": "选择", "selectObjectAction": "选择", "selectObjectTitle": "选择监控对象", "searchObjects": "搜索对象名称", "searchInstances": "搜索实例", "currentObject": "当前",
-        "listModes": "实例视图", "modeAll": "全部", "modeLoadedIssue": "异常",
-        "shortCount": "{count} 个",
-        "loadedIssueCount": "异常 {issue}/{loaded}",
-        "noLoadedIssues": "已加载数据中暂无异常实例",
-        "columnName": "名称", "columnStatus": "状态", "columnReported": "上报", "summaryField": "摘要",
+        "recentLoadFailed": "最近查看加载失败",
+        "noRecentViews": "还没有最近查看",
+        "noRecentViewsHint": "成功打开实例详情后会出现在这里",
+        "viewedAtJustNow": "刚才",
+        "viewedAtMinutes": "{count} 分钟前",
+        "viewedAtHours": "{count} 小时前",
+        "viewedAtYesterday": "昨天",
+        "objects": "监控对象", "instances": "监控实例", "searchWithin": "在{name}中搜索", "resultCount": "共 {count} 个实例", "objectCountLabel": "{name}（{count}）",
+        "allObjects": "选择", "selectObjectAction": "选择", "selectObjectTitle": "选择监控对象", "searchObjects": "搜索对象名称", "searchInstances": "按实例名称搜索", "currentObject": "当前",
+        "columnName": "名称", "columnReportTime": "上报时间", "columnReportingStatus": "上报状态", "summaryField": "摘要",
+        "filterReportingStatus": "筛选上报状态", "resetFilter": "重置",
         "objectLoadFailed": "监控对象加载失败", "instanceLoadFailed": "实例加载失败", "detailLoadFailed": "实例指标加载失败", "detailForbidden": "没有查看此实例的权限", "detailMissing": "实例不存在或已删除", "backToMonitor": "返回监控", "retryHint": "请检查网络或权限后重试",
         "noObjects": "暂无可见监控对象", "noInstances": "当前对象暂无实例", "noSearchResults": "没有匹配的实例", "endOfList": "已经到底了",
         "noReportTime": "暂无上报时间", "detailTitle": "实例详情", "instanceId": "实例 ID", "dataSource": "数据源", "selectPluginTitle": "选择数据源", "selectPluginAction": "选择", "currentPlugin": "当前", "timeRange": "时间范围",
-        "detailTabs": { "metrics": "指标", "about": "信息" },
         "fields": {
-            "object": "监控对象", "instance": "实例名", "status": "状态", "reportedAt": "最近上报", "interval": "采集间隔", "intervalSeconds": "{count} 秒"
+            "reportedAt": "上报时间", "interval": "采集间隔", "intervalSeconds": "{count} 秒"
         },
         "pluginStatus": { "normal": "在线", "offline": "离线" },
         "expandGroup": "点击展开", "collapseGroup": "收起", "groupCount": "{count} 项",
-        "noMetricsConfigured": "当前实例未配置指标", "noMetricsConfiguredHint": "有效插件下没有可展示的指标定义", "noRangeData": "当前时间范围暂无数据", "metricLoadFailed": "指标加载失败", "seriesCount": "{count} 个数据序列", "otherMetrics": "其他指标",
-        "status": { "normal": "正常", "unavailable": "异常" },
+        "noMetricsConfigured": "当前实例未配置指标", "noMetricsConfiguredHint": "有效插件下没有可展示的指标定义", "noRangeData": "暂无数据", "metricLoadFailed": "指标加载失败", "seriesCount": "{count} 个数据序列", "otherMetrics": "其他指标",
+        "openMetricChart": "查看 {name} 大图", "metricSheetIndex": "{current} / {total}", "metricPrev": "上一项指标", "metricNext": "下一项指标",
+        "reportingStatus": { "normal": "正常", "unavailable": "失联" },
         "ranges": { "15": "15 分钟", "30": "30 分钟", "60": "1 小时", "360": "6 小时", "720": "12 小时", "1440": "24 小时", "10080": "7 天", "43200": "30 天" }
     },
 
     "assets": {
-        "tabs": { "followed": "我关注的", "all": "全部资产" }, "search": "搜索资产", "searchLauncherHint": "按名称、IP 或其他资产属性快速定位", "followedAssets": "我关注的资产", "assetCategories": "资产分类",
+        "tabs": { "followed": "我关注的", "all": "全部资产" }, "search": "搜索资产", "followedAssets": "我关注的资产", "assetCategories": "资产分类",
         "browseByCategory": "全部分类", "backToCategories": "返回全部分类", "viewAllCategories": "查看全部分类", "selectClassificationTitle": "选择分类", "selectClassificationAction": "选择", "currentClassification": "当前", "noClassifications": "暂无可见资产分类", "categoryModelCount": "{count} 个模型", "categorySwitchLabel": "{name}（{count}）", "categoryRowMeta": "{models} 个模型 · {assets} 实例",
         "loadFailed": "资产目录加载失败", "instanceLoadFailed": "资产实例加载失败", "detailLoadFailed": "资产详情加载失败", "detailForbidden": "没有查看此资产的权限", "detailMissing": "资产不存在或已删除", "backToAssets": "返回资产", "retryHint": "请检查网络或权限后重试",
         "resultCount": "共 {count} 项", "shortCount": "{count} 项", "catalogSummary": "{assets} 项资产 · {models} 个模型", "categorySummary": "{assets} 项资产 · {models} 个模型", "organization": "组织", "ipAddress": "IP", "noFollowed": "还没有关注资产", "noFollowedHint": "进入资产详情后可添加关注，结果与 Web 同步", "noModels": "暂无可见资产模型", "noInstances": "当前模型暂无资产", "noInstancesHint": "可切换上方模型继续浏览", "endOfList": "已经到底了",

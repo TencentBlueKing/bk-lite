@@ -7,15 +7,9 @@ import { MobileResult, MobileSkeleton } from '@/components/mobile-feedback';
 import MobileSearchBar from '@/components/mobile-search-bar';
 import { listAssetCatalog, searchAssetsByModel, searchAssetStats } from '@/features/assets/adapter';
 import AssetListCard from '@/features/assets/asset-list-card';
+import { useFollowedAssets } from '@/features/assets/use-followed-assets';
 import type { AssetInstance, AssetModel, SearchModelStat } from '@/features/assets/model';
 import { useMobileAvailability } from '@/platform/availability/context';
-import { useAuth } from '@/context/auth';
-import {
-  readMobileViewSnapshot,
-  restoreMobileViewScroll,
-  writeMobileViewSnapshot,
-} from '@/navigation/mobile-view-cache';
-import { getCurrentTeamCookie } from '@/utils/teamCookie';
 import { useTranslation } from '@/utils/i18n';
 import styles from '@/features/assets/assets.module.css';
 
@@ -24,35 +18,20 @@ interface SearchCriteria {
   exact: boolean;
 }
 
-interface AssetSearchViewState {
-  keyword: string;
-  exact: boolean;
-  criteria: SearchCriteria | null;
-  models: AssetModel[];
-  stats: SearchModelStat[];
-  selected: string;
-  items: AssetInstance[];
-  total: number;
-  page: number;
-  status: 'idle' | 'ready';
-}
-
 function AssetSearchContent() {
   const { t } = useTranslation();
-  const { userInfo } = useAuth();
   const { canAccess } = useMobileAvailability();
-  const cacheScope = `${userInfo?.id || 0}:${getCurrentTeamCookie() || 'none'}`;
-  const initialSnapshot = useRef(readMobileViewSnapshot<AssetSearchViewState>(cacheScope, 'assets-search'));
-  const [keyword, setKeyword] = useState(initialSnapshot.current?.data.keyword || '');
-  const [exact, setExact] = useState(initialSnapshot.current?.data.exact || false);
-  const [criteria, setCriteria] = useState<SearchCriteria | null>(initialSnapshot.current?.data.criteria || null);
-  const [models, setModels] = useState<AssetModel[]>(initialSnapshot.current?.data.models || []);
-  const [stats, setStats] = useState<SearchModelStat[]>(initialSnapshot.current?.data.stats || []);
-  const [selected, setSelected] = useState(initialSnapshot.current?.data.selected || '');
-  const [items, setItems] = useState<AssetInstance[]>(initialSnapshot.current?.data.items || []);
-  const [total, setTotal] = useState(initialSnapshot.current?.data.total || 0);
-  const [page, setPage] = useState(initialSnapshot.current?.data.page || 0);
-  const [status, setStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>(initialSnapshot.current?.data.status || 'idle');
+  const follow = useFollowedAssets();
+  const [keyword, setKeyword] = useState('');
+  const [exact, setExact] = useState(false);
+  const [criteria, setCriteria] = useState<SearchCriteria | null>(null);
+  const [models, setModels] = useState<AssetModel[]>([]);
+  const [stats, setStats] = useState<SearchModelStat[]>([]);
+  const [selected, setSelected] = useState('');
+  const [items, setItems] = useState<AssetInstance[]>([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(0);
+  const [status, setStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const searchRequestId = useRef(0);
   const modelRequestId = useRef(0);
@@ -61,7 +40,6 @@ function AssetSearchContent() {
   const modelMap = useMemo(() => new Map(models.map((model) => [model.id, model])), [models]);
 
   useEffect(() => {
-    if (initialSnapshot.current?.data.models.length) return;
     const controller = new AbortController();
     void listAssetCatalog(controller.signal)
       .then((catalog) => setModels(catalog.models))
@@ -138,30 +116,6 @@ function AssetSearchContent() {
     modelController.current?.abort();
   }, []);
 
-  const saveSnapshot = useCallback((scrollTop = scrollRef.current?.scrollTop || 0) => {
-    if (status !== 'idle' && status !== 'ready') return;
-    writeMobileViewSnapshot<AssetSearchViewState>(cacheScope, 'assets-search', {
-      keyword,
-      exact,
-      criteria,
-      models,
-      stats,
-      selected,
-      items,
-      total,
-      page,
-      status,
-    }, scrollTop);
-  }, [cacheScope, criteria, exact, items, keyword, models, page, selected, stats, status, total]);
-
-  useEffect(() => {
-    saveSnapshot();
-  }, [saveSnapshot]);
-
-  useEffect(() => {
-    restoreMobileViewScroll(scrollRef.current, initialSnapshot.current?.scrollTop);
-  }, []);
-
   const submit = () => void runSearch(keyword, exact).catch(() => undefined);
   const clear = () => {
     searchRequestId.current += 1;
@@ -209,7 +163,7 @@ function AssetSearchContent() {
           <Switch
             checked={exact}
             onChange={changeExact}
-            style={{ '--height': '24px', '--width': '42px' }}
+            style={{ '--height': '18px', '--width': '32px' }}
           />
         </label>
       </div>
@@ -228,7 +182,7 @@ function AssetSearchContent() {
           ))}
         </div>
       )}
-      <div className={styles.scroll} ref={scrollRef} onScroll={(event) => saveSnapshot(event.currentTarget.scrollTop)}>
+      <div className={styles.scroll} ref={scrollRef}>
         {status === 'idle' ? (
           <MobileResult kind="empty" title={t('assets.searchHint')} description={t('assets.searchHintDescription')} />
         ) : status === 'loading' ? (
@@ -244,6 +198,10 @@ function AssetSearchContent() {
                 asset={asset}
                 modelName={modelMap.get(asset.modelId)?.name || asset.modelId}
                 modelIcon={modelMap.get(asset.modelId)?.icon}
+                followed={follow.isFollowed(asset.modelId, asset.id)}
+                followPending={follow.isPending(asset.modelId, asset.id)}
+                followStatus={follow.status}
+                onToggleFollow={(target) => { void follow.toggleFollow(target); }}
                 key={`${asset.modelId}:${asset.id}`}
               />
             ))}

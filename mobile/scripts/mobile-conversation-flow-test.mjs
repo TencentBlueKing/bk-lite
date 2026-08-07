@@ -153,6 +153,11 @@ test('会话、工作台和搜索加载失败时保留明确重试入口', async
   assert.match(conversation, /!messagesLoadFailed && \(/);
   assert.match(workbench, /loadFailed[\s\S]*fetchApplications\(activeTab\)/);
   assert.match(search, /loadFailed[\s\S]*setConversationReloadVersion/);
+  // OpsPilot 搜索页远程请求须确认后触发，不得输入防抖
+  assert.match(search, /onSearch=\{submitSearch\}/);
+  assert.match(search, /const \[keyword,\s*setKeyword\]/);
+  assert.doesNotMatch(search, /setTimeout\(\(\)\s*=>\s*\{[\s\S]*searchWorkbenchApps/, '工作台搜索不得输入防抖请求');
+  assert.match(search, /!keyword\.trim\(\)/);
 });
 
 test('翻译函数在重渲染之间保持稳定，避免会话详情重复请求', async () => {
@@ -412,7 +417,7 @@ test('一级页面标题统一使用稍小的排版 token', async () => {
   const variables = await readProjectFile('src/styles/variables.css');
 
   assert.match(pageHeaderStyles, /font-size:\s*var\(--mobile-page-title-font-size\)/);
-  assert.equal((variables.match(/--mobile-page-title-font-size:\s*17px/g) || []).length, 2);
+  assert.equal((variables.match(/--mobile-page-title-font-size:\s*var\(--font-size-title\)/g) || []).length, 2);
 });
 
 test('外层历史对话列表保留真实最近活跃时间', async () => {

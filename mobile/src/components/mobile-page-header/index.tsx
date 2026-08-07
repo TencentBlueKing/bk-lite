@@ -20,6 +20,8 @@ interface MobilePageHeaderProps {
     href: string;
     icon: ReactNode;
     label: string;
+    /** 跳转前副作用（例如清空独立搜索页上次结果） */
+    onBeforeNavigate?: () => void;
   }>;
 }
 

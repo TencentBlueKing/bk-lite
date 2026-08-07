@@ -8,6 +8,12 @@ from langchain.agents.middleware import AgentMiddleware, ModelRequest, ModelResp
 from langchain_core.messages import AIMessage
 from langchain_core.tools import BaseTool
 
+from apps.opspilot.metis.llm.agent.tool_execution_planner import (
+    _DEFAULT_PLANNED_AI_TEXT_CHARS,
+    _DEFAULT_PLANNED_TOOL_RESULT_CHARS,
+    compact_planned_execution_messages,
+)
+
 # 规划/执行分步模式下禁止暴露给模型的 DeepAgent 内置能力。
 # FS 工具允许在执行步常驻（便于大结果落盘）；write_todos / task / execute 会绕过
 # 「按步精确工具可见性」，必须隐藏。
@@ -118,3 +124,43 @@ class ToolVisibilityMiddleware(AgentMiddleware):
         ],
     ) -> ModelResponse | AIMessage:
         return await handler(self._filter_request(request))
+
+
+class ToolResultCompactionMiddleware(AgentMiddleware):
+    """分步执行步内：每次模型调用前截断过长工具结果，避免 8K 窗口二次溢出。"""
+
+    def __init__(
+        self,
+        *,
+        max_tool_chars: int = _DEFAULT_PLANNED_TOOL_RESULT_CHARS,
+        max_ai_chars: int = _DEFAULT_PLANNED_AI_TEXT_CHARS,
+    ) -> None:
+        super().__init__()
+        self._max_tool_chars = max_tool_chars
+        self._max_ai_chars = max_ai_chars
+
+    def _compact_request(self, request: ModelRequest) -> ModelRequest:
+        messages = list(getattr(request, "messages", None) or [])
+        compacted = compact_planned_execution_messages(
+            messages,
+            max_tool_chars=self._max_tool_chars,
+            max_ai_chars=self._max_ai_chars,
+        )
+        return request.override(messages=compacted)
+
+    def wrap_model_call(
+        self,
+        request: ModelRequest,
+        handler: Callable[[ModelRequest], ModelResponse | AIMessage],
+    ) -> ModelResponse | AIMessage:
+        return handler(self._compact_request(request))
+
+    async def awrap_model_call(
+        self,
+        request: ModelRequest,
+        handler: Callable[
+            [ModelRequest],
+            Awaitable[ModelResponse | AIMessage],
+        ],
+    ) -> ModelResponse | AIMessage:
+        return await handler(self._compact_request(request))

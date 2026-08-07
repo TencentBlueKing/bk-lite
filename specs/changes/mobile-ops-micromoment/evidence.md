@@ -54,7 +54,9 @@
 | 指标与分组 | `/monitor/api/metrics/`、`/monitor/api/metrics_group/` | 由对象和插件元数据驱动。 |
 | 当前值与趋势 | `/monitor/api/metrics_instance/query/`、`/monitor/api/metrics_instance/query_range/` | 支持瞬时与区间查询。 |
 
-最近查看没有现成模型或接口，按规格只做占位，不产生数据写入。
+| 最近查看 | Mobile 本机 `localStorage`（键按账号与团队隔离）；展示时 `resolveRecentViews` 走现有实例 API | `mobile/src/features/monitor/recent-views-storage.ts`；**不写 Server**，不新增 Monitor 表或 `recent_views` API |
+
+**架构约束（2026-08-06 定稿）**：最近查看为 Mobile 本机 localStorage，不跨设备、不写 Server。若需跨端同步或 Web 共用，须单独产品决策后再设计 Server 能力，不得静默复用 CMDB `user_configs` 或补回临时表。
 
 ## 资产 / CMDB
 

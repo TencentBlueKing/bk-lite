@@ -166,6 +166,16 @@ test('菜单权限不因普通窗口焦点切换而整组重载', async () => {
   assert.match(availabilityProvider, /refreshPromiseRef/);
 });
 
+test('我的页可用性失败用顶栏 Banner，账号失败仅头像区局部重试', async () => {
+  const profile = await readProjectFile('src/app/profile/page.tsx');
+  assert.match(profile, /availabilityBanner/);
+  assert.match(profile, /availability\.loadFailed/);
+  assert.match(profile, /MobilePullToRefresh/);
+  assert.match(profile, /identityError/);
+  assert.match(profile, /account\.loadFailed/);
+  assert.doesNotMatch(profile, /inlineNotice/);
+});
+
 test('桌面鼠标下拉刷新先锁定纵向意图，再按阈值触发', async () => {
   const {
     DESKTOP_PULL_THRESHOLD,

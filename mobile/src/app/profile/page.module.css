@@ -27,7 +27,7 @@
 .identityCopy h2 {
   margin: 0;
   overflow: hidden;
-  font-size: 18px;
+  font-size: var(--font-size-title);
   font-weight: 700;
   line-height: 1.35;
   text-overflow: ellipsis;
@@ -36,7 +36,7 @@
 .identityCopy p {
   margin: 4px 0 0;
   overflow: hidden;
-  font-size: 12px;
+  font-size: var(--font-size-secondary);
   color: var(--color-text-3);
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -56,7 +56,7 @@
   align-items: center;
   overflow: hidden;
   color: var(--color-text-2);
-  font-size: 11px;
+  font-size: var(--font-size-secondary);
   font-weight: 650;
   line-height: 1;
   text-overflow: ellipsis;
@@ -78,12 +78,86 @@
 }
 .identityMetaLoading span:first-child { width: 88px; }
 .identityMetaLoading span:last-child { width: 72px; }
+.identityError {
+  display: flex;
+  gap: 10px;
+  margin-top: 10px;
+  align-items: center;
+  justify-content: space-between;
+  font-size: var(--font-size-secondary);
+  line-height: 1.4;
+  color: var(--color-text-3);
+}
+.identityError span { min-width: 0; }
+.identityError button {
+  flex: 0 0 auto;
+  min-height: 32px;
+  padding: 0 10px;
+  color: var(--color-primary);
+  cursor: pointer;
+  background: transparent;
+  border: 1px solid var(--color-primary-border);
+  border-radius: 8px;
+  touch-action: manipulation;
+}
+.identityError button:active { opacity: .76; }
+.identityError button:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+
+.availabilityBanner {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 12px;
+  padding: 12px 14px;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--color-primary-bg);
+  border: 1px solid var(--color-primary-border);
+  border-radius: 12px;
+}
+.availabilityBannerCopy {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+.availabilityBannerCopy strong {
+  font-size: var(--font-size-body);
+  font-weight: 700;
+  line-height: 1.35;
+  color: var(--color-text-1);
+}
+.availabilityBannerCopy span {
+  font-size: var(--font-size-secondary);
+  line-height: 1.4;
+  color: var(--color-text-3);
+}
+.availabilityBannerAction {
+  flex: 0 0 auto;
+  min-width: 72px;
+  min-height: 44px;
+  padding: 0 12px;
+  font-size: var(--font-size-body);
+  font-weight: 650;
+  color: var(--color-primary);
+  cursor: pointer;
+  background: var(--color-bg);
+  border: 1px solid var(--color-primary-border);
+  border-radius: 10px;
+  touch-action: manipulation;
+}
+.availabilityBannerAction:disabled {
+  cursor: default;
+  color: var(--color-text-3);
+  opacity: .7;
+}
+.availabilityBannerAction:not(:disabled):active { opacity: .76; }
+.availabilityBannerAction:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+
 .domain {
   max-width: 92px;
   margin-top: 4px;
   padding: 4px 8px;
   overflow: hidden;
-  font-size: 12px;
+  font-size: var(--font-size-secondary);
   font-weight: 650;
   color: var(--color-primary);
   text-overflow: ellipsis;
@@ -93,20 +167,16 @@
   border-radius: 7px;
 }
 
-.inlineNotice { display: flex; gap: 12px; min-height: 52px; margin-top: 12px; padding: 10px 12px; align-items: center; justify-content: space-between; font-size: 12px; line-height: 1.5; color: var(--color-text-2); background: var(--color-primary-bg); border: 1px solid var(--color-primary-border); border-radius: 10px; }
-.inlineNotice span { min-width: 0; }
-.inlineNotice button { flex: 0 0 auto; min-width: 64px; min-height: 44px; padding: 0 12px; color: var(--color-primary); cursor: pointer; background: var(--color-bg); border: 1px solid var(--color-primary-border); border-radius: 9px; }
-
 .menuSection { margin-top: 12px; overflow: hidden; background: var(--color-bg); border: 1px solid var(--color-border-1); border-radius: 12px; }
 .menuSection :global(.adm-list-body) { border: 0; }
 .menuSection :global(.adm-list-item) { min-height: 56px; padding-left: 14px; }
-.menuSection :global(.adm-list-item-content) { min-height: 56px; font-size: 14px; border-color: var(--color-border-1); }
-.menuIcon { display: grid; width: 32px; height: 32px; margin-right: 4px; font-size: 17px; color: var(--color-primary); background: var(--color-primary-bg); border-radius: 9px; place-items: center; }
+.menuSection :global(.adm-list-item-content) { min-height: 56px; font-size: var(--font-size-subtitle); border-color: var(--color-border-1); }
+.menuIcon { display: grid; width: 32px; height: 32px; margin-right: 4px; font-size: var(--font-size-title); color: var(--color-primary); background: var(--color-primary-bg); border-radius: 9px; place-items: center; }
 
-.logoutButton { width: 100%; min-height: 48px; margin-top: 20px; font-size: 14px; font-weight: 650; color: var(--color-fail); cursor: pointer; background: var(--color-bg); border: 1px solid var(--color-border-1); border-radius: 10px; touch-action: manipulation; }
+.logoutButton { width: 100%; min-height: 48px; margin-top: 20px; font-size: var(--font-size-subtitle); font-weight: 650; color: var(--color-fail); cursor: pointer; background: var(--color-bg); border: 1px solid var(--color-border-1); border-radius: 10px; touch-action: manipulation; }
 .logoutButton:disabled { cursor: default; color: var(--color-text-3); opacity: .6; }
-.logoutButton:active, .inlineNotice button:active { opacity: .76; }
-.logoutButton:focus-visible, .inlineNotice button:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+.logoutButton:active { opacity: .76; }
+.logoutButton:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
 
 @media (max-width: 340px) {
   .scroll { padding-right: 12px; padding-left: 12px; }
