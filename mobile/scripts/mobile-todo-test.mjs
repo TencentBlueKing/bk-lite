@@ -119,16 +119,15 @@ test('待办页面覆盖列表、搜索、详情三区段和轻处置且不跨�
   assert.match(listStyles, /\.statusPill/);
   assert.match(listStyles, /\.tabBadge/);
   assert.match(searchPage, /'title'[\s\S]*'content'[\s\S]*'alert_id'/);
-  assert.match(searchPage, /isMobileViewStale/);
-  assert.match(searchPage, /preserveContent/);
-  assert.match(searchPage, /clearMobileViewStale/);
+  assert.doesNotMatch(searchPage, /readMobileViewSnapshot|writeMobileViewSnapshot|assets-search|todo-search/);
   assert.match(detailPage, /key="summary"[\s\S]*key="events"[\s\S]*key="changes"/);
   assert.match(detailPage, /availableAlertActions/);
   assert.match(detailPage, /primaryAlertAction/);
   assert.match(detailPage, /detailFacts/);
   assert.match(detailPage, /Dialog\.confirm/);
   assert.match(detailPage, /changeStatus\('forbidden'\)|setChangeStatus\(isPermissionDenied/);
-  assert.match(detailPage, /invalidateMobileViewSnapshots\(cacheScope, \['todo-root', 'todo-search'\]\)/);
+  assert.match(detailPage, /invalidateMobileViewSnapshots\(cacheScope, \['todo-root'\]\)/);
+  assert.doesNotMatch(detailPage, /todo-search/);
   assert.match(detailPage, /onBeforeBack=\{dismissPicker\}/);
   assert.match(detailPage, /alertRequestErrorKind/);
   assert.match(detailPage, /todo\.detailForbidden/);
@@ -151,9 +150,8 @@ test('轻处置后标记列表缓存失效，返回时可先展示再静默刷�
   cache.writeMobileViewSnapshot('u1:t1', 'todo-root', { items: [1] }, 40);
   assert.equal(cache.isMobileViewStale('u1:t1', 'todo-root'), false);
 
-  cache.invalidateMobileViewSnapshots('u1:t1', ['todo-root', 'todo-search']);
+  cache.invalidateMobileViewSnapshots('u1:t1', ['todo-root']);
   assert.equal(cache.isMobileViewStale('u1:t1', 'todo-root'), true);
-  assert.equal(cache.isMobileViewStale('u1:t1', 'todo-search'), true);
   assert.deepEqual(cache.readMobileViewSnapshot('u1:t1', 'todo-root'), {
     data: { items: [1] },
     scrollTop: 40,
@@ -161,10 +159,9 @@ test('轻处置后标记列表缓存失效，返回时可先展示再静默刷�
 
   cache.clearMobileViewStale('u1:t1', 'todo-root');
   assert.equal(cache.isMobileViewStale('u1:t1', 'todo-root'), false);
-  assert.equal(cache.isMobileViewStale('u1:t1', 'todo-search'), true);
 
   cache.clearMobileViewCache();
-  assert.equal(cache.isMobileViewStale('u1:t1', 'todo-search'), false);
+  assert.equal(cache.isMobileViewStale('u1:t1', 'todo-root'), false);
 });
 
 test('关注告警列表使用紧凑色柱和一致的 12/14 字号层级', async () => {

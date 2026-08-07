@@ -22,6 +22,7 @@ export default function MobileSegmentTabs({
       className={`${styles.tabs}${className ? ` ${className}` : ''}`}
       activeKey={activeKey}
       onChange={onChange}
+      stretch={false}
     >
       {children}
     </Tabs>

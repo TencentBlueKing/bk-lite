@@ -30,6 +30,7 @@ import {
 import { isSessionExpiredState } from '@/utils/sessionExpiry'
 import { useUserInfoContext } from '@/context/userInfo';
 import { RouteScopedLayout } from '@/app/routeScopedLayout';
+import GlobalWebChat from '@/app/(core)/components/global-webchat';
 
 const Loader = () => (
   <div className="flex justify-center items-center h-screen">
@@ -353,6 +354,7 @@ const StandardRouteLayout = ({ children }: { children: React.ReactNode }) => (
   <>
     <PortalTabTitle />
     <LayoutWithProviders>{children}</LayoutWithProviders>
+    <GlobalWebChat />
   </>
 );
 

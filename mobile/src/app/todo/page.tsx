@@ -1,11 +1,12 @@
 'use client';
 
 import { useCallback, useEffect, useRef } from 'react';
-import { InfiniteScroll, Tabs } from 'antd-mobile';
+import { InfiniteScroll } from 'antd-mobile';
 import { SearchOutline } from 'antd-mobile-icons';
 import { useRouter } from 'next/navigation';
 import MobilePageHeader from '@/components/mobile-page-header';
 import MobilePullToRefresh from '@/components/mobile-pull-to-refresh';
+import MobileSegmentTabs from '@/components/mobile-segment-tabs';
 import MobileTabShell from '@/components/mobile-tab-shell';
 import { MobileResult, MobileSkeleton } from '@/components/mobile-feedback';
 import { AlertCard } from '@/features/todo/alert-card';
@@ -124,17 +125,14 @@ export default function TodoPage() {
         <MobilePageHeader title={t('todo.title')} actions={[{
           href: '/todo/search', icon: <SearchOutline aria-hidden="true" />, label: t('todo.searchAlerts'),
         }]} />
-        <div className={styles.filterBar}>
-          <Tabs
-            className={styles.tabs}
-            activeKey={controller.activeView}
-            onChange={(key) => controller.setActiveView(key as TodoViewKey)}
-          >
-            <Tabs.Tab title={viewTitle('mine', t('todo.views.mine'))} key="mine" />
-            <Tabs.Tab title={viewTitle('high', t('todo.views.high'))} key="high" />
-            <Tabs.Tab title={viewTitle('open', t('todo.views.open'))} key="open" />
-          </Tabs>
-        </div>
+        <MobileSegmentTabs
+          activeKey={controller.activeView}
+          onChange={(key) => controller.setActiveView(key as TodoViewKey)}
+        >
+          <MobileSegmentTabs.Tab title={viewTitle('mine', t('todo.views.mine'))} key="mine" />
+          <MobileSegmentTabs.Tab title={viewTitle('high', t('todo.views.high'))} key="high" />
+          <MobileSegmentTabs.Tab title={viewTitle('open', t('todo.views.open'))} key="open" />
+        </MobileSegmentTabs>
         <div className={styles.scroll} ref={scrollRef} onScroll={(event) => saveSnapshot(event.currentTarget.scrollTop)}>
           <MobilePullToRefresh disabled={loading || highUnavailable} onRefresh={controller.refresh}>
             <div className={styles.refreshContent}>

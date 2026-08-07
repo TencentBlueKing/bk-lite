@@ -1,3 +1,4 @@
+import json
 from types import SimpleNamespace
 
 import pytest
@@ -163,6 +164,46 @@ async def test_planner_uses_compact_catalog_and_normalizes_tool_plan():
 
 
 @pytest.mark.asyncio
+async def test_planner_catalog_prepends_k8s_namespace_lookup_hint():
+    tools = [
+        _tool("resolve_k8s_target_from_alert", "从告警解析目标"),
+        _tool("diagnose_kubernetes_pod_issues", "诊断 Pod"),
+        _tool("list_kubernetes_pods", "列出 Pod"),
+    ]
+
+    class FakeLLM:
+        def __init__(self):
+            self.messages = None
+
+        async def ainvoke(self, messages, config=None):
+            self.messages = messages
+            return AIMessage(
+                content=json.dumps(
+                    {
+                        "goal": "定位 Pod 告警",
+                        "steps": [
+                            {
+                                "objective": "反查命名空间",
+                                "tools": ["resolve_k8s_target_from_alert", "list_kubernetes_pods"],
+                            }
+                        ],
+                    },
+                    ensure_ascii=False,
+                )
+            )
+
+    llm = FakeLLM()
+    plan = await ToolExecutionPlanner(llm).plan(
+        "告警：Unhealthy server-5b8fb979d7-csdcc Startup probe failed",
+        tools,
+    )
+    prompt = "\n".join(str(message.content) for message in llm.messages)
+    assert "缺 namespace" in prompt or "反查" in prompt
+    assert "diagnose_kubernetes_pod_issues" in prompt
+    assert plan.steps[0].tools[0] == "resolve_k8s_target_from_alert"
+
+
+@pytest.mark.asyncio
 async def test_planner_catalog_prepends_monitor_capability_hint():
     tools = [
         _tool("monitor_list_objects", "列出对象"),
@@ -285,6 +326,96 @@ def test_is_context_size_error_detects_provider_messages():
     assert is_context_size_error("BadRequestError: request (9132 tokens) exceeds the available context size (8192 tokens)")
     assert is_context_size_error({"error": {"type": "exceed_context_size_error"}})
     assert not is_context_size_error("connection refused")
+
+
+def test_is_tool_result_failure_detects_json_error_payload():
+    from apps.opspilot.metis.llm.agent.tool_execution_planner import is_tool_result_failure
+
+    assert is_tool_result_failure('{"error": "Pod x 在命名空间 y 中不存在"}')
+    assert is_tool_result_failure({"error": "not found"})
+    assert is_tool_result_failure("error: boom")
+    assert is_tool_result_failure("ok", status="error")
+    assert not is_tool_result_failure('{"phase": "Running"}')
+    assert not is_tool_result_failure("connection refused detail")
+
+
+def test_compact_planned_execution_messages_truncates_tool_and_ai_text():
+    from langchain_core.messages import AIMessage, ToolMessage
+
+    from apps.opspilot.metis.llm.agent.tool_execution_planner import compact_planned_execution_messages
+
+    messages = [
+        ToolMessage(content="t" * 5000, tool_call_id="c1", name="diagnose_kubernetes_pod_issues"),
+        AIMessage(content="a" * 3000),
+        AIMessage(content="keep tool call", tool_calls=[{"id": "1", "name": "x", "args": {}}]),
+    ]
+    out = compact_planned_execution_messages(messages, max_tool_chars=120, max_ai_chars=80)
+    assert len(out[0].content) <= 120
+    assert out[0].content.endswith("...(truncated)")
+    assert len(out[1].content) <= 80
+    assert out[2].content == "keep tool call"
+
+
+def test_enforce_k8s_namespace_lookup_first_prepends_resolve_step():
+    from apps.opspilot.metis.llm.agent.tool_execution_planner import ToolExecutionPlan, ToolExecutionStep, enforce_k8s_namespace_lookup_first
+
+    plan = ToolExecutionPlan(
+        goal="RCA",
+        steps=[ToolExecutionStep(objective="诊断 Pod", tools=["diagnose_kubernetes_pod_issues"])],
+    )
+    fixed = enforce_k8s_namespace_lookup_first(
+        plan,
+        {
+            "resolve_k8s_target_from_alert",
+            "diagnose_kubernetes_pod_issues",
+            "get_kubernetes_pod_logs",
+        },
+        max_steps=4,
+    )
+    assert fixed.steps[0].tools == ["resolve_k8s_target_from_alert"]
+    assert fixed.steps[1].tools == ["diagnose_kubernetes_pod_issues"]
+
+    with_prep = ToolExecutionPlan(
+        goal="RCA",
+        steps=[
+            ToolExecutionStep(objective="确认时间", tools=["current_time"]),
+            ToolExecutionStep(objective="诊断 Pod", tools=["diagnose_kubernetes_pod_issues"]),
+        ],
+    )
+    fixed_mid = enforce_k8s_namespace_lookup_first(
+        with_prep,
+        {"resolve_k8s_target_from_alert", "current_time", "diagnose_kubernetes_pod_issues"},
+        max_steps=4,
+    )
+    assert [step.tools for step in fixed_mid.steps] == [
+        ["current_time"],
+        ["resolve_k8s_target_from_alert"],
+        ["diagnose_kubernetes_pod_issues"],
+    ]
+
+
+@pytest.mark.asyncio
+async def test_planner_normalize_hard_enforces_namespace_lookup():
+    tools = [
+        _tool("resolve_k8s_target_from_alert", "反查"),
+        _tool("diagnose_kubernetes_pod_issues", "诊断"),
+    ]
+
+    class FakeLLM:
+        async def ainvoke(self, messages, config=None):
+            return AIMessage(
+                content=json.dumps(
+                    {
+                        "goal": "定位",
+                        "steps": [{"objective": "直接诊断", "tools": ["diagnose_kubernetes_pod_issues"]}],
+                    },
+                    ensure_ascii=False,
+                )
+            )
+
+    plan = await ToolExecutionPlanner(FakeLLM()).plan("Unhealthy server-xxx", tools)
+    assert plan.steps[0].tools == ["resolve_k8s_target_from_alert"]
+    assert plan.steps[1].tools == ["diagnose_kubernetes_pod_issues"]
 
 
 def test_token_usage_middleware_records_each_model_call_and_visible_tools():

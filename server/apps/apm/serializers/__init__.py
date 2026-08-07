@@ -14,6 +14,7 @@ from apps.apm.serializers.control_plane import (
     NotificationRecipientQuerySerializer,
     OrganizationAssignmentSerializer,
     ServiceMetricQuerySerializer,
+    SpanSearchSerializer,
     TraceSearchSerializer,
 )
 
@@ -33,5 +34,6 @@ __all__ = [
     "NotificationDeliveryRetrySerializer",
     "NotificationRecipientQuerySerializer",
     "ServiceMetricQuerySerializer",
+    "SpanSearchSerializer",
     "TraceSearchSerializer",
 ]

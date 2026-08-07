@@ -18,7 +18,7 @@
   height: 40px;
   align-items: center;
   justify-content: center;
-  font-size: 13px;
+  font-size: var(--font-size-body);
   line-height: 1;
   color: var(--color-text-3);
   pointer-events: none;

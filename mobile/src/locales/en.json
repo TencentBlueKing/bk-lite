@@ -31,6 +31,7 @@
         "accountsAndSecurity": "Accounts & Security",
         "noData": "No data",
         "yesterday": "Yesterday",
+        "close": "Close",
         "copiedToClipboard": "Copied to clipboard",
         "camera": "Camera",
         "gallery": "Gallery",
@@ -55,7 +56,8 @@
         "primaryNavigation": "Primary navigation"
     },
     "availability": {
-        "loadFailed": "Module permissions and licenses could not be loaded. Only Me remains available."
+        "loadFailed": "Module permissions and licenses could not be loaded. Only Me remains available.",
+        "retryHint": "Tap Retry or pull to refresh. Returning to the app also retries automatically."
     },
     "moduleShell": {
         "todoTitle": "To-do module",
@@ -111,30 +113,33 @@
     "monitor": {
         "tabs": { "all": "All instances", "recent": "Recently viewed" },
         "objectTree": "Monitor objects", "selectObject": "Choose by category", "selectObjectFirst": "Choose a monitor object", "selectObjectHint": "Instances are queried only within the selected object",
-        "recentPlaceholder": "Recently viewed is not available yet",
-        "objects": "Monitor objects", "instances": "Instances", "searchWithin": "Search in {name}", "resultCount": "{count} instances",
-        "allObjects": "Select", "selectObjectAction": "Select", "selectObjectTitle": "Select monitor object", "searchObjects": "Search objects", "searchInstances": "Search instances", "currentObject": "Current",
-        "listModes": "Instance views", "modeAll": "All", "modeLoadedIssue": "Issues",
-        "shortCount": "{count}",
-        "loadedIssueCount": "{issue}/{loaded}",
-        "noLoadedIssues": "No issues in the loaded rows",
-        "columnName": "Name", "columnStatus": "Status", "columnReported": "Reported", "summaryField": "Summary",
+        "recentLoadFailed": "Unable to load recently viewed",
+        "noRecentViews": "No recently viewed instances",
+        "noRecentViewsHint": "Instances appear here after you open their details successfully",
+        "viewedAtJustNow": "Just now",
+        "viewedAtMinutes": "{count}m ago",
+        "viewedAtHours": "{count}h ago",
+        "viewedAtYesterday": "Yesterday",
+        "objects": "Monitor objects", "instances": "Instances", "searchWithin": "Search in {name}", "resultCount": "{count} instances", "objectCountLabel": "{name} ({count})",
+        "allObjects": "Select", "selectObjectAction": "Select", "selectObjectTitle": "Select monitor object", "searchObjects": "Search objects", "searchInstances": "Search by instance name", "currentObject": "Current",
+        "columnName": "Name", "columnReportTime": "Report time", "columnReportingStatus": "Reporting status", "summaryField": "Summary",
+        "filterReportingStatus": "Filter reporting status", "resetFilter": "Reset",
         "objectLoadFailed": "Unable to load monitor objects", "instanceLoadFailed": "Unable to load instances", "detailLoadFailed": "Unable to load instance metrics", "detailForbidden": "You do not have permission to view this instance", "detailMissing": "This instance does not exist or was deleted", "backToMonitor": "Back to Monitor", "retryHint": "Check the network or your permissions and retry",
         "noObjects": "No visible monitor objects", "noInstances": "No instances for this object", "noSearchResults": "No matching instances", "endOfList": "End of list",
         "noReportTime": "No report time", "detailTitle": "Instance details", "instanceId": "Instance ID", "dataSource": "Data source", "selectPluginTitle": "Select data source", "selectPluginAction": "Select", "currentPlugin": "Current", "timeRange": "Time range",
-        "detailTabs": { "metrics": "Metrics", "about": "Info" },
         "fields": {
-            "object": "Monitor object", "instance": "Instance", "status": "Status", "reportedAt": "Last reported", "interval": "Interval", "intervalSeconds": "{count}s"
+            "reportedAt": "Report time", "interval": "Interval", "intervalSeconds": "{count}s"
         },
         "pluginStatus": { "normal": "Online", "offline": "Offline" },
         "expandGroup": "Expand", "collapseGroup": "Collapse", "groupCount": "{count} items",
-        "noMetricsConfigured": "No metrics configured", "noMetricsConfiguredHint": "The effective plugin has no displayable metric definitions", "noRangeData": "No data in this time range", "metricLoadFailed": "Unable to load this metric", "seriesCount": "{count} data series", "otherMetrics": "Other metrics",
-        "status": { "normal": "Healthy", "unavailable": "Unhealthy" },
+        "noMetricsConfigured": "No metrics configured", "noMetricsConfiguredHint": "The effective plugin has no displayable metric definitions", "noRangeData": "No data", "metricLoadFailed": "Unable to load this metric", "seriesCount": "{count} data series", "otherMetrics": "Other metrics",
+        "openMetricChart": "Open chart for {name}", "metricSheetIndex": "{current} / {total}", "metricPrev": "Previous metric", "metricNext": "Next metric",
+        "reportingStatus": { "normal": "Healthy", "unavailable": "Unavailable" },
         "ranges": { "15": "15 min", "30": "30 min", "60": "1 hour", "360": "6 hours", "720": "12 hours", "1440": "24 hours", "10080": "7 days", "43200": "30 days" }
     },
 
     "assets": {
-        "tabs": { "followed": "Followed", "all": "All assets" }, "search": "Search assets", "searchLauncherHint": "Find assets by name, IP, or other attributes", "followedAssets": "Followed assets", "assetCategories": "Asset categories",
+        "tabs": { "followed": "Followed", "all": "All assets" }, "search": "Search assets", "followedAssets": "Followed assets", "assetCategories": "Asset categories",
         "browseByCategory": "All categories", "backToCategories": "Back to all categories", "viewAllCategories": "View all categories", "selectClassificationTitle": "Select category", "selectClassificationAction": "Select", "currentClassification": "Current", "noClassifications": "No visible asset categories", "categoryModelCount": "{count} models", "categorySwitchLabel": "{name} ({count})", "categoryRowMeta": "{models} models · {assets} instances",
         "loadFailed": "Unable to load the asset catalog", "instanceLoadFailed": "Unable to load asset instances", "detailLoadFailed": "Unable to load asset details", "detailForbidden": "You do not have permission to view this asset", "detailMissing": "This asset does not exist or was deleted", "backToAssets": "Back to Assets", "retryHint": "Check the network or your permissions and retry",
         "resultCount": "{count} items", "shortCount": "{count} items", "catalogSummary": "{assets} assets · {models} models", "categorySummary": "{assets} assets · {models} models", "organization": "Team", "ipAddress": "IP", "noFollowed": "No followed assets", "noFollowedHint": "Follow an asset from its details. The result is shared with Web.", "noModels": "No visible asset models", "noInstances": "No assets in this model", "noInstancesHint": "Switch models above to continue", "endOfList": "End of list",

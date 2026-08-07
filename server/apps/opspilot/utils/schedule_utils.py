@@ -30,10 +30,12 @@ Legacy Format (still supported, auto-converted):
 """
 
 import re
-from datetime import datetime
 from typing import Any
 
-from croniter import croniter
+from apps.core.utils import time_util as _crontab_time_util
+
+get_crontab_next_runs = _crontab_time_util.get_crontab_next_runs
+resolve_crontab_timezone = _crontab_time_util.resolve_crontab_timezone
 
 # Valid frequency types
 FREQUENCY_TYPES = ("daily", "weekly", "monthly", "crontab")
@@ -373,45 +375,3 @@ def convert_legacy_config(config: dict[str, Any]) -> dict[str, Any]:
         return new_config
 
     return config
-
-
-def get_crontab_next_runs(
-    crontab_expression: str,
-    count: int = 6,
-    base_time: datetime | None = None,
-) -> list[str]:
-    """
-    Get the next N execution times for a crontab expression.
-
-    Args:
-        crontab_expression: 5-field crontab expression (minute hour day month weekday)
-        count: Number of next execution times to return (default: 6)
-        base_time: Base time to calculate from (default: now)
-
-    Returns:
-        List of ISO format datetime strings for next executions
-
-    Raises:
-        ValueError: If crontab expression is invalid
-    """
-    if not crontab_expression or not isinstance(crontab_expression, str):
-        raise ValueError("crontab_expression is required and must be a string")
-
-    expression = crontab_expression.strip()
-
-    # Validate format
-    if not croniter.is_valid(expression):
-        raise ValueError(f"Invalid crontab expression: {expression}")
-
-    if base_time is None:
-        base_time = datetime.now()
-
-    try:
-        cron = croniter(expression, base_time)
-        next_runs = []
-        for _ in range(count):
-            next_time = cron.get_next(datetime)
-            next_runs.append(next_time.strftime("%Y-%m-%d %H:%M:%S"))
-        return next_runs
-    except Exception as e:
-        raise ValueError(f"Failed to calculate next runs: {e}")

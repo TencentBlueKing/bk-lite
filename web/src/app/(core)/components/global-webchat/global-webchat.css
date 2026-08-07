@@ -1,0 +1,145 @@
+#webchat-root > div {
+  z-index: 100;
+}
+
+#webchat-root > div > button {
+  width: 52px !important;
+  height: 52px !important;
+  background: var(--color-primary) !important;
+  border: 1px solid var(--color-primary) !important;
+  border-radius: 50% !important;
+  box-shadow: none !important;
+  animation: none !important;
+  transform: none !important;
+  font-size: 13px !important;
+  font-weight: 600 !important;
+  letter-spacing: 0 !important;
+}
+
+#webchat-root > div > button:hover {
+  background: var(--color-primary-hover) !important;
+  box-shadow: none !important;
+  transform: translateY(-1px) !important;
+}
+
+#webchat-root > div > button:focus-visible {
+  outline: 2px solid var(--color-primary) !important;
+  outline-offset: 3px !important;
+}
+
+#webchat-root > div > div.fixed {
+  right: 20px !important;
+  bottom: 20px !important;
+  width: min(384px, calc(100vw - 32px)) !important;
+  height: min(650px, calc(100vh - 40px)) !important;
+  max-height: calc(100vh - 40px) !important;
+  border: 1px solid var(--color-border) !important;
+  border-radius: 8px !important;
+  box-shadow: none !important;
+}
+
+#webchat-root > div > div.fixed > div {
+  color: var(--color-text-1) !important;
+  background: var(--color-bg) !important;
+  border-radius: 8px !important;
+  box-shadow: none !important;
+}
+
+#webchat-root > div > div.fixed > div > div:first-child {
+  background: var(--color-primary) !important;
+  padding: 14px 16px !important;
+}
+
+#webchat-root > div > div.fixed > div > div:first-child > div > div:first-child {
+  font-size: 16px !important;
+  line-height: 24px !important;
+}
+
+#webchat-root > div > div.fixed > div > div:nth-child(2) {
+  background: var(--color-bg) !important;
+}
+
+#webchat-root > div > div.fixed > div > div:last-child {
+  background: var(--color-bg) !important;
+  border-color: var(--color-border) !important;
+}
+
+#webchat-root .ant-bubble-start .ant-bubble-content {
+  color: var(--color-text-1) !important;
+  background: var(--color-fill-1) !important;
+}
+
+#webchat-root .ant-bubble-end .ant-bubble-content {
+  background: var(--color-primary) !important;
+}
+
+#webchat-root .ant-sender {
+  color: var(--color-text-1) !important;
+  background: var(--color-bg) !important;
+  border-color: var(--color-border-2) !important;
+}
+
+#webchat-root .ant-sender:focus-within {
+  border-color: var(--color-primary) !important;
+  box-shadow: 0 0 0 2px var(--color-primary-bg-active) !important;
+}
+
+#webchat-root .ant-sender-input,
+#webchat-root .ant-input {
+  color: var(--color-text-1) !important;
+  background: transparent !important;
+}
+
+#webchat-root .ant-sender-input::placeholder,
+#webchat-root .ant-input::placeholder,
+#webchat-root .text-gray-400,
+#webchat-root .text-gray-500,
+#webchat-root .text-gray-600 {
+  color: var(--color-text-3) !important;
+}
+
+#webchat-root .text-gray-700,
+#webchat-root .text-gray-900 {
+  color: var(--color-text-1) !important;
+}
+
+#webchat-root .bg-white,
+#webchat-root .bg-gray-100,
+#webchat-root .bg-gray-200 {
+  background-color: var(--color-bg) !important;
+}
+
+#webchat-root .hover\:bg-gray-100:hover,
+#webchat-root .hover\:bg-gray-200:hover {
+  background-color: var(--color-fill-2) !important;
+}
+
+#webchat-root .hover\:text-gray-600:hover {
+  color: var(--color-text-2) !important;
+}
+
+#webchat-root .border-gray-200,
+#webchat-root .border-gray-300 {
+  border-color: var(--color-border) !important;
+}
+
+@media (max-width: 640px) {
+  #webchat-root > div > div.fixed {
+    right: 12px !important;
+    bottom: 12px !important;
+    width: calc(100vw - 24px) !important;
+    height: calc(100vh - 24px) !important;
+    max-height: calc(100vh - 24px) !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #webchat-root *,
+  #webchat-root *::before,
+  #webchat-root *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

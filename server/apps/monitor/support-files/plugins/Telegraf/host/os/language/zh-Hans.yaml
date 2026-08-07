@@ -4,7 +4,7 @@ Host:
 monitor_object:
   Host: 主机
 monitor_object_type:
-  OS: 主机资源
+  OS: 操作系统
 monitor_object_metric:
   Host:
     cpu_usage_total:

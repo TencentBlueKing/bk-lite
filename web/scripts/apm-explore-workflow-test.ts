@@ -17,6 +17,12 @@ assert.match(traces, /分面筛选/, '调用链页应提供真实数据驱动的
 assert.match(traces, /ResultMode = 'detail' \| 'aggregate'/, '调用链页必须支持明细与聚合切换');
 assert.match(traces, /buildAggregate/, '聚合视图必须基于当前命中样本计算');
 assert.match(traces, /traces\/s/, '调用链页必须展示命中速率');
+assert.match(traces, /按 key:value 过滤/, '调用链页搜索框应对齐 Storybook 的 key:value 形态');
+assert.match(traces, /value: 'spans', label: 'Spans'/, '调用链页必须开放 Spans 视角');
+assert.match(traces, /getSpans\(/, 'Spans 视角必须调用受控 Span 检索 API');
+assert.doesNotMatch(traces, /Spans 检索将在数据能力就绪后开放/, 'Spans 能力就绪后不得再展示禁用提示');
+assert.doesNotMatch(traces, /应用 namespace/, '调用链页不得使用表单网格堆砌筛选字段');
+assert.match(traceDetail, /span_id/, 'Trace 详情必须支持从 URL 选中指定 Span');
 assert.match(endpoints, /getServices\(\)/, '端点列表必须来自真实服务目录');
 assert.match(endpoints, /getServiceRed\(/, '端点列表必须来自真实 RED 指标');
 assert.match(endpoints, /top_endpoints/, '端点列表必须使用服务 RED 的端点聚合结果');

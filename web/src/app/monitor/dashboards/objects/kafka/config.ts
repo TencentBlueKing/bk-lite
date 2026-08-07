@@ -21,7 +21,7 @@ export const KAFKA_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: 'Broker 数',
       description: 'Kafka 集群当前可发现的 Broker 数量。',
       unit: 'counts',
-      query: 'sum(kafka_brokers_gauge{__$labels__})',
+      query: 'max by (instance_id) (kafka_brokers_gauge{__$labels__})',
       color: '#2f6bff',
     },
     {

@@ -203,7 +203,9 @@ const MetricPreview: React.FC<MetricPreviewProps> = ({
     if (anchorRow?.metricId || anchorRow?.metricName) {
       return metrics.find(
         (item) =>
-          item.id === anchorRow.metricId || item.name === anchorRow.metricName
+          (anchorRow.metricId != null &&
+            String(item.id) === String(anchorRow.metricId)) ||
+          (!!anchorRow.metricName && item.name === anchorRow.metricName)
       );
     }
     return metrics.find((item) => item.name === metric);

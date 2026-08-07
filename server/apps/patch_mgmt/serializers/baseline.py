@@ -101,6 +101,7 @@ class PatchBaselineListSerializer(PatchPermissionSerializer):
 
     os_type_display = serializers.CharField(source="get_os_type_display", read_only=True)
     requirement_count = serializers.SerializerMethodField()
+    requirement_names = serializers.SerializerMethodField()
     bound_host_count = serializers.SerializerMethodField()
     compliance_distribution = serializers.SerializerMethodField()
     archs = serializers.SerializerMethodField()
@@ -120,6 +121,7 @@ class PatchBaselineListSerializer(PatchPermissionSerializer):
             "description",
             "archs",
             "requirement_count",
+            "requirement_names",
             "bound_host_count",
             "compliance_distribution",
             "is_assessing",
@@ -165,6 +167,19 @@ class PatchBaselineListSerializer(PatchPermissionSerializer):
 
     def get_requirement_count(self, obj):
         return obj.requirements.count()
+
+    def get_requirement_names(self, obj):
+        names = []
+        for requirement in obj.requirements.all():
+            patch = requirement.patch
+            if patch.os_type == "windows":
+                detail = getattr(patch, "windows_detail", None)
+                name = getattr(detail, "kb_number", "")
+            else:
+                detail = getattr(patch, "linux_detail", None)
+                name = getattr(detail, "pkg_name", "")
+            names.append(name or patch.title)
+        return names
 
     def get_bound_host_count(self, obj):
         return self._visible_bindings(obj).count()

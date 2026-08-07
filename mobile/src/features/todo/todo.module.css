@@ -21,66 +21,8 @@
   height: 100%;
   min-height: 0;
   color: var(--color-text-1);
-  background: var(--color-bg);
+  background: var(--color-background-body);
 }
-
-.page > :global(header) { background: var(--color-bg); }
-
-.filterBar {
-  flex: 0 0 auto;
-  padding: 6px 12px 8px;
-  background: var(--color-bg);
-  border-bottom: 1px solid var(--color-border-1);
-}
-
-.tabs {
-  flex: 0 0 auto;
-  padding: 0;
-  background: transparent;
-  border-bottom: 0;
-}
-
-.tabs :global(.adm-tabs-header) {
-  border: 0;
-  padding: 0;
-}
-
-.tabs :global(.adm-tabs-header-mask) { display: none; }
-
-.tabs :global(.adm-tabs-tab-list) {
-  gap: 4px;
-  overflow-x: auto;
-  scrollbar-width: none;
-}
-
-.tabs :global(.adm-tabs-tab-list)::-webkit-scrollbar { display: none; }
-
-.tabs :global(.adm-tabs-tab-wrapper) {
-  flex: 0 0 auto;
-  padding: 0;
-}
-
-.tabs :global(.adm-tabs-tab) {
-  position: relative;
-  min-width: 0;
-  min-height: 32px;
-  padding: 0 12px;
-  font-size: 13px;
-  font-weight: 550;
-  line-height: 32px;
-  color: var(--color-text-3);
-  background: transparent;
-  border-radius: 999px;
-  transition: color 160ms ease, background-color 160ms ease;
-}
-
-.tabs :global(.adm-tabs-tab-active) {
-  font-weight: 650;
-  color: var(--color-primary);
-  background: var(--color-primary-bg);
-}
-
-.tabs :global(.adm-tabs-tab-line) { display: none; }
 
 .scroll {
   flex: 1;
@@ -91,7 +33,7 @@
   -webkit-overflow-scrolling: touch;
 }
 
-.refreshContent { min-height: 100%; background: var(--color-bg); }
+.refreshContent { min-height: 100%; }
 .alertList {
   padding-bottom: 12px;
   overflow: hidden;
@@ -153,7 +95,7 @@
   padding: 0;
   margin: -1px;
   overflow: hidden;
-  font-size: 12px;
+  font-size: var(--font-size-secondary);
   font-weight: 650;
   color: var(--color-text-2);
   white-space: nowrap;
@@ -171,7 +113,7 @@
 
 .statusText, .cardDuration {
   overflow: hidden;
-  font-size: 12px;
+  font-size: var(--font-size-secondary);
   font-variant-numeric: tabular-nums;
   color: var(--color-text-3);
   text-overflow: ellipsis;
@@ -186,7 +128,7 @@
   min-height: 20px;
   padding: 0 8px;
   overflow: hidden;
-  font-size: 11px;
+  font-size: var(--font-size-secondary);
   font-weight: 600;
   line-height: 1.2;
   color: var(--color-text-3);
@@ -214,7 +156,7 @@
 .alertTitle {
   display: -webkit-box;
   overflow: hidden;
-  font-size: 14px;
+  font-size: var(--font-size-subtitle);
   font-weight: 600;
   line-height: 1.4;
   color: var(--color-text-1);
@@ -229,7 +171,7 @@
   align-items: center;
   min-width: 0;
   overflow: hidden;
-  font-size: 12px;
+  font-size: var(--font-size-secondary);
   line-height: 1.35;
   color: var(--color-text-3);
   white-space: nowrap;
@@ -254,7 +196,7 @@
   max-width: 42%;
 }
 
-.cardChevron { align-self: center; font-size: 11px; color: var(--color-text-4); }
+.cardChevron { align-self: center; font-size: var(--font-size-secondary); color: var(--color-text-4); }
 
 .tabTitle {
   display: inline-flex;
@@ -270,7 +212,7 @@
   padding: 0 4px;
   align-items: center;
   justify-content: center;
-  font-size: 10px;
+  font-size: var(--font-size-caption);
   font-weight: 650;
   line-height: 1;
   color: var(--color-text-3);
@@ -279,7 +221,7 @@
   border-radius: 999px;
 }
 
-.tabs :global(.adm-tabs-tab-active) .tabBadge {
+:global(.adm-tabs-tab-active) .tabBadge {
   color: var(--color-primary);
   background: var(--color-bg);
 }
@@ -297,7 +239,7 @@
   min-width: 68px;
   min-height: 34px;
   padding: 0 12px;
-  font-size: 12px;
+  font-size: var(--font-size-secondary);
   font-weight: 550;
   color: var(--color-text-3);
   cursor: pointer;
@@ -314,7 +256,7 @@
 .searchField:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
 .resultSummary {
   padding: 12px 16px 6px;
-  font-size: 12px;
+  font-size: var(--font-size-secondary);
   font-weight: 500;
   color: var(--color-text-3);
 }
@@ -349,16 +291,16 @@
   gap: 6px;
   align-items: center;
   min-width: 0;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--color-text-2);
+  font-size: var(--font-size-body);
+  font-weight: 700;
+  color: var(--color-fail);
 }
 
 .levelDot {
-  flex: 0 0 7px;
-  width: 7px;
-  height: 7px;
-  background: var(--color-warning);
+  flex: 0 0 8px;
+  width: 8px;
+  height: 8px;
+  background: currentColor;
   border-radius: 50%;
 }
 
@@ -367,7 +309,7 @@
   align-items: center;
   min-height: 22px;
   padding: 0 9px;
-  font-size: 11px;
+  font-size: var(--font-size-secondary);
   font-weight: 600;
   color: var(--color-text-3);
   background: var(--color-fill-2);
@@ -379,11 +321,12 @@
 .summaryCard[data-status='processing'] .statusText { color: var(--color-success); }
 
 .detailTitle {
-  margin: 10px 0 12px;
-  font-size: 17px;
+  margin: 8px 0 10px;
+  font-size: var(--font-size-title);
   font-weight: 650;
   line-height: 1.35;
   letter-spacing: -.01em;
+  color: var(--color-text-1);
   overflow-wrap: anywhere;
 }
 
@@ -401,7 +344,7 @@
 .summaryStrip {
   min-width: 0;
   overflow: hidden;
-  font-size: 12px;
+  font-size: var(--font-size-secondary);
   font-weight: 500;
   line-height: 1.45;
   color: var(--color-text-2);
@@ -422,7 +365,7 @@
 }
 
 .detailFactLabel {
-  font-size: 11px;
+  font-size: var(--font-size-secondary);
   font-weight: 500;
   color: var(--color-text-3);
 }
@@ -430,7 +373,7 @@
 .detailFactValue {
   max-width: 100%;
   overflow: hidden;
-  font-size: 12px;
+  font-size: var(--font-size-secondary);
   font-weight: 600;
   line-height: 1.35;
   color: var(--color-text-1);
@@ -450,7 +393,7 @@
   gap: 5px;
   min-width: 0;
   max-width: 100%;
-  font-size: 12px;
+  font-size: var(--font-size-secondary);
   line-height: 1.45;
 }
 
@@ -476,7 +419,7 @@
   min-width: 48px;
   min-height: 42px;
   padding: 10px 0;
-  font-size: 13px;
+  font-size: var(--font-size-body);
   font-weight: 500;
   color: var(--color-text-3);
 }
@@ -500,7 +443,7 @@
 
 .sectionHeading {
   padding: 12px 16px 6px;
-  font-size: 11px;
+  font-size: var(--font-size-secondary);
   font-weight: 650;
   color: var(--color-text-3);
   letter-spacing: .04em;
@@ -519,10 +462,10 @@
   border-bottom: 1px solid var(--color-border-1);
 }
 
-.detailLabel { font-size: 12px; color: var(--color-text-3); }
+.detailLabel { font-size: var(--font-size-secondary); color: var(--color-text-3); }
 .detailValue {
   min-width: 0;
-  font-size: 13px;
+  font-size: var(--font-size-body);
   font-weight: 500;
   color: var(--color-text-1);
   text-align: right;
@@ -533,7 +476,7 @@
 
 .contentBlock {
   padding: 4px 16px 14px;
-  font-size: 13px;
+  font-size: var(--font-size-body);
   line-height: 1.6;
   color: var(--color-text-2);
   white-space: pre-wrap;
@@ -544,7 +487,7 @@
 .contentLabel {
   display: block;
   margin-bottom: 6px;
-  font-size: 11px;
+  font-size: var(--font-size-secondary);
   font-weight: 650;
   color: var(--color-text-3);
   letter-spacing: .04em;
@@ -592,7 +535,7 @@
 .timelineBody { grid-column: 2; }
 
 .timelineTitle {
-  font-size: 13px;
+  font-size: var(--font-size-body);
   font-weight: 600;
   color: var(--color-text-1);
   overflow-wrap: anywhere;
@@ -600,14 +543,14 @@
 
 .timelineMeta {
   margin-top: 2px;
-  font-size: 11px;
+  font-size: var(--font-size-secondary);
   color: var(--color-text-3);
   font-variant-numeric: tabular-nums;
 }
 
 .timelineBody {
   margin-top: 4px;
-  font-size: 12px;
+  font-size: var(--font-size-secondary);
   line-height: 1.5;
   color: var(--color-text-2);
   white-space: pre-wrap;
@@ -630,7 +573,7 @@
   width: 100%;
   min-height: 44px;
   padding: 0 12px;
-  font-size: 14px;
+  font-size: var(--font-size-subtitle);
   font-weight: 600;
   color: var(--color-text-2);
   cursor: pointer;
@@ -666,7 +609,7 @@
 .secondaryActionLink {
   min-height: 28px;
   padding: 0 8px;
-  font-size: 13px;
+  font-size: var(--font-size-body);
   font-weight: 500;
   color: var(--color-text-3);
   cursor: pointer;
@@ -677,7 +620,7 @@
 }
 
 .secondaryActionSep {
-  font-size: 12px;
+  font-size: var(--font-size-secondary);
   color: var(--color-text-4);
   user-select: none;
 }
@@ -709,11 +652,11 @@
   border-bottom: 1px solid var(--color-border-1);
 }
 
-.popupTitle { font-size: 15px; font-weight: 650; }
+.popupTitle { font-size: var(--font-size-subtitle); font-weight: 650; }
 .popupClose {
   min-width: 44px;
   min-height: 44px;
-  font-size: 13px;
+  font-size: var(--font-size-body);
   color: var(--color-text-3);
   cursor: pointer;
   background: transparent;
@@ -741,21 +684,19 @@
 
 .assigneeRow input { width: 18px; height: 18px; accent-color: var(--color-primary); }
 .assigneeCopy { display: flex; flex: 1; flex-direction: column; gap: 2px; min-width: 0; }
-.assigneeName { overflow: hidden; font-size: 14px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
-.assigneeUsername { overflow: hidden; font-size: 12px; color: var(--color-text-3); text-overflow: ellipsis; white-space: nowrap; }
+.assigneeName { overflow: hidden; font-size: var(--font-size-subtitle); font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.assigneeUsername { overflow: hidden; font-size: var(--font-size-secondary); color: var(--color-text-3); text-overflow: ellipsis; white-space: nowrap; }
 .popupFooter { padding: 10px 12px; border-top: 1px solid var(--color-border-1); }
 .popupFooter .actionButton { width: 100%; }
 
 @media (max-width: 340px) {
-  .filterBar { padding-right: 10px; padding-left: 10px; }
-  .tabs :global(.adm-tabs-tab) { padding: 0 10px; font-size: 12px; }
   .detailTabs :global(.adm-tabs-tab-list) { gap: 14px; }
   .alertCard { gap: 10px; padding: 12px; }
   .alertCard::after { right: 12px; left: 27px; }
   .severityMark { width: 3px; }
   .summaryCard { padding-right: 14px; padding-left: 16px; }
   .detailTabs { padding-right: 12px; padding-left: 12px; }
-  .detailTabs :global(.adm-tabs-tab) { min-width: 46px; font-size: 12px; }
+  .detailTabs :global(.adm-tabs-tab) { min-width: 46px; font-size: var(--font-size-secondary); }
   .sectionCard { margin-right: 10px; margin-left: 10px; }
   .detailGrid { grid-template-columns: minmax(76px, 36%) minmax(0, 1fr); padding-left: 14px; }
   .detailLabel,
@@ -763,6 +704,5 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .tabs :global(.adm-tabs-tab),
   .alertCard { transition: none; }
 }

@@ -9,48 +9,20 @@ import MobileSearchBar from '@/components/mobile-search-bar';
 import { AlertCard } from '@/features/todo/alert-card';
 import { listAlertLevels, listAlerts } from '@/features/todo/adapter';
 import { buildSearchQuery, mergePage, type AlertLevel, type AlertSearchField, type TodoAlert } from '@/features/todo/model';
-import { useAuth } from '@/context/auth';
-import {
-  clearMobileViewStale,
-  isMobileViewStale,
-  readMobileViewSnapshot,
-  restoreMobileViewScroll,
-  writeMobileViewSnapshot,
-} from '@/navigation/mobile-view-cache';
-import { getCurrentTeamCookie } from '@/utils/teamCookie';
 import { useTranslation } from '@/utils/i18n';
 import styles from '@/features/todo/todo.module.css';
 
-interface TodoSearchViewState {
-  field: AlertSearchField;
-  input: string;
-  keyword: string;
-  items: TodoAlert[];
-  levels: AlertLevel[];
-  count: number;
-  page: number;
-  status: 'idle' | 'ready';
-}
-
 export default function TodoSearchPage() {
   const { t } = useTranslation();
-  const { userInfo } = useAuth();
   const router = useRouter();
-  const cacheScope = `${userInfo?.id || 0}:${getCurrentTeamCookie() || 'none'}`;
-  const initialSnapshot = useRef(readMobileViewSnapshot<TodoSearchViewState>(cacheScope, 'todo-search'));
-  const shouldRevalidate = useRef(
-    Boolean(initialSnapshot.current?.data.keyword)
-    && initialSnapshot.current?.data.status === 'ready'
-    && isMobileViewStale(cacheScope, 'todo-search'),
-  );
-  const [field, setField] = useState<AlertSearchField>(initialSnapshot.current?.data.field || 'title');
-  const [input, setInput] = useState(initialSnapshot.current?.data.input || '');
-  const [keyword, setKeyword] = useState(initialSnapshot.current?.data.keyword || '');
-  const [items, setItems] = useState<TodoAlert[]>(initialSnapshot.current?.data.items || []);
-  const [levels, setLevels] = useState<AlertLevel[]>(initialSnapshot.current?.data.levels || []);
-  const [count, setCount] = useState(initialSnapshot.current?.data.count || 0);
-  const [page, setPage] = useState(initialSnapshot.current?.data.page || 0);
-  const [status, setStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>(initialSnapshot.current?.data.status || 'idle');
+  const [field, setField] = useState<AlertSearchField>('title');
+  const [input, setInput] = useState('');
+  const [keyword, setKeyword] = useState('');
+  const [items, setItems] = useState<TodoAlert[]>([]);
+  const [levels, setLevels] = useState<AlertLevel[]>([]);
+  const [count, setCount] = useState(0);
+  const [page, setPage] = useState(0);
+  const [status, setStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const requestId = useRef(0);
   const levelMap = useMemo(() => new Map(levels.map((level) => [String(level.levelId), level])), [levels]);
@@ -85,6 +57,10 @@ export default function TodoSearchPage() {
     }
   }, [field, keyword, levels]);
 
+  useEffect(() => () => {
+    requestId.current += 1;
+  }, []);
+
   const submit = (value: string) => {
     const normalized = value.trim();
     setInput(value);
@@ -116,42 +92,6 @@ export default function TodoSearchPage() {
     setStatus('idle');
   };
 
-  const saveSnapshot = useCallback((scrollTop = scrollRef.current?.scrollTop || 0) => {
-    if (status !== 'idle' && status !== 'ready') return;
-    writeMobileViewSnapshot<TodoSearchViewState>(cacheScope, 'todo-search', {
-      field,
-      input,
-      keyword,
-      items,
-      levels,
-      count,
-      page,
-      status,
-    }, scrollTop);
-  }, [cacheScope, count, field, input, items, keyword, levels, page, status]);
-
-  useEffect(() => {
-    saveSnapshot();
-  }, [saveSnapshot]);
-
-  useEffect(() => {
-    restoreMobileViewScroll(scrollRef.current, initialSnapshot.current?.scrollTop);
-    return () => { requestId.current += 1; };
-  }, []);
-
-  useEffect(() => {
-    if (shouldRevalidate.current) {
-      shouldRevalidate.current = false;
-      void search(1, false, keyword, field, true).then((ok) => {
-        if (ok) clearMobileViewStale(cacheScope, 'todo-search');
-      });
-      return;
-    }
-    if (!initialSnapshot.current && isMobileViewStale(cacheScope, 'todo-search')) {
-      clearMobileViewStale(cacheScope, 'todo-search');
-    }
-  }, [cacheScope, field, keyword, search]);
-
   const fieldOptions: Array<{ key: AlertSearchField; label: string }> = [
     { key: 'title', label: t('todo.searchFields.title') },
     { key: 'content', label: t('todo.searchFields.content') },
@@ -176,7 +116,7 @@ export default function TodoSearchPage() {
           ))}
         </div>
       </div>
-      <div className={styles.scroll} ref={scrollRef} onScroll={(event) => saveSnapshot(event.currentTarget.scrollTop)}>
+      <div className={styles.scroll} ref={scrollRef}>
         <div className={styles.refreshContent}>
           {status === 'loading' ? (
             <MobileSkeleton label={t('common.loading')} variant="list" rows={5} />

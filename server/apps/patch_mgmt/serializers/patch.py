@@ -8,6 +8,10 @@ from rest_framework import serializers
 from apps.patch_mgmt.constants import PackageManagerType
 from apps.patch_mgmt.models import LinuxPatchDetail, Patch, WindowsPatchDetail
 from apps.patch_mgmt.serializers.permission import PatchPermissionSerializer
+from apps.patch_mgmt.services.patch_origin import (
+    source_details_for_patch,
+    source_type_for_patch,
+)
 from apps.patch_mgmt.utils.architecture import X86_64, UnsupportedArchitecture, normalize_architectures, validate_os_architecture
 from apps.patch_mgmt.utils.i18n import serializer_message
 
@@ -93,6 +97,7 @@ class PatchListSerializer(PatchPermissionSerializer):
     linux_detail = LinuxPatchDetailSerializer(required=False, allow_null=True)
     sources = serializers.PrimaryKeyRelatedField(many=True, read_only=True)
     source_type = serializers.SerializerMethodField()
+    source_details = serializers.SerializerMethodField()
     baseline_requirement_count = serializers.SerializerMethodField()
     package_info = serializers.SerializerMethodField()
     permission_key = "patch"
@@ -115,6 +120,7 @@ class PatchListSerializer(PatchPermissionSerializer):
             "applicable_scope",
             "sources",
             "source_type",
+            "source_details",
             "package_info",
             "windows_detail",
             "linux_detail",
@@ -131,8 +137,10 @@ class PatchListSerializer(PatchPermissionSerializer):
         read_only_fields = ["id", "last_synced_at", "created_by", "created_at", "updated_at"]
 
     def get_source_type(self, obj):
-        first_source = obj.sources.first()
-        return first_source.source_type if first_source else None
+        return source_type_for_patch(obj)
+
+    def get_source_details(self, obj):
+        return source_details_for_patch(obj)
 
     def get_baseline_requirement_count(self, obj):
         return obj.baseline_requirements.count()

@@ -527,8 +527,58 @@ def test_agui_stream_stops_forwarding_text_after_tool_call_chunks(monkeypatch):
     assert any(p["type"] == "TOOL_CALL_START" for p in payloads)
 
 
+def test_agui_stream_goes_live_on_single_large_chunk_without_tools(monkeypatch):
+    """单大片正文（Minimax 一类）：超字符阈值即开播并拆多段 CONTENT，不按模型名分支。"""
+
+    async def _never_interrupted(_execution_id):
+        return False
+
+    monkeypatch.setattr(
+        "apps.opspilot.metis.llm.chain.graph.is_interrupt_requested_async",
+        _never_interrupted,
+    )
+
+    big = "广州是广东省省会，" + ("历史悠久文化多元。" * 20)
+    assert len(big) >= 96
+
+    graph = _FakeBasicGraph(
+        [
+            {
+                "event": "on_chat_model_stream",
+                "data": {
+                    "chunk": SimpleNamespace(
+                        content=big,
+                        tool_call_chunks=[],
+                        additional_kwargs={},
+                    )
+                },
+            },
+            {
+                "event": "on_chat_model_end",
+                "data": {
+                    "output": SimpleNamespace(
+                        content=big,
+                        tool_calls=[],
+                    )
+                },
+            },
+        ]
+    )
+    request = BasicLLMRequest(thread_id="thread-minimax-like", extra_config={})
+
+    async def _collect_payloads():
+        return _parse_sse_payloads([line async for line in graph.agui_stream(request)])
+
+    payloads = asyncio.run(_collect_payloads())
+    text_deltas = [p["delta"] for p in payloads if p["type"] == "TEXT_MESSAGE_CONTENT"]
+    assert "".join(text_deltas) == big
+    assert len(text_deltas) >= 2
+    assert all(len(d) <= 64 for d in text_deltas[:-1])
+    assert sum(1 for p in payloads if p["type"] == "TEXT_MESSAGE_START") == 1
+
+
 def test_agui_stream_emits_plain_answer_without_tools(monkeypatch):
-    """无工具的普通问答：缓冲后在 chat_model_end 发出正文一次。"""
+    """无工具的普通问答：第 2 个正文 chunk 起实时推送，chat_model_end 不重复整段。"""
 
     async def _never_interrupted(_execution_id):
         return False
@@ -561,10 +611,20 @@ def test_agui_stream_emits_plain_answer_without_tools(monkeypatch):
                 },
             },
             {
+                "event": "on_chat_model_stream",
+                "data": {
+                    "chunk": SimpleNamespace(
+                        content="补充一句。",
+                        tool_call_chunks=[],
+                        additional_kwargs={},
+                    )
+                },
+            },
+            {
                 "event": "on_chat_model_end",
                 "data": {
                     "output": SimpleNamespace(
-                        content="你好，这是结论。",
+                        content="你好，这是结论。补充一句。",
                         tool_calls=[],
                     )
                 },
@@ -578,7 +638,12 @@ def test_agui_stream_emits_plain_answer_without_tools(monkeypatch):
 
     payloads = asyncio.run(_collect_payloads())
     text_deltas = [p["delta"] for p in payloads if p["type"] == "TEXT_MESSAGE_CONTENT"]
-    assert text_deltas == ["你好，这是结论。"]
+    assert "".join(text_deltas) == "你好，这是结论。补充一句。"
+    # 第 2 chunk 起直播：至少拆成「前两段合并 + 后续增量」，且不得在 end 再整段重发。
+    assert len(text_deltas) >= 2
+    assert text_deltas[-1] == "补充一句。"
+    assert sum(1 for p in payloads if p["type"] == "TEXT_MESSAGE_START") == 1
+    assert sum(1 for p in payloads if p["type"] == "TEXT_MESSAGE_END") == 1
 
 
 def test_agui_stream_collects_all_llm_token_usage_once_per_run(monkeypatch):
@@ -865,6 +930,62 @@ def test_tool_end_result_is_forwarded_when_event_name_does_not_match_tool_call(m
     assert len(tool_results) == 1
     assert tool_results[0]["toolCallId"] == "tool-1"
     assert tool_results[0]["content"] == "converted markdown"
+
+
+def test_chain_end_synthesizes_tool_start_when_only_tool_message_present(monkeypatch):
+    """嵌套 DeepAgent 未冒泡 TOOL_CALL_START 时，chain_end 的 ToolMessage 仍应补齐 START/RESULT。"""
+
+    async def _never_interrupted(_execution_id):
+        return False
+
+    monkeypatch.setattr(
+        "apps.opspilot.metis.llm.chain.graph.is_interrupt_requested_async",
+        _never_interrupted,
+    )
+
+    graph = _FakeBasicGraph(
+        [
+            {
+                "event": "on_chain_end",
+                "data": {
+                    "output": {
+                        "messages": [
+                            AIMessage(
+                                content="",
+                                tool_calls=[
+                                    {
+                                        "id": "call-time-1",
+                                        "name": "get_current_time",
+                                        "args": {"timezone": "Asia/Shanghai"},
+                                    }
+                                ],
+                            ),
+                            ToolMessage(
+                                content="2026-08-06 16:58:00",
+                                tool_call_id="call-time-1",
+                                name="get_current_time",
+                            ),
+                            AIMessage(content="现在是 2026-08-06 16:58:00"),
+                        ]
+                    }
+                },
+            },
+        ]
+    )
+    request = BasicLLMRequest(thread_id="thread-chain-end-synth-tool", extra_config={})
+
+    async def _collect():
+        return _parse_sse_payloads([line async for line in graph.agui_stream(request)])
+
+    payloads = asyncio.run(_collect())
+    tool_starts = [p for p in payloads if p["type"] == "TOOL_CALL_START"]
+    tool_results = [p for p in payloads if p["type"] == "TOOL_CALL_RESULT"]
+
+    assert len(tool_starts) == 1
+    assert tool_starts[0]["toolCallId"] == "call-time-1"
+    assert tool_starts[0]["toolCallName"] == "get_current_time"
+    assert len(tool_results) == 1
+    assert tool_results[0]["content"] == "2026-08-06 16:58:00"
 
 
 def test_chain_end_tool_messages_are_forwarded_as_tool_results(monkeypatch):

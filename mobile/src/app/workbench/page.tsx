@@ -172,7 +172,6 @@ export default function WorkbenchPage() {
         />
 
         <MobileSegmentTabs
-          className={styles.tabs}
           activeKey={activeTab}
           onChange={(key) => setActiveTab(key as TabKey)}
         >

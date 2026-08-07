@@ -617,7 +617,7 @@ export default function ApmServiceDetailPage() {
                       />
                     ) : (
                       <CatalogState
-                        kind={tracesState === 'ready' ? 'error' : tracesState}
+                        kind={tracesState}
                         description={tracesState === 'empty' ? '当前时间窗暂无调用链样本。' : undefined}
                       />
                     )}

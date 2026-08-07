@@ -17,7 +17,14 @@ import { RABBITMQ_DASHBOARD_CONFIG } from './config';
 import styles from './index.module.scss';
 
 const SUMMARY_TITLES = ['运行时长', '节点健康', '内存使用率', '未确认占比', '消息积压'];
-const CHART_TITLES = ['内存压力趋势', '消息流转趋势', '句柄资源趋势', '节点负载趋势'];
+const CHART_TITLES = [
+  '内存压力趋势',
+  '消息存量趋势',
+  '发布速率趋势',
+  '句柄资源趋势',
+  '运行队列趋势',
+  'Mnesia 事务趋势'
+];
 const RING_TITLES = ['节点内存分布'];
 const DETAIL_TITLES = ['队列与资源详情'];
 
@@ -30,7 +37,7 @@ export default function RabbitMQDashboardPage() {
 
   const [memoryRing] = rings;
   const [resourceDetail] = details;
-  const [memoryChart, messageChart, handleChart, loadChart] = charts;
+  const [memoryChart, messageChart, publishChart, handleChart, runQueueChart, mnesiaChart] = charts;
 
   const renderChart = (chart: typeof charts[number], spanClass: string) =>
     chart ? (
@@ -80,11 +87,13 @@ export default function RabbitMQDashboardPage() {
             {renderChart(memoryChart, styles.span8)}
           </FlexiblePanelSection>
 
-          {/* R2: 消息流转 span6 + 节点负载 span6 = 12 */}
+          {/* R2: 消息存量 + 发布速率；运行队列 + Mnesia */}
           <div className={styles.sectionLabel}>消息与负载</div>
           <FlexiblePanelSection styles={styles}>
             {renderChart(messageChart, styles.span6)}
-            {renderChart(loadChart, styles.span6)}
+            {renderChart(publishChart, styles.span6)}
+            {renderChart(runQueueChart, styles.span6)}
+            {renderChart(mnesiaChart, styles.span6)}
           </FlexiblePanelSection>
 
           {/* R3: 句柄资源 span6 + 队列与资源详情 span6 = 12 —— 详情配折线 */}

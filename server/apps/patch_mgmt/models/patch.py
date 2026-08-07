@@ -59,6 +59,10 @@ class Patch(TimeInfo, MaintainerInfo):
         related_name="patches",
         verbose_name="来源",
     )
+    deleted_source_snapshots = models.JSONField(
+        default=list,
+        verbose_name="已删除来源快照",
+    )
 
     pkg_status = models.CharField(
         max_length=32,
