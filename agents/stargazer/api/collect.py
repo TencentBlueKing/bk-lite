@@ -4,32 +4,33 @@
 # @Author: windyzhao
 import time
 import json
-import base64
-import re
 from typing import List
 
 from sanic import Blueprint
-from sanic.log import logger
+from core.logger import logger
 from sanic import response
 
-from core.credential_state_cache import CredentialStateCache
-from core.collection_application import get_collection_application
-from core.collection_request_builder import build_collection_request
-from core.collection_runtime import SubmissionStatus
+from core.infra.credential_state_cache import CredentialStateCache
+from core.collection.application import get_collection_application
+from core.collection.request_builder import (
+    build_collection_request,
+    parse_credentials_pool,
+)
+from core.collection.request_identity import build_request_task_id_from_request
+
+# 兼容旧测试/调用方私有名
+_parse_credentials_pool = parse_credentials_pool
+from core.collection.runtime import SubmissionStatus
 from plugins.base_utils import expand_ip_range
 from tasks.collectors.host_collector import _escape_prometheus_label_value
 
 collect_router = Blueprint("collect", url_prefix="/collect")
 
 
-def _request_task_id(request, params: dict) -> str:
-    return str(
-        request.headers.get("x-task-id")
-        or request.headers.get("task_id")
-        or params.get("task_id")
-        or params.get("collect_task_id")
-        or ""
-    ).strip()
+def _request_task_id(request, params: dict | None = None) -> str:
+    """薄租约 ID：规范化请求指纹；忽略调用方传入的 task_id。"""
+    del params  # 保留形参以兼容旧调用；身份不再来自 params
+    return build_request_task_id_from_request(request)
 
 
 async def _submit_collection_run(request, task_params: dict, model_id: str):
@@ -38,7 +39,7 @@ async def _submit_collection_run(request, task_params: dict, model_id: str):
         task_params["hosts"] = _parse_hosts(hosts_param)
         if not task_params["hosts"]:
             raise ValueError("Failed to parse hosts parameter")
-    task_params["credentials_pool"] = _parse_credentials_pool(
+    task_params["credentials_pool"] = parse_credentials_pool(
         task_params.get("credentials_pool"), params=task_params
     )
     collection_request = build_collection_request(
@@ -49,8 +50,6 @@ async def _submit_collection_run(request, task_params: dict, model_id: str):
     http_status = {
         SubmissionStatus.ACCEPTED: 202,
         SubmissionStatus.DUPLICATE_ACTIVE: 202,
-        SubmissionStatus.COMPLETED: 200,
-        SubmissionStatus.CONFLICT: 409,
         SubmissionStatus.BUSY: 429,
     }[submission.status]
     timestamp = int(time.time() * 1000)
@@ -134,69 +133,6 @@ def _parse_hosts(hosts_param: str) -> List[str]:
             result.append(segment)
     
     return result
-
-
-FLATTENED_CREDENTIAL_KEY_RE = re.compile(r"^credential_(\d+)_(.+)$")
-
-
-def _parse_flattened_credentials_pool(params: dict | None = None) -> List[dict]:
-    if not isinstance(params, dict) or not params:
-        return []
-
-    raw_count = params.get("credential_count")
-    try:
-        credential_count = int(raw_count)
-    except (TypeError, ValueError):
-        credential_count = 0
-
-    grouped_credentials = {}
-    for key, value in params.items():
-        match = FLATTENED_CREDENTIAL_KEY_RE.match(str(key))
-        if not match:
-            continue
-        index = int(match.group(1))
-        field_name = match.group(2)
-        grouped_credentials.setdefault(index, {})[field_name] = value
-
-    if not grouped_credentials:
-        return []
-
-    if credential_count <= 0:
-        credential_count = max(grouped_credentials) + 1
-
-    credentials_pool = []
-    for index in range(credential_count):
-        credential = grouped_credentials.get(index)
-        if isinstance(credential, dict) and credential:
-            credentials_pool.append(credential)
-    return credentials_pool
-
-
-def _parse_credentials_pool(raw_value=None, params: dict | None = None) -> List[dict]:
-    """解析可选的多凭据参数，优先兼容平铺 header，其次兼容旧 JSON/base64 格式。"""
-    flattened_pool = _parse_flattened_credentials_pool(params)
-    if flattened_pool:
-        return flattened_pool
-
-    if not raw_value:
-        return []
-
-    credentials_pool = raw_value
-    if isinstance(raw_value, str):
-        try:
-            credentials_pool = json.loads(raw_value)
-        except json.JSONDecodeError:
-            try:
-                decoded_value = base64.urlsafe_b64decode(raw_value.encode()).decode()
-                credentials_pool = json.loads(decoded_value)
-            except Exception:
-                logger.warning("Failed to parse credentials_pool payload, fallback to single credential mode")
-                return []
-
-    if not isinstance(credentials_pool, list):
-        return []
-
-    return [item for item in credentials_pool if isinstance(item, dict)]
 
 
 def _build_credential_results_payload(events: List[dict]) -> dict:

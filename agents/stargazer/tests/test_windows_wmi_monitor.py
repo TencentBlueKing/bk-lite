@@ -1,7 +1,7 @@
 import pytest
 
-from core.collection_plugins import MonitorCollectionPlugin
-from core.target_collection_executor import (
+from core.collection.plugins import MonitorCollectionPlugin
+from core.collection.contracts import (
     CollectOutcomeStatus,
     TargetCollectionContext,
 )

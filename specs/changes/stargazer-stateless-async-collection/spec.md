@@ -1,6 +1,6 @@
 # Stargazer 无状态统一异步采集运行时
 
-Status: implemented
+Status: approved for implementation (COMPLETE-PLAN-2026-08-06.md); code converging from superseding digest/fencing/AccessProbe workspace
 
 ## 摘要
 
@@ -12,8 +12,20 @@ Stargazer 移除 ARQ 队列与 Worker，改由 Sanic 承载一个统一的异步
 在插件内部用 `asyncio.to_thread()` 包装成异步插件。运行时不建立 `SyncPluginAdapter`，
 不维护插件专用线程池，也不感知插件是真异步还是包装异步。
 
-Redis 不再充当采集任务队列，但继续承担运行租约、fencing、HTTP 重入、目标断点、凭据亲和/
-冷冻和异步回调上下文。结果仍通过 NATS 或既有 callback 契约发布。
+Redis 不再充当采集任务队列，但继续承担执行中薄租约、凭据亲和/冷冻和异步回调上下文。
+结果仍通过 NATS、VictoriaMetrics 路径或既有 callback 契约发布；单目标完成后立即发布。
+
+> 产品锁定（2026-08-06）：HTTP 接纳采用**薄租约模型**——固定 `task_id` 执行中则 skip，
+> Pod 崩溃丢未发布目标、下周期整轮补采。不做 digest 冲突、fencing 接管与断点续跑。
+> 当前工作区代码若仍含完整 digest/fencing/checkpoint，视为实现超集，后续收敛到本模型。
+>
+> 预检锁定（2026-08-06）：`TargetPolicy`（出站 + TCP 类短探）+ `CredentialAttempt`（结构化尝试结果）。
+> 不再强制公开 `AccessProbe`；禁止长期以 `UNKNOWN → 正式采集` 为主路径。
+> 无响应（`protocol_no_response`）默认连续最多尝试 3 个凭据，可配置取消上限；明确
+> `auth_rejected` / `capability_denied` 仍继续尝试其余未冷冻凭据（不设个数上限）。
+> Host Remote 锁定（2026-08-06）：保留回调专用 attempt/token 身份校验（与薄租约/整轮 fencing
+> 脱钩）。到目标的 SSH/凭据 Attempt 以 Responder 为准；Stargazer 负责 TargetPolicy、提交与
+> 结构化回传契约。本变更 host 范围：monitor host remote + 配置侧 SSH/Job；WMI 非必须可记债。
 
 ## 问题陈述
 
@@ -43,13 +55,17 @@ Redis 不再充当采集任务队列，但继续承担运行租约、fencing、H
 
 1. 移除 ARQ 队列、Worker 进程和 ARQ Redis Client 依赖。
 2. 配置采集与 `monitor_plugins` 共用一个采集运行时。
-3. HTTP 入口按调用方提供的 `task_id` 完成跨 Pod 重入检测。
+3. HTTP 入口按调用方提供的 `task_id` 做跨 Pod 薄租约去重：执行中则跳过，等下周期。
 4. 一个目标对应一个逻辑目标采集；凭据在目标内部串行轮询，不再失败后回全局队尾。
-5. 目标先完成协议可达性预检，确认可以继续后再认证和正式采集。
+5. 目标先经过无凭据 `TargetPolicy`，再对匹配凭据执行 `CredentialAttempt`（插件内可选廉价检查
+   或直接采集）；以结构化尝试结果驱动冷冻与轮换，不以默认 `UNKNOWN` 探针为主路径。
 6. 全链路以异步接口组织，任何遗留同步插件都不得直接阻塞 Sanic 事件循环。
 7. 并发、超时和目标窗口均可配置，`200` 只作为验证场景，不是部署约束。
 8. 服务保持无状态；Docker/Pod 扩容提升不同采集运行之间的整体吞吐。
 9. 用插件契约测试和事件循环负载测试阻止阻塞实现重新进入主链路。
+10. 本变更 CredentialAttempt 必做协议：SNMP、host、VMware（配置与 monitor 同一套）；其余协议
+    分批记债。云厂商 TargetPolicy 使用 API Endpoint TCP/TLS（非 ICMP）。
+11. `protocol_no_response` 默认连续最多 3 次凭据尝试（可配置取消）；`auth_rejected` 仍试完未冷冻凭据。
 
 ## 非目标
 
@@ -71,8 +87,8 @@ Redis 不再充当采集任务队列，但继续承担运行租约、fencing、H
 | `CredentialAttempt` | 一个目标内部使用一个候选凭据进行的一次认证/采集尝试 |
 | `PluginRef` | 运行时使用的统一插件标识；入口的 `monitor_type`、`model_id/plugin_name` 均转换为它 |
 | `CollectOutcome` | 插件返回的 `Completed`、`Deferred` 或 `Failed` 结果 |
-| `RunLease` | Redis 中带 owner、TTL 和 fencing token 的运行所有权 |
-| `TargetCheckpoint` | 同一请求重入时用于跳过已完成目标的短期断点 |
+| `RunLease` | Redis 中带 TTL 与心跳的薄租约，仅表示「此 task_id 正在执行」 |
+| `TargetCheckpoint` | （非薄模型产品要求）旧实现中用于同 task_id 续跑跳过；产品路径不依赖 |
 
 核心不变量：
 
@@ -91,14 +107,15 @@ flowchart TB
     CC --> IA
 
     IA --> CR["CollectionRuntime.submit(request)"]
-    CR <--> RS["Redis 状态<br/>RunLease / Fencing / Checkpoint<br/>Credential State / Callback Context"]
+    CR <--> RS["Redis 状态<br/>薄租约 / 凭据亲和冷冻<br/>Deferred Callback Context"]
 
     CR --> BT["Sanic app.add_task<br/>每个 CollectionRun 一个顶层任务"]
     BT --> TP["TargetPlanner<br/>流式产生目标"]
     TP --> BE["有界目标执行器<br/>全局并发可配置"]
-    BE --> PF["TargetPreflight<br/>协议可达性，默认 5 秒"]
-    PF --> CP["CredentialPolicy<br/>目标内部串行轮询"]
-    CP --> PR["PluginRegistry<br/>统一异步 Plugin 接口"]
+    BE --> PF["TargetPolicy<br/>地址 / 策略 / TCP短探"]
+    PF --> CP["CredentialPolicy<br/>筛选目标凭据并串行轮询"]
+    CP --> AP["CredentialAttempt<br/>结构化尝试 / 可选廉价检查"]
+    AP --> PR["CollectionPlugin"]
     PR --> RP["ResultPublisher"]
     RP --> MN["监控指标 → NATS"]
     RP --> CN["配置结果 → NATS / Callback"]
@@ -119,8 +136,8 @@ async def submit(request: CollectionRequest) -> Submission:
     ...
 ```
 
-这个接口隐藏以下实现：请求摘要、Redis 租约、fencing、Pod 容量接纳、Sanic 任务注册、目标
-流式调度、并发限制、凭据策略、断点、结果汇总和关闭期处理。HTTP 层不得分别编排这些步骤。
+这个接口隐藏以下实现：薄租约去重、Pod 容量接纳、Sanic 任务注册、目标
+流式调度、并发限制、凭据策略、结果汇总和关闭期处理。HTTP 层不得分别编排这些步骤。
 
 概念请求结构：
 
@@ -144,7 +161,8 @@ CollectionRequest(
 
 运行时内部只有在行为确实变化的位置建立 seam：
 
-- `PreflightProbe`：TCP、HTTP/TLS、SNMP/UDP、Cloud Endpoint、Remote Node；
+- `TargetPolicy`：无凭据政策与可选 TCP 短探，只判断是否允许继续尝试凭据；
+- `CredentialAttempt`：插件返回结构化尝试结果；可选内部廉价检查，不强制公开 probe；
 - `CollectionPlugin`：不同插件实现；
 - `ResultPublisher`：监控指标、配置数据、callback。
 
@@ -172,7 +190,7 @@ async def collect(self, target, credential, context):
     return await self.client.collect(target, credential)
 ```
 
-暂时无法异步改造的同步插件在插件内部包装：
+暂时无法异步改造的同步插件在插件内部显式包装：
 
 ```python
 async def collect(self, target, credential, context):
@@ -183,6 +201,9 @@ async def collect(self, target, credential, context):
         context,
     )
 ```
+
+项目不提供 `threaded_collect` 装饰器；显式入口让异步边界、同步实现和参数传递在代码审查中
+可直接识别。不得把包含 Redis、预检、凭据策略和 NATS 发布的整个目标任务包装进线程。
 
 禁止只有 `async def` 外壳、内部仍直接执行同步函数：
 
@@ -201,24 +222,38 @@ async def collect(self, target, credential, context):
 - 取消 `to_thread()` 的等待不能杀死已运行线程，因此不能只依赖外层超时；
 - 包装方式是迁移手段；可使用成熟异步库的插件应逐步改为原生异步。
 
-### 4. HTTP 重入与接纳
+### 4. HTTP 重入与接纳（薄模型）
 
-入口要求调用方提供稳定 `task_id`，并对规范化请求计算摘要。摘要不得包含可恢复的凭据明文；
-优先使用 `credential_id` 和凭据集合版本。确需校验秘密变化时使用服务端 HMAC，不把秘密存入
-Redis 或日志。
+薄租约键由入口对 HTTP 请求做**规范化指纹**派生（`METHOD` + path + 排序 query +
+排序后的业务 headers，忽略 Host/User-Agent/`X-Task-ID` 等噪声头），形如 `req_<sha256>`。
+调用方**不必**再传稳定 `task_id`；显式 `X-Task-ID` / body `task_id` 不参与租约身份。
+同一 Telegraf input / 直触发在 headers/query 不变时指纹稳定，用于防重叠；凭据或参数变更会换键（单飞失效可接受）。
 
-Redis 使用原子操作实现：
+业务字段 `collect_task_id`（及监控 `instance_id` 等）仍用于凭据亲和/冷冻等范围，与租约键解耦。
+CMDB 本轮 `execution_id`（`CollectModels.task_id`）与 Stargazer `CollectionRun.task_id`（请求指纹）不是同一概念。
+失败或重叠则等下一周期；不以同一指纹做崩溃后续跑。
+
+因此接纳只做两件事：**防重叠**与**本 Pod 容量保护**。不做「同 task_id 不同正文」的
+`409` 冲突判定，不在租约过期后接管续跑，不以 fencing 作为主正确性机制。
+
+Redis 使用原子薄租约（`SET NX` + TTL，或等价 Lua）：
 
 | 状态 | 行为 |
 | --- | --- |
-| 相同 `task_id`、相同摘要、租约有效 | 返回 `202 duplicate-active`，不创建第二个任务 |
-| 相同 `task_id`、不同摘要 | 返回 `409 task-id-conflict` |
-| 已完成且断点仍有效 | 返回已有汇总 |
-| 租约过期 | 新 Pod 取得更大的 fencing token，恢复未完成目标 |
+| 相同请求指纹租约仍有效（执行中） | 返回 `202 duplicate-active`（或兼容别名 `skipped`），不创建第二个任务 |
+| 租约不存在或已过期 | 取得薄租约并执行；上一轮未完成目标视为**丢单**，由下周期补采 |
 | 本 Pod 达到接纳上限 | 返回 `429` 和 `Retry-After`，不在内存中无限排队 |
 
-只有在取得租约和本地容量后才调用 `app.add_task`。每个顶层任务必须有名称、完成回调和异常
-消费路径；不得创建无人持有的 fire-and-forget Task。
+只有在取得薄租约和本地容量后才调用 `app.add_task`。每个顶层任务必须有名称、完成回调和异常
+消费路径；不得创建无人持有的 fire-and-forget Task。运行中心跳续期；正常结束或 TTL 到期释放租约。
+响应头 `X-Task-ID` 回传派生指纹，便于排查。
+
+非目标（本薄模型明确不做）：
+
+- `409 task-id-conflict`（同身份不同正文冲突）；
+- 跨 Pod fencing 递增接管；
+- 按 `TargetCheckpoint` 跳过已完成目标后的同指纹续跑；
+- 已完成汇总回读作为主路径（调用方从 VM / 自身状态消费结果）。
 
 ### 5. 数据流
 
@@ -232,28 +267,25 @@ sequenceDiagram
     participant Plugin as "Async Plugin"
     participant Result as "NATS / Callback"
 
-    Caller->>HTTP: "task_id + plugin + targets + credentials"
-    HTTP->>Redis: "原子获取 RunLease"
-    Redis-->>HTTP: "acquired / active / completed / conflict"
+    Caller->>HTTP: "规范化指纹派生 task_id + plugin + targets + credentials"
+    HTTP->>Redis: "薄租约 SET NX + TTL"
+    Redis-->>HTTP: "acquired / duplicate-active"
 
-    alt "重复执行中"
+    alt "执行中（租约有效）"
         HTTP-->>Caller: "202 duplicate-active"
-    else "task_id 参数冲突"
-        HTTP-->>Caller: "409 task-id-conflict"
     else "Pod 容量不足"
         HTTP-->>Caller: "429 + Retry-After"
     else "成功接纳"
         HTTP->>Runtime: "app.add_task(run)"
         HTTP-->>Caller: "202 accepted"
-        Runtime->>Target: "流式执行未完成目标"
-        Target->>Target: "协议可达性预检"
-        Target->>Target: "目标内串行轮询凭据"
-        Target->>Plugin: "await plugin.collect()"
-        Plugin-->>Target: "Completed / Deferred / Failed"
-        Target->>Redis: "保存 pending 结果并校验 fencing"
-        Target->>Result: "携带稳定 result_id 发布单目标结果"
-        Target->>Redis: "标记 completed 断点与凭据状态"
-        Runtime->>Redis: "写入运行汇总并释放租约"
+        Runtime->>Target: "流式执行目标"
+        Target->>Target: "TargetPolicy：地址 / 策略 / TCP短探"
+        Target->>Target: "筛选目标凭据并串行轮询"
+        Target->>Plugin: "CredentialAttempt：结构化尝试"
+        Plugin-->>Target: "success / auth_rejected / ..."
+        Target->>Result: "单目标完成后立即发布到 NATS / VM 路径"
+        Target->>Redis: "更新凭据亲和/冷冻（跨周期记忆）"
+        Runtime->>Redis: "释放薄租约"
     end
 ```
 
@@ -261,24 +293,21 @@ sequenceDiagram
 
 ```mermaid
 flowchart TD
-    S["取得一个目标"] --> D{"已有成功断点？"}
-    D -- "是" --> SK["跳过，避免重入重复采集"]
-    D -- "否" --> P["协议可达性预检<br/>默认超时 5 秒"]
+    S["取得一个目标"] --> P["TargetPolicy<br/>默认超时 5 秒"]
 
-    P --> R{"协议是否可达？"}
-    R -- "否" --> U["TARGET_UNREACHABLE<br/>结束此目标"]
-    R -- "未知，例如 SNMP UDP" --> C
-    R -- "是" --> C["加载成功亲和与冷冻状态"]
+    P --> R{"是否允许继续？"}
+    R -- "否" --> U["target_unreachable<br/>结束此目标"]
+    R -- "是（UDP/云可无可达结论）" --> C["加载成功亲和与冷冻状态"]
 
     C --> N{"存在可尝试凭据？"}
     N -- "否" --> NC["NO_VALID_CREDENTIAL"]
-    N -- "是" --> A["尝试一个凭据"]
+    N -- "是" --> A["CredentialAttempt<br/>尝试一个凭据"]
 
-    A --> V{"认证/采集结果"}
-    V -- "成功" --> OK["记录成功亲和<br/>发布结果"]
-    V -- "认证失败" --> F["冷冻 target + credential"]
-    V -- "网络失败" --> U2["记录目标网络失败<br/>不冷冻凭据"]
-    V -- "插件或数据错误" --> E["记录插件失败<br/>不盲目切换凭据"]
+    A --> Q{"结构化结果"}
+    Q -- "success" --> S1["记亲和并立即发布"]
+    Q -- "auth_rejected / capability_denied" --> F["S1 冷冻"]
+    Q -- "protocol_no_response" --> M{"还有未冷冻凭据？"}
+    Q -- "target_unreachable / service_unavailable" --> U2["记录目标失败<br/>不冷冻凭据"]
 
     F --> M{"还有未冷冻凭据？"}
     M -- "是" --> A
@@ -286,22 +315,52 @@ flowchart TD
 ```
 
 凭据失败后绝不创建新的全局任务。一个目标的所有凭据尝试必须在同一个
-`TargetCollection` 内完成。
+`TargetCollection` 内完成。单目标成功后立即发布，不等待整次 `CollectionRun` 结束。
+Pod 崩溃时未发布的目标丢单；已发布结果保留；下周期用同一固定 `task_id` 整轮重采。
 
-### 7. 目标预检
+### 7. TargetPolicy 与 CredentialAttempt（预检重设计）
 
-“IP 是否通”定义为采集协议是否具备继续执行的条件，不等同于 Ping：
+“IP 是否通”不能等同于“可以采集”。产品锁定的预检不再强制两段公开接口
+（`TargetGate` + `AccessProbe`），而改为：
 
-| 目标类型 | 预检方式 | 失败语义 |
+1. **`TargetPolicy`（无凭据）**：地址、DNS、出站策略；对 TCP 类目标可做短连接探测。成功只表示
+   **允许继续尝试凭据**，不宣称协议/凭据/权限有效。UDP/SNMP 不做裸 UDP connect，也不在此层
+   给出可达结论。
+2. **`CredentialAttempt`（有凭据）**：运行时对每个候选凭据发起一次结构化尝试。插件**可选**在
+   内部先做廉价协议检查再采集，或直接正式采集；运行时不强制公开 `probe()`，也不以
+   `UNKNOWN → 正式采集` 作为默认主路径。
+
+#### 7.1 CredentialAttempt 稳定结果
+
+| 结果 | 含义 | 决策 |
 | --- | --- | --- |
-| SSH、WinRM、数据库、TCP 协议 | `asyncio.open_connection()` 等异步 TCP connect | 目标/端口不可达，不尝试凭据 |
-| HTTPS/API | 异步 DNS + TCP/TLS 或最小 HTTP 请求 | DNS、TLS、连接错误分开分类 |
-| SNMP/UDP | 最小协议请求 | 无响应可能来自网络或凭据，结果为不确定而非武断离线 |
-| 云账号 | 检查云 API Endpoint | 不进行 IP 扫描 |
-| Remote Node | 检查节点和 responder 可用性 | 成功后可以产生 `Deferred` 结果 |
+| `success` | 本凭据采集成功 | 记亲和，立即发布，停止后续凭据 |
+| `auth_rejected` | 明确认认证失败 | S1 冷冻，尝试下一凭据 |
+| `capability_denied` | 认证成功但缺最低读取能力 | 暂与认证失败同冻，尝试下一凭据 |
+| `protocol_no_response` | 无响应，无法区分网络/ACL/凭据 | 不冷冻，尝试下一凭据；**默认连续最多 3 次，可配置取消上限** |
+| `target_unreachable` | 有充分证据表明目标不可达 | 结束目标，不尝试更多凭据 |
+| `service_unavailable` | 目标可达但服务不可用/繁忙 | 结束或延迟目标，不放大凭据 |
+| `tls_validation_failed` | 证书校验失败 | 结束目标；不得降级跳过校验 |
+| `protocol_mismatch` | 端口开放但不是所需协议 | 结束目标 |
+| `rate_limited` / `account_locked` | 限流或账号锁定 | 结束或延迟，不冷冻为普通认证失败 |
+| `plugin_failed` / `misconfigured` | 插件或请求配置错误 | 结束该目标，不逐凭据放大 |
 
-ICMP 只能作为诊断提示，不能作为硬过滤条件。所有用户可配置的出站地址必须复用统一出站
-策略，在 DNS 解析、重定向和实际连接阶段校验允许范围。
+#### 7.2 协议落地优先级与深度
+
+| 目标类型 | TargetPolicy | CredentialAttempt 要求 |
+| --- | --- | --- |
+| 云账号（Aliyun/QCloud/Huawei 等） | API Endpoint **TCP/TLS** 可达（非 ICMP） | 能做则做身份/最低只读 API；**做不到可靠检查时不做假探针**，可达后直接正式采集并用结构化错误分类 |
+| SSH / host / Job | DNS、策略、TCP/22 等 | **本变更必做**：与 host 采集链路同一套 Attempt（含 monitor host 路径） |
+| WinRM / WMI | DNS、策略、TCP/5985 或 5986 | 认证 + 无副作用检查，或直接 attempt（可与 host 批次一并） |
+| MySQL/PostgreSQL/Oracle/MSSQL 等 | DNS、策略、协议端口 TCP 短探 | 登录 + 最低成本能力查询；本变更非必做，分批记债 |
+| HTTP/HTTPS / 存储 API 等 | DNS、策略、TCP/TLS 短探 | 能廉价验证则内部先做；否则直接采集 + 结构化错误；分批记债 |
+| VMware | DNS、策略、TCP/TLS | **本变更必做**：配置采集与 monitor **同一套**完整登录 + 最低成本只读 |
+| SNMP/UDP | 地址与出站策略；不做裸 UDP connect | **本变更优先必做**：带凭据的最小 SNMP GET，区分无响应与明确授权错误 |
+| Remote Job | Responder 可用 | Responder 侧检查到目标的执行能力（可与 host 批次相关） |
+| IP 扫描 | 地址范围与容量上界 | 扫描插件自身有界探测，不逐端口重复 Policy |
+
+当前工作区若仍实现强制 `AccessProbe` + 默认 `UNKNOWN`，视为过渡实现；收敛目标以本节为准。ICMP 不能作硬过滤。TCP 短探成功不能替代凭据尝试。不先建立通用
+Session/evidence 回传框架；插件若能在同连接内先检查再采集可自行局部复用。
 
 ### 8. 凭据亲和与冷冻
 
@@ -321,6 +380,9 @@ Redis 只保存 `credential_id`、失败分类、计数和过期时间，不保�
 3. 已冷冻凭据跳过；
 4. 全部冷冻时返回 `NO_VALID_CREDENTIAL` 和最近 `next_retry_at`。
 
+目标选择器过滤后不存在候选凭据时返回 `NO_MATCHING_CREDENTIAL`；该结果与“存在匹配凭据但
+全部处于冷冻期”的 `NO_VALID_CREDENTIAL` 必须区分。
+
 失败分类：
 
 | 失败 | 状态归属 | 是否尝试下一凭据 |
@@ -331,8 +393,8 @@ Redis 只保存 `credential_id`、失败分类、计数和过期时间，不保�
 | 插件代码、协议解析、结果格式错误 | plugin execution | 否 |
 | SNMP 无响应 | 不确定 | 可尝试下一凭据，但不直接判定 IP 离线 |
 
-初始沿用当前 `1h → 4h → 24h` 冷冻梯度并增加少量随机抖动；成功后清理该目标旧失败
-状态，成功亲和默认保留 7 天。
+产品锁定冷冻梯度为 `5min → 30min → 4h → 24h`（另加少量随机抖动）。成功后只清理**当前成功凭据**
+的失败状态并更新亲和，不清除同目标其它凭据的已确认认证失败。网络失败与插件失败不冷冻。
 
 ### 9. 结果契约
 
@@ -343,11 +405,17 @@ Redis 只保存 `credential_id`、失败分类、计数和过期时间，不保�
 - Deferred Result Publisher：保存可信执行身份和 callback 上下文，回调必须校验 task、attempt、
   fencing token 和 caller，拒绝重复、乱序或过期结果。
 
-每个目标完成后先持久化 `pending` 结果，再校验并保护当前租约后立即发布，最后标记
-`completed`，不等待整个目标集合结束。NATS 失败时重入复用 pending 结果而不重复采集。
-结果幂等键包含 `task_id + target_id + plugin_ref + fencing_token`，结果写入同时校验 fencing。
-发布协议是 at-least-once：进程可能在 NATS 已接收但 completed 落盘前退出，因此下游必须用
-稳定的 `collection_result_id` 去重，并拒绝较小 fencing token 的迟到结果。
+每个目标完成后立即发布，不等待整个目标集合结束。发布协议是 at-least-once（含有限重试）。
+
+去掉以 fencing/pending/checkpoint 支撑的同 `task_id` 续跑发布路径。发布失败时**再重试 1 次**
+（合计 2 次）；仍失败则该目标记失败，不伪报成功，依赖下周期补采或 CMDB 超时兜底。
+
+下游（VictoriaMetrics 时间序列、CMDB 对账、callback 消费方）按自身窗口与业务键去重。
+Host Remote 等 Deferred 回调仍须校验 task / attempt / caller 等可信身份（回调安全，不是整轮
+续跑 fencing）。
+
+Stargazer 与 CMDB 凭据命中事件字段对齐，以及 CMDB「查询 VM → 转换层 → 图库」映射问题，
+另开任务排查，不阻塞本变更发布路径收敛。
 
 ### 10. 并发与容量
 
@@ -382,12 +450,17 @@ Redis 只保存 `credential_id`、失败分类、计数和过期时间，不保�
 
 保留：
 
-- `task_id` 请求摘要和重入状态；
-- RunLease、心跳、owner、TTL 和 fencing token；
-- 单目标完成断点和运行汇总；
-- 凭据成功亲和、冷冻和结果事件；
-- Host Remote 等 Deferred callback 上下文；
-- 必要的短期幂等状态。
+- `task_id` 薄租约（执行中标记、TTL、心跳续期）；
+- 凭据成功亲和、冷冻和结果事件（跨 Telegraf 周期记忆）；
+- Host Remote 等 Deferred callback 上下文与回调身份校验；
+- 必要的短期发布辅助状态（若后续做发布重试）。
+
+不再作为产品要求（可从实现中移除或降级为内部细节）：
+
+- 请求 digest 与 `409 task-id-conflict`；
+- fencing token 递增接管；
+- 单目标完成断点用于同 `task_id` 续跑；
+- 已完成运行汇总回读作为 HTTP 主路径。
 
 移除：
 
@@ -401,21 +474,21 @@ Redis 访问改用普通异步 Redis Client。Redis 不保存完整任务密钥�
 
 ### 12. 无状态、Pod 故障与水平扩容
 
-每个 Pod 只保留当前进程内的活动 Task 注册表、Semaphore 和连接池；所有跨 Pod 正确性状态
-位于 Redis，结果位于 NATS/下游。
+每个 Pod 只保留当前进程内的活动 Task 注册表、Semaphore 和连接池；跨 Pod 的「是否执行中」
+由薄租约表达，凭据状态与 Deferred 上下文仍在 Redis，结果在 NATS / VictoriaMetrics / 下游。
 
-Pod 故障后的恢复语义：
+Pod 故障后的恢复语义（薄模型）：
 
 1. 当前异步执行随进程终止；
-2. RunLease 到期；
-3. 调用方使用同一 `task_id` 重试；
-4. 新 Pod 获得更大的 fencing token；
-5. 根据 `TargetCheckpoint` 跳过已完成目标；
-6. 旧执行即使迟到也不能覆盖新执行结果。
+2. 薄租约因 TTL 过期而释放；
+3. 未发布的目标视为丢单；已发布的单目标结果保留；
+4. 调用方（Telegraf 固定 `task_id` 周期 scrape，或 CMDB 新一轮 execution）在下周期再次触发；
+5. 新一轮是完整重采，不跳过「上一轮已完成目标」，也不 fencing 拒绝迟到写——下游按时间窗/
+   业务键消化重复。
 
-必须明确：移除持久队列后，租约和断点只解决安全重入，不提供自动重新调度。配置采集和
-监控调用方必须具备相同 `task_id` 的重试能力。如果业务要求调用方不重试且任务必须自动恢复，
-则“彻底移除持久任务队列”这一前提不成立。
+必须明确：移除持久队列后，薄租约只防重叠执行，不提供自动重新调度或断点续跑。这与
+CMDB「每轮新 execution_id、失败等下周期、主路径拉 VM」以及 Telegraf「固定 task_id 周期触发」
+一致。
 
 Docker/Pod 扩容提升不同 `task_id` 之间的吞吐。首版一个 `CollectionRun` 固定在接收它的 Pod
 内执行，不为单次网段采集增加跨 Pod 分片。只有出现明确的单任务跨 Pod SLA 后，才评估确定性
@@ -449,72 +522,152 @@ HTTP 分片；本变更不提前实现。
 - `active_runs`、`active_targets`、`target_window_size`；
 - `submission_rejected_total`；
 - `preflight_duration_seconds`、`target_unreachable_total`；
+- `access_probe_duration_seconds`、`access_probe_total`、`access_probe_timeout_total`、
+  `access_probe_error_total`；
 - `credential_attempt_total`、`credential_cooldown_total`；
 - `plugin_duration_seconds`、`plugin_timeout_total`；
-- `result_publish_failure_total`、`lease_takeover_total`。
+- `result_publish_failure_total`、`lease_duplicate_skip_total`。
 
 不再提供插件专用线程池活跃数或队列长度，因为该线程池不存在。日志只记录 `task_id`、
-`target_id`/目标哈希、`plugin_ref`、`credential_id`、fencing token 和稳定错误码，严禁输出凭据
+`target_id`/目标哈希、`plugin_ref`、`credential_id` 和稳定错误码，严禁输出凭据
 明文或认证请求头。
 
 ## 测试方案
 
-### 1. 运行时单元测试
+本方案对齐 2026-08-06 产品锁定（薄租约、TargetPolicy + CredentialAttempt、S1 冷冻、
+发布重试 1 次、必做 SNMP/host/VMware）。**TDD：每个 seam 先写失败测试再改生产代码。**
+断言只针对公开行为、字面量结果与稳定错误码；禁止断言 private 方法/内部 call count；
+禁止在断言或日志期望中写入真实秘密。
 
-- 同 `task_id`、同摘要只产生一个顶层任务；
-- 同 `task_id`、不同摘要返回 409；
-- 本地容量满时返回 429，不创建后台等待任务；
-- 预检失败时不进入凭据轮询；
-- 同一目标的凭据严格串行，首个成功后停止；
-- 网络错误不冷冻凭据，认证错误正确冷冻；
-- 全部凭据冷冻时返回最近 `next_retry_at`；
-- 重入跳过已完成目标；
-- 旧 fencing token 不能写结果；
-- Deferred callback 拒绝伪造、重复、乱序和过期执行。
+### 0. 相对旧测试的处置
 
-### 2. 插件契约测试
+| 旧方向 | 处置 |
+| --- | --- |
+| digest 409 / completed 汇总回读 / fencing 接管续跑 | **删除或改写**为薄租约语义，不再作为产品门禁 |
+| pending 发布失败后重入复用、不重复采集 | **删除或改写**为：发布失败再试 1 次，仍失败则目标失败，下周期整轮重采 |
+| 强制 AccessProbe + 默认 UNKNOWN→采集 | **改写**为 CredentialAttempt 结构化结果；去掉「UNKNOWN 即放行」主路径断言 |
+| 冷冻 `1h→4h→24h`、成功清整个 scope | **改写**为 S1 `5m→30m→4h→24h`；成功只清当前凭据失败 |
+| 同 task_id 跳过已完成目标 checkpoint | **删除**产品门禁（薄模型不续跑） |
 
-- 注册插件的 `collect` 必须是协程函数；
-- 插件必须声明连接/采集超时和目标协议元数据；
-- 注入一个 `async def` 内直接 `time.sleep()` 的坏插件，事件循环心跳测试必须失败；
-- 注入一个使用 `asyncio.to_thread()` 的同步插件，心跳必须继续运行；
-- 包装插件的同步 SDK 必须接收真实 timeout 参数；
-- 超时后运行时返回稳定错误，且不泄露凭据；
-- 配置插件与 `monitor_plugins` 必须运行同一份契约测试矩阵。
+现有相关文件（改代码时按上表清理）：
+`test_collection_runtime.py`、`test_target_collection_executor.py`、`test_credential_policy.py`、
+`test_preflight.py`、`test_async_plugin_contract.py`、`test_result_publisher.py`、
+`test_collection_end_to_end.py`，以及本变更新增的协议契约测试。
 
-### 3. 事件循环最佳实践测试
+### 1. 运行时与薄租约
 
-固定场景：
+- 同 `task_id` 租约有效 → 只一个顶层任务，后续 `duplicate-active`；
+- 租约 TTL 过期后 → 允许新一轮**完整**执行（不跳过上一轮已完成目标）；
+- 本 Pod 容量满 → `429` + `Retry-After`（Collect；Monitor 本变更可一并补齐），不建后台排队任务；
+- Redis 不可用 → fail-closed，不在缺失去重保护时执行；
+- 心跳丢失/租约丢失 → 取消运行中任务；
+- 优雅停机：停接纳 → 宽限 → cancel，无未消费异常。
 
-```text
-targets: 10.10.24.1-255
-credentials: 5
-MAX_ACTIVE_TARGETS: 200
-CONNECT_TIMEOUT: 5s
+### 2. TargetPolicy
+
+- TCP 类：短探失败 → 目标结束，`attempts=0`，零凭据尝试；
+- UDP/SNMP：不做裸 UDP connect，不因 Policy 宣称可达；
+- 云：对 API Endpoint 做 TCP/TLS（非 ICMP）；不通则不进凭据；
+- ICMP 不得作为硬过滤；
+- 出站策略拒绝 → 稳定错误码，不进凭据。
+
+### 3. CredentialPolicy（S1）
+
+- 目标绑定凭据不得用于其它目标；
+- 串行尝试，首个成功即停；
+- `auth_rejected` / `capability_denied` → S1 冷冻（`5m→30m→4h→24h` + 抖动），并继续未冷冻凭据；
+- `protocol_no_response` → 不冷冻；**默认连续最多 3 次**后停止该目标；可配置取消上限时须有测试；
+- 成功 → 只清**当前**凭据失败，其它凭据冷冻保留；更新亲和；
+- 全冻 → `no_valid_credential` + `next_retry_at`；无匹配 → `no_matching_credential`。
+
+### 4. CredentialAttempt 决策
+
+对公开执行器注入假插件，断言互斥决策：
+
+| 结构化结果 | 期望 |
+| --- | --- |
+| success | 立即发布，停止后续凭据 |
+| auth_rejected | 冷冻并换下一凭据；可配置下试完未冻集合 |
+| capability_denied | 同认证失败冷冻策略 |
+| protocol_no_response | 不冻；受连续 3 次上限 |
+| target_unreachable / service_unavailable / tls / protocol_mismatch / misconfigured | 结束目标，不放大凭据 |
+| rate_limited / account_locked | 结束或延期，不按普通认证冷冻 |
+| plugin_failed | 结束，不冻凭据 |
+
+禁止：默认 `UNKNOWN → 正式采集` 作为主路径断言。
+
+### 5. 发布
+
+- 单目标成功后**立即** publish，不等待整 run；
+- 发布失败 → **再试 1 次**（共 2 次）；仍失败 → 目标失败，不伪报成功；
+- 不存在 pending 续跑复用门禁；
+- 结果与日志不含密码/community/token/私钥；可用 `result_id` 做下游去重标识（不依赖 fencing 续跑）。
+
+### 6. 协议契约（本变更必做）
+
+**SNMP（优先）**
+
+- 带凭据最小 GET；明确授权错误 → `auth_rejected`；超时/无响应 → `protocol_no_response`；
+- 不得用裸 UDP connect 当作 READY/成功；
+- 同步 SDK 经 `to_thread` 且带真实 timeout；心跳在阻塞坏实现下失败、在包装实现下继续。
+
+**host（monitor host remote + 配置 SSH/Job）**
+
+- 结构化 Attempt 结果可驱动冷冻/轮换；
+- Deferred 回调：拒绝伪造、错误 caller、乱序/重复；保留 attempt/token 校验（非整轮 fencing）；
+- Responder 不可用/提交失败 → 稳定失败，不伪造成功。
+
+**VMware（配置 + monitor 同一套）**
+
+- 完整登录 + 最低成本只读；认证失败与权限失败可区分（或至少稳定归类）；
+- 配置采集与 monitor 入口走同一 Attempt 契约测试矩阵。
+
+云厂商：本变更仅要求 Endpoint TCP/TLS 可达测试；不要求假身份探针。其它协议分批记债。
+
+### 7. 异步契约与事件循环负载
+
+- 注册入口为协程；包装插件必须把 timeout 传到 SDK；
+- 坏插件 `time.sleep` → 心跳失败；`to_thread` 包装 → 心跳继续；
+- 压测场景（可配置，示例 255×5×200×5s）：
+  - `active_targets` ≤ 上限；
+  - Task 数受 `TARGET_TASK_WINDOW` 约束；
+  - 不可达目标无凭据尝试；
+  - 重复 `task_id` 只有一个发布者；
+  - 结束后无遗留 Task；
+  - `/health` 相对空载劣化与 lag 门槛沿用现约定（coverage 插桩下的负载失败不作为生产结论）。
+
+### 8. 固定验证命令（实现后必须新鲜跑通）
+
+```bash
+cd agents/stargazer
+.venv/bin/pytest -q -o addopts='' \
+  tests/test_collection_runtime.py \
+  tests/test_collection_request_builder.py \
+  tests/test_preflight.py \
+  tests/test_target_collection_executor.py \
+  tests/test_credential_policy.py \
+  tests/test_redis_collection_state.py \
+  tests/test_collection_plugins.py \
+  tests/test_async_plugin_contract.py \
+  tests/test_collection_load.py \
+  tests/test_collection_service_async.py \
+  tests/test_yaml_reader_async.py \
+  tests/test_native_async_boundaries.py \
+  tests/test_result_publisher.py \
+  tests/test_collection_end_to_end.py
+# 另加本变更新增：SNMP / host / VMware Attempt 契约测试文件
 ```
 
-采集压测期间持续请求 `/health`，验证：
+另：`git diff --check`；目标文件 flake8（max-line-length=150）；秘密扫描。
+不把无关仓库基线失败算作本变更回归。
 
-- `active_targets` 始终不超过 200；
-- 总 Task 数受 `TARGET_TASK_WINDOW` 控制，不随目标总数无限增长；
-- 不可达目标没有凭据尝试；
-- `/health` p99 相对空载劣化初始门槛不超过 20%；
-- `event_loop_lag_seconds` p99 初始目标小于 100ms；
-- 重复 `task_id` 只有一个结果发布者；
-- 压测结束后无遗留 asyncio Task；
-- 原生异步插件和 `to_thread()` 包装插件分别执行同一场景。
+### 9. 明确不测 / 另开任务
 
-绝对时延门槛需在固定 CI/压测环境校准；相对空载劣化、并发上界和无 Task 泄漏是不受机器
-型号影响的硬断言。
-
-### 4. 故障测试
-
-- Redis 短时不可用：新任务 fail-closed，不在缺失重入保护时继续执行；
-- NATS 发布失败：保留目标结果状态和可重试信息，不伪报成功；
-- Pod 在部分目标完成后终止：相同 task ID 接管并跳过完成目标；
-- 旧 Pod/旧线程迟到：fencing 拒绝旧结果；
-- Sanic 优雅停止：停止接纳、等待宽限期、取消剩余任务且无未消费异常；
-- 同步 SDK 超时未及时退出：事件循环保持可用，目标窗口阻止无限堆积。
+- Stargazer↔CMDB 凭据事件字段对齐（另开）；
+- CMDB「VM 查询→转换层→图库」映射正确性（另开）；
+- 全部厂商协议 Attempt 一次做完；
+- 自适应扇出/半开/惩罚分；
+- 真实实验室设备性能数字不得用 mock 负载冒充。
 
 ## 验收标准
 
@@ -522,12 +675,21 @@ CONNECT_TIMEOUT: 5s
 - 仓库不再存在采集用途的 ARQ enqueue、WorkerSettings 或 Worker 启动入口；
 - 非队列 Redis 状态不再依赖 ARQ Client；
 - 每个 HTTP 请求最多创建一个顶层 Sanic 后台任务；
+- 相同 `task_id` 执行中重叠请求返回 `duplicate-active` 且不创建第二任务；
 - 每个目标内部完成全部凭据轮询，不把下一凭据放回全局队列；
-- 预检不通过的 TCP 目标不执行认证；
-- 所有插件暴露异步 `collect`，同步实现只允许在插件内部使用 `asyncio.to_thread()` 包装；
+- `TargetPolicy` 不通过的目标不执行凭据尝试；TCP 短探成功不得直接判定凭据或协议可采集；
+- 配置采集和 `monitor_plugins` 共用 `CredentialAttempt` 结构化结果与凭据轮询决策；
+- 不强制公开 `AccessProbe`；不以默认 `UNKNOWN → 正式采集` 为主路径；
+- SNMP 具备带凭据的最小 GET；VMware 具备完整登录+最低只读；云厂商在无法可靠身份检查时仅
+  Endpoint 可达后直接采集并用结构化错误分类，不做假探针；
+- 目标专用凭据不得被尝试到其他目标；
+- 所有插件暴露异步 `collect`（或等价 attempt），同步实现只允许在插件内部使用 `asyncio.to_thread()` 包装；
 - 运行时不存在 `SyncPluginAdapter` 和插件专用线程池；
+- 单目标完成后立即发布，不等待整次 `CollectionRun` 结束；发布失败再重试 1 次，仍失败不伪报成功；
+- 不存在同 `task_id` fencing/pending 续跑产品门禁；
+- SNMP / host / VMware Attempt 契约测试通过；
 - `255 IP × 5 凭据 × 200 目标并发 × 5s 预检超时` 压测满足事件循环、并发上界和任务泄漏门禁；
-- 相同 task ID 的跨 Pod 重入、接管和 fencing 行为通过自动化测试；
+- §测试方案 固定命令新鲜跑通；diff coverage 不低于既有约定（约 80%）；
 - 密码、Token、community、私钥不进入 Redis 状态、日志、指标或异常上下文。
 
 ## 实施顺序
@@ -535,14 +697,15 @@ CONNECT_TIMEOUT: 5s
 1. 建立 `CollectionRequest`、`CollectOutcome`、错误分类和统一异步插件契约；
 2. 先补插件契约测试并盘点所有插件的原生异步/包装异步状态；
 3. 将同步插件迁移为插件内部 `asyncio.to_thread()` 包装，禁止运行时直接调用同步入口；
-4. 使用普通异步 Redis Client 实现 RunLease、fencing、目标断点和凭据状态；
+4. 使用普通异步 Redis Client 实现薄租约与凭据状态；
 5. 实现 `CollectionRuntime`、目标流式窗口、协议预检和目标内凭据轮询；
 6. 将配置采集入口切换到统一运行时；
 7. 将 `monitor_plugins` 入口切换到同一运行时；
 8. 迁移 Host Remote 等 Deferred callback 状态和可信回调校验；
 9. 删除 ARQ Worker、队列、Job 重试、启动配置和依赖；
-10. 运行插件契约、255×5×200 负载、Pod 接管、NATS 失败和优雅停止测试；
-11. 灰度观察事件循环 lag、目标延迟、发布失败和重入接管，再删除旧链路。
+10. 将现有重 digest/fencing/checkpoint 实现收敛为薄模型（若工作区仍为完整租约实现）；
+11. 运行插件契约、255×5×200 负载、重叠 skip、NATS 失败和优雅停止测试；
+12. 灰度观察事件循环 lag、目标延迟、发布失败和 duplicate skip，再删除旧链路。
 
 ## 回滚
 
@@ -558,7 +721,17 @@ CONNECT_TIMEOUT: 5s
    阻塞事件循环。
 2. 不使用专用线程池意味着包装插件与进程内其他 `to_thread()` 调用共享 asyncio 默认线程池；
    该风险通过目标窗口、SDK 真实超时、事件循环压测和逐步原生异步化控制。
-3. 无持久队列意味着 Pod 崩溃后的自动恢复依赖调用方重试；Redis 租约、断点和 fencing 只保证
-   重试安全。
+3. **薄租约模型**：固定 `task_id`（Telegraf/CMDB `collect_task_id`）下，执行中重叠则 skip，
+   Pod 崩溃丢未发布目标，靠下周期整轮补采。不做 digest 409、不做 fencing 接管、不做同
+   `task_id` 断点续跑。这与 CMDB「每轮新 execution_id、主路径拉 VM、失败等下周期」一致。
 4. 水平扩容首先提升不同采集运行之间的吞吐，不自动加速单个超大网段任务。首版不为这一未
    证实需求引入分布式分片。
+5. NATS/callback 发布失败时再重试 1 次（共 2 次）；仍失败则该目标失败，靠下周期/CMDB 超时兜底，
+   不恢复 fencing 续跑语义。
+6. 凭据冷冻梯度锁定为 `5min → 30min → 4h → 24h`（S1）；成功只清当前凭据失败；
+   `CAPABILITY_DENIED` 暂与 `AUTH_FAILED` 同冻。与 CMDB 命中表短期各管各的，长期意向以
+   Stargazer 执行为准。自适应扇出/半开不纳入本变更必做项。
+7. Host Remote：保留回调 attempt/token 校验（非整轮 fencing）；到目标 Attempt 以 Responder 为准；
+   本变更 host = monitor host remote + 配置 SSH/Job。
+8. 当前工作区若仍实现 digest/fencing/checkpoint/强制 AccessProbe，视为相对本锁定的**实现超集**；
+   收敛前行为可能仍正确，但验收以本文产品锁定为准。

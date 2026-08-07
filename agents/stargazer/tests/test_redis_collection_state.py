@@ -11,20 +11,18 @@ from redis import Redis
 from redis.asyncio import Redis as AsyncRedis
 from redis.exceptions import ConnectionError as RedisConnectionError
 
-from core.collection_runtime import LeaseAcquireStatus, RunLease
-from core.collection_runtime import CollectionRequest
-from core.collection_application import (
+from core.collection.runtime import LeaseAcquireStatus, RunLease, RunStatus
+from core.collection.runtime import CollectionRequest
+from core.collection.application import (
     CollectionApplication,
     CollectionApplicationSettings,
 )
-from core.credential_policy import CredentialPolicy
-from core.redis_collection_state import (
+from core.collection.credential_policy import CredentialPolicy
+from core.collection.redis_state import (
     RedisCredentialStateStore,
     RedisRunStateStore,
-    RedisTargetCheckpointStore,
 )
-from core.target_collection_executor import TargetCollectionResult
-from core.target_collection_executor import (
+from core.collection.contracts import (
     CollectOutcome,
     CollectOutcomeStatus,
     PreflightResult,
@@ -199,7 +197,6 @@ async def test_credential_affinity_and_cooldown_are_shared_without_storing_secre
 
     assert [item["credential_id"] for item in eligible] == [
         "credential-2",
-        "credential-1",
     ]
     keys = await redis_client.keys("test:credential:*")
     stored_values = [str(await redis_client.get(key) or "") for key in keys]
@@ -209,11 +206,8 @@ async def test_credential_affinity_and_cooldown_are_shared_without_storing_secre
 
 
 @pytest.mark.asyncio
-async def test_stale_fence_cannot_write_target_checkpoint(redis_client):
+async def test_expired_lease_can_be_reacquired_by_next_owner(redis_client):
     run_store = RedisRunStateStore(redis_client, key_prefix="test:checkpoint")
-    checkpoint_store = RedisTargetCheckpointStore(
-        redis_client, key_prefix="test:checkpoint"
-    )
     first = await run_store.acquire(
         task_id="collect-takeover",
         request_digest="digest-a",
@@ -229,65 +223,45 @@ async def test_stale_fence_cannot_write_target_checkpoint(redis_client):
         ttl_seconds=60,
     )
     assert second.lease is not None
-    result = TargetCollectionResult(
-        target="10.10.24.1",
-        status="success",
-        attempts=1,
-        credential_id="credential-2",
-        value={"hostname": "db-01"},
-    )
-
-    stale_saved = await checkpoint_store.mark_completed(
-        plugin_ref="mysql.config", result=result, lease=first.lease
-    )
-    current_saved = await checkpoint_store.mark_completed(
-        plugin_ref="mysql.config", result=result, lease=second.lease
-    )
-
-    assert second.lease.fence > first.lease.fence
-    assert stale_saved is False
-    assert current_saved is True
-    assert await checkpoint_store.is_completed(
-        task_id="collect-takeover",
-        plugin_ref="mysql.config",
-        target="10.10.24.1",
-    )
-    assert not await checkpoint_store.is_current(first.lease)
-    assert await checkpoint_store.is_current(second.lease)
+    assert second.status == LeaseAcquireStatus.ACQUIRED
+    assert second.lease.fence == 1
+    assert first.lease.owner_id != second.lease.owner_id
 
 
 @pytest.mark.asyncio
-async def test_pending_result_survives_publish_failure_and_is_fenced(redis_client):
-    run_store = RedisRunStateStore(redis_client, key_prefix="test:pending")
-    checkpoints = RedisTargetCheckpointStore(redis_client, key_prefix="test:pending")
-    acquired = await run_store.acquire(
-        task_id="pending-1", request_digest="digest", owner_id="pod-a",
+async def test_finish_releases_lease_for_next_cycle(redis_client):
+    run_store = RedisRunStateStore(redis_client, key_prefix="test:finish")
+    first = await run_store.acquire(
+        task_id="cycle-1",
+        request_digest="digest",
+        owner_id="pod-a",
         ttl_seconds=60,
     )
-    result = TargetCollectionResult(
-        target="10.10.24.1", status="success", attempts=1, value={"ok": True}
+    assert first.lease is not None
+    assert await run_store.finish(
+        first.lease, status=RunStatus.COMPLETED, summary={"total": 1}
     )
-    assert await checkpoints.mark_publish_pending(
-        plugin_ref="mysql.config", result=result, lease=acquired.lease
+    second = await run_store.acquire(
+        task_id="cycle-1",
+        request_digest="digest",
+        owner_id="pod-b",
+        ttl_seconds=60,
     )
-    assert not await checkpoints.is_completed(
-        task_id="pending-1", plugin_ref="mysql.config", target=result.target
-    )
-    assert await checkpoints.load_pending(
-        task_id="pending-1", plugin_ref="mysql.config", target=result.target
-    ) == result
-    assert await checkpoints.begin_publish(acquired.lease, guard_seconds=30)
+    assert second.status == LeaseAcquireStatus.ACQUIRED
+    assert second.lease is not None
+    assert second.lease.owner_id == "pod-b"
+    assert second.lease.fence == 1
 
 
 @pytest.mark.asyncio
-async def test_application_runs_one_multi_target_request_and_reuses_summary(
+async def test_application_runs_multi_target_request_and_allows_next_cycle(
     redis_client,
 ):
     published = []
     scheduled = []
 
     class Preflight:
-        async def check(self, target, request, *, timeout_seconds):
+        async def check(self, target, request, *, timeout_seconds, plan=None):
             return PreflightResult(status=PreflightStatus.REACHABLE)
 
     class Plugin:
@@ -336,20 +310,13 @@ async def test_application_runs_one_multi_target_request_and_reuses_summary(
 
     accepted = await application.submit(request)
     await scheduled[0]
-    completed = await application.submit(request)
+    next_cycle = await application.submit(request)
 
     assert accepted.status.value == "accepted"
-    assert len(scheduled) == 1
+    assert next_cycle.status.value == "accepted"
+    assert len(scheduled) == 2
     assert published == [
         (request.task_id, "10.10.24.1", 1),
         (request.task_id, "10.10.24.2", 1),
     ]
-    assert completed.status.value == "completed"
-    assert completed.summary == {
-        "deferred": 0,
-        "failed": 0,
-        "skipped": 0,
-        "succeeded": 2,
-        "total": 2,
-        "unreachable": 0,
-    }
+    await scheduled[1]

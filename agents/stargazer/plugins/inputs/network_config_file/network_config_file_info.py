@@ -1,3 +1,4 @@
+import asyncio
 import base64
 import re
 import time
@@ -14,7 +15,6 @@ from plugins.inputs.network_config_file.constants import (
     DANGEROUS_EXACT_COMMANDS,
     SUPPORTED_DEVICE_TYPES,
 )
-from plugins.async_contract import threaded_collect
 
 
 def validate_safe_command(command: str) -> str:
@@ -83,8 +83,10 @@ class NetworkConfigFileInfo:
             "content_base64": encoded,
         }
 
-    @threaded_collect
-    def list_all_resources(self, need_raw=False):
+    async def list_all_resources(self, need_raw=False):
+        return await asyncio.to_thread(self._list_all_resources_sync, need_raw)
+
+    def _list_all_resources_sync(self, need_raw=False):
         del need_raw
         command_results = []
         failures = []

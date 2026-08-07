@@ -6,7 +6,7 @@ from typing import Dict, Any
 
 from sanic.log import logger
 
-import core.host_remote_callback as host_remote_callback
+import core.collection.host_remote.callback as host_remote_callback
 
 
 async def _publish_host_remote_state_metric(

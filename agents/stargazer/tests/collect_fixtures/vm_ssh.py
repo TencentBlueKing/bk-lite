@@ -2,7 +2,7 @@
 """
 VM SSH 通信 — 薄包装 paramiko，用于测试时建的临时 ubuntu VM。
 
-为什么不复用 stargazer core.ssh_client.SSHClient:
+为什么不复用 stargazer core.infra.ssh_client.SSHClient:
 - 那个 SSHClient 默认 RejectPolicy，对每次启动的临时 VM 不友好（无 known_hosts）。
 - VMSSH 使用场景是 dev/test 临时 VM，不需要严格 host key 校验。
 - 因此 VMSSH 用 AutoAddPolicy 直接基于 paramiko 实现。

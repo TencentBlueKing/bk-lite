@@ -1,8 +1,8 @@
 import pytest
 
-import core.host_remote_callback as callback_state
-from core.collection_plugins import MonitorCollectionPlugin
-from core.target_collection_executor import (
+import core.collection.host_remote.callback as callback_state
+from core.collection.plugins import MonitorCollectionPlugin
+from core.collection.contracts import (
     CollectOutcomeStatus,
     TargetCollectionContext,
 )

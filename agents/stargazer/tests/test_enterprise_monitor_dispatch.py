@@ -2,9 +2,9 @@ import pytest
 import sys
 import types
 
-from core.collection_plugins import MonitorCollectionPlugin, UnifiedPluginFactory
-from core.collection_runtime import CollectionRequest
-from core.target_collection_executor import (
+from core.collection.plugins import MonitorCollectionPlugin, UnifiedPluginFactory
+from core.collection.runtime import CollectionRequest
+from core.collection.contracts import (
     CollectOutcomeStatus,
     TargetCollectionContext,
 )

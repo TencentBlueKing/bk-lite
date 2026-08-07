@@ -1,5 +1,6 @@
 import pytest
 
+from core.collection.contracts import AccessProbeStatus
 from plugins.inputs.influxdb.influxdb_info import InfluxdbInfo
 from service.collection_service import CollectionService
 
@@ -12,6 +13,86 @@ class FakeResponse:
 
     def json(self):
         return self._body
+
+
+@pytest.mark.asyncio
+async def test_probe_validates_http_health_and_operator_token(monkeypatch):
+    def fake_get(url, **kwargs):
+        if url.endswith("/health"):
+            return FakeResponse(body={"status": "pass", "version": "2.7.5"})
+        assert kwargs["headers"] == {"Authorization": "Token invalid-token"}
+        return FakeResponse(status_code=401)
+
+    monkeypatch.setattr(
+        "plugins.inputs.influxdb.influxdb_info.requests.get", fake_get
+    )
+
+    result = await InfluxdbInfo(
+        {
+            "host": "influx.local",
+            "token": "invalid-token",
+            "timeout": 5,
+        }
+    ).probe()
+
+    assert result.status == AccessProbeStatus.AUTH_FAILED
+    assert result.error_code == "authentication_failed"
+    assert "invalid-token" not in result.detail
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("status_code", "expected_status", "expected_error"),
+    [
+        (403, AccessProbeStatus.CAPABILITY_DENIED, "capability_denied"),
+        (429, AccessProbeStatus.RATE_LIMITED, "rate_limited"),
+        (503, AccessProbeStatus.SERVICE_UNAVAILABLE, "service_unavailable"),
+    ],
+)
+async def test_probe_classifies_http_failure_without_retrying_credentials(
+    monkeypatch, status_code, expected_status, expected_error
+):
+    def fake_get(url, **_kwargs):
+        if url.endswith("/health"):
+            return FakeResponse(body={"status": "pass", "version": "2.7.5"})
+        return FakeResponse(status_code=status_code)
+
+    monkeypatch.setattr(
+        "plugins.inputs.influxdb.influxdb_info.requests.get", fake_get
+    )
+
+    result = await InfluxdbInfo(
+        {"host": "influx.local", "token": "must-not-leak", "timeout": 5}
+    ).probe()
+
+    assert result.status == expected_status
+    assert result.error_code == expected_error
+    assert "must-not-leak" not in result.detail
+
+
+@pytest.mark.asyncio
+async def test_probe_keeps_tls_validation_failure_distinct(monkeypatch):
+    import requests
+
+    def invalid_certificate(*_args, **_kwargs):
+        raise requests.exceptions.SSLError("certificate verify failed")
+
+    monkeypatch.setattr(
+        "plugins.inputs.influxdb.influxdb_info.requests.get",
+        invalid_certificate,
+    )
+
+    result = await InfluxdbInfo(
+        {
+            "host": "influx.local",
+            "ssl": True,
+            "verify_tls": True,
+            "timeout": 5,
+        }
+    ).probe()
+
+    assert result.status == AccessProbeStatus.TLS_VALIDATION_FAILED
+    assert result.error_code == "tls_validation_failed"
 
 
 @pytest.mark.asyncio

@@ -1,14 +1,15 @@
-import ast
 import asyncio
 import importlib
 import inspect
+import sys
 import time
 from pathlib import Path
 
 import yaml
 import pytest
 
-from plugins.async_contract import threaded_collect
+from core.plugin.executor import PluginExecutor
+from core.plugin.yaml_reader import ExecutorConfig
 
 
 def _registered_collectors():
@@ -19,38 +20,6 @@ def _registered_collectors():
             collector = (executor or {}).get("collector") or {}
             if collector.get("module") and collector.get("class"):
                 yield config_path, collector["module"], collector["class"]
-
-
-def test_every_registered_plugin_exposes_an_async_collection_entrypoint():
-    violations = []
-    for config_path, module_name, class_name in _registered_collectors():
-        module_path = Path(__file__).parents[1] / Path(
-            *module_name.split(".")
-        ).with_suffix(".py")
-        tree = ast.parse(module_path.read_text(encoding="utf-8"))
-        class_node = next(
-            node
-            for node in tree.body
-            if isinstance(node, ast.ClassDef) and node.name == class_name
-        )
-        method = next(
-            (
-                node
-                for node in class_node.body
-                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
-                and node.name == "list_all_resources"
-            ),
-            None,
-        )
-        is_threaded = method is not None and any(
-            isinstance(decorator, ast.Name)
-            and decorator.id == "threaded_collect"
-            for decorator in method.decorator_list
-        )
-        if not isinstance(method, ast.AsyncFunctionDef) and not is_threaded:
-            violations.append(f"{config_path.parent.name}:{module_name}.{class_name}")
-
-    assert violations == []
 
 
 def test_registered_plugin_runtime_entrypoints_are_coroutine_functions():
@@ -71,39 +40,6 @@ def test_registered_plugin_runtime_entrypoints_are_coroutine_functions():
     assert violations == []
 
 
-def test_monitor_collectors_isolate_synchronous_sdks():
-    collectors = {
-        "tasks/collectors/vmware_collector.py": "VmwareCollector",
-        "tasks/collectors/qcloud_collector.py": "QCloudCollector",
-        "tasks/collectors/oceanstor_collector.py": "OceanStorCollector",
-        "tasks/collectors/host_wmi_collector.py": "WindowsWmiCollector",
-    }
-    violations = []
-    for relative_path, class_name in collectors.items():
-        module_path = Path(__file__).parents[1] / relative_path
-        tree = ast.parse(module_path.read_text(encoding="utf-8"))
-        class_node = next(
-            node
-            for node in tree.body
-            if isinstance(node, ast.ClassDef) and node.name == class_name
-        )
-        method = next(
-            node
-            for node in class_node.body
-            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
-            and node.name == "collect"
-        )
-        is_threaded = any(
-            isinstance(decorator, ast.Name)
-            and decorator.id == "threaded_collect"
-            for decorator in method.decorator_list
-        )
-        if not is_threaded:
-            violations.append(class_name)
-
-    assert violations == []
-
-
 def test_every_registered_executor_declares_a_positive_timeout():
     violations = []
     plugin_root = Path(__file__).parents[1] / "plugins" / "inputs"
@@ -115,15 +51,8 @@ def test_every_registered_executor_declares_a_positive_timeout():
     assert violations == []
 
 
-@pytest.mark.asyncio
-async def test_threaded_sync_plugin_does_not_stall_event_loop():
+async def _assert_event_loop_responsive(awaitable, *, minimum_ticks=5):
     ticks = 0
-
-    class WrappedPlugin:
-        @threaded_collect
-        def collect(self):
-            time.sleep(0.05)
-            return "done"
 
     async def heartbeat():
         nonlocal ticks
@@ -133,10 +62,108 @@ async def test_threaded_sync_plugin_does_not_stall_event_loop():
 
     heartbeat_task = asyncio.create_task(heartbeat())
     try:
-        assert await WrappedPlugin().collect() == "done"
+        result = await awaitable
     finally:
         heartbeat_task.cancel()
         with pytest.raises(asyncio.CancelledError):
             await heartbeat_task
 
-    assert ticks >= 5
+    assert ticks >= minimum_ticks, "event_loop_stalled"
+    return result
+
+
+@pytest.mark.asyncio
+async def test_bad_async_plugin_is_rejected_by_event_loop_contract():
+    class BlockingPlugin:
+        async def collect(self):
+            time.sleep(0.05)
+            return "done"
+
+    with pytest.raises(AssertionError, match="event_loop_stalled"):
+        await _assert_event_loop_responsive(BlockingPlugin().collect())
+
+
+@pytest.mark.asyncio
+async def test_explicit_sync_plugin_wrapper_does_not_stall_event_loop():
+    class WrappedPlugin:
+        async def collect(self):
+            return await asyncio.to_thread(self._sync_collect)
+
+        def _sync_collect(self):
+            time.sleep(0.05)
+            return "done"
+
+    assert (
+        await _assert_event_loop_responsive(WrappedPlugin().collect())
+        == "done"
+    )
+
+
+@pytest.mark.asyncio
+async def test_plugin_loading_does_not_stall_event_loop(monkeypatch, tmp_path):
+    module_name = "slow_loading_plugin"
+    (tmp_path / f"{module_name}.py").write_text(
+        """
+import asyncio
+import time
+
+time.sleep(0.05)
+
+class Collector:
+    def __init__(self, params):
+        pass
+
+    async def list_all_resources(self):
+        await asyncio.sleep(0)
+        return {"success": True, "result": {"demo": []}}
+""",
+        encoding="utf-8",
+    )
+    monkeypatch.syspath_prepend(str(tmp_path))
+    sys.modules.pop(module_name, None)
+    config = ExecutorConfig(
+        executor_type="protocol",
+        config={"collector": {"module": module_name, "class": "Collector"}},
+        plugin_config={"metadata": {}},
+    )
+
+    result = await _assert_event_loop_responsive(
+        PluginExecutor("demo", config, {}).execute()
+    )
+
+    assert result == {"success": True, "result": {"demo": []}}
+
+
+@pytest.mark.asyncio
+async def test_plugin_initialization_does_not_stall_event_loop(
+    monkeypatch, tmp_path
+):
+    module_name = "slow_initializing_plugin"
+    (tmp_path / f"{module_name}.py").write_text(
+        """
+import asyncio
+import time
+
+class Collector:
+    def __init__(self, params):
+        time.sleep(0.05)
+
+    async def list_all_resources(self):
+        await asyncio.sleep(0)
+        return {"success": True, "result": {"demo": []}}
+""",
+        encoding="utf-8",
+    )
+    monkeypatch.syspath_prepend(str(tmp_path))
+    sys.modules.pop(module_name, None)
+    config = ExecutorConfig(
+        executor_type="protocol",
+        config={"collector": {"module": module_name, "class": "Collector"}},
+        plugin_config={"metadata": {}},
+    )
+
+    result = await _assert_event_loop_responsive(
+        PluginExecutor("demo", config, {}).execute()
+    )
+
+    assert result == {"success": True, "result": {"demo": []}}

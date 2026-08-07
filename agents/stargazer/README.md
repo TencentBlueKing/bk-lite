@@ -19,19 +19,17 @@ uv run python server.py
 
 ## HTTP 任务约定
 
-配置采集与 `/api/monitor/*` 请求都必须提供稳定的 `X-Task-ID`：
+配置采集与 `/api/monitor/*` 的薄租约 ID 由服务端对请求做规范化指纹派生
+（`METHOD` + path + 排序 query + 业务 headers），形如 `req_<sha256>`；调用方不必传
+`X-Task-ID`。响应头会回传派生 ID。同一 Telegraf input / 直触发在业务 headers/query
+不变时指纹稳定，用于防重叠；凭据或参数变更会换键。
 
-```text
-X-Task-ID: caller-generated-stable-id
-```
-
-相同 ID 和相同请求重入返回已有状态；相同 ID 对应不同请求返回 `409`；本 Pod 容量已满返回
-`429` 和 `Retry-After`。一次多 IP 请求只创建一个顶层运行，每个 IP 是一个目标逻辑任务，目标
+相同指纹且租约仍有效时返回 `202 duplicate-active`；本 Pod 容量已满返回 `429` 和
+`Retry-After`。一次多 IP 请求只创建一个顶层运行，每个 IP 是一个目标逻辑任务，目标
 内部按输入顺序串行尝试凭据。
 
-Redis 只保存运行租约、fencing、目标断点、凭据 ID 亲和/冷冻和 Deferred callback 上下文，
-不保存密码、Token、community 或私钥。移除持久队列后，Pod 故障恢复依赖调用方使用同一
-`X-Task-ID` 重试。
+Redis 只保存运行租约、凭据 ID 亲和/冷冻和 Deferred callback 上下文，不保存密码、
+Token、community 或私钥。移除持久队列后，Pod 故障丢单依赖下周期用相同请求指纹再次触发。
 
 ## 并发与超时
 
@@ -56,9 +54,9 @@ OUTBOUND_ALLOWED_DOMAINS=
 `OUTBOUND_ALLOWED_DOMAINS` 后，域名还必须同时命中该名单，域名名单不能绕过 CIDR 边界。
 生产环境应按实际采集边界收窄这两项。
 
-所有注册插件必须暴露异步入口。原生异步实现直接 `await`；同步 SDK 由插件自身使用
-`plugins.async_contract.threaded_collect`（内部为 `asyncio.to_thread()`）包装，并必须给 SDK
-配置真实连接/读取超时。运行时没有同步插件 Adapter 和专用线程池。
+所有注册插件必须暴露异步入口。原生异步实现直接 `await`；同步 SDK 由插件自身在异步入口中
+显式调用 `asyncio.to_thread(self._sync_collect)`，并必须给 SDK 配置真实连接/读取超时。
+运行时没有同步插件 Adapter 和专用线程池。
 
 ## 健康与观测
 

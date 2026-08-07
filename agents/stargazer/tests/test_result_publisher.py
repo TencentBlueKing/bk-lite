@@ -1,8 +1,8 @@
 import pytest
 
-from core.collection_runtime import CollectionRequest, RunLease
-from core.result_publisher import NatsResultPublisher
-from core.target_collection_executor import TargetCollectionResult
+from core.collection.runtime import CollectionRequest, RunLease
+from core.collection.result_publisher import NatsResultPublisher
+from core.collection.contracts import TargetCollectionResult
 
 
 @pytest.mark.asyncio

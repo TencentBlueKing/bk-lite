@@ -1,9 +1,9 @@
+import asyncio
 import logging
 import time
 from typing import Any
 
 from .base_collector import BaseCollector
-from plugins.async_contract import threaded_collect
 from .host_wmi.client import WmiClient
 from .host_wmi.errors import classify_wmi_error
 from .host_wmi.metrics import wmi_results_to_prometheus
@@ -31,8 +31,10 @@ class WindowsWmiCollector(BaseCollector):
             timeout=int(self.params.get("timeout") or 60),
         )
 
-    @threaded_collect
-    def collect(self) -> str:
+    async def collect(self) -> str:
+        return await asyncio.to_thread(self._collect_sync)
+
+    def _collect_sync(self) -> str:
         context = self._context()
         modules = resolve_modules(self.params.get("metrics_modules"))
         logger.info("event=wmi_collect_start %s", context)

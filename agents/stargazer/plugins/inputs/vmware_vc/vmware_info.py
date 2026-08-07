@@ -2,6 +2,7 @@
 # @File: vmware_info.py
 # @Time: 2025/2/26 11:08
 # @Author: windyzhao
+import asyncio
 import json
 from datetime import datetime
 from typing import Any, Dict, List, Optional
@@ -11,7 +12,6 @@ from pyVmomi import vim
 from sanic.log import logger
 
 from core.decorator import timer
-from plugins.async_contract import threaded_collect
 
 
 class VmwareManage(object):
@@ -56,6 +56,59 @@ class VmwareManage(object):
         except Exception as err:
             logger.error(f"test_connection error! {err}")
             return False
+
+    async def probe(self):
+        return await asyncio.to_thread(self._probe_sync)
+
+    def _probe_sync(self):
+        """最小连接探测：建立 vCenter 会话后立即断开。"""
+        from core.collection.contracts import (
+            AccessProbeResult,
+            AccessProbeStatus,
+        )
+
+        try:
+            self.connect_vc()
+            return AccessProbeResult(status=AccessProbeStatus.READY)
+        except Exception as err:  # noqa: BLE001 - 收敛为稳定领域结果
+            text = str(err).lower()
+            if any(
+                token in text
+                for token in (
+                    "password",
+                    "credential",
+                    "login",
+                    "auth",
+                    "permission",
+                    "unauthorized",
+                    "incorrect user",
+                )
+            ):
+                return AccessProbeResult(
+                    status=AccessProbeStatus.AUTH_FAILED,
+                    error_code="authentication_failed",
+                )
+            if any(
+                token in text
+                for token in (
+                    "timed out",
+                    "timeout",
+                    "no route",
+                    "connection refused",
+                    "unreachable",
+                    "name or service not known",
+                )
+            ):
+                return AccessProbeResult(
+                    status=AccessProbeStatus.NO_RESPONSE,
+                    error_code="protocol_no_response",
+                )
+            return AccessProbeResult(
+                status=AccessProbeStatus.NO_RESPONSE,
+                error_code="vmware_probe_failed",
+            )
+        finally:
+            self.disconnect_vc()
 
     def get_all_objs(self, obj_type, folder=None):
         if folder is None:
@@ -577,8 +630,10 @@ class VmwareManage(object):
             pass
 
     @timer(logger=logger)
-    @threaded_collect
-    def list_all_resources(self):
+    async def list_all_resources(self):
+        return await asyncio.to_thread(self._list_all_resources_sync)
+
+    def _list_all_resources_sync(self):
         try:
             self.connect_vc()
             result = self.service()

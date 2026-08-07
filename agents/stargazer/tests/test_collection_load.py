@@ -3,14 +3,16 @@ import time
 
 import pytest
 
-from core.collection_runtime import CollectionRequest, RunLease
-from core.target_collection_executor import (
+from core.collection.runtime import CollectionRequest, RunLease
+from core.collection.contracts import (
     CollectOutcome,
     CollectOutcomeStatus,
     PreflightResult,
     PreflightStatus,
-    TargetCollectionExecutor,
     TargetExecutorSettings,
+)
+from core.collection.executor import (
+    TargetCollectionExecutor,
 )
 
 
@@ -23,7 +25,7 @@ async def test_255_targets_5_credentials_200_concurrency_keeps_loop_responsive()
     stop_heartbeat = asyncio.Event()
 
     class TimeoutPreflight:
-        async def check(self, target, request, *, timeout_seconds):
+        async def check(self, target, request, *, timeout_seconds, plan=None):
             nonlocal active, peak
             active += 1
             peak = max(peak, active)

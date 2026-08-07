@@ -1,6 +1,6 @@
 import pytest
 
-from core.collection_request_builder import build_collection_request
+from core.collection.request_builder import build_collection_request
 
 
 def test_request_rejects_target_count_above_configured_limit(monkeypatch):
@@ -112,3 +112,37 @@ def test_job_plugin_uses_ssh_preflight_before_collection():
     )
 
     assert request.params["preflight_kind"] == "remote"
+
+
+def test_request_digest_changes_when_credential_target_binding_changes():
+    first = build_collection_request(
+        task_id="credential-binding-digest",
+        params={
+            "model_id": "network",
+            "host": "10.10.69.245",
+            "credentials_pool": [
+                {
+                    "credential_id": "snmp-credential",
+                    "target_host": "10.10.69.245",
+                    "community": "secret-community",
+                }
+            ],
+        },
+    )
+    second = build_collection_request(
+        task_id="credential-binding-digest",
+        params={
+            "model_id": "network",
+            "host": "10.10.69.245",
+            "credentials_pool": [
+                {
+                    "credential_id": "snmp-credential",
+                    "target_host": "10.10.69.246",
+                    "community": "secret-community",
+                }
+            ],
+        },
+    )
+
+    assert first.digest != second.digest
+    assert "secret-community" not in first.digest

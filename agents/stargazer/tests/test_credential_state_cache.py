@@ -2,8 +2,8 @@ import json
 
 import pytest
 
-import core.credential_state_cache as cache_module
-from core.credential_state_cache import CredentialStateCache
+import core.infra.credential_state_cache as cache_module
+from core.infra.credential_state_cache import CredentialStateCache
 
 
 class Redis:

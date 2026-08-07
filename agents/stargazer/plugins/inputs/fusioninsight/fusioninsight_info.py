@@ -14,11 +14,11 @@ PrivateCloudManage、@register、双类 __getattr__ 分发、监控相关方法�
 输出结构：{"result": {"fusioninsight_cluster":[...], "fusioninsight_host":[...]},
 "success": bool}
 """
+import asyncio
 import base64
 import traceback
 
 from sanic.log import logger
-from plugins.async_contract import threaded_collect
 
 # `requests` 仅在真正发起 HTTP 时才需要；延迟导入，保证模块（含纯函数与字段重命名）
 # 在未安装 requests 的精简环境下也可导入与单测。
@@ -233,8 +233,10 @@ class FusionInsightManager:
             "fusioninsight_host": hosts,
         }
 
-    @threaded_collect
-    def list_all_resources(self):
+    async def list_all_resources(self):
+        return await asyncio.to_thread(self._list_all_resources_sync)
+
+    def _list_all_resources_sync(self):
         try:
             result = self.exec_script()
             return {"result": result, "success": True}

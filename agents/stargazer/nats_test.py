@@ -11,7 +11,7 @@ import json
 
 from dotenv import load_dotenv
 
-from core.nats_utils import nats_request
+from core.infra.nats_utils import nats_request
 
 
 async def run_test():

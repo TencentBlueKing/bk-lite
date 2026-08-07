@@ -12,9 +12,9 @@
 MODEL/SERIALNUMBER/DISKTYPE/SECTORS/SPEEDRPM/MANUFACTURER/WWN/CAPACITY/ALLOCCAPACITY/
 ALLOCTYPE/PARENTNAME/USAGETYPE/RUNNINGSTATUS），由 CMDB 侧 runner 归一化。
 """
+import asyncio
 import requests
 from sanic.log import logger
-from plugins.async_contract import threaded_collect
 
 try:
     requests.packages.urllib3.disable_warnings()
@@ -102,8 +102,10 @@ class OceanStorManager:
     # ------------------------------------------------------------------
     # 采集入口
     # ------------------------------------------------------------------
-    @threaded_collect
-    def list_all_resources(self):
+    async def list_all_resources(self):
+        return await asyncio.to_thread(self._list_all_resources_sync)
+
+    def _list_all_resources_sync(self):
         try:
             self.login()
             pools = self._fetch_all("storagepool")

@@ -1,8 +1,8 @@
 from datetime import datetime, timezone
 
-import core.host_remote_callback as host_remote_callback
-from core.nats import get_nats, register_handler
-from core.host_remote_runtime import schedule_host_remote_processing
+import core.collection.host_remote.callback as host_remote_callback
+from core.infra.nats import get_nats, register_handler
+from core.collection.host_remote.runtime import schedule_host_remote_processing
 from sanic.log import logger
 from service.collection_service import CollectionService
 from service.debug.protocol_debug_service import ProtocolDebugService
@@ -48,7 +48,7 @@ async def list_regions(data):
     """处理 list_regions 请求"""
     logger.debug(f"list_regions received: {data}")
     collect_service = CollectionService(data)
-    regions = collect_service.list_regions()
+    regions = await collect_service.list_regions()
     return {"regions": regions}
 
 

@@ -4,9 +4,14 @@
 2.x：GET /health 取版本；GET /api/v2/config（operator token）取运行配置。
 1.x：GET /ping 响应头取版本；配置类字段 API 不暴露，留空。
 """
+import asyncio
 import requests
 from sanic.log import logger
-from plugins.async_contract import threaded_collect
+
+from core.collection.contracts import (
+    AccessProbeResult,
+    AccessProbeStatus,
+)
 
 try:  # 关闭自签证书告警
     requests.packages.urllib3.disable_warnings()
@@ -35,6 +40,74 @@ class InfluxdbInfo:
             timeout=self.timeout,
             verify=self.verify_tls,
         )
+
+    async def probe(self) -> AccessProbeResult:
+        return await asyncio.to_thread(self._probe_sync)
+
+    def _probe_sync(self) -> AccessProbeResult:
+        try:
+            response = self._get("/health")
+            body = response.json() or {}
+            if response.status_code == 200 and body.get("version"):
+                version = str(body["version"])
+            else:
+                response = self._get("/ping")
+                version = str(
+                    response.headers.get("X-Influxdb-Version") or ""
+                )
+                if response.status_code not in {200, 204} or not version:
+                    return AccessProbeResult(
+                        status=AccessProbeStatus.PROTOCOL_MISMATCH,
+                        error_code="influxdb_protocol_mismatch",
+                    )
+            if not self.token:
+                return AccessProbeResult(
+                    status=AccessProbeStatus.READY,
+                    evidence={"server_version": version},
+                )
+            config = self._get(
+                "/api/v2/config",
+                headers={"Authorization": f"Token {self.token}"},
+            )
+            if config.status_code == 401:
+                return AccessProbeResult(
+                    status=AccessProbeStatus.AUTH_FAILED,
+                    error_code="authentication_failed",
+                )
+            if config.status_code == 403:
+                return AccessProbeResult(
+                    status=AccessProbeStatus.CAPABILITY_DENIED,
+                    error_code="capability_denied",
+                )
+            if config.status_code == 429:
+                return AccessProbeResult(
+                    status=AccessProbeStatus.RATE_LIMITED,
+                    error_code="rate_limited",
+                )
+            if config.status_code >= 500:
+                return AccessProbeResult(
+                    status=AccessProbeStatus.SERVICE_UNAVAILABLE,
+                    error_code="service_unavailable",
+                )
+            if config.status_code != 200:
+                return AccessProbeResult(
+                    status=AccessProbeStatus.PROTOCOL_MISMATCH,
+                    error_code="influxdb_protocol_mismatch",
+                )
+            return AccessProbeResult(
+                status=AccessProbeStatus.READY,
+                evidence={"server_version": version},
+            )
+        except requests.exceptions.SSLError:
+            return AccessProbeResult(
+                status=AccessProbeStatus.TLS_VALIDATION_FAILED,
+                error_code="tls_validation_failed",
+            )
+        except (requests.exceptions.Timeout, requests.exceptions.ConnectionError):
+            return AccessProbeResult(
+                status=AccessProbeStatus.NO_RESPONSE,
+                error_code="protocol_probe_no_response",
+            )
 
     @staticmethod
     def _as_bool(value, default=False):
@@ -84,8 +157,10 @@ class InfluxdbInfo:
         resp = self._get("/ping")
         return {"version": resp.headers.get("X-Influxdb-Version", "")}
 
-    @threaded_collect
-    def list_all_resources(self):
+    async def list_all_resources(self):
+        return await asyncio.to_thread(self._list_all_resources_sync)
+
+    def _list_all_resources_sync(self):
         """返回标准格式：{"result": {"influxdb": [model_data]}, "success": True}。"""
         try:
             try:

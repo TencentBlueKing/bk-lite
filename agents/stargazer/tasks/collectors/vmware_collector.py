@@ -5,17 +5,36 @@
 """
 VMware 监控数据采集器
 """
+import asyncio
 import datetime
 from sanic.log import logger
 from .base_collector import BaseCollector
-from plugins.async_contract import threaded_collect
 
 
 class VmwareCollector(BaseCollector):
     """VMware vCenter 监控数据采集器"""
 
-    @threaded_collect
-    def collect(self) -> str:
+    async def probe(self):
+        return await asyncio.to_thread(self._probe_sync)
+
+    def _probe_sync(self):
+        from plugins.inputs.vmware_vc.vmware_info import VmwareManage
+
+        manager = VmwareManage(
+            params=dict(
+                username=self.params.get("username"),
+                password=self.params.get("password"),
+                hostname=self.params.get("host"),
+                ssl=self.params.get("ssl", "false"),
+                port=self.params.get("port", 443),
+            )
+        )
+        return manager._probe_sync()
+
+    async def collect(self) -> str:
+        return await asyncio.to_thread(self._collect_sync)
+
+    def _collect_sync(self) -> str:
         """
         采集 VMware 监控指标
 

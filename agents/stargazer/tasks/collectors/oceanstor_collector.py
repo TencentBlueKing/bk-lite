@@ -1,12 +1,14 @@
+import asyncio
 from typing import Dict, Any
 from sanic.log import logger
 from .base_collector import BaseCollector
-from plugins.async_contract import threaded_collect
 
 
 class OceanStorCollector(BaseCollector):
-    @threaded_collect
-    def collect(self) -> str:
+    async def collect(self) -> str:
+        return await asyncio.to_thread(self._collect_sync)
+
+    def _collect_sync(self) -> str:
         from common.monitor_plugins.oceanstor.api import OceanStorApiMonitor
         from utils.convert import convert_to_prometheus
 

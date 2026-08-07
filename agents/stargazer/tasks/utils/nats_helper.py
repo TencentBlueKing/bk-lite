@@ -14,7 +14,7 @@ import traceback
 from typing import Dict, Any
 from sanic.log import logger
 from influxdb_client import Point, WritePrecision
-from core.nats_utils import NatsLinesPublishError, nats_publish, nats_publish_lines
+from core.infra.nats_utils import NatsLinesPublishError, nats_publish, nats_publish_lines
 
 
 class MetricsPublishError(RuntimeError):

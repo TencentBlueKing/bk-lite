@@ -2,7 +2,7 @@ import asyncio
 
 import pytest
 
-from core.collection_runtime import (
+from core.collection.runtime import (
     CollectionRequest,
     CollectionRuntime,
     CollectionRuntimeSettings,
@@ -145,7 +145,7 @@ async def test_shutdown_stops_admission_and_cancels_after_grace_period():
 
 
 @pytest.mark.asyncio
-async def test_completed_reentry_returns_existing_run_summary():
+async def test_finished_task_can_be_resubmitted_on_next_cycle():
     tasks = []
 
     async def execute(_request, _lease):
@@ -168,12 +168,14 @@ async def test_completed_reentry_returns_existing_run_summary():
         targets=("10.10.24.1", "10.10.24.2"),
     )
 
-    await runtime.submit(request)
+    first = await runtime.submit(request)
     await tasks[0]
-    completed = await runtime.submit(request)
+    second = await runtime.submit(request)
 
-    assert completed.status == SubmissionStatus.COMPLETED
-    assert completed.summary == {"total": 2, "succeeded": 2, "failed": 0}
+    assert first.status == SubmissionStatus.ACCEPTED
+    assert second.status == SubmissionStatus.ACCEPTED
+    assert len(tasks) == 2
+    await tasks[1]
 
 
 @pytest.mark.asyncio

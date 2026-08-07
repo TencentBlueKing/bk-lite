@@ -38,8 +38,8 @@ from tasks.collectors.host_collector import (
 
 
 def _load_nats_server_module(monkeypatch):
-    import core.nats as core_nats
-    import core.host_remote_callback as host_remote_callback_module
+    import core.infra.nats as core_nats
+    import core.collection.host_remote.callback as host_remote_callback_module
 
     class DummyNatsInstance:
         def __init__(self):
@@ -71,8 +71,8 @@ def _load_nats_server_module(monkeypatch):
 
 
 def _load_host_remote_runtime_module(monkeypatch):
-    monkeypatch.delitem(sys.modules, "core.host_remote_runtime", raising=False)
-    return importlib.import_module("core.host_remote_runtime")
+    monkeypatch.delitem(sys.modules, "core.collection.host_remote.runtime", raising=False)
+    return importlib.import_module("core.collection.host_remote.runtime")
 
 
 def _load_host_remote_handler_module(monkeypatch):
@@ -81,7 +81,7 @@ def _load_host_remote_handler_module(monkeypatch):
 
 
 def _install_fake_host_remote_callback_store(monkeypatch):
-    import core.host_remote_callback as host_remote_callback_module
+    import core.collection.host_remote.callback as host_remote_callback_module
 
     callback_contexts = {}
 
@@ -236,7 +236,7 @@ def _install_fake_host_remote_callback_store(monkeypatch):
 
 
 def _install_fake_host_remote_callback_pool(monkeypatch):
-    import core.host_remote_callback as host_remote_callback_module
+    import core.collection.host_remote.callback as host_remote_callback_module
 
     class FakeRedisPool:
         def __init__(self):
@@ -859,7 +859,7 @@ class TestHostCollectorCredentialDecoding:
 class TestHostCollectorCollect:
     """测试完整采集流程（mock Ansible RPC）"""
 
-    @patch("core.ansible_rpc.ansible_adhoc", new_callable=AsyncMock)
+    @patch("core.infra.ansible_rpc.ansible_adhoc", new_callable=AsyncMock)
     async def test_submit_collection_passes_callback_and_returns_accepted_response(self, mock_adhoc):
         mock_adhoc.return_value = {
             "success": True,
@@ -911,7 +911,7 @@ class TestHostCollectorCollect:
             "timeout": HOST_REMOTE_CALLBACK_REQUEST_TIMEOUT,
         }
 
-    @patch("core.ansible_rpc.ansible_adhoc", new_callable=AsyncMock)
+    @patch("core.infra.ansible_rpc.ansible_adhoc", new_callable=AsyncMock)
     async def test_submit_collection_uses_configured_callback_timeout(self, mock_adhoc):
         mock_adhoc.return_value = {"success": True, "result": {"accepted": True, "status": "queued"}}
 
@@ -1126,7 +1126,7 @@ class TestHostCollectorCollect:
 
         assert "1234567" in metrics
 
-    @patch("core.ansible_rpc.ansible_adhoc", new_callable=AsyncMock)
+    @patch("core.infra.ansible_rpc.ansible_adhoc", new_callable=AsyncMock)
     async def test_successful_collect_linux(self, mock_adhoc):
         mock_adhoc.return_value = {
             "success": True,
@@ -1166,7 +1166,7 @@ class TestHostCollectorCollect:
         assert call_kwargs["module"] == "raw"
         assert call_kwargs["host_credentials"][0]["connection"] == "ssh"
 
-    @patch("core.ansible_rpc.ansible_adhoc", new_callable=AsyncMock)
+    @patch("core.infra.ansible_rpc.ansible_adhoc", new_callable=AsyncMock)
     async def test_successful_collect_windows(self, mock_adhoc):
         mock_adhoc.return_value = {
             "success": True,
@@ -1204,7 +1204,7 @@ class TestHostCollectorCollect:
         assert call_kwargs["host_credentials"][0]["winrm_transport"] == "ntlm"
         assert call_kwargs["host_credentials"][0]["winrm_cert_validation"] is False
 
-    @patch("core.ansible_rpc.ansible_adhoc", new_callable=AsyncMock)
+    @patch("core.infra.ansible_rpc.ansible_adhoc", new_callable=AsyncMock)
     async def test_successful_collect_windows_passes_explicit_winrm_options(self, mock_adhoc):
         mock_adhoc.return_value = {
             "success": True,
@@ -1242,7 +1242,7 @@ class TestHostCollectorCollect:
         assert host_cred["winrm_transport"] == "basic"
         assert host_cred["winrm_cert_validation"] is True
 
-    @patch("core.ansible_rpc.ansible_adhoc", new_callable=AsyncMock)
+    @patch("core.infra.ansible_rpc.ansible_adhoc", new_callable=AsyncMock)
     async def test_successful_collect_linux_private_key_credentials(self, mock_adhoc):
         mock_adhoc.return_value = {
             "success": True,
@@ -1281,7 +1281,7 @@ class TestHostCollectorCollect:
         assert host_cred["private_key_passphrase"] == "key-pass"
         assert "system" in call_kwargs["module_args"]
 
-    @patch("core.ansible_rpc.ansible_adhoc", new_callable=AsyncMock)
+    @patch("core.infra.ansible_rpc.ansible_adhoc", new_callable=AsyncMock)
     async def test_adhoc_failure_raises(self, mock_adhoc):
         mock_adhoc.return_value = {
             "success": False,
@@ -1301,7 +1301,7 @@ class TestHostCollectorCollect:
         with pytest.raises(RuntimeError, match="Host collection failed"):
             await collector.collect()
 
-    @patch("core.ansible_rpc.ansible_adhoc", new_callable=AsyncMock)
+    @patch("core.infra.ansible_rpc.ansible_adhoc", new_callable=AsyncMock)
     async def test_invalid_json_raises(self, mock_adhoc):
         mock_adhoc.return_value = {
             "success": True,
@@ -1321,7 +1321,7 @@ class TestHostCollectorCollect:
         with pytest.raises(RuntimeError, match="Failed to parse metrics JSON"):
             await collector.collect()
 
-    @patch("core.ansible_rpc.ansible_adhoc", new_callable=AsyncMock)
+    @patch("core.infra.ansible_rpc.ansible_adhoc", new_callable=AsyncMock)
     async def test_process_adhoc_result_extracts_json_from_warning_polluted_stdout(self, mock_adhoc):
         warning_stdout = (
             "[WARNING]: Platform linux on host 10.0.0.1 is using the discovered Python interpreter\n"
@@ -1348,7 +1348,7 @@ class TestHostCollectorCollect:
         assert "host_cpu_usage_percent" in result
         assert "25.0" in result
 
-    @patch("core.ansible_rpc.ansible_adhoc", new_callable=AsyncMock)
+    @patch("core.infra.ansible_rpc.ansible_adhoc", new_callable=AsyncMock)
     async def test_successful_collect_linux_uses_bash_wrapped_script(self, mock_adhoc):
         mock_adhoc.return_value = {
             "success": True,
@@ -1380,7 +1380,7 @@ class TestHostCollectorCollect:
         call_kwargs = mock_adhoc.call_args[1]
         assert call_kwargs["module_args"].startswith(f"bash <<'{LINUX_SCRIPT_WRAPPER_EOF}'\n")
 
-    @patch("core.ansible_rpc.ansible_adhoc", new_callable=AsyncMock)
+    @patch("core.infra.ansible_rpc.ansible_adhoc", new_callable=AsyncMock)
     async def test_default_modules_when_invalid(self, mock_adhoc):
         """当 metrics_modules 全部无效时，应使用所有默认模块"""
         mock_adhoc.return_value = {
@@ -1405,14 +1405,14 @@ class TestHostCollectorCollect:
 
 class TestHostRemoteCallbackHelper:
     def test_get_host_remote_callback_subject_uses_service_name(self):
-        import core.host_remote_callback as host_remote_callback_module
+        import core.collection.host_remote.callback as host_remote_callback_module
 
         assert host_remote_callback_module.get_host_remote_callback_subject("stargazer-service") == (
             "stargazer-service.host_remote.callback"
         )
 
     def test_get_host_remote_callback_queue_uses_service_name(self):
-        import core.host_remote_callback as host_remote_callback_module
+        import core.collection.host_remote.callback as host_remote_callback_module
 
         assert host_remote_callback_module.get_host_remote_callback_queue("stargazer-service") == (
             "stargazer-service.host_remote.callback"
@@ -1422,7 +1422,7 @@ class TestHostRemoteCallbackHelper:
     async def test_store_load_and_clear_host_remote_callback_context_with_fake_redis_pool(
         self, monkeypatch
     ):
-        import core.host_remote_callback as host_remote_callback_module
+        import core.collection.host_remote.callback as host_remote_callback_module
 
         fake_pool = _install_fake_host_remote_callback_pool(monkeypatch)
         params = {"host": "10.0.0.9"}
@@ -1456,7 +1456,7 @@ class TestHostRemoteCallbackHelper:
     async def test_store_host_remote_callback_context_does_not_start_deadline_until_submit_accepted(
         self, monkeypatch
     ):
-        import core.host_remote_callback as host_remote_callback_module
+        import core.collection.host_remote.callback as host_remote_callback_module
 
         fake_pool = _install_fake_host_remote_callback_pool(monkeypatch)
         monkeypatch.setattr(host_remote_callback_module, "_now_ms", lambda: 1000)
@@ -1468,7 +1468,7 @@ class TestHostRemoteCallbackHelper:
 
     @pytest.mark.asyncio
     async def test_mark_host_remote_submit_accepted_sets_deadline_from_accept_time(self, monkeypatch):
-        import core.host_remote_callback as host_remote_callback_module
+        import core.collection.host_remote.callback as host_remote_callback_module
 
         fake_pool = _install_fake_host_remote_callback_pool(monkeypatch)
         log_events = []

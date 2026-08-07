@@ -8,7 +8,7 @@
 """
 from sanic import Blueprint, response
 from sanic.log import logger
-from core.collection_application import get_collection_application
+from core.collection.application import get_collection_application
 
 health_router = Blueprint("health", url_prefix="/health")
 

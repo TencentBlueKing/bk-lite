@@ -4,12 +4,12 @@
 输出结构：{"result": {"hwcloud": [...], "hwcloud_ecs": [...]}, "success": bool}
 字段名严格对齐 CMDB 模型 attr-hwcloud / attr-hwcloud_ecs（不可改模型）。
 """
+import asyncio
 import traceback
 
 from sanic.log import logger
 
 from common.cmp.driver import CMPDriver
-from plugins.async_contract import threaded_collect
 
 
 class HuaweiCloudManager:
@@ -280,8 +280,10 @@ class HuaweiCloudManager:
             "hwcloud_dcs": self.get_dcs(),
         }
 
-    @threaded_collect
-    def list_all_resources(self):
+    async def list_all_resources(self):
+        return await asyncio.to_thread(self._list_all_resources_sync)
+
+    def _list_all_resources_sync(self):
         try:
             result = self.exec_script()
             return {"result": result, "success": True}

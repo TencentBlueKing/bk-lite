@@ -1,5 +1,6 @@
 """采集服务 V2 - 基于 YAML 配置的新版本采集服务"""
 
+import asyncio
 import importlib
 import json
 import ntpath
@@ -7,11 +8,12 @@ import posixpath
 import time
 import traceback
 from typing import Dict, Any, Optional
-from sanic.log import logger
+from core.logger import logger
 
-from core.nats_utils import nats_request
-from core.yaml_reader import yaml_reader
-from core.plugin_executor import PluginExecutor
+from core.infra.nats_utils import nats_request
+from core.plugin.yaml_reader import yaml_reader
+from core.plugin.executor import PluginExecutor
+from core.collection.contracts import AccessProbeResult
 from plugins.base_utils import convert_to_prometheus_format
 
 
@@ -31,11 +33,17 @@ class CollectionService:
     4. 通过 PluginExecutor 执行单次采集
     """
 
-    def __init__(self, params: Optional[dict] = None):
+    def __init__(
+        self,
+        params: Optional[dict] = None,
+        *,
+        config_provider=None,
+    ):
         self._node_info = None  # 单个节点信息
         self.namespace = "bklite"
-        self.yaml_reader = yaml_reader
-        self.params = params
+        self.yaml_reader = config_provider or yaml_reader
+        # 运行期会补充 node_info/script_path，不能污染 HTTP 请求或其他目标复用的参数。
+        self.params = dict(params or {})
         self.plugin_name = self.params.pop("plugin_name", None)
         self.model_id = self.params["model_id"]
         self.host = self.params.get("host")  # 可能为None（云采集）
@@ -93,7 +101,7 @@ class CollectionService:
         if self.host:
             logger.info(f"📍 Host: {self.host}")
         else:
-            logger.info(f"📍 No host specified (cloud collection or default endpoint)")
+            logger.info("📍 No host specified (cloud collection or default endpoint)")
 
         try:
             # 根据参数确定执行器类型（job 或 protocol）
@@ -111,8 +119,10 @@ class CollectionService:
             # enterprise/plugins/inputs/{model}/plugin.yml -> plugins/inputs/{model}/plugin.yml
             # 的顺序选中最终 plugin.yml；若命中 enterprise 且后续 import 失败，executor 会按 strict_enterprise
             # 决定是直接报错还是回退到同名 oss 插件。
-            resolved_executor = self.yaml_reader.get_executor_config_with_resolution(
-                self.model_id, executor_type, prefer_enterprise=prefer_enterprise
+            resolved_executor = await self.yaml_reader.get_executor_config_with_resolution_async(
+                self.model_id,
+                executor_type,
+                prefer_enterprise=prefer_enterprise,
             )
             executor_config = resolved_executor.executor_config
             plugin_resolution = resolved_executor.plugin_resolution
@@ -138,7 +148,11 @@ class CollectionService:
                 strict_enterprise=strict_enterprise,
             )
             result = await executor.execute()
-            logger.info("Raw collection result: {}".format(result))
+            logger.info(
+                "Plugin collection completed: model=%s, success=%s",
+                self.model_id,
+                result.get("success"),
+            )
 
             if self.params.get("callback_subject"):
                 logger.info("✅ Collection completed successfully (callback mode)")
@@ -183,10 +197,9 @@ class CollectionService:
                 )
 
             # 处理结果并转换为 Prometheus 格式
-            processed_data = self._process_result(result)
-            final_result = convert_to_prometheus_format(processed_data)
+            final_result = await asyncio.to_thread(self._format_result, result)
 
-            logger.info(f"✅ Collection completed successfully")
+            logger.info("✅ Collection completed successfully")
             logger.info("=" * 60)
             return final_result
 
@@ -201,6 +214,36 @@ class CollectionService:
             logger.error(f"❌ Collection failed: {traceback.format_exc()}")
             logger.info(f"{'=' * 60}")
             return self._generate_error_response(str(e))
+
+    async def probe(self) -> AccessProbeResult:
+        """通过当前解析出的协议 Adapter 执行最小凭据感知预检。"""
+        executor_type = self.params["executor_type"]
+        prefer_enterprise = self._get_bool_param(
+            self.params, "prefer_enterprise", True
+        )
+        strict_enterprise = self._get_bool_param(
+            self.params, "strict_enterprise", False
+        )
+        resolved_executor = (
+            await self.yaml_reader.get_executor_config_with_resolution_async(
+                self.model_id,
+                executor_type,
+                prefer_enterprise=prefer_enterprise,
+            )
+        )
+        executor = PluginExecutor(
+            self.model_id,
+            resolved_executor.executor_config,
+            self.params,
+            plugin_resolution=resolved_executor.plugin_resolution,
+            fallback_executor_config=resolved_executor.fallback_executor_config,
+            strict_enterprise=strict_enterprise,
+        )
+        return await executor.probe()
+
+    def _format_result(self, result: Dict[str, Any]) -> str:
+        """在线程中完成可能随结果规模增长的转换，保持事件循环只负责编排。"""
+        return convert_to_prometheus_format(self._process_result(result))
 
     def _process_result(self, result: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -327,7 +370,11 @@ class CollectionService:
 
         return "\n".join(prometheus_lines) + "\n"
 
-    def list_regions(self):
+    async def list_regions(self):
+        """异步边界：云 SDK 的区域查询整体在线程中执行。"""
+        return await asyncio.to_thread(self._list_regions_sync)
+
+    def _list_regions_sync(self):
         """
         列出区域（保留向后兼容接口）
 
