@@ -4,6 +4,6 @@ type PageProps = {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 };
 
-export default async function ApmPoliciesLegacyRedirectPage({ searchParams }: PageProps) {
-  redirectWithQuery('/apm/events/policies', await searchParams);
+export default async function ApmExploreRootRedirectPage({ searchParams }: PageProps) {
+  redirectWithQuery('/apm/explore/traces', await searchParams);
 }
