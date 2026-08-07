@@ -12,22 +12,9 @@ interface QueryRangeParams {
 
 const nowSeconds = () => Math.floor(Date.now() / 1000);
 
-/** 0/1 状态类查询：mock 必须返回枚举域内的值，否则 KPI 会显示成无意义浮点。 */
-const isEnumLikeQuery = (query = '') =>
-  /has_leader|is_leader|oracledb_up_gauge|kafka_up_gauge|rabbitmq_node_running|minio_cluster_health|minio_erasure|process_.*alive|port_alive|_up_gauge\s*\{|== bool|>= bool|kube_node_status_condition|kube_pod_status_phase|consul_health|enum/.test(
-    query
-  );
-
-const buildValues = (base: number, unit = 'none', enumLike = false) => {
+const buildValues = (base: number, unit = 'none') => {
   const end = nowSeconds();
   const step = 60;
-  if (enumLike) {
-    const enumValue = base >= 0.5 ? 1 : 0;
-    return Array.from({ length: 36 }, (_, index) => [
-      end - (35 - index) * step,
-      String(enumValue)
-    ] as [number, string]);
-  }
   return Array.from({ length: 36 }, (_, index) => {
     const wave = Math.sin(index / 4) * base * 0.08;
     const drift = Math.cos(index / 7) * base * 0.04;
@@ -37,7 +24,6 @@ const buildValues = (base: number, unit = 'none', enumLike = false) => {
 };
 
 const inferBaseValue = (query = '', unit = 'none') => {
-  if (isEnumLikeQuery(query)) return 1;
   if (query.startsWith('count(') || query.includes(' count(')) {
     if (query.includes('kube_node_info')) return 3;
     if (query.includes('kube_pod_info') && query.includes('namespace')) return 6;
@@ -126,7 +112,6 @@ const inferBaseValue = (query = '', unit = 'none') => {
   if (unit === 'bytes') return 8 * 1024 * 1024 * 1024;
   if (unit === 'byteps') return 320 * 1024;
   if (unit === 'ms') return 38;
-  if (unit === 's') return query.includes('histogram_quantile') || query.includes('fsync') || query.includes('commit') ? 0.012 : 1.8;
   if (unit === 'cps') return 420;
   if (unit === 'counts') return 128;
   return 42;
@@ -135,11 +120,10 @@ const inferBaseValue = (query = '', unit = 'none') => {
 const metricSeries = (
   metric: Record<string, string>,
   base: number,
-  unit: string,
-  query = ''
+  unit: string
 ) => ({
   metric,
-  values: buildValues(base, unit, isEnumLikeQuery(query))
+  values: buildValues(base, unit)
 });
 
 const unescapePromRegexValue = (value: string) =>
@@ -179,9 +163,9 @@ const queryRange = (params: QueryRangeParams = {}) => {
     return {
       data: {
         result: [
-          metricSeries({ ...baseLabels, phase: 'Running' }, 21, 'none', query),
-          metricSeries({ ...baseLabels, phase: 'Pending' }, 1, 'none', query),
-          metricSeries({ ...baseLabels, phase: 'Succeeded' }, 2, 'none', query)
+          metricSeries({ ...baseLabels, phase: 'Running' }, 21, 'none'),
+          metricSeries({ ...baseLabels, phase: 'Pending' }, 1, 'none'),
+          metricSeries({ ...baseLabels, phase: 'Succeeded' }, 2, 'none')
         ]
       }
     };
@@ -204,8 +188,7 @@ const queryRange = (params: QueryRangeParams = {}) => {
               [label]: label === 'container_label_io_kubernetes_pod_namespace' ? `namespace-${index + 1}` : label === 'pod' ? `demo-pod-${index + 1}` : `orb-node-${index + 1}`
             },
             inferBaseValue(query, unit) * (1 - index * 0.13),
-            unit,
-            query
+            unit
           )
         )
       }
@@ -218,8 +201,7 @@ const queryRange = (params: QueryRangeParams = {}) => {
         metricSeries(
           baseLabels,
           inferBaseValue(query, unit),
-          unit,
-          query
+          unit
         )
       ]
     }
