@@ -36,6 +36,7 @@ import { getProfessionalDashboardUrl } from '@/app/monitor/dashboards/registry';
 import { withDashboardReturnContext } from '@/app/monitor/dashboards/shared/utils';
 import { encodeInstanceIdValuesParam } from '@/app/monitor/dashboards/shared/utils/instance';
 import { getDerivativeObjectNames } from '@/app/monitor/utils/monitorObject';
+import { findByMonitorId, sameMonitorId } from '@/app/monitor/utils/monitorIds';
 import { cloneDeep } from 'lodash';
 import {
   DEFAULT_VIEW_FIXED_FIELD_KEYS,
@@ -226,11 +227,11 @@ const ViewList: React.FC<ViewListProps> = ({
   };
 
   const currentObjectName = useMemo(() => {
-    return objects.find((item) => item.id === objectId)?.name || '';
+    return findByMonitorId(objects, objectId)?.name || '';
   }, [objects, objectId]);
 
   const instNamePlaceholder = useMemo(() => {
-    const type = objects.find((item) => item.id === objectId)?.type || '';
+    const type = findByMonitorId(objects, objectId)?.type || '';
     const baseTarget = objects
       .filter((item) => item.type === type)
       .find((item) => item.level === 'base');
@@ -252,7 +253,7 @@ const ViewList: React.FC<ViewListProps> = ({
 
   const needsAssetIpFilter = useMemo(() => {
     const summaryColumns =
-      objects.find((item) => item.id === objectId)?.instance_summary_columns ||
+      findByMonitorId(objects, objectId)?.instance_summary_columns ||
       [];
     return summaryColumns.some((column) => column.fact === 'asset.ip');
   }, [objects, objectId]);
@@ -356,7 +357,7 @@ const ViewList: React.FC<ViewListProps> = ({
 
   const fieldGroups = useMemo(() => {
     const metricKeys = new Set(
-      (objects.find((item) => item.id === objectId)?.display_fields || []).map(
+      (findByMonitorId(objects, objectId)?.display_fields || []).map(
         (field) => field.column_key
       )
     );
@@ -392,7 +393,7 @@ const ViewList: React.FC<ViewListProps> = ({
         current: 1
       }));
       const hostFromUrl =
-        objects.find((item) => item.id === objectId)?.name === 'Process'
+        findByMonitorId(objects, objectId)?.name === 'Process'
           ? searchParams.get('vm_params.instance_id')
           : null;
       const nextColony = hostFromUrl ? [hostFromUrl] : [];
@@ -491,7 +492,7 @@ const ViewList: React.FC<ViewListProps> = ({
     const objParams = {
       monitor_object_id: String(objectId)
     };
-    const targetObject = objects.find((item) => item.id === objectId);
+    const targetObject = findByMonitorId(objects, objectId);
     const objName = targetObject?.name;
     const config = { signal: abortController.signal };
     const displayMetricNames = (targetObject?.display_fields || [])
@@ -902,7 +903,7 @@ const ViewList: React.FC<ViewListProps> = ({
 
   const linkToDetial = (app: TableDataItem) => {
     const monitorItem = objects.find(
-      (item: ObjectItem) => item.id === objectId
+      (item: ObjectItem) => sameMonitorId(item.id, objectId)
     );
     const encodedIdValues = encodeInstanceIdValuesParam(
       app.instance_id_values
@@ -1101,7 +1102,7 @@ const ViewList: React.FC<ViewListProps> = ({
         monitorObject={objectId}
         metrics={metrics}
         objects={objects}
-        monitorName={objects.find((item) => item.id === objectId)?.name || ''}
+        monitorName={findByMonitorId(objects, objectId)?.name || ''}
       />
     </div>
   );

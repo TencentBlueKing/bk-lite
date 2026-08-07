@@ -1,3 +1,4 @@
+'use client';
 import React, { memo, useMemo, useCallback } from 'react';
 import chartStyle from './index.module.scss';
 import { useTranslation } from '@/utils/i18n';
