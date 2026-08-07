@@ -13,7 +13,7 @@ export interface FloatingButtonProps extends WebChatConfig {
   onChatStateChange?: (state: ChatState) => void;
 }
 
-export const FloatingButton = React.forwardRef<any, FloatingButtonProps>((props, _ref) => {
+export const FloatingButton = React.forwardRef<HTMLDivElement, FloatingButtonProps>((props, _ref) => {
   const {
     buttonText,
     buttonIcon = '💬',
@@ -28,7 +28,6 @@ export const FloatingButton = React.forwardRef<any, FloatingButtonProps>((props,
   const [isDragging, setIsDragging] = useState(false);
   const [dragOffset, setDragOffset] = useState(0);
   const containerRef = useRef<HTMLDivElement>(null);
-  const chatRef = useRef<any>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const dragStartY = useRef(0);
   const initialBottom = useRef(0);
@@ -101,7 +100,6 @@ export const FloatingButton = React.forwardRef<any, FloatingButtonProps>((props,
           style={{ height: '650px', maxHeight: 'calc(100vh - 2rem)' }}
         >
           <Chat
-            ref={chatRef}
             {...chatProps}
             onStateChange={onChatStateChange}
             onClose={() => setIsOpen(false)}

@@ -1,12 +1,7 @@
 import React, { useState } from 'react';
+import type { ToolCall } from '../contentChunks';
 
-export interface ToolCall {
-  id: string;
-  name: string;
-  args?: string;
-  result?: string;
-  status: 'running' | 'completed';
-}
+export type { ToolCall };
 
 interface ToolCallDisplayProps {
   toolCalls: ToolCall[];

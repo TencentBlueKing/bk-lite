@@ -6,13 +6,13 @@
  * Generate unique ID
  */
 export function generateId(prefix: string = ''): string {
-  return `${prefix}${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  return `${prefix}${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
 }
 
 /**
  * Debounce function
  */
-export function debounce<T extends (...args: any[]) => any>(
+export function debounce<T extends (...args: never[]) => unknown>(
   fn: T,
   delay: number
 ): (...args: Parameters<T>) => void {
@@ -32,7 +32,7 @@ export function debounce<T extends (...args: any[]) => any>(
 /**
  * Throttle function
  */
-export function throttle<T extends (...args: any[]) => any>(
+export function throttle<T extends (...args: never[]) => unknown>(
   fn: T,
   delay: number
 ): (...args: Parameters<T>) => void {
@@ -93,17 +93,17 @@ export function deepClone<T>(obj: T): T {
   }
 
   if (obj instanceof Date) {
-    return new Date(obj.getTime()) as any;
+    return new Date(obj.getTime()) as T;
   }
 
   if (obj instanceof Array) {
-    return obj.map((item) => deepClone(item)) as any;
+    return obj.map((item) => deepClone(item)) as T;
   }
 
   if (obj instanceof Object) {
     const clonedObj = {} as T;
     for (const key in obj) {
-      if (obj.hasOwnProperty(key)) {
+      if (Object.prototype.hasOwnProperty.call(obj, key)) {
         clonedObj[key] = deepClone(obj[key]);
       }
     }
