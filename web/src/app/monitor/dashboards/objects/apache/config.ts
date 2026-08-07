@@ -195,12 +195,25 @@ export const APACHE_DASHBOARD_CONFIG: SimpleDashboardConfig = {
   ],
   charts: [
     {
-      title: '请求吞吐趋势',
-      subtitle: '请求量 vs 流量',
+      title: '请求速率趋势',
+      subtitle: '请求处理速率',
       metric: 'apache_ReqPerSec',
-      guide: [{ label: '请求吞吐', detail: '对比请求处理速率（req/s）与字节传输速率（bytes/s），两线同步上升为正常，流量飙升而请求平稳则可能有大文件传输。' }],
+      guide: [{ label: '请求速率', detail: '请求处理速率（req/s）。' }],
       series: [
-        { metric: 'apache_ReqPerSec', label: '请求处理速率', color: '#2f6bff', unit: 'cps' },
+        { metric: 'apache_ReqPerSec', label: '请求处理速率', color: '#2f6bff', unit: 'cps' }
+      ]
+    },
+    {
+      title: '传输速率趋势',
+      subtitle: '数据传输速率',
+      metric: 'apache_BytesPerSec',
+      guide: [
+        {
+          label: '传输速率',
+          detail: '字节传输速率；与请求速率分开展示。流量飙升而请求平稳可能有大文件传输。'
+        }
+      ],
+      series: [
         { metric: 'apache_BytesPerSec', label: '数据传输速率', color: '#13c2c2', unit: 'kibyteps' }
       ]
     },
