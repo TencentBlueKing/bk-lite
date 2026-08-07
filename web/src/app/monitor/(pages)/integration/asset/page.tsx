@@ -15,6 +15,7 @@ import useApiClient from '@/utils/request';
 import { useSearchParams, useRouter } from 'next/navigation';
 import useMonitorApi from '@/app/monitor/api';
 import useIntegrationApi from '@/app/monitor/api/integration';
+import { findByMonitorId, sameMonitorId, toMonitorIdString } from '@/app/monitor/utils/monitorIds';
 import assetStyle from './index.module.scss';
 import { useTranslation } from '@/utils/i18n';
 import {
@@ -88,7 +89,7 @@ const Asset = () => {
   const [searchText, setSearchText] = useState<string>('');
   const [objects, setObjects] = useState<ObjectItem[]>([]);
   const [defaultSelectObj, setDefaultSelectObj] = useState<React.Key>(
-    urlObjId ? Number(urlObjId) : ''
+    urlObjId ? toMonitorIdString(urlObjId) : ''
   );
   const [objectId, setObjectId] = useState<React.Key>('');
   const [frequence, setFrequence] = useState<number>(0);
@@ -122,7 +123,7 @@ const Asset = () => {
       instanceName: record.instance_name,
       instanceId: record.instance_id,
       selectedConfigId: options?.selectedConfigId,
-      objName: objects.find((item) => item.id === objectId)?.name || '',
+      objName: findByMonitorId(objects, objectId)?.name || '',
       monitorObjId: objectId,
       plugins: record.plugins || [],
       showTemplateList: options?.showTemplateList ?? true
@@ -294,7 +295,7 @@ const Asset = () => {
         )
       }
     ];
-    const row = objects.find((item) => item.id === objectId) || {};
+    const row = findByMonitorId(objects, objectId) || {};
     return [
       ...getBaseInstanceColumn({
         objects,
@@ -389,7 +390,7 @@ const Asset = () => {
 
   const checkDetail = (row: ObjectInstItem) => {
     const monitorItem = objects.find(
-      (item: ObjectItem) => item.id === objectId
+      (item: ObjectItem) => sameMonitorId(item.id, objectId)
     );
     const url = buildAssetViewUrl({
       objectId: objectId || '',
@@ -444,7 +445,7 @@ const Asset = () => {
       setObjects(data);
       const _treeData = getTreeData(cloneDeep(data));
       setTreeData(_treeData);
-      const defaultKey = defaultSelectObj || data[0]?.id || '';
+      const defaultKey = toMonitorIdString(defaultSelectObj || data[0]?.id || '');
       if (defaultKey) {
         setDefaultSelectObj(defaultKey);
       }
@@ -467,7 +468,7 @@ const Asset = () => {
           acc[item.type].children.push({
             title: item.display_name || '--',
             label: item.name || '--',
-            key: item.id,
+            key: toMonitorIdString(item.id),
             icon: item.icon,
             count: item.instance_count ?? 0,
             children: []

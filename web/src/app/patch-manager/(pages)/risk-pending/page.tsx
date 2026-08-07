@@ -354,7 +354,7 @@ export default function RiskPendingPage() {
     if (osType === 'windows') return <span style={{ color: '#bfbfbf' }}>--</span>;
     if (!v || (!v.summary && !v.error)) return <span style={{ color: '#bfbfbf' }}>--</span>;
     if (v.error) return <Tooltip title={v.error}><Tag color="warning">{t('patchManager.complianceStatus.failed')}</Tag></Tooltip>;
-    const content = <div style={{ maxWidth: 440 }}>
+    const content = <div>
       <div style={{ marginBottom: 6, color: 'var(--color-text-2, #595959)' }}>{t('patchManager.risk.installImpactBatch')}</div>
       <div>{t('patchManager.risk.upgrade')}：{v.upgrade?.length ? v.upgrade.join('、') : t('patchManager.risk.none')}</div>
       <div>{t('patchManager.risk.additionalInstall')}：{v.install?.length ? v.install.join('、') : t('patchManager.risk.none')}</div>

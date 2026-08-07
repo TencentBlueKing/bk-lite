@@ -381,6 +381,44 @@ class TestSyncLinuxRepo:
             {"name": "openssl-libs", "version": "1.1.1k-7.el8", "arch": "x86_64"},
         ]
 
+    def test_preview_and_ingest_accept_realistic_rpm_advisory_with_more_than_128_packages(
+        self, mocker
+    ):
+        # Oracle/Rocky 9 当前真实 updateinfo 中的大公告可包含 205 个适用 RPM。
+        unique_packages = [
+            ParsedPackage(f"kernel-module-{index}", "1.0", "x86_64")
+            for index in range(205)
+        ]
+        packages = unique_packages + [unique_packages[0]] * 600
+        advisory = ParsedAdvisory(
+            advisory_id="ELSA-2026:0129",
+            title="Large kernel security advisory",
+            adv_type="security",
+            severity="Important",
+            packages=packages,
+        )
+        mocker.patch(
+            "apps.patch_mgmt.services.linux_repo_sync.fetch_advisories",
+            return_value=[advisory],
+        )
+
+        source = _source(source_type=PatchSourceType.YUM_REPO)
+        candidates = SourceSyncService.preview_sync_candidates(source)
+
+        assert len(candidates) == 1
+        assert candidates[0]["key"] == advisory.advisory_id
+        assert candidates[0]["packages"] == [
+            {"name": package.name, "version": package.version, "arch": "x86_64"}
+            for package in unique_packages
+        ]
+
+        result = SourceSyncService.ingest_selected(source, [advisory.advisory_id])
+
+        assert result == {"created": 1, "updated": 0, "skipped": 0, "total": 1}
+        assert LinuxPatchDetail.objects.get(
+            patch__title=advisory.advisory_id
+        ).packages == candidates[0]["packages"]
+
     def test_sync_rolls_back_advisory_when_detail_persistence_fails(
         self, mocker
     ):
