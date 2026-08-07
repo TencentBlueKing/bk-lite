@@ -19,7 +19,7 @@ export interface Message {
   content: string | MessageContent[];
   sender: 'user' | 'bot';
   timestamp: number;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 export interface ChatSession {
@@ -28,14 +28,14 @@ export interface ChatSession {
   messages: Message[];
   startTime: number;
   lastActivityTime: number;
-  customData?: Record<string, any>;
+  customData?: Record<string, unknown>;
 }
 
 export interface WebChatConfig {
   sseUrl?: string;
   socketUrl?: string; // Deprecated: use sseUrl instead
   socketPath?: string;
-  customData?: Record<string, any>;
+  customData?: Record<string, unknown>;
   theme?: 'light' | 'dark';
   title?: string;
   subtitle?: string;
@@ -45,7 +45,7 @@ export interface WebChatConfig {
   enableSSE?: boolean;
   enableStorage?: boolean;
   storageKey?: string;
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 export interface SSEMessage {
@@ -57,7 +57,7 @@ export interface SSEMessage {
 export interface ChatResponse {
   type: MessageType;
   content: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 export interface StateChangeEvent {
@@ -72,7 +72,7 @@ export interface MessageEvent {
 }
 
 export interface ErrorEvent {
-  error: Error;
+  error: unknown;
   timestamp: number;
 }
 
