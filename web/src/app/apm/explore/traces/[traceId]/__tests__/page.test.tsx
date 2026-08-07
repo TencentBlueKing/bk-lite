@@ -12,6 +12,7 @@ const api = {
 
 vi.mock('next/navigation', () => ({
   useParams: () => ({ traceId: 'trace-1' }),
+  useSearchParams: () => new URLSearchParams(),
 }));
 vi.mock('next/link', () => ({
   default: ({ children, href }: { children: React.ReactNode; href: string }) => <a href={href}>{children}</a>,

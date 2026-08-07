@@ -308,6 +308,9 @@ class InstallerService:
                     password=password,
                     private_key=private_key,
                     passphrase=passphrase,
+                    winrm_scheme=node.get("winrm_scheme", "https"),
+                    winrm_transport=node.get("winrm_transport", "ntlm"),
+                    winrm_cert_validation=node.get("winrm_cert_validation", True),
                     status="waiting",
                 )
             )
