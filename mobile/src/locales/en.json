@@ -55,10 +55,6 @@
         "profile": "Me",
         "primaryNavigation": "Primary navigation"
     },
-    "availability": {
-        "loadFailed": "Module permissions and licenses could not be loaded. Only Me remains available.",
-        "retryHint": "Tap Retry or pull to refresh. Returning to the app also retries automatically."
-    },
     "moduleShell": {
         "todoTitle": "To-do module",
         "monitorTitle": "Monitor module",
