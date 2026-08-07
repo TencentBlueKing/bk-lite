@@ -30,12 +30,12 @@ Legacy Format (still supported, auto-converted):
 """
 
 import re
-from datetime import datetime, tzinfo
 from typing import Any
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from croniter import croniter
-from django.utils import timezone as django_timezone
+from apps.core.utils import time_util as _crontab_time_util
+
+get_crontab_next_runs = _crontab_time_util.get_crontab_next_runs
+resolve_crontab_timezone = _crontab_time_util.resolve_crontab_timezone
 
 # Valid frequency types
 FREQUENCY_TYPES = ("daily", "weekly", "monthly", "crontab")
@@ -375,70 +375,3 @@ def convert_legacy_config(config: dict[str, Any]) -> dict[str, Any]:
         return new_config
 
     return config
-
-
-def resolve_crontab_timezone(tz: str | tzinfo | None = None) -> tzinfo:
-    """Resolve crontab wall-clock timezone; fall back to Django current timezone."""
-    if isinstance(tz, tzinfo):
-        return tz
-    if isinstance(tz, str) and tz.strip():
-        try:
-            return ZoneInfo(tz.strip())
-        except (ZoneInfoNotFoundError, KeyError, ValueError):
-            pass
-    return django_timezone.get_current_timezone()
-
-
-def get_crontab_next_runs(
-    crontab_expression: str,
-    count: int = 6,
-    base_time: datetime | None = None,
-    tz: str | tzinfo | None = None,
-) -> list[str]:
-    """
-    Get the next N execution times for a crontab expression.
-
-    Cron fields are interpreted in ``tz`` (user timezone by default), matching
-    Celery ``CrontabSchedule`` creation which uses ``timezone.get_current_timezone()``.
-
-    Args:
-        crontab_expression: 5-field crontab expression (minute hour day month weekday)
-        count: Number of next execution times to return (default: 6)
-        base_time: Base time to calculate from (default: now in ``tz``)
-        tz: IANA timezone name or tzinfo; default Django current timezone
-
-    Returns:
-        List of wall-clock datetime strings (YYYY-MM-DD HH:MM:SS) in ``tz``
-
-    Raises:
-        ValueError: If crontab expression is invalid
-    """
-    if not crontab_expression or not isinstance(crontab_expression, str):
-        raise ValueError("crontab_expression is required and must be a string")
-
-    expression = crontab_expression.strip()
-
-    # Validate format
-    if not croniter.is_valid(expression):
-        raise ValueError(f"Invalid crontab expression: {expression}")
-
-    resolved_tz = resolve_crontab_timezone(tz)
-
-    if base_time is None:
-        base_time = django_timezone.now().astimezone(resolved_tz)
-    elif base_time.tzinfo is None:
-        base_time = base_time.replace(tzinfo=resolved_tz)
-    else:
-        base_time = base_time.astimezone(resolved_tz)
-
-    try:
-        cron = croniter(expression, base_time)
-        next_runs = []
-        for _ in range(count):
-            next_time = cron.get_next(datetime)
-            if next_time.tzinfo is not None:
-                next_time = next_time.astimezone(resolved_tz)
-            next_runs.append(next_time.strftime("%Y-%m-%d %H:%M:%S"))
-        return next_runs
-    except Exception as e:
-        raise ValueError(f"Failed to calculate next runs: {e}")

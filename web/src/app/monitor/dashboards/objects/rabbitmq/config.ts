@@ -263,15 +263,28 @@ export const RABBITMQ_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       ]
     },
     {
-      title: '消息流转趋势',
-      subtitle: '总量、Ready、未确认、发布速率',
+      title: '消息存量趋势',
+      subtitle: '总量、Ready、未确认',
       metric: 'rabbitmq_overview_messages',
-      guide: [{ label: '消息流转', detail: '对比总消息、ready、未确认与发布速率，识别积压结构是堆积未消费还是确认滞后。' }],
+      guide: [{ label: '消息存量', detail: '对比总消息、ready、未确认，识别积压结构是堆积未消费还是确认滞后。' }],
       series: [
         { metric: 'rabbitmq_overview_messages', label: '总消息', color: '#2f6bff', unit: 'counts' },
         { metric: 'rabbitmq_overview_messages_ready', label: '待消费', color: '#ff8a1f', unit: 'counts' },
-        { metric: 'rabbitmq_overview_messages_unacked', label: '未确认', color: '#8a5cff', unit: 'counts' },
-        { metric: 'rabbitmq_overview_messages_published_rate', label: '发布速率', color: '#27c274', unit: 'cps' }
+        { metric: 'rabbitmq_overview_messages_unacked', label: '未确认', color: '#8a5cff', unit: 'counts' }
+      ]
+    },
+    {
+      title: '发布速率趋势',
+      subtitle: '消息发布速率',
+      metric: 'rabbitmq_overview_messages_published_rate',
+      guide: [{ label: '发布速率', detail: '消息发布速率，与存量图分开展示避免混轴。' }],
+      series: [
+        {
+          metric: 'rabbitmq_overview_messages_published_rate',
+          label: '发布速率',
+          color: '#27c274',
+          unit: 'cps'
+        }
       ]
     },
     {
@@ -286,13 +299,26 @@ export const RABBITMQ_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       ]
     },
     {
-      title: '节点负载趋势',
-      subtitle: '运行队列、Mnesia 事务',
+      title: '运行队列趋势',
+      subtitle: 'Erlang 调度运行队列',
       metric: 'rabbitmq_node_run_queue',
-      guide: [{ label: '节点负载', detail: '运行队列反映 CPU 排队压力，Mnesia 事务速率反映元数据写盘压力。' }],
+      guide: [{ label: '运行队列', detail: '运行队列反映 CPU 排队压力。' }],
       series: [
-        { metric: 'rabbitmq_node_run_queue', label: '运行队列', color: '#ff8a1f', unit: 'counts' },
-        { metric: 'rabbitmq_node_mnesia_disk_tx_count_rate', label: 'Mnesia 事务', color: '#13c2c2', unit: 'cps' }
+        { metric: 'rabbitmq_node_run_queue', label: '运行队列', color: '#ff8a1f', unit: 'counts' }
+      ]
+    },
+    {
+      title: 'Mnesia 事务趋势',
+      subtitle: '元数据写盘事务速率',
+      metric: 'rabbitmq_node_mnesia_disk_tx_count_rate',
+      guide: [{ label: 'Mnesia 事务', detail: 'Mnesia 事务速率反映元数据写盘压力。' }],
+      series: [
+        {
+          metric: 'rabbitmq_node_mnesia_disk_tx_count_rate',
+          label: 'Mnesia 事务',
+          color: '#13c2c2',
+          unit: 'cps'
+        }
       ]
     }
   ],
@@ -314,10 +340,9 @@ export const RABBITMQ_DASHBOARD_CONFIG: SimpleDashboardConfig = {
   details: [
     {
       title: '队列与资源详情',
-      subtitle: '队列、磁盘、连接',
+      subtitle: '队列与连接',
       rows: [
         { label: '队列数', metric: 'rabbitmq_overview_queues', unit: 'counts' },
-        { label: '磁盘剩余空间', metric: 'rabbitmq_node_disk_free', unit: 'bytes' },
         { label: '连接数', metric: 'rabbitmq_overview_connections', unit: 'counts' }
       ]
     }

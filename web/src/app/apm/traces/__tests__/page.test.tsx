@@ -6,13 +6,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import ApmTracesPage from '../page';
 
 const api = {
+  getSpans: vi.fn(),
   getTraces: vi.fn(),
   isLoading: false,
 };
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
-  useSearchParams: () => new URLSearchParams('service_name=checkout&environment=prod'),
+  useSearchParams: () => new URLSearchParams('entity=traces&service_name=checkout&environment=prod'),
 }));
 vi.mock('@/app/apm/api', () => ({ default: () => api }));
 vi.mock('@/app/apm/components/apm-route-shell', () => ({
@@ -31,6 +32,7 @@ beforeEach(() => {
     removeEventListener: vi.fn(),
     dispatchEvent: vi.fn(),
   }));
+  api.getSpans.mockResolvedValue({ items: [], next_cursor: null });
   api.getTraces.mockResolvedValue({
     items: [
       {
