@@ -1651,6 +1651,58 @@ def test_update_node_client_persists_normalized_cpu_architecture(monkeypatch):
 
 
 @pytest.mark.django_db
+def test_update_node_client_uses_install_target_ip_for_windows_link_local_report(monkeypatch):
+    cloud_region = CloudRegion.objects.create(
+        name="sidecar-windows-link-local-region",
+        introduction="test",
+        created_by="tester",
+        updated_by="tester",
+    )
+    install_task = ControllerTask.objects.create(
+        type="install",
+        package_version_id=1,
+        status="running",
+        cloud_region=cloud_region,
+        work_node="worker-1",
+        created_by="tester",
+        updated_by="tester",
+    )
+    ControllerTaskNode.objects.create(
+        task=install_task,
+        ip="10.0.0.57",
+        os=NodeConstants.WINDOWS_OS,
+        port=5986,
+        username="Administrator",
+        password="",
+        status="running",
+        result={InstallerConstants.INSTALL_NODE_ID_KEY: "node-sidecar-windows"},
+        cpu_architecture=NodeConstants.X86_64_ARCH,
+    )
+    monkeypatch.setattr(Sidecar, "create_default_config", lambda *args, **kwargs: None)
+    monkeypatch.setattr(Sidecar, "trigger_converge_tasks_if_needed", lambda *args, **kwargs: None)
+    request = SimpleNamespace(
+        headers={},
+        META={},
+        data={
+            "node_name": "windows-node",
+            "node_details": {
+                "ip": "169.254.1.5",
+                "operating_system": "Windows",
+                "collector_configuration_directory": r"C:\fusion-collectors\generated",
+                "metrics": {},
+                "status": {},
+                "tags": [f"zone:{cloud_region.id}"],
+                "log_file_list": [],
+            },
+        },
+    )
+
+    Sidecar.update_node_client(request, "node-sidecar-windows")
+
+    assert Node.objects.get(id="node-sidecar-windows").ip == "10.0.0.57"
+
+
+@pytest.mark.django_db
 def test_update_node_client_falls_back_to_install_task_cpu_architecture(monkeypatch):
     cloud_region = CloudRegion.objects.create(
         name="sidecar-fallback-region",
@@ -3606,6 +3658,64 @@ def test_package_version_upload_force_reuploads_existing_version(monkeypatch, tm
 
 
 @pytest.mark.django_db
+def test_package_version_upload_streams_file_without_unbounded_read(monkeypatch, tmp_path):
+    file_path = tmp_path / "fusion-collectors-windows-amd64.zip"
+    file_path.write_bytes(b"controller-package")
+    original_open = type(file_path).open
+    uploaded = {}
+
+    class RejectUnboundedRead:
+        def __init__(self, raw_file):
+            self.raw_file = raw_file
+            self.name = raw_file.name
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc_value, traceback):
+            self.raw_file.close()
+
+        def read(self, size=-1):
+            if size is None or size < 0:
+                raise AssertionError("controller package must not be read into memory at once")
+            return self.raw_file.read(size)
+
+        def seek(self, *args):
+            return self.raw_file.seek(*args)
+
+        def tell(self):
+            return self.raw_file.tell()
+
+    def guarded_open(path, mode="r", *args, **kwargs):
+        return RejectUnboundedRead(original_open(path, mode, *args, **kwargs))
+
+    def fake_upload(file, data):
+        uploaded["name"] = file.name
+        uploaded["content"] = file.read(4) + file.read(64)
+
+    monkeypatch.setattr(type(file_path), "open", guarded_open)
+    monkeypatch.setattr("apps.node_mgmt.management.utils.PackageService.upload_file", fake_upload)
+
+    from apps.node_mgmt.management.utils import package_version_upload
+
+    package_version_upload(
+        "controller",
+        {
+            "os": "windows",
+            "object": "Controller",
+            "cpu_architecture": NodeConstants.X86_64_ARCH,
+            "pk_version": "streaming-test",
+            "file_path": str(file_path),
+        },
+    )
+
+    assert uploaded == {
+        "name": "fusion-collectors-windows-amd64.zip",
+        "content": b"controller-package",
+    }
+
+
+@pytest.mark.django_db
 def test_backfill_package_storage_paths_dry_run_reports_legacy_copy(monkeypatch, capsys):
     package_obj = PackageVersion.objects.create(
         type="controller",
@@ -4837,6 +4947,51 @@ def test_trigger_converge_tasks_if_needed_schedules_legacy_install_task_without_
 
 
 @pytest.mark.django_db
+def test_trigger_converge_matches_generated_node_id_when_reported_ip_differs(monkeypatch):
+    cloud_region = CloudRegion.objects.create(
+        name="generated-id-converge-trigger-region",
+        introduction="test",
+        created_by="tester",
+        updated_by="tester",
+    )
+    task = installer_tasks.ControllerTask.objects.create(
+        cloud_region=cloud_region,
+        type="install",
+        status="running",
+        work_node="worker-1",
+        package_version_id=1,
+        created_by="tester",
+        updated_by="tester",
+    )
+    ControllerTaskNode.objects.create(
+        task=task,
+        ip="10.0.0.57",
+        node_name="windows-node",
+        os=NodeConstants.WINDOWS_OS,
+        organizations=[1],
+        port=5986,
+        username="Administrator",
+        password="",
+        status=InstallerConstants.STEP_STATUS_RUNNING,
+        result={
+            InstallerConstants.INSTALL_NODE_ID_KEY: "generated-windows-node",
+            InstallerConstants.EXECUTION_PHASE_KEY: InstallerConstants.EXECUTION_PHASE_CONNECTIVITY_WAITING,
+            "steps": [{"action": "connectivity_check", "status": "running", "message": "Wait for node connection"}],
+        },
+    )
+    called = []
+    monkeypatch.setattr(Sidecar, "_is_debounce_elapsed", lambda *_args, **_kwargs: True)
+    monkeypatch.setattr(
+        "apps.node_mgmt.services.sidecar.converge_controller_install_connectivity_for_node.delay",
+        lambda node_id: called.append(node_id),
+    )
+
+    Sidecar.trigger_converge_tasks_if_needed("generated-windows-node", "169.254.1.5", {})
+
+    assert called == ["generated-windows-node"]
+
+
+@pytest.mark.django_db
 def test_converge_controller_install_connectivity_for_node_prefers_install_node_id_with_shared_ip(
     monkeypatch,
 ):
@@ -5102,7 +5257,7 @@ def test_install_connectivity_converge_matches_generated_node_id_not_ip(monkeypa
     Node.objects.create(
         id="current-install-node",
         name="current-node",
-        ip="10.0.0.88",
+        ip="169.254.1.5",
         operating_system=NodeConstants.LINUX_OS,
         cpu_architecture=NodeConstants.X86_64_ARCH,
         collector_configuration_directory="/tmp/config",

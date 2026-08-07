@@ -1,5 +1,5 @@
 from pathlib import Path
-from django.core.files.base import ContentFile
+from django.core.files import File
 from apps.node_mgmt.models import PackageVersion
 from apps.node_mgmt.services.package import PackageService
 from apps.node_mgmt.constants.package import PackageConstants
@@ -39,11 +39,11 @@ def package_version_upload(_type, options):
             logger.warning(f"{_type} 包版本已存在!")
             return
 
-    with path_obj.open("rb") as f:
-        file_content = f.read()
-
-    django_file = ContentFile(file_content, name=file_name)
-    PackageService.upload_file(django_file, data)
+    # Keep controller packages on disk while JetStream uploads them in chunks.
+    # These packages can exceed 1 GB, so materializing the whole file here can
+    # exhaust the management process before the upload starts.
+    with path_obj.open("rb") as source_file:
+        PackageService.upload_file(File(source_file, name=file_name), data)
 
     if pk_v:
         pk_v.name = file_name

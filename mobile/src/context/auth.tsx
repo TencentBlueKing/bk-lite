@@ -384,11 +384,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     );
   }
 
-  if (isInitializing && !isPublicPath) {
+  // 含 /login：避免已登录刷新时先闪登录表再跳转。
+  if (isInitializing || (isAuthenticated && pathname === '/login')) {
     return <MobileAppLoading label={t('common.loading')} />;
   }
 
-  if (!isAuthenticated && !isPublicPath && !isInitializing) {
+  if (!isAuthenticated && !isPublicPath) {
     return <MobileAppLoading label={t('common.loading')} />;
   }
 

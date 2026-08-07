@@ -7,8 +7,8 @@ const webRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 const readPage = (path: string) => readFileSync(join(webRoot, 'src/app/apm', path, 'page.tsx'), 'utf8');
 
 const servicesPage = readPage('services');
-const topologyPage = readPage('topology');
-const sloPage = readPage('slo');
+const topologyPage = readPage('services/topology');
+const sloPage = readPage('services/slo');
 
 assert.match(servicesPage, /ServicePerspective = 'application' \| 'service'/, '服务目录必须支持应用与服务两种视角');
 assert.match(servicesPage, /getServiceRed/, '应用视角指标必须来自真实 RED 查询');
@@ -29,7 +29,7 @@ assert.match(servicesPage, /setMetricRefreshKey/, 'RED 指标降级状态必须�
 assert.match(servicesPage, /showLabel/, '健康状态必须同时展示色点与文案，不能仅靠颜色');
 assert.match(servicesPage, /MetricValue/, 'RED 空态必须区分无数据与查询失败');
 assert.match(servicesPage, /router\.replace/, '服务目录筛选与视角必须写入 URL 以便深链');
-assert.match(servicesPage, /\/apm\/events\?service=/, '活跃告警必须下钻到告警页并携带服务筛选');
+assert.match(servicesPage, /\/apm\/events\/alerts\?service=/, '活跃告警必须下钻到告警页并携带服务筛选');
 
 const serviceDetail = readFileSync(join(webRoot, 'src/app/apm/services/[serviceId]/page.tsx'), 'utf8');
 assert.match(serviceDetail, /activeKey=\{activeTab\}/, '服务详情 Tabs 必须真正切换内容而不是仅跳转');

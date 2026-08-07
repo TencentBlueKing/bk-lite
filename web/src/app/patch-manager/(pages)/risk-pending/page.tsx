@@ -175,7 +175,6 @@ export default function RiskPendingPage() {
   useEffect(() => {
     if (isLoading) return;
     loadRisk(1);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoading, view, filters]);
 
   // 外层列表持续静默轮询；抽屉打开不会停止轮询。
@@ -353,7 +352,7 @@ export default function RiskPendingPage() {
   const renderInstallImpact = (v: RiskItem['install_impact'], osType?: string) => {
     if (osType === 'windows') return <span style={{ color: '#bfbfbf' }}>--</span>;
     if (!v || (!v.summary && !v.error)) return <span style={{ color: '#bfbfbf' }}>--</span>;
-    if (v.error) return <Tooltip title={v.error}><Tag color="warning">{t('patchManager.complianceStatus.failed')}</Tag></Tooltip>;
+    if (v.error) return <Tooltip title={v.error}><Tag color="error">{t('patchManager.risk.previewFailed')}</Tag></Tooltip>;
     const content = <div>
       <div style={{ marginBottom: 6, color: 'var(--color-text-2, #595959)' }}>{t('patchManager.risk.installImpactBatch')}</div>
       <div>{t('patchManager.risk.upgrade')}：{v.upgrade?.length ? v.upgrade.join('、') : t('patchManager.risk.none')}</div>
@@ -454,6 +453,17 @@ export default function RiskPendingPage() {
 
   const scopeCandidates = useMemo(() => buildScopeCandidates(scopeRows), [scopeRows]);
   const scopeSelectedObjs = useMemo(() => scopeCandidates.filter((r) => scopeSelected.includes(r.key)), [scopeCandidates, scopeSelected]);
+  const previewFailedItems = useMemo(
+    () => scopeSelectedObjs.filter((item) => !!item.install_impact?.error),
+    [scopeSelectedObjs],
+  );
+  const previewFailedLabels = useMemo(() => {
+    const labels = previewFailedItems.slice(0, 5).map((item) => `${item.host} - ${item.patch}`);
+    if (previewFailedItems.length > labels.length) {
+      labels.push(t('patchManager.risk.andMoreItems', undefined, { count: previewFailedItems.length - labels.length }));
+    }
+    return labels.join(', ');
+  }, [previewFailedItems, t]);
 
   const handleScopeSubmit = async () => {
     if (scopeSelectedObjs.length === 0) return;
@@ -870,7 +880,14 @@ export default function RiskPendingPage() {
                 <Button onClick={() => setCurrentStep(0)}>{t('patchManager.risk.previous')}</Button>
                 <Popconfirm
                   title={t('patchManager.risk.confirmCreateRemediation')}
-                  description={t('patchManager.risk.createRemediationConfirm', undefined, { count: scopeSelected.length, reboot: autoReboot ? t('patchManager.risk.onlyRequiredReboot') : t('patchManager.risk.noAutomaticReboot') })}
+                  description={<div>
+                    <div>{t('patchManager.risk.createRemediationConfirm', undefined, { count: scopeSelected.length, reboot: autoReboot ? t('patchManager.risk.onlyRequiredReboot') : t('patchManager.risk.noAutomaticReboot') })}</div>
+                    {previewFailedItems.length > 0 && (
+                      <div style={{ color: 'var(--color-error, #ff4d4f)', marginTop: 6, maxWidth: 500, whiteSpace: 'normal' }}>
+                        {t('patchManager.risk.previewFailureConfirm', undefined, { items: previewFailedLabels })}
+                      </div>
+                    )}
+                  </div>}
                   onConfirm={handleScopeSubmit}
                   okText={t('patchManager.confirm')}
                   cancelText={t('patchManager.cancel')}

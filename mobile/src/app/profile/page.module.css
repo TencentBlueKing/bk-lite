@@ -3,7 +3,7 @@
 
 .identity {
   display: grid;
-  grid-template-columns: 52px minmax(0, 1fr) auto;
+  grid-template-columns: 52px minmax(0, 1fr) max-content;
   gap: 12px;
   padding: 16px;
   align-items: start;
@@ -79,83 +79,61 @@
 .identityMetaLoading span:first-child { width: 88px; }
 .identityMetaLoading span:last-child { width: 72px; }
 .identityError {
-  display: flex;
-  gap: 10px;
+  display: inline-flex;
+  gap: 6px;
   margin-top: 10px;
+  max-width: 100%;
   align-items: center;
-  justify-content: space-between;
   font-size: var(--font-size-secondary);
   line-height: 1.4;
   color: var(--color-text-3);
 }
-.identityError span { min-width: 0; }
-.identityError button {
+.identityError span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.identityRetry {
+  display: inline-grid;
   flex: 0 0 auto;
-  min-height: 32px;
-  padding: 0 10px;
+  width: 44px;
+  height: 44px;
+  margin: -12px -8px -12px 0;
+  padding: 0;
   color: var(--color-primary);
+  font-size: var(--font-size-subtitle);
   cursor: pointer;
   background: transparent;
-  border: 1px solid var(--color-primary-border);
+  border: 0;
   border-radius: 8px;
+  place-items: center;
   touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
 }
-.identityError button:active { opacity: .76; }
-.identityError button:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
-
-.availabilityBanner {
-  display: flex;
-  gap: 12px;
-  margin-bottom: 12px;
-  padding: 12px 14px;
-  align-items: center;
-  justify-content: space-between;
-  background: var(--color-primary-bg);
-  border: 1px solid var(--color-primary-border);
-  border-radius: 12px;
-}
-.availabilityBannerCopy {
-  display: grid;
-  gap: 4px;
-  min-width: 0;
-}
-.availabilityBannerCopy strong {
-  font-size: var(--font-size-body);
-  font-weight: 700;
-  line-height: 1.35;
-  color: var(--color-text-1);
-}
-.availabilityBannerCopy span {
-  font-size: var(--font-size-secondary);
-  line-height: 1.4;
-  color: var(--color-text-3);
-}
-.availabilityBannerAction {
-  flex: 0 0 auto;
-  min-width: 72px;
-  min-height: 44px;
-  padding: 0 12px;
-  font-size: var(--font-size-body);
-  font-weight: 650;
-  color: var(--color-primary);
-  cursor: pointer;
-  background: var(--color-bg);
-  border: 1px solid var(--color-primary-border);
-  border-radius: 10px;
-  touch-action: manipulation;
-}
-.availabilityBannerAction:disabled {
+.identityRetry:disabled {
   cursor: default;
-  color: var(--color-text-3);
-  opacity: .7;
+  color: var(--color-text-4);
 }
-.availabilityBannerAction:not(:disabled):active { opacity: .76; }
-.availabilityBannerAction:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+.identityRetry:not(:disabled):active { opacity: .76; }
+.identityRetry:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+.identityRetrySpin {
+  animation: identityRetrySpin 0.8s linear infinite;
+}
+@keyframes identityRetrySpin {
+  to { transform: rotate(360deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .identityRetrySpin { animation: none; }
+}
 
 .domain {
-  max-width: 92px;
+  box-sizing: border-box;
+  width: max-content;
+  max-width: 200px;
   margin-top: 4px;
   padding: 4px 8px;
+  justify-self: end;
   overflow: hidden;
   font-size: var(--font-size-secondary);
   font-weight: 650;

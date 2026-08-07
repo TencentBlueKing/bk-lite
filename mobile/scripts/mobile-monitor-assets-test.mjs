@@ -179,12 +179,13 @@ test('实例列表面板把摘要指标放进表格列并支持横向滚动', as
 });
 
 test('最近查看默认 Tab 在前且详情成功后会记录浏览', async () => {
-  const [page, detail, storage, model, panel] = await Promise.all([
+  const [page, detail, storage, model, panel, styles] = await Promise.all([
     readProjectFile('src/app/monitor/page.tsx'),
     readProjectFile('src/app/monitor/detail/page.tsx'),
     readProjectFile('src/features/monitor/recent-views-storage.ts'),
     readProjectFile('src/features/monitor/model.ts'),
     readProjectFile('src/features/monitor/recent-views-panel.tsx'),
+    readProjectFile('src/features/monitor/monitor.module.css'),
   ]);
   assert.match(page, /key="recent"[\s\S]*key="all"/);
   assert.match(page, /activeTab.*'recent'/);
@@ -198,11 +199,20 @@ test('最近查看默认 Tab 在前且详情成功后会记录浏览', async () 
   assert.doesNotMatch(detail, /userInfo\?\.id \|\| 0/);
   assert.match(panel, /formatRecentViewTime/);
   assert.match(panel, /returnTab: 'recent'/);
-  assert.match(panel, /instanceListSummaryEntries/);
+  assert.match(panel, /instanceSummaryEntries/);
   assert.match(panel, /recentMetricsLine/);
   assert.match(panel, /recentMetricLabel/);
-  assert.match(panel, /recentStatusInline/);
+  assert.match(panel, /recentStatusText/);
   assert.match(panel, /recentMetaLine/);
+  assert.match(panel, /recentViewedAt/);
+  assert.match(panel, /size=\{26\}/);
+  assert.match(styles, /\.recentRowIcon[\s\S]*?width:\s*26px/);
+  assert.match(styles, /\.recentRow\s*\{[^}]*align-items:\s*start/s);
+  assert.match(styles, /\.recentRow\s*\{[^}]*align-content:\s*center/s);
+  assert.doesNotMatch(panel, /recentStatusInline/);
+  assert.doesNotMatch(panel, /recentMetricValueEmpty/);
+  assert.match(styles, /\.recentStatusText\[data-status='unavailable'\]\s*\{\s*color:\s*var\(--color-fail\)/);
+  assert.match(styles, /\.recentStatusText\[data-status='normal'\]\s*\{\s*color:\s*var\(--color-success\)/);
   const { normalizeRecentViews, MAX_RECENT_VIEWS } = await loadModel('src/features/monitor/model.ts');
   assert.equal(MAX_RECENT_VIEWS, 20);
   const config = normalizeRecentViews({ items: Array.from({ length: 25 }, (_, index) => ({

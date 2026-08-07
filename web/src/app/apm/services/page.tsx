@@ -559,7 +559,7 @@ export default function ApmServicesPage() {
         const alert = alertCounts.get(alertKey(item.serviceName, item.environment));
         const count = alert?.count ?? 0;
         const dangerous = count > 0 && (alert?.level ?? 5) <= 2;
-        const eventsHref = `/apm/events?service=${encodeURIComponent(item.serviceName)}${
+        const eventsHref = `/apm/events/alerts?service=${encodeURIComponent(item.serviceName)}${
           item.environment ? `&environment=${encodeURIComponent(item.environment)}` : ''
         }`;
         return (
@@ -846,8 +846,8 @@ export default function ApmServicesPage() {
                   const errDanger = isErrorRateDanger(application.errorRate);
                   const alertServiceHint = application.services[0]?.name;
                   const eventsHref = alertServiceHint
-                    ? `/apm/events?service=${encodeURIComponent(alertServiceHint)}`
-                    : '/apm/events';
+                    ? `/apm/events/alerts?service=${encodeURIComponent(alertServiceHint)}`
+                    : '/apm/events/alerts';
                   return (
                     <button
                       aria-label={`查看应用 ${application.label} 下的服务`}

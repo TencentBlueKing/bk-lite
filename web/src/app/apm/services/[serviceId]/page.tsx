@@ -235,14 +235,14 @@ export default function ApmServiceDetailPage() {
   }, [authLoading, environment, getSlos, getTopology, getTraces, service, timeRange]);
 
   const exploreHref = service && red
-    ? `/apm/traces?${new URLSearchParams({
+    ? `/apm/explore/traces?${new URLSearchParams({
       service_namespace: service.namespace,
       service_name: service.name,
       environment: red.environment,
       started_at: red.started_at,
       ended_at: red.ended_at,
     }).toString()}`
-    : '/apm/traces';
+    : '/apm/explore/traces';
 
   const chartData = useMemo<RedChartPoint[]>(
     () => (red?.timeseries ?? []).map((point) => ({
@@ -310,7 +310,7 @@ export default function ApmServiceDetailPage() {
             <span className="text-[13px] font-medium">{item.service_name}</span>
           </Space>
           <Link
-            href={`/apm/traces/${item.trace_id}`}
+            href={`/apm/explore/traces/${item.trace_id}`}
             className="font-mono text-[11px] text-[var(--color-text-3)] hover:text-[var(--color-primary)]"
           >
             {item.trace_id}
@@ -536,7 +536,7 @@ export default function ApmServiceDetailPage() {
                                 <div className="w-full">
                                   <div className="mb-1.5 flex items-start justify-between gap-3">
                                     <Link
-                                      href={`/apm/endpoints?service=${encodeURIComponent(service.name)}&environment=${encodeURIComponent(environment ?? '')}&endpoint=${encodeURIComponent(item.endpoint)}`}
+                                      href={`/apm/explore/endpoints?service=${encodeURIComponent(service.name)}&environment=${encodeURIComponent(environment ?? '')}&endpoint=${encodeURIComponent(item.endpoint)}`}
                                       className="min-w-0 break-all text-[13px] text-[var(--color-text-1)] hover:text-[var(--color-primary)]"
                                     >
                                       {item.endpoint}
@@ -642,7 +642,7 @@ export default function ApmServiceDetailPage() {
                             </Space>
                             <div className="mt-2">
                               <Link
-                                href={`/apm/traces/${item.trace_id}`}
+                                href={`/apm/explore/traces/${item.trace_id}`}
                                 className="text-xs text-[var(--color-primary)]"
                               >
                                 查看样本 Trace →
@@ -732,7 +732,7 @@ export default function ApmServiceDetailPage() {
                         {
                           title: '操作',
                           width: 100,
-                          render: () => <Link href="/apm/slo"><Button type="link" size="small">管理</Button></Link>,
+                          render: () => <Link href="/apm/services/slo"><Button type="link" size="small">管理</Button></Link>,
                         },
                       ]}
                     />
@@ -743,7 +743,7 @@ export default function ApmServiceDetailPage() {
                       image={Empty.PRESENTED_IMAGE_SIMPLE}
                       description="该服务尚未配置 SLO"
                     >
-                      <Link href="/apm/slo"><Button type="primary">去配置 SLO</Button></Link>
+                      <Link href="/apm/services/slo"><Button type="primary">去配置 SLO</Button></Link>
                     </Empty>
                   </ApmSurface>
                 ),
