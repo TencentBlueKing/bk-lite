@@ -4,6 +4,7 @@ from apps.core.logger import monitor_logger as logger
 from apps.monitor.constants.snmp_interface import DEFAULT_IFTYPE_EXCLUDE, IFTYPE_OID
 from apps.monitor.models import CollectConfig
 from apps.monitor.utils.config_format import ConfigFormat
+from apps.monitor.utils.snmp_ifmib_capability import is_interface_filter_capable_plugin
 from apps.rpc.node_mgmt import NodeMgmt
 
 
@@ -12,6 +13,16 @@ IFTYPE_FIELD = {
     "name": "ifType",
     "is_tag": True,
 }
+
+
+def is_patchable_snmp_child_config(config, *, capable: bool | None = None) -> bool:
+    """Return whether a CollectConfig row should receive IF-MIB filter backfill."""
+    collect_type = str(getattr(config, "collect_type", "") or "")
+    if not collect_type.startswith("snmp"):
+        return False
+    if capable is None:
+        capable = is_interface_filter_capable_plugin(getattr(config, "monitor_plugin", None))
+    return bool(capable)
 
 
 def _table_has_ifdescr(table: dict) -> bool:
@@ -100,9 +111,10 @@ def patch_child_content_dict(content: dict, overwrite_default: bool = False) -> 
 
 class Command(BaseCommand):
     help = (
-        "Idempotently backfill ifType fields and default tagdrop.ifType for existing SNMP child configs; "
+        "Idempotently backfill ifType fields and default tagdrop.ifType for existing "
+        "IF-MIB-capable SNMP child configs (collect_type snmp / snmp_*); "
         "supports --dry-run and compensating rollback on update failure. Not hooked into startup init. "
-        "为存量 SNMP 子配置幂等补齐 ifType 字段与默认 tagdrop.ifType；"
+        "为具备 IF-MIB 过滤能力的存量 SNMP 子配置（collect_type 为 snmp / snmp_*）幂等补齐 ifType 字段与默认 tagdrop.ifType；"
         "支持 --dry-run，更新失败时自动补偿回滚。不挂入启动期初始化。"
     )
 
@@ -125,11 +137,28 @@ class Command(BaseCommand):
         dry_run = options["dry_run"]
         overwrite_default = options["overwrite_default"]
 
-        config_ids = list(
-            CollectConfig.objects.filter(collect_type="snmp", is_child=True).values_list("id", flat=True)
-        )
+        # 厂商实例 collect_type 为 snmp_cisco / snmp_h3c 等；精确匹配 "snmp" 会漏补。
+        # 同时仅对 IF-MIB 过滤能力插件补齐，避免 hardware_server 被写入默认 tagdrop。
+        # 按 plugin_id 缓存能力判定：_is_network_device_snmp_plugin 含 exists()/manifest I/O，
+        # 不可对每行 CollectConfig 重复调用（management 命令也会踩 N+1）。
+        capable_by_plugin_id: dict[int | None, bool] = {}
+        config_ids: list = []
+        for config in CollectConfig.objects.filter(
+            collect_type__startswith="snmp",
+            is_child=True,
+        ).select_related("monitor_plugin"):
+            plugin = getattr(config, "monitor_plugin", None)
+            plugin_id = getattr(plugin, "pk", None)
+            if plugin_id not in capable_by_plugin_id:
+                capable_by_plugin_id[plugin_id] = is_interface_filter_capable_plugin(plugin)
+            if is_patchable_snmp_child_config(
+                config, capable=capable_by_plugin_id[plugin_id]
+            ):
+                config_ids.append(config.id)
         if not config_ids:
-            self.stdout.write("No SNMP child configs found / 未发现 SNMP 子配置")
+            self.stdout.write(
+                "No IF-MIB-capable SNMP child configs found / 未发现具备 IF-MIB 过滤能力的 SNMP 子配置"
+            )
             return
 
         node_mgmt = NodeMgmt()
