@@ -879,6 +879,7 @@
         "addChannel": "Add Channel",
         "smtp_pwd": "Smtp Password",
         "smtp_usessl": "Use SSL",
+        "smtp_auth_enabled": "Enable SMTP Authentication",
         "smtp_server": "Smtp Server",
         "description": "Description",
         "webhook_url": "Webhook URL",
