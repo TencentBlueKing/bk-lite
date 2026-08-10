@@ -616,3 +616,22 @@ class TestPatchMetadataOnlyViewApi:
         assert result == 1
         assert patch.pkg_status == PackageStatus.DOWNLOAD_FAILED
         assert "上传超时" in patch.windows_detail.package_error
+
+    def test_stale_pending_manual_windows_package_is_marked_failed(self):
+        patch = Patch.objects.create(
+            title="历史元数据补丁",
+            os_type=OSType.WINDOWS,
+            pkg_status=PackageStatus.PENDING,
+            team=[1],
+        )
+        WindowsPatchDetail.objects.create(patch=patch, kb_number="KB6000009")
+        Patch.objects.filter(pk=patch.pk).update(
+            updated_at=patch.updated_at - timedelta(hours=25),
+        )
+
+        result = expire_stale_windows_package_uploads(timeout_seconds=24 * 60 * 60)
+
+        patch.refresh_from_db()
+        assert result == 1
+        assert patch.pkg_status == PackageStatus.DOWNLOAD_FAILED
+        assert "上传超时" in patch.windows_detail.package_error

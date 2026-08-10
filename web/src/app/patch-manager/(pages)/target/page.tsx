@@ -1132,7 +1132,7 @@ export default function TargetPage() {
           columns={[
             { title: t('patchManager.targetPage.host'), dataIndex: 'name', width: 120 },
             { title: 'IP', dataIndex: 'ip', width: 120 },
-            { title: 'OS', dataIndex: 'os', width: 100 },
+            { title: t('patchManager.osType'), dataIndex: 'os', width: 100 },
             { title: t('patchManager.arch'), dataIndex: 'arch', width: 90, render: (value: string) => formatArchitecture(value) },
           ]}
           selectedKeys={selectedNodes}
