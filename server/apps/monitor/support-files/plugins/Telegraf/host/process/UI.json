@@ -17,8 +17,7 @@
       "required": true,
       "editable": false,
       "default_value": [
-        "procstat",
-        "net_response"
+        "procstat"
       ],
       "options": [
         {
@@ -30,7 +29,8 @@
         {
           "label": "Port",
           "value": "net_response",
-          "description": "可选：对配置的端口做 TCP 存活探测",
+          "description": "启用端口存活探测：勾选后表格出现端口列，仅对填写了端口的进程做 TCP 探测",
+          "description_en": "Enable TCP port liveness checks. When selected, the Ports column appears; only rows with ports configured are probed.",
           "label_en": "Port"
         }
       ],
@@ -128,8 +128,8 @@
       "label": "端口",
       "type": "input",
       "required": false,
-      "description": "可选。逗号分隔的 TCP 端口列表，用于端口存活探测；留空则不采集端口指标。",
-      "description_en": "Optional comma-separated TCP ports for liveness checks. Leave empty to skip port metrics.",
+      "description": "可选。逗号分隔的 TCP 端口列表；留空表示该进程不做端口存活探测。",
+      "description_en": "Optional comma-separated TCP ports. Leave empty to skip port liveness for this process.",
       "dependency": {
         "field": "metric_type",
         "includes": "net_response"
