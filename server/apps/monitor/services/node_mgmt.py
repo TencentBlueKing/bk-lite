@@ -301,6 +301,11 @@ class InstanceConfigService:
             config = configs[0]
             if config_obj.file_type == "toml":
                 config["content"] = ConfigFormat.toml_to_dict(config[content_key])
+                if (config_obj.collect_type or "").startswith("snmp"):
+                    from apps.monitor.utils.snmp_interface_filters import expose_snmp_interface_filters_for_edit
+
+                    # tagpass 隔离后过滤在 snmp[1]；表单只读 content.config，需投影回显。
+                    config["content"] = expose_snmp_interface_filters_for_edit(config["content"])
             elif config_obj.file_type == "yaml":
                 config["content"] = ConfigFormat.yaml_to_dict(config[content_key])
             else:

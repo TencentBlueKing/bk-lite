@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import re
-import tomllib
 from copy import deepcopy
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
+
+import toml
+import tomllib
 
 from apps.core.exceptions.base_app_exception import ValidationAppException
 from apps.monitor.constants.snmp_interface import (
@@ -26,6 +29,55 @@ FILTER_MARKER_END = "# ---- BK-Lite SNMP interface dimension filters (end) ----"
 
 IFMIB_MARKER_BEGIN = "# ---- BK-Lite core IF-MIB collection (begin) ----"
 IFMIB_MARKER_END = "# ---- BK-Lite core IF-MIB collection (end) ----"
+COMMON_IFMIB_TABLE_PATH = Path(__file__).resolve().parents[1] / "support-files/plugins/Telegraf/snmp/_common/ifmib.table.toml"
+PUBLIC_IFMIB_TABLE_OIDS = frozenset(
+    {
+        "1.3.6.1.2.1.2.2",
+        "1.3.6.1.2.1.31.1.1",
+        "IF-MIB::ifTable",
+        "IF-MIB::ifXTable",
+    }
+)
+PUBLIC_IFDESCR_OIDS = frozenset({"1.3.6.1.2.1.2.2.1.2", "1.3.6.1.2.1.31.1.1.1.1", "IF-MIB::ifDescr"})
+
+
+def has_managed_ifmib_section(raw_content: str | None) -> bool:
+    """渲染后的 child 是否包含公共 IF-MIB 管理区间（含 enable_ifmib=false 的空区间）。"""
+    text = raw_content or ""
+    return IFMIB_MARKER_BEGIN in text and IFMIB_MARKER_END in text
+
+
+@lru_cache(maxsize=1)
+def _load_common_ifmib_table() -> dict[str, Any]:
+    document = tomllib.loads(COMMON_IFMIB_TABLE_PATH.read_text(encoding="utf-8"))
+    snmp_inputs = document.get("inputs", {}).get("snmp", [])
+    if isinstance(snmp_inputs, dict):
+        snmp_inputs = [snmp_inputs]
+    for snmp_input in snmp_inputs:
+        for table in snmp_input.get("table", []):
+            if isinstance(table, dict) and table.get("name") == "interface":
+                return table
+    raise ValueError(f"通用 IF-MIB 模板缺少 interface 表: {COMMON_IFMIB_TABLE_PATH}")
+
+
+def get_common_ifmib_table() -> dict[str, Any]:
+    """返回公共 IF-MIB 表副本，供模板导入与存量配置回填共享。"""
+    return deepcopy(_load_common_ifmib_table())
+
+
+def is_public_ifmib_table(table: dict[str, Any]) -> bool:
+    """只按标准表/字段 OID 识别公共 IF-MIB，名称本身不构成身份。"""
+    table_oid = table.get("oid")
+    if table_oid in PUBLIC_IFMIB_TABLE_OIDS:
+        return True
+    if table_oid not in (None, "") or table.get("name") != "interface":
+        return False
+    fields = table.get("field")
+    return isinstance(fields, list) and any(
+        isinstance(field, dict) and field.get("name") == "ifDescr" and field.get("oid") in PUBLIC_IFDESCR_OIDS
+        for field in fields
+    )
+
 
 FILTER_JINJA_BLOCK = f"""\
 {{% if enable_ifmib | default(true) %}}
@@ -163,12 +215,10 @@ _UI_FILTER_FIELDS: list[dict[str, Any]] = [
         "advanced": True,
         "section": "interface_filter",
         "default_value": [],
-        "description": (
-            "留空表示不限制类型。非空时只保留所选 ifType；与排除列表互斥。填写后本配置中的非接口指标"
-            "将不再采集，一般建议优先使用排除黑名单。"
-        ),
+        "description": ("留空表示不限制类型。非空时只保留所选 ifType；与排除列表互斥。"
+                        "过滤仅作用于公共接口指标，厂商 CPU、内存和硬件健康指标仍会采集。"),
         "description_en": ("Leave empty for no type restriction. Mutually exclusive with exclude list. Non-empty keeps only "
-                           "matching interface metrics; non-interface metrics from this config will not be collected."),
+                           "matching interface metrics; vendor CPU, memory, and hardware-health metrics remain collected."),
         "options": IFTYPE_OPTIONS,
         "widget_props": {
             "mode": "tags",
@@ -284,20 +334,15 @@ FILTER_BLOCK_RE = re.compile(
 TAGEXCLUDE_IFTYPE_RE = re.compile(r'^\s*tagexclude\s*=\s*\["ifType"\]\s*\n', re.MULTILINE)
 SNMP_INPUT_RE = re.compile(r"^\s*\[\[inputs\.snmp\]\]", re.MULTILINE)
 
-# 所有网络设备共用这一个 IF-MIB 模板；它仅声明 ifDescr tag，Telegraf walk 完整接口表。
-COMMON_IFMIB_TEMPLATE_PATH = (
-    Path(__file__).resolve().parents[1] / "support-files/plugins/Telegraf/snmp/_common/ifmib.table.toml"
-)
-
 
 def get_common_ifmib_table_block() -> str:
     """从唯一通用 IF-MIB 模板读取接口表，供厂商单 child 配置复用。"""
     try:
-        interface_table = COMMON_IFMIB_TEMPLATE_PATH.read_text(encoding="utf-8").strip()
+        interface_table = COMMON_IFMIB_TABLE_PATH.read_text(encoding="utf-8").strip()
     except OSError as exc:
-        raise RuntimeError(f"无法读取通用 IF-MIB 模板: {COMMON_IFMIB_TEMPLATE_PATH}") from exc
+        raise RuntimeError(f"无法读取通用 IF-MIB 模板: {COMMON_IFMIB_TABLE_PATH}") from exc
     if not IFMIB_HINT_RE.search(interface_table):
-        raise RuntimeError(f"通用 IF-MIB 模板缺少接口表: {COMMON_IFMIB_TEMPLATE_PATH}")
+        raise RuntimeError(f"通用 IF-MIB 模板缺少接口表: {COMMON_IFMIB_TABLE_PATH}")
     return interface_table
 
 
@@ -339,9 +384,25 @@ def has_interface_collection(template_content: str) -> bool:
 def _strip_ifmib_tables(template_content: str) -> str:
     """删除各厂商复制的 IF-MIB table，绝不删除私有 OID table。"""
 
+    def get_header_value(table_text: str, key: str) -> str | None:
+        header = table_text.split("[[inputs.snmp.table.field]]", 1)[0]
+        match = re.search(rf'^\s*{re.escape(key)}\s*=\s*"([^"]+)"\s*$', header, re.MULTILINE)
+        return match.group(1) if match else None
+
+    def is_public_table_block(table_text: str) -> bool:
+        table_oid = get_header_value(table_text, "oid")
+        if table_oid in PUBLIC_IFMIB_TABLE_OIDS:
+            return True
+        if table_oid not in (None, "") or get_header_value(table_text, "name") != "interface":
+            return False
+        return any(
+            re.search(rf'^\s*oid\s*=\s*"{re.escape(ifdescr_oid)}"\s*$', table_text, re.MULTILINE)
+            for ifdescr_oid in PUBLIC_IFDESCR_OIDS
+        )
+
     def strip_table(table_match: re.Match[str]) -> str:
         table_text = table_match.group(0)
-        return "" if IFMIB_HINT_RE.search(table_text) else table_text
+        return "" if is_public_table_block(table_text) else table_text
 
     text = TABLE_BLOCK_RE.sub(strip_table, template_content)
     text = re.sub(
@@ -387,7 +448,7 @@ def validate_rendered_core_network_ifmib(template_content: str, context: dict[st
         message = "SNMP IF-MIB 配置冲突：最终 TOML 无法解析，请检查重复的接口表或 tagpass/tagdrop 段"
         raise ValidationAppException(f"{message}：{exc}") from exc
 
-    interface_tables = [table for table in _get_snmp_input_tables(config) if table.get("name") == "interface"]
+    interface_tables = [table for table in _get_snmp_input_tables(config) if is_public_ifmib_table(table)]
     enabled = context.get("enable_ifmib", True) is not False
     if enabled:
         if len(interface_tables) != 1:
@@ -409,10 +470,54 @@ def validate_rendered_core_network_ifmib(template_content: str, context: dict[st
     if interface_tables:
         raise ValidationAppException("SNMP IF-MIB 配置冲突：关闭标准接口监控后仍渲染了接口表")
 
-    for table in _get_snmp_input_tables(config):
-        fields = table.get("field")
-        if isinstance(fields, list) and any(field.get("name") == "ifType" for field in fields if isinstance(field, dict)):
-            raise ValidationAppException("SNMP IF-MIB 配置冲突：关闭标准接口监控后仍渲染了 ifType 过滤标签")
+
+def isolate_snmp_interface_tagpass(template_content: str, context: dict[str, Any]) -> str:
+    """白名单仅作用于公共接口 input，避免丢弃没有接口标签的厂商指标。"""
+    if not should_manage_core_network_ifmib(context) or context.get("enable_ifmib", True) is False:
+        return template_content
+
+    document = toml.loads(template_content)
+    snmp_inputs = document.get("inputs", {}).get("snmp", [])
+    for index, snmp_input in enumerate(snmp_inputs):
+        if not isinstance(snmp_input, dict) or not isinstance(snmp_input.get("tagpass"), dict):
+            continue
+        tables = snmp_input.get("table")
+        if not isinstance(tables, list):
+            continue
+        interface_tables = [table for table in tables if isinstance(table, dict) and is_public_ifmib_table(table)]
+        if not interface_tables:
+            continue
+
+        input_payload_keys = {"field", "table", "tagexclude", "tagpass", "tagdrop"}
+        interface_input = {key: deepcopy(value) for key, value in snmp_input.items() if key not in input_payload_keys}
+        source_fields = [deepcopy(field) for field in snmp_input.get("field", []) if isinstance(field, dict) and field.get("is_tag") is True]
+        if source_fields:
+            interface_input["field"] = source_fields
+        interface_input["table"] = interface_tables
+        for filter_key in ("tagexclude", "tagpass", "tagdrop"):
+            if filter_key in snmp_input:
+                interface_input[filter_key] = deepcopy(snmp_input.pop(filter_key))
+
+        remaining_tables = [table for table in tables if table not in interface_tables]
+        source_payload_fields = snmp_input.get("field")
+        has_non_tag_fields = isinstance(source_payload_fields, list) and any(
+            not isinstance(field, dict) or field.get("is_tag") is not True
+            for field in source_payload_fields
+        )
+        if remaining_tables:
+            snmp_input["table"] = remaining_tables
+        else:
+            snmp_input.pop("table", None)
+
+        if remaining_tables or has_non_tag_fields:
+            snmp_inputs.insert(index + 1, interface_input)
+        else:
+            # 原 input 仅承载公共接口表（以及已复制的 tag 字段）时直接替换，
+            # 避免生成一个没有任何采集载荷的额外 inputs.snmp。
+            snmp_inputs[index] = interface_input
+        rendered = toml.dumps(document)
+        return rendered.replace("[inputs]\n", "")
+    return template_content
 
 
 def should_inject_snmp_interface_filters(plugin: Any, content: dict | None = None) -> bool:

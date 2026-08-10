@@ -141,6 +141,7 @@ def normalize_filter_list(value):
 
     return _normalize_filter_list(value)
 
+
 def _escape_toml_context_strings(value):
     if isinstance(value, str):
         return _escape_toml_string(value)
@@ -265,6 +266,7 @@ class Controller:
         from apps.monitor.utils.snmp_interface_template import (
             ensure_core_network_ifmib_jinja,
             ensure_snmp_interface_filter_jinja,
+            isolate_snmp_interface_tagpass,
             needs_snmp_interface_filter_jinja,
             validate_rendered_core_network_ifmib,
         )
@@ -289,6 +291,7 @@ class Controller:
 
         template = self.jinja_env.from_string(template_content)
         rendered_template = template.render(safe_context)
+        rendered_template = isolate_snmp_interface_tagpass(rendered_template, _context)
         validate_rendered_core_network_ifmib(rendered_template, _context)
         return rendered_template
 
