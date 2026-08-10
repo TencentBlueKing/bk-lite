@@ -61,6 +61,7 @@ error:
   fetch_failed: "Fetch failed: {detail}"
   ingest_failed: "Ingestion failed: {detail}"
   baseline_bound: "Unbind all targets before deleting this baseline"
+  baseline_target_os_mismatch: "Selected targets must use the same operating system as the baseline"
   baseline_no_requirements: "The baseline has no patch requirements and cannot be assessed"
   baseline_no_targets: "The baseline has no bound targets and cannot be assessed"
   baseline_locked: "The baseline has {count} active governance tasks; try again after they finish"

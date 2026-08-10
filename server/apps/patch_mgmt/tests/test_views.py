@@ -1504,6 +1504,23 @@ BASELINE_URL = f"{_BASE}/api/baseline/"
 
 @pytest.mark.django_db
 class TestBaselineViewApi:
+    def test_list_filters_baselines_by_operating_system(self, su_client):
+        linux_baseline = PatchBaseline.objects.create(
+            name="Linux baseline",
+            os_type=OSType.LINUX,
+            team=[1],
+        )
+        PatchBaseline.objects.create(
+            name="Windows baseline",
+            os_type=OSType.WINDOWS,
+            team=[1],
+        )
+
+        resp = su_client.get(BASELINE_URL, {"os_type": OSType.LINUX, "page_size": -1})
+
+        assert resp.status_code == status.HTTP_200_OK
+        assert [item["id"] for item in resp.data] == [linux_baseline.id]
+
     def test_requirements_api_returns_windows_version_and_arch(self, su_client):
         from apps.patch_mgmt.models import (
             BaselineRequirement,
@@ -1543,6 +1560,30 @@ class TestBaselineViewApi:
         resp = su_client.post(f"{BASELINE_URL}{baseline.id}/bind_hosts/", {"target_ids": [target.id]}, format="json")
         assert resp.status_code == status.HTTP_200_OK
         assert HostBaselineBinding.objects.filter(target=target, baseline=baseline).exists()
+
+    def test_bind_hosts_rejects_target_with_different_operating_system(self, su_client):
+        from apps.patch_mgmt.models import HostBaselineBinding
+
+        target = PatchTarget.objects.create(
+            name="linux-web-01",
+            ip="10.0.0.11",
+            os_type=OSType.LINUX,
+            team=[1],
+        )
+        baseline = PatchBaseline.objects.create(
+            name="Windows baseline",
+            os_type=OSType.WINDOWS,
+            team=[1],
+        )
+
+        resp = su_client.post(
+            f"{BASELINE_URL}{baseline.id}/bind_hosts/",
+            {"target_ids": [target.id]},
+            format="json",
+        )
+
+        assert resp.status_code == status.HTTP_400_BAD_REQUEST
+        assert not HostBaselineBinding.objects.filter(target=target).exists()
 
     def test_hosts_api_returns_bound_targets_with_permissions(self, su_client):
         from apps.patch_mgmt.models import HostBaselineBinding, PatchBaseline
