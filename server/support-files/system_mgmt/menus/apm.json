@@ -1,7 +1,7 @@
 {
   "client_id": "apm",
   "name": "APM",
-  "url": "/apm",
+  "url": "/apm/home",
   "icon": "monitor",
   "tags": [
     "tag.apm_integration",

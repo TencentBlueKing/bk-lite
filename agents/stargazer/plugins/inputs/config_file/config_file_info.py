@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import asyncio
 import base64
 import hashlib
 import json
@@ -20,7 +21,7 @@ class ConfigFileInfo(SSHPlugin):
     async def list_all_resources(self, need_raw=False) -> Dict[str, Any]:
         try:
             config_file_path = self._get_config_file_path()
-            script_content = self._read_script()
+            script_content = await asyncio.to_thread(self._read_script)
             rendered_script = self._render_script(script_content, config_file_path)
             response = await self._execute_script(rendered_script)
             if need_raw:
@@ -61,7 +62,7 @@ class ConfigFileInfo(SSHPlugin):
             subject = f"{execution_mode}.execute.{self.node_id}"
 
         payload = json.dumps({"args": [exec_params], "kwargs": {}}).encode()
-        from core.nats_utils import nats_request
+        from core.infra.nats_utils import nats_request
 
         return await nats_request(
             subject, payload=payload, timeout=self.nats_timeout

@@ -1,8 +1,8 @@
 # -- coding: utf-8 --
 import os
 
-from core.credential_state_cache import CredentialStateCache
-from core.nats_utils import nats_publish
+from core.infra.credential_state_cache import CredentialStateCache
+from core.infra.nats_utils import nats_publish
 
 
 COLLECT_CREDENTIAL_RESULT_PUSH_INTERVAL_SECONDS = int(os.getenv("COLLECT_CREDENTIAL_RESULT_PUSH_INTERVAL", "900"))

@@ -6,10 +6,11 @@ import { fileURLToPath } from 'node:url';
 const webRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (path: string) => readFileSync(join(webRoot, path), 'utf8');
 
-const traces = read('src/app/apm/traces/page.tsx');
-const endpoints = read('src/app/apm/endpoints/page.tsx');
-const errors = read('src/app/apm/errors/page.tsx');
-const traceDetail = read('src/app/apm/traces/[traceId]/page.tsx');
+const traces = read('src/app/apm/explore/traces/page.tsx');
+const endpoints = read('src/app/apm/explore/endpoints/page.tsx');
+const errors = read('src/app/apm/explore/errors/page.tsx');
+const traceDetail = read('src/app/apm/explore/traces/[traceId]/page.tsx');
+const legacyTraces = read('src/app/apm/traces/page.tsx');
 
 assert.match(traces, /title="调用链"/, 'Trace 搜索页应使用产品术语“调用链”');
 assert.match(traces, /TraceDistribution/, '调用链页应提供与原型一致的耗时分布视图');
@@ -22,6 +23,7 @@ assert.match(traces, /value: 'spans', label: 'Spans'/, '调用链页必须开放
 assert.match(traces, /getSpans\(/, 'Spans 视角必须调用受控 Span 检索 API');
 assert.doesNotMatch(traces, /Spans 检索将在数据能力就绪后开放/, 'Spans 能力就绪后不得再展示禁用提示');
 assert.doesNotMatch(traces, /应用 namespace/, '调用链页不得使用表单网格堆砌筛选字段');
+assert.match(traces, /\/apm\/explore\/traces/, '调用链页站内导航必须使用目录化路径');
 assert.match(traceDetail, /span_id/, 'Trace 详情必须支持从 URL 选中指定 Span');
 assert.match(endpoints, /getServices\(\)/, '端点列表必须来自真实服务目录');
 assert.match(endpoints, /getServiceRed\(/, '端点列表必须来自真实 RED 指标');
@@ -40,6 +42,7 @@ assert.match(errors, /clusterErrors|入口归并/, '错误页必须对入口操�
 assert.match(traceDetail, /跳到首个错误/, 'Trace 详情必须支持跳到首个错误 Span');
 assert.match(traceDetail, /服务耗时分解/, 'Trace 详情必须展示服务耗时分解');
 assert.match(traceDetail, /跨度列表/, 'Trace 详情必须支持跨度列表视图');
+assert.match(legacyTraces, /\/apm\/explore\/traces/, '旧 /apm/traces 必须兼容跳转到探索目录');
 
 for (const source of [endpoints, errors, traces, traceDetail]) {
   assert.doesNotMatch(source, /(?:stories|fixtures?)\//i, '探索生产页面不得导入 Story/fixture');

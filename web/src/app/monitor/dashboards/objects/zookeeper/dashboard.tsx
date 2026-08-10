@@ -43,7 +43,7 @@ export default function ZookeeperDashboardPage() {
       dashboardContent={
         <>
           <div className={styles.sectionLabel}>健康概览</div>
-          <KpiSection dashboard={dashboard} summaryCards={summaryCards} styles={styles} />
+          <KpiSection dashboard={dashboard} summaryCards={summaryCards} kpiCols={5} styles={styles} />
 
           {/* Row 1: packet rate (span6) + latency (span6) = 12 */}
           <div className={styles.sectionLabel}>性能趋势</div>

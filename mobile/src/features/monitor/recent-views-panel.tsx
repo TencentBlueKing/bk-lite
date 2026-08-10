@@ -8,7 +8,7 @@ import MonitorObjectIcon from '@/features/monitor/object-icon-image';
 import {
   RECENT_VIEW_SUMMARY_LIMIT,
   formatRecentViewTime,
-  instanceListSummaryEntries,
+  instanceSummaryEntries,
   resolveMonitorReportingStatus,
 } from '@/features/monitor/model';
 import { useRecentViews } from '@/features/monitor/use-recent-views';
@@ -97,9 +97,14 @@ export default function MonitorRecentViewsPanel() {
               />
             ) : (
               <div className={styles.recentList}>
-                {entries.map(({ item, object, instance }) => {
+                {entries.map(({ item, object, instance, metricUnits }) => {
                   const reportingStatus = resolveMonitorReportingStatus(instance.status);
-                  const summaryEntries = instanceListSummaryEntries(object, instance, RECENT_VIEW_SUMMARY_LIMIT);
+                  const summaryEntries = instanceSummaryEntries(
+                    object,
+                    instance,
+                    RECENT_VIEW_SUMMARY_LIMIT,
+                    metricUnits,
+                  );
                   const detailParams = new URLSearchParams({
                     objectId: String(object.id),
                     objectName: object.displayName,
@@ -123,73 +128,55 @@ export default function MonitorRecentViewsPanel() {
                         icon={object.icon}
                         size={26}
                       />
-                      <span className={styles.recentTitleRow}>
-                        <span className={styles.instanceName}>
-                          {instance.name}
+                      <span className={styles.recentBody}>
+                        <span className={styles.recentTitleRow}>
+                          <span className={styles.instanceName}>
+                            {instance.name}
+                          </span>
+                          <span className={styles.recentViewedAt}>
+                            {formatRecentViewTime(
+                              item.viewedAt,
+                              preferences,
+                              viewedAtLabels,
+                            )}
+                          </span>
                         </span>
-                      </span>
-                      <span className={styles.colRight}>
-                        {formatRecentViewTime(
-                          item.viewedAt,
-                          preferences,
-                          viewedAtLabels,
-                        )}
-                      </span>
-                      <span className={styles.recentMetaLine}>
-                        <span className={styles.recentMetaObject}>
-                          {object.displayName}
-                        </span>
-                        {reportingStatus ? (
-                          <>
-                            <span
-                              className={styles.recentMetaSep}
-                              aria-hidden
-                            >
-                              ·
-                            </span>
-                            <span
-                              className={styles.recentStatusInline}
-                              data-status={reportingStatus}
-                            >
+                        <span className={styles.recentMetaLine}>
+                          <span className={styles.recentMetaObject}>
+                            {object.displayName}
+                          </span>
+                          {reportingStatus ? (
+                            <>
+                              <span className={styles.recentMetaSep} aria-hidden>
+                                ·
+                              </span>
                               <span
-                                className={styles.recentStatusDot}
-                                aria-hidden
-                              />
-                              {t(
-                                `monitor.reportingStatus.${reportingStatus}`,
-                              )}
-                            </span>
-                          </>
+                                className={styles.recentStatusText}
+                                data-status={reportingStatus}
+                              >
+                                {t(`monitor.reportingStatus.${reportingStatus}`)}
+                              </span>
+                            </>
+                          ) : null}
+                        </span>
+                        {summaryEntries.length > 0 ? (
+                          <span className={styles.recentMetricsLine}>
+                            {summaryEntries.map((entry, index) => (
+                              <span
+                                key={`${entry.label}-${index}`}
+                                className={styles.recentMetricItem}
+                              >
+                                <span className={styles.recentMetricLabel}>
+                                  {entry.label}
+                                </span>{' '}
+                                <span className={styles.recentMetricValue}>
+                                  {entry.value}
+                                </span>
+                              </span>
+                            ))}
+                          </span>
                         ) : null}
                       </span>
-                      {summaryEntries.length > 0 ? (
-                        <span className={styles.recentMetricsLine}>
-                          {summaryEntries.map((entry, index) => (
-                            <span
-                              key={`${entry.label}-${index}`}
-                              className={styles.recentMetricItem}
-                            >
-                              {index > 0 ? (
-                                <span
-                                  className={styles.recentMetricSep}
-                                  aria-hidden
-                                >
-                                  {' '}
-                                  ·{' '}
-                                </span>
-                              ) : null}
-                              <span className={styles.recentMetricLabel}>
-                                {entry.label}
-                              </span>{' '}
-                              <span
-                                className={`${styles.recentMetricValue} ${entry.value ? '' : styles.recentMetricValueEmpty}`}
-                              >
-                                {entry.value ?? '--'}
-                              </span>
-                            </span>
-                          ))}
-                        </span>
-                      ) : null}
                     </Link>
                   );
                 })}

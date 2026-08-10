@@ -197,6 +197,51 @@ def test_controller_uninstall_rejects_sibling_team_before_task_creation(
     assert delayed == []
 
 
+@pytest.mark.django_db
+def test_controller_uninstall_binds_target_to_authorized_node_facts(monkeypatch):
+    region = _region("uninstall-canonical-node")
+    node = _node(region, "uninstall-canonical-node", 1)
+    node.operating_system = "windows"
+    node.save(update_fields=["operating_system"])
+    _patch_broad_permission(monkeypatch)
+    captured = {}
+    monkeypatch.setattr(
+        installer_view.InstallerService,
+        "uninstall_controller",
+        lambda *args, **kwargs: captured.update({"args": args, "kwargs": kwargs}) or 81,
+    )
+    monkeypatch.setattr(installer_view.uninstall_controller, "delay", lambda task_id: captured.update({"task_id": task_id}))
+
+    response = installer_view.InstallerViewSet.as_view({"post": "controller_uninstall"})(
+        _request(
+            {
+                "cloud_region_id": region.id,
+                "work_node": "worker",
+                "nodes": [
+                    {
+                        "node_id": node.id,
+                        "ip": "192.0.2.99",
+                        "os": "linux",
+                        "port": 7443,
+                        "username": "Administrator",
+                        "password": "credential",
+                    }
+                ],
+            },
+            permissions=("cloud_region_node-Delete",),
+        )
+    )
+
+    assert response.status_code == 200
+    uninstall_node = captured["args"][2][0]
+    assert uninstall_node["node_id"] == node.id
+    assert uninstall_node["ip"] == node.ip
+    assert uninstall_node["os"] == "windows"
+    assert uninstall_node["port"] == 7443
+    assert uninstall_node["winrm_scheme"] == "https"
+    assert captured["task_id"] == 81
+
+
 def test_get_node_permission_rejects_noncanonical_current_team(monkeypatch):
     class _UnexpectedSystemMgmt:
         def __init__(self, *args, **kwargs):

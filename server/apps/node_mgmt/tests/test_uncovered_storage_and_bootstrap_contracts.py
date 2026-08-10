@@ -142,6 +142,8 @@ def test_cloud_init_is_idempotent_and_classifies_environment_values(
     monkeypatch.setenv("DEFAULT_ZONE_VAR_NATS_TLS_CA", "certificate")
 
     cloud_init()
+    monkeypatch.setenv("DEFAULT_ZONE_VAR_TDD_NORMAL", "updated-plain")
+    monkeypatch.setenv("DEFAULT_ZONE_VAR_TDD_PASSWORD", "updated-secret")
     cloud_init()
 
     region = CloudRegion.objects.get(
@@ -164,10 +166,10 @@ def test_cloud_init_is_idempotent_and_classifies_environment_values(
             key__in=["TDD_NORMAL", "TDD_PASSWORD", "NATS_TLS_CA"],
         )
     }
-    assert values["TDD_NORMAL"].value == "plain"
+    assert values["TDD_NORMAL"].value == "updated-plain"
     assert values["TDD_NORMAL"].type == EnvVariableConstants.TYPE_NORMAL
     assert values["NATS_TLS_CA"].type == EnvVariableConstants.TYPE_TEXT
     assert values["TDD_PASSWORD"].type == EnvVariableConstants.TYPE_SECRET
     assert (
-        AESCryptor().decode(values["TDD_PASSWORD"].value) == "secret-value"
+        AESCryptor().decode(values["TDD_PASSWORD"].value) == "updated-secret"
     )

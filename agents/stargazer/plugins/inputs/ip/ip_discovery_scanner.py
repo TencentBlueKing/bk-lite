@@ -4,6 +4,11 @@ import asyncio
 import ipaddress
 import json
 
+from core.collection.contracts import (
+    AccessProbeResult,
+    AccessProbeStatus,
+)
+
 DEFAULT_PORTS = [22, 80, 443, 3389]
 CONCURRENCY = 50
 
@@ -16,6 +21,10 @@ class IPDiscoveryScanner:
         self.subnets = self._normalize_json_list(kwargs.get("subnets") or [])
         self.targets = self._build_targets(kwargs.get("targets") or [])
         self.timeout = float(kwargs.get("timeout", 5))
+
+    async def probe(self) -> AccessProbeResult:
+        """扫描器自身执行有界探测，不在正式扫描前重复扫描目标。"""
+        return AccessProbeResult(status=AccessProbeStatus.READY)
 
     @staticmethod
     def _normalize_json_list(value):
@@ -119,8 +128,9 @@ class IPDiscoveryScanner:
             alive = (await self._tcp_alive(ip)) if self.scan_method == "tcp" else (await self._icmp_probe(ip, self.timeout))
         if not alive:
             return None
+        mac = await asyncio.to_thread(self._read_mac, ip)
         if not target.get("subnet_id"):
-            return {"ip": ip, "mac": self._read_mac(ip)}
+            return {"ip": ip, "mac": mac}
         return {
             "ip_addr": ip,
             "ip_status": "online",
@@ -128,7 +138,7 @@ class IPDiscoveryScanner:
             "subnet_cidr": target["subnet_cidr"],
             "scan_method": self.scan_method,
             "auto_collect": "true",
-            "mac": self._read_mac(ip),
+            "mac": mac,
         }
 
     async def list_all_resources(self) -> dict:

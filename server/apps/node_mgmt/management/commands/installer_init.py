@@ -1,4 +1,5 @@
 from django.core.management import BaseCommand
+from django.core.files import File
 from asgiref.sync import async_to_sync
 
 from apps.core.logger import node_logger as logger
@@ -54,14 +55,8 @@ class Command(BaseCommand):
         logger.info(f"{target_os}/{cpu_architecture} 安装器初始化开始，文件路径: {file_path}")
 
         try:
-            with open(file_path, "rb") as file:
-                data = file.read()
-            from io import BytesIO
-
-            alias_file = BytesIO(data)
-            alias_file.name = file_path
-
-            async_to_sync(upload_file_to_s3)(alias_file, alias_path)
+            with open(file_path, "rb") as source_file:
+                async_to_sync(upload_file_to_s3)(File(source_file, name=file_path), alias_path)
             logger.info(f"{target_os}/{cpu_architecture} 安装器上传成功，latest 路径: {alias_path}")
         except FileNotFoundError:
             logger.error(f"文件不存在: {file_path}")

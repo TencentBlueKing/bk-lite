@@ -6,8 +6,10 @@ import { fileURLToPath } from 'node:url';
 const webRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (path: string) => readFileSync(join(webRoot, path), 'utf8');
 
-const events = read('src/app/apm/events/page.tsx');
-const policies = read('src/app/apm/policies/page.tsx');
+const events = read('src/app/apm/events/alerts/page.tsx');
+const policies = read('src/app/apm/events/policies/page.tsx');
+const legacyEvents = read('src/app/apm/events/page.tsx');
+const legacyPolicies = read('src/app/apm/policies/page.tsx');
 
 assert.match(events, /活跃告警/);
 assert.match(events, /历史告警/);
@@ -27,5 +29,7 @@ for (const range of ["'1h'", "'24h'", "'7d'"]) {
 assert.match(policies, /新建策略/);
 assert.match(policies, /编辑/);
 assert.match(policies, /title: '启停'/, '策略启停必须保留在列表中');
+assert.match(legacyEvents, /\/apm\/events\/alerts/, '旧 /apm/events 必须兼容跳转到告警列表');
+assert.match(legacyPolicies, /\/apm\/events\/policies/, '旧 /apm/policies 必须兼容跳转到事件策略');
 
 console.log('APM event workflow checks passed');

@@ -1,11 +1,12 @@
 # -- coding: utf-8 --
+import asyncio
 import time
 import traceback
 from typing import Dict, Any
 
 from sanic.log import logger
 
-import core.host_remote_callback as host_remote_callback
+import core.collection.host_remote.callback as host_remote_callback
 
 
 async def _publish_host_remote_state_metric(
@@ -57,7 +58,9 @@ async def process_host_remote_callback_task(
 
         collector = HostCollector(callback_params)
         try:
-            metrics_data = collector.process_adhoc_result(raw_callback)
+            metrics_data = await asyncio.to_thread(
+                collector.process_adhoc_result, raw_callback
+            )
         except Exception as processing_err:
             logger.error(
                 f"[Host Remote Process] Callback processing failed for {task_id}: {processing_err}",

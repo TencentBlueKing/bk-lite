@@ -11,6 +11,7 @@ type MenuRoute = {
   title?: string;
   url?: string;
   children?: readonly MenuRoute[];
+  isNotMenuItem?: boolean;
 };
 
 assert.deepEqual(
@@ -24,8 +25,8 @@ assert.deepEqual(
   '英文 APM 一级菜单应将 Home 放在首位，Integration 放在最右侧',
 );
 
-assert.equal(menu.zh[0].url, '/apm', '首页一级入口必须直达 /apm');
-assert.equal(menu.en[0].url, '/apm', 'Home must link directly to /apm');
+assert.equal(menu.zh[0].url, '/apm/home', '首页一级入口必须直达 /apm/home');
+assert.equal(menu.en[0].url, '/apm/home', 'Home must link directly to /apm/home');
 assert.equal(menu.zh[0].name, 'home');
 assert.equal(menu.en[0].name, 'home');
 
@@ -39,9 +40,21 @@ assert.deepEqual(menu.zh[4].children?.flatMap((item) => item.title ? [item.title
 assert.deepEqual(menu.en[4].children?.flatMap((item) => item.title ? [item.title] : []), ['Add integration', 'Reporting instances', 'Applications']);
 assert.deepEqual(
   menu.zh[1].children?.flatMap((item) => item.title ? [item.url] : []),
-  ['/apm/services', '/apm/topology', '/apm/slo'],
-  '服务一级菜单必须提供三个可深链的二级页面',
+  ['/apm/services', '/apm/services/topology', '/apm/services/slo'],
+  '服务二级必须挂在 /apm/services 目录下',
 );
+assert.deepEqual(
+  menu.zh[2].children?.flatMap((item) => item.title ? [item.url] : []),
+  ['/apm/explore/traces', '/apm/explore/endpoints', '/apm/explore/errors'],
+  '探索二级必须挂在 /apm/explore 目录下',
+);
+assert.deepEqual(
+  menu.zh[3].children?.flatMap((item) => item.title ? [item.url] : []),
+  ['/apm/events/alerts', '/apm/events/policies'],
+  '事件二级必须挂在 /apm/events 目录下',
+);
+assert.equal(menu.zh[2].url, '/apm/explore/traces', '探索一级入口必须直达默认二级');
+assert.equal(menu.zh[3].url, '/apm/events/alerts', '事件一级入口必须直达告警列表');
 assert.equal(menu.zh[4].url, '/apm/integration/add', '集成一级入口必须直达添加接入页，避免客户端二次重定向');
 assert.equal(menu.en[4].url, '/apm/integration/add', 'Integration must link directly to its first usable child route');
 assert.equal(
@@ -53,6 +66,11 @@ assert.doesNotMatch(
   readFileSync(join(webRoot, 'src/app/apm/integration/page.tsx'), 'utf8'),
   /\bredirect\(/,
   '集成根路由不得通过客户端导航触发 redirect，应直接渲染有效页面',
+);
+assert.match(
+  readFileSync(join(webRoot, 'src/app/apm/page.tsx'), 'utf8'),
+  /\/apm\/home/,
+  'APM 根路径必须兼容跳转到 /apm/home',
 );
 
 const rootLayout = readFileSync(join(webRoot, 'src/app/layout.tsx'), 'utf8');
@@ -66,7 +84,7 @@ for (const locale of ['zh', 'en'] as const) {
         assert.equal(
           existsSync(join(webRoot, 'src/app', item.url, 'page.tsx')),
           true,
-          `${locale} APM 菜单 ${item.title} 指向不存在的页面 ${item.url}`,
+          `${locale} APM 菜单 ${item.title ?? item.url} 指向不存在的页面 ${item.url}`,
         );
       }
       if (item.children) visit(item.children);

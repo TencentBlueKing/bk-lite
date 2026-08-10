@@ -1,10 +1,12 @@
 import hashlib
+import ipaddress
 import json
 from datetime import datetime, timezone
 from string import Template
 
 from django.core.cache import cache
 from django.core.serializers.json import DjangoJSONEncoder
+from django.db.models import Q
 from django.http import HttpResponse
 from apps.core.utils.safe_template import build_sandboxed_env
 
@@ -222,16 +224,17 @@ class Sidecar:
             status="running",
         ).exists()
 
-        install_running_exists = False
+        target_filter = Q(**{f"result__{InstallerConstants.INSTALL_NODE_ID_KEY}": node_id})
         if node_ip:
-            install_running_exists = any(
-                _matches_install_connectivity_target(task_node, node_id, node_ip)
-                for task_node in ControllerTaskNode.objects.filter(
-                    ip=node_ip,
-                    status="running",
-                    task__type="install",
-                )
+            target_filter |= Q(ip=node_ip)
+        install_running_exists = any(
+            _matches_install_connectivity_target(task_node, node_id, node_ip)
+            for task_node in ControllerTaskNode.objects.filter(
+                target_filter,
+                status="running",
+                task__type="install",
             )
+        )
 
         if not action_running_exists and not install_running_exists:
             return
@@ -328,6 +331,36 @@ class Sidecar:
             return normalize_cpu_architecture(task_node.cpu_architecture)
 
         return ""
+
+    @staticmethod
+    def _resolve_reported_ip(node_id: str, reported_ip: str) -> str:
+        """Replace an unusable link-local address with the authenticated install target."""
+        try:
+            reported_address = ipaddress.ip_address(reported_ip)
+        except ValueError:
+            return reported_ip
+        if not reported_address.is_link_local:
+            return reported_ip
+
+        task_node = (
+            ControllerTaskNode.objects.filter(
+                **{f"result__{InstallerConstants.INSTALL_NODE_ID_KEY}": node_id},
+                task__type="install",
+                os=NodeConstants.WINDOWS_OS,
+            )
+            .order_by("-id")
+            .first()
+        )
+        if not task_node or not task_node.ip:
+            return reported_ip
+        try:
+            target_address = ipaddress.ip_address(task_node.ip)
+        except ValueError:
+            return reported_ip
+        if target_address.is_link_local or target_address.is_loopback or target_address.is_unspecified:
+            return reported_ip
+        logger.info("Use authenticated Windows install target IP for link-local node %s", node_id)
+        return task_node.ip
 
     @staticmethod
     def _cached_heartbeat_updates(node_id: str, node_details: dict) -> tuple[dict, str]:
@@ -428,6 +461,7 @@ class Sidecar:
 
         # 操作系统转小写
         request_data.update(operating_system=request_data["operating_system"].lower())
+        request_data.update(ip=Sidecar._resolve_reported_ip(node_id, request_data.get("ip", "")))
         request_data.update(cpu_architecture=Sidecar._fallback_cpu_architecture(node_id, request_data))
         request_data.pop("architecture", None)
 

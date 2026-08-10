@@ -9,10 +9,12 @@ import { useRouter } from 'next/navigation';
 import MobilePullToRefresh from '@/components/mobile-pull-to-refresh';
 import { MobileResult, MobileSkeleton } from '@/components/mobile-feedback';
 import { useAuth } from '@/context/auth';
-import { listMonitorInstances, listMonitorObjects } from '@/features/monitor/adapter';
+import { listDisplayFieldMetrics, listMonitorInstances, listMonitorObjects } from '@/features/monitor/adapter';
 import {
   INSTANCE_LIST_SUMMARY_LIMIT,
   MONITOR_PAGE_SIZE,
+  buildDisplayMetricUnitIndex,
+  displayFieldMetricNames,
   groupMonitorObjects,
   instanceListSummaryEntries,
   normalizeReportingStatusFilters,
@@ -72,6 +74,7 @@ export default function MonitorInstancesPanel({ objectId = 0 }: MonitorInstances
   const [count, setCount] = useState(initialSnapshot.current?.data.count || 0);
   const [page, setPage] = useState(initialSnapshot.current?.data.page || 0);
   const [listStatus, setListStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>(initialSnapshot.current ? 'ready' : 'idle');
+  const [metricUnits, setMetricUnits] = useState<Map<string, string>>(new Map());
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pickerKeyword, setPickerKeyword] = useState('');
   const scrollRef = useRef<HTMLDivElement | null>(null);
@@ -85,8 +88,10 @@ export default function MonitorInstancesPanel({ objectId = 0 }: MonitorInstances
   );
   const objectRequestId = useRef(0);
   const listRequestId = useRef(0);
+  const metricUnitRequestId = useRef(0);
   const objectController = useRef<AbortController | null>(null);
   const listController = useRef<AbortController | null>(null);
+  const metricUnitController = useRef<AbortController | null>(null);
   const preferences = { locale: userInfo?.locale || 'en', timezone: userInfo?.timezone || 'Asia/Shanghai' };
 
   const orderedObjects = useMemo(() => orderedMonitorObjects(objects), [objects]);
@@ -222,6 +227,31 @@ export default function MonitorInstancesPanel({ objectId = 0 }: MonitorInstances
   }, [monitorObject?.id, objectId, objects, syncUrl]);
 
   useEffect(() => {
+    if (!monitorObject) {
+      setMetricUnits(new Map());
+      return;
+    }
+    const currentId = ++metricUnitRequestId.current;
+    metricUnitController.current?.abort();
+    const controller = new AbortController();
+    metricUnitController.current = controller;
+    const names = displayFieldMetricNames(monitorObject);
+    if (!names.length) {
+      setMetricUnits(new Map());
+      return;
+    }
+    void listDisplayFieldMetrics(monitorObject.id, names, controller.signal)
+      .then((metrics) => {
+        if (currentId !== metricUnitRequestId.current || controller.signal.aborted) return;
+        setMetricUnits(buildDisplayMetricUnitIndex(metrics));
+      })
+      .catch(() => {
+        if (currentId !== metricUnitRequestId.current || controller.signal.aborted) return;
+        setMetricUnits(new Map());
+      });
+  }, [monitorObject]);
+
+  useEffect(() => {
     if (!monitorObject) return;
     const requestKey = `${monitorObject.id}:${keyword}:${statusFilterKey}`;
     if (lastRequestedKey.current === requestKey) return;
@@ -265,8 +295,10 @@ export default function MonitorInstancesPanel({ objectId = 0 }: MonitorInstances
   useEffect(() => () => {
     objectRequestId.current += 1;
     listRequestId.current += 1;
+    metricUnitRequestId.current += 1;
     objectController.current?.abort();
     listController.current?.abort();
+    metricUnitController.current?.abort();
   }, []);
 
   useEffect(() => {
@@ -440,7 +472,7 @@ export default function MonitorInstancesPanel({ objectId = 0 }: MonitorInstances
                       </div>
                     ) : (
                       instances.map((instance) => {
-                      const summary = instanceListSummaryEntries(monitorObject, instance);
+                      const summary = instanceListSummaryEntries(monitorObject, instance, INSTANCE_LIST_SUMMARY_LIMIT, metricUnits);
                       const reportingStatus = resolveMonitorReportingStatus(instance.status);
                       const detailParams = new URLSearchParams({
                         objectId: String(monitorObject.id),

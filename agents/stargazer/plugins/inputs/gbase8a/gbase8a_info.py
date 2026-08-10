@@ -7,8 +7,8 @@ from plugins.inputs.mysql.mysql_info import MysqlInfo
 
 
 class Gbase8aInfo(MysqlInfo):
-    def list_all_resources(self):
-        data = super().list_all_resources()
+    async def list_all_resources(self):
+        data = await super().list_all_resources()
         result = data.get("result", {}) or {}
         if "mysql" in result:
             recs = result.pop("mysql")

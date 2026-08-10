@@ -7,6 +7,7 @@ PostgreSQL Server Information Collector
 Collects core configuration metrics via psycopg2.
 """
 
+import asyncio
 from decimal import Decimal
 from typing import Any, Dict
 
@@ -14,6 +15,10 @@ import psycopg2
 from psycopg2.extras import RealDictCursor
 
 from core.decorator import timer
+from core.collection.contracts import (
+    AccessProbeResult,
+    AccessProbeStatus,
+)
 from sanic.log import logger
 
 
@@ -42,6 +47,23 @@ class PostgresqlInfo:
             self.cursor = self.connection.cursor(cursor_factory=RealDictCursor)
         except Exception as e:  # noqa
             raise RuntimeError(f"Failed to connect to PostgreSQL: {str(e)}")
+
+    async def probe(self) -> AccessProbeResult:
+        return await asyncio.to_thread(self._probe_sync)
+
+    def _probe_sync(self) -> AccessProbeResult:
+        try:
+            self._connect()
+            rows = self._exec_sql("SHOW server_version")
+            version = (
+                str(rows[0].get("server_version") or "") if rows else ""
+            )
+            return AccessProbeResult(
+                status=AccessProbeStatus.READY,
+                evidence={"server_version": version},
+            )
+        finally:
+            self.close()
 
     def _exec_sql(self, query):
         try:
@@ -106,7 +128,10 @@ class PostgresqlInfo:
         return f"{data_directory.rstrip('/')}/{log_directory}" if data_directory else log_directory
 
     @timer(logger=logger)
-    def list_all_resources(self):
+    async def list_all_resources(self):
+        return await asyncio.to_thread(self._list_all_resources_sync)
+
+    def _list_all_resources_sync(self):
         try:
             self._connect()
             self._collect()

@@ -1,6 +1,13 @@
 export const TODO_PAGE_SIZE = 20;
 export const ACTIVE_ALERT_STATUSES = ['unassigned', 'pending', 'processing'] as const;
 
+/** 与 Web `useNotifiedStateMap` 对齐：空值视为未通知 */
+export function alertNotifyStatusKey(status: string | null | undefined): 'not_notified' | 'success' | 'failed' | 'partial_success' | string {
+  const normalized = (status || '').trim();
+  if (!normalized) return 'not_notified';
+  return normalized;
+}
+
 export type TodoViewKey = 'mine' | 'open' | 'high';
 export type AlertStatus = typeof ACTIVE_ALERT_STATUSES[number] | 'closed' | string;
 export type AlertAction = 'assign' | 'acknowledge' | 'reassign' | 'close';

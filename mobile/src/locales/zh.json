@@ -55,10 +55,6 @@
         "profile": "我的",
         "primaryNavigation": "主导航"
     },
-    "availability": {
-        "loadFailed": "业务模块权限与许可加载失败，当前仅保留“我的”。",
-        "retryHint": "可点重试或下拉刷新；回到前台也会自动再试，成功后业务入口会恢复。"
-    },
     "moduleShell": {
         "todoTitle": "待办模块",
         "monitorTitle": "监控模块",
@@ -101,6 +97,12 @@
         "moreActions": "更多",
         "searchFields": { "title": "标题", "content": "内容", "alertId": "告警 ID" },
         "status": { "unassigned": "未分派", "pending": "待响应", "processing": "处理中", "closed": "已关闭" },
+        "notifyStatus": {
+            "not_notified": "未通知",
+            "success": "成功",
+            "failed": "失败",
+            "partial_success": "部分成功"
+        },
         "sections": { "summary": "摘要", "events": "事件", "changes": "变更记录", "alertInfo": "告警信息" },
         "fields": {
             "level": "级别", "status": "状态", "duration": "持续时间", "operator": "处理人",

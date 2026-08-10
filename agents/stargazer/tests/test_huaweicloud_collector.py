@@ -4,6 +4,8 @@ import sys
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
+
 STARGAZER_ROOT = Path(__file__).resolve().parents[1]
 if str(STARGAZER_ROOT) not in sys.path:
     sys.path.insert(0, str(STARGAZER_ROOT))
@@ -42,10 +44,11 @@ def _make_manager():
     )
 
 
-def test_list_all_resources_structure_and_fields():
+@pytest.mark.asyncio
+async def test_list_all_resources_structure_and_fields():
     mgr = _make_manager()
     with patch.object(mgr, "get_ecs", return_value=FAKE_ECS):
-        out = mgr.list_all_resources()
+        out = await mgr.list_all_resources()
 
     assert out["success"] is True
     result = out["result"]
@@ -60,10 +63,11 @@ def test_list_all_resources_structure_and_fields():
     assert ecs["resource_id"] == "ecs-001"
 
 
-def test_list_all_resources_handles_driver_error():
+@pytest.mark.asyncio
+async def test_list_all_resources_handles_driver_error():
     mgr = _make_manager()
     with patch.object(mgr, "get_ecs", side_effect=RuntimeError("boom")):
-        out = mgr.list_all_resources()
+        out = await mgr.list_all_resources()
     assert out["success"] is False
     assert "cmdb_collect_error" in out["result"]
 

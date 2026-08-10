@@ -4,6 +4,7 @@ Oracle Server Information Collector
 
 A standalone script to gather information about Oracle servers.
 """
+import asyncio
 import oracledb
 from sanic.log import logger
 from typing import Dict, Any
@@ -64,7 +65,10 @@ class OracleInfo:
             logger.error(f"Error during data collection: {str(e)}")
             raise
 
-    def list_all_resources(self) -> dict[str, Any]:
+    async def list_all_resources(self) -> dict[str, Any]:
+        return await asyncio.to_thread(self._list_all_resources_sync)
+
+    def _list_all_resources_sync(self) -> dict[str, Any]:
         """Public method to collect all info and format it for Prometheus."""
         try:
             # 使用上下文管理器确保资源自动关闭

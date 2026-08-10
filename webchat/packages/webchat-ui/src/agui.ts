@@ -68,10 +68,10 @@ export class AGUIHandler {
   /**
    * Process SSE data and convert to AG-UI events
    */
-  processSSEData(data: any): {
+  processSSEData(data: unknown): {
     type: 'agui-event' | 'legacy-message';
     event?: AGUIEvent;
-    message?: any;
+    message?: unknown;
   } {
     if (!this.config.enabled) {
       return { type: 'legacy-message', message: data };
@@ -93,19 +93,19 @@ export class AGUIHandler {
   /**
    * Check if data follows AG-UI protocol
    */
-  private isAGUIEvent(data: any): boolean {
+  private isAGUIEvent(data: unknown): data is Record<string, unknown> {
     return (
-      data &&
+      !!data &&
       typeof data === 'object' &&
       'type' in data &&
-      typeof data.type === 'string' &&
+      typeof (data as { type: unknown }).type === 'string' &&
       (
-        data.type.startsWith('TEXT_MESSAGE_') ||
-        data.type.startsWith('THINKING_') ||
-        data.type.startsWith('RUN_') ||
-        data.type.startsWith('TOOL_CALL_') ||
-        data.type === 'ERROR' ||
-        data.type.includes('.')
+        ((data as { type: string }).type).startsWith('TEXT_MESSAGE_') ||
+        ((data as { type: string }).type).startsWith('THINKING_') ||
+        ((data as { type: string }).type).startsWith('RUN_') ||
+        ((data as { type: string }).type).startsWith('TOOL_CALL_') ||
+        (data as { type: string }).type === 'ERROR' ||
+        ((data as { type: string }).type).includes('.')
       )
     );
   }
@@ -113,48 +113,52 @@ export class AGUIHandler {
   /**
    * Parse AG-UI event from SSE data
    */
-  private parseAGUIEvent(data: any): AGUIEvent | null {
+  private parseAGUIEvent(data: Record<string, unknown>): AGUIEvent | null {
     try {
       const eventType = data.type as string;
 
       // Map AG-UI events to our types
       switch (eventType) {
         case 'TEXT_MESSAGE_START':
-          return data as TextMessageStartEvent;
+          return data as unknown as TextMessageStartEvent;
           
         case 'TEXT_MESSAGE_CONTENT':
-          return data as any;
+          return data as unknown as TextMessageChunkEvent;
           
         case 'TEXT_MESSAGE_END':
-          return data as TextMessageEndEvent;
+          return data as unknown as TextMessageEndEvent;
           
         case 'THINKING_START':
-          return data as ThinkingStartEvent;
+          return data as unknown as ThinkingStartEvent;
           
         case 'THINKING_END':
-          return data as ThinkingEndEvent;
+          return data as unknown as ThinkingEndEvent;
           
         case 'RUN_STARTED':
-          return data as RunStartedEvent;
+          return data as unknown as RunStartedEvent;
           
         case 'RUN_FINISHED':
-          return data as RunFinishedEvent;
+          return data as unknown as RunFinishedEvent;
           
         case 'RUN_ERROR':
         case 'ERROR':
-          return { type: 'RUN_ERROR', message: data.error || data.message || 'An error occurred', timestamp: data.timestamp } as RunErrorEvent;
+          return {
+            type: 'RUN_ERROR',
+            message: data.error || data.message || 'An error occurred',
+            timestamp: data.timestamp,
+          } as RunErrorEvent;
           
         case 'TOOL_CALL_START':
-          return data as ToolCallStartEvent;
+          return data as unknown as ToolCallStartEvent;
           
         case 'TOOL_CALL_ARGS':
-          return data as ToolCallArgsEvent;
+          return data as unknown as ToolCallArgsEvent;
           
         case 'TOOL_CALL_END':
-          return data as ToolCallEndEvent;
+          return data as unknown as ToolCallEndEvent;
           
         case 'TOOL_CALL_RESULT':
-          return data as ToolCallResultEvent;
+          return data as unknown as ToolCallResultEvent;
           
         default:
           if (this.debug) {

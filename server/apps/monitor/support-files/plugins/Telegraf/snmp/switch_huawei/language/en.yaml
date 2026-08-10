@@ -1,7 +1,8 @@
 Switch Huawei SNMP:
   name: Huawei (Telegraf)
   desc: SNMP monitoring template for Huawei switch. It reports CPU utilization, memory
-    utilization, per-port inbound traffic rate, and other key metrics
+    utilization, temperature, fan status, SFP optical Rx/Tx power (attenuation-related),
+    per-port inbound traffic rate, and other key metrics
 monitor_object:
   Switch: Switch
 monitor_object_type:
@@ -14,12 +15,14 @@ monitor_object_metric:
         may indicate unstable power and hardware risk.
     device_optical_rx_power:
       name: SFP RX Power
-      desc: Optical receive power reading of the SFP/SFP+ module. Abnormally low Rx
-        power may indicate link attenuation, dirty fiber, or a faulty peer transmitter.
+      desc: Weakest optical receive power across the device's SFP/SFP+ modules, in dBm.
+        Abnormally low Rx power may indicate link attenuation, dirty fiber, or a
+        faulty peer transmitter, and can lead to packet loss or link failure.
     device_optical_tx_power:
       name: SFP TX Power
-      desc: Optical transmit power reading of the SFP/SFP+ module. Abnormal Tx power
-        may indicate an aging or failing optical module.
+      desc: Weakest optical transmit power across the device's SFP/SFP+ modules, in
+        dBm. Abnormally low Tx power usually indicates an aging or failing local
+        optical module rather than fiber attenuation alone.
     snmp_uptime:
       name: System Uptime
       desc: This metric indicates the uptime of the device since the last restart.

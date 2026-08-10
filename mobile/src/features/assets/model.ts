@@ -97,17 +97,137 @@ export function neighborAssetModels(
   return modelsInClassification(models, current.classificationId);
 }
 
-export function assetValueText(field: AssetField, value: unknown, yes: string, no: string, formatTime: (value: string) => string): string {
+/** 后端 DisplayFieldHandler 会为这些类型挂 `${attr_id}_display`（可读名，非原始 ID） */
+const ASSET_DISPLAY_FIELD_TYPES = new Set([
+  'organization',
+  'user',
+  'enum',
+  'tag',
+  'table',
+  'attachment',
+  'image',
+]);
+
+function displayText(value: unknown): string {
+  if (value === undefined || value === null) return '';
+  const text = String(value).trim();
+  return text;
+}
+
+function enumOptionName(options: unknown[], candidate: unknown): string {
+  const key = String(candidate);
+  const match = options.find((option) => {
+    if (typeof option !== 'object' || option === null) return false;
+    return String((option as Record<string, unknown>).id) === key;
+  }) as Record<string, unknown> | undefined;
+  return match ? String(match.name || '') : '';
+}
+
+function tagItemText(value: unknown): string {
+  if (value === null || value === undefined) return '';
+  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+    return String(value).trim();
+  }
+  if (typeof value === 'object') {
+    const record = value as Record<string, unknown>;
+    const candidate = record.value ?? record.label ?? record.name ?? record.key;
+    if (candidate !== undefined && candidate !== null) return String(candidate).trim();
+  }
+  return String(value).trim();
+}
+
+function fileNamesText(value: unknown): string {
+  const items = Array.isArray(value) ? value : [];
+  const names = items.flatMap((item) => {
+    if (typeof item !== 'object' || item === null) return [];
+    const name = (item as Record<string, unknown>).name;
+    return name === undefined || name === null || name === '' ? [] : [String(name)];
+  });
+  return names.join(', ');
+}
+
+function tableCellsText(value: unknown): string {
+  let rows: unknown[] = [];
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value);
+      rows = Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return value.trim();
+    }
+  } else if (Array.isArray(value)) {
+    rows = value;
+  }
+  const cells = rows.flatMap((row) => {
+    if (typeof row !== 'object' || row === null) return [];
+    return Object.values(row as Record<string, unknown>)
+      .filter((cell) => cell !== undefined && cell !== null && cell !== '')
+      .map((cell) => String(cell));
+  });
+  return cells.join(', ');
+}
+
+/**
+ * 资产字段可读文案。对齐 Web 只读详情：组织/用户等优先用后端 `*_display`，
+ * 避免把原始 ID 直接 String() 出来（如组织显示成「1」）。
+ */
+export function assetValueText(
+  field: AssetField,
+  value: unknown,
+  yes: string,
+  no: string,
+  formatTime: (value: string) => string,
+  displayValue?: unknown,
+): string {
+  if (ASSET_DISPLAY_FIELD_TYPES.has(field.type)) {
+    const fromDisplay = displayText(displayValue);
+    if (fromDisplay) return fromDisplay;
+  }
+
+  if (field.type === 'pwd') {
+    if (value === undefined || value === null || value === '') return '--';
+    return '***';
+  }
+
   if (value === undefined || value === null || value === '') return '--';
+
   if (field.type === 'bool') return value ? yes : no;
+
   if (field.type === 'enum') {
     const options = Array.isArray(field.option) ? field.option : [];
-    const name = (candidate: unknown) => { const match = options.find((option) => typeof option === 'object' && option !== null && (option as Record<string, unknown>).id === candidate) as Record<string, unknown> | undefined; return match ? String(match.name || '') : ''; };
-    if (Array.isArray(value)) return value.map(name).filter(Boolean).join(', ') || '--';
-    return name(value) || '--';
+    if (Array.isArray(value)) {
+      return value.map((item) => enumOptionName(options, item)).filter(Boolean).join(', ') || '--';
+    }
+    return enumOptionName(options, value) || '--';
   }
+
   if (field.type === 'time') return formatTime(String(value));
+
+  if (field.type === 'tag') {
+    if (Array.isArray(value)) {
+      return value.map(tagItemText).filter(Boolean).join(', ') || '--';
+    }
+    return tagItemText(value) || '--';
+  }
+
+  if (field.type === 'table') {
+    return tableCellsText(value) || '--';
+  }
+
+  if (field.type === 'attachment' || field.type === 'image') {
+    return fileNamesText(value) || '--';
+  }
+
+  // 组织/用户在无 _display 时不应回落成原始 ID
+  if (field.type === 'organization' || field.type === 'user') return '--';
+
   if (Array.isArray(value)) return value.map(String).join(', ') || '--';
-  if (typeof value === 'object') { try { return JSON.stringify(value); } catch { return '--'; } }
+  if (typeof value === 'object') {
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return '--';
+    }
+  }
   return String(value);
 }

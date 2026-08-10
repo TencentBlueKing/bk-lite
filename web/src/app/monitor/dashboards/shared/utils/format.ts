@@ -149,9 +149,10 @@ export const formatEnumValue = (value: number, enumMap?: MetricEnumMap) => {
     return { value: match.label, color: match.color };
   }
 
+  // 枚举失配（常见于 mock 用连续浮点冒充 0/1）：显示「未知」，禁止退化成裸数字误导。
   return {
-    value: formatMetricValue(value, 'none').value,
-    color: undefined
+    value: '未知',
+    color: '#8c95a8'
   };
 };
 

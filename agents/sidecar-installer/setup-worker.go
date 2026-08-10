@@ -917,6 +917,10 @@ func connectNATS(storage *StorageConfig) (*nats.Conn, error) {
 	return nc, nil
 }
 
+func closeAndRemovePartialDownload(file io.Closer, path string, remove func(string) error) error {
+	return errors.Join(file.Close(), remove(path))
+}
+
 func downloadFromStorage(storage *StorageConfig) (string, error) {
 	if strings.TrimSpace(storage.NATSServers) == "" {
 		return "", fmt.Errorf("missing nats_servers")
@@ -964,7 +968,6 @@ func downloadFromStorage(storage *StorageConfig) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer f.Close()
 
 	limitedObject := io.LimitReader(obj, controllerPackageMaxDownloadBytes+1)
 	var downloaded int64
@@ -981,7 +984,13 @@ func downloadFromStorage(storage *StorageConfig) (string, error) {
 		err = fmt.Errorf("controller package exceeds download size limit: %d", controllerPackageMaxDownloadBytes)
 	}
 	if err != nil {
-		os.Remove(tmp)
+		if cleanupErr := closeAndRemovePartialDownload(f, tmp, os.Remove); cleanupErr != nil {
+			return "", fmt.Errorf("%w; cleanup partial download: %v", err, cleanupErr)
+		}
+		return "", err
+	}
+	if err := f.Close(); err != nil {
+		_ = os.Remove(tmp)
 		return "", err
 	}
 
@@ -1212,6 +1221,20 @@ func writeConfig(cfg *Config) error {
 }
 
 func writeConfigTo(cfg *Config, outputDir string) error {
+	if strings.TrimSpace(cfg.Storage.NATSTLSCA) != "" {
+		certDir := filepath.Join(outputDir, "certs")
+		if err := os.MkdirAll(certDir, 0755); err != nil {
+			return fmt.Errorf("create NATS CA directory: %w", err)
+		}
+		certPath := filepath.Join(certDir, "nats-ca.crt")
+		if err := os.WriteFile(certPath, []byte(cfg.Storage.NATSTLSCA), 0600); err != nil {
+			return fmt.Errorf("write NATS CA: %w", err)
+		}
+		if err := restrictSensitiveFile(certPath); err != nil {
+			return fmt.Errorf("restrict NATS CA: %w", err)
+		}
+	}
+
 	escapePath := func(p string) string {
 		return strings.ReplaceAll(p, `\`, `\\`)
 	}

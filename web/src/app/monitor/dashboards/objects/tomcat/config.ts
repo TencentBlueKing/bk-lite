@@ -319,18 +319,6 @@ export const TOMCAT_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       ]
     }
   ],
-  details: [
-    {
-      title: 'Connector 实时速率详情',
-      subtitle: '请求速率、错误与流量',
-      rows: [
-        { label: '请求速率', metric: 'tomcat_connector_request_count_rate', unit: 'cps' },
-        { label: '错误速率', metric: 'tomcat_connector_error_count_rate', unit: 'cps', tone: 'error' },
-        { label: '错误占比', metric: 'tomcat_connector_error_rate_pct', unit: 'percent', tone: 'warning' },
-        { label: '线程利用率', metric: 'tomcat_connector_current_thread_utilization', unit: 'percent' },
-        { label: '发送速率', metric: 'tomcat_connector_bytes_sent_rate', unit: 'byteps' }
-      ]
-    }
-  ],
+  details: [],
   barPanels: []
 };

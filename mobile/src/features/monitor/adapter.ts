@@ -1,7 +1,12 @@
 import { apiGet } from '@/api/request';
 import type { MetricGroup, MetricRangeResult, MonitorInstance, MonitorMetric, MonitorObject, MonitorPlugin, MonitorRecentViewsConfig, PageResult, ResolvedMonitorRecentView } from './model';
 import type { MonitorUnitListItem } from './unit-label';
-import { normalizeReportingStatusFilters, parseMonitorInstanceLookupHints } from './model';
+import {
+  buildDisplayMetricUnitIndex,
+  displayFieldMetricNames,
+  normalizeReportingStatusFilters,
+  parseMonitorInstanceLookupHints,
+} from './model';
 
 function record(value: unknown): Record<string, unknown> {
   return typeof value === 'object' && value !== null ? value as Record<string, unknown> : {};
@@ -146,6 +151,32 @@ export async function listEffectivePlugins(objectId: number, instanceId: string,
   }).filter((item) => item.id).sort((a, b) => Number(!a.isPre) - Number(!b.isPre) || Number(a.isCustom) - Number(b.isCustom));
 }
 
+/** 与 Web viewList 一致：按 display_fields 绑定的指标名拉取 unit（含枚举选项 JSON）。 */
+export async function listDisplayFieldMetrics(
+  objectId: number,
+  metricNames: readonly string[],
+  signal?: AbortSignal,
+): Promise<Array<{ name: string; unit: string; pluginName: string }>> {
+  const names = [...new Set(metricNames.map((name) => name.trim()).filter(Boolean))];
+  if (!objectId || !names.length) return [];
+  const raw = unwrap<unknown>(await apiGet('/monitor/api/metrics/', {
+    monitor_object_id: objectId,
+    name_in: names.join(','),
+    page: 1,
+    page_size: Math.max(names.length, 20),
+  }, { signal }));
+  const data = record(raw);
+  const items = Array.isArray(raw) ? raw : (Array.isArray(data.items) ? data.items : []);
+  return items.map((value) => {
+    const item = record(value);
+    return {
+      name: text(item.name),
+      unit: text(item.unit),
+      pluginName: text(item.monitor_plugin_name),
+    };
+  }).filter((item) => item.name);
+}
+
 export async function listMetricDefinition(objectId: number, pluginId: number, signal?: AbortSignal) {
   const [groupRaw, metricRaw] = await Promise.all([
     apiGet('/monitor/api/metrics_group/', { monitor_object_id: objectId, monitor_plugin_id: pluginId }, { signal }),
@@ -209,12 +240,30 @@ export async function resolveRecentViews(
   signal?: AbortSignal,
 ): Promise<ResolvedMonitorRecentView[]> {
   const objectMap = new Map(objects.map((object) => [object.id, object]));
+  const unitCache = new Map<number, Map<string, string>>();
+  const loadUnits = async (object: MonitorObject) => {
+    const cached = unitCache.get(object.id);
+    if (cached) return cached;
+    try {
+      const metrics = await listDisplayFieldMetrics(object.id, displayFieldMetricNames(object), signal);
+      const index = buildDisplayMetricUnitIndex(metrics);
+      unitCache.set(object.id, index);
+      return index;
+    } catch {
+      const empty = new Map<string, string>();
+      unitCache.set(object.id, empty);
+      return empty;
+    }
+  };
   const settled = await Promise.allSettled(config.items.map(async (item) => {
     const object = objectMap.get(item.objectId);
     if (!object) return null;
-    const instance = await getMonitorInstance(item.objectId, item.instanceId, { addMetrics: true }, signal);
+    const [instance, metricUnits] = await Promise.all([
+      getMonitorInstance(item.objectId, item.instanceId, { addMetrics: true }, signal),
+      loadUnits(object),
+    ]);
     if (!instance) return null;
-    return { item, object, instance };
+    return { item, object, instance, metricUnits };
   }));
   return settled.flatMap((result) => (result.status === 'fulfilled' && result.value ? [result.value] : []));
 }
