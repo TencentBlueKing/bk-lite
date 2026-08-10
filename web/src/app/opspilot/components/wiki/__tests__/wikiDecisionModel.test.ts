@@ -128,4 +128,16 @@ describe('wikiDecisionModel multi-candidate', () => {
     expect(selected?.body).toBe('candidate-a');
     expect(selected?.candidateVersionId).toBe(101);
   });
+
+  it('defaults to primary candidate when material_id omitted', () => {
+    const item = baseConflictItem();
+    const selected = resolveSelectedConflictAlternative(item);
+    expect(selected?.materialId).toBe(22);
+    expect(selected?.candidateVersionId).toBe(102);
+  });
+
+  it('returns null for unknown material_id among candidates', () => {
+    const item = baseConflictItem();
+    expect(resolveSelectedConflictAlternative(item, 999)).toBeNull();
+  });
 });

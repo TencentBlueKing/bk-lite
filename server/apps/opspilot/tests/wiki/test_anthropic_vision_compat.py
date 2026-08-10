@@ -140,3 +140,62 @@ def test_describe_page_with_vision_works_via_anthropic_compat():
 
     client = compat.AnthropicOpenAICompatClient(FakeAnthropic())
     assert describe_page_with_vision(client, "claude-sonnet", b"\x89PNG", 3) == "目录页"
+
+
+def test_openai_content_to_anthropic_handles_scalars_and_mixed_parts():
+    assert compat.openai_content_to_anthropic(None) == ""
+    assert compat.openai_content_to_anthropic("plain") == "plain"
+    assert compat.openai_content_to_anthropic(12) == "12"
+    assert compat.openai_content_to_anthropic(["hello", {"type": "text", "text": " world "}]) == [
+        {"type": "text", "text": "hello"},
+        {"type": "text", "text": "world"},
+    ]
+
+
+def test_openai_image_part_accepts_string_image_url_and_rejects_empty():
+    block = compat._openai_image_part_to_anthropic({"type": "image_url", "image_url": "https://cdn.example/x.png"})
+    assert block["source"]["url"] == "https://cdn.example/x.png"
+    with pytest.raises(ValueError, match="empty image_url"):
+        compat._openai_image_part_to_anthropic({"type": "image_url", "image_url": {"url": "  "}})
+
+
+def test_openai_messages_to_anthropic_collects_system_text_blocks():
+    system, messages = compat.openai_messages_to_anthropic(
+        [
+            {
+                "role": "system",
+                "content": [{"type": "text", "text": "sys-a"}, {"type": "text", "text": "sys-b"}],
+            },
+            {"role": "assistant", "content": "answer"},
+            "ignore-me",
+        ]
+    )
+    assert system == "sys-a\n\nsys-b"
+    assert messages == [{"role": "assistant", "content": "answer"}]
+
+
+def test_extract_text_supports_dict_and_string_content():
+    assert compat._extract_text({"content": " hi "}) == "hi"
+    assert compat._extract_text({"content": [{"type": "text", "text": "A"}, {"type": "text", "text": "B"}]}) == "AB"
+
+
+def test_compat_client_requires_user_or_assistant_message():
+    client = compat.AnthropicOpenAICompatClient(SimpleNamespace())
+    with pytest.raises(ValueError, match="at least one user/assistant message"):
+        client.chat.completions.create(model="claude", messages=[{"role": "system", "content": "only"}])
+
+
+def test_build_anthropic_vision_client_rewrites_openai_default_base(monkeypatch):
+    created = {}
+
+    class FakeAnthropic:
+        def __init__(self, api_key, base_url):
+            created.update(api_key=api_key, base_url=base_url)
+
+    monkeypatch.setattr(compat.anthropic, "Anthropic", FakeAnthropic)
+    compat.build_anthropic_vision_client(
+        api_base="https://api.openai.com",
+        api_key="k",
+        vendor_type="anthropic",
+    )
+    assert created["base_url"] == "https://api.anthropic.com"
