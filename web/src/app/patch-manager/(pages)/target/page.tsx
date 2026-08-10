@@ -18,6 +18,7 @@ import CustomTable from '@/components/custom-table';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import OperateDrawer from '@/components/operate-drawer';
 import PatchDeletePopconfirm from '@/app/patch-manager/components/delete-popconfirm';
+import FilterToolbar from '@/components/filter-toolbar';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
   buildTargetFilterSearch,
@@ -797,7 +798,7 @@ export default function TargetPage() {
 
   return (
     <div style={{ background: 'var(--color-bg-1, #fff)', border: '1px solid var(--color-border-1, #e8e8e8)', borderRadius: 10, padding: '16px', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10, marginBottom: 14 }}>
+      <FilterToolbar align="between">
         <Space>
           <Input.Search
             placeholder="IP"
@@ -856,7 +857,7 @@ export default function TargetPage() {
             onRefresh={() => loadData()}
           />
         </Space>
-      </div>
+      </FilterToolbar>
 
       <div style={{ flex: 1, minHeight: 0 }}>
         <CustomTable<HostRow>

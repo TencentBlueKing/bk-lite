@@ -18,6 +18,7 @@ import PatchSourceDisplay from '@/app/patch-manager/components/patch-source-disp
 import CustomTable from '@/components/custom-table';
 import OperateDrawer from '@/components/operate-drawer';
 import PatchDeletePopconfirm from '@/app/patch-manager/components/delete-popconfirm';
+import FilterToolbar from '@/components/filter-toolbar';
 import { getWindowsPackageUploadState } from '@/app/patch-manager/components/windows-package-upload-state';
 import {
   createCandidateSelection,
@@ -622,7 +623,7 @@ export default function LibraryPage() {
         { key: 'linux', label: 'Linux', children: null },
       ]} />
 
-      <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10, marginBottom: 12 }}>
+      <FilterToolbar align="between">
         <SearchCombination
           fieldConfigs={activeTab === 'win' ? winFieldConfigs : linuxFieldConfigs}
           onChange={(next) => {
@@ -666,7 +667,7 @@ export default function LibraryPage() {
             <PermissionWrapper requiredPermissions={['Add']}><Button icon={<PlusOutlined />} onClick={() => { createForm.resetFields(); setCreateOpen(true); }}>{t('patchManager.libraryPage.addPatch')}</Button></PermissionWrapper>
           )}
         </Space>
-      </div>
+      </FilterToolbar>
 
       <div style={{ flex: 1, minHeight: 0 }}>
         <CustomTable<Patch>
