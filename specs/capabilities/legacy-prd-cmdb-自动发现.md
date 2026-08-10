@@ -28,7 +28,7 @@
 - 采集驱动分两类：协议采集与脚本采集。
 - 支持查看采集插件的说明文档。
 
-相关架构：[[spec/ARD/modules/cmdb.md#3. 接口【已实现/已存在】]]；对应功能清单：[[spec/fuctionlist/01-CMDB配置管理-功能清单.md#5. 自动发现（采集）]]
+相关架构：[[legacy-ard-modules-cmdb.md#3. 接口【已实现/已存在】]]；对应功能清单：[[legacy-fuctionlist-01-cmdb配置管理-功能清单.md#5. 自动发现（采集）]]
 > 证据来源：server/apps/cmdb/constants/constants.py:364-403，server/apps/cmdb/views/collect.py:66-68　|　同步基线：83091efe　|　【已实现】
 
 ### 3.2 采集任务
@@ -41,7 +41,7 @@
 - 凭据池支持新增、编辑、删除与排序；编辑时按新增/删除/修改进行差异比对，被删除的凭据其历史命中状态一并清除（仅调整顺序不视为修改）。
 - 网络设备配置文件采集面向已纳管的网络设备实例，任务中可维护登录账号、登录口令、特权模式口令、目标命令与配置名称，采集结果归档为配置文件版本。
 
-相关架构：[[spec/ARD/modules/cmdb.md#5. 核心数据流 / 任务]]；对应功能清单：[[spec/fuctionlist/01-CMDB配置管理-功能清单.md#5. 自动发现（采集）]]
+相关架构：[[legacy-ard-modules-cmdb.md#5. 核心数据流 / 任务]]；对应功能清单：[[legacy-fuctionlist-01-cmdb配置管理-功能清单.md#5. 自动发现（采集）]]
 > 证据来源：server/apps/cmdb/node_configs/network_config_file.py:5-63，server/apps/cmdb/services/ipam_discovery.py:8-41　|　同步基线：83091efe　|　【已实现】
 
 ### 3.3 任务执行
@@ -54,7 +54,7 @@
 - 多凭据派发支持的任务类型：主机、数据库、中间件、配置文件、SNMP 网络设备及通用协议采集；仅配置单组凭据或不在支持范围内的任务沿用原单凭据采集链路。
 - IP 发现任务以选定子网为边界，周期执行时按本轮在线结果回写 IP 台账，并同步刷新子网利用率。
 
-相关架构：[[spec/ARD/modules/cmdb.md#5. 核心数据流 / 任务]]；对应功能清单：[[spec/fuctionlist/01-CMDB配置管理-功能清单.md#5. 自动发现（采集）]]
+相关架构：[[legacy-ard-modules-cmdb.md#5. 核心数据流 / 任务]]；对应功能清单：[[legacy-fuctionlist-01-cmdb配置管理-功能清单.md#5. 自动发现（采集）]]
 > 证据来源：server/apps/cmdb/services/ipam_discovery.py:149-175　|　同步基线：83091efe　|　【已实现】
 
 ### 3.4 凭据命中、冷却与重试
@@ -81,7 +81,7 @@
 - 配置文件采集会把命中的网络设备命令输出归档为配置文件版本，供资产详情查看历史与差异。
 - IP 发现只更新自动发现产生的地址记录；手工维护的地址条目不被覆盖。
 
-相关架构：[[spec/ARD/modules/cmdb.md#5. 核心数据流 / 任务]]；对应功能清单：[[spec/fuctionlist/01-CMDB配置管理-功能清单.md#3. 资产详情]]
+相关架构：[[legacy-ard-modules-cmdb.md#5. 核心数据流 / 任务]]；对应功能清单：[[legacy-fuctionlist-01-cmdb配置管理-功能清单.md#3. 资产详情]]
 > 证据来源：server/apps/cmdb/node_configs/network_config_file.py:33-63，server/apps/cmdb/services/ipam_discovery.py:104-175　|　同步基线：83091efe　|　【已实现】
 
 ### 3.7 SOID 特征库
@@ -109,7 +109,7 @@
 - 网络设备配置文件采集只面向已纳管网络设备实例，按任务定义的命令清单采集并归档。
 - IP 发现按所选子网范围更新地址台账；未在本轮在线结果中的自动发现地址会被置为离线，手工地址不受影响。
 
-相关架构：[[spec/ARD/modules/cmdb.md#5. 核心数据流 / 任务]]；对应功能清单：[[spec/fuctionlist/01-CMDB配置管理-功能清单.md#5. 自动发现（采集）]]
+相关架构：[[legacy-ard-modules-cmdb.md#5. 核心数据流 / 任务]]；对应功能清单：[[legacy-fuctionlist-01-cmdb配置管理-功能清单.md#5. 自动发现（采集）]]
 > 证据来源：server/apps/cmdb/node_configs/network_config_file.py:33-63，server/apps/cmdb/services/ipam_discovery.py:104-175　|　同步基线：83091efe　|　【已实现】
 
 ## 5. 关键技术架构选择
@@ -130,5 +130,5 @@
 - 网络设备配置文件采集可把网络设备命令输出沉淀为配置文件版本，并在资产详情查看历史与差异。
 - IP 发现任务执行后可回写子网下在线 / 离线地址状态与利用率。
 
-相关架构：[[spec/ARD/modules/cmdb.md#5. 核心数据流 / 任务]]；对应功能清单：[[spec/fuctionlist/01-CMDB配置管理-功能清单.md#5. 自动发现（采集）]]
+相关架构：[[legacy-ard-modules-cmdb.md#5. 核心数据流 / 任务]]；对应功能清单：[[legacy-fuctionlist-01-cmdb配置管理-功能清单.md#5. 自动发现（采集）]]
 > 证据来源：server/apps/cmdb/node_configs/network_config_file.py:33-63，server/apps/cmdb/services/ipam_discovery.py:149-175　|　同步基线：83091efe　|　【已实现】

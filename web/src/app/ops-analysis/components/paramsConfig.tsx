@@ -168,6 +168,16 @@ const DataSourceParamsConfig: React.FC<DataSourceParamsConfigProps> = ({
           );
         case 'string':
         default:
+          if (param.name === 'query') {
+            return (
+              <Input.TextArea
+                rows={4}
+                placeholder={t('common.inputTip')}
+                style={{ width: '100%' }}
+                disabled={isDisabled}
+              />
+            );
+          }
           return (
             <Input
               placeholder={t('common.inputTip')}

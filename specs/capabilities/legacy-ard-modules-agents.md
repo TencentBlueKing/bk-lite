@@ -40,6 +40,13 @@
 - 通信：NATS JetStream Object Store（大文件传输）+ HTTP 回调。
 - 能力：下载/校验/安装/升级 sidecar 包，事件流上报进度。
 
+### Windows 事务式安装与升级【已实现】
+- GUI 安装器将共享 worker 解压至 NSIS 插件目录后运行，与目标安装目录隔离；该边界允许 worker 在不占用目标目录的前提下完成目录切换与激活。
+- 空的目标目录按首次安装处理；已有安装则按事务方式暂存新包、激活并在中断或新服务启动失败时恢复上一版本。运行时目录（缓存、日志和生成文件）在升级中保留。
+- 升级会保留既有卸载入口与图标；若新包已提供同名文件，则以新包为准。远程 bootstrap 直接运行 worker，首次安装不会生成 NSIS 卸载器；GUI 首次激活完成后再由 NSIS 写入卸载器、图标及系统卸载登记。
+
+> 证据来源：agents/sidecar-installer/setup.nsi:3-5,187-203,224-238；agents/sidecar-installer/setup-worker.go:1297-1303,1568-1572,1712-1766；agents/sidecar-installer/setup-worker_test.go:747-850　|　同步基线：d2769559　|　【已实现】
+
 ## webhookd —— webhook 接入【已实现/已存在】
 - 形态：配置模板（K8s 清单 `bk-lite-{log,metric,resource}-collector.yaml`）。
 - 能力：接收外部 webhook/告警的 HTTP 端点；`bk-lite-resource-collector.yaml` 部署 kube-state-metrics 相关资源采集能力。

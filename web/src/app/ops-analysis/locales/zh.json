@@ -222,8 +222,25 @@
       "mysql": "MySQL",
       "postgresql": "PostgreSQL",
       "restApi": "REST API",
-      "excel": "Excel"
+      "excel": "Excel",
+      "prometheus": "Prometheus"
     },
+    "authType": "认证类型",
+    "authTypes": {
+      "none": "无",
+      "basic": "Basic Auth",
+      "bearer": "Bearer Token"
+    },
+    "token": "Token",
+    "testConnection": "测试连接",
+    "testConnectionSuccess": "连接测试成功",
+    "testConnectionFailed": "连接测试失败",
+    "promql": "PromQL",
+    "queryType": "查询类型",
+    "step": "Step",
+    "maxSeries": "最大序列数",
+    "prometheusPreviewQuery": "Prometheus 预览查询",
+    "seriesTruncated": "结果共 {total} 条序列，已截断为 {max} 条",
     "connectionConfig": "连接配置",
     "queryConfig": "取数配置",
     "previewData": "数据预览",

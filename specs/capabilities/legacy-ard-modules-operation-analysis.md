@@ -14,7 +14,7 @@
 | Dashboard / Topology / Architecture | `models/models.py` | 仪表盘/拓扑/架构图（filters、view_sets JSON）；三者均含 `is_build_in`/`build_in_key`（unique）内置标识 |
 | Screen / Report | `models/models.py` | 大屏/报表画布；均含 `directory`、`view_sets`、`is_build_in`/`build_in_key` |
 | NameSpace | `models/datasource_models.py` | NATS 连接配置（域/账号/密码加密/TLS）；含 `namespace`（NATS 命名空间标识，消息主题前缀，default=`bklite`）；含 `is_active`（内部预留，前端不暴露、运行时不校验） |
-| DataSourceAPIModel | `models/datasource_models.py` | 数据源定义；含 `source_type`（NATS/MySQL/PostgreSQL/REST API/Excel）、`connection_config`（连接配置）、`query_config`（取数配置）、`chart_type`（JSON，图表类型，default=list）、`field_schema`（JSON，接口返回字段定义，default=list）、`is_active`（内部预留） |
+| DataSourceAPIModel | `models/datasource_models.py` | 数据源定义；含 `source_type`（NATS/MySQL/PostgreSQL/REST API/Excel）、`connection_config`（连接配置）、`query_config`（取数配置）、`chart_type`（JSON，图表类型，default=list）、`field_schema`（JSON，接口返回字段定义，default=list）、`is_active`（内部预留），以及内置标记与唯一稳定身份键 |
 | DataSourceTag | `models/datasource_models.py` | 数据源标签；含 `build_in`（是否内置） |
 | DashboardReportSubscription | `models/subscription_models.py` | 画布报告订阅配置；绑定 Dashboard FK（兼容，Screen 可空）与 `resource_type`/`resource_id`、创建者 `(username, domain)`、组织、名称、状态、单个接收邮箱、邮件渠道及预留 config；`revision` 提供全字段 CAS，`version` 仅表示调度配置版本 |
 | DashboardReportExecution | `models/subscription_models.py` | 一次 Dashboard 报告订阅执行审计；含 `resource_type`/`resource_id`；支持 manual 触发及 pending/running/succeeded/failed/unknown；`pending→running` 仅经 Claim；Delivery Fact 终态修正使用独立审计字段 |
@@ -23,13 +23,16 @@
 | DashboardReportPdfArtifact | `models/subscription_models.py` | 一次执行生成的短期 PDF 元数据；保存附件文件名、受控共享存储引用、文件大小、SHA-256、生成时间与到期时间，不提供历史下载或长期归档 |
 | DashboardReportRenderToken | `models/subscription_models.py` | 一次 Execution 对应的一次性短时 Render Token 审计记录；数据库仅保存 SHA-256、到期与消费时间，明文只在 Worker 内存存在 |
 
-内置机制【已实现/已存在】：`Directory`/`Dashboard`/`Topology`/`Architecture`/`Screen`/`Report` 通过 `is_build_in` + 唯一 `build_in_key` 标识内置画布，承载「内置视图对组织可见但不可删改」语义（删改在视图层被 `_raise_if_builtin` 拦截，见 §3）；`DataSourceTag.build_in` 标识内置标签。
+内置机制【已实现/已存在】：`Directory`/`Dashboard`/`Topology`/`Architecture`/`Screen`/`Report` 通过 `is_build_in` + 唯一 `build_in_key` 标识内置画布，承载「内置视图对组织可见但不可删改」语义（删改在视图层被 `_raise_if_builtin` 拦截，见 §3）；`DataSourceTag.build_in` 标识内置标签。内置数据源同样以内置标记和稳定身份键认领；初始化先按稳定键与精确身份匹配，避免把同接口的自定义数据源误认领；强制初始化才以随包配置覆盖已认领的内置项，普通接口不能修改或删除内置数据源。
+
+> 证据来源：server/apps/operation_analysis/models/datasource_models.py:121-122，server/apps/operation_analysis/common/builtin_datasource_identity.py:19-45，server/apps/operation_analysis/management/commands/init_source_api_data.py:95-160，server/apps/operation_analysis/views/datasource_view.py:590-604　|　同步基线：d2769559　|　【已实现】
 
 ## 3. 接口【已实现/已存在】
 路由组：`data_source`/`dashboard`/`dashboard_subscription`/`dashboard_execution`/`directory`/`topology`/`architecture`/`screen`/`report`/`namespace`/`tag`/`import_export`/`scene_widgets`；开放端点 `open_api/import_export`。
 
 关键自定义动作【已实现/已存在】：
 - `data_source` 的 `get_source_data/{pk}`（POST）：组件运行时取数对外入口，是整个取数链路的起点（`views/datasource_view.py:337`）。
+- 内置数据源保护【已实现】：内置标记和稳定身份键仅由系统维护；普通更新、删除接口均拒绝内置项。初始化支持显式强制更新，未启用强制更新时保留已认领内置项的现有配置（证据：`serializers/datasource_serializers.py:65-83`、`views/datasource_view.py:590-604`、`management/commands/init_source_api_data.py:95-160`）。
 - `data_source` 的 `preview`（POST，保存后）与 `preview_config`（POST，未保存配置）：用于连接测试 / 数据预览。非 NATS 数据源在管理页直接走内联执行，NATS 仍按命名空间配置运行时取数；前端可把预览识别出的字段一键回填到 `field_schema`，并在设置页继续手工增删、排序与校验唯一字段名（`views/datasource_view.py:481-529`、`web/src/app/ops-analysis/(pages)/settings/dataSource/{previewPanel,fieldSchemaTable,operateModalUtils}.tsx`）。
 - `directory` 的 `tree`（GET）：返回目录树（`views/view.py:148`）。
 - `scene_widgets/network_status_topology`（POST）：按 `model_id`、`inst_id`、`depth` 构建网络状态拓扑场景数据，是网络状态拓扑组件的专用后端入口；复用 CMDB network_topology/实例权限并汇总 Alerts 活跃告警，权限动作 `view`（证据：`urls.py:23`、`views/scene_widget_view.py:10-23,10,12`、`services/network_status_topology.py:5,65,87`）。
@@ -63,6 +66,7 @@
 
 **大屏与报表前端入口**【已实现】
 - `screen`：前端提供独立页面、全屏、统一筛选、命名空间选择、组件布局与保存接口（`(pages)/view/screen/index.tsx:76-213`、`api/screen.ts:4-28`）。
+- 网络状态拓扑布局【已实现】：组件提供层级、力导向、环形三种布局；编辑态的节点位置和连线形态按布局分别持久化及重置。查看与分享态只读取已保存布局，不回写配置（证据：`web/src/app/ops-analysis/utils/networkStatusTopologyLayout.ts:37-55,203-327`、`web/src/app/ops-analysis/components/widgets/networkStatusTopology/index.tsx:154-164,393-430,491-502`）。
 - `report`：前端提供独立报表页面与读取接口，当前为基础画布模式，构建器仍处于占位态（`(pages)/view/report/index.tsx:37-109`、`api/report.ts:4-28`）。
 
 ## 4. 依赖与通信【已实现/已存在】
