@@ -8,8 +8,11 @@ export type ChartType =
   | 'multiValue'
   | 'table'
   | 'eventTable'
+  | 'eventTimeline'
   | 'topN'
   | 'gauge'
+  | 'radar'
+  | 'topologyMap'
   | 'room3D'
   | 'message';
 

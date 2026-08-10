@@ -44,7 +44,7 @@
 ### 前端层：画布组件与展示能力【已实现】
 
 **组件注册表（widgetRegistry）**【已实现】
-`web/src/app/ops-analysis/components/widgetRegistry.ts:12-29` 以 `chartType` 字符串为键，将组件类型映射至对应 React 组件，由 `getWidgetComponent` 统一解析。当前注册的组件类型（共 10 种）：
+`web/src/app/ops-analysis/components/widgetRegistry.ts` 以 `chartType` 字符串为键，将组件类型映射至对应 React 组件，由 `getWidgetComponent` 统一解析。当前注册的组件类型（共 15 种）：
 
 | chartType | 组件文件 | 说明 |
 |-----------|---------|------|
@@ -57,6 +57,7 @@
 | gauge | comGauge.tsx | 仪表盘（半圆/整圆） |
 | eventTable | eventTable/eventTable.tsx | 事件表（事件流） |
 | networkStatusTopology | networkStatusTopology/index.tsx | 网络状态拓扑场景组件 |
+| topologyMap | topologyMap/index.tsx | 普通 DataSource 驱动的通用关系拓扑；消费 `{nodes, edges}`，使用 Dagre + X6 渲染 |
 | room3D | widgets/room3D/index.tsx | 3D 机房大屏组件：消费 CMDB NATS `get_room3d_layout`，渲染 row/col 网格、U 占用、机柜类型、设备摘要与图例 |
 
 证据：`web/src/app/ops-analysis/components/widgetRegistry.ts:11,22`、`web/src/app/ops-analysis/components/widgets/networkStatusTopology/index.tsx`、`web/src/app/ops-analysis/api/networkStatusTopology.ts:11-25`、`web/src/app/ops-analysis/components/widgets/room3D/{index.tsx,room3DData.ts,room3DMeshes.ts,room3DScene.ts}`。
@@ -127,6 +128,10 @@
 ## 2026-08-03 多画布报告订阅 Phase 3
 
 - `[operation_analysis#20260803-002]` 注册 `ScreenCanvasReportAdapter`；开放 `screen` 订阅写入（无 dashboard FK）；migration `0021` 快照 `dashboard_id` 可空；Screen 删除终止订阅；PDF 策略 2（viewport 来自 snapshot + A4 landscape 等比 fit）；前端 Screen 订阅入口与 render 分支。PermissionStep 经 Adapter 存在性判断支持删除后在途继续；Screen render-input HTTP 合同已覆盖。migration `0022` 冻结 `resource_display_label`；Delivery 消费展示标签而非 `resource_type` 分支；订阅/执行入口统一 `require_canvas_view`。演进契约见 `specs/changes/canvas-report-subscription/spec.md`。
+
+## 2026-08-09 TopologyMap MVP 校准
+
+- `[operation_analysis#20260809-001]` 新增普通 DataSource `chartType=topologyMap`：MVP 面向可直接返回 `{nodes, edges}` object 的 NATS DataSource，不修改 mysql/postgresql/rest_api/excel connector runtime。前端以 graph-local node id 校验引用，使用单一 Dagre 自动布局与独立 X6 viewer；empty 上报 `empty` 并允许报告 `report-ready`，非法 graph 上报 `failed`。该组件与 `networkStatusTopology` Scene Widget 保持实现与契约隔离。Self-loop 不静默丢弃，但默认 X6 能力不能可靠显示，记为 Current Limitation。变更契约与证据见 `specs/changes/ops-analysis-topology-map-mvp/spec.md`。
 
 ## 6. 证据来源
 `server/apps/operation_analysis/{urls.py,models/*,views/datasource_view.py,views/view.py,nats/nats.py,common/get_nats_source_data.py,constants/constants.py,tasks/tasks.py,management/commands/*,services/*}`、`apps/operation_analysis/migrations/0010_remove_namespace_groups.py`、`apps/rpc/base.py:OperationAnalysisRpc`、`web/src/app/ops-analysis/{utils/widgetRequestCache.ts,components/widgetDataRenderer.tsx,api/namespace.ts,(pages)/settings/namespace/operateModal.tsx}`。

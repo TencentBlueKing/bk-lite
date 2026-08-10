@@ -11,6 +11,7 @@ export type ScreenWidgetChartType =
   | 'table'
   | 'topN'
   | 'eventTable'
+  | 'topologyMap'
   | 'room3D'
   | 'networkStatusTopology';
 

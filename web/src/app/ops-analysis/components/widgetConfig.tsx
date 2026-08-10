@@ -59,6 +59,7 @@ import { useTableConfig } from './widgetConfig/hooks/useTableConfig';
 import { TableSettingsSection } from './widgetConfig/sections/tableSettingsSection';
 import { TopNSettingsSection } from './widgetConfig/sections/topNSettingsSection';
 import { GaugeSettingsSection } from './widgetConfig/sections/gaugeSettingsSection';
+import { RadarSettingsSection } from './widgetConfig/sections/radarSettingsSection';
 import {
   buildDisplayColumnsFromSchema,
   isDisplayableDefaultField,
@@ -144,20 +145,16 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
 
   const getFilteredChartTypes = (
     dataSource: DatasourceItem | undefined,
-  ): ChartTypeItem[] => {
-    if (!dataSource?.chart_type?.length) {
-      return [];
-    }
-    return resolveDatasourceChartTypes({
-      chartTypes: dataSource.chart_type,
+  ): ChartTypeItem[] =>
+    resolveDatasourceChartTypes({
+      chartTypes: dataSource?.chart_type || [],
       chartTypeDefinitions: getChartTypeList(),
       surface,
     });
-  };
 
   const getDataSourceChartTypes = useMemo(() => {
     return getFilteredChartTypes(selectedDataSource);
-  }, [selectedDataSource]);
+  }, [selectedDataSource, surface]);
 
   const computePreviewDefinitions = (
     existingDefinitions: UnifiedFilterDefinition[],
@@ -304,6 +301,14 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
           gaugeMin: 0,
           gaugeMax: 100,
           gaugeShape: 'semicircle',
+          eventTimeline: {
+            sortOrder: 'desc',
+          },
+          radar: {
+            min: 0,
+            max: 100,
+            indicators: [],
+          },
           compare: false,
           compareMode: 'percent',
           tableConfig: undefined,
@@ -358,6 +363,14 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
         gaugeMin: 0,
         gaugeMax: 100,
         gaugeShape: 'semicircle',
+        eventTimeline: {
+          sortOrder: 'desc',
+        },
+        radar: {
+          min: 0,
+          max: 100,
+          indicators: [],
+        },
         compare: false,
         compareMode: 'percent',
       });
@@ -493,6 +506,12 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
     const newChartType = e.target.value;
     setChartType(newChartType);
     form.setFieldValue('chartType', newChartType);
+    if (newChartType === 'eventTimeline' && !form.getFieldValue('eventTimeline')) {
+      form.setFieldValue('eventTimeline', { sortOrder: 'desc' });
+    }
+    if (newChartType === 'radar' && !form.getFieldValue('radar')) {
+      form.setFieldValue('radar', { min: 0, max: 100, indicators: [] });
+    }
     if (surface === 'screen') {
       form.setFieldValue(
         'appearance',
@@ -739,6 +758,12 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
     }
     if (valueConfig?.gaugeShape !== undefined) {
       formValues.gaugeShape = valueConfig.gaugeShape;
+    }
+    if (valueConfig?.eventTimeline !== undefined) {
+      formValues.eventTimeline = valueConfig.eventTimeline;
+    }
+    if (valueConfig?.radar !== undefined) {
+      formValues.radar = valueConfig.radar;
     }
     if (valueConfig?.compare !== undefined) {
       formValues.compare = valueConfig.compare && canEnableCompare({
@@ -1294,6 +1319,31 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
             onThresholdBlur={singleValueConfig.handleThresholdBlur}
             onAddThreshold={singleValueConfig.addThreshold}
             onRemoveThreshold={singleValueConfig.removeThreshold}
+          />
+        )}
+
+        {chartType === 'eventTimeline' && (
+          <div className="mb-6">
+            <div className="font-medium mb-4">{t('dashboard.eventTimelineSettings')}</div>
+            <Form.Item
+              label={t('dashboard.eventTimelineSortOrder')}
+              name={['eventTimeline', 'sortOrder']}
+              initialValue="desc"
+            >
+              <Select
+                options={[
+                  { label: t('dashboard.eventTimelineSortDesc'), value: 'desc' },
+                  { label: t('dashboard.eventTimelineSortAsc'), value: 'asc' },
+                ]}
+              />
+            </Form.Item>
+          </div>
+        )}
+
+        {chartType === 'radar' && (
+          <RadarSettingsSection
+            t={t}
+            availableFields={availableFields}
           />
         )}
 

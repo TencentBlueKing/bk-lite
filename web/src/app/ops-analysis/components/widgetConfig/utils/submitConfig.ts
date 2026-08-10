@@ -38,6 +38,8 @@ export interface WidgetConfigFormValues {
   gaugeMin?: number;
   gaugeMax?: number;
   gaugeShape?: 'semicircle' | 'circle';
+  eventTimeline?: ValueConfig['eventTimeline'];
+  radar?: ValueConfig['radar'];
   actions?: DashboardActionConfig[];
   appearance?: ValueConfig['appearance'];
 }
@@ -73,6 +75,18 @@ export interface BuildWidgetSubmitConfigResult {
   config?: WidgetConfig;
   error?: WidgetSubmitError;
 }
+
+const buildWidgetConfigBase = (
+  values: WidgetConfigFormValues,
+  chartType: string,
+): WidgetConfig => ({
+  name: values.name,
+  ...(values.description ? { description: values.description } : {}),
+  chartType,
+  ...(values.dataSource !== undefined ? { dataSource: values.dataSource } : {}),
+  ...(values.dataSourceParams ? { dataSourceParams: values.dataSourceParams } : {}),
+  ...(values.appearance ? { appearance: values.appearance } : {}),
+});
 
 const buildSceneWidgetConfig = (
   values: WidgetConfigFormValues,
@@ -219,7 +233,7 @@ export const buildWidgetSubmitConfig = ({
     return { config: buildSceneWidgetConfig(values) };
   }
 
-  const result: WidgetConfig = { ...values } as WidgetConfig;
+  const result: WidgetConfig = buildWidgetConfigBase(values, chartType);
   if (validateComponentSwitchParams(values.dataSourceParams)) {
     return { error: 'multipleComponentSwitchParams' };
   }
@@ -239,9 +253,9 @@ export const buildWidgetSubmitConfig = ({
   }
 
   if (!showChartThemeMode) {
-    delete result.chartThemeMode;
-  } else if (result.chartThemeMode === 'default') {
-    delete result.chartThemeMode;
+    // chartThemeMode is omitted by default
+  } else if (values.chartThemeMode && values.chartThemeMode !== 'default') {
+    result.chartThemeMode = values.chartThemeMode;
   }
 
   if (chartType === 'table') {
@@ -269,6 +283,27 @@ export const buildWidgetSubmitConfig = ({
   if (chartType === 'topN') {
     result.topNLabelField = values.topNLabelField;
     result.topNValueField = values.topNValueField;
+  }
+
+  if (chartType === 'eventTimeline') {
+    result.eventTimeline = {
+      sortOrder: values.eventTimeline?.sortOrder || 'desc',
+    };
+  }
+
+  if (chartType === 'radar') {
+    const indicators = (values.radar?.indicators || [])
+      .map((item) => ({
+        key: String(item.key || '').trim(),
+        label: String(item.label || '').trim() || undefined,
+      }))
+      .filter((item) => item.key);
+
+    result.radar = {
+      min: values.radar?.min,
+      max: values.radar?.max,
+      indicators,
+    };
   }
 
   if (filterBindings && Object.keys(filterBindings).length > 0) {
