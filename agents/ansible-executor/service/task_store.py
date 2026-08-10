@@ -10,88 +10,15 @@ from pathlib import Path
 from typing import Any
 
 from cryptography.fernet import Fernet, InvalidToken
-
-TERMINAL_TASK_STATUSES = {"success", "failed", "callback_failed"}
-
-# Sensitive credential keys that must be removed from stored payloads
-# to prevent credential leakage via task_query API
-SENSITIVE_CREDENTIAL_KEYS = {
-    "password",
-    "private_key_content",
-    "private_key_passphrase",
-    "ansible_password",
-    "ansible_ssh_passphrase",
-    "ansible_become_password",
-    "inventory_content",
-}
-
-SENSITIVE_EXTRA_VAR_MARKERS = (
-    "password",
-    "passphrase",
-    "private_key",
-    "secret",
-    "session_url",
-    "token",
+from service.task_store_sanitization import (
+    SENSITIVE_CREDENTIAL_KEYS as _SENSITIVE_CREDENTIAL_KEYS,
+    _sanitize_callback_for_storage,
+    _sanitize_execution_payload_for_storage,
+    _sanitize_payload_for_storage,
 )
 
-
-def _sanitize_extra_vars(extra_vars: dict[str, Any]) -> dict[str, Any]:
-    sanitized: dict[str, Any] = {}
-    for key, value in extra_vars.items():
-        if any(marker in str(key).lower() for marker in SENSITIVE_EXTRA_VAR_MARKERS):
-            sanitized[key] = "***"
-        else:
-            sanitized[key] = _sanitize_extra_var_value(value)
-    return sanitized
-
-
-def _sanitize_extra_var_value(value: Any) -> Any:
-    if isinstance(value, dict):
-        return _sanitize_extra_vars(value)
-    if isinstance(value, list):
-        return [_sanitize_extra_var_value(item) for item in value]
-    return value
-
-
-def _sanitize_payload_for_storage(payload: dict[str, Any]) -> dict[str, Any]:
-    """
-    Remove sensitive credential fields from payload before storage.
-
-    This prevents credential leakage via task_query API responses.
-    The executor only needs credentials during execution, not for status queries.
-
-    Args:
-        payload: Original task payload that may contain sensitive credentials
-
-    Returns:
-        Sanitized payload with sensitive fields removed and _redacted marker added
-    """
-    if not payload:
-        return payload
-
-    sanitized = dict(payload)
-
-    # Sanitize host_credentials array
-    if "host_credentials" in sanitized and isinstance(sanitized["host_credentials"], list):
-        sanitized_creds = []
-        for cred in sanitized["host_credentials"]:
-            if not isinstance(cred, dict):
-                continue
-            # Keep only non-sensitive fields
-            sanitized_cred = {k: v for k, v in cred.items() if k not in SENSITIVE_CREDENTIAL_KEYS}
-            # Add marker indicating credentials were redacted
-            sanitized_cred["_redacted"] = True
-            sanitized_creds.append(sanitized_cred)
-        sanitized["host_credentials"] = sanitized_creds
-
-    # Remove top-level sensitive fields
-    for key in SENSITIVE_CREDENTIAL_KEYS:
-        sanitized.pop(key, None)
-
-    if isinstance(sanitized.get("extra_vars"), dict):
-        sanitized["extra_vars"] = _sanitize_extra_vars(sanitized["extra_vars"])
-
-    return sanitized
+TERMINAL_TASK_STATUSES = {"success", "failed", "callback_failed"}
+SENSITIVE_CREDENTIAL_KEYS = _SENSITIVE_CREDENTIAL_KEYS
 
 
 class TaskStore:
@@ -180,6 +107,7 @@ class TaskStore:
                     payload_json TEXT NOT NULL,
                     execution_payload_json TEXT,
                     callback_json TEXT,
+                    callback_secret_json TEXT,
                     result_json TEXT,
                     execution_status TEXT NOT NULL DEFAULT 'queued',
                     callback_status TEXT NOT NULL DEFAULT 'none',
@@ -197,6 +125,7 @@ class TaskStore:
                 "execution_status": "ALTER TABLE task_state ADD COLUMN execution_status TEXT NOT NULL DEFAULT 'queued'",
                 "callback_status": "ALTER TABLE task_state ADD COLUMN callback_status TEXT NOT NULL DEFAULT 'none'",
                 "execution_payload_json": "ALTER TABLE task_state ADD COLUMN execution_payload_json TEXT",
+                "callback_secret_json": "ALTER TABLE task_state ADD COLUMN callback_secret_json TEXT",
                 "lease_owner": "ALTER TABLE task_state ADD COLUMN lease_owner TEXT",
                 "lease_expires_at": "ALTER TABLE task_state ADD COLUMN lease_expires_at TEXT",
                 "heartbeat_at": "ALTER TABLE task_state ADD COLUMN heartbeat_at TEXT",
@@ -232,20 +161,22 @@ class TaskStore:
                     payload_json,
                     execution_payload_json,
                     callback_json,
+                    callback_secret_json,
                     result_json,
                     execution_status,
                     callback_status,
                     created_at,
                     updated_at
                 )
-                VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     task_id,
                     status,
                     json.dumps(_sanitize_payload_for_storage(payload), ensure_ascii=False),
-                    self._encrypt_execution_payload(payload or {}),
-                    json.dumps(callback or {}, ensure_ascii=False),
+                    self._encrypt_execution_payload(_sanitize_execution_payload_for_storage(payload or {})),
+                    json.dumps(_sanitize_callback_for_storage(callback), ensure_ascii=False),
+                    self._encrypt_execution_payload(callback) if callback else None,
                     json.dumps({}, ensure_ascii=False),
                     status,
                     "pending" if callback else "none",
@@ -381,33 +312,65 @@ class TaskStore:
         result: dict[str, Any] | None,
         now_iso: str,
         preserve_status: str | None = None,
-    ):
+    ) -> bool:
         with self._connect() as conn:
             current = conn.execute(
                 "SELECT status, execution_status FROM task_state WHERE task_id = ?",
                 (task_id,),
             ).fetchone()
             if not current:
-                return
+                return False
             current_status, execution_status = current
             next_status = preserve_status or current_status
             if callback_status == "failed" and current_status == "success":
                 next_status = "callback_failed"
             elif current_status == "callback_failed" and callback_status == "sent":
                 next_status = execution_status or preserve_status or current_status
-            conn.execute(
+            cursor = conn.execute(
                 """
                 UPDATE task_state
-                SET status = ?, callback_status = ?, result_json = ?, updated_at = ?
+                SET status = ?,
+                    callback_status = ?,
+                    result_json = ?,
+                    callback_secret_json = CASE WHEN ? = 'sent' THEN NULL ELSE callback_secret_json END,
+                    updated_at = ?
                 WHERE task_id = ?
+                  AND (? != 'failed' OR callback_status != 'sent')
                 """,
                 (
                     next_status,
                     callback_status,
                     json.dumps(result or {}, ensure_ascii=False),
+                    callback_status,
                     now_iso,
                     task_id,
+                    callback_status,
                 ),
+            )
+            return cursor.rowcount > 0
+
+    def get_callback_config(self, task_id: str) -> dict[str, Any] | None:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT callback_secret_json FROM task_state WHERE task_id = ?",
+                (task_id,),
+            ).fetchone()
+            if not row or not row[0]:
+                return None
+            return self._decrypt_execution_payload(row[0])
+
+    def clear_callback_config(self, task_id: str) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                "UPDATE task_state SET callback_secret_json = NULL WHERE task_id = ?",
+                (task_id,),
+            )
+
+    def clear_execution_payload(self, task_id: str) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                "UPDATE task_state SET execution_payload_json = NULL WHERE task_id = ?",
+                (task_id,),
             )
 
     def get_status(self, task_id: str) -> str | None:
@@ -467,9 +430,13 @@ class TaskStore:
             if not row or not row[0]:
                 return None
             payload = self._decrypt_execution_payload(row[0])
-            if not row[0].startswith(self.EXECUTION_PAYLOAD_PREFIX):
+            sanitized_payload = _sanitize_execution_payload_for_storage(payload)
+            if (
+                sanitized_payload != payload
+                or not row[0].startswith(self.EXECUTION_PAYLOAD_PREFIX)
+            ):
                 conn.execute(
                     "UPDATE task_state SET execution_payload_json = ? WHERE task_id = ?",
-                    (self._encrypt_execution_payload(payload), task_id),
+                    (self._encrypt_execution_payload(sanitized_payload), task_id),
                 )
-            return payload
+            return sanitized_payload

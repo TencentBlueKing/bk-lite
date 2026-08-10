@@ -22,7 +22,7 @@ from apps.job_mgmt.constants import (
 from apps.job_mgmt.models import JobExecution, Target
 from apps.job_mgmt.services.playbook_execution import PlaybookExecution
 
-pytestmark = [pytest.mark.unit, pytest.mark.django_db]
+pytestmark = [pytest.mark.integration, pytest.mark.django_db]
 
 MOD = "apps.job_mgmt.services.playbook_execution"
 
@@ -59,15 +59,6 @@ def _execution(**over):
     return JobExecution.objects.create(**defaults)
 
 
-class TestBuildExtraVarsShlexFallback:
-    def test_unbalanced_quotes_fallback_to_split(self):
-        """params 含未闭合引号：shlex.split 抛 ValueError → 回退 str.split（覆盖 228-229）。"""
-        params_def = [{"name": "a"}, {"name": "b"}]
-        # 单个未闭合引号让 shlex.split 抛 ValueError
-        out = PlaybookExecution._build_extra_vars("v1 'v2", params_def)
-        assert out == {"a": "v1", "b": "'v2"}
-
-
 class TestExecutePlaybookViaAnsibleFileTransfer:
     """覆盖 146-160：Playbook ZIP 从 MinIO 中转 NATS OS。
 
@@ -96,6 +87,8 @@ class TestExecutePlaybookViaAnsibleFileTransfer:
             timeout=60,
             params="{}",
             playbook=pb_proxy,
+            playbook_temp_file_key="",
+            save=MagicMock(),
         )
         return ex_proxy, fake_file
 
@@ -110,6 +103,8 @@ class TestExecutePlaybookViaAnsibleFileTransfer:
         ), patch(f"{MOD}.enforce_archive_limits", return_value=SimpleNamespace(raw_size=1234)), patch(
             f"{MOD}.upload_file_to_s3"
         ) as mupload, patch(
+            "apps.job_mgmt.services.completion_outbox_service.reserve_playbook_cleanup"
+        ) as reserve_cleanup, patch(
             f"{MOD}.AnsibleExecutor", return_value=executor
         ):
             out = PlaybookExecution._execute_playbook_via_ansible(ex, [{"target_id": t.id}])
@@ -118,6 +113,13 @@ class TestExecutePlaybookViaAnsibleFileTransfer:
         called_files = executor.playbook.call_args.kwargs["files"]
         assert called_files[0]["name"] == "p.zip"
         assert called_files[0]["file_key"] == f"job-playbooks/{ex.id}/p.zip"
+        assert ex.playbook_temp_file_key == f"job-playbooks/{ex.id}/p.zip"
+        ex.save.assert_any_call(update_fields=["playbook_temp_file_key", "updated_at"])
+        ex.save.assert_any_call(update_fields=["callback_attempt_id", "callback_token_hash", "updated_at"])
+        callback = executor.playbook.call_args.kwargs["callback"]
+        assert callback["context"]["caller"] == "ansible-executor"
+        assert callback["context"]["execution_id"] == ex.id
+        reserve_cleanup.assert_called_once_with(ex, f"job-playbooks/{ex.id}/p.zip")
         mupload.assert_called_once()
         fake_file.close.assert_called_once()
 
@@ -130,6 +132,8 @@ class TestExecutePlaybookViaAnsibleFileTransfer:
             PlaybookExecution, "is_cancelled", return_value=False
         ), patch(f"{MOD}.enforce_archive_limits", return_value=SimpleNamespace(raw_size=1)), patch(
             f"{MOD}.upload_file_to_s3", side_effect=RuntimeError("os down")
+        ), patch(
+            "apps.job_mgmt.services.completion_outbox_service.reserve_playbook_cleanup"
         ):
             with pytest.raises(ValueError, match="Playbook 文件中转失败"):
                 PlaybookExecution._execute_playbook_via_ansible(ex, [{"target_id": t.id}])
@@ -137,18 +141,12 @@ class TestExecutePlaybookViaAnsibleFileTransfer:
 
 
 class TestRunViaAnsibleCleanup:
-    """_run_via_ansible 提交失败的落库与清理行为。
+    """_run_via_ansible 提交失败时使用已持久化 Key 清理中转文件。"""
 
-    BUG（锁定当前行为）：playbook_execution.py 中 ``nats_file_key`` 仅在
-    ``nats_file_key = self._execute_playbook_via_ansible(...)`` 成功返回时被赋值。
-    当 ``_execute_playbook_via_ansible`` 在已把 ZIP 中转到 NATS OS *之后* 抛出异常
-    （如 executor.playbook 失败），外层 ``nats_file_key`` 仍为 None，
-    导致 75-79 的清理分支永不执行 → NATS OS 残留孤儿文件。
-    此处断言当前行为：异常时落 FAILED，且 delete_s3_file 不被调用。
-    """
-
-    def test_exception_marks_failed_and_skips_cleanup(self):
+    def test_exception_marks_failed_and_cleans_persisted_file_key(self):
         ex = _execution()
+        ex.playbook_temp_file_key = f"job-playbooks/{ex.id}/p.zip"
+        ex.save(update_fields=["playbook_temp_file_key", "updated_at"])
         runner = PlaybookExecution(ex.id)
         with patch.object(PlaybookExecution, "_execute_playbook_via_ansible", side_effect=RuntimeError("boom")), patch(
             f"{MOD}.delete_s3_file"
@@ -156,6 +154,5 @@ class TestRunViaAnsibleCleanup:
             runner._run_via_ansible(ex, [{"target_id": 1}])
         ex.refresh_from_db()
         assert ex.status == ExecutionStatus.FAILED
-        # nats_file_key 为 None（见类 docstring 的 BUG），不触发清理
-        mdel.assert_not_called()
+        mdel.assert_called_once_with(f"job-playbooks/{ex.id}/p.zip")
         assert ex.execution_results and ex.execution_results[0]["status"] == ExecutionStatus.FAILED

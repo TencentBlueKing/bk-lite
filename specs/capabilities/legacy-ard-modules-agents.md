@@ -28,7 +28,7 @@
 ## ansible-executor —— playbook 执行【已实现/已存在】
 - 运行时：Python + 内嵌 Ansible（`main.py`）。
 - 通信：NATS（`AnsibleNATSService`，request/response）。
-- 能力：adhoc / playbook 执行，结果经 NATS 回调 job_mgmt。
+- 能力：adhoc / playbook 执行，结果经 NATS 回调 job_mgmt。Server 下发的 callback context（固定 caller、execution、attempt、随机 token）由 Executor 原样附加到完成回调及可恢复重试；JetStream 任务/重试消息、查询态 SQLite 与最终 DLQ 只保留脱敏 token，执行所需明文仅短暂存在于进程内存与本地独立加密的 callback secret，回调成功或进入最终 DLQ 后清除。
 
 ## fusion-collector —— sidecar 统一采集器【已实现/已存在】
 - 形态：配置 + 容器（`agent/sidecar.yml`、`agent/Dockerfile`、`telegraf/telegraf.conf`）。
@@ -48,6 +48,7 @@
 - `[agents#20260701-031]` 移除 Stargazer `ip_scan` NATS handler 已落地结论：当前 `service/nats_server.py` 注册列表与 `plugins/inputs/ip_discovery/` 目录均不匹配（grep `ip_scan` 无命中），`plugins/inputs/ip/` 下的 IP 发现扫描文件是否经 NATS handler 暴露尚待确认。
 - `[agents#20260701-032]` 配置采集插件矩阵更新为 19 个 `*_info.py`，并修正华为云、VMware 等插件路径为当前 `hwcloud`、`vmware_vc` 目录。
 - `[agents#20260701-033]` 将 webhookd 资源采集 Kubernetes 清单纳入形态说明。
+- `[agents#20260810-034]` ansible-executor 完成回调透传 Server 签发的 execution/attempt/token 身份，并在本地查询态与最终 DLQ 脱敏 token。
 
 ## 风险 / 待确认
 - 各 agent 与后端的 NATS 主题命名约定的完整清单【推断，部分已知】。
