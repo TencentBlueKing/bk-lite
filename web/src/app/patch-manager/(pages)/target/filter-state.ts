@@ -1,6 +1,31 @@
+import type { Key } from 'react';
+
+import type { OSType } from '@/app/patch-manager/types';
+
 export interface TargetFilterQuery {
   baselineId?: number;
   complianceStatus?: string;
+}
+
+export type SelectedTargetOsType = OSType | 'mixed' | 'incomplete' | undefined;
+
+interface TargetOsRecord {
+  key: string;
+  osType: OSType;
+}
+
+export function resolveSelectedTargetOsType(
+  selectedKeys: readonly Key[],
+  rows: readonly TargetOsRecord[],
+): SelectedTargetOsType {
+  if (selectedKeys.length === 0) return undefined;
+  const osTypes = new Set<OSType>();
+  for (const key of selectedKeys) {
+    const row = rows.find((item) => item.key === String(key));
+    if (!row) return 'incomplete';
+    osTypes.add(row.osType);
+  }
+  return osTypes.size === 1 ? [...osTypes][0] : 'mixed';
 }
 
 export function parseBaselineFilter(searchParams: URLSearchParams): number | undefined {

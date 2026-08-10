@@ -61,6 +61,7 @@ error:
   fetch_failed: "拉取失败: {detail}"
   ingest_failed: "入库失败: {detail}"
   baseline_bound: "该基线已绑定主机，需先解绑才能删除"
+  baseline_target_os_mismatch: "所选主机的操作系统必须与基线一致"
   baseline_no_requirements: "基线没有补丁要求，无法评估"
   baseline_no_targets: "基线没有绑定主机，无法评估"
   baseline_locked: "该基线有 {count} 个进行中治理任务，完成后可操作"

@@ -2,6 +2,7 @@ import useApiClient from '@/utils/request';
 import { AxiosRequestConfig } from 'axios';
 import {
   ListResponse,
+  OSType,
   Patch,
   PatchDashboardStats,
   PatchSource,
@@ -236,7 +237,7 @@ const usePatchManagerApi = () => {
   // ── 基线管理 ──────────────────────────────────────────────────────────────────
 
   const getBaselineList = async (
-    params: { page?: number; page_size?: number; search?: string; patch_ids?: string } = {},
+    params: { page?: number; page_size?: number; search?: string; patch_ids?: string; os_type?: OSType } = {},
     config?: AxiosRequestConfig
   ): Promise<ListResponse<any>> =>
     get(`${BASE}/baseline/`, { params, ...config });
