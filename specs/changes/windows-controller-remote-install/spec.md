@@ -25,8 +25,9 @@ Windows 远程安装采用“Ansible Executor 负责 WinRM 编排，原生 Go bo
 ## Compatibility And Security Decisions
 
 - 第一版只支持 Windows x86_64，与现有 Windows Controller 包能力一致。
-- 第一版固定使用 HTTPS/5986、NTLM，并校验服务端证书；HTTP、Basic、Kerberos、CredSSP 和关闭证书校验暂不开放。
-- 自签名 WinRM 证书必须通过 Ansible Executor 的受控 CA 信任配置解决，不提供跳过校验开关。
+- 固定使用 HTTPS/5986 与 NTLM；服务端证书校验默认开启。可信内网环境可在每次安装配置中显式关闭校验，HTTP、Basic、Kerberos 和 CredSSP 仍不开放。
+- WinRM 模块连接显式使用 60 秒 WSMan operation timeout（Ansible 同步设置 70 秒 HTTP read timeout），覆盖高负载主机的模块输入延迟；WSMan fault 170 / `ERROR_BUSY` 单独标记为可重试的 WinRM 资源争用，不得误报为 NATS 或持续网络中断。
+- 自签名 WinRM 证书优先通过 Ansible Executor 的受控 CA 信任配置解决；显式关闭校验时，页面必须持续提示目标身份无法确认及管理员凭据可能被中间人截获的风险。
 - Windows 远程安装会话和会话返回的 Server URL 必须为 HTTPS；bootstrap 拒绝 HTTP 和 HTTPS 降级重定向。
 - Windows 远程安装只接受密码凭据，不接受 SSH 私钥。
 - 密码继续使用现有 AES 字段暂存，并在单节点任务结束后清空。
@@ -45,7 +46,7 @@ Windows 远程安装采用“Ansible Executor 负责 WinRM 编排，原生 Go bo
 - `server/apps/node_mgmt`：API 参数、任务编排、Executor 选择、安装会话和状态收敛。
 - `agents/ansible-executor`：WinRM 与 Windows 文件分发运行时，并固定 collection 版本。
 - `agents/sidecar-installer`：生成无 GUI 的 Windows bootstrap，完成实际下载和安装。
-- `web/src/app/node-manager`：开放 Windows 远程安装入口并收集主机与凭据；固定 WinRM 安全参数不向用户暴露。
+- `web/src/app/node-manager`：开放 Windows 远程安装入口并收集主机与凭据；HTTPS 与 NTLM 固定，证书校验以默认开启的批次级开关呈现。
 
 不新增独立 WinRM 服务；Server 只调用现有 Ansible Executor RPC，从而复用凭据转 inventory、异步任务查询、NATS 文件分发和 Windows 模块能力。
 
@@ -61,13 +62,14 @@ Windows 远程安装采用“Ansible Executor 负责 WinRM 编排，原生 Go bo
 3. 重新构建并发布 Ansible Executor，使其包含固定版本的 `ansible.windows`、`pywinrm` 与载荷加密依赖。
 4. 执行 NodeMgmt 数据库迁移。
 5. 确认每个需要 Windows 远程安装的云区域至少有一个健康 Ansible Executor。
-6. 在目标 Windows 主机预配置 WinRM listener、防火墙、认证方式与证书信任。
+6. 在目标 Windows 主机预配置 WinRM listener、防火墙和认证方式；启用证书校验时还需配置证书信任。
 7. 为安装器 NATS 用户配置 `installer.progress.>` 发布权限，并允许 Server 账号订阅。
 8. 为 Windows 远程安装配置 `NATS_PROTOCOL=tls`、可信服务端证书和专用安装器账号；明文 NATS 或管理员账号回退会快速失败。
 
 ## Acceptance Criteria
 
-- Windows 在控制器安装页可选择远程安装，默认账号为 Administrator；5986、HTTPS、NTLM 和证书校验作为固定安全基线隐藏传递。
+- Windows 在控制器安装页可选择远程安装，默认账号为 Administrator；5986、HTTPS 与 NTLM 固定，证书校验默认开启且可由用户显式关闭。
+- 关闭证书校验时显示持续风险提示，并把 `winrm_cert_validation=false` 保存到每个任务节点，初次执行和重试保持一致。
 - Windows 任务不会调用现有 SSH 执行方法。
 - bootstrap 下发失败、WinRM 连接失败、安装失败或回连超时均进入现有节点任务错误/超时状态。
 - bootstrap 输出的 `BKINSTALL_EVENT` 在 Ansible 返回前实时进入现有安装进度模型；终态 stdout 补偿不丢失失败事件，也不重复步骤。
