@@ -20,6 +20,23 @@ const COLLECTION_STATUS_TONE_LABEL: Record<CollectionStatusTone, string> = {
 /** Prometheus/VM 点时间通常是秒；时间窗用毫秒。 */
 const toTimestampMs = (value: number): number => (value < 1e12 ? value * 1000 : value);
 
+/**
+ * 采样间隔常大于桶宽（如默认 15m / 18 格 ≈ 50s，而 scrape/step 多为 60s），
+ * 仅按「点落在桶内」会出现周期性假灰。用相邻成功点的中位间隔作为覆盖半径。
+ */
+const estimateSampleCoverageMs = (successTimes: number[], bucketWidth: number): number => {
+  if (successTimes.length < 2) return bucketWidth;
+  const gaps: number[] = [];
+  for (let i = 1; i < successTimes.length; i += 1) {
+    const gap = successTimes[i] - successTimes[i - 1];
+    if (gap > 0) gaps.push(gap);
+  }
+  if (gaps.length === 0) return bucketWidth;
+  gaps.sort((a, b) => a - b);
+  const medianGap = gaps[Math.floor(gaps.length / 2)];
+  return Math.max(bucketWidth, medianGap);
+};
+
 export const getCollectionStatusToneLabel = (tone: CollectionStatusTone): string =>
   COLLECTION_STATUS_TONE_LABEL[tone];
 
@@ -73,12 +90,25 @@ export const buildCollectionStatusTimeline = (
   }
 
   const hits = Array.from({ length: count }, () => false);
+  const successTimes: number[] = [];
   if (Array.isArray(viewData)) {
     for (const point of viewData) {
       if (Number(point.value1 ?? 0) <= 0) continue;
       const pointMs = toTimestampMs(Number(point.time));
       if (!Number.isFinite(pointMs) || pointMs < resolvedStart || pointMs > resolvedEnd) continue;
-      const index = Math.min(count - 1, Math.max(0, Math.floor((pointMs - resolvedStart) / bucketWidth)));
+      successTimes.push(pointMs);
+    }
+  }
+  successTimes.sort((a, b) => a - b);
+  const coverageMs = estimateSampleCoverageMs(successTimes, bucketWidth);
+  const halfCoverage = coverageMs / 2;
+  for (const pointMs of successTimes) {
+    const coverStart = Math.max(resolvedStart, pointMs - halfCoverage);
+    const coverEnd = Math.min(resolvedEnd, pointMs + halfCoverage);
+    if (coverEnd <= coverStart) continue;
+    const startIndex = Math.max(0, Math.floor((coverStart - resolvedStart) / bucketWidth));
+    const endIndex = Math.min(count - 1, Math.floor((coverEnd - Number.EPSILON - resolvedStart) / bucketWidth));
+    for (let index = startIndex; index <= endIndex; index += 1) {
       hits[index] = true;
     }
   }
