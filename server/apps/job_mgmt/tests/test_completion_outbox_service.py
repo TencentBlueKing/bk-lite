@@ -2,8 +2,7 @@
 
 from datetime import timedelta
 from importlib import import_module
-from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from django.apps import apps as django_apps
@@ -48,7 +47,7 @@ def _terminal_execution(callback_type=CallbackType.BOTH):
 
 @pytest.mark.django_db
 def test_0014_schema_allows_0013_worker_to_insert_execution():
-    """先迁移 schema、后滚动 worker 时，旧模型 INSERT 不能被新增字段阻断。"""
+    """维护窗口或紧急回滚期间，旧模型 INSERT 不能被新增字段阻断。"""
     old_apps = MigrationLoader(connection).project_state([("job_mgmt", "0013_dangerous_builtin_metadata")]).apps
     OldJobExecution = old_apps.get_model("job_mgmt", "JobExecution")
 
@@ -57,6 +56,7 @@ def test_0014_schema_allows_0013_worker_to_insert_execution():
     current_execution = JobExecution.objects.get(pk=old_execution.pk)
     assert current_execution.terminal_source is None
     assert current_execution.playbook_temp_file_key is None
+    assert current_execution.cancel_finalize_at is None
 
 
 @pytest.mark.django_db
@@ -354,7 +354,7 @@ def test_preupload_cleanup_reservation_is_refreshed_by_terminal_transaction():
 
 
 @pytest.mark.django_db
-def test_legacy_playbook_cleanup_lists_execution_prefix_without_mutable_fk():
+def test_playbook_without_exact_key_never_scans_shared_object_store():
     execution = _terminal_execution(callback_type=CallbackType.WEB)
     execution.job_type = JobType.PLAYBOOK
     execution.callback_url = None
@@ -365,27 +365,8 @@ def test_legacy_playbook_cleanup_lists_execution_prefix_without_mutable_fk():
     )
     with transaction.atomic():
         enqueue_terminal_effects(execution)
-    cleanup = JobCompletionOutbox.objects.get(
+    cleanup = JobCompletionOutbox.objects.filter(
         execution_id=execution.id,
         kind=JobCompletionOutbox.Kind.PLAYBOOK_CLEANUP,
     )
-    prefix = f"job-playbooks/{execution.id}/"
-    assert cleanup.payload["file_prefix"] == prefix
-
-    list_objects = AsyncMock(
-        return_value=[
-            SimpleNamespace(name=f"{prefix}legacy.zip"),
-            SimpleNamespace(name="job-playbooks/another/object.zip"),
-        ]
-    )
-    delete_object = AsyncMock()
-    with patch(
-        "apps.job_mgmt.services.completion_outbox_service.list_s3_files",
-        list_objects,
-    ), patch(
-        "apps.job_mgmt.services.completion_outbox_service.delete_s3_file",
-        delete_object,
-    ):
-        assert deliver_outbox_record(cleanup.pk) is True
-    list_objects.assert_awaited_once()
-    delete_object.assert_awaited_once_with(f"{prefix}legacy.zip")
+    assert not cleanup.exists()

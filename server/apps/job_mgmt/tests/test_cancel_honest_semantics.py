@@ -6,9 +6,11 @@
 3. 取消接口 CAS 分流：PENDING→CANCELLED、RUNNING→CANCELLING、终态/取消中 400
 """
 
+from datetime import timedelta
 from unittest.mock import MagicMock, patch
 
 import pytest
+from django.utils import timezone
 
 from apps.job_mgmt.constants import ExecutionStatus, JobType, TargetSource
 from apps.job_mgmt.models import JobCompletionOutbox, JobExecution
@@ -16,7 +18,7 @@ from apps.job_mgmt.nats_api import ansible_task_callback, job_task_terminate
 from apps.job_mgmt.services.execution_base_service import ExecutionTaskBaseService
 from apps.job_mgmt.services.file_distribution_runner import FileDistributionRunner
 from apps.job_mgmt.services.script_execution_runner import ScriptExecutionRunner
-from apps.job_mgmt.tasks import finalize_cancelling_execution
+from apps.job_mgmt.tasks import dispatch_pending_job_completion_outbox, finalize_cancelling_execution
 
 pytestmark = pytest.mark.integration
 
@@ -125,6 +127,21 @@ class TestCancelViewCAS:
         assert kwargs["args"] == [execution.id]
         assert kwargs["countdown"] > execution.timeout
 
+    def test_broker_failure_keeps_persistent_cancel_deadline(self, api_client):
+        execution = _make_execution(ExecutionStatus.RUNNING)
+
+        with patch(
+            "apps.job_mgmt.views.execution.finalize_cancelling_execution.apply_async",
+            side_effect=RuntimeError("broker down"),
+        ):
+            resp = self._cancel(api_client, execution)
+
+        assert resp.status_code == 200
+        execution.refresh_from_db()
+        assert execution.status == ExecutionStatus.CANCELLING
+        assert execution.cancel_finalize_at is not None
+        assert execution.cancel_finalize_at > timezone.now() + timedelta(seconds=execution.timeout)
+
     def test_running_cancel_revokes_celery_task(self, api_client):
         execution = _make_execution(ExecutionStatus.RUNNING, celery_task_id="ct-1")
         with (
@@ -197,6 +214,20 @@ class TestTerminateTaskNatsAPI:
         _, kwargs = mock_task.apply_async.call_args
         assert kwargs["args"] == [execution.id]
         assert kwargs["countdown"] > execution.timeout
+
+    def test_broker_failure_keeps_persistent_cancel_deadline(self):
+        execution = _make_execution(ExecutionStatus.RUNNING)
+
+        with patch(
+            "apps.job_mgmt.nats_api.finalize_cancelling_execution.apply_async",
+            side_effect=RuntimeError("broker down"),
+        ):
+            result = job_task_terminate({"task_id": execution.id, "caller_team": [1]})
+
+        assert result["result"] is True
+        execution.refresh_from_db()
+        assert execution.status == ExecutionStatus.CANCELLING
+        assert execution.cancel_finalize_at is not None
 
     def test_missing_caller_team_rejected(self):
         """不传 caller_team 时拒绝取消，防止枚举 task_id 跨租户操作"""
@@ -330,6 +361,22 @@ class TestFinalizeCancellingExecutionTask:
 
     def test_missing_execution_does_not_raise(self):
         finalize_cancelling_execution(999999)  # 不抛异常即可
+
+    def test_periodic_dispatch_recovers_due_cancelling_execution(self):
+        due = _make_execution(
+            ExecutionStatus.CANCELLING,
+            cancel_finalize_at=timezone.now() - timedelta(seconds=1),
+        )
+        _make_execution(
+            ExecutionStatus.CANCELLING,
+            cancel_finalize_at=timezone.now() + timedelta(minutes=5),
+        )
+
+        with patch("apps.job_mgmt.tasks.finalize_cancelling_execution.delay") as enqueue:
+            result = dispatch_pending_job_completion_outbox()
+
+        enqueue.assert_called_once_with(due.id)
+        assert result["cancel_scheduled"] == 1
 
 @pytest.mark.django_db
 class TestAnsibleCallbackWithCancelling:

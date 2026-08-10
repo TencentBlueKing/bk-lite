@@ -1,5 +1,7 @@
 """Job Management NATS API - 用于数据权限规则"""
 
+from datetime import timedelta
+
 from celery import current_app
 from django.db import connection, transaction
 from django.utils import timezone
@@ -7,20 +9,18 @@ from django.utils import timezone
 import nats_client
 from apps.core.logger import job_logger as logger
 from apps.core.utils.ssrf_validator import SSRFError, SSRFValidator
+from apps.job_mgmt.config import CANCEL_CONVERGE_BUFFER_SECONDS
 from apps.job_mgmt.constants import CallbackType, ExecutionStatus, JobType, TriggerSource
 from apps.job_mgmt.models import DangerousPath, DangerousRule, DistributionFile, JobExecution, Playbook, ScheduledTask, Script, Target
 from apps.job_mgmt.services.callback_service import send_callback
 from apps.job_mgmt.services.celery_dispatch import dispatch_celery_task
-from apps.job_mgmt.services.completion_outbox_service import enqueue_terminal_effects
+from apps.job_mgmt.services.completion_outbox_service import enqueue_terminal_effects, lock_reconcilable_terminal_effects
 from apps.job_mgmt.services.dangerous_checker import DangerousChecker
 from apps.job_mgmt.services.script_normalize import normalize_script_line_endings
 from apps.job_mgmt.services.script_params_service import ScriptParamsService
 from apps.job_mgmt.tasks import distribute_files_task, execute_script_task, finalize_cancelling_execution
 from apps.job_mgmt.utils.team_authz import is_team_authorized, normalize_team
 from apps.rpc.sensitive import sanitize_sensitive_data, summarize_ansible_callback
-
-CANCEL_CONVERGE_BUFFER_SECONDS = 60
-
 
 def _validate_callback_config(callback_type: str, callback_url: str, callback_subject: str, tag: str):
     """校验回调配置，返回错误信息字符串；通过则返回 None。
@@ -273,10 +273,12 @@ def _write_ansible_terminal(execution, data: dict, *, reconcile_cancel_timeout: 
     execution.success_count = sum(1 for item in results if item["status"] == ExecutionStatus.SUCCESS)
     execution.failed_count = sum(1 for item in results if item["status"] == ExecutionStatus.FAILED)
     execution.terminal_source = JobExecution.TerminalSource.ANSIBLE_CALLBACK
+    execution.cancel_finalize_at = None
     execution.save(
         update_fields=[
             "status",
             "terminal_source",
+            "cancel_finalize_at",
             "execution_results",
             "finished_at",
             "success_count",
@@ -286,16 +288,6 @@ def _write_ansible_terminal(execution, data: dict, *, reconcile_cancel_timeout: 
     )
     enqueue_terminal_effects(execution, refresh_undelivered=reconcile_cancel_timeout)
     return validation_error
-
-
-def _is_legacy_cancel_timeout(execution) -> bool:
-    """识别 0014 前取消兜底写入的占位结果，兼容滚动期间的旧 worker。"""
-    if execution.status != ExecutionStatus.CANCELLED or execution.terminal_source:
-        return False
-    return any(
-        result.get("status") == ExecutionStatus.CANCELLED and result.get("error_message") == "任务已取消，远端结果未知"
-        for result in execution.execution_results or []
-    )
 
 
 @nats_client.register
@@ -324,7 +316,13 @@ def ansible_task_callback(data: dict):
         reconcile_cancel_timeout = (
             execution.status == ExecutionStatus.CANCELLED
             and execution.terminal_source == JobExecution.TerminalSource.CANCEL_TIMEOUT
-        ) or _is_legacy_cancel_timeout(execution)
+        )
+        if reconcile_cancel_timeout and not lock_reconcilable_terminal_effects(execution.id):
+            logger.info(
+                "[ansible_task_callback] 取消占位结果已开始对外投递，保留已提交终态: task_id=%s",
+                task_id,
+            )
+            return {"success": True, "message": "任务已处理"}
         if execution.status in ExecutionStatus.TERMINAL_STATES and not reconcile_cancel_timeout:
             logger.info(
                 "[ansible_task_callback] 任务已处于终态: task_id=%s, status=%s",
@@ -707,15 +705,20 @@ def job_task_terminate(data=None, task_id=None, **kwargs):
             }
 
     if status_now == ExecutionStatus.RUNNING:
+        countdown = max(0, execution.timeout) + CANCEL_CONVERGE_BUFFER_SECONDS
         updated = JobExecution.objects.filter(id=task_id, status=ExecutionStatus.RUNNING).update(
             status=ExecutionStatus.CANCELLING,
+            cancel_finalize_at=now + timedelta(seconds=countdown),
             updated_at=now,
         )
         if updated:
-            finalize_cancelling_execution.apply_async(
-                args=[execution.id],
-                countdown=execution.timeout + CANCEL_CONVERGE_BUFFER_SECONDS,
-            )
+            try:
+                finalize_cancelling_execution.apply_async(args=[execution.id], countdown=countdown)
+            except Exception:
+                logger.exception(
+                    "[job_task_terminate] 取消兜底任务入队失败，等待 Beat 补偿: execution_id=%s",
+                    execution.id,
+                )
             execution.refresh_from_db()
             send_callback(execution)
             return {

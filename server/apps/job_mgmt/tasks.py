@@ -75,6 +75,7 @@ def finalize_cancelling_execution(execution_id: int):
 
         execution.status = ExecutionStatus.CANCELLED
         execution.terminal_source = JobExecution.TerminalSource.CANCEL_TIMEOUT
+        execution.cancel_finalize_at = None
         execution.finished_at = timezone.now()
         execution.execution_results = results
         execution.success_count = sum(1 for result in results if result.get("status") == ExecutionStatus.SUCCESS)
@@ -83,6 +84,7 @@ def finalize_cancelling_execution(execution_id: int):
             update_fields=[
                 "status",
                 "terminal_source",
+                "cancel_finalize_at",
                 "finished_at",
                 "execution_results",
                 "success_count",
@@ -108,7 +110,7 @@ def deliver_job_completion_outbox(record_id: int):
 
 @shared_task(max_retries=0)
 def dispatch_pending_job_completion_outbox():
-    """重扫待投递及 worker 崩溃后租约过期的作业完成副作用。"""
+    """重扫待投递副作用，并补偿 broker 入队失败的取消收敛。"""
     from apps.job_mgmt.services.completion_outbox_service import due_outbox_ids
 
     record_ids = due_outbox_ids()
@@ -117,7 +119,22 @@ def dispatch_pending_job_completion_outbox():
             deliver_job_completion_outbox.delay(record_id)
         except Exception:
             logger.exception("job completion outbox reschedule failed: outbox_id=%s", record_id)
-    return {"scheduled": len(record_ids)}
+
+    due_execution_ids = list(
+        JobExecution.objects.filter(
+            status=ExecutionStatus.CANCELLING,
+            cancel_finalize_at__isnull=False,
+            cancel_finalize_at__lte=timezone.now(),
+        )
+        .order_by("cancel_finalize_at", "pk")
+        .values_list("pk", flat=True)[:200]
+    )
+    for execution_id in due_execution_ids:
+        try:
+            finalize_cancelling_execution.delay(execution_id)
+        except Exception:
+            logger.exception("cancelling execution reschedule failed: execution_id=%s", execution_id)
+    return {"scheduled": len(record_ids), "cancel_scheduled": len(due_execution_ids)}
 
 
 @shared_task(max_retries=0)

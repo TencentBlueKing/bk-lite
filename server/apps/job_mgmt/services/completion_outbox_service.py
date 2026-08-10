@@ -20,12 +20,12 @@ from apps.core.logger import job_logger as logger
 from apps.core.utils.safe_requests import safe_post
 from apps.core.utils.ssrf_validator import SSRFValidator
 from apps.job_mgmt.config import CALLBACK_CANCEL_RECONCILE_GRACE_SECONDS
-from apps.job_mgmt.constants import CallbackType, ExecutionStatus, JobType
-from apps.job_mgmt.models import JobCompletionOutbox
+from apps.job_mgmt.constants import CallbackType, ExecutionStatus
+from apps.job_mgmt.models import JobCompletionOutbox, JobExecution
 from apps.job_mgmt.services.callback_service import build_callback_payload, publish_job_result_to_subject
 from apps.job_mgmt.services.execution_stream_service import publish_done_sentinel
 from apps.job_mgmt.utils.callback_signer import get_signed_headers
-from apps.node_mgmt.utils.s3 import delete_s3_file, list_s3_files
+from apps.node_mgmt.utils.s3 import delete_s3_file
 from apps.rpc.sensitive import sanitize_sensitive_data
 
 OUTBOX_DISPATCH_BATCH_SIZE = 200
@@ -91,18 +91,6 @@ def _build_terminal_intents(execution) -> list[tuple[str, str, dict]]:
                 JobCompletionOutbox.Kind.PLAYBOOK_CLEANUP,
                 delivery_id,
                 {"file_key": file_key, "delivery_id": delivery_id},
-            )
-        )
-    elif execution.job_type == JobType.PLAYBOOK:
-        # 兼容迁移后仍由旧 worker 上传、或 Playbook 已被删除的在途执行；execution
-        # 前缀是本次执行独占的资源边界，不再依赖可变外键与文件名。
-        file_prefix = f"job-playbooks/{execution.id}/"
-        delivery_id = _cleanup_delivery_id(execution.id, file_prefix)
-        intents.append(
-            (
-                JobCompletionOutbox.Kind.PLAYBOOK_CLEANUP,
-                delivery_id,
-                {"file_prefix": file_prefix, "delivery_id": delivery_id},
             )
         )
 
@@ -206,6 +194,23 @@ def enqueue_terminal_effects(
     return records
 
 
+def lock_reconcilable_terminal_effects(execution_id: int) -> bool:
+    """锁住会随真实结果变化的投递意图，并判断是否仍可纠正占位终态。
+
+    调用方必须已在同一事务中锁住 JobExecution。只有所有可变载荷都仍是
+    从未尝试过的 PENDING 才可纠正；投递报错也可能是远端已收到但响应丢失，
+    因此 attempts > 0 后同样保留已可能对外可见的数据库终态。
+    """
+    if not transaction.get_connection().in_atomic_block:
+        raise RuntimeError("终态纠正检查必须在数据库事务内执行")
+    records = list(
+        JobCompletionOutbox.objects.select_for_update()
+        .filter(execution_id=execution_id)
+        .exclude(kind=JobCompletionOutbox.Kind.PLAYBOOK_CLEANUP)
+    )
+    return all(record.status == JobCompletionOutbox.Status.PENDING and record.attempts == 0 for record in records)
+
+
 def _schedule_deliveries(record_ids) -> None:
     from apps.job_mgmt.tasks import deliver_job_completion_outbox
 
@@ -217,11 +222,17 @@ def _schedule_deliveries(record_ids) -> None:
 
 
 def _claim_delivery(record_id: int):
-    now = timezone.now()
+    execution_id = JobCompletionOutbox.objects.filter(pk=record_id).values_list("execution_id", flat=True).first()
+    if execution_id is None:
+        return None
     with transaction.atomic():
+        # 全部终态竞争统一按 execution -> outbox 顺序加锁；回调先提交则
+        # claim 读到刷新后的载荷，claim 先提交则回调不再改写数据库。
+        JobExecution.objects.select_for_update().filter(pk=execution_id).only("pk").first()
         record = JobCompletionOutbox.objects.select_for_update().filter(pk=record_id).first()
         if not record or record.status == JobCompletionOutbox.Status.DELIVERED:
             return None
+        now = timezone.now()
         if (
             record.status in (JobCompletionOutbox.Status.PENDING, JobCompletionOutbox.Status.FAILED)
             and record.next_retry_at
@@ -275,26 +286,14 @@ def _deliver_payload(kind: str, payload: dict) -> None:
         publish_done_sentinel(payload["execution_id"], payload["target_key"], payload["status"])
         return
     if kind == JobCompletionOutbox.Kind.PLAYBOOK_CLEANUP:
-        file_keys = []
-        if payload.get("file_key"):
-            file_keys.append(payload["file_key"])
-        elif payload.get("file_prefix"):
-            prefix = payload["file_prefix"]
-            for entry in async_to_sync(list_s3_files)():
-                if isinstance(entry, dict):
-                    object_name = str(entry.get("name", ""))
-                else:
-                    object_name = str(getattr(entry, "name", entry if isinstance(entry, str) else ""))
-                if object_name.startswith(prefix):
-                    file_keys.append(object_name)
-        else:
-            raise ValueError("Playbook 清理载荷缺少 file_key/file_prefix")
-        for file_key in file_keys:
-            try:
-                async_to_sync(delete_s3_file)(file_key)
-            except (NotFoundError, ObjectNotFoundError):
-                # 外部删除成功、worker 尚未回写 delivered 就崩溃时，重投仍视为成功。
-                pass
+        file_key = payload.get("file_key")
+        if not file_key:
+            raise ValueError("Playbook 清理载荷缺少精确 file_key")
+        try:
+            async_to_sync(delete_s3_file)(file_key)
+        except (NotFoundError, ObjectNotFoundError):
+            # 外部删除成功、worker 尚未回写 delivered 就崩溃时，重投仍视为成功。
+            pass
         return
     if kind == JobCompletionOutbox.Kind.WEB_CALLBACK:
         url = payload["url"]

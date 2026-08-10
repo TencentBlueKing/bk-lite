@@ -1,5 +1,7 @@
 """作业执行视图"""
 
+from datetime import timedelta
+
 from celery import current_app
 from django.http import StreamingHttpResponse
 from django.utils import timezone
@@ -10,6 +12,7 @@ from rest_framework.response import Response
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.logger import job_logger as logger
 from apps.core.utils.viewset_utils import AuthViewSet
+from apps.job_mgmt.config import CANCEL_CONVERGE_BUFFER_SECONDS
 from apps.job_mgmt.constants import ExecutionStatus
 from apps.job_mgmt.filters.execution import JobExecutionFilter
 from apps.job_mgmt.models import JobExecution
@@ -32,11 +35,6 @@ from apps.job_mgmt.tasks import finalize_cancelling_execution
 from apps.job_mgmt.utils.team_authz import normalize_authorized_team_ids
 from apps.system_mgmt.utils.operation_log_utils import log_operation
 from nats_client.clients import ensure_stream_sync
-
-# CANCELLING 兜底收敛任务的额外缓冲（秒）：在 execution.timeout 之后再等一段时间，
-# 给真实结果回写留出余量，仍未回写才强制收敛为 CANCELLED。
-CANCEL_CONVERGE_BUFFER_SECONDS = 60
-
 
 class JobExecutionViewSet(AuthViewSet):
     """作业执行视图集"""
@@ -266,10 +264,18 @@ class JobExecutionViewSet(AuthViewSet):
                 return Response({"message": "已取消执行", "status": ExecutionStatus.CANCELLED})
         elif status_now == ExecutionStatus.RUNNING:
             # RUNNING→CANCELLING：已在执行，进入过渡态，等真实结果回写后收敛
-            updated = JobExecution.objects.filter(id=pk, status=ExecutionStatus.RUNNING).update(status=ExecutionStatus.CANCELLING, updated_at=now)
+            countdown = max(0, execution.timeout) + CANCEL_CONVERGE_BUFFER_SECONDS
+            updated = JobExecution.objects.filter(id=pk, status=ExecutionStatus.RUNNING).update(
+                status=ExecutionStatus.CANCELLING,
+                cancel_finalize_at=now + timedelta(seconds=countdown),
+                updated_at=now,
+            )
             if updated:
-                # 兜底收敛任务：execution.timeout + 缓冲后仍滞留 CANCELLING 则强制收敛为 CANCELLED
-                finalize_cancelling_execution.apply_async(args=[execution.id], countdown=execution.timeout + CANCEL_CONVERGE_BUFFER_SECONDS)
+                # 即时入队只是快速路径；持久化 cancel_finalize_at 会被 Beat 反复补偿。
+                try:
+                    finalize_cancelling_execution.apply_async(args=[execution.id], countdown=countdown)
+                except Exception:
+                    logger.exception("[cancel] 取消兜底任务入队失败，等待 Beat 补偿: execution_id=%s", execution.id)
                 logger.info(f"[cancel] 执行中任务进入取消中: execution_id={execution.id}")
                 log_operation(request, "execute", "job", f"取消执行: {execution.id}")
                 return Response({"message": "正在取消执行", "status": ExecutionStatus.CANCELLING})

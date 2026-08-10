@@ -33,6 +33,12 @@ class JobExecution(TimeInfo, MaintainerInfo):
         null=True,
         verbose_name="终态写入来源",
     )
+    cancel_finalize_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        db_index=True,
+        verbose_name="取消兜底收敛时间",
+    )
 
     # 关联的脚本/Playbook（可为空，快速执行场景）
     script = models.ForeignKey(Script, on_delete=models.SET_NULL, null=True, blank=True, verbose_name="关联脚本")

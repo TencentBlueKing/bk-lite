@@ -6,8 +6,8 @@ from django.db import migrations, models
 def backfill_active_playbook_temp_file_keys(apps, schema_editor):
     """固定升级时仍在执行的 Playbook 临时对象 Key。
 
-    终态记录不再需要清理；滚动窗口内由旧 worker 新建的执行则由新版终态逻辑按
-    execution 前缀兜底，避免继续依赖可变的 Playbook 外键。
+    终态记录不再需要清理；升级停流排空边界保证迁移后不再有旧 worker 创建
+    缺少精确 Key 的新执行，避免为兼容而扫描共享 Object Store。
     """
     JobExecution = apps.get_model("job_mgmt", "JobExecution")
     terminal_statuses = ["success", "failed", "timeout", "cancelled"]
@@ -50,6 +50,16 @@ class Migration(migrations.Migration):
                 max_length=512,
                 null=True,
                 verbose_name="Playbook NATS 临时文件 Key",
+            ),
+        ),
+        migrations.AddField(
+            model_name="jobexecution",
+            name="cancel_finalize_at",
+            field=models.DateTimeField(
+                blank=True,
+                db_index=True,
+                null=True,
+                verbose_name="取消兜底收敛时间",
             ),
         ),
         migrations.RunPython(
