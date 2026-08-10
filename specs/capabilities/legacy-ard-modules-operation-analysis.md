@@ -133,6 +133,10 @@
 
 - `[operation_analysis#20260809-001]` 新增普通 DataSource `chartType=topologyMap`：MVP 面向可直接返回 `{nodes, edges}` object 的 NATS DataSource，不修改 mysql/postgresql/rest_api/excel connector runtime。前端以 graph-local node id 校验引用，使用单一 Dagre 自动布局与独立 X6 viewer；empty 上报 `empty` 并允许报告 `report-ready`，非法 graph 上报 `failed`。该组件与 `networkStatusTopology` Scene Widget 保持实现与契约隔离。Self-loop 不静默丢弃，但默认 X6 能力不能可靠显示，记为 Current Limitation。变更契约与证据见 `specs/changes/ops-analysis-topology-map-mvp/spec.md`。
 
+## 2026-08-10 单值说明字段与表格单元格样式
+
+- `[operation_analysis#20260810-001]` 仪表盘 `single` 增加可选 `descriptionField`（主值下方原样说明行；空态仍由主值门控）。生产 `ComTable` 增加列级 `valueMappings` / `cellThresholdColors` / `cellType`（`text` | `colorBackground` 纯色块），操作列不配置样式；不改挂 `OpsAnalysisTable`。变更契约与证据见 `specs/changes/ops-analysis-single-description-table-cell-styling/spec.md`。
+
 ## 6. 证据来源
 `server/apps/operation_analysis/{urls.py,models/*,views/datasource_view.py,views/view.py,nats/nats.py,common/get_nats_source_data.py,constants/constants.py,tasks/tasks.py,management/commands/*,services/*}`、`apps/operation_analysis/migrations/0010_remove_namespace_groups.py`、`apps/rpc/base.py:OperationAnalysisRpc`、`web/src/app/ops-analysis/{utils/widgetRequestCache.ts,components/widgetDataRenderer.tsx,api/namespace.ts,(pages)/settings/namespace/operateModal.tsx}`。
 
@@ -140,3 +144,4 @@
 - `web/src/app/ops-analysis/components/widgetRegistry.ts:12-21`（组件注册表全量映射）
 - `web/src/app/ops-analysis/api/networkStatusTopology.ts:11-25`（网络状态拓扑组件取数）
 - `web/src/app/ops-analysis/api/{screen.ts,report.ts}`、`web/src/app/ops-analysis/(pages)/view/{screen/index.tsx,report/index.tsx}`（大屏/报表入口）
+- `web/src/app/ops-analysis/utils/{singleDescription.ts,tableCellStyle.ts}`、`web/src/app/ops-analysis/components/widgets/{comSingle.tsx,comTable.tsx}`（单值说明字段与表格列单元格样式）

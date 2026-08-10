@@ -729,6 +729,12 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
       singleValueConfig.setSelectedFields([]);
     }
 
+    if ((valueConfig as ValueConfig | undefined)?.descriptionField !== undefined) {
+      formValues.descriptionField = (valueConfig as ValueConfig).descriptionField;
+    } else {
+      formValues.descriptionField = undefined;
+    }
+
     if (valueConfig?.topNLabelField !== undefined) {
       formValues.topNLabelField = valueConfig.topNLabelField;
     }
@@ -1233,6 +1239,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
             filterFields={tableConfig.filterFields}
             filterFieldOptions={filterFieldOptions}
             showFilterFields={showTableFilterFields}
+            showColumnCellStyle={chartType === 'table'}
             invalidConfiguredFieldKeys={invalidConfiguredFieldKeys}
             isProbingColumns={tableConfig.isProbingColumns}
             paramsChangedAfterProbe={tableConfig.paramsChangedAfterProbe}
@@ -1256,6 +1263,9 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
               }
             }}
             onDisplayColumnChange={tableConfig.handleDisplayColumnChange}
+            onDisplayColumnStyleChange={
+              tableConfig.handleDisplayColumnStyleChange
+            }
             onDisplayColumnKeyBlur={tableConfig.handleDisplayColumnKeyBlur}
             onDisplayColumnDragEnd={tableConfig.handleDisplayColumnDragEnd}
             onReProbeColumns={tableConfig.handleReProbeColumns}
@@ -1297,6 +1307,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
             onAddThreshold={singleValueConfig.addThreshold}
             onRemoveThreshold={singleValueConfig.removeThreshold}
             compareAvailable={singleValueConfig.compareAvailable}
+            showDescriptionField
           />
         )}
 

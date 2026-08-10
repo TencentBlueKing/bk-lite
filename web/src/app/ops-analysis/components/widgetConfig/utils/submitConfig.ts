@@ -28,6 +28,7 @@ export interface WidgetConfigFormValues {
   params?: Record<string, string | number | boolean | [number, number] | null>;
   tableConfig?: TableConfig;
   selectedFields?: string[];
+  descriptionField?: string;
   topNLabelField?: string;
   topNValueField?: string;
   unit?: string;
@@ -114,10 +115,11 @@ const buildTableConfig = ({
   displayColumns,
   filterFields,
   showTableFilterFields,
+  includeCellStyle,
 }: Pick<
   BuildWidgetSubmitConfigInput,
   'displayColumns' | 'filterFields' | 'showTableFilterFields'
->): BuildWidgetSubmitConfigResult & { tableConfig?: TableConfig } => {
+> & { includeCellStyle: boolean }): BuildWidgetSubmitConfigResult & { tableConfig?: TableConfig } => {
   const tableConfig: TableConfig = {};
 
   if (showTableFilterFields && filterFields.length > 0) {
@@ -157,13 +159,28 @@ const buildTableConfig = ({
   }
 
   if (validDisplayColumns.length > 0) {
-    tableConfig.columns = validDisplayColumns.map((column, index) => ({
-      key: column.key,
-      title: column.title,
-      visible: column.visible,
-      order: index,
-      columnType: column.columnType,
-    }));
+    tableConfig.columns = validDisplayColumns.map((column, index) => {
+      const next: TableColumnConfigItem = {
+        key: column.key,
+        title: column.title,
+        visible: column.visible,
+        order: index,
+        columnType: column.columnType,
+      };
+      if (column.columnType === 'actions' || !includeCellStyle) {
+        return next;
+      }
+      if (column.cellType === 'colorBackground') {
+        next.cellType = 'colorBackground';
+      }
+      if (column.valueMappings?.length) {
+        next.valueMappings = column.valueMappings;
+      }
+      if (column.cellThresholdColors?.length) {
+        next.cellThresholdColors = column.cellThresholdColors;
+      }
+      return next;
+    });
   }
 
   return {
@@ -184,6 +201,10 @@ const applySingleValueConfig = (
   result.thresholdColors = thresholdColors;
   result.compare = !!values.compare;
   result.compareMode = values.compareMode || 'percent';
+  const descriptionField = values.descriptionField?.trim();
+  if (descriptionField) {
+    result.descriptionField = descriptionField;
+  }
   if (values.unit !== undefined) result.unit = values.unit;
   result.unitId = values.unitId;
   result.valueMappings = values.valueMappings || undefined;
@@ -243,6 +264,7 @@ export const buildWidgetSubmitConfig = ({
       displayColumns,
       filterFields,
       showTableFilterFields,
+      includeCellStyle: chartType === 'table',
     });
     if (tableResult.error) {
       return { error: tableResult.error };
