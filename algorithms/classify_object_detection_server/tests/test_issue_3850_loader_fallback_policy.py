@@ -1,5 +1,8 @@
 """Regression tests for explicit model-source fallback policy (Issue #3850)."""
 
+import json
+import os
+import subprocess
 import sys
 import types
 from pathlib import Path
@@ -103,3 +106,35 @@ def test_dummy_source_remains_explicitly_available(monkeypatch):
     monkeypatch.setenv("ALLOW_DUMMY_FALLBACK", "false")
 
     assert isinstance(_load_namespace()["load_model"](_config("dummy")), DummyModel)
+
+
+def test_health_binds_readiness_to_current_serving_instance():
+    env = os.environ.copy()
+    env.update(
+        {
+            "MODEL_SOURCE": "dummy",
+            "SERVING_INSTANCE_ID": "issue-3850-instance",
+        }
+    )
+    code = """
+import asyncio
+import json
+from classify_object_detection_server.serving.service import MLService
+
+service = MLService()
+print(json.dumps(asyncio.run(service.health())))
+"""
+
+    result = subprocess.run(
+        [sys.executable, "-c", code],
+        check=False,
+        capture_output=True,
+        text=True,
+        env=env,
+        timeout=30,
+    )
+
+    assert result.returncode == 0, result.stderr
+    health = json.loads(result.stdout.strip().splitlines()[-1])
+    assert health["status"] == "healthy"
+    assert health["startup_instance_id"] == "issue-3850-instance"

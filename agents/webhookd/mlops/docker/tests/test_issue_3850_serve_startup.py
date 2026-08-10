@@ -1,5 +1,6 @@
 import json
 import os
+import signal
 import subprocess
 import tempfile
 import textwrap
@@ -44,6 +45,10 @@ class DockerServingStartupContractTest(unittest.TestCase):
                 images)
                     echo "test-serving:latest"
                     ;;
+                image)
+                    [ "$2" = "inspect" ] && exit 0
+                    exit 1
+                    ;;
                 run)
                     if [ -f "$FAKE_CONTAINER_STATE_FILE" ]; then
                         echo "container name already exists" >&2
@@ -57,6 +62,9 @@ class DockerServingStartupContractTest(unittest.TestCase):
                         fi
                         shift
                     done
+                    if [ -n "${FAKE_DOCKER_RUN_DELAY_SECONDS:-}" ]; then
+                        /bin/sleep "$FAKE_DOCKER_RUN_DELAY_SECONDS"
+                    fi
                     echo "fake-container-id"
                     ;;
                 inspect)
@@ -73,6 +81,9 @@ class DockerServingStartupContractTest(unittest.TestCase):
                     esac
                     ;;
                 logs)
+                    if [ -n "${FAKE_DOCKER_LOGS_DELAY_SECONDS:-}" ]; then
+                        /bin/sleep "$FAKE_DOCKER_LOGS_DELAY_SECONDS"
+                    fi
                     message="${FAKE_DOCKER_LOG_MESSAGE:-model load failed: dependency unavailable}"
                     echo "$message"
                     ;;
@@ -80,6 +91,9 @@ class DockerServingStartupContractTest(unittest.TestCase):
                     exit "${FAKE_DOCKER_UPDATE_STATUS:-0}"
                     ;;
                 rm)
+                    if [ -n "${FAKE_DOCKER_REMOVE_DELAY_SECONDS:-}" ]; then
+                        /bin/sleep "$FAKE_DOCKER_REMOVE_DELAY_SECONDS"
+                    fi
                     if [ "${FAKE_DOCKER_REMOVE_FAIL:-0}" = "1" ]; then
                         exit 1
                     fi
@@ -102,6 +116,8 @@ class DockerServingStartupContractTest(unittest.TestCase):
             count=$((count + 1))
             echo "$*" >> "$FAKE_CURL_LOG"
             if [ "$count" -ge "${FAKE_CURL_SUCCEED_AFTER:-999}" ]; then
+                instance_id="${FAKE_CURL_INSTANCE_ID:-$SERVING_INSTANCE_ID}"
+                printf '{"status":"healthy","startup_instance_id":"%s"}\n' "$instance_id"
                 exit 0
             fi
             exit 22
@@ -172,6 +188,8 @@ class DockerServingStartupContractTest(unittest.TestCase):
         )
         docker_calls = self.docker_log.read_text(encoding="utf-8")
         self.assertIn("--restart no", docker_calls)
+        self.assertIn("-e BENTOML_CONTAINERIZED=true", docker_calls)
+        self.assertIn("-e SERVING_INSTANCE_ID=", docker_calls)
         self.assertIn(
             "update --restart unless-stopped fake-container-id",
             docker_calls,
@@ -248,7 +266,7 @@ class DockerServingStartupContractTest(unittest.TestCase):
         self.assertIn("-e BENTOML_PORT=39001", docker_calls)
         self.assertNotIn(" -p ", f" {docker_calls} ")
         self.assertIn(
-            "http://127.0.0.1:39001/readyz",
+            "http://127.0.0.1:39001/health",
             self.curl_log.read_text(encoding="utf-8"),
         )
 
@@ -265,9 +283,110 @@ class DockerServingStartupContractTest(unittest.TestCase):
         docker_calls = self.docker_log.read_text(encoding="utf-8")
         self.assertIn(f"-e BENTOML_PORT={port}", docker_calls)
         self.assertIn(
-            f"http://127.0.0.1:{port}/readyz",
+            f"http://127.0.0.1:{port}/health",
             self.curl_log.read_text(encoding="utf-8"),
         )
+
+    def test_host_network_rejects_health_from_another_instance(self):
+        result = self._run_serve(
+            startup_timeout_seconds=1,
+            network_mode="host",
+            port=39002,
+            FAKE_DOCKER_STATE="running",
+            FAKE_CURL_SUCCEED_AFTER="1",
+            FAKE_CURL_INSTANCE_ID="another-serving-instance",
+        )
+
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(json.loads(result.stdout)["code"], "CONTAINER_NOT_READY")
+        self.assertFalse(self.container_state.exists())
+        self.assertNotIn(
+            "update --restart",
+            self.docker_log.read_text(encoding="utf-8"),
+        )
+
+    def test_slow_docker_run_is_bounded_and_created_container_is_rolled_back(self):
+        started_at = __import__("time").monotonic()
+        result = self._run_serve(
+            startup_timeout_seconds=2,
+            FAKE_DOCKER_RUN_DELAY_SECONDS="4",
+        )
+        elapsed = __import__("time").monotonic() - started_at
+
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(json.loads(result.stdout)["code"], "CONTAINER_START_FAILED")
+        self.assertLess(elapsed, 4)
+        self.assertFalse(self.container_state.exists())
+
+    def test_slow_rollback_is_bounded_and_reported(self):
+        started_at = __import__("time").monotonic()
+        result = self._run_serve(
+            startup_timeout_seconds=1,
+            FAKE_DOCKER_STATE="exited",
+            FAKE_DOCKER_REMOVE_DELAY_SECONDS="3",
+            SERVING_ROLLBACK_TIMEOUT_SECONDS="1",
+        )
+        elapsed = __import__("time").monotonic() - started_at
+
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(json.loads(result.stdout)["code"], "CONTAINER_ROLLBACK_FAILED")
+        self.assertLess(elapsed, 4)
+        self.assertTrue(self.container_state.exists())
+
+    def test_slow_log_collection_cannot_consume_container_removal_budget(self):
+        started_at = __import__("time").monotonic()
+        result = self._run_serve(
+            startup_timeout_seconds=2,
+            FAKE_DOCKER_STATE="exited",
+            FAKE_DOCKER_LOGS_DELAY_SECONDS="3",
+            SERVING_ROLLBACK_TIMEOUT_SECONDS="2",
+        )
+        elapsed = __import__("time").monotonic() - started_at
+
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(json.loads(result.stdout)["code"], "CONTAINER_EXITED")
+        self.assertLess(elapsed, 3)
+        self.assertFalse(self.container_state.exists())
+
+    def test_interrupted_startup_rolls_back_created_container(self):
+        env = os.environ.copy()
+        env.update(
+            {
+                "PATH": f"{self.bin_path}:{env['PATH']}",
+                "FAKE_DOCKER_LOG": str(self.docker_log),
+                "FAKE_CURL_LOG": str(self.curl_log),
+                "FAKE_CONTAINER_STATE_FILE": str(self.container_state),
+                "FAKE_DOCKER_RUN_DELAY_SECONDS": "10",
+            }
+        )
+        payload = json.dumps(
+            {
+                "id": "issue-3850-serving",
+                "mlflow_tracking_uri": "http://mlflow:5000",
+                "mlflow_model_uri": "models:/demo/1",
+                "train_image": "test-serving:latest",
+                "startup_timeout_seconds": 10,
+            }
+        )
+        process = subprocess.Popen(
+            ["bash", str(SCRIPT_PATH), payload],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            env=env,
+            start_new_session=True,
+        )
+        for _ in range(50):
+            if self.container_state.exists():
+                break
+            __import__("time").sleep(0.05)
+        self.assertTrue(self.container_state.exists())
+
+        os.killpg(process.pid, signal.SIGTERM)
+        process.communicate(timeout=5)
+
+        self.assertNotEqual(process.returncode, 0)
+        self.assertFalse(self.container_state.exists())
 
     def test_failed_startup_can_be_retried_after_rollback(self):
         first_result = self._run_serve(
